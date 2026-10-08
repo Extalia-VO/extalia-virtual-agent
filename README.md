@@ -6,6 +6,21 @@ Extalia provides a unified workspace where developers can prompt, steer, orchest
 
 ---
 
+## 📸 Preview
+
+### Spatial 3D Virtual Office & Campus
+![Extalia Virtual Office Campus](docs/images/preview-campus.webp)
+
+### Floor Plan & Live Autonomous Workforce
+![Floor 1 Workforce & Shared Facilities](docs/images/preview-floor1.png)
+
+### Agent Inspection & Spatial Context
+| Avatar & Desk Activity Inspection | Non-3D Agent Console & Execution Timeline |
+| :---: | :---: |
+| ![Avatar Interaction](docs/images/preview-avatar-inspect.webp) | ![Agent Console](docs/images/preview-console.webp) |
+
+---
+
 ## 🌟 Highlights
 
 - **Spatial Agent Observability:** Visualizes agent and subagent execution states in real time within a living 3D virtual office (Three.js / React Three Fiber).
