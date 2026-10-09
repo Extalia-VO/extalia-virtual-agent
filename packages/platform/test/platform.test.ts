@@ -23,4 +23,13 @@ describe('describeCapabilities', () => {
     expect(webStatus).toMatchObject({ filesystem: 'available', terminal: 'requires-bridge', git: 'requires-bridge', updater: 'unavailable' });
     expect(describeCapabilities(desktop).every(entry => entry.status === 'unavailable')).toBe(true);
   });
+  it('recognizes host-owned commands, Git inspection and credentials without claiming standalone APIs', () => {
+    const agents = { gitStatus: async () => ({ repository: false as const }) } as unknown as NonNullable<Platform['capabilities']['agents']>;
+    const platform: Platform = { info: { kind: 'web', appVersion: 'test' }, capabilities: { agents } };
+    expect(Object.fromEntries(describeCapabilities(platform).map(row => [row.id, row.status]))).toMatchObject({
+      agents: 'available', terminal: 'via-agent-host', secureStorage: 'via-agent-host', git: 'via-agent-host', filesystem: 'unavailable',
+    });
+    expect(platform.capabilities.terminal).toBeUndefined();
+    expect(platform.capabilities.git).toBeUndefined();
+  });
 });

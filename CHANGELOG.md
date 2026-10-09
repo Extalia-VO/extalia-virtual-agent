@@ -6,6 +6,15 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- Diagnostics recognizes commands, Git inspection and credential storage provided through the agent host, distinguishes a folder picker from registered project access, and shows unsupported development update checks accurately.
+- Show registered project/session counts and a direct workspace-management action in Diagnostics; avoid opening duplicate folder dialogs while a picker is active.
+
+### Validation
+
+- Verify project-folder checks, two independent workspace session lists, explicit session selection and persistence across host restarts using temporary projects. Document browser/Bridge/Desktop requirements and the optional Python runtime boundary.
+
 ### Added
 
 - Brand assets in `docs/brand/`: light and dark logos (symbol and wordmark), the symbol in SVG and PNG, and a 1280 × 640 social preview; the README header shows the logo that matches GitHub's theme.

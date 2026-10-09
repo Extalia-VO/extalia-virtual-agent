@@ -125,14 +125,16 @@ export interface DesktopHostApi {
 }
 export const DESKTOP_HOST_GLOBAL = 'extaliaDesktop';
 
-export type CapabilityStatus = 'available' | 'requires-bridge' | 'unavailable';
+export type CapabilityStatus = 'available' | 'via-agent-host' | 'requires-bridge' | 'unavailable';
 
 /** Status of every capability for diagnostics and feature gating. */
 export function describeCapabilities(platform: Platform): { id: CapabilityId; status: CapabilityStatus }[] {
   return CAPABILITY_IDS.map(id => {
     if (platform.capabilities[id]) return { id, status: 'available' };
+    const agents = platform.capabilities.agents;
+    if (agents && (id === 'terminal' || id === 'secureStorage' || (id === 'git' && typeof agents.gitStatus === 'function'))) return { id, status: 'via-agent-host' };
     // Native-only capabilities can reach a browser through the local Bridge.
-    const bridgeable = platform.info.kind === 'web' && (id === 'agents' || id === 'terminal' || id === 'git' || id === 'secureStorage');
+    const bridgeable = platform.info.kind === 'web' && !agents && (id === 'agents' || id === 'terminal' || id === 'git' || id === 'secureStorage');
     return { id, status: bridgeable ? 'requires-bridge' : 'unavailable' };
   });
 }
