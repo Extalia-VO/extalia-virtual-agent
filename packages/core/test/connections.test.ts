@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { PROVIDER_PRESETS, checkEndpoint, decodeConnection, defaultOrchestration, presetById, providerHeaders, resolveFeatures, tierModel } from '../src/index.js';
+import { PROVIDER_PRESETS, checkEndpoint, decodeConnection, defaultOrchestration, keepsHistory, presetById, providerHeaders, resolveFeatures, tierModel } from '../src/index.js';
 
 const T0 = '2026-01-31T10:00:00.000Z';
 const base = {
@@ -22,6 +22,16 @@ describe('connections', () => {
   it('allows provider-managed memory and skills only for presets that have them', () => {
     expect(decodeConnection({ ...base, features: { memory: 'provider', skills: 'extalia' } }).ok).toBe(false);
     expect(decodeConnection({ ...base, preset: 'omniroute', features: { memory: 'provider', skills: 'provider' } }).ok).toBe(true);
+  });
+
+  it('saves history unless the connection turns it off', () => {
+    const saved = decodeConnection(base), unsaved = decodeConnection({ ...base, features: { ...base.features, history: false } });
+    expect(saved.ok && keepsHistory(saved.value)).toBe(true);
+    expect(unsaved.ok && unsaved.value.features).toEqual({ memory: 'extalia', skills: 'extalia', history: false });
+    expect(unsaved.ok && keepsHistory(unsaved.value)).toBe(false);
+    const explicit = decodeConnection({ ...base, features: { ...base.features, history: true } });
+    expect(explicit.ok && explicit.value.features).toEqual({ memory: 'extalia', skills: 'extalia' });
+    expect(decodeConnection({ ...base, features: { ...base.features, history: 'no' } }).ok).toBe(false);
   });
 
   it('resolves who provides memory and skills', () => {

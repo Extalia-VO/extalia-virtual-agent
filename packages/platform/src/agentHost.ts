@@ -33,6 +33,10 @@ export interface SessionSummary {
   running: boolean;
   /** Approval the session is waiting for, if any. */
   pendingApprovalId?: string;
+  /** Kept in memory only (the connection does not save history); gone when the host stops. */
+  transient?: boolean;
+  /** The conversation this session continues (another agent's session or a library entry). */
+  continuedFrom?: { sourceId: string; title: string };
   observation?: { sourceId: string; nativeSessionId: string; projectPath?: string; watching: boolean; status: 'watching' | 'paused' | 'unavailable'; lastCheckedAt?: string; error?: string };
 }
 
@@ -126,7 +130,7 @@ export interface ConnectionInput {
   model: string;
   /** `stored` keeps the existing stored secret unless `secret` is provided. */
   credential: { kind: 'none' } | { kind: 'stored' } | Extract<CredentialSource, { kind: 'env' }>;
-  features: { memory: FeatureOwner; skills: FeatureOwner };
+  features: { memory: FeatureOwner; skills: FeatureOwner; history?: boolean };
   effort?: Effort;
   /** Defaults to orchestration on with the preset's tier models. */
   orchestration?: Orchestration;
@@ -156,6 +160,12 @@ export interface FolderCheck {
   error?: string;
 }
 
+/** A conversation to continue in a new managed session. */
+export interface ContinueSource {
+  kind: 'library' | 'observed';
+  id: string;
+}
+
 /** `once` allows this call; `session` also allows the same kind of action for the rest of the session. */
 export type ApprovalDecisionInput = 'once' | 'session' | 'reject';
 
@@ -174,6 +184,12 @@ export interface AgentHostApi {
   observationSession(id: string): Promise<PortableSession>;
   setObservation(id: string, watching: boolean): Promise<HostState>;
   createSession(workspaceId: string): Promise<SessionSummary>;
+  /**
+   * Start a managed session that continues another conversation (for example a
+   * Codex session that ran out of quota). The recent conversation is carried
+   * over as context; the source itself is not changed.
+   */
+  continueSession(source: ContinueSource, workspaceId: string): Promise<SessionSummary>;
   renameSession(sessionId: string, title: string): Promise<HostState>;
   deleteSession(sessionId: string): Promise<HostState>;
   sessionEvents(sessionId: string): Promise<ExtaliaEvent[]>;
@@ -196,7 +212,7 @@ export interface AgentHostApi {
 /** Methods a transport may forward. `subscribe` is carried separately (IPC push or SSE). */
 export const AGENT_HOST_METHODS = [
   'getState', 'saveConnection', 'deleteConnection', 'testConnection', 'checkFolder', 'saveWorkspace', 'deleteWorkspace',
-  'completeSetup', 'createSession', 'renameSession', 'deleteSession', 'sessionEvents', 'sendPrompt', 'resolveApproval', 'cancel',
+  'completeSetup', 'createSession', 'continueSession', 'renameSession', 'deleteSession', 'sessionEvents', 'sendPrompt', 'resolveApproval', 'cancel',
   'setWorkflow', 'observeImports', 'observationSession', 'setObservation',
   'importLocations', 'scanImports', 'previewImports', 'commitImports', 'importPortable', 'librarySession', 'organizeLibrarySession',
 ] as const satisfies readonly Exclude<keyof AgentHostApi, 'subscribe'>[];

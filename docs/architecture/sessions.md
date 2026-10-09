@@ -60,3 +60,27 @@ file is moved aside, never overwritten. A database replaces it later (PRD §44).
 
 Managed sessions run by Extalia are stored separately: an append-only event log
 and the model history per session in `sessions/`.
+A connection can turn history off (`features.history: false`). Sessions
+created on it live only in the host's memory (at most 4,000 events each) and
+disappear when the host stops; nothing about them is written to disk. The
+choice is made when a session is created, so turning history off never deletes
+or stops saving older sessions, and turning it back on never writes earlier
+unsaved turns.
+
+## Continuing another agent's conversation
+
+`continueSession({ kind: 'library' | 'observed', id }, workspaceId)` starts a
+managed session from an imported or observed conversation, for example when
+Codex or Claude Code ran out of quota. The source is never changed. Only user
+and assistant text is carried over: the other agent's tool calls cannot be
+replayed and their output is usually large and stale. The first request is
+always kept because it states the task; the rest is filled from the most
+recent messages backwards within about 60,000 characters (8,000 per message,
+longer ones keep their start and end).
+
+The carried messages become the new session's model history (merged into
+alternating user and assistant turns) and appear in its event log on the
+`import` channel with the source runtime, so Chat shows them between "Earlier
+in …" and "Continued in Extalia" dividers. The system prompt tells the agent
+where the conversation came from and to check the current files before relying
+on the earlier work.

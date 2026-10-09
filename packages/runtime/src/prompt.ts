@@ -13,6 +13,8 @@ export interface PromptContext {
   skills?: { name: string; description: string }[];
   /** Present when the agent can delegate to worker agents. */
   orchestration?: { maxDelegations: number };
+  /** Present when the session continues a conversation that started in another agent. */
+  continuation?: { source: string; title: string };
 }
 
 const INSTRUCTION_LIMIT = 12_000;
@@ -37,6 +39,14 @@ export function buildSystemPrompt(context: PromptContext): string {
       'You can delegate with delegate_task: hand self-contained, read-only work (broad research, reviews, independent questions) to worker agents, ' +
         'several at once when the questions are independent. Pick the tier by difficulty (quick, standard, complex). Workers cannot edit or run commands; ' +
         `you apply changes and remain responsible for the result. Delegate only when it saves effort, at most ${context.orchestration.maxDelegations} times per turn.`,
+    );
+  }
+
+  if (context.continuation) {
+    sections.push(
+      `This session continues "${context.continuation.title.replace(/["\n]/g, ' ')}", a conversation that started in ${context.continuation.source}. ` +
+        'The earlier messages are from that agent; its tool calls and their output are not included, and some messages may be left out. ' +
+        'Its work may be unfinished or may have changed since: check the current state of the files before relying on it or redoing it, then continue the task.',
     );
   }
 

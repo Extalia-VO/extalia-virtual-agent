@@ -1,7 +1,7 @@
 {
   "name": "@extalia/importers",
   "description": "Parsers that turn native agent histories (Codex, Claude Code, Hermes, Gemini CLI) into Extalia portable sessions.",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "private": true,
   "license": "MIT",
   "type": "module",

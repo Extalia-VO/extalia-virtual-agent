@@ -120,6 +120,78 @@ describe('agent host service', () => {
     await host.cancel(session.id);
   });
 
+  it('continues a conversation from another agent in a new managed session', async () => {
+    const { project, runtime, events, scripted } = await setup();
+    const { host } = runtime;
+    const { workspace } = await configure(runtime, project);
+    const at = (minute: number) => `2026-10-01T10:${String(minute).padStart(2, '0')}:00.000Z`;
+    const portable = {
+      format: 'extalia.session.v1', title: 'Fix the login bug', importMode: 'imported',
+      provenance: { sourceId: 'codex', sourceSessionId: 'rollout-1', exportedAt: at(9) },
+      messages: [
+        { index: 0, role: 'user', content: 'Fix the login bug', createdAt: at(0) },
+        { index: 1, role: 'assistant', content: 'Found it in auth.ts; patching next.', createdAt: at(1) },
+        { index: 2, role: 'tool', content: 'very long tool output', createdAt: at(2) },
+        { index: 3, role: 'user', content: 'Also add a test', createdAt: at(3) },
+      ],
+      startedAt: at(0), lastMessageAt: at(3),
+    };
+    const imported = await host.importPortable(JSON.stringify(portable));
+    const entry = imported.state.library[0]!;
+    await expect(host.continueSession({ kind: 'observed', id: 's_missing000000' }, workspace.id)).rejects.toThrow(/no longer exists/);
+
+    const session = await host.continueSession({ kind: 'library', id: entry.id }, workspace.id);
+    expect(session).toMatchObject({ title: 'Fix the login bug', control: 'managed', continuedFrom: { sourceId: 'codex', title: 'Fix the login bug' } });
+    expect(session.transient).toBeUndefined();
+    const carried = await host.sessionEvents(session.id);
+    expect(carried.map(event => event.body.type)).toEqual(['session.started', 'prompt.submitted', 'model.completed', 'prompt.submitted']);
+    expect(carried[1]).toMatchObject({ agentId: 'codex', source: { runtime: 'codex', channel: 'import' }, body: { via: 'native', text: 'Fix the login bug' } });
+
+    await host.sendPrompt(session.id, 'Please continue');
+    await waitFor(events, event => event.sessionId === session.id && event.body.type === 'approval.requested');
+    const request = scripted.bodies.at(-1)! as unknown as { messages: { role: string; content: string }[] };
+    expect(request.messages.map(message => message.role)).toEqual(['system', 'user', 'assistant', 'user', 'user']);
+    expect(request.messages[0]!.content).toContain('started in Codex');
+    expect(request.messages[2]!.content).toContain('auth.ts');
+    expect(JSON.stringify(request.messages)).not.toContain('very long tool output');
+    expect((await host.getState()).sessions.find(item => item.id === session.id)?.title).toBe('Fix the login bug');
+    await host.cancel(session.id);
+  });
+
+  it('keeps sessions in memory only when the connection does not save history', async () => {
+    const { root, project, runtime, events } = await setup();
+    const { host } = runtime;
+    const input = { name: 'Mock', preset: 'custom' as const, api: 'openai-chat' as const, baseUrl: 'http://mock.test/v1', model: 'mock-agent', credential: { kind: 'none' as const }, features: { memory: 'off' as const, skills: 'off' as const, history: false } };
+    const saved = await host.saveConnection(input);
+    const connection = saved.connections[0]!;
+    expect(connection.features.history).toBe(false);
+    const withWorkspace = await host.saveWorkspace({ name: 'Project', projectLocation: project, connectionId: connection.id, permissions: { fileWrite: 'ask', commands: 'ask' } });
+    const workspace = withWorkspace.workspaces[0]!;
+    await host.completeSetup();
+
+    const session = await host.createSession(workspace.id);
+    expect(session.transient).toBe(true);
+    await host.sendPrompt(session.id, 'EPHEMERAL_PLAN_42');
+    await waitFor(events, event => event.sessionId === session.id && event.body.type === 'approval.requested');
+    await host.cancel(session.id);
+    await waitFor(events, event => event.sessionId === session.id && event.body.type === 'agent.state' && (event.body as { state: string }).state === 'idle');
+    expect((await host.sessionEvents(session.id)).some(event => event.body.type === 'prompt.submitted')).toBe(true);
+    expect((await host.getState()).sessions.find(item => item.id === session.id)).toMatchObject({ transient: true, title: 'EPHEMERAL_PLAN_42' });
+
+    const files = await import('node:fs/promises').then(fs => fs.readdir(path.join(root, 'data'), { recursive: true, withFileTypes: true }));
+    for (const file of files.filter(item => item.isFile())) {
+      expect(await readFile(path.join(file.parentPath, file.name), 'utf8').catch(() => '')).not.toContain('EPHEMERAL_PLAN_42');
+    }
+
+    // Turning history back on applies to new sessions; the unsaved one stays unsaved.
+    await host.saveConnection({ ...input, id: connection.id, features: { memory: 'off', skills: 'off' } });
+    const next = await host.createSession(workspace.id);
+    expect(next.transient).toBeUndefined();
+    expect((await host.getState()).sessions.find(item => item.id === session.id)?.transient).toBe(true);
+    await host.deleteSession(session.id);
+    expect((await host.getState()).sessions.some(item => item.id === session.id)).toBe(false);
+  });
+
   it('keeps secrets out of state and refuses missing keys', async () => {
     const { runtime } = await setup();
     const { host } = runtime;

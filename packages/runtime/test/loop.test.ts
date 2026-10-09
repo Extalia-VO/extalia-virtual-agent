@@ -155,4 +155,13 @@ describe('policy, validation and prompt', () => {
     expect(full).toContain('code-review: Review changes');
     expect(full).toContain('Use pnpm.');
   });
+
+  it('explains a conversation continued from another agent', () => {
+    const base = { workspace: { name: 'Site', root: '/projects/site' }, platform: { os: 'macOS', shell: 'zsh' } };
+    expect(buildSystemPrompt(base)).not.toContain('continues');
+    const prompt = buildSystemPrompt({ ...base, continuation: { source: 'Codex', title: 'Fix "login"\nnow' } });
+    expect(prompt).toContain('started in Codex');
+    expect(prompt).toContain('This session continues "Fix  login  now"');
+    expect(prompt).toContain('check the current state of the files');
+  });
 });

@@ -87,7 +87,8 @@ export interface Connection {
   baseUrl: string;
   model: string;
   credential: CredentialSource;
-  features: { memory: FeatureOwner; skills: FeatureOwner };
+  /** `history: false` keeps this connection's sessions in memory only (never written to disk). Defaults to true. */
+  features: { memory: FeatureOwner; skills: FeatureOwner; history?: boolean };
   /** Reasoning effort for `anthropic-messages` endpoints that support it. */
   effort?: Effort;
   orchestration: Orchestration;
@@ -158,6 +159,7 @@ export function decodeConnection(raw: unknown): DecodeResult<Connection> {
     const skills = oneOf(features.skills, FEATURE_OWNERS, 'features.skills');
     if (memory === 'provider' && !preset.nativeMemory) throw new Error(`features.memory: ${preset.label} does not manage memory itself.`);
     if (skills === 'provider' && !preset.nativeSkills) throw new Error(`features.skills: ${preset.label} does not manage skills itself.`);
+    if (features.history !== undefined && typeof features.history !== 'boolean') throw new Error('features.history: expected true or false.');
     const createdAt = timestamp(value.createdAt, 'createdAt'), updatedAt = timestamp(value.updatedAt, 'updatedAt');
     const connection: Connection = {
       id: entityId(value.id, 'id'),
@@ -167,7 +169,7 @@ export function decodeConnection(raw: unknown): DecodeResult<Connection> {
       baseUrl: checkEndpoint(value.baseUrl),
       model: text(value.model, 'model', { singleLine: true, max: 200 }).trim(),
       credential: decodeCredential(value.credential),
-      features: { memory, skills },
+      features: { memory, skills, ...(features.history === false ? { history: false } : {}) },
       orchestration: decodeOrchestration(value.orchestration),
       createdAt,
       updatedAt,
@@ -176,6 +178,11 @@ export function decodeConnection(raw: unknown): DecodeResult<Connection> {
     if (effort !== undefined) connection.effort = oneOf(effort, EFFORTS, 'effort');
     return connection;
   });
+}
+
+/** Whether sessions on this connection are saved on disk. */
+export function keepsHistory(connection: Pick<Connection, 'features'>): boolean {
+  return connection.features.history !== false;
 }
 
 /** What the Extalia Native runtime should do for a connection. */

@@ -11,6 +11,8 @@ export interface SessionRecord {
   title: string;
   createdAt: string;
   lastActiveAt: string;
+  /** Set when the session continues a conversation from another agent or the library. */
+  continuedFrom?: { sourceId: string; title: string };
 }
 
 export type SessionPatch = Partial<Omit<SessionRecord, 'id'>>;
@@ -31,8 +33,23 @@ export function checkSessionId(id: string): string {
 function isRecord(value: unknown): value is SessionRecord {
   if (!value || typeof value !== 'object') return false;
   const record = value as Record<string, unknown>;
+  const origin = record.continuedFrom as Record<string, unknown> | undefined;
   return typeof record.id === 'string' && SESSION_ID_PATTERN.test(record.id)
-    && ['workspaceId', 'connectionId', 'title', 'createdAt', 'lastActiveAt'].every(key => typeof record[key] === 'string');
+    && ['workspaceId', 'connectionId', 'title', 'createdAt', 'lastActiveAt'].every(key => typeof record[key] === 'string')
+    && (origin === undefined || (Boolean(origin) && typeof origin === 'object' && typeof origin.sourceId === 'string' && typeof origin.title === 'string'));
+}
+
+/** What the host needs from a session store; saved and unsaved sessions share it. */
+export interface SessionStorage {
+  list(): Promise<SessionRecord[]>;
+  get(id: string): Promise<SessionRecord | undefined>;
+  create(record: SessionRecord): Promise<SessionRecord>;
+  update(id: string, patch: SessionPatch): Promise<SessionRecord>;
+  remove(id: string): Promise<void>;
+  appendEvent(id: string, event: ExtaliaEvent): Promise<void>;
+  readEvents(id: string): Promise<ExtaliaEvent[]>;
+  readMessages(id: string): Promise<unknown[]>;
+  writeMessages(id: string, messages: readonly unknown[]): Promise<void>;
 }
 
 /**
@@ -40,7 +57,7 @@ function isRecord(value: unknown): value is SessionRecord {
  * `index.json` (records), `<id>.events.jsonl` (Extalia Protocol events) and
  * `<id>.messages.json` (the model history the service keeps; opaque here).
  */
-export class SessionStore {
+export class SessionStore implements SessionStorage {
   private readonly indexFile: string;
   private readonly queues = new Map<string, Promise<unknown>>();
 
@@ -145,4 +162,62 @@ export class SessionStore {
     const file = this.file(id, 'messages.json');
     return this.serialize(id, () => writeJsonAtomic(file, messages));
   }
+}
+
+/** Events kept per unsaved session; the oldest are dropped first, the session start is kept. */
+export const TRANSIENT_EVENT_LIMIT = 4000;
+
+/**
+ * Sessions that are never written to disk (connections with history off).
+ * They last until the host stops.
+ */
+export class MemorySessionStore implements SessionStorage {
+  private readonly sessions = new Map<string, { record: SessionRecord; events: ExtaliaEvent[]; messages: unknown[] }>();
+
+  has(id: string): boolean { return this.sessions.has(id); }
+
+  private entry(id: string) {
+    const entry = this.sessions.get(checkSessionId(id));
+    if (!entry) throw new Error(`Session ${id} does not exist.`);
+    return entry;
+  }
+
+  async list(): Promise<SessionRecord[]> {
+    return [...this.sessions.values()].map(entry => ({ ...entry.record })).sort((a, b) => b.lastActiveAt.localeCompare(a.lastActiveAt));
+  }
+
+  async get(id: string): Promise<SessionRecord | undefined> {
+    const entry = this.sessions.get(checkSessionId(id));
+    return entry && { ...entry.record };
+  }
+
+  async create(record: SessionRecord): Promise<SessionRecord> {
+    checkSessionId(record.id);
+    if (!isRecord(record)) throw new Error('A session record needs workspaceId, connectionId, title, createdAt and lastActiveAt.');
+    if (this.sessions.has(record.id)) throw new Error(`Session ${record.id} already exists.`);
+    this.sessions.set(record.id, { record: { ...record }, events: [], messages: [] });
+    return { ...record };
+  }
+
+  async update(id: string, patch: SessionPatch): Promise<SessionRecord> {
+    const entry = this.entry(id);
+    const updated = { ...entry.record, ...patch, id: entry.record.id };
+    if (!isRecord(updated)) throw new Error('The session update has invalid fields.');
+    entry.record = updated;
+    return { ...updated };
+  }
+
+  async remove(id: string): Promise<void> { this.sessions.delete(checkSessionId(id)); }
+
+  async appendEvent(id: string, event: ExtaliaEvent): Promise<void> {
+    const { events } = this.entry(id);
+    events.push(event);
+    if (events.length > TRANSIENT_EVENT_LIMIT) events.splice(1, events.length - TRANSIENT_EVENT_LIMIT);
+  }
+
+  async readEvents(id: string): Promise<ExtaliaEvent[]> { return [...this.entry(id).events]; }
+
+  async readMessages(id: string): Promise<unknown[]> { return structuredClone(this.entry(id).messages); }
+
+  async writeMessages(id: string, messages: readonly unknown[]): Promise<void> { this.entry(id).messages = structuredClone([...messages]); }
 }

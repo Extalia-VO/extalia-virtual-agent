@@ -1,4 +1,4 @@
-import { mkdir, symlink, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, symlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { describe, expect, it } from 'vitest';
@@ -97,6 +97,33 @@ describe('native history import through the host', () => {
     } finally {
       await runtime.close();
     }
+  });
+
+  it('continues an observed Codex session in Extalia without touching the transcript', async () => {
+    const root = await temp();
+    const home = await fakeHome(root);
+    const project = path.join(root, 'site');
+    await mkdir(project);
+    const rollout = path.join(home, '.codex', 'sessions', '2026', '10', '08', 'rollout-a.jsonl');
+    const before = await readFile(rollout, 'utf8');
+    const runtime = await createAgentHost({ kind: 'bridge', version: 'test', dataDirectory: path.join(root, 'data'), importHome: home, env: { EXTALIA_SECRET_STORE: 'memory' }, observationIntervalMs: 60_000 });
+    try {
+      const { host } = runtime;
+      const scan = await host.scanImports(['codex']);
+      let state = await host.observeImports(scan.scanId, scan.sessions.filter(session => session.supported).map(session => session.id));
+      const observed = state.sessions.find(session => session.control === 'observed')!;
+      await expect(host.continueSession({ kind: 'observed', id: observed.id }, 'w_missing')).rejects.toThrow(/workspace/);
+
+      state = await host.saveConnection({ name: 'Local', preset: 'custom', api: 'openai-chat', baseUrl: 'http://mock.test/v1', model: 'm', credential: { kind: 'none' }, features: { memory: 'off', skills: 'off' } });
+      state = await host.saveWorkspace({ name: 'Site', projectLocation: project, connectionId: state.connections[0]!.id, permissions: { fileWrite: 'ask', commands: 'ask' } });
+      const session = await host.continueSession({ kind: 'observed', id: observed.id }, state.workspaces[0]!.id);
+      expect(session).toMatchObject({ control: 'managed', title: 'Add a footer', continuedFrom: { sourceId: 'codex' } });
+      const events = await host.sessionEvents(session.id);
+      expect(events.filter(event => event.source.channel === 'import').map(event => [event.body.type, (event.body as { text?: string }).text]))
+        .toEqual([['prompt.submitted', 'Add a footer'], ['model.completed', 'Footer added.']]);
+      expect((await host.getState()).sessions.some(item => item.id === observed.id && item.control === 'observed')).toBe(true);
+      expect(await readFile(rollout, 'utf8')).toBe(before);
+    } finally { await runtime.close(); }
   });
 
   it('keeps library state across restarts', async () => {

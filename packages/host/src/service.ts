@@ -1,14 +1,15 @@
 import {
   DEFAULT_PERMISSIONS, applyImport, decodeConnection, decodeLibrary, decodeWorkspace, defaultOrchestration, deleteSession as deleteLibrarySession,
-  displayTitle, emptyLibrary, presetById, previewImport, renameSession as renameLibrarySession, resolveFeatures, setSessionState, tierModel,
-  type Connection, type SessionLibrary, type TaskTier, type Workspace,
+  displayTitle, emptyLibrary, keepsHistory, presetById, previewImport, renameSession as renameLibrarySession, resolveFeatures, safeLabel, setSessionState,
+  sourceLabel, tierModel,
+  type Connection, type PortableSession, type SessionLibrary, type TaskTier, type Workspace,
 } from '@extalia/core';
 import {
   resolveDataDirectory,
   type AgentHostApi, type ApprovalDecisionInput, type ConnectionInput, type ConnectionTestResult, type ConnectionView,
   type FolderCheck, type HostState, type LibrarySessionSummary, type SessionSummary, type WorkspaceInput,
 } from '@extalia/platform';
-import { createEvent, type EventBody, type ExtaliaEvent } from '@extalia/protocol';
+import { createEvent, type EventBody, type EventSource, type ExtaliaEvent } from '@extalia/protocol';
 import {
   ProviderError, buildSystemPrompt, createDelegationTool, createProvider, runTurn,
   type AnyTool, type ApprovalOutcome, type ModelMessage, type ModelProvider, type ToolAccess,
@@ -17,6 +18,7 @@ import { randomBytes } from 'node:crypto';
 import { readFile, realpath, rename, rm, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import path from 'node:path';
+import { buildContinuation } from './continuation.js';
 import { readJson, writeJsonAtomic } from './jsonStore.js';
 import { acquireHostLock } from './lock.js';
 import { MemoryStore, createMemoryTools } from './memory.js';
@@ -24,7 +26,7 @@ import { NativeImportService } from './nativeImport.js';
 import { Observations } from './observations.js';
 import { dataLayout, ensureLayout } from './paths.js';
 import { createSecretStore, resolveCredential, type SecretStore } from './secrets.js';
-import { SessionStore, newSessionId } from './sessions.js';
+import { MemorySessionStore, SessionStore, newSessionId, type SessionRecord, type SessionStorage } from './sessions.js';
 import { createSkillTools, loadSkills } from './skills.js';
 import { createCommandTool } from './tools/command.js';
 import { createFileTools } from './tools/files.js';
@@ -120,7 +122,20 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
   const configFile = path.join(layout.config, 'extalia.json');
   let config = decodeConfig(await readJson<Partial<HostConfig> | undefined>(configFile, undefined));
   const secrets: SecretStore = await createSecretStore({ stateDirectory: layout.state, platform: process.platform, env });
-  const sessions = new SessionStore(layout.sessions);
+  const savedSessions = new SessionStore(layout.sessions);
+  const unsavedSessions = new MemorySessionStore();
+  const storeOf = (id: string): SessionStorage => (unsavedSessions.has(id) ? unsavedSessions : savedSessions);
+  /** Saved sessions live on disk; sessions of connections with history off only in memory. */
+  const sessions: Omit<SessionStorage, 'create'> = {
+    list: async () => [...(await savedSessions.list()), ...(await unsavedSessions.list())],
+    get: id => storeOf(id).get(id),
+    update: (id, patch) => storeOf(id).update(id, patch),
+    remove: id => storeOf(id).remove(id),
+    appendEvent: (id, event) => storeOf(id).appendEvent(id, event),
+    readEvents: id => storeOf(id).readEvents(id),
+    readMessages: id => storeOf(id).readMessages(id),
+    writeMessages: (id, messages) => storeOf(id).writeMessages(id, messages),
+  };
   const nativeImport = await NativeImportService.create({ homeDirectory: options.importHome ?? homedir(), env });
   const libraryFile = path.join(layout.state, 'library.json');
   let library = await loadLibrary(libraryFile);
@@ -158,20 +173,38 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
 
   /** Persist and broadcast one event. Writes are chained per session to keep order. */
   const writeChains = new Map<string, Promise<void>>();
-  function publish(sessionId: string, body: EventBody, agentId = 'primary'): void {
+  function publish(sessionId: string, body: EventBody, agentId = 'primary', source: EventSource = { ...ADAPTER, adapterVersion: options.version }): void {
     const previous = writeChains.get(sessionId) ?? Promise.resolve();
     const next = previous.then(async () => {
       const seq = await nextSeq(sessionId);
-      const event = createEvent({ sessionId, seq, agentId, source: { ...ADAPTER, adapterVersion: options.version }, body });
+      const event = createEvent({ sessionId, seq, agentId, source, body });
       await sessions.appendEvent(sessionId, event);
       for (const listener of listeners) { try { listener(event); } catch { /* a failing listener must not stop the run */ } }
     }).catch(() => undefined);
     writeChains.set(sessionId, next);
   }
 
-  function summary(record: { id: string; workspaceId: string; connectionId: string; title: string; createdAt: string; lastActiveAt: string }): SessionSummary {
+  function summary(record: SessionRecord): SessionSummary {
     const run = runs.get(record.id);
-    return { ...record, control: 'managed', running: Boolean(run), ...(run?.pending ? { pendingApprovalId: run.pending.approvalId } : {}) };
+    return {
+      ...record, control: 'managed', running: Boolean(run),
+      ...(unsavedSessions.has(record.id) ? { transient: true } : {}),
+      ...(run?.pending ? { pendingApprovalId: run.pending.approvalId } : {}),
+    };
+  }
+
+  /** Create a managed session; it is saved unless the workspace's connection keeps no history. */
+  async function openSession(workspace: Workspace, title: string, continuedFrom?: SessionRecord['continuedFrom']): Promise<SessionRecord> {
+    if (!workspace.providerProfileId) throw userError('Choose a model connection for this workspace in Settings.');
+    const connection = findConnection(workspace.providerProfileId);
+    const stamp = now();
+    const record: SessionRecord = {
+      id: newSessionId(), workspaceId: workspace.id, connectionId: connection.id, title, createdAt: stamp, lastActiveAt: stamp,
+      ...(continuedFrom ? { continuedFrom } : {}),
+    };
+    await (keepsHistory(connection) ? savedSessions : unsavedSessions).create(record);
+    publish(record.id, { type: 'session.started', control: 'managed', title: record.title, cwd: workspace.projectLocation ?? '' });
+    return record;
   }
 
   function librarySummaries(): LibrarySessionSummary[] {
@@ -359,12 +392,34 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     async setObservation(id, watching) { await observations.setWatching(id, watching); return state(); },
 
     async createSession(workspaceId) {
+      return summary(await openSession(findWorkspace(workspaceId), NEW_SESSION_TITLE));
+    },
+
+    async continueSession(source, workspaceId) {
+      if (!source || typeof source !== 'object' || (source.kind !== 'library' && source.kind !== 'observed') || typeof source.id !== 'string') {
+        throw userError('Choose a conversation to continue.');
+      }
       const workspace = findWorkspace(workspaceId);
-      if (!workspace.providerProfileId) throw userError('Choose a model connection for this workspace in Settings.');
-      const stamp = now();
-      const record = { id: newSessionId(), workspaceId, connectionId: workspace.providerProfileId, title: NEW_SESSION_TITLE, createdAt: stamp, lastActiveAt: stamp };
-      await sessions.create(record);
-      publish(record.id, { type: 'session.started', control: 'managed', title: record.title, cwd: workspace.projectLocation ?? '' });
+      let conversation: Pick<PortableSession, 'messages' | 'provenance' | 'title'>, title: string;
+      if (source.kind === 'library') {
+        const entry = library.sessions.find(item => item.id === source.id);
+        if (!entry) throw userError('That conversation is no longer in the library.');
+        conversation = entry; title = displayTitle(entry);
+      } else {
+        if (!observations.has(source.id)) throw userError('That observed session no longer exists.');
+        conversation = observations.snapshot(source.id); title = conversation.title;
+      }
+      const carried = buildContinuation(conversation);
+      if (!carried.messages.length) throw userError('That conversation has no messages to continue from.');
+      const sourceId = conversation.provenance.sourceId;
+      const clean = safeLabel(title, 200) || sourceLabel(sourceId);
+      const record = await openSession(workspace, clean, { sourceId, title: clean });
+      // The carried messages are shown as they were: from the other agent, delivered by import.
+      const origin: EventSource = { runtime: sourceId, channel: 'import', adapter: 'continuation', adapterVersion: options.version };
+      for (const message of carried.messages) {
+        publish(record.id, message.role === 'user' ? { type: 'prompt.submitted', text: message.text, via: 'native' } : { type: 'model.completed', text: message.text }, sourceId, origin);
+      }
+      await sessions.writeMessages(record.id, carried.history);
       return summary(record);
     },
 
@@ -448,6 +503,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
         ...(memoryNotes ? { memory: memoryNotes } : {}),
         ...(skills ? { skills } : {}),
         ...(orchestration ? { orchestration: { maxDelegations: orchestration.maxDelegations } } : {}),
+        ...(record.continuedFrom ? { continuation: { source: sourceLabel(record.continuedFrom.sourceId), title: record.continuedFrom.title } } : {}),
       });
       const history = toModelHistory(await sessions.readMessages(sessionId));
       if (record.title === NEW_SESSION_TITLE) await sessions.update(sessionId, { title: prompt.replace(/\s+/g, ' ').slice(0, 60) });
