@@ -10,6 +10,7 @@ import { SessionList } from './SessionList';
 import { projectActivity, projectTranscript } from './transcript';
 import { TranscriptView } from './TranscriptView';
 import { useSessionEvents } from './useSessionEvents';
+import { Select } from '../ui/Select';
 
 export function ChatPage({ t, language, agents, state, onState, selection, onSelect, onOpenSettings }: {
   t: Messages;
@@ -110,10 +111,12 @@ export function ChatPage({ t, language, agents, state, onState, selection, onSel
 
       <aside className="chat-side" id="chat-sessions" aria-label={t.chat.sessions}>
         <div className="field">
-          <label htmlFor="chat-workspace">{t.chat.workspace}</label>
-          <select id="chat-workspace" value={workspace.id} onChange={event => onSelect({ workspaceId: event.target.value })}>
-            {state.workspaces.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
-          </select>
+          <Select
+            label={t.chat.workspace}
+            value={workspace.id}
+            options={state.workspaces.map(item => ({ value: item.id, label: item.name, description: item.projectLocation }))}
+            onChange={id => onSelect({ workspaceId: id })}
+          />
         </div>
         <button type="button" className="button new-session" aria-pressed={!session}
           onClick={() => { onSelect({ workspaceId: workspace.id, sessionId: null }); setListOpen(false); focusComposer(); }}>
