@@ -6,6 +6,10 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- The Bridge reads and discards a slightly oversized request body before answering 413, so clients get the error instead of a reset connection (this also made a Bridge test fail intermittently).
+
 ## [0.0.7] - 2026-10-09
 
 ### Added
@@ -16,22 +20,22 @@ All notable changes to this project are documented here. The format follows
 
 ## [0.0.6] - 2026-10-09
 
-### Fixed
-
-- Diagnostics recognizes commands, Git inspection and credential storage provided through the agent host, distinguishes a folder picker from registered project access, and shows unsupported development update checks accurately.
-- Show registered project/session counts and a direct workspace-management action in Diagnostics; avoid opening duplicate folder dialogs while a picker is active.
-
-### Validation
-
-- Verify project-folder checks, two independent workspace session lists, explicit session selection and persistence across host restarts using temporary projects. Document browser/Bridge/Desktop requirements and the optional Python runtime boundary.
-
 ### Added
 
+- Hermes Agent as a managed runtime: a workspace can run the local `hermes` command instead of Extalia Native. Prompts stream into Chat with tool cards and usage, later prompts resume the same Hermes session, Stop and closing Extalia end the process, and Continue in Extalia works into Hermes workspaces. Setup offers Hermes when it is installed, without a model connection. Hermes' own approvals stay in force unless the workspace allows both file edits and commands.
+- Files and Git pages (read-only): browse a workspace and view text files with line numbers; see the branch, ahead/behind, changed files and diffs. Credential files are never shown, and Git runs without a shell and with repository-defined programs (fsmonitor, hooks, filters, external diff, textconv, pagers) switched off.
 - Brand assets in `docs/brand/`: light and dark logos (symbol and wordmark), the symbol in SVG and PNG, and a 1280 × 640 social preview; the README header shows the logo that matches GitHub's theme.
 
 ### Fixed
 
+- Diagnostics recognizes commands, Git inspection and credential storage provided through the agent host, distinguishes a folder picker from registered project access, and shows unsupported development update checks accurately.
+- Show registered project/session counts and a direct workspace-management action in Diagnostics; avoid opening duplicate folder dialogs while a picker is active.
+- Desktop finds Hermes in the per-user install folder (`~/.local/bin`) when it was started without a shell PATH.
 - README and runtime docs now describe Continue in Extalia and per-connection history.
+
+### Validation
+
+- Verify project-folder checks, two independent workspace session lists, explicit session selection and persistence across host restarts using temporary projects. Document browser/Bridge/Desktop requirements and the optional Python runtime boundary.
 
 ## [0.0.5] - 2026-10-09
 

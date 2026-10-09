@@ -152,10 +152,40 @@ function errorMessage(error: unknown): string {
   return typeof error === 'string' && error ? error : 'Unexpected error.';
 }
 
-class BodyTooLargeError extends Error {}
+/** Oversized uploads up to this multiple of the limit are read and discarded before answering. */
+const DRAIN_FACTOR = 4;
+const DRAIN_TIMEOUT_MS = 5_000;
+
+class BodyTooLargeError extends Error {
+  /** Settles once the rest of the upload was discarded (or abandoned), so the client can read the 413. */
+  constructor(readonly drained: Promise<void>) { super('Request body too large.'); }
+}
+
+/**
+ * Answering while the client is still uploading resets the connection, and the
+ * client then sees a write error instead of the 413. Slightly oversized bodies
+ * are therefore discarded first; anything larger, or slower, is cut off.
+ */
+function drain(request: IncomingMessage, limit: number, received: number): Promise<void> {
+  if (request.complete) return Promise.resolve();
+  return new Promise(resolve => {
+    let size = received;
+    const done = () => { clearTimeout(timer); request.off('data', onData); resolve(); };
+    const onData = (chunk: Buffer) => { size += chunk.length; if (size > limit * DRAIN_FACTOR) done(); };
+    const timer = setTimeout(done, DRAIN_TIMEOUT_MS);
+    request.on('data', onData);
+    request.once('end', done);
+    request.once('close', done);
+    request.once('error', done);
+    request.resume();
+  });
+}
 
 function readBody(request: IncomingMessage, limit: number): Promise<Buffer> {
-  if (Number(request.headers['content-length']) > limit) return Promise.reject(new BodyTooLargeError());
+  const declared = Number(request.headers['content-length']);
+  if (declared > limit) {
+    return Promise.reject(new BodyTooLargeError(declared <= limit * DRAIN_FACTOR ? drain(request, limit, 0) : Promise.resolve()));
+  }
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
     let size = 0;
@@ -163,8 +193,7 @@ function readBody(request: IncomingMessage, limit: number): Promise<Buffer> {
       size += chunk.length;
       if (size <= limit) { chunks.push(chunk); return; }
       request.off('data', onData);
-      request.resume();
-      reject(new BodyTooLargeError());
+      reject(new BodyTooLargeError(drain(request, limit, size)));
     };
     request.on('data', onData);
     request.once('end', () => resolve(Buffer.concat(chunks)));
@@ -257,7 +286,10 @@ export async function startBridgeServer(options: BridgeServerOptions): Promise<B
     let body: Buffer;
     try { body = await readBody(request, maxBody); }
     catch (error) {
-      if (error instanceof BodyTooLargeError) sendError(response, 413, `Request body is larger than ${maxBody} bytes.`, { Connection: 'close' });
+      if (error instanceof BodyTooLargeError) {
+        await error.drained;
+        sendError(response, 413, `Request body is larger than ${maxBody} bytes.`, { Connection: 'close' });
+      }
       else sendError(response, 400, 'Could not read the request body.');
       return;
     }

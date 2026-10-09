@@ -267,7 +267,7 @@ code { font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-si
 .content { padding: 28px 24px 48px; max-width: 1120px; width: 100%; animation: enter 210ms var(--ease) both; }
 
 /* Pages */
-.page { display: grid; gap: 18px; }
+.page { display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; }
 .page-header { display: grid; gap: 8px; justify-items: start; }
 .lead { color: var(--muted); max-width: 70ch; }
 .muted { color: var(--muted); }
