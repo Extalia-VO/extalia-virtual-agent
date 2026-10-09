@@ -27,7 +27,7 @@ const RULES = {
   '@extalia/office': { allow: ['@extalia/protocol'], forbid: DOMAIN_FORBIDDEN },
   // Node host for the runtime: files, commands, credentials. No UI or Electron.
   '@extalia/host': { allow: ['@extalia/protocol', '@extalia/core', '@extalia/platform', '@extalia/runtime', '@extalia/importers'], forbid: [/^react(-dom)?(\/|$)/, /^three(\/|$)/, /^electron$/] },
-  '@extalia/web': { allow: ['@extalia/protocol', '@extalia/core', '@extalia/platform'], forbid: [/^electron$/, /^node:/] },
+  '@extalia/web': { allow: ['@extalia/protocol', '@extalia/core', '@extalia/platform', '@extalia/office'], forbid: [/^electron$/, /^node:/] },
   '@extalia/desktop': { allow: ['@extalia/protocol', '@extalia/core', '@extalia/platform', '@extalia/runtime', '@extalia/host'], forbid: [/^react(-dom)?(\/|$)/, /^three(\/|$)/] },
   // The CLI is published to npm as `extalia-vo` (bin: `extalia`).
   'extalia-vo': { allow: ['@extalia/protocol', '@extalia/core', '@extalia/platform', '@extalia/runtime', '@extalia/host'], forbid: [/^react(-dom)?(\/|$)/, /^three(\/|$)/, /^electron$/] },

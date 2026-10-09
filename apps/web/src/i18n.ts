@@ -13,7 +13,7 @@ export const LANGUAGES: { id: Language; label: string }[] = [
 ];
 
 /** Pages that can appear in navigation; which ones do depends on the host. */
-export type PageId = 'chat' | 'observe' | 'history' | 'import' | 'logs' | 'start' | 'diagnostics' | 'settings';
+export type PageId = 'office' | 'chat' | 'observe' | 'history' | 'import' | 'logs' | 'start' | 'diagnostics' | 'settings';
 
 type Effort = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 type SecretStore = 'os-keychain' | 'secret-service' | 'file' | 'memory';
@@ -34,7 +34,7 @@ const en = {
     setup: 'Observe existing agent sessions without a model connection or API key.',
   },
   nav: {
-    chat: 'Chat', observe: 'Observe', history: 'History', import: 'Import', logs: 'Event log', start: 'Get started', diagnostics: 'Diagnostics', settings: 'Settings',
+    office: '3D Office', chat: 'Chat', observe: 'Observe', history: 'History', import: 'Import', logs: 'Event log', start: 'Get started', diagnostics: 'Diagnostics', settings: 'Settings',
     work: 'Work', app: 'Extalia', toggleSidebar: 'Toggle sidebar', main: 'Main navigation',
   },
   common: {
@@ -374,7 +374,7 @@ const id: Messages = {
     setup: 'Amati session agent yang ada tanpa koneksi model atau API key.',
   },
   nav: {
-    chat: 'Chat', observe: 'Amati', history: 'Riwayat', import: 'Impor', logs: 'Log event', start: 'Mulai', diagnostics: 'Diagnostik', settings: 'Pengaturan',
+    office: 'Kantor 3D', chat: 'Chat', observe: 'Pantau', history: 'Riwayat', import: 'Impor', logs: 'Log peristiwa', start: 'Mulai', diagnostics: 'Diagnostik', settings: 'Pengaturan',
     work: 'Kerja', app: 'Extalia', toggleSidebar: 'Buka/tutup sidebar', main: 'Navigasi utama',
   },
   common: {

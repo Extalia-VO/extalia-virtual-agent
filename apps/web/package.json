@@ -15,6 +15,7 @@
     "@extalia/core": "workspace:*",
     "@extalia/platform": "workspace:*",
     "@extalia/protocol": "workspace:*",
+    "@extalia/office": "workspace:*",
     "react": "^19.3.0",
     "react-dom": "^19.3.0"
   },

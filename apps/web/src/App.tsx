@@ -11,6 +11,7 @@ import { EventLogPage } from './pages/EventLogPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { StartPage } from './pages/StartPage';
 import { ObserverPage } from './pages/ObserverPage';
+import { OfficePage } from './pages/OfficePage';
 import { loadPreferences, savePreferences, type Preferences } from './preferences';
 import { SetupWizard } from './setup/SetupWizard';
 import { Brand } from './ui/Brand';
@@ -18,12 +19,12 @@ import { Icon, type IconName } from './ui/Icon';
 import { MessagesContext } from './ui/messages';
 import { UpdateBanner, useUpdateStatus } from './updates/Updates';
 
-const ICONS: Record<PageId, IconName> = { chat: 'chat', observe: 'diagnostics', history: 'book', import: 'download', logs: 'logs', start: 'start', diagnostics: 'diagnostics', settings: 'settings' };
+const ICONS: Record<PageId, IconName> = { office: 'monitor', chat: 'chat', observe: 'diagnostics', history: 'book', import: 'download', logs: 'logs', start: 'start', diagnostics: 'diagnostics', settings: 'settings' };
 
 /** Only pages that work in this host appear; nothing is shown as a placeholder. */
 function navigation(agents: boolean, workflow: 'managed' | 'observe'): { section: 'work' | 'app'; pages: PageId[] }[] {
   return agents
-    ? [{ section: 'work', pages: workflow === 'observe' ? ['observe', 'history', 'import', 'logs'] : ['chat', 'observe', 'history', 'import', 'logs'] }, { section: 'app', pages: ['settings', 'diagnostics'] }]
+    ? [{ section: 'work', pages: workflow === 'observe' ? ['office', 'observe', 'history', 'import', 'logs'] : ['office', 'chat', 'observe', 'history', 'import', 'logs'] }, { section: 'app', pages: ['settings', 'diagnostics'] }]
     : [{ section: 'app', pages: ['start', 'logs', 'diagnostics', 'settings'] }];
 }
 
@@ -121,6 +122,7 @@ export function App({ platform }: { platform: Platform }) {
             <span className="topbar-meta">{hostLabel} · v{platform.info.appVersion}</span>
           </header>
           <main className={`content ${activePage === 'chat' ? 'content-chat' : ''}`} key={activePage}>
+            {activePage === 'office' && <OfficePage />}
             {activePage === 'chat' && agents && hostState && (
               <ChatPage t={t} language={preferences.language} agents={agents} state={hostState} onState={host.apply}
                 selection={selection} onSelect={setSelection} onOpenSettings={() => setPage('settings')} />
