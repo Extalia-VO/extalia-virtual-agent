@@ -111,4 +111,45 @@ describe('office presence reducer', () => {
     expect(afterMeeting[0].status).toBe('idle');
     expect(afterMeeting[1].status).toBe('idle');
   });
+
+  it('handles subagent spawn and status updates', () => {
+    const list: readonly OfficePresenceState[] = [];
+    const spawnEvent: ExtaliaEvent = {
+      v: 'extalia.v0',
+      id: 'evt-spawn',
+      at: '2026-10-08T12:00:00Z',
+      sessionId: 'sess-1',
+      agentId: 'primary',
+      source: { runtime: 'hermes', channel: 'stream' },
+      body: {
+        type: 'subagent.spawned',
+        subagentId: 'worker-1',
+        label: 'Research Subagent',
+        role: 'researcher'
+      }
+    };
+
+    const afterSpawn = reducePresence(list, spawnEvent);
+    expect(afterSpawn).toHaveLength(1);
+    expect(afterSpawn[0]?.agentId).toBe('worker-1');
+    expect(afterSpawn[0]?.agentName).toBe('Research Subagent');
+    expect(afterSpawn[0]?.status).toBe('working');
+
+    const updateEvent: ExtaliaEvent = {
+      v: 'extalia.v0',
+      id: 'evt-state',
+      at: '2026-10-08T12:05:00Z',
+      sessionId: 'sess-1',
+      agentId: 'primary',
+      source: { runtime: 'hermes', channel: 'stream' },
+      body: {
+        type: 'subagent.state',
+        subagentId: 'worker-1',
+        state: 'waiting'
+      }
+    };
+
+    const afterState = reducePresence(afterSpawn, updateEvent);
+    expect(afterState[0]?.status).toBe('seated');
+  });
 });

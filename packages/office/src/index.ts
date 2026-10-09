@@ -114,6 +114,37 @@ export function reducePresence(
       };
       return [...current, initial];
     }
+    case 'subagent.spawned': {
+      const { subagentId, role, label } = body;
+      const existing = current.find(p => p.agentId === subagentId);
+      if (existing) return current;
+
+      const initial: OfficePresenceState = {
+        agentId: subagentId,
+        agentName: label ?? subagentId,
+        role: role ?? 'subagent',
+        status: 'working',
+        currentFloor: 1,
+        position: [1.5, 0, 1.5],
+        lastActiveTimestamp: at
+      };
+      return [...current, initial];
+    }
+    case 'subagent.state': {
+      const { subagentId, state } = body;
+      const officeStatus =
+        state === 'working' || state === 'thinking'
+          ? 'working'
+          : state === 'waiting'
+          ? 'seated'
+          : 'idle';
+
+      return current.map(p =>
+        p.agentId === subagentId
+          ? { ...p, status: officeStatus, lastActiveTimestamp: at }
+          : p
+      );
+    }
     case 'meeting.started': {
       return current.map(p =>
         body.participants.includes(p.agentId)
