@@ -31,6 +31,15 @@ function navigation(agents: boolean, workflow: 'managed' | 'observe', canChat: b
     : [{ section: 'app', pages: ['start', 'logs', 'diagnostics', 'settings'] }];
 }
 
+function applyDOMChange(mutate: () => void): void {
+  // Use modern View Transitions API if supported (Chrome, Edge, Safari 18+)
+  if (typeof document !== 'undefined' && 'startViewTransition' in document) {
+    (document as unknown as { startViewTransition: (cb: () => void) => void }).startViewTransition(mutate);
+  } else {
+    mutate();
+  }
+}
+
 function useColorScheme(theme: Preferences['theme']): void {
   useEffect(() => {
     const media = window.matchMedia('(prefers-color-scheme: dark)');
@@ -47,7 +56,9 @@ function useColorScheme(theme: Preferences['theme']): void {
         // System preference
         isDark = media.matches;
       }
-      document.documentElement.dataset.theme = isDark ? 'dark' : 'light';
+      applyDOMChange(() => {
+        document.documentElement.dataset.theme = isDark ? 'dark' : 'light';
+      });
     };
 
     apply();
@@ -103,7 +114,11 @@ export function App({ platform }: { platform: Platform }) {
     return () => clearTimeout(timer);
   }, [toast]);
   useEffect(() => { document.documentElement.lang = preferences.language; }, [preferences.language]);
-  useEffect(() => { document.documentElement.dataset.material = preferences.material; }, [preferences.material]);
+  useEffect(() => {
+    applyDOMChange(() => {
+      document.documentElement.dataset.material = preferences.material;
+    });
+  }, [preferences.material]);
 
   const update = (next: Preferences) => { setPreferences(next); savePreferences(next); };
   // A conversation continued from another agent opens in Chat.
