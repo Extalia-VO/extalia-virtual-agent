@@ -1,6 +1,6 @@
-import { useState } from 'react';
 import type { OfficePresence } from '@extalia/office';
 import { Icon } from '../ui/Icon';
+import { useOfficeViewStore } from './officeStore';
 
 const SAMPLE_AGENTS: readonly OfficePresence[] = [
   {
@@ -34,8 +34,11 @@ const SAMPLE_AGENTS: readonly OfficePresence[] = [
 ];
 
 export function OfficePage() {
-  const [floor, setFloor] = useState<number>(1);
-  const [selectedAgent, setSelectedAgent] = useState<OfficePresence | null>(null);
+  const floor = useOfficeViewStore(s => s.activeFloor);
+  const setFloor = useOfficeViewStore(s => s.setFloor);
+  const selectedAgentId = useOfficeViewStore(s => s.selectedAgentId);
+  const selectAgent = useOfficeViewStore(s => s.selectAgent);
+  const selectedAgent = SAMPLE_AGENTS.find(a => a.identity.agentId === selectedAgentId) ?? null;
 
   return (
     <div className="office-page" style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: '1rem', padding: '1.5rem' }}>
@@ -100,7 +103,7 @@ export function OfficePage() {
           {SAMPLE_AGENTS.map(agent => (
             <div
               key={agent.identity.agentId}
-              onClick={() => setSelectedAgent(agent)}
+              onClick={() => selectAgent(agent.identity.agentId)}
               style={{
                 background: selectedAgent?.identity.agentId === agent.identity.agentId ? 'rgba(70, 130, 240, 0.3)' : 'rgba(20, 25, 38, 0.75)',
                 border: '1px solid rgba(255, 255, 255, 0.15)',
@@ -139,7 +142,7 @@ export function OfficePage() {
           <div>
             <strong>{selectedAgent.identity.displayName}</strong> — Intent: <code style={{ textTransform: 'uppercase' }}>{selectedAgent.intent.kind}</code> | Floor: {selectedAgent.floorId}
           </div>
-          <button type="button" onClick={() => setSelectedAgent(null)} style={{ cursor: 'pointer', padding: '0.2rem 0.5rem' }}>
+          <button type="button" onClick={() => selectAgent(null)} style={{ cursor: 'pointer', padding: '0.2rem 0.5rem' }}>
             <Icon name="close" />
           </button>
         </div>

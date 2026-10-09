@@ -1,3 +1,5 @@
+import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 import type { Language } from './i18n';
 
 export type ThemePreference = 'system' | 'light' | 'dark';
@@ -12,30 +14,53 @@ export interface Preferences {
   sidebar: SidebarPreference;
 }
 
-const KEY = 'extalia.ui.v1';
-export const DEFAULT_PREFERENCES: Preferences = { theme: 'system', material: 'standard', language: 'en', sidebar: 'expanded' };
+export const DEFAULT_PREFERENCES: Preferences = {
+  theme: 'system',
+  material: 'standard',
+  language: 'en',
+  sidebar: 'expanded'
+};
 
-const pick = <T extends string>(value: unknown, allowed: readonly T[], fallback: T): T =>
-  typeof value === 'string' && (allowed as readonly string[]).includes(value) ? value as T : fallback;
+interface PreferencesState extends Preferences {
+  setTheme: (theme: ThemePreference) => void;
+  setMaterial: (material: MaterialPreference) => void;
+  setLanguage: (language: Language) => void;
+  setSidebar: (sidebar: SidebarPreference) => void;
+  updatePreferences: (next: Partial<Preferences>) => void;
+}
 
-/** Per-device interface preferences. Storage may be unavailable; defaults always work. */
+/**
+ * Global Zustand Store for UI Preferences.
+ * Automatically persists to storage across Web & Electron desktop sessions.
+ */
+export const usePreferencesStore = create<PreferencesState>()(
+  persist(
+    set => ({
+      ...DEFAULT_PREFERENCES,
+      setTheme: theme => set({ theme }),
+      setMaterial: material => set({ material }),
+      setLanguage: language => set({ language }),
+      setSidebar: sidebar => set({ sidebar }),
+      updatePreferences: next => set(state => ({ ...state, ...next }))
+    }),
+    {
+      name: 'extalia.ui.v1',
+      version: 1
+    }
+  )
+);
+
+/** Per-device interface preferences. Compatible with existing synchronous calls. */
 export function loadPreferences(): Preferences {
-  try {
-    const raw: unknown = JSON.parse(localStorage.getItem(KEY) ?? 'null');
-    if (!raw || typeof raw !== 'object') return DEFAULT_PREFERENCES;
-    const value = raw as Record<string, unknown>;
-    return {
-      theme: pick(value.theme, ['system', 'light', 'dark'], DEFAULT_PREFERENCES.theme),
-      material: pick(value.material, ['standard', 'liquid-glass'], DEFAULT_PREFERENCES.material),
-      language: pick(value.language, ['en', 'id'], DEFAULT_PREFERENCES.language),
-      sidebar: pick(value.sidebar, ['expanded', 'compact'], DEFAULT_PREFERENCES.sidebar),
-    };
-  } catch {
-    return DEFAULT_PREFERENCES;
-  }
+  const state = usePreferencesStore.getState();
+  return {
+    theme: state.theme,
+    material: state.material,
+    language: state.language,
+    sidebar: state.sidebar
+  };
 }
 
 export function savePreferences(preferences: Preferences): void {
-  try { localStorage.setItem(KEY, JSON.stringify(preferences)); }
-  catch { /* Private browsing or blocked storage: keep the in-memory choice. */ }
+  usePreferencesStore.getState().updatePreferences(preferences);
 }
