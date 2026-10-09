@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { persist, createJSONStorage } from 'zustand/middleware';
 import type { Language } from './i18n';
 
 export type ThemePreference = 'system' | 'light' | 'dark';
@@ -29,9 +29,33 @@ interface PreferencesState extends Preferences {
   updatePreferences: (next: Partial<Preferences>) => void;
 }
 
+const safeStorage = {
+  getItem: (key: string): string | null => {
+    try {
+      return typeof localStorage !== 'undefined' ? localStorage.getItem(key) : null;
+    } catch {
+      return null;
+    }
+  },
+  setItem: (key: string, value: string): void => {
+    try {
+      if (typeof localStorage !== 'undefined') localStorage.setItem(key, value);
+    } catch {
+      /* Quota or private mode */
+    }
+  },
+  removeItem: (key: string): void => {
+    try {
+      if (typeof localStorage !== 'undefined') localStorage.removeItem(key);
+    } catch {
+      /* Ignore */
+    }
+  }
+};
+
 /**
  * Global Zustand Store for UI Preferences.
- * Automatically persists to storage across Web & Electron desktop sessions.
+ * Automatically persists to localStorage across Web & Electron desktop sessions.
  */
 export const usePreferencesStore = create<PreferencesState>()(
   persist(
@@ -45,7 +69,8 @@ export const usePreferencesStore = create<PreferencesState>()(
     }),
     {
       name: 'extalia.ui.v1',
-      version: 1
+      version: 1,
+      storage: createJSONStorage(() => safeStorage)
     }
   )
 );
