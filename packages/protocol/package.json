@@ -1,0 +1,15 @@
+{
+  "name": "@extalia/protocol",
+  "description": "Extalia Protocol: versioned, runtime-independent agent events.",
+  "version": "0.0.3",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  }
+}
