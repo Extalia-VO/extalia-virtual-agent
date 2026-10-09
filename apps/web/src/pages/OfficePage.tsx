@@ -1,49 +1,41 @@
 import { useState } from 'react';
-import type { OfficePresenceState } from '@extalia/office';
+import type { OfficePresence } from '@extalia/office';
 import { Icon } from '../ui/Icon';
 
-const SAMPLE_AGENTS: readonly OfficePresenceState[] = [
+const SAMPLE_AGENTS: readonly OfficePresence[] = [
   {
-    agentId: 'primary',
-    agentName: 'Lead Orchestrator',
-    role: 'Lead Orchestrator',
-    status: 'working',
-    currentFloor: 1,
-    position: [0, 0, 0],
-    lastActiveTimestamp: new Date().toISOString()
+    identity: { agentId: 'primary', displayName: 'Lead Orchestrator', role: 'Lead Orchestrator', kind: 'primary' },
+    intent: { kind: 'at_desk', slotId: 'ws-1', activity: 'working' },
+    floorId: 'floor-1',
+    lastEventId: 'evt-0',
+    lastActiveAt: new Date(0).toISOString()
   },
   {
-    agentId: 'architect',
-    agentName: 'Systems Architect',
-    role: 'Systems Architect',
-    status: 'working',
-    currentFloor: 1,
-    position: [2.5, 0, -1.2],
-    lastActiveTimestamp: new Date().toISOString()
+    identity: { agentId: 'architect', displayName: 'Systems Architect', role: 'Systems Architect', kind: 'agent' },
+    intent: { kind: 'at_desk', slotId: 'ws-2', activity: 'working' },
+    floorId: 'floor-1',
+    lastEventId: 'evt-0',
+    lastActiveAt: new Date(0).toISOString()
   },
   {
-    agentId: 'frontend',
-    agentName: 'Frontend Specialist',
-    role: 'Frontend Lead',
-    status: 'seated',
-    currentFloor: 1,
-    position: [-2.5, 0, 1.2],
-    lastActiveTimestamp: new Date().toISOString()
+    identity: { agentId: 'frontend', displayName: 'Frontend Specialist', role: 'Frontend Lead', kind: 'agent' },
+    intent: { kind: 'at_desk', slotId: 'ws-3', activity: 'waiting' },
+    floorId: 'floor-1',
+    lastEventId: 'evt-0',
+    lastActiveAt: new Date(0).toISOString()
   },
   {
-    agentId: 'backend',
-    agentName: 'Backend Specialist',
-    role: 'Backend Lead',
-    status: 'idle',
-    currentFloor: 1,
-    position: [4.0, 0, 0.5],
-    lastActiveTimestamp: new Date().toISOString()
+    identity: { agentId: 'backend', displayName: 'Backend Specialist', role: 'Backend Lead', kind: 'agent' },
+    intent: { kind: 'idle_at', target: { kind: 'desk' } },
+    floorId: 'floor-1',
+    lastEventId: 'evt-0',
+    lastActiveAt: new Date(0).toISOString()
   }
 ];
 
 export function OfficePage() {
   const [floor, setFloor] = useState<number>(1);
-  const [selectedAgent, setSelectedAgent] = useState<OfficePresenceState | null>(null);
+  const [selectedAgent, setSelectedAgent] = useState<OfficePresence | null>(null);
 
   return (
     <div className="office-page" style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: '1rem', padding: '1.5rem' }}>
@@ -107,10 +99,10 @@ export function OfficePage() {
         >
           {SAMPLE_AGENTS.map(agent => (
             <div
-              key={agent.agentId}
+              key={agent.identity.agentId}
               onClick={() => setSelectedAgent(agent)}
               style={{
-                background: selectedAgent?.agentId === agent.agentId ? 'rgba(70, 130, 240, 0.3)' : 'rgba(20, 25, 38, 0.75)',
+                background: selectedAgent?.identity.agentId === agent.identity.agentId ? 'rgba(70, 130, 240, 0.3)' : 'rgba(20, 25, 38, 0.75)',
                 border: '1px solid rgba(255, 255, 255, 0.15)',
                 borderRadius: '6px',
                 padding: '0.6rem 0.8rem',
@@ -125,11 +117,11 @@ export function OfficePage() {
                   width: '8px',
                   height: '8px',
                   borderRadius: '50%',
-                  background: agent.status === 'working' ? '#10b981' : agent.status === 'seated' ? '#3b82f6' : '#9ca3af'
+                  background: agent.intent.kind === 'at_desk' && agent.intent.activity === 'working' ? '#10b981' : agent.intent.kind === 'at_desk' ? '#3b82f6' : '#9ca3af'
                 }} />
-                {agent.agentName}
+                {agent.identity.displayName}
               </div>
-              <div style={{ fontSize: '0.75rem', opacity: 0.7, marginTop: '0.2rem' }}>{agent.role}</div>
+              <div style={{ fontSize: '0.75rem', opacity: 0.7, marginTop: '0.2rem' }}>{agent.identity.role}</div>
             </div>
           ))}
         </div>
@@ -145,7 +137,7 @@ export function OfficePage() {
           alignItems: 'center'
         }}>
           <div>
-            <strong>{selectedAgent.agentName}</strong> — Status: <code style={{ textTransform: 'uppercase' }}>{selectedAgent.status}</code> | Position: [{selectedAgent.position.join(', ')}]
+            <strong>{selectedAgent.identity.displayName}</strong> — Intent: <code style={{ textTransform: 'uppercase' }}>{selectedAgent.intent.kind}</code> | Floor: {selectedAgent.floorId}
           </div>
           <button type="button" onClick={() => setSelectedAgent(null)} style={{ cursor: 'pointer', padding: '0.2rem 0.5rem' }}>
             <Icon name="close" />
