@@ -22,7 +22,7 @@ describe('Preferences storage persistence', () => {
   });
 
   it('provides safe fallback defaults', () => {
-    expect(DEFAULT_PREFERENCES.theme).toBe('system');
+    expect(DEFAULT_PREFERENCES.theme).toBe('solar');
     expect(DEFAULT_PREFERENCES.material).toBe('standard');
     expect(DEFAULT_PREFERENCES.language).toBe('en');
   });

@@ -1,5 +1,6 @@
 import type { Platform } from '@extalia/platform';
 import { useEffect, useMemo, useState } from 'react';
+import { isDaytime } from './environment/solarTime';
 import { ChatPage } from './chat/ChatPage';
 import { resolveChat, type ChatSelection } from './chat/selection';
 import { useHostState } from './host/useHostState';
@@ -34,12 +35,31 @@ function useColorScheme(theme: Preferences['theme']): void {
   useEffect(() => {
     const media = window.matchMedia('(prefers-color-scheme: dark)');
     const apply = () => {
-      const dark = theme === 'dark' || (theme === 'system' && media.matches);
-      document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+      let isDark: boolean;
+      if (theme === 'dark') {
+        isDark = true;
+      } else if (theme === 'light') {
+        isDark = false;
+      } else if (theme === 'solar') {
+        // Automatically switch: dark after sunset, light after sunrise
+        isDark = !isDaytime();
+      } else {
+        // System preference
+        isDark = media.matches;
+      }
+      document.documentElement.dataset.theme = isDark ? 'dark' : 'light';
     };
+
     apply();
+
+    // Check periodically for solar cycle progression or system updates
+    const interval = theme === 'solar' ? setInterval(apply, 60_000) : undefined;
     media.addEventListener('change', apply);
-    return () => media.removeEventListener('change', apply);
+
+    return () => {
+      if (interval) clearInterval(interval);
+      media.removeEventListener('change', apply);
+    };
   }, [theme]);
 }
 

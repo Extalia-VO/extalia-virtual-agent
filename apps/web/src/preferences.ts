@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import type { Language } from './i18n';
 
-export type ThemePreference = 'system' | 'light' | 'dark';
+export type ThemePreference = 'system' | 'solar' | 'light' | 'dark';
 export type MaterialPreference = 'standard' | 'liquid-glass';
 export type SidebarPreference = 'expanded' | 'compact';
 
@@ -15,7 +15,7 @@ export interface Preferences {
 }
 
 export const DEFAULT_PREFERENCES: Preferences = {
-  theme: 'system',
+  theme: 'solar',
   material: 'standard',
   language: 'en',
   sidebar: 'expanded'

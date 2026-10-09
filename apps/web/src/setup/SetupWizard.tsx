@@ -110,6 +110,7 @@ export function SetupWizard({ t, platform, agents, state, onState, preferences, 
             value={preferences.theme}
             aria-label={t.setup.theme}
             options={([
+              { value: 'solar' as const, label: t.settings.themes.solar, icon: 'sun' as const, badge: 'Auto' },
               { value: 'system' as const, label: t.settings.themes.system, icon: 'monitor' as const },
               { value: 'light' as const, label: t.settings.themes.light, icon: 'sun' as const },
               { value: 'dark' as const, label: t.settings.themes.dark, icon: 'moon' as const }
