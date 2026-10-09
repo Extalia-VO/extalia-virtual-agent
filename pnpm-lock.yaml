@@ -237,6 +237,9 @@ importers:
       '@extalia/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@extalia/office':
+        specifier: workspace:*
+        version: link:../../packages/office
       '@extalia/platform':
         specifier: workspace:*
         version: link:../../packages/platform
@@ -292,6 +295,16 @@ importers:
       '@extalia/core':
         specifier: workspace:*
         version: link:../core
+
+  packages/office:
+    dependencies:
+      '@extalia/protocol':
+        specifier: workspace:*
+        version: link:../protocol
+    devDependencies:
+      typescript:
+        specifier: ~6.0.3
+        version: 6.0.3
 
   packages/platform:
     dependencies:
