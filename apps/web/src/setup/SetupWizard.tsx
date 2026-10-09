@@ -2,10 +2,11 @@ import { presetById } from '@extalia/core';
 import type { AgentHostApi, HostState, Platform } from '@extalia/platform';
 import { useEffect, useRef, useState } from 'react';
 import { errorMessage } from '../host/remote';
-import { LANGUAGES, type Language, type Messages } from '../i18n';
-import type { Preferences, ThemePreference } from '../preferences';
+import { LANGUAGES, type Messages } from '../i18n';
+import type { Preferences } from '../preferences';
 import { Brand } from '../ui/Brand';
 import { Icon } from '../ui/Icon';
+import { Select } from '../ui/Select';
 import { Segmented } from '../ui/Segmented';
 import { ConnectionForm } from './ConnectionForm';
 import { availableHermes, useRuntimes } from './useRuntimes';
@@ -99,18 +100,22 @@ export function SetupWizard({ t, platform, agents, state, onState, preferences, 
       <header className="setup-header">
         <Brand />
         <div className="setup-prefs">
-          <label className="inline-select">
-            <span className="visually-hidden">{t.setup.language}</span>
-            <select value={preferences.language} aria-label={t.setup.language} onChange={event => onPreferences({ ...preferences, language: event.target.value as Language })}>
-              {LANGUAGES.map(language => <option key={language.id} value={language.id}>{language.label}</option>)}
-            </select>
-          </label>
-          <label className="inline-select">
-            <span className="visually-hidden">{t.setup.theme}</span>
-            <select value={preferences.theme} aria-label={t.setup.theme} onChange={event => onPreferences({ ...preferences, theme: event.target.value as ThemePreference })}>
-              {(['system', 'light', 'dark'] as const).map(theme => <option key={theme} value={theme}>{t.settings.themes[theme]}</option>)}
-            </select>
-          </label>
+          <Select
+            value={preferences.language}
+            aria-label={t.setup.language}
+            options={LANGUAGES.map(lang => ({ value: lang.id, label: lang.label, icon: 'globe' as const }))}
+            onChange={val => onPreferences({ ...preferences, language: val })}
+          />
+          <Select
+            value={preferences.theme}
+            aria-label={t.setup.theme}
+            options={([
+              { value: 'system' as const, label: t.settings.themes.system, icon: 'monitor' as const },
+              { value: 'light' as const, label: t.settings.themes.light, icon: 'sun' as const },
+              { value: 'dark' as const, label: t.settings.themes.dark, icon: 'moon' as const }
+            ])}
+            onChange={val => onPreferences({ ...preferences, theme: val })}
+          />
           <span className="topbar-meta">{t.hosts[state.host.kind]} · v{platform.info.appVersion}</span>
         </div>
       </header>

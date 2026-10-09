@@ -1,9 +1,10 @@
 import type { HostState, Platform, UpdateStatus } from '@extalia/platform';
-import { LANGUAGES, type Language, type Messages } from '../i18n';
-import type { MaterialPreference, Preferences, SidebarPreference, ThemePreference } from '../preferences';
+import { LANGUAGES, type Messages } from '../i18n';
+import type { Preferences } from '../preferences';
 import { useState } from 'react';
 import { errorMessage } from '../host/remote';
 import { UpdatesSection } from '../updates/Updates';
+import { Select } from '../ui/Select';
 import { ConnectionsSection } from './settings/ConnectionsSection';
 import { WorkspacesSection } from './settings/WorkspacesSection';
 
@@ -35,31 +36,53 @@ export function SettingsPage({ t, platform, preferences, onChange, hostState, on
       <section className="card settings-section" aria-labelledby="settings-interface">
         <h2 id="settings-interface">{t.settings.interface}</h2>
         <div className="settings">
-          <label className="field">
-            <span>{t.settings.theme}</span>
-            <select value={preferences.theme} onChange={event => onChange({ ...preferences, theme: event.target.value as ThemePreference })}>
-              {(['system', 'light', 'dark'] as const).map(theme => <option key={theme} value={theme}>{t.settings.themes[theme]}</option>)}
-            </select>
-          </label>
-          <label className="field">
-            <span>{t.settings.material}</span>
-            <select value={preferences.material} onChange={event => onChange({ ...preferences, material: event.target.value as MaterialPreference })}>
-              {(['standard', 'liquid-glass'] as const).map(material => <option key={material} value={material}>{t.settings.materials[material]}</option>)}
-            </select>
+          <div className="field">
+            <Select
+              label={t.settings.theme}
+              value={preferences.theme}
+              options={([
+                { value: 'system' as const, label: t.settings.themes.system, icon: 'monitor' as const },
+                { value: 'light' as const, label: t.settings.themes.light, icon: 'sun' as const },
+                { value: 'dark' as const, label: t.settings.themes.dark, icon: 'moon' as const }
+              ])}
+              onChange={val => onChange({ ...preferences, theme: val })}
+            />
+          </div>
+          <div className="field">
+            <Select
+              label={t.settings.material}
+              value={preferences.material}
+              options={([
+                { value: 'standard' as const, label: t.settings.materials.standard, description: 'Classic solid surfaces' },
+                { value: 'liquid-glass' as const, label: t.settings.materials['liquid-glass'], description: 'macOS frosted blur & vibrance', badge: 'macOS' }
+              ])}
+              onChange={val => onChange({ ...preferences, material: val })}
+            />
             <small className="muted">{t.settings.materialHint}</small>
-          </label>
-          <label className="field">
-            <span>{t.settings.language}</span>
-            <select value={preferences.language} onChange={event => onChange({ ...preferences, language: event.target.value as Language })}>
-              {LANGUAGES.map(language => <option key={language.id} value={language.id}>{language.label}</option>)}
-            </select>
-          </label>
-          <label className="field">
-            <span>{t.settings.sidebar}</span>
-            <select value={preferences.sidebar} onChange={event => onChange({ ...preferences, sidebar: event.target.value as SidebarPreference })}>
-              {(['expanded', 'compact'] as const).map(mode => <option key={mode} value={mode}>{t.settings.sidebars[mode]}</option>)}
-            </select>
-          </label>
+          </div>
+          <div className="field">
+            <Select
+              label={t.settings.language}
+              value={preferences.language}
+              options={LANGUAGES.map(lang => ({
+                value: lang.id,
+                label: lang.label,
+                icon: 'globe' as const
+              }))}
+              onChange={val => onChange({ ...preferences, language: val })}
+            />
+          </div>
+          <div className="field">
+            <Select
+              label={t.settings.sidebar}
+              value={preferences.sidebar}
+              options={([
+                { value: 'expanded' as const, label: t.settings.sidebars.expanded, icon: 'panel' as const },
+                { value: 'compact' as const, label: t.settings.sidebars.compact, icon: 'menu' as const }
+              ])}
+              onChange={val => onChange({ ...preferences, sidebar: val })}
+            />
+          </div>
         </div>
       </section>
       {agents && hostState && (

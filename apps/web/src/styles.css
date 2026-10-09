@@ -1067,7 +1067,6 @@ input[type='file']::file-selector-button {
 [data-material='liquid-glass'] input[type='url'],
 [data-material='liquid-glass'] input[type='number'],
 [data-material='liquid-glass'] input[type='search'],
-[data-material='liquid-glass'] select,
 [data-material='liquid-glass'] textarea {
   background: var(--surface-solid);
   border: 1px solid var(--glass-line);
@@ -1150,6 +1149,47 @@ input[type='file']::file-selector-button {
   min-width: 140px;
 }
 
+.glass-select-label {
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.glass-select-trigger {
+  display: flex !important;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 14px !important;
+  background: var(--surface-solid) !important;
+  border: 1px solid var(--glass-line) !important;
+  border-radius: 999px !important;
+  color: var(--text) !important;
+  font-size: 0.85rem !important;
+  cursor: pointer;
+  box-shadow: inset 0 1px 0 var(--highlight), 0 2px 6px -2px rgb(0 0 0 / 8%) !important;
+  transition: all 180ms cubic-bezier(0.16, 1, 0.3, 1);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
+  backdrop-filter: blur(20px) saturate(160%);
+}
+
+.glass-select-trigger:hover:not(:disabled) {
+  background: var(--surface) !important;
+  border-color: var(--accent) !important;
+  box-shadow: inset 0 1px 0 var(--highlight), 0 4px 12px -3px rgb(0 122 255 / 30%) !important;
+  transform: translateY(-1px);
+}
+
+.glass-select-trigger[data-state='open'] {
+  border-color: var(--accent) !important;
+  box-shadow: inset 0 1px 0 var(--highlight), 0 0 0 3px var(--accent-soft) !important;
+}
+
+.glass-select-trigger:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .glass-select-trigger-content {
   display: inline-flex;
   align-items: center;
@@ -1159,11 +1199,97 @@ input[type='file']::file-selector-button {
   white-space: nowrap;
 }
 
+.glass-select-icon {
+  display: flex;
+  align-items: center;
+  color: var(--accent);
+}
+
+.glass-select-chevron {
+  display: flex;
+  align-items: center;
+  transition: transform 180ms cubic-bezier(0.16, 1, 0.3, 1);
+  opacity: 0.7;
+}
+
+.glass-select-trigger[data-state='open'] .glass-select-chevron {
+  transform: rotate(180deg);
+}
+
+.glass-select-menu {
+  z-index: 99999;
+  min-width: 180px;
+  list-style: none;
+  margin: 0;
+  padding: 6px;
+  background: var(--surface-solid);
+  border: 1px solid var(--glass-line);
+  border-radius: 16px;
+  box-shadow: inset 0 1px 0 var(--highlight), 0 20px 48px -10px rgb(0 0 0 / 35%);
+  -webkit-backdrop-filter: blur(32px) saturate(200%);
+  backdrop-filter: blur(32px) saturate(200%);
+  max-height: 280px;
+  overflow-y: auto;
+  animation: enter 140ms ease both;
+}
+
+.glass-select-viewport {
+  padding: 2px;
+}
+
+.glass-select-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  color: var(--text);
+  outline: none;
+  transition: all 120ms ease;
+  user-select: none;
+}
+
+.glass-select-option[data-highlighted],
+.glass-select-option:hover:not([data-disabled]) {
+  background: var(--accent);
+  color: #ffffff !important;
+}
+
+.glass-select-option[data-highlighted] .glass-select-option-desc,
+.glass-select-option:hover .glass-select-option-desc {
+  color: rgb(255 255 255 / 80%) !important;
+}
+
+.glass-select-option[data-state='checked'] {
+  font-weight: 600;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.glass-select-option[data-disabled] {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 .glass-select-option-template {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   width: 100%;
+}
+
+.glass-select-option-icon {
+  display: flex;
+  align-items: center;
+  color: var(--accent);
+  font-size: 1rem;
+}
+
+.glass-select-option[data-highlighted] .glass-select-option-icon {
+  color: #ffffff;
 }
 
 .glass-select-option-header {
@@ -1178,6 +1304,23 @@ input[type='file']::file-selector-button {
   gap: 2px;
 }
 
+.glass-select-option-desc {
+  display: block;
+  font-size: 0.72rem;
+  color: var(--muted);
+  font-weight: normal;
+}
+
+.glass-select-check {
+  display: flex;
+  align-items: center;
+  color: var(--accent);
+}
+
+.glass-select-option[data-highlighted] .glass-select-check {
+  color: #ffffff;
+}
+
 .glass-select-scroll {
   display: flex;
   align-items: center;
@@ -1185,122 +1328,6 @@ input[type='file']::file-selector-button {
   height: 20px;
   cursor: default;
   opacity: 0.6;
-}
-
-/* Glass Select component styles */
-.glass-select-container {
-  position: relative;
-  display: inline-flex;
-  flex-direction: column;
-  gap: 6px;
-  min-width: 140px;
-}
-
-.glass-select-label {
-  font-size: 0.8rem;
-  font-weight: 500;
-  color: var(--muted);
-}
-
-.glass-select-trigger {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 6px 14px;
-  background: var(--surface-solid);
-  border: 1px solid var(--glass-line);
-  border-radius: 999px;
-  color: var(--text);
-  font-size: 0.85rem;
-  cursor: pointer;
-  box-shadow: inset 0 1px 0 var(--highlight), 0 2px 6px -2px rgb(0 0 0 / 8%);
-  transition: all 180ms cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.glass-select-trigger:hover:not(:disabled) {
-  background: var(--surface);
-  border-color: var(--accent);
-  box-shadow: inset 0 1px 0 var(--highlight), 0 4px 12px -3px rgb(0 122 255 / 25%);
-}
-
-.glass-select-trigger:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.glass-select-chevron {
-  display: flex;
-  align-items: center;
-  transform: rotate(90deg);
-  transition: transform 180ms ease;
-  opacity: 0.7;
-}
-
-.glass-select-container.open .glass-select-chevron {
-  transform: rotate(-90deg);
-}
-
-.glass-select-menu {
-  position: absolute;
-  top: calc(100% + 6px);
-  left: 0;
-  right: 0;
-  z-index: 100;
-  list-style: none;
-  margin: 0;
-  padding: 6px;
-  background: var(--surface-solid);
-  border: 1px solid var(--glass-line);
-  border-radius: 14px;
-  box-shadow: inset 0 1px 0 var(--highlight), 0 18px 36px -10px rgb(0 0 0 / 25%);
-  -webkit-backdrop-filter: blur(28px) saturate(180%);
-  backdrop-filter: blur(28px) saturate(180%);
-  max-height: 240px;
-  overflow-y: auto;
-  animation: enter 140ms ease both;
-}
-
-.glass-select-option {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 6px 10px;
-  border-radius: 8px;
-  font-size: 0.85rem;
-  cursor: pointer;
-  color: var(--text);
-  transition: background 120ms ease;
-}
-
-.glass-select-option:hover:not(.disabled) {
-  background: var(--accent-soft);
-  color: var(--accent);
-}
-
-.glass-select-option.selected {
-  font-weight: 600;
-  background: var(--accent-soft);
-  color: var(--accent);
-}
-
-.glass-select-option.disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-.glass-select-check {
-  display: flex;
-  align-items: center;
-  color: var(--accent);
-  font-size: 0.85rem;
-}
-
-.glass-select-option-desc {
-  display: block;
-  font-size: 0.75rem;
-  color: var(--muted);
-  font-weight: normal;
 }
 
 [data-material='liquid-glass'] .nav-item {
