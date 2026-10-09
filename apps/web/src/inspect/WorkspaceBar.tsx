@@ -15,7 +15,12 @@ export function WorkspaceBar({ t, state, workspaceId, loading, onWorkspace, onRe
   children?: ReactNode;
 }) {
   const workspace = state.workspaces.find(item => item.id === workspaceId);
-  const options = state.workspaces.map(item => ({ value: item.id, label: item.name, description: item.projectLocation }));
+  const options = state.workspaces.map(item => ({
+    value: item.id,
+    label: item.name,
+    description: item.projectLocation,
+    icon: 'folder' as const
+  }));
 
   return (
     <section className="card inspect-bar">

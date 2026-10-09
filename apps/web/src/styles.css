@@ -1141,6 +1141,52 @@ input[type='file']::file-selector-button {
   position: relative;
 }
 
+/* Radix Glass Select component styles */
+.radix-select-wrapper {
+  position: relative;
+  display: inline-flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 140px;
+}
+
+.glass-select-trigger-content {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.glass-select-option-template {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.glass-select-option-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.glass-select-option-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.glass-select-scroll {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 20px;
+  cursor: default;
+  opacity: 0.6;
+}
+
 /* Glass Select component styles */
 .glass-select-container {
   position: relative;

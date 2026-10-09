@@ -114,7 +114,12 @@ export function ChatPage({ t, language, agents, state, onState, selection, onSel
           <Select
             label={t.chat.workspace}
             value={workspace.id}
-            options={state.workspaces.map(item => ({ value: item.id, label: item.name, description: item.projectLocation }))}
+            options={state.workspaces.map(item => ({
+              value: item.id,
+              label: item.name,
+              description: item.projectLocation,
+              icon: 'folder' as const
+            }))}
             onChange={id => onSelect({ workspaceId: id })}
           />
         </div>

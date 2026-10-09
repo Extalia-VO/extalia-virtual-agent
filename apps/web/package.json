@@ -13,9 +13,10 @@
   },
   "dependencies": {
     "@extalia/core": "workspace:*",
+    "@extalia/office": "workspace:*",
     "@extalia/platform": "workspace:*",
     "@extalia/protocol": "workspace:*",
-    "@extalia/office": "workspace:*",
+    "@radix-ui/react-select": "^2.3.8",
     "react": "^19.3.0",
     "react-dom": "^19.3.0"
   },
