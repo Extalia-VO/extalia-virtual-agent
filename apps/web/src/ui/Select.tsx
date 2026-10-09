@@ -1,12 +1,14 @@
 import * as RadixSelect from '@radix-ui/react-select';
 import type { ReactNode } from 'react';
 import { Icon, type IconName } from './Icon';
+import { FlagIcon } from './FlagIcon';
 
 export interface SelectOption<T extends string = string> {
   readonly value: T;
   readonly label: string;
   readonly description?: string;
   readonly icon?: IconName;
+  readonly flag?: 'en' | 'id';
   readonly badge?: string;
   readonly disabled?: boolean;
 }
@@ -52,7 +54,12 @@ export function Select<T extends string = string>({
           aria-label={ariaLabel ?? label}
         >
           <div className="glass-select-trigger-content">
-            {selectedOption?.icon && (
+            {selectedOption?.flag && (
+              <span className="glass-select-flag" aria-hidden="true">
+                <FlagIcon language={selectedOption.flag} />
+              </span>
+            )}
+            {selectedOption?.icon && !selectedOption?.flag && (
               <span className="glass-select-icon" aria-hidden="true">
                 <Icon name={selectedOption.icon} />
               </span>
@@ -86,7 +93,12 @@ export function Select<T extends string = string>({
                     renderOption(option)
                   ) : (
                     <div className="glass-select-option-template">
-                      {option.icon && (
+                      {option.flag && (
+                        <span className="glass-select-flag" aria-hidden="true">
+                          <FlagIcon language={option.flag} />
+                        </span>
+                      )}
+                      {option.icon && !option.flag && (
                         <span className="glass-select-option-icon" aria-hidden="true">
                           <Icon name={option.icon} />
                         </span>

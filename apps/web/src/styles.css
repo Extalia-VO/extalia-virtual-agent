@@ -1205,6 +1205,13 @@ input[type='file']::file-selector-button {
   color: var(--accent);
 }
 
+.glass-select-flag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
 .glass-select-chevron {
   display: flex;
   align-items: center;

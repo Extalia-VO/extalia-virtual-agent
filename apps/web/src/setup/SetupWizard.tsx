@@ -103,7 +103,7 @@ export function SetupWizard({ t, platform, agents, state, onState, preferences, 
           <Select
             value={preferences.language}
             aria-label={t.setup.language}
-            options={LANGUAGES.map(lang => ({ value: lang.id, label: lang.label, icon: 'globe' as const }))}
+            options={LANGUAGES.map(lang => ({ value: lang.id, label: lang.label, flag: lang.id }))}
             onChange={val => onPreferences({ ...preferences, language: val })}
           />
           <Select

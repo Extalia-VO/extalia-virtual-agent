@@ -67,7 +67,7 @@ export function SettingsPage({ t, platform, preferences, onChange, hostState, on
               options={LANGUAGES.map(lang => ({
                 value: lang.id,
                 label: lang.label,
-                icon: 'globe' as const
+                flag: lang.id
               }))}
               onChange={val => onChange({ ...preferences, language: val })}
             />
