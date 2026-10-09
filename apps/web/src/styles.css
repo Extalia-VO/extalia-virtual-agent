@@ -141,8 +141,10 @@ code { font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-si
 .sidebar-compact .sidebar-head { display: flex; justify-content: center; padding-inline: 0; }
 
 .brand { display: flex; align-items: center; gap: 10px; color: var(--text); }
-.brand-symbol { height: 22px; width: auto; fill: var(--accent); flex: none; }
-.brand-wordmark { height: 22px; width: auto; fill: currentColor; }
+.brand-symbol { height: 26px; width: auto; fill: var(--accent); flex: none; }
+.brand-text { display: flex; flex-direction: column; line-height: 1; }
+.brand-wordmark { height: 20px; width: auto; fill: currentColor; }
+.brand-caption { font-size: 0.65rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin-top: 3px; }
 
 .main { min-width: 0; display: flex; flex-direction: column; }
 .topbar {

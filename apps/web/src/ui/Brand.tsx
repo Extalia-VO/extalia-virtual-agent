@@ -15,9 +15,12 @@ export function Brand({ compact = false }: { compact?: boolean }) {
         <path d={SYMBOL_PATH} fill={`url(#${gradientId})`} />
       </svg>
       {!compact && (
-        <svg className="brand-wordmark" viewBox={`0 -0.03 ${WORDMARK_WIDTH} 1.06`} aria-hidden="true" focusable="false">
-          <path d={WORDMARK_PATH} fillRule="evenodd" />
-        </svg>
+        <div className="brand-text">
+          <svg className="brand-wordmark" viewBox={`0 -0.03 ${WORDMARK_WIDTH} 1.06`} aria-hidden="true" focusable="false">
+            <path d={WORDMARK_PATH} fillRule="evenodd" />
+          </svg>
+          <span className="brand-caption">Virtual Agent</span>
+        </div>
       )}
     </div>
   );
