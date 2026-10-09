@@ -1,0 +1,37 @@
+{
+  "name": "extalia",
+  "description": "Open-source spatial AI-agent workspace: orchestrate and observe agents through conventional views and a living 3D office.",
+  "private": true,
+  "version": "0.0.3",
+  "license": "MIT",
+  "type": "module",
+  "packageManager": "pnpm@12.7.0",
+  "engines": {
+    "node": ">=22.12"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Extalia-VO/extalia-virtual-agent.git"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @extalia/web dev",
+    "dev:desktop": "pnpm --filter @extalia/web build && pnpm --filter @extalia/desktop dev",
+    "build": "pnpm --filter @extalia/web build && pnpm -r --filter '!@extalia/web' build",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "eslint . && node tooling/check-boundaries.mjs && node tooling/check-public-safety.mjs",
+    "test": "vitest run",
+    "test:desktop": "pnpm --filter @extalia/web build && pnpm --filter @extalia/desktop smoke",
+    "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build && node tooling/check-versions.mjs",
+    "version:patch": "node tooling/bump-version.mjs"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^24.0.0",
+    "eslint": "^10.12.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^17.13.0",
+    "typescript": "~6.0.3",
+    "typescript-eslint": "^8.71.1",
+    "vitest": "^5.0.3"
+  }
+}

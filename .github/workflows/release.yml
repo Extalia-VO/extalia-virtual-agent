@@ -1,0 +1,88 @@
+name: Release
+
+# Pushing a tag such as v0.1.0 builds Extalia Desktop on every platform and uploads the
+# installers and update metadata (latest*.yml) to a draft GitHub release. A maintainer
+# reviews the draft and publishes it; installed apps only see published releases.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  draft:
+    name: Create draft release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Check that the tag matches the app version
+        run: |
+          version="$(node -p "require('./apps/desktop/package.json').version")"
+          if [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match apps/desktop version $version."
+            exit 1
+          fi
+      # One draft up front, so the parallel builds upload to the same release instead of racing to create it.
+      # Tags with a pre-release part (v0.2.0-beta.1) become GitHub pre-releases, which only the beta update channel installs.
+      - name: Create the draft
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then exit 0; fi
+          prerelease=""
+          case "$GITHUB_REF_NAME" in *-*) prerelease="--prerelease" ;; esac
+          gh release create "$GITHUB_REF_NAME" --draft $prerelease --verify-tag --title "Extalia $GITHUB_REF_NAME" --generate-notes
+
+  build:
+    name: Build (${{ matrix.os }})
+    needs: draft
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      # electron-builder downloads the Electron release it packages; the npm binary is not needed.
+      ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @extalia/web build
+      - run: pnpm --filter @extalia/desktop build
+      - name: Package and upload
+        working-directory: apps/desktop
+        shell: bash
+        # Signing is optional and configured with repository secrets; without them the builds are
+        # unsigned: they install and run, but macOS shows a Gatekeeper warning and cannot apply
+        # automatic updates (Squirrel.Mac requires a signed app).
+        #   MAC_CSC_LINK, MAC_CSC_KEY_PASSWORD   Developer ID Application certificate (.p12, base64) and password
+        #   APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID   notarization
+        #   WIN_CSC_LINK, WIN_CSC_KEY_PASSWORD   Windows code-signing certificate (.pfx, base64) and password
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SECRET_CSC_LINK: ${{ runner.os == 'macOS' && secrets.MAC_CSC_LINK || '' }}
+          SECRET_CSC_KEY_PASSWORD: ${{ runner.os == 'macOS' && secrets.MAC_CSC_KEY_PASSWORD || '' }}
+          SECRET_APPLE_ID: ${{ secrets.APPLE_ID }}
+          SECRET_APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          SECRET_APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          SECRET_WIN_CSC_LINK: ${{ runner.os == 'Windows' && secrets.WIN_CSC_LINK || '' }}
+          SECRET_WIN_CSC_KEY_PASSWORD: ${{ runner.os == 'Windows' && secrets.WIN_CSC_KEY_PASSWORD || '' }}
+        run: |
+          # electron-builder treats an empty variable as configured, so export only the secrets that exist.
+          for name in CSC_LINK CSC_KEY_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID WIN_CSC_LINK WIN_CSC_KEY_PASSWORD; do
+            value="$(printenv "SECRET_$name" || true)"
+            if [ -n "$value" ]; then export "$name=$value"; fi
+            unset "SECRET_$name"
+          done
+          if [ "$RUNNER_OS" = "macOS" ] && [ -z "${CSC_LINK:-}" ]; then export CSC_IDENTITY_AUTO_DISCOVERY=false; fi
+          pnpm exec electron-builder --publish always

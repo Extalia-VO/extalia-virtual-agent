@@ -1,0 +1,44 @@
+name: Bug report
+description: Something does not work as documented.
+labels: ["type:bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not report security vulnerabilities here; see SECURITY.md.
+        Remove personal paths, names and credentials from logs before posting.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. …
+        2. …
+    validations:
+      required: true
+  - type: dropdown
+    id: host
+    attributes:
+      label: Client
+      options: [Desktop, Web, CLI]
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Operating system, Extalia version (Diagnostics page or `extalia doctor`), browser if Web.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or screenshots
+      render: text

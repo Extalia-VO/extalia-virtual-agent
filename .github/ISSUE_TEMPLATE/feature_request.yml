@@ -1,0 +1,29 @@
+name: Feature request
+description: Propose new behavior or an improvement.
+labels: ["type:feature"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What are you trying to do, and what gets in the way?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: How it could work. Mention the views, runtimes or importers involved.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options: [Office / renderer, Protocol, Runtime adapters, Observed agents, Importers, Desktop, Web, CLI / Bridge, UI, Docs, Other]
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
