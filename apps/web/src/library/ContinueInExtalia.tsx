@@ -3,6 +3,7 @@ import { useId, useState } from 'react';
 import { errorMessage } from '../host/remote';
 import type { Messages } from '../i18n';
 import { Icon } from '../ui/Icon';
+import { Select } from '../ui/Select';
 
 const samePath = (a?: string, b?: string) => Boolean(a && b) && a!.replace(/[\\/]+$/, '') === b!.replace(/[\\/]+$/, '');
 
@@ -57,14 +58,18 @@ export function ContinueInExtalia({ t, agents, state, source, projectPath, onCon
           ) : (
             <>
               <div className="field">
-                <label htmlFor={`${id}-workspace`}>{t.handoff.workspace}</label>
-                <select id={`${id}-workspace`} value={chosen.id} onChange={event => setWorkspaceId(event.target.value)}>
-                  {usable.map(workspace => (
-                    <option key={workspace.id} value={workspace.id}>
-                      {workspace.name}{samePath(workspace.projectLocation, projectPath) ? ` (${t.handoff.matches})` : ''}
-                    </option>
-                  ))}
-                </select>
+                <Select
+                  id={`${id}-workspace`}
+                  label={t.handoff.workspace}
+                  value={chosen.id}
+                  options={usable.map(workspace => ({
+                    value: workspace.id,
+                    label: `${workspace.name}${samePath(workspace.projectLocation, projectPath) ? ` (${t.handoff.matches})` : ''}`,
+                    description: workspace.projectLocation,
+                    icon: 'folder' as const
+                  }))}
+                  onChange={setWorkspaceId}
+                />
               </div>
               {error && <p role="alert" className="form-error"><Icon name="alert" />{error}</p>}
               <div className="actions">

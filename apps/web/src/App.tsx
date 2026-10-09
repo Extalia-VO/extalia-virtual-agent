@@ -14,6 +14,7 @@ import { GitPage } from './pages/GitPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { StartPage } from './pages/StartPage';
 import { ObserverPage } from './pages/ObserverPage';
+import { OfficePage } from './pages/OfficePage';
 import { loadPreferences, savePreferences, type Preferences } from './preferences';
 import { SetupWizard } from './setup/SetupWizard';
 import { Brand } from './ui/Brand';
@@ -27,8 +28,8 @@ const ICONS: Record<PageId, IconName> = { office: 'monitor', chat: 'chat', obser
 function navigation(agents: boolean, workflow: 'managed' | 'observe', canChat: boolean): { section: 'work' | 'app'; pages: PageId[] }[] {
   return agents
     // Files and Git read a workspace's project folder, so they need one.
-    ? [{ section: 'work', pages: workflow === 'observe' && !canChat ? ['observe', 'history', 'import', 'logs'] : ['chat', 'observe', ...(canChat ? ['files', 'git'] as const : []), 'history', 'import', 'logs'] }, { section: 'app', pages: ['settings', 'diagnostics'] }]
-    : [{ section: 'app', pages: ['start', 'logs', 'diagnostics', 'settings'] }];
+    ? [{ section: 'work', pages: workflow === 'observe' && !canChat ? ['office', 'observe', 'history', 'import', 'logs'] : ['office', 'chat', 'observe', ...(canChat ? ['files', 'git'] as const : []), 'history', 'import', 'logs'] }, { section: 'app', pages: ['settings', 'diagnostics'] }]
+    : [{ section: 'app', pages: ['office', 'start', 'logs', 'diagnostics', 'settings'] }];
 }
 
 function applyDOMChange(mutate: () => void): void {
@@ -94,7 +95,7 @@ export function App({ platform }: { platform: Platform }) {
   const [preferences, setPreferences] = useState(loadPreferences);
   const host = useHostState(agents);
   const hostState = host.state;
-  const defaultPage: PageId = agents ? hostState?.workflow === 'observe' ? 'observe' : 'chat' : 'start';
+  const defaultPage: PageId = agents ? 'office' : 'start';
   const [page, setPage] = useState<PageId>(defaultPage);
   const [selection, setSelection] = useState<ChatSelection>({});
   const [toast, setToast] = useState<{ id: number; text: string } | null>(null);
@@ -174,7 +175,12 @@ export function App({ platform }: { platform: Platform }) {
             <span className="topbar-title">{t.nav[activePage]}</span>
             <span className="topbar-meta">{hostLabel} · v{platform.info.appVersion}</span>
           </header>
-          <main className={`content ${activePage === 'chat' ? 'content-chat' : ''}`} key={activePage}>
+          <main className={`content ${activePage === 'chat' ? 'content-chat' : activePage === 'office' ? 'content-office' : ''}`} key={activePage}>
+            {activePage === 'office' && <OfficePage t={t} agents={agents} state={hostState} workspaceId={chatWorkspaceId}
+              onWorkspace={workspaceId => setSelection({ workspaceId })}
+              onOpenSession={session => { setSelection({ workspaceId: session.workspaceId, sessionId: session.id }); setPage(session.control === 'observed' ? 'observe' : 'chat'); }}
+              onStartChat={() => setPage(!agents ? 'start' : hostState?.workspaces.length ? 'chat' : 'settings')}
+              onOpenSettings={() => setPage('settings')} />}
             {activePage === 'chat' && agents && hostState && (
               <ChatPage t={t} language={preferences.language} agents={agents} state={hostState} onState={host.apply}
                 selection={selection} onSelect={setSelection} onOpenSettings={() => setPage('settings')} />
@@ -184,7 +190,7 @@ export function App({ platform }: { platform: Platform }) {
             )}
             {activePage === 'files' && agents && hostState && <FilesPage t={t} language={preferences.language} agents={agents} state={hostState} {...(chatWorkspaceId ? { workspaceId: chatWorkspaceId } : {})} />}
             {activePage === 'git' && agents && hostState && <GitPage t={t} agents={agents} state={hostState} {...(chatWorkspaceId ? { workspaceId: chatWorkspaceId } : {})} />}
-            {activePage === 'observe' && agents && hostState && <ObserverPage t={t} language={preferences.language} agents={agents} state={hostState} onState={host.apply} onAdd={() => setPage('import')} {...continued} />}
+            {activePage === 'observe' && agents && hostState && <ObserverPage t={t} language={preferences.language} agents={agents} state={hostState} initialSessionId={selection.sessionId ?? undefined} onState={host.apply} onAdd={() => setPage('import')} {...continued} />}
             {activePage === 'import' && agents && (
               <ImportPage t={t} language={preferences.language} agents={agents} onState={host.apply}
                 onObserved={() => setPage('observe')}

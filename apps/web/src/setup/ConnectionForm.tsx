@@ -4,7 +4,9 @@ import { useId, useState, type ReactNode } from 'react';
 import { errorMessage } from '../host/remote';
 import type { Messages } from '../i18n';
 import { Icon } from '../ui/Icon';
+import { ProviderLogo } from '../ui/ProviderLogo';
 import { Segmented } from '../ui/Segmented';
+import { Select } from '../ui/Select';
 import { draftFromPreset, suggestedTiers, toConnectionInput, validateConnection, type ConnectionDraft, type ConnectionField, type OrchestrationDraft } from './validation';
 
 type TestState = { kind: 'idle' } | { kind: 'testing' } | { kind: 'done'; result: ConnectionTestResult };
@@ -66,7 +68,13 @@ export function ConnectionForm({ t, agents, draft, onChange, showAllErrors = fal
             <label key={item.id} className="preset-card">
               <input type="radio" name={`${id}-preset`} value={item.id} checked={draft.preset === item.id}
                 onChange={() => { setTest({ kind: 'idle' }); onChange(draftFromPreset(item.id, draft)); }} />
-              <span className="preset-name">{item.label}{item.local && <span className="chip">{t.connection.local}</span>}</span>
+              <span className="preset-name">
+                <span className="preset-brand">
+                  <ProviderLogo preset={item.id} />
+                  {item.label}
+                </span>
+                {item.local && <span className="chip">{t.connection.local}</span>}
+              </span>
               <span className="preset-hint">{t.connection.presetHints[item.id]}</span>
             </label>
           ))}
@@ -116,10 +124,16 @@ export function ConnectionForm({ t, agents, draft, onChange, showAllErrors = fal
           t.connection.modelHint)}
         {preset.api === 'anthropic-messages' && (
           <div className="field">
-            <label htmlFor={`${id}-effort`}>{t.connection.effort}</label>
-            <select id={`${id}-effort`} value={draft.effort} onChange={event => update({ effort: event.target.value as Effort })}>
-              {EFFORTS.map(effort => <option key={effort} value={effort}>{t.connection.efforts[effort]}</option>)}
-            </select>
+            <Select
+              id={`${id}-effort`}
+              label={t.connection.effort}
+              value={draft.effort ?? 'high'}
+              options={EFFORTS.map(effort => ({
+                value: effort,
+                label: t.connection.efforts[effort]
+              }))}
+              onChange={val => update({ effort: val as Effort })}
+            />
           </div>
         )}
       </div>

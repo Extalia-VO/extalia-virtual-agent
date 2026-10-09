@@ -28,7 +28,13 @@ On first start a short setup asks for:
 2. **A workspace**: the project folder the agent works in, and whether file
    edits and commands need your approval (they do by default).
 
-Then open Chat and describe the task. The agent reads and searches the project,
+After setup, you enter the Virtual Office in the same application. Use the sidebar
+to switch between Office, Chat and Settings. The campus scene and initial work view
+use the same sessions as Chat; selecting an agent opens that conversation. Observed
+sessions show observation status, without claiming their native agent is running.
+Detailed interiors and avatar navigation are still being developed.
+
+Open Chat and describe the task. The agent reads and searches the project,
 asks before it edits files or runs commands, and reports every step.
 
 ### Projects, sessions and Diagnostics
@@ -53,8 +59,8 @@ Extalia Native, the local Bridge and the Desktop shell use JavaScript/TypeScript
 Node/Electron. Python is not bundled or required for these paths. Native history imports
 use the Node parsers; Hermes SQLite history needs Node.js 22.13 or newer.
 
-If a workspace uses Hermes Agent, its existing installation supplies its own runtime and
-dependencies. Extalia launches the installed `hermes` executable. Likewise, project
+If a workspace uses Hermes Agent, follow Hermes' installation requirements separately.
+Extalia launches the installed `hermes` executable. Likewise, project
 commands that run Python use the interpreter selected by that project. Installing Python
 is an optional runtime/project concern, not part of Extalia's base setup.
 

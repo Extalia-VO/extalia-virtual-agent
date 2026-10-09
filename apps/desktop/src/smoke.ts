@@ -19,7 +19,7 @@ async function waitFor(window: BrowserWindow, expression: string, timeoutMs = 15
   return false;
 }
 
-type Page = 'start' | 'logs' | 'diagnostics';
+type Page = 'start' | 'logs' | 'diagnostics' | 'office' | 'settings';
 const SHELL = `document.querySelector('.brand') && document.querySelector('.topbar-meta')`;
 const SETUP = `document.querySelector('[data-onboarding-step]')`;
 // Navigation before buttons carried data-page: the page is identified by its position.
@@ -40,7 +40,7 @@ async function open(window: BrowserWindow, page: Page): Promise<boolean> {
 /** Wait for layout, entrance animations and transitions to finish before reading or capturing. */
 async function settle(window: BrowserWindow): Promise<void> {
   await delay(100);
-  await window.webContents.executeJavaScript('Promise.all(document.getAnimations().map(animation => animation.finished)).then(() => true)').catch(() => false);
+  await window.webContents.executeJavaScript('Promise.all(document.getAnimations().filter(animation => Number.isFinite(animation.effect?.getTiming().iterations)).map(animation => animation.finished.catch(() => undefined))).then(() => true)').catch(() => false);
   await delay(100);
 }
 
@@ -105,7 +105,33 @@ export async function runSmokeTest(window: BrowserWindow, screenshotDir = proces
 
   const screenshots = rendered && screenshotDir ? await captureScreenshots(window, screenshotDir, setup) : [];
 
-  const ok = rendered && report.desktopBridge === true && report.nodeExposed === false && String(report.host).startsWith('Desktop');
-  console.log(JSON.stringify({ ok, rendered, ...report, diagnostics, screenshots }, null, 2));
+  // Smoke uses a throwaway profile. Observer setup lets us exercise the shared
+  // Office shell without a real account, model request or project permission.
+  if (rendered && setup) {
+    await window.webContents.executeJavaScript(`(async () => {
+      await window.extaliaDesktop.agents.call('completeSetup', ['observe']);
+      location.reload();
+    })()`);
+    await waitFor(window, `Boolean(${SHELL})`);
+  }
+  const officeOpened = rendered && await open(window, 'office');
+  const officeRendered = officeOpened && await waitFor(window, `Boolean(document.querySelector('.office-stage canvas') || document.querySelector('.office-stage [role="alert"]'))`);
+  const office = officeOpened ? await window.webContents.executeJavaScript(`({
+    route: document.querySelector('.nav-item[data-page="office"]')?.getAttribute('aria-current'),
+    canvas: Boolean(document.querySelector('.office-stage canvas')),
+    separateFrame: Boolean(document.querySelector('.office-stage iframe')),
+    protocol: location.protocol,
+  })`) as Record<string, unknown> : {};
+  const settingsOpened = rendered && await open(window, 'settings');
+  if (screenshotDir && officeOpened) {
+    await open(window, 'office');
+    const file = path.join(screenshotDir, 'office-desktop.png');
+    await writeFile(file, (await window.webContents.capturePage()).toPNG());
+    screenshots.push(file);
+  }
+
+  const ok = rendered && report.desktopBridge === true && report.nodeExposed === false && String(report.host).startsWith('Desktop')
+    && officeRendered && office.route === 'page' && office.separateFrame === false && settingsOpened;
+  console.log(JSON.stringify({ ok, rendered, ...report, office, settingsOpened, diagnostics, screenshots }, null, 2));
   return ok ? 0 : 1;
 }

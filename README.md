@@ -11,7 +11,7 @@
 
 Extalia provides a unified workspace where developers can prompt, steer, orchestrate, and observe autonomous AI agents through both conventional engineering views (Chat, Console, Tasks, Files, Git, Terminal, and Logs) and an interactive 3D virtual office.
 
-> **Status: pre-alpha.** Working today: the Extalia Native agent (API key or router), orchestration, native history import, and the Desktop and Web clients. The previews come from the existing Virtual Office. Its 3D integration stays the final product milestone, after the agent workflows, imports, session management and desktop/web foundations are ready.
+> **Status: pre-alpha.** Working today: the Extalia Native agent (API key or router), orchestration, native history import, and the Desktop and Web clients. Setup, Settings, Chat and Virtual Office share one application. The existing campus scene and an initial work view are integrated with real host sessions; detailed interiors and advanced avatar navigation remain the final product milestone.
 
 ---
 

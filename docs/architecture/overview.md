@@ -39,7 +39,7 @@ packages/
   runtime/    Extalia Native agent loop, delegation, provider adapters and the Hermes Agent stream mapping
   host/       Node host: files, commands, credentials, Hermes Agent processes, imports and selected transcript observation
   importers/  Pure native-history parsers
-  office/     Pure spatial presence contracts; scene integration is deferred
+  office/     Pure spatial presence contracts; the shared Web/Desktop scene lives in apps/web/src/office
 tooling/      Repository checks: boundaries, public safety, versions
 docs/         Architecture, ADRs, migration ledger, release notes
 ```
@@ -48,6 +48,13 @@ More packages from the PRD's proposed monorepo (renderer, avatars,
 adapters, knowledge, …) are added
 when their phase starts, each with a boundary rule in
 `tooling/check-boundaries.mjs`.
+
+Setup, Settings, Chat and Office run in the same application shell. The Office
+renderer is loaded on demand from the same web build served by the Bridge and
+packaged by Desktop. It receives host session summaries and protocol events;
+it never launches a separate agent host or connects directly to a provider.
+The campus geometry is adapted from the existing Virtual Office. Detailed
+interiors and advanced avatar navigation remain later scene milestones.
 
 ## Dependency direction
 

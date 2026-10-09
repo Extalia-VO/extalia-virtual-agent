@@ -6,6 +6,16 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.0.7] - 2026-10-09
+
+### Added
+
+- Setup, Settings, Chat and Virtual Office share one Web/Desktop application. Setup enters Office, and the scene is packaged in the same build with no separate preview server.
+- Reuse the existing campus geometry with gradient branding and an initial work view. Project-filtered agents are derived from real host sessions and protocol activity, including approvals, observed sessions and delegated workers; selecting an actor opens its conversation.
+- Load the 3D renderer on demand with reduced-motion support and a fallback to Chat when WebGL is unavailable. Detailed interiors and advanced avatar navigation remain later milestones.
+
+## [0.0.6] - 2026-10-09
+
 ### Fixed
 
 - Diagnostics recognizes commands, Git inspection and credential storage provided through the agent host, distinguishes a folder picker from registered project access, and shows unsupported development update checks accurately.

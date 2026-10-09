@@ -186,7 +186,7 @@ export function SetupWizard({ t, platform, agents, state, onState, preferences, 
             {step === 0 && <><button type="button" disabled={busy} onClick={() => run(async () => { onState(await agents.completeSetup('observe')); })}>{t.observer.observe}</button><button type="button" className="primary" disabled={busy} onClick={() => go(1)}>{t.setup.begin}<Icon name="chevron" /></button></>}
             {step === 1 && <button type="button" className="primary" disabled={busy || (!hermes && !connectionValid)} onClick={hermes ? () => go(2) : saveConnection}>{busy ? t.common.saving : t.common.next}<Icon name="chevron" /></button>}
             {step === 2 && <button type="button" className="primary" disabled={busy || !workspaceValid} onClick={saveWorkspace}>{busy ? t.common.saving : t.common.next}<Icon name="chevron" /></button>}
-            {step === 3 && <button type="button" className="primary" disabled={busy} onClick={finish}>{busy ? t.setup.finishing : t.setup.finish}<Icon name="chat" /></button>}
+            {step === 3 && <button type="button" className="primary" disabled={busy} onClick={finish}>{busy ? t.setup.finishing : t.setup.finish}<Icon name="monitor" /></button>}
           </div>
         </section>
       </main>

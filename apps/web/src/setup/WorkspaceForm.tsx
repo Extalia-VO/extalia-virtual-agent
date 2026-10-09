@@ -4,6 +4,7 @@ import { useId, useState } from 'react';
 import { errorMessage } from '../host/remote';
 import type { Messages } from '../i18n';
 import { Icon } from '../ui/Icon';
+import { Select } from '../ui/Select';
 import { Segmented } from '../ui/Segmented';
 import { availableHermes } from './useRuntimes';
 import { validateWorkspace, type WorkspaceDraft, type WorkspaceField } from './validation';
@@ -118,11 +119,16 @@ export function WorkspaceForm({ t, agents, picker, draft, onChange, connections,
         </div>
         {connections && !isHermes && (
           <div className="field">
-            <label htmlFor={`${id}-connection`}>{t.workspace.connection}</label>
-            <select id={`${id}-connection`} value={draft.connectionId} onChange={event => update({ connectionId: event.target.value })}>
-              {!draft.connectionId && <option value="">—</option>}
-              {connections.map(connection => <option key={connection.id} value={connection.id}>{connection.name} · {connection.model}</option>)}
-            </select>
+            <Select
+              id={`${id}-connection`}
+              label={t.workspace.connection}
+              value={draft.connectionId}
+              options={connections.map(connection => ({
+                value: connection.id,
+                label: `${connection.name} · ${connection.model}`
+              }))}
+              onChange={val => update({ connectionId: val })}
+            />
             {errorFor('connection') && <small className="field-error">{errorFor('connection')}</small>}
           </div>
         )}
@@ -140,10 +146,13 @@ export function WorkspaceForm({ t, agents, picker, draft, onChange, connections,
         <div className="form-stack tight">
           <div className="form-grid">
             <div className="field">
-              <label htmlFor={`${id}-profile`}>{t.workspace.hermesProfile}</label>
-              <select id={`${id}-profile`} value={draft.hermesProfile} aria-invalid={Boolean(errorFor('profile'))} onChange={event => { touch('profile'); update({ hermesProfile: event.target.value }); }}>
-                {profiles.map(profile => <option key={profile} value={profile}>{profile}</option>)}
-              </select>
+              <Select
+                id={`${id}-profile`}
+                label={t.workspace.hermesProfile}
+                value={draft.hermesProfile}
+                options={profiles.map(profile => ({ value: profile, label: profile }))}
+                onChange={val => { touch('profile'); update({ hermesProfile: val }); }}
+              />
               {errorFor('profile') && <small className="field-error">{errorFor('profile')}</small>}
             </div>
             <div className="field">

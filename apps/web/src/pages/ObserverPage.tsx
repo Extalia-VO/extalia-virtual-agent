@@ -9,11 +9,12 @@ import type { ContinueHandlers } from '../library/HistoryPage';
 import { LibraryTranscript } from '../library/LibraryTranscript';
 import { Icon } from '../ui/Icon';
 
-export function ObserverPage({ t, language, agents, state, onState, onAdd, onContinued, onOpenSettings }: ContinueHandlers & {
+export function ObserverPage({ t, language, agents, state, initialSessionId, onState, onAdd, onContinued, onOpenSettings }: ContinueHandlers & {
   t: Messages; language: string; agents: AgentHostApi; state: HostState; onState: (state: HostState) => void; onAdd: () => void;
+  initialSessionId?: string;
 }) {
   const sessions = state.sessions.filter(item => item.control === 'observed');
-  const [chosen, setChosen] = useState<string>();
+  const [chosen, setChosen] = useState<string | undefined>(initialSessionId);
   const selected = sessions.find(item => item.id === chosen) ?? sessions[0];
   const [loaded, setLoaded] = useState<{ id: string; session?: PortableSession; error?: string }>();
   const [busy, setBusy] = useState(false);
