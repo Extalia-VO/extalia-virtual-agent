@@ -92,7 +92,11 @@ body {
     background-color 240ms var(--ease),
     border-color 240ms var(--ease),
     color 240ms var(--ease),
-    box-shadow 240ms var(--ease);
+    box-shadow 240ms var(--ease),
+    border-radius 240ms var(--ease),
+    backdrop-filter 240ms var(--ease),
+    -webkit-backdrop-filter 240ms var(--ease),
+    transform 240ms var(--ease);
 }
 button, input, select, textarea { font: inherit; color: inherit; }
 h1, h2 { margin: 0; line-height: 1.25; }
@@ -124,6 +128,7 @@ code { font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-si
     radial-gradient(ellipse at 14% 5%, var(--glow-blue), transparent 53%),
     radial-gradient(ellipse at 91% 48%, var(--glow-lavender), transparent 57%),
     var(--canvas);
+  transition: opacity 280ms var(--ease), background 280ms var(--ease);
 }
 .sidebar-compact { --sidebar-width: 72px; }
 
@@ -1073,6 +1078,7 @@ input[type='file']::file-selector-button {
   border-radius: inherit;
   background: var(--sheen);
   pointer-events: none;
+  transition: opacity 240ms var(--ease);
 }
 
 [data-material='liquid-glass'] .nav-item { border-radius: 999px; }
