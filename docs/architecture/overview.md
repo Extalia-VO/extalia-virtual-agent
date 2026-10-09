@@ -53,8 +53,10 @@ Setup, Settings, Chat and Office run in the same application shell. The Office
 renderer is loaded on demand from the same web build served by the Bridge and
 packaged by Desktop. It receives host session summaries and protocol events;
 it never launches a separate agent host or connects directly to a provider.
-The campus geometry is adapted from the existing Virtual Office. Detailed
-interiors and advanced avatar navigation remain later scene milestones.
+The campus and furnished floors are adapted from the existing Virtual Office.
+New visual improvements belong in this repository; see
+[Office development](../design/office-development.md). Advanced avatar navigation
+and the complete per-character appearance editor remain later scene milestones.
 
 ## Dependency direction
 

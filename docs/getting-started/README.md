@@ -29,10 +29,12 @@ On first start a short setup asks for:
    edits and commands need your approval (they do by default).
 
 After setup, you enter the Virtual Office in the same application. Use the sidebar
-to switch between Office, Chat and Settings. The campus scene and initial work view
-use the same sessions as Chat; selecting an agent opens that conversation. Observed
+to switch between Office, Chat and Settings. The campus and furnished F1, F2 and F3
+views use the same sessions as Chat. Selecting a character opens its conversation
+inside Office; managed primary characters accept prompts there, and workers show
+their reported activity in the parent session. Observed
 sessions show observation status, without claiming their native agent is running.
-Detailed interiors and avatar navigation are still being developed.
+The complete appearance editor and advanced avatar navigation are still being developed.
 
 Open Chat and describe the task. The agent reads and searches the project,
 asks before it edits files or runs commands, and reports every step.

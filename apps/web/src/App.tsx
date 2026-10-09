@@ -32,13 +32,23 @@ function navigation(agents: boolean, workflow: 'managed' | 'observe', canChat: b
     : [{ section: 'app', pages: ['office', 'start', 'logs', 'diagnostics', 'settings'] }];
 }
 
-function applyDOMChange(mutate: () => void): void {
-  // Use modern View Transitions API if supported (Chrome, Edge, Safari 18+)
-  if (typeof document !== 'undefined' && 'startViewTransition' in document) {
-    (document as unknown as { startViewTransition: (cb: () => void) => void }).startViewTransition(mutate);
-  } else {
-    mutate();
-  }
+type ViewTransition = { ready: Promise<void>; finished: Promise<void>; updateCallbackDone: Promise<void> };
+
+/**
+ * Set a root `data-*` attribute (theme, material, font). Real changes cross-fade
+ * with the View Transitions API where available; the first value, unchanged
+ * values, hidden tabs and reduced motion apply instantly.
+ */
+function setRootData(key: 'theme' | 'material' | 'font', value: string): void {
+  const root = document.documentElement;
+  const previous = root.dataset[key];
+  if (previous === value) return;
+  const apply = () => { root.dataset[key] = value; };
+  const start = (document as Document & { startViewTransition?: (update: () => void) => ViewTransition }).startViewTransition;
+  if (previous === undefined || !start || document.visibilityState !== 'visible' || window.matchMedia('(prefers-reduced-motion: reduce)').matches) { apply(); return; }
+  const transition = start.call(document, apply);
+  // A transition is skipped when another starts or the tab hides; the change itself still applies.
+  for (const promise of [transition.ready, transition.finished, transition.updateCallbackDone]) promise.catch(() => undefined);
 }
 
 function useColorScheme(theme: Preferences['theme']): void {
@@ -57,9 +67,7 @@ function useColorScheme(theme: Preferences['theme']): void {
         // System preference
         isDark = media.matches;
       }
-      applyDOMChange(() => {
-        document.documentElement.dataset.theme = isDark ? 'dark' : 'light';
-      });
+      setRootData('theme', isDark ? 'dark' : 'light');
     };
 
     apply();
@@ -116,14 +124,10 @@ export function App({ platform }: { platform: Platform }) {
   }, [toast]);
   useEffect(() => { document.documentElement.lang = preferences.language; }, [preferences.language]);
   useEffect(() => {
-    applyDOMChange(() => {
-      document.documentElement.dataset.material = preferences.material;
-    });
+    setRootData('material', preferences.material);
   }, [preferences.material]);
   useEffect(() => {
-    applyDOMChange(() => {
-      document.documentElement.dataset.font = preferences.font;
-    });
+    setRootData('font', preferences.font);
   }, [preferences.font]);
 
   const update = (next: Preferences) => { setPreferences(next); savePreferences(next); };
@@ -176,7 +180,7 @@ export function App({ platform }: { platform: Platform }) {
             <span className="topbar-meta">{hostLabel} · v{platform.info.appVersion}</span>
           </header>
           <main className={`content ${activePage === 'chat' ? 'content-chat' : activePage === 'office' ? 'content-office' : ''}`} key={activePage}>
-            {activePage === 'office' && <OfficePage t={t} agents={agents} state={hostState} workspaceId={chatWorkspaceId}
+            {activePage === 'office' && <OfficePage t={t} language={preferences.language} agents={agents} state={hostState} onState={host.apply} workspaceId={chatWorkspaceId}
               onWorkspace={workspaceId => setSelection({ workspaceId })}
               onOpenSession={session => { setSelection({ workspaceId: session.workspaceId, sessionId: session.id }); setPage(session.control === 'observed' ? 'observe' : 'chat'); }}
               onStartChat={() => setPage(!agents ? 'start' : hostState?.workspaces.length ? 'chat' : 'settings')}

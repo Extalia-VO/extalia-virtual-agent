@@ -6,6 +6,7 @@ import type { Messages } from '../i18n';
 import { Icon } from '../ui/Icon';
 import { Select } from '../ui/Select';
 import { Segmented } from '../ui/Segmented';
+import { SYMBOL_PATH, SYMBOL_GRADIENT } from '../branding/identity';
 import { availableHermes } from './useRuntimes';
 import { validateWorkspace, type WorkspaceDraft, type WorkspaceField } from './validation';
 
@@ -136,9 +137,33 @@ export function WorkspaceForm({ t, agents, picker, draft, onChange, connections,
 
       {connections && offered.length > 1 && (
         <div className="field">
-          <Segmented legend={t.workspace.runtime} value={draft.runtimeId}
-            options={offered.map(runtime => ({ value: runtime as RuntimeId, label: t.workspace.runtimes[runtime] }))}
-            onChange={runtimeId => update({ runtimeId })} />
+          <Segmented
+            legend={t.workspace.runtime}
+            value={draft.runtimeId}
+            options={offered.map(runtime => ({
+              value: runtime as RuntimeId,
+              label: t.workspace.runtimes[runtime],
+              icon: runtime === 'extalia-native' ? (
+                <svg viewBox="0 0 1.41 1" width="16" height="12" style={{ display: 'block' }} aria-hidden="true">
+                  <defs>
+                    <linearGradient id="extalia-seg-ws-grad" x1="0" y1="1" x2="0" y2="0">
+                      {SYMBOL_GRADIENT.map(([offset, color]) => <stop key={offset} offset={offset} stopColor={color} />)}
+                    </linearGradient>
+                  </defs>
+                  <path d={SYMBOL_PATH} fill="url(#extalia-seg-ws-grad)" />
+                </svg>
+              ) : (
+                <img
+                  src="/brand/hermes-logo.svg"
+                  alt=""
+                  width="16"
+                  height="16"
+                  style={{ display: 'block', objectFit: 'contain' }}
+                />
+              )
+            }))}
+            onChange={runtimeId => update({ runtimeId })}
+          />
           <small className="muted">{t.workspace.runtimeHints[draft.runtimeId]}</small>
         </div>
       )}

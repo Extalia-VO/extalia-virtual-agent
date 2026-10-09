@@ -6,8 +6,19 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Restore furnished F1, F2 and F3 rooms, their original furniture and decorations, floor/cutaway navigation and authored humanoid characters in the shared Office renderer.
+- Select a character to view its session history and prompt its managed agent inside Office; worker and observed activity remains read-only according to runtime capabilities.
+- Document Extalia Virtual Agent as the single development home for Office improvements, with explicit follow-up requirements for hair, clothing, accessories, gender/style presets and configurable walking animations.
+
+## [0.0.8] - 2026-10-09
+
 ### Fixed
 
+- Interface fonts (Quicksand, Geist, Plus Jakarta Sans, Inter) ship with the app instead of loading from Google Fonts, which the app's Content Security Policy blocked; Extalia makes no third-party requests and the font choice works offline.
+- Theme, material and font changes only animate when the value really changes, apply instantly with reduced motion or in a background tab, and no longer log unhandled "Transition was aborted" errors (the solar theme re-applied itself every minute).
+- Pages no longer grow wider than the window when they contain a long project path (Files and Git cut off their right column).
 - The Bridge reads and discards a slightly oversized request body before answering 413, so clients get the error instead of a reset connection (this also made a Bridge test fail intermittently).
 
 ## [0.0.7] - 2026-10-09

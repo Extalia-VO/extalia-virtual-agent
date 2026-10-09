@@ -123,15 +123,32 @@ export async function runSmokeTest(window: BrowserWindow, screenshotDir = proces
     protocol: location.protocol,
   })`) as Record<string, unknown> : {};
   const settingsOpened = rendered && await open(window, 'settings');
+  const floorViews: boolean[] = [];
   if (screenshotDir && officeOpened) {
     await open(window, 'office');
     const file = path.join(screenshotDir, 'office-desktop.png');
     await writeFile(file, (await window.webContents.capturePage()).toPNG());
     screenshots.push(file);
   }
+  if (officeOpened) {
+    await open(window, 'office');
+    for (const floor of [1, 2, 3]) {
+      const chosen = await window.webContents.executeJavaScript(`(() => {
+        const button = document.querySelector('.office-view-switch button[data-floor="${floor}"]');
+        button?.click(); return Boolean(button);
+      })()`) as boolean;
+      await settle(window);
+      floorViews.push(chosen && await waitFor(window, `document.querySelector('.office-view-switch button[data-floor="${floor}"]')?.getAttribute('aria-pressed') === 'true'`));
+      if (screenshotDir && chosen) {
+        const file = path.join(screenshotDir, `office-f${floor}-desktop.png`);
+        await writeFile(file, (await window.webContents.capturePage()).toPNG());
+        screenshots.push(file);
+      }
+    }
+  }
 
   const ok = rendered && report.desktopBridge === true && report.nodeExposed === false && String(report.host).startsWith('Desktop')
-    && officeRendered && office.route === 'page' && office.separateFrame === false && settingsOpened;
-  console.log(JSON.stringify({ ok, rendered, ...report, office, settingsOpened, diagnostics, screenshots }, null, 2));
+    && officeRendered && office.route === 'page' && office.separateFrame === false && settingsOpened && floorViews.length === 3 && floorViews.every(Boolean);
+  console.log(JSON.stringify({ ok, rendered, ...report, office, floorViews, settingsOpened, diagnostics, screenshots }, null, 2));
   return ok ? 0 : 1;
 }

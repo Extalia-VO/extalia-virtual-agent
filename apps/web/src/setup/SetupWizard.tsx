@@ -8,6 +8,7 @@ import { Brand } from '../ui/Brand';
 import { Icon } from '../ui/Icon';
 import { Select } from '../ui/Select';
 import { Segmented } from '../ui/Segmented';
+import { SYMBOL_PATH, SYMBOL_GRADIENT } from '../branding/identity';
 import { ConnectionForm } from './ConnectionForm';
 import { availableHermes, useRuntimes } from './useRuntimes';
 import {
@@ -150,9 +151,40 @@ export function SetupWizard({ t, platform, agents, state, onState, preferences, 
             <>
               <h1 id="setup-title" ref={heading} tabIndex={-1}>{hermes ? t.workspace.runtimes.hermes : t.setup.modelTitle}</h1>
               {offerHermes && (
-                <Segmented legend={t.setup.runtimeLegend} value={workspace.runtimeId}
-                  options={(['extalia-native', 'hermes'] as const).map(runtime => ({ value: runtime, label: t.workspace.runtimes[runtime] }))}
-                  onChange={runtimeId => setWorkspace(current => ({ ...current, runtimeId }))} />
+                <Segmented
+                  legend={t.setup.runtimeLegend}
+                  value={workspace.runtimeId}
+                  options={[
+                    {
+                      value: 'extalia-native',
+                      label: t.workspace.runtimes['extalia-native'],
+                      icon: (
+                        <svg viewBox="0 0 1.41 1" width="16" height="12" style={{ display: 'block' }} aria-hidden="true">
+                          <defs>
+                            <linearGradient id="extalia-seg-grad" x1="0" y1="1" x2="0" y2="0">
+                              {SYMBOL_GRADIENT.map(([offset, color]) => <stop key={offset} offset={offset} stopColor={color} />)}
+                            </linearGradient>
+                          </defs>
+                          <path d={SYMBOL_PATH} fill="url(#extalia-seg-grad)" />
+                        </svg>
+                      )
+                    },
+                    {
+                      value: 'hermes',
+                      label: t.workspace.runtimes.hermes,
+                      icon: (
+                        <img
+                          src="/brand/hermes-logo.svg"
+                          alt=""
+                          width="16"
+                          height="16"
+                          style={{ display: 'block', objectFit: 'contain' }}
+                        />
+                      )
+                    }
+                  ]}
+                  onChange={runtimeId => setWorkspace(current => ({ ...current, runtimeId }))}
+                />
               )}
               <p className="lead">{hermes ? t.setup.hermesLead : t.setup.modelLead}</p>
               {!hermes && <ConnectionForm t={t} agents={agents} draft={connection} onChange={setConnection} showAllErrors={attempted} />}

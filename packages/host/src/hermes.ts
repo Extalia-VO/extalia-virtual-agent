@@ -49,7 +49,10 @@ export async function findHermes(env: Env, homeDirectory?: string, platform: Nod
   if (override) return path.isAbsolute(override) && await isExecutable(override) ? override : undefined;
   const names = platform === 'win32' ? ['hermes.exe', 'hermes'] : ['hermes'];
   const directories = (env.PATH ?? '').split(platform === 'win32' ? ';' : ':').filter(item => path.isAbsolute(item));
-  if (homeDirectory && platform !== 'win32') directories.push(path.join(homeDirectory, '.local', 'bin'));
+  if (homeDirectory && platform !== 'win32') {
+    directories.push(path.join(homeDirectory, '.local', 'bin'));
+    directories.push(path.join(homeDirectory, '.hermes', 'hermes-agent', 'venv', 'bin'));
+  }
   for (const directory of directories) {
     for (const name of names) {
       const candidate = path.join(directory, name);

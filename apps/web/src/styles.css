@@ -38,19 +38,19 @@
 }
 
 :root[data-font='quicksand'] {
-  --font-ui: 'Quicksand', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-ui: 'Quicksand Variable', 'Quicksand', -apple-system, BlinkMacSystemFont, sans-serif;
 }
 
 :root[data-font='geist'] {
-  --font-ui: 'Geist', -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif;
+  --font-ui: 'Geist Variable', 'Geist', -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif;
 }
 
 :root[data-font='jakarta'] {
-  --font-ui: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-ui: 'Plus Jakarta Sans Variable', 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
 }
 
 :root[data-font='inter'] {
-  --font-ui: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-ui: 'Inter Variable', 'Inter', ui-sans-serif, system-ui, sans-serif;
 }
 
 :root[data-font='sf-pro'] {
@@ -473,8 +473,11 @@ fieldset > legend { padding: 0; margin-bottom: 6px; }
 
 .segment { position: relative; }
 .segment input, .preset-card input, .switch input { position: absolute; opacity: 0; width: 1px; height: 1px; pointer-events: none; }
-.segment span {
-  display: block;
+.segment span,
+.segment-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   padding: 6px 14px;
   border-radius: 9px;
   color: var(--muted);
@@ -485,13 +488,24 @@ fieldset > legend { padding: 0; margin-bottom: 6px; }
   transition: all 160ms cubic-bezier(0.16, 1, 0.3, 1);
   border: 1px solid transparent;
 }
-.segment span:hover { color: var(--text); }
-.segment input:checked + span {
+.segment span:hover,
+.segment-label:hover { color: var(--text); }
+.segment input:checked + span,
+.segment input:checked + .segment-label {
   background: var(--accent) !important;
   color: #ffffff !important;
   font-weight: 600;
   box-shadow: 0 2px 8px -2px var(--primary-glow), inset 0 1px 0 rgb(255 255 255 / 35%);
   border-color: rgba(255, 255, 255, 0.2);
+}
+.segment-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.segment input:checked + .segment-label .segment-icon {
+  color: #ffffff;
 }
 .segment input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 1px; }
 
@@ -1208,11 +1222,13 @@ input[type='file']::file-selector-button {
   border-color: var(--glass-line);
 }
 
-[data-material='liquid-glass'] .segmented .segment span {
+[data-material='liquid-glass'] .segmented .segment span,
+[data-material='liquid-glass'] .segmented .segment .segment-label {
   border-radius: 9px;
 }
 
-[data-material='liquid-glass'] .segmented .segment input:checked + span {
+[data-material='liquid-glass'] .segmented .segment input:checked + span,
+[data-material='liquid-glass'] .segmented .segment input:checked + .segment-label {
   background: var(--accent) !important;
   color: #ffffff !important;
   box-shadow: 0 4px 14px -3px var(--primary-glow), inset 0 1px 0 rgb(255 255 255 / 45%);
@@ -1590,8 +1606,9 @@ input[type='file']::file-selector-button {
 .office-live { display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 12px; flex: 1; }
 .office-stage { position: relative; height: calc(100dvh - 146px); min-height: 480px; overflow: hidden; border: 1px solid var(--line); border-radius: 24px; background: var(--surface); }
 .office-stage > div:first-child { height: 100%; }
-.office-hint { position: absolute; bottom: 14px; left: 16px; padding: 8px 12px; border-radius: 12px; background: var(--surface); font-size: 12px; color: var(--muted); pointer-events: none; }
-.office-panel { position: absolute; top: 16px; right: 16px; width: min(280px, 38%); max-height: calc(100% - 32px); overflow: auto; padding: 16px; border-radius: 20px; border: 1px solid var(--line); background: var(--surface); backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px); box-shadow: 0 12px 32px rgb(0 0 0 / 10%); }
+.office-hint { position: absolute; z-index: 20; bottom: 14px; left: 16px; padding: 8px 12px; border-radius: 12px; background: var(--surface); font-size: 12px; color: var(--muted); pointer-events: none; }
+/* Above the scene's world-space labels (z-index 0–10). */
+.office-panel { position: absolute; z-index: 20; top: 16px; right: 16px; width: min(280px, 38%); max-height: calc(100% - 32px); overflow: auto; padding: 16px; border-radius: 20px; border: 1px solid var(--line); background: var(--surface); backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px); box-shadow: 0 12px 32px rgb(0 0 0 / 10%); }
 .office-panel-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .office-metrics { display: flex; gap: 10px; margin: 12px 0; font-size: 11px; color: var(--muted); }
 .office-metrics strong { display: block; color: var(--text); font-size: 18px; }
@@ -1618,4 +1635,34 @@ input[type='file']::file-selector-button {
   .office-panel { top: auto; bottom: 16px; left: 12px; right: 12px; width: auto; max-height: 36%; padding: 12px; }
   .office-hint { top: 12px; bottom: auto; left: 12px; font-size: 10px; }
   .office-metrics { margin: 8px 0; }
+}
+
+/* Character messages stay inside Office and bind to the selected native session. */
+.office-panel-conversation { width: min(420px, 48%); }
+.office-panel-conversation .office-agent-list { max-height: 150px; overflow: auto; }
+.character-conversation.chat-main { min-height: 0; background: transparent; border: 0; }
+.character-conversation .chat-head { padding: 8px 0; }
+.character-conversation .chat-title { font-size: 14px; }
+.character-conversation .chat-workspace { font-size: 11px; }
+.character-conversation .transcript { max-height: 280px; overflow: auto; font-size: 12px; gap: 10px; padding: 10px 0; }
+.character-conversation .chat-empty { padding: 12px 0; font-size: 12px; }
+.character-conversation .chat-empty h3 { font-size: 13px; }
+.character-conversation .chat-footer { position: static; padding: 0; background: transparent; backdrop-filter: none; }
+.character-conversation .composer textarea { min-height: 60px; font-size: 12px; }
+.character-conversation .composer { padding: 10px; }
+.character-conversation .muted-note { font-size: 12px; color: var(--muted); }
+/* World-space labels (drei Html) size to their text: without nowrap they shrink to one word per line. */
+.office-stage .floor-label, .office-stage .room-sign, .office-stage .room-label, .office-stage .corridor-label {
+  pointer-events: none; user-select: none; white-space: nowrap;
+  padding: 4px 8px; border: 1px solid var(--line); border-radius: 7px; background: var(--surface); color: var(--text); font-size: 10px;
+  box-shadow: 0 5px 16px -8px rgb(0 0 0 / 45%);
+}
+.office-stage .floor-label strong { margin-right: 5px; }
+.office-stage .room-label { padding: 3px 7px; font-size: 9px; font-weight: 700; }
+.office-stage .corridor-label { padding: 2px 7px; color: var(--muted); font-size: 8px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+@media (max-width: 700px) {
+  .office-panel-conversation { width: auto; max-height: 62%; }
+  .office-panel-conversation .office-agent-list { max-height: 72px; }
+  .character-conversation .transcript { max-height: 150px; }
+  .office-view-switch button { padding-inline: 8px; }
 }
