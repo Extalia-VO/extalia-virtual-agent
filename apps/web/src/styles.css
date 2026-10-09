@@ -599,6 +599,10 @@ fieldset > legend { padding: 0; margin-bottom: 6px; }
 .msg.notice .icon { margin-top: 2px; width: 16px; height: 16px; }
 .msg.notice.error { background: var(--error-soft); color: var(--error); }
 .msg.notice.info { background: var(--sunken); color: var(--muted); }
+/* Edges of a conversation carried over from another agent. */
+.msg.handoff { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: .78rem; letter-spacing: .02em; }
+.msg.handoff::before, .msg.handoff::after { content: ''; flex: 1; border-top: 1px dashed var(--line); }
+.msg.handoff.end { color: var(--accent); }
 .usage-line { color: var(--muted); font-size: .78rem; text-align: right; font-variant-numeric: tabular-nums; }
 
 .tool-card, .approval-card {
@@ -807,6 +811,8 @@ input[type='file']::file-selector-button {
 .history-meta div { display: flex; flex-wrap: wrap; gap: 4px 10px; }
 .history-meta dt { color: var(--muted); min-width: 70px; }
 .history-meta dd { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; overflow-wrap: anywhere; min-width: 0; }
+.continue-panel { display: grid; gap: 8px; justify-items: start; }
+.continue-panel .continue-body { display: grid; gap: 10px; width: 100%; padding: 12px; }
 .history-viewer .confirm { display: grid; gap: 8px; padding: 10px 12px; border-radius: 10px; background: var(--error-soft); }
 .library-transcript { padding-top: 4px; }
 .back-to-list { display: none !important; justify-self: start; }

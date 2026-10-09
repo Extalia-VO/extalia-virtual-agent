@@ -54,7 +54,10 @@ export interface WorkerItem {
   callId?: string;
 }
 
-export type TranscriptItem = UserItem | AssistantItem | ToolItem | ApprovalItem | FilesItem | NoticeItem | UsageItem | WorkerItem;
+/** Edge of a conversation carried over from another agent (`import` channel events). */
+export interface HandoffItem { kind: 'handoff'; id: string; edge: 'start' | 'end'; runtime: string }
+
+export type TranscriptItem = UserItem | AssistantItem | ToolItem | ApprovalItem | FilesItem | NoticeItem | UsageItem | WorkerItem | HandoffItem;
 
 interface Turn {
   cancelled: boolean;
@@ -90,6 +93,8 @@ export function projectTranscript(events: readonly ExtaliaEvent[]): TranscriptIt
   const workers = new Map<string, WorkerItem>();
   let streaming: AssistantItem | undefined;
   let turn: Turn | undefined;
+  /** Runtime whose carried-over conversation is being shown. */
+  let carrying: string | undefined;
 
   const currentTurn = (): Turn => (turn ??= { cancelled: false, tools: [], workers: [], approvals: [] });
   const settleStream = () => { if (streaming) streaming.streaming = false; streaming = undefined; };
@@ -117,6 +122,16 @@ export function projectTranscript(events: readonly ExtaliaEvent[]): TranscriptIt
     if (seen.has(event.id)) continue;
     seen.add(event.id);
     const body = event.body;
+    const carried = event.source.channel === 'import';
+    if (carried && carrying === undefined) {
+      endTurn();
+      carrying = event.source.runtime;
+      items.push({ kind: 'handoff', id: `${event.id}:start`, edge: 'start', runtime: carrying });
+    } else if (!carried && carrying !== undefined && body.type !== 'session.started') {
+      endTurn();
+      items.push({ kind: 'handoff', id: `${event.id}:end`, edge: 'end', runtime: carrying });
+      carrying = undefined;
+    }
     const worker = event.agentId ? workers.get(event.agentId) : undefined;
     if (worker) {
       // Worker activity stays inside its card instead of joining the primary's tool cards.
@@ -288,6 +303,11 @@ export function projectTranscript(events: readonly ExtaliaEvent[]): TranscriptIt
         break;
     }
   }
+  if (carrying !== undefined) {
+    // Carried turns never finish here; the next prompt continues in Extalia.
+    endTurn();
+    items.push({ kind: 'handoff', id: 'handoff:end', edge: 'end', runtime: carrying });
+  }
   return items;
 }
 
@@ -310,6 +330,8 @@ export function projectActivity(events: readonly ExtaliaEvent[]): SessionActivit
   const subagents = new Set<string>();
   for (const event of events) {
     const body = event.body;
+    // A conversation carried over from another agent is history, not work in progress.
+    if (event.source.channel === 'import') continue;
     if (body.type === 'subagent.spawned') subagents.add(body.subagentId);
     // Workers report their own state; the status line follows the primary agent.
     if (event.agentId && subagents.has(event.agentId)) continue;

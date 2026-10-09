@@ -1,3 +1,4 @@
+import { sourceLabel } from '@extalia/core';
 import type { ApprovalDecisionInput } from '@extalia/platform';
 import type { ActivityKind } from '@extalia/protocol';
 import { useState } from 'react';
@@ -165,6 +166,12 @@ export function TranscriptView({ t, items, language, onDecide }: {
               </li>
             );
           case 'usage': return <li key={item.id} className="msg"><UsageLine t={t} item={item} language={language} /></li>;
+          case 'handoff':
+            return (
+              <li key={item.id} className={`msg handoff ${item.edge}`}>
+                <span>{item.edge === 'start' ? t.handoff.carried(sourceLabel(item.runtime)) : t.handoff.here}</span>
+              </li>
+            );
         }
       })}
     </ol>

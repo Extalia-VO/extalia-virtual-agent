@@ -217,4 +217,31 @@ describe('reduceOffice (Opus 5.5 Specification)', () => {
 
     expect(stateA).toEqual(stateB);
   });
+
+  it('calculates deterministic A* path using buildNavGraph and findRoute', async () => {
+    const templateWithNav: OfficeTemplate = {
+      ...sampleTemplate,
+      floors: [
+        {
+          ...sampleTemplate.floors[0]!,
+          waypoints: [
+            { id: 'wp-start', floorId: 'floor-1', kind: 'corridor', position: [0, 0, 0] },
+            { id: 'wp-mid', floorId: 'floor-1', kind: 'corridor', position: [5, 0, 0] },
+            { id: 'wp-end', floorId: 'floor-1', kind: 'door', position: [10, 0, 0] }
+          ],
+          edges: [
+            { from: 'wp-start', to: 'wp-mid', cost: 5 },
+            { from: 'wp-mid', to: 'wp-end', cost: 5 }
+          ]
+        }
+      ]
+    };
+
+    const graph = (await import('../src/index.js')).buildNavGraph(templateWithNav);
+    const route = (await import('../src/index.js')).findRoute(graph, 'wp-start', 'wp-end');
+
+    expect(route).not.toBeNull();
+    expect(route?.nodeIds).toEqual(['wp-start', 'wp-mid', 'wp-end']);
+    expect(route?.cost).toBe(10);
+  });
 });

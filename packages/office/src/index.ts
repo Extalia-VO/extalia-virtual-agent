@@ -1,5 +1,10 @@
 import type { ActivityKind, ExtaliaEvent } from '@extalia/protocol';
 
+export interface Vec2 {
+  readonly x: number;
+  readonly y: number;
+}
+
 export type Vec3 = readonly [number, number, number];
 export type RoomKind = string;
 
@@ -18,6 +23,9 @@ export const WELL_KNOWN_ROOMS = [
 ] as const;
 
 export type EventPattern = `${string}.${string}` | `${string}.*`;
+
+const cmp = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
+const dist2 = (a: Vec2, b: Vec2): number => (a.x - b.x) ** 2 + (a.y - b.y) ** 2;
 
 export interface WorkstationDefinition {
   readonly id: string;
@@ -175,6 +183,190 @@ export function matchesPattern(pattern: EventPattern, type: string): boolean {
   return pattern === type;
 }
 
+// ───────────────────────── NavGraph & A* Pathfinding (Opus/Sonnet Logic) ─────────────────────────
+
+export interface NavNode {
+  readonly id: string;
+  readonly floorId: string;
+  readonly pos: Vec2;
+}
+
+export interface NavEdge {
+  readonly to: string;
+  readonly cost: number;
+}
+
+export interface NavGraph {
+  readonly nodes: ReadonlyMap<string, NavNode>;
+  readonly edges: ReadonlyMap<string, readonly NavEdge[]>;
+}
+
+export interface Route {
+  readonly nodeIds: readonly string[];
+  readonly cost: number;
+}
+
+export function buildNavGraph(template: OfficeTemplate): NavGraph {
+  const nodes = new Map<string, NavNode>();
+  const adj = new Map<string, NavEdge[]>();
+
+  for (const floor of template.floors) {
+    for (const wp of floor.waypoints) {
+      nodes.set(wp.id, {
+        id: wp.id,
+        floorId: wp.floorId,
+        pos: { x: wp.position[0], y: wp.position[2] }
+      });
+      adj.set(wp.id, []);
+    }
+  }
+
+  const addEdge = (from: string, to: string, cost: number) => {
+    const list = adj.get(from);
+    if (list && !list.some(e => e.to === to)) {
+      list.push({ to, cost });
+    }
+  };
+
+  for (const floor of template.floors) {
+    for (const edge of floor.edges) {
+      const fromNode = nodes.get(edge.from);
+      const toNode = nodes.get(edge.to);
+      if (fromNode && toNode) {
+        const cost = edge.cost ?? Math.sqrt(dist2(fromNode.pos, toNode.pos));
+        addEdge(edge.from, edge.to, cost);
+        if (edge.bidirectional !== false) {
+          addEdge(edge.to, edge.from, cost);
+        }
+      }
+    }
+  }
+
+  const edges = new Map<string, readonly NavEdge[]>();
+  for (const [id, list] of adj) {
+    edges.set(id, [...list].sort((a, b) => cmp(a.to, b.to)));
+  }
+
+  return { nodes, edges };
+}
+
+export function findRoute(graph: NavGraph, from: string, to: string): Route | null {
+  const start = graph.nodes.get(from);
+  const goal = graph.nodes.get(to);
+  if (!start || !goal) return null;
+  if (from === to) return { nodeIds: [from], cost: 0 };
+
+  const h = (n: NavNode): number => Math.sqrt(dist2(n.pos, goal.pos));
+  const g = new Map<string, number>([[from, 0]]);
+  const parent = new Map<string, string>();
+  const closed = new Set<string>();
+
+  interface PriorityQueueEntry { id: string; f: number; h: number }
+  const open: PriorityQueueEntry[] = [{ id: from, f: h(start), h: h(start) }];
+
+  while (open.length > 0) {
+    open.sort((a, b) => a.f - b.f || a.h - b.h || cmp(a.id, b.id));
+    const current = open.shift()!;
+    if (closed.has(current.id)) continue;
+    if (current.id === to) {
+      const path: string[] = [to];
+      let p = parent.get(to);
+      while (p) {
+        path.push(p);
+        p = parent.get(p);
+      }
+      path.reverse();
+      return { nodeIds: path, cost: g.get(to) ?? 0 };
+    }
+
+    closed.add(current.id);
+
+    for (const edge of graph.edges.get(current.id) ?? []) {
+      if (closed.has(edge.to)) continue;
+      const targetNode = graph.nodes.get(edge.to);
+      if (!targetNode) continue;
+
+      const ng = (g.get(current.id) ?? 0) + edge.cost;
+      if (ng < (g.get(edge.to) ?? Infinity)) {
+        g.set(edge.to, ng);
+        parent.set(edge.to, current.id);
+        const nh = h(targetNode);
+        open.push({ id: edge.to, f: ng + nh, h: nh });
+      }
+    }
+  }
+
+  return null;
+}
+
+// ───────────────────────── Deterministic Slot Allocation Logic ─────────────────────────
+
+export type AllocationReason = 'byAgent' | 'sticky' | 'near_parent' | 'byRole' | 'overflow';
+
+export interface AllocationOutput {
+  readonly slotId: string;
+  readonly reason: AllocationReason;
+}
+
+export function allocateSlot(
+  template: OfficeTemplate,
+  slots: readonly SlotStatus[],
+  agent: AgentIdentity,
+  previousSlotId?: string
+): AllocationOutput | null {
+  const freeSlots = slots.filter(s => s.state === 'AVAILABLE').map(s => s.slotId).sort(cmp);
+  if (!freeSlots.length) return null;
+
+  // 1. byAgent pin
+  if (template.assignment.byAgent && template.assignment.byAgent[agent.agentId]) {
+    const pinned = template.assignment.byAgent[agent.agentId]!;
+    if (freeSlots.includes(pinned)) {
+      return { slotId: pinned, reason: 'byAgent' };
+    }
+  }
+
+  // 2. sticky desk
+  if (template.assignment.sticky && previousSlotId && freeSlots.includes(previousSlotId)) {
+    return { slotId: previousSlotId, reason: 'sticky' };
+  }
+
+  // 3. near_parent (for subagents)
+  if (agent.kind === 'subagent' && agent.parentAgentId && template.assignment.subagent === 'near_parent') {
+    const parentOccupied = slots.find(s => s.occupantAgentId === agent.parentAgentId);
+    if (parentOccupied) {
+      const parentRoom = template.floors.flatMap(f => f.rooms).find(r => r.workstations.some(w => w.id === parentOccupied.slotId));
+      if (parentRoom) {
+        const roomFree = parentRoom.workstations.map(w => w.id).filter(id => freeSlots.includes(id)).sort(cmp);
+        if (roomFree[0]) {
+          return { slotId: roomFree[0], reason: 'near_parent' };
+        }
+      }
+    }
+  }
+
+  // 4. byRole
+  const targetRoomIdOrKind = template.assignment.byRole[agent.role];
+  if (targetRoomIdOrKind) {
+    const matchingRooms = template.floors.flatMap(f => f.rooms).filter(r => r.id === targetRoomIdOrKind || r.kind === targetRoomIdOrKind);
+    const candidateWorkstations = matchingRooms.flatMap(r => r.workstations).map(w => w.id).filter(id => freeSlots.includes(id)).sort(cmp);
+    if (candidateWorkstations[0]) {
+      return { slotId: candidateWorkstations[0], reason: 'byRole' };
+    }
+  }
+
+  // 5. overflow
+  const overflowRoom = template.floors.flatMap(f => f.rooms).find(r => r.id === template.assignment.overflowRoomId);
+  if (overflowRoom) {
+    const overflowWorkstations = overflowRoom.workstations.map(w => w.id).filter(id => freeSlots.includes(id)).sort(cmp);
+    if (overflowWorkstations[0]) {
+      return { slotId: overflowWorkstations[0], reason: 'overflow' };
+    }
+  }
+
+  // Fallback to lowest free slot ID (deterministic)
+  return { slotId: freeSlots[0]!, reason: 'overflow' };
+}
+
 export function initialOfficeState(template: OfficeTemplate): OfficeState {
   const slots: SlotStatus[] = [];
   for (const floor of template.floors) {
@@ -203,7 +395,7 @@ export function initialOfficeState(template: OfficeTemplate): OfficeState {
   return {
     templateId: template.id,
     presences: [],
-    slots,
+    slots: slots.sort((a, b) => cmp(a.slotId, b.slotId)),
     meetings: [],
     rooms,
     spawnQueue: []
@@ -243,16 +435,16 @@ export function reduceOffice(
       const agentId = envelopeAgentId ?? body.name;
       if (state.presences.some(p => p.identity.agentId === agentId)) return { ...state, rooms };
 
-      const availableSlot = state.slots.find(s => s.state === 'AVAILABLE');
-      const slotId = availableSlot ? availableSlot.slotId : 'overflow';
-
       const identity: AgentIdentity = {
         agentId,
         displayName: body.name,
-        role: body.role ?? 'general',
+        role: body.role ?? 'primary',
         parentAgentId: body.parentAgentId,
-        kind: 'agent'
+        kind: 'primary'
       };
+
+      const allocation = allocateSlot(template, state.slots, identity);
+      const slotId = allocation ? allocation.slotId : 'overflow';
 
       const presence: OfficePresence = {
         identity,
@@ -262,14 +454,14 @@ export function reduceOffice(
         lastActiveAt: at
       };
 
-      const slots = availableSlot
+      const slots = allocation
         ? state.slots.map(s => s.slotId === slotId ? { ...s, state: 'OCCUPIED' as SlotState, occupantAgentId: agentId, since: at } : s)
         : state.slots;
 
       return {
         ...state,
         rooms,
-        presences: [...state.presences, presence],
+        presences: [...state.presences, presence].sort((a, b) => cmp(a.identity.agentId, b.identity.agentId)),
         slots
       };
     }
@@ -277,9 +469,6 @@ export function reduceOffice(
     case 'subagent.spawned': {
       const { subagentId, role, label } = body;
       if (state.presences.some(p => p.identity.agentId === subagentId)) return { ...state, rooms };
-
-      const availableSlot = state.slots.find(s => s.state === 'AVAILABLE');
-      const slotId = availableSlot ? availableSlot.slotId : 'overflow';
 
       const identity: AgentIdentity = {
         agentId: subagentId,
@@ -289,6 +478,9 @@ export function reduceOffice(
         kind: 'subagent'
       };
 
+      const allocation = allocateSlot(template, state.slots, identity);
+      const slotId = allocation ? allocation.slotId : 'overflow';
+
       const presence: OfficePresence = {
         identity,
         intent: { kind: 'at_desk', slotId, activity: 'working' },
@@ -297,14 +489,14 @@ export function reduceOffice(
         lastActiveAt: at
       };
 
-      const slots = availableSlot
+      const slots = allocation
         ? state.slots.map(s => s.slotId === slotId ? { ...s, state: 'OCCUPIED' as SlotState, occupantAgentId: subagentId, since: at } : s)
         : state.slots;
 
       return {
         ...state,
         rooms,
-        presences: [...state.presences, presence],
+        presences: [...state.presences, presence].sort((a, b) => cmp(a.identity.agentId, b.identity.agentId)),
         slots
       };
     }

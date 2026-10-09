@@ -153,6 +153,12 @@ export function ConnectionForm({ t, agents, draft, onChange, showAllErrors = fal
           <Segmented legend={t.connection.skills} value={draft.skills} options={ownerOptions(preset.nativeSkills)} onChange={skills => update({ skills })} />
         </div>
         <p className="muted small">{preset.nativeMemory || preset.nativeSkills ? t.connection.featuresHintNative(preset.label) : t.connection.featuresHint}</p>
+        <label className="switch">
+          <input type="checkbox" role="switch" checked={draft.history} aria-describedby={`${id}-history-hint`} onChange={event => update({ history: event.target.checked })} />
+          <span className="switch-track" aria-hidden="true" />
+          <span>{t.connection.history}</span>
+        </label>
+        <p className="muted small" id={`${id}-history-hint`}>{draft.history ? t.connection.historyOn : t.connection.historyOff}</p>
       </div>
 
       <div className="form-stack tight">

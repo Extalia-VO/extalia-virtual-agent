@@ -1,3 +1,4 @@
+import { sourceLabel } from '@extalia/core';
 import type { AgentHostApi, ApprovalDecisionInput, HostState } from '@extalia/platform';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { errorMessage } from '../host/remote';
@@ -102,6 +103,8 @@ export function ChatPage({ t, language, agents, state, onState, selection, onSel
           <Icon name={listOpen ? 'close' : 'menu'} />{listOpen ? t.chat.hideSessions : t.chat.showSessions}
         </button>
         <h1 id="chat-title" className="chat-title">{session ? session.title || t.chat.untitled : t.chat.newSession}</h1>
+        {session?.continuedFrom && <span className="badge">{t.handoff.badge(sourceLabel(session.continuedFrom.sourceId))}</span>}
+        {session?.transient && <span className="badge warn" title={t.handoff.notSavedHint}>{t.handoff.notSaved}</span>}
         <span className="chat-workspace" title={workspace.projectLocation}><Icon name="folder" />{workspace.name}</span>
       </div>
 

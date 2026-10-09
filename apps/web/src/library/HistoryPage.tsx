@@ -5,15 +5,23 @@ import { errorMessage } from '../host/remote';
 import type { Messages } from '../i18n';
 import { Icon } from '../ui/Icon';
 import { Segmented } from '../ui/Segmented';
+import { ContinueInExtalia } from './ContinueInExtalia';
 import { countByState, groupLibrary } from './library';
 import { LibraryTranscript } from './LibraryTranscript';
 
 type Loaded = { id: string; session?: LibrarySession; error?: string };
 
-function Viewer({ t, language, agents, summary, onState, onClose }: {
+/** Leaving the library for a new session that continues one of its conversations. */
+export interface ContinueHandlers {
+  onContinued: (sessionId: string, workspaceId: string) => void;
+  onOpenSettings: () => void;
+}
+
+function Viewer({ t, language, agents, state, summary, onState, onClose, onContinued, onOpenSettings }: ContinueHandlers & {
   t: Messages;
   language: string;
   agents: AgentHostApi;
+  state: HostState;
   summary: LibrarySessionSummary;
   onState: (next: HostState) => void;
   onClose: () => void;
@@ -80,6 +88,10 @@ function Viewer({ t, language, agents, summary, onState, onClose }: {
         </div>
       )}
       {error && <p className="form-error" role="alert"><Icon name="alert" />{error}</p>}
+      {mode === 'view' && summary.state !== 'trashed' && (
+        <ContinueInExtalia t={t} agents={agents} state={state} source={{ kind: 'library', id: summary.id }}
+          {...(summary.projectLocation ? { projectPath: summary.projectLocation } : {})} onContinued={onContinued} onOpenSettings={onOpenSettings} />
+      )}
       {!current ? <p className="muted" role="status">{t.common.loading}</p>
         : current.error ? <p className="form-error"><Icon name="alert" />{t.history.loadFailed} {current.error}</p>
           : current.session && <LibraryTranscript t={t} messages={current.session.messages} />}
@@ -88,7 +100,7 @@ function Viewer({ t, language, agents, summary, onState, onClose }: {
 }
 
 /** Imported conversations, grouped by workspace, with a read-only viewer. */
-export function HistoryPage({ t, language, agents, state, onState, onOpenImport }: {
+export function HistoryPage({ t, language, agents, state, onState, onOpenImport, onContinued, onOpenSettings }: ContinueHandlers & {
   t: Messages;
   language: string;
   agents: AgentHostApi;
@@ -144,7 +156,8 @@ export function HistoryPage({ t, language, agents, state, onState, onOpenImport 
           ))}
         </section>
         {selected
-          ? <Viewer key={selected.id} t={t} language={language} agents={agents} summary={selected} onState={onState} onClose={() => setSelectedId(null)} />
+          ? <Viewer key={selected.id} t={t} language={language} agents={agents} state={state} summary={selected} onState={onState} onClose={() => setSelectedId(null)}
+            onContinued={onContinued} onOpenSettings={onOpenSettings} />
           : <section className="card history-viewer placeholder"><p className="muted">{t.history.select}</p></section>}
       </div>
     </div>

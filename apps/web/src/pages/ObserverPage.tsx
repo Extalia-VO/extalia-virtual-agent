@@ -4,10 +4,12 @@ import { useEffect, useState } from 'react';
 import { SessionList } from '../chat/SessionList';
 import { errorMessage } from '../host/remote';
 import type { Messages } from '../i18n';
+import { ContinueInExtalia } from '../library/ContinueInExtalia';
+import type { ContinueHandlers } from '../library/HistoryPage';
 import { LibraryTranscript } from '../library/LibraryTranscript';
 import { Icon } from '../ui/Icon';
 
-export function ObserverPage({ t, language, agents, state, onState, onAdd }: {
+export function ObserverPage({ t, language, agents, state, onState, onAdd, onContinued, onOpenSettings }: ContinueHandlers & {
   t: Messages; language: string; agents: AgentHostApi; state: HostState; onState: (state: HostState) => void; onAdd: () => void;
 }) {
   const sessions = state.sessions.filter(item => item.control === 'observed');
@@ -57,6 +59,10 @@ export function ObserverPage({ t, language, agents, state, onState, onAdd }: {
           <div className="actions"><button type="button" disabled={busy} onClick={() => { void run(() => agents.setObservation(selected.id, !observation?.watching)).catch(() => undefined); }}>
             <Icon name={observation?.watching ? 'stop' : 'refresh'} />{observation?.watching ? t.observer.pause : t.observer.resume}
           </button></div>
+          {content?.session?.messages.length ? (
+            <ContinueInExtalia t={t} agents={agents} state={state} source={{ kind: 'observed', id: selected.id }}
+              {...(observation?.projectPath ? { projectPath: observation.projectPath } : {})} onContinued={onContinued} onOpenSettings={onOpenSettings} />
+          ) : null}
           {content?.error ? <p className="form-error" role="alert">{content.error}</p> : !content?.session ? <p>{t.common.loading}</p> : <LibraryTranscript t={t} messages={content.session.messages} />}
         </>}
       </section>

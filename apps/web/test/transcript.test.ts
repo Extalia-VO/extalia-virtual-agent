@@ -10,6 +10,25 @@ function session() {
 }
 
 describe('projectTranscript', () => {
+  it('marks a conversation carried over from another agent and does not treat it as running', () => {
+    const event = session();
+    const carried = (body: EventBody, n: number): ExtaliaEvent =>
+      createEvent({ id: `c${n}`, sessionId: 's1', agentId: 'codex', source: { runtime: 'codex', channel: 'import', adapter: 'continuation' }, body });
+    const events = [
+      event({ type: 'session.started', control: 'managed', title: 'Fix login' }),
+      carried({ type: 'prompt.submitted', text: 'Fix login', via: 'native' }, 1),
+      carried({ type: 'model.completed', text: 'Patched auth.ts' }, 2),
+      carried({ type: 'prompt.submitted', text: 'Add a test', via: 'native' }, 3),
+    ];
+    expect(projectTranscript(events).map(item => item.kind === 'handoff' ? `${item.kind}:${item.edge}:${item.runtime}` : item.kind))
+      .toEqual(['handoff:start:codex', 'user', 'assistant', 'user', 'handoff:end:codex']);
+    expect(projectActivity(events).running).toBe(false);
+
+    const continued = [...events, event({ type: 'prompt.submitted', text: 'Continue', via: 'extalia' }), event({ type: 'model.completed', text: 'Done' })];
+    expect(projectTranscript(continued).map(item => item.kind)).toEqual(['handoff', 'user', 'assistant', 'user', 'handoff', 'user', 'assistant']);
+    expect(projectActivity(continued).running).toBe(true);
+  });
+
   it('streams deltas and replaces them with the completed text', () => {
     const event = session();
     const streaming = [

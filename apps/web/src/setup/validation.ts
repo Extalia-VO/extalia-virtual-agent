@@ -26,6 +26,8 @@ export interface ConnectionDraft {
   hasStoredKey: boolean;
   memory: FeatureOwner;
   skills: FeatureOwner;
+  /** Save this connection's sessions on disk. */
+  history: boolean;
   effort: Effort;
   orchestration: OrchestrationDraft;
 }
@@ -63,6 +65,7 @@ export function draftFromPreset(id: ProviderPresetId, previous?: ConnectionDraft
     hasStoredKey: false,
     memory: preset.defaults.memory,
     skills: preset.defaults.skills,
+    history: previous?.history ?? true,
     effort: preset.defaults.effort ?? 'high',
     // Tier models follow the provider; the on/off choice and limit are the user's.
     orchestration: {
@@ -86,6 +89,7 @@ export function draftFromConnection(view: ConnectionView): ConnectionDraft {
     hasStoredKey: view.credential.kind === 'stored',
     memory: view.features.memory,
     skills: view.features.skills,
+    history: view.features.history !== false,
     effort: view.effort ?? preset.defaults.effort ?? 'high',
     orchestration: orchestrationDraft(view.orchestration),
   };
@@ -140,7 +144,7 @@ export function toConnectionInput(draft: ConnectionDraft): { input: ConnectionIn
     baseUrl: draft.baseUrl.trim().replace(/\/+$/, ''),
     model: draft.model.trim(),
     credential,
-    features: { memory: owner(draft.memory, preset.nativeMemory), skills: owner(draft.skills, preset.nativeSkills) },
+    features: { memory: owner(draft.memory, preset.nativeMemory), skills: owner(draft.skills, preset.nativeSkills), ...(draft.history ? {} : { history: false }) },
     ...(preset.api === 'anthropic-messages' ? { effort: draft.effort } : {}),
     orchestration: {
       enabled: draft.orchestration.enabled,

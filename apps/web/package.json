@@ -1,7 +1,7 @@
 {
   "name": "@extalia/web",
   "description": "Extalia Web client and the shared renderer UI used by Desktop.",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "private": true,
   "license": "MIT",
   "type": "module",

@@ -25,6 +25,16 @@ export type WorkspaceErrorKey = 'nameRequired' | 'folderRequired' | 'folderUnche
 const NPM_INSTALL = 'npm i -g extalia-vo';
 
 const en = {
+  handoff: {
+    continue: 'Continue in Extalia',
+    lead: 'Start an Extalia session that carries over this conversation, for example when the other agent ran out of quota. The original is not changed.',
+    workspace: 'Workspace', start: 'Start session', starting: 'Starting…',
+    needsSetup: 'Add a model connection and a workspace in Settings to continue conversations here.',
+    openSettings: 'Open Settings', matches: 'same project folder',
+    carried: (source: string) => `Earlier in ${source}`, here: 'Continued in Extalia',
+    badge: (source: string) => `From ${source}`,
+    notSaved: 'Not saved', notSavedHint: 'This connection does not save history. The session disappears when Extalia closes.',
+  },
   observer: {
     title: 'Observed agents', label: 'Observed', lead: 'Follow selected native transcripts while their agents run in their own apps.',
     note: 'Read-only. Prompts, permissions and tools stay in the original app. Extalia checks the selected transcript every four seconds while open; displayed activity is limited to what the source saves.',
@@ -128,6 +138,9 @@ const en = {
     owners: { extalia: 'Extalia', off: 'Off' },
     featuresHint: 'Extalia gives the agent its own memory and skills. Turn them off for a plain model.',
     featuresHintNative: (name: string) => `${name} has its own memory and skills. Choosing Extalia makes Extalia ask ${name} not to add its memory to these requests.`,
+    history: 'Save session history on this device',
+    historyOn: 'Sessions and their messages are kept in Extalia\'s data folder.',
+    historyOff: 'New sessions stay in memory only and disappear when Extalia closes. Sessions saved earlier are kept until you delete them.',
     test: 'Test connection', testing: 'Testing…',
     testOk: (ms?: number) => ms === undefined ? 'Connected.' : `Connected in ${ms} ms.`,
     testModels: (count: number) => `${count} ${count === 1 ? 'model' : 'models'} available:`,
@@ -365,6 +378,16 @@ const en = {
 export type Messages = typeof en;
 
 const id: Messages = {
+  handoff: {
+    continue: 'Lanjutkan di Extalia',
+    lead: 'Mulai session Extalia yang membawa percakapan ini, misalnya saat agent lain kehabisan kuota. Percakapan asli tidak diubah.',
+    workspace: 'Workspace', start: 'Mulai session', starting: 'Memulai…',
+    needsSetup: 'Tambahkan koneksi model dan workspace di Pengaturan untuk melanjutkan percakapan di sini.',
+    openSettings: 'Buka Pengaturan', matches: 'folder project sama',
+    carried: (source: string) => `Sebelumnya di ${source}`, here: 'Dilanjutkan di Extalia',
+    badge: (source: string) => `Dari ${source}`,
+    notSaved: 'Tidak disimpan', notSavedHint: 'Koneksi ini tidak menyimpan riwayat. Session hilang saat Extalia ditutup.',
+  },
   observer: {
     title: 'Agent yang diamati', label: 'Diamati', lead: 'Ikuti transcript pilihan saat agent berjalan di aplikasi aslinya.',
     note: 'Read-only. Prompt, izin, dan tool tetap di aplikasi asli. Extalia memeriksa transcript pilihan setiap empat detik saat terbuka; aktivitas yang tampil terbatas pada yang disimpan sumber.',
@@ -468,6 +491,9 @@ const id: Messages = {
     owners: { extalia: 'Extalia', off: 'Mati' },
     featuresHint: 'Extalia memberi agent memori dan skill miliknya. Matikan untuk model polos.',
     featuresHintNative: (name: string) => `${name} punya memori dan skill sendiri. Jika memilih Extalia, Extalia meminta ${name} agar tidak menambahkan memorinya ke permintaan ini.`,
+    history: 'Simpan riwayat session di perangkat ini',
+    historyOn: 'Session dan pesannya disimpan di folder data Extalia.',
+    historyOff: 'Session baru hanya ada di memori dan hilang saat Extalia ditutup. Session yang sudah tersimpan tetap ada sampai Anda menghapusnya.',
     test: 'Uji koneksi', testing: 'Menguji…',
     testOk: (ms?: number) => ms === undefined ? 'Terhubung.' : `Terhubung dalam ${ms} md.`,
     testModels: (count: number) => `${count} model tersedia:`,

@@ -382,6 +382,25 @@ function createMockAgents(options: MockOptions): AgentHostApi {
       if (!workspace) throw new Error('This workspace no longer exists.');
       return structuredClone(addSession(workspace));
     },
+    async continueSession(source, workspaceId) {
+      await latency();
+      const workspace = state.workspaces.find(item => item.id === workspaceId);
+      if (!workspace) throw new Error('This workspace no longer exists.');
+      if (source.kind !== 'library') throw new Error('No native transcript is available in this mock host.');
+      const conversation = await imports.methods.librarySession(source.id);
+      const summary = addSession(workspace, conversation.title);
+      summary.continuedFrom = { sourceId: conversation.provenance.sourceId, title: conversation.title };
+      const origin = { runtime: conversation.provenance.sourceId, channel: 'import' as const, adapter: 'continuation' };
+      for (const message of conversation.messages.filter(item => item.role === 'user' || item.role === 'assistant').slice(-20)) {
+        const list = events.get(summary.id)!;
+        const event = createEvent({ sessionId: summary.id, source: origin, agentId: origin.runtime, body: message.role === 'user'
+          ? { type: 'prompt.submitted', text: message.content, via: 'native' } : { type: 'model.completed', text: message.content } });
+        event.seq = list.length + 1;
+        list.push(event);
+        for (const listener of listeners) listener(event);
+      }
+      return structuredClone(summary);
+    },
     async renameSession(sessionId, title) { await latency(); session(sessionId).title = title.trim(); return snapshot(); },
     async deleteSession(sessionId) {
       await latency();

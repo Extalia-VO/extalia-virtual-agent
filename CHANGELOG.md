@@ -6,6 +6,13 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.0.4] - 2026-10-09
+
+### Added
+
+- Continue in Extalia: start a managed session from an imported or observed conversation (for example a Codex or Claude Code session that ran out of quota). The recent conversation and the original request are carried over as context, Chat marks where the earlier agent stopped, and the source is never changed.
+- Connections can turn session history off. New sessions on such a connection stay in memory only, are marked "Not saved" and disappear when Extalia closes.
+
 ## [0.0.3] - 2026-10-09
 
 ### Changed

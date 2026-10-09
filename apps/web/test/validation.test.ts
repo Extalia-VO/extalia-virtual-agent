@@ -40,6 +40,11 @@ describe('connection drafts', () => {
     expect(edited).toMatchObject({ apiKey: '', hasStoredKey: true, orchestration: { enabled: false, maxDelegations: '5', tiers: { complex: '', quick: 'claude-haiku-4-5' } } });
     expect(validateConnection(edited)).toEqual({});
     expect(toConnectionInput(edited)).toEqual({ input: expect.objectContaining({ id: 'c1', credential: { kind: 'stored' } }) });
+    expect(edited.history).toBe(true);
+    expect(toConnectionInput(edited).input.features).toEqual({ memory: 'extalia', skills: 'off' });
+    const unsaved = draftFromConnection({ ...view, features: { ...view.features, history: false } });
+    expect(unsaved.history).toBe(false);
+    expect(toConnectionInput(unsaved).input.features).toEqual({ memory: 'extalia', skills: 'off', history: false });
     expect(toConnectionInput(edited).input.orchestration).toEqual({ enabled: false, maxDelegations: 5, tiers: { quick: 'claude-haiku-4-5' } });
   });
 

@@ -22,9 +22,9 @@ import { UpdateBanner, useUpdateStatus } from './updates/Updates';
 const ICONS: Record<PageId, IconName> = { office: 'monitor', chat: 'chat', observe: 'diagnostics', history: 'book', import: 'download', logs: 'logs', start: 'start', diagnostics: 'diagnostics', settings: 'settings' };
 
 /** Only pages that work in this host appear; nothing is shown as a placeholder. */
-function navigation(agents: boolean, workflow: 'managed' | 'observe'): { section: 'work' | 'app'; pages: PageId[] }[] {
+function navigation(agents: boolean, workflow: 'managed' | 'observe', canChat: boolean): { section: 'work' | 'app'; pages: PageId[] }[] {
   return agents
-    ? [{ section: 'work', pages: workflow === 'observe' ? ['office', 'observe', 'history', 'import', 'logs'] : ['office', 'chat', 'observe', 'history', 'import', 'logs'] }, { section: 'app', pages: ['settings', 'diagnostics'] }]
+    ? [{ section: 'work', pages: workflow === 'observe' && !canChat ? ['office', 'observe', 'history', 'import', 'logs'] : ['office', 'chat', 'observe', 'history', 'import', 'logs'] }, { section: 'app', pages: ['settings', 'diagnostics'] }]
     : [{ section: 'app', pages: ['start', 'logs', 'diagnostics', 'settings'] }];
 }
 
@@ -82,6 +82,15 @@ export function App({ platform }: { platform: Platform }) {
   useEffect(() => { document.documentElement.dataset.material = preferences.material; }, [preferences.material]);
 
   const update = (next: Preferences) => { setPreferences(next); savePreferences(next); };
+  // A conversation continued from another agent opens in Chat.
+  const continued = {
+    onContinued: (sessionId: string, workspaceId: string) => {
+      agents?.getState().then(host.apply, () => undefined);
+      setSelection({ workspaceId, sessionId });
+      setPage('chat');
+    },
+    onOpenSettings: () => setPage('settings'),
+  };
   const banner = <UpdateBanner t={t} updater={updater} status={updateStatus} />;
 
   let body;
@@ -97,7 +106,7 @@ export function App({ platform }: { platform: Platform }) {
           <div className="sidebar-head">
             <Brand compact={compact} />
           </div>
-          {navigation(Boolean(agents), hostState?.workflow ?? 'managed').map(group => (
+          {navigation(Boolean(agents), hostState?.workflow ?? 'managed', Boolean(hostState?.workspaces.length)).map(group => (
             <div key={group.section} className="nav-group">
               <p className="nav-section">{t.nav[group.section]}</p>
               <ul className="nav-list">
@@ -128,9 +137,9 @@ export function App({ platform }: { platform: Platform }) {
                 selection={selection} onSelect={setSelection} onOpenSettings={() => setPage('settings')} />
             )}
             {activePage === 'history' && agents && hostState && (
-              <HistoryPage t={t} language={preferences.language} agents={agents} state={hostState} onState={host.apply} onOpenImport={() => setPage('import')} />
+              <HistoryPage t={t} language={preferences.language} agents={agents} state={hostState} onState={host.apply} onOpenImport={() => setPage('import')} {...continued} />
             )}
-            {activePage === 'observe' && agents && hostState && <ObserverPage t={t} language={preferences.language} agents={agents} state={hostState} onState={host.apply} onAdd={() => setPage('import')} />}
+            {activePage === 'observe' && agents && hostState && <ObserverPage t={t} language={preferences.language} agents={agents} state={hostState} onState={host.apply} onAdd={() => setPage('import')} {...continued} />}
             {activePage === 'import' && agents && (
               <ImportPage t={t} language={preferences.language} agents={agents} onState={host.apply}
                 onObserved={() => setPage('observe')}
