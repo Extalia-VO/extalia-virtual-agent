@@ -23,6 +23,8 @@ const RULES = {
   '@extalia/importers': { allow: ['@extalia/core'], forbid: DOMAIN_FORBIDDEN },
   // Pure agent loop and model providers: runs in any JavaScript host.
   '@extalia/runtime': { allow: ['@extalia/protocol', '@extalia/core'], forbid: DOMAIN_FORBIDDEN },
+  // Spatial office contracts, room semantics, and presence projection.
+  '@extalia/office': { allow: ['@extalia/protocol'], forbid: DOMAIN_FORBIDDEN },
   // Node host for the runtime: files, commands, credentials. No UI or Electron.
   '@extalia/host': { allow: ['@extalia/protocol', '@extalia/core', '@extalia/platform', '@extalia/runtime', '@extalia/importers'], forbid: [/^react(-dom)?(\/|$)/, /^three(\/|$)/, /^electron$/] },
   '@extalia/web': { allow: ['@extalia/protocol', '@extalia/core', '@extalia/platform'], forbid: [/^electron$/, /^node:/] },

@@ -1,0 +1,17 @@
+{
+  "name": "@extalia/office",
+  "version": "0.0.3",
+  "description": "Spatial office contracts, room semantics, and pure workstation allocation for Extalia.",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@extalia/protocol": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "~6.0.3"
+  }
+}
