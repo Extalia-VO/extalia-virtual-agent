@@ -1,7 +1,7 @@
 import type { ConnectionView } from '@extalia/platform';
 import { describe, expect, it } from 'vitest';
 import {
-  checkBaseUrl, draftFromConnection, draftFromPreset, emptyWorkspaceDraft, suggestedTiers, toConnectionInput, toWorkspaceInput, validateConnection, validateWorkspace,
+  checkBaseUrl, draftFromConnection, draftFromPreset, draftFromWorkspace, emptyWorkspaceDraft, suggestedTiers, toConnectionInput, toWorkspaceInput, validateConnection, validateWorkspace,
 } from '../src/setup/validation';
 
 describe('connection drafts', () => {
@@ -77,5 +77,17 @@ describe('workspace drafts', () => {
     const ready = { ...emptyWorkspaceDraft('c1'), name: ' App ', folderInput: '/projects/app/', folder: { path: '/projects/app', name: 'app' } };
     expect(validateWorkspace(ready)).toEqual({});
     expect(toWorkspaceInput(ready)).toEqual({ name: 'App', projectLocation: '/projects/app', connectionId: 'c1', permissions: { fileWrite: 'ask', commands: 'ask' } });
+  });
+
+  it('needs a Hermes profile instead of a connection for Hermes Agent', () => {
+    const folder = { folderInput: '/projects/app', folder: { path: '/projects/app', name: 'app' } };
+    const hermes = { ...emptyWorkspaceDraft('', 'hermes'), name: 'App', ...folder };
+    expect(validateWorkspace(hermes)).toEqual({});
+    expect(toWorkspaceInput(hermes)).toEqual({ name: 'App', projectLocation: '/projects/app', runtimeId: 'hermes', runtimeProfileId: 'default', permissions: { fileWrite: 'ask', commands: 'ask' } });
+    expect(validateWorkspace({ ...hermes, hermesProfile: 'Work Bot', hermesModel: '-m x' })).toEqual({ profile: 'profileInvalid', model: 'modelInvalid' });
+    expect(toWorkspaceInput({ ...hermes, hermesProfile: 'work', hermesModel: ' provider/model ' })).toMatchObject({ runtimeProfileId: 'work', runtimeModel: 'provider/model' });
+    const saved = draftFromWorkspace({ id: 'w1', profileId: 'p', name: 'App', projectLocation: '/projects/app', runtimeId: 'hermes', runtimeProfileId: 'work', createdAt: 'x', updatedAt: 'x' });
+    expect(saved).toMatchObject({ runtimeId: 'hermes', hermesProfile: 'work', hermesModel: '', connectionId: '' });
+    expect(draftFromWorkspace({ id: 'w2', profileId: 'p', name: 'N', providerProfileId: 'c1', createdAt: 'x', updatedAt: 'x' }).runtimeId).toBe('extalia-native');
   });
 });

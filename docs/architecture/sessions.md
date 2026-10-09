@@ -83,4 +83,6 @@ alternating user and assistant turns) and appear in its event log on the
 `import` channel with the source runtime, so Chat shows them between "Earlier
 in …" and "Continued in Extalia" dividers. The system prompt tells the agent
 where the conversation came from and to check the current files before relying
-on the earlier work.
+on the earlier work. In a Hermes Agent workspace, Hermes keeps its own history,
+so the carried messages are sent to it as context with the first prompt instead
+([runtime-adapters.md](runtime-adapters.md#hermes-agent-managed)).

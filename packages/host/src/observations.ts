@@ -14,7 +14,7 @@ interface Record {
   id: string; title: string; reference: NativeObservationRef; watching: boolean;
   createdAt: string; lastActiveAt: string; projectPath?: string;
 }
-interface Live { snapshot?: PortableSession; revision: string; status: 'watching' | 'paused' | 'unavailable'; lastCheckedAt?: string; error?: string }
+interface Live { snapshot?: PortableSession; revision: string; sourceRevision?: string; status: 'watching' | 'paused' | 'unavailable'; lastCheckedAt?: string; error?: string }
 const digest = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const sourceKey = (ref: NativeObservationRef) => `${ref.locationId}:${ref.nativeSessionId}`;
 
@@ -25,6 +25,7 @@ export class Observations {
   private chain: Promise<unknown> = Promise.resolve();
   private timer?: ReturnType<typeof setInterval>;
   private closed = false;
+  private refreshing?: Promise<void>;
   private constructor(private directory: string, private source: NativeImportService, private emit: (event: ExtaliaEvent) => void) {}
 
   static async create(directory: string, source: NativeImportService, emit: (event: ExtaliaEvent) => void, intervalMs = 4000): Promise<Observations> {
@@ -94,7 +95,7 @@ export class Observations {
     this.emit(createEvent({ sessionId: record.id, source: { runtime: record.reference.sourceId, channel: 'transcript', adapter: 'native-transcript' },
       body: { type: 'session.updated', revision: digest([live.revision, live.status, record.watching, record.title]), messageCount: live.snapshot?.messages.length ?? 0 } }));
   }
-  private async update(record: Record, snapshot: PortableSession) {
+  private async update(record: Record, snapshot: PortableSession, sourceRevision?: string) {
     if (snapshot.messages.length > 5000 || Buffer.byteLength(JSON.stringify(snapshot)) > MAX_SNAPSHOT_BYTES) throw new Error('Live observation is limited to 5000 messages / 5 MB. Import this history instead.');
     const current = this.live.get(record.id)!;
     const revision = this.revision(snapshot), changed = revision !== current.revision || current.status !== 'watching';
@@ -104,14 +105,14 @@ export class Observations {
       record.lastActiveAt = snapshot.lastMessageAt;
       record.projectPath = snapshot.workspace?.projectLocation;
     }
-    this.live.set(record.id, { snapshot, revision, status: 'watching', lastCheckedAt });
+    this.live.set(record.id, { snapshot, revision, ...(sourceRevision ? { sourceRevision } : {}), status: 'watching', lastCheckedAt });
     if (changed) { await this.save(); this.notify(record); }
   }
   observe(scanId: string, candidateIds: string[]): Promise<void> {
     return this.serialize(async () => {
       if (!Array.isArray(candidateIds) || !candidateIds.length || candidateIds.length > MAX_OBSERVATIONS) throw new Error(`Select 1–${MAX_OBSERVATIONS} sessions to observe.`);
       const selected = [...new Set(candidateIds)].map(id => this.source.observation(scanId, id));
-      if (this.records.length + selected.filter(item => !this.records.some(record => sourceKey(record.reference) === sourceKey(item.reference))).length > MAX_OBSERVATIONS) throw new Error(`Observe at most ${MAX_OBSERVATIONS} sessions. Pause or delete an old observation first.`);
+      if (this.records.length + selected.filter(item => !this.records.some(record => sourceKey(record.reference) === sourceKey(item.reference))).length > MAX_OBSERVATIONS) throw new Error(`Observe at most ${MAX_OBSERVATIONS} sessions. Delete an old observation first.`);
       for (const item of selected) {
         if (item.session.messages.length > 5000 || Buffer.byteLength(JSON.stringify(item.session)) > MAX_SNAPSHOT_BYTES) throw new Error('This history is too large for live observation. Import it instead.');
       }
@@ -128,9 +129,19 @@ export class Observations {
     });
   }
   refresh(): Promise<void> {
-    return this.serialize(async () => {
+    // One pending poll at most: slow disks must not build an interval backlog.
+    if (this.refreshing) return this.refreshing;
+    const pending = this.serialize(async () => {
       for (const record of this.records.filter(item => item.watching)) {
-        try { await this.update(record, this.source.readObservation(record.reference)); }
+        try {
+          const revision = this.source.observationRevision(record.reference);
+          const live = this.live.get(record.id)!;
+          if (live.sourceRevision === revision && live.snapshot) {
+            const recovered = live.status !== 'watching';
+            this.live.set(record.id, { ...live, status: 'watching', error: undefined, lastCheckedAt: new Date().toISOString() });
+            if (recovered) this.notify(record);
+          } else await this.update(record, this.source.readObservation(record.reference), revision);
+        }
         catch (error) {
           const live = this.live.get(record.id)!;
           const message = safeText(error instanceof Error ? error.message : 'The transcript could not be read.', 600);
@@ -140,6 +151,9 @@ export class Observations {
         }
       }
     });
+    this.refreshing = pending;
+    void pending.finally(() => { if (this.refreshing === pending) this.refreshing = undefined; }).catch(() => undefined);
+    return pending;
   }
   setWatching(id: string, watching: boolean): Promise<void> {
     return this.serialize(async () => {
@@ -155,7 +169,8 @@ export class Observations {
     return this.serialize(async () => {
       const record = this.records.find(item => item.id === id);
       if (!record) throw new Error('That observed session no longer exists.');
-      record.title = safeLabel(title, 200); if (!record.title) throw new Error('Enter a title.');
+      const clean = safeLabel(title, 200); if (!clean) throw new Error('Enter a title.');
+      record.title = clean;
       await this.save(); this.notify(record);
     });
   }

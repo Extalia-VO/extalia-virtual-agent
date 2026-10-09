@@ -30,18 +30,22 @@ Two rules protect this structure (PRD §47):
 apps/
   web/        React client; also the renderer UI loaded by Desktop
   desktop/    Electron shell: secure window, app protocol, preload bridge
-  cli/        `extalia` command: diagnostics and validation (Bridge later)
+  cli/        `extalia` command: local Bridge, updates, diagnostics and validation
 packages/
   protocol/   Extalia Protocol v0: event types and validation (no dependencies)
   core/       Domain model: profiles, workspaces, session library, portable
               sessions, privacy rules
   platform/   Platform capability contracts and data-directory resolution
+  runtime/    Extalia Native agent loop, delegation, provider adapters and the Hermes Agent stream mapping
+  host/       Node host: files, commands, credentials, Hermes Agent processes, imports and selected transcript observation
+  importers/  Pure native-history parsers
+  office/     Pure spatial presence contracts; scene integration is deferred
 tooling/      Repository checks: boundaries, public safety, versions
 docs/         Architecture, ADRs, migration ledger, release notes
 ```
 
-More packages from the PRD's proposed monorepo (renderer, office, avatars,
-runtime, adapters, importers, skills, orchestration, knowledge, …) are added
+More packages from the PRD's proposed monorepo (renderer, avatars,
+adapters, knowledge, …) are added
 when their phase starts, each with a boundary rule in
 `tooling/check-boundaries.mjs`.
 

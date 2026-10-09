@@ -141,6 +141,7 @@ export interface NativeObservationRef { locationId: string; sourceId: string; na
 
 export class NativeImportService {
   private readonly snapshots = new Map<string, { at: number; refs: Map<string, Ref> }>();
+  private readonly observationLocations = new Map<string, Location>();
   private readonly now: () => number;
 
   private constructor(private readonly options: NativeImportOptions, private readonly sqlite: SqliteModule | undefined) {
@@ -406,16 +407,48 @@ export class NativeImportService {
     const session = preview.sessions[0]?.session;
     const ref = this.snapshots.get(scanId)?.refs.get(candidateId);
     if (!ref || !session) throw new Error(preview.diagnostics[0]?.message ?? 'This transcript cannot be observed. Scan again.');
+    this.observationLocations.set(ref.location.id, ref.location);
     return { reference: { locationId: ref.location.id, sourceId: ref.location.sourceId, nativeSessionId: ref.candidate.nativeSessionId, path: ref.path }, session };
   }
 
-  readObservation(reference: NativeObservationRef): PortableSession {
-    const location = this.knownLocations().find(item => item.id === reference.locationId && item.sourceId === reference.sourceId);
-    if (!location?.available || !location.supported || location.kind === 'binary' || location.kind === 'unavailable') throw new Error('The selected history source is unavailable.');
+  private observationLocation(reference: NativeObservationRef): Location {
+    const location = this.observationLocations.get(reference.locationId) ?? this.knownLocations().find(item => item.id === reference.locationId);
+    if (!location || location.sourceId !== reference.sourceId || !location.supported || location.kind === 'binary' || location.kind === 'unavailable') throw new Error('The selected history source is unavailable.');
     if (typeof reference.path !== 'string' || typeof reference.nativeSessionId !== 'string' || reference.nativeSessionId.length > 4096) throw new Error('Invalid observed session reference.');
-    let ref: Ref;
+    contained(location.root, location.path);
     if (location.kind === 'hermes') {
       if (contained(location.root, reference.path) !== contained(location.root, location.path)) throw new Error('The observed database does not match its source.');
+    } else {
+      if (!(location.kind === 'gemini' ? /^session-.*\.jsonl?$/.test(basename(reference.path)) : reference.path.endsWith('.jsonl'))) throw new Error('The observed path is not a supported transcript.');
+      contained(location.path, reference.path);
+    }
+    this.observationLocations.set(location.id, location);
+    return location;
+  }
+
+  /** Metadata only. WAL changes invalidate Hermes snapshots even when its session row stays unchanged. */
+  observationRevision(reference: NativeObservationRef): string {
+    const location = this.observationLocation(reference);
+    const root = location.kind === 'hermes' ? location.root : location.path;
+    const stamp = (path: string) => {
+      const canonical = contained(root, path), info = statSync(canonical, { bigint: true });
+      if (!info.isFile()) throw new Error('The observed source is not a regular file.');
+      return [canonical, info.dev, info.ino, info.size, info.mtimeNs, info.ctimeNs].map(String);
+    };
+    const stamps = [stamp(reference.path)];
+    if (location.kind === 'hermes') for (const suffix of ['-wal', '-journal', '-shm']) {
+      const sidecar = `${location.path}${suffix}`;
+      if (!existsSync(sidecar)) continue;
+      // Validate shared-memory links too; its lock bookkeeping is not a transcript change.
+      if (suffix === '-shm') contained(root, sidecar); else stamps.push(stamp(sidecar));
+    }
+    return digest(JSON.stringify(stamps));
+  }
+
+  readObservation(reference: NativeObservationRef): PortableSession {
+    const location = this.observationLocation(reference);
+    let ref: Ref;
+    if (location.kind === 'hermes') {
       const db = this.database(location);
       try {
         const query = sessionQuery(db);
@@ -430,7 +463,6 @@ export class NativeImportService {
             ...(project ? { projectPath: safeText(project, 2000) } : {}), ...(location.profile ? { profile: location.profile } : {}) } };
       } finally { db.close(); }
     } else {
-      if (!(location.kind === 'gemini' ? /session-.*\.jsonl?$/.test(basename(reference.path)) : reference.path.endsWith('.jsonl'))) throw new Error('The observed path is not a supported transcript.');
       ref = this.fileRef(location, reference.path);
       if (ref.candidate.nativeSessionId !== reference.nativeSessionId) throw new Error('The source file now belongs to another session.');
     }

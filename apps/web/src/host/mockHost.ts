@@ -4,6 +4,7 @@ import type {
 } from '@extalia/platform';
 import { createEvent, type EventBody, type ExtaliaEvent, type RiskLevel, type Usage } from '@extalia/protocol';
 import { createMockLibrary } from './mockLibrary';
+import { createMockWorkspaceInspection } from './mockWorkspace';
 
 /**
  * Development-only, in-memory agent host so the UI can be built and
@@ -11,14 +12,16 @@ import { createMockLibrary } from './mockLibrary';
  * builds with `?mock` in the URL; production builds never contain it.
  *
  * URL options: `mock=ready` starts after setup with sample sessions,
- * `host=desktop` behaves like the Desktop app (folder picker), and
- * `update=available|ready|downloading` shows the update banner.
+ * `host=desktop` behaves like the Desktop app (folder picker),
+ * `update=available|ready|downloading` shows the update banner, and `hermes`
+ * reports Hermes Agent as installed (its sessions still run the mock scenarios).
  */
 
 export interface MockOptions {
   seed: 'setup' | 'ready';
   host: 'desktop' | 'bridge';
   update?: UpdateStatus['state'];
+  hermes?: boolean;
 }
 
 export function mockOptionsFromSearch(search: string): MockOptions {
@@ -29,6 +32,7 @@ export function mockOptionsFromSearch(search: string): MockOptions {
     seed: params.get('mock') === 'ready' ? 'ready' : 'setup',
     host: params.get('host') === 'desktop' ? 'desktop' : 'bridge',
     ...(update && (states as string[]).includes(update) ? { update: update as UpdateStatus['state'] } : {}),
+    ...(params.has('hermes') ? { hermes: true } : {}),
   };
 }
 
@@ -361,8 +365,10 @@ function createMockAgents(options: MockOptions): AgentHostApi {
     async saveWorkspace(input) {
       await latency();
       const existing = input.id ? state.workspaces.find(item => item.id === input.id) : undefined;
-      if (existing) Object.assign(existing, { name: input.name, projectLocation: input.projectLocation, providerProfileId: input.connectionId, permissions: input.permissions, updatedAt: iso() });
-      else addWorkspace(input.name, input.projectLocation, input.connectionId, input.permissions);
+      const workspace = existing ?? addWorkspace(input.name, input.projectLocation, input.connectionId ?? '', input.permissions);
+      Object.assign(workspace, { name: input.name, projectLocation: input.projectLocation, providerProfileId: input.connectionId ?? '', permissions: input.permissions, updatedAt: iso() });
+      for (const key of ['runtimeId', 'runtimeProfileId', 'runtimeModel'] as const) delete workspace[key];
+      if (input.runtimeId === 'hermes') Object.assign(workspace, { runtimeId: 'hermes', runtimeProfileId: input.runtimeProfileId || 'default', ...(input.runtimeModel ? { runtimeModel: input.runtimeModel } : {}) });
       return snapshot();
     },
     async deleteWorkspace(id) {
@@ -432,7 +438,12 @@ function createMockAgents(options: MockOptions): AgentHostApi {
       emit(sessionId, { type: 'user.intervention', action: 'cancel' });
       for (const request of pending.values()) if (request.sessionId === sessionId) request.resolve(CANCELLED);
     },
+    // Hermes Agent is reported as installed only with `?hermes`; nothing real is started.
+    async runtimes() {
+      return [{ id: 'extalia-native', available: true, profiles: [] }, { id: 'hermes', available: Boolean(options.hermes), profiles: options.hermes ? ['default', 'work'] : [] }];
+    },
     ...imports.methods,
+    ...createMockWorkspaceInspection(id => { if (!state.workspaces.some(item => item.id === id)) throw new Error('That workspace no longer exists.'); }, latency),
     subscribe(listener) {
       listeners.add(listener);
       return () => { listeners.delete(listener); };

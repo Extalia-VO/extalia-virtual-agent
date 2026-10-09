@@ -2,6 +2,7 @@ import type { AgentHostApi, FileSystemCapability, HostState } from '@extalia/pla
 import { useState } from 'react';
 import { errorMessage } from '../../host/remote';
 import type { Messages } from '../../i18n';
+import { availableHermes, useRuntimes } from '../../setup/useRuntimes';
 import { draftFromWorkspace, emptyWorkspaceDraft, isValid, toWorkspaceInput, validateWorkspace, type WorkspaceDraft } from '../../setup/validation';
 import { WorkspaceForm } from '../../setup/WorkspaceForm';
 import { Icon } from '../../ui/Icon';
@@ -18,6 +19,9 @@ export function WorkspacesSection({ t, agents, picker, state, onState }: {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirming, setConfirming] = useState<string | null>(null);
+  const runtimes = useRuntimes(agents);
+  // Without a connection, a new workspace starts on Hermes Agent when it is installed.
+  const newRuntime = !state.connections.length && availableHermes(runtimes) ? 'hermes' : 'extalia-native';
 
   async function run(action: () => Promise<void>) {
     setBusy(true);
@@ -43,12 +47,12 @@ export function WorkspacesSection({ t, agents, picker, state, onState }: {
           <h2 id="settings-workspaces">{t.settings.workspaces}</h2>
           <p className="muted small">{t.settings.workspacesLead}</p>
         </div>
-        {!draft && <button type="button" className="button" onClick={() => edit(emptyWorkspaceDraft(state.connections[0]?.id))}><Icon name="plus" />{t.settings.addWorkspace}</button>}
+        {!draft && <button type="button" className="button" onClick={() => edit(emptyWorkspaceDraft(state.connections[0]?.id, newRuntime))}><Icon name="plus" />{t.settings.addWorkspace}</button>}
       </div>
 
       {draft ? (
         <form className="editor" aria-label={draft.id ? t.settings.editing(draft.name) : t.settings.addWorkspace} onSubmit={event => { event.preventDefault(); void save(); }}>
-          <WorkspaceForm t={t} agents={agents} picker={picker} draft={draft} onChange={setDraft} connections={state.connections} showAllErrors={attempted} />
+          <WorkspaceForm t={t} agents={agents} picker={picker} draft={draft} onChange={setDraft} connections={state.connections} runtimes={runtimes} showAllErrors={attempted} />
           {error && <p className="form-error" role="alert"><Icon name="alert" />{error}</p>}
           <div className="actions">
             <button type="submit" className="primary" disabled={busy}>{busy ? t.common.saving : t.common.save}</button>
@@ -65,7 +69,8 @@ export function WorkspacesSection({ t, agents, picker, state, onState }: {
                   <strong>{workspace.name}</strong>
                   <code className="entity-path">{workspace.projectLocation ?? '—'}</code>
                   <span className="muted small">
-                    {connection ? t.settings.usesConnection(connection.name) : t.settings.missingConnection}
+                    {workspace.runtimeId === 'hermes' ? t.workspace.usesHermes(workspace.runtimeProfileId ?? 'default')
+                      : connection ? t.settings.usesConnection(connection.name) : t.settings.missingConnection}
                     {' · '}{t.setup.permissionSummary(mode(workspace.permissions?.fileWrite), mode(workspace.permissions?.commands))}
                   </span>
                 </div>

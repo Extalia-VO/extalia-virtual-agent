@@ -1,25 +1,28 @@
-import type { PermissionMode } from '@extalia/core';
-import type { AgentHostApi, ConnectionView, FileSystemCapability } from '@extalia/platform';
+import { RUNTIME_IDS, type PermissionMode, type RuntimeId } from '@extalia/core';
+import type { AgentHostApi, ConnectionView, FileSystemCapability, RuntimeInfo } from '@extalia/platform';
 import { useId, useState } from 'react';
 import { errorMessage } from '../host/remote';
 import type { Messages } from '../i18n';
 import { Icon } from '../ui/Icon';
 import { Segmented } from '../ui/Segmented';
+import { availableHermes } from './useRuntimes';
 import { validateWorkspace, type WorkspaceDraft, type WorkspaceField } from './validation';
 
 /**
  * Workspace editor used by the wizard and Settings. Desktop picks folders with
  * the native dialog; the Bridge cannot, so the user types a path the host checks.
  */
-export function WorkspaceForm({ t, agents, picker, draft, onChange, connections, showAllErrors = false }: {
+export function WorkspaceForm({ t, agents, picker, draft, onChange, connections, runtimes = [], showAllErrors = false }: {
   t: Messages;
   agents: AgentHostApi;
   /** Native folder picker; only used when it reveals full paths (Desktop). */
   picker?: FileSystemCapability;
   draft: WorkspaceDraft;
   onChange: (draft: WorkspaceDraft) => void;
-  /** Offer a connection choice; the wizard fixes it to the one just created. */
+  /** Offer a connection and runtime choice; the wizard fixes them in its earlier step. */
   connections?: ConnectionView[];
+  /** What the host can run; Hermes Agent is offered only when it is installed. */
+  runtimes?: readonly RuntimeInfo[];
   showAllErrors?: boolean;
 }) {
   const id = useId();
@@ -64,6 +67,10 @@ export function WorkspaceForm({ t, agents, picker, draft, onChange, connections,
   }
 
   const folderMessage = folderError ?? errorFor('folder');
+  const hermes = availableHermes(runtimes);
+  const isHermes = draft.runtimeId === 'hermes';
+  const offered = RUNTIME_IDS.filter(runtime => runtime !== 'hermes' || hermes || isHermes);
+  const profiles = [...new Set([...(hermes?.profiles ?? ['default']), draft.hermesProfile].filter(Boolean))];
   const permission = (key: 'fileWrite' | 'commands') => (
     <div className="permission">
       <Segmented legend={t.workspace[key]} value={draft.permissions[key]}
@@ -109,7 +116,7 @@ export function WorkspaceForm({ t, agents, picker, draft, onChange, connections,
             onChange={event => update({ name: event.target.value })} onBlur={() => touch('name')} />
           {errorFor('name') && <small className="field-error">{errorFor('name')}</small>}
         </div>
-        {connections && (
+        {connections && !isHermes && (
           <div className="field">
             <label htmlFor={`${id}-connection`}>{t.workspace.connection}</label>
             <select id={`${id}-connection`} value={draft.connectionId} onChange={event => update({ connectionId: event.target.value })}>
@@ -120,6 +127,37 @@ export function WorkspaceForm({ t, agents, picker, draft, onChange, connections,
           </div>
         )}
       </div>
+
+      {connections && offered.length > 1 && (
+        <div className="field">
+          <Segmented legend={t.workspace.runtime} value={draft.runtimeId}
+            options={offered.map(runtime => ({ value: runtime as RuntimeId, label: t.workspace.runtimes[runtime] }))}
+            onChange={runtimeId => update({ runtimeId })} />
+          <small className="muted">{t.workspace.runtimeHints[draft.runtimeId]}</small>
+        </div>
+      )}
+      {isHermes && (
+        <div className="form-stack tight">
+          <div className="form-grid">
+            <div className="field">
+              <label htmlFor={`${id}-profile`}>{t.workspace.hermesProfile}</label>
+              <select id={`${id}-profile`} value={draft.hermesProfile} aria-invalid={Boolean(errorFor('profile'))} onChange={event => { touch('profile'); update({ hermesProfile: event.target.value }); }}>
+                {profiles.map(profile => <option key={profile} value={profile}>{profile}</option>)}
+              </select>
+              {errorFor('profile') && <small className="field-error">{errorFor('profile')}</small>}
+            </div>
+            <div className="field">
+              <label htmlFor={`${id}-model`}>{t.workspace.hermesModel}</label>
+              <input id={`${id}-model`} type="text" value={draft.hermesModel} maxLength={200} spellCheck={false} autoComplete="off" placeholder={t.workspace.hermesModelPlaceholder}
+                aria-invalid={Boolean(errorFor('model'))} aria-describedby={`${id}-model-hint`}
+                onChange={event => update({ hermesModel: event.target.value })} onBlur={() => touch('model')} />
+              <small id={`${id}-model-hint`} className={errorFor('model') ? 'field-error' : 'muted'}>{errorFor('model') ?? t.workspace.hermesModelHint}</small>
+            </div>
+          </div>
+          {runtimes.length > 0 && !hermes && <p className="warning"><Icon name="alert" />{t.workspace.hermesUnavailable}</p>}
+          <p className="note"><Icon name="shield" />{t.workspace.hermesApprovals}</p>
+        </div>
+      )}
 
       <div className="form-stack tight">
         <h3 className="form-heading">{t.workspace.permissions}</h3>

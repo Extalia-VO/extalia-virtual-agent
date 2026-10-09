@@ -21,7 +21,9 @@ export function ContinueInExtalia({ t, agents, state, source, projectPath, onCon
   onOpenSettings: () => void;
 }) {
   const id = useId();
-  const usable = state.workspaces.filter(workspace => workspace.providerProfileId && state.connections.some(connection => connection.id === workspace.providerProfileId));
+  // Hermes Agent workspaces need no connection; the conversation reaches Hermes with the first prompt.
+  const usable = state.workspaces.filter(workspace => workspace.runtimeId === 'hermes'
+    || (workspace.providerProfileId && state.connections.some(connection => connection.id === workspace.providerProfileId)));
   const suggested = usable.find(workspace => samePath(workspace.projectLocation, projectPath)) ?? usable[0];
   const [open, setOpen] = useState(false);
   const [workspaceId, setWorkspaceId] = useState<string>();

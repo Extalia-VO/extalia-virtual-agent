@@ -1,6 +1,6 @@
 {
   "name": "@extalia/office",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "description": "Spatial office contracts, room semantics, and pure workstation allocation for Extalia.",
   "type": "module",
   "main": "./src/index.ts",

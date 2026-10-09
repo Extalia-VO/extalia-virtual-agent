@@ -34,6 +34,19 @@ Security policy overrides user, project and agent instructions.
 - One host owns a data directory at a time (lock file), so Desktop and the
   Bridge cannot corrupt each other's sessions.
 
+## Files and Git views
+
+- The Files and Git pages are read-only and use the same path rules as the
+  agent's tools: paths stay inside the workspace, `.git/` internals are hidden,
+  credential files are listed but never shown (also not in diffs), and binary
+  or oversized files are not loaded in full.
+- A repository's own configuration can run programs, so Git is started
+  without a shell, with a time limit and a minimal environment (no inherited
+  `GIT_*` variables, no system config), and every call switches off fsmonitor,
+  hooks, pagers, credential helpers, external diff and textconv drivers and
+  each configured filter driver. Extalia never fetches, writes the index or
+  changes the repository.
+
 ## Data handling
 
 - Credentials are never imported, exported or written to project files.

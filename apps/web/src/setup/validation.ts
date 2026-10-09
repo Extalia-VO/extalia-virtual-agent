@@ -1,6 +1,7 @@
 import {
-  DEFAULT_MAX_DELEGATIONS, DEFAULT_PERMISSIONS, ENV_VARIABLE_PATTERN, TASK_TIERS, defaultOrchestration, presetById,
-  type Effort, type FeatureOwner, type Orchestration, type ProviderPresetId, type TaskTier, type Workspace, type WorkspacePermissions,
+  DEFAULT_MAX_DELEGATIONS, DEFAULT_PERMISSIONS, ENV_VARIABLE_PATTERN, RUNTIME_MODEL_PATTERN, RUNTIME_PROFILE_PATTERN, TASK_TIERS, defaultOrchestration, presetById,
+  workspaceRuntime,
+  type Effort, type FeatureOwner, type Orchestration, type ProviderPresetId, type RuntimeId, type TaskTier, type Workspace, type WorkspacePermissions,
 } from '@extalia/core';
 import type { ConnectionInput, ConnectionView, WorkspaceInput } from '@extalia/platform';
 import type { ConnectionErrorKey, WorkspaceErrorKey } from '../i18n';
@@ -164,10 +165,14 @@ export interface WorkspaceDraft {
   folder?: { path: string; name: string };
   connectionId: string;
   permissions: WorkspacePermissions;
+  /** Extalia Native needs a connection; Hermes Agent a profile (and optionally a model). */
+  runtimeId: RuntimeId;
+  hermesProfile: string;
+  hermesModel: string;
 }
 
-export function emptyWorkspaceDraft(connectionId = ''): WorkspaceDraft {
-  return { name: '', folderInput: '', connectionId, permissions: { ...DEFAULT_PERMISSIONS } };
+export function emptyWorkspaceDraft(connectionId = '', runtimeId: RuntimeId = 'extalia-native'): WorkspaceDraft {
+  return { name: '', folderInput: '', connectionId, permissions: { ...DEFAULT_PERMISSIONS }, runtimeId, hermesProfile: 'default', hermesModel: '' };
 }
 
 export function draftFromWorkspace(workspace: Workspace): WorkspaceDraft {
@@ -179,27 +184,35 @@ export function draftFromWorkspace(workspace: Workspace): WorkspaceDraft {
     ...(path ? { folder: { path, name: path.split(/[\\/]/).pop() || path } } : {}),
     connectionId: workspace.providerProfileId ?? '',
     permissions: { ...DEFAULT_PERMISSIONS, ...workspace.permissions },
+    runtimeId: workspaceRuntime(workspace),
+    hermesProfile: workspace.runtimeProfileId ?? 'default',
+    hermesModel: workspace.runtimeModel ?? '',
   };
 }
 
-export type WorkspaceField = 'name' | 'folder' | 'connection';
+export type WorkspaceField = 'name' | 'folder' | 'connection' | 'profile' | 'model';
 
+/** Mirrors the host's rules so problems show before saving. */
 export function validateWorkspace(draft: WorkspaceDraft): Partial<Record<WorkspaceField, WorkspaceErrorKey>> {
   const errors: Partial<Record<WorkspaceField, WorkspaceErrorKey>> = {};
   if (!draft.name.trim()) errors.name = 'nameRequired';
   if (!draft.folder) errors.folder = draft.folderInput.trim() ? 'folderUnchecked' : 'folderRequired';
-  if (!draft.connectionId) errors.connection = 'connectionRequired';
+  if (draft.runtimeId === 'hermes') {
+    if (!RUNTIME_PROFILE_PATTERN.test(draft.hermesProfile.trim() || 'default')) errors.profile = 'profileInvalid';
+    if (draft.hermesModel.trim() && !RUNTIME_MODEL_PATTERN.test(draft.hermesModel.trim())) errors.model = 'modelInvalid';
+  } else if (!draft.connectionId) errors.connection = 'connectionRequired';
   return errors;
 }
 
 export function toWorkspaceInput(draft: WorkspaceDraft): WorkspaceInput {
-  return {
+  const common = {
     ...(draft.id ? { id: draft.id } : {}),
     name: draft.name.trim(),
     projectLocation: draft.folder?.path ?? draft.folderInput.trim(),
-    connectionId: draft.connectionId,
-    permissions: { ...draft.permissions },
   };
+  if (draft.runtimeId !== 'hermes') return { ...common, connectionId: draft.connectionId, permissions: { ...draft.permissions } };
+  const model = draft.hermesModel.trim();
+  return { ...common, runtimeId: 'hermes', runtimeProfileId: draft.hermesProfile.trim() || 'default', ...(model ? { runtimeModel: model } : {}), permissions: { ...draft.permissions } };
 }
 
 export const isValid = (errors: object) => Object.keys(errors).length === 0;

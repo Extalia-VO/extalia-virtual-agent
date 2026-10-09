@@ -8,10 +8,11 @@ import { HistoryPage } from './library/HistoryPage';
 import { ImportPage } from './library/ImportPage';
 import { DiagnosticsPage } from './pages/DiagnosticsPage';
 import { EventLogPage } from './pages/EventLogPage';
+import { FilesPage } from './pages/FilesPage';
+import { GitPage } from './pages/GitPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { StartPage } from './pages/StartPage';
 import { ObserverPage } from './pages/ObserverPage';
-import { OfficePage } from './pages/OfficePage';
 import { loadPreferences, savePreferences, type Preferences } from './preferences';
 import { SetupWizard } from './setup/SetupWizard';
 import { Brand } from './ui/Brand';
@@ -19,12 +20,13 @@ import { Icon, type IconName } from './ui/Icon';
 import { MessagesContext } from './ui/messages';
 import { UpdateBanner, useUpdateStatus } from './updates/Updates';
 
-const ICONS: Record<PageId, IconName> = { office: 'monitor', chat: 'chat', observe: 'diagnostics', history: 'book', import: 'download', logs: 'logs', start: 'start', diagnostics: 'diagnostics', settings: 'settings' };
+const ICONS: Record<PageId, IconName> = { office: 'monitor', chat: 'chat', observe: 'diagnostics', files: 'files', git: 'git', history: 'book', import: 'download', logs: 'logs', start: 'start', diagnostics: 'diagnostics', settings: 'settings' };
 
 /** Only pages that work in this host appear; nothing is shown as a placeholder. */
 function navigation(agents: boolean, workflow: 'managed' | 'observe', canChat: boolean): { section: 'work' | 'app'; pages: PageId[] }[] {
   return agents
-    ? [{ section: 'work', pages: workflow === 'observe' && !canChat ? ['office', 'observe', 'history', 'import', 'logs'] : ['office', 'chat', 'observe', 'history', 'import', 'logs'] }, { section: 'app', pages: ['settings', 'diagnostics'] }]
+    // Files and Git read a workspace's project folder, so they need one.
+    ? [{ section: 'work', pages: workflow === 'observe' && !canChat ? ['observe', 'history', 'import', 'logs'] : ['chat', 'observe', ...(canChat ? ['files', 'git'] as const : []), 'history', 'import', 'logs'] }, { section: 'app', pages: ['settings', 'diagnostics'] }]
     : [{ section: 'app', pages: ['start', 'logs', 'diagnostics', 'settings'] }];
 }
 
@@ -69,8 +71,10 @@ export function App({ platform }: { platform: Platform }) {
   const t = MESSAGES[preferences.language];
   const compact = preferences.sidebar === 'compact';
   const currentSession = useMemo(() => hostState ? resolveChat(hostState, selection).session : undefined, [hostState, selection]);
+  const chatWorkspaceId = selection.workspaceId;
 
-  const activePage = page === 'start' && agents ? defaultPage : page;
+  const groups = navigation(Boolean(agents), hostState?.workflow ?? 'managed', Boolean(hostState?.workspaces.length));
+  const activePage = groups.some(group => group.pages.includes(page)) ? page : defaultPage;
 
   useColorScheme(preferences.theme);
   useEffect(() => {
@@ -106,13 +110,13 @@ export function App({ platform }: { platform: Platform }) {
           <div className="sidebar-head">
             <Brand compact={compact} />
           </div>
-          {navigation(Boolean(agents), hostState?.workflow ?? 'managed', Boolean(hostState?.workspaces.length)).map(group => (
+          {groups.map(group => (
             <div key={group.section} className="nav-group">
               <p className="nav-section">{t.nav[group.section]}</p>
               <ul className="nav-list">
                 {group.pages.map(id => (
                   <li key={id}>
-                    <button type="button" className="nav-item" data-page={id} aria-current={page === id ? 'page' : undefined} title={compact ? t.nav[id] : undefined} onClick={() => setPage(id)}>
+                    <button type="button" className="nav-item" data-page={id} aria-label={t.nav[id]} aria-current={activePage === id ? 'page' : undefined} title={compact ? t.nav[id] : undefined} onClick={() => setPage(id)}>
                       <Icon name={ICONS[id]} /><span className="nav-label">{t.nav[id]}</span>
                     </button>
                   </li>
@@ -131,7 +135,6 @@ export function App({ platform }: { platform: Platform }) {
             <span className="topbar-meta">{hostLabel} · v{platform.info.appVersion}</span>
           </header>
           <main className={`content ${activePage === 'chat' ? 'content-chat' : ''}`} key={activePage}>
-            {activePage === 'office' && <OfficePage />}
             {activePage === 'chat' && agents && hostState && (
               <ChatPage t={t} language={preferences.language} agents={agents} state={hostState} onState={host.apply}
                 selection={selection} onSelect={setSelection} onOpenSettings={() => setPage('settings')} />
@@ -139,6 +142,8 @@ export function App({ platform }: { platform: Platform }) {
             {activePage === 'history' && agents && hostState && (
               <HistoryPage t={t} language={preferences.language} agents={agents} state={hostState} onState={host.apply} onOpenImport={() => setPage('import')} {...continued} />
             )}
+            {activePage === 'files' && agents && hostState && <FilesPage t={t} language={preferences.language} agents={agents} state={hostState} {...(chatWorkspaceId ? { workspaceId: chatWorkspaceId } : {})} />}
+            {activePage === 'git' && agents && hostState && <GitPage t={t} agents={agents} state={hostState} {...(chatWorkspaceId ? { workspaceId: chatWorkspaceId } : {})} />}
             {activePage === 'observe' && agents && hostState && <ObserverPage t={t} language={preferences.language} agents={agents} state={hostState} onState={host.apply} onAdd={() => setPage('import')} {...continued} />}
             {activePage === 'import' && agents && (
               <ImportPage t={t} language={preferences.language} agents={agents} onState={host.apply}

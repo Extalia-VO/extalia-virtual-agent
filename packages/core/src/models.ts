@@ -29,6 +29,20 @@ export interface WorkspacePermissions {
 
 export const DEFAULT_PERMISSIONS: WorkspacePermissions = { fileWrite: 'ask', commands: 'ask' };
 
+/**
+ * Agent loop a workspace's sessions use. `extalia-native` (the default) needs a
+ * model connection; `hermes` drives the locally installed Hermes Agent, which
+ * brings its own models, tools and memory.
+ */
+export type RuntimeId = 'extalia-native' | 'hermes';
+export const RUNTIME_IDS: readonly RuntimeId[] = ['extalia-native', 'hermes'];
+/** Hermes profile names: `default` or a profile directory name. */
+export const RUNTIME_PROFILE_PATTERN = /^[a-z0-9][a-z0-9_-]{0,63}$/;
+/** Model ids passed to a runtime: one token that cannot be read as a command-line option. */
+export const RUNTIME_MODEL_PATTERN = /^[^\s-][^\s]{0,199}$/;
+
+export const workspaceRuntime = (workspace: Pick<Workspace, 'runtimeId'>): RuntimeId => workspace.runtimeId ?? 'extalia-native';
+
 /** A Workspace is a project context. Its sessions are separate from its project location. */
 export interface Workspace {
   id: string;
@@ -36,7 +50,12 @@ export interface Workspace {
   name: string;
   /** Host path or remote location chosen by the user; never inferred by scanning. */
   projectLocation?: string;
+  /** Absent means Extalia Native. */
+  runtimeId?: RuntimeId;
+  /** Runtime profile, for Hermes the profile name (`default` unless chosen). */
   runtimeProfileId?: string;
+  /** Model override passed to the runtime; the runtime profile's default otherwise. */
+  runtimeModel?: string;
   /** Connection (provider profile) used by new sessions in this workspace. */
   providerProfileId?: string;
   defaultAgentId?: string;
@@ -85,9 +104,15 @@ export function decodeWorkspace(raw: unknown): DecodeResult<Workspace> {
       createdAt,
       updatedAt,
     };
-    for (const key of ['projectLocation', 'runtimeProfileId', 'providerProfileId', 'defaultAgentId'] as const) {
+    for (const key of ['projectLocation', 'runtimeProfileId', 'runtimeModel', 'providerProfileId', 'defaultAgentId'] as const) {
       const field = optionalText(value[key], key, { singleLine: true, max: key === 'projectLocation' ? 4096 : 200 });
       if (field) workspace[key] = field;
+    }
+    if (value.runtimeId !== undefined && oneOf(value.runtimeId, RUNTIME_IDS, 'runtimeId') === 'hermes') {
+      workspace.runtimeId = 'hermes';
+      workspace.runtimeProfileId ??= 'default';
+      if (!RUNTIME_PROFILE_PATTERN.test(workspace.runtimeProfileId)) throw new Error('runtimeProfileId: use a Hermes profile name (lowercase letters, numbers, - and _).');
+      if (workspace.runtimeModel && !RUNTIME_MODEL_PATTERN.test(workspace.runtimeModel)) throw new Error('runtimeModel: use a model id without spaces.');
     }
     if (value.permissions !== undefined) {
       const permissions = object(value.permissions, 'permissions');

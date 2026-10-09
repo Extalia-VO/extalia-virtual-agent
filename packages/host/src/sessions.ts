@@ -13,6 +13,8 @@ export interface SessionRecord {
   lastActiveAt: string;
   /** Set when the session continues a conversation from another agent or the library. */
   continuedFrom?: { sourceId: string; title: string };
+  /** Set for Hermes Agent sessions (then `connectionId` is empty); `sessionId` is Hermes' own, for resuming. */
+  runtime?: { id: 'hermes'; profile: string; sessionId?: string };
 }
 
 export type SessionPatch = Partial<Omit<SessionRecord, 'id'>>;
@@ -34,9 +36,12 @@ function isRecord(value: unknown): value is SessionRecord {
   if (!value || typeof value !== 'object') return false;
   const record = value as Record<string, unknown>;
   const origin = record.continuedFrom as Record<string, unknown> | undefined;
+  const runtime = record.runtime as Record<string, unknown> | undefined;
   return typeof record.id === 'string' && SESSION_ID_PATTERN.test(record.id)
     && ['workspaceId', 'connectionId', 'title', 'createdAt', 'lastActiveAt'].every(key => typeof record[key] === 'string')
-    && (origin === undefined || (Boolean(origin) && typeof origin === 'object' && typeof origin.sourceId === 'string' && typeof origin.title === 'string'));
+    && (origin === undefined || (Boolean(origin) && typeof origin === 'object' && typeof origin.sourceId === 'string' && typeof origin.title === 'string'))
+    && (runtime === undefined || (Boolean(runtime) && typeof runtime === 'object' && runtime.id === 'hermes' && typeof runtime.profile === 'string'
+      && (runtime.sessionId === undefined || typeof runtime.sessionId === 'string')));
 }
 
 /** What the host needs from a session store; saved and unsaved sessions share it. */

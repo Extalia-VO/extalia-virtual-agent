@@ -6,6 +6,30 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Brand assets in `docs/brand/`: light and dark logos (symbol and wordmark), the symbol in SVG and PNG, and a 1280 × 640 social preview; the README header shows the logo that matches GitHub's theme.
+
+### Fixed
+
+- README and runtime docs now describe Continue in Extalia and per-connection history.
+
+## [0.0.5] - 2026-10-09
+
+### Changed
+
+- Native observer polling checks file metadata and Hermes database/WAL metadata before parsing, caches source-location resolution, and coalesces overlapping polls. Unchanged sources do not rewrite snapshots or emit redundant updates.
+- Defer the sample Office navigation until real scene integration; preserve the spatial contracts and source for the final milestone.
+
+### Fixed
+
+- Observer-only startup resolves to the Observe page after asynchronous host loading, and icon-only navigation keeps accessible labels on phones.
+- Give the observer list and transcript a responsive two-column layout, preserve the local title after a rejected empty rename, and release the host lock if observer startup fails.
+
+### Validation
+
+- Synthetic native-source tests cover idle parse/write suppression, transcript appends and rewinds, equal-size rewrites, pause/restart/resume, source-boundary recovery, Hermes WAL updates, and rejection of managed actions on observed sessions.
+
 ## [0.0.4] - 2026-10-09
 
 ### Added

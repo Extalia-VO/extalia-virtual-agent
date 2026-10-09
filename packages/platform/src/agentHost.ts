@@ -1,6 +1,6 @@
 import type {
   Connection, CredentialSource, Effort, FeatureOwner, ImportMode, ImportPreview, LibrarySession, LocalState, Orchestration,
-  PortableSession, ProviderApi, ProviderPresetId, Workspace, WorkspacePermissions,
+  PortableSession, ProviderApi, ProviderPresetId, RuntimeId, Workspace, WorkspacePermissions,
 } from '@extalia/core';
 import type { ExtaliaEvent } from '@extalia/protocol';
 
@@ -37,6 +37,8 @@ export interface SessionSummary {
   transient?: boolean;
   /** The conversation this session continues (another agent's session or a library entry). */
   continuedFrom?: { sourceId: string; title: string };
+  /** External managed runtime of the session; absent for Extalia Native (then `connectionId` names the connection). */
+  runtime?: { id: 'hermes'; profile: string; sessionId?: string };
   observation?: { sourceId: string; nativeSessionId: string; projectPath?: string; watching: boolean; status: 'watching' | 'paused' | 'unavailable'; lastCheckedAt?: string; error?: string };
 }
 
@@ -148,8 +150,23 @@ export interface WorkspaceInput {
   id?: string;
   name: string;
   projectLocation: string;
-  connectionId: string;
+  /** Required for Extalia Native; ignored for Hermes Agent. */
+  connectionId?: string;
   permissions: WorkspacePermissions;
+  /** Defaults to Extalia Native. */
+  runtimeId?: RuntimeId;
+  /** Hermes profile; `default` when empty. */
+  runtimeProfileId?: string;
+  /** Optional model override for Hermes. */
+  runtimeModel?: string;
+}
+
+/** A managed runtime and whether this host can run it. */
+export interface RuntimeInfo {
+  id: RuntimeId;
+  available: boolean;
+  /** Hermes profile names (`default` first); names only, nothing inside a profile is read. */
+  profiles: string[];
 }
 
 export interface FolderCheck {
@@ -158,6 +175,83 @@ export interface FolderCheck {
   path?: string;
   name?: string;
   error?: string;
+}
+
+/** One entry of a project-folder listing (Files view). Paths are relative to the project folder, `/`-separated. */
+export interface FileEntry {
+  name: string;
+  path: string;
+  kind: 'file' | 'dir' | 'symlink';
+  /** Bytes; regular files only. */
+  size?: number;
+  /** What a symbolic link points to, only when the target stays inside the project folder. */
+  target?: 'file' | 'dir';
+  /** A conventional credential file or folder: listed, never readable. */
+  credential?: boolean;
+  /** A generated or vendored folder such as node_modules or dist. */
+  generated?: boolean;
+}
+
+export interface FileListing {
+  /** The listed folder; `.` for the project folder itself. */
+  path: string;
+  /** Folders first, then by name; `.git` is never listed. */
+  entries: FileEntry[];
+  /** The folder has more entries than the listing limit (1000). */
+  truncated: boolean;
+}
+
+export interface FileContent {
+  path: string;
+  size: number;
+  /** The file contains NUL bytes; no content is returned. */
+  binary: boolean;
+  /** UTF-8 text, at most 512 KB. */
+  content?: string;
+  /** Lines in `content`. */
+  lines: number;
+  truncated: boolean;
+}
+
+export type GitChangeKind = 'unmodified' | 'modified' | 'type-changed' | 'added' | 'deleted' | 'renamed' | 'copied' | 'unmerged';
+
+export interface GitChange {
+  /** Relative to the project folder; untracked folders end with `/`. */
+  path: string;
+  /** The previous path of a rename or copy, when inside the project folder. */
+  originalPath?: string;
+  /** Staged state. */
+  index: GitChangeKind;
+  /** Working-tree state. */
+  worktree: GitChangeKind;
+  untracked?: boolean;
+  conflicted?: boolean;
+  /** A credential file: listed, its diff is never shown. */
+  credential?: boolean;
+}
+
+export type GitStatus =
+  | { repository: false }
+  | {
+    repository: true;
+    /** Undefined when HEAD is detached. */
+    branch?: string;
+    /** Abbreviated HEAD commit; undefined before the first commit. */
+    commit?: string;
+    upstream?: string;
+    ahead: number;
+    behind: number;
+    changes: GitChange[];
+    truncated: boolean;
+  };
+
+export interface GitDiff {
+  /** The requested path; undefined for all changes. */
+  path?: string;
+  /** Unified diff of the working tree against HEAD (staged and unstaged); untracked files appear as additions. */
+  diff: string;
+  /** The diff was longer than 1 MB. */
+  truncated: boolean;
 }
 
 /** A conversation to continue in a new managed session. */
@@ -205,6 +299,16 @@ export interface AgentHostApi {
   importPortable(json: string): Promise<{ plan: ImportPreview; state: HostState }>;
   librarySession(id: string): Promise<LibrarySession>;
   organizeLibrarySession(id: string, action: LibraryAction, title?: string): Promise<HostState>;
+  /** One folder level of a workspace's project folder (read-only; `.git` hidden, credential files marked). */
+  listFiles(workspaceId: string, dir?: string): Promise<FileListing>;
+  /** A text file of a workspace's project folder, up to 512 KB. Credential files are refused. */
+  readFile(workspaceId: string, path: string): Promise<FileContent>;
+  /** Branch, upstream and changed files of the workspace's Git repository. Never runs repository hooks or filters. */
+  gitStatus(workspaceId: string): Promise<GitStatus>;
+  /** Unified diff against HEAD for one path or, without `path`, every change (credential files excluded). */
+  gitDiff(workspaceId: string, path?: string): Promise<GitDiff>;
+  /** Managed runtimes this host can drive (Hermes Agent when it is installed). */
+  runtimes(): Promise<RuntimeInfo[]>;
   /** Live protocol events for every session. Returns an unsubscribe function. */
   subscribe(listener: (event: ExtaliaEvent) => void): () => void;
 }
@@ -215,6 +319,8 @@ export const AGENT_HOST_METHODS = [
   'completeSetup', 'createSession', 'continueSession', 'renameSession', 'deleteSession', 'sessionEvents', 'sendPrompt', 'resolveApproval', 'cancel',
   'setWorkflow', 'observeImports', 'observationSession', 'setObservation',
   'importLocations', 'scanImports', 'previewImports', 'commitImports', 'importPortable', 'librarySession', 'organizeLibrarySession',
+  'listFiles', 'readFile', 'gitStatus', 'gitDiff',
+  'runtimes',
 ] as const satisfies readonly Exclude<keyof AgentHostApi, 'subscribe'>[];
 
 export type AgentHostMethod = (typeof AGENT_HOST_METHODS)[number];

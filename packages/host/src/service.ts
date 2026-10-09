@@ -1,7 +1,7 @@
 import {
   DEFAULT_PERMISSIONS, applyImport, decodeConnection, decodeLibrary, decodeWorkspace, defaultOrchestration, deleteSession as deleteLibrarySession,
   displayTitle, emptyLibrary, keepsHistory, presetById, previewImport, renameSession as renameLibrarySession, resolveFeatures, safeLabel, setSessionState,
-  sourceLabel, tierModel,
+  sourceLabel, tierModel, RUNTIME_IDS, workspaceRuntime,
   type Connection, type PortableSession, type SessionLibrary, type TaskTier, type Workspace,
 } from '@extalia/core';
 import {
@@ -19,6 +19,8 @@ import { readFile, realpath, rename, rm, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import path from 'node:path';
 import { buildContinuation } from './continuation.js';
+import { continuationPrompt, discoverRuntimes, findHermes, runHermesTurn } from './hermes.js';
+import { InspectError, gitDiff, gitStatus, listFiles, readWorkspaceFile } from './inspect.js';
 import { readJson, writeJsonAtomic } from './jsonStore.js';
 import { acquireHostLock } from './lock.js';
 import { MemoryStore, createMemoryTools } from './memory.js';
@@ -30,6 +32,7 @@ import { MemorySessionStore, SessionStore, newSessionId, type SessionRecord, typ
 import { createSkillTools, loadSkills } from './skills.js';
 import { createCommandTool } from './tools/command.js';
 import { createFileTools } from './tools/files.js';
+import { WorkspacePathError } from './workspaceFs.js';
 
 export interface AgentHostOptions {
   /** Test harness only; normal hosts poll selected transcripts every four seconds. */
@@ -72,6 +75,7 @@ interface Run {
 const INSTRUCTION_FILES = ['AGENTS.md', 'CLAUDE.md'];
 const NEW_SESSION_TITLE = 'New session';
 const ADAPTER = { runtime: 'extalia-native', channel: 'stream' as const, adapter: 'extalia-native' };
+const HERMES_ADAPTER = { runtime: 'hermes', channel: 'stream' as const, adapter: 'hermes-cli' };
 
 const newId = (prefix: string) => `${prefix}_${Date.now().toString(36)}${randomBytes(4).toString('hex')}`;
 const now = () => new Date().toISOString();
@@ -148,7 +152,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
   const credentialStatus = new Map<string, ConnectionView['credentialStatus']>();
   const observations = await Observations.create(layout.state, nativeImport, event => {
     for (const listener of listeners) { try { listener(event); } catch { /* disconnected UI */ } }
-  }, options.observationIntervalMs);
+  }, options.observationIntervalMs).catch(async error => { await lock.release(); throw error; });
 
   const save = async () => writeJsonAtomic(configFile, config, { mode: 0o600 });
 
@@ -195,16 +199,68 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
 
   /** Create a managed session; it is saved unless the workspace's connection keeps no history. */
   async function openSession(workspace: Workspace, title: string, continuedFrom?: SessionRecord['continuedFrom']): Promise<SessionRecord> {
-    if (!workspace.providerProfileId) throw userError('Choose a model connection for this workspace in Settings.');
-    const connection = findConnection(workspace.providerProfileId);
+    // Hermes Agent sessions keep their Hermes profile; Hermes brings its own models, so no connection is needed.
+    const hermes = workspaceRuntime(workspace) === 'hermes';
+    if (!hermes && !workspace.providerProfileId) throw userError('Choose a model connection for this workspace in Settings.');
+    const connection = hermes ? undefined : findConnection(workspace.providerProfileId!);
     const stamp = now();
     const record: SessionRecord = {
-      id: newSessionId(), workspaceId: workspace.id, connectionId: connection.id, title, createdAt: stamp, lastActiveAt: stamp,
+      id: newSessionId(), workspaceId: workspace.id, connectionId: connection?.id ?? '', title, createdAt: stamp, lastActiveAt: stamp,
       ...(continuedFrom ? { continuedFrom } : {}),
+      ...(hermes ? { runtime: { id: 'hermes' as const, profile: workspace.runtimeProfileId ?? 'default' } } : {}),
     };
-    await (keepsHistory(connection) ? savedSessions : unsavedSessions).create(record);
-    publish(record.id, { type: 'session.started', control: 'managed', title: record.title, cwd: workspace.projectLocation ?? '' });
+    await (!connection || keepsHistory(connection) ? savedSessions : unsavedSessions).create(record);
+    publish(record.id, {
+      type: 'session.started', control: 'managed', title: record.title, cwd: workspace.projectLocation ?? '',
+      ...(hermes && workspace.runtimeModel ? { model: workspace.runtimeModel } : {}),
+    }, 'primary', hermes ? { ...HERMES_ADAPTER, adapterVersion: options.version } : undefined);
     return record;
+  }
+
+  /** Workspaces exist and every Extalia Native one can find a connection. */
+  const managedReady = () => Boolean(config.workspaces.length && (config.connections.length || config.workspaces.every(item => workspaceRuntime(item) === 'hermes')));
+
+  /** One prompt through Hermes Agent: a `hermes` process runs while the session is busy. */
+  async function startHermesTurn(record: SessionRecord, runtime: NonNullable<SessionRecord['runtime']>, workspace: Workspace, root: string, prompt: string): Promise<void> {
+    // Reserved first, so a second prompt sent meanwhile is refused instead of starting another process.
+    const controller = new AbortController();
+    const run: Run = { controller, done: Promise.resolve() };
+    runs.set(record.id, run);
+    let executable: string | undefined, text: string;
+    try {
+      executable = await findHermes(env, options.importHome ?? homedir());
+      if (!executable) throw userError('Hermes Agent was not found. Install it, or set EXTALIA_HERMES_BIN to the full path of the hermes command.');
+      // A continued conversation reaches Hermes as context in its first prompt.
+      text = record.continuedFrom && !runtime.sessionId
+        ? continuationPrompt({ source: sourceLabel(record.continuedFrom.sourceId), title: record.continuedFrom.title }, toModelHistory(await sessions.readMessages(record.id)), prompt)
+        : prompt;
+      if (record.title === NEW_SESSION_TITLE) await sessions.update(record.id, { title: prompt.replace(/\s+/g, ' ').slice(0, 60) });
+    } catch (error) {
+      finishRun(record.id);
+      throw error;
+    }
+    const source: EventSource = { ...HERMES_ADAPTER, adapterVersion: options.version };
+    const emit = (body: EventBody) => publish(record.id, body, 'primary', source);
+    emit({ type: 'prompt.submitted', text: prompt, via: 'extalia' });
+    const permissions = workspace.permissions ?? DEFAULT_PERMISSIONS;
+    run.done = (async () => {
+      try {
+        const result = await runHermesTurn({
+          executable, cwd: root, prompt: text, profile: runtime.profile, env, signal: controller.signal, emit,
+          // Hermes cannot ask Extalia; its approvals are bypassed only where the workspace allows everything anyway.
+          yolo: permissions.fileWrite === 'allow' && permissions.commands === 'allow',
+          ...(workspace.runtimeModel ? { model: workspace.runtimeModel } : {}),
+          ...(runtime.sessionId ? { resumeSessionId: runtime.sessionId } : {}),
+        });
+        if (result.sessionId && result.sessionId !== runtime.sessionId) await sessions.update(record.id, { runtime: { ...runtime, sessionId: result.sessionId } });
+      } catch (error) {
+        emit({ type: 'turn.failed', error: error instanceof Error ? error.message : 'The turn failed.' });
+        emit({ type: 'agent.state', state: 'idle' });
+      } finally {
+        await sessions.update(record.id, { lastActiveAt: now() }).catch(() => undefined);
+        finishRun(record.id);
+      }
+    })();
   }
 
   function librarySummaries(): LibrarySessionSummary[] {
@@ -240,6 +296,15 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     const workspace = config.workspaces.find(item => item.id === id);
     if (!workspace) throw userError('That workspace no longer exists.');
     return workspace;
+  }
+
+  /** Read-only Files and Git views of a workspace's project folder; refusals become user errors. */
+  async function inspectWorkspace<T>(workspaceId: unknown, run: (root: string) => Promise<T>): Promise<T> {
+    if (typeof workspaceId !== 'string') throw userError('Choose a workspace.');
+    const root = findWorkspace(workspaceId).projectLocation;
+    if (!root) throw userError('This workspace has no project folder.');
+    try { return await run(root); }
+    catch (error) { throw error instanceof InspectError || error instanceof WorkspacePathError ? userError(error.message) : error; }
   }
 
   /** Build a connection from user input without touching stored secrets. */
@@ -347,12 +412,19 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     async saveWorkspace(input: WorkspaceInput) {
       const folder = await checkFolder(input.projectLocation);
       if (!folder.ok || !folder.path) throw userError(folder.error ?? 'Choose a project folder.');
-      findConnection(input.connectionId);
+      if (input.runtimeId !== undefined && !RUNTIME_IDS.includes(input.runtimeId)) throw userError('Choose Extalia Native or Hermes Agent.');
+      const hermes = input.runtimeId === 'hermes';
+      if (!hermes && !input.connectionId) throw userError('Choose a model connection for this workspace.');
+      if (!hermes) findConnection(input.connectionId!);
+      const model = input.runtimeModel?.trim();
+      const runtime = hermes
+        ? { runtimeId: 'hermes', runtimeProfileId: input.runtimeProfileId?.trim() || 'default', ...(model ? { runtimeModel: model } : {}) }
+        : { providerProfileId: input.connectionId };
       const existing = input.id ? config.workspaces.find(item => item.id === input.id) : undefined;
       const stamp = now();
       const result = decodeWorkspace({
         id: existing?.id ?? newId('w'), profileId: config.profile.id, name: input.name, projectLocation: folder.path,
-        providerProfileId: input.connectionId, permissions: input.permissions ?? DEFAULT_PERMISSIONS,
+        ...runtime, permissions: input.permissions ?? DEFAULT_PERMISSIONS,
         createdAt: existing?.createdAt ?? stamp, updatedAt: stamp,
       });
       if (!result.ok) throw userError(result.errors.join(' '));
@@ -374,7 +446,9 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
 
     async completeSetup(mode = 'managed') {
       if (mode !== 'managed' && mode !== 'observe') throw userError('Invalid workflow mode.');
-      if (mode === 'managed' && !config.connections.length) throw userError('Add a model connection first.');
+      // A model connection is only needed for Extalia Native workspaces; Hermes Agent brings its own models.
+      const native = !config.workspaces.length || config.workspaces.some(item => workspaceRuntime(item) === 'extalia-native');
+      if (mode === 'managed' && native && !config.connections.length) throw userError('Add a model connection first.');
       if (mode === 'managed' && !config.workspaces.length) throw userError('Add a workspace first.');
       config = { ...config, setupComplete: true, workflow: mode };
       await save();
@@ -384,7 +458,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     async setWorkflow(mode) {
       if (mode !== 'managed' && mode !== 'observe') throw userError('Invalid workflow mode.');
       if (runs.size) throw userError('Stop the running managed sessions before switching workflows.');
-      config = { ...config, workflow: mode, setupComplete: mode === 'observe' || Boolean(config.connections.length && config.workspaces.length) };
+      config = { ...config, workflow: mode, setupComplete: mode === 'observe' || managedReady() };
       await save(); return state();
     },
     async observeImports(scanId, candidateIds) { await observations.observe(scanId, candidateIds); return state(); },
@@ -457,6 +531,10 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       const record = await sessions.get(sessionId);
       if (!record) throw userError('That session no longer exists.');
       const workspace = findWorkspace(record.workspaceId);
+      if (record.runtime) {
+        if (!workspace.projectLocation) throw userError('This workspace has no project folder.');
+        return startHermesTurn(record, record.runtime, workspace, workspace.projectLocation, prompt);
+      }
       const connection = findConnection(record.connectionId);
       const root = workspace.projectLocation;
       if (!root) throw userError('This workspace has no project folder.');
@@ -603,6 +681,15 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       else library = setSessionState(library, id, action === 'archive' ? 'archived' : action === 'trash' ? 'trashed' : 'active');
       await saveLibrary();
       return state();
+    },
+
+    listFiles: (workspaceId, dir) => inspectWorkspace(workspaceId, root => listFiles(root, dir)),
+    readFile: (workspaceId, file) => inspectWorkspace(workspaceId, root => readWorkspaceFile(root, file)),
+    gitStatus: workspaceId => inspectWorkspace(workspaceId, root => gitStatus(root, { env })),
+    gitDiff: (workspaceId, file) => inspectWorkspace(workspaceId, root => gitDiff(root, file, { env })),
+
+    async runtimes() {
+      return discoverRuntimes(env, options.importHome ?? homedir());
     },
 
     subscribe(listener) {

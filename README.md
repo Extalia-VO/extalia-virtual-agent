@@ -1,3 +1,10 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/brand/extalia-logo-dark.svg">
+    <img src="docs/brand/extalia-logo-light.svg" alt="Extalia" width="320">
+  </picture>
+</p>
+
 # Extalia
 
 > **Open-Source Spatial AI-Agent Workspace and Orchestration Platform**
@@ -81,6 +88,9 @@ What works today:
 - **Orchestration** (on by default): the agent hands read-only research to worker agents on Complex / Standard / Quick models you choose.
 - **Memory and skills** per connection: Extalia's own, the provider's (OmniRoute), or off; nine built-in skills plus your own.
 - **Native history import** from Codex, Claude Code, Hermes Agent and Gemini CLI, read-only, with preview.
+- **Continue in Extalia**: when Codex or Claude Code runs out of quota, continue an imported or observed conversation in a new Extalia session; the original request and recent messages are carried over and the source is never changed.
+- **History per connection**: turn session history off for a connection and its new sessions stay in memory only.
+- **Live transcript observation** of selected native sessions, with observer-only setup (no model key), pause/resume and a read-only viewer. Idle polls skip parsing unchanged sources. Hook/MCP installers remain planned; see [runtime status](docs/architecture/runtime-adapters.md).
 - **Desktop** (auto-update from GitHub Releases) and **Web** through `npm i -g extalia-vo` → `extalia` (updates through npm).
 - **Extalia Protocol v0** with strict validation, English and Indonesian UI, light, dark (Royal Charcoal) and liquid-glass themes.
 

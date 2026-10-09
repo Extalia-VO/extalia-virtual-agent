@@ -13,14 +13,15 @@ export const LANGUAGES: { id: Language; label: string }[] = [
 ];
 
 /** Pages that can appear in navigation; which ones do depends on the host. */
-export type PageId = 'office' | 'chat' | 'observe' | 'history' | 'import' | 'logs' | 'start' | 'diagnostics' | 'settings';
+export type PageId = 'office' | 'chat' | 'observe' | 'files' | 'git' | 'history' | 'import' | 'logs' | 'start' | 'diagnostics' | 'settings';
 
 type Effort = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 type SecretStore = 'os-keychain' | 'secret-service' | 'file' | 'memory';
 
 export type ConnectionErrorKey = 'nameRequired' | 'baseUrlInvalid' | 'baseUrlCredentials' | 'baseUrlQuery' | 'apiKeyRequired' | 'envInvalid' | 'modelRequired' | 'maxDelegationsInvalid';
 type Tier = 'complex' | 'standard' | 'quick';
-export type WorkspaceErrorKey = 'nameRequired' | 'folderRequired' | 'folderUnchecked' | 'connectionRequired';
+export type WorkspaceErrorKey = 'nameRequired' | 'folderRequired' | 'folderUnchecked' | 'connectionRequired' | 'profileInvalid' | 'modelInvalid';
+type Runtime = 'extalia-native' | 'hermes';
 
 const NPM_INSTALL = 'npm i -g extalia-vo';
 
@@ -44,7 +45,7 @@ const en = {
     setup: 'Observe existing agent sessions without a model connection or API key.',
   },
   nav: {
-    office: '3D Office', chat: 'Chat', observe: 'Observe', history: 'History', import: 'Import', logs: 'Event log', start: 'Get started', diagnostics: 'Diagnostics', settings: 'Settings',
+    office: '3D Office', chat: 'Chat', observe: 'Observe', files: 'Files', git: 'Git', history: 'History', import: 'Import', logs: 'Event log', start: 'Get started', diagnostics: 'Diagnostics', settings: 'Settings',
     work: 'Work', app: 'Extalia', toggleSidebar: 'Toggle sidebar', main: 'Main navigation',
   },
   common: {
@@ -96,6 +97,8 @@ const en = {
     begin: 'Get started',
     modelTitle: 'Connect a model',
     modelLead: 'Choose where Extalia sends model requests. The agent itself runs on this computer.',
+    runtimeLegend: 'How should agents run?',
+    hermesLead: 'Hermes Agent is installed on this computer. It brings its own models, tools and memory, so no model connection is needed. Extalia starts it for each prompt and shows its work. You choose its profile in the next step.',
     workspaceTitle: 'Choose a workspace',
     workspaceLead: 'A workspace is a project folder. Agents can read anything inside it; you decide whether they may edit files and run commands without asking.',
     doneTitle: 'You’re ready',
@@ -175,6 +178,19 @@ const en = {
     check: 'Check', checking: 'Checking…',
     noFolder: 'No folder chosen yet.',
     connection: 'Connection',
+    runtime: 'Agent runtime',
+    runtimes: { 'extalia-native': 'Extalia Native', hermes: 'Hermes Agent' } satisfies Record<Runtime, string>,
+    runtimeHints: {
+      'extalia-native': 'Extalia’s own agent, using one of your model connections.',
+      hermes: 'Your local Hermes Agent, with its own models, tools and memory.',
+    } satisfies Record<Runtime, string>,
+    hermesProfile: 'Hermes profile',
+    hermesModel: 'Model',
+    hermesModelPlaceholder: 'The profile’s default model',
+    hermesModelHint: 'Optional. A model id Hermes knows, for example provider/model.',
+    hermesApprovals: 'Hermes uses its own tools and approval rules and cannot ask you in Extalia. It can edit files without asking and, by default, refuses commands it considers dangerous unless both permissions are set to Allow (Extalia then starts it with --yolo).',
+    hermesUnavailable: 'Hermes Agent was not found on this computer. Sessions in this workspace cannot run until it is installed.',
+    usesHermes: (profile: string) => `Hermes Agent · profile ${profile}`,
     permissions: 'Permissions',
     permissionsLead: 'Reading files inside the folder is always allowed.',
     fileWrite: 'File edits', commands: 'Commands',
@@ -188,6 +204,8 @@ const en = {
       folderRequired: 'Choose a project folder.',
       folderUnchecked: 'Check the folder first.',
       connectionRequired: 'Choose a connection.',
+      profileInvalid: 'Use a profile name: lowercase letters, numbers, - and _.',
+      modelInvalid: 'Use a model id without spaces.',
     } satisfies Record<WorkspaceErrorKey, string>,
   },
   chat: {
@@ -321,6 +339,52 @@ const en = {
     started: 'Started', project: 'Project', source: 'Source',
     backToList: 'Back to list',
   },
+  inspect: {
+    workspace: 'Workspace', refresh: 'Refresh', backToList: 'Back to list',
+    noWorkspace: 'Add a workspace in Settings to see its files and changes.',
+  },
+  files: {
+    title: 'Files',
+    lead: 'Browse the project folder of a workspace to see what the agent changed. Read-only; credential files are never opened.',
+    path: 'Folder path', up: 'Parent folder', empty: 'This folder is empty.',
+    listTruncated: (count: number) => `Showing the first ${count} entries of this folder.`,
+    select: 'Select a file to view it.',
+    lines: (count: number) => `${count} ${count === 1 ? 'line' : 'lines'}`,
+    binary: 'Binary file; its content is not shown.',
+    truncated: 'Only the first 512 KB are shown.',
+    emptyFile: 'This file is empty.',
+    credential: 'Credential file. Extalia never opens it, so its content stays private.',
+    credentialBadge: 'credential', generated: 'generated', link: 'link',
+    linkOutside: 'This link leads outside the project folder or nowhere, so it cannot be opened.',
+    openRoot: 'Back to the project folder',
+  },
+  git: {
+    title: 'Git',
+    lead: 'What changed in the project folder since the last commit, staged and not staged. Read-only; repository hooks and filters never run.',
+    detached: (commit: string) => `Detached at ${commit}`,
+    noCommits: 'No commits yet',
+    upstream: (name: string) => `tracking ${name}`,
+    noUpstream: 'No upstream branch',
+    aheadBehind: (ahead: number, behind: number) => `${ahead} ${ahead === 1 ? 'commit' : 'commits'} ahead, ${behind} behind`,
+    changes: (count: number) => `${count} changed ${count === 1 ? 'file' : 'files'}`,
+    allChanges: 'All changes',
+    notRepo: 'This project folder is not a Git repository.',
+    notRepoHint: 'Run git init in the folder to track changes, or choose another workspace.',
+    clean: 'No changes. The working tree matches the last commit.',
+    listTruncated: 'There are too many changes; only part of the list is shown.',
+    select: 'Select a file to see its diff.',
+    noDiff: 'No differences to show.',
+    diffTruncated: 'The diff is longer than 1 MB; the rest is not shown.',
+    credential: 'Credential file. Extalia never shows its changes.',
+    renamedFrom: (path: string) => `from ${path}`,
+    staged: (state: string) => `Staged: ${state}`,
+    unstaged: (state: string) => `Not staged: ${state}`,
+    states: {
+      modified: 'modified', added: 'added', deleted: 'deleted', renamed: 'renamed', copied: 'copied', 'type-changed': 'type changed',
+      unmerged: 'conflict', untracked: 'untracked', unmodified: 'unchanged',
+    },
+    stats: (additions: number, deletions: number) => `${additions} added, ${deletions} removed lines`,
+  },
   logs: {
     title: 'Event log',
     lead: 'Paste Extalia Protocol v0 events as JSON Lines to validate them. The sample shows a scripted demo session; nothing is sent anywhere.',
@@ -397,7 +461,7 @@ const id: Messages = {
     setup: 'Amati session agent yang ada tanpa koneksi model atau API key.',
   },
   nav: {
-    office: 'Kantor 3D', chat: 'Chat', observe: 'Pantau', history: 'Riwayat', import: 'Impor', logs: 'Log peristiwa', start: 'Mulai', diagnostics: 'Diagnostik', settings: 'Pengaturan',
+    office: 'Kantor 3D', chat: 'Chat', observe: 'Pantau', files: 'Berkas', git: 'Git', history: 'Riwayat', import: 'Impor', logs: 'Log peristiwa', start: 'Mulai', diagnostics: 'Diagnostik', settings: 'Pengaturan',
     work: 'Kerja', app: 'Extalia', toggleSidebar: 'Buka/tutup sidebar', main: 'Navigasi utama',
   },
   common: {
@@ -449,6 +513,8 @@ const id: Messages = {
     begin: 'Mulai',
     modelTitle: 'Hubungkan model',
     modelLead: 'Pilih ke mana Extalia mengirim permintaan model. Agent sendiri berjalan di komputer ini.',
+    runtimeLegend: 'Bagaimana agent dijalankan?',
+    hermesLead: 'Hermes Agent terpasang di komputer ini. Hermes membawa model, tool, dan memorinya sendiri, jadi koneksi model tidak diperlukan. Extalia menjalankannya untuk setiap prompt dan menampilkan pekerjaannya. Anda memilih profilnya di langkah berikutnya.',
     workspaceTitle: 'Pilih workspace',
     workspaceLead: 'Workspace adalah folder project. Agent boleh membaca apa pun di dalamnya; Anda menentukan apakah agent boleh mengubah berkas dan menjalankan perintah tanpa bertanya.',
     doneTitle: 'Siap digunakan',
@@ -528,6 +594,19 @@ const id: Messages = {
     check: 'Periksa', checking: 'Memeriksa…',
     noFolder: 'Belum ada folder yang dipilih.',
     connection: 'Koneksi',
+    runtime: 'Runtime agent',
+    runtimes: { 'extalia-native': 'Extalia Native', hermes: 'Hermes Agent' },
+    runtimeHints: {
+      'extalia-native': 'Agent milik Extalia, memakai salah satu koneksi model Anda.',
+      hermes: 'Hermes Agent lokal Anda, dengan model, tool, dan memorinya sendiri.',
+    },
+    hermesProfile: 'Profil Hermes',
+    hermesModel: 'Model',
+    hermesModelPlaceholder: 'Model bawaan profil',
+    hermesModelHint: 'Opsional. ID model yang dikenal Hermes, misalnya provider/model.',
+    hermesApprovals: 'Hermes memakai tool dan aturan persetujuannya sendiri dan tidak bisa bertanya kepada Anda di Extalia. Hermes dapat mengubah berkas tanpa bertanya dan, secara bawaan, menolak perintah yang dianggapnya berbahaya kecuali kedua izin diatur ke Izinkan (Extalia lalu menjalankannya dengan --yolo).',
+    hermesUnavailable: 'Hermes Agent tidak ditemukan di komputer ini. Sesi di workspace ini tidak bisa berjalan sampai Hermes dipasang.',
+    usesHermes: (profile: string) => `Hermes Agent · profil ${profile}`,
     permissions: 'Izin',
     permissionsLead: 'Membaca berkas di dalam folder selalu diizinkan.',
     fileWrite: 'Ubah berkas', commands: 'Perintah',
@@ -541,6 +620,8 @@ const id: Messages = {
       folderRequired: 'Pilih folder project.',
       folderUnchecked: 'Periksa folder terlebih dahulu.',
       connectionRequired: 'Pilih koneksi.',
+      profileInvalid: 'Gunakan nama profil: huruf kecil, angka, - dan _.',
+      modelInvalid: 'Gunakan ID model tanpa spasi.',
     },
   },
   chat: {
@@ -673,6 +754,52 @@ const id: Messages = {
     showAll: (count: number) => `Tampilkan semua ${count} pesan`,
     started: 'Dimulai', project: 'Project', source: 'Sumber',
     backToList: 'Kembali ke daftar',
+  },
+  inspect: {
+    workspace: 'Workspace', refresh: 'Muat ulang', backToList: 'Kembali ke daftar',
+    noWorkspace: 'Tambahkan workspace di Pengaturan untuk melihat berkas dan perubahannya.',
+  },
+  files: {
+    title: 'Berkas',
+    lead: 'Jelajahi folder project sebuah workspace untuk melihat apa yang diubah agent. Hanya baca; berkas kredensial tidak pernah dibuka.',
+    path: 'Jalur folder', up: 'Folder induk', empty: 'Folder ini kosong.',
+    listTruncated: (count: number) => `Menampilkan ${count} entri pertama di folder ini.`,
+    select: 'Pilih berkas untuk melihat isinya.',
+    lines: (count: number) => `${count} baris`,
+    binary: 'Berkas biner; isinya tidak ditampilkan.',
+    truncated: 'Hanya 512 KB pertama yang ditampilkan.',
+    emptyFile: 'Berkas ini kosong.',
+    credential: 'Berkas kredensial. Extalia tidak pernah membukanya, jadi isinya tetap privat.',
+    credentialBadge: 'kredensial', generated: 'hasil build', link: 'tautan',
+    linkOutside: 'Tautan ini mengarah ke luar folder project atau tidak mengarah ke mana pun, jadi tidak dapat dibuka.',
+    openRoot: 'Kembali ke folder project',
+  },
+  git: {
+    title: 'Git',
+    lead: 'Apa saja yang berubah di folder project sejak commit terakhir, baik yang sudah di-stage maupun belum. Hanya baca; hook dan filter repositori tidak pernah dijalankan.',
+    detached: (commit: string) => `Terlepas di ${commit}`,
+    noCommits: 'Belum ada commit',
+    upstream: (name: string) => `mengikuti ${name}`,
+    noUpstream: 'Tidak ada branch upstream',
+    aheadBehind: (ahead: number, behind: number) => `${ahead} commit lebih maju, ${behind} tertinggal`,
+    changes: (count: number) => `${count} berkas berubah`,
+    allChanges: 'Semua perubahan',
+    notRepo: 'Folder project ini bukan repositori Git.',
+    notRepoHint: 'Jalankan git init di folder tersebut untuk melacak perubahan, atau pilih workspace lain.',
+    clean: 'Tidak ada perubahan. Working tree sama dengan commit terakhir.',
+    listTruncated: 'Perubahannya terlalu banyak; hanya sebagian daftar yang ditampilkan.',
+    select: 'Pilih berkas untuk melihat diff-nya.',
+    noDiff: 'Tidak ada perbedaan untuk ditampilkan.',
+    diffTruncated: 'Diff lebih dari 1 MB; sisanya tidak ditampilkan.',
+    credential: 'Berkas kredensial. Extalia tidak pernah menampilkan perubahannya.',
+    renamedFrom: (path: string) => `dari ${path}`,
+    staged: (state: string) => `Sudah di-stage: ${state}`,
+    unstaged: (state: string) => `Belum di-stage: ${state}`,
+    states: {
+      modified: 'diubah', added: 'ditambahkan', deleted: 'dihapus', renamed: 'diganti nama', copied: 'disalin', 'type-changed': 'tipe berubah',
+      unmerged: 'konflik', untracked: 'belum dilacak', unmodified: 'tidak berubah',
+    },
+    stats: (additions: number, deletions: number) => `${additions} baris ditambahkan, ${deletions} dihapus`,
   },
   logs: {
     title: 'Log event',
