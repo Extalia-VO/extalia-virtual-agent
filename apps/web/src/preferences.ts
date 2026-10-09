@@ -18,10 +18,10 @@ export interface Preferences {
 
 export const DEFAULT_PREFERENCES: Preferences = {
   theme: 'solar',
-  material: 'standard',
+  material: 'liquid-glass',
   language: 'en',
   sidebar: 'expanded',
-  font: 'sf-pro'
+  font: 'quicksand'
 };
 
 interface PreferencesState extends Preferences {
