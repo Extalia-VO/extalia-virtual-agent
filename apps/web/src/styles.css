@@ -66,29 +66,45 @@
   color-scheme: dark;
 }
 
-/* View Transitions API for theme and material cross-fade */
+/* View Transitions API for theme and material sliding cross-dissolve */
 ::view-transition-old(root),
 ::view-transition-new(root) {
-  animation-duration: 280ms;
-  animation-timing-function: cubic-bezier(0.2, 0.7, 0.2, 1);
+  animation-duration: 520ms;
+  animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 ::view-transition-old(root) {
-  animation-name: fade-out;
+  animation-name: slide-fade-out;
 }
 
 ::view-transition-new(root) {
-  animation-name: fade-in;
+  animation-name: slide-fade-in;
 }
 
-@keyframes fade-out {
-  from { opacity: 1; }
-  to { opacity: 0; }
+@keyframes slide-fade-out {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.99);
+    filter: blur(4px);
+  }
 }
 
-@keyframes fade-in {
-  from { opacity: 0; }
-  to { opacity: 1; }
+@keyframes slide-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(1.01);
+    filter: blur(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
 }
 
 *, *::before, *::after { box-sizing: border-box; }
@@ -97,7 +113,7 @@ body {
   min-height: 100vh;
   background: var(--canvas);
   color: var(--text);
-  transition: background-color 240ms var(--ease), color 240ms var(--ease);
+  transition: background-color 480ms var(--ease), color 480ms var(--ease);
 }
 
 .shell,
@@ -114,14 +130,14 @@ body {
 .button,
 .nav-item {
   transition:
-    background-color 240ms var(--ease),
-    border-color 240ms var(--ease),
-    color 240ms var(--ease),
-    box-shadow 240ms var(--ease),
-    border-radius 240ms var(--ease),
-    backdrop-filter 240ms var(--ease),
-    -webkit-backdrop-filter 240ms var(--ease),
-    transform 240ms var(--ease);
+    background-color 480ms var(--ease),
+    border-color 480ms var(--ease),
+    color 480ms var(--ease),
+    box-shadow 480ms var(--ease),
+    border-radius 480ms var(--ease),
+    backdrop-filter 480ms var(--ease),
+    -webkit-backdrop-filter 480ms var(--ease),
+    transform 480ms var(--ease);
 }
 button, input, select, textarea { font: inherit; color: inherit; }
 h1, h2 { margin: 0; line-height: 1.25; }
