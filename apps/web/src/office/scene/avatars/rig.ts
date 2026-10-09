@@ -61,6 +61,7 @@ export interface HumanoidRigProfile {
   readonly instanceId: string;
   readonly seed: number;
   readonly stature: HumanoidStature;
+  readonly frame: HumanoidFrame;
   readonly skeleton: HumanoidRigContract & {
     joints: Readonly<Record<HumanoidJointName, HumanoidJointMetadata>>;
   };
@@ -93,6 +94,22 @@ export const HUMANOID_STATURE_MODIFIERS: Readonly<Record<HumanoidStature, Statur
   petite: { height: 0.93, shoulders: 0.95, width: 0.96, depth: 0.97, limbs: 0.98 }
 });
 
+/** Presentation frame: shoulder/hip balance and a small height bias, independent of stature. */
+export type HumanoidFrame = "feminine" | "masculine" | "neutral";
+
+interface FrameModifier {
+  readonly height: number;
+  readonly shoulders: number;
+  readonly hips: number;
+}
+
+/** Bounded like statures, so seated hips and desk reach stay valid for every combination. */
+export const HUMANOID_FRAME_MODIFIERS: Readonly<Record<HumanoidFrame, FrameModifier>> = Object.freeze({
+  neutral: { height: 1, shoulders: 1, hips: 1 },
+  feminine: { height: 0.97, shoulders: 0.92, hips: 1.1 },
+  masculine: { height: 1.02, shoulders: 1.07, hips: 0.96 }
+});
+
 export function isHumanoidStature(value: unknown): value is HumanoidStature {
   return typeof value === "string" && Object.prototype.hasOwnProperty.call(HUMANOID_STATURE_MODIFIERS, value);
 }
@@ -102,6 +119,8 @@ export interface HumanoidRigProfileOptions {
   seed?: string | number;
   /** Body archetype applied over seeded variation; never changes the seed itself. */
   stature?: HumanoidStature;
+  /** Presentation frame applied over stature; never changes the seed either. */
+  frame?: HumanoidFrame;
   uniformScale?: number;
   /** Explicit final XYZ scale; overrides generated scale, without changing proportions. */
   scale?: RigVector3;
@@ -173,6 +192,9 @@ export function createHumanoidRigProfile(instanceId: string, options: HumanoidRi
   const stature: HumanoidStature = options.stature ?? "default";
   if (!isHumanoidStature(stature)) throw new Error(`Unknown humanoid stature: ${String(stature)}`);
   const build = HUMANOID_STATURE_MODIFIERS[stature];
+  const frame: HumanoidFrame = options.frame ?? "neutral";
+  const shape = HUMANOID_FRAME_MODIFIERS[frame];
+  if (!shape) throw new Error(`Unknown humanoid frame: ${String(frame)}`);
   const thighLength = options.proportions?.thighLength ?? base.thighLength * sample("thigh", 0.96, 1.04) * build.limbs;
   const shinLength = options.proportions?.shinLength ?? base.shinLength * sample("shin", 0.97, 1.03) * build.limbs;
   const proportions: HumanoidProportions = {
@@ -183,9 +205,9 @@ export function createHumanoidRigProfile(instanceId: string, options: HumanoidRi
     standingHipHeight: thighLength + shinLength,
     upperArmLength: base.upperArmLength * sample("upper-arm", 0.96, 1.04) * build.limbs,
     forearmLength: base.forearmLength * sample("forearm", 0.96, 1.04) * build.limbs,
-    shoulderWidth: base.shoulderWidth * sample("shoulders", 0.95, 1.05) * build.shoulders,
+    shoulderWidth: base.shoulderWidth * sample("shoulders", 0.95, 1.05) * build.shoulders * shape.shoulders,
     shoulderHeight: base.shoulderHeight * sample("torso", 0.97, 1.03),
-    hipWidth: base.hipWidth * sample("hips", 0.97, 1.03) * build.width,
+    hipWidth: base.hipWidth * sample("hips", 0.97, 1.03) * build.width * shape.hips,
     headHeight: base.headHeight * sample("neck", 0.97, 1.03),
     headRadius: base.headRadius * sample("head", 0.97, 1.03),
     ...options.proportions
@@ -195,7 +217,7 @@ export function createHumanoidRigProfile(instanceId: string, options: HumanoidRi
   }
   // Furniture is authored to architectural dimensions; keep avatars slightly below the
   // nominal procedural height so lounge seating and desks read at human scale.
-  const uniformScale = options.uniformScale ?? 0.88 * sample("height", 0.97, 1.03) * build.height;
+  const uniformScale = options.uniformScale ?? 0.88 * sample("height", 0.97, 1.03) * build.height * shape.height;
   if (!Number.isFinite(uniformScale) || uniformScale <= 0) throw new Error("Humanoid uniform scale must be positive and finite");
   const scale: RigVector3 = options.scale ? [...options.scale] : [
     uniformScale * sample("width", 0.96, 1.04) * build.width, uniformScale, uniformScale * sample("depth", 0.97, 1.03) * build.depth
@@ -219,7 +241,7 @@ export function createHumanoidRigProfile(instanceId: string, options: HumanoidRi
     throw new Error("Invalid humanoid motion personality");
   }
   return {
-    instanceId, seed, stature, scale, uniformScale, proportions, motion,
+    instanceId, seed, stature, frame, scale, uniformScale, proportions, motion,
     skeleton: {
       skeletonId: `procedural-humanoid:${instanceId}`,
       rootBone: "root", hipsBone: "hips", spineBone: "spine", headBone: "head",
