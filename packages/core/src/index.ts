@@ -1,3 +1,4 @@
+export * from './characterAppearance.js';
 export * from './connections.js';
 export * from './library.js';
 export * from './models.js';

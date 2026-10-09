@@ -173,13 +173,24 @@ export function SetupWizard({ t, platform, agents, state, onState, preferences, 
                       value: 'hermes',
                       label: t.workspace.runtimes.hermes,
                       icon: (
-                        <img
-                          src="/brand/hermes-logo.svg"
-                          alt=""
-                          width="16"
-                          height="16"
-                          style={{ display: 'block', objectFit: 'contain' }}
-                        />
+                        <span className="runtime-logo-adaptive">
+                          <img
+                            src="/brand/hermes-logo.svg"
+                            alt=""
+                            width="16"
+                            height="16"
+                            className="logo-dark"
+                            style={{ objectFit: 'contain' }}
+                          />
+                          <img
+                            src="/brand/hermes-logo-black.svg"
+                            alt=""
+                            width="16"
+                            height="16"
+                            className="logo-light"
+                            style={{ objectFit: 'contain' }}
+                          />
+                        </span>
                       )
                     }
                   ]}

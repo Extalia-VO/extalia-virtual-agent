@@ -541,8 +541,8 @@ export function Floor1() {
         oppositeWall="windows"
         floorFinish="oak"
       >
-        {LIBRARY_BLUEPRINT.shelves.map((shelf) => (
-          <Bookshelf key={`${shelf.position[0]}-${shelf.position[2]}`}
+        {LIBRARY_BLUEPRINT.shelves.map((shelf, index) => (
+          <Bookshelf key={`shelf-${index}`}
             position={[shelf.position[0], shelf.position[1], shelf.position[2]]}
             rotationY={shelf.rotationY}
             width={shelf.width}

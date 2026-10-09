@@ -2,7 +2,8 @@ import {
   DEFAULT_PERMISSIONS, applyImport, decodeConnection, decodeLibrary, decodeWorkspace, defaultOrchestration, deleteSession as deleteLibrarySession,
   displayTitle, emptyLibrary, keepsHistory, presetById, previewImport, renameSession as renameLibrarySession, resolveFeatures, safeLabel, setSessionState,
   sourceLabel, tierModel, RUNTIME_IDS, workspaceRuntime,
-  type Connection, type PortableSession, type SessionLibrary, type TaskTier, type Workspace,
+  characterSessionId, decodeCharacterAppearance, decodeCharacterAppearanceStore, emptyCharacterAppearanceStore, isCharacterId, MAX_CHARACTER_APPEARANCES,
+  type CharacterAppearanceStore, type CharacterAppearances, type Connection, type PortableSession, type SessionLibrary, type TaskTier, type Workspace,
 } from '@extalia/core';
 import {
   resolveDataDirectory,
@@ -113,6 +114,17 @@ async function loadLibrary(file: string): Promise<SessionLibrary> {
   return emptyLibrary();
 }
 
+/** Load saved character looks; a damaged or invalid file is kept aside, never overwritten. */
+async function loadCharacterAppearances(file: string): Promise<CharacterAppearanceStore> {
+  let raw: unknown;
+  try { raw = await readJson<unknown>(file, undefined); } catch { raw = null; }
+  if (raw === undefined) return emptyCharacterAppearanceStore();
+  const decoded = decodeCharacterAppearanceStore(raw);
+  if (decoded.ok) return decoded.value;
+  await rename(file, file.replace(/\.json$/, `.damaged-${Date.now()}.json`)).catch(() => undefined);
+  return emptyCharacterAppearanceStore();
+}
+
 function toModelHistory(raw: unknown[]): ModelMessage[] {
   return raw.filter((item): item is ModelMessage => Boolean(item) && typeof item === 'object' && ['user', 'assistant', 'tool'].includes((item as { role?: string }).role ?? ''));
 }
@@ -144,6 +156,9 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
   const libraryFile = path.join(layout.state, 'library.json');
   let library = await loadLibrary(libraryFile);
   const saveLibrary = async () => writeJsonAtomic(libraryFile, library, { mode: 0o600 });
+  const appearancesFile = path.join(layout.state, 'character-appearances.json');
+  let appearances = await loadCharacterAppearances(appearancesFile);
+  const saveAppearances = async () => writeJsonAtomic(appearancesFile, appearances, { mode: 0o600 });
   const listeners = new Set<(event: ExtaliaEvent) => void>();
   const idleListeners = new Set<() => void>();
   const runs = new Map<string, Run>();
@@ -351,6 +366,22 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       try { found.push({ file, text: await readFile(path.join(root, file), 'utf8') }); } catch { /* optional */ }
     }
     return found;
+  }
+
+  async function liveSessionIds(): Promise<Set<string>> {
+    return new Set([...(await sessions.list()).map(record => record.id), ...observations.summaries().map(item => item.id)]);
+  }
+
+  /** Saved character looks; entries whose session was deleted are dropped (and the file rewritten). */
+  async function characterAppearances(): Promise<CharacterAppearances> {
+    const live = await liveSessionIds();
+    const entries = Object.entries(appearances.characters);
+    const kept = entries.filter(([id]) => live.has(characterSessionId(id)));
+    if (kept.length !== entries.length) {
+      appearances = { ...appearances, characters: Object.fromEntries(kept) };
+      await saveAppearances();
+    }
+    return structuredClone(appearances.characters);
   }
 
   function finishRun(sessionId: string): void {
@@ -690,6 +721,26 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
 
     async runtimes() {
       return discoverRuntimes(env, options.importHome ?? homedir());
+    },
+
+    characterAppearances,
+
+    async saveCharacterAppearance(characterId, appearance) {
+      if (!isCharacterId(characterId)) throw userError('Choose a character in the Office.');
+      if (!(await liveSessionIds()).has(characterSessionId(characterId))) throw userError('That character’s session no longer exists.');
+      const characters = { ...appearances.characters };
+      if (appearance === null) delete characters[characterId];
+      else {
+        const decoded = decodeCharacterAppearance(appearance);
+        if (!decoded.ok) throw userError(`This appearance cannot be saved: ${decoded.errors.join(' ')}`);
+        if (!Object.hasOwn(characters, characterId) && Object.keys(characters).length >= MAX_CHARACTER_APPEARANCES) {
+          throw userError(`Up to ${MAX_CHARACTER_APPEARANCES} characters can have a saved appearance.`);
+        }
+        characters[characterId] = decoded.value;
+      }
+      appearances = { ...appearances, characters };
+      await saveAppearances();
+      return characterAppearances();
     },
 
     subscribe(listener) {

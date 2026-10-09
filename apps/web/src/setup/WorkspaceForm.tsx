@@ -153,13 +153,24 @@ export function WorkspaceForm({ t, agents, picker, draft, onChange, connections,
                   <path d={SYMBOL_PATH} fill="url(#extalia-seg-ws-grad)" />
                 </svg>
               ) : (
-                <img
-                  src="/brand/hermes-logo.svg"
-                  alt=""
-                  width="16"
-                  height="16"
-                  style={{ display: 'block', objectFit: 'contain' }}
-                />
+                <span className="runtime-logo-adaptive">
+                  <img
+                    src="/brand/hermes-logo.svg"
+                    alt=""
+                    width="16"
+                    height="16"
+                    className="logo-dark"
+                    style={{ objectFit: 'contain' }}
+                  />
+                  <img
+                    src="/brand/hermes-logo-black.svg"
+                    alt=""
+                    width="16"
+                    height="16"
+                    className="logo-light"
+                    style={{ objectFit: 'contain' }}
+                  />
+                </span>
               )
             }))}
             onChange={runtimeId => update({ runtimeId })}

@@ -557,7 +557,40 @@ fieldset > legend { padding: 0; margin-bottom: 6px; }
   gap: 8px;
 }
 
-.preset-brand .provider-logo {
+.provider-logo-adaptive,
+.runtime-logo-adaptive {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Light theme shows logo-light, hides logo-dark */
+.provider-logo-adaptive .logo-dark,
+.runtime-logo-adaptive .logo-dark {
+  display: none !important;
+}
+.provider-logo-adaptive .logo-light,
+.runtime-logo-adaptive .logo-light {
+  display: block !important;
+}
+
+/* Dark theme shows logo-dark, hides logo-light */
+:root[data-theme='dark'] .provider-logo-adaptive .logo-dark,
+:root[data-theme='dark'] .runtime-logo-adaptive .logo-dark {
+  display: block !important;
+}
+:root[data-theme='dark'] .provider-logo-adaptive .logo-light,
+:root[data-theme='dark'] .runtime-logo-adaptive .logo-light {
+  display: none !important;
+}
+
+/* When a segment radio is checked, invert light logo to white */
+.segment input:checked + .segment-label .runtime-logo-adaptive .logo-light {
+  filter: brightness(0) invert(1);
+}
+
+.preset-brand .provider-logo,
+.preset-brand .provider-logo-adaptive {
   flex-shrink: 0;
   color: var(--accent);
 }
@@ -1660,6 +1693,19 @@ input[type='file']::file-selector-button {
 .office-stage .floor-label strong { margin-right: 5px; }
 .office-stage .room-label { padding: 3px 7px; font-size: 9px; font-weight: 700; }
 .office-stage .corridor-label { padding: 2px 7px; color: var(--muted); font-size: 8px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+/* Overlays sit on a busy 3D scene: keep them nearly opaque even with liquid glass so text never mixes with furniture. */
+.office-stage .office-panel, .office-stage .office-hint { background: color-mix(in srgb, var(--surface-solid) 90%, transparent); }
+/* Name tags above characters: findable and clickable at whole-floor zoom. */
+.office-character-tag {
+  display: inline-flex; align-items: center; gap: 5px; max-width: 150px; padding: 2px 8px 2px 6px;
+  border: 1px solid var(--line); border-radius: 999px; background: color-mix(in srgb, var(--surface-solid) 92%, transparent);
+  color: var(--text); font: inherit; font-size: 10px; font-weight: 650; line-height: 1.5; white-space: nowrap; cursor: pointer;
+  box-shadow: 0 4px 12px -6px rgb(0 0 0 / 45%);
+}
+.office-character-tag:hover, .office-character-tag:focus-visible { border-color: var(--accent); }
+.office-character-tag.selected { border-color: var(--accent); background: var(--accent); color: var(--accent-text); }
+.office-character-dot { flex: none; width: 7px; height: 7px; border-radius: 50%; box-shadow: 0 0 0 1.5px var(--surface-solid); }
+.office-character-name { overflow: hidden; text-overflow: ellipsis; }
 @media (max-width: 700px) {
   .office-panel-conversation { width: auto; max-height: 62%; }
   .office-panel-conversation .office-agent-list { max-height: 72px; }

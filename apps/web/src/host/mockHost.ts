@@ -3,6 +3,7 @@ import type {
   AgentHostApi, ApprovalDecisionInput, ConnectionInput, ConnectionView, HostState, Platform, SessionSummary, UpdateCapability, UpdateStatus,
 } from '@extalia/platform';
 import { createEvent, type EventBody, type ExtaliaEvent, type RiskLevel, type Usage } from '@extalia/protocol';
+import { createMockAppearances } from './mockAppearances';
 import { createMockLibrary } from './mockLibrary';
 import { createMockWorkspaceInspection } from './mockWorkspace';
 
@@ -443,6 +444,7 @@ function createMockAgents(options: MockOptions): AgentHostApi {
       return [{ id: 'extalia-native', available: true, profiles: [] }, { id: 'hermes', available: Boolean(options.hermes), profiles: options.hermes ? ['default', 'work'] : [] }];
     },
     ...imports.methods,
+    ...createMockAppearances(() => new Set(state.sessions.map(item => item.id)), latency),
     ...createMockWorkspaceInspection(id => { if (!state.workspaces.some(item => item.id === id)) throw new Error('That workspace no longer exists.'); }, latency),
     subscribe(listener) {
       listeners.add(listener);

@@ -1,5 +1,5 @@
 import type {
-  Connection, CredentialSource, Effort, FeatureOwner, ImportMode, ImportPreview, LibrarySession, LocalState, Orchestration,
+  CharacterAppearance, CharacterAppearances, Connection, CredentialSource, Effort, FeatureOwner, ImportMode, ImportPreview, LibrarySession, LocalState, Orchestration,
   PortableSession, ProviderApi, ProviderPresetId, RuntimeId, Workspace, WorkspacePermissions,
 } from '@extalia/core';
 import type { ExtaliaEvent } from '@extalia/protocol';
@@ -309,6 +309,10 @@ export interface AgentHostApi {
   gitDiff(workspaceId: string, path?: string): Promise<GitDiff>;
   /** Managed runtimes this host can drive (Hermes Agent when it is installed). */
   runtimes(): Promise<RuntimeInfo[]>;
+  /** Saved Office character looks by presence id (`<sessionId>:<agentId>`); entries of deleted sessions are pruned. */
+  characterAppearances(): Promise<CharacterAppearances>;
+  /** Save one character's look, or reset it to the generated default with `null`. Returns every saved look. */
+  saveCharacterAppearance(characterId: string, appearance: CharacterAppearance | null): Promise<CharacterAppearances>;
   /** Live protocol events for every session. Returns an unsubscribe function. */
   subscribe(listener: (event: ExtaliaEvent) => void): () => void;
 }
@@ -320,7 +324,7 @@ export const AGENT_HOST_METHODS = [
   'setWorkflow', 'observeImports', 'observationSession', 'setObservation',
   'importLocations', 'scanImports', 'previewImports', 'commitImports', 'importPortable', 'librarySession', 'organizeLibrarySession',
   'listFiles', 'readFile', 'gitStatus', 'gitDiff',
-  'runtimes',
+  'runtimes', 'characterAppearances', 'saveCharacterAppearance',
 ] as const satisfies readonly Exclude<keyof AgentHostApi, 'subscribe'>[];
 
 export type AgentHostMethod = (typeof AGENT_HOST_METHODS)[number];

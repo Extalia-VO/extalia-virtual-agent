@@ -11,6 +11,11 @@ All notable changes to this project are documented here. The format follows
 - Restore furnished F1, F2 and F3 rooms, their original furniture and decorations, floor/cutaway navigation and authored humanoid characters in the shared Office renderer.
 - Select a character to view its session history and prompt its managed agent inside Office; worker and observed activity remains read-only according to runtime capabilities.
 - Document Extalia Virtual Agent as the single development home for Office improvements, with explicit follow-up requirements for hair, clothing, accessories, gender/style presets and configurable walking animations.
+- Name tags above characters (status color and session title) make agents findable and clickable at whole-floor zoom; selecting a character moves the camera to it, beside the conversation panel (instant with reduced motion).
+
+### Fixed
+
+- Office room, floor and corridor labels stay on one line instead of breaking after every word, and Office panels sit above the scene's labels and stay readable over the 3D view with liquid glass.
 
 ## [0.0.8] - 2026-10-09
 
