@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="extalia" x1="0" y1="1" x2="0" y2="0">
+      <stop offset="0" stop-color="#10b9ac"/>
+      <stop offset=".55" stop-color="#83cb35"/>
+      <stop offset="1" stop-color="#f8e719"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="#1e1f22"/>
+  <g transform="translate(8 15) scale(34)" fill="url(#extalia)">
+    <path d="M0 1L.18 1L.5 0L.32 0Z"/>
+    <path d="M.68 0L.91 0L1.41 .5L.91 1L.68 1L1.18 .5Z"/>
+  </g>
+</svg>

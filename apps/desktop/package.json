@@ -1,0 +1,28 @@
+{
+  "name": "@extalia/desktop",
+  "description": "Extalia Desktop shell for macOS, Windows and Linux.",
+  "version": "0.0.3",
+  "private": true,
+  "license": "MIT",
+  "author": "Extalia contributors",
+  "homepage": "https://github.com/Extalia-VO/extalia-virtual-agent",
+  "main": "dist/main.cjs",
+  "scripts": {
+    "build": "node build.mjs",
+    "dev": "node build.mjs && electron .",
+    "smoke": "node build.mjs && electron . --smoke-test",
+    "typecheck": "tsc -p tsconfig.json",
+    "dist": "pnpm --filter @extalia/web build && node build.mjs && electron-builder --publish never",
+    "dist:dir": "pnpm --filter @extalia/web build && node build.mjs && electron-builder --dir --publish never"
+  },
+  "dependencies": {
+    "@extalia/host": "workspace:*",
+    "@extalia/platform": "workspace:*",
+    "electron-updater": "6.8.9"
+  },
+  "devDependencies": {
+    "electron": "~44.6.0",
+    "electron-builder": "26.15.3",
+    "esbuild": "^0.28.2"
+  }
+}

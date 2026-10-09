@@ -1,0 +1,36 @@
+{
+  "name": "extalia-vo",
+  "description": "Extalia on your computer: the extalia command starts a local Bridge that serves the Extalia web UI and runs agents on this machine.",
+  "version": "0.0.3",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Extalia-VO/extalia-virtual-agent.git",
+    "directory": "apps/cli"
+  },
+  "engines": {
+    "node": ">=22.12"
+  },
+  "bin": {
+    "extalia": "./dist/extalia.mjs"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "node build.mjs",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@extalia/core": "workspace:*",
+    "@extalia/host": "workspace:*",
+    "@extalia/platform": "workspace:*",
+    "@extalia/protocol": "workspace:*"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2"
+  }
+}
