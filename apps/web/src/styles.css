@@ -29,11 +29,32 @@
   --ease: cubic-bezier(.2, .7, .2, 1);
   --sidebar-width: 248px;
   color-scheme: light;
-  font-family: Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-ui: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Helvetica Neue', sans-serif;
+  font-family: var(--font-ui);
   font-size: 15px;
   line-height: 1.5;
   color: var(--text);
   background: var(--canvas);
+}
+
+:root[data-font='quicksand'] {
+  --font-ui: 'Quicksand', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+:root[data-font='geist'] {
+  --font-ui: 'Geist', -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif;
+}
+
+:root[data-font='jakarta'] {
+  --font-ui: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+:root[data-font='inter'] {
+  --font-ui: 'Inter', ui-sans-serif, system-ui, sans-serif;
+}
+
+:root[data-font='sf-pro'] {
+  --font-ui: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Helvetica Neue', sans-serif;
 }
 
 /* Dark: Royal Charcoal (#1e1f22 · #1e2023 · #47484c · #4c4e51), neutral rather than navy. */

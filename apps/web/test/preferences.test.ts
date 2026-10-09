@@ -11,7 +11,8 @@ describe('Preferences storage persistence', () => {
       theme: 'dark',
       material: 'liquid-glass',
       language: 'id',
-      sidebar: 'compact'
+      sidebar: 'compact',
+      font: 'quicksand'
     });
 
     const current = loadPreferences();
@@ -19,11 +20,13 @@ describe('Preferences storage persistence', () => {
     expect(current.material).toBe('liquid-glass');
     expect(current.language).toBe('id');
     expect(current.sidebar).toBe('compact');
+    expect(current.font).toBe('quicksand');
   });
 
   it('provides safe fallback defaults', () => {
     expect(DEFAULT_PREFERENCES.theme).toBe('solar');
     expect(DEFAULT_PREFERENCES.material).toBe('standard');
     expect(DEFAULT_PREFERENCES.language).toBe('en');
+    expect(DEFAULT_PREFERENCES.font).toBe('sf-pro');
   });
 });

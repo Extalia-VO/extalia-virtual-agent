@@ -5,6 +5,7 @@ import type { Language } from './i18n';
 export type ThemePreference = 'system' | 'solar' | 'light' | 'dark';
 export type MaterialPreference = 'standard' | 'liquid-glass';
 export type SidebarPreference = 'expanded' | 'compact';
+export type FontPreference = 'sf-pro' | 'quicksand' | 'geist' | 'jakarta' | 'inter';
 
 export interface Preferences {
   theme: ThemePreference;
@@ -12,13 +13,15 @@ export interface Preferences {
   material: MaterialPreference;
   language: Language;
   sidebar: SidebarPreference;
+  font: FontPreference;
 }
 
 export const DEFAULT_PREFERENCES: Preferences = {
   theme: 'solar',
   material: 'standard',
   language: 'en',
-  sidebar: 'expanded'
+  sidebar: 'expanded',
+  font: 'sf-pro'
 };
 
 interface PreferencesState extends Preferences {
@@ -26,6 +29,7 @@ interface PreferencesState extends Preferences {
   setMaterial: (material: MaterialPreference) => void;
   setLanguage: (language: Language) => void;
   setSidebar: (sidebar: SidebarPreference) => void;
+  setFont: (font: FontPreference) => void;
   updatePreferences: (next: Partial<Preferences>) => void;
 }
 
@@ -65,6 +69,7 @@ export const usePreferencesStore = create<PreferencesState>()(
       setMaterial: material => set({ material }),
       setLanguage: language => set({ language }),
       setSidebar: sidebar => set({ sidebar }),
+      setFont: font => set({ font }),
       updatePreferences: next => set(state => ({ ...state, ...next }))
     }),
     {
@@ -82,7 +87,8 @@ export function loadPreferences(): Preferences {
     theme: state.theme,
     material: state.material,
     language: state.language,
-    sidebar: state.sidebar
+    sidebar: state.sidebar,
+    font: state.font ?? DEFAULT_PREFERENCES.font
   };
 }
 

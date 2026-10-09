@@ -63,6 +63,20 @@ export function SettingsPage({ t, platform, preferences, onChange, hostState, on
           </div>
           <div className="field">
             <Select
+              label={t.settings.font}
+              value={preferences.font}
+              options={([
+                { value: 'sf-pro' as const, label: t.settings.fonts['sf-pro'], description: 'macOS Native SF Pro Display' },
+                { value: 'quicksand' as const, label: t.settings.fonts.quicksand, description: 'Soft rounded geometry', badge: 'Popular' },
+                { value: 'geist' as const, label: t.settings.fonts.geist, description: 'Vercel / Linear modern AI look' },
+                { value: 'jakarta' as const, label: t.settings.fonts.jakarta, description: 'Plus Jakarta Sans modern' },
+                { value: 'inter' as const, label: t.settings.fonts.inter, description: 'Classic developer neutral' }
+              ])}
+              onChange={val => onChange({ ...preferences, font: val })}
+            />
+          </div>
+          <div className="field">
+            <Select
               label={t.settings.language}
               value={preferences.language}
               options={LANGUAGES.map(lang => ({

@@ -119,6 +119,11 @@ export function App({ platform }: { platform: Platform }) {
       document.documentElement.dataset.material = preferences.material;
     });
   }, [preferences.material]);
+  useEffect(() => {
+    applyDOMChange(() => {
+      document.documentElement.dataset.font = preferences.font;
+    });
+  }, [preferences.font]);
 
   const update = (next: Preferences) => { setPreferences(next); savePreferences(next); };
   // A conversation continued from another agent opens in Chat.
@@ -187,7 +192,7 @@ export function App({ platform }: { platform: Platform }) {
             )}
             {activePage === 'start' && <StartPage t={t} />}
             {activePage === 'logs' && <EventLogPage t={t} {...(agents && currentSession ? { loadCurrent: () => agents.sessionEvents(currentSession.id) } : {})} />}
-            {activePage === 'diagnostics' && <DiagnosticsPage t={t} platform={platform} hostState={hostState} />}
+            {activePage === 'diagnostics' && <DiagnosticsPage t={t} platform={platform} hostState={hostState} updateStatus={updateStatus} onOpenWorkspaces={() => setPage('settings')} />}
             {activePage === 'settings' && (
               <SettingsPage t={t} platform={platform} preferences={preferences} onChange={update} hostState={hostState} onHostState={host.apply} updateStatus={updateStatus} />
             )}
