@@ -67,7 +67,33 @@
 }
 
 *, *::before, *::after { box-sizing: border-box; }
-body { margin: 0; min-height: 100vh; background: var(--canvas); }
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--canvas);
+  color: var(--text);
+  transition: background-color 240ms var(--ease), color 240ms var(--ease);
+}
+
+.shell,
+.sidebar,
+.topbar,
+.card,
+.composer,
+.chat-side,
+.tool-card,
+.approval-card,
+.preset-card,
+.glass-select-trigger,
+.glass-select-menu,
+.button,
+.nav-item {
+  transition:
+    background-color 240ms var(--ease),
+    border-color 240ms var(--ease),
+    color 240ms var(--ease),
+    box-shadow 240ms var(--ease);
+}
 button, input, select, textarea { font: inherit; color: inherit; }
 h1, h2 { margin: 0; line-height: 1.25; }
 h1 { font-size: 1.6rem; font-weight: 650; }
@@ -1419,5 +1445,5 @@ input[type='file']::file-selector-button {
 
 @media (prefers-reduced-motion: reduce) {
   .content, .card, .toast, .pulse, .spin, .msg.assistant.streaming .markdown > :last-child::after { animation: none; }
-  .shell, .nav-item, .actions button, .button, .segment span, .switch-track, .switch-track::after, .disclosure .icon, .row-tools, .preset-card { transition: none; }
+  body, .shell, .sidebar, .topbar, .card, .composer, .chat-side, .tool-card, .approval-card, .glass-select-trigger, .glass-select-menu, .nav-item, .actions button, .button, .segment span, .switch-track, .switch-track::after, .disclosure .icon, .row-tools, .preset-card { transition: none !important; }
 }
