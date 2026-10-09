@@ -1,0 +1,21 @@
+{
+  "name": "@extalia/host",
+  "description": "Node host for the Extalia Native runtime: workspace tools, credential storage, sessions, memory and skills.",
+  "version": "0.0.3",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@extalia/core": "workspace:*",
+    "@extalia/importers": "workspace:*",
+    "@extalia/platform": "workspace:*",
+    "@extalia/protocol": "workspace:*",
+    "@extalia/runtime": "workspace:*"
+  }
+}

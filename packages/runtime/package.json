@@ -1,0 +1,20 @@
+{
+  "name": "@extalia/runtime",
+  "description": "Extalia Native runtime: provider-neutral agent loop, model providers, tool contracts and permission policy.",
+  "version": "0.0.3",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "~0.131.0",
+    "@extalia/core": "workspace:*",
+    "@extalia/protocol": "workspace:*"
+  }
+}
