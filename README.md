@@ -11,22 +11,25 @@
 
 Extalia provides a unified workspace where developers can prompt, steer, orchestrate, and observe autonomous AI agents through both conventional engineering views (Chat, Console, Tasks, Files, Git, Terminal, and Logs) and an interactive 3D virtual office.
 
-> **Status: pre-alpha.** Working today: the Extalia Native agent (API key or router), orchestration, native history import, and the Desktop and Web clients. Setup, Settings, Chat and Virtual Office share one application. The existing campus, furnished F1–F3 floors and characters use real host sessions, with conversations inside Office. The complete appearance editor and advanced avatar navigation remain later milestones.
+> **Status: pre-alpha.** Working today: the Extalia Native agent (API key or router), orchestration, native history import, and the Desktop and Web clients. Setup, Settings, Chat and Virtual Office share one application. The existing campus, furnished F1–F3 floors and characters use real host sessions, with conversations inside Office. Each character has an editable look (style presets for hair, clothing, accessories and walking style) and a console with its messages, activity and team; walking between floors and facility routines are still in progress.
 
 ---
 
 ## 📸 Preview
 
-### Spatial 3D Virtual Office & Campus
-![Extalia Virtual Office Campus](docs/images/preview-campus.webp)
+### Living 3D Virtual Office & Campus
+![Extalia Living 3D Virtual Office](docs/images/office.png)
 
-### Floor Plan & Live Autonomous Workforce
-![Floor 1 Workforce & Shared Facilities](docs/images/preview-floor1.png)
+### Multi-Floor Workforce & Autonomous Team Pods
+![Multi-Floor Workforce and Team Pods](docs/images/teams.png)
 
-### Agent Inspection & Spatial Context
-| Avatar & Desk Activity Inspection | Non-3D Agent Console & Execution Timeline |
+### In-Scene Prompt Dock & Agent Steering
+![In-Scene Prompt Dock and Interactive Steering](docs/images/prompt.png)
+
+### Subagent Team Planning & Delegation
+| Subagent Role Orchestration | Delegated Multi-Agent Execution |
 | :---: | :---: |
-| ![Avatar Interaction](docs/images/preview-avatar-inspect.webp) | ![Agent Console](docs/images/preview-console.webp) |
+| ![Subagent Planning](docs/images/subagent.png) | ![Delegated Execution](docs/images/deligated.png) |
 
 ---
 
@@ -92,6 +95,7 @@ What works today:
 - **History per connection**: turn session history off for a connection and its new sessions stay in memory only.
 - **Live transcript observation** of selected native sessions, with observer-only setup (no model key), pause/resume and a read-only viewer. Idle polls skip parsing unchanged sources. Hook/MCP installers remain planned; see [runtime status](docs/architecture/runtime-adapters.md).
 - **Desktop** (auto-update from GitHub Releases) and **Web** through `npm i -g extalia-vo` → `extalia` (updates through npm).
+- **One profile for Web and Desktop** in `~/.extalia-vo` (`%USERPROFILE%\.extalia-vo` on Windows; `EXTALIA_HOME` overrides it): connections, workspaces, sessions and interface preferences. Data from the folder used up to 0.0.20 is copied there once; the old folder is kept.
 - **Extalia Protocol v0** with strict validation, English and Indonesian UI, light, dark (Royal Charcoal) and liquid-glass themes.
 
 More in [Getting started](docs/getting-started/README.md) and the [documentation index](docs/README.md).
