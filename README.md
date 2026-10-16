@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/brand/extalia-logo-dark.svg">
-    <img src="docs/brand/extalia-logo-light.svg" alt="Extalia" width="320">
+    <source media="(prefers-color-scheme: dark)" srcset="docs/brand/extalia-logo-dark.png">
+    <img src="docs/brand/extalia-logo-light.png" alt="Extalia Virtual Agent" width="460">
   </picture>
 </p>
 
