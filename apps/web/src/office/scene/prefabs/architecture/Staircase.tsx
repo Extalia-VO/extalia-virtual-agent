@@ -39,23 +39,28 @@ function StairFlightLighting({ width, rise, run, midLandingDepth, floorY }: {
   const factor = state.factors.interiorLightFactor;
   const gap = OFFICE_STAIRCASE.gap;
   const halfRise = rise / 2;
+  const xOffset = (width + gap) / 2;
   const outerX = width + gap / 2 + OFFICE_STAIR_LAYOUT.padOverhang - OFFICE_STAIR_LAYOUT.guardInset;
   const fixtures: { position: [number, number, number]; aim: [number, number, number]; name: string }[] = [];
   for (const direction of [1, -1] as const) {
     const baseY = direction === 1 ? 0 : halfRise;
     const centerX = -direction * (width + gap) / 2;
-    for (const t of [0.18, 0.5, 0.82]) {
+    for (const t of [0.18, 0.46, 0.74, 0.94]) {
       const surfaceY = baseY + halfRise * t;
       const z = direction * run * (t - 0.5);
       fixtures.push({ position: [-direction * outerX, surfaceY + 1.02, z],
         aim: [centerX, surfaceY + 0.035, z], name: `stair-rail-downlight-${direction}-${t}` });
     }
   }
-  // The rear rail is outside both mid-landing passing lanes (0.65 m and 1.95 m).
-  for (const side of [-1, 1]) {
-    const x = side * (width + gap) / 2;
-    fixtures.push({ position: [x, halfRise + 1.02, run / 2 + midLandingDepth - OFFICE_STAIR_LAYOUT.guardInset],
-      aim: [x, halfRise + 0.035, run / 2 + midLandingDepth / 2], name: `stair-turn-downlight-${side}` });
+  // The rear rail illuminates both passing lanes (0.65 m and 1.95 m) and the central crossing.
+  const turnZ = run / 2 + midLandingDepth - OFFICE_STAIR_LAYOUT.guardInset;
+  const turnAimZ = run / 2 + midLandingDepth / 2;
+  const turnStops = [-xOffset, -xOffset * 0.35, xOffset * 0.35, xOffset];
+  for (const x of turnStops) {
+    const isCenter = Math.abs(x) < xOffset * 0.5;
+    const aimZ = isCenter ? run / 2 + (x > 0 ? OFFICE_STAIRCASE.midLandingDownOffset : OFFICE_STAIRCASE.midLandingUpOffset) : turnAimZ;
+    fixtures.push({ position: [x, halfRise + 1.02, turnZ],
+      aim: [x, halfRise + 0.035, aimZ], name: `stair-turn-downlight-${x.toFixed(2)}` });
   }
   return <group name="stair-rail-downlights">
     {fixtures.map(({ position, aim, name }) => <group key={name} position={position}>

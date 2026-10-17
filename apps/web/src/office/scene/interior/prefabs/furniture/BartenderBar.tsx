@@ -18,6 +18,47 @@ function StemwareRackLight() {
   </group>;
 }
 
+/** Under-stair soffit lighting for the bar service aisle, rear alcove, and east staff entrance under the landing. */
+function UnderStairBarServiceLighting() {
+  const { state } = useSolarEnvironment();
+  const factor = state.factors.interiorLightFactor;
+  const soffitY = UNDER_STAIR_SOFFIT_Y;
+  // Local coordinates relative to bar root [3.2, 0, -6.3] in lounge [14.2, -0.9] -> world [17.4, 0, -7.2]:
+  // Covers aisle west (-1.3), mid (0.5), east (2.3), alcove (4.0), bar-back (5.4), entry (6.8), approach (6.8, z=1.8).
+  const fixtures = [
+    { x: -1.3, z: -0.2, name: "bar-staff-downlight-west" },
+    { x: 0.5, z: -0.2, name: "bar-staff-downlight-mid" },
+    { x: 2.3, z: -0.2, name: "bar-staff-downlight-east" },
+    { x: 4.0, z: -0.5, name: "bar-staff-downlight-alcove" },
+    { x: 5.4, z: -0.5, name: "bar-staff-downlight-back" },
+    { x: 6.8, z: -0.5, name: "bar-staff-downlight-entry" },
+    { x: 6.8, z: 1.8, name: "bar-staff-downlight-approach" }
+  ];
+  return <group userData={{ officeCollision: false }}>
+    {fixtures.map(f => (
+      <group key={f.name} position={[f.x, soffitY, f.z]}>
+        <mesh position={[0, -0.015, 0]}>
+          <cylinderGeometry args={[0.09, 0.09, 0.03, 12]} />
+          <meshStandardMaterial color="#4a5054" roughness={0.4} metalness={0.6} />
+        </mesh>
+        <mesh position={[0, -0.03, 0]} userData={{ officeMaterialDynamic: "bar-soffit-lens:interior:#ffe4c4:factor*1.2" }}>
+          <cylinderGeometry args={[0.075, 0.075, 0.01, 12]} />
+          <meshStandardMaterial color="#eee6dc" emissive="#ffe4c4" emissiveIntensity={factor * 1.2} roughness={0.4} toneMapped={false} />
+        </mesh>
+        <FixtureSpotLight
+          name={f.name}
+          position={[0, -0.04, 0]}
+          aim={[0, -2.8, 0]}
+          intensity={factor * 20}
+          distance={3.8}
+          angle={0.92}
+          color="#ffe4c4"
+        />
+      </group>
+    ))}
+  </group>;
+}
+
 // Reusable geometries
 const stoolSeatGeo = new THREE.CylinderGeometry(0.24, 0.24, 0.08, 16);
 const stoolStemGeo = new THREE.CylinderGeometry(0.035, 0.035, 0.65, 8);
@@ -79,6 +120,7 @@ export function BartenderBar() {
   const suspensionBottom = 0.03;
   return (
     <group position={BARTENDER_BAR_BLUEPRINT.rootPosition} rotation={[0, BARTENDER_BAR_BLUEPRINT.rotationY, 0]} userData={{ officeSeatStation: true }}>
+      <UnderStairBarServiceLighting />
       {/* ============================================================ */}
       {/* 1. BACK BAR (Menempel di dinding dekat tangga)               */}
       {/* ============================================================ */}

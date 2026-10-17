@@ -43,7 +43,8 @@ import {
   SculpturalDisplayPlinth,
   ArchitecturalGalleryCanvas,
   MonumentalPlanter,
-  DiningLinearPendant
+  DiningLinearPendant,
+  BarPendantCluster
 } from "./interior/prefabs/architecture/GrandLobbyDecorations";
 import { useFloorVisible } from "./interior/FloorVisibilityContext";
 import { useSolarEnvironment } from "./Environment";
@@ -465,6 +466,15 @@ export function Floor1() {
         {/* 1. Bartender & Beverage Bar (Di alcove bawah tangga / bawah bordes tengah) */}
         {/* ============================================================ */}
         <BartenderBar />
+        <BarPendantCluster
+          position={[
+            BARTENDER_BAR_BLUEPRINT.rootPosition[0] + BARTENDER_BAR_BLUEPRINT.frontCounter.position[0],
+            0,
+            BARTENDER_BAR_BLUEPRINT.rootPosition[2] + BARTENDER_BAR_BLUEPRINT.frontCounter.position[2]
+          ]}
+          spacing={1.2}
+          drop={1.1}
+        />
 
         {/* ============================================================ */}
         {/* 2. Cozy Reading & Tea Lounge Seating Zone                    */}
@@ -659,6 +669,7 @@ export function Floor1() {
           rotationY={Math.PI}
           width={2.25}
           height={1.15}
+          variant="monitoring"
           data={missionControlScreen(floorState)}
         />
         <StorageCabinet
