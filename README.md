@@ -11,7 +11,7 @@
 
 Extalia provides a unified workspace where developers can prompt, steer, orchestrate, and observe autonomous AI agents through both conventional engineering views (Chat, Console, Tasks, Files, Git, Terminal, and Logs) and an interactive 3D virtual office.
 
-> **Status: pre-alpha.** Working today: the Extalia Native agent (API key or router), orchestration, native history import, and the Desktop and Web clients. Setup, Settings, Chat and Virtual Office share one application. The existing campus, furnished F1–F3 floors and characters use real host sessions, with conversations inside Office. Each character has an editable look (style presets for hair, clothing, accessories and walking style) and a console with its messages, activity and team; walking between floors and facility routines are still in progress.
+> **Status: beta (v0.4.60).** Working today: Extalia Native autonomous orchestration with model routing and subagent teams; live observation and hook integration for Codex, Claude Code, Gemini CLI, Hermes, and Antigravity; native history import and secret redaction; interactive 3D virtual office (furnished F1–F3 campus, glass elevator controller, floor stairwells, kinematic walking avatars, smart screens, and facility staff); dual-mode in-scene prompt dock (Managed & Observed); and unified Desktop and Web applications.
 
 ---
 
@@ -105,7 +105,7 @@ What works today:
 - **Native history import** from Codex, Claude Code, Hermes Agent and Gemini CLI, read-only, with preview.
 - **Continue in Extalia**: when Codex or Claude Code runs out of quota, continue an imported or observed conversation in a new Extalia session; the original request and recent messages are carried over and the source is never changed.
 - **History per connection**: turn session history off for a connection and its new sessions stay in memory only.
-- **Live transcript observation** of selected native sessions, with observer-only setup (no model key), pause/resume and a read-only viewer. Idle polls skip parsing unchanged sources. Hook/MCP installers remain planned; see [runtime status](docs/architecture/runtime-adapters.md).
+- **Live agent-app hooks and MCP server**: one-step connection via `extalia connect` (Codex, Claude Code, Gemini CLI, Hermes, and Antigravity) with zero-config auto-connect on startup; loopback stdio JSON-RPC MCP server (`extalia mcp`) for intent and handoff reporting.
 - **Desktop** (auto-update from GitHub Releases) and **Web** through `npm i -g extalia-vo` → `extalia` (updates through npm).
 - **One profile for Web and Desktop** in `~/.extalia-vo` (`%USERPROFILE%\.extalia-vo` on Windows; `EXTALIA_HOME` overrides it): connections, workspaces, sessions and interface preferences. Data from the folder used up to 0.0.20 is copied there once; the old folder is kept.
 - **Extalia Protocol v0** with strict validation, English and Indonesian UI, light, dark (Royal Charcoal) and liquid-glass themes.
@@ -116,53 +116,52 @@ More in [Getting started](docs/getting-started/README.md) and the [documentation
 
 ## 📂 Monorepo Structure
 
-Target layout from the PRD. Packages are added when their phase starts; today the repository contains `apps/web`, `apps/desktop`, `apps/cli`, `packages/protocol`, `packages/core`, and `packages/platform`.
+Target layout from the PRD. Today the repository contains 11 workspace packages and a Rust Cargo workspace (`crates/extalia-core`, `crates/extalia-daemon`):
 
 ```text
 extalia/
 ├── apps/
 │   ├── desktop/            # Desktop application shell (macOS, Windows, Linux)
-│   ├── web/                # Standalone Web application
-│   └── cli/                # Terminal CLI and local bridge launcher
+│   ├── web/                # Standalone Web client and Three.js / R3F office UI
+│   └── cli/                # Terminal CLI, local bridge launcher, and MCP server
 │
 ├── packages/
 │   ├── core/               # Domain models, state machines, and business logic
-│   ├── protocol/           # Normalized event schemas, types, and validators
-│   ├── runtime/            # Runtime adapter interfaces and contracts
-│   ├── event-bus/          # High-performance pub/sub event bus
-│   ├── platform/           # Platform abstraction contracts (filesystem, terminal, git)
-│   ├── workspace/          # Workspace management and repository linking
-│   ├── sessions/           # Multi-session SQLite store and persistence
-│   ├── renderer/           # Three.js / React Three Fiber spatial engine
-│   ├── office/             # Room semantics, lighting, and spatial desk allocation
-│   ├── avatars/            # Kinematics, avatar animations, and state transitions
-│   ├── ui/                 # Design system components and shared UI primitives
-│   ├── console/            # Agent Console, tool timeline, and steering controls
-│   ├── importer-core/      # Session parsers, fingerprinting, and deduplication
-│   └── sdk/                # Public Extension SDK
+│   ├── protocol/           # Normalized event schemas, JSON schemas, types, and validators
+│   ├── platform/           # Platform capability contracts (filesystem, terminal, git)
+│   ├── host/               # Local agent host, session storage, and hook ingest
+│   ├── runtime/            # Runtime adapter interfaces, provider loops, and delegation
+│   ├── importers/          # Session discovery, parsers, and secret redaction
+│   └── office/             # Spatial room semantics, resource registry, and lighting
 │
-├── docs/                   # Architectural specs, PRD, and ADRs
-└── scripts/                # Setup and automation scripts
+├── crates/
+│   ├── extalia-core/       # Rust control plane, SQLite store, and mission journal
+│   └── extalia-daemon/     # Stdio sidecar daemon wire contract v1
+│
+├── docs/                   # Architectural specs, Master PRD v1.1, and ADRs
+└── tooling/                # Verification, code safety, and build scripts
 ```
 
 ---
 
 ## 🗺 Roadmap & Milestones
 
-Development is tracked across iterative public milestones:
+Development is tracked across iterative public milestones aligned with Master PRD v1.1:
 
-- **v0.1.0-alpha: Public Foundation & Vertical Slice**
+- **✓ v0.1.0-alpha: Public Foundation & Vertical Slice** *(Completed)*
   Monorepo boundaries, cross-platform CI matrix, Extalia Protocol v0, and a managed runtime adapter.
-- **v0.2.0-alpha: Workspaces & Session Hub**
+- **✓ v0.2.0-alpha: Workspaces & Session Hub** *(Completed)*
   Profile manager, workspace repository linking, persistent multi-session store, and unified sidebar.
-- **v0.3.0-beta: Import Center & Agent Console**
+- **✓ v0.3.0-beta: Import Center & Agent Console** *(Completed)*
   Historical session importers (Codex, Claude, Hermes), secret redaction scanner, non-3D Agent Console, and terminal/git observability.
-- **v0.4.0-beta: Subagents & Project Orchestration**
-  Subagent lifecycle, dynamic office seating, declarative skill registry, project DAG planning, and Obsidian knowledge synchronization.
-- **Final integration milestone: Virtual Office**
-  Bring in the completed Virtual Office scene and connect it to the stable session, runtime and presence contracts.
+- **🚀 v0.4.0-beta: Subagents & Project Orchestration** *(Active Milestone)*
+  Subagent lifecycle manager, dynamic 3D office seating, task-based spatial dispatch, dual-mode prompt dock, and multi-agent coordination.
+- **v0.5.0-beta: Durable Control & Knowledge Vault** *(Upcoming)*
+  Task leases, heartbeat/reaper crash recovery, digest-bound approvals, SkillSpector quarantine gate, and bidirectional Obsidian knowledge graph.
+- **v0.6.0-beta: Evolve & Autonomous Learning** *(Upcoming)*
+  Experience capture, disposable sandbox evaluation in git worktrees, hybrid learning activation, and Evolve Learning Center.
 - **v1.0.0-ga: Extension SDK & Production Release**
-  Public Extension SDK, signed cross-platform desktop installers (macOS, Windows, Linux), and community plugin registry after the final office integration.
+  Public Extension SDK, signed cross-platform desktop installers (macOS, Windows, Linux), and community plugin registry.
 
 ---
 
