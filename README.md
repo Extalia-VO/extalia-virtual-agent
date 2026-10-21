@@ -24,7 +24,16 @@ Extalia provides a unified workspace where developers can prompt, steer, orchest
 ![Extalia Interactive Floor Workspaces](docs/images/floor-workspace.png)
 
 ### In-Scene Prompt Dock & Agent Steering
-![In-Scene Prompt Dock and Interactive Steering](docs/images/prompt.png)
+
+Extalia provides dual interaction modes directly inside the 3D office viewport:
+
+#### 1. Managed Mode (Interactive Steering & Team Orchestration)
+Direct conversational steering with in-scene composer, runtime switching, model routing, file attachments, and multi-agent team oversight:
+![In-Scene Prompt Dock - Managed Mode](docs/images/prompt-native.png)
+
+#### 2. Observed Mode (External Agent Observability & Context Tracking)
+Non-intrusive monitoring of outside agents (Claude Code, Codex, Hermes) with real-time transcript streaming, command logs, and live context window tracking:
+![In-Scene Agent Inspection - Observed Mode](docs/images/prompt-observe.png)
 
 ### Multi-Floor Team Pods & Navigation
 ![Multi-Floor Workforce and Team Pods](docs/images/teams.png)
