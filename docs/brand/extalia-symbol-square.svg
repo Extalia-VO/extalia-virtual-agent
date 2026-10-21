@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2048 2048" role="img" aria-labelledby="title description">
+  <title id="title">Extalia symbol</title>
+  <desc id="description">The Extalia forward-slash and chevron mark in a yellow-to-green gradient.</desc>
+  <defs>
+    <linearGradient id="extalia-green" x1="0" y1="1" x2="0" y2="0" color-interpolation="linearRGB">
+      <stop stop-color="#10b9ac"/>
+      <stop offset="0.55" stop-color="#83cb35"/>
+      <stop offset="1" stop-color="#f8e719"/>
+    </linearGradient>
+  </defs>
+  <g fill="url(#extalia-green)" transform="translate(244 470.81) scale(11.06383)">
+    <path d="M0 100L18 100L50 0L32 0Z"/>
+    <path d="M68 0L91 0L141 50L91 100L68 100L118 50Z"/>
+  </g>
+</svg>

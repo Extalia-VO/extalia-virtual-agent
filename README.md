@@ -1,25 +1,38 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/brand/extalia-logo-dark.png">
+    <img src="docs/brand/extalia-logo-light.png" alt="Extalia Virtual Agent" width="460">
+  </picture>
+</p>
+
 # Extalia
 
 > **Open-Source Spatial AI-Agent Workspace and Orchestration Platform**
 
 Extalia provides a unified workspace where developers can prompt, steer, orchestrate, and observe autonomous AI agents through both conventional engineering views (Chat, Console, Tasks, Files, Git, Terminal, and Logs) and an interactive 3D virtual office.
 
-> **Status: pre-alpha.** Working today: the Extalia Native agent (API key or router), orchestration, native history import, and the Desktop and Web clients. The previews come from the existing Virtual Office. Its 3D integration stays the final product milestone, after the agent workflows, imports, session management and desktop/web foundations are ready.
+> **Status: pre-alpha.** Working today: the Extalia Native agent (API key or router), orchestration, native history import, and the Desktop and Web clients. Setup, Settings, Chat and Virtual Office share one application. The existing campus, furnished F1–F3 floors and characters use real host sessions, with conversations inside Office. Each character has an editable look (style presets for hair, clothing, accessories and walking style) and a console with its messages, activity and team; walking between floors and facility routines are still in progress.
 
 ---
 
 ## 📸 Preview
 
-### Spatial 3D Virtual Office & Campus
-![Extalia Virtual Office Campus](docs/images/preview-campus.webp)
+### Living 3D Virtual Office & Campus Architecture
+![Extalia 3D Campus Building Architecture](docs/images/campus-building.png)
 
-### Floor Plan & Live Autonomous Workforce
-![Floor 1 Workforce & Shared Facilities](docs/images/preview-floor1.png)
+### Interactive Floor Workspaces & Autonomous Workforce
+![Extalia Interactive Floor Workspaces](docs/images/floor-workspace.png)
 
-### Agent Inspection & Spatial Context
-| Avatar & Desk Activity Inspection | Non-3D Agent Console & Execution Timeline |
+### In-Scene Prompt Dock & Agent Steering
+![In-Scene Prompt Dock and Interactive Steering](docs/images/prompt.png)
+
+### Multi-Floor Team Pods & Navigation
+![Multi-Floor Workforce and Team Pods](docs/images/teams.png)
+
+### Subagent Team Planning & Delegation
+| Subagent Role Orchestration | Delegated Multi-Agent Execution |
 | :---: | :---: |
-| ![Avatar Interaction](docs/images/preview-avatar-inspect.webp) | ![Agent Console](docs/images/preview-console.webp) |
+| ![Subagent Planning](docs/images/subagent.png) | ![Delegated Execution](docs/images/deligated.png) |
 
 ---
 
@@ -66,7 +79,7 @@ The 3D office never imports runtime-specific code or vendor dependencies directl
 
 ## 🚀 Quick Start
 
-Requires Node.js 22.12+ and pnpm 12 (`corepack enable`). No account, API key, or private file is needed.
+Requires Node.js 22.13+ (Node 23 needs 23.4+) and pnpm 12 (`corepack enable`). No account, API key, or private file is needed.
 
 ```bash
 pnpm install
@@ -81,7 +94,11 @@ What works today:
 - **Orchestration** (on by default): the agent hands read-only research to worker agents on Complex / Standard / Quick models you choose.
 - **Memory and skills** per connection: Extalia's own, the provider's (OmniRoute), or off; nine built-in skills plus your own.
 - **Native history import** from Codex, Claude Code, Hermes Agent and Gemini CLI, read-only, with preview.
+- **Continue in Extalia**: when Codex or Claude Code runs out of quota, continue an imported or observed conversation in a new Extalia session; the original request and recent messages are carried over and the source is never changed.
+- **History per connection**: turn session history off for a connection and its new sessions stay in memory only.
+- **Live transcript observation** of selected native sessions, with observer-only setup (no model key), pause/resume and a read-only viewer. Idle polls skip parsing unchanged sources. Hook/MCP installers remain planned; see [runtime status](docs/architecture/runtime-adapters.md).
 - **Desktop** (auto-update from GitHub Releases) and **Web** through `npm i -g extalia-vo` → `extalia` (updates through npm).
+- **One profile for Web and Desktop** in `~/.extalia-vo` (`%USERPROFILE%\.extalia-vo` on Windows; `EXTALIA_HOME` overrides it): connections, workspaces, sessions and interface preferences. Data from the folder used up to 0.0.20 is copied there once; the old folder is kept.
 - **Extalia Protocol v0** with strict validation, English and Indonesian UI, light, dark (Royal Charcoal) and liquid-glass themes.
 
 More in [Getting started](docs/getting-started/README.md) and the [documentation index](docs/README.md).
