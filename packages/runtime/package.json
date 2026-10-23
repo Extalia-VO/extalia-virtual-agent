@@ -13,7 +13,7 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "~0.131.0",
+    "@anthropic-ai/sdk": "~0.135.0",
     "@extalia/core": "workspace:*",
     "@extalia/protocol": "workspace:*"
   }
