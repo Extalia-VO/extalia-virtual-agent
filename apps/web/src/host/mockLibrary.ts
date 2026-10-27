@@ -17,10 +17,11 @@ const LOCATIONS: ImportLocation[] = [
   { id: 'loc-hermes', sourceId: 'hermes', label: 'Hermes Agent', profile: 'default', path: `${HOME}/.hermes/state.db`, format: 'SQLite', available: true, supported: true },
   { id: 'loc-hermes-work', sourceId: 'hermes', label: 'Hermes Agent', profile: 'work', path: `${HOME}/.hermes/profiles/work/state.db`, format: 'SQLite', available: true, supported: true },
   { id: 'loc-gemini', sourceId: 'gemini-cli', label: 'Gemini CLI', path: `${HOME}/.gemini/tmp`, format: 'JSON / JSONL', available: false, supported: true },
-  { id: 'loc-antigravity', sourceId: 'antigravity-ide', label: 'Antigravity IDE', path: `${HOME}/.gemini/antigravity/conversations`, format: 'Protocol Buffers', available: true, supported: false, note: 'Conversations are detected, but this version cannot read their binary format.' },
+  { id: 'loc-antigravity', sourceId: 'antigravity', label: 'Antigravity', path: `${HOME}/.gemini/antigravity/brain`, format: 'JSONL', available: true, supported: true },
+  { id: 'loc-antigravity-ide', sourceId: 'antigravity-ide', label: 'Antigravity IDE', path: `${HOME}/.gemini/antigravity/conversations`, format: 'Protocol Buffers', available: true, supported: false, note: 'Conversations are detected, but this version cannot read their binary format.' },
 ];
 
-const SOURCE_NAMES: Record<string, string> = { codex: 'Codex', 'claude-code': 'Claude Code', hermes: 'Hermes Agent', 'antigravity-ide': 'Antigravity IDE' };
+const SOURCE_NAMES: Record<string, string> = { codex: 'Codex', 'claude-code': 'Claude Code', 'gemini-cli': 'Gemini CLI', antigravity: 'Antigravity', hermes: 'Hermes Agent', 'antigravity-ide': 'Antigravity IDE' };
 const TOPICS: [string, string | undefined][] = [
   ['Refactor the auth middleware', `${HOME}/Projects/demo-app`],
   ['Why does the build fail on CI?', `${HOME}/Projects/demo-app`],

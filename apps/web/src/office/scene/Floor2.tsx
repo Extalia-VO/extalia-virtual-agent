@@ -13,6 +13,7 @@ import { Plant } from "./interior/prefabs/props/Plant";
 import {
   Bookshelf,
   CoffeeTable,
+  ConsoleTable,
   DisplayCabinet
 } from "./interior/prefabs/furniture/TablesAndStorage";
 import { ArmChair } from "./interior/prefabs/furniture/Sofa";
@@ -85,7 +86,6 @@ export function Floor2() {
           position={[0, 1.9, -missionSize[1] / 2 + 0.08]}
           width={6.4}
           height={2.0}
-          variant="presentation"
           data={missionControlScreen(floorState)}
         />
 
@@ -117,7 +117,7 @@ export function Floor2() {
         <CornerLampFixture position={[missionSize[0] / 2 - 0.8, 0, -missionSize[1] / 2 + 0.7]} />
       </RoomShell>
 
-      <FloorFinish size={[32, 3.2]} position={[-5, 0.06, -8.2]} material="stone" thickness={0.025} />
+      <FloorFinish size={[32, 3.2]} position={[-5, 0, -8.2]} material="stone" />
 
       <SceneLabel position={[-5, 0.12, -8.2]} center style={{ display: floorVisible ? "block" : "none" }}>
         <div className="corridor-label">
@@ -151,13 +151,14 @@ export function Floor2() {
           rotationY={Math.PI}
           width={2.2}
           height={1.2}
+          variant="diagram"
           data={{
             title: "ARCHITECTURE",
             subtitle: "Strategy / design",
             status: "READY"
           }}
         />
-        <AreaRug position={[-1.8, 0.105, 0.5]} width={5.2} depth={4.2} color="#d5c7b2" borderColor="#b09e83" />
+        <AreaRug position={[-1.8, 0, 0.5]} width={5.2} depth={4.2} color="#d5c7b2" borderColor="#b09e83" />
         <Plant position={[-architectureSize[0] / 2 + 0.9, 0, architectureSize[1] / 2 - 0.9]} />
         <Plant position={[architectureSize[0] / 2 - 0.9, 0, architectureSize[1] / 2 - 0.9]} />
         <StandLampFixture position={[architectureSize[0] / 2 - 1.8, 0, -architectureSize[1] / 2 + 1]} />
@@ -190,29 +191,34 @@ export function Floor2() {
         oppositeWall="windows"
         floorFinish="oak"
       >
-        {/* Keep the doorway-to-window aisle clear. Display fronts face inward
-            from the side walls instead of overlapping across the room centre. */}
-        <DisplayCabinet
-          position={[-4.3, 0, 0.6]}
-          rotationY={Math.PI / 2}
-          width={4.2}
-        />
-        <DisplayCabinet
-          position={[4.3, 0, 0.6]}
-          rotationY={-Math.PI / 2}
-          width={3.4}
-        />
+        {/* Keep the doorway-to-window aisle clear. Display and shelf fronts face inward
+            flush against the west and east walls. */}
         <Bookshelf
-          position={[-2.2, 0, -3.15]}
-          width={2.6}
+          position={[-4.46, 0, -2.1]}
+          rotationY={Math.PI / 2}
+          width={2.4}
         />
-        <Plant position={[2.7, 0, 2.7]} />
-        {/* Archive lighting: stand lamp + pendant over central aisle */}
-        <StandLampFixture position={[-3.2, 0, -2.7]} />
-        <PendantLight position={[0, 2.85, 0]} drop={0.65} />
+        <DisplayCabinet
+          position={[-4.44, 0, 1.35]}
+          rotationY={Math.PI / 2}
+          width={3.8}
+        />
+        <ConsoleTable position={[4.48, 0, -2.1]} rotationY={-Math.PI / 2} width={2.0} />
+        <DisplayCabinet
+          position={[4.44, 0, 1.35]}
+          rotationY={-Math.PI / 2}
+          width={3.8}
+        />
+        <AreaRug position={[0, 0, 0.2]} width={5.2} depth={6.2} color="#d2c5b0" borderColor="#9e8d74" />
+        <Plant position={[4.05, 0, -3.55]} />
+        <Plant position={[-4.05, 0, 3.55]} />
+        {/* Archive lighting: corner stand lamps + pendant over central aisle */}
+        <StandLampFixture position={[-4.05, 0, -3.55]} />
+        <StandLampFixture position={[4.05, 0, 3.55]} />
+        <PendantLight position={[0, 2.85, 0.2]} drop={0.65} />
       </RoomShell>
 
-      <FloorFinish size={[46, 3.2]} position={[2, 0.06, 9]} material="stone" thickness={0.025} />
+      <FloorFinish size={[46, 3.2]} position={[2, 0, 9]} material="stone" />
 
       {/* Rear row: Knowledge, Review, Strategy, and Archive share the full-width corridor. */}
       <RoomShell
@@ -227,23 +233,23 @@ export function Floor2() {
         floorFinish="oak"
       >
         <Bookshelf
-          position={[-4.8, 0, -1.5]}
+          position={[-5.43, 0, -1.5]}
           rotationY={Math.PI / 2}
           width={2.5}
         />
         <Bookshelf
-          position={[-4.8, 0, 1.55]}
+          position={[-5.43, 0, 1.55]}
           rotationY={Math.PI / 2}
           width={2.5}
         />
         <LaptopDesk position={[0.5, 0, 0.2]}
           screenData={screenForLocation(floorState, "floor-2.knowledge.laptop")} />
-        <AreaRug position={[2.8, 0.105, 2.2]} width={3.6} depth={2.5} color="#cbbfa8" />
+        <AreaRug position={[2.8, 0, 2.2]} width={3.6} depth={2.5} color="#cbbfa8" />
         <ArmChair position={[3.2, 0, 2.3]} rotationY={Math.PI} color="#a8b6a9" />
         <CoffeeTable position={[1.8, 0, 2.2]} />
         {/* Knowledge room lighting: desk lamp + stand lamp by reading chair */}
         <DeskLampFixture position={[0.5 - 0.45, 0.74, 0.35]} />
-        <StandLampFixture position={[4.65, 0, 2.3]} />
+        <StandLampFixture position={[5.05, 0, 3.4]} />
       </RoomShell>
 
       {/* Review workstations keep their existing local seat anchors. */}

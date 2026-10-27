@@ -4,19 +4,20 @@ import { registerFixture, type RegisteredFixture } from '../../lighting/FixtureL
 
 /** Original finite beam and fixture geometry, registered in the shared irradiance volume. */
 export function FixtureSpotLight({ position, aim, intensity, color = '#ffe2bc', distance = 7, angle = 0.8,
-  penumbra = 0.65, shadow = false, name, floorY,
+  penumbra = 0.65, shadow = false, name, floorY, bakedOnly = false,
 }: {
   position: [number, number, number]; aim: [number, number, number]; intensity: number;
   color?: string; distance?: number; angle?: number; penumbra?: number; shadow?: boolean; name?: string; floorY?: number;
+  bakedOnly?: boolean;
 }) {
   const anchor = useRef<Group>(null);
   const target = useMemo(() => new Object3D(), []);
   useEffect(() => {
     if (shadow || !anchor.current) return;
     const source: RegisteredFixture = { anchor: anchor.current, target, intensity, color: new Color(color), distance,
-      angle, penumbra, name: name ?? 'fixture-beam', floorY };
+      angle, penumbra, name: name ?? 'fixture-beam', floorY, bakedOnly };
     return registerFixture(source);
-  }, [target, shadow, intensity, color, distance, angle, penumbra, name, floorY]);
+  }, [target, shadow, intensity, color, distance, angle, penumbra, name, floorY, bakedOnly]);
   return <group ref={anchor} position={shadow ? [0, 0, 0] : position} userData={{ officeDynamic: true }}>
     <primitive object={target} position={shadow ? aim : [aim[0] - position[0], aim[1] - position[1], aim[2] - position[2]]} />
     {shadow && intensity > 0.001 && <spotLight name={name} position={position} target={target} intensity={intensity} color={color}

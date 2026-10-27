@@ -1,16 +1,33 @@
-import { useLayoutEffect, useRef, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import type { InstancedMesh, MeshBasicMaterial, MeshStandardMaterial} from "three";
 import { Float32BufferAttribute, Group, Matrix4, Mesh, type BufferGeometry, type Material } from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
+
+const StaticBatchRefresh = createContext<(() => void) | null>(null);
+
+/** An async visual replacement refreshes its nearest owning batch, including nested envelopes. */
+export function useStaticBatchRevision(snapshot: unknown): void {
+  const refresh = useContext(StaticBatchRefresh);
+  const previous = useRef(snapshot);
+  useLayoutEffect(() => {
+    if (previous.current === snapshot) return;
+    previous.current = snapshot;
+    refresh?.();
+  }, [snapshot, refresh]);
+}
 
 /** Batch compatible static scene geometry, preserving exact detail and collision originals. */
 export function StaticCampusBatch({ children, followParent = false }: {
   children: ReactNode; followParent?: boolean;
 }) {
   const root = useRef<Group>(null);
+  const [revision, setRevision] = useState(0);
+  const refresh = useCallback(() => setRevision(value => value + 1), []);
   useLayoutEffect(() => {
     const parent = root.current;
     if (!parent) return;
+    const previousBatch = parent.userData.officeStaticBatch;
+    parent.userData.officeStaticBatch = true;
     parent.updateWorldMatrix(true, true);
     const inverse = new Matrix4().copy(parent.matrixWorld).invert();
     const buckets = new Map<string, { material: MeshStandardMaterial; meshes: Mesh[]; shapes: BufferGeometry[]; materialDynamic?: string }>();
@@ -21,7 +38,7 @@ export function StaticCampusBatch({ children, followParent = false }: {
         ? object.userData.officeMaterialDynamic
         : undefined;
       for (let ancestor = object.parent; ancestor && ancestor !== parent; ancestor = ancestor.parent) {
-        if (ancestor.userData.officeDynamic === true) return;
+        if (ancestor.userData.officeDynamic === true || ancestor.userData.officeStaticBatch === true) return;
       }
       if (object.userData.officeDynamic === true && !materialDynamic) return;
       const sourceMaterial = object.material as Material;
@@ -143,7 +160,11 @@ export function StaticCampusBatch({ children, followParent = false }: {
       batches.traverse(object => { if ((object as Mesh).isMesh) (object as Mesh).geometry.dispose(); });
       batchMaterials.forEach(material => material.dispose());
       parent.remove(batches);
+      if (previousBatch === undefined) delete parent.userData.officeStaticBatch;
+      else parent.userData.officeStaticBatch = previousBatch;
     };
-  }, [followParent]);
-  return <group ref={root} name={followParent ? "moving-assembly-batch" : undefined}>{children}</group>;
+  }, [followParent, revision]);
+  return <StaticBatchRefresh.Provider value={refresh}>
+    <group ref={root} name={followParent ? "moving-assembly-batch" : undefined}>{children}</group>
+  </StaticBatchRefresh.Provider>;
 }

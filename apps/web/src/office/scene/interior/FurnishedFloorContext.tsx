@@ -12,10 +12,13 @@ const empty: FurnishedFloorState = { agents: [], allocations: [], language: 'en'
 const FurnishedContext = createContext<FurnishedFloorState>(empty);
 
 /** All furniture sees the same real session projection as Chat and the office avatars. */
-export function FurnishedFloorProvider({ agents, language, children }: {
-  agents: readonly OfficeAgent[]; language: Language; children: ReactNode;
+export function FurnishedFloorProvider({ agents, language, allocations: given, children }: {
+  agents: readonly OfficeAgent[]; language: Language;
+  /** The scene's seat allocation, so desks and characters agree; derived from `agents` when absent. */
+  allocations?: readonly OfficeAgentAllocation[] | undefined;
+  children: ReactNode;
 }) {
-  const allocations = useMemo(() => allocateOfficeAgents(agents), [agents]);
+  const allocations = useMemo(() => given ?? allocateOfficeAgents(agents), [agents, given]);
   const value = useMemo(() => ({ agents, allocations, language }), [agents, allocations, language]);
   return <FurnishedContext.Provider value={value}>{children}</FurnishedContext.Provider>;
 }

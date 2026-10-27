@@ -1,0 +1,13 @@
+{
+  "coordinateSystem": "app X/Y/Z = Blender X/Z/-Y",
+  "models": {
+    "architecture-glass-panel": { "width": 1, "height": 2.55, "depth": 0.11, "origin": "center" },
+    "architecture-glass-transom": { "width": 1, "height": 0.4, "depth": 0.11, "origin": "center" },
+    "architecture-solid-wall": { "width": 1, "height": 2.55, "depth": 0.11, "origin": "center" },
+    "architecture-hinged-frame": { "width": 1, "height": 2.55, "depth": 0.14, "origin": "opening-floor-center" },
+    "architecture-hinged-glass-leaf": { "width": 1, "height": 2.55, "depth": 0.055, "origin": "hinge-floor" },
+    "architecture-hinged-wood-leaf": { "width": 1, "height": 2.55, "depth": 0.055, "origin": "hinge-floor" },
+    "architecture-sliding-frame": { "width": 2.4, "height": 2.65, "depth": 0.16, "origin": "opening-floor-center" },
+    "architecture-sliding-leaf": { "width": 1, "height": 2.65, "depth": 0.045, "origin": "leaf-floor-center" }
+  }
+}

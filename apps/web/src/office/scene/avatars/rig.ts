@@ -95,7 +95,7 @@ export const HUMANOID_STATURE_MODIFIERS: Readonly<Record<HumanoidStature, Statur
 });
 
 /** Presentation frame: shoulder/hip balance and a small height bias, independent of stature. */
-export type HumanoidFrame = "feminine" | "masculine" | "neutral";
+export type HumanoidFrame = "feminine" | "masculine";
 
 interface FrameModifier {
   readonly height: number;
@@ -105,7 +105,6 @@ interface FrameModifier {
 
 /** Bounded like statures, so seated hips and desk reach stay valid for every combination. */
 export const HUMANOID_FRAME_MODIFIERS: Readonly<Record<HumanoidFrame, FrameModifier>> = Object.freeze({
-  neutral: { height: 1, shoulders: 1, hips: 1 },
   feminine: { height: 0.97, shoulders: 0.92, hips: 1.1 },
   masculine: { height: 1.02, shoulders: 1.07, hips: 0.96 }
 });
@@ -128,20 +127,33 @@ export interface HumanoidRigProfileOptions {
   motion?: Partial<HumanoidMotionPersonality>;
 }
 
-/** Matches the existing procedural mesh, so no external skeleton is required. */
+/**
+ * Procedural body in torso units (shoulder joint 0.59 above the hips), measured
+ * from the local detailed models so the fallback reads as the same person: a
+ * head about an eighth of the height, legs a little over half of it, arms and
+ * shoulders as in the source skeleton. `uniformScale` brings it to ~1.67 m.
+ */
 export const HUMANOID_BASE_PROPORTIONS: HumanoidProportions = Object.freeze({
-  standingHipHeight: 0.83,
-  seatedHipHeight: 0.62,
-  thighLength: 0.39,
-  shinLength: 0.44,
-  upperArmLength: 0.33,
+  standingHipHeight: 1.22,
+  seatedHipHeight: 0.65,
+  thighLength: 0.56,
+  shinLength: 0.66,
+  upperArmLength: 0.32,
   forearmLength: 0.31,
   shoulderWidth: 0.45,
   shoulderHeight: 0.59,
   hipWidth: 0.21,
-  headHeight: 0.88,
-  headRadius: 0.18
+  headHeight: 0.82,
+  headRadius: 0.12
 });
+
+/** The head is taller than it is wide: vertical stretch of the head sphere (chin to crown). */
+export const HUMANOID_HEAD_ELONGATION = 1.14;
+/** Limb thickness in torso units (upper arm and thigh capsules). */
+export const HUMANOID_ARM_RADIUS = 0.066;
+export const HUMANOID_LEG_RADIUS = 0.085;
+/** Nominal stature scale: ~1.67 m standing, the detailed models' default height. */
+export const HUMANOID_NOMINAL_SCALE = 0.755;
 
 /** Stable across re-renders, remounts and changes in the agent list order. */
 export function humanoidInstanceSeed(instanceId: string, namespace: string | number = "humanoid-v1"): number {
@@ -192,7 +204,7 @@ export function createHumanoidRigProfile(instanceId: string, options: HumanoidRi
   const stature: HumanoidStature = options.stature ?? "default";
   if (!isHumanoidStature(stature)) throw new Error(`Unknown humanoid stature: ${String(stature)}`);
   const build = HUMANOID_STATURE_MODIFIERS[stature];
-  const frame: HumanoidFrame = options.frame ?? "neutral";
+  const frame: HumanoidFrame = options.frame ?? "masculine";
   const shape = HUMANOID_FRAME_MODIFIERS[frame];
   if (!shape) throw new Error(`Unknown humanoid frame: ${String(frame)}`);
   const thighLength = options.proportions?.thighLength ?? base.thighLength * sample("thigh", 0.96, 1.04) * build.limbs;
@@ -217,7 +229,7 @@ export function createHumanoidRigProfile(instanceId: string, options: HumanoidRi
   }
   // Furniture is authored to architectural dimensions; keep avatars slightly below the
   // nominal procedural height so lounge seating and desks read at human scale.
-  const uniformScale = options.uniformScale ?? 0.88 * sample("height", 0.97, 1.03) * build.height * shape.height;
+  const uniformScale = options.uniformScale ?? HUMANOID_NOMINAL_SCALE * sample("height", 0.97, 1.03) * build.height * shape.height;
   if (!Number.isFinite(uniformScale) || uniformScale <= 0) throw new Error("Humanoid uniform scale must be positive and finite");
   const scale: RigVector3 = options.scale ? [...options.scale] : [
     uniformScale * sample("width", 0.96, 1.04) * build.width, uniformScale, uniformScale * sample("depth", 0.97, 1.03) * build.depth

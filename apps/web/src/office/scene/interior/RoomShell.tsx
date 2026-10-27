@@ -9,6 +9,8 @@ import { WindowWall } from "./prefabs/architecture/WindowWall";
 import { FloorFinish, type FloorMaterial } from "./prefabs/finishes/FloorFinish";
 import { useFloorVisible } from "./FloorVisibilityContext";
 import { roomById } from "./worldRegistry";
+import { classifyRoomEnvelope } from "./roomEnvelope";
+import { EnvelopeWall } from "./ExteriorEnvelopeContext";
 import { useSolarEnvironment } from "../Environment";
 
 type EntrySide = "front" | "back";
@@ -50,69 +52,70 @@ export function RoomShell({
   const room = roomById(roomId);
   if (!room) throw new Error(`Unknown room for RoomShell: ${roomId}`);
   const [w, d] = size;
+  const envelope = classifyRoomEnvelope(room);
+  const entryFace = entrySide === "front" ? "south" : "north";
+  const oppositeFace = entrySide === "front" ? "north" : "south";
   const floorVisible = useFloorVisible();
   const entryZ = entrySide === "front" ? d / 2 : -d / 2;
   const oppositeZ = -entryZ;
   const entryRotation = entrySide === "front" ? 0 : Math.PI;
-  const doorOpenAngle = entrySide === "front"
-    ? -Math.PI * 0.38
-    : Math.PI * 0.38;
+  // Front and back entries use opposite hinges; q·π/2 keeps each leaf swinging
+  // into the room (local -Z) with a full quarter turn.
+  const entryHinge = entrySide === "front" ? "left" : "right";
+  const doorOpenAngle = (entrySide === "front" ? 1 : -1) * Math.PI / 2;
 
   return (
     <group name={`office-room:${roomId}`} position={[room.center[0], position[1], room.center[2]]} userData={{ officeLightZone: size }}>
-      <FloorFinish size={size} material={floorFinish} border />
+      <FloorFinish size={size} buildingOrigin={[room.center[0], room.center[2]]} material={floorFinish} border />
 
-      {/* opposite/exterior side */}
-      {oppositeWall === "windows" ? (
-        exteriorDoor ? (
-          <>
-            {[-1, 1].map((side) => (
-              <WindowWall
-                key={side}
-                width={(w - 1.55) / 2}
-                position={[side * (w + 1.55) / 4, 1.35, oppositeZ]}
-                rotationY={entrySide === "front" ? Math.PI : 0}
-                panels={Math.max(2, Math.round((w - 1.55) / 4.8))}
-              />
-            ))}
-            <OpenDoor
-              floor={room.floor}
-              roomId={roomId}
-              role="exterior"
-              position={[0, 0, oppositeZ]}
+      {/* Suppress only facade-facing surfaces; their moving door stays app-owned below. */}
+      <EnvelopeWall exterior={envelope[oppositeFace]} name={`${roomId}:${oppositeFace}`}>
+        {oppositeWall === "windows" ? (
+          exteriorDoor ? (
+            <>
+              {[-1, 1].map((side) => (
+                <WindowWall
+                  key={side}
+                  width={(w - 1.55) / 2}
+                  position={[side * (w + 1.55) / 4, 1.35, oppositeZ]}
+                  rotationY={entrySide === "front" ? Math.PI : 0}
+                  panels={Math.max(2, Math.round((w - 1.55) / 4.8))}
+                />
+              ))}
+            </>
+          ) : (
+            <WindowWall
+              width={w}
+              position={[0, 1.35, oppositeZ]}
               rotationY={entrySide === "front" ? Math.PI : 0}
-              width={1.35}
-              height={2.5}
-              glass
-              openAngle={entrySide === "front" ? Math.PI * 0.38 : -Math.PI * 0.38}
+              panels={Math.max(3, Math.round(w / 2.4))}
             />
-          </>
+          )
         ) : (
-          <WindowWall
-            width={w}
-            position={[0, 1.35, oppositeZ]}
-            rotationY={entrySide === "front" ? Math.PI : 0}
-            panels={Math.max(3, Math.round(w / 2.4))}
-          />
-        )
-      ) : (
-        <SolidWall
-          size={[w, 2.7, 0.11]}
-          position={[0, 1.35, oppositeZ]}
-          color={wallColor}
-        />
-      )}
+          <SolidWall size={[w, 2.7, 0.11]} position={[0, 1.35, oppositeZ]} color={wallColor} />
+        )}
+        {oppositeWall === "solid" && <mesh castShadow position={[0, 0.16, oppositeZ + (entrySide === "front" ? 0.065 : -0.065)]}>
+          <boxGeometry args={[w - 0.16, 0.22, 0.065]} />
+          <meshStandardMaterial color="#b9a388" roughness={0.8} />
+        </mesh>}
+      </EnvelopeWall>
+      {oppositeWall === "windows" && exteriorDoor && <OpenDoor
+        floor={room.floor}
+        roomId={roomId}
+        role="exterior"
+        position={[0, 0, oppositeZ]}
+        rotationY={entrySide === "front" ? Math.PI : 0}
+        width={1.35}
+        height={2.5}
+        glass
+        openAngle={-Math.PI / 2}
+      />}
 
-      {/* cutaway side walls keep the interior readable from isometric view */}
-      <SolidWall
-        size={[0.11, sideWallHeight, d]}
-        position={[-w / 2, sideWallHeight / 2, 0]}
-        color={wallColor}
-      />
-
-      {/* Low timber skirting and a cutaway cap give the room shell depth. */}
-      {[-1, 1].map((side) => (
-        <group key={side}>
+      {/* Side wall, skirting and cap share one visibility boundary; internal partitions stay batched. */}
+      {([-1, 1] as const).map(side => {
+        const face = side === -1 ? "west" : "east";
+        return <EnvelopeWall key={side} exterior={envelope[face]} name={`${roomId}:${face}`}>
+          <SolidWall size={[0.11, sideWallHeight, d]} position={[side * w / 2, sideWallHeight / 2, 0]} color={wallColor} />
           <mesh castShadow position={[side * (w / 2 - 0.08), 0.16, 0]}>
             <boxGeometry args={[0.055, 0.21, d - 0.12]} />
             <meshStandardMaterial color="#b9a388" roughness={0.78} />
@@ -121,42 +124,35 @@ export function RoomShell({
             <boxGeometry args={[0.17, 0.045, d]} />
             <meshStandardMaterial color="#c3b49d" roughness={0.82} />
           </mesh>
-        </group>
-      ))}
-
-      {oppositeWall === "solid" && <mesh castShadow position={[0, 0.16, oppositeZ + (entrySide === "front" ? 0.065 : -0.065)]}>
-        <boxGeometry args={[w - 0.16, 0.22, 0.065]} />
-        <meshStandardMaterial color="#b9a388" roughness={0.8} />
-      </mesh>}
-      <SolidWall
-        size={[0.11, sideWallHeight, d]}
-        position={[w / 2, sideWallHeight / 2, 0]}
-        color={wallColor}
-      />
+        </EnvelopeWall>;
+      })}
 
       {/* entry wall with a physical doorway gap */}
-      {glassEntry ? (
-        <GlassPartition
-          width={w}
-          height={2.55}
-          position={[0, 1.275, entryZ]}
-          rotationY={entryRotation}
-          doorGap={doorWidth + 0.22}
-        />
-      ) : (
-        <>
-          <SolidWall
-            size={[(w - doorWidth) / 2, 2.25, 0.10]}
-            position={[-(doorWidth / 2 + (w - doorWidth) / 4), 1.125, entryZ]}
-            color={wallColor}
+      <EnvelopeWall exterior={envelope[entryFace]} name={`${roomId}:${entryFace}`}>
+        {glassEntry ? (
+          <GlassPartition
+            width={w}
+            height={2.55}
+            doorHeight={2.55}
+            position={[0, 1.275, entryZ]}
+            rotationY={entryRotation}
+            doorGap={doorWidth + 0.22}
           />
-          <SolidWall
-            size={[(w - doorWidth) / 2, 2.25, 0.10]}
-            position={[(doorWidth / 2 + (w - doorWidth) / 4), 1.125, entryZ]}
-            color={wallColor}
-          />
-        </>
-      )}
+        ) : (
+          <>
+            <SolidWall
+              size={[(w - doorWidth) / 2, 2.25, 0.10]}
+              position={[-(doorWidth / 2 + (w - doorWidth) / 4), 1.125, entryZ]}
+              color={wallColor}
+            />
+            <SolidWall
+              size={[(w - doorWidth) / 2, 2.25, 0.10]}
+              position={[(doorWidth / 2 + (w - doorWidth) / 4), 1.125, entryZ]}
+              color={wallColor}
+            />
+          </>
+        )}
+      </EnvelopeWall>
 
       {/* Both door types register the same `floor-N.roomId.entry` portal for navigation. */}
       {doorType === "sliding" ? (
@@ -179,6 +175,7 @@ export function RoomShell({
           width={doorWidth}
           height={glassEntry ? 2.55 : 2.25}
           glass={glassEntry}
+          hinge={entryHinge}
           openAngle={doorOpenAngle}
         />
       )}
@@ -187,9 +184,17 @@ export function RoomShell({
         <div className="room-label">{label}</div>
       </SceneLabel>
 
-      {/* Recessed ceiling downlight array: actively illuminates the room and responds dynamically to the solar clock */}
-      <RoomCeilingDownlights floor={room.floor} width={w} depth={d} serverRoom={roomId === "operations"}
-        tableLighting={roomId === "meeting-a" || roomId === "meeting-b"} />
+      {/* Recessed ceiling downlight array: actively illuminates the room and responds dynamically to the solar clock.
+          Executive suites mount their own full-room architectural downlight & cove grid via ExecutiveSuiteLighting. */}
+      {roomId !== "executive" && roomId !== "executive-studio" && (
+        <RoomCeilingDownlights
+          floor={room.floor}
+          width={w}
+          depth={d}
+          serverRoom={roomId === "operations"}
+          tableLighting={roomId === "meeting-a" || roomId === "meeting-b"}
+        />
+      )}
 
       {children}
     </group>
@@ -207,19 +212,25 @@ function RoomCeilingDownlights({ floor, width, depth, serverRoom = false, tableL
   const fixtureColor = serverRoom ? "#d6f2ff" : "#fff1df";
   const { anchorY, sourceY } = ceilingMountsForFloor(floor).room;
 
-  // Every fixture contributes cached illumination. Long rooms distribute their
-  // sources along the long axis; the shared live beam pool stays bounded.
+  // Every fixture contributes cached illumination. Rooms use clean orthogonal
+  // rectangular grids (4×2 for extra-wide labs/studios, 3×2 for wide suites,
+  // 2×2 for standard rooms) so downlights never collide with central pendants
+  // or linear meeting-table fixtures.
   const positions: [number, number, number][] = [];
-  if (width > 12 && width / depth > 2.2) {
-    for (let column = 0; column < 4; column += 1) {
-      positions.push([width * ((column + 0.5) / 4 - 0.5), anchorY, 0]);
+  if (width >= 18 && depth >= 6) {
+    const zOffset = depth * 0.26;
+    for (const xFactor of [-0.36, -0.12, 0.12, 0.36]) {
+      positions.push([width * xFactor, anchorY, -zOffset]);
+      positions.push([width * xFactor, anchorY, zOffset]);
     }
-  } else if (depth > 12 && depth / width > 2.2) {
-    for (let row = 0; row < 4; row += 1) {
-      positions.push([0, anchorY, depth * ((row + 0.5) / 4 - 0.5)]);
+  } else if (width >= 12 && depth >= 6) {
+    const zOffset = tableLighting ? depth * 0.3 : depth * 0.25;
+    for (const xFactor of [-0.3, 0, 0.3]) {
+      positions.push([width * xFactor, anchorY, -zOffset]);
+      positions.push([width * xFactor, anchorY, zOffset]);
     }
   } else if (width > 6.0 && depth > 6.0) {
-    // 4 fixtures in 2x2 grid
+    // 4 fixtures in 2×2 grid
     positions.push([-width * 0.25, anchorY, -depth * 0.25]);
     positions.push([width * 0.25, anchorY, -depth * 0.25]);
     positions.push([-width * 0.25, anchorY, depth * 0.25]);
@@ -236,9 +247,6 @@ function RoomCeilingDownlights({ floor, width, depth, serverRoom = false, tableL
     // 1 central fixture
     positions.push([0, anchorY, 0]);
   }
-  // Wide suites leave their centre outside the bright part of the corner cones.
-  // Meeting tables already have a dedicated linear fixture over this centre.
-  if (!tableLighting && width >= 12 && depth >= 7 && positions.length === 4) positions.push([0, anchorY, 0]);
 
 
   return (

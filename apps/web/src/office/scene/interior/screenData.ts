@@ -2,7 +2,8 @@ import type { ActivityKind } from '@extalia/protocol';
 import type { OfficeAgent } from '../../presence';
 import { resourceById } from './resourceRegistry';
 import type { FurnishedFloorState } from './FurnishedFloorContext';
-import { officeInteriorText } from '../../../i18n';
+import { MESSAGES, officeInteriorText } from '../../../i18n';
+import { presenceCategory, semanticPhrase } from '../../semanticBubble';
 
 export interface SmartScreenData {
   title: string;
@@ -52,15 +53,18 @@ export function resourceIdForLocation(locationPrefix: string): string | undefine
 function forAgent(state: FurnishedFloorState, agent?: OfficeAgent): SmartScreenData {
   const t = (text: string) => officeInteriorText(state.language, text);
   if (!agent) return { title: t('AVAILABLE'), status: t('STANDBY') };
-  return { title: agent.displayName, subtitle: agent.summary, status: agent.status,
+  // In-world screens can be seen by anyone in the room: they show the safe phrase, never the
+  // raw tool label, command or path (those stay in the Activity panel).
+  const category = agent.status === 'idle' || agent.status === 'offline' ? undefined : presenceCategory(agent);
+  const phrase = category ? semanticPhrase(category, MESSAGES[state.language]) : undefined;
+  return { title: agent.displayName, ...(phrase ? { subtitle: phrase } : {}), status: agent.status,
     sessionBacked: true,
     rows: [
       { label: t('SESSION'), value: agent.sessionId },
       { label: t('STATUS'), value: agent.status },
-      ...(agent.activity ? [{ label: t('ACTIVITY'), value: agent.activity }] : []),
-      ...(agent.target ? [{ label: t('TARGET'), value: agent.target }] : []),
+      ...(phrase ? [{ label: t('ACTIVITY'), value: phrase }] : []),
     ],
-    ...(agent.activity ? { activity: { kind: agent.activity, target: agent.target, label: agent.summary } } : {}),
+    ...(agent.activity ? { activity: { kind: agent.activity, ...(phrase ? { label: phrase } : {}) } } : {}),
   };
 }
 export function screenForLocation(state: FurnishedFloorState, location: string): SmartScreenData {

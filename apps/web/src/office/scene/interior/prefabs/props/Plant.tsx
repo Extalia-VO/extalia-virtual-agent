@@ -1,3 +1,4 @@
+import { InteriorPart } from '../../InteriorPart';
 export function Plant({
   position = [0, 0, 0],
   scale = 1
@@ -15,7 +16,7 @@ export function Plant({
   ];
 
   return (
-    <group position={position} scale={scale}>
+    <group position={position} scale={scale}><InteriorPart model="decor-plant" modelScale={[.85,.85,.85]}>
       <mesh position={[0, 0.035, 0]}>
         <cylinderGeometry args={[0.19, 0.16, 0.07, 20]} />
         <meshStandardMaterial color="#b9aa98" roughness={0.92} />
@@ -38,6 +39,6 @@ export function Plant({
           <meshStandardMaterial color={leaf.color} roughness={0.88} />
         </mesh>
       ))}
-    </group>
+    </InteriorPart></group>
   );
 }

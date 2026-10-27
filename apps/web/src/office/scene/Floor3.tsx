@@ -17,7 +17,7 @@ import { Whiteboard } from "./interior/prefabs/props/Whiteboard";
 import { Plant } from "./interior/prefabs/props/Plant";
 import { AreaRug, PendantLight, WallArt } from "./interior/prefabs/props/OfficeDecor";
 import { WallSconceFixture, StandLampFixture, DeskLampFixture } from "./interior/prefabs/architecture/LightFixtureGeometries";
-import { Bookshelf, CoffeeTable, DisplayCabinet } from "./interior/prefabs/furniture/TablesAndStorage";
+import { Bookshelf, CoffeeTable, DisplayCabinet, StorageCabinet } from "./interior/prefabs/furniture/TablesAndStorage";
 import { ArmChair, Sofa } from "./interior/prefabs/furniture/Sofa";
 import { DumbbellRack, ExerciseBike, FitnessStorage, StrengthSeat, Treadmill, YogaMat } from "./interior/prefabs/furniture/GymEquipment";
 import { FITNESS_BLUEPRINT } from "./interior/spatialBlueprints";
@@ -66,16 +66,16 @@ export function Floor3() {
         oppositeWall="windows"
         floorFinish="tile"
       >
-        <AreaRug position={[0, 0.015, -0.6]} width={7.2} depth={4.4} color="#cbd5cb" borderColor="#869588" />
+        <AreaRug position={[0, 0, -0.6]} width={7.2} depth={4.4} color="#cbd5cb" borderColor="#869588" />
         <Sofa position={[-1.75, 0, -1.0]} rotationY={Math.PI} color="#52655b" />
         <ArmChair position={[1.75, 0, -1.0]} rotationY={Math.PI} color="#857a70" />
         <CoffeeTable position={[0, 0, -0.2]} />
         <PendantLight position={[0, 2.9, -0.2]} drop={0.65} />
-        <DisplayCabinet position={[3.8, 0, 0.2]} rotationY={-Math.PI / 2} width={2.2} />
-        <StandLampFixture position={[-4.2, 0, -1.8]} />
-        <WallSconceFixture position={[-4.8, 1.8, 0]} rotation={[0, Math.PI / 2, 0]} />
-        <Plant position={[-4.2, 0, 1.8]} />
-        <Plant position={[4.0, 0, -2.0]} />
+        <DisplayCabinet position={[4.92, 0, 0.2]} rotationY={-Math.PI / 2} width={2.2} />
+        <StandLampFixture position={[-4.45, 0, -2.3]} />
+        <WallSconceFixture position={[-5.17, 1.8, 0]} rotation={[0, Math.PI / 2, 0]} />
+        <Plant position={[-4.45, 0, 2.3]} />
+        <Plant position={[4.45, 0, -2.3]} />
       </RoomShell>
 
       {/* Multi-Engine Lab: x in [-8.5, 11.0], width 19.5 - rapat dinding dengan the executive studio, menyisakan koridor tangga selebar 3.6m di sisi timur */}
@@ -119,30 +119,30 @@ export function Floor3() {
         <Plant position={[8.5, 0, 1.9]} />
       </RoomShell>
 
-      <FloorFinish size={[39.6, northCorridorDepth]} position={[-1.2, 0.06, (F3_LAYOUT.sanctuary.north + F3_LAYOUT["multi-engine"].south) / 2]} material="stone" thickness={0.025} />
+      <FloorFinish size={[39.6, northCorridorDepth]} position={[-1.2, 0, (F3_LAYOUT.sanctuary.north + F3_LAYOUT["multi-engine"].south) / 2]} material="stone" />
       <SceneLabel position={[-1.1, 0.12, (F3_LAYOUT.sanctuary.north + F3_LAYOUT["multi-engine"].south) / 2]} center style={{ display: floorVisible ? "block" : "none" }}>
         <div className="corridor-label">Studio / Lab Corridor</div>
       </SceneLabel>
 
-      {/* Knowledge Sanctuary: x in [-19.0, -9.0], width 10.0 */}
+      {/* Knowledge Sanctuary: x in [-21.0, -11.0], width 10.0, depth 10.0 */}
       <RoomShell
         roomId="sanctuary"
         label="Knowledge Sanctuary"
-        position={[-14.0, 0, -0.8]}
+        position={[-16.0, 0, -4.5]}
         size={roomSize("sanctuary")} 
         doorWidth={1.6}
         entrySide="back"
         glassEntry
-        oppositeWall="windows"
         floorFinish="oak"
       >
-        <Bookshelf position={[-4.25, 0, -1.7]} rotationY={Math.PI / 2} width={2.5} />
-        <Bookshelf position={[-4.25, 0, 1.45]} rotationY={Math.PI / 2} width={2.5} />
+        <Bookshelf position={[-4.68, 0, -1.7]} rotationY={Math.PI / 2} width={2.5} />
+        <Bookshelf position={[-4.68, 0, 1.45]} rotationY={Math.PI / 2} width={2.5} />
         <WallDisplay
-          position={[0, 1.8, 4.42]}
+          position={[0, 1.8, 4.9]}
           rotationY={Math.PI}
           width={2.8}
           height={1.15}
+          variant="knowledge"
           data={{ title: "KNOWLEDGE", subtitle: "Shared knowledge" }}
         />
         {[-2.5, 0, 2.5].map((x, index) => (
@@ -156,19 +156,18 @@ export function Floor3() {
         <DeskLampFixture position={[-2.5 - 0.45, 0.74, 0.5]} />
         <DeskLampFixture position={[0 - 0.45, 0.74, 0.5]} />
         <DeskLampFixture position={[2.5 - 0.45, 0.74, 0.5]} />
-        <WallSconceFixture position={[-4.25 + 0.08, 1.8, 0]} rotation={[0, Math.PI / 2, 0]} />
+        <WallSconceFixture position={[-4.92, 1.8, 0]} rotation={[0, Math.PI / 2, 0]} />
       </RoomShell>
 
-      {/* General / Flex Work: x in [-9.0, 1.0], width 10.0 - rapat dinding dengan Sanctuary */}
+      {/* General / Flex Work: x in [-11.0, -1.0], width 10.0, depth 10.0 - rapat dinding dengan Sanctuary */}
       <RoomShell
         roomId="flex"
         label="General / Flex Work"
-        position={[-4.0, 0, -0.8]}
+        position={[-6.0, 0, -4.5]}
         size={roomSize("flex")} 
         doorWidth={1.6}
         entrySide="back"
         glassEntry
-        oppositeWall="windows"
         floorFinish="carpet"
       >
         {[-2.2, 2.2].flatMap((x, column) =>
@@ -180,39 +179,44 @@ export function Floor3() {
             />
           ))
         )}
-        <WallArt position={[0, 1.75, 4.92]} rotationY={Math.PI} width={1.4} height={0.85} accentColor="#718c86" />
+        <WallArt position={[0, 1.75, 4.9]} rotationY={Math.PI} width={1.4} height={0.85} accentColor="#718c86" />
         {/* Flex Work lighting: pendant + stand lamp for ambient coverage */}
         <PendantLight position={[0, 2.9, 0]} drop={0.65} />
-        <StandLampFixture position={[-4.2, 0, -1.8]} />
+        <StandLampFixture position={[-4.35, 0, -4.2]} />
       </RoomShell>
 
-      {/* Research Area: x in [-1.0, 11.0], width 12.0 - directly adjoining Flex Work, with the east circulation bay clear */}
+      {/* Research Area: x in [-1.0, 11.0], width 12.0, depth 10.0 - directly adjoining Flex Work, with the east circulation bay clear */}
       <RoomShell
         roomId="research"
         label="Research Area"
-        position={[6.0, 0, -0.8]}
+        position={[5.0, 0, -4.5]}
         size={roomSize("research")} 
         doorWidth={1.6}
         entrySide="back"
         glassEntry
-        oppositeWall="windows"
         floorFinish="oak"
       >
-        <Bookshelf position={[-4.1, 0, 1.55]} rotationY={Math.PI / 2} width={2.55} />
-        <Bookshelf position={[4.1, 0, 1.55]} rotationY={-Math.PI / 2} width={2.55} />
+        <Bookshelf position={[-5.68, 0, -1.65]} rotationY={Math.PI / 2} width={2.55} />
+        <Bookshelf position={[-5.68, 0, 1.65]} rotationY={Math.PI / 2} width={2.55} />
+        <Bookshelf position={[5.68, 0, -1.65]} rotationY={-Math.PI / 2} width={2.55} />
+        <Bookshelf position={[5.68, 0, 1.65]} rotationY={-Math.PI / 2} width={2.55} />
         <LaptopDesk position={[-2.0, 0, 0.2]}
           screenData={screenForLocation(floorState, "floor-3.research.laptop-1")} />
         <LaptopDesk position={[2.0, 0, 0.2]}
           screenData={screenForLocation(floorState, "floor-3.research.laptop-2")} />
-        <Whiteboard position={[0, 1.75, 4.92]} rotationY={Math.PI} width={2.65} />
-        <Plant position={[4.1, 0, -2.65]} />
-        {/* Research lighting: desk lamps + stand lamp by whiteboard */}
+        <Whiteboard position={[0, 1.75, 4.9]} rotationY={Math.PI} width={2.65} />
+        <StorageCabinet position={[-3.1, 0, 4.62]} rotationY={Math.PI} width={1.6} />
+        <StorageCabinet position={[3.1, 0, 4.62]} rotationY={Math.PI} width={1.6} />
+        <Plant position={[5.25, 0, -4.2]} />
+        <Plant position={[-5.25, 0, 4.2]} />
+        {/* Research lighting: desk lamps + corner stand lamps */}
         <DeskLampFixture position={[-2.0 - 0.45, 0.74, 0.35]} />
         <DeskLampFixture position={[2.0 + 0.45, 0.74, 0.35]} />
-        <StandLampFixture position={[-4.1, 0, -1.5]} />
+        <StandLampFixture position={[-5.25, 0, -4.2]} />
+        <StandLampFixture position={[5.25, 0, 4.2]} />
       </RoomShell>
 
-      <FloorFinish size={[46, southCorridorDepth]} position={[2, 0.06, (F3_LAYOUT.flex.south + F3_LAYOUT["executive-studio"].north) / 2]} material="stone" thickness={0.025} />
+      <FloorFinish size={[46, southCorridorDepth]} position={[2, 0, (F3_LAYOUT.flex.south + F3_LAYOUT["executive-studio"].north) / 2]} material="stone" />
       <SceneLabel position={[-1.1, 0.12, (F3_LAYOUT.flex.south + F3_LAYOUT["executive-studio"].north) / 2]} center style={{ display: floorVisible ? "block" : "none" }}>
         <div className="corridor-label">Research / Terrace Corridor</div>
       </SceneLabel>
@@ -251,11 +255,10 @@ export function Floor3() {
         entrySide="back"
         glassEntry
         oppositeWall="windows"
-        floorFinish="carpet"
+        floorFinish="stone"
       >
-        <AreaRug position={[-5.6, 0.07, 0]} width={7.6} depth={6.45} color="#3c5352" borderColor="#607d71" />
-        <AreaRug position={[5.7, 0.07, 0]} width={7.6} depth={6.45} color="#475b60" borderColor="#819b91" />
-        <FloorFinish size={[FITNESS_BLUEPRINT.mainAisleWidth, 7.1]} position={[0, 0.07, 0]} material="stone" thickness={0.02} />
+        <AreaRug position={[-5.6, 0, 0]} width={7.6} depth={6.45} color="#3c5352" borderColor="#607d71" />
+        <AreaRug position={[5.7, 0, 0]} width={7.6} depth={6.45} color="#475b60" borderColor="#819b91" />
         {FITNESS_BLUEPRINT.treadmills.map(station => <Treadmill key={station.id} resourceId={station.id}
           position={[...station.position]} rotationY={station.rotationY} />)}
         {FITNESS_BLUEPRINT.bikes.map(station => <ExerciseBike key={station.id} resourceId={station.id}
@@ -269,10 +272,20 @@ export function Floor3() {
           position={[...FITNESS_BLUEPRINT.weightBench.position]} rotationY={FITNESS_BLUEPRINT.weightBench.rotationY} />
         <StrengthSeat resourceId={FITNESS_BLUEPRINT.cableRow.id} cable
           position={[...FITNESS_BLUEPRINT.cableRow.position]} rotationY={FITNESS_BLUEPRINT.cableRow.rotationY} />
-        <AreaRug position={[FITNESS_BLUEPRINT.freeweights.target[0], 0.08, FITNESS_BLUEPRINT.freeweights.target[1]]}
+        <AreaRug position={[FITNESS_BLUEPRINT.freeweights.target[0], 0.0005, FITNESS_BLUEPRINT.freeweights.target[1]]}
           width={1.1} depth={1.6} color="#789183" borderColor="#bad0be" />
         <FitnessStorage position={[...FITNESS_BLUEPRINT.storagePosition]} />
-        <WallDisplay position={[0, 1.8, 3.58]} rotationY={Math.PI} width={2.5} height={0.85}
+        {/* Mirror panels and perimeter greenery preserve the full entrance and equipment approaches. */}
+        {[-8.7, -6.9, -5.1].map(x => <group key={`fitness-mirror-${x}`} position={[x, 1.52, -3.57]}>
+          <mesh><boxGeometry args={[1.65, 1.75, 0.045]} /><meshStandardMaterial color="#b1ced0" metalness={0.82} roughness={0.17} /></mesh>
+          <mesh position={[0, -0.91, 0.045]}><boxGeometry args={[1.7, 0.07, 0.08]} /><meshStandardMaterial color="#536e67" roughness={0.55} /></mesh>
+        </group>)}
+        <Plant position={[-9.35, 0, 3.0]} scale={0.7} />
+        <Plant position={[9.35, 0, 3.0]} scale={0.7} />
+        <WallArt position={[7, 1.95, -3.56]} width={2.2} height={0.65} frameColor="#718c80" groundColor="#dce7d9" accentColor="#4f8e7b" />
+        <WallSconceFixture position={[-9.88, 1.9, 0]} rotation={[0, Math.PI / 2, 0]} lightColor="#b9e0d3" />
+        <WallSconceFixture position={[9.88, 1.9, 0]} rotation={[0, -Math.PI / 2, 0]} lightColor="#b9e0d3" />
+        <WallDisplay position={[0, 1.8, 3.58]} rotationY={Math.PI} width={2.5} height={0.85} variant="signage"
           data={{ title: "WELLNESS STUDIO", subtitle: "Cardio · Strength · Recovery" }} />
         <PendantLight position={[-5.6, 2.9, 0]} drop={0.65} color="#d8e6dd" />
         <PendantLight position={[5.7, 2.9, 0]} drop={0.65} color="#d8e6dd" />

@@ -1,6 +1,8 @@
 import { OFFICE_STAIR_LAYOUT, OFFICE_STAIRCASE } from "../../../layout";
+import { FootprintBox } from "../../FootprintPatch";
 import { FloorFinish } from "../finishes/FloorFinish";
 import { LandingRail } from "../../../prefabs/architecture/Staircase";
+import { FLOOR_FINISH_DEPTH, FLOOR_SLAB_CENTER_Y, FLOOR_SLAB_THICKNESS, FLOOR_UNDERLAY_TOP_Y } from "../../floorElevation";
 
 /** Identical upper-floor slab cut-out, arrival bridge and glass edge protection. */
 export function StairwellFloorPlate({ topFloor = false }: { topFloor?: boolean }) {
@@ -26,23 +28,20 @@ export function StairwellFloorPlate({ topFloor = false }: { topFloor?: boolean }
 
   return (
     <group name="office-stairwell-floor-plate">
-      <group position={[0, -0.16, 0]}>
-        <mesh receiveShadow position={[westX, 0, 0]}>
-          <boxGeometry args={[westWidth, 0.32, s.floorSouthEdge - s.floorNorthEdge]} />
+      <group position={[0, FLOOR_SLAB_CENTER_Y, 0]}>
+        <FootprintBox name="office-floor-slab" profile="lower" receiveShadow position={[westX, 0, 0]} size={[westWidth, FLOOR_SLAB_THICKNESS, s.floorSouthEdge - s.floorNorthEdge]}>
           <meshStandardMaterial color="#c4cbd0" roughness={0.96} />
-        </mesh>
-        <mesh receiveShadow position={[bayX, 0, southZ]}>
-          <boxGeometry args={[bayWidth, 0.32, southDepth]} />
+        </FootprintBox>
+        <FootprintBox name="office-floor-slab" profile="lower" receiveShadow position={[bayX, 0, southZ]} size={[bayWidth, FLOOR_SLAB_THICKNESS, southDepth]}>
           <meshStandardMaterial color="#c4cbd0" roughness={0.96} />
-        </mesh>
-        <mesh receiveShadow position={[bridgeX, 0, bridgeZ]}>
-          <boxGeometry args={[bridgeWidth, 0.32, bridgeDepth]} />
+        </FootprintBox>
+        <FootprintBox name="office-floor-slab" profile="lower" receiveShadow position={[bridgeX, 0, bridgeZ]} size={[bridgeWidth, FLOOR_SLAB_THICKNESS, bridgeDepth]}>
           <meshStandardMaterial color="#c4cbd0" roughness={0.96} />
-        </mesh>
+        </FootprintBox>
       </group>
-      <FloorFinish size={[westWidth - 0.35, s.floorSouthEdge - s.floorNorthEdge - 0.7]} position={[westX + 0.175, 0, 0]} material="stone" thickness={0.06} />
-      <FloorFinish size={[bayWidth, southDepth]} position={[bayX, 0, southZ]} material="stone" thickness={0.06} />
-      <FloorFinish size={[bridgeWidth, bridgeDepth]} position={[bridgeX, 0, bridgeZ]} material="stone" thickness={0.06} />
+      <FloorFinish profile="lower" size={[westWidth - 0.35, s.floorSouthEdge - s.floorNorthEdge - 0.7]} position={[westX + 0.175, FLOOR_UNDERLAY_TOP_Y, 0]} material="stone" thickness={FLOOR_FINISH_DEPTH} />
+      <FloorFinish profile="lower" size={[bayWidth, southDepth]} position={[bayX, FLOOR_UNDERLAY_TOP_Y, southZ]} material="stone" thickness={FLOOR_FINISH_DEPTH} />
+      <FloorFinish profile="lower" size={[bridgeWidth, bridgeDepth]} position={[bridgeX, 0, bridgeZ]} material="stone" thickness={FLOOR_FINISH_DEPTH} />
 
       {/* Seal the unused lower-flight opening on F3; only the descending flight remains open. */}
       <LandingRail position={[(closureWest + innerEast) / 2, 0, s.bridgeSouthZ]}

@@ -1,3 +1,7 @@
+import { useRef } from 'react';
+import { useFrame } from '@react-three/fiber';
+import { InteriorPart } from '../../InteriorPart';
+import { hospitalityState } from '../../../movement/hospitality';
 import * as THREE from "three";
 import { CoffeeMachine } from "../props/CoffeeMachine";
 import { BARTENDER_BAR_BLUEPRINT } from "../../spatialBlueprints";
@@ -9,12 +13,8 @@ function StemwareRackLight() {
   const { state } = useSolarEnvironment();
   const factor = state.factors.interiorLightFactor;
   return <group userData={{ officeCollision: false }}>
-    <mesh position={[0, -0.04, 0]} userData={{ officeMaterialDynamic: "stemware-strip:interior:#ffe1b0:factor*1.3" }}>
-      <boxGeometry args={[3.6, 0.01, 0.4]} />
-      <meshStandardMaterial color="#eee2cd" emissive="#ffe1b0" emissiveIntensity={factor * 1.3} roughness={0.4} toneMapped={false} />
-    </mesh>
-    {[-1.1, 1.1].map(x => <FixtureSpotLight key={x} name="stemware-counter-downlight"
-      position={[x, -0.065, 0]} aim={[x, -1.5, 0.3]} intensity={factor * 12} distance={4} angle={0.95} color="#ffe1b0" />)}
+    {[-1.2, 0, 1.2].map(x => <FixtureSpotLight key={x} name="stemware-counter-downlight"
+      position={[x, -0.065, 0]} aim={[x, -2.05, 0.25]} intensity={factor * 22} distance={4.4} angle={1.05} color="#ffe1b0" />)}
   </group>;
 }
 
@@ -23,16 +23,16 @@ function UnderStairBarServiceLighting() {
   const { state } = useSolarEnvironment();
   const factor = state.factors.interiorLightFactor;
   const soffitY = UNDER_STAIR_SOFFIT_Y;
-  // Local coordinates relative to bar root [3.2, 0, -6.3] in lounge [14.2, -0.9] -> world [17.4, 0, -7.2]:
-  // Covers aisle west (-1.3), mid (0.5), east (2.3), alcove (4.0), bar-back (5.4), entry (6.8), approach (6.8, z=1.8).
+  // Local coordinates relative to bar root [3.2, 0, -6.3] in lounge [18, 0, -1.2] -> world [21.2, 0, -7.5].
+  // Keep x <= 3.0 (worldX <= 24.2 <= OFFICE_BUILDING.east=25.0) so fixture irradiance is never classified as exterior.
   const fixtures = [
-    { x: -1.3, z: -0.2, name: "bar-staff-downlight-west" },
-    { x: 0.5, z: -0.2, name: "bar-staff-downlight-mid" },
-    { x: 2.3, z: -0.2, name: "bar-staff-downlight-east" },
-    { x: 4.0, z: -0.5, name: "bar-staff-downlight-alcove" },
-    { x: 5.4, z: -0.5, name: "bar-staff-downlight-back" },
-    { x: 6.8, z: -0.5, name: "bar-staff-downlight-entry" },
-    { x: 6.8, z: 1.8, name: "bar-staff-downlight-approach" }
+    { x: -1.8, z: -0.25, name: "bar-staff-downlight-west" },
+    { x: -0.4, z: -0.25, name: "bar-staff-downlight-mid" },
+    { x: 1.0, z: -0.25, name: "bar-staff-downlight-east" },
+    { x: 2.3, z: -0.35, name: "bar-staff-downlight-alcove" },
+    { x: 3.0, z: -0.65, name: "bar-staff-downlight-back" },
+    { x: 2.8, z: 0.45, name: "bar-staff-downlight-entry" },
+    { x: 1.4, z: 0.85, name: "bar-staff-downlight-approach" }
   ];
   return <group userData={{ officeCollision: false }}>
     {fixtures.map(f => (
@@ -48,10 +48,10 @@ function UnderStairBarServiceLighting() {
         <FixtureSpotLight
           name={f.name}
           position={[0, -0.04, 0]}
-          aim={[0, -2.8, 0]}
-          intensity={factor * 20}
-          distance={3.8}
-          angle={0.92}
+          aim={[0, -2.95, 0]}
+          intensity={factor * 36}
+          distance={4.8}
+          angle={1.05}
           color="#ffe4c4"
         />
       </group>
@@ -68,37 +68,29 @@ const stoolFootrestGeo = new THREE.TorusGeometry(0.18, 0.016, 8, 16);
 export function BarStool({
   position = [0, 0, 0],
   rotationY = 0,
-  cushionColor = "#cf8e59"
+  cushionColor = "#cf8e59",
+  resourceId
 }: {
   position?: [number, number, number];
   rotationY?: number;
   cushionColor?: string;
+  resourceId?: string;
 }) {
-  return (
-    <group position={position} rotation={[0, rotationY, 0]} userData={{ officeSeat: true }}>
-      {/* Base */}
-      <mesh castShadow receiveShadow position={[0, 0.02, 0]} geometry={stoolBaseGeo}>
-        <meshStandardMaterial color="#222629" metalness={0.7} roughness={0.3} />
-      </mesh>
-      {/* Central Post */}
-      <mesh castShadow position={[0, 0.35, 0]} geometry={stoolStemGeo}>
-        <meshStandardMaterial color="#33383c" metalness={0.8} roughness={0.25} />
-      </mesh>
-      {/* Footrest Ring */}
-      <mesh castShadow position={[0, 0.26, 0]} rotation={[Math.PI / 2, 0, 0]} geometry={stoolFootrestGeo}>
-        <meshStandardMaterial color="#444a50" metalness={0.8} roughness={0.25} />
-      </mesh>
-      {/* Padded Seat */}
-      <mesh castShadow position={[0, 0.72, 0]} geometry={stoolSeatGeo}>
-        <meshStandardMaterial color={cushionColor} roughness={0.7} />
-      </mesh>
-      {/* Low lumbar curve */}
-      <mesh castShadow position={[0, 0.84, 0.16]} rotation={[-0.2, 0, 0]}>
-        <boxGeometry args={[0.34, 0.16, 0.05]} />
-        <meshStandardMaterial color={cushionColor} roughness={0.7} />
-      </mesh>
+  const upper=useRef<THREE.Group>(null);
+  useFrame(()=>{if(upper.current)upper.current.rotation.y=resourceId?hospitalityState.stool(resourceId).angle:0;});
+  return <group position={position} rotation={[0,rotationY,0]} userData={{officeSeat:true}}>
+    <InteriorPart model="bar-stool-base">
+      <mesh castShadow position={[0,.02,0]} geometry={stoolBaseGeo}><meshStandardMaterial color="#222629" metalness={.7} roughness={.3}/></mesh>
+      <mesh castShadow position={[0,.35,0]} geometry={stoolStemGeo}><meshStandardMaterial color="#33383c" metalness={.8} roughness={.25}/></mesh>
+      <mesh castShadow position={[0,.26,0]} rotation={[Math.PI/2,0,0]} geometry={stoolFootrestGeo}><meshStandardMaterial color="#444a50" metalness={.8} roughness={.25}/></mesh>
+    </InteriorPart>
+    <group ref={upper} position={[0,.72,0]} name="bar-stool-swivel" userData={{officeDynamic:true,stoolResource:resourceId}}>
+      <InteriorPart model="bar-stool-seat" upholsteryColor={cushionColor}>
+        <mesh castShadow geometry={stoolSeatGeo}><meshStandardMaterial color={cushionColor} roughness={.7}/></mesh>
+        <mesh castShadow position={[0,.12,-.16]} rotation={[.2,0,0]}><boxGeometry args={[.34,.16,.05]}/><meshStandardMaterial color={cushionColor} roughness={.7}/></mesh>
+      </InteriorPart>
     </group>
-  );
+  </group>;
 }
 
 /**
@@ -124,7 +116,7 @@ export function BartenderBar() {
       {/* ============================================================ */}
       {/* 1. BACK BAR (Menempel di dinding dekat tangga)               */}
       {/* ============================================================ */}
-      <group position={BARTENDER_BAR_BLUEPRINT.backBar.position}>
+      <group position={BARTENDER_BAR_BLUEPRINT.backBar.position}><InteriorPart model="bar-back">
         {/* Back Cabinet Base (Storage for syrups, fridge, cups) */}
         {/* Shallow cabinet keeps a full body-width service aisle in front of it. */}
         <mesh castShadow receiveShadow position={[0, 0.46, -0.06]}>
@@ -190,7 +182,7 @@ export function BartenderBar() {
         ))}
 
         {/* Appliances on Back Counter: Coffee Machine, Water Dispenser, Cup Stacks */}
-        <CoffeeMachine position={[-1.2, 0.95, 0.0]} />
+
         {/* Tea Kettle & Hot Water Pot */}
         <mesh castShadow position={[-0.3, 1.08, 0.0]}>
           <cylinderGeometry args={[0.1, 0.12, 0.22, 12]} />
@@ -213,18 +205,12 @@ export function BartenderBar() {
           <torusGeometry args={[0.1, 0.018, 8, 16, Math.PI]} />
           <meshStandardMaterial color="#e8eaeb" metalness={0.95} roughness={0.15} />
         </mesh>
-      </group>
+      </InteriorPart><CoffeeMachine position={[-1.2,.955,0]} /></group>
 
       {/* ============================================================ */}
       {/* 2. OVERHEAD HANGING STEMWARE RACK WITH ACCENT LIGHT          */}
       {/* ============================================================ */}
-      <group position={BARTENDER_BAR_BLUEPRINT.stemwareRack.position}>
-        {/* Rack Frame */}
-        <mesh castShadow position={[0, 0, 0]}>
-          <boxGeometry args={[3.8, 0.06, 0.5]} />
-          <meshStandardMaterial color="#1a1c1e" metalness={0.8} roughness={0.3} />
-        </mesh>
-        {/* Vertical suspension rods from ceiling */}
+      <group position={BARTENDER_BAR_BLUEPRINT.stemwareRack.position}>        {/* Vertical suspension rods from ceiling */}
         {[-1.6, 1.6].map((rodX) => (
           <group key={`rod-${rodX}`}>
             <mesh position={[rodX, (suspensionTop + suspensionBottom) / 2, 0]}>
@@ -237,6 +223,12 @@ export function BartenderBar() {
             </mesh>
           </group>
         ))}
+<InteriorPart model="stemware-rack">
+        {/* Rack Frame */}
+        <mesh castShadow position={[0, 0, 0]}>
+          <boxGeometry args={[3.8, 0.06, 0.5]} />
+          <meshStandardMaterial color="#1a1c1e" metalness={0.8} roughness={0.3} />
+        </mesh>
         {/* Glassware Stemware silhouette */}
         {[-1.4, -1.0, -0.6, 0.6, 1.0, 1.4].map((gx) => (
           <mesh key={`stemware-${gx}`} position={[gx, -0.1, 0]}>
@@ -244,13 +236,13 @@ export function BartenderBar() {
             <meshStandardMaterial color="#ffffff" transparent opacity={0.5} roughness={0.2} />
           </mesh>
         ))}
-        <StemwareRackLight />
-      </group>
+
+      </InteriorPart><StemwareRackLight /></group>
 
       {/* ============================================================ */}
       {/* 3. FRONT SERVICE BAR & COUNTER (Untuk Bartender & Tamu)      */}
       {/* ============================================================ */}
-      <group position={BARTENDER_BAR_BLUEPRINT.frontCounter.position}>
+      <group position={BARTENDER_BAR_BLUEPRINT.frontCounter.position}><InteriorPart model="bar-counter">
         {/* Lower Counter Body (Warm slatted oak / dark walnut front) */}
         <mesh castShadow receiveShadow position={BARTENDER_BAR_BLUEPRINT.frontCounter.bodyPosition}>
           <boxGeometry args={BARTENDER_BAR_BLUEPRINT.frontCounter.bodySize} />
@@ -308,7 +300,7 @@ export function BartenderBar() {
           <boxGeometry args={[0.18, 0.24, 0.03]} />
           <meshStandardMaterial color="#1a1c1e" roughness={0.9} />
         </mesh>
-      </group>
+      </InteriorPart></group>
 
       {/* ============================================================ */}
       {/* 4. BAR STOOLS (Depan Meja Bar menghadap Bartender / ke Utara) */}
@@ -320,6 +312,7 @@ export function BartenderBar() {
             position={[...stool.position]}
             rotationY={stool.rotationY}
             cushionColor={stool.cushionColor}
+            resourceId={stool.resourceId}
           />
         );
       })}

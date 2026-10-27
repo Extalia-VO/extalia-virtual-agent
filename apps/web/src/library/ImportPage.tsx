@@ -183,7 +183,7 @@ export function ImportPage({ t, language, agents, onState, onImported, onObserve
           {visible.length === 0 ? <p className="muted">{t.imports.noCandidates}</p> : (
             <ul className="candidate-list">
               {visible.map(candidate => (
-                <li key={candidate.id} className={candidate.supported ? '' : 'disabled'}>
+                <li key={candidate.id} className={[candidate.supported ? '' : 'disabled', candidate.ignored ? 'ignored' : ''].filter(Boolean).join(' ') || undefined}>
                   <label className="check-row">
                     <input type="checkbox" checked={selected.has(candidate.id)} disabled={!candidate.supported}
                       onChange={event => setSelected(toggle(selected, candidate.id, event.target.checked))} />
@@ -195,6 +195,7 @@ export function ImportPage({ t, language, agents, onState, onImported, onObserve
                       </span>
                     </span>
                   </label>
+                  {candidate.ignored && <span className="badge muted" title={t.observedOrigin.ignoredHint}>{t.observedOrigin.ignoredBadge}</span>}
                   <span className="badge">{candidate.sourceName}{candidate.profile && candidate.profile !== 'default' ? ` · ${candidate.profile}` : ''}</span>
                   <time className="muted small" dateTime={candidate.updatedAt}>{format.format(new Date(candidate.updatedAt))}</time>
                 </li>

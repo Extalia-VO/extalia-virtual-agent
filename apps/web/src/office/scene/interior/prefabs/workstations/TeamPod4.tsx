@@ -1,9 +1,3 @@
-import { useMemo } from "react";
-import {
-  DoubleSide,
-  ExtrudeGeometry,
-  Shape
-} from "three";
 import type { FurnishedFloorState } from "../../FurnishedFloorContext";
 import type { SmartScreenData } from "../../screenData";
 import { screenForLocation } from "../../screenData";
@@ -12,7 +6,12 @@ import { Monitor } from "../props/Monitor";
 import { Laptop } from "../props/Laptop";
 import { Keyboard } from "../props/Keyboard";
 import { MouseAndPad } from "../props/DeskAccessories";
+import { DeskAccessorySlots, LaptopStand } from "../props/DeskOrganizers";
+import { deskInputPlacement, deskLayout, POD_DESK_SLOTS } from "../../deskLayout";
 import { TEAM_POD_SEAT, TEAM_POD_STATIONS } from "../../spatialBlueprints";
+import { TEAM_POD_DESKTOP } from "../../teamPodDesktopGeometry";
+import { TeamPodDesktop } from "../../TeamPodDesktop";
+import { monitorBankLayout } from "../props/deviceGeometry";
 
 type DeviceVariant =
   | "dual-monitor"
@@ -21,70 +20,6 @@ type DeviceVariant =
   | "laptop";
 
 type StationDefinition = typeof TEAM_POD_STATIONS[number];
-
-function PointerForKeyboard({
-  position,
-  rotationY,
-  scale = 0.75
-}: {
-  position: [number, number, number];
-  rotationY: number;
-  scale?: number;
-}) {
-  const side = 0.34;
-  return (
-    <MouseAndPad
-      position={[position[0] + Math.cos(rotationY) * side, 0.797,
-        position[2] - Math.sin(rotationY) * side]}
-      rotationY={rotationY}
-      scale={scale}
-    />
-  );
-}
-
-function QuadrantDeskSurface() {
-  const geometry = useMemo(() => {
-    const s = TEAM_POD_SEAT.deskHalfExtent;
-    // The chair faces the diagonal corner. Bring both straight edges back
-    // before the curve so the sitter has an actual knee/arm clearance bay.
-    const seatOpening = TEAM_POD_SEAT.seatOpening;
-    const curveTangent = 0.82;
-
-    const shape = new Shape();
-    shape.moveTo(0, 0);
-    shape.lineTo(s, 0);
-    shape.lineTo(s, seatOpening);
-    shape.bezierCurveTo(
-      s, curveTangent,
-      curveTangent, s,
-      seatOpening, s
-    );
-
-    shape.lineTo(0, s);
-    shape.closePath();
-
-    const g = new ExtrudeGeometry(shape, {
-      depth: 0.10,
-      curveSegments: 18,
-      bevelEnabled: true,
-      bevelThickness: 0.012,
-      bevelSize: 0.018,
-      bevelSegments: 2
-    });
-
-    g.rotateX(Math.PI / 2);
-    g.translate(0, 0.79, 0);
-
-    return g;
-  }, []);
-
-  return (
-    <mesh castShadow receiveShadow geometry={geometry}>
-      <meshStandardMaterial color="#bf9367" roughness={0.72} side={DoubleSide} />
-      <meshStandardMaterial color="#86684e" roughness={0.8} side={DoubleSide} />
-    </mesh>
-  );
-}
 
 function DeviceSet({
   variant,
@@ -96,38 +31,22 @@ function DeviceSet({
   // Generic station is the SE quadrant.
   // A 45° screen yaw faces the diagonal SE chair.
   const diagonalFacing = Math.PI / 4;
+  const top = TEAM_POD_DESKTOP.top;
 
-  // ±20° around the diagonal creates about a 140° internal V
-  // between the two monitor planes.
-  const dualHalfAngle = Math.PI / 9;
+  // This station's own arrangement: keyboard size and spot, mouse side.
+  const input = deskInputPlacement(TEAM_POD_SEAT.keyboardPosition, diagonalFacing, top, deskLayout(data.resourceId));
+  const inputs = <>
+    <Keyboard position={input.keyboard} rotationY={input.keyboardYaw} kind={input.keyboardKind} />
+    <MouseAndPad position={input.pad} rotationY={input.mouseYaw} mouseOnPad={input.mouseOnPad} />
+  </>;
 
   switch (variant) {
     case "dual-monitor":
       return (
         <>
-          <Monitor
-            position={[0.48, 1.24, 0.88]}
-            rotationY={diagonalFacing + dualHalfAngle}
-            width={0.56}
-            height={0.34}
-            variant="code"
-            data={data}
-          />
+          {monitorBankLayout(2, .50, [.52, top, .52], diagonalFacing).map((monitor, index) => <Monitor key={index} {...monitor} slot={index+1} slots={2} data={data} />)}
 
-          <Monitor
-            position={[0.88, 1.24, 0.48]}
-            rotationY={diagonalFacing - dualHalfAngle}
-            width={0.56}
-            height={0.34}
-            variant="chart"
-            data={data}
-          />
-
-          <Keyboard
-            position={[1.04, 0.82, 1.04]}
-            rotationY={diagonalFacing}
-          />
-          <PointerForKeyboard position={[1.04, 0.82, 1.04]} rotationY={diagonalFacing} />
+          {inputs}
         </>
       );
 
@@ -135,18 +54,14 @@ function DeviceSet({
       return (
         <>
           <Monitor
-            position={[0.64, 1.25, 0.64]}
+            position={[0.48, top, 0.48]}
             rotationY={diagonalFacing}
-            width={0.74}
-            height={0.44}
+            width={0.56}
+            device="all-in-one"
             data={data}
           />
 
-          <Keyboard
-            position={[1.03, 0.82, 1.03]}
-            rotationY={diagonalFacing}
-          />
-          <PointerForKeyboard position={[1.03, 0.82, 1.03]} rotationY={diagonalFacing} />
+          {inputs}
         </>
       );
 
@@ -154,34 +69,30 @@ function DeviceSet({
       return (
         <>
           <Monitor
-            position={[0.58, 1.23, 0.62]}
+            position={[0.42, top, 0.46]}
             rotationY={diagonalFacing + 0.08}
-            width={0.62}
-            height={0.37}
+            width={0.52}
+            slot={1}
+            slots={2}
             data={data}
           />
 
-          <Laptop
-            position={[1.05, 0.84, 0.74]}
-            rotationY={diagonalFacing - 0.15}
-            variant="ops"
-            data={data}
-          />
+          <group position={[0.88, top, 0.235]} rotation={[0, diagonalFacing - 0.15, 0]}>
+            <LaptopStand><Laptop position={[0, 0, 0]} slot={2} slots={2} data={data} /></LaptopStand>
+          </group>
 
-          <Keyboard
-            position={[0.84, 0.82, 1.06]}
-            rotationY={diagonalFacing}
-          />
-          <PointerForKeyboard position={[0.84, 0.82, 1.06]} rotationY={diagonalFacing} />
+          {inputs}
         </>
       );
 
     case "laptop":
       return (
         <>
-          <Laptop position={[0.86, 0.84, 0.86]} rotationY={diagonalFacing} data={data} />
-          <Keyboard position={[0.86, 0.82, 1.14]} rotationY={diagonalFacing} />
-          <PointerForKeyboard position={[0.86, 0.82, 1.14]} rotationY={diagonalFacing} />
+          {/* Laptop raised on a stand behind its external keyboard and mouse. */}
+          <group position={[0.48, top, 0.48]} rotation={[0, diagonalFacing, 0]}>
+            <LaptopStand><Laptop position={[0, 0, 0]} data={data} /></LaptopStand>
+          </group>
+          {inputs}
         </>
       );
   }
@@ -196,25 +107,18 @@ function QuadrantStation({
 }) {
   return (
     <group rotation={[0, station.rotationY, 0]} userData={{ officeSeatStation: true }}>
-      <QuadrantDeskSurface />
-
       <DeviceSet
         variant={station.variant}
         data={data}
       />
+      <DeskAccessorySlots layout={deskLayout(data.resourceId)} slots={POD_DESK_SLOTS} topY={TEAM_POD_DESKTOP.top} />
 
       <OfficeChair
         position={[TEAM_POD_SEAT.chairPosition[0], 0, TEAM_POD_SEAT.chairPosition[1]]}
         rotationY={TEAM_POD_SEAT.chairRotationY}
+        resourceId={data.resourceId}
       />
 
-      <mesh castShadow position={[1.42, 0.39, 0.34]}>
-        <boxGeometry args={[0.46, 0.72, 0.50]} />
-        <meshStandardMaterial
-          color="#d7d3cb"
-          roughness={0.90}
-        />
-      </mesh>
     </group>
   );
 }
@@ -232,6 +136,7 @@ export function TeamPod4({
 }) {
   return (
     <group position={position} rotation={[0, rotationY, 0]}>
+      <TeamPodDesktop />
       {TEAM_POD_STATIONS.map((station: StationDefinition) => {
         const data = screenForLocation(
           floorState,
@@ -247,37 +152,6 @@ export function TeamPod4({
         );
       })}
 
-      <mesh castShadow position={[0, 0.48, 0]}>
-        <boxGeometry args={[0.44, 0.92, 0.44]} />
-        <meshStandardMaterial
-          color="#cfcac1"
-          roughness={0.90}
-        />
-      </mesh>
-
-      <mesh castShadow position={[0, 1.10, 0]}>
-        <boxGeometry args={[3.12, 0.54, 0.045]} />
-        <meshPhysicalMaterial
-          color="#d8e6e8"
-          transparent
-          opacity={0.44}
-          roughness={0.24}
-        />
-      </mesh>
-
-      <mesh
-        castShadow
-        position={[0, 1.10, 0]}
-        rotation={[0, Math.PI / 2, 0]}
-      >
-        <boxGeometry args={[3.12, 0.54, 0.045]} />
-        <meshPhysicalMaterial
-          color="#d8e6e8"
-          transparent
-          opacity={0.44}
-          roughness={0.24}
-        />
-      </mesh>
     </group>
   );
 }

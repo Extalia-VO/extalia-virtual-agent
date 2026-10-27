@@ -35,3 +35,31 @@ export function screenPhotometry(pixels: ArrayLike<number>, area: number, powere
     intensity: displayEmission(area, luminance)
   };
 }
+
+const srgbToLinear = (value: number) => {
+  const srgb = value / 255;
+  return srgb <= 0.04045 ? srgb / 12.92 : ((srgb + 0.055) / 1.055) ** 2.4;
+};
+
+/**
+ * Average linear luminance and peak-normalised colour of a downsampled RGBA image. This is the part
+ * of the photometry that belongs to the *content*; area and backlight are applied per screen with
+ * `displayEmission`, so screens that share one texture share one measurement.
+ */
+export function measureScreenPixels(pixels: ArrayLike<number>): { luminance: number; color: readonly [number, number, number] } {
+  const count = Math.floor(pixels.length / 4);
+  if (!count) return { luminance: 0, color: [0, 0, 0] };
+  let r = 0, g = 0, b = 0;
+  for (let i = 0; i < count * 4; i += 4) {
+    const alpha = pixels[i + 3]! / 255;
+    r += srgbToLinear(pixels[i]!) * alpha;
+    g += srgbToLinear(pixels[i + 1]!) * alpha;
+    b += srgbToLinear(pixels[i + 2]!) * alpha;
+  }
+  r /= count; g /= count; b /= count;
+  const peak = Math.max(r, g, b, 0.0001);
+  return { luminance: r * 0.2126 + g * 0.7152 + b * 0.0722, color: [r / peak, g / peak, b / peak] };
+}
+
+/** Locked displays dim their backlight to 65 % (linear), keeping visible glow in a dark room while staying below active work. */
+export const LOCKED_BACKLIGHT = 0.65;

@@ -1,103 +1,135 @@
-/* eslint-disable react-hooks/immutability -- Three.js resources and camera transforms are mutable renderer objects. */
-import { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
-import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { OrbitControls } from '@react-three/drei';
-import { OrthographicCamera, type Vector3 } from 'three';
+import { NaturalWalkingClearance } from './movement/NaturalWalkingClearance';
+import { useEffect, useMemo, useRef } from 'react';
+import { Canvas, useFrame } from '@react-three/fiber';
+import { useProgress } from '@react-three/drei';
 import type { OfficeAgent } from '../presence';
 import type { Language } from '../../i18n';
 import { CampusNeighborhood } from './CampusNeighborhood';
 import { CampusExterior } from './CampusExterior';
-import { CampusBuildingShell } from './CampusBuildingShell';
-import { RoofUtilities } from './RoofUtilities';
-import { RoofSignage3D } from './prefabs/architecture/RoofSignage3D';
+import { CampusBuilding, CampusElevatorFrames, CampusRoofSignage, CampusRoofStair, CampusRoofUtilities, CampusTerraceGuard } from './BuildingShellModel';
 import { StaticCampusBatch } from './StaticCampusBatch';
-import { SceneEnvironment } from './Environment';
+import { SceneEnvironment, type LightOverride } from './Environment';
+import { SceneLighting } from './environment/SceneLighting';
+import { AdaptiveRenderBudget, useBudgetPixelRatio } from './environment/AdaptiveRenderBudget';
+import { CanvasContinuity } from './environment/CanvasContinuity';
+import { ModelInstanceBatches } from './ModelInstanceBatches';
+import { CampusNightLighting } from './environment/CampusNightLighting';
 import { FurnishedFloors, type FurnishedOfficeView } from './FurnishedFloors';
-import { allocateOfficeAgents } from './interior/seating';
-import { OfficeCharacter } from './avatars/OfficeCharacter';
-import { CharacterTag } from './CharacterTag';
-import { cameraProgress, characterFocusPose, panelClearance, type CameraPose } from './cameraFocus';
-import type { Point3 } from './layout';
+import type { OfficeAgentAllocation } from './interior/seating';
+import { useOfficeAllocations } from './interior/useOfficeAllocations';
+import type { CharacterAppearance } from './avatars/OfficeCharacter';
+import { OfficeOccupants, useMovementDirector } from './movement/OfficeOccupants';
+import { FacilityNpcs, useFacilityDirector } from './movement/FacilityStaff';
+import { combinePositionSources, type CharacterFloor, type CharacterPositionStore } from './movement/positionStore';
+import { GlassElevator } from './prefabs/architecture/GlassElevator';
+import { GLASS_ELEVATORS } from './prefabs/architecture/elevatorController';
+import type { FocusPoint } from './cameraFocus';
+import { CameraView } from './CameraView';
+export { MAX_ZOOM } from './CameraView';
+import type { OfficeActivity } from '../activityFeed';
+import { CharacterBubbles } from './CharacterBubbles';
+import { PopoverAnchor } from './PopoverAnchor';
 
 export interface OfficeCanvasProps {
   agents: readonly OfficeAgent[];
   selectedId: string | null;
   onSelect: (id: string) => void;
   view: FurnishedOfficeView;
+  /** Explicit floor/view requests, separate from automatic Follow floor changes. */
+  viewRequest?: number;
   language: Language;
   dark: boolean;
   reducedMotion: boolean;
+  /** Saved (or previewed) looks by presence id; characters without one use their generated default. */
+  appearances?: Readonly<Record<string, CharacterAppearance>>;
+  activities?: readonly OfficeActivity[];
+  onScene?(): void;
+  onReady?(): void;
+  /** Increment to explicitly frame the selected character. */
+  focusRequest?: number;
+  /** Keep the camera on the selected character while it walks. Off by default; Locate and Follow explicitly request camera movement. */
+  follow?: boolean;
+  /** The user dragged the view, which ends following. */
+  onFollowEnd?(): void;
+  /** Synchronize the displayed floor with a followed character's live height, including vertical transit. */
+  onFollowFloor?(floor: CharacterFloor): void;
+  /** Move the camera to a point (e.g. a room); each new object is one request. */
+  focusPoint?: FocusPoint;
+  /** Seat allocation shared with the page (see `useOfficeAllocations`); derived from `agents` when absent. */
+  allocations?: readonly OfficeAgentAllocation[];
+  /** Page-owned live character positions (see `createCharacterPositionStore`), e.g. to follow a walking character's floor. */
+  positions?: CharacterPositionStore;
+  /** Interior lights: `auto` follows the time of day; `on`/`off` are the user's override. */
+  lightOverride?: LightOverride;
+  /** Follow the real sun (the "Solar" app theme) instead of showing day or night from `dark`. */
+  followSun?: boolean;
+  /** Character whose card (`CharacterPopover`) is anchored beside it every frame. */
+  popoverId?: string | null;
+  /** A click that hit no character (not a camera drag). */
+  onMiss?(): void;
+}
+
+/** Ready follows the first drawn frames and all pending model/texture loads. */
+function SceneReadiness({ onScene, onReady }: Pick<OfficeCanvasProps, 'onScene' | 'onReady'>) {
+  // Read loader state per frame instead of subscribing: loaders report progress while other components render.
+  const frames = useRef(0);
+  const notified = useRef(false);
+  useEffect(() => { onScene?.(); }, [onScene]);
+  useFrame(() => {
+    const active = useProgress.getState().active;
+    if (notified.current || active) { if (active) frames.current = 0; return; }
+    if (++frames.current < 2) return;
+    notified.current = true;
+    requestAnimationFrame(() => onReady?.());
+  });
+  return null;
 }
 const initialCamera = { position: [-32, 22, -82] as [number, number, number], zoom: 9, near: 0.1, far: 600 };
-const lerp3 = (from: Point3, to: Point3, t: number): Point3 => [0, 1, 2].map(axis => from[axis]! + (to[axis]! - from[axis]!) * t) as Point3;
-
-/** Floor presets, plus a short move that frames the selected character (`focus` is its seat). */
-function CameraView({ view, focus, reducedMotion }: { view: FurnishedOfficeView; focus?: Point3; reducedMotion: boolean }) {
-  const camera = useThree(s => s.camera);
-  const size = useThree(s => s.size);
-  const controls = useThree(s => s.controls) as unknown as { target: Vector3; update(): void } | null;
-  const move = useRef<{ elapsed: number; from: CameraPose; to: CameraPose } | null>(null);
-  const level = typeof view === 'number' ? (view - 1) * 6.4 : view === 'campus' ? 9.2 : 6.4;
-  const target = useMemo(() => [2, level + (typeof view === 'number' ? 0.7 : 0), view === 'campus' ? -3 : 0] as [number, number, number], [view, level]);
-  useLayoutEffect(() => {
-    if (!(camera instanceof OrthographicCamera)) return;
-    const position: [number, number, number] = view === 'campus' ? [-32, 22, -82] : [35, level + 30, 38];
-    camera.position.set(...position);
-    camera.lookAt(...target);
-    camera.zoom = view === 'campus' ? Math.max(3, Math.min(size.width / 115, size.height / 70)) : Math.max(3, Math.min(size.width / 78, size.height / (view === 'stack' ? 68 : 56)));
-    camera.updateProjectionMatrix();
-  }, [camera, view, level, target, size.width, size.height]);
-  const focusKey = focus?.join(',');
-  useEffect(() => {
-    if (!focus || !(camera instanceof OrthographicCamera)) return;
-    const from: CameraPose = { position: camera.position.toArray() as Point3, target: controls ? controls.target.toArray() as Point3 : target, zoom: camera.zoom };
-    move.current = { elapsed: 0, from, to: characterFocusPose(focus, undefined, panelClearance(size.width, size.height)) };
-    // The focus key captures the seat; the pose is read once when it changes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [focusKey, camera, controls]);
-  useFrame((_, delta) => {
-    const current = move.current;
-    if (!current || !(camera instanceof OrthographicCamera)) return;
-    current.elapsed += delta;
-    const t = cameraProgress(current.elapsed, 0.8, reducedMotion);
-    camera.position.set(...lerp3(current.from.position, current.to.position, t));
-    camera.zoom = current.from.zoom + (current.to.zoom - current.from.zoom) * t;
-    camera.updateProjectionMatrix();
-    if (controls) { controls.target.set(...lerp3(current.from.target, current.to.target, t)); controls.update(); }
-    if (t >= 1) move.current = null;
-  });
-  return <OrbitControls makeDefault target={target} enableDamping={false} minZoom={2} maxZoom={65} minPolarAngle={0.25} maxPolarAngle={Math.PI * 0.48} />;
-}
-
 /** Shared Web/Desktop renderer: furnished geometry and characters consume the same host state. */
-export default function OfficeCanvas({ view, language, dark, reducedMotion, agents, selectedId, onSelect }: OfficeCanvasProps) {
-  const allocations = useMemo(() => allocateOfficeAgents(agents), [agents]);
-  const byId = useMemo(() => new Map(agents.map(agent => [agent.id, agent])), [agents]);
+export default function OfficeCanvas({ view, viewRequest, language, dark, reducedMotion, agents, selectedId, onSelect, appearances, activities = [], onScene, onReady, focusRequest, follow, onFollowEnd, onFollowFloor, focusPoint, allocations: givenAllocations, positions, lightOverride, followSun, popoverId = null, onMiss }: OfficeCanvasProps) {
+  const ownAllocations = useOfficeAllocations(agents);
+  const allocations = givenAllocations ?? ownAllocations;
+  const director = useMovementDirector();
+  const facility = useFacilityDirector(director);
+  // Agents and facility staff share one live position source (camera locate/follow, character card, page floor lookups).
+  const live = useMemo(() => combinePositionSources(director, facility), [director, facility]);
+  useEffect(() => {
+    if (!positions) return;
+    positions.bind(live);
+    return () => positions.bind(null);
+  }, [positions, live]);
   const focus = allocations.find(seat => seat.agentId === selectedId)?.position;
-  return <Canvas orthographic camera={initialCamera} dpr={[1, 1.25]} shadows gl={{ antialias: false, powerPreference: 'high-performance' }} style={{ width: '100%', height: '100%' }}>
-    <SceneEnvironment dark={dark} reducedMotion={reducedMotion}>
-      <color attach="background" args={[dark ? '#182536' : '#c4dce8']} />
-      <ambientLight intensity={dark ? 0.75 : 1.2} />
-      <hemisphereLight args={['#d8edff', '#687757', dark ? 0.6 : 1.5]} />
-      <directionalLight position={[-25, 45, -30]} intensity={dark ? 0.6 : 2.5} castShadow shadow-mapSize-width={1024} shadow-mapSize-height={1024} shadow-camera-left={-60} shadow-camera-right={60} shadow-camera-top={60} shadow-camera-bottom={-60} shadow-camera-far={150} />
-      <CameraView view={view} focus={focus} reducedMotion={reducedMotion} />
+  const dpr = useBudgetPixelRatio();
+  return <Canvas orthographic camera={initialCamera} dpr={dpr} shadows gl={{ antialias: false, powerPreference: 'high-performance' }} style={{ width: '100%', height: '100%' }} onPointerMissed={onMiss}>
+    <CanvasContinuity />
+    <ModelInstanceBatches />
+    <SceneEnvironment dark={dark} reducedMotion={reducedMotion} lightOverride={lightOverride} followSun={followSun}>
+      <SceneReadiness onScene={onScene} onReady={onReady} />
+      {/* Sky, fog and sun/moon follow the solar environment; the budget keeps the frame rate above 40 fps. */}
+      <SceneLighting />
+      <AdaptiveRenderBudget />
+      <CameraView view={view} viewRequest={viewRequest} focus={focus} focusId={selectedId} live={live} focusRequest={focusRequest} reducedMotion={reducedMotion} following={follow} focusPoint={focusPoint} onFollowEnd={onFollowEnd} onFollowFloor={onFollowFloor} />
       <group visible={view === 'campus'}>
-        <CampusNeighborhood /><RoofSignage3D />
+        <CampusNeighborhood /><CampusRoofSignage />
         <StaticCampusBatch><CampusExterior /></StaticCampusBatch>
-        <StaticCampusBatch><CampusBuildingShell /></StaticCampusBatch>
-        <StaticCampusBatch><RoofUtilities /></StaticCampusBatch>
+        {/* The Blender building model when present locally; the three.js shell is its backup. */}
+        <CampusBuilding />
+        <CampusRoofUtilities />
+        <CampusNightLighting />
       </group>
-      <FurnishedFloors view={view} agents={agents} language={language} />
-      {allocations.map(seat => {
-        const agent = byId.get(seat.agentId);
-        if (!agent) return null;
-        return <group key={agent.id} visible={view === 'campus' || view === 'stack' || view === seat.floor}>
-          <OfficeCharacter agent={agent} position={seat.position} rotationY={seat.rotationY} seated selected={agent.id === selectedId} onSelect={onSelect} reducedMotion={reducedMotion} />
-          {view !== 'campus' && (view === 'stack' || view === seat.floor) && (
-            <CharacterTag agent={agent} position={seat.position} seated selected={agent.id === selectedId} label={agent.displayName} onSelect={onSelect} />
-          )}
-        </group>;
-      })}
+      <NaturalWalkingClearance owner={director} />
+      <FurnishedFloors view={view} agents={agents} language={language} allocations={allocations} />
+      {GLASS_ELEVATORS.map(({ id }) => <GlassElevator key={id} elevatorId={id} view={view} />)}
+      {/* Blender lift frames span every floor, so they show only in the whole-building views. */}
+      <group visible={view === 'campus' || view === 'stack'}><CampusElevatorFrames /></group>
+      <group visible={view === 'campus' || view === 'stack' || view === 3}><CampusRoofStair view={view} /><CampusTerraceGuard /></group>
+      {/* Characters walk in, sit, and walk out at their live positions; tags follow them. */}
+      <OfficeOccupants director={director} allocations={allocations} agents={agents} appearances={appearances} view={view}
+        selectedId={selectedId} onSelect={onSelect} reducedMotion={reducedMotion} />
+      {/* Receptionist and bartender: facility staff owned by the scene, never agent sessions. */}
+      <FacilityNpcs director={facility} view={view} reducedMotion={reducedMotion} language={language} selectedId={selectedId} onSelect={onSelect} />
+      <CharacterBubbles activities={activities} agents={agents} allocations={allocations} view={view} selectedId={selectedId} reducedMotion={reducedMotion} positions={director} language={language} />
+      <PopoverAnchor characterId={popoverId} live={live} view={view} />
     </SceneEnvironment>
   </Canvas>;
 }

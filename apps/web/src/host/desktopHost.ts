@@ -1,4 +1,4 @@
-import type { AgentHostApi, DesktopHostApi, UpdateCapability } from '@extalia/platform';
+import type { AgentHostApi, DesktopHostApi, NotificationCapability, RestartCapability, UpdateCapability } from '@extalia/platform';
 import { createRemoteHost, errorMessage } from './remote';
 
 /** Agents over the Desktop preload bridge: one audited IPC channel per method plus an event push. */
@@ -20,4 +20,14 @@ export function desktopUpdater(updater: DesktopHostApi['updater']): UpdateCapabi
     postpone: () => updater.postpone(),
     onStatus: listener => updater.onStatus(listener),
   };
+}
+
+/** Desktop relaunches the app process; the main process stops agent work and saves host state first. */
+export function desktopRestart(restart: DesktopHostApi['restart']): RestartCapability {
+  return { kind: 'relaunch', restart: options => restart(options) };
+}
+
+/** Native notifications through the Desktop main process, which validates and bounds every payload. */
+export function desktopNotifications(notifications: NonNullable<DesktopHostApi['notifications']>): NotificationCapability {
+  return { notify: notification => notifications.notify(notification), onActivate: listener => notifications.onActivate(listener) };
 }

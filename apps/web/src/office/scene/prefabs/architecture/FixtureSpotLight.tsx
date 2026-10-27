@@ -1,5 +1,11 @@
-/** The extracted scene uses emissive lenses plus its shared sun/ambient lights.
- * Keeping this anchor preserves source geometry without the original global fixture registry. */
-export function FixtureSpotLight(_props: { position: [number, number, number]; aim: [number, number, number]; intensity: number; color?: string; distance?: number; angle?: number; penumbra?: number; shadow?: boolean; name?: string; floorY?: number }) {
-  return null;
+import { FixtureSpotLight as BakedFixtureSpotLight } from '../../interior/prefabs/architecture/FixtureSpotLight';
+
+type FixtureSpotLightProps = Parameters<typeof BakedFixtureSpotLight>[0];
+
+/**
+ * Architectural wrapper around the shared `FixtureSpotLight` implementation so both
+ * shadowed moving beams (such as the panoramic elevator cabin) and baked static beams work.
+ */
+export function FixtureSpotLight(props: FixtureSpotLightProps) {
+  return <BakedFixtureSpotLight {...props} />;
 }

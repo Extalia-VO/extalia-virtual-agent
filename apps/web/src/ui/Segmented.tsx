@@ -12,17 +12,20 @@ export function Segmented<T extends string>({
   value,
   options,
   onChange,
+  hint,
   className = ''
 }: {
   legend: string;
   value: T;
   options: readonly (SegmentedOption<T> | { value: T; label: string })[];
   onChange: (value: T) => void;
+  /** Explains the current choice; read out with the group. */
+  hint?: ReactNode;
   className?: string;
 }) {
   const name = useId();
   return (
-    <fieldset className={`segmented-field ${className}`}>
+    <fieldset className={`segmented-field ${className}`} aria-describedby={hint ? `${name}-hint` : undefined}>
       <legend>{legend}</legend>
       <div className="segmented">
         {options.map(option => {
@@ -44,6 +47,7 @@ export function Segmented<T extends string>({
           );
         })}
       </div>
+      {hint && <p className="segmented-hint muted small" id={`${name}-hint`} aria-live="polite">{hint}</p>}
     </fieldset>
   );
 }

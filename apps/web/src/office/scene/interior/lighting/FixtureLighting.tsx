@@ -8,6 +8,8 @@ import { bakeFixtureIrradiance, IRRADIANCE_GRID_DIMENSIONS, IRRADIANCE_GRID_MIN,
 import { composeIrradiance, type IrradianceField } from "./composeIrradiance";
 import { getScreenEmitters, screenEmitterRevision, screenEmitterUrgentRevision } from "../prefabs/screens/screenEmitterRegistry";
 import { ceilingYForFloor, type CeilingFloor } from "../prefabs/architecture/ceilingMounting";
+import { getRenderBudget } from "../../environment/renderBudget";
+import { deviceIrradiancePower, screenCastStrength, WALL_SCREEN_SIZE } from "../prefabs/screens/screenLightBudget";
 
 export interface RegisteredFixture {
   anchor: Group;
@@ -19,6 +21,8 @@ export interface RegisteredFixture {
   penumbra: number;
   name: string;
   floorY?: number;
+  /** Small strip samples contribute cached light without occupying a live spotlight. */
+  bakedOnly?: boolean;
 }
 const fixtures = new Set<RegisteredFixture>();
 let revision = 0;
@@ -31,6 +35,14 @@ const locationKey = (name: string, position: Vector3, target: Vector3) =>
   `${name}:${[position.x, position.y, position.z, target.x, target.y, target.z].map(n => Math.round(n * 1000)).join(",")}`;
 
 const LIVE_BEAM_BUDGET = 6;
+/**
+ * Baked share of a screen's emission. Panels are dim next to room lamps: a desk monitor adds roughly
+ * a tenth of a lit workspace at arm's length, so a seated person is softly lit, not glaring white.
+ */
+const DEVICE_IRRADIANCE_SCALE = 0.6;
+/** Device bake shape for desk panels and wall displays (see `BakedFixture.frontClip`/`minDistance`). */
+const DESK_DEVICE_BAKE = { angle: 1.2, penumbra: 0.9, frontClip: 0.3, minDistance: 0.75 } as const;
+const WALL_DEVICE_BAKE = { angle: 1.15, penumbra: 0.9, frontClip: 0.95, minDistance: 0.6 } as const;
 const EMPTY_SIZE = IRRADIANCE_GRID_DIMENSIONS[0] * IRRADIANCE_GRID_DIMENSIONS[1] * IRRADIANCE_GRID_DIMENSIONS[2] * 4;
 const shaderDeclarations = `
 uniform highp sampler3D fixtureRadiance;
@@ -46,8 +58,12 @@ varying vec3 vFixtureWorldPosition;
  * A small live pool adds local specular detail; moving cabins keep their own real shadowed beam. */
 export function FixtureLighting() {
   const { scene, gl } = useThree();
-  const { state } = useSolarEnvironment();
-  const power = Math.max(state.factors.interiorLightFactor, state.factors.exteriorLightFactor);
+  const { state, lightsOn } = useSolarEnvironment();
+  const interiorFactor = state.factors.interiorLightFactor;
+  const exteriorFactor = state.factors.exteriorLightFactor;
+  const power = Math.max(interiorFactor, exteriorFactor);
+  // Screens light the room only at night with the lamps off; otherwise they are emissive only.
+  const devicePower = deviceIrradiancePower(screenCastStrength(state.factors.nightFactor, lightsOn));
   const cache = useMemo(() => {
     const [nx, ny, nz] = IRRADIANCE_GRID_DIMENSIONS;
     const radiance = new Data3DTexture(new Uint16Array(EMPTY_SIZE), nx, ny, nz);
@@ -68,6 +84,7 @@ export function FixtureLighting() {
       fixtureSize: { value: new Vector3(...IRRADIANCE_GRID_MAX).sub(new Vector3(...IRRADIANCE_GRID_MIN)) }
     }, patched: new Map<MeshStandardMaterial, { compile: MeshStandardMaterial["onBeforeCompile"]; key: MeshStandardMaterial["customProgramCacheKey"]; cleanup: () => void }>(),
       seenRevision: -1, seenScreens: -1, seenUrgentScreens: -1, nextScreens: 0, nextScan: 0, nextBake: 0, nextPool: 0, nextShadow: 0,
+      lastInterior: -1, lastExterior: -1, composedDevicePower: -1,
       architecture: undefined as IrradianceField | undefined, devices: undefined as IrradianceField | undefined,
       composedPower: -1, compositionDirty: false, deviceCount: 0, devicesByFloor: [0, 0, 0],
       shadowPositions: new Map<string, number>(), selected: new Set<RegisteredFixture>(),
@@ -157,9 +174,10 @@ export function FixtureLighting() {
         cache.shadowPositions.set(light.uuid, cache.position.y);
       });
       gl.shadowMap.needsUpdate = true;
-      cache.nextShadow = elapsed + (moving ? 1 / 12 : 0.25);
+      cache.nextShadow = elapsed + (moving ? 1 / 12 : getRenderBudget().shadowRefreshSeconds);
     }
-    if (power > 0.001 && cache.seenRevision !== revision && elapsed >= cache.nextBake) {
+    const factorChanged = cache.lastInterior !== interiorFactor || cache.lastExterior !== exteriorFactor;
+    if (power > 0.001 && (factorChanged || (cache.seenRevision !== revision && elapsed >= cache.nextBake))) {
       const started = performance.now();
       const sources: BakedFixture[] = [];
       const bakedLocations = new Set<string>();
@@ -194,9 +212,11 @@ export function FixtureLighting() {
       cache.compositionDirty = true;
       cache.bakeMs = performance.now() - started;
       cache.seenRevision = revision; cache.nextBake = elapsed + 0.6;
+      cache.lastInterior = interiorFactor; cache.lastExterior = exteriorFactor;
     }
-    if (cache.seenScreens !== screenEmitterRevision() &&
-        (elapsed >= cache.nextScreens || cache.seenUrgentScreens !== screenEmitterUrgentRevision())) {
+    // Device light is only baked while it can show; by day or with lamps on the panels cast nothing.
+    if (devicePower > 0 && (cache.devices === undefined || (cache.seenScreens !== screenEmitterRevision() &&
+        (elapsed >= cache.nextScreens || cache.seenUrgentScreens !== screenEmitterUrgentRevision())))) {
       const sources: BakedFixture[] = [];
       const floors = [0, 0, 0];
       for (const screen of getScreenEmitters()) {
@@ -215,10 +235,12 @@ export function FixtureLighting() {
         }
         const floor = Math.max(0, Math.min(2, Math.floor(cache.position.y / 6.4)));
         floors[floor]!++;
+        // Forward-only: a cone under 90° plus a front clip, so nothing lands behind a panel or its wall.
+        const shape = Math.sqrt(screen.width * screen.height) >= WALL_SCREEN_SIZE ? WALL_DEVICE_BAKE : DESK_DEVICE_BAKE;
         sources.push({ position: cache.position.toArray() as [number, number, number],
-          aim: cache.target.toArray() as [number, number, number], intensity: screen.intensity,
-          color: [...screen.color], distance: Math.min(6, Math.max(2.2, Math.sqrt(screen.width * screen.height) * 2.5)),
-          angle: 1.15, penumbra: 0.85, floorY: floor * 6.4,
+          aim: cache.target.toArray() as [number, number, number], intensity: screen.intensity * DEVICE_IRRADIANCE_SCALE,
+          color: [...screen.color], distance: Math.min(7.5, Math.max(3.2, Math.sqrt(screen.width * screen.height) * 3.4)),
+          angle: shape.angle, penumbra: shape.penumbra, frontClip: shape.frontClip, minDistance: shape.minDistance, floorY: floor * 6.4,
           ceilingY: floor * 6.4 + ceilingYForFloor((floor + 1) as CeilingFloor), bounds });
       }
       cache.devices = bakeFixtureIrradiance(sources);
@@ -226,17 +248,18 @@ export function FixtureLighting() {
       cache.compositionDirty = true; cache.seenScreens = screenEmitterRevision(); cache.nextScreens = elapsed + 1;
       cache.seenUrgentScreens = screenEmitterUrgentRevision();
     }
-    if (cache.compositionDirty || cache.composedPower !== power) {
+    if (cache.compositionDirty || cache.composedPower !== power || cache.composedDevicePower !== devicePower) {
       composeIrradiance(cache.architecture, cache.devices, power,
-        cache.radiance.image.data as Uint16Array, cache.direction.image.data as Uint8Array);
+        cache.radiance.image.data as Uint16Array, cache.direction.image.data as Uint8Array, devicePower);
       cache.radiance.needsUpdate = true; cache.direction.needsUpdate = true;
-      cache.compositionDirty = false; cache.composedPower = power;
+      cache.compositionDirty = false; cache.composedPower = power; cache.composedDevicePower = devicePower;
     }
     if (elapsed >= cache.nextPool) {
       cache.nextPool = elapsed + 0.25;
       const candidates: { fixture: RegisteredFixture; score: number }[] = [];
       const liveLocations = new Set<string>();
       for (const fixture of fixtures) {
+        if (fixture.bakedOnly) continue;
         let visible = fixture.intensity > 0.001;
         for (let ancestor: Object3D | null = fixture.anchor; visible && ancestor; ancestor = ancestor.parent) visible = ancestor.visible;
         if (!visible) continue;
@@ -253,8 +276,11 @@ export function FixtureLighting() {
         candidates.push({ fixture, score: Math.sqrt(fixture.intensity) / Math.max(1, distance) * taskDetail * (cache.selected.has(fixture) ? 1.2 : 1) });
       }
       candidates.sort((a, b) => b.score - a.score); cache.selected.clear();
+      // The adaptive render budget may drop the live pool; hidden lights leave the shaders entirely.
+      const budget = Math.min(LIVE_BEAM_BUDGET, getRenderBudget().liveBeams);
       cache.lights.forEach((light, i) => {
-        const fixture = candidates[i]?.fixture;
+        light.visible = i < budget;
+        const fixture = i < budget ? candidates[i]?.fixture : undefined;
         if (!fixture) { light.intensity = 0; return; }
         cache.selected.add(fixture); light.name = fixture.name;
         fixture.anchor.getWorldPosition(light.position); fixture.target.getWorldPosition(light.target.position);
@@ -263,8 +289,8 @@ export function FixtureLighting() {
       });
       cache.group.updateMatrixWorld(true);
       if (import.meta.env.DEV) (window as Window & { __EXTALIA_FIXTURE_LIGHTING__?: unknown; __EXTALIA_LIGHTING_AUDIT__?: unknown }).__EXTALIA_FIXTURE_LIGHTING__ = {
-        registeredFixtures: fixtures.size, uniqueBakedFixtures: cache.bakedCount, liveBeamBudget: LIVE_BEAM_BUDGET,
-        screenEmitters: cache.deviceCount, screensByFloor: cache.devicesByFloor,
+        registeredFixtures: fixtures.size, uniqueBakedFixtures: cache.bakedCount, liveBeamBudget: budget,
+        screenEmitters: cache.deviceCount, screensByFloor: cache.devicesByFloor, devicePower,
         liveBeams: cache.lights.filter(light => light.intensity > 0).length, bakeMs: Math.round(cache.bakeMs),
         volumeDimensions: IRRADIANCE_GRID_DIMENSIONS, power
       };

@@ -14,6 +14,13 @@ export type BakedFixture = {
   ceilingY?: number;
   /** Exclude this inclusive x/z footprint at every height, without a margin. */
   excludeBounds?: { west: number; east: number; north: number; south: number };
+  /** Inverse-square clamp radius (default 0.4 m); larger values soften a source's near field. */
+  minDistance?: number;
+  /**
+   * Cells closer than this to the source plane (measured along the aim) receive nothing. A wall display
+   * uses about one cell, so trilinear sampling cannot carry its light through the wall behind it.
+   */
+  frontClip?: number;
 };
 
 /** Metre cells reach the front road spawn (z -56.5) so the arrival walkway can be lit. */
@@ -87,6 +94,9 @@ export function bakeFixtureIrradiance(fixtures: readonly BakedFixture[]): {
     const z0 = Math.max(0, Math.ceil((Math.max(pz - range, north) - minZ) / sz - 0.5));
     const z1 = Math.min(nz - 1, Math.floor((Math.min(pz + range, south) - minZ) / sz - 0.5));
     const excluded = fixture.excludeBounds;
+    const minDistance = fixture.minDistance !== undefined && fixture.minDistance > 0 ? fixture.minDistance : 0.4;
+    const minDistanceSquared = minDistance * minDistance;
+    const frontClip = fixture.frontClip !== undefined && Number.isFinite(fixture.frontClip) ? fixture.frontClip : -Infinity;
 
     for (let z = z0; z <= z1; z++) {
       const sampleZ = minZ + (z + 0.5) * sz;
@@ -108,12 +118,13 @@ export function bakeFixtureIrradiance(fixtures: readonly BakedFixture[]): {
           const inverseDistance = distanceSquared > 0 ? 1 / Math.sqrt(distanceSquared) : 0;
           const dot = distanceSquared > 0 ? (fx * dx + fy * dy + fz * dz) * inverseDistance : 1;
           if (dot < outerCos) continue;
+          if (fx * dx + fy * dy + fz * dz < frontClip) continue;
           const t = coneWidth > 0 ? Math.max(0, Math.min(1, (dot - outerCos) / coneWidth)) : 1;
           const cone = t * t * (3 - 2 * t);
           if (cone === 0) continue;
           const relativeSquared = distanceSquared / rangeSquared;
           const cutoff = Math.max(1 - relativeSquared * relativeSquared, 0);
-          const energy = intensity * cone * cutoff * cutoff / Math.max(distanceSquared, 0.16);
+          const energy = intensity * cone * cutoff * cutoff / Math.max(distanceSquared, minDistanceSquared);
           const cell = row + x;
           const offset = cell * 4;
           radiance[offset] = radiance[offset]! + red * energy;

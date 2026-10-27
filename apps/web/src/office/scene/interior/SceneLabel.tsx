@@ -3,13 +3,18 @@ import { cloneElement, isValidElement, type CSSProperties, type ReactNode, type 
 import type { Point3 } from '../layout';
 import { useInteriorText } from './FurnishedFloorContext';
 
+/** Elements mapped out of a child list need a key; the list index keeps the output stable. */
+function keyedAt(node: ReactNode, index: number): ReactNode {
+  return isValidElement(node) && node.key === null ? cloneElement(node, { key: index }) : node;
+}
+
 function translateChildren(children: ReactNode, translate: (text: string) => string): ReactNode {
   if (typeof children === 'string') {
     const normalized = children.trim();
     const translated = translate(normalized);
     return translated === normalized ? children : translated;
   }
-  if (Array.isArray(children)) return children.map(child => translateChildren(child, translate));
+  if (Array.isArray(children)) return children.map((child, index) => keyedAt(translateChildren(child, translate), index));
   if (isValidElement(children)) {
     const element = children as ReactElement<{ children?: ReactNode }>;
     return cloneElement(element, undefined, translateChildren(element.props.children, translate));

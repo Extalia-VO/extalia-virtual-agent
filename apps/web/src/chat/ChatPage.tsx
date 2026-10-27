@@ -4,15 +4,17 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { errorMessage } from '../host/remote';
 import type { Messages } from '../i18n';
 import { Icon } from '../ui/Icon';
-import { Composer } from './Composer';
+import { Composer, type ComposerSend } from './Composer';
+import { attachmentPreviewLoader, sendPromptWithAttachments, uploadAttachments } from './attachments';
 import { resolveChat, type ChatSelection } from './selection';
 import { SessionList } from './SessionList';
 import { projectActivity, projectTranscript } from './transcript';
 import { TranscriptView } from './TranscriptView';
 import { useSessionEvents } from './useSessionEvents';
 import { Select } from '../ui/Select';
+import { ProjectSkillsNotice } from '../skills/ProjectSkills';
 
-export function ChatPage({ t, language, agents, state, onState, selection, onSelect, onOpenSettings }: {
+export function ChatPage({ t, language, agents, state, onState, selection, onSelect, onOpenSettings, onReviewSkills }: {
   t: Messages;
   language: string;
   agents: AgentHostApi;
@@ -21,9 +23,13 @@ export function ChatPage({ t, language, agents, state, onState, selection, onSel
   selection: ChatSelection;
   onSelect: (next: ChatSelection) => void;
   onOpenSettings: () => void;
+  /** Opens the Skills page; the notice has already asked it to focus the workspace. */
+  onReviewSkills: (workspaceId: string) => void;
 }) {
   const { workspace, sessions, session } = useMemo(() => resolveChat(state, selection), [state, selection]);
   const { events, error: loadError, loading } = useSessionEvents(agents, session?.id);
+  const sessionId = session?.id;
+  const previewAttachment = useMemo(() => sessionId ? attachmentPreviewLoader(agents, sessionId) : undefined, [agents, sessionId]);
   const items = useMemo(() => projectTranscript(events), [events]);
   const activity = useMemo(() => projectActivity(events), [events]);
   const [error, setError] = useState<string | null>(null);
@@ -74,16 +80,19 @@ export function ChatPage({ t, language, agents, state, onState, selection, onSel
     catch (failure) { setError(errorMessage(failure)); return false; }
   }
 
-  const send = (text: string) => guard(async () => {
+  // v0.0.49: the session is created first (with the chosen model, effort and permission mode), then the files upload, then the prompt goes.
+  const send = ({ text, choice, attachments, patch }: ComposerSend) => guard(async () => {
     let id = session?.id;
     if (!id) {
-      const created = await agents.createSession(workspace.id);
+      const created = await agents.createSession(workspace.id, choice);
       onState(await agents.getState());
       onSelect({ workspaceId: workspace.id, sessionId: created.id });
       id = created.id;
     }
-    await agents.sendPrompt(id, text);
+    const ids = await uploadAttachments(agents, id, attachments, patch);
+    await sendPromptWithAttachments(agents, id, text, ids);
   });
+  const refreshState = () => { void agents.getState().then(onState).catch(() => undefined); };
 
   const decide = async (approvalId: string, decision: ApprovalDecisionInput) => {
     if (session) await guard(() => agents.resolveApproval(session.id, approvalId, decision));
@@ -133,7 +142,7 @@ export function ChatPage({ t, language, agents, state, onState, selection, onSel
       </aside>
 
       <section className="chat-main" aria-labelledby="chat-title">
-
+        <ProjectSkillsNotice t={t} agents={agents} workspace={workspace} onReview={onReviewSkills} />
         {loadError && <p className="form-error" role="alert"><Icon name="alert" />{t.chat.loadFailed} {loadError}</p>}
         {!loading && items.length === 0 ? (
           <div className="chat-empty">
@@ -142,7 +151,7 @@ export function ChatPage({ t, language, agents, state, onState, selection, onSel
             <p className="muted">{t.chat.emptyLead(workspace.name)}</p>
           </div>
         ) : (
-          <TranscriptView t={t} items={items} language={language} onDecide={decide} />
+          <TranscriptView t={t} items={items} language={language} onDecide={decide} previewAttachment={previewAttachment} />
         )}
 
         <div className="chat-footer">
@@ -152,8 +161,9 @@ export function ChatPage({ t, language, agents, state, onState, selection, onSel
             {statusText}
           </p>
           {error && <p className="form-error" role="alert"><Icon name="alert" />{error}</p>}
-          <Composer t={t} running={running} waiting={waiting} readOnly={readOnly} stopping={activity.stopping}
-            onSend={send} onStop={() => { if (session) void guard(() => agents.cancel(session.id)); }} />
+          <Composer t={t} agents={agents} session={session} workspaceId={workspace.id} hermes={workspace.runtimeId === 'hermes' || session?.runtime?.id === 'hermes'}
+            running={running} waiting={waiting} readOnly={readOnly} stopping={activity.stopping}
+            onSend={send} onStop={() => { if (session) void guard(() => agents.cancel(session.id)); }} onSessionChanged={refreshState} />
         </div>
       </section>
     </div>

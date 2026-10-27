@@ -1,6 +1,6 @@
 import { useMemo, type MutableRefObject, type ReactNode } from "react";
-import type { Group } from "three";
-import type { AvatarAccessoryConfig } from "./appearance";
+import { Color, type Group } from "three";
+import type { AvatarAccessoryConfig, AvatarBagStyle } from "./appearance";
 import { hairStrandTexture, watchDialTexture } from "./avatarTextures";
 import { ClothMaterial } from "./AvatarWardrobe";
 type WatchStyle = NonNullable<AvatarAccessoryConfig["watchStyle"]>;
@@ -77,9 +77,42 @@ export function Hand({ handRef, fingerRefs, skin, watch, thumbSide = 1, children
 
 
 /** Bag body in its own upright frame: origin at the base, handle on top. */
+export function Bag({ style }: { style: AvatarBagStyle }) {
+  const metal = <meshStandardMaterial color="#c9b27a" metalness={0.8} roughness={0.3} />;
+  if (style === "briefcase") return <group>
+    <mesh castShadow position={[0, 0.13, 0]}><boxGeometry args={[0.36, 0.26, 0.085]} /><meshStandardMaterial color="#4a3426" roughness={0.55} /></mesh>
+    <mesh position={[0, 0.2, 0]}><boxGeometry args={[0.365, 0.006, 0.088]} /><meshStandardMaterial color="#2e2018" roughness={0.6} /></mesh>
+    {[-0.08, 0.08].map(x => <mesh key={x} position={[x, 0.21, 0.045]}><boxGeometry args={[0.03, 0.022, 0.006]} />{metal}</mesh>)}
+    <mesh position={[0, 0.275, 0]} rotation={[0, 0, 0]}><torusGeometry args={[0.045, 0.009, 6, 14, Math.PI]} /><meshStandardMaterial color="#2e2018" roughness={0.5} /></mesh>
+  </group>;
+  if (style === "messenger") return <group>
+    <mesh castShadow position={[0, 0.12, 0]}><boxGeometry args={[0.32, 0.24, 0.08]} /><meshStandardMaterial color="#56604f" roughness={0.9} /></mesh>
+    {/* Flap over the front with a buckle strap. */}
+    <mesh position={[0, 0.17, 0.043]}><boxGeometry args={[0.325, 0.15, 0.008]} /><meshStandardMaterial color="#4a5344" roughness={0.9} /></mesh>
+    <mesh position={[0, 0.11, 0.049]}><boxGeometry args={[0.03, 0.06, 0.004]} />{metal}</mesh>
+    <mesh position={[0, 0.24, 0]} rotation={[0, Math.PI / 2, 0]}><torusGeometry args={[0.12, 0.012, 5, 18, Math.PI]} /><meshStandardMaterial color="#353a31" roughness={0.9} /></mesh>
+  </group>;
+  return <group>
+    {/* Tote: tapered body with two shoulder straps. */}
+    <mesh castShadow position={[0, 0.15, 0]} scale={[1, 1, 0.38]}><cylinderGeometry args={[0.21, 0.17, 0.3, 4, 1, false, Math.PI / 4]} /><meshStandardMaterial color="#b98c6a" roughness={0.7} /></mesh>
+    {[-0.045, 0.045].map(z => <mesh key={z} position={[0, 0.3, z]}><torusGeometry args={[0.085, 0.008, 5, 16, Math.PI]} /><meshStandardMaterial color="#8a6448" roughness={0.65} /></mesh>)}
+  </group>;
+}
+
+/** Ear jewellery placed at the lobes in head space (`radius` is the head radius). */
+export function Earrings({ style, radius: r }: { style: "studs" | "hoops"; radius: number }) {
+  const gold = <meshStandardMaterial color="#d8b86c" metalness={0.9} roughness={0.22} />;
+  return <group>
+    {[-1, 1].map(side => <group key={side} position={[side * r * 0.985, -r * 0.29, r * 0.01]}>
+      {style === "studs"
+        ? <mesh><sphereGeometry args={[r * 0.07, 10, 8]} />{gold}</mesh>
+        : <mesh position={[0, -r * 0.13, 0]} rotation={[0, Math.PI / 2, 0]}><torusGeometry args={[r * 0.13, r * 0.022, 6, 18]} />{gold}</mesh>}
+    </group>)}
+  </group>;
+}
 
 export type HairFamily = "short-fade" | "textured-crop" | "slicked-back" | "side-part" | "undercut"
-  | "bob" | "medium" | "long" | "wavy" | "curly" | "afro" | "ponytail";
+  | "bob" | "medium" | "long" | "wavy" | "curly" | "afro" | "ponytail" | "bun";
 
 /** Maps authored and legacy free-form variant names onto geometry families. */
 export function hairFamily(variant: string): HairFamily {
@@ -91,6 +124,7 @@ export function hairFamily(variant: string): HairFamily {
   if (style.includes("crop") || style.includes("textured")) return "textured-crop";
   if (style.includes("fade")) return "short-fade";
   if (style.includes("ponytail") || style.includes("tied")) return "ponytail";
+  if (style.includes("bun")) return "bun";
   if (style.includes("wav")) return "wavy";
   if (style.includes("curl") || style.includes("coily")) return "curly";
   if (style.includes("bob")) return "bob";
@@ -109,6 +143,7 @@ export function HairStyle({ variant = "short", color, radius, skin }: { variant?
   const sheen = <meshPhysicalMaterial color={color} map={strands} bumpMap={strands} bumpScale={0.4} roughness={0.38} clearcoat={0.35} clearcoatRoughness={0.45} sheen={0.7} sheenRoughness={0.3} sheenColor="#ffffff" />;
   const longer = family === "bob" || family === "medium" || family === "long" || family === "wavy";
   const cropped = family === "short-fade" || family === "textured-crop" || family === "undercut";
+  const tied = family === "ponytail" || family === "bun";
   // Faded and undercut sides sit tighter to the scalp than the crown.
   const capScale: [number, number, number] = cropped ? [0.99, 0.97, 1.0] : family === "afro" ? [1.3, 1.25, 1.24] : family === "curly" ? [1.06, 1.12, 1.04] : [1.025, 1.01, 1.01];
   return <group>
@@ -150,7 +185,7 @@ export function HairStyle({ variant = "short", color, radius, skin }: { variant?
     {family === "undercut" && <mesh castShadow position={[0, r * 0.86, r * 0.05]} rotation={[0.35, 0, 0]} scale={[0.82, 0.5, 1.2]}>
       <sphereGeometry args={[r * 0.72, 14, 10]} />{mat}
     </mesh>}
-    {(longer || family === "ponytail") && [-1, -0.33, 0.33, 1].filter(offset => Math.abs(offset) > 0.5 || family !== "ponytail").slice(0, family === "ponytail" ? 2 : 3)
+    {(longer || tied) && [-1, -0.33, 0.33, 1].filter(offset => Math.abs(offset) > 0.5 || !tied).slice(0, tied ? 2 : 3)
       .map(offset => <mesh key={`sweep:${offset}`} castShadow position={[offset * r * 0.28, r * (0.68 - offset * 0.055), r * 0.57]} rotation={[0.3, -0.14, -0.22]} scale={[1, 0.36, 0.65]}>
         <capsuleGeometry args={[r * 0.19, r * 0.37, 4, 10]} />{mat}
       </mesh>)}
@@ -167,10 +202,16 @@ export function HairStyle({ variant = "short", color, radius, skin }: { variant?
       <mesh castShadow position={[0, -r * 0.43, 0]}><capsuleGeometry args={[r * 0.25, r * 0.83, 5, 12]} />{mat}</mesh>
       <mesh rotation={[Math.PI / 2, 0, 0]}><torusGeometry args={[r * 0.25, r * 0.047, 5, 12]} /><meshStandardMaterial color="#4a5965" roughness={0.82} /></mesh>
     </group>}
+    {/* Bun: hair gathered high at the back of the crown, wrapped by a band. */}
+    {family === "bun" && <group position={[0, r * 0.62, -r * 0.92]} rotation={[-0.7, 0, 0]}>
+      <mesh castShadow position={[0, 0, -r * 0.08]} scale={[1, 0.9, 0.85]}><sphereGeometry args={[r * 0.42, 16, 12]} />{mat}</mesh>
+      <mesh castShadow position={[0, 0, -r * 0.08]} rotation={[0, 0, 0.6]} scale={[1, 1, 0.8]}><torusGeometry args={[r * 0.3, r * 0.11, 8, 18]} />{mat}</mesh>
+      <mesh position={[0, 0, r * 0.2]}><torusGeometry args={[r * 0.24, r * 0.04, 5, 14]} /><meshStandardMaterial color="#4a5965" roughness={0.82} /></mesh>
+    </group>}
     {family === "curly" && [-1, -0.5, 0, 0.5, 1].map((offset, index) => <mesh key={`curl:${offset}`} castShadow position={[offset * r * 0.8, r * (0.85 - Math.abs(offset) * 0.2), r * (index % 2 ? 0.1 : 0.32)]}>
       <sphereGeometry args={[r * 0.36, 10, 8]} />{mat}
     </mesh>)}
-    <HairLayers family={family} r={r} mat={mat} sheen={sheen} skin={skin} />
+    <HairLayers family={family} r={r} mat={mat} sheen={sheen} skin={skin} color={color} />
   </group>;
 }
 
@@ -179,14 +220,16 @@ export function HairStyle({ variant = "short", color, radius, skin }: { variant?
  * strands. Kept separate so the base silhouette stays readable while these add
  * the sculpted, multi-layer look at normal isometric zoom.
  */
-function HairLayers({ family, r, mat, sheen, skin }: { family: HairFamily; r: number; mat: ReactNode; sheen: ReactNode; skin: string }) {
+function HairLayers({ family, r, mat, sheen, skin, color }: { family: HairFamily; r: number; mat: ReactNode; sheen: ReactNode; skin: string; color: string }) {
+  // Clipper shading is a darker shade of the chosen hair color, so light and gray hair fade naturally.
+  const shade = useMemo(() => `#${new Color(color).multiplyScalar(0.45).getHexString()}`, [color]);
   const lock = (key: string, position: [number, number, number], rotation: [number, number, number], size: [number, number], material: ReactNode = mat, scale: [number, number, number] = [1, 0.45, 0.7]) =>
     <mesh key={key} castShadow position={position} rotation={rotation} scale={scale}>
       <capsuleGeometry args={[size[0] * r, size[1] * r, 4, 8]} />{material}
     </mesh>;
   // Temple taper: tight, slightly darker wedges above each ear for clipper-faded sides.
   const temples = (opacity: number) => [-1, 1].map(side => <mesh key={`temple:${side}`} position={[side * r * 0.9, r * 0.22, r * 0.05]} rotation={[0, 0, side * 0.12]} scale={[0.2, 0.42, 0.6]}>
-    <sphereGeometry args={[r, 12, 8]} /><meshStandardMaterial color="#1a1614" roughness={1} transparent opacity={opacity} depthWrite={false} />
+    <sphereGeometry args={[r, 12, 8]} /><meshStandardMaterial color={shade} roughness={1} transparent opacity={opacity} depthWrite={false} />
   </mesh>);
   // Sideburns tie the hairline to the ears.
   const sideburns = [-1, 1].map(side => <mesh key={`burn:${side}`} position={[side * r * 0.9, -r * 0.02, r * 0.3]} scale={[0.07, 0.22, 0.1]}>
@@ -248,11 +291,12 @@ function HairLayers({ family, r, mat, sheen, skin }: { family: HairFamily; r: nu
       </group>;
     }
     case "ponytail":
+    case "bun":
       return <group>
         {/* Swept-back hairline converging on the band. */}
         {[-0.5, -0.25, 0, 0.25, 0.5].map(x => lock(`pull:${x}`, [x * r, r * (0.8 - Math.abs(x) * 0.25), -r * 0.2], [Math.PI / 2 + 0.55, 0, x * 0.8], [0.08, 0.9], sheen, [1, 1, 0.5]))}
         {/* Tail strands splayed slightly below the tie. */}
-        {[-1, 0, 1].map(i => lock(`tail:${i}`, [i * r * 0.1, -r * 0.85, -r * (1.05 + Math.abs(i) * 0.02)], [0.25, 0, i * 0.12], [0.11, 0.75], mat, [1, 1, 1]))}
+        {family === "ponytail" && [-1, 0, 1].map(i => lock(`tail:${i}`, [i * r * 0.1, -r * 0.85, -r * (1.05 + Math.abs(i) * 0.02)], [0.25, 0, i * 0.12], [0.11, 0.75], mat, [1, 1, 1]))}
         {[-1, 1].map(side => lock(`wisp:${side}`, [side * r * 0.82, r * 0.05, r * 0.55], [0.1, 0, side * -0.15], [0.04, 0.35]))}
       </group>;
     case "curly":

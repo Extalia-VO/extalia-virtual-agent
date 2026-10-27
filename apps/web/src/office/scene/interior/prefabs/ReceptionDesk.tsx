@@ -1,9 +1,13 @@
 import { useEffect, useMemo } from "react";
 import { CanvasTexture, DoubleSide, SRGBColorSpace } from "three";
 import { Monitor } from "./props/Monitor";
+import { monitorBankLayout } from "./props/deviceGeometry";
+import { Keyboard } from "./props/Keyboard";
+import { MouseAndPad } from "./props/DeskAccessories";
 import { OfficeChair } from "./furniture/OfficeChair";
 import { useSolarEnvironment } from "../../Environment";
 import { RECEPTION_DESK_BLUEPRINT } from "../spatialBlueprints";
+import { deskInputPlacement, deskLayout, RECEPTION_DESK_TOP, RECEPTION_KEYBOARD_BASE } from "../deskLayout";
 import { ReceptionBackdrop } from "./architecture/ReceptionBackdrop";
 import { drawExtaliaBrand } from "../../prefabs/architecture/extaliaBrand";
 
@@ -188,6 +192,11 @@ export function ReceptionDesk({
   const interiorFactor = state.factors.interiorLightFactor;
   const emissivePower = interiorFactor * 0.65;
   const deskLedIntensity = interiorFactor * 0.85;
+  const shelf = RECEPTION_DESK_BLUEPRINT.workShelfCenter;
+  const shelfSize = RECEPTION_DESK_BLUEPRINT.workShelfSize;
+  const deviceY = shelf[1] + shelfSize[1] / 2;
+  const monitorBank = monitorBankLayout(2, .50, [0, deviceY, RECEPTION_DESK_BLUEPRINT.monitorOffsetZ]);
+  const input = deskInputPlacement(RECEPTION_KEYBOARD_BASE, 0, RECEPTION_DESK_TOP, deskLayout('lobby.receptionist'));
 
   return (
     <group position={position} rotation={[0, rotationY, 0]}>
@@ -396,9 +405,9 @@ export function ReceptionDesk({
             />
           </mesh>
 
-          {/* Worksurface inside for receptionist behind upper counter (Standard Office Natural Oak #a77e58) */}
-          <mesh position={[0, 0.74, 0.22]} receiveShadow>
-            <boxGeometry args={[2.0, 0.04, 0.48]} />
+          {/* Rear work shelf spans both screens, clear of the solid transaction counter body */}
+          <mesh position={[shelf[0] - 0.9, shelf[1], shelf[2]]} receiveShadow>
+            <boxGeometry args={[...shelfSize]} />
             <meshStandardMaterial color="#a77e58" roughness={0.76} />
           </mesh>
         </group>
@@ -438,9 +447,13 @@ export function ReceptionDesk({
         {/* Direct fill light from the desk's front face lighting */}
 
         {/* --- RECEPTIONIST WORKSTATION HARDWARE --- */}
+        <Keyboard position={input.keyboard} rotationY={input.keyboardYaw} kind={input.keyboardKind} />
+        <MouseAndPad position={input.pad} rotationY={input.mouseYaw} mouseOnPad={input.mouseOnPad} />
         {/* Twin Slim Aluminum Desktop Displays (facing receptionist at +Z) */}
-        <Monitor resourceId="lobby.receptionist" position={[-0.35, 0.76, 0.2]} rotationY={0.06} width={0.65} height={0.38} />
-        <Monitor resourceId="lobby.receptionist" position={[0.65, 0.76, 0.2]} rotationY={-0.06} width={0.65} height={0.38} />
+        {/* The left display shows the receptionist's work when someone sits here and the welcome screen otherwise; the right one is always the visitor guide. */}
+        {/* The counter is nested in the chair's group, so X here is relative to the chair: the pair is centred on the seated receptionist. */}
+        <Monitor resourceId="lobby.receptionist" {...monitorBank[0]} idleContent="welcome" />
+        <Monitor resourceId="lobby.receptionist" {...monitorBank[1]} slot={2} variant="welcome" />
 
         {/* --- COUNTERTOP ACCESSORIES FROM REFERENCE PHOTO --- */}
         {/* Guest sign-in tablet on high transaction counter */}

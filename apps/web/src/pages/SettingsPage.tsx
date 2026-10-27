@@ -1,14 +1,20 @@
 import type { HostState, Platform, UpdateStatus } from '@extalia/platform';
 import { LANGUAGES, type Messages } from '../i18n';
-import type { Preferences } from '../preferences';
+import { MATERIALS, type Preferences } from '../preferences';
 import { useState } from 'react';
 import { errorMessage } from '../host/remote';
 import { UpdatesSection } from '../updates/Updates';
+import { CopyButton } from '../ui/CopyButton';
+import { RestartPrompt } from '../ui/RestartPrompt';
 import { Select } from '../ui/Select';
+import { ApprovalNotificationSetting } from '../approvals/NotificationSetting';
+import { ConnectAgentAppsCard } from './ConnectAgentAppsCard';
 import { ConnectionsSection } from './settings/ConnectionsSection';
 import { WorkspacesSection } from './settings/WorkspacesSection';
+import { KnowledgeVaultSection } from './settings/KnowledgeVaultSection';
+import { Icon } from '../ui/Icon';
 
-export function SettingsPage({ t, platform, preferences, onChange, hostState, onHostState, updateStatus }: {
+export function SettingsPage({ t, platform, preferences, onChange, hostState, onHostState, updateStatus, editGateFor, onEditGateHandled, onOpenSkills }: {
   t: Messages;
   platform: Platform;
   preferences: Preferences;
@@ -17,6 +23,11 @@ export function SettingsPage({ t, platform, preferences, onChange, hostState, on
   hostState: HostState | null;
   onHostState: (next: HostState) => void;
   updateStatus: UpdateStatus | null;
+  /** ADR 0028: open this workspace's editor at its integration test gate. */
+  editGateFor?: string;
+  onEditGateHandled?: () => void;
+  /** Skills moved to their own page; with a workspace id the page opens on that workspace. */
+  onOpenSkills?: (workspaceId?: string) => void;
 }) {
   const { agents, updater } = platform.capabilities;
   const picker = hostState?.host.kind === 'desktop' ? platform.capabilities.filesystem : undefined;
@@ -26,7 +37,7 @@ export function SettingsPage({ t, platform, preferences, onChange, hostState, on
     <div className="page">
       <header className="page-header">
         <h1>{t.settings.title}</h1>
-        <p className="lead">{t.settings.lead}</p>
+        <p className="lead">{agents && hostState ? t.settings.leadProfile : t.settings.lead}</p>
       </header>
       {agents && hostState && <section className="card settings-section"><h2>{t.observer.workflow}</h2><div className="actions">
         {(['managed', 'observe'] as const).map(mode => <button key={mode} type="button" disabled={workflowBusy} aria-pressed={(hostState.workflow ?? 'managed') === mode} onClick={() => {
@@ -41,22 +52,25 @@ export function SettingsPage({ t, platform, preferences, onChange, hostState, on
               label={t.settings.theme}
               value={preferences.theme}
               options={([
-                { value: 'solar' as const, label: t.settings.themes.solar, icon: 'sun' as const, badge: 'Auto' },
+                { value: 'solar' as const, label: t.settings.themes.solar, icon: 'sunrise' as const, badge: 'Auto' },
                 { value: 'system' as const, label: t.settings.themes.system, icon: 'monitor' as const },
                 { value: 'light' as const, label: t.settings.themes.light, icon: 'sun' as const },
                 { value: 'dark' as const, label: t.settings.themes.dark, icon: 'moon' as const }
               ])}
               onChange={val => onChange({ ...preferences, theme: val })}
             />
+            <small className="muted" aria-live="polite">{t.settings.themeEffects[preferences.theme]} {t.settings.themeLightsNote}</small>
           </div>
           <div className="field">
             <Select
               label={t.settings.material}
               value={preferences.material}
-              options={([
-                { value: 'standard' as const, label: t.settings.materials.standard, description: 'Classic solid surfaces' },
-                { value: 'liquid-glass' as const, label: t.settings.materials['liquid-glass'], description: 'macOS frosted blur & vibrance', badge: 'macOS' }
-              ])}
+              options={MATERIALS.map(material => ({
+                value: material,
+                label: t.settings.materials[material],
+                description: t.settings.materialDescriptions[material],
+                badge: material === 'standard' ? undefined : t.settings.materialBadges[material]
+              }))}
               onChange={val => onChange({ ...preferences, material: val })}
             />
             <small className="muted">{t.settings.materialHint}</small>
@@ -101,12 +115,49 @@ export function SettingsPage({ t, platform, preferences, onChange, hostState, on
         </div>
       </section>
       {agents && hostState && (
+        <section className="card settings-section" aria-labelledby="settings-approvals">
+          <h2 id="settings-approvals">{t.approvalInbox.settings.title}</h2>
+          <ApprovalNotificationSetting t={t} hostKind={platform.info.kind} notifier={platform.capabilities.notifications} />
+        </section>
+      )}
+      {agents && hostState && (
+        <section className="card settings-section" aria-labelledby="settings-data-folder">
+          <h2 id="settings-data-folder">{t.settings.dataFolder}</h2>
+          <p className="muted">{t.settings.dataFolderLead}</p>
+          <div className="command-line settings-data-folder" role="group" aria-label={t.settings.dataFolderPath}>
+            <code>{hostState.dataDirectory ?? hostState.storage.dataDirectory}</code>
+            <CopyButton text={hostState.dataDirectory ?? hostState.storage.dataDirectory} label={t.settings.dataFolderPath} />
+          </div>
+          <p className="muted">{t.settings.dataFolderHint}</p>
+        </section>
+      )}
+      {agents && hostState && <KnowledgeVaultSection t={t} agents={agents} picker={picker} />}
+      {agents && hostState && (
         <>
+          <ConnectAgentAppsCard t={t} agents={agents} />
           <ConnectionsSection t={t} agents={agents} state={hostState} onState={onHostState} />
-          <WorkspacesSection t={t} agents={agents} picker={picker} state={hostState} onState={onHostState} />
+          <WorkspacesSection t={t} agents={agents} picker={picker} state={hostState} onState={onHostState} editGateFor={editGateFor} onEditGateHandled={onEditGateHandled}
+            {...(onOpenSkills ? { onReviewSkills: (workspaceId: string) => onOpenSkills(workspaceId) } : {})} />
+          {onOpenSkills && <SkillsMovedPointer t={t} onOpen={() => onOpenSkills()} />}
         </>
       )}
       {updater && <UpdatesSection t={t} updater={updater} status={updateStatus} />}
+      {platform.capabilities.restart && (
+        <section className="card settings-section" aria-labelledby="settings-restart">
+          <h2 id="settings-restart">{t.restart.title}</h2>
+          <RestartPrompt t={t} restart={platform.capabilities.restart} hostState={hostState} reason={t.restart.manualLead} />
+        </section>
+      )}
     </div>
+  );
+}
+
+/** The Skill Security Center and project skills moved to the Skills page; Settings keeps a one-line pointer. */
+export function SkillsMovedPointer({ t, onOpen }: { t: Messages; onOpen: () => void }) {
+  return (
+    <section className="card settings-section settings-pointer" aria-label={t.skillsPage.title}>
+      <p className="muted"><Icon name="spark" />{t.skillsPage.moved}</p>
+      <button type="button" className="button small" onClick={onOpen}>{t.skillsPage.open}</button>
+    </section>
   );
 }

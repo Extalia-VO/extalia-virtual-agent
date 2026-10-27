@@ -3,8 +3,10 @@ import { Shape } from "three";
 import type { SmartScreenData } from "../../screenData";
 import { ExecutiveChair, GuestChair } from "../furniture/OfficeChair";
 import { Monitor } from "../props/Monitor";
+import { monitorBankLayout } from "../props/deviceGeometry";
 import { Keyboard } from "../props/Keyboard";
 import { MouseAndPad } from "../props/DeskAccessories";
+import { deskInputPlacement, deskLayout, EXECUTIVE_DESK_TOP, EXECUTIVE_KEYBOARD_BASE } from "../../deskLayout";
 import { Plant } from "../props/Plant";
 import { EXECUTIVE_OFFICE_BLUEPRINT } from "../../spatialBlueprints";
 
@@ -441,7 +443,8 @@ export function ExecutiveWorkstation({
   guestSeats = EXECUTIVE_OFFICE_BLUEPRINT.guestSeats,
   includeCabinet = true,
   cabinetWidth = 5.2,
-  plant = true
+  plant = true,
+  leaderResourceId
 }: {
   position?: readonly [number, number, number] | [number, number, number];
   rotationY?: number;
@@ -451,7 +454,14 @@ export function ExecutiveWorkstation({
   includeCabinet?: boolean;
   cabinetWidth?: number;
   plant?: boolean;
+  /** Workstation resource of the leader's chair, so it slides out with its agent. */
+  leaderResourceId?: string;
 }) {
+  /** Shared with the avatar's hand targets; layouts vary by executive seat id. */
+  const executiveInput = deskInputPlacement(EXECUTIVE_KEYBOARD_BASE, Math.PI, EXECUTIVE_DESK_TOP,
+    deskLayout(leaderResourceId ?? "executive.leader"));
+  const monitorBank = monitorBankLayout(3, .56, [.25, EXECUTIVE_DESK_TOP, .04], Math.PI);
+
   return (
     <group position={[...position]} rotation={[0, rotationY, 0]} userData={{ officeSeatStation: true }}>
       {/* Rear modern luxury millwork cabinet: behind the CEO */}
@@ -459,41 +469,34 @@ export function ExecutiveWorkstation({
 
       <ExecutiveDesk />
 
-      {/* Screens face -Z, toward the CEO seat. */}
+      {/* Screens face -Z; feet rest on the leather blotter (top .8455 m). */}
       <Monitor
-        position={[-0.45, 1.27, -0.22]}
-        rotationY={Math.PI + 0.12}
-        width={0.72}
-        height={0.42}
-        variant="chart"
+        {...monitorBank[2]!}
+        slot={3}
+        slots={3}
         data={screens[0]}
       />
       <Monitor
-        position={[0.35, 1.30, -0.30]}
-        rotationY={Math.PI}
-        width={0.86}
-        height={0.50}
+        {...monitorBank[1]!}
+        slot={1}
+        slots={3}
         data={screens[1]}
       />
       <Monitor
-        position={[1.17, 1.27, -0.22]}
-        rotationY={Math.PI - 0.12}
-        width={0.72}
-        height={0.42}
-        variant="ops"
+        {...monitorBank[0]!}
+        slot={2}
+        slots={3}
         data={screens[2]}
       />
 
-      <Keyboard
-        position={[0.35, 0.842, -0.43]}
-        rotationY={Math.PI}
-      />
-      <MouseAndPad position={[0.88, 0.832, -0.48]} rotationY={Math.PI} scale={1.08} />
+      <Keyboard position={executiveInput.keyboard} rotationY={executiveInput.keyboardYaw} kind={executiveInput.keyboardKind} />
+      <MouseAndPad position={executiveInput.pad} rotationY={executiveInput.mouseYaw} mouseOnPad={executiveInput.mouseOnPad} />
 
       {/* Empty CEO chair until the final rigged avatar system is ready. */}
       <ExecutiveChair
         position={[...leaderSeat.position]}
         rotationY={leaderSeat.rotationY}
+        resourceId={leaderResourceId}
       />
 
       {/* Visitors face -Z toward the CEO. */}

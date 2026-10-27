@@ -6,7 +6,8 @@ export function WallDisplay({
   rotationY = 0,
   width = 2.8,
   height = 1.55,
-  variant = "status",
+  variant = "agents",
+  device = "wall",
   data = {
     title: "EXTALIA VIRTUAL OFFICE",
     subtitle: "Display ready",
@@ -17,8 +18,14 @@ export function WallDisplay({
   rotationY?: number;
   width?: number;
   height?: number;
-  /** "presentation" for meeting rooms, "media" for entertainment TVs. */
+  /**
+   * Board type. "agents" (default) is the office overview with agents online, activity and a clock;
+   * "presentation" is a meeting-room screen waiting for a presenter; "media" is an entertainment TV;
+   * "monitoring", "diagram", "knowledge" and "signage" suit operations, architecture, library and
+   * wellness walls.
+   */
   variant?: ScreenVariant;
+  device?: "wall" | "tv";
   data?: SmartScreenData;
 }) {
   return (
@@ -29,6 +36,7 @@ export function WallDisplay({
       width={width}
       height={height}
       variant={variant}
+      device={device}
     />
   );
 }

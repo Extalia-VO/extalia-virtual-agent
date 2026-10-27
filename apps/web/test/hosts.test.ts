@@ -1,6 +1,7 @@
 import type { UpdateStatus } from '@extalia/platform';
 import { describe, expect, it, vi } from 'vitest';
 import { BRIDGE_TOKEN_HEADER, bridgeAgentHost, bridgeUpdater, readBridgeToken } from '../src/host/bridgeHost';
+import { desktopAgentHost } from '../src/host/desktopHost';
 import { createRemoteHost, errorMessage } from '../src/host/remote';
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
@@ -11,6 +12,17 @@ describe('remote hosts', () => {
     const host = createRemoteHost(call, () => () => undefined);
     await host.saveConnection({ name: 'n' } as never, undefined);
     expect(call).toHaveBeenCalledWith('saveConnection', [{ name: 'n' }]);
+  });
+
+  it('forwards recovery inspection through both Bridge and Desktop transports', async () => {
+    const result = { status: 'quarantined', reason: 'authority-unknown', run: { id: 'mission' } };
+    const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(json({ result }));
+    await expect(bridgeAgentHost('token', { fetch }).refreshNativeMissionRecovery!('session', 'mission')).resolves.toEqual(result);
+    expect(JSON.parse(String(fetch.mock.calls[0]![1]?.body))).toEqual({ method: 'refreshNativeMissionRecovery', args: ['session', 'mission'] });
+    const call = vi.fn(async () => result);
+    const desktop = desktopAgentHost({ call, onEvent: () => () => undefined });
+    await expect(desktop.refreshNativeMissionRecovery!('session', 'mission')).resolves.toEqual(result);
+    expect(call).toHaveBeenCalledWith('refreshNativeMissionRecovery', ['session', 'mission']);
   });
 
   it('shows the host message instead of transport prefixes', () => {

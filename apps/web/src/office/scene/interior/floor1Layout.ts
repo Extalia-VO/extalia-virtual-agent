@@ -64,6 +64,8 @@ export const F3_TERRACE = Object.freeze({
     { id: "rooftop-terrace.armchair-4", position: [17, 0, 17.3] as const, rotationY: Math.PI }
   ],
   tables: [[-12, 0, 17.1], [14, 0, 17.1]] as const,
-  planters: [[-19.6, 0, 14.5], [-19.6, 0, 16], [-5, 0, 17.8],
+  // The west pair stands between the two stair arrivals (the Blender stair lands at z 13.6-16.1, the
+  // three.js backup at its z 18.2 gate), so neither foot of the maintenance stair is blocked.
+  planters: [[-19.6, 0, 16.95], [-17.7, 0, 16.95], [-5, 0, 17.8],
     [7, 0, 17.8], [23.6, 0, 14.5], [23.6, 0, 17.6]] as const
 });

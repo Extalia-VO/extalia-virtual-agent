@@ -149,6 +149,7 @@ export function MeetingRoomFurniture({
         rotationY={blueprint.screen.rotationY}
         width={blueprint.screen.width}
         height={blueprint.screen.height}
+        variant="presentation"
         data={screenData}
       />
 

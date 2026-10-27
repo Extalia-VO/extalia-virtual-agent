@@ -1,99 +1,9 @@
-import { useMemo } from "react";
-import { Color, DataTexture, DoubleSide, RepeatWrapping, RGBAFormat, Shape, SRGBColorSpace, Vector2 } from "three";
-import { humanoidInstanceSeed, type HumanoidProportions } from "./rig";
-import type { AvatarOutfitStyle, AvatarVisualConfig } from "./appearance";
+import { useMemo, type RefObject } from "react";
+import { Color, DataTexture, DoubleSide, RepeatWrapping, RGBAFormat, Shape, SRGBColorSpace, Vector2, type Group } from "three";
+import { HUMANOID_LEG_RADIUS, type HumanoidProportions } from "./rig";
+import type { ResolvedWardrobe } from "./wardrobe";
 
-export interface ResolvedWardrobe {
-  outfit: AvatarOutfitStyle;
-  top: string;
-  bottom: string;
-  accent: string;
-  jacket: string;
-  /** Hardware and fine trims: buttons, watch-matching metal, piping. */
-  trim: string;
-  layer: "blazer" | "coat" | "vest" | "cardigan" | "none";
-  sleeve: "long" | "rolled";
-  shoes: string;
-  shoeStyle: "formal" | "sneakers" | "boots";
-  neckline: "collar" | "turtleneck" | "crew";
-  lapel: "notch" | "peak" | "none";
-  doubleBreasted: boolean;
-  pocketSquare: boolean;
-  tie: boolean;
-  /** Fabric finish; luxe garments use a finer, slightly lower-roughness weave. */
-  finish: "standard" | "luxe";
-}
-
-type OutfitPreset = Pick<ResolvedWardrobe, "layer" | "sleeve" | "shoeStyle" | "neckline" | "lapel" | "doubleBreasted" | "pocketSquare" | "tie" | "finish"> & {
-  style: AvatarOutfitStyle;
-  label: string;
-  /** Signature colours; seeded palettes are used when a preset omits them. */
-  palette?: { top: string; bottom: string; jacket: string; accent: string; trim: string };
-};
-
-export const AVATAR_OUTFIT_CATALOG: ReadonlyArray<OutfitPreset> = [
-  { style: "ceo", label: "CEO double-breasted", layer: "blazer", sleeve: "long", shoeStyle: "formal", neckline: "collar", lapel: "peak", doubleBreasted: true, pocketSquare: true, tie: true, finish: "luxe",
-    palette: { top: "#f3f0e8", bottom: "#1d2230", jacket: "#1d2230", accent: "#7c1f2c", trim: "#c8a45e" } },
-  { style: "architect", label: "Architect minimalist coat", layer: "coat", sleeve: "long", shoeStyle: "boots", neckline: "turtleneck", lapel: "none", doubleBreasted: false, pocketSquare: false, tie: false, finish: "luxe",
-    palette: { top: "#1b1b1e", bottom: "#2c2d31", jacket: "#3a3936", accent: "#b9b1a4", trim: "#9a9ea3" } },
-  { style: "executive", label: "Executive tailoring", layer: "blazer", sleeve: "long", shoeStyle: "formal", neckline: "collar", lapel: "notch", doubleBreasted: false, pocketSquare: false, tie: true, finish: "standard" },
-  { style: "business-casual", label: "Business casual", layer: "none", sleeve: "rolled", shoeStyle: "formal", neckline: "collar", lapel: "none", doubleBreasted: false, pocketSquare: false, tie: false, finish: "standard" },
-  { style: "creative", label: "Creative studio", layer: "cardigan", sleeve: "long", shoeStyle: "boots", neckline: "collar", lapel: "none", doubleBreasted: false, pocketSquare: false, tie: false, finish: "standard" },
-  { style: "technical", label: "Technical team", layer: "vest", sleeve: "rolled", shoeStyle: "sneakers", neckline: "collar", lapel: "none", doubleBreasted: false, pocketSquare: false, tie: false, finish: "standard" },
-  { style: "service", label: "Hospitality service", layer: "vest", sleeve: "long", shoeStyle: "formal", neckline: "collar", lapel: "none", doubleBreasted: false, pocketSquare: false, tie: true, finish: "standard" },
-  { style: "source-outfit", label: "Original model outfit", layer: "blazer", sleeve: "long", shoeStyle: "formal", neckline: "collar", lapel: "notch", doubleBreasted: false, pocketSquare: false, tie: true, finish: "standard" },
-  { style: "casual", label: "Everyday casual", layer: "none", sleeve: "rolled", shoeStyle: "sneakers", neckline: "crew", lapel: "none", doubleBreasted: false, pocketSquare: false, tie: false, finish: "standard" }
-];
-
-/** Unconfigured avatars rotate through everyday presets; signature looks are opt-in. */
-const SEEDED_OUTFITS: readonly AvatarOutfitStyle[] = ["executive", "business-casual", "creative", "technical", "service", "casual"];
-
-const PALETTES = [
-  { top: "#e5e2d9", bottom: "#303a45", jacket: "#394d5b", accent: "#be9967" },
-  { top: "#c5d2cf", bottom: "#3b443b", jacket: "#526250", accent: "#d4b779" },
-  { top: "#e8d0bf", bottom: "#463c3b", jacket: "#80635d", accent: "#d3a281" },
-  { top: "#c3cedc", bottom: "#303947", jacket: "#3f5676", accent: "#a9bfd2" },
-  { top: "#ddd1df", bottom: "#413e4a", jacket: "#6e657f", accent: "#d6af89" }
-];
-
-/** A garment swap never participates in the rig seed, identity, or collision size. */
-export function resolveWardrobe(visual: AvatarVisualConfig, seed: number): ResolvedWardrobe {
-  // A person keeps the same palette in portraits, the studio and new assignments.
-  seed = humanoidInstanceSeed(visual.identityId);
-  const clothing = visual.clothing;
-  const legacyLayer = clothing?.outerwear?.toLowerCase();
-  const outfit = clothing?.style ?? (legacyLayer?.includes("executive") ? "executive" : SEEDED_OUTFITS[seed % SEEDED_OUTFITS.length] ?? "business-casual");
-  // Procedural/portrait fallbacks use the existing executive cut for source garments.
-  const preset = AVATAR_OUTFIT_CATALOG.find(item => item.style === (outfit === "source-outfit" ? "executive" : outfit)) ?? AVATAR_OUTFIT_CATALOG[0]!;
-  const seeded = PALETTES[seed % PALETTES.length]!;
-  const palette = preset.palette ?? { ...seeded, trim: "#b9b3a6" };
-  const layer = legacyLayer === "none" ? "none" : legacyLayer?.includes("vest") ? "vest"
-    : legacyLayer?.includes("cardigan") ? "cardigan" : legacyLayer?.includes("coat") ? "coat"
-    : legacyLayer && !legacyLayer.startsWith("#") ? "blazer" : preset.layer;
-  const shoeStyle = clothing?.shoes === "formal" || clothing?.shoes === "boots" || clothing?.shoes === "sneakers"
-    ? clothing.shoes : preset.shoeStyle;
-  const tailored = layer === "blazer";
-  return {
-    outfit,
-    top: clothing?.top ?? palette.top,
-    bottom: clothing?.bottom ?? palette.bottom,
-    accent: clothing?.accent ?? palette.accent,
-    jacket: clothing?.outerwear?.startsWith("#") ? clothing.outerwear : palette.jacket,
-    trim: palette.trim,
-    layer,
-    sleeve: preset.sleeve,
-    shoes: clothing?.shoes?.startsWith("#") ? clothing.shoes
-      : shoeStyle === "formal" ? (preset.finish === "luxe" ? "#1c1714" : "#322c29") : shoeStyle === "boots" ? (preset.finish === "luxe" ? "#2a2421" : "#574236") : "#e0dfd9",
-    shoeStyle,
-    neckline: preset.neckline,
-    // Lapels and double-breasting only exist on tailored outerwear.
-    lapel: tailored ? (preset.lapel === "none" ? "notch" : preset.lapel) : "none",
-    doubleBreasted: tailored && preset.doubleBreasted,
-    pocketSquare: tailored && preset.pocketSquare,
-    tie: preset.tie && preset.neckline === "collar",
-    finish: preset.finish
-  };
-}
+export { AVATAR_OUTFIT_CATALOG, resolveWardrobe, type ResolvedWardrobe } from "./wardrobe";
 
 /** Full office garment set, including trousers, to prevent doubled source outfits. */
 export const OFFICE_WARDROBE_MESHES = new Set(["ShirtLong", "ShirtRolled", "Blazer", "Coat", "Vest", "Cardigan", "Collar", "Turtleneck", "LapelNotch", "LapelPeak", "Tie", "PocketSquare", "Trousers", "ShoesFormal", "ShoesBoots", "ShoesSneakers", "ButtonsSingle", "ButtonsDouble"]);
@@ -142,18 +52,31 @@ function Panel({ points, color, finish = "standard" }: { points: number[][]; col
 const NOTCH_LAPEL = [[0.055, 0.605], [0.122, 0.56], [0.097, 0.49], [0.133, 0.455], [0.025, 0.25], [0.052, 0.5]];
 const PEAK_LAPEL = [[0.055, 0.605], [0.118, 0.565], [0.104, 0.51], [0.158, 0.49], [0.026, 0.25], [0.052, 0.5]];
 
-export function GarmentTorso({ proportions: p, wardrobe: w, skin }: {
-  proportions: HumanoidProportions; wardrobe: ResolvedWardrobe; skin: string;
+/**
+ * Torso radius multiplier at an authored height: shoulders above the ribs, hips
+ * below the waist, blended between, with a narrower waist for fitted cuts.
+ */
+export function torsoWidthScale(p: HumanoidProportions, y: number, fitted: boolean): number {
+  const shoulders = p.shoulderWidth / 0.45, hips = p.hipWidth / 0.21;
+  const hipWeight = y <= 0.035 ? 1 : y >= 0.31 ? 0 : (0.31 - y) / 0.275;
+  const waist = fitted && y > 0.08 && y < 0.36 ? 0.94 : 1;
+  return (shoulders + (hips - shoulders) * hipWeight) * waist;
+}
+
+export function GarmentTorso({ proportions: p, wardrobe: w, skin, seated = false }: {
+  proportions: HumanoidProportions; wardrobe: ResolvedWardrobe; skin: string; seated?: boolean;
 }) {
   const profile = useMemo(() => ([
     [0, -0.035], [0.15, -0.035], [0.172, 0.035], [0.155, 0.14],
     [0.178, 0.31], [0.199, 0.45], [0.205, 0.52], [0.165, 0.59], [0.073, 0.65], [0, 0.65]
-  ] as const).map(([r, y]) => new Vector2(r * p.shoulderWidth / 0.45, y * p.shoulderHeight / 0.59)), [p]);
-  // A structured coat continues past the hips to mid-thigh with a slight A-line flare.
+  ] as const).map(([r, y]) => new Vector2(r * torsoWidthScale(p, y, w.fitted), y * p.shoulderHeight / 0.59)), [p, w.fitted]);
+  // A structured coat continues past the hips to mid-thigh with a slight A-line flare;
+  // seated, its skirt folds onto the lap at the seat instead of passing through the cushion.
   const coatProfile = useMemo(() => ([
-    [0.178, -0.24], [0.17, -0.1], [0.165, 0.035], [0.16, 0.14],
+    ...(seated ? [[0.186, -0.04], [0.178, 0]] as const : [[0.178, -0.24], [0.17, -0.1]] as const),
+    [0.165, 0.035], [0.16, 0.14],
     [0.182, 0.31], [0.203, 0.45], [0.209, 0.52], [0.168, 0.59], [0.078, 0.655], [0.06, 0.66]
-  ] as const).map(([r, y]) => new Vector2(r * p.shoulderWidth / 0.45, y * p.shoulderHeight / 0.59)), [p]);
+  ] as const).map(([r, y]) => new Vector2(r * torsoWidthScale(p, y, w.fitted), y * p.shoulderHeight / 0.59)), [p, w.fitted, seated]);
   const neckY = p.headHeight - p.headRadius - 0.045;
   return <group>
     <mesh castShadow scale={[1, 1, 0.7]}>
@@ -168,25 +91,30 @@ export function GarmentTorso({ proportions: p, wardrobe: w, skin }: {
     </group> : <mesh castShadow position={[0, neckY, 0]}>
       <cylinderGeometry args={[0.065, 0.078, 0.12, 12]} /><meshStandardMaterial color={skin} roughness={0.82} />
     </mesh>}
-    {w.layer === "coat" ? <mesh castShadow scale={[1.04, 1, 0.75]} rotation={[0, 0.3, 0]}>
-      <latheGeometry args={[coatProfile, 22, 0, Math.PI * 2 - 0.6]} />
+    {/* Openings are cut with phiStart: rotating a non-uniformly scaled mesh would turn its
+        ellipse against the torso's and let the shirt show through at the back. */}
+    {w.layer === "coat" ? <mesh castShadow scale={[1.04, 1, 0.75]}>
+      <latheGeometry args={[coatProfile, 22, 0.3, Math.PI * 2 - 0.6]} />
       <ClothMaterial color={w.jacket} finish={w.finish} />
-    </mesh> : w.layer !== "none" && <mesh castShadow scale={[1.035, w.layer === "vest" ? 0.89 : 1, 0.73]} rotation={[0, w.doubleBreasted ? 0.22 : 0.36, 0]}>
-      <latheGeometry args={[profile, 20, 0, Math.PI * 2 - (w.doubleBreasted ? 0.44 : 0.72)]} />
+    </mesh> : w.layer !== "none" && <mesh castShadow scale={[1.035, w.layer === "vest" ? 0.89 : 1, 0.73]}>
+      <latheGeometry args={[profile, 20, w.doubleBreasted ? 0.22 : 0.36, Math.PI * 2 - (w.doubleBreasted ? 0.44 : 0.72)]} />
       <ClothMaterial color={w.jacket} finish={w.finish} />
     </mesh>}
   </group>;
 }
 
 /** High-frequency trims can be culled together at office overview distances. */
-export function GarmentDetails({ proportions: p, wardrobe: w, badge }: {
-  proportions: HumanoidProportions; wardrobe: ResolvedWardrobe; badge?: boolean;
+export function GarmentDetails({ proportions: p, wardrobe: w, badge, skin, seated = false }: {
+  proportions: HumanoidProportions; wardrobe: ResolvedWardrobe; badge?: boolean; skin: string; seated?: boolean;
 }) {
   const shade = useMemo(() => new Color(w.jacket).multiplyScalar(w.finish === "luxe" ? 1.28 : 1.16), [w.jacket, w.finish]);
   const h = p.shoulderHeight / 0.59;
   const lapelColor = `#${shade.getHexString()}`;
   const metal = { color: w.trim, metalness: 0.78, roughness: 0.28 } as const;
-  return <group scale={[p.shoulderWidth / 0.45, h, 1]}>
+  const shoulders = p.shoulderWidth / 0.45;
+  // Waist trims follow the hips, which may be wider or narrower than the shoulders.
+  const hips = torsoWidthScale(p, 0.018, false) / shoulders;
+  return <group scale={[shoulders, h, shoulders]}>
     {w.neckline === "collar" && <group>
     <mesh position={[0, 0.315, 0.128]}><boxGeometry args={[0.015, 0.43, 0.012]} /><ClothMaterial color={w.top} /></mesh>
     {[0.18, 0.28, 0.38, 0.48].map(y => <mesh key={y} position={[0, y, 0.139]} rotation={[Math.PI / 2, 0, 0]}>
@@ -197,7 +125,11 @@ export function GarmentDetails({ proportions: p, wardrobe: w, badge }: {
     </group>)}
     </group>}
     {w.neckline === "crew" && <mesh position={[0, 0.63, 0]} rotation={[Math.PI / 2, 0, 0]} scale={[1, 0.7, 1]}><torusGeometry args={[0.08, 0.012, 6, 16]} /><ClothMaterial color={w.accent} /></mesh>}
-    {w.layer === "cardigan" && <mesh position={[0, 0.005, 0]} scale={[1.03, 1, 0.74]} rotation={[0, 0.36, 0]}><cylinderGeometry args={[0.162, 0.169, 0.045, 20, 1, true, 0, Math.PI * 2 - 0.72]} /><ClothMaterial color={w.jacket} /></mesh>}
+    {/* Scoop neckline: skin surfaces through the bodice, so its edge follows the chest curve. */}
+    {w.neckline === "scoop" && <mesh position={[0, 0.6, 0.058]} scale={[0.088, 0.1, 0.073]}>
+      <sphereGeometry args={[1, 18, 14]} /><meshStandardMaterial color={skin} roughness={0.8} />
+    </mesh>}
+    {w.layer === "cardigan" && <mesh position={[0, 0.005, 0]} scale={[hips * 1.03, 1, 0.74 * hips]}><cylinderGeometry args={[0.162, 0.169, 0.045, 20, 1, true, 0.36, Math.PI * 2 - 0.72]} /><ClothMaterial color={w.jacket} /></mesh>}
     {w.lapel !== "none" && [-1, 1].map(side => <group key={`lapel:${side}`} position={[0, 0, 0.145]} scale={[side, 1, 1]}>
       <Panel points={w.lapel === "peak" ? PEAK_LAPEL : NOTCH_LAPEL} color={lapelColor} finish={w.finish} />
     </group>)}
@@ -206,7 +138,8 @@ export function GarmentDetails({ proportions: p, wardrobe: w, badge }: {
       {[-1, 1].map(side => <group key={`stand:${side}`} position={[0, 0.585, 0.122]} rotation={[-0.18, 0, 0]} scale={[side, 1, 1]}>
         <Panel points={[[0.04, 0.05], [0.115, 0.03], [0.12, -0.03], [0.05, -0.012]]} color={lapelColor} finish={w.finish} />
       </group>)}
-      <mesh position={[0.03, 0.2, 0.152]}><boxGeometry args={[0.012, 0.74, 0.006]} /><ClothMaterial color={lapelColor} finish={w.finish} /></mesh>
+      {/* The placket ends at the hem: mid-thigh standing, the lap when seated. */}
+      <mesh position={[0.03, seated ? 0.285 : 0.2, 0.152]}><boxGeometry args={[0.012, seated ? 0.57 : 0.74, 0.006]} /><ClothMaterial color={lapelColor} finish={w.finish} /></mesh>
       {[0.42, 0.24, 0.06].map(y => <mesh key={y} position={[0.03, y, 0.157]}><boxGeometry args={[0.014, 0.004, 0.004]} /><meshStandardMaterial {...metal} /></mesh>)}
     </group>}
     {w.tie && <group position={[0, 0, 0.142]}>
@@ -234,12 +167,48 @@ export function GarmentDetails({ proportions: p, wardrobe: w, badge }: {
       <mesh position={[-0.011, 0.008, 0.006]}><boxGeometry args={[0.018, 0.028, 0.003]} /><meshStandardMaterial color={w.accent} /></mesh>
       <mesh position={[0.009, -0.016, 0.006]}><boxGeometry args={[0.029, 0.005, 0.003]} /><meshStandardMaterial color="#61727b" /></mesh>
     </group>}
-    {w.layer !== "coat" && <>
-      <mesh position={[0, 0.018, 0]} scale={[1, 1, 0.73]}>
+    {w.layer !== "coat" && w.bottomCut !== "dress" && <>
+      <mesh position={[0, 0.018, 0]} scale={[hips, 1, 0.73 * hips]}>
         <cylinderGeometry args={[0.168, 0.168, 0.024, 20, 1, true]} /><meshStandardMaterial color={w.finish === "luxe" ? "#1f1a17" : "#3d342f"} roughness={0.6} />
       </mesh>
-      <mesh position={[0, 0.018, 0.126]}><boxGeometry args={[0.038, 0.03, 0.009]} /><meshStandardMaterial color={w.finish === "luxe" ? w.trim : w.accent} metalness={0.65} roughness={0.35} /></mesh>
+      <mesh position={[0, 0.018, 0.126 * hips]}><boxGeometry args={[0.038, 0.03, 0.009]} /><meshStandardMaterial color={w.finish === "luxe" ? w.trim : w.accent} metalness={0.65} roughness={0.35} /></mesh>
     </>}
+  </group>;
+}
+
+/** Trouser-leg radius the skirt must clear around each thigh. */
+const LEG_RADIUS = HUMANOID_LEG_RADIUS;
+const skirtHalfWidth = (p: HumanoidProportions) => p.hipWidth / 2 + LEG_RADIUS + 0.018;
+
+/** Skirt or dress waist yoke: stays with the torso and covers the hip joint in every pose. */
+export function SkirtYoke({ proportions: p, wardrobe: w }: { proportions: HumanoidProportions; wardrobe: ResolvedWardrobe }) {
+  const hips = torsoWidthScale(p, 0, false);
+  return <mesh castShadow position={[0, -0.012, 0]} scale={[1, 1, 0.7]}>
+    <cylinderGeometry args={[0.16 * hips, Math.max(skirtHalfWidth(p), 0.172 * hips), 0.075, 20, 1, true]} />
+    <ClothMaterial color={w.bottom} finish={w.finish} />
+  </mesh>;
+}
+
+/**
+ * Skirt or dress drape. It hangs from the hip pivot and `drapeRef` turns it with
+ * the thighs, so in the 45 cm seated pose it lies over the lap instead of
+ * passing through the seat; standing, it falls to just above the knee.
+ */
+export function SkirtDrape({ proportions: p, wardrobe: w, drapeRef }: {
+  proportions: HumanoidProportions; wardrobe: ResolvedWardrobe; drapeRef: RefObject<Group | null>;
+}) {
+  const half = skirtHalfWidth(p);
+  const length = p.thighLength * (w.bottomCut === "dress" ? 0.96 : 0.9);
+  // Elliptical section: full width across both legs, just deeper than one leg front to back.
+  const depth = (LEG_RADIUS + 0.022) / half;
+  const profile = useMemo(() => ([
+    [0.92, 0.02], [1, -0.03], [1.035, -0.5 * length], [1.1, -length], [1.06, -length - 0.012]
+  ] as const).map(([r, y]) => new Vector2(r * half, y)), [half, length]);
+  return <group ref={drapeRef} position={[0, p.standingHipHeight, 0]}>
+    <mesh castShadow scale={[1, 1, depth]}>
+      <latheGeometry args={[profile, 22]} />
+      <meshStandardMaterial color={w.bottom} map={fabricTexture} roughness={w.finish === "luxe" ? 0.74 : 0.92} side={DoubleSide} />
+    </mesh>
   </group>;
 }
 

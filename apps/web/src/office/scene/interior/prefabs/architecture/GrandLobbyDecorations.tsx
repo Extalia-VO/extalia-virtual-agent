@@ -2,7 +2,7 @@ import React from "react";
 import * as THREE from "three";
 import { useSolarEnvironment } from "../../../Environment";
 import { FixtureSpotLight } from "./FixtureSpotLight";
-import { ceilingPendantDrop } from "./ceilingMounting";
+import { UNDER_STAIR_SOFFIT_Y, ceilingPendantDrop } from "./ceilingMounting";
 import { useStructuralCeiling } from "./StructuralCeilingContext";
 
 /**
@@ -100,7 +100,7 @@ export function GrandHaloChandelier({
         const angle = i * Math.PI / 2;
         const x = Math.cos(angle) * innerRadius, z = Math.sin(angle) * innerRadius;
         return <FixtureSpotLight key={i} name="halo-chandelier-downlight" position={[x, ringY - 0.21, z]}
-          aim={[x * 0.7, 0.05, z * 0.7]} intensity={factor * 9} distance={4.5} angle={1} color={lightColor} />;
+          aim={[x * 0.7, 0.05, z * 0.7]} intensity={factor * 24} distance={6.5} angle={1.12} color={lightColor} />;
       })}
     </group>
   );
@@ -118,41 +118,41 @@ export function GrandFloorMedallion({
   radius?: number;
 }) {
   return (
-    <group position={position}>
+    <group name="office-floor-medallion" position={position} userData={{ officeCollision: false }}>
       {/* Outer polished Calacatta gold circular base */}
-      <mesh receiveShadow position={[0, 0.02, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+      <mesh receiveShadow position={[0, 0.0001, 0]} rotation={[-Math.PI / 2, 0, 0]}>
         <circleGeometry args={[radius, 36]} />
         <meshStandardMaterial color="#f7f5f0" roughness={0.25} metalness={0.12} />
       </mesh>
 
       {/* Outer Brass Inlay Ring */}
-      <mesh receiveShadow position={[0, 0.025, 0]} rotation={[Math.PI / 2, 0, 0]}>
+      <mesh receiveShadow position={[0, 0.0003, 0]} rotation={[-Math.PI / 2, 0, 0]}>
         <ringGeometry args={[radius - 0.06, radius, 36]} />
         <meshStandardMaterial color="#d4af37" metalness={0.88} roughness={0.2} />
       </mesh>
 
       {/* Secondary Contrasting Dark Nero Marquina Inlay Ring */}
-      <mesh receiveShadow position={[0, 0.023, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+      <mesh receiveShadow position={[0, 0.0002, 0]} rotation={[-Math.PI / 2, 0, 0]}>
         <ringGeometry args={[radius * 0.62, radius * 0.88, 36]} />
         <meshStandardMaterial color="#1e2229" roughness={0.3} metalness={0.2} />
       </mesh>
 
       {/* Mid Brass Inlay Ring */}
-      <mesh receiveShadow position={[0, 0.026, 0]} rotation={[Math.PI / 2, 0, 0]}>
+      <mesh receiveShadow position={[0, 0.0003, 0]} rotation={[-Math.PI / 2, 0, 0]}>
         <ringGeometry args={[radius * 0.62 - 0.035, radius * 0.62, 36]} />
         <meshStandardMaterial color="#d4af37" metalness={0.88} roughness={0.2} />
       </mesh>
 
       {/* Inner Central Star/Geometric Rosette in Polished Gold & Cream */}
-      <mesh receiveShadow position={[0, 0.025, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+      <mesh receiveShadow position={[0, 0.0003, 0]} rotation={[-Math.PI / 2, 0, 0]}>
         <circleGeometry args={[radius * 0.42, 8]} />
         <meshStandardMaterial color="#ede6d6" roughness={0.2} metalness={0.18} />
       </mesh>
-      <mesh receiveShadow position={[0, 0.027, 0]} rotation={[-Math.PI / 2, 0, Math.PI / 8]}>
+      <mesh receiveShadow position={[0, 0.0004, 0]} rotation={[-Math.PI / 2, 0, Math.PI / 8]}>
         <circleGeometry args={[radius * 0.28, 8]} />
         <meshStandardMaterial color="#c29b4e" metalness={0.85} roughness={0.22} />
       </mesh>
-      <mesh receiveShadow position={[0, 0.028, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+      <mesh receiveShadow position={[0, 0.0005, 0]} rotation={[-Math.PI / 2, 0, 0]}>
         <circleGeometry args={[radius * 0.12, 16]} />
         <meshStandardMaterial color="#1c1f24" roughness={0.3} />
       </mesh>
@@ -181,23 +181,23 @@ export function CorridorWayfindingRunner({
   const midZ = (start[1] + end[1]) / 2;
 
   return (
-    <group position={[midX, 0.025, midZ]} rotation={[0, angle, 0]}>
+    <group name="office-floor-runner" position={[midX, 0, midZ]} rotation={[0, angle, 0]} userData={{ officeCollision: false }}>
       {/* Central warm herringbone oak runner */}
-      <mesh receiveShadow position={[0, 0, 0]}>
+      <mesh receiveShadow position={[0, -0.0075, 0]}>
         <boxGeometry args={[width, 0.015, length]} />
-        <meshStandardMaterial color="#bf9d76" roughness={0.65} metalness={0.08} />
+        <meshStandardMaterial color="#bf9d76" roughness={0.65} metalness={0.08} polygonOffset polygonOffsetFactor={-1} polygonOffsetUnits={-1} />
       </mesh>
 
       {/* Left Brass Inlay Border Strip */}
-      <mesh receiveShadow position={[-width / 2 + 0.04, 0.005, 0]}>
+      <mesh receiveShadow position={[-width / 2 + 0.04, -0.009, 0]}>
         <boxGeometry args={[0.04, 0.018, length]} />
-        <meshStandardMaterial color="#d4af37" metalness={0.88} roughness={0.2} />
+        <meshStandardMaterial color="#d4af37" metalness={0.88} roughness={0.2} polygonOffset polygonOffsetFactor={-2} polygonOffsetUnits={-2} />
       </mesh>
 
       {/* Right Brass Inlay Border Strip */}
-      <mesh receiveShadow position={[width / 2 - 0.04, 0.005, 0]}>
+      <mesh receiveShadow position={[width / 2 - 0.04, -0.009, 0]}>
         <boxGeometry args={[0.04, 0.018, length]} />
-        <meshStandardMaterial color="#d4af37" metalness={0.88} roughness={0.2} />
+        <meshStandardMaterial color="#d4af37" metalness={0.88} roughness={0.2} polygonOffset polygonOffsetFactor={-2} polygonOffsetUnits={-2} />
       </mesh>
     </group>
   );
@@ -217,7 +217,7 @@ export function SculpturalDisplayPlinth({
   sculptureColor?: string;
 }) {
   const { state } = useSolarEnvironment();
-  const _factor = state.factors.interiorLightFactor;
+  const factor = state.factors.interiorLightFactor;
 
   return (
     <group position={position} rotation={[0, rotationY, 0]}>
@@ -248,7 +248,16 @@ export function SculpturalDisplayPlinth({
         </mesh>
       </group>
 
-      {/* Focused Pinpoint Spot / Uplight grazing the artwork */}
+      {/* Focused Pinpoint Spot / Downlight grazing the artwork and pedestal floor pool */}
+      <FixtureSpotLight
+        name="plinth-sculpture-spotlight"
+        position={[0, 2.45, 0.18]}
+        aim={[0, 0.05, 0]}
+        intensity={factor * 24}
+        distance={3.6}
+        angle={0.95}
+        color="#ffe8c2"
+      />
     </group>
   );
 }
@@ -335,8 +344,8 @@ export function ArchitecturalGalleryCanvas({
             toneMapped={false}
           />
         </mesh>
-        <FixtureSpotLight name="gallery-picture-wash" position={[0, -0.025, 0]}
-          aim={[0, -height * 0.6, -0.08]} intensity={factor * 2} distance={2} angle={0.85} color="#ffedd5" />
+        <FixtureSpotLight name="gallery-picture-wash" position={[0, -0.025, 0.08]}
+          aim={[0, -height * 0.9, 0.12]} intensity={factor * 14} distance={3.2} angle={1.05} color="#ffedd5" />
       </group>
     </group>
   );
@@ -413,8 +422,8 @@ export function MonumentalPlanter({
  */
 export function BarPendantCluster({
   position,
-  spacing = 1.1,
-  drop = 1.1
+  spacing = 1.15,
+  drop = 0.45
 }: {
   position: [number, number, number];
   spacing?: number;
@@ -423,14 +432,14 @@ export function BarPendantCluster({
   const { state } = useSolarEnvironment();
   const factor = state.factors.interiorLightFactor;
   const emissiveIntensity = factor > 0 ? 1.0 + factor * 4.0 : 0;
-  const { ceilingY } = useStructuralCeiling();
+  // BarPendantCluster sits over the front bar counter beneath the F1->F2 mid-landing soffit.
+  const canopyY = Math.min(UNDER_STAIR_SOFFIT_Y, useStructuralCeiling().ceilingY) - position[1];
 
   return (
     <group position={position}>
       {[-spacing, 0, spacing].map((offset, idx) => {
         const pendantY = 2.85 - drop;
-        const canopyY = ceilingY - position[1];
-        const mountedDrop = canopyY - pendantY;
+        const mountedDrop = Math.max(0.2, canopyY - pendantY);
         return (
           <group key={`pendant-${idx}`} position={[offset, 0, 0]}>
             {/* Slender ceiling cable */}
@@ -474,7 +483,7 @@ export function BarPendantCluster({
             </mesh>
 
             <FixtureSpotLight name="bar-pendant-task-beam" position={[0, pendantY - 0.15, 0]}
-              aim={[0, 1.05, 0]} intensity={factor * 8} distance={2.8} angle={0.9} color="#ffe2b8" />
+              aim={[0, 0.05, 0.35]} intensity={factor * 28} distance={4.4} angle={1.05} color="#ffe2b8" />
           </group>
         );
       })}
@@ -488,7 +497,7 @@ export function BarPendantCluster({
 export function DiningLinearPendant({
   position,
   length = 3.6,
-  drop = 1.05
+  drop = 0.85
 }: {
   position: [number, number, number];
   length?: number;
@@ -535,8 +544,8 @@ export function DiningLinearPendant({
       </mesh>
 
       {[-1, 0, 1].map(i => <FixtureSpotLight key={i} name="dining-linear-task-beam"
-        position={[i * length * 0.27, fixtureY - 0.027, 0]} aim={[i * length * 0.27, 1.04, 0]}
-        intensity={factor * 6} distance={3.5} angle={0.9} color="#ffe2b8" />)}
+        position={[i * length * 0.27, fixtureY - 0.027, 0]} aim={[i * length * 0.27, 0.05, 0]}
+        intensity={factor * 20} distance={4.5} angle={1.05} color="#ffe2b8" />)}
     </group>
   );
 }

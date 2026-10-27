@@ -25,6 +25,19 @@ export function ServerRoomServiceDetails({ data }: { data: SmartScreenData }) {
         ))}
       </group>
 
+      {/* Perforated supply tiles feed the cold aisle; every grille stays flush with the access floor. */}
+      {[-0.9, 0.3, 1.5].map(z => <group key={`supply-${z}`} position={[-1.7, 0.096, z]} userData={{ officeCollision: false }}>
+        <mesh><boxGeometry args={[0.44, 0.008, 0.8]} /><meshStandardMaterial color="#233a43" metalness={0.64} roughness={0.5} /></mesh>
+        {[-0.3, -0.2, -0.1, 0, 0.1, 0.2, 0.3].map(slot => <mesh key={slot} position={[0, 0.005, slot]}><boxGeometry args={[0.36, 0.003, 0.027]} /><meshStandardMaterial color="#78949b" metalness={0.74} roughness={0.38} /></mesh>)}
+      </group>)}
+      {/* Ceiling service rails and cable color bands remain outside the walking volume. */}
+      {[-2.86, -2.77].map((x, index) => <mesh key={x} position={[x, 2.62, 0.3]}>
+        <boxGeometry args={[0.025, 0.035, 3.48]} /><meshStandardMaterial color={index ? "#d2a65a" : "#46b8c6"} roughness={0.55} />
+      </mesh>)}
+      <mesh position={[-0.35, 2.7, 0.3]} userData={{ officeCollision: false }}><boxGeometry args={[0.06, 0.025, 4.2]} /><meshStandardMaterial color="#b4e6ed" emissive="#77c6d5" emissiveIntensity={0.7} /></mesh>
+      <mesh position={[-3.92, 1.95, 2.6]}><boxGeometry args={[0.07, 0.26, 0.18]} /><meshStandardMaterial color="#ccd9d8" roughness={0.6} /></mesh>
+      <mesh position={[-3.875, 1.98, 2.6]}><boxGeometry args={[0.015, 0.07, 0.07]} /><meshStandardMaterial color="#68d3b3" emissive="#3ea783" emissiveIntensity={0.6} /></mesh>
+
       {/* Compact wall-mounted precision cooling unit with intake grille. */}
       <group position={[-2.45, 1.95, 3.39]} rotation={[0, Math.PI, 0]}>
         <mesh>
@@ -52,7 +65,7 @@ export function ServerRoomServiceDetails({ data }: { data: SmartScreenData }) {
       </group>
 
       {/* Runtime-connected room health board faces into the aisle. */}
-      <WallDisplay position={[1.72, 1.78, 3.42]} rotationY={Math.PI} width={1.75} height={1.0} data={data} />
+      <WallDisplay position={[1.72, 1.78, 3.42]} rotationY={Math.PI} width={1.75} height={1.0} variant="monitoring" data={data} />
 
       {/* Small conduit run links the wall cooling and status display to the overhead tray. */}
       <mesh position={[0.72, 2.47, 3.38]}>

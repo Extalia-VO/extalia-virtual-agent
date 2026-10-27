@@ -1,0 +1,8 @@
+{
+  "desk": { "width": 1.65, "depth": 0.82, "top": 0.785, "thickness": 0.06, "legX": 0.66 },
+  "monitor": { "width": 0.54, "height": 0.30375, "bezel": 0.025, "depth": 0.035, "clearance": 0.105, "baseWidth": 0.24, "baseDepth": 0.17, "baseHeight": 0.018 },
+  "laptop": { "width": 0.36, "depth": 0.25, "deckHeight": 0.018, "lidHeight": 0.225, "lidDepth": 0.018 },
+  "keyboard": { "compactWidth": 0.31, "compactDepth": 0.125, "fullWidth": 0.44, "fullDepth": 0.135, "pitch": 0.019, "capSize": 0.0165, "capTop": 0.027, "fullAlphaOffset": -0.075 },
+  "mouse": { "width": 0.064, "height": 0.038, "length": 0.116 },
+  "pad": { "width": 0.22, "depth": 0.19, "thickness": 0.004 }
+}

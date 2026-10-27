@@ -1,4 +1,5 @@
 import type { ActivityKind, AgentState, ExtaliaEvent, FileChangeKind, RiskLevel, Usage } from '@extalia/protocol';
+import { promptAttachmentMetadata, type AttachmentMetadata } from './attachments';
 
 /**
  * Pure projection of a session's protocol events into what Chat shows. It
@@ -17,7 +18,7 @@ export interface CommandRun {
   durationMs?: number;
 }
 
-export interface UserItem { kind: 'user'; id: string; text: string; at: string }
+export interface UserItem { kind: 'user'; id: string; text: string; at: string; /** Files attached to the prompt (names, kinds, sizes; never contents). */ attachments?: AttachmentMetadata[] }
 export interface AssistantItem { kind: 'assistant'; id: string; text: string; streaming: boolean; model?: string }
 export interface ToolItem {
   kind: 'tool';
@@ -141,7 +142,10 @@ export function projectTranscript(events: readonly ExtaliaEvent[]): TranscriptIt
     switch (body.type) {
       case 'prompt.submitted':
         endTurn();
-        items.push({ kind: 'user', id: event.id, text: body.text, at: event.at });
+        {
+          const attachments = promptAttachmentMetadata((body as { attachments?: unknown }).attachments);
+          items.push({ kind: 'user', id: event.id, text: body.text, at: event.at, ...(attachments.length ? { attachments } : {}) });
+        }
         currentTurn();
         break;
       case 'model.delta':

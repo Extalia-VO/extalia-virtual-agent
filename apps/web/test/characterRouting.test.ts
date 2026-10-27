@@ -47,4 +47,23 @@ describe('character transcript routing', () => {
     expect(characterTranscript(events, presence('s1')).map(item => item.kind)).toEqual(['user', 'approval']);
     expect(characterTranscript(events, presence('s1', 'primary', 'observed')).map(item => item.kind)).toEqual(['user']);
   });
+
+  it('shows an observed subagent its own messages and tools, not the lead conversation', () => {
+    const events = [
+      event('lead-prompt', 's1', { type: 'prompt.submitted', text: 'Lead task', via: 'native' }),
+      event('lead-reply', 's1', { type: 'model.completed', text: 'Delegating the review.' }),
+      event('spawn', 's1', { type: 'subagent.spawned', subagentId: 'sub-1', label: 'Reviewer' }),
+      event('sub-prompt', 's1', { type: 'prompt.submitted', text: 'Review the diff', via: 'native' }, 'sub-1'),
+      event('sub-tool', 's1', { type: 'tool.started', toolCallId: 'c1', tool: 'read_file', kind: 'read', label: 'Read diff' }, 'sub-1'),
+      event('sub-reply', 's1', { type: 'model.completed', text: 'Two issues found.' }, 'sub-1'),
+      event('other', 's1', { type: 'model.completed', text: 'Another worker.' }, 'sub-2'),
+    ];
+    const sub = characterTranscript(events, presence('s1', 'sub-1', 'observed'));
+    expect(sub.map(item => item.kind === 'assistant' || item.kind === 'user' ? item.text : item.kind)).toEqual(['Review the diff', 'tool', 'Two issues found.']);
+    // The lead keeps its own conversation; the subagent appears as a card.
+    const lead = characterTranscript(events, presence('s1', 'primary', 'observed'));
+    expect(lead.map(item => item.kind === 'assistant' || item.kind === 'user' ? item.text : item.kind)).toContain('Lead task');
+    expect(lead.some(item => item.kind === 'user' && item.text === 'Review the diff')).toBe(false);
+  });
 });
+

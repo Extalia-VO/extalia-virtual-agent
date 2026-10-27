@@ -3,9 +3,22 @@ import type { ExtaliaEvent } from '@extalia/protocol';
 import { useEffect, useState } from 'react';
 import { mergeEvents } from '../chat/transcript';
 import { errorMessage } from '../host/remote';
+import { OFFICE_EVENT_TYPES } from './activityFeed';
 
-const RELEVANT = new Set(['agent.created', 'agent.state', 'agent.stopped', 'subagent.spawned', 'subagent.state', 'session.ended', 'prompt.submitted', 'turn.completed', 'turn.failed', 'approval.requested', 'approval.resolved', 'user.intervention']);
-const retain = (events: readonly ExtaliaEvent[]) => events.filter(event => RELEVANT.has(event.body.type)).slice(-400);
+// Presence, toasts and bubbles share one event selection.
+const RELEVANT = OFFICE_EVENT_TYPES;
+/** One shared value while history loads, so consumers' memos stay stable between renders. */
+const NOT_LOADED: { events: ExtaliaEvent[]; error?: string } = { events: [], error: undefined };
+/** Announcements name agents, their parents and models; v0.0.38 keeps them past the activity window so busy subagents stay nested. */
+const IDENTITY: ReadonlySet<string> = new Set(['agent.created', 'subagent.spawned', 'task.created']);
+const retain = (events: readonly ExtaliaEvent[]) => {
+  const relevant = events.filter(event => RELEVANT.has(event.body.type));
+  const recent = relevant.slice(-400);
+  if (recent.length === relevant.length) return recent;
+  const kept = new Set(recent);
+  const identities = relevant.filter(event => IDENTITY.has(event.body.type) && !kept.has(event)).slice(-200);
+  return identities.length ? [...identities, ...recent] : recent;
+};
 
 /** Subscribe before hydration; only active or selected sessions need event history. */
 export function useOfficeEvents(agents: AgentHostApi | undefined, sessionIds: readonly string[]) {
@@ -30,5 +43,5 @@ export function useOfficeEvents(agents: AgentHostApi | undefined, sessionIds: re
     }, failure => { errors.set(id, errorMessage(failure)); update(); });
     return () => { active = false; stop(); };
   }, [agents, key]);
-  return loaded.key === key ? loaded : { events: [], error: undefined };
+  return loaded.key === key ? loaded : NOT_LOADED;
 }

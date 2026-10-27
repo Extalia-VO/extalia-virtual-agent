@@ -3,6 +3,10 @@ import type { Group } from "three";
 export type ScreenEmitter = {
   group: Group; width: number; height: number; depth: number;
   intensity: number; color: readonly [number, number, number];
+  /** Screens of one desk share a cluster and are lit by a single pooled light. */
+  cluster?: string;
+  /** Weight for the pooled spot lights (see `screenLightPriority`); 1 when unset. */
+  priority?: number;
 };
 const emitters = new Set<ScreenEmitter>();
 let revision = 0;

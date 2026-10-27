@@ -29,8 +29,8 @@ function StairLandingLamp({ floor }: { floor: 1 | 2 | 3 }) {
       <cylinderGeometry args={[0.15, 0.15, 0.012, 16]} />
       <meshStandardMaterial color="#f4efe6" emissive={LIGHT_COLOR} emissiveIntensity={factor * 1.5} toneMapped={false} roughness={0.45} />
     </mesh>
-    <FixtureSpotLight position={[0, 1.72, 0]} aim={[0, 0.04, 0.28]} intensity={24 * factor}
-      color={LIGHT_COLOR} distance={3.2} angle={0.68} floorY={(floor - 1) * FLOOR_HEIGHT} name={`stair-arrival-pool-f${floor}`} />
+    <FixtureSpotLight position={[0, 1.72, 0]} aim={[0, 0.04, 0.28]} intensity={42 * factor}
+      color={LIGHT_COLOR} distance={4.2} angle={1.08} floorY={(floor - 1) * FLOOR_HEIGHT} name={`stair-arrival-pool-f${floor}`} />
   </group>;
 }
 
@@ -46,8 +46,8 @@ function StairArtLight() {
       <boxGeometry args={[0.6, 0.012, 0.055]} /><meshStandardMaterial color="#eee5d7" emissive={LIGHT_COLOR}
         emissiveIntensity={factor * 1.2} toneMapped={false} roughness={0.4} />
     </mesh>
-    <FixtureSpotLight name="stair-arrival-art-wash" position={[0, -0.032, 0]}
-      aim={[0, -0.6, -0.185]} intensity={factor * 3} distance={1.6} angle={0.95} color={LIGHT_COLOR} />
+    <FixtureSpotLight name="stair-arrival-art-wash" position={[0, -0.032, 0.14]}
+      aim={[0, -1.65, 0.28]} intensity={factor * 16} distance={3.2} angle={1.08} color={LIGHT_COLOR} />
   </group>;
 }
 

@@ -1,4 +1,4 @@
-import type { AgentHostApi, HostState } from '@extalia/platform';
+import { isKnowledgeIndexEvent, type AgentHostApi, type HostState } from '@extalia/platform';
 import type { EventType } from '@extalia/protocol';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { errorMessage } from './remote';
@@ -38,7 +38,8 @@ export function useHostState(agents: AgentHostApi | undefined): HostController {
     if (!agents) return;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const unsubscribe = agents.subscribe(event => {
-      if (!REFRESH_ON.has(event.body.type)) return;
+      // Knowledge index hints are not session changes (the Knowledge page reloads itself).
+      if (!REFRESH_ON.has(event.body.type) || isKnowledgeIndexEvent(event)) return;
       clearTimeout(timer);
       timer = setTimeout(() => load(false), 120);
     });

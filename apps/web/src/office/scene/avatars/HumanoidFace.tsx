@@ -1,52 +1,51 @@
 import { useFrame } from "@react-three/fiber";
 import { useMemo, useRef } from "react";
-import type { Group } from "three";
+import type { Group, Mesh } from "three";
 import type { AvatarAccessoryConfig } from "./appearance";
 import { irisTexture } from "./avatarTextures";
+import type { CharacterMotion } from "../movement/walkCycle";
+import { createFacialPose, expressionTimeSeconds, resolveCharacterExpression, writeFacialPose, type CharacterExpressionState } from "./facialExpression";
 
 /** Facial features use head-relative units so every generated stature stays coherent. */
-export function HumanoidFace({ radius, skin, hair, seed, accessories, reducedMotion = false }: {
+export function HumanoidFace({ radius, skin, hair, seed, accessories, reducedMotion = false, expressionId, expressionState = 'idle', motion }: {
   radius: number;
   skin: string;
   hair: string;
   seed: number;
   accessories?: AvatarAccessoryConfig;
   reducedMotion?: boolean;
+  expressionId?: string | undefined;
+  expressionState?: CharacterExpressionState | undefined;
+  motion?: CharacterMotion | undefined;
 }) {
   const stackOverview = true;
   const eyes = useRef<Group>(null);
-  const gaze = useRef<Group>(null);
-  const clock = useRef((seed % 1793) / 137);
-  const blinkPeriod = 3.2 + (seed % 173) / 100;
-  useFrame((_, dt) => {
-    if (reducedMotion) { if (eyes.current) eyes.current.scale.y = 1; if (gaze.current) gaze.current.position.set(0, 0, 0); return; }
-    clock.current += Math.max(0, dt);
-    // Hidden close-up details retain their phase without updating cosmetic bones.
-    for (let parent = eyes.current; parent; parent = parent.parent as Group | null) {
-      if (!parent.visible) return;
-    }
-    const blinkTime = clock.current % blinkPeriod;
-    // One short blink per independently phased interval, without React updates.
-    const openness = blinkTime < 0.16
-      ? 1 - Math.sin((blinkTime / 0.16) * Math.PI) * 0.95
-      : 1;
-    if (eyes.current) eyes.current.scale.y = openness;
-    // Slow saccade-like drift keeps the irises alive between blinks.
-    if (gaze.current) {
-      const t = clock.current;
-      gaze.current.position.x = Math.sin(t * 0.37 + seed) * 0.012 + Math.sin(t * 1.9) * 0.003;
-      gaze.current.position.y = Math.sin(t * 0.23 + seed * 0.5) * 0.006;
-    }
-  });
-
-  const irisColor = ["#695e44", "#586d63", "#697f88", "#574132"][seed % 4] ?? "#695e44";
-  const iris = useMemo(() => irisTexture(irisColor), [irisColor]);
-  // Seeded brow shapes: soft arch, straight, high arch; never animated per frame.
+  const gazes = useRef<Array<Group | null>>([]);
+  const brows = useRef<Array<Group | null>>([]);
+  const jaw = useRef<Mesh>(null), lowerLip = useRef<Mesh>(null), mouth = useRef<Mesh>(null);
+  const facialPose = useMemo(() => createFacialPose(), []);
   const brow = [
     { lift: 0.2, thickness: 0.028, innerTilt: 0.04, tailTilt: 0.2, arch: 0.04 },
     { lift: 0.19, thickness: 0.034, innerTilt: 0.02, tailTilt: 0.06, arch: 0.01 },
     { lift: 0.215, thickness: 0.024, innerTilt: 0.1, tailTilt: 0.3, arch: 0.06 }
   ][(seed >>> 3) % 3]!;
+  useFrame(() => {
+    // Hidden close-up details retain their phase without updating cosmetic bones.
+    for (let parent = eyes.current; parent; parent = parent.parent as Group | null) {
+      if (!parent.visible) return;
+    }
+    const pose = writeFacialPose(facialPose, seed, expressionTimeSeconds(), resolveCharacterExpression(expressionId, expressionState, motion), reducedMotion);
+    if (eyes.current) eyes.current.scale.y = 1 - pose.blink * 0.96;
+    for (const gaze of gazes.current) if (gaze) gaze.position.set(pose.gazeX * 0.035, pose.gazeY * 0.025, 0);
+    for (const group of brows.current) if (group) { group.position.y = brow.lift - pose.brow * 0.07; group.rotation.z = -Math.sign(group.position.x) * pose.brow * 0.12; }
+    if (jaw.current) jaw.current.position.y = -0.5 - pose.mouthOpen * 0.06;
+    if (lowerLip.current) lowerLip.current.position.y = -0.397 - pose.mouthOpen * 0.16;
+    if (mouth.current) { mouth.current.visible = pose.mouthOpen > 0.02; mouth.current.scale.y = pose.mouthOpen * 0.13; }
+  });
+
+  const irisColor = ["#695e44", "#586d63", "#697f88", "#574132"][seed % 4] ?? "#695e44";
+  const iris = useMemo(() => irisTexture(irisColor), [irisColor]);
+  // Seeded brow shapes: soft arch, straight, high arch; never animated per frame.
   const lip = [
     { upper: "#a87265", lower: "#b57f71", fullness: 0.03, smile: 0.06 },
     { upper: "#93605a", lower: "#a36c63", fullness: 0.034, smile: 0.03 },
@@ -56,7 +55,7 @@ export function HumanoidFace({ radius, skin, hair, seed, accessories, reducedMot
 
   return <group scale={radius}>
     {/* Jaw, chin and cheek planes break the head sphere into a sculpted face. */}
-    <mesh position={[0, -0.5, 0.56]} scale={[0.27, 0.2, 0.3]}>
+    <mesh ref={jaw} position={[0, -0.5, 0.56]} scale={[0.27, 0.2, 0.3]}>
       <sphereGeometry args={[1, 18, 12]} /><meshStandardMaterial color={skin} roughness={0.8} />
     </mesh>
     {[-1, 1].map(side => <mesh key={`jaw:${side}`} position={[side * 0.5, -0.42, 0.35]} rotation={[0.25, side * 0.55, side * -0.35]} scale={[0.32, 0.18, 0.42]}>
@@ -109,7 +108,7 @@ export function HumanoidFace({ radius, skin, hair, seed, accessories, reducedMot
           <mesh position={[side * -0.145, -0.008, 0.012]} scale={[0.022, 0.02, 0.012]}>
             <sphereGeometry args={[1, 8, 6]} /><meshStandardMaterial color="#d58e88" roughness={0.4} />
           </mesh>
-          <group ref={side === 1 ? gaze : undefined}>
+          <group ref={node => { gazes.current[side === -1 ? 0 : 1] = node; }}>
             {/* Textured iris disc with radial fibers, limbal ring and pupil. */}
             <mesh position={[0, 0, 0.042]}>
               <circleGeometry args={[0.07, 28]} />
@@ -141,7 +140,7 @@ export function HumanoidFace({ radius, skin, hair, seed, accessories, reducedMot
         <mesh position={[side * 0.15, -0.012, 0.018]} rotation={[0, 0, side * 0.45]} scale={[0.04, 0.008, 0.01]}><sphereGeometry args={[1, 8, 4]} /><meshStandardMaterial color="#1c1615" roughness={0.6} /></mesh>
         <mesh position={[0, -0.13, 0.014]} scale={[0.13, 0.006, 0.01]}><sphereGeometry args={[1, 10, 4]} /><meshStandardMaterial color="#4a3631" roughness={0.9} transparent opacity={0.6} /></mesh>
       </group>)}
-      {[-1, 1].map(side => <group key={`brow:${side}`} position={[side * 0.36, brow.lift, 0.905]} rotation={[0, side * 0.18, 0]}>
+      {[-1, 1].map(side => <group key={`brow:${side}`} ref={node => { brows.current[side === -1 ? 0 : 1] = node; }} position={[side * 0.36, brow.lift, 0.905]} rotation={[0, side * 0.18, 0]}>
         {/* Three tapered strokes: dense head, arched body and fine tail. */}
         <mesh position={[side * -0.1, -0.005, 0]} rotation={[0, 0, side * -brow.innerTilt + side * 0.3]} scale={[0.045, brow.thickness * 1.15, 0.03]}>
           <sphereGeometry args={[1, 10, 6]} /><meshStandardMaterial color={hair} roughness={0.95} />
@@ -185,6 +184,9 @@ export function HumanoidFace({ radius, skin, hair, seed, accessories, reducedMot
       <sphereGeometry args={[1, 6, 8]} /><meshStandardMaterial color="#7a5348" roughness={0.95} transparent opacity={0.3} depthWrite={false} />
     </mesh>
     {/* Lips: cupid's bow upper lip, tubercle, fuller lower lip, corners lifted into a slight smile. */}
+    <mesh ref={mouth} visible={false} position={[0, -0.4, 0.945]} scale={[0.12, 0.001, 0.02]}>
+      <sphereGeometry args={[1, 16, 10]} /><meshStandardMaterial color="#41282b" roughness={0.9} />
+    </mesh>
     {[-1, 1].map(side => <mesh key={`upper-lip:${side}`} position={[side * 0.052, -0.342, 0.935]} rotation={[0.1, 0, side * -(0.16 + lip.smile)]} scale={[0.085, 0.028, 0.03]}>
       <sphereGeometry args={[1, 14, 8]} /><meshPhysicalMaterial color={lip.upper} roughness={0.5} clearcoat={0.3} clearcoatRoughness={0.6} />
     </mesh>)}
@@ -197,7 +199,7 @@ export function HumanoidFace({ radius, skin, hair, seed, accessories, reducedMot
     {[-1, 1].map(side => <mesh key={`corner:${side}`} position={[side * 0.15, -0.36 + lip.smile * 0.15, 0.915]} scale={[0.016, 0.012, 0.012]}>
       <sphereGeometry args={[1, 6, 6]} /><meshStandardMaterial color="#5a3a35" roughness={0.9} />
     </mesh>)}
-    <mesh position={[0, -0.397, 0.927]} rotation={[0.18, 0, 0]} scale={[0.13, lip.fullness, 0.032]}>
+    <mesh ref={lowerLip} position={[0, -0.397, 0.927]} rotation={[0.18, 0, 0]} scale={[0.13, lip.fullness, 0.032]}>
       <sphereGeometry args={[1, 16, 8]} /><meshPhysicalMaterial color={lip.lower} roughness={0.42} clearcoat={0.45} clearcoatRoughness={0.5} />
     </mesh>
     {/* Mentolabial sulcus and chin pad. */}

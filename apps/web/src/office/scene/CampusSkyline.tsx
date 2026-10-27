@@ -23,6 +23,9 @@ import {
   type Material
 } from "three";
 import { useSolarEnvironment } from "./Environment";
+import { useExteriorInstancedGeometries } from "./ExteriorPart";
+import { useDistrictBuildingModels } from "./districtBuildingModels";
+import { CITY_GROUND } from "./campusGroundBounds";
 
 /*
  * Metropolitan skyline backdrop for the campus overview.
@@ -35,10 +38,10 @@ import { useSolarEnvironment } from "./Environment";
  * at r >= 100 m, far outside the navigation grid and the forecourt corridor.
  */
 
-const GROUND_Y = -0.8;
+const GROUND_Y = CITY_GROUND.y;
 const BLOCK = 24;
 const STREET_WIDTH = 7;
-const CITY_RADIUS = 250;
+const CITY_RADIUS = CITY_GROUND.radius;
 const TOWER_MIN_RADIUS = 100;
 const TOWER_MAX_RADIUS = CITY_RADIUS - 22;
 const SHADOW_Y = -0.735;
@@ -505,11 +508,18 @@ function buildStreets(city: City) {
   }
 }
 
-function buildCity(): City {
+function buildCity(includeProceduralDistrict = true): City {
   const city: City = { facade: [], solid: [], cones: [], bands: [], beacons: [], pads: [], footprints: [], trees: [], pools: [] };
 
   DISTRICT_BUILDINGS.forEach((b, index) => {
-    DISTRICT_BUILDERS[b.kind]!(city, { x: b.x, z: b.z, yaw: 0, seed: 101 + index * 3.7 }, b);
+    const t: Tower = { x: b.x, z: b.z, yaw: 0, seed: 101 + index * 3.7 };
+    if (includeProceduralDistrict) {
+      DISTRICT_BUILDERS[b.kind]!(city, t, b);
+    } else {
+      const pad = b.kind === "fins" ? 1.2 : b.kind === "stepped" ? 0 : 3;
+      addFootprint(city, t, b.w + pad, b.d + pad, b.h);
+      if (b.kind === "tower") beacon(city, t, b.h + 2.5);
+    }
   });
 
   buildLandmarks(city);
@@ -726,10 +736,11 @@ function SkylineInstances({ name, geometry, material, set, meshRef, frustumCulle
     mesh.instanceMatrix.needsUpdate = true;
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
     mesh.computeBoundingSphere();
-  }, [ref, set]);
+  }, [ref, set, geometry]);
   if (set.matrices.length === 0) return null;
   return (
     <instancedMesh
+      key={`${geometry.uuid}-${set.matrices.length}`}
       ref={ref}
       name={name}
       args={[geometry, material, set.matrices.length]}
@@ -755,7 +766,9 @@ export function CampusSkyline() {
   const solar = useRef(state);
   useEffect(() => { solar.current = state; }, [state]);
 
-  const city = useMemo(() => buildCity(), []);
+  const districtModels = useDistrictBuildingModels();
+  const blenderGeometries = useExteriorInstancedGeometries();
+  const city = useMemo(() => buildCity(!districtModels), [districtModels]);
 
   const uniforms = useMemo<SkyUniforms>(() => {
     return {
@@ -770,6 +783,10 @@ export function CampusSkyline() {
   const materials = useMemo(() => ({
     facade: patchSkylineMaterial(new MeshStandardMaterial({ color: "#ffffff", roughness: 0.42, metalness: 0.12 }), uniforms, true),
     solid: patchSkylineMaterial(new MeshStandardMaterial({ color: "#ffffff", roughness: 0.88 }), uniforms, false),
+    districtFacade: patchSkylineMaterial(new MeshStandardMaterial({ color: "#ffffff", vertexColors: true, roughness: 0.42, metalness: 0.12 }), uniforms, true),
+    districtSolid: patchSkylineMaterial(new MeshStandardMaterial({ color: "#ffffff", vertexColors: true, roughness: 0.84, metalness: 0.08 }), uniforms, false),
+    districtCrown: patchSkylineMaterial(new MeshBasicMaterial({ color: "#ffffff", vertexColors: true, toneMapped: false }), uniforms, false),
+    districtFoliage: patchSkylineMaterial(new MeshStandardMaterial({ color: "#ffffff", vertexColors: true, roughness: 0.94, flatShading: true }), uniforms, false),
     metal: patchSkylineMaterial(new MeshStandardMaterial({ color: "#c3cbd2", roughness: 0.32, metalness: 0.5 }), uniforms, false),
     ground: patchSkylineMaterial(new MeshStandardMaterial({ color: "#737b7c", roughness: 1 }), uniforms, false),
     foliage: patchSkylineMaterial(new MeshStandardMaterial({ color: "#ffffff", roughness: 0.95, flatShading: true }), uniforms, false),
@@ -816,8 +833,11 @@ export function CampusSkyline() {
 
   useEffect(() => () => {
     Object.values(geometries).forEach((geometry) => geometry.dispose());
+  }, [geometries]);
+
+  useEffect(() => () => {
     Object.values(materials).forEach((material) => material.dispose());
-  }, [geometries, materials]);
+  }, [materials]);
 
   const sets = useMemo(() => {
     const boxes = (list: Box[]): InstanceSet => ({
@@ -853,6 +873,9 @@ export function CampusSkyline() {
   const beaconRef = useRef<InstancedMesh>(null);
   const shadowRef = useRef<InstancedMesh>(null);
   const lastSun = useRef<[number, number, number]>([Number.NaN, 0, 0]);
+  useEffect(() => {
+    lastSun.current = [Number.NaN, 0, 0];
+  }, [city]);
 
   useFrame((root, delta) => {
     const { factors, position } = solar.current;
@@ -866,6 +889,7 @@ export function CampusSkyline() {
     uniforms.uHazeStrength.value = MathUtils.lerp(0.7, 0.42, night);
 
     materials.crown.color.setScalar(MathUtils.lerp(0.58, 1.75, night));
+    materials.districtCrown.color.setScalar(MathUtils.lerp(0.58, 1.75, night));
     materials.padRing.color.setRGB(MathUtils.lerp(0.55, 1.1, night), MathUtils.lerp(0.6, 1.6, night), MathUtils.lerp(0.5, 0.9, night));
     materials.pools.opacity = 0.55 * night;
     materials.pools.visible = night > 0.02;
@@ -906,6 +930,14 @@ export function CampusSkyline() {
   return (
     <group name="campus-skyline" userData={{ officeCollision: false }}>
       <mesh name="city-ground" geometry={geometries.ground} material={materials.ground} position={[0, GROUND_Y, 0]} />
+      {districtModels && (
+        <group name="blender-district-buildings">
+          <mesh name="district-facades" geometry={districtModels.facade} material={materials.districtFacade} />
+          <mesh name="district-solids" geometry={districtModels.solid} material={materials.districtSolid} />
+          <mesh name="district-crowns" geometry={districtModels.crown} material={materials.districtCrown} />
+          <mesh name="district-foliage" geometry={districtModels.foliage} material={materials.districtFoliage} />
+        </group>
+      )}
       <SkylineInstances name="skyline-facades" geometry={geometries.facade} material={materials.facade} set={sets.facade} />
       <SkylineInstances name="skyline-solids" geometry={geometries.box} material={materials.solid} set={sets.solid} />
       <SkylineInstances name="skyline-spires" geometry={geometries.spire} material={materials.metal} set={sets.spires} />
@@ -913,7 +945,7 @@ export function CampusSkyline() {
       <SkylineInstances name="skyline-helipads" geometry={geometries.pad} material={materials.pad} set={sets.pads} />
       <SkylineInstances name="skyline-helipad-lights" geometry={geometries.ring} material={materials.padRing} set={sets.rings} />
       <SkylineInstances name="skyline-beacons" geometry={geometries.beacon} material={materials.beacon} set={sets.beacons} meshRef={beaconRef} />
-      <SkylineInstances name="skyline-park-trees" geometry={geometries.tree} material={materials.foliage} set={sets.trees} />
+      <SkylineInstances name="skyline-park-trees" geometry={blenderGeometries?.canopy ?? geometries.tree} material={materials.foliage} set={sets.trees} />
       {/* Instanced street glow pools removed per user directive (no circular light pools at night) */}
       <SkylineInstances name="skyline-ground-shadows" geometry={geometries.shadow} material={materials.shadow} set={sets.shadows} meshRef={shadowRef} frustumCulled={false} />
     </group>

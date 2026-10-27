@@ -1,0 +1,22 @@
+{
+  "halfExtent": 1.5,
+  "bayRadius": 0.85,
+  "seatInset": 0.32,
+  "arcSegments": 32,
+  "top": 0.802,
+  "thickness": 0.06,
+  "edgeRadius": 0.008,
+  "legOffset": 1.28,
+  "legWidth": 0.065,
+  "frameHeight": 0.045,
+  "columnWidth": 0.16,
+  "footHeight": 0.018,
+  "footRadius": 0.046,
+  "dividerStart": 0.035,
+  "dividerEnd": 1.20,
+  "dividerBottom": 0.835,
+  "dividerTop": 1.18,
+  "dividerThickness": 0.008,
+  "dividerCornerRadius": 0.028,
+  "clampPositions": [0.18, 0.98]
+}

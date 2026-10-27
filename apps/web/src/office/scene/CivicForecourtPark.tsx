@@ -1,7 +1,8 @@
-import { useMemo, useRef, useLayoutEffect } from "react";
+import { useEffect, useMemo, useRef, useLayoutEffect } from "react";
 import type { BufferGeometry, InstancedMesh, Material} from "three";
 import { BoxGeometry, CircleGeometry, Color, CylinderGeometry, IcosahedronGeometry, Matrix4, Vector3, MeshStandardMaterial } from "three";
 import { useSolarEnvironment } from "./Environment";
+import { useExteriorInstancedGeometries } from "./ExteriorPart";
 import { FRONT_APPROACH } from "./campusSiteLayout";
 
 // Dimensions & coordinates for the Civic Forecourt Park
@@ -113,8 +114,27 @@ function buildCivicPark() {
   hardscape.push({ x: 0, y: WALK_Y, z: -87.5, sx: 110, sy: 0.03, sz: 3.2, color: "#cfcac0" });
 
   // 3. Central Fountain & Water Basin on the promenade axis
-  hardscape.push({ x: 0, y: PLAZA_Y + 0.02, z: PARK_CROSS_Z, sx: 7.2, sy: 0.12, sz: 7.2, color: "#c4bfb4" });
+  hardscape.push({ x: 0, y: PLAZA_Y + 0.008, z: PARK_CROSS_Z, sx: 14.8, sy: 0.03, sz: 14.8, color: "#d6d1c6" });
+  hardscape.push({ x: 0, y: PLAZA_Y + 0.03, z: PARK_CROSS_Z, sx: 7.4, sy: 0.14, sz: 7.4, color: "#c4bfb4" });
+  hardscape.push({ x: 0, y: PLAZA_Y + 0.12, z: PARK_CROSS_Z, sx: 6.2, sy: 0.08, sz: 6.2, color: "#b6b0a4" });
+  hardscape.push({ x: 0, y: PLAZA_Y + 0.28, z: PARK_CROSS_Z, sx: 1.4, sy: 0.36, sz: 1.4, color: "#9fa5a2" });
   pools.push({ x: 0, y: WATER_Y + 0.08, z: PARK_CROSS_Z, sx: 2.8, sy: 1, sz: 2.8, color: "#5c92ad" });
+
+  // Formal parterre garden borders & flower beds flanking the central promenade
+  for (const side of [-1, 1]) {
+    for (const zBand of [PARK_NORTH_Z - 5.5, PARK_SOUTH_Z + 5.5]) {
+      hardscape.push({ x: side * 14.5, y: PARK_Y + 0.05, z: zBand, sx: 9.6, sy: 0.14, sz: 3.4, color: "#bcb7ac" });
+      lawns.push({ x: side * 14.5, y: PARK_Y + 0.11, z: zBand, sx: 9.0, sy: 0.06, sz: 2.8, color: "#486b43" });
+      for (const dx of [-3.2, 0, 3.2]) {
+        canopies.push({ x: side * 14.5 + dx, y: PARK_Y + 0.32, z: zBand, sx: 0.65, sy: 0.42, sz: 0.65, color: dx === 0 ? "#b896d8" : "#628658" });
+      }
+    }
+    // Pocket plaza nodes at the transverse walk intersections (x = ±32, z = PARK_CROSS_Z)
+    hardscape.push({ x: side * 32, y: WALK_Y + 0.008, z: PARK_CROSS_Z, sx: 8.4, sy: 0.035, sz: 8.4, color: "#d8d3c8" });
+    hardscape.push({ x: side * 32, y: WALK_Y + 0.08, z: PARK_CROSS_Z, sx: 3.2, sy: 0.16, sz: 3.2, color: "#b8b3a8" });
+    lawns.push({ x: side * 32, y: WALK_Y + 0.15, z: PARK_CROSS_Z, sx: 2.6, sy: 0.06, sz: 2.6, color: "#4e7348" });
+    canopies.push({ x: side * 32, y: WALK_Y + 0.48, z: PARK_CROSS_Z, sx: 0.95, sy: 0.58, sz: 0.95, color: "#f3c4d0" });
+  }
 
   // 4. Formal Tree Allées & Shaded Groves
   // Central Promenade Allée: Majestic cypress & columnar trees lining the axial path
@@ -306,10 +326,11 @@ function InstancedBatch({
     meshRef.current.instanceMatrix.needsUpdate = true;
     if (meshRef.current.instanceColor) meshRef.current.instanceColor.needsUpdate = true;
     meshRef.current.computeBoundingSphere();
-  }, [items]);
+  }, [items, geometry]);
 
   return (
     <instancedMesh
+      key={geometry.uuid}
       ref={meshRef}
       args={[geometry, material, items.length]}
       castShadow={castShadow}
@@ -322,6 +343,7 @@ export function CivicForecourtPark() {
   const { state } = useSolarEnvironment();
   const nightFactor = state.factors.exteriorLightFactor;
   const data = useMemo(() => buildCivicPark(), []);
+  const blenderGeometries = useExteriorInstancedGeometries();
 
   const geometries = useMemo(() => {
     const box = new BoxGeometry(1, 1, 1);
@@ -341,6 +363,7 @@ export function CivicForecourtPark() {
     const barkMat = new MeshStandardMaterial({ roughness: 0.95 });
     const leavesMat = new MeshStandardMaterial({ roughness: 0.82, flatShading: true });
     const metalMat = new MeshStandardMaterial({ roughness: 0.45, metalness: 0.7 });
+    const lampOpticsMat = new MeshStandardMaterial({ color: "#fff2da", emissive: "#ffd3a0", emissiveIntensity: 0, roughness: .4 });
     const waterMat = new MeshStandardMaterial({ roughness: 0.2, metalness: 0.8, color: "#4f849c" });
     const poolMat = new MeshStandardMaterial({
       roughness: 1,
@@ -349,8 +372,15 @@ export function CivicForecourtPark() {
       depthWrite: false
     });
 
-    return { lawnMat, stoneMat, woodMat, barkMat, leavesMat, metalMat, waterMat, poolMat };
+    return { lawnMat, stoneMat, woodMat, barkMat, leavesMat, metalMat, lampOpticsMat, waterMat, poolMat };
   }, []);
+
+  // eslint-disable-next-line react-hooks/immutability -- Three.js material emission follows the shared night state.
+  useEffect(() => { materials.lampOpticsMat.emissiveIntensity = nightFactor * 3.6; }, [materials, nightFactor]);
+  useEffect(() => () => {
+    Object.values(geometries).forEach(geometry => geometry.dispose());
+    Object.values(materials).forEach(material => material.dispose());
+  }, [geometries, materials]);
 
   return (
     <group name="civic-forecourt-park" userData={{ officePassable: true, officeCollision: false }}>
@@ -364,12 +394,15 @@ export function CivicForecourtPark() {
       <InstancedBatch geometry={geometries.disc} material={materials.waterMat} items={data.pools.filter(p => p.color === "#5c92ad")} />
 
       {/* 4. Trees: Trunks & Polyhedral Canopies */}
-      <InstancedBatch geometry={geometries.trunkCyl} material={materials.barkMat} items={data.trunks} castShadow />
-      <InstancedBatch geometry={geometries.canopyIco} material={materials.leavesMat} items={data.canopies} castShadow />
+      <InstancedBatch geometry={blenderGeometries?.trunk ?? geometries.trunkCyl} material={materials.barkMat} items={data.trunks} castShadow />
+      <InstancedBatch geometry={blenderGeometries?.canopy ?? geometries.canopyIco} material={materials.leavesMat} items={data.canopies} castShadow />
 
       {/* 5. Park Benches & Street Lamps */}
-      <InstancedBatch geometry={geometries.box} material={materials.woodMat} items={data.benches} castShadow />
-      <InstancedBatch geometry={geometries.box} material={materials.metalMat} items={data.lamps} castShadow />
+      <InstancedBatch geometry={blenderGeometries?.bench ?? geometries.box} material={materials.woodMat} items={data.benches} castShadow />
+      <InstancedBatch geometry={blenderGeometries?.lamp ?? geometries.box} material={materials.metalMat} items={data.lamps} castShadow />
+
+      {blenderGeometries?.lampOptics && <InstancedBatch geometry={blenderGeometries.lampOptics}
+        material={materials.lampOpticsMat} items={data.lamps} />}
 
       {/* 6. Night Ambient Light Decals */}
       {nightFactor > 0.05 && (

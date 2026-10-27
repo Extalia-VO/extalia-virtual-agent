@@ -1,3 +1,5 @@
+import { InteriorPart } from '../../InteriorPart';
+import INTERIOR_PROFILE from '../../interiorAssetProfile.json';
 import React from "react";
 import { DoubleSide } from "three";
 import { FixtureSpotLight } from "./FixtureSpotLight";
@@ -68,7 +70,7 @@ export function WallSconceFixture({
 
       {/* The existing lower lens provides a restrained downward wall/task wash. */}
       <FixtureSpotLight name="wall-sconce-downlight" position={[0, -0.2, 0.16]} aim={[0, -1.75, 0.65]}
-        intensity={factor * 8} distance={3.2} angle={0.9} color={lightColor} />
+        intensity={factor * 18} distance={3.8} angle={1.0} color={lightColor} />
     </group>
   );
 }
@@ -101,7 +103,7 @@ export function StandLampFixture({
   const shadeY = height - 0.26;
 
   return (
-    <group position={position} rotation={rotation}>
+    <group position={position} rotation={rotation}><InteriorPart model="floor-lamp" modelScale={[1,height/INTERIOR_PROFILE.floorLamp.height,1]}>
       {/* Heavy circular weighted base */}
       <mesh castShadow position={[0, 0.025, 0]}>
         <cylinderGeometry args={[0.26, 0.28, 0.05, 24]} />
@@ -150,8 +152,9 @@ export function StandLampFixture({
         />
       </mesh>
 
+      </InteriorPart>
       <FixtureSpotLight name="stand-lamp-downlight" position={[0, shadeY - 0.24, 0]}
-        aim={[0, 0.05, 0.35]} intensity={factor * 10} distance={3.5} angle={1.05} color={lightColor} />
+        aim={[0, 0.05, 0.35]} intensity={factor * 24} distance={4.2} angle={1.1} color={lightColor} />
     </group>
   );
 }
@@ -210,7 +213,7 @@ export function DeskLampFixture({
         />
       </mesh>
       <FixtureSpotLight name="desk-lamp-task-beam" position={[0, 0.365, 0.065]}
-        aim={[0, 0.01, 0.27]} intensity={factor * 3.5} distance={1.5} angle={0.95} color={lightColor} />
+        aim={[0, 0.01, 0.27]} intensity={factor * 14} distance={2.4} angle={1.05} color={lightColor} />
     </group>
   );
 }

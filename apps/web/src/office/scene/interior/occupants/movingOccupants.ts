@@ -27,6 +27,19 @@ export type MovingOccupantSnapshot = {
 type MovingOccupantState = Omit<MovingOccupantSnapshot, "id">;
 
 const movingOccupants = new Map<string, MovingOccupantState>();
+// Seated bodies remain physical obstacles without registering door-opening intent.
+const stationaryOccupants = new Map<string, Point3>();
+
+export function trackStationaryOccupant(id: string, position: Readonly<Point3> | null): void {
+  if (!position) { stationaryOccupants.delete(id); return; }
+  const point = stationaryOccupants.get(id) ?? [0, 0, 0];
+  point[0] = position[0]; point[1] = position[1]; point[2] = position[2];
+  stationaryOccupants.set(id, point);
+}
+
+function stationarySnapshot(id: string, point: Point3, updatedAt: number): MovingOccupantSnapshot {
+  return { id, position: [...point], target: [...point], velocity: [0, 0, 0], motion: 'idle', updatedAt };
+}
 export type DoorPortal = {
   floor: CampusFloor;
   roomId: string;
@@ -37,6 +50,15 @@ export type DoorPortal = {
   yaw: number;
   clearWidth: number;
   openAmount: number;
+  /** Leaf height and the hinged leaf's fully open angle (radians; positive swings toward local -Z). */
+  height: number;
+  openAngle: number;
+  /** Which jamb carries the hinged leaf; omitted portals use the left jamb. */
+  hinge?: "left" | "right";
+  handleHeight?: number;
+  handleOffset?: number;
+  /** Sliding leaves open by themselves; hinged leaves only move while a character holds them. */
+  sliding: boolean;
 };
 
 export type DoorPortalSnapshot = DoorPortal & { id: string };
@@ -45,6 +67,16 @@ const doorPortals = new Map<string, DoorPortal>();
 export function setDoorPortal(id: string, portal: DoorPortal | null) {
   if (portal) doorPortals.set(id, { ...portal, center: [...portal.center] as Point3 });
   else doorPortals.delete(id);
+}
+
+/** Visit every registered door without copying (per-frame door logic). */
+export function forEachDoorPortal(visit: (id: string, portal: Readonly<DoorPortal>) => void) {
+  for (const [id, portal] of doorPortals) visit(id, portal);
+}
+
+/** Visit every walking character tracked for door logic, without copying. */
+export function forEachTrackedWalker(visit: (id: string, position: Readonly<Point3>, target: Readonly<Point3>, updatedAt: number) => void) {
+  for (const [id, state] of movingOccupants) visit(id, state.position, state.target, state.updatedAt);
 }
 
 /** Return detached, stable semantic portal data for scene overlays and inspection. */
@@ -129,6 +161,33 @@ export function setMovingOccupant(
   });
 }
 
+/**
+ * Allocation-free per-frame form of `setMovingOccupant` for walkers that own
+ * their position tuples (doors open for them); `null` removes the walker.
+ * Velocity is measured from the previous copied frame, independently of the owner's mutable tuple.
+ */
+export function trackMovingOccupant(occupantId: string, position: Readonly<Point3> | null, target?: Readonly<Point3>, motion: OccupantMotionMode = "walk", timestamp = nowMs()) {
+  if (!position || !target) {
+    movingOccupants.delete(occupantId);
+    return;
+  }
+  let state = movingOccupants.get(occupantId);
+  const previous = Boolean(state);
+  if (!state) {
+    state = { position: [0, 0, 0], target: [0, 0, 0], velocity: [0, 0, 0], motion, updatedAt: 0 };
+    movingOccupants.set(occupantId, state);
+  }
+  const dt = Math.max(.008, Math.min(.25, (timestamp - state.updatedAt) / 1000));
+  for (let axis = 0; axis < 3; axis++) {
+    const measured = previous && motion !== 'idle' ? clampVelocityComponent((position[axis]! - state.position[axis]!) / dt) : 0;
+    state.velocity[axis] = measured;
+  }
+  state.position[0] = position[0]; state.position[1] = position[1]; state.position[2] = position[2];
+  state.target[0] = target[0]; state.target[1] = target[1]; state.target[2] = target[2];
+  state.motion = motion;
+  state.updatedAt = timestamp;
+}
+
 /** Return a stable copy so callers can safely iterate while other agents move. */
 export function getMovingOccupantsSnapshot(excludeId?: string): MovingOccupantSnapshot[] {
   const result: MovingOccupantSnapshot[] = [];
@@ -143,6 +202,9 @@ export function getMovingOccupantsSnapshot(excludeId?: string): MovingOccupantSn
       updatedAt: state.updatedAt
     });
   }
+  for (const [id, point] of stationaryOccupants) {
+    if (id !== excludeId && !movingOccupants.has(id)) result.push(stationarySnapshot(id, point, nowMs()));
+  }
   return result;
 }
 
@@ -151,35 +213,21 @@ export function getMovingOccupantsSnapshot(excludeId?: string): MovingOccupantSn
  * distance plus body clearance. Upper/lower stories outside 1.5 m are separate.
  * Full detached snapshots remain available for admission and diagnostics.
  */
-export function getNearbyMovingOccupantsSnapshot(excludeId: string, point: Point3): MovingOccupantSnapshot[] {
+export function getNearbyMovingOccupantsSnapshot(excludeId: string, point: Readonly<Point3>): MovingOccupantSnapshot[] {
   const result: MovingOccupantSnapshot[] = [];
+  const now = nowMs();
   for (const [id, state] of movingOccupants) {
-    if (id === excludeId || Math.abs(state.position[1] - point[1]) > 1.5 ||
+    if (id === excludeId || now - state.updatedAt > 750 || Math.abs(state.position[1] - point[1]) > 1.5 ||
         Math.hypot(state.position[0] - point[0], state.position[2] - point[2]) > 12) continue;
     result.push({ id, position: [...state.position] as Point3, target: [...state.target] as Point3,
       velocity: [...state.velocity] as Point3, motion: state.motion, updatedAt: state.updatedAt });
   }
-  return result;
-}
-
-export function isMovingOccupantNear(x: number, y: number, z: number, halfWidth: number, rotationY: number) {
-  const cos = Math.cos(rotationY);
-  const sin = Math.sin(rotationY);
-  for (const { position: [px, py, pz], target: [tx, , tz] } of movingOccupants.values()) {
-    const dx = px - x;
-    const dz = pz - z;
-    const targetDx = tx - px;
-    const targetDz = tz - pz;
-    // Measure against the door's own width and depth, including rotated walls.
-    const across = cos * dx - sin * dz;
-    const through = sin * dx + cos * dz;
-    const crossingDoorPlane = Math.abs(sin * targetDx + cos * targetDz) > 0.04;
-    if (crossingDoorPlane &&
-        Math.abs(across) < halfWidth + 0.65 &&
-        Math.abs(py - y) < 1.15 &&
-        Math.abs(through) < 1.35) return true;
+  for (const [id, position] of stationaryOccupants) {
+    if (id === excludeId || movingOccupants.has(id) || Math.abs(position[1] - point[1]) > 1.5 ||
+        Math.hypot(position[0] - point[0], position[2] - point[2]) > 12) continue;
+    result.push(stationarySnapshot(id, position, now));
   }
-  return false;
+  return result;
 }
 
 /**

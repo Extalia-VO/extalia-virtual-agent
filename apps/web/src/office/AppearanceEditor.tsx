@@ -1,0 +1,213 @@
+import {
+  CHARACTER_BAGS, CHARACTER_BOTTOMS, CHARACTER_EARRINGS, CHARACTER_GAITS, CHARACTER_GLASSES, CHARACTER_HEIGHT_CM,
+  CHARACTER_OUTFITS, CHARACTER_PRESENTATIONS, CHARACTER_STATURES, CHARACTER_TOPS, CHARACTER_WATCHES,
+  getCharacterHairOptions, resolveCharacterHair,
+  type CharacterAccessories, type CharacterAppearance, type CharacterHairStyle,
+} from '@extalia/core';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { errorMessage } from '../host/remote';
+import type { Messages } from '../i18n';
+import { Icon } from '../ui/Icon';
+import { Segmented } from '../ui/Segmented';
+import { Select, type SelectOption } from '../ui/Select';
+import { localHairStyles } from './scene/avatars/sourceAssets';
+import {
+  applyPresentationPreset, avatarVisual, characterHeightCm, defaultCharacterAppearance, HAIR_COLORS, lookSeed, SKIN_TONES, type LookIdentity,
+} from './scene/avatars/appearance';
+
+/** Garment swatches; "auto" keeps the outfit's own palette. */
+export const GARMENT_COLORS = ['#26324a', '#3a3d42', '#efe9dc', '#a9c4dc', '#9fb39a', '#6d2333', '#b0875c', '#5f4a6e'] as const;
+
+type Text = Messages['appearance'];
+
+/** Order-independent comparison, so a draft equal to the saved look is not "changed". */
+function sameAppearance(a: CharacterAppearance, b: CharacterAppearance): boolean {
+  const canonical = (value: unknown): unknown => value && typeof value === 'object'
+    ? Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined).sort(([x], [y]) => x.localeCompare(y)).map(([key, item]) => [key, canonical(item)]))
+    : value;
+  return JSON.stringify(canonical(a)) === JSON.stringify(canonical(b));
+}
+
+function withOptional<K extends 'topColor' | 'bottomColor' | 'heightCm'>(draft: CharacterAppearance, key: K, value: CharacterAppearance[K]): CharacterAppearance {
+  const next = { ...draft };
+  if (value === undefined) delete next[key];
+  else next[key] = value;
+  return next;
+}
+
+function Field<T extends string>({ label, value, options, onChange }: {
+  label: string; value: T; options: readonly SelectOption<T>[]; onChange(value: T): void;
+}) {
+  const id = useId();
+  return <Select id={id} label={label} value={value} options={options} onChange={onChange} className="appearance-select" />;
+}
+
+function Swatches({ legend, value, colors, names, auto, custom, onChange }: {
+  legend: string; value: string | undefined; colors: readonly string[]; names: readonly string[];
+  auto?: string; custom: string; onChange(value: string | undefined): void;
+}) {
+  const name = useId();
+  const own = value !== undefined && !colors.includes(value);
+  return <fieldset className="appearance-swatches">
+    <legend>{legend}</legend>
+    <div className="appearance-swatch-row">
+      {auto && <label className="appearance-swatch auto" title={auto}>
+        <input type="radio" name={name} checked={value === undefined} aria-label={auto} onChange={() => onChange(undefined)} />
+        <span aria-hidden="true" />
+      </label>}
+      {colors.map((color, index) => <label key={color} className="appearance-swatch" title={names[index]}>
+        <input type="radio" name={name} checked={value === color} aria-label={names[index] ?? color} onChange={() => onChange(color)} />
+        <span style={{ background: color }} aria-hidden="true" />
+      </label>)}
+      <label className={`appearance-swatch custom${own ? ' selected' : ''}`} title={custom}>
+        <input type="color" value={value ?? '#808080'} aria-label={custom} onChange={event => onChange(event.target.value.toLowerCase())} />
+      </label>
+    </div>
+  </fieldset>;
+}
+
+function Toggle({ label, checked, onChange }: { label: string; checked: boolean; onChange(value: boolean): void }) {
+  return <label className="switch appearance-switch">
+    <input type="checkbox" role="switch" checked={checked} onChange={event => onChange(event.target.checked)} />
+    <span className="switch-track" aria-hidden="true" />
+    <span>{label}</span>
+  </label>;
+}
+
+/**
+ * Per-character look: presentation presets plus individual options. Every change
+ * previews on the selected character; Save stores it in the agent host so Web
+ * and Desktop share it.
+ */
+export function AppearanceEditor({ t, characterId: presenceId, identity, saved, onPreview, onSave, onClose }: {
+  t: Text;
+  characterId: string;
+  /** v0.0.30: a named character's look seed; its generated look and palette come from the name. */
+  identity?: LookIdentity | undefined;
+  saved: CharacterAppearance | undefined;
+  onPreview(appearance: CharacterAppearance | null): void;
+  onSave(appearance: CharacterAppearance | null): Promise<void>;
+  onClose(): void;
+}) {
+  const characterId = lookSeed(presenceId, identity);
+  const presentation = identity?.presentation;
+  const baseline = useMemo(() => saved ?? defaultCharacterAppearance(characterId, presentation), [saved, characterId, presentation]);
+  const [draft, setDraft] = useState(baseline);
+  const [saving, setSaving] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const headingId = useId(), presetId = useId();
+  const preview = useRef(onPreview);
+  useEffect(() => { preview.current = onPreview; });
+  useEffect(() => { preview.current(draft); }, [draft]);
+  useEffect(() => () => preview.current(null), []);
+
+  const changed = !sameAppearance(draft, baseline);
+  const generatedHeight = useMemo(() => characterHeightCm(avatarVisual(characterId, withOptional(draft, 'heightCm', undefined))), [characterId, draft]);
+  const edit = (next: CharacterAppearance) => { setNotice(null); setDraft(next); };
+  const set = (patch: Partial<Omit<CharacterAppearance, 'topColor' | 'bottomColor' | 'heightCm'>>) => edit({ ...draft, ...patch });
+  const accessory = (patch: Partial<CharacterAccessories>) => edit({ ...draft, accessories: { ...draft.accessories, ...patch } });
+  const options = <T extends string>(values: readonly T[], label: (value: T) => string): SelectOption<T>[] => values.map(value => ({ value, label: label(value) }));
+  const withNone = <T extends string>(values: readonly ('none' | T)[], labels: Record<T, string>) =>
+    options(values, value => value === 'none' ? t.none : labels[value as T]);
+  // With local detailed models, only styles that have one are offered; the procedural character draws them all.
+  const localStyles = localHairStyles();
+  const hairOptions: SelectOption<CharacterHairStyle>[] = getCharacterHairOptions(draft.presentation)
+    .filter(option => !localStyles || localStyles.has(option.id)).map(option => ({
+    value: option.id,
+    label: t.hairStyles[option.id],
+  }));
+  const resolvedHair = resolveCharacterHair(draft.hairStyle, draft.presentation);
+  const hairFallback = resolvedHair.warning === 'legacy-bun';
+  // Only the presentation's own hair is offered; a saved style of the other group stays visible as the current value.
+  if (!hairOptions.some(option => option.value === draft.hairStyle)) {
+    hairOptions.push({ value: draft.hairStyle, label: `${t.hairGroups[resolvedHair.group]} · ${t.hairStyles[draft.hairStyle]}`, disabled: true });
+  }
+
+  async function store(next: CharacterAppearance | null) {
+    setSaving(true); setError(null); setNotice(null);
+    try {
+      await onSave(next);
+      if (!next) setDraft(defaultCharacterAppearance(characterId, presentation));
+      setNotice(t.saved);
+    } catch (failure) { setError(errorMessage(failure)); }
+    finally { setSaving(false); }
+  }
+
+  return <section className="appearance-editor" aria-labelledby={headingId}>
+    <div className="office-panel-head">
+      <strong id={headingId}>{t.title}</strong>
+      <button type="button" className="icon-button small" aria-label={t.close} onClick={onClose}><Icon name="close" /></button>
+    </div>
+    <p className="muted-note">{t.lead}</p>
+    {/* Buttons, not radios: choosing the current preset again re-applies it. */}
+    <div className="appearance-preset-field">
+      <span id={presetId}>{t.preset}</span>
+      <div className="segmented appearance-presets" role="group" aria-labelledby={presetId}>
+        {CHARACTER_PRESENTATIONS.map(value => <button key={value} type="button" className="segment-label" aria-pressed={draft.presentation === value}
+          onClick={() => edit(applyPresentationPreset(draft, value, characterId))}>{t.presets[value]}</button>)}
+      </div>
+    </div>
+
+    <fieldset className="appearance-group">
+      <legend>{t.hair}</legend>
+      <Field label={t.hairStyle} value={resolvedHair.aliasOf ?? draft.hairStyle} options={hairOptions} onChange={hairStyle => set({ hairStyle })} />
+      {hairFallback && <p className="muted-note" role="status">{t.bunFallbackNotice}</p>}
+      <Swatches legend={t.hairColor} value={draft.hairColor} colors={HAIR_COLORS} names={t.hairColors} custom={t.customColor} onChange={hairColor => hairColor && set({ hairColor })} />
+      <Swatches legend={t.skinTone} value={draft.skinTone} colors={SKIN_TONES} names={t.skinTones} custom={t.customColor} onChange={skinTone => skinTone && set({ skinTone })} />
+    </fieldset>
+
+    <fieldset className="appearance-group">
+      <legend>{t.clothing}</legend>
+      <div className="appearance-grid">
+        <Field label={t.top} value={draft.top} options={options(CHARACTER_TOPS, value => t.tops[value])} onChange={top => set({ top })} />
+        <Field label={t.bottom} value={draft.bottom} options={options(CHARACTER_BOTTOMS, value => t.bottoms[value])} onChange={bottom => set({ bottom })} />
+        <Field label={t.outfit} value={draft.outfit} options={options(CHARACTER_OUTFITS, value => t.outfits[value])} onChange={outfit => set({ outfit })} />
+      </div>
+      {draft.bottom !== 'dress' && <Swatches legend={t.topColor} value={draft.topColor} colors={GARMENT_COLORS} names={t.garmentColors} auto={t.autoColor} custom={t.customColor}
+        onChange={value => edit(withOptional(draft, 'topColor', value))} />}
+      <Swatches legend={draft.bottom === 'dress' ? t.dressColor : t.bottomColor} value={draft.bottomColor} colors={GARMENT_COLORS} names={t.garmentColors} auto={t.autoColor} custom={t.customColor}
+        onChange={value => edit(withOptional(draft, 'bottomColor', value))} />
+    </fieldset>
+
+    <fieldset className="appearance-group">
+      <legend>{t.body}</legend>
+      <Field label={t.stature} value={draft.stature} options={options(CHARACTER_STATURES, value => t.statures[value])} onChange={stature => set({ stature })} />
+      <label className="field appearance-range">
+        <span>{t.height} <output>{t.heightValue(draft.heightCm ?? generatedHeight)}</output></span>
+        <input type="range" min={CHARACTER_HEIGHT_CM.min} max={CHARACTER_HEIGHT_CM.max} step={1} value={draft.heightCm ?? generatedHeight}
+          aria-valuetext={t.heightValue(draft.heightCm ?? generatedHeight)} onChange={event => edit(withOptional(draft, 'heightCm', Number(event.target.value)))} />
+      </label>
+    </fieldset>
+
+    <fieldset className="appearance-group">
+      <legend>{t.accessories}</legend>
+      <div className="appearance-grid">
+        <Field label={t.glasses} value={draft.accessories.glasses} options={withNone(CHARACTER_GLASSES, t.glassesStyles)} onChange={glasses => accessory({ glasses })} />
+        <Field label={t.watch} value={draft.accessories.watch} options={withNone(CHARACTER_WATCHES, t.watches)} onChange={watch => accessory({ watch })} />
+        <Field label={t.earrings} value={draft.accessories.earrings} options={withNone(CHARACTER_EARRINGS, t.earringStyles)} onChange={earrings => accessory({ earrings })} />
+        <Field label={t.bag} value={draft.accessories.bag} options={withNone(CHARACTER_BAGS, t.bags)} onChange={bag => accessory({ bag })} />
+      </div>
+      <div className="appearance-switches">
+        <Toggle label={t.tie} checked={draft.accessories.tie} onChange={tie => accessory({ tie })} />
+        <Toggle label={t.badge} checked={draft.accessories.badge} onChange={badge => accessory({ badge })} />
+        <Toggle label={t.headphones} checked={draft.accessories.headphones} onChange={headphones => accessory({ headphones })} />
+      </div>
+    </fieldset>
+
+    <fieldset className="appearance-group">
+      <legend>{t.movement}</legend>
+      <Segmented legend={t.gait} value={draft.gait} className="appearance-segmented" options={options(CHARACTER_GAITS, value => t.gaits[value])} onChange={gait => set({ gait })} />
+      <p className="muted-note">{t.gaitNote}</p>
+    </fieldset>
+
+    <p className="muted-note">{t.previewNote}</p>
+    {error && <p className="form-error" role="alert"><Icon name="alert" />{error}</p>}
+    {notice && !changed && <p className="muted-note" role="status">{notice}</p>}
+    <div className="appearance-actions">
+      <button type="button" className="button primary" disabled={!changed || saving} onClick={() => { void store(draft); }}>{saving ? t.saving : t.save}</button>
+      <button type="button" className="button" disabled={!changed || saving} onClick={() => { setNotice(null); setDraft(baseline); }}>{t.cancel}</button>
+      <button type="button" className="button" disabled={(!saved && !changed) || saving} onClick={() => { void store(null); }}>{t.reset}</button>
+    </div>
+  </section>;
+}

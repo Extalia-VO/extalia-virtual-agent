@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { inlineText, parseInline, parseMarkdown, safeHref } from '../src/chat/markdownParser';
+import { inlineText, parseInline, parseMarkdown, safeHref, splitTableRow } from '../src/chat/markdownParser';
+
+/** Cell text per row, for compact table assertions. */
+const cellTexts = (rows: ReturnType<typeof parseInline>[][]) => rows.map(row => row.map(inlineText));
 
 describe('markdown parser', () => {
   it('parses headings, lists, quotes, rules and fenced code', () => {
@@ -40,5 +43,73 @@ describe('markdown parser', () => {
     expect(inlineText(parseInline('\\*not em\\* and 2 * 3 * 4'))).toBe('*not em* and 2 * 3 * 4');
     expect(parseInline('a\nb')).toEqual([{ type: 'text', text: 'a' }, { type: 'break' }, { type: 'text', text: 'b' }]);
     expect(inlineText(parseInline('**'.repeat(2000)))).toBe('**'.repeat(2000));
+  });
+});
+
+describe('markdown tables', () => {
+  it('parses a header, a delimiter row with alignments and body rows', () => {
+    const [table] = parseMarkdown('| Name | Qty | Price |\n| :--- | :---: | ---: |\n| Apple | 3 | 1.20 |\n| Pear | 10 | 0.80 |');
+    expect(table).toMatchObject({ type: 'table', align: ['left', 'center', 'right'] });
+    if (table?.type !== 'table') throw new Error('expected a table');
+    expect(cellTexts([table.header])).toEqual([['Name', 'Qty', 'Price']]);
+    expect(cellTexts(table.rows)).toEqual([['Apple', '3', '1.20'], ['Pear', '10', '0.80']]);
+  });
+
+  it('accepts tables without outer pipes and without spaces', () => {
+    const [table] = parseMarkdown('a | b\n--|--:\n1 | 2');
+    expect(table).toMatchObject({ type: 'table', align: [null, 'right'] });
+    if (table?.type !== 'table') throw new Error('expected a table');
+    expect(cellTexts(table.rows)).toEqual([['1', '2']]);
+  });
+
+  it('keeps escaped pipes inside their cell, in text and in code spans', () => {
+    const [table] = parseMarkdown('| expr | note |\n| --- | --- |\n| `a\\|b` | x \\| y |');
+    if (table?.type !== 'table') throw new Error('expected a table');
+    expect(table.rows[0]![0]).toEqual([{ type: 'code', text: 'a|b' }]);
+    expect(cellTexts(table.rows)).toEqual([['a|b', 'x | y']]);
+    expect(splitTableRow('| a \\| b | c |')).toEqual(['a | b', 'c']);
+  });
+
+  it('pads short rows with empty cells and cuts long rows, as GFM does', () => {
+    const [table] = parseMarkdown('| a | b | c |\n| - | - | - |\n| 1 |\n| 1 | 2 | 3 | 4 | 5 |');
+    if (table?.type !== 'table') throw new Error('expected a table');
+    expect(cellTexts(table.rows)).toEqual([['1', '', ''], ['1', '2', '3']]);
+  });
+
+  it('starts a table directly after a paragraph line', () => {
+    const blocks = parseMarkdown('Here are the numbers:\n| k | v |\n| --- | ---: |\n| x | 1 |\n\nAfter.');
+    expect(blocks.map(block => block.type)).toEqual(['paragraph', 'table', 'paragraph']);
+    expect(blocks[0]).toEqual({ type: 'paragraph', children: [{ type: 'text', text: 'Here are the numbers:' }] });
+    if (blocks[1]?.type !== 'table') throw new Error('expected a table');
+    expect(cellTexts(blocks[1].rows)).toEqual([['x', '1']]);
+  });
+
+  it('ends the table at a blank line or at the next block', () => {
+    const blocks = parseMarkdown('| a |\n| - |\n| 1 |\n# Heading\n| not | table |');
+    expect(blocks.map(block => block.type)).toEqual(['table', 'heading', 'paragraph']);
+    if (blocks[0]?.type !== 'table') throw new Error('expected a table');
+    expect(cellTexts(blocks[0].rows)).toEqual([['1']]);
+  });
+
+  it('renders inline formatting inside cells and keeps HTML as text', () => {
+    const [table] = parseMarkdown('| **bold** | [docs](https://example.com) | <img src=x onerror=alert(1)> |\n| --- | --- | --- |\n| *em* | `code` | ok |');
+    if (table?.type !== 'table') throw new Error('expected a table');
+    expect(table.header[0]).toEqual([{ type: 'strong', children: [{ type: 'text', text: 'bold' }] }]);
+    expect(table.header[1]).toEqual([{ type: 'link', href: 'https://example.com/', children: [{ type: 'text', text: 'docs' }] }]);
+    expect(inlineText(table.header[2]!)).toBe('<img src=x onerror=alert(1)>');
+    expect(table.rows[0]![1]).toEqual([{ type: 'code', text: 'code' }]);
+  });
+
+  it('never reads pipes inside fenced code as a table', () => {
+    expect(parseMarkdown('```\n| a | b |\n| --- | --- |\n```')).toEqual([{ type: 'code', text: '| a | b |\n| --- | --- |' }]);
+  });
+
+  it('is not a table without a matching delimiter row', () => {
+    expect(parseMarkdown('| a | b |\n| --- |').map(block => block.type)).toEqual(['paragraph']);
+    expect(parseMarkdown('| a | b |\n| - | x |').map(block => block.type)).toEqual(['paragraph']);
+    expect(parseMarkdown('| a | b |\n| - | :-x: |').map(block => block.type)).toEqual(['paragraph']);
+    expect(parseMarkdown('| a | b |\n| a | b |').map(block => block.type)).toEqual(['paragraph']);
+    expect(parseMarkdown('just a | pipe in a sentence').map(block => block.type)).toEqual(['paragraph']);
+    expect(parseMarkdown('Total\n---').map(block => block.type)).toEqual(['paragraph', 'rule']);
   });
 });

@@ -20,12 +20,14 @@ export function RoofSignage3D({
   position = [OFFICE_BUILDING.west + 8.5, 21.08, OFFICE_BUILDING.north - 0.75],
   rotationY = Math.PI,
   size = 1.55,
-  depth = 0.32
+  depth = 0.32,
+  supportsFromModel = false
 }: {
   position?: [number, number, number];
   rotationY?: number;
   size?: number;
   depth?: number;
+  supportsFromModel?: boolean;
 }) {
   const { state } = useSolarEnvironment();
   const night = state.factors.exteriorLightFactor;
@@ -106,14 +108,14 @@ export function RoofSignage3D({
   return (
     <group position={position} rotation={[0, rotationY, 0]} name="extalia-roof-signage-3d" userData={{ officeDynamic: true }}>
       {/* Steel support rail and posts anchoring the sign to the parapet. */}
-      <mesh position={[0, -size / 2 - 0.12, -0.18]} material={materials.frame} receiveShadow>
+      {!supportsFromModel && <><mesh position={[0, -size / 2 - 0.12, -0.18]} material={materials.frame} receiveShadow>
         <boxGeometry args={[totalWidth + 0.6, 0.12, 0.22]} />
       </mesh>
       {[-0.5, -0.17, 0.17, 0.5].map((f) => (
         <mesh key={f} position={[f * totalWidth, -size / 2 - 0.45, -0.18]} material={materials.frame}>
           <boxGeometry args={[0.08, 0.6, 0.08]} />
         </mesh>
-      ))}
+      ))}</>}
       <mesh position={[0, -size / 2 - 0.05, -0.06]} material={materials.strip}>
         <boxGeometry args={[totalWidth + 0.4, 0.025, 0.025]} />
       </mesh>

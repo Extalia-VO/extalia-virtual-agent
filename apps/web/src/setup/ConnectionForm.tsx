@@ -2,22 +2,29 @@ import { EFFORTS, PROVIDER_PRESETS, TASK_TIERS, presetById, type Effort, type Fe
 import type { AgentHostApi, ConnectionTestResult } from '@extalia/platform';
 import { useId, useState, type ReactNode } from 'react';
 import { errorMessage } from '../host/remote';
+import { friendlyConnectionError } from './connectionErrors';
 import type { Messages } from '../i18n';
 import { Icon } from '../ui/Icon';
+import { ComboBox } from '../ui/ComboBox';
 import { ProviderLogo } from '../ui/ProviderLogo';
 import { Segmented } from '../ui/Segmented';
 import { Select } from '../ui/Select';
-import { draftFromPreset, suggestedTiers, toConnectionInput, validateConnection, type ConnectionDraft, type ConnectionField, type OrchestrationDraft } from './validation';
+import { delegationLimitOptions, groupedModelOptions, tierModelOptions } from './modelOptions';
+import { draftFromPreset, suggestedTiers, toConnectionTestInput, validateConnection, type ConnectionDraft, type ConnectionField, type OrchestrationDraft } from './validation';
 
 type TestState = { kind: 'idle' } | { kind: 'testing' } | { kind: 'done'; result: ConnectionTestResult };
 
-/** Connection editor used by the first-run wizard and Settings. The parent saves. */
-export function ConnectionForm({ t, agents, draft, onChange, showAllErrors = false }: {
+/**
+ * Connection editor used by the first-run wizard and Settings. The parent saves.
+ * `knownModels` are the models an earlier successful test of this saved connection listed.
+ */
+export function ConnectionForm({ t, agents, draft, onChange, showAllErrors = false, knownModels }: {
   t: Messages;
   agents: AgentHostApi;
   draft: ConnectionDraft;
   onChange: (draft: ConnectionDraft) => void;
   showAllErrors?: boolean;
+  knownModels?: readonly string[];
 }) {
   const id = useId();
   const preset = presetById(draft.preset);
@@ -31,12 +38,15 @@ export function ConnectionForm({ t, agents, draft, onChange, showAllErrors = fal
   const updateOrchestration = (patch: Partial<OrchestrationDraft>) => update({ orchestration: { ...orchestration, ...patch } });
   const suggested = suggestedTiers(draft.preset);
   const usesSuggested = suggested && TASK_TIERS.every(tier => orchestration.tiers[tier] === suggested[tier]);
-  const models = test.kind === 'done' && test.result.ok ? test.result.models ?? [] : [];
+  // The models of the last successful test; a saved connection starts with those of its earlier test.
+  const models = test.kind === 'done' && test.result.ok ? test.result.models ?? [] : knownModels ?? [];
+  const modelOptions = groupedModelOptions(models, { otherGroup: t.connection.modelOther });
+  const tierOptions = tierModelOptions(models, { mainModel: t.connection.tierPlaceholder(draft.model.trim()), otherGroup: t.connection.modelOther });
   const canTest = !errors.baseUrl && !errors.apiKey && !errors.envVariable && test.kind !== 'testing';
 
   async function runTest() {
     setTest({ kind: 'testing' });
-    const { input, secret } = toConnectionInput(draft);
+    const { input, secret } = toConnectionTestInput(draft);
     try { setTest({ kind: 'done', result: await agents.testConnection(input, secret) }); }
     catch (error) { setTest({ kind: 'done', result: { ok: false, error: errorMessage(error) } }); }
   }
@@ -63,18 +73,17 @@ export function ConnectionForm({ t, agents, draft, onChange, showAllErrors = fal
     <div className="form-stack">
       <fieldset className="preset-picker">
         <legend>{t.connection.provider}</legend>
-        <div className="preset-grid">
+        <div className="preset-grid provider-grid">
           {PROVIDER_PRESETS.map(item => (
-            <label key={item.id} className="preset-card">
+            <label key={item.id} className="preset-card provider-card">
               <input type="radio" name={`${id}-preset`} value={item.id} checked={draft.preset === item.id}
                 onChange={() => { setTest({ kind: 'idle' }); onChange(draftFromPreset(item.id, draft)); }} />
-              <span className="preset-name">
-                <span className="preset-brand">
-                  <ProviderLogo preset={item.id} />
-                  {item.label}
-                </span>
+              {/* Logo and badge share the top row so a long name never pushes the badge out of the card. */}
+              <span className="provider-card-head" aria-hidden="true">
+                <span className="preset-brand"><ProviderLogo preset={item.id} /></span>
                 {item.local && <span className="chip">{t.connection.local}</span>}
               </span>
+              <span className="preset-name">{item.label}{item.local && <span className="visually-hidden"> ({t.connection.local})</span>}</span>
               <span className="preset-hint">{t.connection.presetHints[item.id]}</span>
             </label>
           ))}
@@ -114,14 +123,14 @@ export function ConnectionForm({ t, agents, draft, onChange, showAllErrors = fal
       )}
 
       <div className="form-grid">
-        {field('model', t.connection.model,
-          <>
-            <input id={`${id}-model`} type="text" value={draft.model} list={models.length ? `${id}-models` : undefined} spellCheck={false} autoComplete="off"
-              aria-invalid={Boolean(errorFor('model'))} aria-describedby={describedBy('model')}
-              onChange={event => update({ model: event.target.value })} onBlur={touch('model')} />
-            {models.length > 0 && <datalist id={`${id}-models`}>{models.map(model => <option key={model} value={model} />)}</datalist>}
-          </>,
-          t.connection.modelHint)}
+        <div className="field">
+          <ComboBox id={`${id}-model`} label={t.connection.model} value={draft.model} options={modelOptions}
+            customLabel={t.connection.modelCustom} emptyLabel={t.connection.modelEmpty}
+            invalid={Boolean(errorFor('model'))} describedBy={errorFor('model') ? `${id}-model-error ${id}-model-hint` : `${id}-model-hint`}
+            onChange={model => update({ model })} onBlur={touch('model')} />
+          {errorFor('model') && <small className="field-error" id={`${id}-model-error`}>{errorFor('model')}</small>}
+          <small className="muted" id={`${id}-model-hint`}>{models.length ? t.connection.modelFromList : t.connection.modelHint}</small>
+        </div>
         {preset.api === 'anthropic-messages' && (
           <div className="field">
             <Select
@@ -147,16 +156,9 @@ export function ConnectionForm({ t, agents, draft, onChange, showAllErrors = fal
           {test.kind === 'done' && (test.result.ok ? (
             <>
               <span className="status ok"><Icon name="check" />{t.connection.testOk(test.result.latencyMs)}</span>
-              {models.length > 0 && (
-                <div className="model-chips">
-                  <span className="muted">{t.connection.testModels(models.length)}</span>
-                  {models.slice(0, 12).map(model => (
-                    <button key={model} type="button" className="chip-button" aria-pressed={draft.model === model} aria-label={t.connection.useModel(model)} onClick={() => update({ model })}>{model}</button>
-                  ))}
-                </div>
-              )}
+              {models.length > 0 && <span className="muted">{t.connection.testModels(models.length)}</span>}
             </>
-          ) : <span className="status error"><Icon name="alert" />{t.connection.testFailed} {test.result.error}</span>)}
+          ) : <span className="status error"><Icon name="alert" />{t.connection.testFailed} {friendlyConnectionError(t, test.result.error ?? '')}</span>)}
         </div>
       </div>
 
@@ -187,16 +189,21 @@ export function ConnectionForm({ t, agents, draft, onChange, showAllErrors = fal
         {orchestration.enabled && (
           <>
             <div className="form-grid tiers">
-              {field('maxDelegations', t.connection.maxDelegations,
-                <input id={`${id}-maxDelegations`} type="number" inputMode="numeric" min={0} max={20} step={1} value={orchestration.maxDelegations}
-                  aria-invalid={Boolean(errorFor('maxDelegations'))} aria-describedby={describedBy('maxDelegations')}
-                  onChange={event => updateOrchestration({ maxDelegations: event.target.value })} onBlur={touch('maxDelegations')} />)}
+              <div className="field">
+                <Select
+                  id={`${id}-maxDelegations`}
+                  label={t.connection.maxDelegations}
+                  value={orchestration.maxDelegations}
+                  options={delegationLimitOptions(orchestration.maxDelegations, t.connection.delegationsOff)}
+                  onChange={maxDelegations => updateOrchestration({ maxDelegations })}
+                />
+                {errorFor('maxDelegations') && <small className="field-error" id={`${id}-maxDelegations-error`}>{errorFor('maxDelegations')}</small>}
+              </div>
               {TASK_TIERS.map(tier => (
                 <div className="field" key={tier}>
-                  <label htmlFor={`${id}-tier-${tier}`}>{t.connection.tierModel(t.connection.tiers[tier])}</label>
-                  <input id={`${id}-tier-${tier}`} type="text" value={orchestration.tiers[tier]} list={models.length ? `${id}-models` : undefined} spellCheck={false} autoComplete="off"
-                    placeholder={t.connection.tierPlaceholder(draft.model.trim())}
-                    onChange={event => updateOrchestration({ tiers: { ...orchestration.tiers, [tier]: event.target.value } })} />
+                  <ComboBox id={`${id}-tier-${tier}`} label={t.connection.tierModel(t.connection.tiers[tier])} value={orchestration.tiers[tier]} options={tierOptions}
+                    placeholder={t.connection.tierPlaceholder(draft.model.trim())} customLabel={t.connection.modelCustom} emptyLabel={t.connection.modelEmpty}
+                    onChange={model => updateOrchestration({ tiers: { ...orchestration.tiers, [tier]: model } })} />
                 </div>
               ))}
             </div>

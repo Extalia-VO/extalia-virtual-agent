@@ -11,18 +11,24 @@ import { FloorVisibilityProvider } from './interior/FloorVisibilityContext';
 import { StructuralCeilingProvider } from './interior/prefabs/architecture/StructuralCeilingContext';
 import { OfficeCeilings } from './interior/prefabs/architecture/OfficeCeilings';
 import { FixtureLighting } from './interior/lighting/FixtureLighting';
+import { ScreenIllumination } from './interior/prefabs/screens/ScreenIllumination';
+import type { OfficeAgentAllocation } from './interior/seating';
+import { DeskChairInstances } from './interior/DeskChairInstances';
+import { ExteriorEnvelopeProvider } from './interior/ExteriorEnvelopeContext';
 export { allocateOfficeAgents, getOfficeSeats } from './interior/seating';
 export type { OfficeSeat, OfficeAgentAllocation } from './interior/seating';
 
 export type FurnishedOfficeView = 'campus' | 'stack' | 1 | 2 | 3;
 
 /** Shared Desktop/Web room renderer; profiles and runtimes never enter the scene. */
-export function FurnishedFloors({ view, agents, language }: {
+export function FurnishedFloors({ view, agents, language, allocations }: {
   view: FurnishedOfficeView; agents: readonly OfficeAgent[]; language: Language;
+  allocations?: readonly OfficeAgentAllocation[] | undefined;
 }) {
   const all = view === 'campus' || view === 'stack';
-  return <FurnishedFloorProvider agents={agents} language={language}>
+  return <ExteriorEnvelopeProvider hidden={view === 'campus'}><FurnishedFloorProvider agents={agents} language={language} allocations={allocations}>
     <FixtureLighting />
+    <ScreenIllumination />
     {([1, 2, 3] as const).map(floor => <FloorVisibilityProvider key={floor} value={view === floor}>
       <group visible={all || view === floor} position={[0, (floor - 1) * FLOOR_HEIGHT, 0]} name={`furnished-floor-${floor}`}>
         <StructuralCeilingProvider floor={floor}>
@@ -30,6 +36,8 @@ export function FurnishedFloors({ view, agents, language }: {
             <OfficeCeilings floor={floor} />
             {floor === 1 ? <Floor1 /> : floor === 2 ? <Floor2 /> : <Floor3 />}
           </StaticCampusBatch>
+          {/* Desk chairs move with their agents, so they are instanced outside the static batch. */}
+          <DeskChairInstances floor={floor} />
         </StructuralCeilingProvider>
       </group>
     </FloorVisibilityProvider>)}
@@ -38,5 +46,5 @@ export function FurnishedFloors({ view, agents, language }: {
           width={OFFICE_STAIRCASE.width} rise={FLOOR_HEIGHT} runPerFlight={OFFICE_STAIRCASE.runPerFlight}
           stepsPerFlight={OFFICE_STAIRCASE.stepsPerFlight} midLandingDepth={OFFICE_STAIRCASE.midLandingDepth} /></StaticCampusBatch>
       </group>)}
-  </FurnishedFloorProvider>;
+  </FurnishedFloorProvider></ExteriorEnvelopeProvider>;
 }

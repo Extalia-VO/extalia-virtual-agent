@@ -175,7 +175,7 @@ export function MissionMonitor({ t, language, agents, session, connections, init
 
       {run.state === 'recovering' && <section aria-label={r.recoveryInspection}>
         {typeof agents.refreshNativeMissionRecovery === 'function'
-          ? <button type="button" disabled={refreshing} onClick={() => void refreshRecovery()}>{refreshing ? r.refreshingRecovery : r.refreshRecovery}</button>
+          ? <button type="button" className="button small" disabled={refreshing} onClick={() => void refreshRecovery()}>{refreshing ? r.refreshingRecovery : r.refreshRecovery}</button>
           : <p className="muted small">{r.recoveryUnsupported}</p>}
       </section>}
       {recovery && <section className="mission-recovery" aria-label={r.recoveryInspection} aria-live="polite">

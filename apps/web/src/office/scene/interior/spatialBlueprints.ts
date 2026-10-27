@@ -4,6 +4,11 @@
  * so scene components and resourceRegistry consume the same numbers.
  */
 
+import { OFFICE_CHAIR_SEAT_BLUEPRINT } from "./furnitureSeatBlueprint";
+import TEAM_POD_PROFILE from "./teamPodDesktopProfile.json";
+import WORKSTATION_PROFILE from "./workstationAssetProfile.json";
+import { monitorBankLayout } from "./prefabs/props/deviceGeometry";
+
 export type XZ = readonly [number, number];
 
 /** Library furniture and its standing interaction points share room-local coordinates. */
@@ -27,7 +32,7 @@ export const LIBRARY_BLUEPRINT = Object.freeze({
   deskPosition: [-0.4, 0, -0.2] as const,
   sofaPosition: [1.95, 0, 2.4] as const,
   sofaRotationY: Math.PI,
-  rugPosition: [1.2, 0.105, 2.0] as const,
+  rugPosition: [1.2, 0, 2.0] as const,
   coffeeTablePosition: [0, 0, 1.95] as const,
   plantPosition: [3.4, 0, 2.8] as const,
   lampPosition: [1.2, 0, -3.0] as const
@@ -38,17 +43,18 @@ export const SERVER_ROOM_BLUEPRINT = Object.freeze({
   roomCenter: [-8.2, 10.5] as XZ,
   roomSize: [8.2, 7.6] as const,
   deskPosition: [1.65, 0, 0.4] as const,
+  /** Cabinet floor is 0.09 m above the slab, matching the raised access tiles. */
   rackPositions: [
-    [-2.6, 1.0, -0.9],
-    [-2.6, 1.0, 0.3],
-    [-2.6, 1.0, 1.5]
+    [-2.6, 0, -0.9],
+    [-2.6, 0, 0.3],
+    [-2.6, 0, 1.5]
   ] as const,
-  rackRotationY: -Math.PI / 2,
+  rackRotationY: Math.PI / 2,
   /** Clear points in front of each rack door; avatars stand in front and face West towards the rack. */
   rackInspectionPoints: [
-    [-1.5, -0.9],
-    [-1.5, 0.3],
-    [-1.5, 1.5]
+    [-1.15, -0.9],
+    [-1.15, 0.3],
+    [-1.15, 1.5]
   ] as const
 });
 
@@ -57,14 +63,19 @@ export const SERVER_ROOM_BLUEPRINT = Object.freeze({
  * workstation resources. Child coordinates are local to the desk root.
  */
 export const SINGLE_WORKSTATION_BLUEPRINT = Object.freeze({
-  topSize: [1.65, 0.09, 0.72] as const,
-  topY: 0.74,
+  topSize: [WORKSTATION_PROFILE.desk.width, WORKSTATION_PROFILE.desk.thickness, WORKSTATION_PROFILE.desk.depth] as const,
+  topY: WORKSTATION_PROFILE.desk.top - WORKSTATION_PROFILE.desk.thickness / 2,
+  /** Keep a palm-rest strip before the keyboard without extending the arm target. */
+  keyboardZ: 0.22,
   legXs: [-0.66, 0.66] as const,
   legSize: [0.06, 0.72, 0.58] as const,
   legY: 0.38,
-  chairPosition: [0, 0, 0.95] as const,
+  /** Close enough that a seated person's hands rest on the keyboard (forearms level, elbows bent). */
+  chairPosition: [0, 0, 0.64] as const,
   chairRotationY: Math.PI,
-  seatHeight: 0.55,
+  seatHeight: OFFICE_CHAIR_SEAT_BLUEPRINT.cushionHeight,
+  /** Avatar root remains at z=0.62; the chair itself sits directly beneath it. */
+  seatForward: OFFICE_CHAIR_SEAT_BLUEPRINT.rootForward,
   approachDistance: 1.2
 });
 
@@ -74,7 +85,7 @@ export const EXECUTIVE_OFFICE_BLUEPRINT = Object.freeze({
   roomSize: [18, 9.2] as const,
   workstationLocal: [-4.4, 0, 0] as const,
   workstationRotationY: Math.PI / 2,
-  leaderSeat: { position: [0.25, 0, -1.42] as const, rotationY: 0 },
+  leaderSeat: { position: [0.25, 0, -0.85] as const, rotationY: 0 },
   guestSeats: [
     { id: "executive.guest-1", position: [-0.45, 0, 1.0] as const, rotationY: Math.PI },
     { id: "executive.guest-2", position: [1.15, 0, 1.0] as const, rotationY: Math.PI }
@@ -89,7 +100,13 @@ export const RECEPTION_DESK_BLUEPRINT = Object.freeze({
   chairOffsetZ: -0.7,
   counterOffsetZ: -1.95,
   featureWallOffsetZ: 0.3,
-  approachOffset: [-2.35, -0.25] as XZ
+  approachOffset: [-2.35, -0.25] as XZ,
+  /** Twin displays, centred on the chair (the counter is rendered inside the chair's staffOffsetX group); Z relative to the counter. */
+  monitorOffsetsX: monitorBankLayout(2, .50).map(display => display.position[0]),
+  monitorOffsetZ: 0.54,
+  /** Counter-local shelf, behind the solid transaction body (rear edge z=.38). */
+  workShelfCenter: [0.1, 0.74, 0.71] as const,
+  workShelfSize: [2, 0.04, 0.64] as const
 });
 
 /** Executive studio on Floor 3 (South Wing Penthouse Suite); all poses are room-local. */
@@ -98,7 +115,7 @@ export const EXECUTIVE_STUDIO_BLUEPRINT = Object.freeze({
   roomSize: [18.0, 9.3] as const,
   deskLocal: [-4.4, 0, 0] as const,
   workstationRotationY: Math.PI / 2,
-  leaderSeat: { position: [0.25, 0, -1.42] as const, rotationY: 0 },
+  leaderSeat: { position: [0.25, 0, -0.85] as const, rotationY: 0 },
   guestSeats: [
     { id: "executive-studio.guest-1", position: [-0.45, 0, 1.0] as const, rotationY: Math.PI },
     { id: "executive-studio.guest-2", position: [1.15, 0, 1.0] as const, rotationY: Math.PI }
@@ -136,7 +153,7 @@ export const FITNESS_BLUEPRINT = Object.freeze({
   strengthSeatHeight: 0.55,
   strengthSeat: [0, 0] as XZ,
   strengthStagingOffset: [1.1, 0] as XZ,
-  cableHandle: [0, 0.94, 0.7] as const,
+  cableHandle: [0, 0.94, 0.45] as const,
   freeweights: { id: "fitness.freeweights", target: [9, -0.45] as XZ, rotationY: Math.PI },
   storagePosition: [-3.1, 0, -2.95] as const
 });
@@ -181,17 +198,22 @@ export const TEAM_WORKSPACE_LOUNGES = Object.freeze({
 /** Lounge furniture is authored relative to BARTENDER_BAR_BLUEPRINT.loungeOrigin. */
 export const LOUNGE_FURNITURE_BLUEPRINT = Object.freeze({
   readingOrigin: [-3.0, 0, 3.8] as const,
-  sofa: { position: [-1.2, 0, 0] as const, rotationY: Math.PI / 2 },
+  sofa: { position: [-1.45, 0, 0] as const, rotationY: Math.PI / 2 },
   armchairs: [
-    { id: "lounge.armchair-1", position: [1.2, 0, -0.9] as const, rotationY: -Math.PI / 2 },
-    { id: "lounge.armchair-2", position: [1.2, 0, 0.9] as const, rotationY: -Math.PI / 2 }
+    { id: "lounge.armchair-1", position: [1.35, 0, -0.9] as const, rotationY: -Math.PI / 2 },
+    { id: "lounge.armchair-2", position: [1.35, 0, 0.9] as const, rotationY: -Math.PI / 2 }
   ] as const,
+  coffeeTable: { position: [0.05, 0, 0] as const, rotationY: Math.PI / 2 },
+  readingLamp: [-1.45, 0, -1.45] as const,
+  readingPlant: [-1.45, 0, 1.45] as const,
   // Keep the middle of the east frontage clear for both elevator doors and queues.
   diningTable: [3.8, 0.52, 6.5] as const,
+  // Leave a standing/turning lane between the table and fixed chair fronts.
   diningChairs: [
-    [2.1, 0, 7.9], [3.8, 0, 7.9], [5.5, 0, 7.9]
+    [2.1, 0, 8.3], [3.8, 0, 8.3], [5.5, 0, 8.3]
   ] as const,
-  diningCornerLamp: [6.3, 0, 9.3] as const
+  westCornerLamp: [-6.35, 0, 8.8] as const,
+  diningCornerLamp: [6.35, 0, 8.8] as const
 });
 
 export const TEAM_POD_STATIONS = Object.freeze([
@@ -202,12 +224,19 @@ export const TEAM_POD_STATIONS = Object.freeze([
 ]);
 
 export const TEAM_POD_SEAT = Object.freeze({
-  chairPosition: [1.4, 1.4] as XZ,
+  /** One centred external keyboard for every device variant, in station-local metres. */
+  keyboardPosition: [1.005 - TEAM_POD_PROFILE.seatInset / Math.SQRT2, 0.82, 1.005 - TEAM_POD_PROFILE.seatInset / Math.SQRT2] as const,
+  // Move sitter and inputs inward together for the deeper bay, preserving their reach distance.
+  chairPosition: [
+    1.4 - (0.16 + TEAM_POD_PROFILE.seatInset - OFFICE_CHAIR_SEAT_BLUEPRINT.rootForward) / Math.SQRT2,
+    1.4 - (0.16 + TEAM_POD_PROFILE.seatInset - OFFICE_CHAIR_SEAT_BLUEPRINT.rootForward) / Math.SQRT2
+  ] as XZ,
   chairRotationY: -3 * Math.PI / 4,
-  deskHalfExtent: 1.5,
-  seatOpening: 0.62,
+  seatForward: OFFICE_CHAIR_SEAT_BLUEPRINT.rootForward,
+  /** Keep the existing aisle waiting points while the seat moves into its deeper bay. */
+  stagingSetback: TEAM_POD_PROFILE.seatInset,
   monitorTargets: [
-    [0.48, 1.24, 0.88], [0.88, 1.24, 0.48]
+    [0.32, 1.24, 0.72], [0.72, 1.24, 0.32]
   ] as readonly (readonly [number, number, number])[]
 });
 
@@ -310,67 +339,5 @@ export function meetingSeatLayout(seats: number, tableLength: number, tableWidth
 }
 
 /** Rendered campus furniture and its usable poses share world coordinates. */
-export const OUTDOOR_FACILITIES_BLUEPRINT = Object.freeze({
-  groundY: 0,
-  zones: [
-    { id: "outdoor-forecourt", label: "Forecourt garden benches", center: [0, -25] as XZ, size: [23, 7] as const, door: [0, -23] as XZ },
-    { id: "outdoor-west-garden", label: "West garden seating", center: [-26, 8.5] as XZ, size: [5, 5] as const, door: [-23.5, 8.5] as XZ },
-    { id: "outdoor-east-garden", label: "East garden seating", center: [33, 8.5] as XZ, size: [6, 5] as const, door: [30, 8.5] as XZ },
-    { id: "outdoor-cafe", label: "Campus cafe", center: [-30.2, -21.6] as XZ, size: [8.8, 7.6] as const, door: [-25.8, -21.6] as XZ },
-    { id: "outdoor-rear-patio", label: "Rear garden patio", center: [0, 27] as XZ, size: [15, 8] as const, door: [0, 23] as XZ }
-  ],
-  plinthBenches: [
-    { id: "outdoor.forecourt-west", roomId: "outdoor-forecourt", position: [-7.6, 0, -23.2] as const, rotationY: Math.PI },
-    { id: "outdoor.forecourt-east", roomId: "outdoor-forecourt", position: [7.6, 0, -23.2] as const, rotationY: Math.PI },
-    { id: "outdoor.rear-bench", roomId: "outdoor-rear-patio", position: [0, 0, 28.8] as const, rotationY: Math.PI }
-  ],
-  parkBenches: [
-    { id: "outdoor.west-bench", roomId: "outdoor-west-garden", position: [-26, 0, 8.5] as const, rotationY: Math.PI / 2 },
-    { id: "outdoor.east-bench", roomId: "outdoor-east-garden", position: [33, 0, 8.5] as const, rotationY: -Math.PI / 2 }
-  ],
-  arrivalGardens: [
-    { id: "outdoor.arrival-west", position: [-8.8, 0, -26] as const },
-    { id: "outdoor.arrival-east", position: [8.8, 0, -26] as const }
-  ],
-  picnicTables: [
-    { id: "outdoor.cafe-table-1", position: [-29, 0, -22.7] as const, rotationY: Math.PI / 2 },
-    { id: "outdoor.cafe-table-2", position: [-29, 0, -20.5] as const, rotationY: Math.PI / 2 }
-  ],
-  patios: [
-    { id: "outdoor.patio-west", position: [-5.2, 0, 25.5] as const, canopy: "#d9d3c4" },
-    { id: "outdoor.patio-east", position: [5.2, 0, 25.5] as const, canopy: "#cdd3c9" }
-  ],
-  cafeKiosk: { position: [-33, 0, -21.6] as const, rotationY: Math.PI / 2, customerTarget: [0, 1.9] as XZ },
-  cafeDeck: { position: [-30.2, 0, -21.6] as const, size: [8.8, 7.6] as const },
-  /** Lamps flank the seating approach instead of occupying the sit/stand aisle. */
-  parkBenchLamps: [
-    { x: -25, z: 10.5 },
-    { x: 32, z: 10.5 }
-  ],
-  seatSlots: [-0.5, 0.5] as const,
-  gardenSeatSlots: [-1.9, 0, 1.9] as const,
-  picnicSeatSlots: [-0.48, 0.48] as const,
-  picnicSeatSides: [-0.62, 0.62] as const,
-  patioChairAngles: [0, Math.PI] as const,
-  parkSeatCenterZ: 0.12,
-  plinthSeatHeight: 0.425,
-  parkSeatHeight: 0.47,
-  gardenSeatZ: -1.16,
-  gardenSeatHeight: 0.595,
-  picnicSeatHeight: 0.465,
-  patioSeatHeight: 0.47,
-  patioChairRadius: 1.25
-});
-
-/** Explicit location strings can identify an outdoor zone or one particular resource. */
-export function outdoorRoomForLocation(location: string): string | undefined {
-  const value = location.toLowerCase();
-  const zone = OUTDOOR_FACILITIES_BLUEPRINT.zones.find(zone => value.includes(zone.id));
-  if (zone) return zone.id;
-  if (value.includes("outdoor.cafe") || value.includes("campus-cafe")) return "outdoor-cafe";
-  if (value.includes("outdoor.west")) return "outdoor-west-garden";
-  if (value.includes("outdoor.east")) return "outdoor-east-garden";
-  if (value.includes("outdoor.patio") || value.includes("outdoor.rear")) return "outdoor-rear-patio";
-  if (value.includes("outdoor.forecourt") || value.includes("outdoor.arrival")) return "outdoor-forecourt";
-  return undefined;
-}
+// Exterior rendering and resource contacts consume one campus contract.
+export { OUTDOOR_FACILITIES_BLUEPRINT, outdoorRoomForLocation } from "../spatialBlueprints";

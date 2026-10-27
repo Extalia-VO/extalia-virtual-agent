@@ -17,8 +17,8 @@ export function ProviderLogo({ preset, className = '' }: { preset: string; class
     case 'anthropic':
       return (
         <span className={`provider-logo-adaptive ${className}`}>
-          <img src="/brand/providers/png/claude-dark.png" alt="Anthropic" width="20" height="20" className="logo-light" style={{ objectFit: 'contain' }} />
-          <img src="/brand/providers/png/claude-light.png" alt="Anthropic" width="20" height="20" className="logo-dark" style={{ objectFit: 'contain' }} />
+          <img src="/brand/providers/png/anthropic-dark.png" alt="Anthropic" width="20" height="20" className="logo-light" style={{ objectFit: 'contain' }} />
+          <img src="/brand/providers/png/anthropic-light.png" alt="Anthropic" width="20" height="20" className="logo-dark" style={{ objectFit: 'contain' }} />
         </span>
       );
 
@@ -33,16 +33,16 @@ export function ProviderLogo({ preset, className = '' }: { preset: string; class
     case '9router':
       return (
         <span className={`provider-logo-adaptive ${className}`}>
-          <img src="/brand/providers/png/9router-light.png" alt="9Router" width="20" height="20" className="logo-light" style={{ objectFit: 'contain' }} />
-          <img src="/brand/providers/png/9router-color.png" alt="9Router" width="20" height="20" className="logo-dark" style={{ objectFit: 'contain' }} />
+          <img src="/brand/providers/png/9router-dark.png" alt="9Router" width="20" height="20" className="logo-light" style={{ objectFit: 'contain' }} />
+          <img src="/brand/providers/png/9router-light.png" alt="9Router" width="20" height="20" className="logo-dark" style={{ objectFit: 'contain' }} />
         </span>
       );
 
     case 'omniroute':
       return (
         <span className={`provider-logo-adaptive ${className}`}>
-          <img src="/brand/providers/png/omniroute-light.png" alt="OmniRoute" width="20" height="20" className="logo-light" style={{ objectFit: 'contain' }} />
-          <img src="/brand/providers/png/omniroute-color.png" alt="OmniRoute" width="20" height="20" className="logo-dark" style={{ objectFit: 'contain' }} />
+          <img src="/brand/providers/png/omniroute-dark.png" alt="OmniRoute" width="20" height="20" className="logo-light" style={{ objectFit: 'contain' }} />
+          <img src="/brand/providers/png/omniroute-light.png" alt="OmniRoute" width="20" height="20" className="logo-dark" style={{ objectFit: 'contain' }} />
         </span>
       );
 

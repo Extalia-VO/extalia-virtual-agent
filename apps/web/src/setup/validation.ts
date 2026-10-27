@@ -1,5 +1,5 @@
 import {
-  DEFAULT_MAX_DELEGATIONS, DEFAULT_PERMISSIONS, ENV_VARIABLE_PATTERN, RUNTIME_MODEL_PATTERN, RUNTIME_PROFILE_PATTERN, TASK_TIERS, defaultOrchestration, presetById,
+  DEFAULT_MAX_DELEGATIONS, DEFAULT_PERMISSIONS, ENV_VARIABLE_PATTERN, INTEGRATION_GATE_LIMITS, RUNTIME_MODEL_PATTERN, RUNTIME_PROFILE_PATTERN, TASK_TIERS, defaultOrchestration, presetById,
   workspaceRuntime,
   type Effort, type FeatureOwner, type Orchestration, type ProviderPresetId, type RuntimeId, type TaskTier, type Workspace, type WorkspacePermissions,
 } from '@extalia/core';
@@ -156,6 +156,16 @@ export function toConnectionInput(draft: ConnectionDraft): { input: ConnectionIn
   return credential.kind === 'stored' && key ? { input, secret: key } : { input };
 }
 
+/** Stands in for the model when testing a connection before the user picked one; the test only lists models. */
+export const TEST_MODEL_PLACEHOLDER = 'model-list';
+
+/** Like `toConnectionInput`, but testing a connection never requires a model. */
+export function toConnectionTestInput(draft: ConnectionDraft): { input: ConnectionInput; secret?: string } {
+  const { input, secret } = toConnectionInput(draft);
+  const probe = input.model ? input : { ...input, model: TEST_MODEL_PLACEHOLDER };
+  return secret === undefined ? { input: probe } : { input: probe, secret };
+}
+
 export interface WorkspaceDraft {
   id?: string;
   name: string;
@@ -169,6 +179,13 @@ export interface WorkspaceDraft {
   runtimeId: RuntimeId;
   hermesProfile: string;
   hermesModel: string;
+  /**
+   * ADR 0028 integration test gate, as typed (Settings only). `undefined` leaves the stored setting
+   * untouched; an empty command removes it.
+   */
+  gateCommand?: string;
+  /** Seconds as typed; empty means the host default (600 s). */
+  gateTimeout?: string;
 }
 
 export function emptyWorkspaceDraft(connectionId = '', runtimeId: RuntimeId = 'extalia-native'): WorkspaceDraft {
@@ -187,10 +204,17 @@ export function draftFromWorkspace(workspace: Workspace): WorkspaceDraft {
     runtimeId: workspaceRuntime(workspace),
     hermesProfile: workspace.runtimeProfileId ?? 'default',
     hermesModel: workspace.runtimeModel ?? '',
+    gateCommand: workspace.integrationGate?.command ?? '',
+    gateTimeout: workspace.integrationGate?.timeoutSeconds !== undefined ? String(workspace.integrationGate.timeoutSeconds) : '',
   };
 }
 
-export type WorkspaceField = 'name' | 'folder' | 'connection' | 'profile' | 'model';
+export type WorkspaceField = 'name' | 'folder' | 'connection' | 'profile' | 'model' | 'gate' | 'gateTimeout';
+
+const parseGateTimeout = (value: string): number | undefined => {
+  const { minTimeoutSeconds, maxTimeoutSeconds } = INTEGRATION_GATE_LIMITS;
+  return /^\s*\d{1,4}\s*$/.test(value) && Number(value) >= minTimeoutSeconds && Number(value) <= maxTimeoutSeconds ? Number(value) : undefined;
+};
 
 /** Mirrors the host's rules so problems show before saving. */
 export function validateWorkspace(draft: WorkspaceDraft): Partial<Record<WorkspaceField, WorkspaceErrorKey>> {
@@ -201,6 +225,11 @@ export function validateWorkspace(draft: WorkspaceDraft): Partial<Record<Workspa
     if (!RUNTIME_PROFILE_PATTERN.test(draft.hermesProfile.trim() || 'default')) errors.profile = 'profileInvalid';
     if (draft.hermesModel.trim() && !RUNTIME_MODEL_PATTERN.test(draft.hermesModel.trim())) errors.model = 'modelInvalid';
   } else if (!draft.connectionId) errors.connection = 'connectionRequired';
+  // Same rules as the host's `normalizeIntegrationGate`; an empty command means "not configured".
+  const command = draft.gateCommand ?? '', timeout = (draft.gateTimeout ?? '').trim();
+  if (command.length > INTEGRATION_GATE_LIMITS.maxCommand || command.includes('\0')) errors.gate = 'gateInvalid';
+  else if (!command.trim() && timeout) errors.gate = 'gateRequired';
+  if (timeout && parseGateTimeout(timeout) === undefined) errors.gateTimeout = 'gateTimeoutInvalid';
   return errors;
 }
 
@@ -210,9 +239,17 @@ export function toWorkspaceInput(draft: WorkspaceDraft): WorkspaceInput {
     name: draft.name.trim(),
     projectLocation: draft.folder?.path ?? draft.folderInput.trim(),
   };
-  if (draft.runtimeId !== 'hermes') return { ...common, connectionId: draft.connectionId, permissions: { ...draft.permissions } };
+  const gate = toIntegrationGate(draft);
+  if (draft.runtimeId !== 'hermes') return { ...common, connectionId: draft.connectionId, permissions: { ...draft.permissions }, ...gate };
   const model = draft.hermesModel.trim();
-  return { ...common, runtimeId: 'hermes', runtimeProfileId: draft.hermesProfile.trim() || 'default', ...(model ? { runtimeModel: model } : {}), permissions: { ...draft.permissions } };
+  return { ...common, runtimeId: 'hermes', runtimeProfileId: draft.hermesProfile.trim() || 'default', ...(model ? { runtimeModel: model } : {}), permissions: { ...draft.permissions }, ...gate };
+}
+
+/** Nothing when the form never showed the gate (the stored setting stays), `null` to remove it. */
+function toIntegrationGate(draft: WorkspaceDraft): Pick<WorkspaceInput, 'integrationGate'> {
+  if (draft.gateCommand === undefined) return {};
+  const command = draft.gateCommand.trim(), timeoutSeconds = parseGateTimeout(draft.gateTimeout ?? '');
+  return { integrationGate: command ? { command, ...(timeoutSeconds !== undefined ? { timeoutSeconds } : {}) } : null };
 }
 
 export const isValid = (errors: object) => Object.keys(errors).length === 0;

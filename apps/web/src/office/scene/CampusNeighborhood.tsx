@@ -3,6 +3,8 @@ import type { InstancedMesh} from "three";
 import { Color, Matrix4 } from "three";
 import { CampusSkyline } from "./CampusSkyline";
 import { CivicForecourtPark } from "./CivicForecourtPark";
+import { CampusParking } from "./CampusParking";
+import { CampusTraffic } from "./CampusTraffic";
 import { FRONT_APPROACH } from "./campusSiteLayout";
 
 type Slab = { x: number; y: number; z: number; width: number; height: number; depth: number; tone: string };
@@ -15,8 +17,8 @@ const ROAD_THICK = 0.03;
 const ROAD_TONE = "#3b4248";
 const DASH_TONE = "#e6e1d2";
 
-// Campus carriageways (CampusExterior): front/rear roads at z = ±28.5 run to
-// x = ±52 on the plinth top (-0.23). Those stubs ramp down onto the avenues.
+// The west parking entrance meets the former front carriageway at z=-28.5.
+// One ramp links the plinth top (-0.23) to the city avenue; unused stubs stay removed.
 const CAMPUS_ROAD_Z = 28.5;
 const CAMPUS_ROAD_END_X = 52;
 const CAMPUS_ROAD_TOP = -0.23;
@@ -72,6 +74,46 @@ function centreDashes(run: Run): Slab[] {
   return dashes;
 }
 
+/** Pedestrian zebra crosswalk stripes & stop bars at key campus/district intersections. */
+function buildCrosswalks(): Slab[] {
+  const stripes: Slab[] = [];
+  const y = ROAD_TOP + 0.005;
+  const h = 0.009;
+  const stripeLen = 2.4;
+  const stripeW = 0.42;
+
+  // 1. Main arrival crosswalk across the front ring road (x = 0, z = RING_SOUTH_Z)
+  for (let z = RING_SOUTH_Z - 2.6; z <= RING_SOUTH_Z + 2.6; z += 0.85) {
+    stripes.push({ x: 0, y, z, width: 3.4, height: h, depth: stripeW, tone: DASH_TONE });
+  }
+  for (const dir of [-1, 1]) {
+    stripes.push({ x: dir * 3.2, y, z: RING_SOUTH_Z, width: 0.24, height: h, depth: STREET - 0.8, tone: DASH_TONE });
+  }
+
+  // 2. Avenue & cross-street intersection crosswalks
+  const junctions: [number, number][] = [
+    [-AVENUE_X, RING_SOUTH_Z],
+    [AVENUE_X, RING_SOUTH_Z],
+    [-AVENUE_X, CROSS_Z],
+    [AVENUE_X, CROSS_Z]
+  ];
+  for (const [jx, jz] of junctions) {
+    for (const side of [-1, 1]) {
+      // North/south crossings across the avenue
+      const cz = jz + side * (STREET / 2 + 1.8);
+      for (let dx = -2.4; dx <= 2.4; dx += 0.8) {
+        stripes.push({ x: jx + dx, y, z: cz, width: stripeW, height: h, depth: stripeLen, tone: DASH_TONE });
+      }
+      // East/west crossings across the cross street
+      const cx = jx + side * (STREET / 2 + 1.8);
+      for (let dz = -2.4; dz <= 2.4; dz += 0.8) {
+        stripes.push({ x: cx, y, z: jz + dz, width: stripeLen, height: h, depth: stripeW, tone: DASH_TONE });
+      }
+    }
+  }
+  return stripes;
+}
+
 function InstanceSlabs({ name, slabs }: { name: string; slabs: readonly Slab[] }) {
   const mesh = useRef<InstancedMesh>(null);
   useLayoutEffect(() => {
@@ -97,7 +139,7 @@ function InstanceSlabs({ name, slabs }: { name: string; slabs: readonly Slab[] }
   );
 }
 
-/** Gentle ramps carry the plinth-level campus roads down onto the avenues. */
+/** The single parking access ramp joins the plinth to the west avenue. */
 function CampusRoadRamps() {
   const run = AVENUE_X - STREET / 2 - CAMPUS_ROAD_END_X;
   const drop = CAMPUS_ROAD_TOP - ROAD_TOP;
@@ -106,7 +148,7 @@ function CampusRoadRamps() {
   const centreY = (CAMPUS_ROAD_TOP + ROAD_TOP) / 2 - ROAD_THICK;
   return (
     <group name="neighborhood-campus-ramps">
-      {[-1, 1].flatMap((side) => [-CAMPUS_ROAD_Z, CAMPUS_ROAD_Z].map((z) => (
+      {[-1].flatMap((side) => [-CAMPUS_ROAD_Z].map((z) => (
         <mesh
           key={`${side}:${z}`}
           receiveShadow
@@ -125,6 +167,8 @@ function CampusRoadRamps() {
 // along the front ring road, joined to the campus boulevard sidewalks
 // (z = ±35, ending at x = ±48) by gentle pedestrian ramps off the plinth edge.
 const SIDEWALK_TONE = "#c9c5bb";
+const PLAZA_APRON_TONE = "#d3cfc5";
+const DISTRICT_LAWN_TONE = "#567850";
 const CITY_WALK_TOP = ROAD_TOP + 0.03;
 const CITY_WALK_W = 3;
 // Matches the Landscape boulevard sidewalk top (WALK_TOP - 0.02 centre + 0.02).
@@ -133,6 +177,8 @@ const PLINTH_EDGE_X = 52;
 const WALK_LINK_Z = 35;
 const WALK_LINK_W = 4.8;
 const AVENUE_INNER_X = AVENUE_X - STREET / 2;
+const AVENUE_OUTER_X = AVENUE_X + STREET / 2;
+const RING_INNER_X = RING_X - STREET / 2;
 const FRONT_EDGE_Z = FRONT_APPROACH.roadEdgeZ;
 
 /** Splits [from, to] around the given gaps so footways never overlap ramps. */
@@ -152,6 +198,7 @@ function buildCityWalks(): Slab[] {
   const thick = 0.04;
   const y = CITY_WALK_TOP - thick / 2;
   const x0 = AVENUE_INNER_X - CITY_WALK_W;
+  const xOuter = AVENUE_OUTER_X + CITY_WALK_W / 2;
   // One gap per side covering the vehicle ramp (z = ±28.5, 8 m wide) and the
   // adjacent pedestrian ramp (z = ±35), which both cross the footway band.
   const near = CAMPUS_ROAD_Z - CAMPUS_ROAD_WIDTH / 2 - 0.2;
@@ -161,6 +208,30 @@ function buildCityWalks(): Slab[] {
     for (const [a, b] of gapped(FRONT_EDGE_Z, CROSS_Z - STREET / 2, zGaps)) {
       slabs.push({ x: side * (x0 + CITY_WALK_W / 2), y, z: (a + b) / 2, width: CITY_WALK_W, height: thick, depth: b - a, tone: SIDEWALK_TONE });
     }
+    // Outer avenue footway fronting the west and east district building blocks
+    const span = (CROSS_Z - STREET / 2) - FRONT_EDGE_Z;
+    slabs.push({ x: side * xOuter, y, z: (FRONT_EDGE_Z + CROSS_Z - STREET / 2) / 2, width: CITY_WALK_W, height: thick, depth: span, tone: SIDEWALK_TONE });
+    // District block stone forecourt aprons & green verge strips between avenue and ring road
+    const blockMidX = side * ((AVENUE_OUTER_X + CITY_WALK_W + RING_INNER_X) / 2);
+    const blockW = RING_INNER_X - (AVENUE_OUTER_X + CITY_WALK_W);
+    for (const [bz, bd, planted] of [[-44, 20, false], [0, 32, false], [45, 20, true], [67, 20, false]] as const) {
+      slabs.push({ x: blockMidX, y: y - 0.004, z: bz, width: blockW, height: thick, depth: bd, tone: PLAZA_APRON_TONE });
+      if (planted) {
+        slabs.push({ x: side * (AVENUE_OUTER_X + CITY_WALK_W + 1.2), y: y + 0.008, z: bz, width: 1.8, height: thick, depth: bd - 2, tone: DISTRICT_LAWN_TONE });
+      }
+    }
+    // Green pocket lawn strips between the West/East district towers (z = -25 and z = 25)
+    for (const gz of [-24, 24]) {
+      slabs.push({ x: blockMidX, y: y + 0.005, z: gz, width: blockW - 2, height: thick, depth: 11, tone: DISTRICT_LAWN_TONE });
+    }
+  }
+  // Rear district block (z = 48..80.5, x = -53.5..53.5): south sidewalk + courtyard aprons + green median
+  const rearSpanW = x0 * 2;
+  slabs.push({ x: 0, y, z: 48.5, width: rearSpanW, height: thick, depth: CITY_WALK_W, tone: SIDEWALK_TONE });
+  slabs.push({ x: 0, y, z: CROSS_Z - STREET / 2 - CITY_WALK_W / 2, width: rearSpanW, height: thick, depth: CITY_WALK_W, tone: SIDEWALK_TONE });
+  slabs.push({ x: 0, y: y - 0.004, z: 64.5, width: rearSpanW, height: thick, depth: 29, tone: PLAZA_APRON_TONE });
+  for (const gx of [-27, -2, 23]) {
+    slabs.push({ x: gx, y: y + 0.006, z: 54, width: 7.5, height: thick, depth: 5.5, tone: DISTRICT_LAWN_TONE });
   }
   // Front ring-road footway, gapped where the arrival walkway ramp lands.
   const fz = FRONT_EDGE_Z + CITY_WALK_W / 2;
@@ -196,14 +267,13 @@ function CityWalkRamps() {
 }
 
 /**
- * Neighborhood ground and street network. The campus front/rear roads ramp
- * down onto flanking avenues and an outer ring that line up with the skyline
- * street grid, so every campus road continues into the city. No streetlamps
- * here: at night the district reads through the lit facades in CampusSkyline.
+ * Neighborhood ground and street network. Parking access and pedestrian ramps
+ * join the flanking avenues and outer ring, aligned with the skyline grid.
+ * District facades, civic park optics and the shared campus lights react at night.
  */
 export function CampusNeighborhood() {
   const roads = useMemo(() => RUNS.map(roadSlab), []);
-  const dashes = useMemo(() => RUNS.flatMap(centreDashes), []);
+  const dashes = useMemo(() => [...RUNS.flatMap(centreDashes), ...buildCrosswalks()], []);
   const walks = useMemo(() => buildCityWalks(), []);
 
   return (
@@ -216,6 +286,8 @@ export function CampusNeighborhood() {
       <InstanceSlabs name="neighborhood-road-markings" slabs={dashes} />
       <InstanceSlabs name="neighborhood-city-walks" slabs={walks} />
       <CampusRoadRamps />
+      <CampusParking />
+      <CampusTraffic />
       <CityWalkRamps />
 
       {/* Front civic park with paved promenades, fountain, grove trees and lighting */}

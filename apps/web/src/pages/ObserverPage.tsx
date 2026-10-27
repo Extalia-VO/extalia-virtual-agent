@@ -8,6 +8,8 @@ import { ContinueInExtalia } from '../library/ContinueInExtalia';
 import type { ContinueHandlers } from '../library/HistoryPage';
 import { LibraryTranscript } from '../library/LibraryTranscript';
 import { Icon } from '../ui/Icon';
+import { AutoWatchLocations, IgnoredFolders } from './AutoWatchLocations';
+import { ConnectAgentAppsCard } from './ConnectAgentAppsCard';
 
 export function ObserverPage({ t, language, agents, state, initialSessionId, onState, onAdd, onContinued, onOpenSettings }: ContinueHandlers & {
   t: Messages; language: string; agents: AgentHostApi; state: HostState; onState: (state: HostState) => void; onAdd: () => void;
@@ -46,6 +48,9 @@ export function ObserverPage({ t, language, agents, state, initialSessionId, onS
       <div className="actions"><button type="button" className="primary" onClick={onAdd}><Icon name="plus" />{t.observer.add}</button></div>
     </header>
     {error && <p role="alert" className="form-error">{error}</p>}
+    <ConnectAgentAppsCard t={t} agents={agents} />
+    <AutoWatchLocations t={t} agents={agents} onState={onState} />
+    <IgnoredFolders t={t} agents={agents} onState={onState} />
     <div className="history-layout">
       <section className="card history-list">
         {!sessions.length ? <p className="muted">{t.observer.empty}</p> : <SessionList t={t} sessions={sessions} activeId={selected?.id} language={language}
@@ -53,7 +58,7 @@ export function ObserverPage({ t, language, agents, state, initialSessionId, onS
       </section>
       <section className="card history-viewer">
         {!selected ? <p className="muted">{t.observer.select}</p> : <>
-          <div className="section-head"><h2>{selected.title}</h2><span className="badge">{sourceLabel(observation?.sourceId ?? '')} · {t.observer.label}</span></div>
+          <div className="section-head"><h2>{selected.title}</h2><span className="badge">{sourceLabel(observation?.sourceId ?? '')} · {t.observer.label}{observation?.auto ? ` · ${t.observer.autoBadge}` : ''}</span></div>
           {observation?.projectPath && <code className="entity-path">{observation.projectPath}</code>}
           <p role="status" className="muted small">{observation && t.observer[observation.status]}{observation?.lastCheckedAt ? ` · ${new Intl.DateTimeFormat(language, { timeStyle: 'medium' }).format(new Date(observation.lastCheckedAt))}` : ''}</p>
           {observation?.error && <p role="alert" className="form-error">{observation.error}</p>}

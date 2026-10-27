@@ -1,6 +1,7 @@
 import { FLOOR_HEIGHT, OFFICE_BUILDING } from "../../layout";
 import { LandingRail } from "./Staircase";
-import { OpenDoor } from "./OpenDoor";
+import { OpenDoor } from "../../interior/prefabs/architecture/OpenDoor";
+import { StaticCampusBatch } from "../../StaticCampusBatch";
 import { useSolarEnvironment } from "../../Environment";
 import { FixtureSpotLight } from "./FixtureSpotLight";
 
@@ -24,20 +25,45 @@ export const MAINTENANCE_STAIR_LAYOUT = Object.freeze({
   gateWidth: 1.2
 });
 
-function MaintenanceStairLighting() {
-  const { state } = useSolarEnvironment();
-  const factor = state.factors.exteriorLightFactor;
-  const s = MAINTENANCE_STAIR_LAYOUT;
+/** Evaluated Blender landing/tread bounds, converted to app X/Y/Z (Y is elevation). */
+export const MODEL_MAINTENANCE_STAIR_LAYOUT = Object.freeze({
+  ...MAINTENANCE_STAIR_LAYOUT,
+  x: -22.2,
+  width: 1.65,
+  northZ: 6.95,
+  southZ: 13.6,
+  landingWest: -23.345,
+  landingEast: -20.495,
+  lowerLandingNorth: 13.25,
+  lowerLandingSouth: 14.95,
+  upperLandingNorth: 5.35,
+  upperLandingSouth: 7.05,
+  terraceGate: [-20.72, FLOOR_HEIGHT * 2, 14.1] as const,
+  roofGate: [-21.35, 19.33, 6.2] as const,
+});
+
+type AccessLayout = typeof MAINTENANCE_STAIR_LAYOUT | typeof MODEL_MAINTENANCE_STAIR_LAYOUT;
+
+/** Five app-owned fixtures: three along the selected flight and one at each landing. */
+export function maintenanceStairLightSources(modelShown: boolean) {
+  const s: AccessLayout = modelShown ? MODEL_MAINTENANCE_STAIR_LAYOUT : MAINTENANCE_STAIR_LAYOUT;
   const rise = s.roofY - s.lowerY, run = s.southZ - s.northZ;
   const sources = [0.2, 0.5, 0.8].map(t => ({
-    position: [s.x - s.width / 2 + 0.065, s.lowerY + rise * t + 0.92, s.southZ - run * t] as [number, number, number],
+    position: [modelShown ? -23.0 : s.x - s.width / 2 + 0.065, s.lowerY + rise * t + 0.92, s.southZ - run * t] as [number, number, number],
     aim: [s.x, s.lowerY + rise * t + 0.04, s.southZ - run * t] as [number, number, number],
     floorY: s.lowerY
   }));
   sources.push({ position: [s.landingEast - 0.16, s.lowerY + 1.02, s.lowerLandingSouth],
     aim: [...s.terraceGate], floorY: s.lowerY });
-  sources.push({ position: [s.landingEast - 0.16, s.roofY + 1.02, s.upperLandingNorth],
+  sources.push({ position: [(modelShown ? -21.3 : s.landingEast) - 0.16, s.roofY + 1.02, s.upperLandingNorth],
     aim: [...s.roofGate], floorY: Math.floor(s.roofY / FLOOR_HEIGHT) * FLOOR_HEIGHT });
+  return sources;
+}
+
+export function MaintenanceStairLighting({ modelShown }: { modelShown: boolean }) {
+  const { state } = useSolarEnvironment();
+  const factor = state.factors.exteriorLightFactor;
+  const sources = maintenanceStairLightSources(modelShown);
   return <group name="maintenance-stair-lighting" userData={{ officeCollision: false }}>
     {sources.map((source, i) => <group key={i} position={source.position}>
       <mesh><boxGeometry args={[0.13, 0.055, 0.1]} /><meshStandardMaterial color="#5b696a" metalness={0.35} roughness={0.6} /></mesh>
@@ -52,8 +78,8 @@ function MaintenanceStairLighting() {
   </group>;
 }
 
-/** One maintenance flight with grated treads, continuous rails and gated landings. */
-export function RoofMaintenanceStair() {
+/** Procedural static structure only; gates and fixtures belong to the app in either mode. */
+export function RoofMaintenanceStairStructure() {
   const s = MAINTENANCE_STAIR_LAYOUT;
   const rise = s.roofY - s.lowerY;
   const run = s.southZ - s.northZ;
@@ -63,8 +89,7 @@ export function RoofMaintenanceStair() {
   const westGuard = s.landingWest + 0.04;
   const stairEast = s.x + s.width / 2 - 0.04;
   const landingEast = s.landingEast;
-  return <group name="roof-maintenance-stair" userData={{ officeMaintenanceAccess: true }}>
-    <MaintenanceStairLighting />
+  return <group name="roof-maintenance-stair-structure" userData={{ officeMaintenanceAccess: true }}>
     {[-1, 1].map(side => <group key={side}>
       <mesh castShadow position={[s.x + side * (s.width / 2 - 0.07), s.lowerY + rise / 2 - 0.17, (s.northZ + s.southZ) / 2]} rotation={[angle, 0, 0]}>
         <boxGeometry args={[0.1, 0.25, slopeLength]} /><meshStandardMaterial color="#45575b" metalness={0.72} roughness={0.38} />
@@ -104,6 +129,15 @@ export function RoofMaintenanceStair() {
     {/* Outer landing column and mid-flight support remain outside the facade. */}
     {[{ z: 18.4, height: s.lowerY }, { z: 12.2, height: s.lowerY + rise / 2 }].map(({ z, height }) =>
       <mesh key={z} castShadow position={[westGuard + 0.12, height / 2, z]}><boxGeometry args={[0.16, height, 0.16]} /><meshStandardMaterial color="#53666a" metalness={0.68} roughness={0.42} /></mesh>)}
+  </group>;
+}
+
+/** Model readiness replaces static meshes only, preserving both traffic-driven gates and fixtures. */
+export function RoofMaintenanceStair({ modelShown = false }: { modelShown?: boolean }) {
+  const s: AccessLayout = modelShown ? MODEL_MAINTENANCE_STAIR_LAYOUT : MAINTENANCE_STAIR_LAYOUT;
+  return <group name="roof-maintenance-stair" userData={{ officeMaintenanceAccess: true }}>
+    {!modelShown && <StaticCampusBatch><RoofMaintenanceStairStructure /></StaticCampusBatch>}
+    <MaintenanceStairLighting key={modelShown ? "model" : "fallback"} modelShown={modelShown} />
     <OpenDoor position={[...s.terraceGate]} rotationY={Math.PI / 2} width={s.gateWidth} height={1.12}
       floor={3} roomId="roof-maintenance" role="terrace-gate" glass />
     <OpenDoor position={[...s.roofGate]} rotationY={Math.PI / 2} width={s.gateWidth} height={1.12}

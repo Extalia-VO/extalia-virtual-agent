@@ -43,9 +43,9 @@ export function applyExtaliaMarkGradient<T extends BufferGeometry>(geometry: T, 
 export function emitMarkGradient<T extends Material>(material: T): T {
   material.onBeforeCompile = shader => {
     shader.fragmentShader = shader.fragmentShader.replace("#include <emissivemap_fragment>",
-      "#include <emissivemap_fragment>\n#ifdef USE_COLOR\n totalEmissiveRadiance *= vColor;\n#endif");
+      "#include <emissivemap_fragment>\n#ifdef USE_COLOR\n totalEmissiveRadiance *= vColor.rgb;\n#endif");
   };
-  material.customProgramCacheKey = () => "extalia-coding-gradient-v1";
+  material.customProgramCacheKey = () => "extalia-coding-gradient-v2";
   return material;
 }
 

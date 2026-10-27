@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import type { Group} from "three";
-import { CanvasTexture, MathUtils, SRGBColorSpace, Vector3 } from "three";
+import { CanvasTexture, SRGBColorSpace, Vector3 } from "three";
 import { F1_EMERGENCY_EXIT } from "../../floor1Layout";
-import { isMovingOccupantNear, setDoorPortal } from "../../occupants/movingOccupants";
-import { doorOpenAmount } from "./OpenDoor";
+import { setDoorPortal } from "../../occupants/movingOccupants";
+import { doorTraffic } from "../../doorTrafficRegistry";
 
 import { useInteriorText } from "../../FurnishedFloorContext";
 
@@ -17,7 +17,6 @@ export function F1EmergencyExit() {
   const t = useInteriorText();
   const frame = useRef<Group>(null);
   const leaf = useRef<Group>(null);
-  const holdOpenUntil = useRef(0);
   const worldPosition = useRef(new Vector3());
   const worldNormal = useRef(new Vector3());
   const width = F1_EMERGENCY_EXIT.width;
@@ -47,21 +46,15 @@ export function F1EmergencyExit() {
   }, [t]);
   useEffect(() => () => sign.dispose(), [sign]);
 
-  useFrame(({ clock }, delta) => {
+  // Push-to-open: the leaf moves only while a walker's hand holds it (see doorTraffic).
+  useFrame(() => {
     if (!frame.current || !leaf.current) return;
     frame.current.getWorldPosition(worldPosition.current);
     frame.current.getWorldDirection(worldNormal.current);
     const { x, y, z } = worldPosition.current;
     const yaw = Math.atan2(worldNormal.current.x, worldNormal.current.z);
-    if (isMovingOccupantNear(x, y, z, width / 2, yaw)) {
-      holdOpenUntil.current = clock.elapsedTime + 1;
-    }
-    leaf.current.rotation.y = MathUtils.damp(
-      leaf.current.rotation.y,
-      clock.elapsedTime < holdOpenUntil.current ? OPEN_ANGLE : 0,
-      9,
-      delta
-    );
+    const amount = doorTraffic.amount(DOOR_ID);
+    leaf.current.rotation.y = amount * OPEN_ANGLE;
     setDoorPortal(DOOR_ID, {
       floor: 1,
       roomId: "exterior",
@@ -69,7 +62,12 @@ export function F1EmergencyExit() {
       center: [x, y, z],
       yaw,
       clearWidth: width,
-      openAmount: doorOpenAmount(leaf.current.rotation.y, OPEN_ANGLE)
+      openAmount: amount,
+      height: HEIGHT,
+      openAngle: OPEN_ANGLE,
+      handleHeight: 1.08,
+      handleOffset: 0.15,
+      sliding: false
     });
   });
   useEffect(() => () => setDoorPortal(DOOR_ID, null), []);

@@ -2,15 +2,20 @@ import { DataUtils } from "three";
 
 export interface IrradianceField { radiance: Float32Array; direction: Uint8Array }
 
-/** Combine lamp-controlled architecture and independently powered devices without extra GPU samplers. */
+/**
+ * Combine lamp-controlled architecture and independently powered devices without extra GPU samplers.
+ * `devicePower` scales the screens' share (0 by day or with the lamps on: panels then cast nothing).
+ */
 export function composeIrradiance(architecture: IrradianceField | undefined, devices: IrradianceField | undefined,
-  power: number, radiance: Uint16Array, direction: Uint8Array) {
+  power: number, radiance: Uint16Array, direction: Uint8Array, devicePower = 1) {
   const ar = architecture?.radiance, ad = architecture?.direction;
-  const dr = devices?.radiance, dd = devices?.direction;
+  const dd = devices?.direction;
   const lampPower = Math.max(0, power), one = DataUtils.toHalfFloat(1);
+  const screenPower = Number.isFinite(devicePower) ? Math.max(0, devicePower) : 0;
+  const dr = screenPower > 0 ? devices?.radiance : undefined;
   for (let i = 0; i < radiance.length; i += 4) {
     const aR = (ar?.[i] ?? 0) * lampPower, aG = (ar?.[i + 1] ?? 0) * lampPower, aB = (ar?.[i + 2] ?? 0) * lampPower;
-    const dR = dr?.[i] ?? 0, dG = dr?.[i + 1] ?? 0, dB = dr?.[i + 2] ?? 0;
+    const dR = (dr?.[i] ?? 0) * screenPower, dG = (dr?.[i + 1] ?? 0) * screenPower, dB = (dr?.[i + 2] ?? 0) * screenPower;
     const r = aR + dR, g = aG + dG, b = aB + dB;
     radiance[i + 3] = one; direction[i + 3] = 255;
     if (r + g + b <= 0) {

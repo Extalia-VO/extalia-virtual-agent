@@ -1,9 +1,10 @@
 import { relocateRoomPoint } from "./roomRelocation";
+import { ENTERTAINMENT_LAYOUT, entertainmentPoint } from "./entertainmentBlueprint";
 import type { Point3 } from "../layout";
 type HumanoidSeatPoseProfile = "MEETING_UPRIGHT" | "OFFICE_UPRIGHT" | "SOFA_RELAXED" | "ARMCHAIR_RELAXED" | "BAR_STOOL";
 import type { CampusFloor } from "./worldRegistry";
 import { BARTENDER_BAR_BLUEPRINT, LIBRARY_BLUEPRINT, LOUNGE_FURNITURE_BLUEPRINT, MEETING_BLUEPRINTS, MEETING_INTERACTION_TARGETS, RECEPTION_DESK_BLUEPRINT, SERVER_ROOM_BLUEPRINT, SINGLE_WORKSTATION_BLUEPRINT, TEAM_POD_LAYOUT, TEAM_POD_SEAT, TEAM_POD_STATIONS, TEAM_WORKSPACE_ORIGIN, TEAM_WORKSPACE_TOUCHDOWNS, TEAM_WORKSPACE_LOUNGES, meetingSeatLayout } from "./spatialBlueprints";
-import { ARMCHAIR_SEAT_BLUEPRINT, SOFA_SEAT_BLUEPRINT } from "./furnitureSeatBlueprint";
+import { ARMCHAIR_SEAT_BLUEPRINT, GUEST_CHAIR_SEAT_BLUEPRINT, OFFICE_CHAIR_SEAT_BLUEPRINT, SOFA_SEAT_BLUEPRINT } from "./furnitureSeatBlueprint";
 import { F3_TERRACE } from "./floor1Layout";
 import { EXECUTIVE_ROOM_LAYOUTS, MEETING_ROOM_LAYOUTS, type ExecutiveRoomId } from "./roomRedesignLayout";
 import { FITNESS_BLUEPRINT, OUTDOOR_FACILITIES_BLUEPRINT } from "./spatialBlueprints";
@@ -18,6 +19,8 @@ export interface ResourceInteraction {
   seatPoseProfile: HumanoidSeatPoseProfile | null;
   /** Cushion/top height above this floor in metres. */
   seatHeight: number;
+  /** Distance from the seated root to the cushion's front edge, in metres. */
+  seatFront?: number;
   /** Where a walker stages before the controlled sit/stand transition. */
   approachSide: "front" | "behind" | "none";
   approachDistance: number;
@@ -79,9 +82,9 @@ function interactionFor(style: SeatStyle): ResourceInteraction {
     case "office":
       return { seatStyle: style, seatPoseProfile: "OFFICE_UPRIGHT", seatHeight: SINGLE_WORKSTATION_BLUEPRINT.seatHeight, approachSide: "behind", approachDistance: SINGLE_WORKSTATION_BLUEPRINT.approachDistance, exitSide: "behind", exitDistance: SINGLE_WORKSTATION_BLUEPRINT.approachDistance, sitDurationMs: 850, standDurationMs: 760 };
     case "guest":
-      return { seatStyle: style, seatPoseProfile: "MEETING_UPRIGHT", seatHeight: 0.55, approachSide: "behind", approachDistance: 1.0, exitSide: "behind", exitDistance: 1.0, sitDurationMs: 860, standDurationMs: 760 };
+      return { seatStyle: style, seatPoseProfile: "MEETING_UPRIGHT", seatHeight: GUEST_CHAIR_SEAT_BLUEPRINT.cushionHeight, approachSide: "behind", approachDistance: 1.0, exitSide: "behind", exitDistance: 1.0, sitDurationMs: 860, standDurationMs: 760 };
     case "meeting":
-      return { seatStyle: style, seatPoseProfile: "MEETING_UPRIGHT", seatHeight: 0.55, approachSide: "behind", approachDistance: 1.0, exitSide: "behind", exitDistance: 1.0, sitDurationMs: 860, standDurationMs: 760 };
+      return { seatStyle: style, seatPoseProfile: "MEETING_UPRIGHT", seatHeight: OFFICE_CHAIR_SEAT_BLUEPRINT.cushionHeight, approachSide: "behind", approachDistance: 1.0, exitSide: "behind", exitDistance: 1.0, sitDurationMs: 860, standDurationMs: 760 };
     case "sofa":
       return { seatStyle: style, seatPoseProfile: "SOFA_RELAXED", seatHeight: SOFA_SEAT_BLUEPRINT.cushionHeight, approachSide: "front", approachDistance: SOFA_SEAT_BLUEPRINT.approachDistance, exitSide: "front", exitDistance: SOFA_SEAT_BLUEPRINT.approachDistance, sitDurationMs: 1000, standDurationMs: 900 };
     case "armchair":
@@ -131,18 +134,29 @@ function chairResource(
   parentRotationY: number,
   chairPosition: XZ,
   chairRotationY: number,
-  seatStyle: Exclude<SeatStyle, "none"> = "office"
+  seatStyle: Exclude<SeatStyle, "none"> = "office",
+  seatForward = OFFICE_SEAT_FORWARD
 ): SpatialResource {
   const chairCenter = worldXZ(parentPosition, parentRotationY, chairPosition);
   const yaw = parentRotationY + chairRotationY;
   const upholstered = seatStyle === "sofa" ? SOFA_SEAT_BLUEPRINT
     : seatStyle === "armchair" ? ARMCHAIR_SEAT_BLUEPRINT : null;
-  const rootForward = upholstered?.avatarRootForwardOffset ?? OFFICE_SEAT_FORWARD;
-  // The rendered cushion center is now the input anchor. Correct by its local
-  // Z offset so the established furniture-local avatar root stays unchanged.
-  const rootAdjustment = rootForward - (upholstered ? chairPosition[1] : 0);
+  const guestSeat = seatStyle === "guest" ? GUEST_CHAIR_SEAT_BLUEPRINT : null;
+  const rootForward = upholstered?.avatarRootForwardOffset ?? guestSeat?.rootForward ?? seatForward;
+  // Both workstation `seatForward` and upholstered `avatarRootForwardOffset`
+  // are offsets in the chair frame. Subtracting the chair's parent Z coordinate
+  // reverses/magnifies the displacement for chairs facing ±Z.
+  const rootAdjustment = rootForward;
   const root = worldXZ(chairCenter, yaw, [0, rootAdjustment]);
-  return resource(id, roomId, floor, kind, activity, root[0], root[1], yaw, seatStyle);
+  const seat = resource(id, roomId, floor, kind, activity, root[0], root[1], yaw, seatStyle);
+  const front = upholstered
+    ? (upholstered.cushionSize[2] / 2 - rootAdjustment)
+    : guestSeat
+      ? (guestSeat.cushionSize[2] / 2 + guestSeat.cushionCenter[2] - rootAdjustment)
+      : (seatStyle === "office" || seatStyle === "meeting")
+      ? (OFFICE_CHAIR_SEAT_BLUEPRINT.cushionSize[2] / 2 + OFFICE_CHAIR_SEAT_BLUEPRINT.cushionCenter[2] - rootAdjustment)
+      : undefined;
+  return front === undefined ? seat : { ...seat, interaction: { ...seat.interaction, seatFront: front } };
 }
 
 function withStagingOffset(seat: SpatialResource, offset: readonly [number, number]): SpatialResource {
@@ -164,7 +178,7 @@ function deskResource(
 ): SpatialResource {
   return chairResource(id, roomId, floor, "workstation", "work", [deskX, deskZ], deskRotationY,
     [SINGLE_WORKSTATION_BLUEPRINT.chairPosition[0], SINGLE_WORKSTATION_BLUEPRINT.chairPosition[2]],
-    SINGLE_WORKSTATION_BLUEPRINT.chairRotationY, "office");
+    SINGLE_WORKSTATION_BLUEPRINT.chairRotationY, "office", SINGLE_WORKSTATION_BLUEPRINT.seatForward);
 }
 
 function sofaResources(
@@ -208,10 +222,11 @@ function meetingResources(roomId: "meeting-a" | "meeting-b") {
 const pods = TEAM_POD_LAYOUT.flatMap(({ id: podId, position: [cx, cz], rotationY }) => TEAM_POD_STATIONS.map((station) => {
   const seat = chairResource(`engineering.${podId}.${station.id}`, "engineering", 1, "workstation", "work",
     [TEAM_WORKSPACE_ORIGIN[0] + cx, TEAM_WORKSPACE_ORIGIN[1] + cz],
-    rotationY + station.rotationY, TEAM_POD_SEAT.chairPosition, TEAM_POD_SEAT.chairRotationY, "office");
-  if ((podId === "pod-a" || podId === "pod-b") && station.id === "seat-ne") return withStagingOffset(seat, [0.9, -0.9]);
+    rotationY + station.rotationY, TEAM_POD_SEAT.chairPosition, TEAM_POD_SEAT.chairRotationY, "office", TEAM_POD_SEAT.seatForward);
+  const stage = ([x, z]: XZ) => withStagingOffset(seat, [x, z - TEAM_POD_SEAT.stagingSetback]);
+  if ((podId === "pod-a" || podId === "pod-b") && station.id === "seat-ne") return stage([0.9, -0.9]);
   return (podId === "pod-c" || podId === "pod-d") && station.id === "seat-sw"
-    ? withStagingOffset(seat, [0.32, -1.24]) : withStagingOffset(seat, [-0.9, -0.9]);
+    ? stage([0.32, -1.24]) : stage([-0.9, -0.9]);
 }));
 
 const touchdownDesks = TEAM_WORKSPACE_TOUCHDOWNS.map(({ id, position, rotationY }) => {
@@ -243,6 +258,17 @@ const bartenderServiceWorld = worldXZ(bartenderBarWorld, BARTENDER_BAR_BLUEPRINT
 const bartenderStation = resource("lounge.bartender", "lounge", 1, "bartender-station", "bar",
   bartenderServiceWorld[0], bartenderServiceWorld[1],
   BARTENDER_BAR_BLUEPRINT.rotationY + BARTENDER_BAR_BLUEPRINT.serviceTarget.rotationY, "none");
+// Distinct standing contacts keep prep and handoff behind the counter.
+const bartenderWorkStations: readonly (readonly [string, number])[] = [
+  ["lounge.bar-prep", -0.85], ["lounge.bar-serve", 0.85],
+  ...BARTENDER_BAR_BLUEPRINT.stools.map((stool) => [
+    stool.resourceId.replace(".barstool-", ".bar-serve-"), stool.position[0]
+  ] as const)
+];
+const bartenderWorkResources = bartenderWorkStations.map(([id, x]) => {
+  const point = worldXZ(bartenderBarWorld, BARTENDER_BAR_BLUEPRINT.rotationY, [x, -0.2]);
+  return resource(id, "lounge", 1, "bartender-station", "bar", point[0], point[1], BARTENDER_BAR_BLUEPRINT.rotationY, "none");
+});
 const bartenderStools = BARTENDER_BAR_BLUEPRINT.stools.map((stool) =>
   chairResource(stool.resourceId, "lounge", 1, "guest-seat", "guest", bartenderBarWorld,
     BARTENDER_BAR_BLUEPRINT.rotationY, [stool.position[0], stool.position[2]], stool.rotationY, "barstool"));
@@ -264,25 +290,25 @@ const AUTHORED_OBSTACLES: readonly SpatialFootprint[] = [{
   id: "archive.display-west",
   roomId: "archive",
   floor: 2,
-  center: [2.45, 6.4, -0.2],
-  size: [0.72, 4.35],
+  center: [2.31, 6.4, 0.55],
+  size: [0.72, 3.95],
   rotationY: Math.PI / 2
 },
 {
   id: "archive.display-east",
   roomId: "archive",
   floor: 2,
-  center: [11.05, 6.4, -0.2],
-  size: [0.72, 3.55],
+  center: [11.19, 6.4, 0.55],
+  size: [0.72, 3.95],
   rotationY: -Math.PI / 2
 },
 {
   id: "archive.bookshelf",
   roomId: "archive",
   floor: 2,
-  center: [4.55, 6.4, -3.95],
-  size: [2.7, 0.48],
-  rotationY: 0
+  center: [2.29, 6.4, -2.9],
+  size: [0.48, 2.5],
+  rotationY: Math.PI / 2
 }];
 
 const redesignedFootprints: SpatialFootprint[] = [
@@ -351,7 +377,8 @@ const loungeDiningChairs = LOUNGE_FURNITURE_BLUEPRINT.diningChairs.map((position
   return withStagingOffset(chairResource(`lounge.dining-${index + 1}`, "lounge", 1, "guest-seat", "guest",
     [x, z], 0, [0, 0], Math.PI, "armchair"), [0, -1.2]);
 });
-const entertainmentSofa = sofaResources("entertainment.sofa", "entertainment", 1, 13.15, 12.4, Math.PI, "watching");
+const entertainmentSofa = sofaResources("entertainment.sofa", "entertainment", 1,
+  ...entertainmentPoint(...ENTERTAINMENT_LAYOUT.sofa), Math.PI, "watching");
 const skySofa = sofaResources("sky-lounge.sofa", "sky-lounge", 3, -15.5, -10.0, Math.PI);
 const librarySofaPosition = worldXZ(LIBRARY_BLUEPRINT.roomCenter, 0,
   [LIBRARY_BLUEPRINT.sofaPosition[0], LIBRARY_BLUEPRINT.sofaPosition[2]]);
@@ -392,6 +419,7 @@ function executiveLoungeResources(roomId: ExecutiveRoomId) {
         [parent[0] + sofa.position[0], parent[1] + sofa.position[2]], sofa.rotationY,
         [x, sofa.seatLocalZ], 0, "sofa");
       return { ...seat, interaction: { ...seat.interaction, seatHeight: sofa.seatHeight,
+        seatFront: sofa.seatDepth / 2 - sofa.avatarRootForwardOffset,
         approachSide: "front" as const, approachDistance: sofa.stagingDistance,
         exitSide: "front" as const, exitDistance: sofa.stagingDistance } };
     }),
@@ -437,12 +465,14 @@ const fitnessResources = [
 ];
 
 const entertainmentScreen = resource("entertainment.tv-control", "entertainment", 1,
-  "display-station", "screen-control", 12.55, 8.5, Math.PI, "none");
+  "display-station", "screen-control", ...entertainmentPoint(ENTERTAINMENT_LAYOUT.tvX, -2.2), Math.PI, "none");
+// Players stand 1.4 m in front of the first arcade and on both long sides of the foosball table.
+const [foosballX, foosballZ] = ENTERTAINMENT_LAYOUT.foosball;
 
 const archiveInteractions = [
-  resource("archive.display-west", "archive", 2, "archive-station", "shelf", 3.35, -0.2, -Math.PI / 2, "none"),
-  resource("archive.display-east", "archive", 2, "archive-station", "shelf", 10.15, -0.2, Math.PI / 2, "none"),
-  resource("archive.bookshelf", "archive", 2, "archive-station", "shelf", 4.55, -3.05, Math.PI, "none")
+  resource("archive.display-west", "archive", 2, "archive-station", "shelf", 3.21, 0.55, -Math.PI / 2, "none"),
+  resource("archive.display-east", "archive", 2, "archive-station", "shelf", 10.29, 0.55, Math.PI / 2, "none"),
+  resource("archive.bookshelf", "archive", 2, "archive-station", "shelf", 3.19, -2.9, -Math.PI / 2, "none")
 ];
 
 const outdoor = OUTDOOR_FACILITIES_BLUEPRINT;
@@ -481,10 +511,12 @@ const cafeCustomerPoint = worldXZ([outdoor.cafeKiosk.position[0], outdoor.cafeKi
   outdoor.cafeKiosk.rotationY, outdoor.cafeKiosk.customerTarget);
 const outdoorCafeCounter = resource("outdoor.cafe-counter", "outdoor-cafe", 1, "cafe-counter", "coffee",
   cafeCustomerPoint[0], cafeCustomerPoint[1], outdoor.cafeKiosk.rotationY + Math.PI, "none");
+const outdoorGardenArt = resource("outdoor.garden-art", "outdoor-cafe", 1, "display-station", "reading",
+  outdoor.gardenArt.viewPoint[0], outdoor.gardenArt.viewPoint[2], 0, "none");
 
 /** Each entry is one real seat or one standing interaction point. */
 const AUTHORED_RESOURCES: readonly SpatialResource[] = [
-  ...outdoorSeats, outdoorCafeCounter,
+  ...outdoorSeats, outdoorCafeCounter, outdoorGardenArt,
   ...lobbySofa.map((seat) => seat.id === "lobby.sofa-1"
     ? withStagingOffset(seat, [-1.4, -0.15]) : seat),
   armchairResource("lobby.armchair-1", "lobby", 1, -11.35, -9.75, Math.PI),
@@ -518,18 +550,24 @@ const AUTHORED_RESOURCES: readonly SpatialResource[] = [
 
   // Standing service point between back counter and guest-facing bar.
   bartenderStation,
+  ...bartenderWorkResources,
   ...loungeSofa,
   ...loungeArmchairs,
   ...bartenderStools,
   ...loungeDiningChairs,
 
-  ...entertainmentSofa.map((seat) => seat.id === "entertainment.sofa-1"
-    ? withStagingOffset(seat, [-0.82, 1.0]) : seat),
-  { ...armchairResource("entertainment.armchair", "entertainment", 1, 15.18, 12.65, Math.PI), activity: "watching" as const },
+  ...entertainmentSofa.map((seat, index) => {
+    const place = index < 2 ? { ...seat, id: `entertainment.console-${index + 1}`, activity: "gaming" as const } : seat;
+    return index === 0 ? withStagingOffset(place, [-0.82, 1.0]) : place;
+  }),
+  { ...armchairResource("entertainment.armchair", "entertainment", 1, ...entertainmentPoint(...ENTERTAINMENT_LAYOUT.armchair), Math.PI), activity: "watching" as const },
   entertainmentScreen,
-  resource("entertainment.arcade", "entertainment", 1, "recreation-station", "gaming", 17.25, 8.7, Math.PI / 2, "none"),
-  resource("entertainment.foosball-1", "entertainment", 1, "recreation-station", "recreation", 17.15, 10.05, 0, "none"),
-  resource("entertainment.foosball-2", "entertainment", 1, "recreation-station", "recreation", 17.75, 12.55, Math.PI, "none"),
+  resource("entertainment.arcade", "entertainment", 1, "recreation-station", "gaming",
+    ...entertainmentPoint(ENTERTAINMENT_LAYOUT.arcades[0], ENTERTAINMENT_LAYOUT.arcadeZ + 1.4), Math.PI, "none"),
+  resource("entertainment.foosball-1", "entertainment", 1, "recreation-station", "recreation",
+    ...entertainmentPoint(foosballX - 0.6, foosballZ - 1.25), 0, "none"),
+  resource("entertainment.foosball-2", "entertainment", 1, "recreation-station", "recreation",
+    ...entertainmentPoint(foosballX, foosballZ + 1.25), Math.PI, "none"),
 
   ...executiveSeats,
   ...executiveVipSofa,

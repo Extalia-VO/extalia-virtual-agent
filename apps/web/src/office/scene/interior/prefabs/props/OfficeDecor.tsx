@@ -1,3 +1,5 @@
+import { InteriorPart } from '../../InteriorPart';
+import PROFILE from '../../interiorAssetProfile.json';
 import { useSolarEnvironment } from "../../../Environment";
 import { FixtureSpotLight } from "../architecture/FixtureSpotLight";
 import { ceilingPendantDrop } from "../architecture/ceilingMounting";
@@ -14,7 +16,7 @@ export function WallArt({
   frameColor?: string; groundColor?: string; accentColor?: string;
 }) {
   return (
-    <group position={position} rotation={[0, rotationY, 0]}>
+    <group position={position} rotation={[0, rotationY, 0]}><InteriorPart model="wall-art" modelScale={[width/PROFILE.wallArt.width,height/PROFILE.wallArt.height,1]}>
       <mesh>
         <boxGeometry args={[width, height, 0.07]} />
         <meshStandardMaterial color={frameColor} roughness={0.7} />
@@ -35,30 +37,30 @@ export function WallArt({
         <boxGeometry args={[width * 0.52, height * 0.045, 0.008]} />
         <meshStandardMaterial color="#d8b86d" roughness={0.9} />
       </mesh>
-    </group>
+    </InteriorPart></group>
   );
 }
 
-/** Soft area rug. Position is the center on the floor plane. */
+/** Thin area rug. Position marks the supporting floor, with a 6 mm pile above it. */
 export function AreaRug({
-  position = [0, 0.025, 0], rotationY = 0, width = 2.8, depth = 1.9,
+  position = [0, 0, 0], rotationY = 0, width = 2.8, depth = 1.9,
   color = "#c9b9a4", borderColor = "#a58d76"
 }: {
   position?: Vec3; rotationY?: number; width?: number; depth?: number;
   color?: string; borderColor?: string;
 }) {
   return (
-    <group position={position} rotation={[0, rotationY, 0]}>
-      <mesh receiveShadow>
-        <boxGeometry args={[width, 0.035, depth]} />
+    <group name="office-area-rug" position={position} rotation={[0, rotationY, 0]} userData={{ officeCollision: false }}>
+      <mesh position={[0, 0.0025, 0]} receiveShadow>
+        <boxGeometry args={[width, 0.005, depth]} />
         <meshStandardMaterial color={borderColor} roughness={1} />
       </mesh>
-      <mesh position={[0, 0.019, 0]} receiveShadow>
-        <boxGeometry args={[width - 0.12, 0.008, depth - 0.12]} />
+      <mesh position={[0, 0.003, 0]} receiveShadow>
+        <boxGeometry args={[width - 0.12, 0.006, depth - 0.12]} />
         <meshStandardMaterial color={color} roughness={1} />
       </mesh>
-      <mesh position={[0, 0.024, 0]}>
-        <boxGeometry args={[width * 0.58, 0.006, 0.025]} />
+      <mesh position={[0, 0.0055, 0]}>
+        <boxGeometry args={[width * 0.58, 0.001, 0.025]} />
         <meshStandardMaterial color="#e2d6c5" roughness={1} />
       </mesh>
     </group>
@@ -85,11 +87,12 @@ export function PendantLight({
         <cylinderGeometry args={[0.012, 0.008, mountedDrop, 8]} />
         <meshStandardMaterial color="#777c76" metalness={0.45} roughness={0.48} />
       </mesh>
-      <mesh position={[0, -mountedDrop, 0]}>
+      <InteriorPart model="pendant-light" position={[0, -mountedDrop, 0]}>
+      <mesh>
         <cylinderGeometry args={[0.14, 0.4, 0.22, 24, 1, true]} />
         <meshStandardMaterial color={color} roughness={0.58} side={2} />
       </mesh>
-      <mesh position={[0, -mountedDrop - 0.105, 0]} userData={{ officeDynamic: true }}>
+      <mesh position={[0, -0.105, 0]} userData={{ officeDynamic: true }}>
         <cylinderGeometry args={[0.24, 0.24, 0.012, 24]} />
         <meshStandardMaterial
           color="#ffffff"
@@ -99,6 +102,7 @@ export function PendantLight({
           toneMapped={false}
         />
       </mesh>
+      </InteriorPart>
       <FixtureSpotLight name="decorative-pendant-downlight" position={[0, -mountedDrop - 0.12, 0]}
         aim={[0, -ceilingY + 0.8, 0]} intensity={interiorFactor * 26} distance={4.5} angle={0.95} color="#ffeacc" />
     </group>
@@ -134,7 +138,7 @@ export function DeskObjects({
   position = [0, 0, 0], scale = 1
 }: { position?: Vec3; scale?: number }) {
   return (
-    <group position={position} scale={scale}>
+    <group position={position} scale={scale}><InteriorPart model="decor-vignette">
       <mesh position={[-0.11, 0.035, 0]} rotation={[0, 0, -0.025]}>
         <boxGeometry args={[0.34, 0.07, 0.24]} />
         <meshStandardMaterial color="#687d75" roughness={0.86} />
@@ -155,6 +159,6 @@ export function DeskObjects({
         <sphereGeometry args={[0.055, 10, 8]} />
         <meshStandardMaterial color="#789879" roughness={0.9} />
       </mesh>
-    </group>
+    </InteriorPart></group>
   );
 }

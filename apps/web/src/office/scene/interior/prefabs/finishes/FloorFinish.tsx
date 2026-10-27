@@ -1,6 +1,12 @@
 import { useEffect, useMemo } from "react";
 import { CanvasTexture, RepeatWrapping, SRGBColorSpace } from "three";
 
+import { FootprintBox } from "../../FootprintPatch";
+import type { BuildingFootprintProfile } from "../../buildingFootprintGeometry";
+import { useFloorPanelModel } from "../../floorPanelModel";
+import { FLOOR_FINISH_DEPTH } from "../../floorElevation";
+import { StaticCampusBatch } from "../../../StaticCampusBatch";
+
 export type FloorMaterial = "oak" | "stone" | "carpet" | "tile" | "raised";
 
 const PALETTE: Record<FloorMaterial, { base: string; edge: string; tileSize: number }> = {
@@ -86,37 +92,45 @@ function makeTexture(material: FloorMaterial, width: number, depth: number): Can
   return texture;
 }
 
+/** Position marks the finished walking surface; thickness extends beneath it. */
 export function FloorFinish({
   size,
   position = [0, 0, 0],
   material = "oak",
-  thickness = 0.08,
-  border = false
+  thickness = FLOOR_FINISH_DEPTH,
+  border = false,
+  buildingOrigin = [0, 0],
+  profile
 }: {
   size: [number, number];
   position?: [number, number, number];
   material?: FloorMaterial;
   thickness?: number;
   border?: boolean;
+  buildingOrigin?: readonly [number, number];
+  profile?: BuildingFootprintProfile;
 }) {
   const [width, depth] = size;
+  const panel = useFloorPanelModel();
   const texture = useMemo(() => makeTexture(material, width, depth), [material, width, depth]);
   useEffect(() => () => texture.dispose(), [texture]);
   const edge = PALETTE[material].edge;
+  const origin = [buildingOrigin[0] + position[0], buildingOrigin[1] + position[2]] as const;
   return (
-    <group position={position} name="office-floor-finish" userData={{ officeCollision: false }}>
-      <mesh receiveShadow position={[0, thickness / 2, 0]}>
-        <boxGeometry args={[width, thickness, depth]} />
+    <group position={position} name="office-floor-finish" userData={{ officeCollision: false, officeDynamic: true, officeFloorPanel: panel ? "blender" : "procedural" }}>
+      <StaticCampusBatch key={panel ? "blender" : "procedural"}>
+      <FootprintBox name="office-floor-panel" unitGeometry={panel} size={[width, thickness, depth]} buildingOrigin={origin} profile={profile} receiveShadow position={[0, -thickness / 2, 0]}>
         <meshStandardMaterial map={texture} color="#ffffff" roughness={material === "stone" || material === "tile" || material === "raised" ? 0.76 : 0.91} />
-      </mesh>
+      </FootprintBox>
       {border && <>
-        {[-1, 1].map((side) => <mesh key={`x-${side}`} receiveShadow position={[side * (width / 2 - 0.045), thickness + 0.005, 0]}>
-          <boxGeometry args={[0.09, 0.012, depth]} /><meshStandardMaterial color={edge} roughness={0.82} />
-        </mesh>)}
-        {[-1, 1].map((side) => <mesh key={`z-${side}`} receiveShadow position={[0, thickness + 0.005, side * (depth / 2 - 0.045)]}>
-          <boxGeometry args={[width, 0.012, 0.09]} /><meshStandardMaterial color={edge} roughness={0.82} />
-        </mesh>)}
+        {[-1, 1].map((side) => <FootprintBox name="office-floor-inlay" key={`x-${side}`} size={[0.09, 0.012, depth]} buildingOrigin={origin} profile={profile} receiveShadow position={[side * (width / 2 - 0.045), -0.006, 0]}>
+          <meshStandardMaterial color={edge} roughness={0.82} polygonOffset polygonOffsetFactor={-1} polygonOffsetUnits={-1} />
+        </FootprintBox>)}
+        {[-1, 1].map((side) => <FootprintBox name="office-floor-inlay" key={`z-${side}`} size={[width, 0.012, 0.09]} buildingOrigin={origin} profile={profile} receiveShadow position={[0, -0.006, side * (depth / 2 - 0.045)]}>
+          <meshStandardMaterial color={edge} roughness={0.82} polygonOffset polygonOffsetFactor={-1} polygonOffsetUnits={-1} />
+        </FootprintBox>)}
       </>}
+      </StaticCampusBatch>
     </group>
   );
 }

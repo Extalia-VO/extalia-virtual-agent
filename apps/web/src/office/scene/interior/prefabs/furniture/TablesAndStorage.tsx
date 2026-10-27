@@ -1,3 +1,6 @@
+import { DeskObjects } from '../props/OfficeDecor';
+import { InteriorPart } from '../../InteriorPart';
+import PROFILE from '../../interiorAssetProfile.json';
 /** Furniture faces local +Z; keep that side accessible from the room. */
 export function CoffeeTable({
   position = [0, 0, 0],
@@ -8,6 +11,7 @@ export function CoffeeTable({
 }) {
   return (
     <group position={position} rotation={[0, rotationY, 0]}>
+      <InteriorPart model="coffee-table">
       <mesh castShadow receiveShadow position={[0, 0.38, 0]}>
         <boxGeometry args={[1.25, 0.07, 0.7]} />
         <meshStandardMaterial color="#a87b55" roughness={0.67} />
@@ -36,6 +40,7 @@ export function CoffeeTable({
         <cylinderGeometry args={[0.075, 0.07, 0.13, 12]} />
         <meshStandardMaterial color="#f1ede6" roughness={0.58} />
       </mesh>
+    </InteriorPart>
     </group>
   );
 }
@@ -59,6 +64,7 @@ export function Bookshelf({
 
   return (
     <group position={position} rotation={[0, rotationY, 0]}>
+      <InteriorPart model={doubleSided ? "bookshelf-open" : "bookshelf"} modelScale={[width / PROFILE.bookshelf.width, height / PROFILE.bookshelf.height, 1]}>
       {/* Open office shelves are readable from both the room and corridor. */}
       {!doubleSided && <mesh castShadow position={[0, height / 2, -0.17]}>
         <boxGeometry args={[width, height, 0.055]} />
@@ -96,6 +102,7 @@ export function Bookshelf({
           })}
         </group>
       ))}
+    </InteriorPart>
     </group>
   );
 }
@@ -111,6 +118,7 @@ export function DisplayCabinet({
 }) {
   return (
     <group position={position} rotation={[0, rotationY, 0]}>
+      <InteriorPart model="display-cabinet" modelScale={[width / PROFILE.displayCabinet.width, 1, 1]}>
       <mesh castShadow position={[0, 1.1, -0.2]}>
         <boxGeometry args={[width, 2.2, 0.055]} />
         <meshStandardMaterial color="#62594e" roughness={0.79} />
@@ -157,6 +165,7 @@ export function DisplayCabinet({
           </mesh>
         </group>
       ))}
+    </InteriorPart>
     </group>
   );
 }
@@ -172,6 +181,7 @@ export function StorageCabinet({
 }) {
   return (
     <group position={position} rotation={[0, rotationY, 0]}>
+      <InteriorPart model="storage-cabinet" modelScale={[width / PROFILE.storageCabinet.width, 1, 1]}>
       <mesh castShadow position={[0, 0.55, 0]}>
         <boxGeometry args={[width, 1.1, 0.48]} />
         <meshStandardMaterial color="#b9b4a9" roughness={0.9} />
@@ -192,6 +202,17 @@ export function StorageCabinet({
           <meshStandardMaterial color="#657471" metalness={0.45} roughness={0.42} />
         </mesh>
       ))}
+    </InteriorPart>
     </group>
   );
+}
+
+/** Narrow entrance console with storage, books and a ceramic arrangement. */
+export function ConsoleTable({position=[0,0,0],rotationY=0,width=1.6}:{position?:[number,number,number];rotationY?:number;width?:number}) {
+  return <group position={position} rotation={[0,rotationY,0]}><InteriorPart model="console-table" modelScale={[width/PROFILE.consoleTable.width,1,1]}>
+    <mesh position={[0,.79,0]} castShadow><boxGeometry args={[width,.06,.42]}/><meshStandardMaterial color="#a88665" roughness={.6}/></mesh>
+    <mesh position={[0,.62,0]} castShadow><boxGeometry args={[width-.1,.25,.35]}/><meshStandardMaterial color="#d4d0c5"/></mesh>
+    {[-1,1].map(side=><mesh key={side} position={[side*(width/2-.12),.3,0]} castShadow><boxGeometry args={[.045,.6,.34]}/><meshStandardMaterial color="#344344" metalness={.55}/></mesh>)}
+    <DeskObjects position={[0,.82,0]} />
+  </InteriorPart></group>;
 }

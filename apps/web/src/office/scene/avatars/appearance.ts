@@ -1,11 +1,10 @@
 import {
-  CHARACTER_HAIR_STYLES,
   type CharacterAccessories, type CharacterAppearance, type CharacterBottom, type CharacterGait, type CharacterHairStyle,
   type CharacterOutfit, type CharacterPresentation, type CharacterTop,
 } from "@extalia/core";
-import { createHumanoidRigProfile, humanoidInstanceSeed, type HumanoidRigProfile, type HumanoidStature } from "./rig";
+import { HUMANOID_HEAD_ELONGATION, createHumanoidRigProfile, humanoidInstanceSeed, type HumanoidRigProfile, type HumanoidStature } from "./rig";
 
-export type { CharacterAppearance } from "@extalia/core";
+export type { CharacterAppearance, CharacterPresentation } from "@extalia/core";
 
 export type AvatarModelVariant = "office-classic" | "female-casual" | "business-man" | "business-woman";
 
@@ -75,7 +74,7 @@ export interface AvatarVisualConfig {
 }
 
 export function presentationPreset(value: AvatarPresentation | undefined): CharacterPresentation {
-  return value === "feminine" || value === "female" ? "feminine" : value === "masculine" || value === "male" ? "masculine" : "neutral";
+  return value === "feminine" || value === "female" ? "feminine" : "masculine";
 }
 
 /** Unconfigured avatars rotate through everyday outfits; signature looks are opt-in. */
@@ -110,52 +109,57 @@ export interface PresentationPresetDefinition {
 /** Presentation presets are style choices: each sets hair, cuts, accessories, frame and gait. */
 export const PRESENTATION_PRESETS: Readonly<Record<CharacterPresentation, PresentationPresetDefinition>> = {
   feminine: {
-    hair: ["long", "wavy", "ponytail", "bun", "bob"],
+    // Generated looks wear the detailed styles of their own presentation (see characterHair `detail`).
+    hair: ["high-ponytail", "bun"],
     outfit: "business-casual", top: "blouse", bottom: "skirt",
     accessories: { watch: "classic", earrings: "studs", bag: "tote", tie: false },
     gait: "feminine",
   },
   masculine: {
-    hair: ["side-part", "short-fade", "textured-crop", "undercut", "slicked-back"],
+    hair: ["textured-crop", "slicked-back"],
     outfit: "executive", top: "shirt", bottom: "trousers",
     accessories: { watch: "classic", earrings: "none", bag: "briefcase", tie: true },
     gait: "masculine",
   },
-  neutral: {
-    // Neutral mixes shorter and longer cuts.
-    hair: ["medium", "curly", "afro", "bob", "textured-crop"],
-    outfit: "creative", top: "knit", bottom: "trousers",
-    accessories: { watch: "smart", earrings: "none", bag: "messenger", tie: false },
-    gait: "neutral",
-  },
 };
 
 /**
- * Deterministic look for a character without saved settings. It is seeded only
- * from the presence id and always uses the neutral frame and gait: no gender is
- * inferred from names, titles, models or providers.
+ * Deterministic look for a character without saved settings, seeded from `id`
+ * (a presence id, or a name seed from `lookIdentity`). The presentation comes
+ * from explicit metadata when given (`presentation`); otherwise the seed picks
+ * a neutral masculine or feminine preset. Nothing is inferred from the text of
+ * names, titles, models or providers.
  */
-export function defaultCharacterAppearance(id: string): CharacterAppearance {
+export function defaultCharacterAppearance(id: string, presentation?: CharacterPresentation): CharacterAppearance {
   const seed = humanoidInstanceSeed(id);
-  const outfit = SEEDED_OUTFITS[seed % SEEDED_OUTFITS.length] ?? "business-casual";
+  presentation ??= (seed & 1) === 0 ? "masculine" : "feminine";
+  const preset = PRESENTATION_PRESETS[presentation];
+  const outfit = SEEDED_OUTFITS[seed % SEEDED_OUTFITS.length] ?? preset.outfit;
+  const hairStyle = preset.hair[(seed >>> 10) % preset.hair.length] ?? preset.hair[0]!;
+  const top = presentation === "feminine" && outfit === "business-casual" ? "blouse" : OUTFIT_TOPS[outfit];
+  const bottom = presentation === "feminine" && (seed >>> 6) % 2 === 0 ? "skirt" : "trousers";
   return {
-    presentation: "neutral",
-    hairStyle: CHARACTER_HAIR_STYLES[(seed >>> 10) % CHARACTER_HAIR_STYLES.length] ?? "medium",
+    presentation,
+    hairStyle,
     hairColor: SEEDED_HAIR[(seed >>> 15) % SEEDED_HAIR.length] ?? "#292426",
     skinTone: SEEDED_SKINS[(seed >>> 12) % SEEDED_SKINS.length] ?? "#c79a82",
-    outfit, top: OUTFIT_TOPS[outfit], bottom: "trousers",
-    stature: "default", gait: "neutral",
+    outfit, top, bottom,
+    stature: "default", gait: presentation,
     accessories: {
       glasses: seed % 4 === 0 ? GLASSES[seed % GLASSES.length]! : "none",
       watch: seed % 3 === 0 ? "classic" : "none",
-      earrings: "none", bag: "none", tie: OUTFIT_TIES[outfit], badge: true, headphones: false,
+      earrings: presentation === "feminine" && (seed >>> 4) % 2 === 0 ? "studs" : "none",
+      bag: "none",
+      tie: presentation === "masculine" && top === "shirt" ? OUTFIT_TIES[outfit] : false,
+      badge: true,
+      headphones: false,
     },
   };
 }
 
 /**
  * Apply a presentation preset: hair, garment cuts, preset accessories, frame and
- * gait change; skin, hair colour, garment colours, stature, height, glasses,
+ * gait change; skin, hair color, garment colors, stature, height, glasses,
  * badge and headphones stay as the user set them.
  */
 export function applyPresentationPreset(base: CharacterAppearance, presentation: CharacterPresentation, id: string): CharacterAppearance {
@@ -197,9 +201,48 @@ export function avatarVisual(id: string, appearance: CharacterAppearance): Avata
   };
 }
 
-/** Generated look for a presence id (neutral and varied; see `defaultCharacterAppearance`). */
-export function characterAppearance(id: string): AvatarVisualConfig {
-  return avatarVisual(id, defaultCharacterAppearance(id));
+/** Generated look for a presence id or name seed (neutral and varied; see `defaultCharacterAppearance`). */
+export function characterAppearance(id: string, presentation?: CharacterPresentation): AvatarVisualConfig {
+  return avatarVisual(id, defaultCharacterAppearance(id, presentation));
+}
+
+/* ── v0.0.30 ui: looks generated from a character's full name ── */
+
+/** Explicit gender metadata of an agent or team member (never inferred from its name). */
+export type LookGender = "female" | "male";
+
+/**
+ * What a character's generated look is seeded from: its full name (so the same
+ * name looks the same in 3D, on the board, in the popover and in the team
+ * dialog) and its explicit gender, when known.
+ */
+export interface LookIdentity { seed: string; presentation?: CharacterPresentation }
+
+/** The seed of a full name: case, outer and repeated spaces do not matter. */
+export function nameSeed(name: string): string {
+  return `name:${name.normalize("NFKC").trim().replace(/\s+/g, " ").toLowerCase()}`;
+}
+
+export function genderPresentation(gender: unknown): CharacterPresentation | undefined {
+  return gender === "female" ? "feminine" : gender === "male" ? "masculine" : undefined;
+}
+
+/** A name's look identity, or `undefined` for an empty name (the character keeps its id-seeded look). */
+export function lookIdentity(name: string | undefined, gender?: unknown): LookIdentity | undefined {
+  const trimmed = name?.trim();
+  if (!trimmed) return undefined;
+  const presentation = genderPresentation(gender);
+  return { seed: nameSeed(trimmed), ...(presentation ? { presentation } : {}) };
+}
+
+/** The id that seeds a character's rig, palette and generated look: its name seed when it has one. */
+export function lookSeed(id: string, identity: LookIdentity | undefined): string {
+  return identity?.seed ?? id;
+}
+
+/** A character's look: the saved one wins; otherwise the one generated from its name (or id). */
+export function resolvedAppearance(id: string, saved: CharacterAppearance | undefined, identity: LookIdentity | undefined): CharacterAppearance {
+  return saved ?? defaultCharacterAppearance(lookSeed(id, identity), identity?.presentation);
 }
 
 /** One rig per character: frame from the presentation, archetype from stature, optional explicit height. */
@@ -213,7 +256,7 @@ export function characterRig(visual: AvatarVisualConfig): HumanoidRigProfile {
 
 function standingHeight(rig: HumanoidRigProfile): number {
   const p = rig.proportions;
-  return (p.standingHipHeight + p.headHeight + p.headRadius) * rig.scale[1];
+  return (p.standingHipHeight + p.headHeight + p.headRadius * HUMANOID_HEAD_ELONGATION) * rig.scale[1];
 }
 
 /** Standing height in whole centimetres, as the editor shows it. */

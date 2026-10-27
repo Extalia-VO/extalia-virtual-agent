@@ -4,11 +4,94 @@ import { BufferGeometry, DoubleSide, Float32BufferAttribute, MeshStandardMateria
 import { OFFICE_STAIRCASE, OFFICE_STAIR_LAYOUT } from "../../layout";
 import { useSolarEnvironment } from "../../Environment";
 import { FixtureSpotLight } from "./FixtureSpotLight";
+import { StairPart } from "./StairPart";
 
 const GUARD_HEIGHT = 1.12;
 const GLASS_BOTTOM = 0.08;
 const STAIR_LIGHT_COLOR = "#fff0db";
 const LED_DYNAMIC = { officeMaterialDynamic: "stair-led:interior:#fff0db:factor*1.5" };
+
+/** Three cached samples approximate each continuous strip, aimed out from beneath its nosing.
+ * The source cannot illuminate its own walking surface through the solid oak above it;
+ * its warm spill reaches the lower tread and riser in the descending direction instead.
+ */
+export function stairTreadFixtures({ width = OFFICE_STAIRCASE.width, rise = OFFICE_STAIRCASE.rise,
+  run = OFFICE_STAIRCASE.runPerFlight, steps = OFFICE_STAIRCASE.stepsPerFlight }: {
+  width?: number; rise?: number; run?: number; steps?: number;
+} = {}) {
+  const tread = run / steps, stepRise = rise / 2 / steps;
+  const stripWidth = width - 0.16;
+  return ([1, -1] as const).flatMap(direction => {
+    const centerX = -direction * (width + OFFICE_STAIRCASE.gap) / 2;
+    const baseY = direction === 1 ? 0 : rise / 2;
+    return Array.from({ length: steps }, (_, index) => {
+      const surfaceY = baseY + stepRise * (index + 1);
+      const centerZ = direction * (-run / 2 + tread * (index + 0.5));
+      return ([-1 / 3, 0, 1 / 3] as const).map((across, sample) => {
+        const x = centerX + stripWidth * across;
+        return {
+          name: `stair-tread-strip-${direction === 1 ? 1 : 2}-${index + 1}-${sample + 1}`,
+          // Just below the diffuser's lower face (-0.1065), clear of the metal carrier.
+          position: [x, surfaceY - 0.107, centerZ - direction * (tread / 2 + 0.004)] as [number, number, number],
+          aim: [x, surfaceY - stepRise + 0.018, centerZ - direction * tread * 0.85] as [number, number, number],
+          intensity: 0.7, distance: 1.65, angle: 1.32, penumbra: 0.9,
+        };
+      });
+    }).flat();
+  });
+}
+
+/** Cached only: every tread casts light without adding a draw or an individual GPU spotlight. */
+function StairTreadLighting({ width, rise, run, steps, floorY }: {
+  width: number; rise: number; run: number; steps: number; floorY: number;
+}) {
+  const { state } = useSolarEnvironment();
+  const factor = state.factors.interiorLightFactor;
+  const fixtures = useMemo(() => stairTreadFixtures({ width, rise, run, steps }), [width, rise, run, steps]);
+  return <group name="stair-tread-strip-spill" userData={{ officeCollision: false }}>
+    {fixtures.map(fixture => <FixtureSpotLight key={fixture.name} {...fixture}
+      intensity={fixture.intensity * factor} color={STAIR_LIGHT_COLOR} floorY={floorY} bakedOnly />)}
+  </group>;
+}
+
+/** Sources sit just below actual upper-return treads, between the two inset support spines. */
+export function stairUndersideFixtures({ width = OFFICE_STAIRCASE.width, rise = OFFICE_STAIRCASE.rise,
+  run = OFFICE_STAIRCASE.runPerFlight, steps = OFFICE_STAIRCASE.stepsPerFlight }: {
+  width?: number; rise?: number; run?: number; steps?: number;
+} = {}) {
+  const x = (width + OFFICE_STAIRCASE.gap) / 2;
+  return [0.18, 0.5, 0.82].map(t => {
+    const index = Math.min(steps - 1, Math.floor(t * steps));
+    const surfaceY = rise / 2 + rise / 2 / steps * (index + 1);
+    const z = run / 2 - run / steps * (index + 0.5);
+    return { name: `stair-return-underside-${index + 1}`, position: [x, surfaceY - 0.147, z] as [number, number, number],
+      aim: [x, 0.04, z] as [number, number, number], intensity: 64, distance: 7.5, angle: 1, penumbra: 0.65 };
+  });
+}
+
+function StairUndersideLighting({ width, rise, run, steps, floorY }: {
+  width: number; rise: number; run: number; steps: number; floorY: number;
+}) {
+  const { state } = useSolarEnvironment();
+  const factor = state.factors.interiorLightFactor;
+  return <group name="stair-return-underside-downlights" userData={{ officeCollision: false }}>
+    {stairUndersideFixtures({ width, rise, run, steps }).map(fixture => <group key={fixture.name} position={fixture.position}>
+      <mesh name="stair-underside-housing" position={[0, 0.032, 0]}>
+        <cylinderGeometry args={[0.13, 0.13, 0.05, 12]} />
+        <meshStandardMaterial color="#454e51" roughness={0.42} metalness={0.6} />
+      </mesh>
+      <mesh name="stair-underside-lens" position={[0, 0.004, 0]} userData={LED_DYNAMIC}>
+        <cylinderGeometry args={[0.1, 0.1, 0.008, 12]} />
+        <meshStandardMaterial color="#eee5d7" emissive={STAIR_LIGHT_COLOR} emissiveIntensity={factor * 1.5}
+          roughness={0.4} toneMapped={false} />
+      </mesh>
+      <FixtureSpotLight position={[0, 0, 0]}
+        aim={[0, fixture.aim[1] - fixture.position[1], 0]} intensity={fixture.intensity * factor}
+        distance={fixture.distance} angle={fixture.angle} penumbra={fixture.penumbra}
+        color={STAIR_LIGHT_COLOR} floorY={floorY} name={fixture.name} />
+    </group>)}
+  </group>;
+}
 
 /** The same finishes and warm night lighting continue over flights and landings. */
 function useStairMaterials(ledEmissive?: number, exterior = false) {
@@ -45,16 +128,22 @@ function StairFlightLighting({ width, rise, run, midLandingDepth, floorY }: {
   for (const direction of [1, -1] as const) {
     const baseY = direction === 1 ? 0 : halfRise;
     const centerX = -direction * (width + gap) / 2;
-    for (const t of [0.18, 0.46, 0.74, 0.94]) {
+    for (const t of [0.1, 0.32, 0.54, 0.76, 0.94]) {
       const surfaceY = baseY + halfRise * t;
       const z = direction * run * (t - 0.5);
       fixtures.push({ position: [-direction * outerX, surfaceY + 1.02, z],
         aim: [centerX, surfaceY + 0.035, z], name: `stair-rail-downlight-${direction}-${t}` });
     }
+    const landingSideZ = run / 2 + midLandingDepth * 0.45;
+    fixtures.push({
+      position: [-direction * outerX, halfRise + 1.02, landingSideZ],
+      aim: [-direction * xOffset, halfRise + 0.035, landingSideZ],
+      name: `stair-midlanding-side-downlight-${direction}`
+    });
   }
   // The rear rail illuminates both passing lanes (0.65 m and 1.95 m) and the central crossing.
   const turnZ = run / 2 + midLandingDepth - OFFICE_STAIR_LAYOUT.guardInset;
-  const turnAimZ = run / 2 + midLandingDepth / 2;
+  const turnAimZ = run / 2 + midLandingDepth * 0.42;
   const turnStops = [-xOffset, -xOffset * 0.35, xOffset * 0.35, xOffset];
   for (const x of turnStops) {
     const isCenter = Math.abs(x) < xOffset * 0.5;
@@ -71,7 +160,7 @@ function StairFlightLighting({ width, rise, run, midLandingDepth, floorY }: {
         <meshStandardMaterial color="#eee5d7" emissive={STAIR_LIGHT_COLOR} emissiveIntensity={factor * 1.5} roughness={0.45} toneMapped={false} />
       </mesh>
       <FixtureSpotLight position={[0, -0.06, 0]} aim={[aim[0] - position[0]!, aim[1] - position[1]!, aim[2] - position[2]!]}
-        intensity={28 * factor} color={STAIR_LIGHT_COLOR} distance={3.8} angle={0.88} floorY={floorY} name={name} />
+        intensity={52 * factor} color={STAIR_LIGHT_COLOR} distance={4.8} angle={1.18} penumbra={0.72} floorY={floorY} name={name} />
     </group>)}
   </group>;
 }
@@ -117,20 +206,24 @@ function FlightGlassRail({ x, baseY, startZ, run, rise, direction, materials }: 
     <group position={[x, baseY, startZ]}>
       {panels.map((geometry, i) => <mesh key={i} geometry={geometry} material={materials.glass} />)}
       {/* Brushed top cap and base shoe share the exact glass slope and vertical offset. */}
-      <mesh position={[0, rise / 2 + GUARD_HEIGHT, direction * run / 2]} rotation={[angle, 0, 0]} material={materials.metal}>
-        <boxGeometry args={[0.052, 0.036, length]} />
-      </mesh>
-      <mesh position={[0, rise / 2 + 0.055, direction * run / 2]} rotation={[angle, 0, 0]} material={materials.metal}>
-        <boxGeometry args={[0.058, 0.055, length]} />
-      </mesh>
+      <StairPart model="stair-handrail" dimensions={[0.052, 0.036, length]}
+        position={[0, rise / 2 + GUARD_HEIGHT, direction * run / 2]} rotation={[angle, 0, 0]}>
+        <mesh material={materials.metal}><boxGeometry args={[0.052, 0.036, length]} /></mesh>
+      </StairPart>
+      <StairPart model="stair-shoe" dimensions={[0.058, 0.055, length]}
+        position={[0, rise / 2 + 0.055, direction * run / 2]} rotation={[angle, 0, 0]}>
+        <mesh material={materials.metal}><boxGeometry args={[0.058, 0.055, length]} /></mesh>
+      </StairPart>
       <mesh position={[0, rise / 2 + GUARD_HEIGHT - 0.026, direction * run / 2]} rotation={[angle, 0, 0]} material={materials.led} userData={LED_DYNAMIC}>
         <boxGeometry args={[0.022, 0.012, length]} />
       </mesh>
       {Array.from({ length: panelCount + 1 }, (_, i) => {
         const t = (i + 0.08) / (panelCount + 0.16);
-        return <mesh key={i} position={[0, rise * t + 0.15, direction * run * t]} rotation={[0, 0, Math.PI / 2]} material={materials.metal}>
-          <cylinderGeometry args={[0.025, 0.025, 0.064, 12]} />
-        </mesh>;
+        return <StairPart key={i} model="stair-clamp" position={[0, rise * t + 0.15, direction * run * t]}>
+          <mesh rotation={[0, 0, Math.PI / 2]} material={materials.metal}>
+            <cylinderGeometry args={[0.025, 0.025, 0.064, 12]} />
+          </mesh>
+        </StairPart>;
       })}
     </group>
   );
@@ -149,17 +242,22 @@ function LandingGlassRail({ position, length, rotationY = 0, materials, ledDynam
           <mesh position={[0, (GUARD_HEIGHT + GLASS_BOTTOM) / 2, 0]} material={materials.glass}>
             <boxGeometry args={[panelWidth - 0.008, GUARD_HEIGHT - GLASS_BOTTOM, 0.028]} />
           </mesh>
-          {[-0.32, 0.32].map(side => <mesh key={side} position={[panelWidth * side, 0.15, 0]} rotation={[Math.PI / 2, 0, 0]} material={materials.metal}>
-            <cylinderGeometry args={[0.025, 0.025, 0.064, 12]} />
-          </mesh>)}
+          {[-0.32, 0.32].map(side => <StairPart key={side} model="stair-clamp"
+            position={[panelWidth * side, 0.15, 0]} rotation={[0, Math.PI / 2, 0]}>
+            <mesh rotation={[0, 0, Math.PI / 2]} material={materials.metal}>
+              <cylinderGeometry args={[0.025, 0.025, 0.064, 12]} />
+            </mesh>
+          </StairPart>)}
         </group>
       ))}
-      <mesh position={[0, GUARD_HEIGHT, 0]} material={materials.metal}>
-        <boxGeometry args={[length, 0.036, 0.052]} />
-      </mesh>
-      <mesh position={[0, 0.055, 0]} material={materials.metal}>
-        <boxGeometry args={[length, 0.055, 0.058]} />
-      </mesh>
+      <StairPart model="stair-handrail" dimensions={[0.052, 0.036, length]}
+        position={[0, GUARD_HEIGHT, 0]} rotation={[0, Math.PI / 2, 0]}>
+        <mesh material={materials.metal}><boxGeometry args={[0.052, 0.036, length]} /></mesh>
+      </StairPart>
+      <StairPart model="stair-shoe" dimensions={[0.058, 0.055, length]}
+        position={[0, 0.055, 0]} rotation={[0, Math.PI / 2, 0]}>
+        <mesh material={materials.metal}><boxGeometry args={[0.058, 0.055, length]} /></mesh>
+      </StairPart>
       <mesh position={[0, GUARD_HEIGHT - 0.026, 0]} material={materials.led} userData={ledDynamic}>
         <boxGeometry args={[length, 0.012, 0.022]} />
       </mesh>
@@ -201,11 +299,16 @@ export function Staircase({
 
   return (
     <group position={position} name="office-passable-stairs" userData={{ officePassable: true }}>
+      <StairTreadLighting width={width} rise={rise} run={runPerFlight} steps={stepsPerFlight} floorY={position[1]!} />
       <StairFlightLighting width={width} rise={rise} run={runPerFlight} midLandingDepth={midLandingDepth} floorY={position[1]!} />
+      <StairUndersideLighting width={width} rise={rise} run={runPerFlight} steps={stepsPerFlight} floorY={position[1]!} />
       {[0, rise].map((y, i) => (
-        <mesh key={i} receiveShadow position={[i ? xOffset : -xOffset, y - 0.06, -runPerFlight / 2 - landingDepth / 2]} material={materials.stone}>
-          <boxGeometry args={[width + OFFICE_STAIR_LAYOUT.padOverhang * 2, 0.12, landingDepth]} />
-        </mesh>
+        <StairPart key={i} model="stair-landing" dimensions={[width + OFFICE_STAIR_LAYOUT.padOverhang * 2, 0.12, landingDepth]}
+          position={[i ? xOffset : -xOffset, y, -runPerFlight / 2 - landingDepth / 2]}>
+          <mesh receiveShadow position={[0, -0.06, 0]} material={materials.stone}>
+            <boxGeometry args={[width + OFFICE_STAIR_LAYOUT.padOverhang * 2, 0.12, landingDepth]} />
+          </mesh>
+        </StairPart>
       ))}
       {[1, -1].map(direction => {
         const baseY = direction === 1 ? 0 : halfRise;
@@ -214,34 +317,37 @@ export function Staircase({
           <group key={direction}>
             {/* Paired inset steel spines support the broader treads without narrowing the lanes. */}
             {[-0.28, 0.28].map(side => (
-              <mesh key={side} castShadow position={[centerX + width * side, baseY + halfRise / 2 - 0.22, 0]} rotation={[-Math.atan2(halfRise, runPerFlight) * direction, 0, 0]} material={materials.structure}>
-                <boxGeometry args={[0.12, 0.24, flightLength]} />
-              </mesh>
+              <StairPart key={side} model="stair-stringer" dimensions={[0.12, 0.24, flightLength]}
+                position={[centerX + width * side, baseY + halfRise / 2 - 0.22, 0]} rotation={[-Math.atan2(halfRise, runPerFlight) * direction, 0, 0]}>
+                <mesh castShadow material={materials.structure}><boxGeometry args={[0.12, 0.24, flightLength]} /></mesh>
+              </StairPart>
             ))}
             {Array.from({ length: stepsPerFlight }, (_, i) => (
               <group key={i} name={`stair-flight-${direction === 1 ? 1 : 2}-tread-${i + 1}`} position={[
                 centerX, baseY + stepRise * (i + 1),
                 direction * (-runPerFlight / 2 + tread * (i + 0.5))
               ]}>
-                {/* Surface elevation matches the semantic walking route. */}
-                <mesh castShadow receiveShadow position={[0, -0.045, 0]} material={materials.oak}>
-                  <boxGeometry args={[width, 0.09, tread + 0.025]} />
-                </mesh>
+                {/* Live emitters and risers remain app owned on both render paths. */}
                 <mesh position={[0, -stepRise / 2 - 0.045, -direction * (tread / 2 - 0.025)]} material={materials.structure}>
                   <boxGeometry args={[width - 0.08, Math.max(0.04, stepRise - 0.045), 0.035]} />
-                </mesh>
-                {/* Front nosing faces the approaching foot on each opposite flight. */}
-                <mesh position={[0, -0.09, -direction * (tread / 2 - 0.006)]} material={materials.metal}>
-                  <boxGeometry args={[width - 0.12, 0.023, 0.047]} />
                 </mesh>
                 <mesh position={[0, -0.099, -direction * (tread / 2 + 0.004)]} material={materials.led} userData={LED_DYNAMIC}>
                   <boxGeometry args={[width - 0.16, 0.015, 0.028]} />
                 </mesh>
-                {[0.04, 0.064].map(inset => (
-                  <mesh key={inset} position={[0, 0.001, -direction * (tread / 2 - inset)]} material={materials.grip}>
-                    <boxGeometry args={[width - 0.14, 0.002, 0.007]} />
+                <StairPart model="stair-tread" dimensions={[width, 0.09, tread]} rotation={[0, direction === 1 ? 0 : Math.PI, 0]}>
+                  {/* Surface elevation matches the semantic walking route. */}
+                  <mesh castShadow receiveShadow position={[0, -0.045, 0]} material={materials.oak}>
+                    <boxGeometry args={[width, 0.09, tread + 0.025]} />
                   </mesh>
-                ))}
+                  <mesh position={[0, -0.09, -(tread / 2 - 0.006)]} material={materials.metal}>
+                    <boxGeometry args={[width - 0.12, 0.023, 0.047]} />
+                  </mesh>
+                  {[0.04, 0.064].map(inset => (
+                    <mesh key={inset} position={[0, 0.001, -(tread / 2 - inset)]} material={materials.grip}>
+                      <boxGeometry args={[width - 0.14, 0.002, 0.007]} />
+                    </mesh>
+                  ))}
+                </StairPart>
               </group>
             ))}
             {[-1, 1].map(side => (
@@ -254,9 +360,11 @@ export function Staircase({
         );
       })}
       <group position={[0, halfRise, landingZ]}>
-        <mesh receiveShadow position={[0, -0.065, 0]} material={materials.stone}>
-          <boxGeometry args={[fullWidth, 0.13, midLandingDepth]} />
-        </mesh>
+        <StairPart model="stair-landing" dimensions={[fullWidth, 0.13, midLandingDepth]}>
+          <mesh receiveShadow position={[0, -0.065, 0]} material={materials.stone}>
+            <boxGeometry args={[fullWidth, 0.13, midLandingDepth]} />
+          </mesh>
+        </StairPart>
         <mesh castShadow position={[0, -0.15, 0]} material={materials.structure}>
           <boxGeometry args={[fullWidth, 0.04, midLandingDepth]} />
         </mesh>

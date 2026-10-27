@@ -8,7 +8,7 @@ const state: HostState = {
   setupComplete: true, profile: { id: 'profile', name: 'Example' }, connections: [],
   workspaces: ['alpha', 'beta'].map(id => ({ id, profileId: 'profile', name: id, projectLocation: `/projects/${id}`, createdAt: stamp, updatedAt: stamp })),
   sessions: [session('alpha-old', 'alpha', stamp), session('beta-one', 'beta', '2026-10-09T00:00:02.000Z'), session('alpha-new', 'alpha', '2026-10-09T00:00:01.000Z')],
-  library: [], storage: { dataDirectory: '/example/extalia', secretStore: 'memory' }, host: { kind: 'bridge', version: 'test' },
+  library: [], dataDirectory: '/example/extalia', storage: { dataDirectory: '/example/extalia', secretStore: 'memory' }, host: { kind: 'bridge', version: 'test' },
 };
 
 describe('project and session selection', () => {

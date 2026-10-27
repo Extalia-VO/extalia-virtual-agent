@@ -1,4 +1,4 @@
-import type { AgentHostApi, UpdateCapability, UpdateStatus } from '@extalia/platform';
+import { ATTACHMENT_BODY_HEADER, type AgentHostApi, type UpdateCapability, type UpdateStatus } from '@extalia/platform';
 import type { ExtaliaEvent } from '@extalia/protocol';
 import { createRemoteHost, listenerSet } from './remote';
 
@@ -30,8 +30,8 @@ async function readJson(response: Response): Promise<Record<string, unknown> | u
   }
 }
 
-async function request(deps: BridgeDeps, token: string, path: string, init: { method?: string; body?: unknown } = {}): Promise<Record<string, unknown> | undefined> {
-  const headers: Record<string, string> = { [BRIDGE_TOKEN_HEADER]: token };
+async function request(deps: BridgeDeps, token: string, path: string, init: { method?: string; body?: unknown; headers?: Record<string, string> } = {}): Promise<Record<string, unknown> | undefined> {
+  const headers: Record<string, string> = { [BRIDGE_TOKEN_HEADER]: token, ...init.headers };
   if (init.body !== undefined) headers['Content-Type'] = 'application/json';
   const response = await deps.fetch(path, {
     method: init.method ?? 'GET',
@@ -68,7 +68,10 @@ export function bridgeAgentHost(token: string, deps: BridgeDeps = defaultDeps())
     () => { source?.close(); source = undefined; },
   );
   return createRemoteHost(
-    async (method, args) => (await request(deps, token, '/api/call', { method: 'POST', body: { method, args } }))?.result,
+    // A file upload may be larger than an ordinary call; the Bridge admits that size only with this header.
+    async (method, args) => (await request(deps, token, '/api/call', {
+      method: 'POST', body: { method, args }, ...(method === 'uploadAttachment' ? { headers: { [ATTACHMENT_BODY_HEADER]: 'attachment' } } : {}),
+    }))?.result,
     listener => events.add(listener),
   );
 }

@@ -1,9 +1,9 @@
 import type { CharacterGait } from "@extalia/core";
 
 /**
- * Walking-style parameters. Office characters do not walk yet; the idle weight
- * shift uses these values now, and navigation will drive its walk cycle from
- * the same parameters so a character keeps one recognisable movement style.
+ * Walking-style parameters. The idle weight shift and the walk cycle
+ * (`movement/walkCycle.ts`) both use these values, so a character keeps one
+ * recognisable movement style.
  */
 export interface GaitParameters {
   readonly style: CharacterGait;
@@ -21,7 +21,6 @@ export interface GaitParameters {
 
 const GAIT_PROFILES: Readonly<Record<CharacterGait, Omit<GaitParameters, "style">>> = {
   feminine: { strideLength: 0.64, hipSway: 0.022, hipRoll: 0.05, armSwing: 0.2, cadence: 1.95 },
-  neutral: { strideLength: 0.7, hipSway: 0.014, hipRoll: 0.03, armSwing: 0.26, cadence: 1.85 },
   masculine: { strideLength: 0.76, hipSway: 0.008, hipRoll: 0.016, armSwing: 0.32, cadence: 1.75 },
 };
 
@@ -29,7 +28,7 @@ const REFERENCE_HEIGHT_CM = 170;
 
 /** Pure: the gait of an appearance; taller characters take longer, slightly slower steps. */
 export function gaitParameters(appearance?: { gait?: CharacterGait; heightCm?: number }): GaitParameters {
-  const style = appearance?.gait && Object.hasOwn(GAIT_PROFILES, appearance.gait) ? appearance.gait : "neutral";
+  const style = appearance?.gait && Object.hasOwn(GAIT_PROFILES, appearance.gait) ? appearance.gait : "masculine";
   const base = GAIT_PROFILES[style];
   const height = appearance?.heightCm;
   const ratio = height !== undefined && Number.isFinite(height) ? Math.max(0.85, Math.min(1.15, height / REFERENCE_HEIGHT_CM)) : 1;

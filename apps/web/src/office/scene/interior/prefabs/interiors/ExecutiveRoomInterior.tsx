@@ -9,8 +9,8 @@ import { CornerLampFixture, DeskLampFixture, StandLampFixture } from "../archite
 import { AbstractArtwork, AcousticPanel, InteriorBox, ModernCredenza, ModernStorageWall, SculpturalPlanter, ZonedRug } from "./ContemporaryRoomDetails";
 
 const sofaCushion = new RoundedBoxGeometry(0.75, 0.16, 0.82, 2, 0.06);
-const sofaBack = new RoundedBoxGeometry(2.64, 0.56, 0.19, 2, 0.065);
-const sofaArm = new RoundedBoxGeometry(0.18, 0.43, 0.95, 2, 0.06);
+const sofaBack = new RoundedBoxGeometry(2.64, 0.52, 0.19, 2, 0.065);
+const sofaArm = new RoundedBoxGeometry(0.18, 0.35, 0.95, 2, 0.06);
 const upholstery = new MeshStandardMaterial({ color: "#d2c8b8", roughness: 0.96 });
 
 /** The cushion tops and transforms come from the same layout used by seated avatars. */
@@ -19,15 +19,15 @@ function ModernExecutiveSofa({ layout }: {
 }) {
   return <group position={[...layout.position]} rotation={[0, layout.rotationY, 0]}
     userData={{ officeSeat: true }} dispose={null}>
-    <InteriorBox position={[0, 0.12, 0]} size={[layout.size[0] - 0.16, 0.16, layout.size[1] - 0.17]} finish="dark" />
-    <InteriorBox position={[0, 0.32, 0]} size={[layout.size[0] - 0.13, 0.24, layout.size[1] - 0.04]} finish="fabric" />
+    <InteriorBox position={[0, 0.10, 0]} size={[layout.size[0] - 0.16, 0.14, layout.size[1] - 0.17]} finish="dark" />
+    <InteriorBox position={[0, 0.21, 0]} size={[layout.size[0] - 0.13, 0.18, layout.size[1] - 0.04]} finish="fabric" />
     {layout.seatXs.map(x => <mesh key={x} geometry={sofaCushion} material={upholstery}
       position={[x, layout.seatHeight - 0.08, layout.seatLocalZ]} />)}
-    <mesh geometry={sofaBack} material={upholstery} position={[0, 0.74, -0.35]} />
+    <mesh geometry={sofaBack} material={upholstery} position={[0, 0.63, -0.35]} />
     {[-1, 1].map(side => <mesh key={side} geometry={sofaArm} material={upholstery}
-      position={[side * (layout.size[0] / 2 - 0.09), 0.46, 0]} />)}
-    <InteriorBox position={[-0.94, 0.68, -0.19]} size={[0.31, 0.28, 0.13]} finish="olive" />
-    <InteriorBox position={[0.94, 0.68, -0.19]} size={[0.31, 0.28, 0.13]} finish="clay" />
+      position={[side * (layout.size[0] / 2 - 0.09), 0.35, 0]} />)}
+    <InteriorBox position={[-0.94, 0.57, -0.19]} size={[0.31, 0.24, 0.13]} finish="olive" />
+    <InteriorBox position={[0.94, 0.57, -0.19]} size={[0.31, 0.24, 0.13]} finish="clay" />
   </group>;
 }
 
@@ -45,7 +45,7 @@ export function ExecutiveRoomInterior({ roomId, screens }: {
     <ZonedRug {...layout.desk.rug} />
     <ExecutiveWorkstation position={layout.desk.position} rotationY={layout.desk.rotationY}
       leaderSeat={layout.desk.leaderSeat} guestSeats={layout.desk.guestSeats}
-      screens={screens} includeCabinet plant={false} />
+      screens={screens} includeCabinet plant={false} leaderResourceId={roomId === "executive" ? "executive.leader" : "executive-studio.ceo"} />
 
     <group position={[...lounge.position]} userData={{ officeSeatStation: true }}>
       <ZonedRug {...lounge.rug} cool={cool} />

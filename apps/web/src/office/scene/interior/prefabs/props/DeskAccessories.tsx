@@ -1,72 +1,73 @@
+import { deskLayout, MOUSE_CENTRE_Y, MOUSE_DIMENSIONS, MOUSE_PAD, SINGLE_DESK_SLOTS } from "../../deskLayout";
+import { DeskAccessorySlots } from "./DeskOrganizers";
 import { useCoffeeCupHeldAtDesk } from "../../FurnishedFloorContext";
+import { WorkstationPart } from "../../WorkstationPart";
 
+/** A real-size mouse on its pad; `position` is the pad resting on the desk, the mouse at `mouseOnPad` on it. */
 export function MouseAndPad({
   position = [0, 0, 0],
   rotationY = 0,
-  scale = 1
+  mouseOnPad = [0, 0]
 }: {
-  position?: [number, number, number];
+  position?: readonly [number, number, number];
   rotationY?: number;
-  scale?: number;
+  mouseOnPad?: readonly [number, number];
 }) {
+  const { width, height, length } = MOUSE_DIMENSIONS;
+  const top = MOUSE_PAD.thickness;
   return (
-    <group position={position} rotation={[0, rotationY, 0]} scale={scale}>
-      {/* Double-layer stitched desk mat. */}
-      <mesh receiveShadow>
-        <boxGeometry args={[0.35, 0.012, 0.25]} />
+    <group position={[...position]} rotation={[0, rotationY, 0]} userData={{ officeDeskInput: "mouse-pad" }}>
+      {/* Stitched cloth pad. */}
+      <WorkstationPart asset="mouse-pad">
+      <mesh receiveShadow position={[0, top / 2, 0]}>
+        <boxGeometry args={[MOUSE_PAD.width, top, MOUSE_PAD.depth]} />
         <meshStandardMaterial color="#222b30" roughness={0.88} />
       </mesh>
-      <mesh position={[0, 0.007, 0]}>
-        <boxGeometry args={[0.331, 0.003, 0.231]} />
+      <mesh position={[0, top + 0.0005, 0]}>
+        <boxGeometry args={[MOUSE_PAD.width - 0.012, 0.001, MOUSE_PAD.depth - 0.012]} />
         <meshStandardMaterial color="#34464b" roughness={0.76} />
       </mesh>
-      <mesh position={[0.055, 0.035, -0.004]} receiveShadow scale={[0.056, 0.029, 0.081]}>
-        <sphereGeometry args={[1, 20, 14]} />
-        <meshStandardMaterial color="#3c484e" metalness={0.28} roughness={0.34} />
-      </mesh>
-      {/* Split buttons, center seam and scroll wheel make the pointer readable at scene scale. */}
-      <mesh position={[0.041, 0.066, -0.035]} rotation={[-0.08, 0, 0]}>
-        <boxGeometry args={[0.018, 0.003, 0.031]} />
-        <meshStandardMaterial color="#637177" roughness={0.42} />
-      </mesh>
-      <mesh position={[0.069, 0.066, -0.035]} rotation={[-0.08, 0, 0]}>
-        <boxGeometry args={[0.018, 0.003, 0.031]} />
-        <meshStandardMaterial color="#637177" roughness={0.42} />
-      </mesh>
-      <mesh position={[0.055, 0.067, -0.027]}>
-        <boxGeometry args={[0.008, 0.009, 0.025]} />
-        <meshStandardMaterial color="#151d21" roughness={0.4} />
-      </mesh>
-      <mesh position={[0.055, 0.070, -0.027]}>
-        <boxGeometry args={[0.007, 0.004, 0.012]} />
-        <meshStandardMaterial color="#8cc7bd" emissive="#367b71" emissiveIntensity={0.35} />
-      </mesh>
+      </WorkstationPart>
+      <group position={[mouseOnPad[0], MOUSE_CENTRE_Y, mouseOnPad[1]]} userData={{ officeDeskInput: "mouse" }}>
+        <WorkstationPart asset="mouse">
+        <mesh receiveShadow scale={[width / 2, height / 2, length / 2]}>
+          <sphereGeometry args={[1, 20, 14]} />
+          <meshStandardMaterial color="#3c484e" metalness={0.28} roughness={0.34} />
+        </mesh>
+        {/* Split buttons, seam and scroll wheel. */}
+        {[-1, 1].map(side => <mesh key={side} position={[side * width * 0.2, height * 0.42, -length * 0.26]} rotation={[-0.12, 0, 0]}>
+          <boxGeometry args={[width * 0.34, 0.002, length * 0.32]} />
+          <meshStandardMaterial color="#637177" roughness={0.42} />
+        </mesh>)}
+        <mesh position={[0, height * 0.46, -length * 0.22]}>
+          <boxGeometry args={[0.005, 0.006, 0.016]} />
+          <meshStandardMaterial color="#8cc7bd" emissive="#367b71" emissiveIntensity={0.35} />
+        </mesh>
+        </WorkstationPart>
+      </group>
     </group>
   );
 }
 
-/** Small personal items keep a compact desk styled without covering its active work area. */
+/**
+ * The desk's personal items: the coffee cup at the front left (lifted by its
+ * sitter while sipping) and the desk's own organizers, cabinet and decor in
+ * its slots (see deskLayout). The keyboard and mouse are placed by the desk.
+ */
 export function DeskAccessorySet({
   topY = 0.785,
-  mousePosition = [0.48, 0, 0.18],
-  mouseScale = 1,
   cup = true,
-  stationery = true,
   resourceId
 }: {
   topY?: number;
-  mousePosition?: [number, number, number];
-  mouseScale?: number;
   cup?: boolean;
-  stationery?: boolean;
-  resourceId?: string;
+  resourceId?: string | undefined;
 }) {
   const cupHeld = useCoffeeCupHeldAtDesk(resourceId);
   return (
     <group>
-      <MouseAndPad position={[mousePosition[0], topY + 0.006, mousePosition[2]]} scale={mouseScale} />
       {cup && !cupHeld && (
-        <group position={[-0.64, topY, 0.18]} userData={{ officeDynamic: true }}>
+        <group position={[-0.60, topY, 0.18]} userData={{ officeDynamic: true }}>
           <mesh receiveShadow position={[0, 0.055, 0]}>
             <cylinderGeometry args={[0.05, 0.046, 0.11, 20]} />
             <meshStandardMaterial color="#ddd6ca" roughness={0.28} />
@@ -89,26 +90,7 @@ export function DeskAccessorySet({
           </mesh>
         </group>
       )}
-      {stationery && (
-        <group position={[0.67, topY, -0.20]}>
-          <mesh position={[0, 0.055, 0]}>
-            <cylinderGeometry args={[0.052, 0.044, 0.11, 16]} />
-            <meshStandardMaterial color="#39464a" roughness={0.52} />
-          </mesh>
-          {([[-0.022, 0.15, -0.01], [0.005, 0.17, 0.008], [0.025, 0.145, -0.004]] as const).map(([x, y, z], index) => (
-            <group key={index} position={[x, y, z]} rotation={[0, 0, index === 1 ? 0.06 : -0.08]}>
-              <mesh position={[0, -0.035, 0]}>
-                <cylinderGeometry args={[0.004, 0.004, 0.14, 8]} />
-                <meshStandardMaterial color={["#be7556", "#527f82", "#d2af70"][index]} roughness={0.52} />
-              </mesh>
-              <mesh position={[0, 0.04, 0]}>
-                <coneGeometry args={[0.004, 0.018, 8]} />
-                <meshStandardMaterial color="#272c2d" roughness={0.55} />
-              </mesh>
-            </group>
-          ))}
-        </group>
-      )}
+      <DeskAccessorySlots layout={deskLayout(resourceId)} slots={SINGLE_DESK_SLOTS} topY={topY} />
     </group>
   );
 }

@@ -43,6 +43,11 @@ export function ConnectionsSection({ t, agents, state, onState }: { t: Messages;
   };
 
   const edit = (next: ConnectionDraft) => { setAttempted(false); setError(null); setConfirming(null); setDraft(next); };
+  // The models a row's successful test listed; the editor offers them until the connection is tested again.
+  const listedModels = (id?: string) => {
+    const result = id ? tests[id] : undefined;
+    return result && result !== 'testing' && result.ok ? result.models : undefined;
+  };
 
   return (
     <section className="card settings-section" aria-labelledby="settings-connections">
@@ -56,7 +61,7 @@ export function ConnectionsSection({ t, agents, state, onState }: { t: Messages;
 
       {draft ? (
         <form className="editor" aria-label={draft.id ? t.settings.editing(draft.name) : t.settings.addConnection} onSubmit={event => { event.preventDefault(); void save(); }}>
-          <ConnectionForm t={t} agents={agents} draft={draft} onChange={setDraft} showAllErrors={attempted} />
+          <ConnectionForm t={t} agents={agents} draft={draft} onChange={setDraft} showAllErrors={attempted} knownModels={listedModels(draft.id)} />
           {error && <p className="form-error" role="alert"><Icon name="alert" />{error}</p>}
           <div className="actions">
             <button type="submit" className="primary" disabled={busy}>{busy ? t.common.saving : t.common.save}</button>

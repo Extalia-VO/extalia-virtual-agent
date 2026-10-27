@@ -1,6 +1,13 @@
-import { DESKTOP_HOST_GLOBAL, type DesktopHostApi, type HostInfo, type Platform, type PlatformCapabilities } from '@extalia/platform';
+import { DESKTOP_HOST_GLOBAL, type DesktopHostApi, type HostInfo, type Platform, type PlatformCapabilities, type RestartCapability } from '@extalia/platform';
 import { bridgeAgentHost, bridgeUpdater, readBridgeToken } from './host/bridgeHost';
-import { desktopAgentHost, desktopUpdater } from './host/desktopHost';
+import { browserNotifications } from './approvals/browserNotifications';
+import { desktopAgentHost, desktopNotifications, desktopRestart, desktopUpdater } from './host/desktopHost';
+
+/**
+ * A page can only reload itself. That does not restart the Bridge, the CLI, Hermes or
+ * outside agent apps, and the UI says so.
+ */
+const reloadPage: RestartCapability = { kind: 'reload', restart: async () => { location.reload(); } };
 
 interface DirectoryHandle { name: string }
 type DirectoryPicker = (options?: { mode?: 'read' | 'readwrite' }) => Promise<DirectoryHandle>;
@@ -15,8 +22,11 @@ function browserOs(): HostInfo['os'] {
 
 function browserCapabilities(): PlatformCapabilities {
   const picker = (window as unknown as { showDirectoryPicker?: DirectoryPicker }).showDirectoryPicker;
-  if (!picker) return {};
+  // Browser notifications exist wherever the Notification API does; they show only after the user opts in (Settings).
+  const notifications = browserNotifications();
+  if (!picker) return notifications ? { notifications } : {};
   return {
+    ...(notifications ? { notifications } : {}),
     filesystem: {
       async selectDirectory() {
         try {
@@ -53,15 +63,17 @@ export async function resolvePlatform(): Promise<Platform> {
     // Older preload scripts may not expose these yet; a missing one is simply unavailable.
     if (desktop.agents) capabilities.agents = desktopAgentHost(desktop.agents);
     if (desktop.updater) capabilities.updater = desktopUpdater(desktop.updater);
+    if (desktop.restart) capabilities.restart = desktopRestart(desktop.restart);
+    if (desktop.notifications) capabilities.notifications = desktopNotifications(desktop.notifications);
     return { info: await desktop.info(), capabilities };
   }
 
   const info: HostInfo = { kind: 'web', appVersion: __APP_VERSION__, os: browserOs() };
   const token = readBridgeToken(document);
   if (token) {
-    return { info, capabilities: { ...browserCapabilities(), agents: bridgeAgentHost(token), updater: bridgeUpdater(token) } };
+    return { info, capabilities: { ...browserCapabilities(), agents: bridgeAgentHost(token), updater: bridgeUpdater(token), restart: reloadPage } };
   }
-  return { info, capabilities: browserCapabilities() };
+  return { info, capabilities: { ...browserCapabilities(), restart: reloadPage } };
 }
 
 export function supportsWebGL2(): boolean {

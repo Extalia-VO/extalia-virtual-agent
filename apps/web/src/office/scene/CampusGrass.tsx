@@ -3,6 +3,8 @@ import { useFrame } from "@react-three/fiber";
 import type { InstancedMesh} from "three";
 import { BufferGeometry, CanvasTexture, Color, DoubleSide, Float32BufferAttribute, Object3D, PlaneGeometry, RepeatWrapping, SRGBColorSpace } from "three";
 
+import { useExteriorDisplayGeometries } from "./ExteriorPart";
+
 const WIDTH = 104, DEPTH = 94, TOP = -0.258;
 const TILE_METRES = 4;
 /** Lower roadside verge between the campus plinth edge and the front road footway. */
@@ -75,11 +77,16 @@ export function CampusGrass() {
     value.repeat.set(WIDTH / TILE_METRES, (VERGE.south - VERGE.north) / TILE_METRES);
     return value;
   }, [texture]);
+  const display = useExteriorDisplayGeometries();
+  const tuftShape = display?.get("exterior-grass-tuft") ?? tuft;
   const detail = useRef<InstancedMesh>(null);
   const patches = useMemo(() => {
     const random = seededRandom(), points: [number, number, number][] = [];
     // Side lawn strips avoid the building, entrance, paved ring and outer sidewalks.
     for (const side of [-1, 1]) for (let i = 0; i < 160; i++) points.push([side * (35 + random() * 5), -15 + random() * 30, random() * Math.PI * 2]);
+    // Front and rear turf meadows outside the arrival corridor and patio paving.
+    for (const side of [-1, 1]) for (let i = 0; i < 70; i++) points.push([side * (12 + random() * 12), -34 - random() * 9, random() * Math.PI * 2]);
+    for (const side of [-1, 1]) for (let i = 0; i < 60; i++) points.push([side * (10 + random() * 14), 24 + random() * 6, random() * Math.PI * 2]);
     return points;
   }, []);
   useLayoutEffect(() => {
@@ -93,7 +100,7 @@ export function CampusGrass() {
     detail.current.instanceMatrix.needsUpdate = true;
     if (detail.current.instanceColor) detail.current.instanceColor.needsUpdate = true;
     detail.current.computeBoundingSphere();
-  }, [patches]);
+  }, [patches, tuftShape]);
   useFrame(({ camera, size }) => {
     if (!detail.current) return;
     let pixels = 0.085 * size.height * camera.projectionMatrix.elements[5]! / 2;
@@ -109,7 +116,7 @@ export function CampusGrass() {
       <planeGeometry args={[WIDTH, VERGE.south - VERGE.north]} />
       <meshStandardMaterial map={vergeTexture} color="#e9f0df" roughness={1} metalness={0} />
     </mesh>
-    <instancedMesh ref={detail} name="campus-close-grass-tufts" args={[tuft, undefined, patches.length]} visible={false} receiveShadow>
+    <instancedMesh key={tuftShape.uuid} ref={detail} name="campus-close-grass-tufts" args={[tuftShape, undefined, patches.length]} visible={false} receiveShadow>
       <meshStandardMaterial color="#ffffff" roughness={1} metalness={0} side={DoubleSide} />
     </instancedMesh>
   </group>;

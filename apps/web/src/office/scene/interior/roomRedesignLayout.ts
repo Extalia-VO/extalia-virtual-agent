@@ -25,7 +25,7 @@ function executiveLayout(roomId: ExecutiveRoomId) {
         position: [0, 0, -1.5] as const, rotationY: 0,
         // A three-cushion bench keeps the existing three allocatable VIP seats.
         seatXs: [-0.8, 0, 0.8] as const, seatLocalZ: 0.08,
-        seatHeight: 0.54, avatarRootForwardOffset: 0.10,
+        seatHeight: 0.43, seatDepth: 0.82, avatarRootForwardOffset: 0.10,
         size: [2.8, 1.0] as const, stagingDistance: 1.05
       },
       // Straight front entries clear each chair arm instead of cutting across it.

@@ -3,8 +3,12 @@ import { OfficeChair } from "../furniture/OfficeChair";
 import { Monitor } from "../props/Monitor";
 import { Laptop } from "../props/Laptop";
 import { Keyboard } from "../props/Keyboard";
-import { DeskAccessorySet } from "../props/DeskAccessories";
+import { DeskAccessorySet, MouseAndPad } from "../props/DeskAccessories";
+import { LaptopStand } from "../props/DeskOrganizers";
+import { deskInputPlacement, deskLayout } from "../../deskLayout";
 import { SINGLE_WORKSTATION_BLUEPRINT } from "../../spatialBlueprints";
+import { SingleDeskStructure } from "../../SingleDeskStructure";
+import { monitorBankLayout } from "../props/deviceGeometry";
 
 export type DeskDevice = "laptop" | "all-in-one" | "dual-monitor";
 
@@ -27,23 +31,25 @@ export function SingleWorkstation({
     status: "STANDBY"
   };
 
+  const top = SINGLE_WORKSTATION_BLUEPRINT.topY + SINGLE_WORKSTATION_BLUEPRINT.topSize[1] / 2;
+  // This desk's own arrangement: keyboard size and spot, mouse side, organizers.
+  const input = deskInputPlacement([0, 0.80, SINGLE_WORKSTATION_BLUEPRINT.keyboardZ], 0, top, deskLayout(data.resourceId));
+  const inputs = <>
+    <Keyboard position={input.keyboard} rotationY={input.keyboardYaw} kind={input.keyboardKind} />
+    <MouseAndPad position={input.pad} rotationY={input.mouseYaw} mouseOnPad={input.mouseOnPad} />
+  </>;
+
   return (
     <group position={position} rotation={[0, rotationY, 0]} userData={{ officeSeatStation: true }}>
-      <mesh castShadow receiveShadow position={[0, SINGLE_WORKSTATION_BLUEPRINT.topY, 0]}>
-        <boxGeometry args={SINGLE_WORKSTATION_BLUEPRINT.topSize} />
-        <meshStandardMaterial color={deskColor} roughness={0.76} />
-      </mesh>
-      {SINGLE_WORKSTATION_BLUEPRINT.legXs.map((x) => (
-        <mesh key={x} castShadow position={[x, SINGLE_WORKSTATION_BLUEPRINT.legY, 0]}>
-          <boxGeometry args={SINGLE_WORKSTATION_BLUEPRINT.legSize} />
-          <meshStandardMaterial color="#706359" roughness={0.8} />
-        </mesh>
-      ))}
+      <SingleDeskStructure color={deskColor} />
 
       {device === "laptop" && (
         <>
-          <Laptop position={[0, 0.82, -0.10]} data={data} />
-          <Keyboard position={[0, 0.80, 0.16]} />
+          {/* Laptop raised on a stand behind its external keyboard and mouse. */}
+          <group position={[0, top, -0.20]}>
+            <LaptopStand><Laptop position={[0, 0, 0]} data={data} /></LaptopStand>
+          </group>
+          {inputs}
           <DeskAccessorySet topY={SINGLE_WORKSTATION_BLUEPRINT.topY + SINGLE_WORKSTATION_BLUEPRINT.topSize[1] / 2} resourceId={data.resourceId} />
         </>
       )}
@@ -51,40 +57,21 @@ export function SingleWorkstation({
       {device === "all-in-one" && (
         <>
           <Monitor
-            position={[0, 1.25, -0.17]}
-            width={0.78}
-            height={0.46}
+            position={[0, top, -0.20]}
+            width={0.56}
+            device="all-in-one"
             data={data}
           />
-          <Keyboard position={[0, 0.80, 0.18]} />
+          {inputs}
           <DeskAccessorySet topY={SINGLE_WORKSTATION_BLUEPRINT.topY + SINGLE_WORKSTATION_BLUEPRINT.topSize[1] / 2} resourceId={data.resourceId} />
         </>
       )}
 
       {device === "dual-monitor" && (
         <>
-          <Monitor
-            position={[-0.42, 1.25, -0.18]}
-            rotationY={0.08}
-            width={0.68}
-            height={0.4}
-            data={data}
-          />
-          <Monitor
-            position={[0.42, 1.25, -0.18]}
-            rotationY={-0.08}
-            width={0.68}
-            height={0.4}
-            variant="chart"
-            data={data}
-          />
-          <Keyboard position={[0, 0.80, 0.2]} />
-          <DeskAccessorySet
-            topY={SINGLE_WORKSTATION_BLUEPRINT.topY + SINGLE_WORKSTATION_BLUEPRINT.topSize[1] / 2}
-            cup
-            stationery={false}
-            resourceId={data.resourceId}
-          />
+          {monitorBankLayout(2, .54, [0, top, -.20]).map((monitor, index) => <Monitor key={index} {...monitor} slot={index+1} slots={2} data={data} />)}
+          {inputs}
+          <DeskAccessorySet topY={SINGLE_WORKSTATION_BLUEPRINT.topY + SINGLE_WORKSTATION_BLUEPRINT.topSize[1] / 2} resourceId={data.resourceId} />
         </>
       )}
 
@@ -92,6 +79,7 @@ export function SingleWorkstation({
       <OfficeChair
         position={[...SINGLE_WORKSTATION_BLUEPRINT.chairPosition]}
         rotationY={SINGLE_WORKSTATION_BLUEPRINT.chairRotationY}
+        resourceId={data.resourceId}
       />
     </group>
   );

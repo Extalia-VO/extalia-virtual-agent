@@ -18,6 +18,7 @@ import {
 import { CAMPUS_ENTRY_LAYOUT } from "./layout";
 import { FRONT_APPROACH } from "./campusSiteLayout";
 import { useSolarEnvironment } from "./Environment";
+import { ExteriorPart, useExteriorDisplayGeometries, useExteriorInstancedGeometries } from "./ExteriorPart";
 
 /*
  * Instanced campus landscape: boulevard + grove trees, street/path lighting,
@@ -132,7 +133,8 @@ export function landscapeClear(x: number, z: number, radius: number) {
   const inCorridor = x + radius > CORRIDOR.minX && x - radius < CORRIDOR.maxX
     && z + radius > CORRIDOR.minZ && z - radius < CORRIDOR.maxZ;
   const inEnvelope = Math.abs(x) < 24 && Math.abs(z) < 18;
-  return !inCorridor && !inEnvelope;
+  const inParking = x + radius > -51 && x - radius < -33.5 && z + radius > -14 && z - radius < 20;
+  return !inCorridor && !inEnvelope && !inParking;
 }
 
 function onRoad(x: number, z: number, radius: number) {
@@ -179,7 +181,7 @@ function pool(out: Landscape, x: number, z: number, radius: number, color = "#ff
 }
 const TREE_PIT = "#4e4237";
 
-function buildLandscape(): Landscape {
+function buildLandscape(fullSpecimens = false): Landscape {
   const out: Landscape = {
     trunks: [], canopies: [], pools: [], hardscape: [], markings: []
   };
@@ -199,7 +201,8 @@ function buildLandscape(): Landscape {
       for (const side of [-1, 1]) {
         const x = side * (6 + k * 6);
         const kind: TreeKind = k % 2 === 0 ? "shade" : "columnar";
-        boulevard(x, z, kind, 0.92 + rand() * 0.16);
+        // Two front cypresses use the full colour-preserving Blender specimen batch.
+        if (!(fullSpecimens && z < 0 && k === 1)) boulevard(x, z, kind, 0.92 + rand() * 0.16);
       }
     }
   }
@@ -217,7 +220,8 @@ function buildLandscape(): Landscape {
     sideZ.forEach((z, i) => {
       const flowering: TreeKind = side < 0 ? "blossom" : "blossomWhite";
       const kind: TreeKind = i % 2 === 0 ? flowering : i % 4 === 1 ? "copper" : "ornamental";
-      addTree(out, kind, side * 31.4, z, 0.95 + rand() * 0.15, rand);
+      // Front specimens retain their complete authored branching and blossom colours.
+      if (!fullSpecimens || i !== 0) addTree(out, kind, side * 31.4, z, 0.95 + rand() * 0.15, rand);
     });
   }
 
@@ -285,11 +289,12 @@ function Instances({
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
     mesh.computeBoundingBox();
     mesh.computeBoundingSphere();
-  }, [items]);
+  }, [items, geometry]);
 
   if (items.length === 0) return null;
   return (
     <instancedMesh
+      key={geometry.uuid}
       ref={ref}
       name={name}
       args={[geometry, material, items.length]}
@@ -301,10 +306,67 @@ function Instances({
   );
 }
 
+/** Foreground plantings keep the entrance, mobility court and authored outdoor seats clear. */
+export const FOREGROUND_BOTANICAL_PLACEMENTS = Object.freeze({
+  flowers: [
+    [-17, -31], [17, -31], [-22, -31], [22, -31],
+    [-29, -14], [-29, -2], [-29, 18], [35, -14], [35, -2], [35, 18]
+  ] as const,
+  tropical: [[-27.8, 3], [35.2, 3], [-10, 31.8], [10, 31.8]] as const,
+  blossom: [[-31.4, -10], [34, -10]] as const,
+  columnar: [[-12, -35.6], [12, -35.6]] as const,
+  pond: [-40, -0.24, 34] as const,
+  pergola: [0, 0, 28.8] as const
+});
+
+function ForegroundBotanics() {
+  const display = useExteriorDisplayGeometries();
+  const fallback = useMemo(() => {
+    const shape = new IcosahedronGeometry(1, 1);
+    shape.scale(1.05, .32, .66);
+    shape.translate(0, .28, 0);
+    return shape;
+  }, []);
+  const material = useMemo(() => new MeshStandardMaterial({ vertexColors: true, roughness: .94 }), []);
+  const fallbackMaterial = useMemo(() => new MeshStandardMaterial({ color: "#779768", roughness: .94 }), []);
+  const items = useMemo(() => ({
+    flowers: FOREGROUND_BOTANICAL_PLACEMENTS.flowers.map(([x, z], i) => ({ x, y: BASE_Y, z,
+      sx: 1, sy: 1, sz: 1, ry: i % 2 ? Math.PI : 0 })),
+    tropical: FOREGROUND_BOTANICAL_PLACEMENTS.tropical.map(([x, z], i) => ({ x, y: BASE_Y, z,
+      sx: 1, sy: 1, sz: 1, ry: i * .7 })),
+    blossom: FOREGROUND_BOTANICAL_PLACEMENTS.blossom.map(([x, z], i) => ({ x, y: BASE_Y, z, sx: 1, sy: 1, sz: 1, ry: i * 1.8 })),
+    columnar: FOREGROUND_BOTANICAL_PLACEMENTS.columnar.map(([x, z], i) => ({ x, y: BASE_Y, z, sx: 1, sy: 1, sz: 1, ry: i * .9 }))
+  }), []);
+  useEffect(() => () => { fallback.dispose(); material.dispose(); fallbackMaterial.dispose(); }, [fallback, material, fallbackMaterial]);
+  const flowers = display?.get("exterior-flower-bed"), tropical = display?.get("exterior-tropical-cluster");
+  const blossom = display?.get("exterior-blossom-tree"), columnar = display?.get("exterior-columnar-tree");
+  return <group name="campus-foreground-botanical-gardens">
+    <Instances name="foreground-botanical-flower-parterres" geometry={flowers ?? fallback}
+      material={flowers ? material : fallbackMaterial} items={items.flowers} receiveShadow />
+    <Instances name="foreground-sculpted-ferns-and-agaves" geometry={tropical ?? fallback}
+      material={tropical ? material : fallbackMaterial} items={items.tropical} receiveShadow />
+    {blossom && <Instances name="foreground-branching-cherry-specimens" geometry={blossom}
+      material={material} items={items.blossom} castShadow receiveShadow />}
+    {columnar && <Instances name="foreground-sculpted-cypress-specimens" geometry={columnar}
+      material={material} items={items.columnar} castShadow receiveShadow />}
+    <ExteriorPart model="exterior-garden-pond" position={FOREGROUND_BOTANICAL_PLACEMENTS.pond}>
+      <mesh position={[0, .06, 0]}><cylinderGeometry args={[2.3, 2.3, .08, 24]} /><meshStandardMaterial color="#357f94" roughness={.2} /></mesh>
+    </ExteriorPart>
+    <ExteriorPart model="exterior-garden-pergola" position={FOREGROUND_BOTANICAL_PLACEMENTS.pergola}>
+      {[-1.85, 1.85].flatMap(x => [-1.25, 1.25].map(z => <mesh key={`${x}:${z}`} position={[x, 1.35, z]}>
+        <boxGeometry args={[.13, 2.7, .13]} /><meshStandardMaterial color="#43525b" />
+      </mesh>))}
+      <mesh position={[0, 2.8, 0]}><boxGeometry args={[4.16, .14, 3.04]} /><meshStandardMaterial color="#b58b5d" /></mesh>
+    </ExteriorPart>
+  </group>;
+}
+
 export function CampusLandscape() {
   const { state } = useSolarEnvironment();
   const night = state.factors.exteriorLightFactor;
-  const data = useMemo(() => buildLandscape(), []);
+  const display = useExteriorDisplayGeometries();
+  const data = useMemo(() => buildLandscape(Boolean(display?.has("exterior-blossom-tree") && display?.has("exterior-columnar-tree"))), [display]);
+  const blenderGeometries = useExteriorInstancedGeometries();
 
   const geometries = useMemo(() => {
     const trunk = new CylinderGeometry(0.62, 1, 1, 7);
@@ -335,10 +397,11 @@ export function CampusLandscape() {
 
   return (
     <group name="campus-landscape" userData={{ officeCollision: false }}>
+      <ForegroundBotanics />
       <Instances name="landscape-hardscape" geometry={geometries.box} material={materials.hardscape} items={data.hardscape} receiveShadow />
       <Instances name="landscape-markings" geometry={geometries.box} material={materials.marking} items={data.markings} receiveShadow />
-      <Instances name="landscape-tree-trunks" geometry={geometries.trunk} material={materials.bark} items={data.trunks} castShadow />
-      <Instances name="landscape-tree-canopies" geometry={geometries.canopy} material={materials.canopy} items={data.canopies} castShadow receiveShadow dynamic />
+      <Instances name="landscape-tree-trunks" geometry={blenderGeometries?.trunk ?? geometries.trunk} material={materials.bark} items={data.trunks} castShadow />
+      <Instances name="landscape-tree-canopies" geometry={blenderGeometries?.canopy ?? geometries.canopy} material={materials.canopy} items={data.canopies} castShadow receiveShadow dynamic />
       {/* Instanced night light pools removed per user directive */}
     </group>
   );

@@ -11,6 +11,7 @@ import {
 import {
   Bookshelf,
   CoffeeTable,
+  ConsoleTable,
   StorageCabinet
 } from "./interior/prefabs/furniture/TablesAndStorage";
 import { Sofa, ArmChair } from "./interior/prefabs/furniture/Sofa";
@@ -23,6 +24,7 @@ import { GlassPartition } from "./interior/prefabs/architecture/GlassPartition";
 import { OpenDoor } from "./interior/prefabs/architecture/OpenDoor";
 import { SlidingDoor } from "./interior/prefabs/architecture/SlidingDoor";
 import { WindowWall } from "./interior/prefabs/architecture/WindowWall";
+import { EnvelopeWall } from "./interior/ExteriorEnvelopeContext";
 import { Whiteboard } from "./interior/prefabs/props/Whiteboard";
 import {
   missionControlScreen,
@@ -30,7 +32,9 @@ import {
 } from "./interior/screenData";
 import { PrintCopyStation } from "./interior/prefabs/workspace/PrintCopyStation";
 import { TouchdownDesk } from "./interior/prefabs/workspace/TouchdownDesk";
+import { FootprintBox } from "./interior/FootprintPatch";
 import { FloorFinish } from "./interior/prefabs/finishes/FloorFinish";
+import { FLOOR_FINISH_DEPTH, FLOOR_SLAB_CENTER_Y, FLOOR_SLAB_THICKNESS, FLOOR_UNDERLAY_TOP_Y } from "./interior/floorElevation";
 import { BartenderBar } from "./interior/prefabs/furniture/BartenderBar";
 import { BARTENDER_BAR_BLUEPRINT, LIBRARY_BLUEPRINT, LOUNGE_FURNITURE_BLUEPRINT, RECEPTION_DESK_BLUEPRINT, SERVER_ROOM_BLUEPRINT, TEAM_POD_LAYOUT, TEAM_WORKSPACE_ORIGIN, TEAM_WORKSPACE_TOUCHDOWNS, TEAM_WORKSPACE_LOUNGES } from "./interior/spatialBlueprints";
 import { EntertainmentSuite } from "./interior/prefabs/furniture/EntertainmentSuite";
@@ -94,11 +98,10 @@ export function Floor1() {
       <CirculationLighting floor={1} />
       <StairLandingDecor floor={1} />
       <F1EmergencyExit />
-      <mesh receiveShadow position={[OFFICE_BUILDING.centerX, -0.16, 0]}>
-        <boxGeometry args={[OFFICE_BUILDING.width, 0.32, OFFICE_BUILDING.depth]} />
+      <FootprintBox name="office-floor-slab" size={[OFFICE_BUILDING.width, FLOOR_SLAB_THICKNESS, OFFICE_BUILDING.depth]} receiveShadow position={[OFFICE_BUILDING.centerX, FLOOR_SLAB_CENTER_Y, 0]}>
         <meshStandardMaterial color="#cdbb9f" roughness={0.96} />
-      </mesh>
-      <FloorFinish size={[OFFICE_BUILDING.width - 0.7, OFFICE_BUILDING.depth - 0.7]} position={[OFFICE_BUILDING.centerX, 0, 0]} material="stone" thickness={0.06} />
+      </FootprintBox>
+      <FloorFinish size={[OFFICE_BUILDING.width - 0.7, OFFICE_BUILDING.depth - 0.7]} position={[OFFICE_BUILDING.centerX, FLOOR_UNDERLAY_TOP_Y, 0]} material="stone" thickness={FLOOR_FINISH_DEPTH} />
 
       <SceneLabel position={[-19.5, 0.3, -13.7]} center={false} style={{ display: floorVisible ? "block" : "none" }}>
         <div className="floor-label">
@@ -111,7 +114,7 @@ export function Floor1() {
           Spans full width from west corner (x=-19.5) to east stair circulation (x=11.0),
           depth 6.7m (z from -14.45 to -7.75) merging the former front lobby and main corridor */}
       <group position={lobby.center} userData={{ officeLightZone: lobby.size }}>
-        <FloorFinish size={lobby.size} material="stone" border />
+        <FloorFinish buildingOrigin={[lobby.center[0], lobby.center[2]]} size={lobby.size} material="stone" border />
 
         <SceneLabel position={[0, 2.85, 0]} center style={{ display: floorVisible ? "block" : "none" }}>
           <div className="room-label">Lobby / Grand Arrival</div>
@@ -119,6 +122,7 @@ export function Floor1() {
 
         {/* Lobby glazing and sliding door share their world coordinates with the campus shell and route. */}
         <group position={[0, 0, CAMPUS_ENTRY_LAYOUT.lobbyDoorZ - lobby.center[2]]}>
+          <EnvelopeWall exterior name="lobby:north">
           <WindowWall
             width={lobbyLeftWindowWidth}
             position={[(lobbyWest + lobbyDoorWest) / 2 - lobby.center[0], 1.35, 0]}
@@ -131,6 +135,7 @@ export function Floor1() {
             rotationY={Math.PI}
             panels={Math.max(1, Math.round(lobbyRightWindowWidth / 4.5))}
           />
+          </EnvelopeWall>
           <SlidingDoor
             floor={1}
             roomId="lobby"
@@ -143,16 +148,16 @@ export function Floor1() {
         </group>
 
         {/* Dinding samping barat exterior gedung (x = -15.25, kedalaman penuh 6.7m) */}
-        <WindowWall
+        <EnvelopeWall exterior name="lobby:west"><WindowWall
           width={lobby.size[1]}
           position={[-lobby.size[0] / 2, 1.35, 0]}
           rotationY={Math.PI / 2}
           panels={3}
-        />
+        /></EnvelopeWall>
 
         {/* 1. Guest Lounge Waiting Area (Sisi Barat) */}
         <group position={[-9.5, 0, 0.75]}>
-          <AreaRug position={[0, 0.105, 0]} width={7.0} depth={3.6} color="#d7cbb8" borderColor="#b8a892" />
+          <AreaRug position={[0, 0, 0]} width={7.0} depth={3.6} color="#d7cbb8" borderColor="#b8a892" />
           <Sofa
             position={[-0.6, 0, 0.6]}
             rotationY={Math.PI}
@@ -187,20 +192,13 @@ export function Floor1() {
           ]}
           rotationY={RECEPTION_DESK_BLUEPRINT.rotationY}
         />
-        {/* Wall sconce on reception divider wall */}
-        <WallSconceFixture position={[
-          RECEPTION_DESK_BLUEPRINT.worldPosition[0] - (-4.25) - 2.25,
-          1.8,
-          RECEPTION_DESK_BLUEPRINT.worldPosition[1] - (-11.1)
-        ]} />
-
         {/* Dinding pembatas dalam di belakang meja resepsionis dihilangkan sesuai permintaan agar lobby plong dan terbuka */}
 
         <Plant position={[-14.0, 0, 2.2]} />
         <Plant position={[14.0, 0, 2.2]} />
 
         {/* Grand Marble Medallion at Center of Arrival Court */}
-        <GrandFloorMedallion position={[0, 0.015, 0]} radius={2.2} />
+        <GrandFloorMedallion position={[0, 0, 0]} radius={2.2} />
 
         {/* Flanking Monumental Planters at Entrance Portico */}
         <MonumentalPlanter position={[-4 - lobby.center[0], 0, -2.9]} scale={0.88} />
@@ -227,10 +225,10 @@ export function Floor1() {
 
       {/* East Corridor / Stair Arrival Plaza connecting to stairs and Open Lounge */}
       <group position={[15.25, 0, lobby.center[2]]}>
-        <FloorFinish size={[OFFICE_STAIR_LAYOUT.eastEdge - 11, lobby.size[1]]} position={[(OFFICE_STAIR_LAYOUT.eastEdge + 11) / 2 - 15.25, 0.025, 0]} material="stone" />
+        <FloorFinish buildingOrigin={[15.25, lobby.center[2]]} size={[OFFICE_STAIR_LAYOUT.eastEdge - 11, lobby.size[1]]} position={[(OFFICE_STAIR_LAYOUT.eastEdge + 11) / 2 - 15.25, 0, 0]} material="stone" />
 
-        {/* Chandelier over the Stair Arrival Plaza */}
-        <GrandHaloChandelier position={[-2.5, F1_CEILING_Y, -0.7]} outerRadius={0.85} innerRadius={0.55} drop={F1_CEILING_Y - 2.65} />
+        {/* Chandelier over the Stair Arrival Plaza, centred between the east-apron and east-circulation downlight rows */}
+        <GrandHaloChandelier position={[-0.35, F1_CEILING_Y, 0]} outerRadius={0.85} innerRadius={0.55} drop={F1_CEILING_Y - 2.65} />
 
         {/* Monumental Sculptural Display Plinth along north corridor wall */}
         <SculpturalDisplayPlinth position={[-3.65, 0, -lobby.size[1] / 2 + 0.65]} rotationY={0.2} sculptureColor="#d4af37" />
@@ -247,16 +245,16 @@ export function Floor1() {
 
       {/* Large Team Workspace: digeser/diluaskan ke barat hingga dinding kantor x=-19.5 (lebar 27.0m, x in [-19.5, 7.5]) */}
       <group position={relocateRoomPoint("engineering", [TEAM_WORKSPACE_ORIGIN[0], 0, TEAM_WORKSPACE_ORIGIN[1]])} userData={{ officeLightZone: engineering.size }}>
-        <FloorFinish size={engineering.size} position={[0, 0.01, 0]} material="oak" border />
+        <FloorFinish buildingOrigin={[engineering.center[0], engineering.center[2]]} size={engineering.size} material="oak" border />
         <TeamWorkspaceCeilingLights />
 
         {/* 1. West perimeter: Window wall to the outside campus (pas di sudut luar kantor x=-19.5) */}
-        <WindowWall
+        <EnvelopeWall exterior name="engineering:west"><WindowWall
           width={teamDepth}
           position={[-teamWidth / 2, 1.35, 0]}
           rotationY={Math.PI / 2}
           panels={5}
-        />
+        /></EnvelopeWall>
 
         {/* 2. North perimeter (facing Main Corridor): Glazed partition with doorway access */}
         <GlassPartition
@@ -264,6 +262,7 @@ export function Floor1() {
           position={[0, 1.275, -teamDepth / 2]}
           rotationY={Math.PI}
           doorGap={1.8}
+          doorHeight={2.55}
         />
         <OpenDoor
           floor={1}
@@ -274,7 +273,7 @@ export function Floor1() {
           width={1.6}
           height={2.55}
           glass
-          openAngle={Math.PI * 0.38}
+          openAngle={Math.PI / 2}
         />
 
         {/* 3. East perimeter (facing Open Lounge & Pantry): Glazed partition closing the room */}
@@ -283,6 +282,7 @@ export function Floor1() {
           position={[teamWidth / 2, 1.275, 0]}
           rotationY={-Math.PI / 2}
           doorGap={1.8}
+          doorHeight={2.55}
         />
         <OpenDoor
           floor={1}
@@ -293,7 +293,7 @@ export function Floor1() {
           width={1.6}
           height={2.55}
           glass
-          openAngle={-Math.PI * 0.38}
+          openAngle={-Math.PI / 2}
         />
 
         {/* 4. South perimeter (facing Source Control Lab & Operations / Server): Glazed partition with doorway access */}
@@ -302,6 +302,7 @@ export function Floor1() {
           position={[0, 1.275, teamDepth / 2]}
           rotationY={0}
           doorGap={1.8}
+          doorHeight={2.55}
         />
         <OpenDoor
           floor={1}
@@ -312,7 +313,7 @@ export function Floor1() {
           width={1.6}
           height={2.55}
           glass
-          openAngle={-Math.PI * 0.38}
+          openAngle={Math.PI / 2}
         />
 
         <SceneLabel position={[-11.8, 2.95, -teamDepth / 2 + 0.7]} center style={{ display: floorVisible ? "block" : "none" }}>
@@ -335,7 +336,7 @@ export function Floor1() {
         />)}
 
         {/* Informal collaboration corner */}
-        <AreaRug position={[-12.0, 0.105, 4.3]} width={4.0} depth={3.1} color="#c6d0c3" borderColor="#9daa9f" />
+        <AreaRug position={[-12.0, 0, 4.3]} width={4.0} depth={3.1} color="#c6d0c3" borderColor="#9daa9f" />
         <Sofa
           position={[...TEAM_WORKSPACE_LOUNGES.westSofa.position]}
           rotationY={Math.PI / 2}
@@ -422,14 +423,14 @@ export function Floor1() {
           lightColor="#fff0d4"
         />
 
-        <Plant position={[15.3, 0, 8.8]} />
+        <Plant position={[14.3, 0, 9.0]} />
 
         {/* ============================================================ */}
         {/* DECORATIVE FURNITURE ZONE IN THE MIDDLE OF EAST WING         */}
         {/* Karpet dekoratif, round coffee table, armchairs, dan tanaman */}
         {/* ============================================================ */}
         <AreaRug
-          position={[12.0, 0.105, 5.7]}
+          position={[12.0, 0, 5.7]}
           width={3.2}
           depth={3.2}
           color="#d8dfd5"
@@ -450,13 +451,13 @@ export function Floor1() {
           color="#527874"
         />
         <Plant position={[12.0, 0, 3.8]} scale={0.95} />
-        {/* Floor stand lamp in the east breakout lounge */}
-        <StandLampFixture position={[10.0, 0, 8.2]} lightColor="#ffbe76" />
+        {/* Floor stand lamp on the north-east corner of the east breakout rug */}
+        <StandLampFixture position={[13.3, 0, 4.3]} lightColor="#ffbe76" />
       </group>
 
       {/* Open Lounge & Pantry on the stair side (East wing, x ~ 14.2, z ~ -0.9) - Terbuka tanpa sekat dinding tertutup */}
       <group position={relocateRoomPoint("lounge", [BARTENDER_BAR_BLUEPRINT.loungeOrigin[0], 0, BARTENDER_BAR_BLUEPRINT.loungeOrigin[1]])}>
-        <FloorFinish size={lounge.size} material="tile" border />
+        <FloorFinish buildingOrigin={[lounge.center[0], lounge.center[2]]} size={lounge.size} material="tile" border />
 
         <SceneLabel position={[0, 2.9, -lounge.size[1] / 2 + 0.6]} center style={{ display: floorVisible ? "block" : "none" }}>
           <div className="room-label">Open Lounge & Pantry</div>
@@ -472,8 +473,8 @@ export function Floor1() {
             0,
             BARTENDER_BAR_BLUEPRINT.rootPosition[2] + BARTENDER_BAR_BLUEPRINT.frontCounter.position[2]
           ]}
-          spacing={1.2}
-          drop={1.1}
+          spacing={1.15}
+          drop={0.45}
         />
 
         {/* ============================================================ */}
@@ -481,29 +482,36 @@ export function Floor1() {
         {/* Sofa nyaman dan armchairs untuk membawa makanan/minum atau membaca */}
         {/* ============================================================ */}
         <group position={[...LOUNGE_FURNITURE_BLUEPRINT.readingOrigin]}>
-          <AreaRug position={[0, 0.105, 0]} width={4.6} depth={3.8} color="#cbbfac" borderColor="#a99983" />
-          <PendantLight position={[0, 2.85, 0]} drop={0.65} />
-          {/* Decorative standing floor lamp beside the sofa */}
-          <StandLampFixture position={[-1.8, 0, 1.4]} />
+          <AreaRug position={[0, 0, 0]} width={4.6} depth={3.8} color="#cbbfac" borderColor="#a99983" />
+          <PendantLight
+            position={[LOUNGE_FURNITURE_BLUEPRINT.coffeeTable.position[0], 2.85, LOUNGE_FURNITURE_BLUEPRINT.coffeeTable.position[2]]}
+            drop={0.65}
+          />
+          {/* Decorative standing floor lamp and plant flanking the sofa on the rug corners */}
+          <StandLampFixture position={[...LOUNGE_FURNITURE_BLUEPRINT.readingLamp]} />
+          <Plant position={[...LOUNGE_FURNITURE_BLUEPRINT.readingPlant]} scale={0.9} />
           {/* Sofa utama menghadap ke arah bar & area sirkulasi */}
           <Sofa
             position={[...LOUNGE_FURNITURE_BLUEPRINT.sofa.position]}
-            rotationY={Math.PI / 2}
+            rotationY={LOUNGE_FURNITURE_BLUEPRINT.sofa.rotationY}
             color="#8fa394"
           />
           {/* Armchairs santai menghadap meja kopi */}
           <ArmChair
             position={[...LOUNGE_FURNITURE_BLUEPRINT.armchairs[0].position]}
-            rotationY={-Math.PI / 2}
+            rotationY={LOUNGE_FURNITURE_BLUEPRINT.armchairs[0].rotationY}
             color="#d6a766"
           />
           <ArmChair
             position={[...LOUNGE_FURNITURE_BLUEPRINT.armchairs[1].position]}
-            rotationY={-Math.PI / 2}
+            rotationY={LOUNGE_FURNITURE_BLUEPRINT.armchairs[1].rotationY}
             color="#c6b9a8"
           />
-          {/* Shift the table toward the armchairs, leaving knee clearance in front of the sofa. */}
-          <CoffeeTable position={[0.35, 0, -2.0]} />
+          {/* Centered coffee table directly beneath the pendant light, with full front-apron clearance for both sofa and armchairs. */}
+          <CoffeeTable
+            position={[...LOUNGE_FURNITURE_BLUEPRINT.coffeeTable.position]}
+            rotationY={LOUNGE_FURNITURE_BLUEPRINT.coffeeTable.rotationY}
+          />
         </group>
 
         {/* ============================================================ */}
@@ -514,29 +522,22 @@ export function Floor1() {
           <meshStandardMaterial color="#bda588" roughness={0.75} />
         </mesh>
         {/* Suspended Modern Linear Brass Pendant Light over High-top Table */}
-        <DiningLinearPendant position={[LOUNGE_FURNITURE_BLUEPRINT.diningTable[0], 2.85, LOUNGE_FURNITURE_BLUEPRINT.diningTable[2]]} length={3.8} />
+        <DiningLinearPendant
+          position={[LOUNGE_FURNITURE_BLUEPRINT.diningTable[0], 2.85, LOUNGE_FURNITURE_BLUEPRINT.diningTable[2]]}
+          length={3.8}
+          drop={0.85}
+        />
 
         <ArmChair position={[...LOUNGE_FURNITURE_BLUEPRINT.diningChairs[0]]} rotationY={Math.PI} color="#8fa394" />
         <ArmChair position={[...LOUNGE_FURNITURE_BLUEPRINT.diningChairs[1]]} rotationY={Math.PI} color="#8fa394" />
         <ArmChair position={[...LOUNGE_FURNITURE_BLUEPRINT.diningChairs[2]]} rotationY={Math.PI} color="#8fa394" />
 
-        {/* Atmospheric Wall Sconces & Modern Art on West Partition */}
-        <WallSconceFixture position={[-lounge.size[0] / 2 + 0.08, 1.8, -3.8]} rotation={[0, Math.PI / 2, 0]} />
-        <WallSconceFixture position={[-lounge.size[0] / 2 + 0.08, 1.8, 3.8]} rotation={[0, Math.PI / 2, 0]} />
-        <ArchitecturalGalleryCanvas
-          position={[-lounge.size[0] / 2 + 0.08, 1.6, 6.8]}
-          rotationY={Math.PI / 2}
-          width={2.2}
-          height={1.2}
-          artTone="warm-amber"
-        />
-
-        {/* Warm Ambient Stand Lamps in the lounge corners */}
-        <StandLampFixture position={[-5.8, 0, 7.9]} />
+        {/* Symmetrical warm ambient stand lamps in the south-west and south-east lounge corners */}
+        <StandLampFixture position={[...LOUNGE_FURNITURE_BLUEPRINT.westCornerLamp]} />
         <StandLampFixture position={[...LOUNGE_FURNITURE_BLUEPRINT.diningCornerLamp]} />
       </group>
 
-      <FloorFinish size={[46, 2.8]} position={[2, 0.06, 10]} material="stone" thickness={0.025} />
+      <FloorFinish size={[46, 2.8]} position={[2, 0, 10]} material="stone" thickness={FLOOR_FINISH_DEPTH} />
 
       {/* Continuous South Wall Suite: Library -> Operations -> Source Control -> QA -> Entertainment */}
       {/* 1. Library / Skills: three searchable bookcases, a research terminal, and a quiet reading lounge. */}
@@ -568,7 +569,7 @@ export function Floor1() {
         <CoffeeTable position={[LIBRARY_BLUEPRINT.coffeeTablePosition[0], LIBRARY_BLUEPRINT.coffeeTablePosition[1], LIBRARY_BLUEPRINT.coffeeTablePosition[2]]} />
         <Plant position={[LIBRARY_BLUEPRINT.plantPosition[0], LIBRARY_BLUEPRINT.plantPosition[1], LIBRARY_BLUEPRINT.plantPosition[2]]} scale={0.82} />
         <StandLampFixture position={[LIBRARY_BLUEPRINT.lampPosition[0], LIBRARY_BLUEPRINT.lampPosition[1], LIBRARY_BLUEPRINT.lampPosition[2]]} />
-        <PendantLight position={[1.15, 2.72, 1.75]} drop={0.62} color="#c7ab82" />
+        <PendantLight position={[LIBRARY_BLUEPRINT.rugPosition[0], 2.85, LIBRARY_BLUEPRINT.rugPosition[2]]} drop={0.65} color="#c7ab82" />
         <WallArt position={[library.size[0] / 2 - 0.07, 1.55, -2.75]} rotationY={-Math.PI / 2}
           width={1.15} height={0.78} frameColor="#655e53" groundColor="#e7e2d6" accentColor="#607d73" />
       </RoomShell>
@@ -606,7 +607,7 @@ export function Floor1() {
         />
       </RoomShell>
 
-      {/* 3. Source Control Lab (x = -0.8, w = 7.6, range: -4.6 to 3.0 - dempet dinding dengan Operations) */}
+      {/* 3. Source Control Lab (x = 0.1, w = 8.2, d = 7.6 - dempet dinding dengan Operations) */}
       <RoomShell
         roomId="source-control"
         label="Source Control Lab"
@@ -626,6 +627,11 @@ export function Floor1() {
         />
         <LaptopDesk position={[1.65, 0, 0.2]}
           screenData={screenForLocation(floorState, "floor-1.source-control.laptop")} />
+        <StorageCabinet
+          position={[-3.76, 0, -1.5]}
+          rotationY={Math.PI / 2}
+          width={1.6}
+        />
         <WallDisplay
           position={[0, 1.72, sourceControl.size[1] / 2 - 0.08]}
           rotationY={Math.PI}
@@ -634,17 +640,19 @@ export function Floor1() {
           data={missionControlScreen(floorState)}
         />
         <Whiteboard
-          position={[-2.2, 1.75, -sourceControl.size[1] / 2 + 0.08]}
-          width={2.0}
+          position={[-2.55, 1.72, sourceControl.size[1] / 2 - 0.08]}
+          rotationY={Math.PI}
+          width={1.65}
         />
-        <WallArt position={[2.0, 1.75, -sourceControl.size[1] / 2 + 0.08]} width={0.95} height={0.75} />
-        {/* Source Control lighting: desk lamps + wall sconce */}
+        <WallArt position={[2.45, 1.72, sourceControl.size[1] / 2 - 0.08]} rotationY={Math.PI} width={0.95} height={0.75} />
+        <Plant position={[3.45, 0, -3.15]} />
+        {/* Source Control lighting: desk lamps + corner stand lamp */}
         <DeskLampFixture position={[-1.7 - 0.55, 0.74, 0.35]} />
         <DeskLampFixture position={[1.65 - 0.45, 0.74, 0.35]} />
-        <WallSconceFixture position={[-sourceControl.size[0] / 2 + 0.08, 1.8, 0]} rotation={[0, Math.PI / 2, 0]} />
+        <StandLampFixture position={[-3.45, 0, 3.15]} />
       </RoomShell>
 
-      {/* 4. QA / Test Lab (x = 6.8, w = 7.6, range: 3.0 to 10.6 - dempet dinding dengan Source Control) */}
+      {/* 4. QA / Test Lab (x = 8.3, w = 8.2, d = 7.6 - dempet dinding dengan Source Control) */}
       <RoomShell
         roomId="qa"
         label="QA / Test Lab"
@@ -653,7 +661,6 @@ export function Floor1() {
         entrySide="back"
         doorWidth={1.6}
         glassEntry
-        oppositeWall="windows"
         floorFinish="carpet"
       >
         <DualMonitorDesk
@@ -664,25 +671,44 @@ export function Floor1() {
           position={[1.5, 0, 0.2]}
           screenData={screenForLocation(floorState, "floor-1.qa.station-2")}
         />
+        <StorageCabinet
+          position={[-3.76, 0, -1.6]}
+          rotationY={Math.PI / 2}
+          width={1.6}
+        />
+        <StorageCabinet
+          position={[-3.76, 0, 1.4]}
+          rotationY={Math.PI / 2}
+          width={1.6}
+        />
+        <ConsoleTable
+          position={[3.82, 0, -1.6]}
+          rotationY={-Math.PI / 2}
+          width={1.6}
+        />
+        <StorageCabinet
+          position={[3.76, 0, 1.4]}
+          rotationY={-Math.PI / 2}
+          width={1.6}
+        />
         <WallDisplay
-          position={[0, 1.7, qa.size[1] / 2 - 0.08]}
+          position={[0, 1.72, qa.size[1] / 2 - 0.08]}
           rotationY={Math.PI}
           width={2.25}
           height={1.15}
           variant="monitoring"
           data={missionControlScreen(floorState)}
         />
-        <StorageCabinet
-          position={[-2.8, 0, -2.4]}
-          width={1.6}
-        />
-        {/* QA Lab lighting: desk lamps + stand lamp near storage */}
+        <Plant position={[3.45, 0, -3.15]} />
+        <Plant position={[-3.45, 0, 3.15]} />
+        {/* QA Lab lighting: desk lamps + corner stand lamps */}
         <DeskLampFixture position={[-1.7 - 0.55, 0.74, 0.35]} />
         <DeskLampFixture position={[1.5 + 0.55, 0.74, 0.35]} />
-        <StandLampFixture position={[-2.8, 0, -1.0]} />
+        <StandLampFixture position={[-3.45, 0, -3.15]} />
+        <StandLampFixture position={[3.45, 0, 3.15]} />
       </RoomShell>
 
-      {/* 5. Entertainment (x = 15.0, w = 8.8, range: 10.6 to 19.4 - dempet dinding dengan QA Lab) */}
+      {/* 5. Entertainment (12.6 × 7.6 m): TV lounge west of the door, game corner east (see ENTERTAINMENT_LAYOUT). */}
       <RoomShell
         roomId="entertainment"
         label="Entertainment"
@@ -695,7 +721,9 @@ export function Floor1() {
         floorFinish="carpet"
       >
         <EntertainmentSuite />
-        <CornerLampFixture position={[-3.6, 0, -2.6]} />
+        {/* Corner lamps: beside the sofa by the south glazing, and past the arcades in the north-east corner. */}
+        <CornerLampFixture position={[-5.8, 0, 3.2]} />
+        <CornerLampFixture position={[5.8, 0, -3.3]} />
       </RoomShell>
     </group>
   );
@@ -727,11 +755,11 @@ function TeamWorkspaceCeilingLights() {
   const podHaloPositions: [number, number, number][] = TEAM_POD_LAYOUT.map((pod) =>
     [pod.position[0], 2.82, pod.position[1]]);
 
-  // Perimeter wall task downlights (west wall display, east whiteboard, east bookshelf)
+  // Perimeter wall task downlights inside the 32 × 19.6 m room (west wall display, east whiteboard, east bookshelf)
   const wallTaskLights: [number, number, number][] = [
-    [-15.85, F1_CEILING_Y - 0.03, -4.3], // West Wall Display task wash
-    [15.85, F1_CEILING_Y - 0.03, -6.6],   // East Whiteboard task wash
-    [15.85, F1_CEILING_Y - 0.03, 4.5]     // East Bookshelf task wash
+    [-15.25, F1_CEILING_Y - 0.03, -4.3], // West Wall Display task wash
+    [15.25, F1_CEILING_Y - 0.03, -6.6],  // East Whiteboard task wash
+    [15.25, F1_CEILING_Y - 0.03, 4.5]    // East Bookshelf task wash
   ];
 
   return (
@@ -803,18 +831,27 @@ function TeamWorkspaceCeilingLights() {
             />
           </mesh>
 
+          <FixtureSpotLight
+            name="team-pod-halo-downlight"
+            position={[0, -0.03, 0]}
+            aim={[0, -hy, 0]}
+            intensity={interiorFactor * raisedDownlightIntensity(48, 2.72, hy - 0.03, 0, 7.2)}
+            color="#fff7e6"
+            distance={raisedDownlightRange(7.2, 2.72, hy - 0.03)}
+            angle={raisedDownlightAngle(1.08, 2.72, hy - 0.03)}
+          />
         </group>
       ))}
 
-      {/* 3. Perimeter Task Wall Washers */}
+      {/* 3. Perimeter Task Wall Washers (aligned parallel to the west/east walls) */}
       {wallTaskLights.map(([wx, wy, wz], wi) => (
         <group key={`wall-task-${wi}`} position={[wx, wy, wz]}>
           <mesh name="structural-wall-washer" position={[0, 0, 0]}>
-            <boxGeometry args={[0.5, 0.06, 0.16]} />
+            <boxGeometry args={[0.16, 0.06, 0.5]} />
             <meshStandardMaterial color="#0f172a" metalness={0.8} />
           </mesh>
           <mesh position={[0, -0.025, 0]} userData={{ officeMaterialDynamic: "team-wall-task:interior:(0|0.5+factor*4.5)*1.1" }}>
-            <boxGeometry args={[0.44, 0.025, 0.12]} />
+            <boxGeometry args={[0.12, 0.025, 0.44]} />
             <meshStandardMaterial
               color="#ffffff"
               emissive="#ffedd5"
@@ -822,6 +859,15 @@ function TeamWorkspaceCeilingLights() {
               toneMapped={false}
             />
           </mesh>
+          <FixtureSpotLight
+            name="team-wall-task-downlight"
+            position={[0, -0.04, 0]}
+            aim={[wx < 0 ? -0.65 : 0.65, -wy, 0]}
+            intensity={interiorFactor * raisedDownlightIntensity(36, 2.9, wy - 0.04, 0, 6.8)}
+            color="#ffedd5"
+            distance={raisedDownlightRange(6.8, 2.9, wy - 0.04)}
+            angle={raisedDownlightAngle(1.02, 2.9, wy - 0.04)}
+          />
         </group>
       ))}
 
@@ -835,37 +881,40 @@ function LobbyCeilingLights() {
   const interiorFactor = state.factors.interiorLightFactor;
   const emissiveIntensity = interiorFactor === 0 ? 0 : 0.5 + interiorFactor * 4.3;
 
-  const downlightXs = [-12.5, -9.5, -6.5, -3.5, 3.5, 6.5, 9.5, 12.5];
+  const downlightXs = [-13.5, -10.0, -6.5, -3.2, 3.2, 6.5, 10.0, 13.5];
+  const downlightZs = [-2.1, 2.1];
 
   return (
     <group>
       {/* Central Monumental Grand Halo Chandelier in Grand Arrival Hall */}
       <GrandHaloChandelier position={[0, F1_CEILING_Y, 0]} outerRadius={1.8} innerRadius={1.15} drop={F1_CEILING_Y - 2.7} />
 
-      {/* Recessed Architectural Downlight Grid spanning the entire 30m lobby */}
-      {downlightXs.map((lx) => (
-        <group key={`lobby-downlight-${lx}`} position={[lx, F1_CEILING_MOUNTS.lobby.anchorY, 0]}>
-          <mesh name="structural-lobby-housing" position={[0, 0.02, 0]}>
-            <cylinderGeometry args={[0.22, 0.22, 0.04, 16]} />
-            <meshStandardMaterial color="#0f172a" metalness={0.8} />
-          </mesh>
-          <FixtureSpotLight name="lobby-ceiling-downlight" position={[0, -0.025, 0]}
-            aim={[0, -F1_CEILING_MOUNTS.lobby.anchorY, 0]}
-            intensity={interiorFactor * raisedDownlightIntensity(24, 2.825, F1_CEILING_MOUNTS.lobby.sourceY, 0, 6)}
-            color="#fff1df" distance={raisedDownlightRange(6, 2.825, F1_CEILING_MOUNTS.lobby.sourceY)}
-            angle={raisedDownlightAngle(1.1, 2.825, F1_CEILING_MOUNTS.lobby.sourceY)} />
-          <mesh position={[0, -0.002, 0]} rotation={[-Math.PI / 2, 0, 0]}
-            userData={{ officeMaterialDynamic: "lobby-downlight:interior:(0|0.5+factor*4.3)" }}>
-            <circleGeometry args={[0.18, 16]} />
-            <meshStandardMaterial
-              color="#ffffff"
-              emissive="#ffdfb8"
-              emissiveIntensity={emissiveIntensity}
-              toneMapped={false}
-            />
-          </mesh>
-        </group>
-      ))}
+      {/* Two-row recessed architectural downlight grid spanning the 32 × 8 m lobby */}
+      {downlightZs.flatMap((lz) =>
+        downlightXs.map((lx) => (
+          <group key={`lobby-downlight-${lx}-${lz}`} position={[lx, F1_CEILING_MOUNTS.lobby.anchorY, lz]}>
+            <mesh name="structural-lobby-housing" position={[0, 0.02, 0]}>
+              <cylinderGeometry args={[0.22, 0.22, 0.04, 16]} />
+              <meshStandardMaterial color="#0f172a" metalness={0.8} />
+            </mesh>
+            <FixtureSpotLight name="lobby-ceiling-downlight" position={[0, -0.025, 0]}
+              aim={[0, -F1_CEILING_MOUNTS.lobby.anchorY, 0]}
+              intensity={interiorFactor * raisedDownlightIntensity(16, 2.825, F1_CEILING_MOUNTS.lobby.sourceY, 0, 6)}
+              color="#fff1df" distance={raisedDownlightRange(6, 2.825, F1_CEILING_MOUNTS.lobby.sourceY)}
+              angle={raisedDownlightAngle(1.1, 2.825, F1_CEILING_MOUNTS.lobby.sourceY)} />
+            <mesh position={[0, -0.002, 0]} rotation={[-Math.PI / 2, 0, 0]}
+              userData={{ officeMaterialDynamic: "lobby-downlight:interior:(0|0.5+factor*4.3)" }}>
+              <circleGeometry args={[0.18, 16]} />
+              <meshStandardMaterial
+                color="#ffffff"
+                emissive="#ffdfb8"
+                emissiveIntensity={emissiveIntensity}
+                toneMapped={false}
+              />
+            </mesh>
+          </group>
+        ))
+      )}
     </group>
   );
 }

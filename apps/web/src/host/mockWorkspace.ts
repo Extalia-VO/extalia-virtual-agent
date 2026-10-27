@@ -1,4 +1,4 @@
-import type { AgentHostApi, FileEntry, GitChange } from '@extalia/platform';
+import { normalizeSkillConsent, normalizeSkillNames, type AgentHostApi, type FileEntry, type GitChange, type WorkspaceSkill, type WorkspaceSkills } from '@extalia/platform';
 
 /**
  * Development-only fake project folder and Git state for the Files and Git
@@ -77,6 +77,53 @@ export function createMockWorkspaceInspection(check: (workspaceId: string) => vo
       await latency();
       if (file === undefined) return { diff: CHANGES.map(change => DIFFS[change.path] ?? '').join(''), truncated: false };
       return { path: file, diff: DIFFS[normalize(file)] ?? '', truncated: false };
+    },
+  };
+}
+
+/** The fake project's `.extalia/skills`: one skill that waits for consent until it is allowed (per workspace, in memory). */
+const PROJECT_SKILLS: readonly WorkspaceSkill[] = [
+  { name: 'deploy', description: 'Ship the demo app with the project deploy script.', sha256: 'a'.repeat(64) },
+];
+
+export function createMockWorkspaceSkills(check: (workspaceId: string) => void, latency: () => Promise<void>): Pick<AgentHostApi, 'workspaceSkills' | 'allowWorkspaceSkills' | 'revokeWorkspaceSkills'> {
+  const consent = new Map<string, Map<string, string>>();
+  const report = (workspaceId: string): WorkspaceSkills => {
+    const allowed = consent.get(workspaceId) ?? new Map<string, string>();
+    return {
+      workspaceId,
+      allowed: PROJECT_SKILLS.filter(skill => allowed.get(skill.name) === skill.sha256).map(skill => ({ ...skill })),
+      pending: PROJECT_SKILLS.filter(skill => allowed.get(skill.name) !== skill.sha256)
+        .map(skill => ({ ...skill, source: 'workspace' as const, reason: allowed.has(skill.name) ? 'changed' as const : 'not-allowed' as const })),
+      warnings: [],
+    };
+  };
+  return {
+    async workspaceSkills(workspaceId) {
+      check(workspaceId);
+      await latency();
+      return report(workspaceId);
+    },
+    async allowWorkspaceSkills(workspaceId, skills) {
+      check(workspaceId);
+      await latency();
+      const allowed = consent.get(workspaceId) ?? new Map<string, string>();
+      for (const skill of normalizeSkillConsent(skills)) {
+        const current = PROJECT_SKILLS.find(item => item.name === skill.name);
+        if (!current) throw new Error(`The skill "${skill.name}" is no longer in this project.`);
+        if (current.sha256 !== skill.sha256) throw new Error(`The skill "${skill.name}" changed after it was shown. Review it again before allowing it.`);
+        allowed.set(skill.name, skill.sha256);
+      }
+      consent.set(workspaceId, allowed);
+      return report(workspaceId);
+    },
+    async revokeWorkspaceSkills(workspaceId, names) {
+      check(workspaceId);
+      await latency();
+      const list = normalizeSkillNames(names);
+      if (!list) consent.delete(workspaceId);
+      else for (const name of list) consent.get(workspaceId)?.delete(name);
+      return report(workspaceId);
     },
   };
 }

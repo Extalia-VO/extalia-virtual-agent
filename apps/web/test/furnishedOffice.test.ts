@@ -1,7 +1,9 @@
+import { MESSAGES } from '../src/i18n';
 import { describe, expect, it } from 'vitest';
 import type { OfficeAgent } from '../src/office/presence';
 import { getOfficeSeats, allocateOfficeAgents } from '../src/office/scene/interior/seating';
 import { OFFICE_RESOURCES } from '../src/office/scene/interior/resourceRegistry';
+import { ROOM_RELOCATIONS } from '../src/office/scene/interior/roomRelocation';
 import { roomsOnFloor, roomById } from '../src/office/scene/interior/worldRegistry';
 import { screenForLocation, missionControlScreen } from '../src/office/scene/interior/screenData';
 
@@ -10,6 +12,13 @@ const agent = (id: string, status: OfficeAgent['status'] = 'working'): OfficeAge
 });
 
 describe('furnished office geometry and real session projection', () => {
+  it('places workstation avatar roots at the chair-forward anchor used by desk IK', () => {
+    const resource = OFFICE_RESOURCES.find(candidate => candidate.id === 'qa.station-1')!;
+    // The chair now sits under the avatar root: chair z=.64, facing π, offset .02m.
+    // Keep the avatar at its prior desk-local z=.62 so hand reach stays unchanged.
+    expect(resource.position[2] - 10.7 - ROOM_RELOCATIONS.qa![1]).toBeCloseTo(0.64 - 0.02, 6);
+  });
+
   it('preserves full three-floor room envelopes and authored chair anchors', () => {
     expect(roomsOnFloor(1).filter(room => !room.exterior)).toHaveLength(9);
     expect(roomsOnFloor(2)).toHaveLength(8);
@@ -20,7 +29,9 @@ describe('furnished office geometry and real session projection', () => {
     expect(roomById('executive-studio')?.size).toEqual([18, 9.3]);
     const seats = getOfficeSeats();
     expect(new Set(seats.map(seat => seat.floor))).toEqual(new Set([1, 2, 3]));
-    expect([1, 2, 3].map(floor => seats.filter(seat => seat.floor === floor).length)).toEqual([25, 9, 18]);
+    // The reception desk belongs to the facility receptionist, so F1 offers 24 agent seats.
+    expect([1, 2, 3].map(floor => seats.filter(seat => seat.floor === floor).length)).toEqual([24, 9, 18]);
+    expect(seats.some(seat => seat.id === 'lobby.receptionist')).toBe(false);
     expect(OFFICE_RESOURCES.filter(resource => resource.roomId === "meeting-a" && resource.kind === "meeting-seat")).toHaveLength(10);
     expect(OFFICE_RESOURCES.filter(resource => resource.roomId === "meeting-b" && resource.kind === "meeting-seat")).toHaveLength(14);
     expect(seats.filter(seat => seat.id.startsWith('engineering.pod-'))).toHaveLength(16);
@@ -47,7 +58,7 @@ describe('furnished office geometry and real session projection', () => {
     expect(allocateOfficeAgents([...agents].reverse())).toEqual(allocateOfficeAgents(agents));
   });
 
-  it('keeps empty displays idle and uses session text unchanged when occupied', () => {
+  it('keeps empty displays idle and shows only the safe activity phrase when occupied', () => {
     const empty = { agents: [], allocations: [], language: 'en' as const };
     expect(screenForLocation(empty, 'floor-1.team-workspace.pod-a.seat-ne').sessionBacked).toBeUndefined();
     expect(missionControlScreen(empty).sessionBacked).toBe(false);
@@ -56,7 +67,8 @@ describe('furnished office geometry and real session projection', () => {
     const allocations = allocateOfficeAgents([observed]);
     const occupied = screenForLocation({ agents: [observed], allocations, language: 'id' }, allocations[0]!.resourceId);
     expect(occupied.title).toBe('Research Session');
-    expect(occupied.subtitle).toBe('User supplied summary');
+    expect(occupied.subtitle).toBe(MESSAGES.id.officeUx.semantic.working);
+    expect(JSON.stringify(occupied)).not.toContain('User supplied summary');
     expect(occupied.status).toBe('observing');
     expect(occupied.sessionBacked).toBe(true);
   });
