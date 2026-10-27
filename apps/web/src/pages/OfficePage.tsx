@@ -178,10 +178,12 @@ export function OfficePage({ t, language, agents, state, onState, workspaceId, o
   useEffect(() => { dispatch({ type: 'prune', present: new Set([...presences.map(agent => agent.id), ...staff.map(entry => entry.definition.id)]) }); }, [presences, staff]);
   const p = t.characterPopover;
   const composer = t.officeUx.composer;
-  // A board row selects its prompt target while preserving the current camera.
+  // Board rows are location shortcuts; direct avatar/card inspection preserves the camera.
   const selectRow = (agent: OfficeAgent) => {
     dispatch({ type: 'select', characterId: agent.id });
     callOut(agent.id);
+    const floor = floorOf(agent.id); if (floor && floor !== view) setView(floor);
+    setFocusRequest(value => value + 1);
     const target = promptTargetFor(agent, state?.sessions ?? []);
     if (!target) { setDockTarget({ note: composer.observedTarget(agent.displayName) }); return; }
     const lead = presences.find(item => item.sessionId === target.sessionId && item.agentId === 'primary');
@@ -357,15 +359,15 @@ export function OfficePage({ t, language, agents, state, onState, workspaceId, o
         </Suspense>
       </SceneBoundary>
       {!renderFailed && <OfficeLoading key={`loading-${attempt}`} t={t} stage={loadStage} reducedMotion={reducedMotion} />}
-      {boardOpen && <ActivityBoard t={t} id={boardId} items={overlay.model.board} names={overlay.names} now={overlay.now} onSelect={selectAgent} onClose={() => setBoardOpen(false)} onOpenMissions={onOpenMissions && (() => onOpenMissions())} approvalFor={characterId => approvalById(officeAgents.find(agent => agent.id === characterId)?.pendingApprovalId)} />}
+      {boardOpen && <ActivityBoard t={t} id={boardId} items={overlay.model.board} names={overlay.names} now={overlay.now} onSelect={locateAgent} onClose={() => setBoardOpen(false)} onOpenMissions={onOpenMissions && (() => onOpenMissions())} approvalFor={characterId => approvalById(officeAgents.find(agent => agent.id === characterId)?.pendingApprovalId)} />}
       {connectOpen && agents && <div className="office-connect-drawer" role="dialog" aria-label={t.agentApps.title}><ConnectAgentAppsCard t={t} agents={agents} compact onClose={() => setConnectOpen(false)} /></div>}
       {showLeadBar && <LeadAgentBar t={t} leads={overlay.model.leads.shown} more={overlay.model.leads.more} appearances={looks.appearances} projects={overlay.projects}
-        latest={overlay.model.latest} selectedId={selected?.id ?? null} onSelect={selectAgent} />}
+        latest={overlay.model.latest} selectedId={selected?.id ?? null} onSelect={locateAgent} />}
       <aside className={`office-panel ${panelCollapsed ? 'office-panel-collapsed' : ''}`} aria-label={t.office.agents}>
         <div className="office-panel-head"><strong>{t.office.agents}</strong><span className="badge">{presentCount}</span><button type="button" className="icon-button" aria-label={panelCollapsed ? t.officeUx.expand : t.officeUx.collapse} aria-expanded={!panelCollapsed} data-focus-key="board:toggle" onClick={() => dispatch({ type: 'toggleBoard' })}><Icon name={panelCollapsed ? 'plus' : 'panel'} /></button></div>
         <div className="office-panel-body" aria-hidden={panelCollapsed} inert={panelCollapsed}><div>
         <OfficeMetrics t={t} kpis={overlay.model.kpis} />
-        <OfficeFullNotice t={t} waiting={overlay.model.waitingForDesk} onSelect={selectAgent} />
+        <OfficeFullNotice t={t} waiting={overlay.model.waitingForDesk} onSelect={locateAgent} />
         {error && <p className="form-error" role="alert">{t.office.activityError} {error}</p>}
         {!presences.length ? <div className="office-empty"><p>{t.office.empty}</p><div className="row-actions"><button type="button" className="button" onClick={state?.workspaces.length ? onStartChat : onOpenSettings}>{state?.workspaces.length ? t.office.startSession : t.office.configure}</button>{agents && <button type="button" className="button" onClick={() => setConnectOpen(true)}><Icon name="terminal" />{t.agentApps.title}</button>}</div></div> :
           <>

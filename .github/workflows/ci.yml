@@ -37,6 +37,39 @@ jobs:
       - run: pnpm build
       - run: node tooling/check-versions.mjs
 
+  rust:
+    name: Rust (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .node-version
+      # Installs the exact toolchain, rustfmt and clippy pinned in rust-toolchain.toml.
+      - run: rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+      # fmt --check, clippy -D warnings and tests, all --locked (same gate as pnpm check).
+      - run: node tooling/check-rust.mjs
+      # Host suites that need the real daemon binary; the `check` job skips them without Rust.
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+      - run: node tooling/check-rust.mjs --build-daemon
+      - run: pnpm exec vitest run packages/host/test/missionDaemon.test.ts packages/host/test/daemonClient.test.ts packages/host/test/missions.test.ts packages/host/test/missionBudget.test.ts
+      # Smoke check only, not a gate: the benchmark numbers are not compared in CI.
+      - run: node tooling/bench/native-core.mjs --quick --json
+        if: matrix.os == 'ubuntu-latest'
+        continue-on-error: true
+
   desktop-smoke:
     name: Desktop smoke test
     runs-on: ubuntu-latest
@@ -51,3 +84,33 @@ jobs:
       # Ubuntu runners restrict unprivileged user namespaces, which Chromium's sandbox needs.
       - run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
       - run: xvfb-run --auto-servernum pnpm test:desktop
+
+  # Self-contained packaging (owner decision 9, ADR 0021): the unpacked Linux app must carry the
+  # daemon, and both the packaged app and an `npm install -g` of the CLI with its per-platform daemon
+  # package must work with no Rust, Python, Node or npm on PATH (docs/release/packaging.md).
+  package-smoke:
+    name: Packaged smoke (clean machine)
+    runs-on: ubuntu-latest
+    env:
+      # electron-builder downloads the Electron release it packages; the npm binary is not needed.
+      ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      EXTALIA_REQUIRE_DAEMON: '1'
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - run: rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+      - run: pnpm install --frozen-lockfile
+      # Web UI, Desktop bundle, release daemon (staged + hello) and the unpacked app in release/linux-unpacked.
+      - run: pnpm --filter @extalia/desktop dist:dir
+      - run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      - run: xvfb-run --auto-servernum pnpm --filter @extalia/desktop smoke:packaged
+      - run: pnpm --filter extalia-vo build
+      - run: node tooling/build-daemon.mjs --out daemon-artifacts
+      - run: node apps/cli/npm/generate.mjs --binaries daemon-artifacts --out npm-packages --cli
+      - run: node tooling/clean-machine-smoke.mjs --npm npm-packages

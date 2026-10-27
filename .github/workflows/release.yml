@@ -3,6 +3,12 @@ name: Release
 # Pushing a tag such as v0.1.0 builds Extalia Desktop on every platform and uploads the
 # installers and update metadata (latest*.yml) to a draft GitHub release. A maintainer
 # reviews the draft and publishes it; installed apps only see published releases.
+#
+# Installers are self-contained (owner decision 9, ADR 0021): the `daemon` matrix builds the
+# Rust sidecar once per target, the Desktop builds bundle it, and the `npm-packages` job
+# generates the CLI's per-platform packages from the same binaries. Both pass a "clean
+# machine" smoke with no Rust, Python, Node or npm reachable (docs/release/packaging.md).
+# Nothing is published to npm. Publish the draft only when every job is green.
 on:
   push:
     tags: ['v*']
@@ -38,9 +44,104 @@ jobs:
           case "$GITHUB_REF_NAME" in *-*) prerelease="--prerelease" ;; esac
           gh release create "$GITHUB_REF_NAME" --draft $prerelease --verify-tag --title "Extalia $GITHUB_REF_NAME" --generate-notes
 
+  daemon:
+    name: Daemon (${{ matrix.target }})
+    needs: draft
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Both macOS targets build on the Apple-silicon runner (x86_64 cross-compiles with Xcode's toolchain).
+          - { target: aarch64-apple-darwin, runner: macos-latest }
+          - { target: x86_64-apple-darwin, runner: macos-latest }
+          - { target: x86_64-pc-windows-msvc, runner: windows-latest }
+          # Linux builds run natively on Ubuntu 22.04 (x64 and arm64 hosted runners), which sets the glibc floor (2.35).
+          - { target: x86_64-unknown-linux-gnu, runner: ubuntu-22.04 }
+          - { target: aarch64-unknown-linux-gnu, runner: ubuntu-22.04-arm }
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .node-version
+      # The Arm-hosted Linux image may lack rustup; the others ship it.
+      - name: Install rustup if missing
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          if ! command -v rustup >/dev/null; then
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain none --profile minimal
+            echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          fi
+      # The exact toolchain pinned in rust-toolchain.toml, plus the matrix target.
+      - run: rustup toolchain install
+      - run: rustup target add ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+      # Release build, symbols stripped, architecture checked; a native binary must answer `hello`.
+      - run: node tooling/build-daemon.mjs --target ${{ matrix.target }} --out daemon-artifacts
+      - name: Check the glibc floor
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          floor=2.35
+          needed="$(objdump -T daemon-artifacts/*/extalia-daemon | grep -o 'GLIBC_[0-9.]*' | sed 's/GLIBC_//' | sort -uV | tail -1)"
+          echo "extalia-daemon needs glibc $needed (floor $floor)"
+          if [ "$(printf '%s\n%s\n' "$needed" "$floor" | sort -V | tail -1)" != "$floor" ]; then
+            echo "::error::extalia-daemon needs glibc $needed, newer than the supported floor $floor."
+            exit 1
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: daemon-${{ matrix.target }}
+          # daemon-artifacts/<platform>-<arch>/extalia-daemon[.exe]; artifacts drop the executable bit,
+          # so every consumer stages the file with build-daemon --from or generate.mjs, which restore it.
+          path: daemon-artifacts/
+          if-no-files-found: error
+          retention-days: 14
+
+  npm-packages:
+    name: CLI npm packages (dry run)
+    needs: daemon
+    runs-on: ubuntu-latest
+    env:
+      ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @extalia/web build
+      - run: pnpm --filter extalia-vo build
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: daemon-*
+          path: daemon-artifacts
+          merge-multiple: true
+      # Five @extalia/daemon-<platform>-<arch> packages plus extalia-vo with them as optional dependencies.
+      - run: node apps/cli/npm/generate.mjs --binaries daemon-artifacts --out npm-packages --require-all --cli
+      # npm install -g of the packed CLI + linux-x64 package, then run with no toolchain on PATH.
+      - run: node tooling/clean-machine-smoke.mjs --npm npm-packages
+      - name: Pack (not published)
+        shell: bash
+        run: |
+          mkdir -p npm-tarballs
+          for dir in npm-packages/*/; do npm pack --pack-destination npm-tarballs "$dir"; done
+          ls -l npm-tarballs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: npm-packages
+          path: npm-tarballs/
+          if-no-files-found: error
+          retention-days: 14
+
   build:
     name: Build (${{ matrix.os }})
-    needs: draft
+    needs: [draft, daemon]
     strategy:
       fail-fast: false
       matrix:
@@ -59,6 +160,26 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @extalia/web build
       - run: pnpm --filter @extalia/desktop build
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: daemon-*
+          path: daemon-artifacts
+          merge-multiple: true
+      # Stage the daemon for every arch this OS packages (electron-builder.yml: macOS arm64 + x64,
+      # Windows x64, Linux x64) at apps/desktop/build-resources/daemon/<os>-<arch>/; no Rust here.
+      - name: Stage the daemon
+        shell: bash
+        run: |
+          case "$RUNNER_OS" in
+            macOS) targets="darwin-arm64 darwin-x64" ;;
+            Windows) targets="win32-x64" ;;
+            *) targets="linux-x64" ;;
+          esac
+          for target in $targets; do
+            binary="daemon-artifacts/$target/extalia-daemon"
+            if [ "$RUNNER_OS" = "Windows" ]; then binary="$binary.exe"; fi
+            node tooling/build-daemon.mjs --target "$target" --from "$binary"
+          done
       - name: Package and upload
         working-directory: apps/desktop
         shell: bash
@@ -70,6 +191,8 @@ jobs:
         #   WIN_CSC_LINK, WIN_CSC_KEY_PASSWORD   Windows code-signing certificate (.pfx, base64) and password
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # The afterPack hook fails the build when a packaged arch has no (or the wrong) daemon binary.
+          EXTALIA_REQUIRE_DAEMON: '1'
           SECRET_CSC_LINK: ${{ runner.os == 'macOS' && secrets.MAC_CSC_LINK || '' }}
           SECRET_CSC_KEY_PASSWORD: ${{ runner.os == 'macOS' && secrets.MAC_CSC_KEY_PASSWORD || '' }}
           SECRET_APPLE_ID: ${{ secrets.APPLE_ID }}
@@ -86,3 +209,17 @@ jobs:
           done
           if [ "$RUNNER_OS" = "macOS" ] && [ -z "${CSC_LINK:-}" ]; then export CSC_IDENTITY_AUTO_DISCOVERY=false; fi
           pnpm exec electron-builder --publish always
+      # Clean-machine gate on the unpacked app electron-builder left in release/ (this runner's arch):
+      # the daemon answers `hello`, and the app passes --smoke-test with and without it, with no
+      # Rust/Python/Node/npm reachable. A red step means the draft must not be published.
+      - name: Packaged smoke (clean machine)
+        if: runner.os != 'Linux'
+        working-directory: apps/desktop
+        run: node scripts/packaged-smoke.mjs
+      - name: Packaged smoke (clean machine)
+        if: runner.os == 'Linux'
+        working-directory: apps/desktop
+        # Ubuntu runners restrict unprivileged user namespaces, which Chromium's sandbox needs.
+        run: |
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          xvfb-run --auto-servernum node scripts/packaged-smoke.mjs

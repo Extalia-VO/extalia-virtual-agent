@@ -13,7 +13,9 @@ Thank you for helping. This guide covers the workflow; the architecture is in
    `docs(protocol): …`, `refactor(web): …`, `test(cli): …`, `chore: …`.
 4. **Update `CHANGELOG.md`** under `## [Unreleased]` for user-visible changes.
 5. **Run `pnpm check`** before opening the pull request. CI runs the same
-   checks on macOS, Windows and Linux.
+   checks on macOS, Windows and Linux. It includes the Rust crates
+   (`tooling/check-rust.mjs`), so contributors need [rustup](https://rustup.rs);
+   `rust-toolchain.toml` selects the pinned toolchain.
 
 ## Rules that reviews enforce
 

@@ -7,6 +7,9 @@
  * - e-mail addresses outside documentation/example domains;
  * - common credential formats;
  * - tracked .env files;
+ * - 3D model files (.glb/.gltf/.fbx). Models derived from third-party packs have
+ *   no redistribution license, so none may be tracked, staged or left untracked
+ *   outside .gitignore. Keep them in the git-ignored apps/web/local-assets/ folder.
  * - maintainer-defined private terms, read from the untracked file
  *   `.extalia-private-terms` (one term per line) or EXTALIA_PRIVATE_TERMS
  *   (comma-separated). Those terms never need to be committed themselves.
@@ -22,6 +25,9 @@ import { ROOT } from './workspace.mjs';
 const PLACEHOLDER_USERS = new Set(['someone', 'user', 'username', 'runner', 'me', 'you', 'example', 'name', 'shared', 'public', 'default', 'admin', 'jane', 'john', 'alice', 'bob']);
 const ALLOWED_EMAIL_DOMAINS = [/(^|\.)example\.(com|org|net)$/i, /(^|\.)users\.noreply\.github\.com$/i, /^noreply\.github\.com$/i, /^github\.com$/i];
 const THIRD_PARTY_TEXTS = new Set(['apps/web/public/fonts/Righteous-OFL.txt']);
+// Nothing is allow-listed: add a path here only with a license that permits redistribution.
+const ALLOWED_MODEL_FILES = new Set([]);
+const MODEL_FILE = /\.(glb|gltf|fbx)$/i;
 const SKIP = [/^pnpm-lock\.yaml$/, /\.(png|jpe?g|gif|webp|ico|glb|gltf|woff2?|ttf|otf|zip)$/i];
 
 const HOME_PATHS = [
@@ -63,6 +69,9 @@ const terms = (await privateTerms()).map(term => ({ term, pattern: new RegExp(`(
 const files = await listFiles();
 
 for (const file of files) {
+  if (MODEL_FILE.test(file) && !ALLOWED_MODEL_FILES.has(file)) {
+    findings.push(`${file}: 3D model files must not be committed. Keep source-derived models in the git-ignored apps/web/local-assets/ folder (see apps/web/src/office/scene/avatars/README.md).`);
+  }
   if (/(^|\/)\.env($|\.)/.test(file) && !file.endsWith('.env.example')) findings.push(`${file}: environment files must not be committed.`);
   if (SKIP.some(pattern => pattern.test(file))) continue;
   const full = path.join(ROOT, file);

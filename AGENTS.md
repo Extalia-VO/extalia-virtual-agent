@@ -5,6 +5,9 @@ addition to [CONTRIBUTING.md](CONTRIBUTING.md).
 
 - Product: **Extalia**, an open-source spatial AI-agent workspace. Hermes,
   Codex, Claude Code, Gemini and other tools are integrations, not the product.
+- Current product work is defined in
+  [docs/product/prd-app-flow-and-live-agents.md](docs/product/prd-app-flow-and-live-agents.md):
+  read it, follow its working protocol and update its status tracker.
 - Read [docs/architecture/overview.md](docs/architecture/overview.md) before
   changing structure. Keep the dependency direction
   `protocol ← core ← platform ← apps`; renderer and UI code never import
@@ -20,6 +23,10 @@ addition to [CONTRIBUTING.md](CONTRIBUTING.md).
 - Anything that edits another application's configuration needs a dry run, the
   user's approval, backups and an undo command. Test such code against
   temporary directories, never a real home directory.
+- Extalia's own data lives in `~/.extalia-vo` (`%USERPROFILE%\.extalia-vo`),
+  shared by the Bridge and Desktop. Tests pass a temporary `dataDirectory`,
+  `EXTALIA_HOME` or `homeDirectory`; never read or write the real profile or
+  the pre-0.0.21 folder (`~/Library/Application Support/Extalia`, …).
 - UI text lives in `apps/web/src/i18n.ts`. English is the default, Indonesian
   the second language; user content is never translated.
 - For each completed implementation update: add notes under
