@@ -1,7 +1,7 @@
 {
   "name": "@extalia/protocol",
   "description": "Extalia Protocol: versioned, runtime-independent agent events.",
-  "version": "0.4.112",
+  "version": "0.4.113",
   "private": true,
   "license": "MIT",
   "type": "module",

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DAYLIGHT_INTERIOR_LEVEL, LIGHT_OVERRIDE_STORAGE_KEY, loadLightOverride, resolveInteriorLights, saveLightOverride } from '../src/office/scene/environment/lightOverride';
-import { createBudgetController, RENDER_BUDGET_LEVELS, budgetPixelRatio, updateBudget } from '../src/office/scene/environment/renderBudget';
+import { createBudgetController, createRenderFrameSampler, RENDER_BUDGET_LEVELS, budgetPixelRatio, resetRenderFrameSampler, sampleRenderFrame, updateBudget } from '../src/office/scene/environment/renderBudget';
 
 function memoryStorage(initial: Record<string, string> = {}) {
   const values = new Map(Object.entries(initial));
@@ -47,6 +47,46 @@ describe('lights override', () => {
 });
 
 describe('adaptive render budget', () => {
+  it('downgrades after repeated slow visible frame windows', () => {
+    const sampler = createRenderFrameSampler(0);
+    const controller = createBudgetController();
+    let now = 100;
+    sampleRenderFrame(sampler, now, true);
+    let windows = 0;
+    for (let i = 0; i < 20 && controller.level === 0; i++) {
+      now += 600; // foreground stalls at ~1.7 fps; these intervals must not be discarded
+      const fps = sampleRenderFrame(sampler, now, true);
+      if (fps !== null) {
+        windows++;
+        updateBudget(controller, { fps });
+      }
+    }
+    expect(windows).toBeGreaterThanOrEqual(2);
+    expect(controller.level).toBe(1);
+  });
+
+  it('resets timing on hide/resume so hidden duration cannot trigger a downgrade', () => {
+    const sampler = createRenderFrameSampler(0);
+    const controller = createBudgetController();
+    sampleRenderFrame(sampler, 100, true);
+    sampleRenderFrame(sampler, 200, true);
+    resetRenderFrameSampler(sampler);
+    expect(sampleRenderFrame(sampler, 60_000, false)).toBeNull();
+    // The first resumed frame starts a fresh clock; subsequent healthy frames are
+    // measured normally, regardless of the minute spent hidden.
+    expect(sampleRenderFrame(sampler, 60_016, true)).toBeNull();
+    let windows = 0;
+    for (let i = 0; i < 300; i++) {
+      const fps = sampleRenderFrame(sampler, 60_032 + i * 16, true);
+      if (fps !== null) {
+        windows++;
+        updateBudget(controller, { fps });
+      }
+    }
+    expect(windows).toBeGreaterThan(0);
+    expect(controller.level).toBe(0);
+  });
+
   it('steps down after two slow windows and back up after sustained headroom', () => {
     const controller = createBudgetController();
     expect(updateBudget(controller, { fps: 30 })).toBe(0);

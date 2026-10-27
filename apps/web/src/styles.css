@@ -3871,7 +3871,7 @@ button.mission-dag-card:hover { border-color: var(--accent); }
 /* ── end v0.0.48 context ── */
 
 /* ── v0.0.48 board motion ── */
-/* Board details and the "Earlier" section stay mounted and animate their grid track 0fr <-> 1fr; closed content is inert. */
+/* Board details animate 0fr <-> 1fr; Earlier rows unmount after closing, and closed content is inert. */
 .board-collapse { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 240ms var(--ease); }
 .board-collapse[data-open] { grid-template-rows: 1fr; }
 .board-collapse-inner { min-height: 0; overflow: hidden; opacity: 0; transform: translateY(-4px); transition: opacity 240ms var(--ease), transform 240ms var(--ease); }

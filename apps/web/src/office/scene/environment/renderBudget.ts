@@ -77,3 +77,53 @@ export function updateBudget(controller: BudgetController, { fps }: BudgetSample
   }
   return controller.level;
 }
+
+/** State for measuring rendered frame intervals without counting hidden-tab time. */
+export interface RenderFrameSampler {
+  seconds: number;
+  frames: number;
+  warmup: number;
+  last: number;
+}
+
+export function createRenderFrameSampler(warmupSeconds = 3): RenderFrameSampler {
+  return { seconds: 0, frames: 0, warmup: warmupSeconds, last: 0 };
+}
+
+/**
+ * Forget timing across visibility transitions. The first resumed frame only starts
+ * the clock; it cannot include time spent in a suspended/background tab.
+ */
+export function resetRenderFrameSampler(sampler: RenderFrameSampler): void {
+  sampler.seconds = 0;
+  sampler.frames = 0;
+  sampler.last = 0;
+  sampler.warmup = Math.max(sampler.warmup, 1);
+}
+
+/** Record one foreground frame and return an FPS window once two seconds are measured. */
+export function sampleRenderFrame(sampler: RenderFrameSampler, nowMs: number, visible: boolean): number | null {
+  if (!visible) {
+    resetRenderFrameSampler(sampler);
+    return null;
+  }
+  if (!sampler.last) {
+    sampler.last = nowMs;
+    return null;
+  }
+  const seconds = Math.max(0, (nowMs - sampler.last) / 1000);
+  sampler.last = nowMs;
+  if (sampler.warmup > 0) {
+    sampler.warmup = Math.max(0, sampler.warmup - seconds);
+    return null;
+  }
+  // Keep real elapsed time, including long foreground stalls: discarding these
+  // intervals made sustained low-FPS rendering invisible to the budget controller.
+  sampler.seconds += seconds;
+  sampler.frames += 1;
+  if (sampler.seconds < 2) return null;
+  const fps = sampler.frames / sampler.seconds;
+  sampler.seconds = 0;
+  sampler.frames = 0;
+  return fps;
+}

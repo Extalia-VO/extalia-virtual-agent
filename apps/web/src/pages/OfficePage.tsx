@@ -98,8 +98,15 @@ export function OfficePage({ t, language, agents, state, onState, workspaceId, o
   const [expandedRows, setExpandedRows] = useState<ReadonlySet<string>>(() => new Set());
   // Leads whose subagents are folded away on the agents board (all open by default).
   const [collapsedLeads, setCollapsedLeads] = useState<ReadonlySet<string>>(() => new Set());
-  const [earlierOpen, setEarlierOpen] = useState(readEarlierOpen);
-  const showEarlier = (open: boolean) => { setEarlierOpen(open); writeEarlierOpen(open); };
+  const [earlier, setEarlier] = useState(() => {
+    const open = readEarlierOpen();
+    return { open, mounted: open };
+  });
+  const earlierOpen = earlier.open;
+  const showEarlier = (open: boolean) => {
+    setEarlier(current => ({ open, mounted: open || current.mounted }));
+    writeEarlierOpen(open);
+  };
   const boardId = useId();
   const [attempt, setAttempt] = useState(0);
   const [loadStage, setLoadStage] = useState<OfficeLoadStage>('engine');
@@ -109,6 +116,15 @@ export function OfficePage({ t, language, agents, state, onState, workspaceId, o
   const markFailed = useCallback(() => setRenderFailed(true), []);
   const dark = useSyncExternalStore(subscribeTheme, getDark, getFalse);
   const reducedMotion = useSyncExternalStore(subscribeMotion, getReduced, getFalse);
+  // Avoid constructing the (potentially large) earlier tree on initial load. Keep it through the
+  // close transition, and cancel that unmount if the user reopens it quickly.
+  useEffect(() => {
+    if (earlierOpen || !earlier.mounted) return;
+    const timeout = window.setTimeout(() => {
+      setEarlier(current => current.open ? current : { ...current, mounted: false });
+    }, reducedMotion ? 0 : 240);
+    return () => window.clearTimeout(timeout);
+  }, [earlierOpen, earlier.mounted, reducedMotion]);
   const sessions = useMemo(() => (state?.sessions ?? []).filter(session => !workspaceId || session.workspaceId === workspaceId)
     .sort((a, b) => Number(b.running) - Number(a.running) || b.lastActiveAt.localeCompare(a.lastActiveAt)), [state?.sessions, workspaceId]);
   const visible = useMemo(() => sessions.slice(0, MAX_SESSIONS), [sessions]);
@@ -375,9 +391,9 @@ export function OfficePage({ t, language, agents, state, onState, workspaceId, o
             {board.earlierCount > 0 && <section className="office-earlier" aria-label={composer.earlier(board.earlierCount)}>
               <button type="button" className="office-earlier-toggle" aria-expanded={earlierOpen} title={composer.earlierHint} data-focus-key="board:earlier"
                 onClick={() => showEarlier(!earlierOpen)}><Icon name="chevron" /><span>{composer.earlier(board.earlierCount)}</span></button>
-              {/* v0.0.48: the groups stay mounted so the section can animate closed; inert while closed */}
+              {/* Keep rows mounted through the close animation, then release hidden portraits. */}
               <div className="board-collapse" data-open={earlierOpen || undefined} inert={!earlierOpen}><div className="board-collapse-inner">
-                {board.earlier.map(group => <div key={group.sessionId} className="office-earlier-group">
+                {earlier.mounted && board.earlier.map(group => <div key={group.sessionId} className="office-earlier-group">
                   {group.presentLead && <p className="office-earlier-from">{composer.earlierFrom(group.presentLead.displayName)}</p>}
                   <ul className="office-agent-list">{group.rows.map(renderRow)}</ul>
                 </div>)}

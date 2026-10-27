@@ -16,6 +16,14 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.113] - 2026-10-27
+
+### Fixed
+
+- The Office adaptive render budget now counts severe foreground frame stalls, so it can lower rendering load when the scene becomes unresponsive. Hidden-tab time is excluded when the view resumes.
+- The collapsed Earlier board no longer creates hidden portrait rows until opened; closing preserves its animation and releases those rows. Unchanged or offscreen portrait updates no longer repeatedly reconcile visible 3D portraits.
+- Desktop smoke tests isolate external application homes and skip automatic integration setup, preventing test runs from changing real agent configuration.
+
 ## [0.4.112] - 2026-10-27
 
 ### Fixed

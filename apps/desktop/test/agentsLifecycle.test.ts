@@ -1,3 +1,5 @@
+import path from 'node:path';
+import os from 'node:os';
 import type { AgentHostRuntime } from '@extalia/host';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { startAgents, type Agents } from '../src/agentsIpc';
@@ -22,8 +24,8 @@ const APP = 'extalia://app/index.html';
 const LOCKED = 'Extalia is already running (Bridge process 123).';
 const instances: Agents[] = [];
 
-function launch() {
-  const agents = startAgents({ devServer: undefined });
+function launch(options: Partial<Parameters<typeof startAgents>[0]> = {}) {
+  const agents = startAgents({ devServer: undefined, ...options });
   instances.push(agents);
   const handler = electron.handle.mock.calls[0]?.[1] as (
     event: { senderFrame: { url: string } }, method: string, args: unknown[],
@@ -88,6 +90,55 @@ describe('desktop agent host lifecycle', () => {
     await agents.close();
     await agents.close();
     expect(recovered.started.close).toHaveBeenCalledTimes(1);
+  });
+
+  it('isolates smoke host profile paths and skips hooks and external app auto-connect', async () => {
+    const isolated = runtime();
+    isolated.started.host.agentAppConnections.mockResolvedValue([{ app: 'hermes', installed: true, state: 'not-connected' }]);
+    electron.createHost.mockResolvedValue(isolated.value);
+    const homeDirectory = path.join(os.tmpdir(), 'extalia-smoke-profile', 'home');
+    const dataDirectory = path.join(os.tmpdir(), 'extalia-smoke-profile', 'extalia-home');
+    const { agents, call } = launch({ smokeTest: true, homeDirectory, dataDirectory });
+
+    expect(await call()).toEqual({ ok: true, value: isolated.state });
+    const hostOptions = electron.createHost.mock.calls[0]?.[0] as {
+      dataDirectory: string; homeDirectory: string; importHome: string; env: Record<string, string | undefined>;
+    };
+    expect(hostOptions.dataDirectory).toBe(dataDirectory);
+    expect(hostOptions.homeDirectory).toBe(homeDirectory);
+    expect(hostOptions.importHome).toBe(homeDirectory);
+    expect(hostOptions.env).toMatchObject({
+      HOME: homeDirectory,
+      USERPROFILE: homeDirectory,
+      EXTALIA_HOME: dataDirectory,
+      EXTALIA_SECRET_STORE: 'memory',
+      CODEX_HOME: path.join(homeDirectory, '.codex'),
+      CLAUDE_CONFIG_DIR: path.join(homeDirectory, '.claude'),
+      GEMINI_CLI_HOME: path.join(homeDirectory, '.gemini'),
+      ANTIGRAVITY_CONFIG_DIR: path.join(homeDirectory, '.gemini', 'config'),
+      ANTIGRAVITY_HOME: path.join(homeDirectory, '.gemini', 'antigravity'),
+      HERMES_HOME: path.join(homeDirectory, '.hermes'),
+      XDG_CONFIG_HOME: path.join(homeDirectory, '.config'),
+      XDG_DATA_HOME: path.join(homeDirectory, '.local', 'share'),
+      XDG_CACHE_HOME: path.join(homeDirectory, '.cache'),
+      XDG_STATE_HOME: path.join(homeDirectory, '.local', 'state'),
+    });
+    expect(isolated.started.hooks.listen).not.toHaveBeenCalled();
+    expect(isolated.started.host.agentAppConnections).not.toHaveBeenCalled();
+    expect(isolated.started.host.applyAgentAppConnect).not.toHaveBeenCalled();
+    await agents.close();
+  });
+
+  it('keeps normal startup hook listening and Hermes auto-connect enabled', async () => {
+    const normal = runtime();
+    normal.started.host.agentAppConnections.mockResolvedValue([{ app: 'hermes', installed: true, state: 'not-connected' }]);
+    electron.createHost.mockResolvedValue(normal.value);
+    const { agents, call } = launch();
+
+    expect(await call()).toEqual({ ok: true, value: normal.state });
+    await vi.waitFor(() => expect(normal.started.host.applyAgentAppConnect).toHaveBeenCalledExactlyOnceWith('hermes'));
+    expect(normal.started.hooks.listen).toHaveBeenCalledExactlyOnceWith(4311);
+    await agents.close();
   });
 
   it('shares one retry among concurrent calls and retains the recovered runtime', async () => {

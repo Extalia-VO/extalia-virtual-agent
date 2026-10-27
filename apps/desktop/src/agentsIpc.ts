@@ -12,6 +12,10 @@ export interface AgentsOptions {
   devServer: URL | undefined;
   /** Explicit data directory (smoke tests); otherwise the host's default, which honours EXTALIA_HOME. */
   dataDirectory?: string;
+  /** Isolated profile for the packaged UI smoke test. */
+  smokeTest?: boolean;
+  /** Synthetic home required by smoke tests; never inferred from the user's profile. */
+  homeDirectory?: string;
 }
 
 export interface Agents {
@@ -34,7 +38,7 @@ function daemonLocation(): { resourcesPath: string } | { repoRoot: string } {
  * IPC. If the host cannot start, the app keeps working and agent calls fail
  * with the reason.
  */
-export function startAgents({ devServer, dataDirectory }: AgentsOptions): Agents {
+export function startAgents({ devServer, dataDirectory, smokeTest = false, homeDirectory }: AgentsOptions): Agents {
   let runtime: AgentHostRuntime | undefined;
   let unavailable = 'the agent host did not start.';
   let starting: Promise<AgentHostRuntime | undefined> | undefined;
@@ -46,25 +50,55 @@ export function startAgents({ devServer, dataDirectory }: AgentsOptions): Agents
     // A failed startup is retryable by the next trusted call (including the
     // recovery panel's getState). Concurrent calls share exactly one attempt.
     starting = Promise.resolve()
-      .then(() => createAgentHost({ kind: 'desktop', version: app.getVersion(), ...(dataDirectory ? { dataDirectory } : {}), daemon: { binary: daemonLocation() } }))
+      .then(() => {
+        if (smokeTest && (!dataDirectory || !homeDirectory)) throw new Error('Smoke tests require an isolated data and home directory.');
+        const isolatedEnv = smokeTest && dataDirectory && homeDirectory ? {
+          ...process.env,
+          HOME: homeDirectory,
+          USERPROFILE: homeDirectory,
+          APPDATA: path.join(homeDirectory, 'AppData', 'Roaming'),
+          LOCALAPPDATA: path.join(homeDirectory, 'AppData', 'Local'),
+          XDG_CONFIG_HOME: path.join(homeDirectory, '.config'),
+          XDG_DATA_HOME: path.join(homeDirectory, '.local', 'share'),
+          XDG_CACHE_HOME: path.join(homeDirectory, '.cache'),
+          XDG_STATE_HOME: path.join(homeDirectory, '.local', 'state'),
+          CODEX_HOME: path.join(homeDirectory, '.codex'),
+          CLAUDE_CONFIG_DIR: path.join(homeDirectory, '.claude'),
+          GEMINI_CLI_HOME: path.join(homeDirectory, '.gemini'),
+          ANTIGRAVITY_CONFIG_DIR: path.join(homeDirectory, '.gemini', 'config'),
+          ANTIGRAVITY_HOME: path.join(homeDirectory, '.gemini', 'antigravity'),
+          HERMES_HOME: path.join(homeDirectory, '.hermes'),
+          EXTALIA_HOME: dataDirectory,
+          EXTALIA_SECRET_STORE: 'memory',
+        } : undefined;
+        return createAgentHost({
+          kind: 'desktop', version: app.getVersion(),
+          ...(dataDirectory ? { dataDirectory } : {}),
+          ...(homeDirectory ? { homeDirectory, importHome: homeDirectory } : {}),
+          ...(isolatedEnv ? { env: isolatedEnv } : {}),
+          daemon: { binary: daemonLocation() },
+        });
+      })
       .then(started => {
         runtime = started;
         // close() owns this pending attempt and will release it, even if its
         // bounded wait has expired. Do not start listeners while quitting.
         if (stopping) return started;
-        void started.hooks?.listen(DESKTOP_HOOK_PORT).catch(() => undefined);
-        void (async () => {
-          try {
-            const connections = await started.host.agentAppConnections();
-            if (stopping) return;
-            const hermes = connections.find(c => c.app === 'hermes');
-            if (hermes?.installed && hermes.state !== 'connected') {
-              await started.host.applyAgentAppConnect('hermes');
+        if (!smokeTest) {
+          void started.hooks?.listen(DESKTOP_HOOK_PORT).catch(() => undefined);
+          void (async () => {
+            try {
+              const connections = await started.host.agentAppConnections();
+              if (stopping) return;
+              const hermes = connections.find(c => c.app === 'hermes');
+              if (hermes?.installed && hermes.state !== 'connected') {
+                await started.host.applyAgentAppConnect('hermes');
+              }
+            } catch {
+              // non-blocking auto-connect for Hermes
             }
-          } catch {
-            // non-blocking auto-connect for Hermes
-          }
-        })();
+          })();
+        }
         started.host.subscribe(event => {
           for (const window of BrowserWindow.getAllWindows()) {
             // Events carry prompts and file contents, so only the app's own pages receive them.

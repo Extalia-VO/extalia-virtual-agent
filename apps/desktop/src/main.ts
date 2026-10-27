@@ -16,6 +16,7 @@ import { checkAfterLaunch, startUpdater } from './updater';
 
 const smokeTest = process.argv.includes('--smoke-test');
 let smokeDataDirectory: string | undefined;
+let smokeHomeDirectory: string | undefined;
 if (smokeTest) {
   if (process.platform === 'darwin') {
     // Hosted Macs can blocklist WebGL; use native ANGLE because this Electron
@@ -31,8 +32,26 @@ if (smokeTest) {
   // Smoke tests use a throwaway profile and agent data directory so they never touch the user's data.
   const profile = mkdtempSync(path.join(tmpdir(), 'extalia-smoke-'));
   app.setPath('userData', profile);
+  smokeHomeDirectory = path.join(profile, 'home');
+  mkdirSync(smokeHomeDirectory);
   smokeDataDirectory = path.join(profile, 'extalia-home');
   mkdirSync(smokeDataDirectory);
+  // Keep Node/Electron helpers that consult process.env (including os.homedir)
+  // inside the disposable profile too. These are process-local overrides only.
+  process.env.HOME = smokeHomeDirectory;
+  process.env.USERPROFILE = smokeHomeDirectory;
+  process.env.APPDATA = path.join(smokeHomeDirectory, 'AppData', 'Roaming');
+  process.env.LOCALAPPDATA = path.join(smokeHomeDirectory, 'AppData', 'Local');
+  process.env.XDG_CONFIG_HOME = path.join(smokeHomeDirectory, '.config');
+  process.env.XDG_DATA_HOME = path.join(smokeHomeDirectory, '.local', 'share');
+  process.env.XDG_CACHE_HOME = path.join(smokeHomeDirectory, '.cache');
+  process.env.XDG_STATE_HOME = path.join(smokeHomeDirectory, '.local', 'state');
+  process.env.CODEX_HOME = path.join(smokeHomeDirectory, '.codex');
+  process.env.CLAUDE_CONFIG_DIR = path.join(smokeHomeDirectory, '.claude');
+  process.env.GEMINI_CLI_HOME = path.join(smokeHomeDirectory, '.gemini');
+  process.env.ANTIGRAVITY_CONFIG_DIR = path.join(smokeHomeDirectory, '.gemini', 'config');
+  process.env.ANTIGRAVITY_HOME = path.join(smokeHomeDirectory, '.gemini', 'antigravity');
+  process.env.HERMES_HOME = path.join(smokeHomeDirectory, '.hermes');
   process.env.EXTALIA_HOME = smokeDataDirectory;
   process.env.EXTALIA_SECRET_STORE = 'memory';
 } else if (app.isPackaged) {
@@ -149,7 +168,7 @@ if (!app.requestSingleInstanceLock()) {
   app.whenReady().then(() => {
     serveWebBuild();
     registerIpc();
-    const agents = startAgents({ devServer, dataDirectory: smokeDataDirectory });
+    const agents = startAgents({ devServer, dataDirectory: smokeDataDirectory, smokeTest, homeDirectory: smokeHomeDirectory });
     const updates = startUpdater({ smokeTest, work: agents.work, trusted });
     registerRestart({ smokeTest, work: agents.work, trusted });
     registerNotifications({ smokeTest, devServer });
