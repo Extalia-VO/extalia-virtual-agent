@@ -61,6 +61,7 @@ function cargoEnv() {
   const found = findCargo();
   if (!found) fail('cargo was not found on PATH or in ~/.cargo/bin. Install rustup (https://rustup.rs); rust-toolchain.toml selects the pinned toolchain.');
   toolEnv = found.bin ? { ...process.env, PATH: `${found.bin}${path.delimiter}${process.env.PATH ?? ''}` } : { ...process.env };
+  if (process.platform === 'darwin' && !toolEnv.CC) toolEnv.CC = 'clang';
   return toolEnv;
 }
 
