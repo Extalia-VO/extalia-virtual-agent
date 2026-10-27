@@ -39,7 +39,10 @@ export interface SecureStorageCapability {
 }
 
 export interface NotificationCapability {
+  /** Show an OS or browser notification. Callers never put secrets in the text; hosts still bound its length. */
   notify(notification: { title: string; body?: string }): Promise<void>;
+  /** The user clicked a notification: the app focuses itself and shows what the notification refers to. */
+  onActivate(listener: () => void): () => void;
 }
 
 export type UpdateChannel = 'stable' | 'beta';
@@ -74,6 +77,24 @@ export interface UpdateCapability {
   onStatus(listener: (status: UpdateStatus) => void): () => void;
 }
 
+/**
+ * How this app restarts itself. `relaunch` (Desktop) quits the app process after the
+ * agent host has saved and stopped; `reload` (Web, Bridge page) only reloads the page.
+ * Neither restarts the Bridge, the CLI, Hermes or outside agent apps.
+ */
+export type RestartKind = 'relaunch' | 'reload';
+
+export interface RestartOptions {
+  /** Set only after the user confirmed that agent work still running may be stopped. */
+  acknowledgeActiveWork?: boolean;
+}
+
+export interface RestartCapability {
+  kind: RestartKind;
+  /** Requests the restart. A relaunch ends the process, so its promise may never settle. */
+  restart(options?: RestartOptions): Promise<void>;
+}
+
 export interface PlatformCapabilities {
   filesystem?: FileSystemCapability;
   terminal?: TerminalCapability;
@@ -83,10 +104,13 @@ export interface PlatformCapabilities {
   updater?: UpdateCapability;
   /** Runs Extalia Native agents (Desktop main process or the local Bridge). */
   agents?: AgentHostApi;
+  /** Restarts or reloads the app on the user's request; the UI never restarts without confirmation. */
+  restart?: RestartCapability;
 }
 
-export type CapabilityId = keyof PlatformCapabilities;
-export const CAPABILITY_IDS: readonly CapabilityId[] = ['agents', 'filesystem', 'terminal', 'git', 'secureStorage', 'notifications', 'updater'];
+/** Feature capabilities shown in diagnostics. `restart` is an action, not a feature, so it is not listed. */
+export const CAPABILITY_IDS = ['agents', 'filesystem', 'terminal', 'git', 'secureStorage', 'notifications', 'updater'] as const satisfies readonly (keyof PlatformCapabilities)[];
+export type CapabilityId = (typeof CAPABILITY_IDS)[number];
 
 export interface HostInfo {
   /** `web` covers both a static web build and the web client served by the local Bridge. */
@@ -121,6 +145,13 @@ export interface DesktopHostApi {
     install(): Promise<void>;
     postpone(): Promise<void>;
     onStatus(listener: (status: UpdateStatus) => void): () => void;
+  };
+  /** Relaunch the Desktop app. The main process validates the options and stops agent work before quitting. */
+  restart(options?: RestartOptions): Promise<void>;
+  /** Native notifications (v0.0.48). The main process validates and bounds each payload and activates the window on click. */
+  notifications?: {
+    notify(notification: { title: string; body?: string }): Promise<void>;
+    onActivate(listener: () => void): () => void;
   };
 }
 export const DESKTOP_HOST_GLOBAL = 'extaliaDesktop';

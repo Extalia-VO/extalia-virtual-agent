@@ -1,4 +1,4 @@
-import { RUNTIME_PROFILE_PATTERN, safeLabel, safeText } from '@extalia/core';
+import { EFFORTS, RUNTIME_PROFILE_PATTERN, safeLabel, safeText, type AgentTeam, type Effort, type TeamMember } from '@extalia/core';
 import { classifyTool, type ActivityKind, type EventBody, type FileChangeKind, type Usage } from '@extalia/protocol';
 
 /**
@@ -35,6 +35,8 @@ export interface HermesPlanInput {
   profile?: string;
   model?: string;
   provider?: string;
+  /** Reasoning effort (`--reasoning`, Hermes Agent versions that list it in `hermes chat --help`). */
+  reasoning?: Effort;
   resumeSessionId?: string;
   /** Bypass Hermes' dangerous-command approvals. Only for workspaces that allow edits and commands without asking. */
   yolo?: boolean;
@@ -97,6 +99,78 @@ export interface HermesStreamUpdate {
 export interface HermesStreamOptions {
   /** Ids for tool calls Hermes does not number itself. */
   newId?: () => string;
+  /**
+   * The session's enabled subagent team: a `delegate_task` call whose task names a member
+   * (as the team brief asks) is shown as that member's `subagent.spawned`.
+   */
+  team?: readonly Pick<TeamMember, 'id' | 'name' | 'role'>[];
+}
+
+/** Hermes' own delegation tool (`tools/delegate_tool.py`). */
+export const HERMES_DELEGATE_TOOL = 'delegate_task';
+
+const clip = (value: string, limit: number) => {
+  const clean = value.replace(/\s+/g, ' ').trim();
+  return clean.length > limit ? `${clean.slice(0, limit - 1).trimEnd()}…` : clean;
+};
+
+/**
+ * The team brief put before a Hermes prompt when the session's team is enabled.
+ * v0.0.39: the lead delegates only the parts that concern a member's role.
+ * Hermes cannot run a member on its own model (its children all use
+ * `delegation.model` or the lead's), so the brief asks the lead to hand each
+ * member's part to `delegate_task` with the member's name, persona, task and
+ * scope written into the task; the member models are not mentioned.
+ */
+export function hermesTeamBrief(team: Pick<AgentTeam, 'members' | 'rules' | 'goal'>, options: { fromPrompt?: boolean } = {}): string {
+  const members = team.members.map((member, index) => {
+    const write = member.access === 'write';
+    const parts = [
+      `${index + 1}. ${member.name} — ${member.role} (${write ? `may edit${member.scope?.length ? ` only ${member.scope.join(', ')}` : ' within the workspace'}` : 'read-only'}`
+        + `${member.forbidden?.length ? `; never edit ${member.forbidden.join(', ')}` : ''})`,
+      ...(member.task ? [`   Task: ${clip(member.task, 500)}`] : []),
+      ...(member.soul ? [`   Persona: ${clip(member.soul, 300)}`] : []),
+    ];
+    return parts.join('\n');
+  });
+  const rules = (team.rules ?? []).map(rule => `- ${clip(rule, 300)}`);
+  return [
+    '<extalia-team>',
+    `You lead a subagent team set up in Extalia${options.fromPrompt ? ' from this prompt' : ''}. Delegate only when this request actually concerns a member's role, task or scope`,
+    '(or the user asks for a member or the team); the user does not need to name them. Handle small, quick or unrelated requests (questions, chat, tiny edits,',
+    'anything no member\'s role covers) yourself, without delegating. When parts of the request do match members, pick every member whose role the work spans and',
+    `hand each one its part with your ${HERMES_DELEGATE_TOOL} tool (one \`tasks\` entry per chosen member; independent read-only parts in one batch).`,
+    'Start every task\'s goal with "[<member name> · <role>]", then a specific, self-contained goal; put the member\'s persona, task, scope, forbidden paths and the rules below in its context.',
+    'Members that edit files run one at a time (separate calls), never in the same batch as another editing member. Read-only members must not change files.',
+    'Combine their results, check them, and give the final answer yourself. If delegation is unavailable, do the members\' parts yourself in this order.',
+    ...(team.goal ? [`Team goal: ${clip(team.goal, 300)}`] : []),
+    'Members:',
+    ...members,
+    ...(rules.length ? ['Rules for every member:', ...rules] : []),
+    '</extalia-team>',
+  ].join('\n');
+}
+
+/** The team member a delegated task names: by name first, then by a role only one member has. */
+export function matchTeamMember<T extends Pick<TeamMember, 'name' | 'role'>>(members: readonly T[], text: string): T | undefined {
+  const haystack = text.toLowerCase();
+  const byName = members.filter(member => member.name.trim() && haystack.includes(member.name.trim().toLowerCase()))
+    .sort((a, b) => haystack.indexOf(a.name.toLowerCase()) - haystack.indexOf(b.name.toLowerCase()));
+  if (byName[0]) return byName[0];
+  const byRole = members.filter(member => member.role.trim() && haystack.includes(member.role.trim().toLowerCase()));
+  return byRole.length === 1 ? byRole[0] : undefined;
+}
+
+/** The tasks of a `delegate_task` call (`tasks: [{goal, context}]` or the legacy single `goal`). */
+function delegatedTasks(input: unknown): { goal: string; context: string }[] {
+  if (!input || typeof input !== 'object') return [];
+  const args = input as Record<string, unknown>;
+  const raw = Array.isArray(args.tasks) ? args.tasks : typeof args.goal === 'string' ? [args] : [];
+  return raw.flatMap(item => {
+    if (!item || typeof item !== 'object') return [];
+    const task = item as Record<string, unknown>;
+    return typeof task.goal === 'string' ? [{ goal: task.goal, context: typeof task.context === 'string' ? task.context : '' }] : [];
+  });
 }
 
 const OUTPUT_LIMIT = 4_000;
@@ -155,6 +229,10 @@ export class HermesAdapter {
     // `=` keeps a value from being read as another option.
     if (input.model) args.push(`--model=${input.model}`);
     if (input.provider) args.push(`--provider=${input.provider}`);
+    if (input.reasoning) {
+      if (!EFFORTS.includes(input.reasoning)) throw new Error('Invalid reasoning effort.');
+      args.push(`--reasoning=${input.reasoning}`);
+    }
     if (input.yolo) args.push('--yolo');
     return { args, stdin: input.prompt };
   }
@@ -162,8 +240,11 @@ export class HermesAdapter {
   createStreamParser(options: HermesStreamOptions = {}): (line: string) => HermesStreamUpdate | undefined {
     const newId = options.newId ?? defaultId;
     /** Open calls by Hermes call id, or by tool name when Hermes gives none. */
-    const open = new Map<string, { id: string; name: string; kind: ActivityKind; label: string; target?: string }[]>();
+    const open = new Map<string, { id: string; name: string; kind: ActivityKind; label: string; target?: string; members?: string[] }[]>();
     let model: string | undefined;
+    const team = options.team ?? [];
+    /** Members shown as working during this turn; they go idle when it ends. */
+    const active = new Set<string>();
 
     return line => {
       const trimmed = line.trim();
@@ -191,11 +272,23 @@ export class HermesAdapter {
           if (typeof data.text === 'string' && data.text) events.push({ type: 'model.delta', text: data.text });
           return update;
         case 'tool_use': {
-          const call = { id: callId ?? newId(), name, ...describeTool(name, data.input) };
+          const call: { id: string; name: string; kind: ActivityKind; label: string; target?: string; members?: string[] } = { id: callId ?? newId(), name, ...describeTool(name, data.input) };
           const key = callId ?? name;
-          open.set(key, [...(open.get(key) ?? []), call]);
           events.push({ type: 'agent.state', state: 'working', activity: call.kind, summary: call.label, ...(call.target ? { target: call.target } : {}) });
           events.push({ type: 'tool.started', toolCallId: call.id, tool: name, kind: call.kind, label: call.label, ...(call.target ? { target: call.target } : {}) });
+          if (name === HERMES_DELEGATE_TOOL && team.length) {
+            // Hermes' children report no events of their own; the members the tasks name are shown as working.
+            call.members = [];
+            for (const task of delegatedTasks(data.input)) {
+              const member = matchTeamMember(team, task.goal) ?? matchTeamMember(team, task.context);
+              if (!member || call.members.includes(member.id)) continue;
+              call.members.push(member.id);
+              active.add(member.id);
+              events.push({ type: 'subagent.spawned', subagentId: member.id, role: safeLabel(member.role, LABEL_LIMIT), label: safeLabel(member.name, LABEL_LIMIT) });
+              events.push({ type: 'subagent.state', subagentId: member.id, state: 'working', summary: safeLabel(clip(task.goal, 200), 200) });
+            }
+          }
+          open.set(key, [...(open.get(key) ?? []), call]);
           return update;
         }
         case 'tool_result': {
@@ -203,6 +296,7 @@ export class HermesAdapter {
           const call = open.get(key)?.shift() ?? { id: callId ?? newId(), name, ...describeTool(name, undefined) };
           if (!open.get(key)?.length) open.delete(key);
           const result = parseHermesToolOutput(data.output, data.is_error === true);
+          if (!result.ok) for (const member of call.members ?? []) { active.delete(member); events.push({ type: 'subagent.state', subagentId: member, state: 'blocked', summary: 'Could not start' }); }
           for (const file of result.files) events.push({ type: 'file.written', path: safeLabel(file.path, 1000), change: file.change });
           events.push({
             type: 'tool.completed', toolCallId: call.id, tool: name, kind: call.kind, label: call.label, ok: result.ok,
@@ -213,6 +307,8 @@ export class HermesAdapter {
           return update;
         }
         case 'result': {
+          for (const member of active) events.push({ type: 'subagent.state', subagentId: member, state: 'idle' });
+          active.clear();
           const text = typeof data.text === 'string' ? data.text : '';
           if (text.trim()) events.push({ type: 'model.completed', text, ...(model ? { model } : {}) });
           const usage = usageOf(data.tokens);

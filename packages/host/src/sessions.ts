@@ -1,6 +1,8 @@
 import { randomBytes } from 'node:crypto';
 import { readFile, rm } from 'node:fs/promises';
 import path from 'node:path';
+import type { AgentTeam, MemberGender } from '@extalia/core';
+import type { SessionContextUsage, SessionOptions } from '@extalia/platform';
 import { parseEventLines, type ExtaliaEvent } from '@extalia/protocol';
 import { appendLine, CorruptFileError, isNotFound, readJson, writeJsonAtomic } from './jsonStore.js';
 
@@ -15,6 +17,15 @@ export interface SessionRecord {
   continuedFrom?: { sourceId: string; title: string };
   /** Set for Hermes Agent sessions (then `connectionId` is empty); `sessionId` is Hermes' own, for resuming. */
   runtime?: { id: 'hermes'; profile: string; sessionId?: string };
+  /** Model and effort override for the session's turns (validated by the service; invalid stored fields are ignored on use). */
+  options?: SessionOptions;
+  /** Subagent team of an Extalia Native session (validated by the service; an invalid stored team is ignored on use). */
+  team?: AgentTeam;
+  /** The lead agent's full name, unique in the Office; assigned at creation (older sessions on first load) and kept. */
+  agentName?: string;
+  agentGender?: MemberGender;
+  /** The lead's context in use after its latest turn (v0.0.48); an invalid stored record is ignored on read. */
+  context?: SessionContextUsage;
 }
 
 export type SessionPatch = Partial<Omit<SessionRecord, 'id'>>;
@@ -41,7 +52,11 @@ function isRecord(value: unknown): value is SessionRecord {
     && ['workspaceId', 'connectionId', 'title', 'createdAt', 'lastActiveAt'].every(key => typeof record[key] === 'string')
     && (origin === undefined || (Boolean(origin) && typeof origin === 'object' && typeof origin.sourceId === 'string' && typeof origin.title === 'string'))
     && (runtime === undefined || (Boolean(runtime) && typeof runtime === 'object' && runtime.id === 'hermes' && typeof runtime.profile === 'string'
-      && (runtime.sessionId === undefined || typeof runtime.sessionId === 'string')));
+      && (runtime.sessionId === undefined || typeof runtime.sessionId === 'string')))
+    && (record.options === undefined || (Boolean(record.options) && typeof record.options === 'object' && !Array.isArray(record.options)))
+    && (record.team === undefined || (Boolean(record.team) && typeof record.team === 'object' && !Array.isArray(record.team)))
+    && (record.agentName === undefined || typeof record.agentName === 'string')
+    && (record.agentGender === undefined || typeof record.agentGender === 'string');
 }
 
 /** What the host needs from a session store; saved and unsaved sessions share it. */

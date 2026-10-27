@@ -1,9 +1,12 @@
 import { safeLabel, safeText, type ImportMode, type PortableSession } from '@extalia/core';
-import { parseClaude, parseCodex, parseGemini, parseHermes, type NativeParseResult, type NativeSourceId } from '@extalia/importers';
+import {
+  codexThreadSpawn, mergeSubagentSteps, parseAntigravity, parseClaude, parseCodex, parseGemini, parseHermes,
+  type CodexThreadSpawn, type NativeParseResult, type NativeSourceId, type ParseContext, type SubagentTranscript, type TranscriptContext, type TranscriptStep,
+} from '@extalia/importers';
 import type { ImportCandidate, ImportDiagnostic, ImportLocation, ImportScan } from '@extalia/platform';
 import { createHash, randomUUID } from 'node:crypto';
-import { closeSync, existsSync, fstatSync, openSync, readdirSync, readSync, realpathSync, statSync } from 'node:fs';
-import { basename, isAbsolute, join, relative, sep } from 'node:path';
+import { closeSync, existsSync, fstatSync, openSync, readdirSync, readSync, realpathSync, statSync, type Dirent } from 'node:fs';
+import { basename, dirname, isAbsolute, join, relative, sep } from 'node:path';
 import type * as Sqlite from 'node:sqlite';
 
 /**
@@ -15,18 +18,38 @@ import type * as Sqlite from 'node:sqlite';
 
 const HEADER_BYTES = 128 * 1024;
 const MAX_FILE_BYTES = 25 * 1024 * 1024;
+/**
+ * Live observation of a larger transcript reads its beginning (title, start) and its
+ * latest activity only. Step positions stay absolute line numbers, so event ids do
+ * not change while the window moves.
+ */
+const LIVE_FULL_BYTES = 4 * 1024 * 1024;
+const LIVE_HEAD_BYTES = 512 * 1024;
+const LIVE_TAIL_BYTES = 3 * 1024 * 1024;
 const MAX_PREVIEW_BYTES = 10 * 1024 * 1024;
 const MAX_FILES = 10_000;
 const MAX_CANDIDATES = 500;
 const MAX_SELECTION = 50;
 const SCAN_TTL_MS = 15 * 60 * 1000;
+/** Discovery stats files changed in this window on every poll and a slice of the others. */
+const DISCOVERY_HOT_MS = 15 * 60 * 1000;
+const DISCOVERY_COLD_PER_POLL = 400;
+/** Sub-agent transcripts merged into one observed session (newest first beyond this). */
+const MAX_SUBAGENTS = 100;
+const MAX_SIDECAR_BYTES = 64 * 1024;
+const MAX_THREAD_INDEX_BYTES = 4 * 1024 * 1024;
+/** Codex rollout names carry local time; child threads are looked for from a day before their root started. */
+const THREAD_SLACK_MS = 26 * 60 * 60 * 1000;
 
 type Row = Record<string, unknown>;
-type Kind = 'codex' | 'claude' | 'gemini' | 'hermes' | 'binary' | 'unavailable';
+type Kind = 'codex' | 'claude' | 'gemini' | 'antigravity' | 'hermes' | 'binary' | 'unavailable';
 interface Location extends ImportLocation { root: string; kind: Kind; sourceId: NativeSourceId | 'antigravity-ide' | 'antigravity-cli' }
 interface FileIdentity { size: number; mtime: number; ino: number }
 /** `titled` is false when the candidate title is only a placeholder; imports then use the first prompt. */
-interface Ref { location: Location; path: string; candidate: ImportCandidate; identity: FileIdentity; titled: boolean; rowFingerprint?: string }
+interface Ref { location: Location; path: string; candidate: ImportCandidate; identity: FileIdentity; titled: boolean; rowFingerprint?: string; spawn?: CodexThreadSpawn }
+/** First record of a Codex rollout: its thread id and, for sub-agent threads, how it was spawned. Immutable once written. */
+interface ThreadHeader { ino: number; id: string; spawn?: CodexThreadSpawn; cwd?: string; startMs?: number }
+interface ParsedSubagent { steps: TranscriptStep[]; model?: string; startedAt?: string }
 interface Budget { files: number; limit: number; truncated: boolean }
 
 type SqliteModule = typeof Sqlite;
@@ -49,6 +72,15 @@ function identity(path: string): FileIdentity {
 
 const same = (a: FileIdentity, b: FileIdentity) => a.size === b.size && a.mtime === b.mtime && a.ino === b.ino;
 
+/** Start time a Codex rollout name states (`rollout-2026-10-16T17-10-25-<id>.jsonl`, local time). */
+function rolloutTime(path: string): number | undefined {
+  const match = /^rollout-(\d{4})-(\d{2})-(\d{2})T(\d{2})-(\d{2})-(\d{2})/.exec(basename(path));
+  if (!match) return undefined;
+  const [year, month, day, hour, minute, second] = match.slice(1).map(Number) as [number, number, number, number, number, number];
+  const time = new Date(year, month - 1, day, hour, minute, second).getTime();
+  return Number.isFinite(time) ? time : undefined;
+}
+
 /** Resolve symlinks and require the result to stay inside the history root. */
 function contained(root: string, path: string): string {
   const canonicalRoot = realpathSync(root), canonical = realpathSync(path), rel = relative(canonicalRoot, canonical);
@@ -57,6 +89,10 @@ function contained(root: string, path: string): string {
 }
 
 function readBounded(root: string, path: string, max: number): string {
+  return readBoundedBuffer(root, path, max).toString('utf8');
+}
+
+function readBoundedBuffer(root: string, path: string, max: number): Buffer {
   const canonical = contained(root, path), before = identity(canonical);
   const fd = openSync(canonical, 'r');
   try {
@@ -65,7 +101,7 @@ function readBounded(root: string, path: string, max: number): string {
     if (!opened.isFile() || !same(before, { size: opened.size, mtime: opened.mtimeMs, ino: Number(opened.ino) }) || !same(before, identity(contained(root, path)))) throw new Error('Source changed while opening; scan again.');
     const bytes = Buffer.alloc(Math.min(before.size, max));
     const length = readSync(fd, bytes, 0, bytes.length, 0);
-    return bytes.subarray(0, length).toString('utf8');
+    return bytes.subarray(0, length);
   } finally {
     closeSync(fd);
   }
@@ -84,7 +120,8 @@ function jsonHeader(input: string, wrapperDepth = 0, wrappers: readonly string[]
   };
   skipSpace();
   if (input[i++] !== '{') throw new Error('Invalid session metadata.');
-  const allowed = new Set(['sessionId', 'session_id', 'id', 'projectHash', 'projectPath', 'cwd', 'title', 'summary', 'startTime', 'lastUpdated', 'timestamp', 'type']);
+  const allowed = new Set(['sessionId', 'session_id', 'id', 'projectHash', 'projectPath', 'cwd', 'title', 'summary', 'startTime', 'lastUpdated', 'timestamp', 'type',
+    'parent_thread_id', 'agent_nickname', 'agent_role', 'agent_path', 'thread_source', 'step_index', 'source', 'created_at']);
   while (i < input.length) {
     skipSpace();
     if (input[i] === '}' || input[i] !== '"') break;
@@ -132,16 +169,41 @@ export interface NativeImportOptions {
 }
 
 export interface NativePreview {
-  sessions: { candidateId: string; session: PortableSession }[];
+  sessions: { candidateId: string; session: PortableSession; steps?: TranscriptStep[]; model?: string; context?: TranscriptContext }[];
   diagnostics: ImportDiagnostic[];
 }
 
 /** Host-only reference pinned by a selected preview. Never accepted as a UI argument. */
 export interface NativeObservationRef { locationId: string; sourceId: string; nativeSessionId: string; path: string }
 
+/**
+ * A transcript read for live observation: the conversation and its structured
+ * activity, including the activity of its sub-agents (Claude Code subagent
+ * files, Codex threads it spawned), and the lead's latest model.
+ */
+export interface ObservedRead { session: PortableSession; steps: TranscriptStep[]; model?: string; context?: TranscriptContext }
+
+/** A session whose source changed after `since`, found by automatic discovery. */
+export interface DiscoveredSession { reference: NativeObservationRef; updatedAt: number; projectPath?: string }
+
+interface DiscoveryCache {
+  dirs: Map<string, { stamp: string; entries: { name: string; dir: boolean }[] }>;
+  files: Map<string, { mtime: number; ino: number; header?: { nativeSessionId: string; projectPath?: string; child?: boolean } }>;
+  cursor: number;
+  dbStamp?: string;
+  dbFound?: { nativeSessionId: string; updatedAt: number }[];
+}
+
 export class NativeImportService {
   private readonly snapshots = new Map<string, { at: number; refs: Map<string, Ref> }>();
   private readonly observationLocations = new Map<string, Location>();
+  private readonly discoveryCaches = new Map<string, DiscoveryCache>();
+  private readonly threadListings = new Map<string, DiscoveryCache>();
+  private readonly threadHeaders = new Map<string, ThreadHeader>();
+  private readonly threadFileMemo = new Map<string, { at: number; files: string[] }>();
+  private readonly subagentReads = new Map<string, { stamp: string; value: ParsedSubagent }>();
+  private readonly lineCounts = new Map<string, { ino: number; position: number; lines: number }>();
+  private threadNames?: { stamp: string; names: Map<string, string> };
   private readonly now: () => number;
 
   private constructor(private readonly options: NativeImportOptions, private readonly sqlite: SqliteModule | undefined) {
@@ -191,6 +253,7 @@ export class NativeImportService {
     const sandbox = join(home, '.cache', '.gemini');
     if (existsSync(join(sandbox, 'tmp'))) add('gemini-cli', 'Gemini CLI (sandbox)', sandbox, join(sandbox, 'tmp'), 'gemini', 'JSON / JSONL');
     const antigravity = join(gemini, 'antigravity');
+    add('antigravity', 'Antigravity', antigravity, join(antigravity, 'brain'), 'antigravity', 'JSONL');
     add('antigravity-ide', 'Antigravity IDE', antigravity, join(antigravity, 'conversations'), 'binary', 'Protocol Buffers', undefined, 'Conversations are detected, but this version cannot read their binary format.');
     locations.push({ id: 'loc-antigravity-cli', sourceId: 'antigravity-cli', label: 'Antigravity CLI', root: '', path: '', kind: 'unavailable', available: false, supported: false, format: 'Unknown', note: 'No verified history format or location is known yet.' });
     return locations;
@@ -206,6 +269,8 @@ export class NativeImportService {
     const diagnostic = (location: Location, message: string) => { if (result.diagnostics.length < 100) result.diagnostics.push({ locationId: location.id, message }); };
     const latest = new Map<string, Ref>();
     const collect = (ref: Ref) => {
+      // Codex sub-agent threads belong to the session that spawned them.
+      if (ref.spawn) return;
       const key = `${ref.location.sourceId}:${ref.location.profile ?? ''}:${ref.candidate.nativeSessionId}`;
       const previous = latest.get(key);
       if (!previous || Date.parse(ref.candidate.updatedAt) > Date.parse(previous.candidate.updatedAt)) latest.set(key, ref);
@@ -275,7 +340,18 @@ export class NativeImportService {
         } catch { diagnostic(location, 'Ignored an unreadable file or a link that escapes the history root.'); }
       }
     };
-    if (location.kind === 'claude' || location.kind === 'gemini') {
+    if (location.kind === 'antigravity') {
+      for (const conv of readdirSync(contained(location.root, location.path), { withFileTypes: true }).sort((a, b) => b.name.localeCompare(a.name))) {
+        if (++budget.files > budget.limit) { budget.truncated = true; return; }
+        if (!conv.isDirectory() && !conv.isSymbolicLink()) continue;
+        const path = join(location.path, conv.name, '.system_generated', 'logs', 'transcript.jsonl');
+        try {
+          if (!existsSync(path)) continue;
+          contained(location.path, path);
+          if (statSync(path).isFile()) yield path;
+        } catch { diagnostic(location, 'Ignored an unreadable Antigravity transcript.'); }
+      }
+    } else if (location.kind === 'claude' || location.kind === 'gemini') {
       // Claude: projects/<project>/*.jsonl (subagent files excluded). Gemini: tmp/<project>/chats/session-*.
       for (const project of readdirSync(contained(location.root, location.path), { withFileTypes: true }).sort((a, b) => b.name.localeCompare(a.name))) {
         if (++budget.files > budget.limit) { budget.truncated = true; return; }
@@ -303,8 +379,8 @@ export class NativeImportService {
   private fileRef(location: Location, path: string): Ref {
     contained(location.root, location.path);
     const canonical = contained(location.path, path), fileIdentity = identity(canonical);
-    if (fileIdentity.size > MAX_FILE_BYTES) throw new Error('The session is larger than the 25 MB read limit.');
-    let meta: Row = {};
+    const large = fileIdentity.size > MAX_FILE_BYTES;
+    let meta: Row = {}, spawn: CodexThreadSpawn | undefined;
     if (location.kind !== 'binary') {
       const head = readBounded(location.path, path, HEADER_BYTES);
       if (location.kind === 'gemini' && path.endsWith('.json')) meta = jsonHeader(head);
@@ -314,17 +390,31 @@ export class NativeImportService {
           try {
             const wrappers = location.kind === 'codex' ? ['payload'] : location.kind === 'gemini' ? ['$set', 'payload', 'data'] : [];
             const header = jsonHeader(line, 0, wrappers);
-            if (location.kind === 'codex' && header.type === 'session_meta') { meta = header; break; }
+            if (location.kind === 'codex' && header.type === 'session_meta') {
+              meta = header;
+              try { spawn = codexThreadSpawn((JSON.parse(line) as Row).payload); } catch { spawn = codexThreadSpawn(header); }
+              break;
+            }
             if (location.kind === 'gemini' && header.type === 'metadata') { meta = header; break; }
             for (const [key, value] of Object.entries(header)) if (value !== undefined) meta[key] = value;
             if (location.kind === 'claude' && text(meta.sessionId) && text(meta.cwd)) break;
             if (location.kind === 'gemini' && text(meta.sessionId) && text(meta.projectHash)) break;
+            if (location.kind === 'antigravity' && !text(meta.title) && header.type === 'USER_INPUT') {
+              try {
+                const row = JSON.parse(line) as Row;
+                const match = /<USER_REQUEST>\s*([\s\S]*?)\s*<\/USER_REQUEST>/i.exec(String(row.content ?? ''));
+                const prompt = (match ? match[1]! : String(row.content ?? '')).trim().split(/\r?\n/)[0]?.trim();
+                if (prompt) meta.title = safeLabel(prompt, 160);
+              } catch { /* ignore */ }
+            }
           } catch { /* skip truncated or non-metadata lines */ }
         }
       }
       if (!Object.keys(meta).length || (location.kind === 'codex' && !text(meta.id))) throw new Error('Missing or malformed session metadata.');
     }
-    const nativeSessionId = text(meta.sessionId) ?? text(meta.session_id) ?? text(meta.id) ?? basename(path).replace(/\.(jsonl?|pb)$/, '');
+    const antigravityId = location.kind === 'antigravity' ? basename(join(path, '..', '..', '..')) : undefined;
+    // A Codex sub-agent thread names its root in `session_id`; its own id is the thread id.
+    const nativeSessionId = (location.kind === 'codex' ? text(meta.id) : antigravityId) ?? text(meta.sessionId) ?? text(meta.session_id) ?? text(meta.id) ?? basename(path).replace(/\.(jsonl?|pb)$/, '');
     const rawProject = text(meta.cwd) ?? text(meta.projectPath) ?? (location.kind === 'gemini' ? this.geminiProject(location, path) : undefined);
     const mutableTime = location.kind === 'gemini' ? Date.parse(isoDate(meta.lastUpdated, fileIdentity.mtime)) : fileIdentity.mtime;
     const candidate: ImportCandidate = {
@@ -333,10 +423,10 @@ export class NativeImportService {
       updatedAt: new Date(Math.max(fileIdentity.mtime, mutableTime)).toISOString(), format: location.format, supported: location.supported,
       ...(location.profile ? { profile: location.profile } : {}),
       ...(rawProject ? { projectPath: safeText(rawProject, 2000) } : {}),
-      ...(location.note ? { note: location.note } : {}),
+      ...(location.note || large ? { note: large ? 'Larger than 25 MB: its latest activity can be observed, but it cannot be imported.' : location.note } : {}),
     };
     if (!same(fileIdentity, identity(contained(location.path, path)))) throw new Error('The session changed during the scan; scan again.');
-    return { location, path, candidate, identity: fileIdentity, titled: Boolean(text(meta.title) ?? text(meta.summary)) };
+    return { location, path, candidate, identity: fileIdentity, titled: Boolean(text(meta.title) ?? text(meta.summary)), ...(spawn ? { spawn } : {}) };
   }
 
   /** Gemini stores sessions by project hash; only verified markers map them to a folder. */
@@ -402,13 +492,217 @@ export class NativeImportService {
     }
   }
 
-  observation(scanId: string, candidateId: string): { reference: NativeObservationRef; session: PortableSession } {
-    const preview = this.preview(scanId, [candidateId], 'linked');
-    const session = preview.sessions[0]?.session;
+  observation(scanId: string, candidateId: string): { reference: NativeObservationRef } & ObservedRead {
+    this.threadFileMemo.clear();
+    const picked = this.snapshots.get(scanId)?.refs.get(candidateId);
+    if (picked?.spawn) {
+      // Observing a Codex sub-agent thread observes the session that spawned it.
+      const root = this.codexRoot(picked.location, picked.path);
+      if (!root) throw new Error('The session that started this sub-agent was not found.');
+      this.observationLocations.set(picked.location.id, picked.location);
+      const reference = { locationId: picked.location.id, sourceId: picked.location.sourceId, nativeSessionId: root.id, path: root.path };
+      return { reference, ...this.readObservation(reference) };
+    }
+    const preview = this.preview(scanId, [candidateId], 'linked', true);
+    const entry = preview.sessions[0];
     const ref = this.snapshots.get(scanId)?.refs.get(candidateId);
-    if (!ref || !session) throw new Error(preview.diagnostics[0]?.message ?? 'This transcript cannot be observed. Scan again.');
+    if (!ref || !entry) throw new Error(preview.diagnostics[0]?.message ?? 'This transcript cannot be observed. Scan again.');
     this.observationLocations.set(ref.location.id, ref.location);
-    return { reference: { locationId: ref.location.id, sourceId: ref.location.sourceId, nativeSessionId: ref.candidate.nativeSessionId, path: ref.path }, session };
+    return { reference: { locationId: ref.location.id, sourceId: ref.location.sourceId, nativeSessionId: ref.candidate.nativeSessionId, path: ref.path }, ...this.observedRead(ref, entry) };
+  }
+
+  /**
+   * The session a Codex sub-agent thread belongs to (its root thread), with the
+   * sub-agent's thread id; any other reference is returned unchanged. Metadata only.
+   */
+  rootReference(reference: NativeObservationRef): NativeObservationRef & { subagentId?: string } {
+    this.threadFileMemo.clear();
+    try {
+      if (!reference.path) return reference;
+      const location = this.observationLocation(reference);
+      if (location.kind !== 'codex') return reference;
+      const header = this.codexHeader(location, reference.path);
+      if (!header?.spawn) return reference;
+      const root = this.codexRoot(location, reference.path);
+      return root ? { locationId: reference.locationId, sourceId: reference.sourceId, nativeSessionId: root.id, path: root.path, subagentId: header.id } : reference;
+    } catch { return reference; }
+  }
+
+  /**
+   * The transcript an agent app's hook names for a session, as an observation
+   * reference, only when it lies inside a known history location of that app
+   * (symlinks resolved) and has a supported transcript name. Hermes keeps every
+   * session of a profile in its `state.db`, so the profile picks the location.
+   * Nothing is read beyond file metadata.
+   */
+  hookReference(sourceId: string, nativeSessionId: string, transcriptPath?: string, profile?: string): NativeObservationRef | undefined {
+    for (const location of this.knownLocations()) {
+      if (location.sourceId !== sourceId || !location.supported || !location.available) continue;
+      try {
+        if (location.kind === 'hermes') {
+          if ((location.profile ?? 'default') !== (profile || 'default')) continue;
+          const reference = { locationId: location.id, sourceId, nativeSessionId, path: location.path };
+          this.observationLocation(reference);
+          return reference;
+        }
+        if (!transcriptPath || !isAbsolute(transcriptPath)) continue;
+        const reference = { locationId: location.id, sourceId, nativeSessionId, path: transcriptPath };
+        this.observationLocation(reference);
+        return reference;
+      } catch { /* outside this location, or not created yet */ }
+    }
+    return undefined;
+  }
+
+  /** Locations whose new sessions can be watched automatically (readable transcript formats only). */
+  autoWatchable(locationId: string): boolean {
+    const location = this.knownLocations().find(item => item.id === locationId);
+    return Boolean(location?.supported && ['codex', 'claude', 'gemini', 'antigravity', 'hermes'].includes(location.kind));
+  }
+
+  /**
+   * Sessions of the given locations whose source changed after `since` (epoch ms),
+   * newest first, at most `limit` per location. Metadata only: directory listings
+   * are reused while a folder is unchanged, recently changed files are checked on
+   * every call and older ones in a rotating slice; a file's header is read once to
+   * learn its session id. Unknown, missing or unsupported locations are skipped.
+   */
+  discover(locationIds: readonly string[], since: number, limit = 24): DiscoveredSession[] {
+    this.threadFileMemo.clear();
+    const found: DiscoveredSession[] = [];
+    const locations = this.knownLocations();
+    for (const locationId of locationIds) {
+      const location = locations.find(item => item.id === locationId);
+      if (!location?.available || !this.autoWatchable(locationId)) continue;
+      let cache = this.discoveryCaches.get(locationId);
+      if (!cache) { cache = { dirs: new Map(), files: new Map(), cursor: 0 }; this.discoveryCaches.set(locationId, cache); }
+      try {
+        if (location.kind === 'hermes') found.push(...this.discoverHermes(location, cache, since, limit));
+        else found.push(...this.discoverFiles(location, cache, since, limit));
+      } catch { /* an unreadable location is retried on the next poll */ }
+    }
+    return found;
+  }
+
+  private listing(cache: DiscoveryCache, root: string, folder: string): { name: string; dir: boolean }[] {
+    const info = statSync(folder), stamp = `${info.ino}:${info.mtimeMs}:${info.ctimeMs}`;
+    const cached = cache.dirs.get(folder);
+    if (cached?.stamp === stamp) return cached.entries;
+    contained(root, folder);
+    const entries = readdirSync(folder, { withFileTypes: true }).slice(0, MAX_FILES).flatMap((entry: Dirent) => {
+      if (entry.isDirectory()) return [{ name: entry.name, dir: true }];
+      if (entry.isFile()) return [{ name: entry.name, dir: false }];
+      if (!entry.isSymbolicLink()) return [];
+      try { const path = join(folder, entry.name); contained(root, path); return [{ name: entry.name, dir: statSync(path).isDirectory() }]; } catch { return []; }
+    });
+    cache.dirs.set(folder, { stamp, entries });
+    return entries;
+  }
+
+  private candidateFiles(location: Location, cache: DiscoveryCache): string[] {
+    const files: string[] = [], root = location.path, folders = new Set<string>();
+    const list = (folder: string) => { folders.add(folder); return this.listing(cache, root, folder); };
+    const visit = (folder: string, depth: number) => {
+      for (const entry of list(folder)) {
+        if (files.length >= MAX_FILES) return;
+        if (entry.dir) { if (depth < 8 && /^\d{2,4}$/.test(entry.name)) visit(join(folder, entry.name), depth + 1); }
+        else if (entry.name.endsWith('.jsonl')) files.push(join(folder, entry.name));
+      }
+    };
+    contained(location.root, location.path);
+    if (location.kind === 'codex') visit(root, 0);
+    else if (location.kind === 'antigravity') {
+      for (const conv of list(root)) {
+        if (!conv.dir || files.length >= MAX_FILES) continue;
+        const folder = join(root, conv.name, '.system_generated', 'logs');
+        let entries;
+        try { entries = list(folder); } catch { continue; }
+        for (const entry of entries) {
+          if (!entry.dir && entry.name === 'transcript.jsonl') files.push(join(folder, entry.name));
+        }
+      }
+    } else for (const project of list(root)) {
+      if (!project.dir || files.length >= MAX_FILES) continue;
+      const folder = location.kind === 'gemini' ? join(root, project.name, 'chats') : join(root, project.name);
+      let entries;
+      try { entries = list(folder); } catch { continue; }
+      for (const entry of entries) {
+        if (entry.dir || files.length >= MAX_FILES) continue;
+        if (location.kind === 'claude' ? entry.name.endsWith('.jsonl') && !entry.name.startsWith('agent-') : /^session-.*\.jsonl?$/.test(entry.name)) files.push(join(folder, entry.name));
+      }
+    }
+    for (const folder of cache.dirs.keys()) if (!folders.has(folder)) cache.dirs.delete(folder);
+    return files;
+  }
+
+  private discoverFiles(location: Location, cache: DiscoveryCache, since: number, limit: number): DiscoveredSession[] {
+    const files = this.candidateFiles(location, cache), present = new Set(files), hot = this.now() - DISCOVERY_HOT_MS;
+    for (const path of cache.files.keys()) if (!present.has(path)) cache.files.delete(path);
+    const due: string[] = [], cold: string[] = [];
+    for (const path of files) { const seen = cache.files.get(path); (!seen || seen.mtime >= hot ? due : cold).push(path); }
+    if (cold.length) {
+      const start = cache.cursor % cold.length;
+      due.push(...cold.slice(start, start + DISCOVERY_COLD_PER_POLL));
+      if (start + DISCOVERY_COLD_PER_POLL > cold.length) due.push(...cold.slice(0, start + DISCOVERY_COLD_PER_POLL - cold.length));
+      cache.cursor = start + DISCOVERY_COLD_PER_POLL;
+    }
+    for (const path of due) {
+      try {
+        const info = statSync(path);
+        if (!info.isFile()) { cache.files.delete(path); continue; }
+        const previous = cache.files.get(path), ino = Number(info.ino);
+        cache.files.set(path, { mtime: info.mtimeMs, ino, ...(previous?.ino === ino && previous.header ? { header: previous.header } : {}) });
+      } catch { cache.files.delete(path); }
+    }
+    const recent = [...cache.files.entries()].filter(([, seen]) => seen.mtime > since).sort((a, b) => b[1].mtime - a[1].mtime).slice(0, limit);
+    const result = new Map<string, DiscoveredSession>();
+    for (const [path, seen] of recent) {
+      if (!seen.header) {
+        try {
+          const ref = this.fileRef(location, path);
+          seen.header = { nativeSessionId: ref.candidate.nativeSessionId, ...(ref.candidate.projectPath ? { projectPath: ref.candidate.projectPath } : {}), ...(ref.spawn ? { child: true } : {}) };
+        } catch { continue; }
+      }
+      let reference: NativeObservationRef = { locationId: location.id, sourceId: location.sourceId, nativeSessionId: seen.header.nativeSessionId, path };
+      let projectPath = seen.header.projectPath;
+      if (seen.header.child) {
+        // A sub-agent thread's activity belongs to the session that spawned it.
+        const root = this.codexRoot(location, path);
+        if (!root) continue;
+        reference = { ...reference, nativeSessionId: root.id, path: root.path };
+        projectPath = this.codexHeader(location, root.path)?.cwd ?? projectPath;
+      }
+      const key = reference.nativeSessionId, previous = result.get(key);
+      if (!previous || previous.updatedAt < seen.mtime) result.set(key, { reference, updatedAt: Math.max(seen.mtime, previous?.updatedAt ?? 0), ...(projectPath ? { projectPath } : {}) });
+    }
+    return [...result.values()];
+  }
+
+  private discoverHermes(location: Location, cache: DiscoveryCache, since: number, limit: number): DiscoveredSession[] {
+    const stamp = this.observationRevision({ locationId: location.id, sourceId: location.sourceId, nativeSessionId: '', path: location.path });
+    if (stamp !== cache.dbStamp || !cache.dbFound) {
+      const db = this.database(location);
+      try {
+        const cols = columns(db, 'messages'), latest = new Map<string, number>();
+        if (cols.has('session_id') && cols.has('timestamp')) {
+          // Insertion order: the newest rows name the sessions that are active now.
+          for (const row of db.prepare('SELECT session_id, timestamp FROM messages ORDER BY rowid DESC LIMIT 1000').all() as Row[]) {
+            const id = text(row.session_id), at = Date.parse(isoDate(row.timestamp, 0));
+            if (id && at > (latest.get(id) ?? -Infinity)) latest.set(id, at);
+          }
+        } else {
+          const query = sessionQuery(db);
+          for (const row of db.prepare(`SELECT ${query.fields} FROM sessions ORDER BY ${quoted(query.order)} DESC LIMIT ?`).all(limit) as Row[]) {
+            const id = text(row[query.id]);
+            if (id) latest.set(id, Date.parse(isoDate(row[query.order], 0)));
+          }
+        }
+        cache.dbFound = [...latest.entries()].map(([nativeSessionId, updatedAt]) => ({ nativeSessionId, updatedAt }));
+        cache.dbStamp = stamp;
+      } finally { db.close(); }
+    }
+    return cache.dbFound.filter(item => item.updatedAt > since).sort((a, b) => b.updatedAt - a.updatedAt).slice(0, limit)
+      .map(item => ({ reference: { locationId: location.id, sourceId: location.sourceId, nativeSessionId: item.nativeSessionId, path: location.path }, updatedAt: item.updatedAt }));
   }
 
   private observationLocation(reference: NativeObservationRef): Location {
@@ -419,7 +713,7 @@ export class NativeImportService {
     if (location.kind === 'hermes') {
       if (contained(location.root, reference.path) !== contained(location.root, location.path)) throw new Error('The observed database does not match its source.');
     } else {
-      if (!(location.kind === 'gemini' ? /^session-.*\.jsonl?$/.test(basename(reference.path)) : reference.path.endsWith('.jsonl'))) throw new Error('The observed path is not a supported transcript.');
+      if (!(location.kind === 'gemini' ? /^session-.*\.jsonl?$/.test(basename(reference.path)) : location.kind === 'antigravity' ? basename(reference.path) === 'transcript.jsonl' : reference.path.endsWith('.jsonl'))) throw new Error('The observed path is not a supported transcript.');
       contained(location.path, reference.path);
     }
     this.observationLocations.set(location.id, location);
@@ -428,6 +722,7 @@ export class NativeImportService {
 
   /** Metadata only. WAL changes invalidate Hermes snapshots even when its session row stays unchanged. */
   observationRevision(reference: NativeObservationRef): string {
+    this.threadFileMemo.clear();
     const location = this.observationLocation(reference);
     const root = location.kind === 'hermes' ? location.root : location.path;
     const stamp = (path: string) => {
@@ -436,6 +731,9 @@ export class NativeImportService {
       return [canonical, info.dev, info.ino, info.size, info.mtimeNs, info.ctimeNs].map(String);
     };
     const stamps = [stamp(reference.path)];
+    if (location.kind === 'claude' || location.kind === 'codex') {
+      for (const path of this.relatedFiles(location, reference)) { try { stamps.push(stamp(path)); } catch { /* removed meanwhile */ } }
+    }
     if (location.kind === 'hermes') for (const suffix of ['-wal', '-journal', '-shm']) {
       const sidecar = `${location.path}${suffix}`;
       if (!existsSync(sidecar)) continue;
@@ -445,7 +743,8 @@ export class NativeImportService {
     return digest(JSON.stringify(stamps));
   }
 
-  readObservation(reference: NativeObservationRef): PortableSession {
+  readObservation(reference: NativeObservationRef): ObservedRead {
+    this.threadFileMemo.clear();
     const location = this.observationLocation(reference);
     let ref: Ref;
     if (location.kind === 'hermes') {
@@ -469,13 +768,14 @@ export class NativeImportService {
     const scanId = randomUUID();
     this.snapshots.set(scanId, { at: this.now(), refs: new Map([[ref.candidate.id, ref]]) });
     try {
-      const preview = this.preview(scanId, [ref.candidate.id], 'linked');
+      const preview = this.preview(scanId, [ref.candidate.id], 'linked', true);
       if (!preview.sessions[0]) throw new Error(preview.diagnostics[0]?.message ?? 'This transcript is not readable yet.');
-      return preview.sessions[0].session;
+      return this.observedRead(ref, preview.sessions[0]);
     } finally { this.snapshots.delete(scanId); }
   }
 
-  preview(scanId: string, candidateIds: readonly string[], mode: ImportMode = 'imported'): NativePreview {
+  /** `withSteps` keeps the structured activity for live observation; previews for the UI leave it out. */
+  preview(scanId: string, candidateIds: readonly string[], mode: ImportMode = 'imported', withSteps = false): NativePreview {
     this.prune();
     const snapshot = this.snapshots.get(scanId);
     if (!snapshot) throw new Error('This scan expired; scan again.');
@@ -494,8 +794,17 @@ export class NativeImportService {
           sourceId: ref.location.sourceId as NativeSourceId, nativeSessionId: ref.candidate.nativeSessionId,
           exportedAt: new Date(this.now()).toISOString(), importMode: mode,
           ...(ref.titled ? { title: ref.candidate.title } : {}),
+          ...((custom => custom ? { customTitle: custom } : {})(this.customTitle(ref))),
           ...(ref.location.profile ? { profile: ref.location.profile } : {}),
           ...(ref.candidate.projectPath ? { projectPath: ref.candidate.projectPath } : {}),
+          ...(ref.location.kind === 'antigravity' ? {
+            readMedia: (mediaPath: string) => {
+              try {
+                const canonical = contained(join(ref.path, '..', '..', '..'), mediaPath);
+                return identity(canonical).size <= 5 * 1024 * 1024 ? readBoundedBuffer(join(ref.path, '..', '..', '..'), mediaPath, 5 * 1024 * 1024).toString('base64') : undefined;
+              } catch { return undefined; }
+            },
+          } : {}),
         };
         let parsed: NativeParseResult;
         if (ref.location.kind === 'hermes') parsed = this.readHermes(ref, context);
@@ -503,20 +812,304 @@ export class NativeImportService {
           contained(ref.location.root, ref.location.path);
           const before = identity(contained(ref.location.path, ref.path));
           if (!same(before, ref.identity)) throw new Error('The session changed since the scan; scan again.');
-          const content = readBounded(ref.location.path, ref.path, MAX_FILE_BYTES);
-          if (!same(before, identity(contained(ref.location.path, ref.path)))) throw new Error('The session changed while reading; scan again.');
-          parsed = ref.location.kind === 'codex' ? parseCodex(content, context) : ref.location.kind === 'claude' ? parseClaude(content, context) : parseGemini(content, context);
+          if (withSteps && before.size > LIVE_FULL_BYTES && (ref.location.kind === 'codex' || ref.location.kind === 'claude' || ref.location.kind === 'antigravity')) parsed = this.parseWindow(ref.location, ref.path, before, context, !ref.titled);
+          else {
+            if (before.size > MAX_FILE_BYTES) throw new Error('The session is larger than the 25 MB read limit.');
+            const content = readBounded(ref.location.path, ref.path, MAX_FILE_BYTES);
+            if (!same(before, identity(contained(ref.location.path, ref.path)))) throw new Error('The session changed while reading; scan again.');
+            parsed = ref.location.kind === 'codex' ? parseCodex(content, context) : ref.location.kind === 'claude' ? parseClaude(content, context) : ref.location.kind === 'antigravity' ? parseAntigravity(content, context) : parseGemini(content, context);
+          }
         }
         for (const message of parsed.diagnostics) add(message);
         if (parsed.session) {
           const length = Buffer.byteLength(JSON.stringify(parsed.session));
           if (bytes + length > MAX_PREVIEW_BYTES) { add('The preview is larger than 10 MB; select fewer sessions.'); continue; }
           bytes += length;
-          result.sessions.push({ candidateId: id, session: parsed.session });
+          result.sessions.push({ candidateId: id, session: parsed.session, ...(withSteps && parsed.steps ? { steps: parsed.steps } : {}), ...(withSteps && parsed.model ? { model: parsed.model } : {}), ...(withSteps && parsed.context ? { context: parsed.context } : {}) });
         }
       } catch (error) {
         add(error instanceof Error ? error.message : 'Unable to read this session.');
       }
+    }
+    return result;
+  }
+
+  /**
+   * Parse the beginning and the latest part of a large JSONL transcript (complete
+   * lines only, up to the size seen before reading, so appends while reading are
+   * harmless). Positions are rewritten to absolute line numbers; the title comes
+   * from the beginning so it does not change as the window moves.
+   */
+  private parseWindow(location: Location, path: string, before: FileIdentity, context: ParseContext, titleFromHead: boolean): NativeParseResult {
+    const canonical = contained(location.path, path), fd = openSync(canonical, 'r');
+    let head: string, tail: string, tailStart: number;
+    try {
+      const opened = fstatSync(fd);
+      if (!opened.isFile() || Number(opened.ino) !== before.ino || opened.size < before.size) throw new Error('Source changed while opening; scan again.');
+      const read = (start: number, length: number) => { const bytes = Buffer.alloc(length); return bytes.subarray(0, readSync(fd, bytes, 0, length, start)); };
+      const headBytes = read(0, Math.min(before.size, LIVE_HEAD_BYTES)), headEnd = headBytes.lastIndexOf(0x0a) + 1;
+      head = headBytes.subarray(0, headEnd).toString('utf8');
+      const windowStart = Math.max(headEnd, before.size - LIVE_TAIL_BYTES);
+      const tailBytes = read(windowStart, before.size - windowStart);
+      // Start at a line boundary (the window start may cut a line) and stop after the last complete line.
+      const first = windowStart === headEnd ? 0 : tailBytes.indexOf(0x0a) + 1;
+      tailStart = windowStart + first;
+      tail = tailBytes.subarray(first, tailBytes.lastIndexOf(0x0a) + 1).toString('utf8');
+      this.countLines(fd, canonical, before.ino, tailStart);
+    } finally { closeSync(fd); }
+    const tailBase = this.lineCounts.get(canonical)!.lines;
+    // Absolute line number of each record the parser keeps (non-blank lines holding a JSON object).
+    const numbers: number[] = [];
+    const number = (text: string, base: number) => text.split('\n').forEach((line, index) => {
+      if (!line.trim()) return;
+      try { const row = JSON.parse(line) as unknown; if (row && typeof row === 'object' && !Array.isArray(row) && Object.keys(row).length) numbers.push(base + index); } catch { /* skipped by the parser too */ }
+    });
+    number(head, 0);
+    if (tail) number(tail, tailBase);
+    const parse = (text: string, extra: Partial<ParseContext> = {}) => location.kind === 'codex' ? parseCodex(text, { ...context, ...extra }) : location.kind === 'antigravity' ? parseAntigravity(text, { ...context, ...extra }) : parseClaude(text, { ...context, ...extra });
+    const headTitle = titleFromHead && !context.title ? parse(head).session?.title : undefined;
+    const parsed = parse(head + tail, headTitle ? { title: headTitle } : {});
+    for (const step of parsed.steps ?? []) step.pos = step.pos.replace(/^(L|A:\d+:)(\d+)/, (match, prefix: string, index: string) => numbers[Number(index)] !== undefined ? `${prefix}${numbers[Number(index)]}` : match);
+    return { ...parsed, diagnostics: [...parsed.diagnostics, 'Only the beginning and the latest activity of this large transcript are read.'] };
+  }
+
+  /** Lines before byte `end` of a growing file, counted incrementally from the previous count. */
+  private countLines(fd: number, key: string, ino: number, end: number): void {
+    const cached = this.lineCounts.get(key);
+    let position = 0, lines = 0;
+    if (cached && cached.ino === ino && cached.position <= end) ({ position, lines } = cached);
+    const chunk = Buffer.alloc(1024 * 1024);
+    while (position < end) {
+      const length = readSync(fd, chunk, 0, Math.min(chunk.length, end - position), position);
+      if (length <= 0) break;
+      for (let index = 0; index < length; index++) if (chunk[index] === 0x0a) lines++;
+      position += length;
+    }
+    this.lineCounts.delete(key);
+    this.lineCounts.set(key, { ino, position, lines });
+    while (this.lineCounts.size > 200) this.lineCounts.delete(this.lineCounts.keys().next().value!);
+  }
+
+  /** A live read: the lead's steps merged with its sub-agents' steps (a failing sub-agent read never hides the lead). */
+  private observedRead(ref: Ref, entry: { session: PortableSession; steps?: TranscriptStep[]; model?: string; context?: TranscriptContext }): ObservedRead {
+    const steps = entry.steps ?? [];
+    let subagents: SubagentTranscript[];
+    try { subagents = this.subagents(ref, steps, entry.session.startedAt); } catch { subagents = []; }
+    return { session: entry.session, steps: subagents.length ? mergeSubagentSteps(steps, subagents) : steps, ...(entry.model ? { model: entry.model } : {}), ...(entry.context ? { context: entry.context } : {}) };
+  }
+
+  /** Claude Code keeps a session's extras in a folder named after it: `<project>/<sessionId>/`. */
+  private claudeSessionFolder(path: string): string {
+    return join(dirname(path), basename(path, '.jsonl'));
+  }
+
+  /** Files besides the transcript whose changes change the observed session (sub-agents, custom titles). */
+  private relatedFiles(location: Location, reference: NativeObservationRef): string[] {
+    if (location.kind === 'claude') {
+      const folder = this.claudeSessionFolder(reference.path), files: string[] = [];
+      const title = join(folder, 'custom-title.json');
+      if (existsSync(title)) files.push(title);
+      const subagents = join(folder, 'subagents');
+      if (existsSync(subagents)) {
+        contained(location.path, subagents);
+        for (const name of readdirSync(subagents).sort().slice(0, MAX_SUBAGENTS * 3)) if (/^agent-[\w-]{1,120}\.(?:jsonl|meta\.json)$/.test(name)) files.push(join(subagents, name));
+      }
+      return files;
+    }
+    if (location.kind === 'codex') {
+      const root = this.codexHeader(location, reference.path);
+      if (!root) return [];
+      const files = this.codexDescendants(location, root.id, this.rolloutStart(reference.path, root)).map(item => item.path);
+      const index = join(location.root, 'session_index.jsonl');
+      if (existsSync(index)) files.push(index);
+      return files;
+    }
+    return [];
+  }
+
+  /** A title the user gave the session in its app: Claude Code `custom-title.json`, Codex `session_index.jsonl` thread names. */
+  private customTitle(ref: Ref): string | undefined {
+    try {
+      if (ref.location.kind === 'claude') {
+        const file = join(this.claudeSessionFolder(ref.path), 'custom-title.json');
+        if (!existsSync(file) || identity(contained(ref.location.path, file)).size > MAX_SIDECAR_BYTES) return undefined;
+        const value = JSON.parse(readBounded(ref.location.path, file, MAX_SIDECAR_BYTES)) as Row;
+        return text(value?.customTitle);
+      }
+      if (ref.location.kind === 'codex') return this.codexThreadNames(ref.location).get(ref.candidate.nativeSessionId);
+    } catch { /* optional metadata */ }
+    return undefined;
+  }
+
+  private codexThreadNames(location: Location): Map<string, string> {
+    const file = join(location.root, 'session_index.jsonl');
+    if (!existsSync(file)) return new Map();
+    const info = identity(contained(location.root, file)), stamp = `${info.ino}:${info.size}:${info.mtime}`;
+    if (this.threadNames?.stamp === stamp) return this.threadNames.names;
+    if (info.size > MAX_THREAD_INDEX_BYTES) return new Map();
+    const names = new Map<string, string>();
+    for (const line of readBounded(location.root, file, MAX_THREAD_INDEX_BYTES).split('\n')) {
+      if (!line.trim()) continue;
+      try {
+        const row = JSON.parse(line) as Row, id = text(row.id), name = text(row.thread_name);
+        if (id && name) names.set(id, name);
+      } catch { /* partial line */ }
+    }
+    this.threadNames = { stamp, names };
+    return names;
+  }
+
+  /** The first record of a Codex rollout, read once per file (it never changes after it is written). */
+  private codexHeader(location: Location, path: string): ThreadHeader | undefined {
+    try {
+      const canonical = contained(location.path, path), info = statSync(canonical);
+      if (!info.isFile()) return undefined;
+      const ino = Number(info.ino), cached = this.threadHeaders.get(path);
+      if (cached?.ino === ino) return cached;
+      const fd = openSync(canonical, 'r');
+      let head: string;
+      try {
+        const bytes = Buffer.alloc(Math.min(info.size, HEADER_BYTES));
+        head = bytes.subarray(0, readSync(fd, bytes, 0, bytes.length, 0)).toString('utf8');
+      } finally { closeSync(fd); }
+      const end = head.indexOf('\n');
+      if (end < 0) return undefined;
+      const row = JSON.parse(head.slice(0, end)) as Row;
+      const payload = (row?.payload && typeof row.payload === 'object' ? row.payload : {}) as Row;
+      const id = text(payload.id);
+      if (row?.type !== 'session_meta' || !id) return undefined;
+      const spawn = codexThreadSpawn(payload), cwd = text(payload.cwd), startMs = Date.parse(String(payload.timestamp ?? row.timestamp ?? ''));
+      const header: ThreadHeader = { ino, id: safeLabel(id, 200), ...(spawn ? { spawn } : {}), ...(cwd ? { cwd: safeText(cwd, 2000) } : {}), ...(Number.isFinite(startMs) ? { startMs } : {}) };
+      this.threadHeaders.set(path, header);
+      if (this.threadHeaders.size > MAX_FILES) this.threadHeaders.delete(this.threadHeaders.keys().next().value!);
+      return header;
+    } catch { return undefined; }
+  }
+
+  /** Rollout files of a Codex location; one listing serves all lookups of one call (public entry points clear it). */
+  private codexFiles(location: Location): string[] {
+    const memo = this.threadFileMemo.get(location.id);
+    if (memo) return memo.files;
+    let cache = this.threadListings.get(location.id);
+    if (!cache) { cache = { dirs: new Map(), files: new Map(), cursor: 0 }; this.threadListings.set(location.id, cache); }
+    const files = this.candidateFiles(location, cache);
+    this.threadFileMemo.set(location.id, { at: Date.now(), files });
+    return files;
+  }
+
+  private rolloutStart(path: string, header?: ThreadHeader): number {
+    return rolloutTime(path) ?? header?.startMs ?? 0;
+  }
+
+  /** The root thread (started by the user) of a Codex sub-agent thread. */
+  private codexRoot(location: Location, path: string): { id: string; path: string } | undefined {
+    let current = path, header = this.codexHeader(location, path);
+    for (let depth = 0; header?.spawn && depth < 8; depth++) {
+      const parentId = header.spawn.parentThreadId, files = this.codexFiles(location);
+      const parentPath = files.find(file => basename(file).endsWith(`-${parentId}.jsonl`))
+        ?? [...this.threadHeaders.entries()].find(([file, item]) => item.id === parentId && files.includes(file))?.[0];
+      const parent = parentPath ? this.codexHeader(location, parentPath) : undefined;
+      if (!parentPath || parent?.id !== parentId) return undefined;
+      current = parentPath; header = parent;
+    }
+    return header && !header.spawn ? { id: header.id, path: current } : undefined;
+  }
+
+  /** Threads a Codex thread spawned, directly or through its sub-agents, oldest first. */
+  private codexDescendants(location: Location, rootId: string, startMs: number): { path: string; header: ThreadHeader & { spawn: CodexThreadSpawn } }[] {
+    const since = startMs - THREAD_SLACK_MS, byParent = new Map<string, { path: string; header: ThreadHeader & { spawn: CodexThreadSpawn } }[]>();
+    for (const path of this.codexFiles(location)) {
+      const time = rolloutTime(path);
+      if (time !== undefined ? time < since : (() => { try { return statSync(path).mtimeMs < since; } catch { return true; } })()) continue;
+      const header = this.codexHeader(location, path);
+      if (!header?.spawn) continue;
+      const siblings = byParent.get(header.spawn.parentThreadId) ?? [];
+      siblings.push({ path, header: header as ThreadHeader & { spawn: CodexThreadSpawn } });
+      byParent.set(header.spawn.parentThreadId, siblings);
+    }
+    const found: { path: string; header: ThreadHeader & { spawn: CodexThreadSpawn } }[] = [], seen = new Set([rootId]);
+    for (let queue = [rootId], depth = 0; queue.length && depth < 8; depth++) {
+      const next: string[] = [];
+      for (const parent of queue) for (const child of byParent.get(parent) ?? []) {
+        if (seen.has(child.header.id)) continue;
+        seen.add(child.header.id); found.push(child); next.push(child.header.id);
+      }
+      queue = next;
+    }
+    return found.sort((a, b) => this.rolloutStart(a.path, a.header) - this.rolloutStart(b.path, b.header) || a.path.localeCompare(b.path)).slice(-MAX_SUBAGENTS);
+  }
+
+  /**
+   * A sub-agent transcript, parsed again only when its file changed. A file that
+   * cannot be read right now (it is being written) keeps its previous read.
+   */
+  private subagentRead(location: Location, path: string, nativeSessionId: string): ParsedSubagent | undefined {
+    const cached = this.subagentReads.get(path);
+    try {
+      const info = identity(contained(location.path, path)), stamp = `${info.ino}:${info.size}:${info.mtime}`;
+      if (cached?.stamp === stamp) return cached.value;
+      const context = { sourceId: location.sourceId as NativeSourceId, nativeSessionId, exportedAt: new Date(this.now()).toISOString(), importMode: 'linked' as const };
+      const parsed = info.size > LIVE_FULL_BYTES ? this.parseWindow(location, path, info, context, true)
+        : (content => location.kind === 'codex' ? parseCodex(content, context) : parseClaude(content, context))(readBounded(location.path, path, MAX_FILE_BYTES));
+      const value: ParsedSubagent = { steps: parsed.steps ?? [], ...(parsed.model ? { model: parsed.model } : {}), ...(parsed.session ? { startedAt: parsed.session.startedAt } : {}) };
+      this.subagentReads.delete(path);
+      this.subagentReads.set(path, { stamp, value });
+      while (this.subagentReads.size > MAX_SUBAGENTS * 10) this.subagentReads.delete(this.subagentReads.keys().next().value!);
+      return value;
+    } catch { return cached?.value; }
+  }
+
+  private sidecarJson(location: Location, path: string): Row {
+    try {
+      if (!existsSync(path) || identity(contained(location.path, path)).size > MAX_SIDECAR_BYTES) return {};
+      const value = JSON.parse(readBounded(location.path, path, MAX_SIDECAR_BYTES)) as unknown;
+      return value && typeof value === 'object' && !Array.isArray(value) ? value as Row : {};
+    } catch { return {}; }
+  }
+
+  /** Sub-agents of an observed session, with what their source states about them. */
+  private subagents(ref: Ref, steps: readonly TranscriptStep[], startedAt: string): SubagentTranscript[] {
+    const location = ref.location, result: SubagentTranscript[] = [];
+    if (location.kind === 'codex') {
+      for (const { path, header } of this.codexDescendants(location, ref.candidate.nativeSessionId, this.rolloutStart(ref.path, this.codexHeader(location, ref.path)) || Date.parse(startedAt))) {
+        const read = this.subagentRead(location, path, header.id);
+        const start = header.startMs ?? rolloutTime(path);
+        result.push({
+          id: header.id, ...(header.spawn.parentThreadId !== ref.candidate.nativeSessionId ? { parentId: header.spawn.parentThreadId } : {}),
+          ...(header.spawn.nickname ? { label: header.spawn.nickname } : {}), ...(header.spawn.role ? { role: header.spawn.role } : {}),
+          ...(read?.model ? { model: read.model } : {}),
+          ...(read?.startedAt ? { at: read.startedAt } : start !== undefined ? { at: new Date(start).toISOString() } : {}),
+          steps: read?.steps ?? [],
+        });
+      }
+      return result;
+    }
+    if (location.kind !== 'claude') return result;
+    const folder = join(this.claudeSessionFolder(ref.path), 'subagents');
+    if (!existsSync(folder)) return result;
+    contained(location.path, folder);
+    const files = readdirSync(folder).filter(name => /^agent-[\w-]{1,120}\.jsonl$/.test(name))
+      .map(name => ({ name, mtime: (() => { try { return statSync(join(folder, name)).mtimeMs; } catch { return 0; } })() }))
+      .sort((a, b) => b.mtime - a.mtime || a.name.localeCompare(b.name)).slice(0, MAX_SUBAGENTS);
+    const owners = new Map<string, string>();
+    const own = (agentId: string, list: readonly TranscriptStep[]) => { for (const step of list) if (step.type === 'tool.call' && step.callId) owners.set(step.callId, agentId); };
+    own('primary', steps);
+    const pending: { id: string; meta: Row; read?: ParsedSubagent }[] = [];
+    for (const { name } of files) {
+      const id = name.slice('agent-'.length, -'.jsonl'.length);
+      const read = this.subagentRead(location, join(folder, name), ref.candidate.nativeSessionId);
+      if (read) own(id, read.steps);
+      pending.push({ id, meta: this.sidecarJson(location, join(folder, `agent-${id}.meta.json`)), ...(read ? { read } : {}) });
+    }
+    for (const { id, meta, read } of pending) {
+      const owner = typeof meta.toolUseId === 'string' ? owners.get(meta.toolUseId) : undefined;
+      const label = text(meta.description), role = text(meta.agentType);
+      const model = read?.steps.find((step): step is Extract<TranscriptStep, { type: 'reply' }> => step.type === 'reply' && Boolean(step.model))?.model ?? read?.model ?? text(meta.model);
+      result.push({
+        id, ...(owner && owner !== 'primary' && owner !== id ? { parentId: owner } : {}),
+        ...(label ? { label } : {}), ...(role ? { role } : {}), ...(model ? { model } : {}),
+        ...(read?.startedAt ? { at: read.startedAt } : {}), steps: read?.steps ?? [],
+      });
     }
     return result;
   }

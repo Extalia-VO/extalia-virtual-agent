@@ -1,6 +1,6 @@
 import { decodePortableSession, type PortableSession } from '@extalia/core';
 import { describe, expect, it } from 'vitest';
-import { parseClaude, parseCodex, parseGemini, parseHermes, type NativeParseResult, type ParseContext } from '../src/index.js';
+import { codexThreadSpawn, isInjectedContext, parseAntigravity, parseClaude, parseCodex, parseGemini, parseHermes, type NativeParseResult, type ParseContext } from '../src/index.js';
 
 // Synthesized fixtures that follow each provider's shape; no real transcript is used.
 const T = '2026-10-08T00:00:00.000Z';
@@ -142,6 +142,45 @@ describe('Hermes databases', () => {
   });
 });
 
+describe('Antigravity transcripts', () => {
+  it('imports user inputs, planner responses, tool calls and tool outputs while dropping thinking and media bytes', () => {
+    const session = valid(parseAntigravity(jsonl(
+      { step_index: 1, source: 'USER_EXPLICIT', type: 'USER_INPUT', status: 'DONE', created_at: T, content: '<USER_REQUEST>\nFix the button alignment\n</USER_REQUEST>', media: [{ mime_type: 'image/png', uri: '/tmp/image-not-copied.png' }] },
+      { step_index: 2, source: 'MODEL', type: 'PLANNER_RESPONSE', status: 'DONE', created_at: T1, thinking: 'private-thinking', content: 'Checking the button styles.', tool_calls: [
+        { id: 'call-1', name: 'default_api:view_file', args: JSON.stringify({ AbsolutePath: '/projects/demo/src/Button.tsx', token: 'synthetic-secret' }) },
+      ] },
+      { step_index: 3, source: 'SYSTEM', type: 'TOOL_RESPONSE', status: 'DONE', created_at: T1, content: ['File Path: `file:///projects/demo/src/Button.tsx`\nexport function Button() {}'] },
+      { step_index: 4, source: 'MODEL', type: 'PLANNER_RESPONSE', status: 'DONE', created_at: T2, content: 'Aligned the button.' },
+    ), { ...context('antigravity'), nativeSessionId: 'agy-1' }));
+    expect(session.messages.map(message => message.role)).toEqual(['user', 'assistant', 'tool', 'tool', 'assistant']);
+    expect(session.messages[0]?.content).toBe('Fix the button alignment');
+    expect(session.provenance).toMatchObject({ sourceId: 'antigravity', sourceSessionId: 'agy-1', providerId: 'google' });
+    expect(session.workspace).toMatchObject({ name: 'demo', projectLocation: '/projects/demo' });
+    expect(JSON.stringify(session)).not.toMatch(/private-thinking|image-not-copied|synthetic-secret/);
+  });
+
+  it('parses Antigravity attached images using readMedia and populates prompt attachments', () => {
+    const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
+    const parsed = parseAntigravity(jsonl(
+      { step_index: 1, source: 'USER_EXPLICIT', type: 'USER_INPUT', status: 'DONE', created_at: T, content: '<USER_REQUEST>\nReview this screenshot\n</USER_REQUEST>', media: [{ mime_type: 'image/png', uri: '/projects/demo/.user_uploaded/test.png' }] },
+      { step_index: 2, source: 'MODEL', type: 'PLANNER_RESPONSE', status: 'DONE', created_at: T1, content: 'Looks great!' },
+    ), {
+      ...context('antigravity'),
+      nativeSessionId: 'agy-2',
+      readMedia: (mediaPath: string) => mediaPath.endsWith('test.png') ? PNG : undefined,
+    });
+    const promptStep = parsed.steps?.find(s => s.type === 'prompt');
+    expect(promptStep?.text).toBe('Review this screenshot');
+    expect(promptStep?.attachments).toBeDefined();
+    expect(promptStep?.attachments?.[0]).toMatchObject({
+      name: 'test.png',
+      kind: 'image',
+      mimeType: 'image/png',
+      data: PNG,
+    });
+  });
+});
+
 describe('safety and limits', () => {
   it('masks credentials in text while keeping code readable', () => {
     const session = valid(parseHermes({ id: 'secrets', started_at: Date.parse(T) / 1000 }, [{ role: 'user', timestamp: T, content: 'const answer = 42;\napi_key=synthetic-secret\nhttps://user:password@example.com/' }], context('hermes')));
@@ -155,6 +194,7 @@ describe('safety and limits', () => {
       parseCodex('{"type":"session_meta","payload":{"id":"empty"}}', context('codex')),
       parseClaude('{"type":"file-history-snapshot","sessionId":"empty"}', context('claude-code')),
       parseGemini('{"sessionId":"empty","messages":[]}', context('gemini-cli')),
+      parseAntigravity('{"step_index":1,"type":"SYSTEM_INIT"}', context('antigravity')),
       parseHermes({ id: 'empty' }, [], context('hermes')),
     ];
     for (const result of results) {
@@ -162,5 +202,52 @@ describe('safety and limits', () => {
       expect(result.diagnostics.length).toBeGreaterThan(0);
     }
     expect(parseCodex(' '.repeat(16 * 1024 * 1024 + 1), context('codex')).diagnostics.join(' ')).toMatch(/limit/);
+  });
+});
+
+describe('v0.0.37 titles, models and sub-agent metadata', () => {
+  it('never titles a session with injected context and prefers custom titles', () => {
+    const codex = valid(parseCodex(jsonl(
+      { type: 'session_meta', payload: { id: 'codex-titled', cwd: '/projects/demo', timestamp: T } },
+      { timestamp: T, type: 'turn_context', payload: { model: 'gpt-example-1' } },
+      { timestamp: T, type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: '# AGENTS.md instructions\n\n<INSTRUCTIONS>Example rules</INSTRUCTIONS>' }] } },
+      { timestamp: T1, type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'Fix the example build' }] } },
+      { timestamp: T2, type: 'turn_context', payload: { model: 'gpt-example-2' } },
+      { timestamp: T2, type: 'response_item', payload: { type: 'message', role: 'assistant', content: [{ type: 'output_text', text: 'Done.' }] } },
+    ), context('codex')));
+    expect(codex.title).toBe('Fix the example build');
+    expect(JSON.stringify(codex)).not.toContain('Example rules');
+    expect(parseCodex(jsonl({ type: 'session_meta', payload: { id: 'c2', timestamp: T } }, { timestamp: T, type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'Hello' }] } }),
+      { ...context('codex'), customTitle: 'Named thread' }).session?.title).toBe('Named thread');
+    expect(parseCodex(jsonl({ type: 'session_meta', payload: { id: 'c3', timestamp: T } }, { timestamp: T, type: 'turn_context', payload: { model: 'gpt-example-2' } },
+      { timestamp: T, type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'Hello' }] } }), context('codex')).model).toBe('gpt-example-2');
+
+    const claude = parseClaude(jsonl(
+      { type: 'user', sessionId: 'claude-titled', uuid: 'u1', timestamp: T, cwd: '/projects/demo', message: { role: 'user', content: '<agent-message from="lead">Status?</agent-message>' } },
+      { type: 'user', sessionId: 'claude-titled', uuid: 'u2', parentUuid: 'u1', timestamp: T, message: { role: 'user', content: 'Caveat: The messages below were generated by the user while running local commands.' } },
+      { type: 'user', sessionId: 'claude-titled', uuid: 'u3', parentUuid: 'u2', timestamp: T1, message: { role: 'user', content: 'Review the example change' } },
+      { type: 'assistant', sessionId: 'claude-titled', uuid: 'a1', parentUuid: 'u3', timestamp: T2, message: { role: 'assistant', model: 'claude-example-4', stop_reason: 'end_turn', content: [{ type: 'text', text: 'Looks good.' }] } },
+    ), context('claude-code'));
+    expect(valid(claude).title).toBe('Review the example change');
+    expect(claude.model).toBe('claude-example-4');
+    const renamed = parseClaude(jsonl(
+      { type: 'user', sessionId: 's-renamed', uuid: 'u1', timestamp: T, message: { role: 'user', content: 'Hello there' } },
+      { type: 'custom-title', sessionId: 's-renamed', customTitle: 'Old name' },
+      { type: 'custom-title', sessionId: 's-renamed', customTitle: 'Example renamed session' },
+    ), context('claude-code'));
+    expect(valid(renamed).title).toBe('Example renamed session');
+    expect(isInjectedContext('<system-reminder>x</system-reminder>')).toBe(true);
+    expect(isInjectedContext('<command-name>/clear</command-name>')).toBe(true);
+    expect(isInjectedContext('<local-command-stdout></local-command-stdout>')).toBe(true);
+    expect(isInjectedContext('Please fix <div> layout')).toBe(false);
+  });
+
+  it('reads the thread_spawn origin of Codex sub-agent threads', () => {
+    expect(codexThreadSpawn({ id: 'child', source: { subagent: { thread_spawn: { parent_thread_id: 'root', depth: 1, agent_path: '/root/example_task', agent_nickname: 'Example the 2nd', agent_role: 'explorer' } } }, thread_source: 'subagent' }))
+      .toEqual({ parentThreadId: 'root', depth: 1, nickname: 'Example the 2nd', role: 'explorer', path: '/root/example_task' });
+    // Flattened fields of newer metadata are read when the nested origin is absent.
+    expect(codexThreadSpawn({ id: 'child', thread_source: 'subagent', parent_thread_id: 'root', agent_role: 'worker' })).toEqual({ parentThreadId: 'root', role: 'worker' });
+    expect(codexThreadSpawn({ id: 'root', source: 'vscode', thread_source: 'user' })).toBeUndefined();
+    expect(codexThreadSpawn({ id: 'root', source: { subagent: { thread_spawn: { parent_thread_id: null } } } })).toBeUndefined();
   });
 });

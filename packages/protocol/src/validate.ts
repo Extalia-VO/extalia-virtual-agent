@@ -1,7 +1,8 @@
 import {
-  ACTIVITY_KINDS, AGENT_STATES, EVENT_CHANNELS, PROTOCOL_VERSION,
+  ACTIVITY_KINDS, AGENT_PHASES, AGENT_STATES, EVENT_CHANNELS, PROTOCOL_VERSION, STOP_REASONS,
   type EventBody, type EventType, type ExtaliaEvent,
 } from './events.js';
+import { NONBLANK_PATTERN, SINGLE_LINE_PATTERN, type JsonSchema } from './jsonSchema.js';
 
 /** Identifiers: non-empty, single line, bounded. */
 const ID_LIMIT = 200;
@@ -10,11 +11,14 @@ export const RUNTIME_ID_PATTERN = /^[a-z0-9][a-z0-9._-]{0,63}$/;
 /** Free text (prompts, model output, command output) is bounded per event. */
 export const TEXT_LIMIT = 200_000;
 const LABEL_LIMIT = 2_000;
+/** Attachments one prompt event may record (the composer allows ten files per prompt). */
+const MAX_PROMPT_ATTACHMENTS = 10;
 
 type FieldRule =
   | { kind: 'id' | 'label' | 'text' | 'boolean' | 'usage' | 'labels'; optional?: true }
   | { kind: 'number'; optional?: true; integer?: true; min?: number; max?: number }
-  | { kind: 'enum'; values: readonly string[]; optional?: true };
+  | { kind: 'enum'; values: readonly string[]; optional?: true }
+  | { kind: 'attachments'; optional?: true };
 
 interface BodySpec {
   fields: Record<string, FieldRule>;
@@ -35,25 +39,27 @@ const ratio = { kind: 'number', min: 0, max: 1 } as const;
 const optCount = { kind: 'number', integer: true, min: 0, optional: true } as const;
 const agentState = { kind: 'enum', values: AGENT_STATES } as const;
 const activity = { kind: 'enum', values: ACTIVITY_KINDS } as const;
+const phase = { kind: 'enum', values: AGENT_PHASES, optional: true } as const;
+const reason = { kind: 'enum', values: STOP_REASONS, optional: true } as const;
 
 /** Field rules per event type. Typed as a complete record so a new event type cannot ship without rules. */
 export const EVENT_SPECS: Readonly<Record<EventType, BodySpec>> = {
   'session.started': { fields: { control: { kind: 'enum', values: ['managed', 'observed'] }, title: optLabel, model: optLabel, cwd: optLabel } },
   'session.updated': { fields: { revision: id, messageCount: { kind: 'number', integer: true, min: 0 } } },
   'session.ended': { fields: { reason: optLabel } },
-  'prompt.submitted': { fields: { text, via: { kind: 'enum', values: ['extalia', 'native'] } } },
+  'prompt.submitted': { fields: { text, via: { kind: 'enum', values: ['extalia', 'native'] }, attachments: { kind: 'attachments', optional: true } } },
   'user.intervention': { fields: { action: { kind: 'enum', values: ['steer', 'pause', 'resume', 'cancel'] }, text: optText } },
   'model.thinking': { fields: {} },
   'model.delta': { fields: { text } },
   'model.completed': { fields: { text, model: optLabel, usage } },
   'turn.completed': { fields: { summary: optText, model: optLabel, usage, costUsd: { kind: 'number', min: 0, optional: true } } },
-  'turn.failed': { fields: { error: text } },
+  'turn.failed': { fields: { error: text, reason } },
   'agent.created': { fields: { name: label, role: optLabel, parentAgentId: optId }, requires: ['agentId'] },
-  'agent.state': { fields: { state: agentState, activity: { ...activity, optional: true }, summary: optLabel, target: optLabel, progress: { ...ratio, optional: true } }, requires: ['agentId'] },
+  'agent.state': { fields: { state: agentState, activity: { ...activity, optional: true }, summary: optLabel, target: optLabel, progress: { ...ratio, optional: true }, phase, reason }, requires: ['agentId'] },
   'agent.stopped': { fields: { reason: optLabel }, requires: ['agentId'] },
   'agent.error': { fields: { message: text, recoverable: optBool }, requires: ['agentId'] },
-  'subagent.spawned': { fields: { subagentId: id, role: optLabel, label: optLabel }, requires: ['agentId'] },
-  'subagent.state': { fields: { subagentId: id, state: agentState, summary: optLabel }, requires: ['agentId'] },
+  'subagent.spawned': { fields: { subagentId: id, role: optLabel, label: optLabel, model: optLabel }, requires: ['agentId'] },
+  'subagent.state': { fields: { subagentId: id, state: agentState, summary: optLabel, phase, reason }, requires: ['agentId'] },
   'tool.started': { fields: { toolCallId: optId, tool: label, kind: activity, label, target: optLabel } },
   'tool.output': { fields: { toolCallId: optId, text } },
   'tool.completed': { fields: { toolCallId: optId, tool: label, kind: activity, label, ok: bool, target: optLabel, output: optText } },
@@ -129,6 +135,19 @@ function checkField(value: unknown, rule: FieldRule, path: string, errors: strin
       if (!Array.isArray(value)) { errors.push(`${path}: expected an array of strings.`); return; }
       value.forEach((item, index) => checkString(item, `${path}[${index}]`, LABEL_LIMIT, false, false, errors));
       return;
+    case 'attachments': {
+      if (!Array.isArray(value) || value.length > MAX_PROMPT_ATTACHMENTS) { errors.push(`${path}: expected up to ${MAX_PROMPT_ATTACHMENTS} attachments.`); return; }
+      value.forEach((item, index) => {
+        const at = `${path}[${index}]`;
+        if (!isRecord(item)) { errors.push(`${at}: expected an object.`); return; }
+        for (const key of Object.keys(item)) if (!['name', 'kind', 'size', 'ref'].includes(key)) errors.push(`${at}.${key}: unknown field.`);
+        if (item.ref !== undefined && (typeof item.ref !== 'string' || !/^[0-9a-f]{64}$/.test(item.ref))) errors.push(`${at}.ref: expected a SHA-256 hex digest.`);
+        checkString(item.name, `${at}.name`, LABEL_LIMIT, false, true, errors);
+        if (typeof item.kind !== 'string' || !['image', 'text', 'file'].includes(item.kind)) errors.push(`${at}.kind: expected image, text or file.`);
+        checkField(item.size, { kind: 'number', integer: true, min: 0 }, `${at}.size`, errors);
+      });
+      return;
+    }
     case 'usage': {
       if (!isRecord(value)) { errors.push(`${path}: expected an object.`); return; }
       for (const [key, count] of Object.entries(value)) {
@@ -138,6 +157,40 @@ function checkField(value: unknown, rule: FieldRule, path: string, errors: strin
       return;
     }
   }
+}
+
+/** JSON Schema mirror of `checkField`; lengths are UTF-16 code units here but code points in JSON Schema. */
+function fieldSchema(rule: FieldRule): JsonSchema {
+  const string = (limit: number, allowEmpty: boolean, singleLine: boolean): JsonSchema => ({
+    type: 'string', maxLength: limit,
+    ...(singleLine ? { pattern: SINGLE_LINE_PATTERN } : {}),
+    ...(allowEmpty ? {} : singleLine ? { allOf: [{ pattern: NONBLANK_PATTERN }] } : { pattern: NONBLANK_PATTERN }),
+  });
+  const count: JsonSchema = { type: 'integer', minimum: 0 };
+  switch (rule.kind) {
+    case 'id': return string(ID_LIMIT, false, true);
+    case 'label': return string(LABEL_LIMIT, false, false);
+    case 'text': return string(TEXT_LIMIT, true, false);
+    case 'boolean': return { type: 'boolean' };
+    case 'enum': return { type: 'string', enum: [...rule.values] };
+    case 'number': return { type: rule.integer ? 'integer' : 'number', ...(rule.min !== undefined ? { minimum: rule.min } : {}), ...(rule.max !== undefined ? { maximum: rule.max } : {}) };
+    case 'labels': return { type: 'array', items: string(LABEL_LIMIT, false, false) };
+    case 'attachments': return {
+      type: 'array', maxItems: MAX_PROMPT_ATTACHMENTS,
+      items: { type: 'object', additionalProperties: false, required: ['name', 'kind', 'size'], properties: { name: string(LABEL_LIMIT, false, true), kind: { type: 'string', enum: ['image', 'text', 'file'] }, size: count, ref: { type: 'string', pattern: '^[0-9a-f]{64}$' } } },
+    };
+    case 'usage': return { type: 'object', additionalProperties: false, properties: { inputTokens: count, outputTokens: count, cachedInputTokens: count } };
+  }
+}
+
+/** JSON Schema of one v0 event body, derived from `EVENT_SPECS` (envelope `requires` stay with the caller). */
+export function eventBodyJsonSchema(type: EventType): JsonSchema {
+  const fields = EVENT_SPECS[type].fields;
+  const required = Object.entries(fields).filter(([, rule]) => !rule.optional).map(([key]) => key);
+  return {
+    type: 'object', additionalProperties: false, required: ['type', ...required],
+    properties: { type: { const: type }, ...Object.fromEntries(Object.entries(fields).map(([key, rule]) => [key, fieldSchema(rule)])) },
+  };
 }
 
 const ENVELOPE_KEYS = new Set(['v', 'id', 'at', 'sessionId', 'seq', 'agentId', 'taskId', 'parentId', 'correlationId', 'source', 'body']);

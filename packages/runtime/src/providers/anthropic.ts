@@ -2,7 +2,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import type { Effort } from '@extalia/core';
 import type { Usage } from '@extalia/protocol';
 import {
-  ProviderError, type FetchLike, type ModelMessage, type ModelProvider, type ModelRequest, type ModelResult, type StopReason, type ToolCall,
+  ProviderError, isRetryableStatus, type FetchLike, type ModelMessage, type ModelProvider, type ModelRequest, type ModelResult, type StopReason, type ToolCall,
 } from '../model.js';
 
 /**
@@ -43,7 +43,11 @@ export function replayableContent(content: readonly Block[]): BlockParam[] {
 export function toAnthropicMessages(messages: readonly ModelMessage[]): Anthropic.Beta.BetaMessageParam[] {
   const result: Anthropic.Beta.BetaMessageParam[] = [];
   for (const message of messages) {
-    if (message.role === 'user') result.push({ role: 'user', content: message.text });
+    if (message.role === 'user' && message.images?.length) {
+      // Images first, then the text that refers to them (the Messages API's recommended order).
+      const images: BlockParam[] = message.images.map(image => ({ type: 'image' as const, source: { type: 'base64' as const, media_type: image.mimeType, data: image.data } }));
+      result.push({ role: 'user', content: [...images, { type: 'text' as const, text: message.text || 'Attached image.' }] });
+    } else if (message.role === 'user') result.push({ role: 'user', content: message.text });
     else if (message.role === 'assistant') {
       if (message.native?.api === 'anthropic-messages' && Array.isArray(message.native.content)) {
         result.push({ role: 'assistant', content: replayableContent(message.native.content as Block[]) });
@@ -80,7 +84,7 @@ function toProviderError(error: unknown): unknown {
     const status = typeof error.status === 'number' ? error.status : undefined;
     const prefix = status === 401 || status === 403 ? 'The endpoint rejected the credentials' : status ? `The endpoint returned ${status}` : 'The endpoint could not be reached';
     const detail = (error.error as { error?: { message?: string } } | undefined)?.error?.message ?? '';
-    return new ProviderError(detail ? `${prefix}: ${detail}` : `${prefix}.`, status, status === undefined || status === 429 || status >= 500);
+    return new ProviderError(detail ? `${prefix}: ${detail}` : `${prefix}.`, status, status !== 401 && isRetryableStatus(status, detail));
   }
   return error;
 }
@@ -100,6 +104,7 @@ export function createAnthropicProvider(options: AnthropicOptions): ModelProvide
 
   return {
     api: 'anthropic-messages',
+    images: true,
     async listModels() {
       const ids: string[] = [];
       try {
@@ -169,12 +174,16 @@ export function createAnthropicProvider(options: AnthropicOptions): ModelProvide
       };
       const stop = stopReason(message.stop_reason);
       const details = (message as { stop_details?: { category?: string | null; explanation?: string | null } | null }).stop_details;
+      // Anthropic reports the uncached input apart from cache reads and cache writes; the prompt is all three.
+      const cached = message.usage.cache_read_input_tokens ?? 0, written = message.usage.cache_creation_input_tokens ?? 0;
+      const promptTokens = Number.isSafeInteger(message.usage.input_tokens) ? message.usage.input_tokens + cached + written : undefined;
       return {
         text,
         toolCalls,
         stop,
         model: message.model,
         usage,
+        ...(promptTokens !== undefined ? { promptTokens } : {}),
         native: { api: 'anthropic-messages', content },
         ...(stop === 'refusal' ? { refusal: details?.explanation || `The model declined this request${details?.category ? ` (${details.category})` : ''}.` } : {}),
       };

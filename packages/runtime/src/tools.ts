@@ -57,6 +57,8 @@ export interface ToolDefinition<Input = Record<string, unknown>> {
   /** Consecutive calls of parallel tools in one model response run concurrently (they never need approval). */
   parallel?: boolean;
   describe(input: Input): ToolDescription;
+  /** A refusal checked before any approval is asked (for example a team member's edit scope); undefined to proceed. */
+  precheck?(input: Input): string | undefined;
   run(input: Input, context: ToolRunContext): Promise<ToolOutcome>;
 }
 

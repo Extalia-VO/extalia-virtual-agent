@@ -1,8 +1,14 @@
 export * from './characterAppearance.js';
+export * from './characterHair.js';
 export * from './connections.js';
+export * from './contextWindow.js';
 export * from './library.js';
 export * from './models.js';
+export * from './names.js';
 export * from './portable.js';
 export * from './privacy.js';
 export * from './sources.js';
+export * from './stopReasons.js';
+export * from './teams.js';
+export * from './teamSpec.js';
 export { decode, type DecodeResult } from './validation.js';

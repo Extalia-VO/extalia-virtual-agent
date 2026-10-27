@@ -15,6 +15,7 @@ export const KNOWN_SOURCES: readonly SourceInfo[] = [
   { id: 'claude-code', label: 'Claude Code' },
   { id: 'hermes', label: 'Hermes Agent' },
   { id: 'gemini-cli', label: 'Gemini CLI' },
+  { id: 'antigravity', label: 'Antigravity' },
   { id: 'antigravity-ide', label: 'Antigravity IDE' },
   { id: 'antigravity-cli', label: 'Antigravity CLI' },
   { id: 'extalia', label: 'Extalia' },

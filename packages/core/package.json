@@ -1,7 +1,7 @@
 {
   "name": "@extalia/core",
   "description": "Extalia domain model: profiles, workspaces, sessions, portable import/export and privacy rules.",
-  "version": "0.0.8",
+  "version": "0.4.108",
   "private": true,
   "license": "MIT",
   "type": "module",

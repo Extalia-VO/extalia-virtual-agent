@@ -81,7 +81,7 @@ describe('live transcript observation', () => {
       await writeFile(f.file, f.initial);
       await f.observer.refresh();
       expect(f.observer.snapshot(f.id).messages).toHaveLength(1);
-      expect(f.observer.events(f.id)).toHaveLength(2);
+      expect(f.observer.events(f.id).map(event => event.body.type)).toEqual(['session.started', 'prompt.submitted', 'agent.state']);
     } finally { await f.observer.close(); }
   });
 
@@ -165,7 +165,7 @@ describe('live transcript observation', () => {
       await host.deleteSession(id);
       expect((await host.getState()).sessions).toHaveLength(0);
       expect(await readFile(f.file, 'utf8')).toBe(f.initial);
-      expect(await host.setWorkflow('managed')).toMatchObject({ setupComplete: false, workflow: 'managed' });
+      expect(await host.setWorkflow('managed')).toMatchObject({ setupComplete: true, workflow: 'managed', connections: [], workspaces: [] });
     } finally { await runtime.close(); }
   });
 });

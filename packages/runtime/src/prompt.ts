@@ -1,3 +1,4 @@
+import type { SessionPermissionMode } from '@extalia/core';
 /**
  * System prompt for the Extalia Native agent. Stable content comes first so
  * providers that cache prompt prefixes can reuse it across turns.
@@ -13,8 +14,21 @@ export interface PromptContext {
   skills?: { name: string; description: string }[];
   /** Present when the agent can delegate to worker agents. */
   orchestration?: { maxDelegations: number };
+  /** Present when the session has an enabled subagent team; the agent leads it. */
+  team?: {
+    members: { name: string; role: string; task?: string; access?: 'read' | 'write'; scope?: string[]; forbidden?: string[] }[];
+    rules?: string[];
+    /** The user's latest prompt defined the team; it was applied before this turn. */
+    fromPrompt?: boolean;
+  };
+  /** The agent can create and change its team with manage_team. */
+  manageTeam?: boolean;
+  /** The lead's own full name in the Office. */
+  agentName?: string;
   /** Present when the session continues a conversation that started in another agent. */
   continuation?: { source: string; title: string };
+  /** The session's permission mode when it changes what the agent may do (`plan`, `accept-edits`). */
+  permissionMode?: SessionPermissionMode;
 }
 
 const INSTRUCTION_LIMIT = 12_000;
@@ -42,12 +56,55 @@ export function buildSystemPrompt(context: PromptContext): string {
     );
   }
 
+  if (context.agentName) sections.push(`In the Extalia Office you appear as ${context.agentName.replace(/\s+/g, ' ').trim()}.`);
+
+  if (context.team?.members.length) {
+    const clean = (value: string) => value.replace(/\s+/g, ' ').trim();
+    const roster = context.team.members.map(member => {
+      const edits = member.access === 'write'
+        ? ` [can edit${member.scope?.length ? `: ${member.scope.join(', ')}` : ''}${member.forbidden?.length ? `; never: ${member.forbidden.join(', ')}` : ''}]`
+        : '';
+      return `- ${clean(member.name)} (${clean(member.role)})${edits}${member.task ? `: ${clean(member.task)}` : ''}`;
+    });
+    const writers = context.team.members.some(member => member.access === 'write');
+    sections.push(
+      (context.team.fromPrompt ? 'The user\'s latest message defined this team; it was saved with the session before this turn. Follow its assignments.\n' : '') +
+      'You lead a team of subagents. Delegate only when a request actually concerns a member\'s role, task or scope (or the user asks for a member or the team): ' +
+        'then hand that part to the member with delegate_task (set member to their name) without waiting for the user to name them, and pick several members ' +
+        'when the work spans their roles, running independent parts in parallel. Do not delegate on every request: handle small, quick or unrelated requests ' +
+        '(questions, chat, tiny edits, anything no member\'s role covers) yourself. Give each member a complete, self-contained task. ' +
+        (writers
+          ? 'Members marked [can edit] change files themselves, only inside their scope and one at a time (their edits and commands follow the same approvals as yours); ' +
+            'the other members only read and research. Order dependent work (for example a review after an implementation) in separate delegations, check their results, ' +
+            'and give the final answer. '
+          : 'Members only read and research: you make every edit, run commands, combine their findings and give the final answer. ') +
+        '\nTeam:\n' + roster.join('\n') +
+        (context.team.rules?.length ? `\nTeam rules (every member follows them too):\n${context.team.rules.map(rule => `- ${clean(rule)}`).join('\n')}` : ''),
+    );
+  }
+
+  if (context.manageTeam) {
+    sections.push(
+      'When the user asks for subagents or a team (in any language), create or change them with manage_team (names are generated when left out), ' +
+        'then hand them work with delegate_task. Do not create members unless the user asks for them.',
+    );
+  }
+
   if (context.continuation) {
     sections.push(
       `This session continues "${context.continuation.title.replace(/["\n]/g, ' ')}", a conversation that started in ${context.continuation.source}. ` +
         'The earlier messages are from that agent; its tool calls and their output are not included, and some messages may be left out. ' +
         'Its work may be unfinished or may have changed since: check the current state of the files before relying on it or redoing it, then continue the task.',
     );
+  }
+
+  if (context.permissionMode === 'plan') {
+    sections.push(
+      'Permission mode is plan: this session is read-only. You cannot edit files or run commands, so investigate with the read tools, ' +
+        'then answer with a concrete plan of the changes, the files involved and how to verify them.',
+    );
+  } else if (context.permissionMode === 'accept-edits') {
+    sections.push('Permission mode is accept-edits: file edits inside the project are approved in advance; commands follow the workspace policy.');
   }
 
   if (context.projectInstructions?.length) {

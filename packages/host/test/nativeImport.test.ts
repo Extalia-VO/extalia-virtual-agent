@@ -49,6 +49,12 @@ async function fakeHome(root: string) {
     { id: 'u', type: 'user', timestamp: T, content: 'Summarize the README' },
     { id: 'a', type: 'gemini', timestamp: T1, content: 'It describes the setup.' },
   ] }));
+  const antigravityBrain = path.join(home, '.gemini', 'antigravity', 'brain', 'agy-1', '.system_generated', 'logs');
+  await mkdir(antigravityBrain, { recursive: true });
+  await writeFile(path.join(antigravityBrain, 'transcript.jsonl'), jsonl(
+    { step_index: 1, source: 'USER_EXPLICIT', type: 'USER_INPUT', status: 'DONE', created_at: T, content: '<USER_REQUEST>\nUpdate the logo\n</USER_REQUEST>' },
+    { step_index: 2, source: 'MODEL', type: 'PLANNER_RESPONSE', status: 'DONE', created_at: T1, content: 'Updated the logo.' },
+  ));
   const antigravity = path.join(home, '.gemini', 'antigravity', 'conversations');
   await mkdir(antigravity, { recursive: true });
   await writeFile(path.join(antigravity, 'x.pb'), Buffer.from([1, 2, 3]));
@@ -64,23 +70,24 @@ describe('native history import through the host', () => {
       const { host } = runtime;
       const locations = await host.importLocations();
       const available = Object.fromEntries(locations.map(location => [`${location.label}${location.profile && location.profile !== 'default' ? `/${location.profile}` : ''}`, location.available]));
-      expect(available).toMatchObject({ Codex: true, 'Claude Code': true, 'Hermes Agent': true, 'Hermes Agent/team': true, 'Gemini CLI': true, 'Antigravity IDE': true });
+      expect(available).toMatchObject({ Codex: true, 'Claude Code': true, 'Hermes Agent': true, 'Hermes Agent/team': true, 'Gemini CLI': true, Antigravity: true, 'Antigravity IDE': true });
+      expect(locations.find(location => location.sourceId === 'antigravity')?.supported).toBe(true);
       expect(locations.find(location => location.sourceId === 'antigravity-ide')?.supported).toBe(false);
 
       const scan = await host.scanImports();
       const ids = scan.sessions.map(session => session.nativeSessionId).sort();
-      expect(ids).toEqual(['claude-1', 'codex-1', 'gemini-1', 'hermes-1', 'hermes-1', 'x']);
+      expect(ids).toEqual(['agy-1', 'claude-1', 'codex-1', 'gemini-1', 'hermes-1', 'hermes-1', 'x']);
       expect(ids).not.toContain('escaped');
       expect(ids).not.toContain('sub');
       const supported = scan.sessions.filter(session => session.supported).map(session => session.id);
 
       const preview = await host.previewImports(scan.scanId, supported);
-      expect(preview.plan).toMatchObject({ addCount: 5, updateCount: 0 });
-      expect(preview.sessions.map(entry => entry.session.provenance.sourceSessionId).sort()).toEqual(['claude-1', 'codex-1', 'gemini-1', 'hermes-1', 'profile:team:hermes-1']);
+      expect(preview.plan).toMatchObject({ addCount: 6, updateCount: 0 });
+      expect(preview.sessions.map(entry => entry.session.provenance.sourceSessionId).sort()).toEqual(['agy-1', 'claude-1', 'codex-1', 'gemini-1', 'hermes-1', 'profile:team:hermes-1']);
       expect((await host.getState()).library).toHaveLength(0);
 
       let state = await host.commitImports(scan.scanId, supported);
-      expect(state.library).toHaveLength(5);
+      expect(state.library).toHaveLength(6);
       const codex = state.library.find(item => item.sourceId === 'codex')!;
       expect(codex).toMatchObject({ title: 'Add a footer', workspaceName: 'site', messageCount: 2 });
       expect((await host.librarySession(codex.id)).messages.map(message => message.content)).toEqual(['Add a footer', 'Footer added.']);
@@ -89,7 +96,7 @@ describe('native history import through the host', () => {
       state = await host.organizeLibrarySession(codex.id, 'archive');
       const again = await host.scanImports(['codex']);
       state = await host.commitImports(again.scanId, again.sessions.map(session => session.id));
-      expect(state.library).toHaveLength(5);
+      expect(state.library).toHaveLength(6);
       expect(state.library.find(item => item.id === codex.id)).toMatchObject({ title: 'Footer work', state: 'archived' });
 
       expect((await host.importPortable('{not json')).plan.rejectionReason).toBeTruthy();

@@ -1,11 +1,25 @@
-import { EFFORTS, MAX_TEAM_GOAL, MAX_TEAM_MEMBERS, MEMBER_GENDERS, decodeAgentTeam } from '@extalia/core';
+import { EFFORTS, MAX_TEAM_GOAL, MAX_TEAM_MEMBERS, MEMBER_GENDERS, SESSION_PERMISSION_MODES, decodeAgentTeam, type SessionPermissionMode } from '@extalia/core';
 import type {
   AgentTeam, MemberAccess, MemberGender, TeamMember, TeamPlan, TeamPlanRequest, TeamSpec,
   CharacterAppearance, CharacterAppearances, Connection, CredentialSource, Effort, FeatureOwner, ImportMode, ImportPreview, LibrarySession, LocalState, Orchestration,
   PortableSession, ProviderApi, ProviderPresetId, RuntimeId, Workspace, WorkspacePermissions,
 } from '@extalia/core';
 import type { ExtaliaEvent } from '@extalia/protocol';
-import type { HostMissionRequest, HostMissionRun } from './missions.js';
+import type { HostMissionRequest, HostMissionRun, HostMissionRecoveryResult, MissionPlan, MissionPlanRequest } from './missions.js';
+import type { AttachmentPreview, PromptAttachment, PromptAttachmentInput } from './attachments.js';
+import type { BuiltinSkillInfo, SkillConsentInput, WorkspaceSkills } from './skills.js';
+import type { SkillActionResult, SkillApprovalInput, SkillImportSource, SkillRegistryReport, SkillReviewInput, SkillRevisionDetails } from './skillRegistry.js';
+import type {
+  IntegrationApproval, IntegrationGateInput, IntegrationProposalView, IntegrationRequest, WorktreeDiffView, WorktreeDiscardConfirmation, WorktreeOrphanView, WorktreeStatusView, WorktreeView,
+} from './worktrees.js';
+import type {
+  KnowledgeGraph, KnowledgeLinkPage, KnowledgeNodeLookup, KnowledgeNoteResult, KnowledgeOverview, KnowledgeOverviewOptions, KnowledgeSearchResult, KnowledgeStatus, KnowledgeSyncMode,
+  KnowledgeSyncOutcome,
+} from './knowledge.js';
+import type {
+  KnowledgeHistory, KnowledgeMemoryImport, KnowledgeMemoryImportRequest, KnowledgeNoteFile, KnowledgeRollbackRequest, KnowledgeWriteRequest, KnowledgeWriteResult,
+} from './knowledgeEdit.js';
+import type { KnowledgeVaultSettings } from './knowledgeVault.js';
 
 /**
  * The agent host runs the Extalia Native runtime where files and commands are
@@ -33,13 +47,26 @@ export interface SessionOptions {
   model?: string;
   effort?: Effort;
   /**
-   * Subagent team of a new Extalia Native session (`createSession` only;
-   * afterwards use `saveSessionTeam`). Never part of the stored model override.
+   * How the session may act (v0.0.49): `workspace` (the default: the workspace policy), `ask` (ask before
+   * every edit and command), `accept-edits` (edits inside the workspace allowed, commands follow the workspace)
+   * or `plan` (read-only). Extalia Native only; Hermes Agent sessions accept `workspace` only.
    */
-  team?: AgentTeam;
+  permissionMode?: PermissionMode;
+  /**
+   * Subagent team of a new managed session (`createSession` only; afterwards use
+   * `saveSessionTeam`). Never part of the stored model override. v0.0.47: absent,
+   * the session copies the workspace's default team; `null` starts it without a team.
+   */
+  team?: AgentTeam | null;
 }
 
 export type { AgentTeam, MemberAccess, MemberGender, TeamMember, TeamPlan, TeamPlanRequest, TeamSpec };
+
+/** A session's permission mode; see `SessionOptions.permissionMode`. */
+export type PermissionMode = SessionPermissionMode;
+export const PERMISSION_MODES: readonly PermissionMode[] = SESSION_PERMISSION_MODES;
+/** Modes a Hermes Agent session accepts: Hermes manages its own approvals. */
+export const HERMES_PERMISSION_MODES: readonly PermissionMode[] = ['workspace'];
 
 export function isMemberGender(value: unknown): value is MemberGender {
   return (MEMBER_GENDERS as readonly unknown[]).includes(value);
@@ -64,6 +91,8 @@ export interface ModelChoices {
   efforts: Effort[];
   /** The connection's effort (Native). */
   defaultEffort?: Effort;
+  /** Permission modes the session may use (v0.0.49): all four for Extalia Native, `workspace` only for Hermes. Absent on hosts before v0.0.49. */
+  permissionModes?: PermissionMode[];
 }
 
 /** Model ids: up to 200 characters, starting with a letter or digit (never an option such as `--x`). */
@@ -91,7 +120,12 @@ export function normalizeSessionOptions(raw: unknown): SessionOptions {
     if (!(EFFORTS as readonly unknown[]).includes(value.effort)) throw new Error(`Choose an effort: ${EFFORTS.join(', ')}.`);
     options.effort = value.effort as Effort;
   }
-  if (value.team !== undefined && value.team !== null) options.team = normalizeAgentTeam(value.team)!;
+  // `null` asks for no team (not even the workspace default); absent inherits the default.
+  if (value.team !== undefined) options.team = normalizeAgentTeam(value.team);
+  if (value.permissionMode !== undefined && value.permissionMode !== null && value.permissionMode !== '') {
+    if (!(PERMISSION_MODES as readonly unknown[]).includes(value.permissionMode)) throw new Error(`Choose a permission mode: ${PERMISSION_MODES.join(', ')}.`);
+    options.permissionMode = value.permissionMode as PermissionMode;
+  }
   return options;
 }
 
@@ -125,6 +159,19 @@ export function normalizeTeamPlanRequest(raw: unknown): TeamPlanRequest {
   return { goal, count, allowedModels: team.allowedModels, ...(team.members.length ? { members: team.members } : {}) };
 }
 
+/**
+ * Context in use by a session's lead agent (v0.0.48): the prompt size of its latest model request.
+ * `windowTokens` is absent for models Extalia does not know; `estimated` marks a size computed from
+ * text length because the runtime reported no usage; `compactions` counts context compactions seen.
+ */
+export interface SessionContextUsage {
+  usedTokens: number;
+  windowTokens?: number;
+  estimated: boolean;
+  compactions: number;
+  updatedAt: string;
+}
+
 export interface SessionSummary {
   id: string;
   workspaceId: string;
@@ -156,6 +203,8 @@ export interface SessionSummary {
   agentGender?: MemberGender;
   /** Observed sessions: the lead agent's latest model, as its source states it. */
   model?: string;
+  /** The lead's context in use, when the runtime or the transcript reports it. */
+  context?: SessionContextUsage;
   observation?: {
     sourceId: string; nativeSessionId: string; projectPath?: string; watching: boolean; status: 'watching' | 'paused' | 'unavailable'; lastCheckedAt?: string; error?: string;
     /** Time of the latest event read from the transcript. */
@@ -273,6 +322,20 @@ export interface UserProfilePatch {
   preferences?: { [K in keyof ProfilePreferences]?: ProfilePreferences[K] | null };
 }
 
+/**
+ * Which core runs new native missions (audit PR 8). `typescript` is the default; `rust`
+ * routes new saved missions to the Rust core daemon (ADR 0020, ADR 0021).
+ */
+export type NativeCore = 'typescript' | 'rust';
+export const NATIVE_CORES: readonly NativeCore[] = ['typescript', 'rust'];
+
+/** Rust core sidecar status for diagnostics; `lastError` is a stable code, never a raw error. */
+export interface NativeCoreStatus {
+  core: 'rust';
+  daemon: 'off' | 'starting' | 'ready' | 'unavailable';
+  lastError?: string;
+}
+
 export interface HostState {
   workflow?: 'managed' | 'observe';
   /** False until the user finished the current welcome setup (`SETUP_VERSION`). */
@@ -287,6 +350,8 @@ export interface HostState {
   library: LibrarySessionSummary[];
   storage: { dataDirectory: string; secretStore: SecretStoreKind };
   host: { kind: 'desktop' | 'bridge'; version: string };
+  /** Present only when the Rust native core is selected. */
+  nativeCore?: NativeCoreStatus;
 }
 
 /** Input to create or update a connection. The host assigns credential references. */
@@ -328,6 +393,11 @@ export interface WorkspaceInput {
   runtimeProfileId?: string;
   /** Optional model override for Hermes. */
   runtimeModel?: string;
+  /**
+   * ADR 0028: the workspace's integration test gate (validated with `normalizeIntegrationGate`).
+   * Omission keeps the stored setting; `null` removes it (proposals then stay `gate_missing`).
+   */
+  integrationGate?: IntegrationGateInput | null;
 }
 
 /** A managed runtime and whether this host can run it. */
@@ -447,9 +517,9 @@ export interface ContinueSource {
 }
 
 /** An agent application Extalia can connect to through hooks. */
-export type AgentAppId = 'codex' | 'claude' | 'gemini' | 'hermes';
+export type AgentAppId = 'codex' | 'claude' | 'gemini' | 'antigravity' | 'hermes';
 
-export const AGENT_APP_IDS: readonly AgentAppId[] = ['codex', 'claude', 'gemini', 'hermes'];
+export const AGENT_APP_IDS: readonly AgentAppId[] = ['codex', 'claude', 'gemini', 'antigravity', 'hermes'];
 
 /** Where agent-app hooks reach this host. The ingest token itself is never returned. */
 export interface HookIngestStatus {
@@ -630,6 +700,12 @@ export interface AgentHostApi {
    */
   saveSessionTeam(sessionId: string, team: AgentTeam | null): Promise<AgentTeam | undefined>;
   /**
+   * v0.0.47: save (validated) or remove (`null`) a workspace's default team. Every new
+   * managed session of the workspace (any entry point) starts with its own copy; sessions
+   * that already exist keep theirs. Returns the state with the updated workspace.
+   */
+  saveWorkspaceTeam(workspaceId: string, team: AgentTeam | null): Promise<HostState>;
+  /**
    * Propose members for a goal (or, without one, a general team for the workspace): the
    * workspace's model splits the work (`source: 'model'`; Hermes: the profile's endpoint when it
    * runs on this computer), or a deterministic plan is used (`'heuristic'`, with a `note`).
@@ -645,13 +721,38 @@ export interface AgentHostApi {
   renameSession(sessionId: string, title: string): Promise<HostState>;
   deleteSession(sessionId: string): Promise<HostState>;
   sessionEvents(sessionId: string): Promise<ExtaliaEvent[]>;
+  /**
+   * Ask the session's lead agent (its own connection and model, credentials resolved by the host)
+   * to propose a read-only mission for a goal. Starts nothing; falls back to a deterministic plan
+   * (`source: 'heuristic'`, with a `note`) when the lead cannot answer with a usable plan.
+   */
+  planNativeMission(sessionId: string, request: MissionPlanRequest): Promise<MissionPlan>;
   /** Start a fixed, read-only native task graph; returns before model execution finishes. */
   startNativeMission(sessionId: string, request: HostMissionRequest): Promise<HostMissionRun>;
   /** Read mission status and bounded, unverified answers. Cancel through the session's `cancel` method. */
   nativeMissionRun(sessionId: string, missionId: string): Promise<HostMissionRun>;
   /** Retained mission summaries for this session, respecting its history policy. */
   listNativeMissions(sessionId: string): Promise<HostMissionRun[]>;
-  sendPrompt(sessionId: string, text: string): Promise<void>;
+  /** Read-only canonical inspection; does not replay, close uncertain execution or release worktrees. */
+  refreshNativeMissionRecovery?(sessionId: string, missionId: string): Promise<HostMissionRecoveryResult>;
+  /**
+   * Send a prompt; `attachmentIds` name files uploaded with `uploadAttachment` to this session (up to ten).
+   * Their contents go to the model for this turn only; the stored history keeps their names.
+   */
+  sendPrompt(sessionId: string, text: string, options?: { attachmentIds?: string[] }): Promise<void>;
+  /**
+   * Store a file to attach to the session's next prompt. Images up to 5 MB (png, jpeg, webp, gif), text files
+   * up to 1 MB, other files up to 10 MB (named to the model, not read). Kept privately in the data directory,
+   * or in memory when the session keeps no history. Returns the attachment's id and checked metadata.
+   */
+  uploadAttachment(sessionId: string, file: PromptAttachmentInput): Promise<PromptAttachment>;
+  /** Discard an attachment that has not been sent yet. */
+  removeAttachment(sessionId: string, attachmentId: string): Promise<void>;
+  /**
+   * An image a prompt of this session carries, by the `ref` of its event's attachment summary (observed
+   * transcripts keep a private copy of embedded images). `undefined` when the host has no copy.
+   */
+  attachmentPreview(sessionId: string, ref: string): Promise<AttachmentPreview | undefined>;
   resolveApproval(sessionId: string, approvalId: string, decision: ApprovalDecisionInput): Promise<void>;
   cancel(sessionId: string): Promise<void>;
   /** Native history locations Extalia knows how to look in. Nothing is read until a scan. */
@@ -671,6 +772,39 @@ export interface AgentHostApi {
   gitStatus(workspaceId: string): Promise<GitStatus>;
   /** Unified diff against HEAD for one path or, without `path`, every change (credential files excluded). */
   gitDiff(workspaceId: string, path?: string): Promise<GitDiff>;
+  /**
+   * A workspace's project skills (`.extalia/skills/<skill>/SKILL.md`): allowed ones, and pending ones that do not
+   * reach the model until the user allows them (`not-allowed`, or `changed` since they were allowed).
+   */
+  workspaceSkills(workspaceId: string): Promise<WorkspaceSkills>;
+  /** Allow project skills for this workspace, each bound to the SHA-256 the user reviewed; a file that changed since is refused. */
+  allowWorkspaceSkills(workspaceId: string, skills: SkillConsentInput[]): Promise<WorkspaceSkills>;
+  /** Withdraw consent for the named project skills, or for every skill of the workspace without `names`. */
+  revokeWorkspaceSkills(workspaceId: string, names?: string[]): Promise<WorkspaceSkills>;
+  /**
+   * Skill Security Center (W3): the Rust core's skill registry. `mode: 'legacy'` when the native core flag is off
+   * (W0 consent decides); `status: 'unavailable'` when the daemon cannot answer. Feature-detected by clients.
+   */
+  skillRegistry(): Promise<SkillRegistryReport>;
+  /** One revision with its manifest, files, inspections, approvals and state history. */
+  inspectSkill(revisionId: string): Promise<SkillRevisionDetails>;
+  /** Copy a chosen folder (or a project skill) into the profile's import inbox and stage it in quarantine. */
+  importSkill(source: SkillImportSource): Promise<SkillActionResult>;
+  /** Accept or reject a `review_required` revision as the local user (the daemon may not serve this yet). */
+  reviewSkill(input: SkillReviewInput): Promise<SkillActionResult>;
+  /** Approve exactly the package hash and permission digest shown; expires after `approvalTtlMs`. */
+  approveSkill(input: SkillApprovalInput): Promise<SkillActionResult>;
+  /** Activate an approved revision; without `approvalId` the newest granted approval of the revision is used. */
+  activateSkill(revisionId: string, approvalId?: number): Promise<SkillActionResult>;
+  deactivateSkill(packageId: string): Promise<SkillActionResult>;
+  /** Re-point a package to a revision it activated before (AC-28). */
+  rollbackSkill(packageId: string, revisionId: string): Promise<SkillActionResult>;
+  revokeSkill(revisionId: string): Promise<SkillActionResult>;
+  /**
+   * The skills that ship with the app (name and description only, read-only; validate with `normalizeBuiltinSkills`).
+   * Optional: an older host omits it and the Skills page hides the list.
+   */
+  builtinSkills?(): Promise<BuiltinSkillInfo[]>;
   /** Managed runtimes this host can drive (Hermes Agent when it is installed). */
   runtimes(): Promise<RuntimeInfo[]>;
   /** The default model of a Hermes profile and, when it uses a local endpoint such as 9Router, the models that endpoint lists. */
@@ -693,6 +827,65 @@ export interface AgentHostApi {
   hookIngest(): Promise<HookIngestStatus>;
   /** Update outside-agent privacy ("labels only") and the optional local Hermes dashboard read URL. */
   setHookPrivacy(options: HookPrivacyOptions): Promise<HookIngestStatus>;
+  /**
+   * Worktrees of write-capable mission workers and their integration (ADR 0028). User actions only, never
+   * offered to agents as tools. Optional: a host without write-capable workers omits them (the UI hides them).
+   */
+  listWorktrees?(): Promise<WorktreeView[]>;
+  /** Dirty state, commits ahead/behind and the fingerprint a discard must send back. */
+  worktreeStatus?(worktreeId: string): Promise<WorktreeStatusView>;
+  /** Committed changes of the worker branch since its pinned base (files, +/−, digest). */
+  worktreeDiff?(worktreeId: string): Promise<WorktreeDiffView>;
+  /** Unreleased worktrees of ended tasks, missing folders and unknown folders. Nothing is deleted. */
+  worktreeOrphans?(): Promise<WorktreeOrphanView[]>;
+  /** Remove a worktree; unmerged or dirty work needs the exact `fingerprint` from `worktreeStatus`. */
+  removeWorktree?(worktreeId: string, confirm?: WorktreeDiscardConfirmation): Promise<void>;
+  /** Merge a released worker onto the target tip in a disposable worktree and run the test gate there. */
+  proposeIntegration?(worktreeId: string, request?: IntegrationRequest): Promise<IntegrationProposalView>;
+  integrationProposals?(): Promise<IntegrationProposalView[]>;
+  /** Apply a `ready` proposal the user approved, bound to its exact diff digest. Fast-forward or compare-and-swap only. */
+  applyIntegration?(proposalId: string, approval: IntegrationApproval): Promise<IntegrationProposalView>;
+  /**
+   * Knowledge (W5, ADR 0024): the calling profile's vault index; results are the daemon's (`daemonKnowledge.ts`). The host resolves
+   * the profile; no method takes one. Optional: a host without the knowledge index omits them (Desktop and the Bridge then answer
+   * "This host does not support this action." and the UI hides the page).
+   */
+  knowledgeStatus?(): Promise<KnowledgeStatus>;
+  /** Index the vault (`incremental` by default, `rebuild` from empty); returns the report and the fresh status. */
+  syncKnowledge?(mode?: KnowledgeSyncMode): Promise<KnowledgeSyncOutcome>;
+  /** One note with its body after the front matter, or `null` when no visible note matches (`node_not_found`). */
+  knowledgeNode?(lookup: KnowledgeNodeLookup): Promise<KnowledgeNoteResult | null>;
+  /** Links written in a note, in order, each resolved, missing or ambiguous; one page from `cursor`. */
+  knowledgeLinks?(nodeId: string, cursor?: number): Promise<KnowledgeLinkPage>;
+  /** Resolved links from other visible notes to this one; one page from `cursor`. */
+  knowledgeBacklinks?(nodeId: string, cursor?: number): Promise<KnowledgeLinkPage>;
+  /** Full-text search over titles, aliases and bodies (at most `KNOWLEDGE_UI_LIMITS.searchResults` hits). */
+  searchKnowledge?(query: string): Promise<KnowledgeSearchResult>;
+  /** The bounded local graph around a note (depth 1–3, at most `KNOWLEDGE_UI_LIMITS.graphNodes` notes). */
+  knowledgeGraph?(nodeId: string, depth?: number): Promise<KnowledgeGraph>;
+  /** The whole vault graph (bounded by `KNOWLEDGE_OVERVIEW_LIMITS`): notes with folder, tags, degrees and mtime, and resolved edges. */
+  knowledgeOverview?(options?: KnowledgeOverviewOptions): Promise<KnowledgeOverview>;
+  /*
+   * Note editing (W5 slice 2b, `knowledgeEdit.ts`): optional apart from the read methods; offered when `knowledgeStatus().editing`
+   * says the native core serves it. Writes are always the user's and compare-and-swap: a mismatch never replaces the note.
+   */
+  /** The whole note file (front matter included) and its SHA-256, or `null` when there is no such note. */
+  readKnowledgeNote?(path: string): Promise<KnowledgeNoteFile | null>;
+  /** Write a note as the user, replacing exactly `expectedSha256` (`null`: create); a mismatch becomes a conflict copy. */
+  writeKnowledgeNote?(request: KnowledgeWriteRequest): Promise<KnowledgeWriteResult>;
+  /** The note's journal, newest first (at most `KNOWLEDGE_EDIT_LIMITS.history` entries). */
+  knowledgeHistory?(path: string): Promise<KnowledgeHistory>;
+  /** Restore a version from the note's own history through the same compare-and-swap path. */
+  rollbackKnowledgeNote?(request: KnowledgeRollbackRequest): Promise<KnowledgeWriteResult>;
+  /** Import a workspace's legacy memory notes into `Projects/<workspace>/Memory/`; `dryRun` (the default) only reports. */
+  importMemoryNotes?(request: KnowledgeMemoryImportRequest): Promise<KnowledgeMemoryImport>;
+  /** The knowledge vault folder (default or user-chosen) and how outside edits reach the index. Native core only. */
+  knowledgeSettings?(): Promise<KnowledgeVaultSettings>;
+  /**
+   * Use `path` (an absolute existing folder, for example an Obsidian vault) or, with `null`, the default vault. The host checks the
+   * folder, restarts the native core with it and rebuilds the index. Refused while agent work is running.
+   */
+  setKnowledgeVaultRoot?(path: string | null): Promise<KnowledgeVaultSettings>;
   /** Live protocol events for every session. Returns an unsubscribe function. */
   subscribe(listener: (event: ExtaliaEvent) => void): () => void;
 }
@@ -700,13 +893,18 @@ export interface AgentHostApi {
 /** Methods a transport may forward. `subscribe` is carried separately (IPC push or SSE). */
 export const AGENT_HOST_METHODS = [
   'getState', 'getProfile', 'saveProfile', 'saveConnection', 'deleteConnection', 'testConnection', 'checkFolder', 'saveWorkspace', 'deleteWorkspace',
-  'setWorkspaceMissionConnections', 'startNativeMission', 'nativeMissionRun', 'listNativeMissions',
-  'completeSetup', 'createSession', 'setSessionOptions', 'modelChoices', 'getSessionTeam', 'saveSessionTeam', 'planTeam', 'continueSession', 'renameSession', 'deleteSession', 'sessionEvents', 'sendPrompt', 'resolveApproval', 'cancel',
+  'setWorkspaceMissionConnections', 'planNativeMission', 'startNativeMission', 'nativeMissionRun', 'listNativeMissions', 'refreshNativeMissionRecovery',
+  'completeSetup', 'createSession', 'setSessionOptions', 'modelChoices', 'getSessionTeam', 'saveSessionTeam', 'saveWorkspaceTeam', 'planTeam', 'continueSession', 'renameSession', 'deleteSession', 'sessionEvents', 'sendPrompt', 'uploadAttachment', 'removeAttachment', 'attachmentPreview', 'resolveApproval', 'cancel',
   'setWorkflow', 'observeImports', 'observationSession', 'setObservation', 'setAutoWatch',
   'importLocations', 'scanImports', 'previewImports', 'commitImports', 'importPortable', 'librarySession', 'organizeLibrarySession',
-  'listFiles', 'readFile', 'gitStatus', 'gitDiff',
+  'listFiles', 'readFile', 'gitStatus', 'gitDiff', 'workspaceSkills', 'allowWorkspaceSkills', 'revokeWorkspaceSkills',
+  'skillRegistry', 'inspectSkill', 'importSkill', 'reviewSkill', 'approveSkill', 'activateSkill', 'deactivateSkill', 'rollbackSkill', 'revokeSkill', 'builtinSkills',
   'runtimes', 'hermesModels', 'characterAppearances', 'saveCharacterAppearance', 'hookIngest', 'setHookPrivacy',
   'agentAppConnections', 'planAgentAppConnect', 'applyAgentAppConnect', 'disconnectAgentApp', 'testAgentAppConnection',
+  'listWorktrees', 'worktreeStatus', 'worktreeDiff', 'worktreeOrphans', 'removeWorktree', 'proposeIntegration', 'integrationProposals', 'applyIntegration',
+  'knowledgeStatus', 'syncKnowledge', 'knowledgeNode', 'knowledgeLinks', 'knowledgeBacklinks', 'searchKnowledge', 'knowledgeGraph', 'knowledgeOverview',
+  'knowledgeSettings', 'setKnowledgeVaultRoot',
+  'readKnowledgeNote', 'writeKnowledgeNote', 'knowledgeHistory', 'rollbackKnowledgeNote', 'importMemoryNotes',
 ] as const satisfies readonly Exclude<keyof AgentHostApi, 'subscribe'>[];
 
 export type AgentHostMethod = (typeof AGENT_HOST_METHODS)[number];

@@ -1,10 +1,10 @@
-import { safeText } from '@extalia/core';
-import type { RuntimeInfo } from '@extalia/platform';
+import { safeLabel, safeText, type Effort, type TeamMember } from '@extalia/core';
+import type { HermesModelCatalog, RuntimeInfo } from '@extalia/platform';
 import type { EventBody } from '@extalia/protocol';
 import { HERMES_PROFILE_PATTERN, HermesAdapter, type HermesResult } from '@extalia/runtime';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { constants as fsConstants } from 'node:fs';
-import { access, readdir } from 'node:fs/promises';
+import { access, readFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import { StringDecoder } from 'node:string_decoder';
 
@@ -81,6 +81,171 @@ export async function hermesProfiles(env: Env, homeDirectory: string): Promise<s
   return [...names];
 }
 
+/** The `model:` block of a Hermes `config.yaml`: either `model: <id>` or indented `default`, `provider`, `base_url`, `api_key`. */
+export function parseHermesModelBlock(text: string): { default?: string; provider?: string; baseUrl?: string; apiKey?: string } {
+  const unquote = (value: string) => value.replace(/\s+#.*$/, '').trim().replace(/^(['"])(.*)\1$/, '$2').trim();
+  const lines = text.split(/\r?\n/);
+  const start = lines.findIndex(line => /^model:/.test(line));
+  if (start < 0) return {};
+  const inline = unquote(lines[start]!.slice('model:'.length));
+  if (inline) return { default: inline };
+  const fields: Record<string, string> = {};
+  for (const line of lines.slice(start + 1)) {
+    if (/^\S/.test(line)) break;
+    const match = /^\s+([A-Za-z_]+):\s*(.*)$/.exec(line);
+    if (match && !(match[1]! in fields)) fields[match[1]!] = unquote(match[2]!);
+  }
+  return {
+    ...(fields.default || fields.model ? { default: fields.default || fields.model } : {}),
+    ...(fields.provider ? { provider: fields.provider } : {}),
+    ...(fields.base_url ? { baseUrl: fields.base_url } : {}),
+    ...(fields.api_key ? { apiKey: fields.api_key } : {}),
+  };
+}
+
+const LOOPBACK = new Set(['localhost', '127.0.0.1', '[::1]', '::1']);
+const MAX_MODELS = 500;
+
+interface HermesModelConfig {
+  defaultModel?: string;
+  provider?: string;
+  /** The profile's endpoint, only when it runs on this computer (loopback http/https). */
+  local?: { url: URL; apiKey?: string };
+}
+
+/** A profile's `model:` block; `undefined` when its config file cannot be read. */
+async function readHermesModelConfig(env: Env, homeDirectory: string, profile: string): Promise<HermesModelConfig | undefined> {
+  if (profile !== 'default' && !HERMES_PROFILE_PATTERN.test(profile)) throw new Error('Unknown Hermes profile.');
+  const root = hermesRoot(env, homeDirectory);
+  const profileHome = profile === 'default' ? root : path.join(root, 'profiles', profile);
+  let text: string;
+  try { text = await readFile(path.join(profileHome, 'config.yaml'), 'utf8'); } catch { return undefined; }
+  const block = parseHermesModelBlock(text);
+  let url: URL | undefined;
+  try { url = block.baseUrl ? new URL(block.baseUrl) : undefined; } catch { url = undefined; }
+  const local = url && /^https?:$/.test(url.protocol) && LOOPBACK.has(url.hostname) ? url : undefined;
+  // The key is only needed (and only resolved) for an endpoint on this computer.
+  const apiKey = local && block.apiKey ? await resolveHermesSecret(block.apiKey, profileHome, env) : undefined;
+  return {
+    ...(block.default ? { defaultModel: safeLabel(block.default, 200) } : {}),
+    ...(block.provider ? { provider: safeLabel(block.provider, 60) } : {}),
+    ...(local ? { local: { url: local, ...(apiKey ? { apiKey } : {}) } } : {}),
+  };
+}
+
+const ENV_REFERENCE = /^\$\{(?:env:)?([A-Za-z_][A-Za-z0-9_]*)\}$/;
+
+/** One variable from a dotenv file (`NAME=value`, optional `export` and quotes); comments are skipped. */
+export function readDotenvValue(text: string, name: string): string | undefined {
+  for (const line of text.split(/\r?\n/)) {
+    const match = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/.exec(line);
+    if (!match || match[1] !== name) continue;
+    let value = match[2]!.trim();
+    const quoted = /^(['"])(.*)\1$/.exec(value);
+    value = quoted ? quoted[2]! : value.replace(/\s+#.*$/, '').trim();
+    return value || undefined;
+  }
+  return undefined;
+}
+
+/**
+ * A config value as Hermes reads it: `${VAR}` / `${env:VAR}` comes from the profile's own `.env`
+ * (Hermes loads it for that profile), else from the environment; other values are used as written.
+ */
+async function resolveHermesSecret(raw: string, profileHome: string, env: Env): Promise<string | undefined> {
+  const reference = ENV_REFERENCE.exec(raw.trim());
+  if (!reference) return raw.includes('${') ? undefined : raw;
+  const name = reference[1]!;
+  const fromFile = await readFile(path.join(profileHome, '.env'), 'utf8').then(text => readDotenvValue(text, name), () => undefined);
+  return fromFile ?? (env[name]?.trim() || undefined);
+}
+
+const endpointUrl = (url: URL, route: string) => `${url.href.replace(/\/+$/, '')}/${route}`;
+const authorization = (apiKey: string | undefined): Record<string, string> => apiKey ? { Authorization: `Bearer ${apiKey}` } : {};
+
+/**
+ * A Hermes profile's default model, plus the models its endpoint offers when that endpoint runs on
+ * this computer (9Router, OmniRoute, Ollama, …). Remote providers are never queried, and the API key
+ * read from the profile is only sent to that local endpoint and never returned.
+ */
+export async function hermesModelCatalog(env: Env, homeDirectory: string, profile: string,
+  fetchImpl: typeof fetch = fetch, timeoutMs = 2_500): Promise<HermesModelCatalog> {
+  const config = await readHermesModelConfig(env, homeDirectory, profile);
+  if (!config) return { profile, models: [], source: 'none', error: 'config-missing' };
+  const { defaultModel } = config;
+  const base = { profile, ...(defaultModel ? { defaultModel } : {}), ...(config.provider ? { provider: config.provider } : {}) };
+  if (!config.local) return { ...base, models: [], source: defaultModel ? 'config' : 'none' };
+  const { url, apiKey } = config.local;
+  const endpoint = url.host;
+  try {
+    const response = await fetchImpl(endpointUrl(url, 'models'), {
+      headers: { Accept: 'application/json', ...authorization(apiKey) },
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (!response.ok) return { ...base, endpoint, models: [], source: 'config', error: `http-${response.status}` };
+    const body = await response.json() as { data?: unknown; models?: unknown };
+    const list = Array.isArray(body.data) ? body.data : Array.isArray(body.models) ? body.models : [];
+    const ids = list.map(item => typeof item === 'string' ? item : item && typeof item === 'object' ? (item as { id?: unknown; name?: unknown }).id ?? (item as { name?: unknown }).name : undefined)
+      .filter((id): id is string => typeof id === 'string' && id.trim().length > 0 && id.length <= 200)
+      .map(id => safeLabel(id, 200));
+    const models = [...new Set(ids)].sort((a, b) => a.localeCompare(b)).slice(0, MAX_MODELS);
+    return { ...base, endpoint, models, source: 'endpoint' };
+  } catch {
+    return { ...base, endpoint, models: [], source: 'config', error: 'unreachable' };
+  }
+}
+
+export interface HermesCompletionRequest {
+  profile: string;
+  model: string;
+  system: string;
+  user: string;
+  signal: AbortSignal;
+}
+
+/** Why a Hermes profile's endpoint could not answer; the message never contains the key or the reply. */
+export class HermesEndpointError extends Error {
+  constructor(readonly reason: 'config-missing' | 'remote' | 'http' | 'invalid-reply', message: string) {
+    super(message);
+    this.name = 'HermesEndpointError';
+  }
+}
+
+/**
+ * One short, tool-free chat completion against a Hermes profile's model endpoint
+ * (`POST <base_url>/chat/completions`, OpenAI-compatible), used to plan a team.
+ * Only endpoints on this computer are asked: a remote provider throws a `remote`
+ * error without any request, and the profile's API key goes to that local endpoint only.
+ */
+export async function hermesComplete(env: Env, homeDirectory: string, request: HermesCompletionRequest, fetchImpl: typeof fetch = fetch): Promise<string> {
+  const config = await readHermesModelConfig(env, homeDirectory, request.profile);
+  if (!config) throw new HermesEndpointError('config-missing', 'the Hermes profile has no readable config.yaml');
+  if (!config.local) throw new HermesEndpointError('remote', 'the Hermes profile uses a model endpoint that is not on this computer');
+  const { url, apiKey } = config.local;
+  const response = await fetchImpl(endpointUrl(url, 'chat/completions'), {
+    method: 'POST',
+    headers: { Accept: 'application/json', 'Content-Type': 'application/json', ...authorization(apiKey) },
+    body: JSON.stringify({
+      model: request.model, stream: false, temperature: 0.3, max_tokens: 12_000,
+      messages: [{ role: 'system', content: request.system }, { role: 'user', content: request.user }],
+    }),
+    signal: request.signal,
+  });
+  if (!response.ok) throw new HermesEndpointError('http', `the endpoint answered HTTP ${response.status}`);
+  const body = await response.json().catch(() => undefined) as { choices?: { message?: { content?: unknown } }[] } | undefined;
+  const content = body?.choices?.[0]?.message?.content;
+  const text = typeof content === 'string' ? content
+    : Array.isArray(content) ? content.map(part => part && typeof part === 'object' && typeof (part as { text?: unknown }).text === 'string' ? (part as { text: string }).text : '').join('')
+      : '';
+  if (!text.trim()) throw new HermesEndpointError('invalid-reply', 'the endpoint returned no text');
+  return text;
+}
+
+/** The model a Hermes profile runs by default (from its `config.yaml`), if any. */
+export async function hermesDefaultModel(env: Env, homeDirectory: string, profile: string): Promise<string | undefined> {
+  return (await readHermesModelConfig(env, homeDirectory, profile).catch(() => undefined))?.defaultModel;
+}
+
 export async function discoverRuntimes(env: Env, homeDirectory: string): Promise<RuntimeInfo[]> {
   const executable = await findHermes(env, homeDirectory);
   return [
@@ -89,12 +254,41 @@ export async function discoverRuntimes(env: Env, homeDirectory: string): Promise
   ];
 }
 
+const reasoningSupport = new Map<string, Promise<boolean>>();
+
+/**
+ * Whether this Hermes executable accepts `--reasoning` (read once from `hermes chat --help`,
+ * which starts no session). Older versions do not, so their sessions offer no effort choice.
+ */
+export function hermesSupportsReasoning(executable: string, env: Env, timeoutMs = 5_000): Promise<boolean> {
+  let known = reasoningSupport.get(executable);
+  if (!known) {
+    known = new Promise<boolean>(resolve => {
+      let output = '';
+      let child: ChildProcess;
+      try {
+        child = spawn(executable, ['chat', '--help'], { env: hermesEnvironment(env), shell: false, stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true, timeout: timeoutMs });
+      } catch { resolve(false); return; }
+      child.stdout?.setEncoding('utf8');
+      child.stdout?.on('data', (chunk: string) => { if (output.length < 64_000) output += chunk; });
+      child.on('error', () => resolve(false));
+      child.on('close', () => resolve(/(^|[\s[])--reasoning\b/m.test(output)));
+    });
+    reasoningSupport.set(executable, known);
+    // A failed probe (for example a timeout) is tried again next time.
+    void known.then(supported => { if (!supported) setTimeout(() => { if (reasoningSupport.get(executable) === known) reasoningSupport.delete(executable); }, 60_000).unref(); });
+  }
+  return known;
+}
+
 export interface HermesTurnOptions {
   executable: string;
   cwd: string;
   prompt: string;
   profile: string;
   model?: string;
+  /** Only for Hermes versions whose `chat --help` lists `--reasoning` (see `hermesSupportsReasoning`). */
+  reasoning?: Effort;
   resumeSessionId?: string;
   yolo: boolean;
   env: Env;
@@ -102,6 +296,8 @@ export interface HermesTurnOptions {
   emit: (body: EventBody) => void;
   /** Time between SIGTERM and SIGKILL when the turn is stopped. */
   killGraceMs?: number;
+  /** The enabled team's members: Hermes delegations that name one are shown as that subagent. */
+  team?: readonly Pick<TeamMember, 'id' | 'name' | 'role'>[];
 }
 
 export interface HermesTurnResult {
@@ -144,9 +340,10 @@ export async function runHermesTurn(options: HermesTurnOptions): Promise<HermesT
   const plan = adapter.plan({
     cwd: options.cwd, prompt: options.prompt, profile: options.profile, yolo: options.yolo,
     ...(options.model ? { model: options.model } : {}),
+    ...(options.reasoning ? { reasoning: options.reasoning } : {}),
     ...(options.resumeSessionId ? { resumeSessionId: options.resumeSessionId } : {}),
   });
-  const parse = adapter.createStreamParser();
+  const parse = adapter.createStreamParser(options.team?.length ? { team: options.team } : {});
   const finish = (outcome: HermesTurnResult['outcome'], extra: { error?: string; result?: HermesResult; model?: string } = {}) => {
     if (outcome === 'completed') emit({ type: 'turn.completed', ...(extra.model ? { model: extra.model } : {}), ...(extra.result?.usage ? { usage: extra.result.usage } : {}) });
     else emit({ type: 'turn.failed', error: extra.error ?? 'Stopped by the user.' });

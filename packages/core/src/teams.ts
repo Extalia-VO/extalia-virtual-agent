@@ -160,6 +160,34 @@ export function decodeAgentTeam(raw: unknown): DecodeResult<AgentTeam> {
   });
 }
 
+/**
+ * v0.0.47: the team a new session starts with. A team the caller passes wins,
+ * `null` starts the session without one, and otherwise the session gets its own
+ * copy of the workspace's default team (later edits of either never touch the other).
+ */
+export function initialSessionTeam(workspaceTeam: AgentTeam | undefined, requested: AgentTeam | null | undefined): AgentTeam | undefined {
+  if (requested === null) return undefined;
+  const team = requested ?? workspaceTeam;
+  return team ? JSON.parse(JSON.stringify(team)) as AgentTeam : undefined;
+}
+
+/**
+ * v0.0.47: `team` with every member whose name is already in use in the Office
+ * (`taken`, case-insensitive; for example the members of an earlier session that
+ * copied the same workspace default) renamed to a free generated full name of the
+ * same gender. Ids, roles, tasks and models stay. `taken` gains the names kept.
+ */
+export function withDistinctMemberNames(team: AgentTeam, taken: Set<string>, seed: string): AgentTeam {
+  const members = team.members.map(member => {
+    const key = member.name.trim().toLowerCase();
+    if (!taken.has(key)) { taken.add(key); return member; }
+    const identity = generateFullName(`${seed}:${member.id}`, taken, member.gender);
+    taken.add(identity.name.toLowerCase());
+    return { ...member, name: identity.name, gender: identity.gender };
+  });
+  return { ...team, members };
+}
+
 /** Short friendly names (before v0.0.30); new members get full names from `generateFullName`. */
 export const TEAM_NAMES: readonly string[] = [
   'Ava', 'Milo', 'Nova', 'Iris', 'Leo', 'Kai', 'Luna', 'Orion', 'Sage', 'Theo', 'Zara', 'Rio', 'Juno', 'Ezra', 'Mira', 'Finn',

@@ -300,3 +300,105 @@ describe('planning a team for a Hermes Agent workspace', () => {
     expect(await host.planTeam(workspace.id, { goal: 'x', count: 3, allowedModels: [] })).toMatchObject({ source: 'heuristic', note: expect.stringContaining('not a usable plan') });
   });
 });
+
+describe('v0.0.47 workspace default team', () => {
+  it('saves, validates and removes the default team; it persists across a restart and editing the workspace keeps it', async () => {
+    const first = await setup(done);
+    const workspace = await nativeWorkspace(first.host, first.project);
+    await expect(first.host.saveWorkspaceTeam(workspace.id, { ...TEAM, members: [{ ...TEAM.members[0]!, models: ['nope'] }] })).rejects.toThrow(/not one of the team's allowed models/);
+    await expect(first.host.saveWorkspaceTeam('w_missing', TEAM)).rejects.toThrow(/no longer exists/);
+    const state = await first.host.saveWorkspaceTeam(workspace.id, TEAM);
+    expect(state.workspaces[0]!.team).toMatchObject({ ...TEAM, updatedAt: expect.any(String) });
+    // Editing the workspace (name, permissions …) keeps its default team.
+    const edited = await first.host.saveWorkspace({ id: workspace.id, name: 'Renamed', projectLocation: first.project, connectionId: workspace.providerProfileId!, permissions: { fileWrite: 'ask', commands: 'ask' } });
+    expect(edited.workspaces[0]!.team?.members.map(member => member.name)).toEqual(['Ava', 'Milo']);
+    const session = await first.host.createSession(workspace.id);
+    await runtimes.pop()!.close();
+
+    const second = await setup(done, first.root);
+    const reloaded = await second.host.getState();
+    expect(reloaded.workspaces[0]!.team?.members.map(member => member.id)).toEqual(['m-ava', 'm-milo']);
+    expect(reloaded.sessions.find(item => item.id === session.id)?.team).toEqual({ enabled: true, size: 2 });
+    expect((await second.host.saveWorkspaceTeam(workspace.id, null)).workspaces[0]!.team).toBeUndefined();
+    // Removing the default leaves existing sessions' teams alone; new sessions start without one.
+    expect(await second.host.getSessionTeam(session.id)).toMatchObject({ enabled: true });
+    expect((await second.host.createSession(workspace.id)).team).toBeUndefined();
+  });
+
+  it('new sessions copy the default: an explicit team wins, null starts without one, and the copies are independent', async () => {
+    const context = await setup(done);
+    const workspace = await nativeWorkspace(context.host, context.project);
+    await context.host.saveWorkspaceTeam(workspace.id, TEAM);
+
+    const inherited = await context.host.createSession(workspace.id);
+    expect(inherited.team).toEqual({ enabled: true, size: 2 });
+    const copy = (await context.host.getSessionTeam(inherited.id))!;
+    expect(copy.members.map(member => member.name)).toEqual(['Ava', 'Milo']);
+
+    const explicit = await context.host.createSession(workspace.id, { team: { ...TEAM, members: [{ ...TEAM.members[1]!, name: 'Rex' }] } });
+    expect(explicit.team).toEqual({ enabled: true, size: 1 });
+    const none = await context.host.createSession(workspace.id, { team: null });
+    expect(none.team).toBeUndefined();
+    expect(await context.host.getSessionTeam(none.id)).toBeUndefined();
+
+    // A second copy keeps roles and ids but takes free names: names stay unique in the Office.
+    const second = (await context.host.getSessionTeam((await context.host.createSession(workspace.id)).id))!;
+    expect(second.members.map(member => member.id)).toEqual(['m-ava', 'm-milo']);
+    expect(second.members.map(member => member.role)).toEqual(['Researcher', 'Reviewer']);
+    expect(second.members.some(member => ['Ava', 'Milo'].includes(member.name))).toBe(false);
+
+    // Editing a session's team never changes the default, and vice versa.
+    await context.host.saveSessionTeam(inherited.id, { ...copy, members: [copy.members[0]!] });
+    expect((await context.host.getState()).workspaces[0]!.team?.members).toHaveLength(2);
+    await context.host.saveWorkspaceTeam(workspace.id, { ...TEAM, enabled: false });
+    expect((await context.host.getSessionTeam(inherited.id))?.members).toHaveLength(1);
+    expect((await context.host.getSessionTeam(inherited.id))?.enabled).toBe(true);
+  });
+
+  it('every turn of a session with an enabled team carries it (team block + delegate_task); a disabled team is never applied', async () => {
+    const context = await setup(done);
+    const workspace = await nativeWorkspace(context.host, context.project);
+    await context.host.saveWorkspaceTeam(workspace.id, TEAM);
+    const session = await context.host.createSession(workspace.id);
+    for (const text of ['First request', 'Second request', 'Third request']) expect((await turn(context, session.id, text)).ended.body.type).toBe('turn.completed');
+    const leads = context.scripted.requests.filter(request => !request.worker);
+    expect(leads).toHaveLength(3);
+    for (const lead of leads) {
+      expect(lead.system).toContain('You lead a team of subagents');
+      expect(lead.system).toContain('- Ava (Researcher): Find the login call sites');
+      expect(lead.tools).toContain('delegate_task');
+    }
+
+    await context.host.saveSessionTeam(session.id, { ...(await context.host.getSessionTeam(session.id))!, enabled: false });
+    const from = context.scripted.requests.length;
+    await turn(context, session.id, 'Fourth request');
+    const off = context.scripted.requests.slice(from).filter(request => !request.worker);
+    expect(off[0]?.system).not.toContain('You lead a team of subagents');
+    // Orchestration is off on the connection: without an enabled team there is no delegation tool.
+    expect(off[0]?.tools).not.toContain('delegate_task');
+
+    // A disabled default is copied disabled and not applied either.
+    await context.host.saveWorkspaceTeam(workspace.id, { ...TEAM, enabled: false });
+    const disabled = await context.host.createSession(workspace.id);
+    expect(disabled.team).toEqual({ enabled: false, size: 2 });
+    const mark = context.scripted.requests.length;
+    await turn(context, disabled.id, 'Hello');
+    expect(context.scripted.requests.slice(mark)[0]?.system).not.toContain('You lead a team of subagents');
+  });
+
+  it('a team written into a prompt merges into the inherited team', async () => {
+    const context = await setup(done);
+    const workspace = await nativeWorkspace(context.host, context.project);
+    await context.host.saveWorkspaceTeam(workspace.id, TEAM);
+    const session = await context.host.createSession(workspace.id);
+    await turn(context, session.id, 'Build it:\nSubagent A:\n- Name: Zara Quinn\n- Role: Tester\n- Tugas: Write the tests');
+    const team = (await context.host.getSessionTeam(session.id))!;
+    expect(team.members.map(member => member.name)).toEqual(['Ava', 'Milo', 'Zara Quinn']);
+    await turn(context, session.id, 'Next');
+    const leads = context.scripted.requests.filter(request => !request.worker);
+    expect(leads.at(-1)?.system).toContain('Zara Quinn');
+    expect(leads.at(-1)?.system).toContain('- Ava (Researcher)');
+    // The default stays as saved.
+    expect((await context.host.getState()).workspaces[0]!.team?.members).toHaveLength(2);
+  });
+});

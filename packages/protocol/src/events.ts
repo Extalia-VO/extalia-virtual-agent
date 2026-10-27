@@ -30,6 +30,28 @@ export type SessionControl = 'managed' | 'observed';
 export type AgentState = 'idle' | 'thinking' | 'working' | 'waiting' | 'delegating' | 'blocked' | 'offline';
 export const AGENT_STATES: readonly AgentState[] = ['idle', 'thinking', 'working', 'waiting', 'delegating', 'blocked', 'offline'];
 
+/**
+ * Optional nuance of an agent state that the source states explicitly (v0.0.38):
+ * `planning` (writing a plan or to-do list), `approval` (a tool waits for the
+ * user's permission), `input` (the agent waits for the user's answer or next
+ * prompt), `compacting` (summarizing its context), `interrupted` (the user stopped
+ * the turn), `error` (the turn failed) and `ended` (the session closed).
+ */
+export type AgentPhase = 'planning' | 'approval' | 'input' | 'compacting' | 'interrupted' | 'error' | 'ended';
+export const AGENT_PHASES: readonly AgentPhase[] = ['planning', 'approval', 'input', 'compacting', 'interrupted', 'error', 'ended'];
+
+/**
+ * Why a turn or an agent stopped, when the source says so (v0.0.43): it ran out of
+ * tokens, credit or plan quota (`quota`), hit a request rate limit (`rate-limit`),
+ * the provider was overloaded or failing (`overloaded`), its sign-in or key is no
+ * longer valid (`auth`), the conversation no longer fits the context window
+ * (`context`), the connection or process broke off (`crash`), or the user stopped
+ * it (`interrupted`). Optional on `turn.failed`, `agent.state` and `subagent.state`;
+ * readers treat a missing reason as a generic failure.
+ */
+export type StopReason = 'quota' | 'rate-limit' | 'overloaded' | 'auth' | 'context' | 'crash' | 'interrupted';
+export const STOP_REASONS: readonly StopReason[] = ['quota', 'rate-limit', 'overloaded', 'auth', 'context', 'crash', 'interrupted'];
+
 /** Coarse category of what an agent is doing, independent of the native tool name. */
 export type ActivityKind = 'edit' | 'command' | 'test' | 'search' | 'read' | 'web' | 'delegate' | 'knowledge' | 'think' | 'tool';
 export const ACTIVITY_KINDS: readonly ActivityKind[] = ['edit', 'command', 'test', 'search', 'read', 'web', 'delegate', 'knowledge', 'think', 'tool'];
@@ -53,26 +75,38 @@ export interface EventSource {
   adapterVersion?: string;
 }
 
+/** What a prompt event records about an attached file: its name, kind and size, never its contents. */
+export interface PromptAttachmentSummary {
+  name: string;
+  kind: 'image' | 'text' | 'file';
+  size: number;
+  /**
+   * The SHA-256 of the file's bytes when the local host keeps a private copy it can show (images of observed
+   * transcripts). Only `AgentHostApi.attachmentPreview` of the same session resolves it.
+   */
+  ref?: string;
+}
+
 export type EventBody =
   // Session lifecycle
   | { type: 'session.started'; control: SessionControl; title?: string; model?: string; cwd?: string }
   | { type: 'session.updated'; revision: string; messageCount: number }
   | { type: 'session.ended'; reason?: string }
   // Conversation
-  | { type: 'prompt.submitted'; text: string; via: 'extalia' | 'native' }
+  | { type: 'prompt.submitted'; text: string; via: 'extalia' | 'native'; attachments?: PromptAttachmentSummary[] }
   | { type: 'user.intervention'; action: InterventionAction; text?: string }
   | { type: 'model.thinking' }
   | { type: 'model.delta'; text: string }
   | { type: 'model.completed'; text: string; model?: string; usage?: Usage }
   | { type: 'turn.completed'; summary?: string; model?: string; usage?: Usage; costUsd?: number }
-  | { type: 'turn.failed'; error: string }
+  | { type: 'turn.failed'; error: string; reason?: StopReason }
   // Agents (envelope.agentId identifies the agent)
   | { type: 'agent.created'; name: string; role?: string; parentAgentId?: string }
-  | { type: 'agent.state'; state: AgentState; activity?: ActivityKind; summary?: string; target?: string; progress?: number }
+  | { type: 'agent.state'; state: AgentState; activity?: ActivityKind; summary?: string; target?: string; progress?: number; phase?: AgentPhase; reason?: StopReason }
   | { type: 'agent.stopped'; reason?: string }
   | { type: 'agent.error'; message: string; recoverable?: boolean }
-  | { type: 'subagent.spawned'; subagentId: string; role?: string; label?: string }
-  | { type: 'subagent.state'; subagentId: string; state: AgentState; summary?: string }
+  | { type: 'subagent.spawned'; subagentId: string; role?: string; label?: string; model?: string }
+  | { type: 'subagent.state'; subagentId: string; state: AgentState; summary?: string; phase?: AgentPhase; reason?: StopReason }
   // Tools, commands and files
   | { type: 'tool.started'; toolCallId?: string; tool: string; kind: ActivityKind; label: string; target?: string }
   | { type: 'tool.output'; toolCallId?: string; text: string }

@@ -119,6 +119,12 @@ describe('Anthropic provider', () => {
     expect(body.tools[0]).toMatchObject({ name: 'read_file', eager_input_streaming: true });
   });
 
+  it('sends no Authorization header to a keyless 9Router', async () => {
+    const { fetch, requests } = fakeFetch(() => sse([{ choices: [{ delta: { content: 'ok' }, finish_reason: 'stop' }] }, '[DONE]']));
+    await createProvider(connection({ preset: '9router', baseUrl: 'http://localhost:20128/v1', model: 'auto' }), undefined, fetch).complete({ system: '', messages: [{ role: 'user', text: 'hi' }], tools: [] });
+    expect(new Headers(requests[0]?.init?.headers).has('authorization')).toBe(false);
+  });
+
   it('does not send Anthropic-only options to routers', async () => {
     const { fetch, requests } = fakeFetch(() => sse(anthropicStream('end_turn'), true));
     const provider = createProvider(connection({ preset: '9router', api: 'anthropic-messages', baseUrl: 'http://127.0.0.1:9999', model: 'any' }), undefined, fetch);
@@ -144,5 +150,93 @@ describe('Anthropic provider', () => {
       { role: 'tool', results: [{ toolCallId: 't1', name: 'x', content: 'ok', isError: false }] },
     ]);
     expect(messages[1]).toEqual({ role: 'user', content: [{ type: 'tool_result', tool_use_id: 't1', content: 'ok' }] });
+  });
+});
+
+describe('OpenAI-compatible usage (FR-04)', () => {
+  const textStream = (usageChunks: unknown[]) => sse([
+    { choices: [{ delta: { content: 'ok' } }] },
+    { choices: [{ delta: {}, finish_reason: 'stop' }] },
+    ...usageChunks,
+    '[DONE]',
+  ]);
+  const run = (baseUrl: string, fetch: FetchLike, system = '') => createProvider(connection({ baseUrl }), undefined, fetch)
+    .complete({ system, messages: [{ role: 'user', text: 'hi' }], tools: [] });
+
+  it('requests include_usage and reads usage from the final chunk after null-usage chunks', async () => {
+    const { fetch, requests } = fakeFetch(() => textStream([
+      { choices: [], usage: null },
+      { choices: [], usage: { prompt_tokens: 12, completion_tokens: 5, prompt_tokens_details: { cached_tokens: 4 } } },
+    ]));
+    const result = await run('http://127.0.0.1:9201/v1', fetch);
+    expect(JSON.parse(String(requests[0]?.init?.body))).toMatchObject({ stream_options: { include_usage: true } });
+    expect(result.usage).toEqual({ inputTokens: 12, outputTokens: 5, cachedInputTokens: 4 });
+    expect(requests).toHaveLength(1);
+  });
+
+  it('reads input_tokens/output_tokens and nested usage on the last delta', async () => {
+    const top = await run('http://127.0.0.1:9202/v1', fakeFetch(() => textStream([{ choices: [], usage: { input_tokens: 3, output_tokens: 2 } }])).fetch);
+    expect(top.usage).toEqual({ inputTokens: 3, outputTokens: 2 });
+    const nested = await run('http://127.0.0.1:9203/v1', fakeFetch(() => sse([
+      { choices: [{ delta: { content: 'ok' }, finish_reason: 'stop', usage: { prompt_tokens: 7, completion_tokens: 1 } }] },
+      '[DONE]',
+    ])).fetch);
+    expect(nested.usage).toEqual({ inputTokens: 7, outputTokens: 1 });
+  });
+
+  it('merges usage split across chunks and ignores malformed counts', async () => {
+    const result = await run('http://127.0.0.1:9204/v1', fakeFetch(() => textStream([
+      { choices: [], usage: { prompt_tokens: 9, completion_tokens: '4' } },
+      { choices: [], usage: { completion_tokens: 6 } },
+    ])).fetch);
+    expect(result.usage).toEqual({ inputTokens: 9, outputTokens: 6 });
+  });
+
+  it('keeps usage unknown, never zero, when the server reports none', async () => {
+    const result = await run('http://127.0.0.1:9205/v1', fakeFetch(() => textStream([{ choices: [], usage: null }])).fetch);
+    expect(result.usage).toBeUndefined();
+    const empty = await run('http://127.0.0.1:9206/v1', fakeFetch(() => textStream([{ choices: [], usage: {} }])).fetch);
+    expect(empty.usage).toBeUndefined();
+  });
+
+  it('retries once without stream_options after a 400 and remembers that per base URL', async () => {
+    const { fetch, requests } = fakeFetch(request => JSON.parse(String(request.init?.body)).stream_options
+      ? Response.json({ error: { message: 'Unrecognized request argument supplied: stream_options' } }, { status: 400 })
+      : textStream([]));
+    const provider = createProvider(connection({ baseUrl: 'http://127.0.0.1:9207/v1' }), undefined, fetch);
+    const input = { system: '', messages: [{ role: 'user' as const, text: 'hi' }], tools: [] };
+
+    const first = await provider.complete(input);
+    expect(first.text).toBe('ok');
+    expect(first.usage).toBeUndefined();
+    expect(requests.map(request => 'stream_options' in JSON.parse(String(request.init?.body)))).toEqual([true, false]);
+
+    await provider.complete(input);
+    expect(requests).toHaveLength(3);
+    expect('stream_options' in JSON.parse(String(requests[2]?.init?.body))).toBe(false);
+  });
+
+  it('does not retry other 400s and surfaces them', async () => {
+    const { fetch, requests } = fakeFetch(() => Response.json({ error: { message: "This model's maximum context length is 8192 tokens." } }, { status: 400 }));
+    await expect(run('http://127.0.0.1:9208/v1', fetch)).rejects.toThrow(/returned 400: This model's maximum context length/);
+    expect(requests).toHaveLength(1);
+  });
+
+  it('does not memorize stream_options rejection when the plain retry also fails', async () => {
+    const { fetch, requests } = fakeFetch(request => JSON.parse(String(request.init?.body)).stream_options
+      ? Response.json({ error: { message: 'stream_options is not supported' } }, { status: 400 })
+      : Response.json({ error: { message: 'upstream down' } }, { status: 500 }));
+    const provider = createProvider(connection({ baseUrl: 'http://127.0.0.1:9209/v1' }), undefined, fetch);
+    await expect(provider.complete({ system: '', messages: [], tools: [] })).rejects.toThrow(/returned 500: upstream down/);
+    expect(requests).toHaveLength(2);
+    await expect(provider.complete({ system: '', messages: [], tools: [] })).rejects.toThrow(/returned 500/);
+    expect(requests).toHaveLength(4);
+    expect('stream_options' in JSON.parse(String(requests[2]?.init?.body))).toBe(true);
+  });
+
+  it('reads usage from a non-streamed JSON answer', async () => {
+    const { fetch } = fakeFetch(() => Response.json({ choices: [{ message: { content: 'ok' }, finish_reason: 'stop' }], usage: { prompt_tokens: 4, completion_tokens: 2 } }));
+    const result = await run('http://127.0.0.1:9210/v1', fetch);
+    expect(result).toMatchObject({ text: 'ok', usage: { inputTokens: 4, outputTokens: 2 } });
   });
 });

@@ -50,6 +50,12 @@ describe('connections', () => {
     expect(presetById('omniroute').defaults).toMatchObject({ memory: 'provider', skills: 'provider' });
   });
 
+  it('makes the 9Router key optional and keeps its local default endpoint', () => {
+    expect(presetById('9router')).toMatchObject({ apiKey: 'optional', baseUrl: 'http://localhost:20128/v1', local: true });
+    const keyless = decodeConnection({ ...base, credential: { kind: 'none' } });
+    expect(keyless.ok && keyless.value.credential).toEqual({ kind: 'none' });
+  });
+
   it('turns orchestration on by default and resolves tier models', () => {
     const legacy = decodeConnection(base);
     expect(legacy.ok && legacy.value.orchestration).toEqual({ enabled: true, maxDelegations: 3, tiers: {} });

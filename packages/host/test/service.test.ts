@@ -84,6 +84,8 @@ describe('agent host service', () => {
     await waitFor(events, event => event.body.type === 'agent.state' && (event.body as { state: string }).state === 'idle');
 
     expect(await readFile(path.join(project, 'hello.txt'), 'utf8')).toBe('Hello\n');
+    // The idle event is published before the session reservation is released; allow for a loaded runner.
+    for (let i = 0; i < 300 && runtime.isBusy(); i++) await new Promise(resolve => setTimeout(resolve, 10));
     expect(runtime.isBusy()).toBe(false);
     const stored = await host.sessionEvents(session.id);
     expect(stored.map(event => event.body.type)).toEqual(expect.arrayContaining(['session.started', 'prompt.submitted', 'tool.started', 'file.written', 'command.completed', 'turn.completed']));
@@ -109,7 +111,7 @@ describe('agent host service', () => {
     await waitFor(events, event => event.body.type === 'turn.failed', mark);
     expect(events.slice(mark).some(event => event.body.type === 'user.intervention')).toBe(true);
     await waitFor(events, event => event.body.type === 'agent.state' && (event.body as { state: string }).state === 'idle', mark);
-    for (let i = 0; i < 50 && runtime.isBusy(); i++) await new Promise(resolve => setTimeout(resolve, 10));
+    for (let i = 0; i < 300 && runtime.isBusy(); i++) await new Promise(resolve => setTimeout(resolve, 10));
     expect(runtime.isBusy()).toBe(false);
 
     await host.sendPrompt(session.id, 'second');
@@ -195,13 +197,32 @@ describe('agent host service', () => {
   it('keeps secrets out of state and refuses missing keys', async () => {
     const { runtime } = await setup();
     const { host } = runtime;
-    const input = { name: 'Router', preset: '9router' as const, api: 'openai-chat' as const, baseUrl: 'http://localhost:20128/v1', model: 'auto', credential: { kind: 'stored' as const }, features: { memory: 'extalia' as const, skills: 'off' as const } };
+    const input = { name: 'Router', preset: 'openai' as const, api: 'openai-chat' as const, baseUrl: 'https://api.openai.com/v1', model: 'gpt-6.1-sol', credential: { kind: 'stored' as const }, features: { memory: 'extalia' as const, skills: 'off' as const } };
     await expect(host.saveConnection(input)).rejects.toThrow(/API key/);
     const state = await host.saveConnection(input, 'sk-test-0123456789abcdef'); // extalia-allow-secret
     expect(state.connections[0]?.credentialStatus).toBe('ok');
     expect(JSON.stringify(state)).not.toContain('0123456789abcdef');
     expect(JSON.stringify(await host.getState())).not.toContain('0123456789abcdef');
     await expect(host.saveConnection({ ...input, features: { memory: 'provider', skills: 'off' } }, 'x')).rejects.toThrow(/does not manage memory/);
+  });
+
+  it('saves a 9Router connection without a key and reports it as not needed', async () => {
+    const { runtime } = await setup();
+    const { host } = runtime;
+    const input = { name: 'Local router', preset: '9router' as const, api: 'openai-chat' as const, baseUrl: 'http://localhost:20128/v1', model: 'auto', credential: { kind: 'none' as const }, features: { memory: 'extalia' as const, skills: 'off' as const } };
+    const state = await host.saveConnection(input);
+    expect(state.connections[0]).toMatchObject({ preset: '9router', baseUrl: 'http://localhost:20128/v1', credentialStatus: 'not-needed' });
+  });
+
+  it('keeps setup complete when the workflow switches to managed without a connection or workspace', async () => {
+    const { runtime } = await setup();
+    const { host } = runtime;
+    expect(await host.completeSetup('observe')).toMatchObject({ setupComplete: true, workflow: 'observe', connections: [], workspaces: [] });
+    expect(await host.setWorkflow('managed')).toMatchObject({ setupComplete: true, workflow: 'managed', connections: [], workspaces: [] });
+    expect(await host.setWorkflow('observe')).toMatchObject({ setupComplete: true, workflow: 'observe' });
+    // A fresh install is not marked complete by switching to managed; only finishing setup does that.
+    const fresh = await setup();
+    expect(await fresh.runtime.host.setWorkflow('managed')).toMatchObject({ setupComplete: false, workflow: 'managed' });
   });
 
   it('validates folders and refuses a second host on the same data', async () => {

@@ -6,6 +6,9 @@ import { discoverRuntimes, hermesProfiles, hermesRoot, runHermesTurn } from '../
 import { createAgentHost, type AgentHostRuntime } from '../src/service.js';
 import { useTempDirs } from './helpers.js';
 
+/** These tests start real processes (git, a fake hermes); a busy machine or CI runner needs more than the 5 s default. */
+const PROCESS_TEST_TIMEOUT_MS = 30_000;
+
 /**
  * A stand-in `hermes` executable: records its arguments, folder, prompt and
  * environment names to `$HERMES_HOME/calls.jsonl`, then prints scripted
@@ -47,6 +50,13 @@ process.stdin.on('end', () => {
       process.exitCode = 130;
     });
     out({ type: 'tool_use', name: 'terminal', tool_call_id: 'call_slow', input: { command: 'sleep 100' } });
+    return;
+  }
+  if (input.includes('DELEGATE')) {
+    const tasks = [{ goal: '[Elena Mark · Backend Engineer] Build the OTP route', context: 'Persona: pragmatic' }, { goal: 'Summarise the README', context: '' }];
+    out({ type: 'tool_use', name: 'delegate_task', tool_call_id: 'call_d', input: { tasks } });
+    out({ type: 'tool_result', name: 'delegate_task', tool_call_id: 'call_d', output: JSON.stringify({ status: 'spawned' }), duration_ms: 2, is_error: false });
+    out({ type: 'result', session_id: session, exit_code: 0, text: 'Delegated.', tokens: zero, duration_ms: 3 });
     return;
   }
   console.log('Some banner that is not JSON');
@@ -144,7 +154,7 @@ describe('Hermes Agent discovery', () => {
   });
 });
 
-describe('Hermes Agent workspaces', () => {
+describe('Hermes Agent workspaces', { timeout: PROCESS_TEST_TIMEOUT_MS }, () => {
   it('needs no model connection and validates the profile and model', async () => {
     const { host, project } = await setup();
     expect((await host.runtimes()).find(item => item.id === 'hermes')).toEqual({ id: 'hermes', available: true, profiles: ['default', 'work'] });
@@ -309,7 +319,7 @@ describe('Hermes Agent workspaces', () => {
   });
 });
 
-describe('runHermesTurn', () => {
+describe('runHermesTurn', { timeout: PROCESS_TEST_TIMEOUT_MS }, () => {
   it('kills a Hermes process that ignores SIGTERM after the grace period', async () => {
     const root = await tempDir();
     const executable = await fakeHermes(root);
@@ -337,5 +347,139 @@ describe('runHermesTurn', () => {
     });
     expect(result).toEqual({ outcome: 'failed' });
     expect(bodies.at(-2)).toMatchObject({ type: 'turn.failed', error: expect.stringContaining('could not be started') });
+  });
+});
+
+describe('Hermes Agent subagent teams', { timeout: PROCESS_TEST_TIMEOUT_MS }, () => {
+  const TEAM = {
+    enabled: true, allowedModels: ['ag/claude-sonnet', 'ag/gemini-flash'], goal: 'Ship the OTP endpoint', rules: ['Run the tests before reporting.'],
+    members: [
+      { id: 'm-elena', name: 'Elena Mark', gender: 'female' as const, role: 'Backend Engineer', task: 'Build POST /api/auth/otp', models: ['ag/claude-sonnet'], soul: 'Pragmatic, clean architect.', access: 'write' as const, scope: ['src/auth'], forbidden: ['.env'] },
+      { id: 'm-kaelen', name: 'Kaelen Vael', role: 'Security Reviewer', task: 'Audit the OTP flow', models: ['ag/gemini-flash'] },
+    ],
+  };
+
+  it('saves the team, prepends the team brief to the Hermes prompt and shows delegations as the named member', async () => {
+    const { runtime, host, events, project, hermesHome } = await setup();
+    const workspace = await hermesWorkspace(host, project);
+    await host.completeSetup();
+    const session = await host.createSession(workspace.id, { team: TEAM });
+    expect(session.team).toEqual({ enabled: true, size: 2 });
+    expect((await host.getSessionTeam(session.id))?.members.map(member => member.name)).toEqual(['Elena Mark', 'Kaelen Vael']);
+    expect(await host.saveSessionTeam(session.id, { ...TEAM, members: [TEAM.members[0]!] })).toMatchObject({ members: [{ id: 'm-elena' }] });
+    await host.saveSessionTeam(session.id, TEAM);
+
+    await host.sendPrompt(session.id, 'DELEGATE the OTP work');
+    await waitFor(events, ended(session.id));
+    await idle(runtime);
+
+    const [call] = await calls(hermesHome);
+    expect(call!.stdin.startsWith('<extalia-team>\n')).toBe(true);
+    expect(call!.stdin).toContain('delegate_task');
+    expect(call!.stdin).toContain('Delegate only when this request actually concerns a member\'s role, task or scope');
+    expect(call!.stdin).toContain('the user does not need to name them');
+    expect(call!.stdin).toContain('Handle small, quick or unrelated requests');
+    expect(call!.stdin).not.toContain('without being asked');
+    expect(call!.stdin).toContain('1. Elena Mark — Backend Engineer (may edit only src/auth; never edit .env)');
+    expect(call!.stdin).toContain('   Persona: Pragmatic, clean architect.');
+    expect(call!.stdin).toContain('2. Kaelen Vael — Security Reviewer (read-only)');
+    expect(call!.stdin).toContain('- Run the tests before reporting.');
+    // Models are not part of the brief: Hermes runs every child on one model.
+    expect(call!.stdin).not.toContain('ag/claude-sonnet');
+    expect(call!.stdin.endsWith('</extalia-team>\n\nDELEGATE the OTP work')).toBe(true);
+    // Hermes' own command line is unchanged.
+    expect(call!.args).toEqual(['-p', 'work', 'chat', '--query-file', '-', '--oneshot', '--format', 'stream-json', '--source', 'extalia', '--in', workspace.projectLocation]);
+
+    const bodies = (await host.sessionEvents(session.id)).map(event => event.body);
+    expect(bodies).toContainEqual({ type: 'prompt.submitted', text: 'DELEGATE the OTP work', via: 'extalia' });
+    expect(bodies).toContainEqual({ type: 'subagent.spawned', subagentId: 'm-elena', role: 'Backend Engineer', label: 'Elena Mark' });
+    expect(bodies).toContainEqual({ type: 'subagent.state', subagentId: 'm-elena', state: 'working', summary: '[Elena Mark · Backend Engineer] Build the OTP route' });
+    // A task that names no member is not attributed to one.
+    expect(bodies.filter(body => body.type === 'subagent.spawned')).toHaveLength(1);
+    expect(bodies).toContainEqual({ type: 'subagent.state', subagentId: 'm-elena', state: 'idle' });
+  });
+
+  it('applies a team written into a Hermes prompt and sends no brief when the team is off', async () => {
+    const { runtime, host, events, project, hermesHome } = await setup();
+    const workspace = await hermesWorkspace(host, project);
+    await host.completeSetup();
+    const session = await host.createSession(workspace.id);
+    const prompt = 'Build the OTP endpoint:\nSubagent A:\n- Name: Elena Mark\n- Role: Backend Engineer\n- Tugas: Build the route\nSubagent B:\n- Name: Kaelen Vael\n- Role: Reviewer\n- Tugas: Audit it';
+    await host.sendPrompt(session.id, prompt);
+    await waitFor(events, ended(session.id));
+    await idle(runtime);
+    const team = await host.getSessionTeam(session.id);
+    expect(team?.members.map(member => [member.name, member.role])).toEqual([['Elena Mark', 'Backend Engineer'], ['Kaelen Vael', 'Reviewer']]);
+    const [first] = await calls(hermesHome);
+    expect(first!.stdin).toContain('You lead a subagent team set up in Extalia from this prompt.');
+    expect(first!.stdin.endsWith(prompt)).toBe(true);
+    const spawned = (await host.sessionEvents(session.id)).flatMap(event => event.body.type === 'subagent.spawned' ? [event.body.label] : []);
+    expect(spawned).toEqual(['Elena Mark', 'Kaelen Vael']);
+
+    await host.saveSessionTeam(session.id, { ...team!, enabled: false });
+    const mark = events.length;
+    await host.sendPrompt(session.id, 'Plain request');
+    await waitFor(events, ended(session.id), mark);
+    expect((await calls(hermesHome))[1]!.stdin).toBe('Plain request');
+  });
+
+  it('v0.0.47: a session copies the workspace default team and every Hermes prompt (resumed and continued) carries the brief', async () => {
+    const { runtime, host, events, project, hermesHome } = await setup();
+    const workspace = await hermesWorkspace(host, project);
+    await host.completeSetup();
+    const saved = await host.saveWorkspaceTeam(workspace.id, TEAM);
+    expect(saved.workspaces[0]!.team?.members.map(member => member.name)).toEqual(['Elena Mark', 'Kaelen Vael']);
+    const session = await host.createSession(workspace.id);
+    expect(session.team).toEqual({ enabled: true, size: 2 });
+    for (const text of ['First', 'Second', 'Third']) {
+      const mark = events.length;
+      await host.sendPrompt(session.id, text);
+      await waitFor(events, ended(session.id), mark);
+      await idle(runtime);
+    }
+    const turns = await calls(hermesHome);
+    expect(turns).toHaveLength(3);
+    turns.forEach((call, index) => {
+      expect(call.stdin.startsWith('<extalia-team>\n')).toBe(true);
+      expect(call.stdin).toContain('1. Elena Mark — Backend Engineer');
+      expect(call.stdin.endsWith(`</extalia-team>\n\n${['First', 'Second', 'Third'][index]}`)).toBe(true);
+    });
+    // Later turns resume the Hermes session and still carry the brief.
+    expect(turns[1]!.args).toEqual(expect.arrayContaining(['--resume', 'fake_session_1']));
+    expect(turns[2]!.args).toEqual(expect.arrayContaining(['--resume', 'fake_session_1']));
+
+    // A conversation continued into the workspace copies the default team too: brief, then the carried context.
+    const at = (minute: number) => `2026-10-01T10:${String(minute).padStart(2, '0')}:00.000Z`;
+    const imported = await host.importPortable(JSON.stringify({
+      format: 'extalia.session.v1', title: 'Fix the login bug', importMode: 'imported',
+      provenance: { sourceId: 'codex', sourceSessionId: 'rollout-1', exportedAt: at(9) },
+      messages: [{ index: 0, role: 'user', content: 'Fix the login bug', createdAt: at(0) }, { index: 1, role: 'assistant', content: 'Found it in auth.ts.', createdAt: at(1) }],
+      startedAt: at(0), lastMessageAt: at(1),
+    }));
+    const continued = await host.continueSession({ kind: 'library', id: imported.state.library[0]!.id }, workspace.id);
+    expect(continued.team?.size).toBe(2);
+    for (const text of ['Please continue', 'And then']) {
+      const mark = events.length;
+      await host.sendPrompt(continued.id, text);
+      await waitFor(events, ended(continued.id), mark);
+      await idle(runtime);
+    }
+    const [firstContinued, secondContinued] = (await calls(hermesHome)).slice(3);
+    expect(firstContinued!.stdin.startsWith('<extalia-team>\n')).toBe(true);
+    expect(firstContinued!.stdin).toContain('Found it in auth.ts.');
+    expect(firstContinued!.stdin.endsWith('Please continue')).toBe(true);
+    expect(secondContinued!.stdin.startsWith('<extalia-team>\n')).toBe(true);
+    expect(secondContinued!.stdin.endsWith('</extalia-team>\n\nAnd then')).toBe(true);
+
+    // `team: null` starts without the default; a disabled default is never sent.
+    const plain = await host.createSession(workspace.id, { team: null });
+    expect(plain.team).toBeUndefined();
+    await host.saveWorkspaceTeam(workspace.id, { ...TEAM, enabled: false });
+    const off = await host.createSession(workspace.id);
+    const mark = events.length;
+    await host.sendPrompt(off.id, 'No team please');
+    await waitFor(events, ended(off.id), mark);
+    await idle(runtime);
+    expect((await calls(hermesHome)).at(-1)!.stdin).toBe('No team please');
   });
 });

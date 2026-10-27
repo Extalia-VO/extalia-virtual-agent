@@ -8,6 +8,9 @@ import { gitDiff, gitStatus, listFiles, parseGitStatus, readWorkspaceFile, READ_
 import { createAgentHost } from '../src/service.js';
 import { useTempDirs } from './helpers.js';
 
+/** These tests start real processes (git, a fake hermes); a busy machine or CI runner needs more than the 5 s default. */
+const PROCESS_TEST_TIMEOUT_MS = 30_000;
+
 const run = promisify(execFile);
 const tempDir = useTempDirs();
 const windows = process.platform === 'win32';
@@ -156,7 +159,7 @@ describe('parseGitStatus', () => {
   });
 });
 
-describe.skipIf(!hasGit)('git status and diff', () => {
+describe.skipIf(!hasGit)('git status and diff', { timeout: PROCESS_TEST_TIMEOUT_MS }, () => {
   it('reports not-a-repository', async () => {
     expect(await gitStatus(root, { env })).toEqual({ repository: false });
     await expect(gitDiff(root, undefined, { env })).rejects.toThrow(/not a Git repository/);
@@ -274,7 +277,7 @@ describe.skipIf(!hasGit)('git status and diff', () => {
   });
 });
 
-describe('agent host inspection methods', () => {
+describe('agent host inspection methods', { timeout: PROCESS_TEST_TIMEOUT_MS }, () => {
   it('serve the project folder of a workspace and refuse what the views may not read', async () => {
     const data = await tempDir('extalia-data-');
     const runtime = await createAgentHost({ kind: 'bridge', version: '0.0.0-test', dataDirectory: data, env: { EXTALIA_SECRET_STORE: 'memory', PATH: process.env.PATH } });

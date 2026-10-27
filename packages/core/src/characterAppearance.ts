@@ -4,12 +4,12 @@ import { decode, object, oneOf, type DecodeResult } from './validation.js';
  * Saved look of one Office character. Presentation is a style preset chosen by
  * the user; it is never inferred from a name, title, model or provider.
  */
-export const CHARACTER_PRESENTATIONS = ['feminine', 'masculine', 'neutral'] as const;
+export const CHARACTER_PRESENTATIONS = ['feminine', 'masculine'] as const;
 export type CharacterPresentation = (typeof CHARACTER_PRESENTATIONS)[number];
 
 export const CHARACTER_HAIR_STYLES = [
   'long', 'wavy', 'ponytail', 'bun', 'bob', 'medium', 'curly', 'afro',
-  'textured-crop', 'side-part', 'short-fade', 'undercut', 'slicked-back',
+  'textured-crop', 'side-part', 'short-fade', 'undercut', 'slicked-back', 'high-ponytail',
 ] as const;
 export type CharacterHairStyle = (typeof CHARACTER_HAIR_STYLES)[number];
 
@@ -27,7 +27,7 @@ export const CHARACTER_STATURES = ['default', 'commanding', 'tall', 'athletic', 
 export type CharacterStature = (typeof CHARACTER_STATURES)[number];
 
 /** Walking style; idle weight shift uses it until navigation exists. */
-export const CHARACTER_GAITS = ['feminine', 'masculine', 'neutral'] as const;
+export const CHARACTER_GAITS = ['feminine', 'masculine'] as const;
 export type CharacterGait = (typeof CHARACTER_GAITS)[number];
 
 export const CHARACTER_GLASSES = ['none', 'rectangular', 'round', 'rimless'] as const;
@@ -54,7 +54,7 @@ export interface CharacterAppearance {
   outfit: CharacterOutfit;
   top: CharacterTop;
   bottom: CharacterBottom;
-  /** Optional garment colours; generated palettes are used when omitted. */
+  /** Optional garment colors; generated palettes are used when omitted. */
   topColor?: string;
   bottomColor?: string;
   stature: CharacterStature;
@@ -86,7 +86,7 @@ function onlyKnown(value: Record<string, unknown>, known: ReadonlySet<string>, f
 }
 
 function color(value: unknown, field: string): string {
-  if (typeof value !== 'string' || !COLOR.test(value)) throw new Error(`${field}: expected a colour such as #3a4b5c.`);
+  if (typeof value !== 'string' || !COLOR.test(value)) throw new Error(`${field}: expected a color such as #3a4b5c.`);
   return value.toLowerCase();
 }
 
@@ -109,7 +109,7 @@ export function characterSessionId(characterId: string): string {
   return characterId.slice(0, characterId.indexOf(':'));
 }
 
-/** Strict reader: every field is a known value, colours are `#rrggbb`, sizes are bounded. */
+/** Strict reader: every field is a known value, colors are `#rrggbb`, sizes are bounded. */
 export function readCharacterAppearance(raw: unknown, field = 'appearance'): CharacterAppearance {
   const value = object(raw, field);
   onlyKnown(value, APPEARANCE_FIELDS, field);

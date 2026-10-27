@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { HermesAdapter, parseHermesToolOutput } from '../src/hermes.js';
+import { HermesAdapter, hermesTeamBrief, matchTeamMember, parseHermesToolOutput } from '../src/hermes.js';
 
 const line = (value: unknown) => JSON.stringify({ ...(value as object), timestamp: 1 });
 
@@ -33,6 +33,12 @@ describe('HermesAdapter', () => {
     expect(plan.args).not.toContain('--resume');
     expect(() => adapter.plan({ cwd: '/p', prompt: 'hi', profile: '--yolo' })).toThrow(/profile/);
     expect(() => adapter.plan({ cwd: '/p', prompt: 'hi', resumeSessionId: '-x' })).toThrow(/session/);
+  });
+
+  it('passes the reasoning effort only when asked and only known levels', () => {
+    expect(adapter.plan({ cwd: '/p', prompt: 'hi', model: 'example/model-2', reasoning: 'high' }).args.slice(-2)).toEqual(['--model=example/model-2', '--reasoning=high']);
+    expect(adapter.plan({ cwd: '/p', prompt: 'hi' }).args.some(arg => arg.startsWith('--reasoning'))).toBe(false);
+    expect(() => adapter.plan({ cwd: '/p', prompt: 'hi', reasoning: '--yolo' as never })).toThrow(/effort/);
   });
 
   it('parses tool output JSON: exit code, output and changed files', () => {
@@ -78,5 +84,31 @@ describe('HermesAdapter', () => {
     expect(parse(line({ type: 'result', session_id: '../bad id', exit_code: 1, text: '', error: 'credentials or agent init failed', tokens: {} }))).toEqual({
       events: [], result: { exitCode: 1, error: 'credentials or agent init failed' },
     });
+  });
+});
+
+describe('Hermes subagent teams', () => {
+  const members = [
+    { id: 'm-1', name: 'Elena Mark', role: 'Backend Engineer', models: ['a/x'] },
+    { id: 'm-2', name: 'Kaelen Vael', role: 'Security Reviewer', models: ['a/y'], access: 'write' as const },
+  ];
+
+  it('matches a delegated task to a member by name, then by a unique role', () => {
+    expect(matchTeamMember(members, '[Kaelen Vael · Security Reviewer] audit')?.id).toBe('m-2');
+    expect(matchTeamMember(members, 'As the security reviewer, audit the flow')?.id).toBe('m-2');
+    expect(matchTeamMember(members, 'Summarise the README')).toBeUndefined();
+  });
+
+  it('writes a brief without models and maps a failed delegation to a blocked member', () => {
+    const brief = hermesTeamBrief({ members, rules: ['Run tests'] });
+    expect(brief).toContain('2. Kaelen Vael — Security Reviewer (may edit within the workspace)');
+    expect(brief).not.toContain('a/x');
+    const parse = new HermesAdapter().createStreamParser({ team: members, newId: () => 'id' });
+    const started = parse(JSON.stringify({ type: 'tool_use', name: 'delegate_task', tool_call_id: 'c1', input: { goal: '[Elena Mark · Backend Engineer] build it' } }))!;
+    expect(started.events).toContainEqual({ type: 'subagent.spawned', subagentId: 'm-1', role: 'Backend Engineer', label: 'Elena Mark' });
+    const failed = parse(JSON.stringify({ type: 'tool_result', name: 'delegate_task', tool_call_id: 'c1', output: '{"error":"delegation disabled"}', is_error: true }))!;
+    expect(failed.events).toContainEqual({ type: 'subagent.state', subagentId: 'm-1', state: 'blocked', summary: 'Could not start' });
+    const done = parse(JSON.stringify({ type: 'result', exit_code: 0, text: 'ok' }))!;
+    expect(done.events.some(event => event.type === 'subagent.state')).toBe(false);
   });
 });

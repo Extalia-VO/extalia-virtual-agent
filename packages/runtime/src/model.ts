@@ -22,8 +22,16 @@ export interface ToolResultEntry {
  * provider's own content (`native`) so the same provider can replay it
  * unchanged, which some APIs require (for example reasoning blocks).
  */
+export type ModelImageType = 'image/png' | 'image/jpeg' | 'image/webp' | 'image/gif';
+
+/** An image a user attached to a turn: its type and base64 data (no data URL prefix). */
+export interface ModelImage {
+  mimeType: ModelImageType;
+  data: string;
+}
+
 export type ModelMessage =
-  | { role: 'user'; text: string }
+  | { role: 'user'; text: string; /** Sent with the turn that attached them; never kept in the stored history. */ images?: ModelImage[] }
   | { role: 'assistant'; text: string; toolCalls: ToolCall[]; native?: { api: ProviderApi; content: unknown } }
   | { role: 'tool'; results: ToolResultEntry[] };
 
@@ -50,6 +58,11 @@ export interface ModelResult {
   stop: StopReason;
   model?: string;
   usage?: Usage;
+  /**
+   * The size of this request's prompt in tokens, cache included (v0.0.48: the conversation's context in use).
+   * Absent when the provider reports no usage.
+   */
+  promptTokens?: number;
   /** Provider content to replay on the next request to the same API. */
   native?: { api: ProviderApi; content: unknown };
   /** Readable reason when the model declined. */
@@ -58,6 +71,8 @@ export interface ModelResult {
 
 export interface ModelProvider {
   readonly api: ProviderApi;
+  /** Whether user messages may carry images. Absent or true for the built-in adapters; false sends a text note instead. */
+  readonly images?: boolean;
   complete(request: ModelRequest): Promise<ModelResult>;
   /** Models the endpoint offers, when it can list them. */
   listModels(signal?: AbortSignal): Promise<string[]>;
@@ -69,6 +84,23 @@ export class ProviderError extends Error {
     super(message);
     this.name = 'ProviderError';
   }
+}
+
+/**
+ * Messages of quota, credit and rate-limit failures that some endpoints and
+ * routers send with an unusual status (400, 402, 403) or inside a stream.
+ * Context-length errors are not quota errors and never match.
+ */
+const QUOTA_MESSAGE = /insufficient[_ ]quota|quota|credit|billing|payment required|rate[_ -]?limit|too many requests|usage limit|limit (?:exceeded|reached)|exceeded your|out of tokens|tokens? (?:limit|budget) (?:exceeded|reached)/i;
+
+export function isQuotaMessage(message: string): boolean {
+  return QUOTA_MESSAGE.test(message) && !/context|prompt is too long|maximum.*length/i.test(message);
+}
+
+/** Whether a failed request may succeed later or on another model: rate limits, quota, credit, overload. */
+export function isRetryableStatus(status: number | undefined, message = ''): boolean {
+  if (status === undefined) return true;
+  return status === 402 || status === 408 || status === 429 || status >= 500 || isQuotaMessage(message);
 }
 
 export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;

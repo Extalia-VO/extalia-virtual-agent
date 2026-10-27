@@ -121,7 +121,7 @@ describe('memory', () => {
 });
 
 describe('skills', () => {
-  it('loads built-ins and lets user and workspace skills override them', async () => {
+  it('loads built-ins and lets user and allowed workspace skills override them', async () => {
     const dir = await temp();
     const user = path.join(dir, 'skills');
     const workspace = path.join(dir, 'project');
@@ -131,7 +131,10 @@ describe('skills', () => {
     await writeFile(path.join(workspace, '.extalia', 'skills', 'deploy', 'SKILL.md'), '---\nname: deploy\ndescription: Ship it\n---\nRun the deploy script.');
     await mkdir(path.join(user, 'broken'), { recursive: true });
     await writeFile(path.join(user, 'broken', 'SKILL.md'), 'no front matter');
-    const loaded = await loadSkills({ userDirectory: user, workspaceRoot: workspace });
+    const blocked = await loadSkills({ userDirectory: user, workspaceRoot: workspace });
+    // W0: a project skill waits for the user's consent, bound to its hash.
+    expect(blocked.skills.map(skill => skill.name)).not.toContain('deploy');
+    const loaded = await loadSkills({ userDirectory: user, workspaceRoot: workspace, workspaceConsent: { deploy: blocked.pending[0]!.sha256 } });
     const byName = Object.fromEntries(loaded.skills.map(skill => [skill.name, skill]));
     expect(byName['code-review']).toMatchObject({ source: 'user', description: 'Team review rules' });
     expect(byName.deploy).toMatchObject({ source: 'workspace' });
