@@ -16,6 +16,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.114] - 2026-10-27
+
+### Fixed
+
+- macOS Desktop smoke tests avoid the Skia Graphite compositor after hosted runners reported GPU device loss, while retaining full scene readiness checks.
+
 ## [0.4.113] - 2026-10-27
 
 ### Fixed

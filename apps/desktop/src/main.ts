@@ -22,6 +22,9 @@ if (smokeTest) {
     // Hosted Macs can blocklist WebGL; use native ANGLE because this Electron
     // distribution lacks the Vulkan loader required for macOS SwiftShader.
     app.commandLine.appendSwitch('ignore-gpu-blocklist');
+    // Hosted Apple Silicon runners can lose Dawn devices used by Skia Graphite.
+    // Keep the full WebGL scene smoke while using the stable compositor backend.
+    app.commandLine.appendSwitch('disable-skia-graphite');
   } else if (process.platform === 'linux' || process.platform === 'win32') {
     // Headless CI runners have no usable GPU. Opt into Chromium's software WebGL
     // only for the smoke test's bundled UI, before Electron initializes graphics.
