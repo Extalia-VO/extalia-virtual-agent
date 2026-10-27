@@ -1,43 +1,48 @@
 import { getCharacterHairOptions, type CharacterHairAsset } from '@extalia/core';
 import { presentationPreset, type AvatarModelVariant, type AvatarVisualConfig } from './appearance';
 
-/**
- * Source-derived GLB models are local-only: they live in the git-ignored folder
- * `apps/web/local-assets/avatars/` (see README.md) and are never committed. The
- * globs resolve to an empty map when the folder does not exist, so a public
- * clone builds, tests and renders with the procedural character instead.
- */
-const bodyUrls = import.meta.glob<string>('/local-assets/avatars/bodies/**/*.glb', { eager: true, query: '?url', import: 'default' });
-const hairUrls = import.meta.glob<string>('/local-assets/avatars/hair/*/*.glb', { eager: true, query: '?url', import: 'default' });
+// Vite selects public Blender models; explicit local development adds private fallback files.
+import { bodyUrls, hairUrls } from './sourceAvatarFiles';
 
 type UrlMap = Readonly<Record<string, string>>;
-
-/**
- * Development only: `?avatars=procedural` ignores the local models so renders that ship
- * (the splash loop, see docs/design/splash.md) never contain unlicensed source avatars.
- */
-const proceduralOnly = import.meta.env.DEV && typeof location !== 'undefined'
-  && new URLSearchParams(location.search).get('avatars') === 'procedural';
 
 export function bodyGenderGroup(variant: AvatarModelVariant): 'male' | 'female' {
   return variant === 'business-woman' || variant === 'female-casual' ? 'female' : 'male';
 }
 
-/** Bundled URL of a local body model, or `undefined` when the local asset is absent. */
+/** Bundled URL of a public Blender body, with a private fallback in local development. */
 export function bodyAssetUrl(variant: AvatarModelVariant, urls: UrlMap = bodyUrls): string | undefined {
-  const gender = bodyGenderGroup(variant);
-  return urls[`/local-assets/avatars/bodies/${gender}/${variant}.glb`]
-    ?? urls[`/local-assets/avatars/bodies/${variant}.glb`];
+  return publicBodyUrl(variant, urls) ?? bodyUrl('/local-assets', variant, urls);
 }
 
-/** Bundled URL of a local hair model (the detailed one when present), or `undefined` when absent. */
+function bodyUrl(root: string, variant: AvatarModelVariant, urls: UrlMap): string | undefined {
+  return urls[`${root}/avatars/bodies/${bodyGenderGroup(variant)}/${variant}.glb`]
+    ?? urls[`${root}/avatars/bodies/${variant}.glb`];
+}
+
+function publicBodyUrl(variant: AvatarModelVariant, urls: UrlMap): string | undefined {
+  return bodyUrl('/public-assets', variant, urls);
+}
+
+/** Prefer every public hair style over private fallback models, including private detailed hair. */
 export function hairAssetUrl(asset: CharacterHairAsset, urls: UrlMap = hairUrls): string | undefined {
-  return detailedHairUrl(asset, urls) ?? urls[`/local-assets/avatars/hair/${asset.group}/${asset.assetKey}.glb`];
+  return hairUrl('/public-assets', asset, urls) ?? hairUrl('/local-assets', asset, urls);
 }
 
-/** The detailed (hair-card) model of a style, when present locally. */
+function hairUrl(root: string, asset: CharacterHairAsset, urls: UrlMap): string | undefined {
+  return detailUrl(root, asset, urls) ?? urls[`${root}/avatars/hair/${asset.group}/${asset.assetKey}.glb`]
+    ?? urls[`${root}/avatars/hair/shared/${asset.assetKey}.glb`];
+}
+
+function detailUrl(root: string, asset: CharacterHairAsset, urls: UrlMap): string | undefined {
+  return asset.detail ? urls[`${root}/avatars/hair/${asset.group}/${asset.detail.assetKey}.glb`]
+    ?? urls[`${root}/avatars/hair/shared/${asset.detail.assetKey}.glb`] : undefined;
+}
+
+/** Detailed hair is optional: the public primary style always takes precedence over private files. */
 export function detailedHairUrl(asset: CharacterHairAsset, urls: UrlMap = hairUrls): string | undefined {
-  return asset.detail ? urls[`/local-assets/avatars/hair/${asset.group}/${asset.detail.assetKey}.glb`] : undefined;
+  return detailUrl('/public-assets', asset, urls)
+    ?? (hairUrl('/public-assets', asset, urls) ? undefined : detailUrl('/local-assets', asset, urls));
 }
 
 /**
@@ -50,22 +55,23 @@ export interface SourceAvatarUrls { body: string; hair: string }
 
 /**
  * URLs needed by `SourceHumanoid` for one look. Returns `undefined` unless both the body and the
- * hair model are present locally, in which case the caller renders the procedural character.
+ * hair model are present. Missing or failed assets retain the procedural error fallback.
  */
 export function sourceAvatarUrls(
   visual: Pick<AvatarVisualConfig, 'presentation' | 'modelVariant'>, hair: CharacterHairAsset,
   bodies: UrlMap = bodyUrls, hairs: UrlMap = hairUrls,
 ): SourceAvatarUrls | undefined {
-  if (proceduralOnly) return undefined;
   const variant = visual.modelVariant ?? (presentationPreset(visual.presentation) === 'feminine' ? 'business-woman' : 'office-classic');
   const detailed = detailedHairUrl(hair, hairs);
+  // The public business-woman variant aliases the complete female-casual body.
+  // Keep the original whole-head substitution for any individually supplied source variant.
   const wholeHead = detailed ? PARTIAL_HEAD_BODIES[variant] : undefined;
   const body = (wholeHead && bodyAssetUrl(wholeHead, bodies)) || bodyAssetUrl(variant, bodies);
-  const hairUrl = detailed ?? hairAssetUrl(hair, hairs) ?? groupHairUrl(hair, hairs);
+  const hairUrl = hairAssetUrl(hair, hairs) ?? groupHairUrl(hair, hairs);
   return body && hairUrl ? { body, hair: hairUrl } : undefined;
 }
 
-/** A style without a local model wears the group's first local style (detailed styles first). */
+/** An unavailable style wears the group's first available Blender style. */
 function groupHairUrl(hair: CharacterHairAsset, urls: UrlMap): string | undefined {
   for (const option of getCharacterHairOptions(hair.group === 'female' ? 'feminine' : 'masculine')) {
     const url = hairAssetUrl(option, urls);
@@ -75,11 +81,11 @@ function groupHairUrl(hair: CharacterHairAsset, urls: UrlMap): string | undefine
 }
 
 /**
- * The hair styles that have a local model, or `undefined` when no local hair is installed (the
- * procedural character then draws every style, so the editor offers them all).
+ * Blender hair styles available to the shared appearance editor. An unavailable model set
+ * leaves the full catalog visible while the character uses its error fallback.
  */
 export function localHairStyles(urls: UrlMap = hairUrls): ReadonlySet<string> | undefined {
-  if (proceduralOnly || Object.keys(urls).length === 0) return undefined;
+  if (Object.keys(urls).length === 0) return undefined;
   const styles = new Set<string>();
   for (const presentation of ['masculine', 'feminine'] as const) {
     for (const option of getCharacterHairOptions(presentation)) if (hairAssetUrl(option, urls)) styles.add(option.id);

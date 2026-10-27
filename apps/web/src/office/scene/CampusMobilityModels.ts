@@ -7,7 +7,7 @@ import { MOBILITY_MODELS, VEHICLE_SPECS, isMobilityVehicle, type MobilityModel }
 export interface MobilityGeometry { body: BufferGeometry; lamp: BufferGeometry }
 export type MobilityLibrary = ReadonlyMap<MobilityModel, MobilityGeometry>;
 
-const urls = import.meta.glob<string>('/local-assets/landscape/campus-mobility.glb', { eager: true, query: '?url', import: 'default' });
+const urls = import.meta.glob<string>('/public-assets/landscape/campus-mobility.glb', { eager: true, query: '?url', import: 'default' });
 const procedural = typeof location !== 'undefined' && new URLSearchParams(location.search).get('mobility') === 'procedural';
 
 /** Immutable vertex-coloured surfaces retain dark glazing, tires and coloured LEDs in two draws per model. */
@@ -192,7 +192,7 @@ const subscribe = (listener: () => void) => { listeners.add(listener); return ()
 async function load() {
   if (requested) return;
   requested = true;
-  const url = procedural ? undefined : urls['/local-assets/landscape/campus-mobility.glb'];
+  const url = procedural ? undefined : urls['/public-assets/landscape/campus-mobility.glb'];
   if (!url) return;
   try {
     const gltf = await new GLTFLoader().loadAsync(url);

@@ -1,11 +1,18 @@
 # Office characters
 
-`OfficeCharacter` renders the self-made procedural character: layered sculpted
+`OfficeCharacter` normally renders the registered Blender bodies and detailed
+hair shared by Web, Desktop, portraits and facility characters. These are the
+existing retargeted models, not newly generated replacement humans; their
+RenderHub Extended Use License and source notices are recorded in
+`apps/web/public-assets`. Two body GLBs serve four appearance variants, and ten
+detailed hair exports retain the original style fallback.
+
+If model loading fails, the self-made procedural fallback provides layered sculpted
 hair, face and ears, textured eyes, articulated hands and fingers, wardrobe cuts
 and trims, cuff details, and shaped shoes. Appearance, rig, wardrobe, face and
-texture helpers are renderer-local code. This is what a public clone, the
-published builds and CI show. Optional local-only source models can replace it on
-a machine that has them (see [Local-only source models](#local-only-source-models)).
+texture helpers are renderer-local code. Optional unregistered local models are
+available only through the explicit development-server mode `local-assets`;
+registered public models retain priority.
 
 `CharacterAppearance` (from `@extalia/core`) is the saved, strictly validated
 look of one character, independent of runtime state. Without a saved look,
@@ -63,8 +70,9 @@ Model failures use the procedural body; graphics failures retain an illustration
 
 ## Local-only source models
 
-Models derived from third-party packs have no redistribution license, so they
-are **never committed**. They live in the git-ignored folder
+Unreviewed source packs and authoring inputs remain local and are never
+committed. The reviewed public avatar outputs retain their separate RenderHub
+license rather than the project's MIT license. Local originals live in
 `apps/web/local-assets/` (listed in the root `.gitignore`):
 
 ```text
@@ -75,11 +83,17 @@ apps/web/local-assets/avatars/
   source/<model-variant>.glb        full packs, only needed to re-run the extractor
 ```
 
-Vite loads `bodies/` and `hair/` through `import.meta.glob` (`sourceAssets.ts`).
+Vite loads `bodies/` and `hair/` through `import.meta.glob` in `sourceAvatarFiles.ts`
+only with `pnpm --filter @extalia/web exec vite --mode local-assets`. Default
+builds and development servers alias that module to registered public maps before
+asset discovery, even when private files are installed. Production builds reject
+the `local-assets` mode. The public Office geometry is separately registered in
+`apps/web/public-assets/models.json`; its approved scene and licensed avatar models are
+included in both Web and Desktop.
 A missing folder, or a missing single file, yields an empty map: no build error
 and no runtime error. `OfficeCharacter` mounts `SourceHumanoid` only when both the
-body and the hair model for the look exist locally; otherwise (and if loading a
-local model fails) it renders the procedural `CharacterMesh`. While selected
+body and the hair model for the look exist; otherwise (and if loading a
+model fails) it renders the procedural `CharacterMesh`. While selected
 source assets are pending, the body stays hidden instead of briefly switching
 from the procedural style to the detailed style. Only the selected body/hair URLs
 are preloaded, in parallel, using the same separate per-URL caches as the renderer.
@@ -92,12 +106,11 @@ character draws each one itself.
 - To use your own models, put files with these names in the folder above. Only
   add models whose license allows you to use them; the folder stays on your
   machine.
-- `pnpm lint` (`tooling/check-public-safety.mjs`) fails when a `.glb`, `.gltf`
-  or `.fbx` file is tracked, staged, or untracked and not ignored. Do not work
-  around it with `git add -f`.
-- A third-party model can only be committed (and the guard's empty allow-list
-  extended) after its license is confirmed to allow redistribution in this
-  repository, with attribution and license text added to the repository.
+- `pnpm lint` (`tooling/check-public-safety.mjs`) rejects model files outside the
+  explicitly registered and hash-verified public inventory. Private avatar packs
+  stay ignored; do not work around the guard with `git add -f`.
+- Additional public models need confirmed redistribution rights, attribution,
+  license text, source provenance and an inventory entry before they can ship.
 - `node tooling/check-character-hair.mjs` (part of `pnpm check`) validates the
   local hair and body files. Without the folder it prints
   `skipped: no local avatar assets` and exits 0.

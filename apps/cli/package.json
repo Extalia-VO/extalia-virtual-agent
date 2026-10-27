@@ -1,7 +1,7 @@
 {
   "name": "extalia-vo",
   "description": "Extalia on your computer: the extalia command starts a local Bridge that serves the Extalia web UI and runs agents on this machine.",
-  "version": "0.4.109",
+  "version": "0.4.111",
   "private": true,
   "license": "MIT",
   "type": "module",

@@ -139,23 +139,24 @@ export async function runSmokeTest(window: BrowserWindow, screenshotDir = proces
   }
   const officeOpened = rendered && await open(window, 'office');
   const officeRendered = officeOpened && await waitFor(window, `Boolean(document.querySelector('.office-stage canvas') || document.querySelector('.office-stage [role="alert"]'))`);
-  const sceneReady = officeRendered && await waitFor(window, `!document.querySelector('.office-loading:not(.done)')`, 30_000);
+  const officeReady = `Boolean(document.querySelector('.office-stage canvas')) && !document.querySelector('.office-loading:not(.done)') && !document.querySelector('.office-stage [role="alert"]')`;
+  const sceneReady = officeRendered && await waitFor(window, officeReady, 30_000);
   const office = officeOpened ? await window.webContents.executeJavaScript(`({
     route: document.querySelector('.nav-item[data-page="office"]')?.getAttribute('aria-current'),
     canvas: Boolean(document.querySelector('.office-stage canvas')),
     separateFrame: Boolean(document.querySelector('.office-stage iframe')),
     protocol: location.protocol,
   })`) as Record<string, unknown> : {};
-  const settingsOpened = rendered && await open(window, 'settings');
   const floorViews: boolean[] = [];
   if (screenshotDir && officeOpened) {
-    await open(window, 'office');
+    await waitFor(window, officeReady, 30_000);
     const file = path.join(screenshotDir, 'office-desktop.png');
     await writeFile(file, (await window.webContents.capturePage()).toPNG());
     screenshots.push(file);
   }
   if (officeOpened) {
     await open(window, 'office');
+    await waitFor(window, officeReady, 30_000);
     for (const floor of [1, 2, 3]) {
       const chosen = await window.webContents.executeJavaScript(`(() => {
         const button = document.querySelector('.topbar-office button[data-view="${floor}"]');
@@ -170,6 +171,10 @@ export async function runSmokeTest(window: BrowserWindow, screenshotDir = proces
       }
     }
   }
+
+  // Check Settings after the scene captures so navigation cannot remount the
+  // Office and replace the verified scene with a fresh loading overlay.
+  const settingsOpened = rendered && await open(window, 'settings');
 
   const ok = rendered && report.desktopBridge === true && report.nodeExposed === false && String(report.host).startsWith('Desktop')
     && String(report.splashVideo).startsWith('canplay') && String(report.splashRange).startsWith('206 video/mp4')

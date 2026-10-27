@@ -1,0 +1,303 @@
+{
+  "schemaVersion": 1,
+  "license": "MIT",
+  "models": [
+    {
+      "path": "architecture/interior-architecture.glb",
+      "sha256": "1237575b733af44203b71c4ba4b716ffd25f5427896551e353332cc924ea1262",
+      "bytes": 295844,
+      "license": "MIT",
+      "provenance": {
+        "kind": "project-generated",
+        "generator": "tooling/blender/create-architecture-library.py"
+      }
+    },
+    {
+      "path": "architecture/stair-library.glb",
+      "sha256": "d469e45e4761392e1986c172545ee05ac693acdf5c4a9a1bda7441df9fb8706a",
+      "bytes": 178952,
+      "license": "MIT",
+      "provenance": {
+        "kind": "project-generated",
+        "generator": "tooling/blender/create-stair-library.py"
+      }
+    },
+    {
+      "path": "avatars/bodies/female/female-casual.glb",
+      "sha256": "cd2f25993a2b5b698d7e74a7bccc5f67655f698503cbaef5fdf00fda6ff90225",
+      "bytes": 4236192,
+      "license": "LicenseRef-RenderHub-Extended-Use",
+      "provenance": {
+        "kind": "licensed-avatar-export",
+        "exporter": "tooling/prepare-licensed-avatars.py",
+        "note": "Existing Blender-retargeted RenderHub avatar. Source and separate asset terms are recorded in THIRD_PARTY_NOTICES.md."
+      }
+    },
+    {
+      "path": "avatars/bodies/male/office-classic.glb",
+      "sha256": "c6469220ac2a9c49dd2dcabd2431d6643d56eb569074551b2fcffb27347026a2",
+      "bytes": 5074708,
+      "license": "LicenseRef-RenderHub-Extended-Use",
+      "provenance": {
+        "kind": "licensed-avatar-export",
+        "exporter": "tooling/prepare-licensed-avatars.py",
+        "note": "Existing Blender-retargeted RenderHub avatar. Source and separate asset terms are recorded in THIRD_PARTY_NOTICES.md."
+      }
+    },
+    {
+      "path": "avatars/hair/female/bob-detail.glb",
+      "sha256": "a2702d3aa2625daab6305ee98871b0425fcb9d2b8e356b65b2afa497a18179b4",
+      "bytes": 2181224,
+      "license": "LicenseRef-RenderHub-Extended-Use",
+      "provenance": {
+        "kind": "licensed-avatar-export",
+        "exporter": "tooling/prepare-licensed-avatars.py",
+        "note": "Existing Blender-retargeted RenderHub avatar. Source and separate asset terms are recorded in THIRD_PARTY_NOTICES.md."
+      }
+    },
+    {
+      "path": "avatars/hair/female/bun-detail.glb",
+      "sha256": "58ff338fb1c8283ee9f1af26628779c9af669aeef7374170a1269fb865ff6adf",
+      "bytes": 2108392,
+      "license": "LicenseRef-RenderHub-Extended-Use",
+      "provenance": {
+        "kind": "licensed-avatar-export",
+        "exporter": "tooling/prepare-licensed-avatars.py",
+        "note": "Existing Blender-retargeted RenderHub avatar. Source and separate asset terms are recorded in THIRD_PARTY_NOTICES.md."
+      }
+    },
+    {
+      "path": "avatars/hair/female/high-ponytail-detail.glb",
+      "sha256": "c76887839b6907332ed493c1aeb93e89215585c7da55ff1fa947f98ea371e712",
+      "bytes": 1746268,
+      "license": "LicenseRef-RenderHub-Extended-Use",
+      "provenance": {
+        "kind": "licensed-avatar-export",
+        "exporter": "tooling/prepare-licensed-avatars.py",
+        "note": "Existing Blender-retargeted RenderHub avatar. Source and separate asset terms are recorded in THIRD_PARTY_NOTICES.md."
+      }
+    },
+    {
+      "path": "avatars/hair/female/medium-detail.glb",
+      "sha256": "6f67aa4f37c5edad57a8a81d23f920ee0e6adf1bf50a056988a591e4bbd7ceb9",
+      "bytes": 2216324,
+      "license": "LicenseRef-RenderHub-Extended-Use",
+      "provenance": {
+        "kind": "licensed-avatar-export",
+        "exporter": "tooling/prepare-licensed-avatars.py",
+        "note": "Existing Blender-retargeted RenderHub avatar. Source and separate asset terms are recorded in THIRD_PARTY_NOTICES.md."
+      }
+    },
+    {
+      "path": "avatars/hair/female/ponytail-detail.glb",
+      "sha256": "a106e4da29f4ce66474cc1258318b9eb16e0e724f087682db9b1bd206604b7c1",
+      "bytes": 2041236,
+      "license": "LicenseRef-RenderHub-Extended-Use",
+      "provenance": {
+        "kind": "licensed-avatar-export",
+        "exporter": "tooling/prepare-licensed-avatars.py",
+        "note": "Existing Blender-retargeted RenderHub avatar. Source and separate asset terms are recorded in THIRD_PARTY_NOTICES.md."
+      }
+    },
+    {
+      "path": "avatars/hair/male/short-fade-detail.glb",
+      "sha256": "752fbd9d1b8749450d8658ee75fbea3750ca2b59c37b16659577e8b01516d526",
+      "bytes": 2129964,
+      "license": "LicenseRef-RenderHub-Extended-Use",
+      "provenance": {
+        "kind": "licensed-avatar-export",
+        "exporter": "tooling/prepare-licensed-avatars.py",
+        "note": "Existing Blender-retargeted RenderHub avatar. Source and separate asset terms are recorded in THIRD_PARTY_NOTICES.md."
+      }
+    },
+    {
+      "path": "avatars/hair/male/side-part-detail.glb",
+      "sha256": "4e91468303818bf0917068a8dfe3824645cd6c4eb8e070d7d05e0336a106c72d",
+      "bytes": 2628896,
+      "license": "LicenseRef-RenderHub-Extended-Use",
+      "provenance": {
+        "kind": "licensed-avatar-export",
+        "exporter": "tooling/prepare-licensed-avatars.py",
+        "note": "Existing Blender-retargeted RenderHub avatar. Source and separate asset terms are recorded in THIRD_PARTY_NOTICES.md."
+      }
+    },
+    {
+      "path": "avatars/hair/male/slicked-back-detail.glb",
+      "sha256": "2c64ee762edeeb927ca1c50e73eb090b51e0f09cc6366ef76a7757ab333ec0ab",
+      "bytes": 2628908,
+      "license": "LicenseRef-RenderHub-Extended-Use",
+      "provenance": {
+        "kind": "licensed-avatar-export",
+        "exporter": "tooling/prepare-licensed-avatars.py",
+        "note": "Existing Blender-retargeted RenderHub avatar. Source and separate asset terms are recorded in THIRD_PARTY_NOTICES.md."
+      }
+    },
+    {
+      "path": "avatars/hair/male/textured-crop-detail.glb",
+      "sha256": "6339d21cb1a7d7e6a331b51b1cd537ee3944bd0028a70cdff9164a2c931241b3",
+      "bytes": 2134104,
+      "license": "LicenseRef-RenderHub-Extended-Use",
+      "provenance": {
+        "kind": "licensed-avatar-export",
+        "exporter": "tooling/prepare-licensed-avatars.py",
+        "note": "Existing Blender-retargeted RenderHub avatar. Source and separate asset terms are recorded in THIRD_PARTY_NOTICES.md."
+      }
+    },
+    {
+      "path": "avatars/hair/male/undercut-detail.glb",
+      "sha256": "bc7f3d50bee36a42a31ca6bc3c1d01c0a2d47307d7dc44d59d0e8107049cbfd1",
+      "bytes": 2570404,
+      "license": "LicenseRef-RenderHub-Extended-Use",
+      "provenance": {
+        "kind": "licensed-avatar-export",
+        "exporter": "tooling/prepare-licensed-avatars.py",
+        "note": "Existing Blender-retargeted RenderHub avatar. Source and separate asset terms are recorded in THIRD_PARTY_NOTICES.md."
+      }
+    },
+    {
+      "path": "building/elevators.glb",
+      "sha256": "951359711e93712b3532789b187d47ca92378fc377f8005b8a521d5e008b97f8",
+      "bytes": 143360,
+      "license": "MIT",
+      "provenance": {
+        "kind": "project-authored-export",
+        "exporter": "tooling/blender/export-building-shell.py",
+        "note": "Project-authored building; maintainer approved redistribution with Extalia. Authoring scene maintained separately."
+      }
+    },
+    {
+      "path": "building/extalia-shell.glb",
+      "sha256": "f3560373a36d0c4f8671631225ac841569e1cc9438843d571be6d3b37929955c",
+      "bytes": 2044460,
+      "license": "MIT",
+      "provenance": {
+        "kind": "project-authored-export",
+        "exporter": "tooling/blender/export-building-shell.py",
+        "note": "Project-authored building; maintainer approved redistribution with Extalia. Authoring scene maintained separately."
+      }
+    },
+    {
+      "path": "building/roof-stair.glb",
+      "sha256": "86ffb48fbfa3bdbf87f44d1087aaec3ac8d54debaff67860d30884a1aca80de6",
+      "bytes": 457956,
+      "license": "MIT",
+      "provenance": {
+        "kind": "project-authored-export",
+        "exporter": "tooling/blender/export-building-shell.py",
+        "note": "Project-authored building; maintainer approved redistribution with Extalia. Authoring scene maintained separately."
+      }
+    },
+    {
+      "path": "building/roof-utilities.glb",
+      "sha256": "ac4babb287b7e27e5a0b18211a14e79ddf56f8eb4a04315ffd5fc9c3d253c803",
+      "bytes": 2617916,
+      "license": "MIT",
+      "provenance": {
+        "kind": "project-authored-export",
+        "exporter": "tooling/blender/export-building-shell.py",
+        "note": "Project-authored building; maintainer approved redistribution with Extalia. Authoring scene maintained separately."
+      }
+    },
+    {
+      "path": "building/terrace.glb",
+      "sha256": "f40244c39c4c016688adc87c75553690a0a61c35de17e67cdd903d373cfd4afe",
+      "bytes": 247328,
+      "license": "MIT",
+      "provenance": {
+        "kind": "project-authored-export",
+        "exporter": "tooling/blender/export-building-shell.py",
+        "note": "Project-authored building; maintainer approved redistribution with Extalia. Authoring scene maintained separately."
+      }
+    },
+    {
+      "path": "floors/floor-panel.glb",
+      "sha256": "321d1d101d589703d92fd3184129fe43ac6b52f42422e5f39a3de9a16d0d4100",
+      "bytes": 2044,
+      "license": "MIT",
+      "provenance": {
+        "kind": "project-generated",
+        "generator": "tooling/blender/create-floor-panel.py"
+      }
+    },
+    {
+      "path": "furniture/interior-library.glb",
+      "sha256": "4425dfbd70c151727368a6e21bb2b8b6bbe95f8be259b2d30c3a61580ae7d302",
+      "bytes": 4704920,
+      "license": "MIT",
+      "provenance": {
+        "kind": "project-generated",
+        "generator": "tooling/blender/create-interior-library.py"
+      }
+    },
+    {
+      "path": "furniture/office-chair-executive.glb",
+      "sha256": "7704d3dce1d0f4f4515700b21fdb13b67de9195b06289ef38dec59d2e6e334cd",
+      "bytes": 218080,
+      "license": "MIT",
+      "provenance": {
+        "kind": "project-generated",
+        "generator": "tooling/blender/create-office-chairs.py"
+      }
+    },
+    {
+      "path": "furniture/office-chair-task.glb",
+      "sha256": "5c4f218439753125c96c9018a527031ef85f554a5bcdb69b4ae96d77daa83fb7",
+      "bytes": 213540,
+      "license": "MIT",
+      "provenance": {
+        "kind": "project-generated",
+        "generator": "tooling/blender/create-office-chairs.py"
+      }
+    },
+    {
+      "path": "furniture/team-pod-desktop.glb",
+      "sha256": "5d6d1302477a5da46bace4dafc54b4586cfef14c999e5e6dd0c92d9ec0b6e8b1",
+      "bytes": 246420,
+      "license": "MIT",
+      "provenance": {
+        "kind": "project-generated",
+        "generator": "tooling/blender/create-team-pod-desktop.py"
+      }
+    },
+    {
+      "path": "furniture/workstation-set.glb",
+      "sha256": "35bd9def9dcc720518fd54fc87d4d9c181cd72efb6b7b8cdd07dc08d321cd62f",
+      "bytes": 1331756,
+      "license": "MIT",
+      "provenance": {
+        "kind": "project-generated",
+        "generator": "tooling/blender/create-workstation-set.py"
+      }
+    },
+    {
+      "path": "landscape/campus-mobility.glb",
+      "sha256": "138bc7068b7e2e3cb4ace959ba9bd81f90fe53388e63082d07899918db469c6f",
+      "bytes": 1213812,
+      "license": "MIT",
+      "provenance": {
+        "kind": "project-generated",
+        "generator": "tooling/blender/create-campus-mobility.py"
+      }
+    },
+    {
+      "path": "landscape/district-buildings.glb",
+      "sha256": "ea202d04ae1517fc649ceb5647508bcf06057c2b6ea9b2e9344af085c1d9c621",
+      "bytes": 3238616,
+      "license": "MIT",
+      "provenance": {
+        "kind": "project-generated",
+        "generator": "tooling/blender/create-district-buildings.py"
+      }
+    },
+    {
+      "path": "landscape/exterior-landscape.glb",
+      "sha256": "b970fdea297911a5c4de2ea8cca3149ecc618dec9e0d3a168ac4ab6966b0d448",
+      "bytes": 3945096,
+      "license": "MIT",
+      "provenance": {
+        "kind": "project-generated",
+        "generator": "tooling/blender/create-exterior-assets.py"
+      }
+    }
+  ]
+}

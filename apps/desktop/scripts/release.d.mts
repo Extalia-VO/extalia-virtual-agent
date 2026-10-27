@@ -1,0 +1,10 @@
+import type { ExecFileOptions } from 'node:child_process';
+export type Runner = (command: string, args: string[], options?: ExecFileOptions) => Promise<{ stdout: string; stderr: string }>;
+export type MacReleaseMode = 'preview' | 'notarized';
+export function macReleaseMode(value?: string): MacReleaseMode;
+export function runCommand(command: string, args: string[], options?: ExecFileOptions): Promise<{ stdout: string; stderr: string }>;
+export function releaseBuildOptions(platform: string, environment: NodeJS.ProcessEnv): { args: string[]; env: NodeJS.ProcessEnv };
+export function releaseArtifactNames(platform: string, version: string): { payloads: string[]; metadata: string };
+export function verifyMacApp(app: string, arch: string, run?: Runner, mode?: MacReleaseMode): Promise<void>;
+export function verifyMacArchive(file: string, arch: string, options?: { run?: Runner; temporaryDirectory?: string; mode?: MacReleaseMode }): Promise<void>;
+export function uploadRelease(options: { platform: string; version: string; tag: string; directory: string; run?: Runner; temporaryDirectory?: string; mode?: MacReleaseMode }): Promise<string[]>;

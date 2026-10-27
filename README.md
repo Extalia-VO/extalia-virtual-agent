@@ -71,6 +71,13 @@ Non-intrusive monitoring of outside agents (Claude Code, Codex, Hermes) with rea
 
 Pre-built releases for testers are available on the [Extalia v0.4.109 Release](https://github.com/Extalia-VO/extalia-virtual-agent/releases/tag/v0.4.109):
 
+**macOS v0.4.109:** the DMG contains an invalid ad-hoc app signature and has no
+Apple notarization ticket; macOS can reject it as damaged or unverified. Use the
+[npm Web install](#install-the-web-app) below while its replacement is prepared.
+New free macOS previews use a valid ad-hoc signature and are marked as an
+unidentified developer. They require manual approval to open and manual updates;
+see [macOS release modes](docs/release/packaging.md#macos-release-modes).
+
 | Platform | Package | Architecture | Direct Download |
 | :--- | :--- | :--- | :--- |
 | **Windows** | NSIS Installer | x64 | [Extalia-0.4.109-win-x64-setup.exe](https://github.com/Extalia-VO/extalia-virtual-agent/releases/download/v0.4.109/Extalia-0.4.109-win-x64-setup.exe) |
@@ -114,6 +121,22 @@ The 3D office never imports runtime-specific code or vendor dependencies directl
 ---
 
 ## 🚀 Quick Start
+
+### Install the Web app
+
+Requires Node.js 22.13+ (Node 23 needs 23.4+). Install the application from npm:
+
+```bash
+npm install -g extalia-vo@latest
+extalia
+```
+
+The command opens the Web app at `http://127.0.0.1:4310/`. Its platform daemon
+is installed automatically; installing `@extalia/daemon-*` alone does not install
+the application. Keep `-g` when installing Extalia; a local npm install into this
+pnpm checkout can fail inside npm's dependency resolver.
+
+### Develop from source
 
 Requires Node.js 22.13+ (Node 23 needs 23.4+) and pnpm 12 (`corepack enable`). No account, API key, or private file is needed.
 

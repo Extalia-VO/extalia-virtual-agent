@@ -46,6 +46,11 @@ export function updateChannel(value: string | undefined): UpdateChannel {
   return value?.trim().toLowerCase() === 'beta' ? 'beta' : 'stable';
 }
 
+/** Ad-hoc macOS previews are installed manually; only notarized builds use Squirrel updates. */
+export function supportsPackagedUpdates(packaged: boolean, smokeTest: boolean, platform: string, macReleaseMode: unknown): boolean {
+  return packaged && !smokeTest && (platform !== 'darwin' || macReleaseMode === 'notarized');
+}
+
 const MISSING_RELEASE = ['ERR_UPDATER_NO_PUBLISHED_VERSIONS', 'ERR_UPDATER_LATEST_VERSION_NOT_FOUND', 'ERR_UPDATER_CHANNEL_FILE_NOT_FOUND'];
 
 /** electron-updater errors can carry stacks or whole release feeds; keep a short, readable reason. */

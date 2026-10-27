@@ -24,9 +24,9 @@ output/
 # Local AI-tool settings
 .claude/
 
-# Local-only avatar models derived from third-party packs without a redistribution
-# license (see apps/web/src/office/scene/avatars/README.md). Never commit them; a
-# clean clone renders the procedural characters instead.
+# Unreviewed avatar source packs and local authoring exports stay private.
+# Registered scene/avatar outputs and their individual license notices live in
+# apps/web/public-assets; never force-add other local models.
 apps/web/local-assets/
 # Local exploration screenshots
 shots/

@@ -16,6 +16,28 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.111] - 2026-10-27
+
+### Added
+
+- Sixteen approved, project-authored Blender scene models with MIT license, provenance and content hashes, shared by Web, Desktop and the npm Bridge. The public bundle includes the building, roof/terrace/elevator parts, furniture, interior architecture, floor, landscaping, nearby buildings and vehicles.
+- Existing Blender-retargeted avatars are retained: two unique body files serve the four appearance variants, with ten detailed hairstyles and the existing style fallback. These models retain their separate RenderHub Extended Use License and attribution; their bytes, rigs, outfits and textures are not replaced by a new human model.
+- Free macOS preview packaging with valid ad-hoc signatures and an explicit distribution marker. Both architectures' DMG and ZIP app bundles must pass strict integrity checks; previews carry an unidentified-developer notice and use manual updates. Notarized releases remain available as an explicit credential-backed mode.
+
+### Fixed
+
+- Default builds load the same registered Blender avatars and scene models on Web and Desktop. Unregistered local files are excluded before asset discovery; explicit local development can add fallbacks without replacing public models.
+- Public asset validation now permits only registered, hash-verified models, requires a complete inventory and license, and rejects unknown, modified, symlinked, external-resource or inlined models. CLI and Desktop packaging validate the copied UI again.
+- Ad-hoc macOS previews cannot enter the automatic updater or replace a signed update feed.
+
+## [0.4.110] - 2026-10-27
+
+### Fixed
+
+- Desktop's recovery panel retries agent-host startup after a conflicting Bridge releases the shared profile. Concurrent requests share one startup attempt; shutdown prevents new attempts and closes late hosts without replaying actions.
+- macOS release builds now require Developer ID signing and notarization. Both architectures' DMGs and updater ZIP apps must pass identity, signature, Gatekeeper and stapled-ticket checks before their job uploads installers or update metadata. All platform uploads follow packaged smoke tests; unsigned local builds remain available.
+- Installation guidance now distinguishes the `extalia-vo` application from internal daemon packages and explains npm resolver failures when local npm installs traverse a pnpm checkout. The v0.4.109 DMG's invalid ad-hoc signature is documented; a trusted replacement requires Apple Developer credentials.
+
 ## [0.4.109] - 2026-10-27
 
 ### Added

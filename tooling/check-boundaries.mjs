@@ -50,6 +50,9 @@ for (const { group, dir, manifest } of packages) {
     if (dependency.startsWith('@extalia/') && !rule.allow.includes(dependency)) problems.push(`${where}: ${name} may not depend on ${dependency}.`);
   }
   for (const file of await sourceFiles(dir)) {
+    // Build configuration executes in Node and validates release assets. This
+    // exception never applies to browser renderer sources or their imports.
+    if (name === '@extalia/web' && file === path.join(dir, 'vite.config.ts')) continue;
     const text = await readFile(file, 'utf8');
     for (const match of text.matchAll(IMPORT)) {
       const specifier = match[1] ?? match[2];

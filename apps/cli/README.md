@@ -13,6 +13,16 @@ Requires Node.js 22.13 or newer (Node 23 needs 23.4+).
 npm i -g extalia-vo
 ```
 
+Install the application package `extalia-vo`; its matching daemon is installed
+automatically. The `@extalia/daemon-*` packages are internal platform binaries
+and do not provide the `extalia` command or web UI.
+
+Keep `-g` for the application install. This source repository uses pnpm;
+running a local `npm install` inside its pnpm-managed dependency tree can make
+npm fail with `Cannot read properties of null (reading 'matches')`. Contributors
+use `pnpm install` in the checkout. To test a local npm install, use a fresh
+directory outside the checkout.
+
 ## Run
 
 ```bash
