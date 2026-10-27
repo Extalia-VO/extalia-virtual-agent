@@ -1,6 +1,8 @@
 import { PORTABLE_SESSION_FORMAT, previewImport } from '@extalia/core';
-import { resolveDataDirectory } from '@extalia/platform';
+import type { ConnectService } from '@extalia/host';
+import { DATA_DIRECTORY_OVERRIDE, legacyDataDirectories, resolveDataDirectory } from '@extalia/platform';
 import { PROTOCOL_VERSION, parseEvent, parseEventLines, type ParseResult } from '@extalia/protocol';
+import { runConnect, runConnections, runDisconnect, runMcp } from './connect';
 import type { StartOptions } from './start';
 
 export type { StartOptions } from './start';
@@ -21,6 +23,9 @@ export interface CliHost {
   /** Run the local Bridge until it stops; resolves to the exit code. */
   start(options: StartOptions): Promise<number>;
   update(options: UpdateOptions): Promise<number>;
+  connectService?(): Promise<ConnectService>;
+  prompt?(question: string): Promise<boolean>;
+  mcpInput?: NodeJS.ReadableStream;
 }
 
 export const DEFAULT_PORT = 4310;
@@ -33,6 +38,15 @@ Commands:
     --port <number>     Port on 127.0.0.1 (default ${DEFAULT_PORT})
     --no-open           Do not open a browser
     --no-update-check   Skip the update check (or set EXTALIA_NO_UPDATE_CHECK=1)
+  connect <app>       Connect an agent app (codex, claude, gemini, antigravity, hermes)
+    --dry-run           Preview configuration changes without writing
+    --yes, -y           Apply changes without asking for confirmation
+    --port <number>     Hook endpoint port
+    --rotate            Rotate the local hook ingest token
+    --trust             Approve Extalia hooks in Codex via codex app-server
+  disconnect <app>    Remove Extalia hooks from an agent app
+  connections         Show hook connection status for all agent apps
+  mcp                 Run the stdio MCP reporting server (report_intent, report_handoff)
   update              Install the latest version from npm
     --check             Only report whether a newer version exists
   doctor              Show versions, platform and the user-data location
@@ -82,11 +96,12 @@ async function update(host: CliHost, args: readonly string[]): Promise<number> {
   return host.update({ check: args.includes('--check') });
 }
 
-const MIN_NODE = [22, 12] as const;
+const MIN_NODE = [22, 13] as const;
+const NODE_REQUIREMENT = '22.13 or newer; Node 23 needs 23.4+';
 
 function nodeSupported(version: string): boolean {
   const [major = 0, minor = 0] = version.replace(/^v/, '').split('.').map(Number);
-  return major > MIN_NODE[0] || (major === MIN_NODE[0] && minor >= MIN_NODE[1]);
+  return major > 23 || (major === 23 && minor >= 4) || (major === MIN_NODE[0] && minor >= MIN_NODE[1]);
 }
 
 async function doctor(host: CliHost): Promise<number> {
@@ -94,9 +109,20 @@ async function doctor(host: CliHost): Promise<number> {
   const nodeOk = nodeSupported(host.nodeVersion);
   host.out(`Extalia CLI       ${host.version}`);
   host.out(`Protocol          ${PROTOCOL_VERSION}`);
-  host.out(`Node.js           ${host.nodeVersion}${nodeOk ? '' : `  (requires ${MIN_NODE.join('.')} or newer)`}`);
+  host.out(`Node.js           ${host.nodeVersion}${nodeOk ? '' : `  (requires ${NODE_REQUIREMENT})`}`);
   host.out(`Platform          ${host.platform} ${host.arch}`);
   host.out(`User data         ${dataDirectory}${(await host.exists(dataDirectory)) ? '' : '  (not created yet)'}`);
+  // Versions up to 0.0.20 kept data in the system's application-data folder; it is copied once, never removed.
+  if (!host.env[DATA_DIRECTORY_OVERRIDE]?.trim()) {
+    let migratedAt: string | undefined;
+    const sep = host.platform === 'win32' ? '\\' : '/';
+    try { migratedAt = (JSON.parse(await host.readFile([dataDirectory, 'state', 'migrated-from.json'].join(sep))) as { at?: unknown }).at as string | undefined; } catch { /* not migrated */ }
+    for (const legacy of legacyDataDirectories({ platform: host.platform, env: host.env, homeDirectory: host.homeDirectory })) {
+      if (!(await host.exists(legacy))) continue;
+      host.out(`Previous data     ${legacy}  (${typeof migratedAt === 'string' ? `copied on ${migratedAt}; safe to remove after checking` : 'copied into the folder above when Extalia next starts'})`);
+      break;
+    }
+  }
   return nodeOk ? 0 : 1;
 }
 
@@ -144,6 +170,14 @@ export async function run(args: readonly string[], host: CliHost): Promise<numbe
   switch (command) {
     case 'start':
       return start(host, rest);
+    case 'connect':
+      return runConnect(host, rest);
+    case 'disconnect':
+      return runDisconnect(host, rest);
+    case 'connections':
+      return runConnections(host, rest);
+    case 'mcp':
+      return runMcp(host, rest);
     case 'update':
       return update(host, rest);
     case 'help':

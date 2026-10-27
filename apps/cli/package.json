@@ -1,7 +1,7 @@
 {
   "name": "extalia-vo",
   "description": "Extalia on your computer: the extalia command starts a local Bridge that serves the Extalia web UI and runs agents on this machine.",
-  "version": "0.0.8",
+  "version": "0.4.108",
   "private": true,
   "license": "MIT",
   "type": "module",
@@ -11,7 +11,7 @@
     "directory": "apps/cli"
   },
   "engines": {
-    "node": ">=22.12"
+    "node": "^22.13.0 || >=23.4.0"
   },
   "bin": {
     "extalia": "./dist/extalia.mjs"
@@ -22,7 +22,8 @@
   ],
   "scripts": {
     "build": "node build.mjs",
-    "typecheck": "tsc -p tsconfig.json"
+    "typecheck": "tsc -p tsconfig.json",
+    "prepublishOnly": "node ../../tooling/check-no-models.mjs dist"
   },
   "dependencies": {
     "@extalia/core": "workspace:*",

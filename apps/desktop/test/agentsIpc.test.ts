@@ -1,4 +1,4 @@
-import { AGENT_HOST_METHODS } from '@extalia/platform';
+import { AGENT_HOST_METHODS, MAX_ATTACHMENT_BASE64_CHARS } from '@extalia/platform';
 import { describe, expect, it } from 'vitest';
 import { reply, safeMessage, unwrap } from '../src/ipc';
 import { isTrustedSender, parseAgentCall, parseDevServerUrl } from '../src/security';
@@ -8,7 +8,24 @@ const APP = 'extalia://app/index.html';
 describe('agent host IPC validation', () => {
   it('accepts every whitelisted method with array arguments', () => {
     for (const method of AGENT_HOST_METHODS) expect(parseAgentCall(APP, undefined, method, [])).toEqual({ method, args: [] });
+    expect(parseAgentCall(APP, undefined, 'refreshNativeMissionRecovery', ['session', 'mission'])).toEqual({ method: 'refreshNativeMissionRecovery', args: ['session', 'mission'] });
+    expect(() => parseAgentCall('https://example.com/', undefined, 'refreshNativeMissionRecovery', ['session', 'mission'])).toThrow('Untrusted sender.');
     expect(parseAgentCall(APP, undefined, 'sendPrompt', ['session-1', 'hello'])).toEqual({ method: 'sendPrompt', args: ['session-1', 'hello'] });
+  });
+
+  it('bounds the payload of a file upload before it reaches the host', () => {
+    const small = { name: 'notes.md', mimeType: 'text/markdown', data: 'aGVsbG8=' };
+    expect(parseAgentCall(APP, undefined, 'uploadAttachment', ['s_abc123def456', small])).toEqual({ method: 'uploadAttachment', args: ['s_abc123def456', small] });
+    const oversized = { name: 'big.bin', mimeType: 'application/octet-stream', data: 'A'.repeat(MAX_ATTACHMENT_BASE64_CHARS + 4) };
+    expect(() => parseAgentCall(APP, undefined, 'uploadAttachment', ['s_abc123def456', oversized])).toThrow(/too large/);
+    expect(() => parseAgentCall('https://example.com/', undefined, 'uploadAttachment', ['s_abc123def456', small])).toThrow('Untrusted sender.');
+  });
+
+  it('carries the shared profile calls only from the app', () => {
+    expect(AGENT_HOST_METHODS).toEqual(expect.arrayContaining(['getProfile', 'saveProfile']));
+    expect(parseAgentCall(APP, undefined, 'saveProfile', [{ preferences: { theme: 'dark' } }])).toEqual({ method: 'saveProfile', args: [{ preferences: { theme: 'dark' } }] });
+    expect(() => parseAgentCall('https://example.com/', undefined, 'saveProfile', [{ displayName: 'x' }])).toThrow('Untrusted sender.');
+    expect(() => parseAgentCall(APP, undefined, 'saveProfile', { displayName: 'x' })).toThrow('Agent host arguments must be an array.');
   });
 
   it('rejects methods outside the whitelist', () => {

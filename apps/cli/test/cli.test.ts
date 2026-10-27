@@ -40,9 +40,22 @@ describe('extalia CLI', () => {
   it('reports diagnostics and fails on unsupported Node versions', async () => {
     const ok = host();
     expect(await run(['doctor'], ok.value)).toBe(0);
-    expect(ok.out.join('\n')).toContain('/home/someone/.local/share/extalia');
+    expect(ok.out.join('\n')).toContain('User data         /home/someone/.extalia-vo  (not created yet)');
+    expect(ok.out.join('\n')).not.toContain('Previous data');
+    const legacy = host({}, { exists: async file => file === '/home/someone/.local/share/extalia' });
+    expect(await run(['doctor'], legacy.value)).toBe(0);
+    expect(legacy.out.join('\n')).toContain('Previous data     /home/someone/.local/share/extalia  (copied into the folder above when Extalia next starts)');
+    const migrated = host({ '/home/someone/.extalia-vo/state/migrated-from.json': '{"from":"/home/someone/.local/share/extalia","at":"2026-10-01T00:00:00.000Z"}' }, { exists: async () => true });
+    expect(await run(['doctor'], migrated.value)).toBe(0);
+    expect(migrated.out.join('\n')).toContain('(copied on 2026-10-01T00:00:00.000Z; safe to remove after checking)');
     const old = host({}, { nodeVersion: 'v20.10.0' });
     expect(await run(['doctor'], old.value)).toBe(1);
+    const flaggedSqlite = host({}, { nodeVersion: 'v22.12.0' });
+    expect(await run(['doctor'], flaggedSqlite.value)).toBe(1);
+    expect(flaggedSqlite.out.join('\n')).toContain('requires 22.13 or newer; Node 23 needs 23.4+');
+    expect(await run(['doctor'], host({}, { nodeVersion: 'v22.13.0' }).value)).toBe(0);
+    expect(await run(['doctor'], host({}, { nodeVersion: 'v23.3.0' }).value)).toBe(1);
+    expect(await run(['doctor'], host({}, { nodeVersion: 'v23.4.0' }).value)).toBe(0);
   });
 
   it('validates JSON Lines events line by line', async () => {

@@ -4,7 +4,7 @@ import { readFile, stat } from 'node:fs/promises';
 import { createServer, type IncomingMessage, type OutgoingHttpHeaders, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import path from 'node:path';
-import { isAgentHostMethod, type AgentHostApi, type UpdateStatus } from '@extalia/platform';
+import { ATTACHMENT_BODY_HEADER, isAgentHostMethod, MAX_ATTACHMENT_REQUEST_BYTES, type AgentHostApi, type UpdateStatus } from '@extalia/platform';
 
 /**
  * The local Extalia Bridge: serves the web UI and exposes the agent host over
@@ -26,8 +26,11 @@ export const CONTENT_SECURITY_POLICY = [
   "default-src 'self'",
   "script-src 'self'",
   "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data:",
-  "connect-src 'self'",
+  // GLTFLoader decodes embedded textures from local object URLs.
+  "img-src 'self' data: blob:",
+  // The Splash plays its pre-rendered office loop from the web build.
+  "media-src 'self'",
+  "connect-src 'self' blob:",
   "object-src 'none'",
   "base-uri 'none'",
   "frame-ancestors 'none'",
@@ -76,6 +79,23 @@ export function contentTypeFor(file: string): string {
   return CONTENT_TYPES[path.extname(file).toLowerCase()] ?? 'application/octet-stream';
 }
 
+/**
+ * One `bytes=` range of a file of `size` bytes, as inclusive offsets. `undefined` means serve the
+ * whole file (no header, several ranges or an unknown unit); `null` means unsatisfiable (416).
+ * Media elements use ranges to seek and loop, e.g. the Splash video.
+ */
+export function parseByteRange(header: string | undefined, size: number): { start: number; end: number } | null | undefined {
+  const match = header?.trim().match(/^bytes=(\d*)-(\d*)$/);
+  if (!match || (!match[1] && !match[2])) return undefined;
+  if (!match[1]) {
+    const suffix = Number(match[2]);
+    return suffix > 0 && size > 0 ? { start: Math.max(0, size - suffix), end: size - 1 } : null;
+  }
+  const start = Number(match[1]);
+  const end = match[2] ? Math.min(Number(match[2]), size - 1) : size - 1;
+  return start < size && start <= end ? { start, end } : null;
+}
+
 /** Thrown by update handlers to refuse a request with a specific status (for example 409 while agents work). */
 export class BridgeRequestError extends Error {
   constructor(message: string, readonly status: number) {
@@ -101,6 +121,7 @@ export interface BridgeServerOptions {
   /** Resolves to the agent host, or rejects with the reason agents are unavailable. */
   agents(): Promise<AgentHostApi>;
   updates: BridgeUpdates;
+  hooks?(request: IncomingMessage, response: ServerResponse, app: string): Promise<void>;
   pingIntervalMs?: number;
   maxBodyBytes?: number;
 }
@@ -269,9 +290,19 @@ export async function startBridgeServer(options: BridgeServerOptions): Promise<B
       'Cache-Control': pathname.startsWith('/assets/') ? 'public, max-age=31536000, immutable' : 'no-cache',
     };
     if (file.endsWith('.html')) headers['Content-Security-Policy'] = CONTENT_SECURITY_POLICY;
-    response.writeHead(200, headers);
+    headers['Accept-Ranges'] = 'bytes';
+    const range = parseByteRange(request.headers.range, info.size);
+    if (range === null) {
+      send(response, 416, 'Range not satisfiable', { 'Content-Type': 'text/plain; charset=utf-8', 'Content-Range': `bytes */${info.size}` }, head);
+      return;
+    }
+    if (range) {
+      headers['Content-Range'] = `bytes ${range.start}-${range.end}/${info.size}`;
+      headers['Content-Length'] = range.end - range.start + 1;
+    }
+    response.writeHead(range ? 206 : 200, headers);
     if (head) { response.end(); return; }
-    const stream = createReadStream(file);
+    const stream = createReadStream(file, range ? { start: range.start, end: range.end } : {});
     stream.once('error', () => response.destroy());
     stream.pipe(response);
   }
@@ -283,12 +314,14 @@ export async function startBridgeServer(options: BridgeServerOptions): Promise<B
 
   async function handleCall(request: IncomingMessage, response: ServerResponse): Promise<void> {
     if (!isJsonContentType(request.headers['content-type'])) { sendError(response, 415, 'Content-Type must be application/json.'); return; }
+    // Uploads may be larger than ordinary calls, but never beyond the bounded attachment size.
+    const uploading = request.headers[ATTACHMENT_BODY_HEADER] === 'attachment';
     let body: Buffer;
-    try { body = await readBody(request, maxBody); }
+    try { body = await readBody(request, uploading ? MAX_ATTACHMENT_REQUEST_BYTES : maxBody); }
     catch (error) {
       if (error instanceof BodyTooLargeError) {
         await error.drained;
-        sendError(response, 413, `Request body is larger than ${maxBody} bytes.`, { Connection: 'close' });
+        sendError(response, 413, `Request body is larger than ${uploading ? MAX_ATTACHMENT_REQUEST_BYTES : maxBody} bytes.`, { Connection: 'close' });
       }
       else sendError(response, 400, 'Could not read the request body.');
       return;
@@ -298,11 +331,15 @@ export async function startBridgeServer(options: BridgeServerOptions): Promise<B
     if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) { sendError(response, 400, 'Expected { "method": string, "args": array }.'); return; }
     const { method, args } = payload as { method?: unknown; args?: unknown };
     if (!isAgentHostMethod(method)) { sendError(response, 400, 'Unknown method.'); return; }
+    if (uploading && method !== 'uploadAttachment') { sendError(response, 400, 'Only file uploads may use the attachment body size.'); return; }
+    if (body.length > maxBody && method !== 'uploadAttachment') { sendError(response, 413, `Request body is larger than ${maxBody} bytes.`, { Connection: 'close' }); return; }
     if (!Array.isArray(args)) { sendError(response, 400, 'args must be an array.'); return; }
     const host = await agentsOrError(response);
     if (!host) return;
     try {
-      const call = host[method] as (...values: unknown[]) => Promise<unknown>;
+      const call = host[method] as ((...values: unknown[]) => Promise<unknown>) | undefined;
+      // Optional methods (for example the worktree methods) may be missing on a host.
+      if (typeof call !== 'function') { sendError(response, 501, 'This host does not support this action.'); return; }
       const result = await call.apply(host, args);
       sendJson(response, 200, { result: result === undefined ? null : result });
     } catch (error) {
@@ -371,6 +408,18 @@ export async function startBridgeServer(options: BridgeServerOptions): Promise<B
     let url: URL;
     try { url = new URL(request.url ?? '/', `http://${BRIDGE_HOST}:${port}`); }
     catch { send(response, 400, 'Bad request', { 'Content-Type': 'text/plain; charset=utf-8' }); return; }
+    const hookMatch = /^\/api\/hooks\/([^/]+)$/.exec(url.pathname);
+    if (hookMatch) {
+      if (!options.hooks) { sendError(response, 404, 'Not found.'); return; }
+      let app: string;
+      try { app = decodeURIComponent(hookMatch[1] as string); }
+      catch { response.writeHead(204); response.end(); return; }
+      void options.hooks(request, response, app).catch(() => {
+        if (!response.headersSent) { response.writeHead(204); response.end(); }
+        else response.destroy();
+      });
+      return;
+    }
     const api = url.pathname === '/api' || url.pathname.startsWith('/api/');
     const handled = api ? handleApi(request, response, url) : serveStatic(request, response, url.pathname);
     Promise.resolve(handled).catch(() => {

@@ -13,6 +13,8 @@ await build({
   platform: 'node',
   format: 'esm',
   target: 'node22',
+  // The per-platform daemon packages are optional npm dependencies resolved at run time (ADR 0021).
+  external: ['@extalia/daemon-*'],
   banner: {
     js: [
       '#!/usr/bin/env node',

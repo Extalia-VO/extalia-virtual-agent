@@ -23,9 +23,20 @@ extraMetadata:
   name: extalia-desktop
   productName: Extalia
 # The web UI is read from process.resourcesPath/web (see src/main.ts).
+# The Rust daemon (ADR 0021) is staged per target by `node tooling/build-daemon.mjs` in
+# build-resources/daemon/<os>-<arch>/ and lands at process.resourcesPath/daemon/extalia-daemon[.exe].
+# electron-builder packs each macOS arch separately, so ${os}-${arch} picks the matching binary
+# (a future universal build would lipo the two). A missing source is skipped with a warning, so
+# local packaging works without Rust; the afterPack hook fails instead when EXTALIA_REQUIRE_DAEMON=1
+# (release builds). The Python worker bundle (ADR 0022) will join the same way under python/.
+# On macOS the signer walks the whole bundle, so the daemon is signed with the app's identity and
+# hardened runtime (inherited entitlements); no `mac.binaries` entry is needed.
 extraResources:
   - from: ../web/dist
     to: web
+  - from: build-resources/daemon/${os}-${arch}
+    to: daemon
+afterPack: ./scripts/after-pack.mjs
 artifactName: ${productName}-${version}-${os}-${arch}.${ext}
 
 mac:

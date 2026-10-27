@@ -3,9 +3,10 @@ import { access, readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createAgentHost } from '@extalia/host';
+import { createAgentHost, createConnectService, migrateLegacyDataDirectory } from '@extalia/host';
 import { resolveDataDirectory } from '@extalia/platform';
 import { run } from './cli';
+import { defaultPrompt } from './connect';
 import { takeRelaunchToken } from './relaunch';
 import { startBridge } from './start';
 import { openBrowser, runNpmInstall } from './system';
@@ -42,6 +43,21 @@ const code = await run(process.argv.slice(2), {
   nodeVersion: process.version,
   env: process.env,
   homeDirectory,
+  connectService: async () => {
+    // Hooks connected before 0.0.21 live in the old data folder; copy it first (once) so they are found.
+    if (!process.env.EXTALIA_HOME?.trim()) {
+      await migrateLegacyDataDirectory({ target: dataDirectory, platform: process.platform, env: process.env, homeDirectory })
+        .catch((error: unknown) => err(`Could not copy data from the previous Extalia folder: ${error instanceof Error ? error.message : String(error)}`));
+    }
+    return createConnectService({
+      platform: process.platform,
+      env: process.env,
+      homeDirectory,
+      extaliaHome: dataDirectory,
+      nodePath: process.execPath,
+    });
+  },
+  prompt: defaultPrompt,
   start: options => startBridge(options, {
     version: __CLI_VERSION__,
     out,
@@ -51,6 +67,8 @@ const code = await run(process.argv.slice(2), {
     webRoot: path.join(path.dirname(binPath), 'web'),
     ...(relaunchToken ? { token: relaunchToken } : {}),
     createAgentHost,
+    // The optional `@extalia/daemon-<platform>-<arch>` package beside this bundle, or a workspace build in development.
+    daemonBinary: { packageFrom: binPath, repoRoot: path.resolve(path.dirname(binPath), '../../..') },
     updater: updater(),
     openBrowser: url => openBrowser(url, process.platform, err),
     signals: process,

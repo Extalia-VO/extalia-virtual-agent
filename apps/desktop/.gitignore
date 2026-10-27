@@ -1,1 +1,3 @@
 release/
+# Release binaries staged for electron-builder by tooling/build-daemon.mjs.
+build-resources/

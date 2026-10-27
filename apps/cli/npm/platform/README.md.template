@@ -1,0 +1,15 @@
+# {{name}}
+
+The `extalia-daemon` binary of [Extalia](https://github.com/Extalia-VO/extalia-virtual-agent)
+for **{{platform}}-{{arch}}** (`{{triple}}`), version {{version}}.
+
+Do not install this package directly. The `extalia-vo` CLI lists it as an optional
+dependency; npm installs only the package whose `os` and `cpu` match the machine, so the
+CLI runs without a Rust toolchain.
+
+```js
+const daemonPath = require('{{name}}'); // absolute path of bin/{{binary}}
+```
+
+Built in CI from the tagged source (`crates/extalia-daemon`) and released in lockstep with
+`extalia-vo`. MIT licensed.

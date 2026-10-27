@@ -2,7 +2,7 @@
  * Pure navigation, file-serving and IPC rules for the Desktop shell, kept free of
  * Electron imports so they can be unit tested.
  */
-import { isAgentHostMethod, type AgentHostMethod } from '@extalia/platform';
+import { isAgentHostMethod, MAX_ATTACHMENT_BASE64_CHARS, type AgentHostMethod } from '@extalia/platform';
 import path from 'node:path';
 
 export const APP_SCHEME = 'extalia';
@@ -13,9 +13,12 @@ export const CONTENT_SECURITY_POLICY = [
   "default-src 'self'",
   "script-src 'self'",
   "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data:",
+  // GLTFLoader decodes embedded textures from local object URLs.
+  "img-src 'self' data: blob:",
   "font-src 'self'",
-  "connect-src 'self'",
+  // The Splash plays its pre-rendered office loop from the app's own files.
+  "media-src 'self'",
+  "connect-src 'self' blob:",
   "object-src 'none'",
   "base-uri 'none'",
   "frame-ancestors 'none'",
@@ -55,6 +58,14 @@ export function parseAgentCall(senderUrl: string | undefined, devServer: URL | u
   // The whitelist keeps `subscribe` and inherited properties such as `constructor` out of reach.
   if (!isAgentHostMethod(method)) throw new Error('Unknown agent host method.');
   if (!Array.isArray(args)) throw new Error('Agent host arguments must be an array.');
+  // A file upload is the only call with a large payload; its base64 data is bounded before it reaches the host.
+  if (method === 'uploadAttachment') {
+    const file = args[1];
+    const data = typeof file === 'object' && file !== null ? (file as { data?: unknown }).data : undefined;
+    if (typeof data === 'string' && data.length > MAX_ATTACHMENT_BASE64_CHARS) {
+      throw new Error('The file is too large. Images up to 5 MB, text files up to 1 MB, other files up to 10 MB.');
+    }
+  }
   return { method, args };
 }
 
@@ -70,4 +81,23 @@ export function resolveAppFile(webRoot: string, requestPath: string): string | u
   const root = path.resolve(webRoot);
   const file = path.resolve(root, relative);
   return file.startsWith(root + path.sep) ? file : undefined;
+}
+
+/** Media the app scheme serves in byte ranges (the Splash loop); other files go through the file loader. */
+export const MEDIA_TYPES: Readonly<Record<string, string>> = { '.webm': 'video/webm', '.mp4': 'video/mp4' };
+
+/**
+ * One `bytes=` range of a file of `size` bytes, as inclusive offsets. `undefined` means serve the
+ * whole file (no header, several ranges or another unit); `null` means unsatisfiable (416).
+ */
+export function parseByteRange(header: string | null | undefined, size: number): { start: number; end: number } | null | undefined {
+  const match = header?.trim().match(/^bytes=(\d*)-(\d*)$/);
+  if (!match || (!match[1] && !match[2])) return undefined;
+  if (!match[1]) {
+    const suffix = Number(match[2]);
+    return suffix > 0 && size > 0 ? { start: Math.max(0, size - suffix), end: size - 1 } : null;
+  }
+  const start = Number(match[1]);
+  const end = match[2] ? Math.min(Number(match[2]), size - 1) : size - 1;
+  return start < size && start <= end ? { start, end } : null;
 }

@@ -5,8 +5,9 @@ import path from 'node:path';
 import type { AgentHostApi, UpdateStatus } from '@extalia/platform';
 import type { ExtaliaEvent } from '@extalia/protocol';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { ATTACHMENT_BODY_HEADER, MAX_ATTACHMENT_REQUEST_BYTES } from '@extalia/platform';
 import {
-  BridgeRequestError, CONTENT_SECURITY_POLICY, MAX_BODY_BYTES, TOKEN_HEADER, createToken, injectBridgeToken, resolveStaticFile,
+  BridgeRequestError, CONTENT_SECURITY_POLICY, MAX_BODY_BYTES, TOKEN_HEADER, createToken, injectBridgeToken, parseByteRange, resolveStaticFile,
   startBridgeServer, tokenMatches, type BridgeServer, type BridgeServerOptions,
 } from '../src/bridge/server';
 
@@ -27,6 +28,18 @@ function send(port: number, { method = 'GET', path: target = '/', headers = {}, 
   });
 }
 
+/**
+ * Status of a request the server is expected to refuse for its size. The server answers 413 and closes the
+ * connection without reading the rest of the body, so the client's write can fail (EPIPE/ECONNRESET) before
+ * it reads the response; that early close is itself the refusal.
+ */
+async function refusedStatus(reply: Promise<Reply>): Promise<number> {
+  try { return (await reply).status; } catch (error) {
+    if (['EPIPE', 'ECONNRESET'].includes((error as NodeJS.ErrnoException).code ?? '')) return 413;
+    throw error;
+  }
+}
+
 const event = (n: number) => ({
   v: 'extalia.v0', id: `e-${n}`, at: '2026-01-31T12:00:00.000Z', sessionId: 's', source: { runtime: 'extalia', channel: 'stream' }, body: { type: 'model.delta', text: `hi ${n}` },
 }) as unknown as ExtaliaEvent;
@@ -42,6 +55,38 @@ class FakeHost {
     return this.state;
   }
   async cancel() { return undefined; }
+  profile = { schema: 'extalia.profile.v1', preferences: {}, updatedAt: '1970-01-01T00:00:00.000Z' };
+  async getProfile() { return this.profile; }
+  async uploadAttachment(sessionId: string, file: { name: string; data: string }) {
+    this.calls.push(['uploadAttachment', sessionId, file.name, file.data.length]);
+    return { id: 'att_000000000000000000000001', name: file.name, mimeType: 'image/png', size: 1, kind: 'image' };
+  }
+  async saveProfile(patch: { preferences?: Record<string, string> }) {
+    this.calls.push(['saveProfile', patch]);
+    this.profile = { ...this.profile, preferences: { ...this.profile.preferences, ...patch.preferences } };
+    return this.profile;
+  }
+  async modelChoices(workspaceId: string) {
+    this.calls.push(['modelChoices', workspaceId]);
+    return { runtime: 'extalia-native', defaultModel: 'mock-agent', models: ['mock-agent', 'mock-large'], efforts: [] };
+  }
+  async setSessionOptions(sessionId: string, options: { model?: string }) {
+    this.calls.push(['setSessionOptions', sessionId, options]);
+    return { id: sessionId, options };
+  }
+  async planTeam(workspaceId: string, request: { goal: string; count: number }) {
+    this.calls.push(['planTeam', workspaceId, request]);
+    if (request.count > 8) throw new Error('Choose from 1 to 8 members.');
+    return { members: [{ id: 'm-1', name: 'Ava', role: 'Researcher', models: [] }], source: 'heuristic', note: 'A standard split was used.' };
+  }
+  async saveSessionTeam(sessionId: string, team: unknown) {
+    this.calls.push(['saveSessionTeam', sessionId, team]);
+    return team ?? undefined;
+  }
+  async getSessionTeam(sessionId: string) {
+    this.calls.push(['getSessionTeam', sessionId]);
+    return undefined;
+  }
   subscribe(listener: (event: ExtaliaEvent) => void) {
     this.listeners.add(listener);
     return () => { this.listeners.delete(listener); };
@@ -123,6 +168,32 @@ describe('Bridge server', () => {
     expect(post.headers.allow).toBe('GET, HEAD');
   });
 
+  it('serves the Splash media with video/image types and byte ranges', async () => {
+    await mkdir(path.join(webRoot, 'splash'), { recursive: true });
+    await writeFile(path.join(webRoot, 'splash', 'office-loop.webm'), '0123456789');
+    await writeFile(path.join(webRoot, 'splash', 'office-loop.mp4'), 'mp4-bytes');
+    await writeFile(path.join(webRoot, 'splash', 'office-poster.webp'), 'webp');
+    const webm = await send(server.port, { path: '/splash/office-loop.webm' });
+    expect(webm.status).toBe(200);
+    expect(webm.headers['content-type']).toBe('video/webm');
+    expect(webm.headers['accept-ranges']).toBe('bytes');
+    expect((await send(server.port, { path: '/splash/office-loop.mp4' })).headers['content-type']).toBe('video/mp4');
+    expect((await send(server.port, { path: '/splash/office-poster.webp' })).headers['content-type']).toBe('image/webp');
+    const part = await send(server.port, { path: '/splash/office-loop.webm', headers: { range: 'bytes=2-5' } });
+    expect(part.status).toBe(206);
+    expect(part.body).toBe('2345');
+    expect(part.headers['content-range']).toBe('bytes 2-5/10');
+    expect(part.headers['content-length']).toBe('4');
+    expect((await send(server.port, { path: '/splash/office-loop.webm', headers: { range: 'bytes=-3' } })).body).toBe('789');
+    const beyond = await send(server.port, { path: '/splash/office-loop.webm', headers: { range: 'bytes=10-' } });
+    expect(beyond.status).toBe(416);
+    expect(beyond.headers['content-range']).toBe('bytes */10');
+  });
+
+  it('allows same-origin media in the page CSP', () => {
+    expect(CONTENT_SECURITY_POLICY).toContain("media-src 'self'");
+  });
+
   it('never serves files outside the web root', async () => {
     for (const target of ['/..%2fsecret.txt', '/%2e%2e%2fsecret.txt', '/assets/..%2f..%2fsecret.txt', '/..%5csecret.txt', '/%00index.html', '/%E0%A4%A']) {
       const reply = await send(server.port, { path: target });
@@ -191,6 +262,40 @@ describe('Bridge server', () => {
     expect(fake.calls).toEqual([]);
   });
 
+  it('carries the shared profile calls', async () => {
+    expect(JSON.parse((await call({ method: 'getProfile', args: [] })).body)).toEqual({ result: { schema: 'extalia.profile.v1', preferences: {}, updatedAt: '1970-01-01T00:00:00.000Z' } });
+    const saved = await call({ method: 'saveProfile', args: [{ preferences: { theme: 'dark' } }] });
+    expect(saved.status).toBe(200);
+    expect(JSON.parse(saved.body).result.preferences).toEqual({ theme: 'dark' });
+    expect(fake.calls).toEqual([['saveProfile', { preferences: { theme: 'dark' } }]]);
+  });
+
+  it('carries the session model and effort calls', async () => {
+    const choices = await call({ method: 'modelChoices', args: ['w_1'] });
+    expect(choices.status).toBe(200);
+    expect(JSON.parse(choices.body).result).toMatchObject({ runtime: 'extalia-native', models: ['mock-agent', 'mock-large'], efforts: [] });
+    const set = await call({ method: 'setSessionOptions', args: ['s_1', { model: 'mock-large' }] });
+    expect(JSON.parse(set.body).result).toEqual({ id: 's_1', options: { model: 'mock-large' } });
+    expect(fake.calls).toEqual([['modelChoices', 'w_1'], ['setSessionOptions', 's_1', { model: 'mock-large' }]]);
+  });
+
+  it('forwards subagent team calls and their safe errors', async () => {
+    const plan = await call({ method: 'planTeam', args: ['w_1', { goal: 'Refactor', count: 1, allowedModels: [] }] });
+    expect(plan.status).toBe(200);
+    expect(JSON.parse(plan.body).result).toMatchObject({ source: 'heuristic', members: [{ name: 'Ava' }] });
+    const team = { enabled: true, allowedModels: [], members: [] };
+    expect(JSON.parse((await call({ method: 'saveSessionTeam', args: ['s_1', team] })).body).result).toEqual(team);
+    const removed = await call({ method: 'saveSessionTeam', args: ['s_1', null] });
+    expect(removed.status).toBe(200);
+    // The Bridge sends `undefined` (no team) as null; clients treat both as "no team".
+    expect(JSON.parse(removed.body).result).toBeNull();
+    expect((await call({ method: 'getSessionTeam', args: ['s_1'] })).status).toBe(200);
+    const refused = await call({ method: 'planTeam', args: ['w_1', { goal: 'x', count: 9, allowedModels: [] }] });
+    expect(refused.status).toBeGreaterThanOrEqual(400);
+    expect(JSON.parse(refused.body).error).toBe('Choose from 1 to 8 members.');
+    expect(fake.calls.map(entry => entry[0])).toEqual(['planTeam', 'saveSessionTeam', 'saveSessionTeam', 'getSessionTeam', 'planTeam']);
+  });
+
   it('rejects bodies over the limit', async () => {
     const big = JSON.stringify({ method: 'renameSession', args: ['s', 'x'.repeat(MAX_BODY_BYTES)] });
     const declared = await send(server.port, { method: 'POST', path: '/api/call', body: big, headers: { 'content-type': 'application/json', [TOKEN_HEADER]: server.token, 'content-length': String(Buffer.byteLength(big)) } });
@@ -202,6 +307,31 @@ describe('Bridge server', () => {
     });
     expect(streamed.status).toBe(413);
     expect(fake.calls).toEqual([]);
+  });
+
+  it('admits a bounded upload above the normal limit, and nothing else', async () => {
+    // A 5 MB image is about 6.7 MB of base64: far over the ordinary 1 MB limit, inside the upload limit.
+    const data = 'A'.repeat(Math.ceil((5 * 1024 * 1024) / 3) * 4);
+    const upload = JSON.stringify({ method: 'uploadAttachment', args: ['s_abc123def456', { name: 'shot.png', mimeType: 'image/png', data }] });
+    expect(Buffer.byteLength(upload)).toBeGreaterThan(MAX_BODY_BYTES);
+    const headers = { 'content-type': 'application/json', [TOKEN_HEADER]: server.token, [ATTACHMENT_BODY_HEADER]: 'attachment' };
+    const admitted = await send(server.port, { method: 'POST', path: '/api/call', body: upload, headers });
+    expect(admitted.status).toBe(200);
+    expect(JSON.parse(admitted.body).result).toMatchObject({ kind: 'image' });
+    expect(fake.calls.at(-1)).toEqual(['uploadAttachment', 's_abc123def456', 'shot.png', data.length]);
+
+    // The same large body without the upload header, or sent as any other method, is refused.
+    expect(await refusedStatus(send(server.port, { method: 'POST', path: '/api/call', body: upload, headers: { 'content-type': 'application/json', [TOKEN_HEADER]: server.token } }))).toBe(413);
+    const notUpload = JSON.stringify({ method: 'sendPrompt', args: ['s_abc123def456', 'x'.repeat(MAX_BODY_BYTES + 10)] });
+    const wrongMethod = await send(server.port, { method: 'POST', path: '/api/call', body: notUpload, headers });
+    expect(wrongMethod.status).toBe(400);
+    expect(JSON.parse(wrongMethod.body).error).toMatch(/Only file uploads/);
+    expect(await refusedStatus(send(server.port, { method: 'POST', path: '/api/call', body: notUpload, headers: { 'content-type': 'application/json', [TOKEN_HEADER]: server.token } }))).toBe(413);
+
+    // Above the attachment limit even an upload is refused, after reading at most that much.
+    const tooBig = JSON.stringify({ method: 'uploadAttachment', args: ['s_abc123def456', { name: 'x.bin', mimeType: '', data: 'A'.repeat(MAX_ATTACHMENT_REQUEST_BYTES + 1) }] });
+    expect(await refusedStatus(send(server.port, { method: 'POST', path: '/api/call', body: tooBig, headers }))).toBe(413);
+    expect(fake.calls.filter(entry => entry[0] === 'sendPrompt')).toEqual([]);
   });
 
   it('maps host results and errors without leaking internals', async () => {
@@ -217,8 +347,10 @@ describe('Bridge server', () => {
     expect(failure.status).toBe(500);
     expect(JSON.parse(failure.body)).toEqual({ error: 'Session not found.' });
     expect(failure.body).not.toMatch(/at |internal detail|stack/);
-    // Methods the fake does not implement fail like host errors, not crashes.
-    expect((await call({ method: 'sendPrompt', args: ['s', 'hi'] })).status).toBe(500);
+    // Unsupported host methods have a deliberate response, without exposing a TypeError.
+    const unsupported = await call({ method: 'sendPrompt', args: ['s', 'hi'] });
+    expect(unsupported.status).toBe(501);
+    expect(JSON.parse(unsupported.body)).toEqual({ error: 'This host does not support this action.' });
   });
 
   it('reports unavailable agents but keeps serving the UI', async () => {
@@ -294,6 +426,18 @@ describe('Bridge helpers', () => {
     expect(html).toContain("href='/b.css'");
     expect(injectBridgeToken('<p>no head</p>', 'abc')).toBe('<meta name="extalia-bridge" content="abc">\n<p>no head</p>');
     expect(injectBridgeToken('<header></header>', 'abc').startsWith('<meta')).toBe(true);
+  });
+
+  it('parses single byte ranges', () => {
+    expect(parseByteRange(undefined, 10)).toBeUndefined();
+    expect(parseByteRange('bytes=0-', 10)).toEqual({ start: 0, end: 9 });
+    expect(parseByteRange('bytes=4-100', 10)).toEqual({ start: 4, end: 9 });
+    expect(parseByteRange('bytes=-4', 10)).toEqual({ start: 6, end: 9 });
+    expect(parseByteRange('bytes=-40', 10)).toEqual({ start: 0, end: 9 });
+    expect(parseByteRange('bytes=0-1,4-5', 10)).toBeUndefined();
+    expect(parseByteRange('items=0-1', 10)).toBeUndefined();
+    expect(parseByteRange('bytes=12-', 10)).toBeNull();
+    expect(parseByteRange('bytes=5-2', 10)).toBeNull();
   });
 
   it('resolves static paths inside the root only', () => {

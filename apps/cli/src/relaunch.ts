@@ -50,7 +50,8 @@ export const FORWARDED_SIGNALS = ['SIGINT', 'SIGTERM'] as const;
 
 export interface SupervisedChild {
   kill(signal?: NodeJS.Signals): boolean;
-  once(event: string, listener: (...args: never[]) => void): unknown;
+  once(event: 'exit', listener: (code: number | null, signal: NodeJS.Signals | null) => void): unknown;
+  once(event: 'error', listener: (error: Error) => void): unknown;
 }
 
 export interface SignalSource {

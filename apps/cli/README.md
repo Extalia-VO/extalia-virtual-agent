@@ -7,7 +7,7 @@ machine, with your files and your model connections.
 
 ## Install
 
-Requires Node.js 22.12 or newer.
+Requires Node.js 22.13 or newer (Node 23 needs 23.4+).
 
 ```bash
 npm i -g extalia-vo
@@ -46,8 +46,11 @@ It waits for running agents to finish first.
 
 ## Data
 
-Settings, sessions and caches live in your user-data directory
-(`extalia doctor` prints it; `EXTALIA_HOME` overrides it). Extalia collects no
+Settings, sessions and caches live in `~/.extalia-vo`
+(`%USERPROFILE%\.extalia-vo` on Windows), shared with Extalia Desktop
+(`extalia doctor` prints it; `EXTALIA_HOME` overrides it). Data from the folder
+used up to 0.0.20 is copied there once on the first start; the old folder is
+kept. Extalia collects no
 telemetry. The only request it makes by itself is the update check against
 `registry.npmjs.org`, at most every 12 hours.
 

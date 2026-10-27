@@ -1,0 +1,5 @@
+'use strict';
+// Absolute path of the extalia-daemon binary for {{platform}}-{{arch}} ({{triple}}).
+// The extalia-vo CLI resolves this package (an optional dependency selected by os/cpu)
+// and starts the binary as its sidecar; nothing is built or downloaded at install time.
+module.exports = require('node:path').join(__dirname, 'bin', '{{binary}}');

@@ -79,6 +79,11 @@ async function captureScreenshots(window: BrowserWindow, directory: string, setu
 }
 
 export async function runSmokeTest(window: BrowserWindow, screenshotDir = process.env.EXTALIA_SMOKE_SCREENSHOTS): Promise<number> {
+  const modelErrors: string[] = [];
+  window.webContents.on('console-message', (event: unknown) => {
+    const message = typeof event === 'object' && event && 'message' in event ? String(event.message) : '';
+    if (/GLTFLoader.*(Couldn.t|Error)|WebAssembly.*(violates|failed)/i.test(message)) modelErrors.push(message.slice(0, 500));
+  });
   const rendered = await waitFor(window, `Boolean(${SHELL} || ${SETUP})`);
   const report = rendered ? await window.webContents.executeJavaScript(`(async () => {
     const desktop = window.extaliaDesktop;
@@ -95,6 +100,18 @@ export async function runSmokeTest(window: BrowserWindow, screenshotDir = proces
       protocol: document.location.protocol,
       agents: await desktop?.agents.call('getState', []).then(() => 'available', error => error.message),
       updater: await desktop?.updater.status().then(status => status.state, error => error.message),
+      // The Splash loop must load through the app scheme (CSP media-src, MIME type, byte ranges).
+      splashVideo: await new Promise(resolve => {
+        const video = document.createElement('video');
+        video.muted = true;
+        const done = value => { clearTimeout(timer); video.removeAttribute('src'); video.load(); resolve(value); };
+        const timer = setTimeout(() => done('timeout'), 8000);
+        video.oncanplay = () => done('canplay ' + video.videoWidth + 'x' + video.videoHeight);
+        video.onerror = () => done('error ' + (video.error?.code ?? '') + ' ' + (video.error?.message ?? ''));
+        video.src = './splash/office-loop.webm';
+      }),
+      splashRange: await fetch('./splash/office-loop.mp4', { headers: { range: 'bytes=0-15' } })
+        .then(response => response.status + ' ' + response.headers.get('content-type') + ' ' + response.headers.get('content-range'), error => error.message),
     };
   })()`) as Record<string, unknown> : {};
 
@@ -105,17 +122,24 @@ export async function runSmokeTest(window: BrowserWindow, screenshotDir = proces
 
   const screenshots = rendered && screenshotDir ? await captureScreenshots(window, screenshotDir, setup) : [];
 
-  // Smoke uses a throwaway profile. Observer setup lets us exercise the shared
-  // Office shell without a real account, model request or project permission.
+  // The throwaway profile seeds a local character to exercise bundled models.
+  // No prompt/model request or access to a real user project is made.
   if (rendered && setup) {
     await window.webContents.executeJavaScript(`(async () => {
-      await window.extaliaDesktop.agents.call('completeSetup', ['observe']);
+      const api = window.extaliaDesktop.agents;
+      const current = await api.call('getState', []);
+      const next = await api.call('saveConnection', [{ name: 'Smoke model', preset: 'custom', api: 'openai-chat', baseUrl: 'http://127.0.0.1:4319/v1', model: 'mock-agent', credential: { kind: 'none' }, features: { memory: 'off', skills: 'off' } }]);
+      const registered = await api.call('saveWorkspace', [{ name: 'Smoke workspace', projectLocation: current.storage.dataDirectory, connectionId: next.connections[0].id, permissions: { fileWrite: 'ask', commands: 'ask' } }]);
+      const session = await api.call('createSession', [registered.workspaces[0].id]);
+      await api.call('renameSession', [session.id, 'Smoke character']);
+      await api.call('completeSetup', []);
       location.reload();
     })()`);
     await waitFor(window, `Boolean(${SHELL})`);
   }
   const officeOpened = rendered && await open(window, 'office');
   const officeRendered = officeOpened && await waitFor(window, `Boolean(document.querySelector('.office-stage canvas') || document.querySelector('.office-stage [role="alert"]'))`);
+  const sceneReady = officeRendered && await waitFor(window, `!document.querySelector('.office-loading:not(.done)')`, 30_000);
   const office = officeOpened ? await window.webContents.executeJavaScript(`({
     route: document.querySelector('.nav-item[data-page="office"]')?.getAttribute('aria-current'),
     canvas: Boolean(document.querySelector('.office-stage canvas')),
@@ -134,11 +158,11 @@ export async function runSmokeTest(window: BrowserWindow, screenshotDir = proces
     await open(window, 'office');
     for (const floor of [1, 2, 3]) {
       const chosen = await window.webContents.executeJavaScript(`(() => {
-        const button = document.querySelector('.office-view-switch button[data-floor="${floor}"]');
+        const button = document.querySelector('.topbar-office button[data-view="${floor}"]');
         button?.click(); return Boolean(button);
       })()`) as boolean;
       await settle(window);
-      floorViews.push(chosen && await waitFor(window, `document.querySelector('.office-view-switch button[data-floor="${floor}"]')?.getAttribute('aria-pressed') === 'true'`));
+      floorViews.push(chosen && await waitFor(window, `document.querySelector('.topbar-office button[data-view="${floor}"]')?.getAttribute('aria-pressed') === 'true'`));
       if (screenshotDir && chosen) {
         const file = path.join(screenshotDir, `office-f${floor}-desktop.png`);
         await writeFile(file, (await window.webContents.capturePage()).toPNG());
@@ -148,7 +172,8 @@ export async function runSmokeTest(window: BrowserWindow, screenshotDir = proces
   }
 
   const ok = rendered && report.desktopBridge === true && report.nodeExposed === false && String(report.host).startsWith('Desktop')
-    && officeRendered && office.route === 'page' && office.separateFrame === false && settingsOpened && floorViews.length === 3 && floorViews.every(Boolean);
-  console.log(JSON.stringify({ ok, rendered, ...report, office, floorViews, settingsOpened, diagnostics, screenshots }, null, 2));
+    && String(report.splashVideo).startsWith('canplay') && String(report.splashRange).startsWith('206 video/mp4')
+    && officeRendered && sceneReady && modelErrors.length === 0 && office.route === 'page' && office.separateFrame === false && settingsOpened && floorViews.length === 3 && floorViews.every(Boolean);
+  console.log(JSON.stringify({ ok, rendered, ...report, office, sceneReady, modelErrors, floorViews, settingsOpened, diagnostics, screenshots }, null, 2));
   return ok ? 0 : 1;
 }

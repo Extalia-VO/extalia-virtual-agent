@@ -10,6 +10,12 @@ export const IPC = {
   update: 'extalia:update',
   /** main → renderer: update status changes. */
   updateStatus: 'extalia:update-status',
+  /** invoke(options?): relaunch the app on the user's request. Never used by updates (see updatePolicy.ts). */
+  restart: 'extalia:restart',
+  /** invoke({ title, body? }): show a native notification (v0.0.48). Validated again in notifications.ts. */
+  notify: 'extalia:notify',
+  /** main → renderer: the user clicked one of Extalia's notifications; the window is focused first. */
+  notificationActivate: 'extalia:notification-activate',
 } as const;
 
 /**

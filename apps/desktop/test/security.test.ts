@@ -1,9 +1,33 @@
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { isAllowedAppUrl, parseDevServerUrl, resolveAppFile } from '../src/security';
+import { CONTENT_SECURITY_POLICY, MEDIA_TYPES, isAllowedAppUrl, parseByteRange, parseDevServerUrl, resolveAppFile } from '../src/security';
 
 describe('desktop security rules', () => {
   const root = path.resolve('/srv/extalia-web');
+  it('allows embedded model image textures without enabling blob scripts or external images', () => {
+    const directives = new Map(CONTENT_SECURITY_POLICY.split('; ').map(directive => { const [name, ...values] = directive.split(' '); return [name, values]; }));
+    expect(directives.get('img-src')).toContain('blob:');
+    expect(directives.get('connect-src')).toContain('blob:');
+    expect(directives.get('script-src')).not.toContain('blob:');
+    expect(directives.get('img-src')).not.toContain('https:');
+  });
+
+  it('lets the Splash play its loop from the app scheme only', () => {
+    const directives = new Map(CONTENT_SECURITY_POLICY.split('; ').map(directive => { const [name, ...values] = directive.split(' '); return [name, values]; }));
+    expect(directives.get('media-src')).toEqual(["'self'"]);
+    expect(directives.get('default-src')).toEqual(["'self'"]);
+  });
+
+  it('serves the Splash video types in single byte ranges', () => {
+    expect(MEDIA_TYPES['.webm']).toBe('video/webm');
+    expect(MEDIA_TYPES['.mp4']).toBe('video/mp4');
+    expect(parseByteRange(null, 10)).toBeUndefined();
+    expect(parseByteRange('bytes=0-', 10)).toEqual({ start: 0, end: 9 });
+    expect(parseByteRange('bytes=2-5', 10)).toEqual({ start: 2, end: 5 });
+    expect(parseByteRange('bytes=-3', 10)).toEqual({ start: 7, end: 9 });
+    expect(parseByteRange('bytes=0-1,4-5', 10)).toBeUndefined();
+    expect(parseByteRange('bytes=10-', 10)).toBeNull();
+  });
 
   it('serves files inside the web build only', () => {
     expect(resolveAppFile(root, '/')).toBe(path.join(root, 'index.html'));

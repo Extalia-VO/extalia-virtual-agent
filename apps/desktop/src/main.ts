@@ -1,12 +1,16 @@
 import type { DirectorySelection, HostInfo } from '@extalia/platform';
 import { BrowserWindow, app, dialog, ipcMain, net, protocol, shell, type IpcMainInvokeEvent } from 'electron';
-import { mkdirSync, mkdtempSync } from 'node:fs';
+import { createReadStream, mkdirSync, mkdtempSync } from 'node:fs';
+import { stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { Readable } from 'node:stream';
 import { pathToFileURL } from 'node:url';
 import { startAgents } from './agentsIpc';
 import { IPC } from './ipc';
-import { APP_HOST, APP_ORIGIN, APP_SCHEME, CONTENT_SECURITY_POLICY, isAllowedAppUrl, isTrustedSender, parseDevServerUrl, resolveAppFile } from './security';
+import { registerNotifications } from './notificationIpc';
+import { registerRestart } from './restartIpc';
+import { APP_HOST, APP_ORIGIN, APP_SCHEME, CONTENT_SECURITY_POLICY, MEDIA_TYPES, isAllowedAppUrl, isTrustedSender, parseByteRange, parseDevServerUrl, resolveAppFile } from './security';
 import { runSmokeTest } from './smoke';
 import { checkAfterLaunch, startUpdater } from './updater';
 
@@ -21,18 +25,33 @@ if (smokeTest) {
   process.env.EXTALIA_HOME = smokeDataDirectory;
   process.env.EXTALIA_SECRET_STORE = 'memory';
 } else if (app.isPackaged) {
-  // Extalia's own data directory defaults to <appData>/Extalia on macOS and Windows; keep Chromium's
-  // profile (caches, local storage) beside it instead of mixed into it.
+  // Chromium's own profile (caches, local storage) stays in the system's application-data folder.
+  // Extalia's data lives in ~/.extalia-vo (EXTALIA_HOME overrides it), shared with the Web Bridge;
+  // the agent host copies data from the pre-0.0.21 folder <appData>/Extalia there once.
   app.setPath('userData', path.join(app.getPath('appData'), 'Extalia Desktop'));
 }
 const devServer = parseDevServerUrl(process.env.EXTALIA_WEB_URL);
 if (process.env.EXTALIA_WEB_URL && !devServer) console.warn('EXTALIA_WEB_URL ignored: only http:// loopback addresses are allowed.');
 
-protocol.registerSchemesAsPrivileged([{ scheme: APP_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true } }]);
+// `stream` lets <video> read the Splash loop in byte ranges from the app scheme.
+protocol.registerSchemesAsPrivileged([{ scheme: APP_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } }]);
 
 /** The web build is shipped beside the app when packaged, and read from the workspace in development. */
 function webRoot(): string {
   return app.isPackaged ? path.join(process.resourcesPath, 'web') : path.resolve(__dirname, '../../web/dist');
+}
+
+/** Video in byte ranges, so the Splash loop can seek and loop (the file loader ignores Range here). */
+async function serveMedia(file: string, type: string, rangeHeader: string | null): Promise<Response> {
+  const info = await stat(file).catch(() => undefined);
+  if (!info?.isFile()) return new Response('Not found', { status: 404 });
+  const range = parseByteRange(rangeHeader, info.size);
+  if (range === null) return new Response(null, { status: 416, headers: { 'Content-Range': `bytes */${info.size}` } });
+  const { start, end } = range ?? { start: 0, end: info.size - 1 };
+  const headers: Record<string, string> = { 'Content-Type': type, 'Content-Length': String(end - start + 1), 'Accept-Ranges': 'bytes' };
+  if (range) headers['Content-Range'] = `bytes ${start}-${end}/${info.size}`;
+  const body = Readable.toWeb(createReadStream(file, { start, end })) as ReadableStream<Uint8Array>;
+  return new Response(body, { status: range ? 206 : 200, headers });
 }
 
 function serveWebBuild(): void {
@@ -41,6 +60,8 @@ function serveWebBuild(): void {
     const url = new URL(request.url);
     const file = url.host === APP_HOST ? resolveAppFile(root, url.pathname) : undefined;
     if (!file) return new Response('Not found', { status: 404 });
+    const media = MEDIA_TYPES[path.extname(file).toLowerCase()];
+    if (media) return serveMedia(file, media, request.headers.get('range'));
     const response = await net.fetch(pathToFileURL(file).toString());
     if (!file.endsWith('.html')) return response;
     const headers = new Headers(response.headers);
@@ -119,6 +140,8 @@ if (!app.requestSingleInstanceLock()) {
     registerIpc();
     const agents = startAgents({ devServer, dataDirectory: smokeDataDirectory });
     const updates = startUpdater({ smokeTest, work: agents.work, trusted });
+    registerRestart({ smokeTest, work: agents.work, trusted });
+    registerNotifications({ smokeTest, devServer });
     const window = createWindow();
     if (smokeTest) {
       // app.exit skips the quit events, so close the agent host first.

@@ -1,7 +1,7 @@
 {
   "name": "@extalia/desktop",
   "description": "Extalia Desktop shell for macOS, Windows and Linux.",
-  "version": "0.0.8",
+  "version": "0.4.108",
   "private": true,
   "license": "MIT",
   "author": "Extalia contributors",
@@ -12,8 +12,9 @@
     "dev": "node build.mjs && electron .",
     "smoke": "node build.mjs && electron . --smoke-test",
     "typecheck": "tsc -p tsconfig.json",
-    "dist": "pnpm --filter @extalia/web build && node build.mjs && electron-builder --publish never",
-    "dist:dir": "pnpm --filter @extalia/web build && node build.mjs && electron-builder --dir --publish never"
+    "dist": "pnpm --filter @extalia/web build && node build.mjs && node ../../tooling/build-daemon.mjs --desktop-targets && electron-builder --publish never",
+    "dist:dir": "pnpm --filter @extalia/web build && node build.mjs && node ../../tooling/build-daemon.mjs && electron-builder --dir --publish never",
+    "smoke:packaged": "node scripts/packaged-smoke.mjs"
   },
   "dependencies": {
     "@extalia/host": "workspace:*",
@@ -21,7 +22,7 @@
     "electron-updater": "6.8.9"
   },
   "devDependencies": {
-    "electron": "~44.6.0",
+    "electron": "~44.7.2",
     "electron-builder": "26.15.3",
     "esbuild": "^0.28.2"
   }
