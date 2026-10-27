@@ -284,8 +284,9 @@ longer changes daylight sky, sun, ambient light or daytime fill; solar twilight
 blends the night treatment gradually instead of replacing daylight with a dark
 profile.
 
-Character selection, board/card inspection and modal open/close preserve manual
-camera state. Find and Follow remain explicit requests. Floor and All floors
+Direct character/card inspection and modal open/close preserve manual camera
+state. Board rows and character shortcuts locate avatars, as clarified in
+v0.4.109; Find and Follow remain explicit requests. Floor and All floors
 overviews fit the usable viewport; Building keeps its desktop default and limits
 outward zoom against the shared 250 m ground disc. Narrow viewports receive only
 the minimum safety zoom needed to keep the rim outside view. Deliberate panning

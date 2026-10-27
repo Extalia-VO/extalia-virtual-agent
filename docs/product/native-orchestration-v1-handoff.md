@@ -112,6 +112,28 @@ working app and observers while implementing each gate; Stage 6 cannot enable
 write tools before approval/intent/recovery decisions are enforced. The AC ledger
 below remains the source of acceptance status.
 
+### Gate 3.3A: authoritative recovery inspection (v0.4.109)
+
+ADR 0030 adds a bounded, read-only recovery foundation. `mission.snapshot` reads
+canonical Rust mission/task states, current graph membership, journal sequence and
+recorded leases in one transaction. It never renews/reaps leases or transitions
+work. New host records persist their owning backend, profile/canonical workspace
+and whether uncertainty came from host restart or execution/persistence failure.
+Legacy records without ownership remain explicitly unresolved.
+
+Missions offers **Refresh recovery** (English/Indonesian) and shows canonical task
+states alongside the retained checkpoint. Only a restart-generated display shadow
+can adopt an already-terminal canonical mission: exact task/assignee identity,
+terminal tasks, zero leases and no local execution/reservation are required.
+Persistence precedes acknowledgement. Missing results, usage or evidence are not
+reconstructed, and worktrees are never released, integrated or deleted by refresh.
+
+This does not complete gate 3.3. Independent heartbeat, live reaper/fencing,
+physical-settlement reconciliation and executor approvals remain pending. W2
+still precedes skill routing/activation expansion. The existing Rust schema cannot
+independently prove immutable original task membership; the host checks against
+its retained original run before repairing a terminal projection.
+
 ## Baseline audit (before this task edited code)
 
 - Starting package version: 0.0.38; HEAD: `f214f4f`.

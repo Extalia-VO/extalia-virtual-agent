@@ -16,6 +16,18 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.109] - 2026-10-27
+
+### Added
+
+- Read-only Rust mission snapshots and a localized recovery inspection action in Missions. New runs retain explicit backend ownership and recovery provenance; canonical task states and unresolved leases can be inspected without replaying work.
+
+### Fixed
+
+- A host-restart checkpoint can adopt an already-terminal Rust mission only after exact identity checks, terminal task states, no leases and no local activity. Genuine execution uncertainty remains quarantined, missing results remain missing, and failed checkpoint writes leave recovery pending.
+- Late mission status polls and responses after unmount cannot overwrite a recovery refresh. Interrupted missions retain manual retry, while active missions continue their normal polling.
+- Board rows and character shortcuts locate the avatar again, including its current floor; direct avatar clicks and popup inspection preserve the user's camera.
+
 ## [0.4.108] - 2026-10-27
 
 ### Added
