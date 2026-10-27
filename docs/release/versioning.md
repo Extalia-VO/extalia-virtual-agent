@@ -21,3 +21,5 @@
 - The CLI is published to npm as `extalia-vo` once maintainers enable it; users
   update with `extalia update`.
 - Local packaging check: `CSC_IDENTITY_AUTO_DISCOVERY=false pnpm --filter @extalia/desktop dist:dir`.
+- Installers and the CLI bundle the Rust daemon; see [Packaging the daemon](packaging.md)
+  for the artifact layout, signing and the clean-machine release gate.

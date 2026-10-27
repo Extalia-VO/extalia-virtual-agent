@@ -28,13 +28,18 @@ On first start a short setup asks for:
 2. **A workspace**: the project folder the agent works in, and whether file
    edits and commands need your approval (they do by default).
 
-After setup, you enter the Virtual Office in the same application. Use the sidebar
-to switch between Office, Chat and Settings. The campus and furnished F1, F2 and F3
+After setup, you land in the **3D Office** in the same application, and every later
+launch opens there too, after a short start screen (the last-used workspace is kept).
+**Chat** (with your sessions), Files, Git, History and Settings are one click away in
+the sidebar; while the Office is open, its floor tabs (Campus, F1–F3, All floors) and
+lights (Auto, On, Off) sit in the top bar. The campus and furnished F1, F2 and F3
 views use the same sessions as Chat. Selecting a character opens its conversation
 inside Office; managed primary characters accept prompts there, and workers show
 their reported activity in the parent session. Observed
 sessions show observation status, without claiming their native agent is running.
-The complete appearance editor and advanced avatar navigation are still being developed.
+**Appearance** in a character's panel changes its hair, clothing, accessories and
+walking style, with feminine, masculine and neutral presets; walking and
+navigation are still being developed.
 
 Open Chat and describe the task. The agent reads and searches the project,
 asks before it edits files or runs commands, and reports every step.
@@ -80,7 +85,7 @@ In setup choose **Custom endpoint**, base URL `http://127.0.0.1:4319/v1`, model
 
 ## Develop Extalia
 
-Requirements: Node.js 22.12 or newer (`.node-version` pins 24), pnpm 12
+Requirements: Node.js 22.13 or newer (Node 23 needs 23.4+) (`.node-version` pins 26), pnpm 12
 (`corepack enable` picks the version from `package.json`), Git. No account, API
 key or private file is needed.
 
@@ -94,9 +99,11 @@ pnpm build && node apps/cli/dist/extalia.mjs start   # Web UI through the Bridge
 ```
 
 The first Desktop start downloads the Electron binary once (Electron fetches it
-on first run rather than during install). Use `EXTALIA_HOME=/tmp/extalia-dev`
-to keep development data apart from your own; `EXTALIA_SECRET_STORE=file`
-avoids the OS keychain while testing.
+on first run rather than during install). Extalia keeps its data in
+`~/.extalia-vo` (`%USERPROFILE%\.extalia-vo` on Windows), shared by the Web
+client and Desktop. Use `EXTALIA_HOME=/tmp/extalia-dev` to keep development
+data apart from your own; `EXTALIA_SECRET_STORE=file` avoids the OS keychain
+while testing.
 
 ## Checks
 

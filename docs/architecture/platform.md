@@ -71,18 +71,68 @@ data directory at a time.
 
 ## User data location
 
-`resolveDataDirectory()` picks the platform location and never hardcodes a
-user name:
+`resolveDataDirectory()` returns one profile folder in the user's home and
+never hardcodes a user name. Web (through the Bridge) and Desktop share it:
 
 | OS | Location |
 | --- | --- |
-| macOS | `~/Library/Application Support/Extalia` |
-| Windows | `%APPDATA%\Extalia` |
-| Linux | `$XDG_DATA_HOME/extalia` or `~/.local/share/extalia` |
+| macOS, Linux | `~/.extalia-vo` |
+| Windows | `%USERPROFILE%\.extalia-vo` |
 
 `EXTALIA_HOME` overrides it (useful for tests). Layout: `config` (connections
-and workspaces, no secrets), `sessions` (managed sessions as event logs plus
-model history), `workspaces` (per-workspace memory), `skills` (user skills),
-`state` (imported-session library, update checks, host lock, file-based
-credential fallback), `cache`. Packaged Desktop keeps Chromium's own profile in
-a separate `Extalia Desktop` folder.
+and workspaces, no secrets; `profile.json` with the display name and interface
+preferences), `sessions` (managed sessions as event logs plus model history),
+`workspaces` (per-workspace memory), `skills` (user skills), `state`
+(imported-session library, update checks, host lock, file-based credential
+fallback), `hooks` and `connect` (agent-app hooks), `cache`. Desktop keeps
+Chromium's own profile (caches, local storage) in the system's application-data
+folder (`Extalia Desktop` when packaged).
+
+### Profile API
+
+`getProfile()` / `saveProfile(patch)` read and merge `config/profile.json`
+(`extalia.profile.v1`: `displayName`, `preferences` with `language`, `theme`,
+`material`, `font`, `sidebar`). The host validates every field, refuses unknown
+ones, re-reads the file before each save and writes it atomically with mode
+0600. With a host, the Web client loads the profile at start, applies it and
+saves preference changes back (debounced); localStorage only mirrors it so
+`boot-appearance.js` can paint the first frame without a theme flash. The
+static Web build without a host keeps preferences in localStorage.
+
+`HostState.setupComplete` is true only once the current welcome setup
+(`SETUP_VERSION`, now 2) was completed (`completeSetup()` or choosing the
+observe workflow writes `setupVersion`). Configurations from older setups run
+the welcome setup once more; their connections, workspaces and sessions stay.
+
+### Moving data from 0.0.20 and older
+
+Earlier versions used the application-data folder (macOS
+`~/Library/Application Support/Extalia`, Windows `%APPDATA%\Extalia`, Linux
+`$XDG_DATA_HOME/extalia` or `~/.local/share/extalia`). When a host starts (or
+`extalia connect` runs) with the default folder, no `config/extalia.json` there
+and an old folder present, it copies the old folder once:
+
+- Only Extalia's folders are copied (`config`, `profiles`, `workspaces`,
+  `sessions`, `state`, `skills`, `hooks`, `connect`); `cache`, the host lock,
+  the hook endpoint file, temporary files and symbolic links are skipped. Modes
+  (0600/0700) and modification times are kept and no file in the new folder is
+  overwritten. `config/extalia.json` is copied last with an atomic rename, so an
+  interrupted copy is completed on the next start.
+- A lock file in the new folder makes a Bridge and a Desktop that start
+  together migrate only once.
+- `state/migrated-from.json` (`{ from, at }`) records the copy; nothing in the
+  old folder is moved or deleted. A `MIGRATED_TO_EXTALIA_VO.txt` note is left
+  there, and its `hooks/forward.mjs` becomes a small shim that runs the
+  forwarder in the new folder, so hooks connected earlier keep reporting.
+  Connected apps show a hint to run `extalia connect <app>`, which points the
+  hooks to the new folder. Backup paths in the copied connect manifest are
+  rewritten to the new folder, so `extalia disconnect` keeps working.
+- An explicit `EXTALIA_HOME` is never migrated into. `extalia doctor` shows the
+  old folder and whether it was copied.
+
+## Native mission API
+
+Native sessions can run bounded, read-only task graphs through the shared host
+API. Workspace connection authorization, per-connection credentials, cancellation
+and retained results stay host-owned. See [native missions](native-missions.md)
+and [ADR 0009](../adr/0009-native-missions-in-session-host.md).

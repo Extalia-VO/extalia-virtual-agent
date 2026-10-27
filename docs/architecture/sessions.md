@@ -86,3 +86,33 @@ where the conversation came from and to check the current files before relying
 on the earlier work. In a Hermes Agent workspace, Hermes keeps its own history,
 so the carried messages are sent to it as context with the first prompt instead
 ([runtime-adapters.md](runtime-adapters.md#hermes-agent-managed)).
+
+## Continued sessions (observed)
+
+An observed conversation is one office character (one observation record) for
+as long as it is the same conversation. What each app does when the user
+continues an earlier chat, checked read-only against local history (counts
+only, no content):
+
+| App | Continuation in the local history | How Extalia keeps one character |
+| --- | --- | --- |
+| Claude Code | 838 transcripts, each holding one session id that matches its file name. Two continuations seen: the new file has a new session id and starts with copies of the earlier rows (same message uuids and timestamps), then carries on. In one pair the earlier file ends with a `continued-in` row naming the new id. Subagent folders were not copied. | The first message uuid (the anchor) is shared by both files. The later file takes over the earlier record when the earlier file's last message is not after the later file's creation time. An earlier file read after its successor is a stale copy and is ignored. Two branches that both keep being written stay separate. |
+| Codex | 65 rollouts, one thread id each. Resumed threads keep their id and file: 15 rollouts span over an hour inside one file with a single session meta. Forks seen are subagent threads (`thread_spawn`, `forked_from_id`), already mapped to their root session. | The same id is the same record (no change needed). Hook and transcript reports of one session share one record. |
+| Gemini CLI | 19 recordings, one session id each; no shared ids, so no continuation was seen. | The same id is the same record. A continuation under a new id would stay separate. |
+| Hermes Agent | `state.db` `parent_session_id` is set on 99 of 153 sessions: 94 subagent sessions and 5 `session_switch` children with the same model. The dashboard list does not expose the parent. | Not linked yet. A `session_switch` child stays a separate record. |
+
+Rules for Claude Code (`observations.ts`, `continuation`): a record and a
+native session with the same anchor are one conversation when
+the earlier one's last message is at or before the later file's birth time
+(macOS and Windows report it; without it nothing is linked). Discovery and
+hook reports both apply it, and a hook-first session is taken over the same way.
+Subagents keep their ids under the record, so their names stay stable while the
+record lasts; a continuation folder holds only its own subagent files, so the
+earlier file's subagents are not carried over.
+
+The lead model shown for an observed character is the newest report by time
+(not the last one written): hook payloads (their receipt time) and the
+transcript's latest lead model event compete, and a re-read transcript window
+with an older model never overwrites a newer hook model (`reportModel`). In the
+office, `latestAgentModels` orders model-bearing events by event time, then
+sequence, and copied history never counts.

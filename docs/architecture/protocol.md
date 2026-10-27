@@ -43,7 +43,16 @@ protocol change. `source.channel` records how the event arrived: `stream`
 
 Agent states: `idle`, `thinking`, `working`, `waiting`, `delegating`,
 `blocked`, `offline`. Activity kinds: `edit`, `command`, `test`, `search`,
-`read`, `web`, `delegate`, `knowledge`, `think`, `tool`.
+`read`, `web`, `delegate`, `knowledge`, `think`, `tool`. `agent.state` and
+`subagent.state` may carry an optional `phase` the source states explicitly:
+`planning`, `approval`, `input`, `compacting`, `interrupted`, `error`, `ended`
+(added in 0.0.38; older readers that reject unknown fields never receive it
+from older producers). Since 0.0.43 `turn.failed`, `agent.state` and
+`subagent.state` may also carry an optional stop `reason` when the source says
+why the agent stopped: `quota` (out of tokens, credit or plan quota),
+`rate-limit`, `overloaded`, `auth`, `context` (context window full), `crash`
+(connection or process broke off) or `interrupted`. A missing reason means a
+generic failure.
 
 ## Validation
 

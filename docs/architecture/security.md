@@ -27,6 +27,15 @@ Security policy overrides user, project and agent instructions.
   masked before it reaches the model or the screen.
 - File edits and commands ask for approval unless the workspace allows them;
   approvals can cover one action or the rest of the session.
+- A session's permission mode narrows or widens that policy for the session:
+  `ask` asks before every edit and command, `accept-edits` allows edits inside
+  the workspace (commands still follow the workspace), `plan` offers no edit or
+  command tools at all. Hermes sessions keep Hermes' own approvals.
+- Files attached to a prompt are checked by type and bytes (images 5 MB, text
+  1 MB, other files 10 MB, max ten per prompt). Credential files are refused.
+  They wait privately under the data directory, or in memory for sessions with
+  history off, and are removed once sent. Their contents reach the model only
+  for that turn; the stored events keep names, kinds and sizes.
 - API keys live in the OS credential store (macOS Keychain, Secret Service on
   Linux) or, where none is available, in a user-only file in the data
   directory; they can also come from an environment variable. They never leave

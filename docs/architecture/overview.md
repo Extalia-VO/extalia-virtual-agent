@@ -55,8 +55,9 @@ packaged by Desktop. It receives host session summaries and protocol events;
 it never launches a separate agent host or connects directly to a provider.
 The campus and furnished floors are adapted from the existing Virtual Office.
 New visual improvements belong in this repository; see
-[Office development](../design/office-development.md). Advanced avatar navigation
-and the complete per-character appearance editor remain later scene milestones.
+[Office development](../design/office-development.md). Per-character
+appearance is saved in the host and shared by Web and Desktop; avatar walking and
+navigation remain later scene milestones.
 
 ## Dependency direction
 
@@ -73,11 +74,19 @@ protocol ← core ← platform ← apps (web, desktop, cli)
 
 `pnpm lint` enforces these rules.
 
+Saved native mission checkpoints and canonical native control events use
+host-owned SQLite WAL under the profile lock, with one-time import of legacy
+sidecars. The read-only mission loop requires their atomic acknowledgement
+before provider/tool effects (ADRs 0013–0015). Session view events remain a
+separate JSONL projection. Durable leases, reconciliation and write-capable
+action approvals remain later gates.
+
 ## Further reading
 
 - [Protocol](protocol.md)
 - [Runtimes, providers and observed agents](runtime-adapters.md)
 - [Sessions and the session library](sessions.md)
 - [Platform capabilities](platform.md)
+- [Native mission host API](native-missions.md)
 - [Security model](security.md)
 - [Architecture decision records](../adr/README.md)
