@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:extalia:protocol:permission:v1",
+  "title": "Permission",
+  "description": "Generated from @extalia/protocol by tooling/generate-schemas.mjs; do not edit. The TypeScript validators remain the reference. Validator-only checks: string lengths in UTF-16 code units (maxLength here counts code points).",
+  "$ref": "#/$defs/Permission",
+  "$defs": {
+    "Identifier": {
+      "description": "Nonblank text without control characters, at most 200 UTF-16 code units.",
+      "type": "string",
+      "maxLength": 200,
+      "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+      "allOf": [
+        {
+          "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+        }
+      ]
+    },
+    "Label": {
+      "description": "Nonblank text without control characters, at most 2000 UTF-16 code units.",
+      "type": "string",
+      "maxLength": 2000,
+      "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+      "allOf": [
+        {
+          "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+        }
+      ]
+    },
+    "Permission": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "id",
+        "workspaceId",
+        "actorId",
+        "capability",
+        "action",
+        "scope",
+        "decision",
+        "risk"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": 1
+        },
+        "id": {
+          "$ref": "#/$defs/Uuid"
+        },
+        "workspaceId": {
+          "$ref": "#/$defs/Uuid"
+        },
+        "actorId": {
+          "$ref": "#/$defs/Uuid"
+        },
+        "capability": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "action": {
+          "$ref": "#/$defs/Label"
+        },
+        "scope": {
+          "$ref": "#/$defs/Label"
+        },
+        "decision": {
+          "type": "string",
+          "enum": [
+            "allow",
+            "deny",
+            "ask"
+          ]
+        },
+        "risk": {
+          "type": "string",
+          "enum": [
+            "low",
+            "medium",
+            "high"
+          ]
+        }
+      }
+    },
+    "Uuid": {
+      "type": "string",
+      "description": "Lowercase RFC 9562 UUID, versions 1-8.",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    }
+  }
+}

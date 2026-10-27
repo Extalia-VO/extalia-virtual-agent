@@ -1,0 +1,140 @@
+{
+  "contract": "permission",
+  "cases": [
+    {
+      "name": "ask permission",
+      "valid": true,
+      "value": {
+        "schemaVersion": 1,
+        "id": "00000000-0000-4000-8000-000000000010",
+        "workspaceId": "00000000-0000-4000-8000-000000000001",
+        "actorId": "00000000-0000-4000-8000-000000000003",
+        "capability": "file.write",
+        "action": "write",
+        "scope": "src/example.ts",
+        "decision": "ask",
+        "risk": "high"
+      }
+    },
+    {
+      "name": "allow low risk",
+      "valid": true,
+      "value": {
+        "schemaVersion": 1,
+        "id": "00000000-0000-4000-8000-000000000010",
+        "workspaceId": "00000000-0000-4000-8000-000000000001",
+        "actorId": "00000000-0000-4000-8000-000000000003",
+        "capability": "file.write",
+        "action": "write",
+        "scope": "src/example.ts",
+        "decision": "allow",
+        "risk": "low"
+      }
+    },
+    {
+      "name": "unknown decision",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "id": "00000000-0000-4000-8000-000000000010",
+        "workspaceId": "00000000-0000-4000-8000-000000000001",
+        "actorId": "00000000-0000-4000-8000-000000000003",
+        "capability": "file.write",
+        "action": "write",
+        "scope": "src/example.ts",
+        "decision": "maybe",
+        "risk": "high"
+      }
+    },
+    {
+      "name": "unknown risk",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "id": "00000000-0000-4000-8000-000000000010",
+        "workspaceId": "00000000-0000-4000-8000-000000000001",
+        "actorId": "00000000-0000-4000-8000-000000000003",
+        "capability": "file.write",
+        "action": "write",
+        "scope": "src/example.ts",
+        "decision": "ask",
+        "risk": "critical"
+      }
+    },
+    {
+      "name": "blank capability",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "id": "00000000-0000-4000-8000-000000000010",
+        "workspaceId": "00000000-0000-4000-8000-000000000001",
+        "actorId": "00000000-0000-4000-8000-000000000003",
+        "capability": " ",
+        "action": "write",
+        "scope": "src/example.ts",
+        "decision": "ask",
+        "risk": "high"
+      }
+    },
+    {
+      "name": "capability with control character",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "id": "00000000-0000-4000-8000-000000000010",
+        "workspaceId": "00000000-0000-4000-8000-000000000001",
+        "actorId": "00000000-0000-4000-8000-000000000003",
+        "capability": "file\twrite",
+        "action": "write",
+        "scope": "src/example.ts",
+        "decision": "ask",
+        "risk": "high"
+      }
+    },
+    {
+      "name": "capability over 200 characters",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "id": "00000000-0000-4000-8000-000000000010",
+        "workspaceId": "00000000-0000-4000-8000-000000000001",
+        "actorId": "00000000-0000-4000-8000-000000000003",
+        "capability": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+        "action": "write",
+        "scope": "src/example.ts",
+        "decision": "ask",
+        "risk": "high"
+      }
+    },
+    {
+      "name": "unknown field",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "id": "00000000-0000-4000-8000-000000000010",
+        "workspaceId": "00000000-0000-4000-8000-000000000001",
+        "actorId": "00000000-0000-4000-8000-000000000003",
+        "capability": "file.write",
+        "action": "write",
+        "scope": "src/example.ts",
+        "decision": "ask",
+        "risk": "high",
+        "apiKey": "example"
+      }
+    },
+    {
+      "name": "missing scope",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "id": "00000000-0000-4000-8000-000000000010",
+        "workspaceId": "00000000-0000-4000-8000-000000000001",
+        "actorId": "00000000-0000-4000-8000-000000000003",
+        "capability": "file.write",
+        "action": "write",
+        "decision": "ask",
+        "risk": "high"
+      }
+    }
+  ]
+}

@@ -1,0 +1,7175 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:extalia:protocol:daemon-frame:v1",
+  "title": "Daemon wire frame v1",
+  "description": "Generated from @extalia/protocol by tooling/generate-schemas.mjs; do not edit. The TypeScript validators remain the reference. Validator-only checks: mission.create graph belongs to the mission; mission.snapshot unique task/lease IDs, task/holder/state lease correspondence and lease time order; TaskGraph unique task IDs, known references, acyclic dependsOn/parentTaskId and completed dependencies for started work; the checks of each nested contract; string lengths in UTF-16 code units (maxLength here counts code points).",
+  "$ref": "#/$defs/DaemonFrame",
+  "$defs": {
+    "AgentEvent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "id",
+        "workspaceId",
+        "sessionId",
+        "source",
+        "observedAt",
+        "confidence",
+        "body"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": 1
+        },
+        "id": {
+          "$ref": "#/$defs/Uuid"
+        },
+        "workspaceId": {
+          "$ref": "#/$defs/Uuid"
+        },
+        "sessionId": {
+          "$ref": "#/$defs/Uuid"
+        },
+        "missionId": {
+          "$ref": "#/$defs/Uuid"
+        },
+        "taskId": {
+          "$ref": "#/$defs/Uuid"
+        },
+        "agentId": {
+          "$ref": "#/$defs/Uuid"
+        },
+        "parentId": {
+          "$ref": "#/$defs/Uuid"
+        },
+        "correlationId": {
+          "$ref": "#/$defs/Uuid"
+        },
+        "source": {
+          "$ref": "#/$defs/EventSource"
+        },
+        "sourceTimestamp": {
+          "$ref": "#/$defs/UtcTimestamp"
+        },
+        "observedAt": {
+          "$ref": "#/$defs/UtcTimestamp"
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "confidence": {
+          "type": "string",
+          "enum": [
+            "reported",
+            "observed",
+            "inferred"
+          ]
+        },
+        "body": {
+          "$ref": "#/$defs/AgentEventBody"
+        }
+      },
+      "dependentRequired": {
+        "taskId": [
+          "missionId"
+        ]
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "body"
+            ],
+            "properties": {
+              "body": {
+                "type": "object",
+                "required": [
+                  "type"
+                ],
+                "properties": {
+                  "type": {
+                    "enum": [
+                      "mission.state"
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "missionId"
+            ]
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "body"
+            ],
+            "properties": {
+              "body": {
+                "type": "object",
+                "required": [
+                  "type"
+                ],
+                "properties": {
+                  "type": {
+                    "enum": [
+                      "task.state",
+                      "task.created",
+                      "task.assigned",
+                      "task.progress",
+                      "task.completed"
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "taskId"
+            ]
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "body"
+            ],
+            "properties": {
+              "body": {
+                "type": "object",
+                "required": [
+                  "type"
+                ],
+                "properties": {
+                  "type": {
+                    "enum": [
+                      "agent.created",
+                      "agent.state",
+                      "agent.stopped",
+                      "agent.error",
+                      "subagent.spawned",
+                      "subagent.state"
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "agentId"
+            ]
+          }
+        }
+      ]
+    },
+    "AgentEventBody": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "state"
+          ],
+          "properties": {
+            "type": {
+              "const": "mission.state"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "draft",
+                "planning",
+                "queued",
+                "running",
+                "waiting",
+                "awaiting_approval",
+                "reviewing",
+                "completed",
+                "failed",
+                "cancelled",
+                "recovering"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "state"
+          ],
+          "properties": {
+            "type": {
+              "const": "task.state"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "queued",
+                "blocked",
+                "assigned",
+                "running",
+                "waiting",
+                "awaiting_approval",
+                "verifying",
+                "completed",
+                "failed",
+                "cancelled",
+                "unknown"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "control"
+          ],
+          "properties": {
+            "type": {
+              "const": "session.started"
+            },
+            "control": {
+              "type": "string",
+              "enum": [
+                "managed",
+                "observed"
+              ]
+            },
+            "title": {
+              "type": "string",
+              "maxLength": 2000,
+              "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+            },
+            "model": {
+              "type": "string",
+              "maxLength": 2000,
+              "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+            },
+            "cwd": {
+              "type": "string",
+              "maxLength": 2000,
+              "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "revision",
+            "messageCount"
+          ],
+          "properties": {
+            "type": {
+              "const": "session.updated"
+            },
+            "revision": {
+              "type": "string",
+              "maxLength": 200,
+              "pattern": "^[^\\n\\r]*$",
+              "allOf": [
+                {
+                  "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+                }
+              ]
+            },
+            "messageCount": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "type": {
+              "const": "session.ended"
+            },
+            "reason": {
+              "type": "string",
+              "maxLength": 2000,
+              "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "text",
+            "via"
+          ],
+          "properties": {
+            "type": {
+              "const": "prompt.submitted"
+            },
+            "text": {
+              "type": "string",
+              "maxLength": 200000
+            },
+            "via": {
+              "type": "string",
+              "enum": [
+                "extalia",
+                "native"
+              ]
+            },
+            "attachments": {
+              "type": "array",
+              "maxItems": 10,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "name",
+                  "kind",
+                  "size"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "maxLength": 2000,
+                    "pattern": "^[^\\n\\r]*$",
+                    "allOf": [
+                      {
+                        "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+                      }
+                    ]
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "image",
+                      "text",
+                      "file"
+                    ]
+                  },
+                  "size": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "ref": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{64}$"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "action"
+          ],
+          "properties": {
+            "type": {
+              "const": "user.intervention"
+            },
+            "action": {
+              "type": "string",
+              "enum": [
+                "steer",
+                "pause",
+                "resume",
+                "cancel"
+              ]
+            },
+            "text": {
+              "type": "string",
+              "maxLength": 200000
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "type": {
+              "const": "model.thinking"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "text"
+          ],
+          "properties": {
+            "type": {
+              "const": "model.delta"
+            },
+            "text": {
+              "type": "string",
+              "maxLength": 200000
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "text"
+          ],
+          "properties": {
+            "type": {
+              "const": "model.completed"
+            },
+            "text": {
+              "type": "string",
+              "maxLength": 200000
+            },
+            "model": {
+              "type": "string",
+              "maxLength": 2000,
+              "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+            },
+            "usage": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "inputTokens": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "outputTokens": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "cachedInputTokens": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "type": {
+              "const": "turn.completed"
+            },
+            "summary": {
+              "type": "string",
+              "maxLength": 200000
+            },
+            "model": {
+              "type": "string",
+              "maxLength": 2000,
+              "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+            },
+            "usage": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "inputTokens": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "outputTokens": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "cachedInputTokens": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              }
+            },
+            "costUsd": {
+              "type": "number",
+              "minimum": 0
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "error"
+          ],
+          "properties": {
+            "type": {
+              "const": "turn.failed"
+            },
+            "error": {
+              "type": "string",
+              "maxLength": 200000
+            },
+            "reason": {
+              "type": "string",
+              "enum": [
+                "quota",
+                "rate-limit",
+                "overloaded",
+                "auth",
+                "context",
+                "crash",
+                "interrupted"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "name"
+          ],
+          "properties": {
+            "type": {
+              "const": "agent.created"
+            },
+            "name": {
+              "type": "string",
+              "maxLength": 2000,
+              "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+            },
+            "role": {
+              "type": "string",
+              "maxLength": 2000,
+              "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+            },
+            "parentAgentId": {
+              "type": "string",
+              "maxLength": 200,
+              "pattern": "^[^\\n\\r]*$",
+              "allOf": [
+                {
+                  "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "state"
+          ],
+          "properties": {
+            "type": {
+              "const": "agent.state"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "idle",
+                "thinking",
+                "working",
+                "waiting",
+                "delegating",
+                "blocked",
+                "offline"
+              ]
+            },
+            "activity": {
+              "type": "string",
+              "enum": [
+                "edit",
+                "command",
+                "test",
+                "search",
+                "read",
+                "web",
+                "delegate",
+                "knowledge",
+                "think",
+                "tool"
+              ]
+            },
+            "summary": {
+              "type": "string",
+              "maxLength": 2000,
+              "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+            },
+            "target": {
+              "type": "string",
+              "maxLength": 2000,
+              "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+            },
+            "progress": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "phase": {
+              "type": "string",
+              "enum": [
+                "planning",
+                "approval",
+                "input",
+                "compacting",
+                "interrupted",
+                "error",
+                "ended"
+              ]
+            },
+            "reason": {
+              "type": "string",
+              "enum": [
+                "quota",
+                "rate-limit",
+                "overloaded",
+                "auth",
+                "context",
+                "crash",
+                "interrupted"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "type": {
+              "const": "agent.stopped"
+            },
+            "reason": {
+              "type": "string",
+              "maxLength": 2000,
+              "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "message"
+          ],
+          "properties": {
+            "type": {
+              "const": "agent.error"
+            },
+            "message": {
+              "type": "string",
+              "maxLength": 200000
+            },
+            "recoverable": {
+              "type": "boolean"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "subagentId"
+          ],
+          "properties": {
+            "type": {
+              "const": "subagent.spawned"
+            },
+            "subagentId": {
+              "type": "string",
+              "maxLength": 200,
+              "pattern": "^[^\\n\\r]*$",
+              "allOf": [
+                {
+                  "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+                }
+              ]
+            },
+            "role": {
+              "type": "string",
+              "maxLength": 2000,
+              "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+            },
+            "label": {
+              "type": "string",
+              "maxLength": 2000,
+              "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+            },
+            "model": {
+              "type": "string",
+              "maxLength": 2000,
+              "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "subagentId",
+            "state"
+          ],
+          "properties": {
+            "type": {
+              "const": "subagent.state"
+            },
+            "subagentId": {
+              "type": "string",
+              "maxLength": 200,
+              "pattern": "^[^\\n\\r]*$",
+              "allOf": [
+                {
+                  "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+                }
+              ]
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "idle",
+                "thinking",
+                "working",
+                "waiting",
+                "delegating",
+                "blocked",
+                "offline"
+              ]
+            },
+            "summary": {
+              "type": "string",
+              "maxLength": 2000,
+              "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+            },
+            "phase": {
+              "type": "string",
+              "enum": [
+                "planning",
+                "approval",
+                "input",
+                "compacting",
+                "interrupted",
+                "error",
+                "ended"
+              ]
+            },
+            "reason": {
+              "type": "string",
+              "enum": [
+                "quota",
+                "rate-limit",
+                "overloaded",
+                "auth",
+                "context",
+                "crash",
+                "interrupted"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "tool",
+            "kind",
+            "label"
+          ],
+          "properties": {
+            "type": {
+              "const": "tool.started"
+            },
+            "toolCallId": {
+              "type": "string",
+              "maxLength": 200,
+              "pattern": "^[^\\n\\r]*$",
+              "allOf": [
+                {
+                  "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+                }
+              ]
+            },
+            "tool": {
+              "type": "string",
+              "maxLength": 2000,
+              "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "edit",
+                "command",
+                "test",
+                "search",
+                "read",
+                "web",
+                "delegate",
+                "knowledge",
+                "think",
+                "tool"
+              ]
+            },
+            "label": {
+              "type": "string",
+              "maxLength": 2000,
+              "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+            },
+            "target": {
+              "type": "string",
+              "maxLength": 2000,
+              "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "text"
+          ],
+          "properties": {
+            "type": {
+              "const": "tool.output"
+            },
+            "toolCallId": {
+              "type": "string",
+              "maxLength": 200,
+              "pattern": "^[^\\n\\r]*$",
+              "allOf": [
+                {
+                  "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+                }
+              ]
+            },
+            "text": {
+              "type": "string",
+              "maxLength": 200000
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "tool",
+            "kind",
+            "label",
+            "ok"
+          ],
+          "properties": {
+            "type": {
+              "const": "tool.completed"
+            },
+            "toolCallId": {
+              "type": "string",
+              "maxLength": 200,
+              "pattern": "^[^\\n\\r]*$",
+              "allOf": [
+                {
+                  "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+                }
+              ]
+            },
+            "tool": {
+              "type": "string",
+              "maxLength": 2000,
+              "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "edit",
+                "command",
+                "test",
+                "search",
+                "read",
+                "web",
+                "delegate",
+                "knowledge",
+                "think",
+                "tool"
+              ]
+            },
+            "label": {
+              "type": "string",
+              "maxLength": 2000,
+              "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+            },
+            "ok": {
+              "type": "boolean"
+            },
+            "target": {
+              "type": "string",
+              "maxLength": 2000,
+              "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+            },
+            "output": {
+              "type": "string",
+              "maxLength": 200000
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "command"
+          ],
+          "properties": {
+            "type": {
+              "const": "command.started"
+            },
+            "commandId": {
+              "type": "string",
+              "maxLength": 200,
+              "pattern": "^[^\\n\\r]*$",
+              "allOf": [
+                {
+                  "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+                }
+              ]
+            },
+            "command": {
+              "type": "string",
+              "maxLength": 200000
+            },
+            "cwd": {
+              "type": "string",
+              "maxLength": 2000,
+              "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "stream",
+            "text"
+          ],
+          "properties": {
+            "type": {
+              "const": "command.output"
+            },
+            "commandId": {
+              "type": "string",
+              "maxLength": 200,
+              "pattern": "^[^\\n\\r]*$",
+              "allOf": [
+                {
+                  "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+                }
+              ]
+            },
+            "stream": {
+              "type": "string",
+              "enum": [
+                "stdout",
+                "stderr"
+              ]
+            },
+            "text": {
+              "type": "string",
+              "maxLength": 200000
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "exitCode"
+          ],
+          "properties": {
+            "type": {
+              "const": "command.completed"
+            },
+            "commandId": {
+              "type": "string",
+              "maxLength": 200,
+              "pattern": "^[^\\n\\r]*$",
+              "allOf": [
+                {
+                  "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+                }
+              ]
+            },
+            "exitCode": {
+              "type": "integer"
+            },
+            "durationMs": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "path"
+          ],
+          "properties": {
+            "type": {
+              "const": "file.read"
+            },
+            "path": {
+              "type": "string",
+              "maxLength": 2000,
+              "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "path",
+            "change"
+          ],
+          "properties": {
+            "type": {
+              "const": "file.written"
+            },
+            "path": {
+              "type": "string",
+              "maxLength": 2000,
+              "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+            },
+            "change": {
+              "type": "string",
+              "enum": [
+                "add",
+                "update",
+                "delete"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "title"
+          ],
+          "properties": {
+            "type": {
+              "const": "task.created"
+            },
+            "title": {
+              "type": "string",
+              "maxLength": 2000,
+              "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+            },
+            "parentTaskId": {
+              "type": "string",
+              "maxLength": 200,
+              "pattern": "^[^\\n\\r]*$",
+              "allOf": [
+                {
+                  "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "assigneeAgentId"
+          ],
+          "properties": {
+            "type": {
+              "const": "task.assigned"
+            },
+            "assigneeAgentId": {
+              "type": "string",
+              "maxLength": 200,
+              "pattern": "^[^\\n\\r]*$",
+              "allOf": [
+                {
+                  "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "progress"
+          ],
+          "properties": {
+            "type": {
+              "const": "task.progress"
+            },
+            "progress": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "summary": {
+              "type": "string",
+              "maxLength": 2000,
+              "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "ok"
+          ],
+          "properties": {
+            "type": {
+              "const": "task.completed"
+            },
+            "ok": {
+              "type": "boolean"
+            },
+            "summary": {
+              "type": "string",
+              "maxLength": 200000
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "approvalId",
+            "action"
+          ],
+          "properties": {
+            "type": {
+              "const": "approval.requested"
+            },
+            "approvalId": {
+              "type": "string",
+              "maxLength": 200,
+              "pattern": "^[^\\n\\r]*$",
+              "allOf": [
+                {
+                  "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+                }
+              ]
+            },
+            "action": {
+              "type": "string",
+              "maxLength": 2000,
+              "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+            },
+            "detail": {
+              "type": "string",
+              "maxLength": 200000
+            },
+            "risk": {
+              "type": "string",
+              "enum": [
+                "low",
+                "medium",
+                "high"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "approvalId",
+            "decision",
+            "by"
+          ],
+          "properties": {
+            "type": {
+              "const": "approval.resolved"
+            },
+            "approvalId": {
+              "type": "string",
+              "maxLength": 200,
+              "pattern": "^[^\\n\\r]*$",
+              "allOf": [
+                {
+                  "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+                }
+              ]
+            },
+            "decision": {
+              "type": "string",
+              "enum": [
+                "granted",
+                "rejected"
+              ]
+            },
+            "by": {
+              "type": "string",
+              "enum": [
+                "user",
+                "policy"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "changedFiles"
+          ],
+          "properties": {
+            "type": {
+              "const": "git.status"
+            },
+            "changedFiles": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "branch": {
+              "type": "string",
+              "maxLength": 2000,
+              "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+            },
+            "ahead": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "behind": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "sha"
+          ],
+          "properties": {
+            "type": {
+              "const": "git.commit"
+            },
+            "sha": {
+              "type": "string",
+              "maxLength": 200,
+              "pattern": "^[^\\n\\r]*$",
+              "allOf": [
+                {
+                  "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+                }
+              ]
+            },
+            "message": {
+              "type": "string",
+              "maxLength": 200000
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "ok"
+          ],
+          "properties": {
+            "type": {
+              "const": "git.push"
+            },
+            "ok": {
+              "type": "boolean"
+            },
+            "remote": {
+              "type": "string",
+              "maxLength": 2000,
+              "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+            },
+            "branch": {
+              "type": "string",
+              "maxLength": 2000,
+              "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "meetingId",
+            "participants"
+          ],
+          "properties": {
+            "type": {
+              "const": "meeting.started"
+            },
+            "meetingId": {
+              "type": "string",
+              "maxLength": 200,
+              "pattern": "^[^\\n\\r]*$",
+              "allOf": [
+                {
+                  "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+                }
+              ]
+            },
+            "participants": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "maxLength": 2000,
+                "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+              }
+            },
+            "topic": {
+              "type": "string",
+              "maxLength": 2000,
+              "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "meetingId"
+          ],
+          "properties": {
+            "type": {
+              "const": "meeting.completed"
+            },
+            "meetingId": {
+              "type": "string",
+              "maxLength": 200,
+              "pattern": "^[^\\n\\r]*$",
+              "allOf": [
+                {
+                  "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+                }
+              ]
+            },
+            "decisions": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "maxLength": 2000,
+                "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+              }
+            },
+            "actionItems": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "maxLength": 2000,
+                "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "DaemonErrorCode": {
+      "type": "string",
+      "enum": [
+        "invalid_frame",
+        "frame_too_large",
+        "unsupported_schema_version",
+        "handshake_required",
+        "unknown_op",
+        "invalid_request",
+        "not_found",
+        "conflict",
+        "capacity_exceeded",
+        "storage_failure",
+        "deadline_exceeded",
+        "shutting_down",
+        "internal",
+        "denied",
+        "integrity_failure"
+      ]
+    },
+    "DaemonErrorFrame": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "kind",
+        "error"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": 1
+        },
+        "kind": {
+          "const": "error"
+        },
+        "requestId": {
+          "$ref": "#/$defs/Uuid"
+        },
+        "error": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "code"
+          ],
+          "properties": {
+            "code": {
+              "$ref": "#/$defs/DaemonErrorCode"
+            },
+            "message": {
+              "type": "string",
+              "maxLength": 500,
+              "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+              "allOf": [
+                {
+                  "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+                }
+              ]
+            },
+            "reason": {
+              "$ref": "#/$defs/SkillReason"
+            }
+          }
+        }
+      }
+    },
+    "DaemonEventCommitParams": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "event"
+      ],
+      "properties": {
+        "event": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/AgentEvent"
+            },
+            {
+              "type": "object",
+              "required": [
+                "missionId"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "DaemonEventCommitResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "eventId",
+        "missionId",
+        "sequence",
+        "duplicate"
+      ],
+      "properties": {
+        "eventId": {
+          "$ref": "#/$defs/Uuid"
+        },
+        "missionId": {
+          "$ref": "#/$defs/Uuid"
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "duplicate": {
+          "type": "boolean"
+        }
+      }
+    },
+    "DaemonFrame": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/DaemonRequest"
+        },
+        {
+          "$ref": "#/$defs/DaemonResponse"
+        },
+        {
+          "$ref": "#/$defs/DaemonErrorFrame"
+        }
+      ]
+    },
+    "DaemonHealthParams": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {}
+    },
+    "DaemonHealthResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "uptimeMs"
+      ],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "ok",
+            "degraded"
+          ]
+        },
+        "uptimeMs": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      }
+    },
+    "DaemonHelloParams": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "clientVersion",
+        "capabilities"
+      ],
+      "properties": {
+        "clientVersion": {
+          "type": "string",
+          "maxLength": 64,
+          "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+          "allOf": [
+            {
+              "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+            }
+          ]
+        },
+        "capabilities": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 31,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/DaemonOp"
+          }
+        }
+      }
+    },
+    "DaemonHelloResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "daemonVersion",
+        "capabilities",
+        "maxFrameBytes"
+      ],
+      "properties": {
+        "daemonVersion": {
+          "type": "string",
+          "maxLength": 64,
+          "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+          "allOf": [
+            {
+              "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+            }
+          ]
+        },
+        "capabilities": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 31,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/DaemonOp"
+          }
+        },
+        "maxFrameBytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1048576
+        }
+      }
+    },
+    "DaemonKnowledgeBacklinksParams": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "nodeId"
+      ],
+      "properties": {
+        "nodeId": {
+          "$ref": "#/$defs/KnowledgeNodeId"
+        },
+        "cursor": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 200
+        }
+      }
+    },
+    "DaemonKnowledgeBacklinksResult": {
+      "$ref": "#/$defs/KnowledgeLinkPage"
+    },
+    "DaemonKnowledgeGraphParams": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "nodeId"
+      ],
+      "properties": {
+        "nodeId": {
+          "$ref": "#/$defs/KnowledgeNodeId"
+        },
+        "depth": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 3
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 500
+        }
+      }
+    },
+    "DaemonKnowledgeGraphResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "generation",
+        "rootNodeId",
+        "depth",
+        "nodes",
+        "edges",
+        "truncated"
+      ],
+      "properties": {
+        "generation": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "rootNodeId": {
+          "$ref": "#/$defs/KnowledgeNodeId"
+        },
+        "depth": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 3
+        },
+        "nodes": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 500,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "nodeId",
+              "title"
+            ],
+            "properties": {
+              "nodeId": {
+                "$ref": "#/$defs/KnowledgeNodeId"
+              },
+              "title": {
+                "type": "string",
+                "maxLength": 512,
+                "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+                "allOf": [
+                  {
+                    "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "edges": {
+          "type": "array",
+          "maxItems": 2000,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "source",
+              "target",
+              "edgeType"
+            ],
+            "properties": {
+              "source": {
+                "$ref": "#/$defs/KnowledgeNodeId"
+              },
+              "target": {
+                "$ref": "#/$defs/KnowledgeNodeId"
+              },
+              "edgeType": {
+                "$ref": "#/$defs/KnowledgeEdgeType"
+              }
+            }
+          }
+        },
+        "truncated": {
+          "type": "boolean"
+        }
+      }
+    },
+    "DaemonKnowledgeHistoryParams": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path"
+      ],
+      "properties": {
+        "path": {
+          "$ref": "#/$defs/KnowledgePath"
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 50
+        }
+      }
+    },
+    "DaemonKnowledgeHistoryResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "entries"
+      ],
+      "properties": {
+        "path": {
+          "$ref": "#/$defs/KnowledgePath"
+        },
+        "entries": {
+          "type": "array",
+          "maxItems": 50,
+          "items": {
+            "$ref": "#/$defs/KnowledgeHistoryEntry"
+          }
+        }
+      }
+    },
+    "DaemonKnowledgeImportMemoryParams": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "workspaceId"
+      ],
+      "properties": {
+        "workspaceId": {
+          "type": "string",
+          "maxLength": 36,
+          "pattern": "^(?:w_[0-9a-z]{1,11}[0-9a-f]{8}|[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$"
+        },
+        "dryRun": {
+          "type": "boolean"
+        }
+      }
+    },
+    "DaemonKnowledgeImportMemoryResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "notes",
+        "counts"
+      ],
+      "properties": {
+        "notes": {
+          "type": "array",
+          "maxItems": 500,
+          "items": {
+            "$ref": "#/$defs/KnowledgeImportedNote"
+          }
+        },
+        "counts": {
+          "$ref": "#/$defs/KnowledgeImportCounts"
+        },
+        "truncated": {
+          "type": "boolean"
+        }
+      }
+    },
+    "DaemonKnowledgeLinksParams": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "nodeId"
+      ],
+      "properties": {
+        "nodeId": {
+          "$ref": "#/$defs/KnowledgeNodeId"
+        },
+        "cursor": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 200
+        }
+      }
+    },
+    "DaemonKnowledgeLinksResult": {
+      "$ref": "#/$defs/KnowledgeLinkPage"
+    },
+    "DaemonKnowledgeNodeParams": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "nodeId": {
+          "$ref": "#/$defs/KnowledgeNodeId"
+        },
+        "path": {
+          "$ref": "#/$defs/KnowledgePath"
+        }
+      },
+      "oneOf": [
+        {
+          "required": [
+            "nodeId"
+          ]
+        },
+        {
+          "required": [
+            "path"
+          ]
+        }
+      ]
+    },
+    "DaemonKnowledgeNodeResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "generation",
+        "node",
+        "bodyStatus",
+        "bodyTruncated"
+      ],
+      "properties": {
+        "generation": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "node": {
+          "$ref": "#/$defs/KnowledgeNode"
+        },
+        "body": {
+          "type": "string",
+          "maxLength": 262144,
+          "pattern": "^[^\\x00-\\x08\\x0b\\x0c\\x0e-\\x1f\\x7f]*$"
+        },
+        "bodyStatus": {
+          "type": "string",
+          "enum": [
+            "current",
+            "changed",
+            "unavailable"
+          ]
+        },
+        "bodyTruncated": {
+          "type": "boolean"
+        }
+      }
+    },
+    "DaemonKnowledgeOverviewParams": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "nodeLimit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2000
+        },
+        "edgeLimit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 8000
+        }
+      }
+    },
+    "DaemonKnowledgeOverviewResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "generation",
+        "totalNodes",
+        "totalEdges",
+        "truncated",
+        "nodes",
+        "edges"
+      ],
+      "properties": {
+        "generation": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "totalNodes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "totalEdges": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "truncated": {
+          "type": "boolean"
+        },
+        "nodes": {
+          "type": "array",
+          "maxItems": 2000,
+          "items": {
+            "$ref": "#/$defs/KnowledgeOverviewNode"
+          }
+        },
+        "edges": {
+          "type": "array",
+          "maxItems": 8000,
+          "items": {
+            "$ref": "#/$defs/KnowledgeOverviewEdge"
+          }
+        }
+      }
+    },
+    "DaemonKnowledgeReadParams": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path"
+      ],
+      "properties": {
+        "path": {
+          "$ref": "#/$defs/KnowledgePath"
+        }
+      }
+    },
+    "DaemonKnowledgeReadResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "sha256",
+        "managed",
+        "body",
+        "truncated"
+      ],
+      "properties": {
+        "path": {
+          "$ref": "#/$defs/KnowledgePath"
+        },
+        "sha256": {
+          "$ref": "#/$defs/Sha256Digest"
+        },
+        "managed": {
+          "type": "boolean"
+        },
+        "body": {
+          "type": "string",
+          "maxLength": 262144
+        },
+        "truncated": {
+          "type": "boolean"
+        }
+      }
+    },
+    "DaemonKnowledgeRollbackParams": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "toSha256",
+        "expectedSha256"
+      ],
+      "properties": {
+        "path": {
+          "$ref": "#/$defs/KnowledgePath"
+        },
+        "toSha256": {
+          "$ref": "#/$defs/Sha256Digest"
+        },
+        "expectedSha256": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/Sha256Digest"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "DaemonKnowledgeRollbackResult": {
+      "$ref": "#/$defs/KnowledgeWriteResult"
+    },
+    "DaemonKnowledgeSearchParams": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "query"
+      ],
+      "properties": {
+        "query": {
+          "type": "string",
+          "maxLength": 200,
+          "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+          "allOf": [
+            {
+              "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+            }
+          ]
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 50
+        }
+      }
+    },
+    "DaemonKnowledgeSearchResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "generation",
+        "hits"
+      ],
+      "properties": {
+        "generation": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "hits": {
+          "type": "array",
+          "maxItems": 50,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "nodeId",
+              "path",
+              "title"
+            ],
+            "properties": {
+              "nodeId": {
+                "$ref": "#/$defs/KnowledgeNodeId"
+              },
+              "path": {
+                "$ref": "#/$defs/KnowledgePath"
+              },
+              "title": {
+                "type": "string",
+                "maxLength": 512,
+                "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+                "allOf": [
+                  {
+                    "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+                  }
+                ]
+              },
+              "snippet": {
+                "type": "string",
+                "maxLength": 300,
+                "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+                "allOf": [
+                  {
+                    "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "DaemonKnowledgeStatusParams": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {}
+    },
+    "DaemonKnowledgeStatusResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "state",
+        "vaultRoot",
+        "vaultPresent",
+        "generation"
+      ],
+      "properties": {
+        "state": {
+          "type": "string",
+          "enum": [
+            "ready",
+            "unavailable"
+          ]
+        },
+        "reason": {
+          "$ref": "#/$defs/SkillReason"
+        },
+        "vaultRoot": {
+          "type": "string",
+          "maxLength": 135,
+          "pattern": "^(?:vaults\\/[a-z0-9][a-z0-9-]{0,63}|custom:[^/\\\\\\x00-\\x1f\\x7f]+)$"
+        },
+        "vaultPresent": {
+          "type": "boolean"
+        },
+        "schemaVersion": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "generation": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "counts": {
+          "$ref": "#/$defs/KnowledgeCounts"
+        },
+        "lastSync": {
+          "$ref": "#/$defs/KnowledgeSyncSummary"
+        }
+      }
+    },
+    "DaemonKnowledgeSyncParams": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode"
+      ],
+      "properties": {
+        "mode": {
+          "$ref": "#/$defs/KnowledgeSyncMode"
+        }
+      }
+    },
+    "DaemonKnowledgeSyncResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode",
+        "at",
+        "generation",
+        "notes",
+        "added",
+        "updated",
+        "removed",
+        "unchanged",
+        "unresolvedLinks",
+        "renamed",
+        "renamedTotal",
+        "skipped",
+        "skippedTotal",
+        "vaultCreated"
+      ],
+      "properties": {
+        "mode": {
+          "$ref": "#/$defs/KnowledgeSyncMode"
+        },
+        "at": {
+          "$ref": "#/$defs/UtcTimestamp"
+        },
+        "generation": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "notes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "added": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "updated": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "removed": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "unchanged": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "unresolvedLinks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "renamed": {
+          "type": "array",
+          "maxItems": 100,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "from",
+              "to"
+            ],
+            "properties": {
+              "from": {
+                "$ref": "#/$defs/KnowledgePath"
+              },
+              "to": {
+                "$ref": "#/$defs/KnowledgePath"
+              }
+            }
+          }
+        },
+        "renamedTotal": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "skipped": {
+          "type": "array",
+          "maxItems": 100,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "path",
+              "reason"
+            ],
+            "properties": {
+              "path": {
+                "$ref": "#/$defs/KnowledgePath"
+              },
+              "reason": {
+                "type": "string",
+                "enum": [
+                  "symlink",
+                  "special_file",
+                  "hard_link",
+                  "invalid_name",
+                  "too_deep",
+                  "too_large",
+                  "not_utf8",
+                  "invalid_front_matter",
+                  "profile_mismatch",
+                  "duplicate_id"
+                ]
+              }
+            }
+          }
+        },
+        "skippedTotal": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "vaultCreated": {
+          "type": "boolean"
+        }
+      }
+    },
+    "DaemonKnowledgeWriteParams": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "content",
+        "author"
+      ],
+      "properties": {
+        "path": {
+          "$ref": "#/$defs/KnowledgePath"
+        },
+        "content": {
+          "type": "string",
+          "maxLength": 1048576
+        },
+        "expectedSha256": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/Sha256Digest"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "author": {
+          "type": "string",
+          "enum": [
+            "user"
+          ]
+        }
+      }
+    },
+    "DaemonKnowledgeWriteResult": {
+      "$ref": "#/$defs/KnowledgeWriteResult"
+    },
+    "DaemonMissionCreateParams": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mission",
+        "graph"
+      ],
+      "properties": {
+        "mission": {
+          "$ref": "#/$defs/Mission"
+        },
+        "graph": {
+          "$ref": "#/$defs/TaskGraph"
+        }
+      }
+    },
+    "DaemonMissionCreateResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "missionId",
+        "version"
+      ],
+      "properties": {
+        "missionId": {
+          "$ref": "#/$defs/Uuid"
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        }
+      }
+    },
+    "DaemonMissionSnapshotParams": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "missionId"
+      ],
+      "properties": {
+        "missionId": {
+          "$ref": "#/$defs/Uuid"
+        }
+      }
+    },
+    "DaemonMissionSnapshotResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "missionId",
+        "workspaceId",
+        "version",
+        "state",
+        "updatedAt",
+        "sequence",
+        "tasks",
+        "leases"
+      ],
+      "properties": {
+        "missionId": {
+          "$ref": "#/$defs/Uuid"
+        },
+        "workspaceId": {
+          "$ref": "#/$defs/Uuid"
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "state": {
+          "type": "string",
+          "enum": [
+            "draft",
+            "planning",
+            "queued",
+            "running",
+            "waiting",
+            "awaiting_approval",
+            "reviewing",
+            "completed",
+            "failed",
+            "cancelled",
+            "recovering"
+          ]
+        },
+        "updatedAt": {
+          "$ref": "#/$defs/UtcTimestamp"
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 8192
+        },
+        "tasks": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "taskId",
+              "state",
+              "attempt"
+            ],
+            "properties": {
+              "taskId": {
+                "$ref": "#/$defs/Uuid"
+              },
+              "assignedAgentId": {
+                "$ref": "#/$defs/Uuid"
+              },
+              "state": {
+                "$ref": "#/$defs/TaskState"
+              },
+              "attempt": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              }
+            }
+          }
+        },
+        "leases": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "leaseId",
+              "taskId",
+              "holderAgentId",
+              "acquiredAt",
+              "expiresAt"
+            ],
+            "properties": {
+              "leaseId": {
+                "$ref": "#/$defs/Uuid"
+              },
+              "taskId": {
+                "$ref": "#/$defs/Uuid"
+              },
+              "holderAgentId": {
+                "$ref": "#/$defs/Uuid"
+              },
+              "acquiredAt": {
+                "$ref": "#/$defs/UtcTimestamp"
+              },
+              "expiresAt": {
+                "$ref": "#/$defs/UtcTimestamp"
+              }
+            }
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "leases": {
+                "maxItems": 0
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "tasks": {
+                "items": {
+                  "properties": {
+                    "state": {
+                      "not": {
+                        "enum": [
+                          "running",
+                          "waiting",
+                          "awaiting_approval",
+                          "verifying"
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "DaemonOp": {
+      "type": "string",
+      "enum": [
+        "hello",
+        "mission.create",
+        "mission.snapshot",
+        "task.transition",
+        "event.commit",
+        "permission.check",
+        "health",
+        "skill.import",
+        "skill.list",
+        "skill.inspect",
+        "skill.review",
+        "skill.approve",
+        "skill.activate",
+        "skill.deactivate",
+        "skill.rollback",
+        "skill.revoke",
+        "skill.read",
+        "skill.scanner",
+        "knowledge.status",
+        "knowledge.sync",
+        "knowledge.node",
+        "knowledge.links",
+        "knowledge.backlinks",
+        "knowledge.search",
+        "knowledge.graph",
+        "knowledge.overview",
+        "knowledge.read",
+        "knowledge.write",
+        "knowledge.history",
+        "knowledge.rollback",
+        "knowledge.importMemory"
+      ]
+    },
+    "DaemonPermissionCheckParams": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "access",
+        "mode",
+        "workspacePermissions",
+        "sessionGrants"
+      ],
+      "properties": {
+        "access": {
+          "$ref": "#/$defs/DaemonToolAccess"
+        },
+        "mode": {
+          "type": "string",
+          "enum": [
+            "workspace",
+            "ask",
+            "accept-edits",
+            "plan"
+          ]
+        },
+        "workspacePermissions": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "fileWrite",
+            "commands"
+          ],
+          "properties": {
+            "fileWrite": {
+              "type": "string",
+              "enum": [
+                "ask",
+                "allow"
+              ]
+            },
+            "commands": {
+              "type": "string",
+              "enum": [
+                "ask",
+                "allow"
+              ]
+            }
+          }
+        },
+        "sessionGrants": {
+          "type": "array",
+          "maxItems": 5,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/DaemonToolAccess"
+          }
+        }
+      }
+    },
+    "DaemonPermissionCheckResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "decision"
+      ],
+      "properties": {
+        "decision": {
+          "type": "string",
+          "enum": [
+            "allow",
+            "ask",
+            "deny"
+          ]
+        }
+      }
+    },
+    "DaemonRequest": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "kind",
+            "requestId",
+            "op",
+            "params"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "kind": {
+              "const": "request"
+            },
+            "requestId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "op": {
+              "const": "hello"
+            },
+            "deadlineMs": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 600000
+            },
+            "params": {
+              "$ref": "#/$defs/DaemonHelloParams"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "kind",
+            "requestId",
+            "op",
+            "params"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "kind": {
+              "const": "request"
+            },
+            "requestId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "op": {
+              "const": "mission.create"
+            },
+            "deadlineMs": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 600000
+            },
+            "params": {
+              "$ref": "#/$defs/DaemonMissionCreateParams"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "kind",
+            "requestId",
+            "op",
+            "params"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "kind": {
+              "const": "request"
+            },
+            "requestId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "op": {
+              "const": "mission.snapshot"
+            },
+            "deadlineMs": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 600000
+            },
+            "params": {
+              "$ref": "#/$defs/DaemonMissionSnapshotParams"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "kind",
+            "requestId",
+            "op",
+            "params"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "kind": {
+              "const": "request"
+            },
+            "requestId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "op": {
+              "const": "task.transition"
+            },
+            "deadlineMs": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 600000
+            },
+            "params": {
+              "$ref": "#/$defs/DaemonTaskTransitionParams"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "kind",
+            "requestId",
+            "op",
+            "params"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "kind": {
+              "const": "request"
+            },
+            "requestId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "op": {
+              "const": "event.commit"
+            },
+            "deadlineMs": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 600000
+            },
+            "params": {
+              "$ref": "#/$defs/DaemonEventCommitParams"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "kind",
+            "requestId",
+            "op",
+            "params"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "kind": {
+              "const": "request"
+            },
+            "requestId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "op": {
+              "const": "permission.check"
+            },
+            "deadlineMs": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 600000
+            },
+            "params": {
+              "$ref": "#/$defs/DaemonPermissionCheckParams"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "kind",
+            "requestId",
+            "op",
+            "params"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "kind": {
+              "const": "request"
+            },
+            "requestId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "op": {
+              "const": "health"
+            },
+            "deadlineMs": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 600000
+            },
+            "params": {
+              "$ref": "#/$defs/DaemonHealthParams"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "kind",
+            "requestId",
+            "op",
+            "params"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "kind": {
+              "const": "request"
+            },
+            "requestId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "op": {
+              "const": "skill.import"
+            },
+            "deadlineMs": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 600000
+            },
+            "params": {
+              "$ref": "#/$defs/DaemonSkillImportParams"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "kind",
+            "requestId",
+            "op",
+            "params"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "kind": {
+              "const": "request"
+            },
+            "requestId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "op": {
+              "const": "skill.list"
+            },
+            "deadlineMs": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 600000
+            },
+            "params": {
+              "$ref": "#/$defs/DaemonSkillListParams"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "kind",
+            "requestId",
+            "op",
+            "params"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "kind": {
+              "const": "request"
+            },
+            "requestId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "op": {
+              "const": "skill.inspect"
+            },
+            "deadlineMs": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 600000
+            },
+            "params": {
+              "$ref": "#/$defs/DaemonSkillInspectParams"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "kind",
+            "requestId",
+            "op",
+            "params"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "kind": {
+              "const": "request"
+            },
+            "requestId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "op": {
+              "const": "skill.review"
+            },
+            "deadlineMs": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 600000
+            },
+            "params": {
+              "$ref": "#/$defs/DaemonSkillReviewParams"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "kind",
+            "requestId",
+            "op",
+            "params"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "kind": {
+              "const": "request"
+            },
+            "requestId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "op": {
+              "const": "skill.approve"
+            },
+            "deadlineMs": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 600000
+            },
+            "params": {
+              "$ref": "#/$defs/DaemonSkillApproveParams"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "kind",
+            "requestId",
+            "op",
+            "params"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "kind": {
+              "const": "request"
+            },
+            "requestId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "op": {
+              "const": "skill.activate"
+            },
+            "deadlineMs": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 600000
+            },
+            "params": {
+              "$ref": "#/$defs/DaemonSkillActivateParams"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "kind",
+            "requestId",
+            "op",
+            "params"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "kind": {
+              "const": "request"
+            },
+            "requestId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "op": {
+              "const": "skill.deactivate"
+            },
+            "deadlineMs": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 600000
+            },
+            "params": {
+              "$ref": "#/$defs/DaemonSkillDeactivateParams"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "kind",
+            "requestId",
+            "op",
+            "params"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "kind": {
+              "const": "request"
+            },
+            "requestId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "op": {
+              "const": "skill.rollback"
+            },
+            "deadlineMs": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 600000
+            },
+            "params": {
+              "$ref": "#/$defs/DaemonSkillRollbackParams"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "kind",
+            "requestId",
+            "op",
+            "params"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "kind": {
+              "const": "request"
+            },
+            "requestId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "op": {
+              "const": "skill.revoke"
+            },
+            "deadlineMs": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 600000
+            },
+            "params": {
+              "$ref": "#/$defs/DaemonSkillRevokeParams"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "kind",
+            "requestId",
+            "op",
+            "params"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "kind": {
+              "const": "request"
+            },
+            "requestId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "op": {
+              "const": "skill.read"
+            },
+            "deadlineMs": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 600000
+            },
+            "params": {
+              "$ref": "#/$defs/DaemonSkillReadParams"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "kind",
+            "requestId",
+            "op",
+            "params"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "kind": {
+              "const": "request"
+            },
+            "requestId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "op": {
+              "const": "skill.scanner"
+            },
+            "deadlineMs": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 600000
+            },
+            "params": {
+              "$ref": "#/$defs/DaemonSkillScannerParams"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "kind",
+            "requestId",
+            "op",
+            "params"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "kind": {
+              "const": "request"
+            },
+            "requestId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "op": {
+              "const": "knowledge.status"
+            },
+            "deadlineMs": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 600000
+            },
+            "params": {
+              "$ref": "#/$defs/DaemonKnowledgeStatusParams"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "kind",
+            "requestId",
+            "op",
+            "params"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "kind": {
+              "const": "request"
+            },
+            "requestId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "op": {
+              "const": "knowledge.sync"
+            },
+            "deadlineMs": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 600000
+            },
+            "params": {
+              "$ref": "#/$defs/DaemonKnowledgeSyncParams"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "kind",
+            "requestId",
+            "op",
+            "params"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "kind": {
+              "const": "request"
+            },
+            "requestId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "op": {
+              "const": "knowledge.node"
+            },
+            "deadlineMs": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 600000
+            },
+            "params": {
+              "$ref": "#/$defs/DaemonKnowledgeNodeParams"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "kind",
+            "requestId",
+            "op",
+            "params"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "kind": {
+              "const": "request"
+            },
+            "requestId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "op": {
+              "const": "knowledge.links"
+            },
+            "deadlineMs": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 600000
+            },
+            "params": {
+              "$ref": "#/$defs/DaemonKnowledgeLinksParams"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "kind",
+            "requestId",
+            "op",
+            "params"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "kind": {
+              "const": "request"
+            },
+            "requestId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "op": {
+              "const": "knowledge.backlinks"
+            },
+            "deadlineMs": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 600000
+            },
+            "params": {
+              "$ref": "#/$defs/DaemonKnowledgeBacklinksParams"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "kind",
+            "requestId",
+            "op",
+            "params"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "kind": {
+              "const": "request"
+            },
+            "requestId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "op": {
+              "const": "knowledge.search"
+            },
+            "deadlineMs": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 600000
+            },
+            "params": {
+              "$ref": "#/$defs/DaemonKnowledgeSearchParams"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "kind",
+            "requestId",
+            "op",
+            "params"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "kind": {
+              "const": "request"
+            },
+            "requestId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "op": {
+              "const": "knowledge.graph"
+            },
+            "deadlineMs": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 600000
+            },
+            "params": {
+              "$ref": "#/$defs/DaemonKnowledgeGraphParams"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "kind",
+            "requestId",
+            "op",
+            "params"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "kind": {
+              "const": "request"
+            },
+            "requestId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "op": {
+              "const": "knowledge.overview"
+            },
+            "deadlineMs": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 600000
+            },
+            "params": {
+              "$ref": "#/$defs/DaemonKnowledgeOverviewParams"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "kind",
+            "requestId",
+            "op",
+            "params"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "kind": {
+              "const": "request"
+            },
+            "requestId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "op": {
+              "const": "knowledge.read"
+            },
+            "deadlineMs": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 600000
+            },
+            "params": {
+              "$ref": "#/$defs/DaemonKnowledgeReadParams"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "kind",
+            "requestId",
+            "op",
+            "params"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "kind": {
+              "const": "request"
+            },
+            "requestId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "op": {
+              "const": "knowledge.write"
+            },
+            "deadlineMs": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 600000
+            },
+            "params": {
+              "$ref": "#/$defs/DaemonKnowledgeWriteParams"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "kind",
+            "requestId",
+            "op",
+            "params"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "kind": {
+              "const": "request"
+            },
+            "requestId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "op": {
+              "const": "knowledge.history"
+            },
+            "deadlineMs": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 600000
+            },
+            "params": {
+              "$ref": "#/$defs/DaemonKnowledgeHistoryParams"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "kind",
+            "requestId",
+            "op",
+            "params"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "kind": {
+              "const": "request"
+            },
+            "requestId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "op": {
+              "const": "knowledge.rollback"
+            },
+            "deadlineMs": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 600000
+            },
+            "params": {
+              "$ref": "#/$defs/DaemonKnowledgeRollbackParams"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "kind",
+            "requestId",
+            "op",
+            "params"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "kind": {
+              "const": "request"
+            },
+            "requestId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "op": {
+              "const": "knowledge.importMemory"
+            },
+            "deadlineMs": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 600000
+            },
+            "params": {
+              "$ref": "#/$defs/DaemonKnowledgeImportMemoryParams"
+            }
+          }
+        }
+      ]
+    },
+    "DaemonResponse": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "kind",
+            "requestId",
+            "op",
+            "result"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "kind": {
+              "const": "response"
+            },
+            "requestId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "op": {
+              "const": "hello"
+            },
+            "result": {
+              "$ref": "#/$defs/DaemonHelloResult"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "kind",
+            "requestId",
+            "op",
+            "result"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "kind": {
+              "const": "response"
+            },
+            "requestId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "op": {
+              "const": "mission.create"
+            },
+            "result": {
+              "$ref": "#/$defs/DaemonMissionCreateResult"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "kind",
+            "requestId",
+            "op",
+            "result"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "kind": {
+              "const": "response"
+            },
+            "requestId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "op": {
+              "const": "mission.snapshot"
+            },
+            "result": {
+              "$ref": "#/$defs/DaemonMissionSnapshotResult"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "kind",
+            "requestId",
+            "op",
+            "result"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "kind": {
+              "const": "response"
+            },
+            "requestId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "op": {
+              "const": "task.transition"
+            },
+            "result": {
+              "$ref": "#/$defs/DaemonTaskTransitionResult"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "kind",
+            "requestId",
+            "op",
+            "result"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "kind": {
+              "const": "response"
+            },
+            "requestId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "op": {
+              "const": "event.commit"
+            },
+            "result": {
+              "$ref": "#/$defs/DaemonEventCommitResult"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "kind",
+            "requestId",
+            "op",
+            "result"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "kind": {
+              "const": "response"
+            },
+            "requestId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "op": {
+              "const": "permission.check"
+            },
+            "result": {
+              "$ref": "#/$defs/DaemonPermissionCheckResult"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "kind",
+            "requestId",
+            "op",
+            "result"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "kind": {
+              "const": "response"
+            },
+            "requestId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "op": {
+              "const": "health"
+            },
+            "result": {
+              "$ref": "#/$defs/DaemonHealthResult"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "kind",
+            "requestId",
+            "op",
+            "result"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "kind": {
+              "const": "response"
+            },
+            "requestId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "op": {
+              "const": "skill.import"
+            },
+            "result": {
+              "$ref": "#/$defs/DaemonSkillImportResult"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "kind",
+            "requestId",
+            "op",
+            "result"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "kind": {
+              "const": "response"
+            },
+            "requestId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "op": {
+              "const": "skill.list"
+            },
+            "result": {
+              "$ref": "#/$defs/DaemonSkillListResult"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "kind",
+            "requestId",
+            "op",
+            "result"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "kind": {
+              "const": "response"
+            },
+            "requestId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "op": {
+              "const": "skill.inspect"
+            },
+            "result": {
+              "$ref": "#/$defs/DaemonSkillInspectResult"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "kind",
+            "requestId",
+            "op",
+            "result"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "kind": {
+              "const": "response"
+            },
+            "requestId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "op": {
+              "const": "skill.review"
+            },
+            "result": {
+              "$ref": "#/$defs/DaemonSkillReviewResult"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "kind",
+            "requestId",
+            "op",
+            "result"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "kind": {
+              "const": "response"
+            },
+            "requestId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "op": {
+              "const": "skill.approve"
+            },
+            "result": {
+              "$ref": "#/$defs/DaemonSkillApproveResult"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "kind",
+            "requestId",
+            "op",
+            "result"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "kind": {
+              "const": "response"
+            },
+            "requestId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "op": {
+              "const": "skill.activate"
+            },
+            "result": {
+              "$ref": "#/$defs/DaemonSkillActivateResult"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "kind",
+            "requestId",
+            "op",
+            "result"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "kind": {
+              "const": "response"
+            },
+            "requestId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "op": {
+              "const": "skill.deactivate"
+            },
+            "result": {
+              "$ref": "#/$defs/DaemonSkillDeactivateResult"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "kind",
+            "requestId",
+            "op",
+            "result"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "kind": {
+              "const": "response"
+            },
+            "requestId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "op": {
+              "const": "skill.rollback"
+            },
+            "result": {
+              "$ref": "#/$defs/DaemonSkillRollbackResult"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "kind",
+            "requestId",
+            "op",
+            "result"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "kind": {
+              "const": "response"
+            },
+            "requestId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "op": {
+              "const": "skill.revoke"
+            },
+            "result": {
+              "$ref": "#/$defs/DaemonSkillRevokeResult"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "kind",
+            "requestId",
+            "op",
+            "result"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "kind": {
+              "const": "response"
+            },
+            "requestId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "op": {
+              "const": "skill.read"
+            },
+            "result": {
+              "$ref": "#/$defs/DaemonSkillReadResult"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "kind",
+            "requestId",
+            "op",
+            "result"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "kind": {
+              "const": "response"
+            },
+            "requestId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "op": {
+              "const": "skill.scanner"
+            },
+            "result": {
+              "$ref": "#/$defs/DaemonSkillScannerResult"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "kind",
+            "requestId",
+            "op",
+            "result"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "kind": {
+              "const": "response"
+            },
+            "requestId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "op": {
+              "const": "knowledge.status"
+            },
+            "result": {
+              "$ref": "#/$defs/DaemonKnowledgeStatusResult"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "kind",
+            "requestId",
+            "op",
+            "result"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "kind": {
+              "const": "response"
+            },
+            "requestId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "op": {
+              "const": "knowledge.sync"
+            },
+            "result": {
+              "$ref": "#/$defs/DaemonKnowledgeSyncResult"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "kind",
+            "requestId",
+            "op",
+            "result"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "kind": {
+              "const": "response"
+            },
+            "requestId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "op": {
+              "const": "knowledge.node"
+            },
+            "result": {
+              "$ref": "#/$defs/DaemonKnowledgeNodeResult"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "kind",
+            "requestId",
+            "op",
+            "result"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "kind": {
+              "const": "response"
+            },
+            "requestId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "op": {
+              "const": "knowledge.links"
+            },
+            "result": {
+              "$ref": "#/$defs/DaemonKnowledgeLinksResult"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "kind",
+            "requestId",
+            "op",
+            "result"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "kind": {
+              "const": "response"
+            },
+            "requestId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "op": {
+              "const": "knowledge.backlinks"
+            },
+            "result": {
+              "$ref": "#/$defs/DaemonKnowledgeBacklinksResult"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "kind",
+            "requestId",
+            "op",
+            "result"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "kind": {
+              "const": "response"
+            },
+            "requestId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "op": {
+              "const": "knowledge.search"
+            },
+            "result": {
+              "$ref": "#/$defs/DaemonKnowledgeSearchResult"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "kind",
+            "requestId",
+            "op",
+            "result"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "kind": {
+              "const": "response"
+            },
+            "requestId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "op": {
+              "const": "knowledge.graph"
+            },
+            "result": {
+              "$ref": "#/$defs/DaemonKnowledgeGraphResult"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "kind",
+            "requestId",
+            "op",
+            "result"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "kind": {
+              "const": "response"
+            },
+            "requestId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "op": {
+              "const": "knowledge.overview"
+            },
+            "result": {
+              "$ref": "#/$defs/DaemonKnowledgeOverviewResult"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "kind",
+            "requestId",
+            "op",
+            "result"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "kind": {
+              "const": "response"
+            },
+            "requestId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "op": {
+              "const": "knowledge.read"
+            },
+            "result": {
+              "$ref": "#/$defs/DaemonKnowledgeReadResult"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "kind",
+            "requestId",
+            "op",
+            "result"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "kind": {
+              "const": "response"
+            },
+            "requestId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "op": {
+              "const": "knowledge.write"
+            },
+            "result": {
+              "$ref": "#/$defs/DaemonKnowledgeWriteResult"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "kind",
+            "requestId",
+            "op",
+            "result"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "kind": {
+              "const": "response"
+            },
+            "requestId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "op": {
+              "const": "knowledge.history"
+            },
+            "result": {
+              "$ref": "#/$defs/DaemonKnowledgeHistoryResult"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "kind",
+            "requestId",
+            "op",
+            "result"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "kind": {
+              "const": "response"
+            },
+            "requestId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "op": {
+              "const": "knowledge.rollback"
+            },
+            "result": {
+              "$ref": "#/$defs/DaemonKnowledgeRollbackResult"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "kind",
+            "requestId",
+            "op",
+            "result"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "kind": {
+              "const": "response"
+            },
+            "requestId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "op": {
+              "const": "knowledge.importMemory"
+            },
+            "result": {
+              "$ref": "#/$defs/DaemonKnowledgeImportMemoryResult"
+            }
+          }
+        }
+      ]
+    },
+    "DaemonSkillActivateParams": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "revisionId",
+        "approvalId"
+      ],
+      "properties": {
+        "revisionId": {
+          "$ref": "#/$defs/SkillRevisionId"
+        },
+        "approvalId": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        }
+      }
+    },
+    "DaemonSkillActivateResult": {
+      "$ref": "#/$defs/SkillActivationResult"
+    },
+    "DaemonSkillApproveParams": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "revisionId",
+        "treeSha256",
+        "permissionDigest",
+        "principal"
+      ],
+      "properties": {
+        "revisionId": {
+          "$ref": "#/$defs/SkillRevisionId"
+        },
+        "treeSha256": {
+          "$ref": "#/$defs/Sha256Digest"
+        },
+        "permissionDigest": {
+          "$ref": "#/$defs/Sha256Digest"
+        },
+        "principal": {
+          "$ref": "#/$defs/SkillUserPrincipal"
+        },
+        "workspaceId": {
+          "$ref": "#/$defs/SkillWorkspaceId"
+        },
+        "expiresAt": {
+          "$ref": "#/$defs/UtcTimestamp"
+        }
+      }
+    },
+    "DaemonSkillApproveResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "approvalId",
+        "revisionId",
+        "state",
+        "expiresAt"
+      ],
+      "properties": {
+        "approvalId": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "revisionId": {
+          "$ref": "#/$defs/SkillRevisionId"
+        },
+        "state": {
+          "$ref": "#/$defs/SkillRevisionState"
+        },
+        "expiresAt": {
+          "$ref": "#/$defs/UtcTimestamp"
+        }
+      }
+    },
+    "DaemonSkillDeactivateParams": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "packageId"
+      ],
+      "properties": {
+        "packageId": {
+          "$ref": "#/$defs/SkillPackageId"
+        }
+      }
+    },
+    "DaemonSkillDeactivateResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "packageId",
+        "revisionId",
+        "state",
+        "indexGeneration"
+      ],
+      "properties": {
+        "packageId": {
+          "$ref": "#/$defs/SkillPackageId"
+        },
+        "revisionId": {
+          "$ref": "#/$defs/SkillRevisionId"
+        },
+        "state": {
+          "$ref": "#/$defs/SkillRevisionState"
+        },
+        "indexGeneration": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      }
+    },
+    "DaemonSkillImportParams": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "origin",
+        "path"
+      ],
+      "properties": {
+        "origin": {
+          "type": "string",
+          "enum": [
+            "user",
+            "workspace",
+            "imported",
+            "generated"
+          ]
+        },
+        "path": {
+          "$ref": "#/$defs/SkillPath"
+        },
+        "sourceRef": {
+          "type": "string",
+          "maxLength": 512,
+          "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+          "allOf": [
+            {
+              "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+            }
+          ]
+        }
+      }
+    },
+    "DaemonSkillImportResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "packageId",
+        "revisionId",
+        "treeSha256",
+        "version",
+        "state",
+        "created"
+      ],
+      "properties": {
+        "packageId": {
+          "$ref": "#/$defs/SkillPackageId"
+        },
+        "revisionId": {
+          "$ref": "#/$defs/SkillRevisionId"
+        },
+        "treeSha256": {
+          "$ref": "#/$defs/Sha256Digest"
+        },
+        "version": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+          "allOf": [
+            {
+              "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+            }
+          ]
+        },
+        "state": {
+          "$ref": "#/$defs/SkillRevisionState"
+        },
+        "stateReason": {
+          "$ref": "#/$defs/SkillReason"
+        },
+        "created": {
+          "type": "boolean"
+        }
+      }
+    },
+    "DaemonSkillInspectParams": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "revisionId"
+      ],
+      "properties": {
+        "revisionId": {
+          "$ref": "#/$defs/SkillRevisionId"
+        },
+        "workspaceId": {
+          "$ref": "#/$defs/SkillWorkspaceId"
+        }
+      }
+    },
+    "DaemonSkillInspectResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "revision",
+        "manifest",
+        "files",
+        "inspections",
+        "approvals",
+        "history",
+        "consent"
+      ],
+      "properties": {
+        "revision": {
+          "$ref": "#/$defs/SkillRevisionSummary"
+        },
+        "manifest": {
+          "type": "string",
+          "maxLength": 65536,
+          "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+          "allOf": [
+            {
+              "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+            }
+          ]
+        },
+        "files": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "$ref": "#/$defs/SkillFileEntry"
+          }
+        },
+        "inspections": {
+          "type": "array",
+          "maxItems": 20,
+          "items": {
+            "$ref": "#/$defs/SkillInspectionRecord"
+          }
+        },
+        "approvals": {
+          "type": "array",
+          "maxItems": 20,
+          "items": {
+            "$ref": "#/$defs/SkillApprovalRecord"
+          }
+        },
+        "history": {
+          "type": "array",
+          "maxItems": 50,
+          "items": {
+            "$ref": "#/$defs/SkillStateEvent"
+          }
+        },
+        "consent": {
+          "type": "array",
+          "maxItems": 8,
+          "items": {
+            "$ref": "#/$defs/SkillConsentInput"
+          }
+        }
+      }
+    },
+    "DaemonSkillListParams": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "cursor": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]{0,63}\\/skr_[a-f0-9]{64}$"
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "packageId": {
+          "$ref": "#/$defs/SkillPackageId"
+        }
+      }
+    },
+    "DaemonSkillListResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "revisions",
+        "indexGeneration"
+      ],
+      "properties": {
+        "revisions": {
+          "type": "array",
+          "maxItems": 100,
+          "items": {
+            "$ref": "#/$defs/SkillRevisionSummary"
+          }
+        },
+        "nextCursor": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]{0,63}\\/skr_[a-f0-9]{64}$"
+        },
+        "indexGeneration": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      }
+    },
+    "DaemonSkillReadParams": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "revisionId",
+        "path"
+      ],
+      "properties": {
+        "revisionId": {
+          "$ref": "#/$defs/SkillRevisionId"
+        },
+        "path": {
+          "$ref": "#/$defs/SkillPath"
+        }
+      }
+    },
+    "DaemonSkillReadResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "revisionId",
+        "packageId",
+        "path",
+        "size",
+        "sha256",
+        "content"
+      ],
+      "properties": {
+        "revisionId": {
+          "$ref": "#/$defs/SkillRevisionId"
+        },
+        "packageId": {
+          "$ref": "#/$defs/SkillPackageId"
+        },
+        "path": {
+          "$ref": "#/$defs/SkillPath"
+        },
+        "size": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 262144
+        },
+        "sha256": {
+          "$ref": "#/$defs/Sha256Digest"
+        },
+        "content": {
+          "type": "string",
+          "maxLength": 262144,
+          "pattern": "^[^\\x00-\\x08\\x0b\\x0c\\x0e-\\x1f\\x7f]*$"
+        }
+      }
+    },
+    "DaemonSkillReviewParams": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "revisionId",
+        "treeSha256",
+        "principal",
+        "decision"
+      ],
+      "properties": {
+        "revisionId": {
+          "$ref": "#/$defs/SkillRevisionId"
+        },
+        "treeSha256": {
+          "$ref": "#/$defs/Sha256Digest"
+        },
+        "principal": {
+          "$ref": "#/$defs/SkillUserPrincipal"
+        },
+        "decision": {
+          "type": "string",
+          "enum": [
+            "accept",
+            "reject"
+          ]
+        },
+        "note": {
+          "type": "string",
+          "maxLength": 2000,
+          "pattern": "^[^\\x00-\\x08\\x0b\\x0c\\x0e-\\x1f\\x7f]*$",
+          "allOf": [
+            {
+              "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+            }
+          ]
+        }
+      }
+    },
+    "DaemonSkillReviewResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "revisionId",
+        "decision",
+        "state"
+      ],
+      "properties": {
+        "revisionId": {
+          "$ref": "#/$defs/SkillRevisionId"
+        },
+        "decision": {
+          "type": "string",
+          "enum": [
+            "accept",
+            "reject"
+          ]
+        },
+        "state": {
+          "$ref": "#/$defs/SkillRevisionState"
+        },
+        "stateReason": {
+          "$ref": "#/$defs/SkillReason"
+        },
+        "reviewId": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        }
+      }
+    },
+    "DaemonSkillRevokeParams": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "revisionId"
+      ],
+      "properties": {
+        "revisionId": {
+          "$ref": "#/$defs/SkillRevisionId"
+        }
+      }
+    },
+    "DaemonSkillRevokeResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "revisionId",
+        "state",
+        "indexGeneration"
+      ],
+      "properties": {
+        "revisionId": {
+          "$ref": "#/$defs/SkillRevisionId"
+        },
+        "state": {
+          "$ref": "#/$defs/SkillRevisionState"
+        },
+        "indexGeneration": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      }
+    },
+    "DaemonSkillRollbackParams": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "packageId",
+        "revisionId"
+      ],
+      "properties": {
+        "packageId": {
+          "$ref": "#/$defs/SkillPackageId"
+        },
+        "revisionId": {
+          "$ref": "#/$defs/SkillRevisionId"
+        }
+      }
+    },
+    "DaemonSkillRollbackResult": {
+      "$ref": "#/$defs/SkillActivationResult"
+    },
+    "DaemonSkillScannerParams": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {}
+    },
+    "DaemonSkillScannerResult": {
+      "$ref": "#/$defs/SkillScannerReport"
+    },
+    "DaemonTaskTransitionParams": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "missionId",
+        "taskId",
+        "eventId",
+        "from",
+        "to"
+      ],
+      "properties": {
+        "missionId": {
+          "$ref": "#/$defs/Uuid"
+        },
+        "taskId": {
+          "$ref": "#/$defs/Uuid"
+        },
+        "eventId": {
+          "$ref": "#/$defs/Uuid"
+        },
+        "from": {
+          "$ref": "#/$defs/TaskState"
+        },
+        "to": {
+          "$ref": "#/$defs/TaskState"
+        }
+      }
+    },
+    "DaemonTaskTransitionResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "missionId",
+        "taskId",
+        "state",
+        "sequence"
+      ],
+      "properties": {
+        "missionId": {
+          "$ref": "#/$defs/Uuid"
+        },
+        "taskId": {
+          "$ref": "#/$defs/Uuid"
+        },
+        "state": {
+          "$ref": "#/$defs/TaskState"
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        }
+      }
+    },
+    "DaemonToolAccess": {
+      "type": "string",
+      "enum": [
+        "read",
+        "write",
+        "execute",
+        "memory",
+        "meta"
+      ]
+    },
+    "EventSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "runtime",
+        "channel"
+      ],
+      "properties": {
+        "runtime": {
+          "$ref": "#/$defs/RuntimeId"
+        },
+        "channel": {
+          "type": "string",
+          "enum": [
+            "stream",
+            "hook",
+            "transcript",
+            "mcp",
+            "bridge",
+            "import",
+            "user",
+            "system"
+          ]
+        },
+        "adapter": {
+          "$ref": "#/$defs/RuntimeId"
+        },
+        "adapterVersion": {
+          "type": "string",
+          "maxLength": 64,
+          "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+          "allOf": [
+            {
+              "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+            }
+          ]
+        }
+      }
+    },
+    "KnowledgeCounts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "notes",
+        "edges",
+        "unresolvedLinks",
+        "skipped"
+      ],
+      "properties": {
+        "notes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "edges": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "unresolvedLinks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "skipped": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      }
+    },
+    "KnowledgeEdgeType": {
+      "type": "string",
+      "enum": [
+        "links_to",
+        "related_to",
+        "learned_from",
+        "depends_on",
+        "supersedes",
+        "used_by"
+      ]
+    },
+    "KnowledgeHistoryEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sha256",
+        "at",
+        "kind",
+        "author"
+      ],
+      "properties": {
+        "sha256": {
+          "$ref": "#/$defs/Sha256Digest"
+        },
+        "at": {
+          "$ref": "#/$defs/UtcTimestamp"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "write",
+            "rollback",
+            "conflict",
+            "external"
+          ]
+        },
+        "author": {
+          "type": "string",
+          "maxLength": 80,
+          "pattern": "^(?:user|external|extalia:[a-z0-9][a-z0-9-]{0,63})$"
+        },
+        "previousSha256": {
+          "$ref": "#/$defs/Sha256Digest"
+        },
+        "conflictPath": {
+          "$ref": "#/$defs/KnowledgePath"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "const": "write"
+              }
+            }
+          },
+          "then": {
+            "allOf": [
+              {
+                "not": {
+                  "required": [
+                    "conflictPath"
+                  ]
+                }
+              }
+            ]
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "const": "rollback"
+              }
+            }
+          },
+          "then": {
+            "allOf": [
+              {
+                "not": {
+                  "required": [
+                    "conflictPath"
+                  ]
+                }
+              }
+            ]
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "const": "conflict"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "conflictPath"
+            ],
+            "allOf": []
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "const": "external"
+              }
+            }
+          },
+          "then": {
+            "allOf": [
+              {
+                "not": {
+                  "required": [
+                    "previousSha256"
+                  ]
+                }
+              },
+              {
+                "not": {
+                  "required": [
+                    "conflictPath"
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "KnowledgeImportCounts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "total",
+        "created",
+        "updated",
+        "unchanged",
+        "conflict",
+        "pendingConflict",
+        "missingInVault",
+        "skipped",
+        "masked"
+      ],
+      "properties": {
+        "total": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "created": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "updated": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "unchanged": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "conflict": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "pendingConflict": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "missingInVault": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "skipped": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "masked": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      }
+    },
+    "KnowledgeImportedNote": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "outcome",
+        "masked"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+          "allOf": [
+            {
+              "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+            }
+          ]
+        },
+        "vaultPath": {
+          "$ref": "#/$defs/KnowledgePath"
+        },
+        "outcome": {
+          "type": "string",
+          "enum": [
+            "created",
+            "updated",
+            "unchanged",
+            "conflict",
+            "pending_conflict",
+            "missing_in_vault",
+            "skipped"
+          ]
+        },
+        "masked": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "reason": {
+          "type": "string",
+          "enum": [
+            "symlink",
+            "special_file",
+            "hard_link",
+            "invalid_name",
+            "too_deep",
+            "too_large",
+            "not_utf8",
+            "invalid_front_matter",
+            "profile_mismatch",
+            "duplicate_id"
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "outcome"
+            ],
+            "properties": {
+              "outcome": {
+                "const": "created"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "vaultPath"
+            ],
+            "allOf": [
+              {
+                "not": {
+                  "required": [
+                    "reason"
+                  ]
+                }
+              }
+            ]
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "outcome"
+            ],
+            "properties": {
+              "outcome": {
+                "const": "updated"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "vaultPath"
+            ],
+            "allOf": [
+              {
+                "not": {
+                  "required": [
+                    "reason"
+                  ]
+                }
+              }
+            ]
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "outcome"
+            ],
+            "properties": {
+              "outcome": {
+                "const": "unchanged"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "vaultPath"
+            ],
+            "allOf": [
+              {
+                "not": {
+                  "required": [
+                    "reason"
+                  ]
+                }
+              }
+            ]
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "outcome"
+            ],
+            "properties": {
+              "outcome": {
+                "const": "conflict"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "vaultPath"
+            ],
+            "allOf": [
+              {
+                "not": {
+                  "required": [
+                    "reason"
+                  ]
+                }
+              }
+            ]
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "outcome"
+            ],
+            "properties": {
+              "outcome": {
+                "const": "pending_conflict"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "vaultPath"
+            ],
+            "allOf": [
+              {
+                "not": {
+                  "required": [
+                    "reason"
+                  ]
+                }
+              }
+            ]
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "outcome"
+            ],
+            "properties": {
+              "outcome": {
+                "const": "missing_in_vault"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "vaultPath"
+            ],
+            "allOf": [
+              {
+                "not": {
+                  "required": [
+                    "reason"
+                  ]
+                }
+              }
+            ]
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "outcome"
+            ],
+            "properties": {
+              "outcome": {
+                "const": "skipped"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "reason"
+            ],
+            "allOf": []
+          }
+        }
+      ]
+    },
+    "KnowledgeLink": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sourceNodeId",
+        "ordinal",
+        "edgeType",
+        "embed",
+        "line",
+        "target",
+        "status"
+      ],
+      "properties": {
+        "sourceNodeId": {
+          "$ref": "#/$defs/KnowledgeNodeId"
+        },
+        "ordinal": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "edgeType": {
+          "$ref": "#/$defs/KnowledgeEdgeType"
+        },
+        "embed": {
+          "type": "boolean"
+        },
+        "line": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "target": {
+          "type": "string",
+          "maxLength": 512,
+          "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+          "allOf": [
+            {
+              "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+            }
+          ]
+        },
+        "heading": {
+          "type": "string",
+          "maxLength": 512,
+          "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+          "allOf": [
+            {
+              "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+            }
+          ]
+        },
+        "display": {
+          "type": "string",
+          "maxLength": 512,
+          "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+          "allOf": [
+            {
+              "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+            }
+          ]
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "resolved",
+            "missing",
+            "ambiguous"
+          ]
+        },
+        "via": {
+          "type": "string",
+          "enum": [
+            "path",
+            "path_suffix",
+            "title",
+            "alias"
+          ]
+        },
+        "targetNodeId": {
+          "$ref": "#/$defs/KnowledgeNodeId"
+        },
+        "candidates": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 16,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/KnowledgeNodeId"
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "status"
+            ],
+            "properties": {
+              "status": {
+                "const": "resolved"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "via",
+              "targetNodeId"
+            ],
+            "allOf": [
+              {
+                "not": {
+                  "required": [
+                    "candidates"
+                  ]
+                }
+              }
+            ]
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "status"
+            ],
+            "properties": {
+              "status": {
+                "const": "ambiguous"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "candidates"
+            ],
+            "allOf": [
+              {
+                "not": {
+                  "required": [
+                    "via"
+                  ]
+                }
+              },
+              {
+                "not": {
+                  "required": [
+                    "targetNodeId"
+                  ]
+                }
+              }
+            ]
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "status"
+            ],
+            "properties": {
+              "status": {
+                "const": "missing"
+              }
+            }
+          },
+          "then": {
+            "allOf": [
+              {
+                "not": {
+                  "required": [
+                    "via"
+                  ]
+                }
+              },
+              {
+                "not": {
+                  "required": [
+                    "targetNodeId"
+                  ]
+                }
+              },
+              {
+                "not": {
+                  "required": [
+                    "candidates"
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "KnowledgeLinkPage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "generation",
+        "nodeId",
+        "links",
+        "nodes"
+      ],
+      "properties": {
+        "generation": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "nodeId": {
+          "$ref": "#/$defs/KnowledgeNodeId"
+        },
+        "links": {
+          "type": "array",
+          "maxItems": 200,
+          "items": {
+            "$ref": "#/$defs/KnowledgeLink"
+          }
+        },
+        "nodes": {
+          "type": "array",
+          "maxItems": 200,
+          "items": {
+            "$ref": "#/$defs/KnowledgeNodeRef"
+          }
+        },
+        "nextCursor": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        }
+      }
+    },
+    "KnowledgeNode": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "nodeId",
+        "idFromFrontMatter",
+        "path",
+        "kind",
+        "title",
+        "aliases",
+        "tags",
+        "origin",
+        "trustStatus",
+        "sourceSha256",
+        "observedAt",
+        "declaredSourceTaskIds"
+      ],
+      "properties": {
+        "nodeId": {
+          "$ref": "#/$defs/KnowledgeNodeId"
+        },
+        "idFromFrontMatter": {
+          "type": "boolean"
+        },
+        "path": {
+          "$ref": "#/$defs/KnowledgePath"
+        },
+        "kind": {
+          "type": "string",
+          "maxLength": 32,
+          "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+          "allOf": [
+            {
+              "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+            }
+          ]
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 512,
+          "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+          "allOf": [
+            {
+              "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+            }
+          ]
+        },
+        "aliases": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "type": "string",
+            "maxLength": 256,
+            "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+            "allOf": [
+              {
+                "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+              }
+            ]
+          }
+        },
+        "tags": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "type": "string",
+            "maxLength": 128,
+            "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+            "allOf": [
+              {
+                "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+              }
+            ]
+          }
+        },
+        "origin": {
+          "type": "string",
+          "enum": [
+            "vault"
+          ]
+        },
+        "trustStatus": {
+          "type": "string",
+          "enum": [
+            "untrusted",
+            "unverified",
+            "verified",
+            "disputed",
+            "superseded",
+            "revoked"
+          ]
+        },
+        "sourceSha256": {
+          "$ref": "#/$defs/Sha256Digest"
+        },
+        "sourceModifiedAt": {
+          "$ref": "#/$defs/UtcTimestamp"
+        },
+        "observedAt": {
+          "$ref": "#/$defs/UtcTimestamp"
+        },
+        "declaredVerification": {
+          "type": "string",
+          "maxLength": 32,
+          "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+          "allOf": [
+            {
+              "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+            }
+          ]
+        },
+        "declaredRevision": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "declaredSourceTaskIds": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "type": "string",
+            "maxLength": 128,
+            "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+            "allOf": [
+              {
+                "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+              }
+            ]
+          }
+        }
+      }
+    },
+    "KnowledgeNodeId": {
+      "type": "string",
+      "maxLength": 1100,
+      "pattern": "^(?:[a-z0-9][a-z0-9._-]{0,127}|path:[^./\\\\\\x00-\\x1f\\x7f][^/\\\\\\x00-\\x1f\\x7f]*(?:\\/[^./\\\\\\x00-\\x1f\\x7f][^/\\\\\\x00-\\x1f\\x7f]*)*)$"
+    },
+    "KnowledgeNodeRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "nodeId",
+        "path",
+        "title"
+      ],
+      "properties": {
+        "nodeId": {
+          "$ref": "#/$defs/KnowledgeNodeId"
+        },
+        "path": {
+          "$ref": "#/$defs/KnowledgePath"
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 512,
+          "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+          "allOf": [
+            {
+              "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+            }
+          ]
+        }
+      }
+    },
+    "KnowledgeOverviewEdge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source",
+        "target",
+        "type"
+      ],
+      "properties": {
+        "source": {
+          "$ref": "#/$defs/KnowledgeNodeId"
+        },
+        "target": {
+          "$ref": "#/$defs/KnowledgeNodeId"
+        },
+        "type": {
+          "$ref": "#/$defs/KnowledgeEdgeType"
+        }
+      }
+    },
+    "KnowledgeOverviewNode": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "nodeId",
+        "title",
+        "path",
+        "folder",
+        "tags",
+        "degree",
+        "inDegree",
+        "outDegree",
+        "modifiedAt"
+      ],
+      "properties": {
+        "nodeId": {
+          "$ref": "#/$defs/KnowledgeNodeId"
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 512,
+          "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+          "allOf": [
+            {
+              "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+            }
+          ]
+        },
+        "path": {
+          "$ref": "#/$defs/KnowledgePath"
+        },
+        "kind": {
+          "type": "string",
+          "maxLength": 32,
+          "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+          "allOf": [
+            {
+              "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+            }
+          ]
+        },
+        "folder": {
+          "type": "string",
+          "maxLength": 1024,
+          "pattern": "^(?:[^./\\\\\\x00-\\x1f\\x7f][^/\\\\\\x00-\\x1f\\x7f]*(?:\\/[^./\\\\\\x00-\\x1f\\x7f][^/\\\\\\x00-\\x1f\\x7f]*)*)?$"
+        },
+        "tags": {
+          "type": "array",
+          "maxItems": 8,
+          "items": {
+            "type": "string",
+            "maxLength": 64,
+            "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+            "allOf": [
+              {
+                "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+              }
+            ]
+          }
+        },
+        "degree": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "inDegree": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "outDegree": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "modifiedAt": {
+          "$ref": "#/$defs/UtcTimestamp"
+        }
+      }
+    },
+    "KnowledgePath": {
+      "type": "string",
+      "maxLength": 1024,
+      "pattern": "^[^./\\\\\\x00-\\x1f\\x7f][^/\\\\\\x00-\\x1f\\x7f]*(?:\\/[^./\\\\\\x00-\\x1f\\x7f][^/\\\\\\x00-\\x1f\\x7f]*)*$"
+    },
+    "KnowledgeSyncMode": {
+      "type": "string",
+      "enum": [
+        "incremental",
+        "rebuild"
+      ]
+    },
+    "KnowledgeSyncSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode",
+        "at",
+        "generation",
+        "notes",
+        "added",
+        "updated",
+        "removed",
+        "unchanged",
+        "renamed",
+        "skipped",
+        "unresolvedLinks"
+      ],
+      "properties": {
+        "mode": {
+          "$ref": "#/$defs/KnowledgeSyncMode"
+        },
+        "at": {
+          "$ref": "#/$defs/UtcTimestamp"
+        },
+        "generation": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "notes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "added": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "updated": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "removed": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "unchanged": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "renamed": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "skipped": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "unresolvedLinks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      }
+    },
+    "KnowledgeWriteResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "outcome",
+        "path"
+      ],
+      "properties": {
+        "outcome": {
+          "type": "string",
+          "enum": [
+            "written",
+            "unchanged",
+            "conflict"
+          ]
+        },
+        "path": {
+          "$ref": "#/$defs/KnowledgePath"
+        },
+        "sha256": {
+          "$ref": "#/$defs/Sha256Digest"
+        },
+        "previousSha256": {
+          "$ref": "#/$defs/Sha256Digest"
+        },
+        "conflictPath": {
+          "$ref": "#/$defs/KnowledgePath"
+        },
+        "conflictReason": {
+          "type": "string",
+          "enum": [
+            "hash_mismatch",
+            "changed_during_write",
+            "not_managed"
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "outcome"
+            ],
+            "properties": {
+              "outcome": {
+                "const": "written"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "sha256"
+            ],
+            "allOf": [
+              {
+                "not": {
+                  "required": [
+                    "conflictPath"
+                  ]
+                }
+              },
+              {
+                "not": {
+                  "required": [
+                    "conflictReason"
+                  ]
+                }
+              }
+            ]
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "outcome"
+            ],
+            "properties": {
+              "outcome": {
+                "const": "unchanged"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "sha256"
+            ],
+            "allOf": [
+              {
+                "not": {
+                  "required": [
+                    "previousSha256"
+                  ]
+                }
+              },
+              {
+                "not": {
+                  "required": [
+                    "conflictPath"
+                  ]
+                }
+              },
+              {
+                "not": {
+                  "required": [
+                    "conflictReason"
+                  ]
+                }
+              }
+            ]
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "outcome"
+            ],
+            "properties": {
+              "outcome": {
+                "const": "conflict"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "conflictPath",
+              "conflictReason"
+            ],
+            "allOf": [
+              {
+                "not": {
+                  "required": [
+                    "previousSha256"
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "Label": {
+      "description": "Nonblank text without control characters, at most 2000 UTF-16 code units.",
+      "type": "string",
+      "maxLength": 2000,
+      "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+      "allOf": [
+        {
+          "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+        }
+      ]
+    },
+    "Mission": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "id",
+        "workspaceId",
+        "leadAgentId",
+        "budgetId",
+        "state",
+        "createdAt",
+        "updatedAt",
+        "version"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": 1
+        },
+        "id": {
+          "$ref": "#/$defs/Uuid"
+        },
+        "workspaceId": {
+          "$ref": "#/$defs/Uuid"
+        },
+        "leadAgentId": {
+          "$ref": "#/$defs/Uuid"
+        },
+        "budgetId": {
+          "$ref": "#/$defs/Uuid"
+        },
+        "state": {
+          "type": "string",
+          "enum": [
+            "draft",
+            "planning",
+            "queued",
+            "running",
+            "waiting",
+            "awaiting_approval",
+            "reviewing",
+            "completed",
+            "failed",
+            "cancelled",
+            "recovering"
+          ]
+        },
+        "createdAt": {
+          "$ref": "#/$defs/UtcTimestamp"
+        },
+        "updatedAt": {
+          "$ref": "#/$defs/UtcTimestamp"
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        }
+      }
+    },
+    "RuntimeId": {
+      "type": "string",
+      "description": "Lowercase adapter or engine identifier.",
+      "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+    },
+    "Sha256Digest": {
+      "type": "string",
+      "description": "Lowercase hexadecimal SHA-256 digest.",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "SkillActivationResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "packageId",
+        "revisionId",
+        "approvalId",
+        "activatedAt",
+        "indexGeneration"
+      ],
+      "properties": {
+        "packageId": {
+          "$ref": "#/$defs/SkillPackageId"
+        },
+        "revisionId": {
+          "$ref": "#/$defs/SkillRevisionId"
+        },
+        "approvalId": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "activatedAt": {
+          "$ref": "#/$defs/UtcTimestamp"
+        },
+        "indexGeneration": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      }
+    },
+    "SkillApprovalRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "approvalId",
+        "kind",
+        "approver",
+        "status",
+        "permissionDigest",
+        "createdAt",
+        "expiresAt"
+      ],
+      "properties": {
+        "approvalId": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "user",
+            "auto"
+          ]
+        },
+        "approver": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+          "allOf": [
+            {
+              "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+            }
+          ]
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "granted",
+            "revoked"
+          ]
+        },
+        "workspaceId": {
+          "$ref": "#/$defs/SkillWorkspaceId"
+        },
+        "permissionDigest": {
+          "$ref": "#/$defs/Sha256Digest"
+        },
+        "createdAt": {
+          "$ref": "#/$defs/UtcTimestamp"
+        },
+        "expiresAt": {
+          "$ref": "#/$defs/UtcTimestamp"
+        },
+        "revokedAt": {
+          "$ref": "#/$defs/UtcTimestamp"
+        }
+      }
+    },
+    "SkillConsentInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "sha256"
+      ],
+      "properties": {
+        "path": {
+          "const": "SKILL.md"
+        },
+        "sha256": {
+          "$ref": "#/$defs/Sha256Digest"
+        },
+        "allowedAt": {
+          "$ref": "#/$defs/UtcTimestamp"
+        },
+        "workspaceId": {
+          "$ref": "#/$defs/SkillWorkspaceId"
+        }
+      }
+    },
+    "SkillFileEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "size",
+        "sha256",
+        "executable"
+      ],
+      "properties": {
+        "path": {
+          "$ref": "#/$defs/SkillPath"
+        },
+        "size": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "sha256": {
+          "$ref": "#/$defs/Sha256Digest"
+        },
+        "executable": {
+          "type": "boolean"
+        }
+      }
+    },
+    "SkillInspectionRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "inspectionId",
+        "scannerId",
+        "policyVersion",
+        "outcome",
+        "coverage",
+        "startedAt",
+        "finishedAt"
+      ],
+      "properties": {
+        "inspectionId": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "scannerId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+          "allOf": [
+            {
+              "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+            }
+          ]
+        },
+        "scannerPin": {
+          "type": "string",
+          "maxLength": 256,
+          "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+          "allOf": [
+            {
+              "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+            }
+          ]
+        },
+        "scannerVersion": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+          "allOf": [
+            {
+              "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+            }
+          ]
+        },
+        "policyVersion": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+          "allOf": [
+            {
+              "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+            }
+          ]
+        },
+        "outcome": {
+          "type": "string",
+          "enum": [
+            "completed",
+            "scanner-unavailable",
+            "incomplete",
+            "timeout",
+            "error",
+            "invalid-output",
+            "integrity"
+          ]
+        },
+        "coverage": {
+          "type": "string",
+          "enum": [
+            "complete",
+            "partial",
+            "none"
+          ]
+        },
+        "verdict": {
+          "type": "string",
+          "enum": [
+            "none",
+            "low",
+            "medium",
+            "high",
+            "critical"
+          ]
+        },
+        "startedAt": {
+          "$ref": "#/$defs/UtcTimestamp"
+        },
+        "finishedAt": {
+          "$ref": "#/$defs/UtcTimestamp"
+        }
+      }
+    },
+    "SkillOrigin": {
+      "type": "string",
+      "enum": [
+        "builtin",
+        "user",
+        "workspace",
+        "imported",
+        "generated"
+      ]
+    },
+    "SkillPackageId": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+    },
+    "SkillPath": {
+      "type": "string",
+      "maxLength": 512,
+      "pattern": "^[A-Za-z0-9_][A-Za-z0-9._-]{0,127}(?:\\/[A-Za-z0-9_][A-Za-z0-9._-]{0,127})*$"
+    },
+    "SkillPermissionEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "capability",
+        "scope"
+      ],
+      "properties": {
+        "capability": {
+          "type": "string",
+          "enum": [
+            "filesystem_read",
+            "filesystem_write",
+            "network",
+            "terminal",
+            "secrets"
+          ]
+        },
+        "scope": {
+          "type": "string",
+          "maxLength": 256,
+          "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+          "allOf": [
+            {
+              "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+            }
+          ]
+        }
+      }
+    },
+    "SkillReason": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+    },
+    "SkillRevisionId": {
+      "type": "string",
+      "pattern": "^skr_[a-f0-9]{64}$"
+    },
+    "SkillRevisionState": {
+      "type": "string",
+      "enum": [
+        "discovered",
+        "quarantined",
+        "inspecting",
+        "inspected",
+        "review_required",
+        "blocked",
+        "validated",
+        "evaluating",
+        "evaluated",
+        "awaiting_approval",
+        "auto_eligible",
+        "approved",
+        "active",
+        "superseded",
+        "deprecated",
+        "revoked"
+      ]
+    },
+    "SkillRevisionSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "packageId",
+        "revisionId",
+        "origin",
+        "version",
+        "treeSha256",
+        "skillMdSha256",
+        "state",
+        "riskClass",
+        "manifestInferred",
+        "permissionDigest",
+        "permissions",
+        "active",
+        "createdAt",
+        "updatedAt"
+      ],
+      "properties": {
+        "packageId": {
+          "$ref": "#/$defs/SkillPackageId"
+        },
+        "revisionId": {
+          "$ref": "#/$defs/SkillRevisionId"
+        },
+        "origin": {
+          "$ref": "#/$defs/SkillOrigin"
+        },
+        "version": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+          "allOf": [
+            {
+              "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+            }
+          ]
+        },
+        "treeSha256": {
+          "$ref": "#/$defs/Sha256Digest"
+        },
+        "skillMdSha256": {
+          "$ref": "#/$defs/Sha256Digest"
+        },
+        "state": {
+          "$ref": "#/$defs/SkillRevisionState"
+        },
+        "stateReason": {
+          "$ref": "#/$defs/SkillReason"
+        },
+        "riskClass": {
+          "$ref": "#/$defs/SkillRiskClass"
+        },
+        "manifestInferred": {
+          "type": "boolean"
+        },
+        "permissionDigest": {
+          "$ref": "#/$defs/Sha256Digest"
+        },
+        "permissions": {
+          "type": "array",
+          "maxItems": 257,
+          "items": {
+            "$ref": "#/$defs/SkillPermissionEntry"
+          }
+        },
+        "active": {
+          "type": "boolean"
+        },
+        "createdAt": {
+          "$ref": "#/$defs/UtcTimestamp"
+        },
+        "updatedAt": {
+          "$ref": "#/$defs/UtcTimestamp"
+        }
+      }
+    },
+    "SkillRiskClass": {
+      "type": "string",
+      "enum": [
+        "declarative",
+        "tool_using",
+        "executable"
+      ]
+    },
+    "SkillScannerReport": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "scannerId",
+        "pinned",
+        "policyVersion",
+        "status"
+      ],
+      "properties": {
+        "scannerId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+          "allOf": [
+            {
+              "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+            }
+          ]
+        },
+        "pinned": {
+          "type": "boolean"
+        },
+        "pin": {
+          "type": "string",
+          "maxLength": 256,
+          "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+          "allOf": [
+            {
+              "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+            }
+          ]
+        },
+        "version": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+          "allOf": [
+            {
+              "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+            }
+          ]
+        },
+        "normalizerVersion": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+          "allOf": [
+            {
+              "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+            }
+          ]
+        },
+        "policyVersion": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+          "allOf": [
+            {
+              "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+            }
+          ]
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "unpinned",
+            "ready",
+            "unavailable"
+          ]
+        }
+      }
+    },
+    "SkillStateEvent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "seq",
+        "toState",
+        "at"
+      ],
+      "properties": {
+        "seq": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "fromState": {
+          "$ref": "#/$defs/SkillRevisionState"
+        },
+        "toState": {
+          "$ref": "#/$defs/SkillRevisionState"
+        },
+        "reason": {
+          "$ref": "#/$defs/SkillReason"
+        },
+        "at": {
+          "$ref": "#/$defs/UtcTimestamp"
+        }
+      }
+    },
+    "SkillUserPrincipal": {
+      "type": "string",
+      "pattern": "^user:[A-Za-z0-9][A-Za-z0-9._@-]{0,63}$"
+    },
+    "SkillWorkspaceId": {
+      "type": "string",
+      "maxLength": 36,
+      "pattern": "^(?:w_[0-9a-z]{1,11}[0-9a-f]{8}|[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$"
+    },
+    "Task": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "id",
+        "missionId",
+        "dependsOn",
+        "state",
+        "attempt",
+        "requirements",
+        "evidenceIds"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": 1
+        },
+        "id": {
+          "$ref": "#/$defs/Uuid"
+        },
+        "missionId": {
+          "$ref": "#/$defs/Uuid"
+        },
+        "parentTaskId": {
+          "$ref": "#/$defs/Uuid"
+        },
+        "dependsOn": {
+          "type": "array",
+          "maxItems": 1000,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/Uuid"
+          }
+        },
+        "assignedAgentId": {
+          "$ref": "#/$defs/Uuid"
+        },
+        "state": {
+          "type": "string",
+          "enum": [
+            "queued",
+            "blocked",
+            "assigned",
+            "running",
+            "waiting",
+            "awaiting_approval",
+            "verifying",
+            "completed",
+            "failed",
+            "cancelled",
+            "unknown"
+          ]
+        },
+        "attempt": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "leaseId": {
+          "$ref": "#/$defs/Uuid"
+        },
+        "requirements": {
+          "type": "array",
+          "maxItems": 1000,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/Label"
+          }
+        },
+        "evidenceIds": {
+          "type": "array",
+          "maxItems": 1000,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/Uuid"
+          }
+        },
+        "verification": {
+          "type": "string",
+          "enum": [
+            "unverified",
+            "verified"
+          ]
+        },
+        "access": {
+          "const": "write"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "state"
+            ],
+            "properties": {
+              "state": {
+                "enum": [
+                  "assigned",
+                  "running",
+                  "waiting",
+                  "awaiting_approval",
+                  "verifying"
+                ]
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "assignedAgentId"
+            ]
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "state"
+            ],
+            "properties": {
+              "state": {
+                "enum": [
+                  "running"
+                ]
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "leaseId"
+            ],
+            "properties": {
+              "attempt": {
+                "type": "integer",
+                "minimum": 1
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "state"
+            ],
+            "properties": {
+              "state": {
+                "enum": [
+                  "completed"
+                ]
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "verification"
+            ]
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "verification"
+            ],
+            "properties": {
+              "verification": {
+                "enum": [
+                  "verified"
+                ]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "state": {
+                "const": "completed"
+              },
+              "evidenceIds": {
+                "type": "array",
+                "minItems": 1
+              }
+            }
+          }
+        }
+      ]
+    },
+    "TaskGraph": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "missionId",
+        "tasks"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": 1
+        },
+        "missionId": {
+          "$ref": "#/$defs/Uuid"
+        },
+        "tasks": {
+          "type": "array",
+          "maxItems": 1000,
+          "items": {
+            "$ref": "#/$defs/Task"
+          }
+        }
+      }
+    },
+    "TaskState": {
+      "type": "string",
+      "enum": [
+        "queued",
+        "blocked",
+        "assigned",
+        "running",
+        "waiting",
+        "awaiting_approval",
+        "verifying",
+        "completed",
+        "failed",
+        "cancelled",
+        "unknown"
+      ]
+    },
+    "UtcTimestamp": {
+      "type": "string",
+      "description": "UTC instant YYYY-MM-DDTHH:mm:ss[.sss]Z on a real calendar date.",
+      "pattern": "^(?:[0-9]{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12][0-9]|3[01])|(?:0[469]|11)-(?:0[1-9]|[12][0-9]|30)|02-(?:0[1-9]|1[0-9]|2[0-8]))|(?:[0-9]{2}(?:0[48]|[2468][048]|[13579][26])|(?:0[048]|[2468][048]|[13579][26])00)-02-29)T(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9](?:\\.[0-9]{1,3})?Z$"
+    },
+    "Uuid": {
+      "type": "string",
+      "description": "Lowercase RFC 9562 UUID, versions 1-8.",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    }
+  }
+}

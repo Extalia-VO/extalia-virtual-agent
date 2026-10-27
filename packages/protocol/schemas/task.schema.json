@@ -1,0 +1,208 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:extalia:protocol:task:v1",
+  "title": "Task",
+  "description": "Generated from @extalia/protocol by tooling/generate-schemas.mjs; do not edit. The TypeScript validators remain the reference. Validator-only checks: no dependsOn or parentTaskId reference to the task itself; string lengths in UTF-16 code units (maxLength here counts code points).",
+  "$ref": "#/$defs/Task",
+  "$defs": {
+    "Label": {
+      "description": "Nonblank text without control characters, at most 2000 UTF-16 code units.",
+      "type": "string",
+      "maxLength": 2000,
+      "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+      "allOf": [
+        {
+          "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+        }
+      ]
+    },
+    "Task": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "id",
+        "missionId",
+        "dependsOn",
+        "state",
+        "attempt",
+        "requirements",
+        "evidenceIds"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": 1
+        },
+        "id": {
+          "$ref": "#/$defs/Uuid"
+        },
+        "missionId": {
+          "$ref": "#/$defs/Uuid"
+        },
+        "parentTaskId": {
+          "$ref": "#/$defs/Uuid"
+        },
+        "dependsOn": {
+          "type": "array",
+          "maxItems": 1000,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/Uuid"
+          }
+        },
+        "assignedAgentId": {
+          "$ref": "#/$defs/Uuid"
+        },
+        "state": {
+          "type": "string",
+          "enum": [
+            "queued",
+            "blocked",
+            "assigned",
+            "running",
+            "waiting",
+            "awaiting_approval",
+            "verifying",
+            "completed",
+            "failed",
+            "cancelled",
+            "unknown"
+          ]
+        },
+        "attempt": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "leaseId": {
+          "$ref": "#/$defs/Uuid"
+        },
+        "requirements": {
+          "type": "array",
+          "maxItems": 1000,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/Label"
+          }
+        },
+        "evidenceIds": {
+          "type": "array",
+          "maxItems": 1000,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/Uuid"
+          }
+        },
+        "verification": {
+          "type": "string",
+          "enum": [
+            "unverified",
+            "verified"
+          ]
+        },
+        "access": {
+          "const": "write"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "state"
+            ],
+            "properties": {
+              "state": {
+                "enum": [
+                  "assigned",
+                  "running",
+                  "waiting",
+                  "awaiting_approval",
+                  "verifying"
+                ]
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "assignedAgentId"
+            ]
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "state"
+            ],
+            "properties": {
+              "state": {
+                "enum": [
+                  "running"
+                ]
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "leaseId"
+            ],
+            "properties": {
+              "attempt": {
+                "type": "integer",
+                "minimum": 1
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "state"
+            ],
+            "properties": {
+              "state": {
+                "enum": [
+                  "completed"
+                ]
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "verification"
+            ]
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "verification"
+            ],
+            "properties": {
+              "verification": {
+                "enum": [
+                  "verified"
+                ]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "state": {
+                "const": "completed"
+              },
+              "evidenceIds": {
+                "type": "array",
+                "minItems": 1
+              }
+            }
+          }
+        }
+      ]
+    },
+    "Uuid": {
+      "type": "string",
+      "description": "Lowercase RFC 9562 UUID, versions 1-8.",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    }
+  }
+}

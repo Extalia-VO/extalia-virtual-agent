@@ -1,0 +1,114 @@
+{
+  "$comment": "Generated from @extalia/protocol (MISSION_TRANSITIONS, TASK_TRANSITIONS) by tooling/generate-schemas.mjs; do not edit. Self-transitions are not listed.",
+  "mission": {
+    "draft": [
+      "planning",
+      "queued",
+      "running",
+      "cancelled",
+      "failed"
+    ],
+    "planning": [
+      "queued",
+      "running",
+      "cancelled",
+      "failed"
+    ],
+    "queued": [
+      "running",
+      "cancelled",
+      "failed"
+    ],
+    "running": [
+      "waiting",
+      "awaiting_approval",
+      "reviewing",
+      "completed",
+      "failed",
+      "cancelled",
+      "recovering"
+    ],
+    "waiting": [
+      "running",
+      "failed",
+      "cancelled",
+      "recovering"
+    ],
+    "awaiting_approval": [
+      "running",
+      "failed",
+      "cancelled",
+      "recovering"
+    ],
+    "reviewing": [
+      "running",
+      "completed",
+      "failed",
+      "cancelled",
+      "recovering"
+    ],
+    "completed": [],
+    "failed": [],
+    "cancelled": [],
+    "recovering": [
+      "failed",
+      "cancelled"
+    ]
+  },
+  "task": {
+    "queued": [
+      "assigned",
+      "running",
+      "blocked",
+      "cancelled",
+      "failed"
+    ],
+    "blocked": [
+      "queued",
+      "cancelled",
+      "failed"
+    ],
+    "assigned": [
+      "running",
+      "queued",
+      "blocked",
+      "cancelled",
+      "failed"
+    ],
+    "running": [
+      "waiting",
+      "awaiting_approval",
+      "verifying",
+      "completed",
+      "failed",
+      "cancelled",
+      "unknown"
+    ],
+    "waiting": [
+      "running",
+      "failed",
+      "cancelled",
+      "unknown"
+    ],
+    "awaiting_approval": [
+      "running",
+      "failed",
+      "cancelled",
+      "unknown"
+    ],
+    "verifying": [
+      "running",
+      "completed",
+      "failed",
+      "cancelled",
+      "unknown"
+    ],
+    "completed": [],
+    "failed": [],
+    "cancelled": [],
+    "unknown": [
+      "failed",
+      "cancelled"
+    ]
+  }
+}

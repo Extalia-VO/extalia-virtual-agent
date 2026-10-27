@@ -1,0 +1,505 @@
+{
+  "contract": "agentEvent",
+  "cases": [
+    {
+      "name": "task state event",
+      "valid": true,
+      "value": {
+        "schemaVersion": 1,
+        "id": "00000000-0000-4000-8000-000000000013",
+        "workspaceId": "00000000-0000-4000-8000-000000000001",
+        "sessionId": "00000000-0000-4000-8000-000000000014",
+        "missionId": "00000000-0000-4000-8000-000000000002",
+        "taskId": "00000000-0000-4000-8000-000000000005",
+        "agentId": "00000000-0000-4000-8000-000000000003",
+        "source": {
+          "runtime": "extalia",
+          "channel": "system"
+        },
+        "sourceTimestamp": "2026-01-01T00:00:00.000Z",
+        "observedAt": "2026-01-01T00:01:00.000Z",
+        "sequence": 1,
+        "confidence": "observed",
+        "body": {
+          "type": "task.state",
+          "state": "unknown"
+        }
+      }
+    },
+    {
+      "name": "mission state event",
+      "valid": true,
+      "value": {
+        "schemaVersion": 1,
+        "id": "00000000-0000-4000-8000-000000000013",
+        "workspaceId": "00000000-0000-4000-8000-000000000001",
+        "sessionId": "00000000-0000-4000-8000-000000000014",
+        "missionId": "00000000-0000-4000-8000-000000000002",
+        "agentId": "00000000-0000-4000-8000-000000000003",
+        "source": {
+          "runtime": "extalia",
+          "channel": "system"
+        },
+        "sourceTimestamp": "2026-01-01T00:00:00.000Z",
+        "observedAt": "2026-01-01T00:01:00.000Z",
+        "confidence": "observed",
+        "body": {
+          "type": "mission.state",
+          "state": "running"
+        }
+      }
+    },
+    {
+      "name": "inherited agent.state body",
+      "valid": true,
+      "value": {
+        "schemaVersion": 1,
+        "id": "00000000-0000-4000-8000-000000000013",
+        "workspaceId": "00000000-0000-4000-8000-000000000001",
+        "sessionId": "00000000-0000-4000-8000-000000000014",
+        "missionId": "00000000-0000-4000-8000-000000000002",
+        "taskId": "00000000-0000-4000-8000-000000000005",
+        "agentId": "00000000-0000-4000-8000-000000000003",
+        "source": {
+          "runtime": "extalia",
+          "channel": "system"
+        },
+        "sourceTimestamp": "2026-01-01T00:00:00.000Z",
+        "observedAt": "2026-01-01T00:01:00.000Z",
+        "sequence": 1,
+        "confidence": "observed",
+        "body": {
+          "type": "agent.state",
+          "state": "working",
+          "activity": "read",
+          "progress": 0.5
+        }
+      }
+    },
+    {
+      "name": "inherited tool.started body with adapter source",
+      "valid": true,
+      "value": {
+        "schemaVersion": 1,
+        "id": "00000000-0000-4000-8000-000000000013",
+        "workspaceId": "00000000-0000-4000-8000-000000000001",
+        "sessionId": "00000000-0000-4000-8000-000000000014",
+        "missionId": "00000000-0000-4000-8000-000000000002",
+        "taskId": "00000000-0000-4000-8000-000000000005",
+        "agentId": "00000000-0000-4000-8000-000000000003",
+        "source": {
+          "runtime": "extalia",
+          "channel": "stream",
+          "adapter": "native-loop",
+          "adapterVersion": "1.0.0"
+        },
+        "sourceTimestamp": "2026-01-01T00:00:00.000Z",
+        "observedAt": "2026-01-01T00:01:00.000Z",
+        "sequence": 1,
+        "confidence": "observed",
+        "body": {
+          "type": "tool.started",
+          "tool": "read_file",
+          "kind": "read",
+          "label": "Reading notes"
+        }
+      }
+    },
+    {
+      "name": "inherited turn.completed with usage",
+      "valid": true,
+      "value": {
+        "schemaVersion": 1,
+        "id": "00000000-0000-4000-8000-000000000013",
+        "workspaceId": "00000000-0000-4000-8000-000000000001",
+        "sessionId": "00000000-0000-4000-8000-000000000014",
+        "missionId": "00000000-0000-4000-8000-000000000002",
+        "agentId": "00000000-0000-4000-8000-000000000003",
+        "source": {
+          "runtime": "extalia",
+          "channel": "system"
+        },
+        "sourceTimestamp": "2026-01-01T00:00:00.000Z",
+        "observedAt": "2026-01-01T00:01:00.000Z",
+        "confidence": "observed",
+        "body": {
+          "type": "turn.completed",
+          "usage": {
+            "inputTokens": 10,
+            "outputTokens": 2
+          }
+        }
+      }
+    },
+    {
+      "name": "unknown field",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "id": "00000000-0000-4000-8000-000000000013",
+        "workspaceId": "00000000-0000-4000-8000-000000000001",
+        "sessionId": "00000000-0000-4000-8000-000000000014",
+        "missionId": "00000000-0000-4000-8000-000000000002",
+        "taskId": "00000000-0000-4000-8000-000000000005",
+        "agentId": "00000000-0000-4000-8000-000000000003",
+        "source": {
+          "runtime": "extalia",
+          "channel": "system"
+        },
+        "sourceTimestamp": "2026-01-01T00:00:00.000Z",
+        "observedAt": "2026-01-01T00:01:00.000Z",
+        "sequence": 1,
+        "confidence": "observed",
+        "body": {
+          "type": "task.state",
+          "state": "unknown"
+        },
+        "extra": true
+      }
+    },
+    {
+      "name": "unknown source field",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "id": "00000000-0000-4000-8000-000000000013",
+        "workspaceId": "00000000-0000-4000-8000-000000000001",
+        "sessionId": "00000000-0000-4000-8000-000000000014",
+        "missionId": "00000000-0000-4000-8000-000000000002",
+        "taskId": "00000000-0000-4000-8000-000000000005",
+        "agentId": "00000000-0000-4000-8000-000000000003",
+        "source": {
+          "runtime": "extalia",
+          "channel": "system",
+          "token": "example"
+        },
+        "sourceTimestamp": "2026-01-01T00:00:00.000Z",
+        "observedAt": "2026-01-01T00:01:00.000Z",
+        "sequence": 1,
+        "confidence": "observed",
+        "body": {
+          "type": "task.state",
+          "state": "unknown"
+        }
+      }
+    },
+    {
+      "name": "uppercase runtime",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "id": "00000000-0000-4000-8000-000000000013",
+        "workspaceId": "00000000-0000-4000-8000-000000000001",
+        "sessionId": "00000000-0000-4000-8000-000000000014",
+        "missionId": "00000000-0000-4000-8000-000000000002",
+        "taskId": "00000000-0000-4000-8000-000000000005",
+        "agentId": "00000000-0000-4000-8000-000000000003",
+        "source": {
+          "runtime": "Extalia",
+          "channel": "system"
+        },
+        "sourceTimestamp": "2026-01-01T00:00:00.000Z",
+        "observedAt": "2026-01-01T00:01:00.000Z",
+        "sequence": 1,
+        "confidence": "observed",
+        "body": {
+          "type": "task.state",
+          "state": "unknown"
+        }
+      }
+    },
+    {
+      "name": "unknown body type",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "id": "00000000-0000-4000-8000-000000000013",
+        "workspaceId": "00000000-0000-4000-8000-000000000001",
+        "sessionId": "00000000-0000-4000-8000-000000000014",
+        "missionId": "00000000-0000-4000-8000-000000000002",
+        "taskId": "00000000-0000-4000-8000-000000000005",
+        "agentId": "00000000-0000-4000-8000-000000000003",
+        "source": {
+          "runtime": "extalia",
+          "channel": "system"
+        },
+        "sourceTimestamp": "2026-01-01T00:00:00.000Z",
+        "observedAt": "2026-01-01T00:01:00.000Z",
+        "sequence": 1,
+        "confidence": "observed",
+        "body": {
+          "type": "mission.deleted"
+        }
+      }
+    },
+    {
+      "name": "extra field on control body",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "id": "00000000-0000-4000-8000-000000000013",
+        "workspaceId": "00000000-0000-4000-8000-000000000001",
+        "sessionId": "00000000-0000-4000-8000-000000000014",
+        "missionId": "00000000-0000-4000-8000-000000000002",
+        "taskId": "00000000-0000-4000-8000-000000000005",
+        "agentId": "00000000-0000-4000-8000-000000000003",
+        "source": {
+          "runtime": "extalia",
+          "channel": "system"
+        },
+        "sourceTimestamp": "2026-01-01T00:00:00.000Z",
+        "observedAt": "2026-01-01T00:01:00.000Z",
+        "sequence": 1,
+        "confidence": "observed",
+        "body": {
+          "type": "mission.state",
+          "state": "running",
+          "secret": true
+        }
+      }
+    },
+    {
+      "name": "unknown task state",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "id": "00000000-0000-4000-8000-000000000013",
+        "workspaceId": "00000000-0000-4000-8000-000000000001",
+        "sessionId": "00000000-0000-4000-8000-000000000014",
+        "missionId": "00000000-0000-4000-8000-000000000002",
+        "taskId": "00000000-0000-4000-8000-000000000005",
+        "agentId": "00000000-0000-4000-8000-000000000003",
+        "source": {
+          "runtime": "extalia",
+          "channel": "system"
+        },
+        "sourceTimestamp": "2026-01-01T00:00:00.000Z",
+        "observedAt": "2026-01-01T00:01:00.000Z",
+        "sequence": 1,
+        "confidence": "observed",
+        "body": {
+          "type": "task.state",
+          "state": "paused"
+        }
+      }
+    },
+    {
+      "name": "mission state without missionId",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "id": "00000000-0000-4000-8000-000000000013",
+        "workspaceId": "00000000-0000-4000-8000-000000000001",
+        "sessionId": "00000000-0000-4000-8000-000000000014",
+        "agentId": "00000000-0000-4000-8000-000000000003",
+        "source": {
+          "runtime": "extalia",
+          "channel": "system"
+        },
+        "sourceTimestamp": "2026-01-01T00:00:00.000Z",
+        "observedAt": "2026-01-01T00:01:00.000Z",
+        "confidence": "observed",
+        "body": {
+          "type": "mission.state",
+          "state": "running"
+        }
+      }
+    },
+    {
+      "name": "task state without taskId",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "id": "00000000-0000-4000-8000-000000000013",
+        "workspaceId": "00000000-0000-4000-8000-000000000001",
+        "sessionId": "00000000-0000-4000-8000-000000000014",
+        "missionId": "00000000-0000-4000-8000-000000000002",
+        "agentId": "00000000-0000-4000-8000-000000000003",
+        "source": {
+          "runtime": "extalia",
+          "channel": "system"
+        },
+        "sourceTimestamp": "2026-01-01T00:00:00.000Z",
+        "observedAt": "2026-01-01T00:01:00.000Z",
+        "sequence": 1,
+        "confidence": "observed",
+        "body": {
+          "type": "task.state",
+          "state": "unknown"
+        }
+      }
+    },
+    {
+      "name": "task without mission context",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "id": "00000000-0000-4000-8000-000000000013",
+        "workspaceId": "00000000-0000-4000-8000-000000000001",
+        "sessionId": "00000000-0000-4000-8000-000000000014",
+        "taskId": "00000000-0000-4000-8000-000000000005",
+        "agentId": "00000000-0000-4000-8000-000000000003",
+        "source": {
+          "runtime": "extalia",
+          "channel": "system"
+        },
+        "sourceTimestamp": "2026-01-01T00:00:00.000Z",
+        "observedAt": "2026-01-01T00:01:00.000Z",
+        "sequence": 1,
+        "confidence": "observed",
+        "body": {
+          "type": "task.state",
+          "state": "unknown"
+        }
+      }
+    },
+    {
+      "name": "agent.state without agentId",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "id": "00000000-0000-4000-8000-000000000013",
+        "workspaceId": "00000000-0000-4000-8000-000000000001",
+        "sessionId": "00000000-0000-4000-8000-000000000014",
+        "missionId": "00000000-0000-4000-8000-000000000002",
+        "taskId": "00000000-0000-4000-8000-000000000005",
+        "source": {
+          "runtime": "extalia",
+          "channel": "system"
+        },
+        "sourceTimestamp": "2026-01-01T00:00:00.000Z",
+        "observedAt": "2026-01-01T00:01:00.000Z",
+        "sequence": 1,
+        "confidence": "observed",
+        "body": {
+          "type": "agent.state",
+          "state": "working"
+        }
+      }
+    },
+    {
+      "name": "task.progress without taskId",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "id": "00000000-0000-4000-8000-000000000013",
+        "workspaceId": "00000000-0000-4000-8000-000000000001",
+        "sessionId": "00000000-0000-4000-8000-000000000014",
+        "missionId": "00000000-0000-4000-8000-000000000002",
+        "agentId": "00000000-0000-4000-8000-000000000003",
+        "source": {
+          "runtime": "extalia",
+          "channel": "system"
+        },
+        "sourceTimestamp": "2026-01-01T00:00:00.000Z",
+        "observedAt": "2026-01-01T00:01:00.000Z",
+        "sequence": 1,
+        "confidence": "observed",
+        "body": {
+          "type": "task.progress",
+          "progress": 0.5
+        }
+      }
+    },
+    {
+      "name": "inherited body with wrong enum",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "id": "00000000-0000-4000-8000-000000000013",
+        "workspaceId": "00000000-0000-4000-8000-000000000001",
+        "sessionId": "00000000-0000-4000-8000-000000000014",
+        "missionId": "00000000-0000-4000-8000-000000000002",
+        "taskId": "00000000-0000-4000-8000-000000000005",
+        "agentId": "00000000-0000-4000-8000-000000000003",
+        "source": {
+          "runtime": "extalia",
+          "channel": "system"
+        },
+        "sourceTimestamp": "2026-01-01T00:00:00.000Z",
+        "observedAt": "2026-01-01T00:01:00.000Z",
+        "sequence": 1,
+        "confidence": "observed",
+        "body": {
+          "type": "agent.state",
+          "state": "unknown"
+        }
+      }
+    },
+    {
+      "name": "inherited body with unknown field",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "id": "00000000-0000-4000-8000-000000000013",
+        "workspaceId": "00000000-0000-4000-8000-000000000001",
+        "sessionId": "00000000-0000-4000-8000-000000000014",
+        "missionId": "00000000-0000-4000-8000-000000000002",
+        "taskId": "00000000-0000-4000-8000-000000000005",
+        "agentId": "00000000-0000-4000-8000-000000000003",
+        "source": {
+          "runtime": "extalia",
+          "channel": "system"
+        },
+        "sourceTimestamp": "2026-01-01T00:00:00.000Z",
+        "observedAt": "2026-01-01T00:01:00.000Z",
+        "sequence": 1,
+        "confidence": "observed",
+        "body": {
+          "type": "model.thinking",
+          "text": "hidden"
+        }
+      }
+    },
+    {
+      "name": "negative sequence",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "id": "00000000-0000-4000-8000-000000000013",
+        "workspaceId": "00000000-0000-4000-8000-000000000001",
+        "sessionId": "00000000-0000-4000-8000-000000000014",
+        "missionId": "00000000-0000-4000-8000-000000000002",
+        "taskId": "00000000-0000-4000-8000-000000000005",
+        "agentId": "00000000-0000-4000-8000-000000000003",
+        "source": {
+          "runtime": "extalia",
+          "channel": "system"
+        },
+        "sourceTimestamp": "2026-01-01T00:00:00.000Z",
+        "observedAt": "2026-01-01T00:01:00.000Z",
+        "sequence": -1,
+        "confidence": "observed",
+        "body": {
+          "type": "task.state",
+          "state": "unknown"
+        }
+      }
+    },
+    {
+      "name": "newer schemaVersion",
+      "valid": false,
+      "value": {
+        "schemaVersion": 2,
+        "id": "00000000-0000-4000-8000-000000000013",
+        "workspaceId": "00000000-0000-4000-8000-000000000001",
+        "sessionId": "00000000-0000-4000-8000-000000000014",
+        "missionId": "00000000-0000-4000-8000-000000000002",
+        "taskId": "00000000-0000-4000-8000-000000000005",
+        "agentId": "00000000-0000-4000-8000-000000000003",
+        "source": {
+          "runtime": "extalia",
+          "channel": "system"
+        },
+        "sourceTimestamp": "2026-01-01T00:00:00.000Z",
+        "observedAt": "2026-01-01T00:01:00.000Z",
+        "sequence": 1,
+        "confidence": "observed",
+        "body": {
+          "type": "task.state",
+          "state": "unknown"
+        }
+      }
+    }
+  ]
+}

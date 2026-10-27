@@ -1,0 +1,117 @@
+{
+  "contract": "daemonFraming",
+  "maxFrameBytes": 1048576,
+  "headerBytes": 4,
+  "cases": [
+    {
+      "name": "health request",
+      "hex": "000000717b22736368656d6156657273696f6e223a312c226b696e64223a2272657175657374222c22726571756573744964223a2230303030303030302d303030302d343030302d383030302d303030303030303030313030222c226f70223a226865616c7468222c22706172616d73223a7b7d7d",
+      "results": [
+        {
+          "ok": true
+        }
+      ]
+    },
+    {
+      "name": "two frames in one chunk",
+      "hex": "000000717b22736368656d6156657273696f6e223a312c226b696e64223a2272657175657374222c22726571756573744964223a2230303030303030302d303030302d343030302d383030302d303030303030303030313030222c226f70223a226865616c7468222c22706172616d73223a7b7d7d000000717b22736368656d6156657273696f6e223a312c226b696e64223a2272657175657374222c22726571756573744964223a2230303030303030302d303030302d343030302d383030302d303030303030303030313030222c226f70223a226865616c7468222c22706172616d73223a7b7d7d",
+      "results": [
+        {
+          "ok": true
+        },
+        {
+          "ok": true
+        }
+      ]
+    },
+    {
+      "name": "incomplete frame stays pending",
+      "hex": "000000717b2273636865",
+      "results": []
+    },
+    {
+      "name": "empty payload",
+      "hex": "00000000",
+      "results": [
+        {
+          "ok": false,
+          "code": "invalid_frame",
+          "fatal": false
+        }
+      ]
+    },
+    {
+      "name": "invalid UTF-8 then a valid frame",
+      "hex": "00000002c328000000717b22736368656d6156657273696f6e223a312c226b696e64223a2272657175657374222c22726571756573744964223a2230303030303030302d303030302d343030302d383030302d303030303030303030313030222c226f70223a226865616c7468222c22706172616d73223a7b7d7d",
+      "results": [
+        {
+          "ok": false,
+          "code": "invalid_frame",
+          "fatal": false
+        },
+        {
+          "ok": true
+        }
+      ]
+    },
+    {
+      "name": "payload is not JSON",
+      "hex": "000000037b787d",
+      "results": [
+        {
+          "ok": false,
+          "code": "invalid_frame",
+          "fatal": false
+        }
+      ]
+    },
+    {
+      "name": "byte order mark before JSON",
+      "hex": "00000074efbbbf7b22736368656d6156657273696f6e223a312c226b696e64223a2272657175657374222c22726571756573744964223a2230303030303030302d303030302d343030302d383030302d303030303030303030313030222c226f70223a226865616c7468222c22706172616d73223a7b7d7d",
+      "results": [
+        {
+          "ok": false,
+          "code": "invalid_frame",
+          "fatal": false
+        }
+      ]
+    },
+    {
+      "name": "newer schema version keeps its request id",
+      "hex": "000000717b22736368656d6156657273696f6e223a322c226b696e64223a2272657175657374222c22726571756573744964223a2230303030303030302d303030302d343030302d383030302d303030303030303030313030222c226f70223a226865616c7468222c22706172616d73223a7b7d7d",
+      "results": [
+        {
+          "ok": false,
+          "code": "unsupported_schema_version",
+          "fatal": false,
+          "requestId": "00000000-0000-4000-8000-000000000100"
+        }
+      ]
+    },
+    {
+      "name": "declared length above the maximum",
+      "hex": "001000017b7d",
+      "results": [
+        {
+          "ok": false,
+          "code": "frame_too_large",
+          "fatal": true
+        }
+      ]
+    },
+    {
+      "name": "oversize after a valid frame",
+      "hex": "000000717b22736368656d6156657273696f6e223a312c226b696e64223a2272657175657374222c22726571756573744964223a2230303030303030302d303030302d343030302d383030302d303030303030303030313030222c226f70223a226865616c7468222c22706172616d73223a7b7d7dffffffff",
+      "results": [
+        {
+          "ok": true
+        },
+        {
+          "ok": false,
+          "code": "frame_too_large",
+          "fatal": true
+        }
+      ]
+    }
+  ]
+}

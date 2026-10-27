@@ -1,0 +1,201 @@
+{
+  "contract": "mission",
+  "cases": [
+    {
+      "name": "draft mission",
+      "valid": true,
+      "value": {
+        "schemaVersion": 1,
+        "id": "00000000-0000-4000-8000-000000000002",
+        "workspaceId": "00000000-0000-4000-8000-000000000001",
+        "leadAgentId": "00000000-0000-4000-8000-000000000003",
+        "budgetId": "00000000-0000-4000-8000-000000000004",
+        "state": "draft",
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "version": 1
+      }
+    },
+    {
+      "name": "recovering mission revised later",
+      "valid": true,
+      "value": {
+        "schemaVersion": 1,
+        "id": "00000000-0000-4000-8000-000000000002",
+        "workspaceId": "00000000-0000-4000-8000-000000000001",
+        "leadAgentId": "00000000-0000-4000-8000-000000000003",
+        "budgetId": "00000000-0000-4000-8000-000000000004",
+        "state": "recovering",
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2028-02-29T23:59:59.999Z",
+        "version": 7
+      }
+    },
+    {
+      "name": "unknown field",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "id": "00000000-0000-4000-8000-000000000002",
+        "workspaceId": "00000000-0000-4000-8000-000000000001",
+        "leadAgentId": "00000000-0000-4000-8000-000000000003",
+        "budgetId": "00000000-0000-4000-8000-000000000004",
+        "state": "draft",
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "version": 1,
+        "owner": "someone"
+      }
+    },
+    {
+      "name": "newer schemaVersion",
+      "valid": false,
+      "value": {
+        "schemaVersion": 2,
+        "id": "00000000-0000-4000-8000-000000000002",
+        "workspaceId": "00000000-0000-4000-8000-000000000001",
+        "leadAgentId": "00000000-0000-4000-8000-000000000003",
+        "budgetId": "00000000-0000-4000-8000-000000000004",
+        "state": "draft",
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "version": 1
+      }
+    },
+    {
+      "name": "missing leadAgentId",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "id": "00000000-0000-4000-8000-000000000002",
+        "workspaceId": "00000000-0000-4000-8000-000000000001",
+        "budgetId": "00000000-0000-4000-8000-000000000004",
+        "state": "draft",
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "version": 1
+      }
+    },
+    {
+      "name": "uppercase UUID",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "id": "00000000-0000-4000-8000-00000000000A",
+        "workspaceId": "00000000-0000-4000-8000-000000000001",
+        "leadAgentId": "00000000-0000-4000-8000-000000000003",
+        "budgetId": "00000000-0000-4000-8000-000000000004",
+        "state": "draft",
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "version": 1
+      }
+    },
+    {
+      "name": "unknown state",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "id": "00000000-0000-4000-8000-000000000002",
+        "workspaceId": "00000000-0000-4000-8000-000000000001",
+        "leadAgentId": "00000000-0000-4000-8000-000000000003",
+        "budgetId": "00000000-0000-4000-8000-000000000004",
+        "state": "paused",
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "version": 1
+      }
+    },
+    {
+      "name": "calendar overflow timestamp",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "id": "00000000-0000-4000-8000-000000000002",
+        "workspaceId": "00000000-0000-4000-8000-000000000001",
+        "leadAgentId": "00000000-0000-4000-8000-000000000003",
+        "budgetId": "00000000-0000-4000-8000-000000000004",
+        "state": "draft",
+        "createdAt": "2026-02-30T00:00:00Z",
+        "updatedAt": "2026-03-01T00:00:00Z",
+        "version": 1
+      }
+    },
+    {
+      "name": "non-leap February 29",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "id": "00000000-0000-4000-8000-000000000002",
+        "workspaceId": "00000000-0000-4000-8000-000000000001",
+        "leadAgentId": "00000000-0000-4000-8000-000000000003",
+        "budgetId": "00000000-0000-4000-8000-000000000004",
+        "state": "draft",
+        "createdAt": "2026-02-29T00:00:00Z",
+        "updatedAt": "2026-03-01T00:00:00Z",
+        "version": 1
+      }
+    },
+    {
+      "name": "timestamp with offset",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "id": "00000000-0000-4000-8000-000000000002",
+        "workspaceId": "00000000-0000-4000-8000-000000000001",
+        "leadAgentId": "00000000-0000-4000-8000-000000000003",
+        "budgetId": "00000000-0000-4000-8000-000000000004",
+        "state": "draft",
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00+00:00",
+        "version": 1
+      }
+    },
+    {
+      "name": "zero revision",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "id": "00000000-0000-4000-8000-000000000002",
+        "workspaceId": "00000000-0000-4000-8000-000000000001",
+        "leadAgentId": "00000000-0000-4000-8000-000000000003",
+        "budgetId": "00000000-0000-4000-8000-000000000004",
+        "state": "draft",
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "version": 0
+      }
+    },
+    {
+      "name": "fractional revision",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "id": "00000000-0000-4000-8000-000000000002",
+        "workspaceId": "00000000-0000-4000-8000-000000000001",
+        "leadAgentId": "00000000-0000-4000-8000-000000000003",
+        "budgetId": "00000000-0000-4000-8000-000000000004",
+        "state": "draft",
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "version": 1.5
+      }
+    },
+    {
+      "name": "updated before created",
+      "valid": false,
+      "schemaGap": "timestamp ordering",
+      "value": {
+        "schemaVersion": 1,
+        "id": "00000000-0000-4000-8000-000000000002",
+        "workspaceId": "00000000-0000-4000-8000-000000000001",
+        "leadAgentId": "00000000-0000-4000-8000-000000000003",
+        "budgetId": "00000000-0000-4000-8000-000000000004",
+        "state": "draft",
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2025-12-31T23:59:59Z",
+        "version": 1
+      }
+    }
+  ]
+}

@@ -1,0 +1,402 @@
+{
+  "contract": "missionJournalRole",
+  "$comment": "Shared verdicts of missionJournalRole (@extalia/protocol) for the host store (nativeEvent) and the Rust store (policy::admit): role is the least privileged worker role that may journal the body, or null when no worker may.",
+  "cases": [
+    {
+      "name": "read activity",
+      "body": {
+        "type": "agent.state",
+        "state": "working",
+        "activity": "read"
+      },
+      "role": "read-only-worker"
+    },
+    {
+      "name": "state without activity",
+      "body": {
+        "type": "agent.state",
+        "state": "thinking"
+      },
+      "role": "read-only-worker"
+    },
+    {
+      "name": "think activity",
+      "body": {
+        "type": "agent.state",
+        "state": "thinking",
+        "activity": "think"
+      },
+      "role": "read-only-worker"
+    },
+    {
+      "name": "search activity",
+      "body": {
+        "type": "agent.state",
+        "state": "working",
+        "activity": "search"
+      },
+      "role": "read-only-worker"
+    },
+    {
+      "name": "named read tool",
+      "body": {
+        "type": "tool.started",
+        "tool": "read_file",
+        "kind": "read",
+        "label": "read_file"
+      },
+      "role": "read-only-worker"
+    },
+    {
+      "name": "named search tool completed",
+      "body": {
+        "type": "tool.completed",
+        "tool": "search_files",
+        "kind": "search",
+        "label": "search_files",
+        "ok": false
+      },
+      "role": "read-only-worker"
+    },
+    {
+      "name": "edit activity",
+      "body": {
+        "type": "agent.state",
+        "state": "working",
+        "activity": "edit"
+      },
+      "role": "write-worker"
+    },
+    {
+      "name": "write_file with a relative target",
+      "body": {
+        "type": "tool.started",
+        "tool": "write_file",
+        "kind": "edit",
+        "label": "write_file",
+        "target": "src/app.ts"
+      },
+      "role": "write-worker"
+    },
+    {
+      "name": "edit_file completed with a target",
+      "body": {
+        "type": "tool.completed",
+        "tool": "edit_file",
+        "kind": "edit",
+        "label": "edit_file",
+        "ok": true,
+        "target": "docs/My File.md"
+      },
+      "role": "write-worker"
+    },
+    {
+      "name": "write_file without a target",
+      "body": {
+        "type": "tool.started",
+        "tool": "write_file",
+        "kind": "edit",
+        "label": "write_file"
+      },
+      "role": "write-worker"
+    },
+    {
+      "name": "edit target with allowed punctuation",
+      "body": {
+        "type": "tool.started",
+        "tool": "edit_file",
+        "kind": "edit",
+        "label": "edit_file",
+        "target": "pkg/@scope/a+b_c-d.e"
+      },
+      "role": "write-worker"
+    },
+    {
+      "name": "edit target at the length bound",
+      "body": {
+        "type": "tool.started",
+        "tool": "write_file",
+        "kind": "edit",
+        "label": "write_file",
+        "target": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "role": "write-worker"
+    },
+    {
+      "name": "edit target at the segment bound",
+      "body": {
+        "type": "tool.started",
+        "tool": "write_file",
+        "kind": "edit",
+        "label": "write_file",
+        "target": "s/s/s/s/s/s/s/s/s/s/s/s/s/s/s/s/s/s/s/s/s/s/s/s/s/s/s/s/s/s/s/s"
+      },
+      "role": "write-worker"
+    },
+    {
+      "name": "command activity",
+      "body": {
+        "type": "agent.state",
+        "state": "working",
+        "activity": "command"
+      },
+      "role": null
+    },
+    {
+      "name": "delegate activity",
+      "body": {
+        "type": "agent.state",
+        "state": "working",
+        "activity": "delegate"
+      },
+      "role": null
+    },
+    {
+      "name": "command tool",
+      "body": {
+        "type": "tool.started",
+        "tool": "shell",
+        "kind": "command",
+        "label": "shell"
+      },
+      "role": null
+    },
+    {
+      "name": "test tool",
+      "body": {
+        "type": "tool.started",
+        "tool": "run_tests",
+        "kind": "test",
+        "label": "run_tests"
+      },
+      "role": null
+    },
+    {
+      "name": "edit kind on an unlisted tool",
+      "body": {
+        "type": "tool.started",
+        "tool": "apply_patch",
+        "kind": "edit",
+        "label": "apply_patch"
+      },
+      "role": null
+    },
+    {
+      "name": "edit tool with a raw label",
+      "body": {
+        "type": "tool.started",
+        "tool": "write_file",
+        "kind": "edit",
+        "label": "Writing src/app.ts"
+      },
+      "role": null
+    },
+    {
+      "name": "read tool with a target",
+      "body": {
+        "type": "tool.started",
+        "tool": "read_file",
+        "kind": "read",
+        "label": "read_file",
+        "target": "src/app.ts"
+      },
+      "role": null
+    },
+    {
+      "name": "read tool with a raw label",
+      "body": {
+        "type": "tool.started",
+        "tool": "read_file",
+        "kind": "read",
+        "label": "A raw private path"
+      },
+      "role": null
+    },
+    {
+      "name": "tool name that is not an identifier",
+      "body": {
+        "type": "tool.started",
+        "tool": "read file",
+        "kind": "read",
+        "label": "read file"
+      },
+      "role": null
+    },
+    {
+      "name": "parent directory target",
+      "body": {
+        "type": "tool.started",
+        "tool": "write_file",
+        "kind": "edit",
+        "label": "write_file",
+        "target": "../secret.txt"
+      },
+      "role": null
+    },
+    {
+      "name": "inner parent directory target",
+      "body": {
+        "type": "tool.started",
+        "tool": "write_file",
+        "kind": "edit",
+        "label": "write_file",
+        "target": "src/../../x"
+      },
+      "role": null
+    },
+    {
+      "name": "absolute target",
+      "body": {
+        "type": "tool.started",
+        "tool": "write_file",
+        "kind": "edit",
+        "label": "write_file",
+        "target": "/etc/passwd"
+      },
+      "role": null
+    },
+    {
+      "name": "drive letter target",
+      "body": {
+        "type": "tool.started",
+        "tool": "write_file",
+        "kind": "edit",
+        "label": "write_file",
+        "target": "C:/x.txt"
+      },
+      "role": null
+    },
+    {
+      "name": "backslash target",
+      "body": {
+        "type": "tool.started",
+        "tool": "write_file",
+        "kind": "edit",
+        "label": "write_file",
+        "target": "src\\a.ts"
+      },
+      "role": null
+    },
+    {
+      "name": "empty segment target",
+      "body": {
+        "type": "tool.started",
+        "tool": "write_file",
+        "kind": "edit",
+        "label": "write_file",
+        "target": "src//a.ts"
+      },
+      "role": null
+    },
+    {
+      "name": "dot segment target",
+      "body": {
+        "type": "tool.started",
+        "tool": "write_file",
+        "kind": "edit",
+        "label": "write_file",
+        "target": "./a.ts"
+      },
+      "role": null
+    },
+    {
+      "name": "trailing slash target",
+      "body": {
+        "type": "tool.started",
+        "tool": "write_file",
+        "kind": "edit",
+        "label": "write_file",
+        "target": "src/"
+      },
+      "role": null
+    },
+    {
+      "name": "empty target",
+      "body": {
+        "type": "tool.started",
+        "tool": "write_file",
+        "kind": "edit",
+        "label": "write_file",
+        "target": ""
+      },
+      "role": null
+    },
+    {
+      "name": "leading space segment",
+      "body": {
+        "type": "tool.started",
+        "tool": "write_file",
+        "kind": "edit",
+        "label": "write_file",
+        "target": " a.txt"
+      },
+      "role": null
+    },
+    {
+      "name": "trailing space segment",
+      "body": {
+        "type": "tool.started",
+        "tool": "write_file",
+        "kind": "edit",
+        "label": "write_file",
+        "target": "a.txt "
+      },
+      "role": null
+    },
+    {
+      "name": "non-ASCII target",
+      "body": {
+        "type": "tool.started",
+        "tool": "write_file",
+        "kind": "edit",
+        "label": "write_file",
+        "target": "caf\u00e9.txt"
+      },
+      "role": null
+    },
+    {
+      "name": "control character target",
+      "body": {
+        "type": "tool.started",
+        "tool": "write_file",
+        "kind": "edit",
+        "label": "write_file",
+        "target": "a\nb.txt"
+      },
+      "role": null
+    },
+    {
+      "name": "over-long target",
+      "body": {
+        "type": "tool.started",
+        "tool": "write_file",
+        "kind": "edit",
+        "label": "write_file",
+        "target": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "role": null
+    },
+    {
+      "name": "too many segments",
+      "body": {
+        "type": "tool.started",
+        "tool": "write_file",
+        "kind": "edit",
+        "label": "write_file",
+        "target": "s/s/s/s/s/s/s/s/s/s/s/s/s/s/s/s/s/s/s/s/s/s/s/s/s/s/s/s/s/s/s/s/s"
+      },
+      "role": null
+    },
+    {
+      "name": "shell metacharacters",
+      "body": {
+        "type": "tool.started",
+        "tool": "write_file",
+        "kind": "edit",
+        "label": "write_file",
+        "target": "a;rm -rf.txt"
+      },
+      "role": null
+    }
+  ]
+}

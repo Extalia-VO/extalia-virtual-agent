@@ -1,0 +1,42 @@
+{
+  "$comment": "Generated from @extalia/protocol (MISSION_JOURNAL_ACTIVITY, MISSION_JOURNAL_EDIT_TOOLS, MISSION_JOURNAL_EDIT_TARGET) by tooling/generate-schemas.mjs; do not edit. Roles are ordered from least to most privileged.",
+  "roles": [
+    "read-only-worker",
+    "write-worker"
+  ],
+  "activity": {
+    "read-only-worker": {
+      "agentActivities": [
+        "read",
+        "search",
+        "think"
+      ],
+      "toolKinds": [
+        "read",
+        "search"
+      ]
+    },
+    "write-worker": {
+      "agentActivities": [
+        "read",
+        "search",
+        "think",
+        "edit"
+      ],
+      "toolKinds": [
+        "read",
+        "search",
+        "edit"
+      ]
+    }
+  },
+  "editTools": [
+    "write_file",
+    "edit_file"
+  ],
+  "editTarget": {
+    "maxLength": 240,
+    "maxSegments": 32,
+    "punctuation": "._-@+ "
+  }
+}

@@ -1,0 +1,285 @@
+{
+  "contract": "approval",
+  "cases": [
+    {
+      "name": "pending approval",
+      "valid": true,
+      "value": {
+        "schemaVersion": 1,
+        "id": "00000000-0000-4000-8000-000000000011",
+        "workspaceId": "00000000-0000-4000-8000-000000000001",
+        "actorId": "00000000-0000-4000-8000-000000000003",
+        "permissionId": "00000000-0000-4000-8000-000000000010",
+        "toolCallId": "00000000-0000-4000-8000-000000000008",
+        "action": "write",
+        "scope": "src/example.ts",
+        "parametersDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "risk": "high",
+        "requestedAt": "2026-01-01T00:00:00.000Z",
+        "expiresAt": "2026-01-01T00:02:00.000Z",
+        "status": "pending"
+      }
+    },
+    {
+      "name": "granted approval",
+      "valid": true,
+      "value": {
+        "schemaVersion": 1,
+        "id": "00000000-0000-4000-8000-000000000011",
+        "workspaceId": "00000000-0000-4000-8000-000000000001",
+        "actorId": "00000000-0000-4000-8000-000000000003",
+        "permissionId": "00000000-0000-4000-8000-000000000010",
+        "toolCallId": "00000000-0000-4000-8000-000000000008",
+        "action": "write",
+        "scope": "src/example.ts",
+        "parametersDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "risk": "high",
+        "requestedAt": "2026-01-01T00:00:00.000Z",
+        "expiresAt": "2026-01-01T00:02:00.000Z",
+        "status": "granted",
+        "decidedAt": "2026-01-01T00:01:00.000Z",
+        "decidedBy": "00000000-0000-4000-8000-000000000021"
+      }
+    },
+    {
+      "name": "expired approval without decision",
+      "valid": true,
+      "value": {
+        "schemaVersion": 1,
+        "id": "00000000-0000-4000-8000-000000000011",
+        "workspaceId": "00000000-0000-4000-8000-000000000001",
+        "actorId": "00000000-0000-4000-8000-000000000003",
+        "permissionId": "00000000-0000-4000-8000-000000000010",
+        "toolCallId": "00000000-0000-4000-8000-000000000008",
+        "action": "write",
+        "scope": "src/example.ts",
+        "parametersDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "risk": "high",
+        "requestedAt": "2026-01-01T00:00:00.000Z",
+        "expiresAt": "2026-01-01T00:02:00.000Z",
+        "status": "expired"
+      }
+    },
+    {
+      "name": "unknown field",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "id": "00000000-0000-4000-8000-000000000011",
+        "workspaceId": "00000000-0000-4000-8000-000000000001",
+        "actorId": "00000000-0000-4000-8000-000000000003",
+        "permissionId": "00000000-0000-4000-8000-000000000010",
+        "toolCallId": "00000000-0000-4000-8000-000000000008",
+        "action": "write",
+        "scope": "src/example.ts",
+        "parametersDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "risk": "high",
+        "requestedAt": "2026-01-01T00:00:00.000Z",
+        "expiresAt": "2026-01-01T00:02:00.000Z",
+        "status": "pending",
+        "note": "ok"
+      }
+    },
+    {
+      "name": "unknown status",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "id": "00000000-0000-4000-8000-000000000011",
+        "workspaceId": "00000000-0000-4000-8000-000000000001",
+        "actorId": "00000000-0000-4000-8000-000000000003",
+        "permissionId": "00000000-0000-4000-8000-000000000010",
+        "toolCallId": "00000000-0000-4000-8000-000000000008",
+        "action": "write",
+        "scope": "src/example.ts",
+        "parametersDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "risk": "high",
+        "requestedAt": "2026-01-01T00:00:00.000Z",
+        "expiresAt": "2026-01-01T00:02:00.000Z",
+        "status": "approved"
+      }
+    },
+    {
+      "name": "uppercase digest",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "id": "00000000-0000-4000-8000-000000000011",
+        "workspaceId": "00000000-0000-4000-8000-000000000001",
+        "actorId": "00000000-0000-4000-8000-000000000003",
+        "permissionId": "00000000-0000-4000-8000-000000000010",
+        "toolCallId": "00000000-0000-4000-8000-000000000008",
+        "action": "write",
+        "scope": "src/example.ts",
+        "parametersDigest": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "risk": "high",
+        "requestedAt": "2026-01-01T00:00:00.000Z",
+        "expiresAt": "2026-01-01T00:02:00.000Z",
+        "status": "pending"
+      }
+    },
+    {
+      "name": "granted without decision",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "id": "00000000-0000-4000-8000-000000000011",
+        "workspaceId": "00000000-0000-4000-8000-000000000001",
+        "actorId": "00000000-0000-4000-8000-000000000003",
+        "permissionId": "00000000-0000-4000-8000-000000000010",
+        "toolCallId": "00000000-0000-4000-8000-000000000008",
+        "action": "write",
+        "scope": "src/example.ts",
+        "parametersDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "risk": "high",
+        "requestedAt": "2026-01-01T00:00:00.000Z",
+        "expiresAt": "2026-01-01T00:02:00.000Z",
+        "status": "granted"
+      }
+    },
+    {
+      "name": "revoked without decision",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "id": "00000000-0000-4000-8000-000000000011",
+        "workspaceId": "00000000-0000-4000-8000-000000000001",
+        "actorId": "00000000-0000-4000-8000-000000000003",
+        "permissionId": "00000000-0000-4000-8000-000000000010",
+        "toolCallId": "00000000-0000-4000-8000-000000000008",
+        "action": "write",
+        "scope": "src/example.ts",
+        "parametersDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "risk": "high",
+        "requestedAt": "2026-01-01T00:00:00.000Z",
+        "expiresAt": "2026-01-01T00:02:00.000Z",
+        "status": "revoked"
+      }
+    },
+    {
+      "name": "pending with decision",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "id": "00000000-0000-4000-8000-000000000011",
+        "workspaceId": "00000000-0000-4000-8000-000000000001",
+        "actorId": "00000000-0000-4000-8000-000000000003",
+        "permissionId": "00000000-0000-4000-8000-000000000010",
+        "toolCallId": "00000000-0000-4000-8000-000000000008",
+        "action": "write",
+        "scope": "src/example.ts",
+        "parametersDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "risk": "high",
+        "requestedAt": "2026-01-01T00:00:00.000Z",
+        "expiresAt": "2026-01-01T00:02:00.000Z",
+        "status": "pending",
+        "decidedAt": "2026-01-01T00:01:00.000Z",
+        "decidedBy": "00000000-0000-4000-8000-000000000021"
+      }
+    },
+    {
+      "name": "decision time without actor",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "id": "00000000-0000-4000-8000-000000000011",
+        "workspaceId": "00000000-0000-4000-8000-000000000001",
+        "actorId": "00000000-0000-4000-8000-000000000003",
+        "permissionId": "00000000-0000-4000-8000-000000000010",
+        "toolCallId": "00000000-0000-4000-8000-000000000008",
+        "action": "write",
+        "scope": "src/example.ts",
+        "parametersDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "risk": "high",
+        "requestedAt": "2026-01-01T00:00:00.000Z",
+        "expiresAt": "2026-01-01T00:02:00.000Z",
+        "status": "granted",
+        "decidedAt": "2026-01-01T00:01:00.000Z"
+      }
+    },
+    {
+      "name": "decision actor without time",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "id": "00000000-0000-4000-8000-000000000011",
+        "workspaceId": "00000000-0000-4000-8000-000000000001",
+        "actorId": "00000000-0000-4000-8000-000000000003",
+        "permissionId": "00000000-0000-4000-8000-000000000010",
+        "toolCallId": "00000000-0000-4000-8000-000000000008",
+        "action": "write",
+        "scope": "src/example.ts",
+        "parametersDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "risk": "high",
+        "requestedAt": "2026-01-01T00:00:00.000Z",
+        "expiresAt": "2026-01-01T00:02:00.000Z",
+        "status": "expired",
+        "decidedBy": "00000000-0000-4000-8000-000000000021"
+      }
+    },
+    {
+      "name": "requester approves itself",
+      "valid": false,
+      "schemaGap": "self approval",
+      "value": {
+        "schemaVersion": 1,
+        "id": "00000000-0000-4000-8000-000000000011",
+        "workspaceId": "00000000-0000-4000-8000-000000000001",
+        "actorId": "00000000-0000-4000-8000-000000000003",
+        "permissionId": "00000000-0000-4000-8000-000000000010",
+        "toolCallId": "00000000-0000-4000-8000-000000000008",
+        "action": "write",
+        "scope": "src/example.ts",
+        "parametersDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "risk": "high",
+        "requestedAt": "2026-01-01T00:00:00.000Z",
+        "expiresAt": "2026-01-01T00:02:00.000Z",
+        "status": "granted",
+        "decidedAt": "2026-01-01T00:01:00.000Z",
+        "decidedBy": "00000000-0000-4000-8000-000000000003"
+      }
+    },
+    {
+      "name": "expires before requested",
+      "valid": false,
+      "schemaGap": "timestamp ordering",
+      "value": {
+        "schemaVersion": 1,
+        "id": "00000000-0000-4000-8000-000000000011",
+        "workspaceId": "00000000-0000-4000-8000-000000000001",
+        "actorId": "00000000-0000-4000-8000-000000000003",
+        "permissionId": "00000000-0000-4000-8000-000000000010",
+        "toolCallId": "00000000-0000-4000-8000-000000000008",
+        "action": "write",
+        "scope": "src/example.ts",
+        "parametersDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "risk": "high",
+        "requestedAt": "2026-01-01T00:00:00.000Z",
+        "expiresAt": "2025-12-31T00:00:00Z",
+        "status": "pending"
+      }
+    },
+    {
+      "name": "granted after expiry",
+      "valid": false,
+      "schemaGap": "timestamp ordering",
+      "value": {
+        "schemaVersion": 1,
+        "id": "00000000-0000-4000-8000-000000000011",
+        "workspaceId": "00000000-0000-4000-8000-000000000001",
+        "actorId": "00000000-0000-4000-8000-000000000003",
+        "permissionId": "00000000-0000-4000-8000-000000000010",
+        "toolCallId": "00000000-0000-4000-8000-000000000008",
+        "action": "write",
+        "scope": "src/example.ts",
+        "parametersDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "risk": "high",
+        "requestedAt": "2026-01-01T00:00:00.000Z",
+        "expiresAt": "2026-01-01T00:02:00.000Z",
+        "status": "granted",
+        "decidedAt": "2026-01-01T00:02:00.000Z",
+        "decidedBy": "00000000-0000-4000-8000-000000000021"
+      }
+    }
+  ]
+}
