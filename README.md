@@ -73,7 +73,7 @@ Pre-built releases for testers are available on the [Extalia v0.4.112 Release](h
 
 Free macOS previews have valid ad-hoc signatures but are not Apple-notarized.
 They may show an unidentified-developer warning and require manual approval and
-manual updates; see [macOS release modes](docs/release/packaging.md#macos-release-modes).
+manual updates; see [macOS release modes](https://github.com/Extalia-VO/extalia-virtual-agent/blob/v0.4.112/docs/release/packaging.md#macos-release-modes).
 The older v0.4.109 Mac DMG had an invalid signature; use v0.4.112 instead.
 Windows installers are withheld from this preview until packaged validation passes.
 
