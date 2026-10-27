@@ -1,0 +1,22 @@
+# Rust control plane (ADR 0021): `extalia-core` holds domain and storage, `extalia-daemon`
+# is the stdio sidecar (ADR 0020). Crate versions follow the lockstep app version;
+# `pnpm version:patch` bumps them and `tooling/check-versions.mjs` verifies them.
+[workspace]
+resolver = "3"
+members = ["crates/extalia-core", "crates/extalia-daemon"]
+
+[workspace.package]
+version = "0.4.108"
+edition = "2024"
+license = "MIT"
+repository = "https://github.com/Extalia-VO/extalia-virtual-agent"
+publish = false
+
+[workspace.dependencies]
+extalia-core = { path = "crates/extalia-core" }
+# Bundled SQLite: one pinned engine on every OS (ADR 0019); `backup` for the pre-migration copy.
+rusqlite = { version = "0.40.2", default-features = false, features = ["bundled", "backup"] }
+serde_json = "1.0.154"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"

@@ -1,0 +1,19 @@
+[package]
+name = "extalia-daemon"
+description = "Extalia sidecar daemon: daemon wire contract v1 over stdio."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+extalia-core.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+# Integration tests inspect core.sqlite directly after killing the daemon.
+rusqlite.workspace = true
+
+[lints]
+workspace = true

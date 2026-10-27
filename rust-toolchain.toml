@@ -1,0 +1,5 @@
+# Exact stable release for reproducible builds and clippy results (ADR 0021).
+[toolchain]
+channel = "1.99.1"
+components = ["rustfmt", "clippy"]
+profile = "minimal"

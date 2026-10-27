@@ -1,0 +1,16 @@
+[package]
+name = "extalia-core"
+description = "Extalia control-plane core: domain state and its SQLite store."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+rusqlite.workspace = true
+# Contract JSON (validation, canonical payloads); already the daemon's wire dependency.
+serde_json.workspace = true
+
+[lints]
+workspace = true
