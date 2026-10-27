@@ -134,6 +134,14 @@ still precedes skill routing/activation expansion. The existing Rust schema cann
 independently prove immutable original task membership; the host checks against
 its retained original run before repairing a terminal projection.
 
+Verification: real daemon terminal-shadow refresh/restart, backend preference
+switch, exact identity refusals, expired/unresolved leases, actual SQLite write
+failure/retry and late/unmounted UI responses pass. Recovering runs deliberately
+retain manual retry rather than background polling; active runs keep polling.
+Full v0.4.109 check passes: 274 suites / 3,064 tests, one skipped; Rust and
+Web/Desktop/CLI builds pass. No live provider or complete gate 3.3 acceptance is
+claimed.
+
 ## Baseline audit (before this task edited code)
 
 - Starting package version: 0.0.38; HEAD: `f214f4f`.

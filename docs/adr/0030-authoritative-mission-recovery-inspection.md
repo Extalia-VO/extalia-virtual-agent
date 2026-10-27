@@ -1,6 +1,6 @@
 # ADR 0030: Authoritative Native mission recovery inspection
 
-Status: Accepted for implementation, 2026-10-27
+Status: Accepted; inspection/projection slice implemented in v0.4.109, 2026-10-27
 
 ## Context
 
@@ -55,3 +55,11 @@ active execution, unknown/queued/in-flight tasks, leases, daemon failure,
 checkpoint failure and restart after an acknowledged terminal projection update.
 The terminal shadow case must preserve completed results that actually exist and
 leave missing output absent. Temporary profiles and scripted providers suffice.
+
+Verification: actual daemon terminal-shadow recovery survives host restart and
+works after the preference for new missions switches to TypeScript. Real SQLite
+write failure preserves quarantine and allows an idempotent retry. Strict wire,
+profile/membership/assignee/lease refusals and delayed UI responses are covered.
+Light/dark and narrow-screen recovery UI previews pass. Full `pnpm check` passes:
+274 suites, 3,064 passing tests and one skipped test, plus Rust checks and all
+application builds. These are local/scripted proofs, not live-provider certification.

@@ -56,7 +56,7 @@ of an existing record, number it sequentially and link it from the table.
 
 | [0029](0029-learning-loop-experiences-evidence-candidates.md) | Learning loop: experiences, evidence and candidates (L1 capture from finished native missions only, masked and bounded; kind-fixed evidence trust, observed claims always untrusted; `insufficient_evidence` below 2 verified successes; user-only digest-bound decisions; L2 via managed-note CAS writes, L3 only staged into the skill import inbox for the W3 flow) | Proposed |
 
-| [0030](0030-authoritative-mission-recovery-inspection.md) | Read-only Rust mission recovery snapshots and explicitly owned host projection refresh, without replay or clearing genuine execution uncertainty | Accepted for implementation |
+| [0030](0030-authoritative-mission-recovery-inspection.md) | Read-only Rust mission recovery snapshots and explicitly owned host projection refresh, without replay or clearing genuine execution uncertainty | Accepted; inspection slice delivered v0.4.109 |
 
 Open questions from PRD §44 (local database, Web ↔ Bridge transport and
 authentication, plugin sandboxing, skill format, registry trust, event sourcing,
