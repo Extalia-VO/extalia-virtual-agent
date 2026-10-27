@@ -6,7 +6,7 @@ resolver = "3"
 members = ["crates/extalia-core", "crates/extalia-daemon"]
 
 [workspace.package]
-version = "0.4.111"
+version = "0.4.112"
 edition = "2024"
 license = "MIT"
 repository = "https://github.com/Extalia-VO/extalia-virtual-agent"

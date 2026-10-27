@@ -21,7 +21,7 @@ describe('public model build boundary', () => {
     expect(Object.keys(bodyUrls).every(path => path.startsWith('/public-assets/avatars/bodies/'))).toBe(true);
     expect(Object.keys(hairUrls).every(path => path.startsWith('/public-assets/avatars/hair/'))).toBe(true);
     for (const [command, mode] of [['build', 'production'], ['build', 'development'], ['serve', 'development']] as const) {
-      expect(avatarAlias(webConfig(command, mode))).toMatch(/\/avatars\/publicAvatarFiles\.ts$/);
+      expect(avatarAlias(webConfig(command, mode))).toMatch(/[\\/]avatars[\\/]publicAvatarFiles\.ts$/);
     }
     expect(avatarAlias(webConfig('serve', 'local-assets'))).toBeUndefined();
     expect(() => webConfig('build', 'local-assets')).toThrow('development server only');

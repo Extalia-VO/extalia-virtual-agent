@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -132,9 +132,13 @@ describe('free macOS preview distribution', () => {
 
   it('does not overwrite a file through a preview notice symlink', async () => {
     const directory = await fixture();
-    const target = path.join(directory, 'preserved.txt');
+    const preserved = path.join(directory, 'preserved');
+    await mkdir(preserved);
+    const target = path.join(preserved, 'preserved.txt');
     await writeFile(target, 'preserved content');
-    await symlink(target, path.join(directory, `Extalia-${version}-mac-PREVIEW.txt`));
+    // O_NOFOLLOW protects the macOS release path. Windows has no equivalent flag;
+    // a directory junction still exercises rejection and preservation without it.
+    await symlink(process.platform === 'win32' ? preserved : target, path.join(directory, `Extalia-${version}-mac-PREVIEW.txt`), process.platform === 'win32' ? 'junction' : 'file');
     const { run, calls } = runner(undefined, adHoc);
     await expect(uploadRelease({ platform: 'darwin', version, tag, directory, run, temporaryDirectory: directory })).rejects.toThrow();
     expect(await readFile(target, 'utf8')).toBe('preserved content');

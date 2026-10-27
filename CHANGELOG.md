@@ -16,6 +16,13 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.112] - 2026-10-27
+
+### Fixed
+
+- Automated Desktop smoke tests use explicit software WebGL on Linux/Windows and allow the native macOS GPU, preserving strict scene readiness checks and normal production GPU behavior. Smoke diagnostics now report scene alerts and loading progress.
+- CI installs pnpm before Rust jobs initialize Node package-manager caching and checks Desktop rendering on all three operating systems. Release tests handle Windows path separators and directory links.
+
 ## [0.4.111] - 2026-10-27
 
 ### Added

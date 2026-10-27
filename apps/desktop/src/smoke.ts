@@ -140,12 +140,14 @@ export async function runSmokeTest(window: BrowserWindow, screenshotDir = proces
   const officeOpened = rendered && await open(window, 'office');
   const officeRendered = officeOpened && await waitFor(window, `Boolean(document.querySelector('.office-stage canvas') || document.querySelector('.office-stage [role="alert"]'))`);
   const officeReady = `Boolean(document.querySelector('.office-stage canvas')) && !document.querySelector('.office-loading:not(.done)') && !document.querySelector('.office-stage [role="alert"]')`;
-  const sceneReady = officeRendered && await waitFor(window, officeReady, 30_000);
+  const sceneReady = officeRendered && await waitFor(window, officeReady, 60_000);
   const office = officeOpened ? await window.webContents.executeJavaScript(`({
     route: document.querySelector('.nav-item[data-page="office"]')?.getAttribute('aria-current'),
     canvas: Boolean(document.querySelector('.office-stage canvas')),
     separateFrame: Boolean(document.querySelector('.office-stage iframe')),
     protocol: location.protocol,
+    alert: document.querySelector('.office-stage [role="alert"]')?.textContent ?? null,
+    loading: document.querySelector('.office-loading:not(.done) [role="progressbar"]')?.getAttribute('aria-valuenow') ?? null,
   })`) as Record<string, unknown> : {};
   const floorViews: boolean[] = [];
   if (screenshotDir && officeOpened) {

@@ -17,6 +17,17 @@ import { checkAfterLaunch, startUpdater } from './updater';
 const smokeTest = process.argv.includes('--smoke-test');
 let smokeDataDirectory: string | undefined;
 if (smokeTest) {
+  if (process.platform === 'darwin') {
+    // Hosted Macs can blocklist WebGL; use native ANGLE because this Electron
+    // distribution lacks the Vulkan loader required for macOS SwiftShader.
+    app.commandLine.appendSwitch('ignore-gpu-blocklist');
+  } else if (process.platform === 'linux' || process.platform === 'win32') {
+    // Headless CI runners have no usable GPU. Opt into Chromium's software WebGL
+    // only for the smoke test's bundled UI, before Electron initializes graphics.
+    app.commandLine.appendSwitch('use-gl', 'angle');
+    app.commandLine.appendSwitch('use-angle', 'swiftshader-webgl');
+    app.commandLine.appendSwitch('enable-unsafe-swiftshader');
+  }
   // Smoke tests use a throwaway profile and agent data directory so they never touch the user's data.
   const profile = mkdtempSync(path.join(tmpdir(), 'extalia-smoke-'));
   app.setPath('userData', profile);

@@ -20,7 +20,7 @@ dependencies = [
 
 [[package]]
 name = "extalia-core"
-version = "0.4.111"
+version = "0.4.112"
 dependencies = [
  "rusqlite",
  "serde_json",
@@ -28,7 +28,7 @@ dependencies = [
 
 [[package]]
 name = "extalia-daemon"
-version = "0.4.111"
+version = "0.4.112"
 dependencies = [
  "extalia-core",
  "rusqlite",
