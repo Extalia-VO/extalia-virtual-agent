@@ -1,7 +1,11 @@
-import type { AgentHostOptions, AgentHostRuntime } from '@extalia/host';
+import type { AgentHostOptions, AgentHostRuntime, HookIngest } from '@extalia/host';
 import { BridgeRequestError, startBridgeServer, type BridgeServer } from './bridge/server';
 import { FORWARDED_SIGNALS, relaunchPlan, supervise, type SignalSource, type SupervisedChild } from './relaunch';
 import { installBlocker, type Updater } from './update';
+
+type RuntimeWithHooks = AgentHostRuntime & {
+  hooks?: Pick<HookIngest, 'handle' | 'announce'>;
+};
 
 export interface StartOptions {
   port: number;
@@ -18,7 +22,9 @@ export interface StartDeps {
   webRoot: string;
   /** Token inherited from a supervisor after an in-app update. */
   token?: string;
-  createAgentHost(options: AgentHostOptions): Promise<AgentHostRuntime>;
+  createAgentHost(options: AgentHostOptions): Promise<RuntimeWithHooks>;
+  /** Where the host looks for the Rust core daemon (started lazily, only when the native core flag selects it). */
+  daemonBinary?: NonNullable<AgentHostOptions['daemon']>['binary'];
   updater: Updater;
   openBrowser(url: string): void;
   signals: SignalSource;
@@ -41,10 +47,10 @@ const withTimeout = (promise: Promise<unknown>, ms: number) => new Promise<void>
 /** Run the Bridge until a signal stops it or an update relaunches it; resolves to the exit code. */
 export async function startBridge(options: StartOptions, deps: StartDeps): Promise<number> {
   // Requests may arrive as soon as the port is bound, before the host exists.
-  let resolveRuntime!: (runtime: AgentHostRuntime) => void, rejectRuntime!: (error: unknown) => void;
-  const runtimeReady = new Promise<AgentHostRuntime>((resolve, reject) => { resolveRuntime = resolve; rejectRuntime = reject; });
+  let resolveRuntime!: (runtime: RuntimeWithHooks) => void, rejectRuntime!: (error: unknown) => void;
+  const runtimeReady = new Promise<RuntimeWithHooks>((resolve, reject) => { resolveRuntime = resolve; rejectRuntime = reject; });
   runtimeReady.catch(() => undefined);
-  let runtime: AgentHostRuntime | undefined;
+  let runtime: RuntimeWithHooks | undefined;
   let relaunch: () => void = () => undefined;
 
   let server: BridgeServer;
@@ -54,6 +60,11 @@ export async function startBridge(options: StartOptions, deps: StartDeps): Promi
       webRoot: deps.webRoot,
       ...(deps.token ? { token: deps.token } : {}),
       agents: () => runtimeReady.then(ready => ready.host),
+      hooks: async (request, response, app) => {
+        const ready = await runtimeReady.catch(() => undefined);
+        if (!ready?.hooks) { response.writeHead(204); response.end(); return; }
+        await ready.hooks.handle(request, response, app);
+      },
       updates: {
         status: () => deps.updater.status(),
         check: () => deps.updater.check({ force: true }),
@@ -75,8 +86,23 @@ export async function startBridge(options: StartOptions, deps: StartDeps): Promi
     return 1;
   }
 
-  deps.createAgentHost({ kind: 'bridge', version: deps.version, dataDirectory: deps.dataDirectory, env: deps.env }).then(
-    ready => { runtime = ready; resolveRuntime(ready); },
+  deps.createAgentHost({ kind: 'bridge', version: deps.version, dataDirectory: deps.dataDirectory, env: deps.env, ...(deps.daemonBinary ? { daemon: { binary: deps.daemonBinary } } : {}) }).then(
+    ready => {
+      runtime = ready;
+      void ready.hooks?.announce(server.port).catch(() => undefined);
+      void (async () => {
+        try {
+          const connections = await ready.host.agentAppConnections();
+          const hermes = connections.find(c => c.app === 'hermes');
+          if (hermes?.installed && hermes.state !== 'connected') {
+            await ready.host.applyAgentAppConnect('hermes');
+          }
+        } catch {
+          // non-blocking auto-connect for Hermes
+        }
+      })();
+      resolveRuntime(ready);
+    },
     error => { deps.err(`Agents are not available: ${message(error)}`); rejectRuntime(error); },
   );
 

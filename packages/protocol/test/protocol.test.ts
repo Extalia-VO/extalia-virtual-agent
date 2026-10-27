@@ -91,6 +91,12 @@ describe('createEvent', () => {
   it('throws for an invalid event', () => {
     expect(() => createEvent({ sessionId: 's', source: { runtime: 'demo', channel: 'system' }, body: { type: 'agent.created', name: 'No agent id' } })).toThrow(/agentId/);
   });
+
+  it('carries an optional model on subagent.spawned', () => {
+    const base = { sessionId: 's', agentId: 'primary', source: { runtime: 'demo', channel: 'transcript' as const } };
+    expect(createEvent({ ...base, body: { type: 'subagent.spawned', subagentId: 'a1', label: 'Explore the repo', role: 'explorer', model: 'gpt-5.5' } }).body).toMatchObject({ model: 'gpt-5.5' });
+    expect(() => createEvent({ ...base, body: { type: 'subagent.spawned', subagentId: 'a1', model: 42 as unknown as string } })).toThrow();
+  });
 });
 
 describe('parseEventLines', () => {
@@ -103,4 +109,12 @@ describe('parseEventLines', () => {
 
 it('every event type has validation rules', () => {
   expect(EVENT_TYPES.length).toBeGreaterThanOrEqual(30);
+});
+
+describe('classifyTool', () => {
+  it('maps native tool names to activity kinds', async () => {
+    const { classifyTool } = await import('../src/index.js');
+    expect(['Bash', 'exec_command', 'Read', 'Grep', 'apply_patch', 'WebFetch', 'web_search', 'Task', 'update_plan', 'skill_manage', 'skill_view'].map(name => classifyTool(name).kind))
+      .toEqual(['command', 'command', 'read', 'search', 'edit', 'web', 'web', 'delegate', 'tool', 'knowledge', 'knowledge']);
+  });
 });

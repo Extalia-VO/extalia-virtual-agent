@@ -24,6 +24,7 @@ import {
 } from '../src/hooks/http.js';
 import { createHookIngest, type HookIngest } from '../src/hooks/ingest.js';
 import {
+  normalizeAntigravityHook,
   normalizeClaudeHook,
   normalizeCodexHook,
   normalizeGeminiHook,
@@ -417,7 +418,7 @@ describe('HTTP hook ingest (hooks/http.ts & hooks/ingest.ts)', () => {
 
     const status1 = ingest.status();
     expect(status1.tokenPath).toBe(path.join(dataDir, 'hooks', 'token'));
-    expect(status1.lastEvents).toEqual({ codex: undefined, claude: undefined, gemini: undefined, hermes: undefined });
+    expect(status1.lastEvents).toEqual({ codex: undefined, claude: undefined, gemini: undefined, antigravity: undefined, hermes: undefined });
 
     const listener = await startTestHookEndpoint((req, res, app) => ingest.handle(req, res, app), ingest);
     expect(ingest.status().port).toBe(listener.port);
@@ -700,12 +701,21 @@ describe('normalizers (hooks/normalize.ts)', () => {
       model: 'hermes-v3',
     });
 
-    // pre_llm_call
+    // pre_llm_call & post_llm_call
     const thinking = normalizeHermesHook({
       session_id: 'hermes-1',
       hook_event_name: 'pre_llm_call',
     });
     expect(thinking!.steps[0]!.body).toEqual({ type: 'agent.state', state: 'thinking' });
+
+    const postLlm = normalizeHermesHook({
+      session_id: 'hermes-1',
+      hook_event_name: 'post_llm_call',
+      extra: { assistant_response: 'All tests passed.', user_message: 'Run the tests' },
+    });
+    expect(postLlm!.titleHint).toBe('Run the tests');
+    expect(postLlm!.steps.map(s => s.body.type)).toEqual(['model.completed', 'turn.completed', 'agent.state']);
+    expect(postLlm!.steps[2]!.body).toEqual({ type: 'agent.state', state: 'idle' });
 
     // pre_tool_call & post_tool_call
     const preTool = normalizeHermesHook({
@@ -756,6 +766,71 @@ describe('normalizers (hooks/normalize.ts)', () => {
       extra: { interrupted: true },
     });
     expect(endInterrupted!.steps.map(s => s.body.type)).toEqual(['turn.failed', 'agent.state']);
+  });
+
+  it('normalizes Antigravity PreInvocation, PreToolUse, PostToolUse, and Stop hooks', () => {
+    const preInvoke = normalizeAntigravityHook({
+      conversationId: 'agy-conv-1',
+      hook_event_name: 'PreInvocation',
+      workspacePaths: ['/Users/<name>/project'],
+      modelName: 'gemini-3-pro',
+    });
+    expect(preInvoke).toMatchObject({
+      app: 'antigravity',
+      sessionId: 'agy-conv-1',
+      starts: true,
+      cwd: '/Users/<name>/project',
+      model: 'gemini-3-pro',
+    });
+
+    const preTool = normalizeAntigravityHook({
+      conversationId: 'agy-conv-1',
+      hook_event_name: 'PreToolUse',
+      stepIdx: 5,
+      toolCall: {
+        id: 'call-5',
+        name: 'default_api:write_to_file',
+        args: { TargetFile: '"/Users/<name>/project/src/new.ts"' },
+      },
+    });
+    expect(preTool!.steps[1]!.body).toMatchObject({
+      type: 'tool.started',
+      tool: 'write_to_file',
+      kind: 'edit',
+      target: 'new.ts',
+    });
+
+    const postTool = normalizeAntigravityHook({
+      conversationId: 'agy-conv-1',
+      hook_event_name: 'PostToolUse',
+      stepIdx: 5,
+      workspacePaths: ['/Users/<name>/project'],
+      toolOutput: 'Wrote file',
+    });
+    expect(postTool!.steps.map(s => s.body.type)).toEqual(['tool.completed', 'file.written']);
+    expect(postTool!.steps[1]!.body).toMatchObject({
+      type: 'file.written',
+      path: 'src/new.ts',
+      change: 'add',
+    });
+
+    const stop = normalizeAntigravityHook({
+      conversationId: 'agy-conv-1',
+      hook_event_name: 'Stop',
+      modelName: 'gemini-3-pro',
+      terminationReason: 'FINAL_RESPONSE',
+    });
+    expect(stop!.steps.map(s => s.body.type)).toEqual(['turn.completed', 'agent.state']);
+  });
+
+  it('points Antigravity hooks at the compact transcript.jsonl that observation reads', () => {
+    const logs = '/Users/<name>/.gemini/antigravity/brain/agy-conv-1/.system_generated/logs';
+    const hook = normalizeAntigravityHook({
+      conversationId: 'agy-conv-1',
+      hook_event_name: 'PreInvocation',
+      transcriptPath: `${logs}/transcript_full.jsonl`,
+    });
+    expect(hook?.transcriptPath).toBe(`${logs}/transcript.jsonl`);
   });
 });
 
