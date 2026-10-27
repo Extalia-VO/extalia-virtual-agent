@@ -69,6 +69,14 @@ Non-intrusive monitoring of outside agents (Claude Code, Codex, Hermes) with rea
 
 ## 📥 Downloads (Beta Tester Preview)
 
+You can install the Extalia web app and local Bridge via npm (Node.js 22.13+ on
+the 22.x line, or 23.4+ on newer releases):
+
+```bash
+npm install -g extalia-vo
+extalia
+```
+
 Pre-built releases for testers are available on the [Extalia v0.4.112 Release](https://github.com/Extalia-VO/extalia-virtual-agent/releases/tag/v0.4.112).
 
 Free macOS previews have valid ad-hoc signatures but are not Apple-notarized.
