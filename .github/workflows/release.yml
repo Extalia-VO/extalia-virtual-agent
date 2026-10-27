@@ -65,6 +65,10 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version-file: .node-version
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
       # The Arm-hosted Linux image may lack rustup; the others ship it.
       - name: Install rustup if missing
         if: runner.os == 'Linux'
