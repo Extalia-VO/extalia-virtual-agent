@@ -1006,6 +1006,15 @@ fieldset > legend { padding: 0; margin-bottom: 6px; }
 .md-code pre { margin: 0; border-radius: 0; white-space: pre; overflow-wrap: normal; max-height: 420px; }
 
 /* Update banner */
+.host-connection-banner {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px;
+  padding: 10px 24px; flex: none; border-bottom: 1px solid var(--line);
+  background: var(--error-soft); color: var(--text); font-size: .86rem;
+}
+.host-connection-banner > .icon { color: var(--error); flex: none; }
+.host-connection-text { display: grid; gap: 3px; flex: 1 1 260px; min-width: 0; }
+.host-connection-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+@media (max-width: 600px) { .host-connection-banner { padding: 10px 14px; } }
 .update-banner {
   display: flex;
   flex-wrap: wrap;

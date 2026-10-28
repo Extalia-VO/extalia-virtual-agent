@@ -69,8 +69,8 @@ const getDark = () => document.documentElement.dataset.theme === 'dark';
 const getReduced = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 const getFalse = () => false;
 
-export function OfficePage({ t, language, agents, state, onState, workspaceId, onWorkspace, onOpenSession, onOpenMissions, onStartChat, onOpenSettings }: {
-  t: Messages; language: Language; agents?: AgentHostApi; state: HostState | null; workspaceId?: string; onState(next: HostState): void;
+export function OfficePage({ t, language, agents, hostDisconnected = false, state, onState, workspaceId, onWorkspace, onOpenSession, onOpenMissions, onStartChat, onOpenSettings }: {
+  t: Messages; language: Language; agents?: AgentHostApi; hostDisconnected?: boolean; state: HostState | null; workspaceId?: string; onState(next: HostState): void;
   onWorkspace(id: string | undefined): void; onOpenSession(session: SessionSummary): void;
   /** v0.0.43 missions: open the Missions page, optionally for one session. */
   onOpenMissions?: ((session?: SessionSummary) => void) | undefined;
@@ -365,7 +365,7 @@ export function OfficePage({ t, language, agents, state, onState, workspaceId, o
       {agents && <button type="button" className="office-tool-button" aria-pressed={connectOpen} title={t.agentApps.title} onClick={() => setConnectOpen(value => !value)}>
         <Icon name="terminal" /><span>{t.agentApps.officeButton}</span>
       </button>}
-      <span className="office-live" role="status" title={agents ? t.office.connected : t.office.disconnected}><span className={agents ? 'pulse' : ''} aria-hidden="true" /><span className="office-live-text">{agents ? t.office.connected : t.office.disconnected}</span></span>
+      <span className="office-live" role="status" title={hostDisconnected ? t.hostConnection.title : agents ? t.office.connected : t.office.disconnected}><span className={agents && !hostDisconnected ? 'pulse' : ''} aria-hidden="true" /><span className="office-live-text">{hostDisconnected ? t.hostConnection.title : agents ? t.office.connected : t.office.disconnected}</span></span>
       <button type="button" className="button primary" onClick={onStartChat}><Icon name="chat" />{t.office.openChat}</button>
     </div>
     <div className={`office-stage ${showDock ? 'has-dock' : ''} ${showLeadBar ? 'has-lead-bar' : ''} ${boardOpen ? 'has-board' : ''}`} aria-label={t.office.title}>

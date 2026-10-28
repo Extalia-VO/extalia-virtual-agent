@@ -140,12 +140,6 @@ function parseVersion(result: RunResult | undefined, app: AgentAppId): string | 
   return /\b\d+\.\d+\.\d+(?:[-+][\w.]+)?\b/.exec(result.stdout)?.[0] ?? /\b\d+\.\d+\.\d+(?:[-+][\w.]+)?\b/.exec(result.stderr)?.[0];
 }
 
-/** Resolve a Node.js binary for hook commands; Electron's own binary is not one. */
-export async function resolveNodePath(options: { execPath: string; electron?: boolean; env: Env; platform: string }): Promise<string | undefined> {
-  if (!options.electron) return options.execPath;
-  return findOnPath('node', options.env, options.platform);
-}
-
 function managedClaudePaths(platform: string): string[] {
   if (platform === 'darwin') return ['/Library/Application Support/ClaudeCode/managed-settings.json'];
   if (platform === 'win32') return ['C:\\Program Files\\ClaudeCode\\managed-settings.json'];

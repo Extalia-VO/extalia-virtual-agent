@@ -80,8 +80,11 @@ async function captureScreenshots(window: BrowserWindow, directory: string, setu
 
 export async function runSmokeTest(window: BrowserWindow, screenshotDir = process.env.EXTALIA_SMOKE_SCREENSHOTS): Promise<number> {
   const modelErrors: string[] = [];
+  const rendererErrors: string[] = [];
   window.webContents.on('console-message', (event: unknown) => {
     const message = typeof event === 'object' && event && 'message' in event ? String(event.message) : '';
+    const level = typeof event === 'object' && event && 'level' in event ? String(event.level) : '';
+    if ((level === 'error' || level === '3') && rendererErrors.length < 20) rendererErrors.push(message.slice(0, 1000));
     if (/GLTFLoader.*(Couldn.t|Error)|WebAssembly.*(violates|failed)/i.test(message)) modelErrors.push(message.slice(0, 500));
   });
   const rendered = await waitFor(window, `Boolean(${SHELL} || ${SETUP})`);
@@ -181,6 +184,6 @@ export async function runSmokeTest(window: BrowserWindow, screenshotDir = proces
   const ok = rendered && report.desktopBridge === true && report.nodeExposed === false && String(report.host).startsWith('Desktop')
     && String(report.splashVideo).startsWith('canplay') && String(report.splashRange).startsWith('206 video/mp4')
     && officeRendered && sceneReady && modelErrors.length === 0 && office.route === 'page' && office.separateFrame === false && settingsOpened && floorViews.length === 3 && floorViews.every(Boolean);
-  console.log(JSON.stringify({ ok, rendered, ...report, office, sceneReady, modelErrors, floorViews, settingsOpened, diagnostics, screenshots }, null, 2));
+  console.log(JSON.stringify({ ok, rendered, ...report, office, sceneReady, modelErrors, rendererErrors, floorViews, settingsOpened, diagnostics, screenshots }, null, 2));
   return ok ? 0 : 1;
 }

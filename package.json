@@ -2,7 +2,7 @@
   "name": "extalia",
   "description": "Open-source spatial AI-agent workspace: orchestrate and observe agents through conventional views and a living 3D office.",
   "private": true,
-  "version": "0.4.114",
+  "version": "0.4.115",
   "license": "MIT",
   "type": "module",
   "packageManager": "pnpm@12.7.0",

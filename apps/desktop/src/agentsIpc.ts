@@ -86,18 +86,6 @@ export function startAgents({ devServer, dataDirectory, smokeTest = false, homeD
         if (stopping) return started;
         if (!smokeTest) {
           void started.hooks?.listen(DESKTOP_HOOK_PORT).catch(() => undefined);
-          void (async () => {
-            try {
-              const connections = await started.host.agentAppConnections();
-              if (stopping) return;
-              const hermes = connections.find(c => c.app === 'hermes');
-              if (hermes?.installed && hermes.state !== 'connected') {
-                await started.host.applyAgentAppConnect('hermes');
-              }
-            } catch {
-              // non-blocking auto-connect for Hermes
-            }
-          })();
         }
         started.host.subscribe(event => {
           for (const window of BrowserWindow.getAllWindows()) {

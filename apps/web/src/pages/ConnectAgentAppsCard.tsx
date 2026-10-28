@@ -185,11 +185,26 @@ export function ConnectAgentAppsCard({
     }
   };
 
-  const applyPlan = async (app: AgentAppId, trustOverride?: boolean) => {
+  const previewPlan = async (app: AgentAppId) => {
+    setBusyKey(`plan:${app}`);
+    setError(undefined);
+    setPlan(null);
+    setTrustCodex(false);
+    try {
+      setPlan(await agents.planAgentAppConnect(app));
+    } catch (failure) {
+      setError(errorMessage(failure));
+    } finally {
+      setBusyKey(null);
+    }
+  };
+
+  const applyPlan = async (app: AgentAppId) => {
+    if (plan?.app !== app) return;
     setBusyKey(`apply:${app}`);
     setError(undefined);
     try {
-      const result = await agents.applyAgentAppConnect(app, app === 'codex' ? { trust: trustOverride ?? trustCodex } : undefined);
+      const result = await agents.applyAgentAppConnect(app, app === 'codex' ? { trust: trustCodex } : undefined);
       setApplied(previous => ({ ...previous, [app]: result }));
       setTests(previous => ({ ...previous, [app]: result.test }));
       setNotes(previous => ({ ...previous, [app]: undefined }));
@@ -305,9 +320,9 @@ export function ConnectAgentAppsCard({
                       type="button"
                       className={`button small ${conn.connected ? '' : 'primary'}`}
                       disabled={busyKey !== null}
-                      onClick={() => { void applyPlan(conn.app, conn.app === 'codex' ? true : undefined); }}
+                      onClick={() => { void previewPlan(conn.app); }}
                     >
-                      {busyKey === `apply:${conn.app}` ? t.agentApps.applying : t.agentApps.connect}
+                      {busyKey === `plan:${conn.app}` ? t.common.loading : t.agentApps.connect}
                     </button>
                     {conn.connected && (
                       <button type="button" className="button small" disabled={busyKey !== null} onClick={() => { void runTest(conn.app); }}>

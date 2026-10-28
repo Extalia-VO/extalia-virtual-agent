@@ -1152,6 +1152,12 @@ const en = {
     byPolicy: 'Allowed by workspace permissions',
     risk: { low: 'Low risk', medium: 'Medium risk', high: 'High risk' } satisfies Record<RiskLevel, string>,
   },
+  hostConnection: {
+    title: 'Connection to the agent host lost',
+    bridge: 'Start the Extalia Bridge again, then try again. Reload the page if the connection does not recover.',
+    desktop: 'Extalia’s agent host is unavailable. Try again; if it stays unavailable, quit and reopen Extalia.',
+    snapshot: 'Showing the last known data. Live activity resumes when connected.',
+  },
   updates: {
     title: 'Updates',
     lead: 'Extalia checks for new releases in the background.',
@@ -2742,6 +2748,12 @@ const id: Messages = {
     status: { granted: 'Diizinkan', rejected: 'Ditolak', expired: 'Tidak diperlukan lagi' },
     byPolicy: 'Diizinkan oleh izin workspace',
     risk: { low: 'Risiko rendah', medium: 'Risiko sedang', high: 'Risiko tinggi' },
+  },
+  hostConnection: {
+    title: 'Koneksi ke host agent terputus',
+    bridge: 'Jalankan kembali Extalia Bridge, lalu coba lagi. Muat ulang halaman jika koneksi belum pulih.',
+    desktop: 'Host agent Extalia tidak tersedia. Coba lagi; jika tetap gagal, tutup dan buka kembali Extalia.',
+    snapshot: 'Menampilkan data terakhir. Aktivitas langsung akan dilanjutkan setelah terhubung.',
   },
   updates: {
     title: 'Pembaruan',

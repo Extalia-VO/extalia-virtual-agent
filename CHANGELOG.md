@@ -16,6 +16,15 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.115] - 2026-10-28
+
+### Fixed
+
+- macOS Desktop discovers Node.js in common Homebrew, Herd, nvm and Volta installation locations when launched from the Dock. Failed discovery can be retried without restarting, and agent-app commands inherit the selected Node directory.
+- Web and Desktop detect host disconnection while idle, display a recovery banner and keep the last Office view visible. Identical heartbeat snapshots do not redraw the Office; Web also offers page reload after a Bridge restart.
+- Startup no longer changes Hermes hook configuration automatically. Connecting an agent app previews configuration changes before the user applies them, with Codex trust remaining an explicit choice.
+- The setup background resolves its poster from the page instead of the bundled CSS directory. macOS smoke tests retain native WebGL and report renderer and missing-asset errors for release diagnostics.
+
 ## [0.4.114] - 2026-10-27
 
 ### Fixed

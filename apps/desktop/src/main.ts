@@ -22,9 +22,6 @@ if (smokeTest) {
     // Hosted Macs can blocklist WebGL; use native ANGLE because this Electron
     // distribution lacks the Vulkan loader required for macOS SwiftShader.
     app.commandLine.appendSwitch('ignore-gpu-blocklist');
-    // Hosted Apple Silicon runners can lose Dawn devices used by Skia Graphite.
-    // Keep the full WebGL scene smoke while using the stable compositor backend.
-    app.commandLine.appendSwitch('disable-skia-graphite');
   } else if (process.platform === 'linux' || process.platform === 'win32') {
     // Headless CI runners have no usable GPU. Opt into Chromium's software WebGL
     // only for the smoke test's bundled UI, before Electron initializes graphics.
@@ -95,7 +92,13 @@ function serveWebBuild(): void {
     if (!file) return new Response('Not found', { status: 404 });
     const media = MEDIA_TYPES[path.extname(file).toLowerCase()];
     if (media) return serveMedia(file, media, request.headers.get('range'));
-    const response = await net.fetch(pathToFileURL(file).toString());
+    let response: Response;
+    try {
+      response = await net.fetch(pathToFileURL(file).toString());
+    } catch {
+      console.error('Extalia asset request failed:', url.pathname);
+      return new Response('Not found', { status: 404 });
+    }
     if (!file.endsWith('.html')) return response;
     const headers = new Headers(response.headers);
     headers.set('Content-Security-Policy', CONTENT_SECURITY_POLICY);

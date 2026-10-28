@@ -129,14 +129,15 @@ describe('desktop agent host lifecycle', () => {
     await agents.close();
   });
 
-  it('keeps normal startup hook listening and Hermes auto-connect enabled', async () => {
+  it.each(['not-connected', 'partial', 'stale'])('keeps normal hook listening without discovering or changing %s Hermes configuration', async state => {
     const normal = runtime();
-    normal.started.host.agentAppConnections.mockResolvedValue([{ app: 'hermes', installed: true, state: 'not-connected' }]);
+    normal.started.host.agentAppConnections.mockResolvedValue([{ app: 'hermes', installed: true, state }]);
     electron.createHost.mockResolvedValue(normal.value);
     const { agents, call } = launch();
 
     expect(await call()).toEqual({ ok: true, value: normal.state });
-    await vi.waitFor(() => expect(normal.started.host.applyAgentAppConnect).toHaveBeenCalledExactlyOnceWith('hermes'));
+    expect(normal.started.host.agentAppConnections).not.toHaveBeenCalled();
+    expect(normal.started.host.applyAgentAppConnect).not.toHaveBeenCalled();
     expect(normal.started.hooks.listen).toHaveBeenCalledExactlyOnceWith(4311);
     await agents.close();
   });
@@ -211,18 +212,17 @@ describe('desktop agent host lifecycle', () => {
     expect(preventDefault).toHaveBeenCalledTimes(1);
   });
 
-  it('does not auto-connect Hermes if its lookup completes after shutdown', async () => {
+  it('only connects Hermes on an explicit trusted IPC request', async () => {
     const recovered = runtime();
-    const lookup = deferred<{ app: string; installed: boolean; state: string }[]>();
-    recovered.started.host.agentAppConnections.mockReturnValue(lookup.promise);
     electron.createHost.mockResolvedValue(recovered.value);
     const { agents, call } = launch();
     expect(await call()).toEqual({ ok: true, value: recovered.state });
-    expect(recovered.started.host.agentAppConnections).toHaveBeenCalledTimes(1);
-    await agents.close();
-    lookup.resolve([{ app: 'hermes', installed: true, state: 'not-connected' }]);
-    await Promise.resolve();
     expect(recovered.started.host.applyAgentAppConnect).not.toHaveBeenCalled();
+    expect(await call('applyAgentAppConnect', ['hermes'])).toEqual({ ok: true, value: undefined });
+    expect(recovered.started.host.applyAgentAppConnect).toHaveBeenCalledExactlyOnceWith('hermes');
+    await agents.close();
+    expect(await call('applyAgentAppConnect', ['hermes'])).toEqual({ ok: false, error: 'The agent host is shutting down.' });
+    expect(recovered.started.host.applyAgentAppConnect).toHaveBeenCalledTimes(1);
   });
 
   it('still closes a late startup after the bounded shutdown wait expires', async () => {

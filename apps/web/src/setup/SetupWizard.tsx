@@ -75,7 +75,9 @@ export function SetupWizard({ t, platform, agents, state, onState, preferences, 
   const materialName = useId();
   const nameId = useId();
   const [rechecking, setRechecking] = useState(false);
-  const poster = usePoster(POSTER);
+  // CSS custom-property URLs otherwise resolve against the bundled stylesheet's /assets/ directory.
+  const [posterUrl] = useState(() => typeof document === 'undefined' ? POSTER : new URL(POSTER, document.baseURI).href);
+  const poster = usePoster(posterUrl);
   // Hermes Agent brings its own models: choosing it skips the model connection.
   const hermes = workspace.runtimeId === 'hermes';
   const hermesInstalled = Boolean(availableHermes(runtimes));
@@ -199,7 +201,7 @@ export function SetupWizard({ t, platform, agents, state, onState, preferences, 
 
   return (
     <div className={`setup setup-welcome-flow ${poster ? 'has-poster' : ''}`} data-onboarding-step={index + 1} data-setup-step={step}>
-      <div className="setup-backdrop" aria-hidden="true" style={poster ? { '--setup-poster': `url("${POSTER}")` } as CSSProperties : undefined} />
+      <div className="setup-backdrop" aria-hidden="true" style={poster ? { '--setup-poster': `url("${posterUrl}")` } as CSSProperties : undefined} />
       <header className="setup-header">
         <Brand />
         <div className="setup-prefs">

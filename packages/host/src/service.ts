@@ -75,7 +75,7 @@ export interface AgentHostOptions {
    * of data from the pre-0.0.21 location. Defaults to the real home; tests pass a temporary one.
    */
   homeDirectory?: string;
-  /** Node.js binary for agent-app hook commands. Defaults to this process (or `node` on PATH under Electron). */
+  /** Node.js binary for agent-app hook commands. Electron also searches known macOS installations. */
   hookNodePath?: string;
   /** Latest hook event time per agent app, when this host receives hook events. */
   lastHookEvent?: (app: AgentAppId) => string | undefined | Promise<string | undefined>;
@@ -848,13 +848,20 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
   let connectService: Promise<ConnectService> | undefined;
   /** Agent-app connection logic (Codex, Claude Code); created on first use. */
   const agentApps = (): Promise<ConnectService> => (connectService ??= (async () => {
-    const nodePath = options.hookNodePath ?? await resolveNodePath({ execPath: process.execPath, electron: Boolean(process.versions.electron), env, platform: process.platform });
+    const importHome = options.importHome ?? homeDirectory;
+    const nodePath = options.hookNodePath ?? await resolveNodePath({ execPath: process.execPath, electron: Boolean(process.versions.electron), env, platform: process.platform, homeDirectory: importHome });
     if (!nodePath) throw userError('Node.js was not found on this computer. Install Node.js 22 or newer, or run `npx -y extalia-vo@latest connect <app>` in a terminal.');
     return createConnectService({
-      platform: process.platform, env, homeDirectory: options.importHome ?? homedir(), extaliaHome: dataDirectory, nodePath,
+      platform: process.platform,
+      env: { ...env, PATH: [path.dirname(nodePath), env.PATH].filter(Boolean).join(path.delimiter) },
+      homeDirectory: importHome, extaliaHome: dataDirectory, nodePath,
       lastEvent: options.lastHookEvent ?? (app => ingest.status().lastEvents[app]),
     });
-  })());
+  })().catch(error => {
+    // A missing installation can be fixed while Settings is open; Refresh retries.
+    connectService = undefined;
+    throw error;
+  }));
 
   const host: AgentHostApi = {
     getState: state,

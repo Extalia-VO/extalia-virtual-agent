@@ -2,6 +2,7 @@ import { isKnowledgeIndexEvent, type AgentHostApi, type HostState } from '@extal
 import type { EventType } from '@extalia/protocol';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { errorMessage } from './remote';
+import { createHostStateMonitor } from './hostStateMonitor';
 
 /** Events that change session flags (running, pending approval, title) in HostState. */
 const REFRESH_ON = new Set<EventType>([
@@ -19,34 +20,36 @@ export interface HostController {
 export function useHostState(agents: AgentHostApi | undefined): HostController {
   const [state, setState] = useState<HostState | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [attempt, setAttempt] = useState(0);
-  // Responses that started before a newer state arrived are stale and ignored.
-  const version = useRef(0);
-
-  const load = useCallback((reportErrors: boolean) => {
-    if (!agents) return;
-    const started = ++version.current;
-    agents.getState().then(
-      next => { if (started === version.current) { setState(next); setError(null); } },
-      failure => { if (reportErrors && started === version.current) setError(errorMessage(failure)); },
-    );
-  }, [agents]);
-
-  useEffect(() => { load(true); }, [load, attempt]);
+  const monitor = useRef<ReturnType<typeof createHostStateMonitor> | undefined>(undefined);
 
   useEffect(() => {
     if (!agents) return;
+    const current = createHostStateMonitor({
+      getState: () => agents.getState(),
+      onState: next => {
+        // Heartbeats should not reconcile the Office when its snapshot is unchanged.
+        setState(current => current && JSON.stringify(current) === JSON.stringify(next) ? current : next);
+        setError(null);
+      },
+      onError: failure => setError(errorMessage(failure)),
+    });
+    monitor.current = current;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const unsubscribe = agents.subscribe(event => {
       // Knowledge index hints are not session changes (the Knowledge page reloads itself).
       if (!REFRESH_ON.has(event.body.type) || isKnowledgeIndexEvent(event)) return;
       clearTimeout(timer);
-      timer = setTimeout(() => load(false), 120);
+      timer = setTimeout(() => current.refresh(), 120);
     });
-    return () => { clearTimeout(timer); unsubscribe(); };
-  }, [agents, load]);
+    return () => {
+      clearTimeout(timer);
+      unsubscribe();
+      current.dispose();
+      if (monitor.current === current) monitor.current = undefined;
+    };
+  }, [agents]);
 
-  const apply = useCallback((next: HostState) => { version.current++; setState(next); }, []);
-  const retry = useCallback(() => { setError(null); setAttempt(value => value + 1); }, []);
+  const apply = useCallback((next: HostState) => monitor.current?.apply(next), []);
+  const retry = useCallback(() => monitor.current?.refresh(), []);
   return { state, error, retry, apply };
 }
