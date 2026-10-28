@@ -1,11 +1,11 @@
-import type { Workspace } from '@extalia/core';
+import type { RuntimeId, Workspace } from '@extalia/core';
 import type { ConnectionView, HostState } from '@extalia/platform';
 
 /**
  * First-run setup flow as pure data, so the step order, prefill and the rules
  * for moving on can be unit tested without rendering the wizard.
  *
- * Only `connection` and `workspace` write host configuration that setup needs;
+ * `connection` and an optional `workspace` write host configuration;
  * `welcome`, `profile` and `agentApps` are cosmetic or informational and can
  * never complete setup on their own. Completion happens on `done` through
  * `completeSetup()`, and only when `canFinish` holds (or via observe mode).
@@ -74,10 +74,20 @@ export function canAdvance(step: SetupStepId, context: AdvanceContext): boolean 
 }
 
 /**
- * Setup may be completed only when the host holds the workspace and, for
- * Extalia Native, the connection it runs on. Cosmetic steps never count.
+ * A workspace can be explicitly deferred once a saved Native connection or an
+ * available Hermes runtime is ready. A workspace chosen now must still be saved
+ * and have its Native connection. Cosmetic steps never count.
  */
-export function canFinish(state: Pick<HostState, 'connections' | 'workspaces'>, workspaceId: string | undefined): boolean {
+export interface DeferredWorkspaceSetup {
+  runtimeId: RuntimeId;
+  connectionId?: string;
+  hermesAvailable: boolean;
+}
+
+export function canFinish(state: Pick<HostState, 'connections' | 'workspaces'>, workspaceId: string | undefined, deferred?: DeferredWorkspaceSetup): boolean {
+  if (deferred) return deferred.runtimeId === 'hermes'
+    ? deferred.hermesAvailable
+    : Boolean(deferred.connectionId && state.connections.some(item => item.id === deferred.connectionId));
   const workspace = workspaceId ? state.workspaces.find(item => item.id === workspaceId) : undefined;
   if (!workspace) return false;
   if ((workspace.runtimeId ?? 'extalia-native') === 'hermes') return true;

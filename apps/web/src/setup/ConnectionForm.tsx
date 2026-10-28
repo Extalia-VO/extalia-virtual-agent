@@ -1,8 +1,9 @@
 import { EFFORTS, PROVIDER_PRESETS, TASK_TIERS, presetById, type Effort, type FeatureOwner } from '@extalia/core';
 import type { AgentHostApi, ConnectionTestResult } from '@extalia/platform';
-import { useId, useState, type ReactNode } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
 import { errorMessage } from '../host/remote';
 import { friendlyConnectionError } from './connectionErrors';
+import { connectionTestTarget, currentConnectionTest, finishConnectionTest, type ConnectionTestScope, type ConnectionTestState } from './connectionTestFlow';
 import type { Messages } from '../i18n';
 import { Icon } from '../ui/Icon';
 import { ComboBox } from '../ui/ComboBox';
@@ -12,24 +13,30 @@ import { Select } from '../ui/Select';
 import { delegationLimitOptions, groupedModelOptions, tierModelOptions } from './modelOptions';
 import { draftFromPreset, suggestedTiers, toConnectionTestInput, validateConnection, type ConnectionDraft, type ConnectionField, type OrchestrationDraft } from './validation';
 
-type TestState = { kind: 'idle' } | { kind: 'testing' } | { kind: 'done'; result: ConnectionTestResult };
-
 /**
  * Connection editor used by the first-run wizard and Settings. The parent saves.
- * `knownModels` are the models an earlier successful test of this saved connection listed.
+ * Saved drafts keep their selected model; the catalog requires a fresh endpoint test.
  */
-export function ConnectionForm({ t, agents, draft, onChange, showAllErrors = false, knownModels }: {
+export function ConnectionForm({ t, agents, draft, onChange, onTestReady, showAllErrors = false }: {
   t: Messages;
   agents: AgentHostApi;
   draft: ConnectionDraft;
   onChange: (draft: ConnectionDraft) => void;
+  /** Whether the current endpoint and credentials passed a connection test. */
+  onTestReady?: (ready: boolean) => void;
   showAllErrors?: boolean;
   knownModels?: readonly string[];
 }) {
   const id = useId();
   const preset = presetById(draft.preset);
   const [touched, setTouched] = useState<ReadonlySet<ConnectionField>>(new Set());
-  const [test, setTest] = useState<TestState>({ kind: 'idle' });
+  const [testState, setTest] = useState<ConnectionTestState>({ kind: 'idle' });
+  const target = connectionTestTarget(draft);
+  const scope = useMemo(() => ({ target }), [target]);
+  const [manualScope, setManualScope] = useState<ConnectionTestScope>();
+  const manualModel = manualScope === scope;
+  const request = useRef(0);
+  const test = currentConnectionTest(testState, scope);
   const errors = validateConnection(draft);
   const errorFor = (field: ConnectionField) => (showAllErrors || touched.has(field)) && errors[field] ? t.connection.errors[errors[field]] : undefined;
   const touch = (field: ConnectionField) => () => setTouched(previous => new Set(previous).add(field));
@@ -38,17 +45,21 @@ export function ConnectionForm({ t, agents, draft, onChange, showAllErrors = fal
   const updateOrchestration = (patch: Partial<OrchestrationDraft>) => update({ orchestration: { ...orchestration, ...patch } });
   const suggested = suggestedTiers(draft.preset);
   const usesSuggested = suggested && TASK_TIERS.every(tier => orchestration.tiers[tier] === suggested[tier]);
-  // The models of the last successful test; a saved connection starts with those of its earlier test.
-  const models = test.kind === 'done' && test.result.ok ? test.result.models ?? [] : knownModels ?? [];
+  const tested = test.kind === 'done' && test.result.ok;
+  useEffect(() => { onTestReady?.(tested); }, [onTestReady, tested]);
+  const models = tested ? test.result.models ?? [] : [];
   const modelOptions = groupedModelOptions(models, { otherGroup: t.connection.modelOther });
   const tierOptions = tierModelOptions(models, { mainModel: t.connection.tierPlaceholder(draft.model.trim()), otherGroup: t.connection.modelOther });
   const canTest = !errors.baseUrl && !errors.apiKey && !errors.envVariable && test.kind !== 'testing';
 
   async function runTest() {
-    setTest({ kind: 'testing' });
+    const ticket = { scope, request: ++request.current };
+    setTest({ ...ticket, kind: 'testing' });
     const { input, secret } = toConnectionTestInput(draft);
-    try { setTest({ kind: 'done', result: await agents.testConnection(input, secret) }); }
-    catch (error) { setTest({ kind: 'done', result: { ok: false, error: errorMessage(error) } }); }
+    let result: ConnectionTestResult;
+    try { result = await agents.testConnection(input, secret); }
+    catch (error) { result = { ok: false, error: errorMessage(error) }; }
+    setTest(previous => finishConnectionTest(previous, ticket, result));
   }
 
   const ownerOptions = (native: boolean) => [
@@ -122,14 +133,40 @@ export function ConnectionForm({ t, agents, draft, onChange, showAllErrors = fal
         </div>
       )}
 
+      <section className="form-stack tight" aria-labelledby={`${id}-test-heading`}>
+        <h3 className="form-heading" id={`${id}-test-heading`}>{t.connection.testStep}</h3>
+        <p className="muted small">{t.connection.testFirstHint}</p>
+        <div className="test-row">
+          <button type="button" className="button" disabled={!canTest} onClick={runTest}>
+            <Icon name={test.kind === 'testing' ? 'refresh' : 'check'} className={test.kind === 'testing' ? 'spin' : ''} />
+            {test.kind === 'testing' ? t.connection.testing : t.connection.test}
+          </button>
+          <div className="test-result" role="status" aria-live="polite">
+            {test.kind === 'done' && (test.result.ok ? (
+              <>
+                <span className="status ok"><Icon name="check" />{t.connection.testOk(test.result.latencyMs)}</span>
+                {models.length > 0 && <span className="muted">{t.connection.testModels(models.length)}</span>}
+              </>
+            ) : <span className="status error"><Icon name="alert" />{t.connection.testFailed} {friendlyConnectionError(t, test.result.error ?? '')}</span>)}
+          </div>
+        </div>
+      </section>
+
+      <h3 className="form-heading">{t.connection.modelStep}</h3>
       <div className="form-grid">
         <div className="field">
-          <ComboBox id={`${id}-model`} label={t.connection.model} value={draft.model} options={modelOptions}
+          {tested || manualModel ? <ComboBox id={`${id}-model`} label={t.connection.model} value={draft.model} options={modelOptions}
             customLabel={t.connection.modelCustom} emptyLabel={t.connection.modelEmpty}
             invalid={Boolean(errorFor('model'))} describedBy={errorFor('model') ? `${id}-model-error ${id}-model-hint` : `${id}-model-hint`}
-            onChange={model => update({ model })} onBlur={touch('model')} />
+            onChange={model => update({ model })} onBlur={touch('model')} /> : (
+            <>
+              <label htmlFor={`${id}-model`}>{t.connection.model}</label>
+              <input id={`${id}-model`} type="text" value={draft.model} disabled aria-describedby={`${id}-model-hint`} />
+            </>
+          )}
           {errorFor('model') && <small className="field-error" id={`${id}-model-error`}>{errorFor('model')}</small>}
-          <small className="muted" id={`${id}-model-hint`}>{models.length ? t.connection.modelFromList : t.connection.modelHint}</small>
+          <small className="muted" id={`${id}-model-hint`}>{!tested ? manualModel ? t.connection.manualModelHint : t.connection.testRequiredHint : models.length ? t.connection.modelFromList : t.connection.testNoModels}</small>
+          {!tested && !manualModel && <button type="button" className="button small" onClick={() => setManualScope(scope)}>{t.connection.manualModel}</button>}
         </div>
         {preset.api === 'anthropic-messages' && (
           <div className="field">
@@ -145,21 +182,6 @@ export function ConnectionForm({ t, agents, draft, onChange, showAllErrors = fal
             />
           </div>
         )}
-      </div>
-
-      <div className="test-row">
-        <button type="button" className="button" disabled={!canTest} onClick={runTest}>
-          <Icon name={test.kind === 'testing' ? 'refresh' : 'check'} className={test.kind === 'testing' ? 'spin' : ''} />
-          {test.kind === 'testing' ? t.connection.testing : t.connection.test}
-        </button>
-        <div className="test-result" role="status" aria-live="polite">
-          {test.kind === 'done' && (test.result.ok ? (
-            <>
-              <span className="status ok"><Icon name="check" />{t.connection.testOk(test.result.latencyMs)}</span>
-              {models.length > 0 && <span className="muted">{t.connection.testModels(models.length)}</span>}
-            </>
-          ) : <span className="status error"><Icon name="alert" />{t.connection.testFailed} {friendlyConnectionError(t, test.result.error ?? '')}</span>)}
-        </div>
       </div>
 
       <div className="form-stack tight">
@@ -201,9 +223,14 @@ export function ConnectionForm({ t, agents, draft, onChange, showAllErrors = fal
               </div>
               {TASK_TIERS.map(tier => (
                 <div className="field" key={tier}>
-                  <ComboBox id={`${id}-tier-${tier}`} label={t.connection.tierModel(t.connection.tiers[tier])} value={orchestration.tiers[tier]} options={tierOptions}
+                  {tested ? <ComboBox id={`${id}-tier-${tier}`} label={t.connection.tierModel(t.connection.tiers[tier])} value={orchestration.tiers[tier]} options={tierOptions}
                     placeholder={t.connection.tierPlaceholder(draft.model.trim())} customLabel={t.connection.modelCustom} emptyLabel={t.connection.modelEmpty}
-                    onChange={model => updateOrchestration({ tiers: { ...orchestration.tiers, [tier]: model } })} />
+                    onChange={model => updateOrchestration({ tiers: { ...orchestration.tiers, [tier]: model } })} /> : (
+                    <>
+                      <label htmlFor={`${id}-tier-${tier}`}>{t.connection.tierModel(t.connection.tiers[tier])}</label>
+                      <input id={`${id}-tier-${tier}`} type="text" value={orchestration.tiers[tier]} disabled placeholder={t.connection.tierPlaceholder(draft.model.trim())} />
+                    </>
+                  )}
                 </div>
               ))}
             </div>

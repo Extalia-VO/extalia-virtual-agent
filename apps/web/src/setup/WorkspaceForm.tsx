@@ -13,10 +13,11 @@ import { bypassesHermesApprovals, hermesPermissions } from './permissions';
 import { availableHermes } from './useRuntimes';
 import { useGateSuggestion } from './gateSuggestion';
 import { validateWorkspace, type WorkspaceDraft, type WorkspaceField } from './validation';
+import { DirectoryBrowser } from './DirectoryBrowser';
 
 /**
  * Workspace editor used by the wizard and Settings. Desktop picks folders with
- * the native dialog; the Bridge cannot, so the user types a path the host checks.
+ * the native dialog; the Bridge browses host folders through its authenticated API.
  */
 export function WorkspaceForm({ t, agents, picker, draft, onChange, connections, runtimes = [], runtimesReady = true, onRecheckRuntimes, showAllErrors = false, showGate = false, focusGate = false }: {
   t: Messages;
@@ -43,6 +44,7 @@ export function WorkspaceForm({ t, agents, picker, draft, onChange, connections,
   const [touched, setTouched] = useState<ReadonlySet<WorkspaceField>>(new Set());
   const [checking, setChecking] = useState(false);
   const [folderError, setFolderError] = useState<string | null>(null);
+  const [browsing, setBrowsing] = useState(false);
   const errors = validateWorkspace(draft);
   const errorFor = (field: WorkspaceField) => (showAllErrors || touched.has(field)) && errors[field] ? t.workspace.errors[errors[field]] : undefined;
   const touch = (field: WorkspaceField) => setTouched(previous => new Set(previous).add(field));
@@ -52,6 +54,7 @@ export function WorkspaceForm({ t, agents, picker, draft, onChange, connections,
     if (!path.trim()) return;
     setChecking(true);
     setFolderError(null);
+    onChange({ ...current, folderInput: path.trim(), folder: undefined });
     try {
       const result = await agents.checkFolder(path.trim());
       if (result.ok && result.path) {
@@ -71,10 +74,11 @@ export function WorkspaceForm({ t, agents, picker, draft, onChange, connections,
   }
 
   async function choose() {
-    if (!picker) return;
+    if (!picker) { setBrowsing(true); return; }
     try {
       const selection = await picker.selectDirectory();
       if (selection?.path) await check(selection.path, draft);
+      else if (selection) setBrowsing(true);
     } catch (error) {
       setFolderError(errorMessage(error));
     }
@@ -135,19 +139,18 @@ export function WorkspaceForm({ t, agents, picker, draft, onChange, connections,
 
   return (
     <div className="form-stack">
-      <div className="field" {...(picker ? { role: 'group', 'aria-labelledby': `${id}-folder-label` } : {})}>
-        {/* A label would rename the picker button, so Desktop uses a group heading instead. */}
-        {picker ? <span id={`${id}-folder-label`}>{t.workspace.folder}</span> : <label htmlFor={`${id}-folder`}>{t.workspace.folder}</label>}
-        {picker ? (
+      <div className="field" role="group" aria-labelledby={`${id}-folder-label`}>
+        <span id={`${id}-folder-label`}>{t.workspace.folder}</span>
           <div className="folder-pick">
             <button type="button" id={`${id}-folder`} className="button" disabled={checking} onClick={choose} aria-describedby={`${id}-folder-path`}>
               <Icon name="folder" />{draft.folder ? t.workspace.change : t.workspace.choose}
             </button>
             <code className="folder-path" id={`${id}-folder-path`}>{draft.folder?.path ?? t.workspace.noFolder}</code>
           </div>
-        ) : (
+        {!picker && <details className="folder-manual"><summary>{t.workspace.manualPath}</summary>
+          <label className="visually-hidden" htmlFor={`${id}-folder-input`}>{t.workspace.folder}</label>
           <div className="input-row">
-            <input id={`${id}-folder`} type="text" value={draft.folderInput} spellCheck={false} autoComplete="off" placeholder={t.workspace.pathPlaceholder}
+            <input id={`${id}-folder-input`} type="text" value={draft.folderInput} spellCheck={false} autoComplete="off" placeholder={t.workspace.pathPlaceholder}
               aria-invalid={Boolean(folderMessage)} aria-describedby={`${id}-folder-status`}
               onChange={event => { setFolderError(null); onChange({ ...draft, folderInput: event.target.value, folder: undefined }); }}
               onBlur={() => { if (!draft.folder) void check(draft.folderInput, draft); }}
@@ -156,11 +159,13 @@ export function WorkspaceForm({ t, agents, picker, draft, onChange, connections,
               {checking ? t.workspace.checking : t.workspace.check}
             </button>
           </div>
-        )}
+        </details>}
         <small id={`${id}-folder-status`} role="status" className={folderMessage ? 'field-error' : draft.folder && !picker ? 'status ok' : 'muted'}>
-          {folderMessage ?? (picker ? null : draft.folder ? <><Icon name="check" />{draft.folder.path}</> : t.workspace.pathHint)}
+          {folderMessage ?? null}
         </small>
       </div>
+      {browsing && <DirectoryBrowser t={t} agents={agents} {...(draft.folder ? { startPath: draft.folder.path } : {})}
+        onClose={() => setBrowsing(false)} onSelect={selected => { setBrowsing(false); void check(selected, draft); }} />}
 
       <div className="form-grid">
         <div className="field">

@@ -155,6 +155,15 @@ describe('Hermes Agent discovery', () => {
 });
 
 describe('Hermes Agent workspaces', { timeout: PROCESS_TEST_TIMEOUT_MS }, () => {
+  it('completes managed setup without a workspace only when Hermes is available', async () => {
+    const available = await setup();
+    expect(await available.host.completeSetup()).toMatchObject({ setupComplete: true, workflow: 'managed', connections: [], workspaces: [], sessions: [] });
+    expect(await calls(available.hermesHome)).toEqual([]);
+    const missing = await setup({ missingBinary: true });
+    await expect(missing.host.completeSetup()).rejects.toThrow(/connection.*Hermes/i);
+    expect(await missing.host.getState()).toMatchObject({ setupComplete: false, workflow: 'managed', connections: [], workspaces: [] });
+  });
+
   it('needs no model connection and validates the profile and model', async () => {
     const { host, project } = await setup();
     expect((await host.runtimes()).find(item => item.id === 'hermes')).toEqual({ id: 'hermes', available: true, profiles: ['default', 'work'] });

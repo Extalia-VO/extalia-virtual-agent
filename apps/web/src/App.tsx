@@ -218,7 +218,7 @@ export function App({ platform }: { platform: Platform }) {
               onWorkspace={workspaceId => setSelection({ workspaceId })}
               onOpenSession={session => { setSelection({ workspaceId: session.workspaceId, sessionId: session.id }); setPage(session.control === 'observed' ? 'observe' : 'chat'); }}
               onOpenMissions={hostState?.workspaces.length ? session => { if (session) setSelection({ workspaceId: session.workspaceId, sessionId: session.id }); setPage('missions'); } : undefined}
-              onStartChat={() => setPage(!agents ? 'start' : hostState?.workspaces.length ? 'chat' : 'settings')}
+              onStartChat={() => setPage(!agents ? 'start' : 'chat')}
               onOpenSettings={() => setPage('settings')} />}
             {activePage === 'missions' && agents && hostState && (
               <MissionsPage t={t} language={preferences.language} agents={agents} state={hostState} onState={host.apply} sessionId={selection.sessionId ?? undefined}
@@ -226,7 +226,7 @@ export function App({ platform }: { platform: Platform }) {
                 onEditGate={workspaceId => { setGateFocus(workspaceId); setPage('settings'); }} />
             )}
             {activePage === 'chat' && agents && hostState && (
-              <ChatPage t={t} language={preferences.language} agents={agents} state={hostState} onState={host.apply}
+              <ChatPage t={t} language={preferences.language} agents={agents} picker={hostState.host.kind === 'desktop' ? platform.capabilities.filesystem : undefined} state={hostState} onState={host.apply}
                 selection={chatSelection} onSelect={setSelection} onOpenSettings={() => setPage('settings')} onReviewSkills={() => openSkills()} />
             )}
             {activePage === 'history' && agents && hostState && (

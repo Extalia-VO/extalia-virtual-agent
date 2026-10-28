@@ -1,5 +1,5 @@
 import { sourceLabel } from '@extalia/core';
-import type { AgentHostApi, ApprovalDecisionInput, HostState } from '@extalia/platform';
+import type { AgentHostApi, ApprovalDecisionInput, FileSystemCapability, HostState } from '@extalia/platform';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { errorMessage } from '../host/remote';
 import type { Messages } from '../i18n';
@@ -13,11 +13,13 @@ import { TranscriptView } from './TranscriptView';
 import { useSessionEvents } from './useSessionEvents';
 import { Select } from '../ui/Select';
 import { ProjectSkillsNotice } from '../skills/ProjectSkills';
+import { WorkspacesSection } from '../pages/settings/WorkspacesSection';
 
-export function ChatPage({ t, language, agents, state, onState, selection, onSelect, onOpenSettings, onReviewSkills }: {
+export function ChatPage({ t, language, agents, picker, state, onState, selection, onSelect, onOpenSettings, onReviewSkills }: {
   t: Messages;
   language: string;
   agents: AgentHostApi;
+  picker?: FileSystemCapability;
   state: HostState;
   onState: (next: HostState) => void;
   selection: ChatSelection;
@@ -58,6 +60,10 @@ export function ChatPage({ t, language, agents, state, onState, selection, onSel
           <p>{t.chat.noWorkspace}</p>
           <div className="actions"><button type="button" className="primary" onClick={onOpenSettings}><Icon name="settings" />{t.chat.openSettings}</button></div>
         </section>
+        <WorkspacesSection t={t} agents={agents} picker={picker} state={state} showGate={false} onState={next => {
+          onState(next);
+          if (next.workspaces[0]) onSelect({ workspaceId: next.workspaces[0].id, sessionId: null });
+        }} />
       </div>
     );
   }

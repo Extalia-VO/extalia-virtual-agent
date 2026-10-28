@@ -831,6 +831,13 @@ function createMockAgents(options: MockOptions): AgentHostApi {
       }
       return { ok: true, latencyMs: preset.local ? 38 : 214, models: MODEL_LISTS[preset.id] ?? ['gpt-5.5', 'gpt-5.5-mini', 'o5'] };
     },
+    async browseDirectories(requested) {
+      await latency();
+      const current = requested || HOME;
+      return { path: current, homePath: HOME, ...(current !== '/' ? { parentPath: current.slice(0, current.lastIndexOf('/')) || '/' } : {}),
+        roots: [{ name: '/', path: '/' }], truncated: false,
+        entries: current === HOME ? [{ name: 'demo-app', path: `${HOME}/demo-app` }, { name: 'projects', path: `${HOME}/projects` }] : [] };
+    },
     async checkFolder(path) {
       await latency();
       const value = path.trim().replace(/[\\/]+$/, '').replace(/^~(?=$|\/)/, '/Users/you');
@@ -869,7 +876,16 @@ function createMockAgents(options: MockOptions): AgentHostApi {
       workspace.missionConnectionIds = [...connectionIds];
       return snapshot();
     },
-    async completeSetup(mode = 'managed') { await latency(); state.setupComplete = true; state.workflow = mode; return snapshot(); },
+    async completeSetup(mode = 'managed') {
+      await latency();
+      if (mode !== 'managed' && mode !== 'observe') throw new Error('Invalid workflow mode.');
+      if (mode === 'managed') {
+        const native = state.workspaces.some(item => (item.runtimeId ?? 'extalia-native') === 'extalia-native');
+        if (native && !state.connections.length) throw new Error('Add a model connection first.');
+        if (!state.workspaces.length && !state.connections.length && !options.hermes) throw new Error('Add a model connection or install Hermes Agent first.');
+      }
+      state.setupComplete = true; state.workflow = mode; return snapshot();
+    },
     async setWorkflow(mode) { state.workflow = mode; state.setupComplete = state.setupComplete || mode === 'observe'; return snapshot(); },
     async observeImports() { throw new Error('Live native observation needs the Desktop host or local Bridge. Mock histories cannot be watched.'); },
     async observationSession() { throw new Error('No native transcript is available in this mock host.'); },

@@ -1032,6 +1032,19 @@ fieldset > legend { padding: 0; margin-bottom: 6px; }
 .update-actions { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); }
 
 /* Settings */
+.folder-browser { width: min(640px, calc(100vw - 28px)); max-height: 90vh; padding: 0; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface-solid); color: var(--text); box-shadow: var(--shadow); }
+.folder-browser::backdrop { background: rgb(0 0 0 / 45%); backdrop-filter: blur(3px); }
+.folder-browser-body { display: grid; gap: 14px; padding: 20px; }
+.folder-browser-body h2, .folder-browser-body p { margin: 0; }
+.folder-browser-path { overflow-wrap: anywhere; font-size: .8rem; }
+.folder-browser-list { min-height: 100px; max-height: 42vh; overflow: auto; border: 1px solid var(--line); border-radius: 10px; }
+.folder-browser-list ul { list-style: none; padding: 0; margin: 0; }
+.folder-browser-list > p { padding: 12px; }
+.folder-browser-list button { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; border: 0; border-radius: 0; background: transparent; padding: 10px 12px; }
+.folder-browser-list button span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.folder-browser-list button:hover { background: var(--accent-soft); }
+.folder-manual summary { cursor: pointer; font-size: .85rem; color: var(--muted); }
+.folder-manual .input-row { margin-top: 8px; }
 .settings-section { display: grid; gap: 14px; }
 .settings-section > h2, .section-head h2 { margin-bottom: 0; }
 .section-head { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 12px; }

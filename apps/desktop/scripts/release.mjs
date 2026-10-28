@@ -105,13 +105,20 @@ export async function verifyMacArchive(file, arch, { run = runCommand, temporary
   macReleaseMode(mode);
   const temporary = await mkdtemp(path.join(temporaryDirectory, 'extalia-release-'));
   const app = path.join(temporary, 'Extalia.app');
+  const verify = async appPath => {
+    try { await verifyMacApp(appPath, arch, run, mode); }
+    catch (error) {
+      // Artifact names/architecture are public; subprocess output remains redacted by runCommand.
+      throw new Error(`${path.basename(file)} (${arch}): ${error instanceof Error ? error.message : 'archive verification failed'}`, { cause: error });
+    }
+  };
   if (file.endsWith('.dmg')) {
     // A fixed private mount point lets finally attempt detach even if attach fails part way through.
     const mount = path.join(temporary, 'volume');
     await mkdir(mount);
     try {
       await run('hdiutil', ['attach', '-readonly', '-nobrowse', '-noautoopen', '-mountpoint', mount, file]);
-      await verifyMacApp(path.join(mount, 'Extalia.app'), arch, run, mode);
+      await verify(path.join(mount, 'Extalia.app'));
     } finally {
       // Do not recursively remove a directory that might still be a mounted volume.
       await detachVolume(mount, run);
@@ -120,7 +127,7 @@ export async function verifyMacArchive(file, arch, { run = runCommand, temporary
   } else {
     try {
       await run('ditto', ['-x', '-k', file, temporary]);
-      await verifyMacApp(app, arch, run, mode);
+      await verify(app);
     } finally {
       await rm(temporary, { recursive: true, force: true });
     }

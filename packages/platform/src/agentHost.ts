@@ -433,6 +433,22 @@ export interface FolderCheck {
   error?: string;
 }
 
+/** Host directories available for the workspace folder picker. No files are returned. */
+export interface DirectoryListing {
+  /** Canonical absolute directory currently being browsed. */
+  path: string;
+  /** Canonical host home directory; the picker can return here at any time. */
+  homePath: string;
+  /** Parent directory, absent at the filesystem root. */
+  parentPath?: string;
+  /** Direct child directories, sorted by name and limited to 200. Symlinks are omitted. */
+  entries: Array<{ name: string; path: string }>;
+  /** Filesystem roots available on this host. */
+  roots: Array<{ name: string; path: string }>;
+  /** True if more than 200 child directories were present. */
+  truncated: boolean;
+}
+
 /** One entry of a project-folder listing (Files view). Paths are relative to the project folder, `/`-separated. */
 export interface FileEntry {
   name: string;
@@ -670,6 +686,7 @@ export interface AgentHostApi {
   deleteConnection(id: string): Promise<HostState>;
   testConnection(input: ConnectionInput, secret?: string): Promise<ConnectionTestResult>;
   checkFolder(path: string): Promise<FolderCheck>;
+  browseDirectories(path?: string): Promise<DirectoryListing>;
   saveWorkspace(input: WorkspaceInput): Promise<HostState>;
   /** Explicitly permit additional saved model connections for this workspace's native missions. */
   setWorkspaceMissionConnections(workspaceId: string, connectionIds: string[]): Promise<HostState>;
@@ -892,7 +909,7 @@ export interface AgentHostApi {
 
 /** Methods a transport may forward. `subscribe` is carried separately (IPC push or SSE). */
 export const AGENT_HOST_METHODS = [
-  'getState', 'getProfile', 'saveProfile', 'saveConnection', 'deleteConnection', 'testConnection', 'checkFolder', 'saveWorkspace', 'deleteWorkspace',
+  'getState', 'getProfile', 'saveProfile', 'saveConnection', 'deleteConnection', 'testConnection', 'checkFolder', 'browseDirectories', 'saveWorkspace', 'deleteWorkspace',
   'setWorkspaceMissionConnections', 'planNativeMission', 'startNativeMission', 'nativeMissionRun', 'listNativeMissions', 'refreshNativeMissionRecovery',
   'completeSetup', 'createSession', 'setSessionOptions', 'modelChoices', 'getSessionTeam', 'saveSessionTeam', 'saveWorkspaceTeam', 'planTeam', 'continueSession', 'renameSession', 'deleteSession', 'sessionEvents', 'sendPrompt', 'uploadAttachment', 'removeAttachment', 'attachmentPreview', 'resolveApproval', 'cancel',
   'setWorkflow', 'observeImports', 'observationSession', 'setObservation', 'setAutoWatch',

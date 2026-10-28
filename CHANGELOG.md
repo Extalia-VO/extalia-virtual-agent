@@ -16,6 +16,17 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.116] - 2026-10-28
+
+### Added
+
+- Authenticated host-folder browsing for Web workspaces, alongside native folder dialogs on macOS, Windows and Linux Desktop. Folder selection is shared by setup, Chat and Settings; manual paths remain an optional advanced control.
+
+### Changed
+
+- Initial setup can defer workspace creation while retaining a configured managed runtime. Chat offers workspace creation when first needed, and Settings remains available for later setup.
+- Provider setup guides users through testing before model selection, rejects stale endpoint results, and offers an explicit manual-model path for providers without model discovery.
+
 ## [0.4.115] - 2026-10-28
 
 ### Fixed

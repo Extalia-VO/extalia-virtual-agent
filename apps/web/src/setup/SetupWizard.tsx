@@ -46,8 +46,8 @@ function usePoster(src: string): boolean {
 /**
  * Full-screen first run, shown instead of the app shell: welcome, profile and
  * appearance, connection (Extalia Native or Hermes Agent), workspace, an
- * optional pointer to agent-app hooks, then done. Only the connection and
- * workspace steps write setup data; setup completes through `completeSetup()`
+ * optional pointer to agent-app hooks, then done. The workspace can be deferred;
+ * setup completes through `completeSetup()` once a runtime is ready
  * on the last step (or observe mode on the first), never from cosmetic steps.
  */
 export function SetupWizard({ t, platform, agents, state, onState, preferences, onPreferences }: {
@@ -69,6 +69,8 @@ export function SetupWizard({ t, platform, agents, state, onState, preferences, 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [attempted, setAttempted] = useState(false);
+  const [connectionTestReady, setConnectionTestReady] = useState(false);
+  const [workspaceDeferred, setWorkspaceDeferred] = useState(false);
   const heading = useRef<HTMLHeadingElement>(null);
   const shownStep = useRef<SetupStepId>('welcome');
   const { runtimes, ready: runtimesReady, refresh: refreshRuntimes } = useRuntimeStatus(agents);
@@ -140,7 +142,7 @@ export function SetupWizard({ t, platform, agents, state, onState, preferences, 
 
   const saveConnection = () => run(async () => {
     setAttempted(true);
-    if (!isValid(validateConnection(connection))) return;
+    if (!connectionTestReady || !isValid(validateConnection(connection))) return;
     const { input, secret } = toConnectionInput(connection);
     const before = new Set(state.connections.map(item => item.id));
     const next = await agents.saveConnection(input, secret);
@@ -168,14 +170,17 @@ export function SetupWizard({ t, platform, agents, state, onState, preferences, 
     const saved = (input.id && next.workspaces.find(item => item.id === input.id)) ?? next.workspaces.find(item => !before.has(item.id));
     onState(next);
     if (saved) setWorkspace(draftFromWorkspace(saved));
+    setWorkspaceDeferred(false);
     go('agentApps');
   });
 
-  const ready = canFinish(state, workspace.id);
+  const ready = canFinish(state, workspace.id, workspaceDeferred ? {
+    runtimeId: hermes ? 'hermes' : 'extalia-native', connectionId: workspace.connectionId, hermesAvailable: hermesInstalled,
+  } : undefined);
   const finish = () => run(async () => { if (ready) onState(await agents.completeSetup()); });
   const observe = () => run(async () => { onState(await agents.completeSetup('observe')); });
 
-  const connectionValid = isValid(validateConnection(connection));
+  const connectionValid = connectionTestReady && isValid(validateConnection(connection));
   const workspaceValid = isValid(validateWorkspace(workspace));
   const advance = canAdvance(step, { busy, displayNameValid: !displayNameError, hermes, hermesBlocked, connectionValid, workspaceValid });
   const savedConnection = state.connections.find(item => item.id === workspace.connectionId);
@@ -307,7 +312,7 @@ export function SetupWizard({ t, platform, agents, state, onState, preferences, 
                 hermesInstalled={hermesInstalled} runtimesReady={runtimesReady} rechecking={rechecking} onRecheck={recheckRuntimes}
                 onChange={runtimeId => setWorkspace(current => ({ ...current, runtimeId }))} />
               <p className="lead">{hermes ? t.setup.hermesLead : t.setup.modelLead}</p>
-              {!hermes && <ConnectionForm t={t} agents={agents} draft={connection} onChange={setConnection} showAllErrors={attempted} />}
+              {!hermes && <ConnectionForm t={t} agents={agents} draft={connection} onChange={setConnection} onTestReady={setConnectionTestReady} showAllErrors={attempted} />}
             </>
           )}
 
@@ -315,6 +320,7 @@ export function SetupWizard({ t, platform, agents, state, onState, preferences, 
             <>
               {title(t.setup.workspaceTitle)}
               <p className="lead">{t.setup.workspaceLead}</p>
+              <p className="muted small">{t.setup.workspaceOptional}</p>
               {existingNote}
               <WorkspaceForm t={t} agents={agents} picker={picker} draft={workspace} onChange={setWorkspace} runtimes={runtimes} runtimesReady={runtimesReady} showAllErrors={attempted} />
             </>
@@ -340,14 +346,16 @@ export function SetupWizard({ t, platform, agents, state, onState, preferences, 
           {step === 'done' && (
             <>
               {title(t.setup.doneTitle)}
-              <p className="lead">{t.setup.doneLead}</p>
+              <p className="lead">{workspaceDeferred ? t.setup.doneLeadDeferred : t.setup.doneLead}</p>
               <dl className="facts">
                 <div><dt>{t.setup.summaryProfile}</dt><dd>{displayName.trim() || <span className="muted">{t.setup.anonymous}</span>}</dd></div>
                 <div><dt>{t.setup.summaryAppearance}</dt><dd>{t.settings.themes[preferences.theme].replace(/\s*\(.*\)$/, '')} · {t.settings.materials[preferences.material]}</dd></div>
                 <div><dt>{t.setup.summaryConnection}</dt><dd>{connectionLabel}</dd></div>
-                <div><dt>{t.setup.summaryWorkspace}</dt><dd>{workspace.name}</dd></div>
-                <div><dt>{t.setup.summaryFolder}</dt><dd><code>{workspace.folder?.path ?? workspace.folderInput}</code></dd></div>
-                <div><dt>{t.setup.summaryPermissions}</dt><dd>{permissionsLabel(t, workspace.runtimeId, workspace.permissions)}</dd></div>
+                <div><dt>{t.setup.summaryWorkspace}</dt><dd>{workspaceDeferred ? t.setup.deferredWorkspaceSummary : workspace.name}</dd></div>
+                {!workspaceDeferred && <>
+                  <div><dt>{t.setup.summaryFolder}</dt><dd><code>{workspace.folder?.path ?? workspace.folderInput}</code></dd></div>
+                  <div><dt>{t.setup.summaryPermissions}</dt><dd>{permissionsLabel(t, workspace.runtimeId, workspace.permissions)}</dd></div>
+                </>}
                 <div><dt>{t.setup.summaryDataFolder}</dt><dd><code>{dataDirectory}</code></dd></div>
               </dl>
               {!ready && <p className="note setup-warn" role="status"><Icon name="alert" />{t.setup.notReady}</p>}
@@ -359,6 +367,7 @@ export function SetupWizard({ t, platform, agents, state, onState, preferences, 
           <div className="actions setup-actions">
             {step !== 'welcome' && <button type="button" disabled={busy} onClick={() => go(previousStep(step))}><Icon name="chevron" className="flip" />{t.common.back}</button>}
             {step === 'welcome' && <button type="button" className="setup-observe" disabled={busy} onClick={observe} aria-describedby="setup-observe-hint">{t.setup.observeOnly}</button>}
+            {step === 'workspace' && <button type="button" disabled={busy || (hermes ? !hermesInstalled : !savedConnection)} onClick={() => { setWorkspaceDeferred(true); go('agentApps'); }}>{t.setup.skipWorkspace}</button>}
             <span className="spacer" />
             {step === 'welcome' && <button type="button" className="primary" disabled={!advance} onClick={() => go(nextStep(step))}>{t.setup.begin}<Icon name="chevron" /></button>}
             {step === 'profile' && <button type="button" className="primary" disabled={!advance} onClick={saveProfileStep}>{busy ? t.common.saving : t.common.next}<Icon name="chevron" /></button>}

@@ -143,7 +143,8 @@ export async function runSmokeTest(window: BrowserWindow, screenshotDir = proces
   const officeOpened = rendered && await open(window, 'office');
   const officeRendered = officeOpened && await waitFor(window, `Boolean(document.querySelector('.office-stage canvas') || document.querySelector('.office-stage [role="alert"]'))`);
   const officeReady = `Boolean(document.querySelector('.office-stage canvas')) && !document.querySelector('.office-loading:not(.done)') && !document.querySelector('.office-stage [role="alert"]')`;
-  const sceneReady = officeRendered && await waitFor(window, officeReady, 60_000);
+  // Software WebGL on Linux/Windows CI needs longer for the first shader compilation.
+  const sceneReady = officeRendered && await waitFor(window, officeReady, process.platform === 'darwin' ? 60_000 : 120_000);
   const office = officeOpened ? await window.webContents.executeJavaScript(`({
     route: document.querySelector('.nav-item[data-page="office"]')?.getAttribute('aria-current'),
     canvas: Boolean(document.querySelector('.office-stage canvas')),

@@ -810,6 +810,10 @@ const en = {
     ] as [string, string][],
   },
   setup: {
+    skipWorkspace: 'Set up workspace later',
+    workspaceOptional: 'Optional: choose a project folder now, or set up a workspace from Chat or Settings later.',
+    deferredWorkspaceSummary: 'Set up when you start your first chat or from Settings',
+    doneLeadDeferred: 'Your connection is ready. You can choose a project folder when you start chatting.',
     steps: ['Welcome', 'Profile', 'Connection', 'Workspace', 'Agent apps', 'Done'],
     stepOf: (step: number, total: number) => `Step ${step} of ${total}`,
     progress: 'Setup progress',
@@ -820,7 +824,7 @@ const en = {
     welcomePoints: [
       ['Profile and appearance', 'Your name, theme and surface style, shared by Web and Desktop.'],
       ['How agents run', 'Extalia Native with a model provider, router or local model, or Hermes Agent when it is installed.'],
-      ['A project workspace', 'The folder agents work in, and what they may do without asking.'],
+      ['A project workspace (optional)', 'Choose a folder now, or do this when you start your first chat.'],
       ['Agent apps (optional)', 'Codex, Claude Code, Gemini CLI and Hermes can appear live in the Office.'],
     ] as [string, string][],
     observeOnly: 'Just observe agent apps',
@@ -873,6 +877,11 @@ const en = {
     language: 'Language', theme: 'Theme',
   },
   connection: {
+    testStep: '1. Test the connection', modelStep: '2. Choose a model',
+    manualModel: 'Enter a model manually', manualModelHint: 'For providers without model discovery: enter a model name, then test.',
+    testFirstHint: 'Enter the endpoint and credentials, then test to load the available models.',
+    testRequiredHint: 'Test this connection successfully before choosing a model.',
+    testNoModels: 'Connected, but this provider did not list models. Enter a model name manually.',
     provider: 'Provider',
     presetHints: {
       openai: 'GPT models from OpenAI',
@@ -946,6 +955,8 @@ const en = {
     useSuggested: 'Use suggested models',
   },
   workspace: {
+    manualPath: 'Enter a folder path manually',
+    browser: { title: 'Choose a project folder', lead: 'Folders on the computer running Extalia. File contents are not shown.', home: 'Home', up: 'Parent folder', select: 'Use this folder', empty: 'No subfolders here.', loading: 'Loading folders…', error: 'This folder could not be opened.', truncated: 'Only the first 200 folders are shown. Open a parent or a more specific folder.', roots: 'Location' },
     name: 'Name',
     folder: 'Project folder',
     choose: 'Choose folder', change: 'Change folder',
@@ -1073,7 +1084,7 @@ const en = {
     stopped: 'You stopped this run.',
     failed: 'The run failed:',
     agentError: 'Agent error:',
-    noWorkspace: 'Add a workspace in Settings to start chatting.',
+    noWorkspace: 'Choose a project folder to start your first chat. You can also set up workspaces in Settings.',
     openSettings: 'Open Settings',
   },
   /* v0.0.49 composer: attachments, permission mode, model and effort, context ring. */
@@ -1439,7 +1450,7 @@ const en = {
     status: { available: 'Available', 'via-agent-host': 'Through agent host', 'requires-bridge': 'Needs Extalia Bridge', unavailable: 'Not available' },
     capability: { agents: 'Agents', filesystem: 'Folder picker', terminal: 'Commands / terminal', git: 'Git inspection', secureStorage: 'Credential storage', notifications: 'Notifications', updater: 'Update checks' },
     hostToolsHint: 'The agent host handles approved commands, Git inspection and credential storage. Access follows the selected workspace permissions.',
-    workspacesHint: 'Save projects in Settings → Workspaces, then choose a workspace and its session in Chat. The web Bridge checks a full folder path; a browser folder picker does not reveal that path.',
+    workspacesHint: 'Add a workspace from Chat or Settings. Desktop opens the system folder picker; Web lets you browse folders on the computer running the Bridge.',
     manageWorkspaces: 'Manage workspaces', projects: 'Registered projects', sessions: 'Sessions',
     supported: 'Supported', unsupported: 'Not supported', unknown: 'Unknown',
     folderTitle: 'Project folder access',
@@ -2411,6 +2422,10 @@ const id: Messages = {
     ],
   },
   setup: {
+    skipWorkspace: 'Atur workspace nanti',
+    workspaceOptional: 'Opsional: pilih folder project sekarang, atau atur workspace dari Chat maupun Pengaturan nanti.',
+    deferredWorkspaceSummary: 'Atur saat memulai chat pertama atau dari Pengaturan',
+    doneLeadDeferred: 'Koneksi Anda sudah siap. Folder project dapat dipilih saat mulai chat.',
     steps: ['Selamat datang', 'Profil', 'Koneksi', 'Workspace', 'Aplikasi agent', 'Selesai'],
     stepOf: (step: number, total: number) => `Langkah ${step} dari ${total}`,
     progress: 'Kemajuan penyiapan',
@@ -2421,7 +2436,7 @@ const id: Messages = {
     welcomePoints: [
       ['Profil dan tampilan', 'Nama, tema, dan gaya permukaan Anda, dipakai bersama oleh Web dan Desktop.'],
       ['Cara agent berjalan', 'Extalia Native dengan provider model, router, atau model lokal; atau Hermes Agent jika sudah terpasang.'],
-      ['Workspace project', 'Folder tempat agent bekerja, dan apa yang boleh dilakukan tanpa bertanya.'],
+      ['Workspace project (opsional)', 'Pilih folder sekarang, atau atur saat memulai chat pertama.'],
       ['Aplikasi agent (opsional)', 'Codex, Claude Code, Gemini CLI, dan Hermes bisa tampil langsung di Kantor.'],
     ],
     observeOnly: 'Hanya amati aplikasi agent',
@@ -2474,6 +2489,11 @@ const id: Messages = {
     language: 'Bahasa', theme: 'Tema',
   },
   connection: {
+    testStep: '1. Uji koneksi', modelStep: '2. Pilih model',
+    manualModel: 'Masukkan model secara manual', manualModelHint: 'Untuk provider tanpa daftar model: masukkan nama model, lalu uji koneksi.',
+    testFirstHint: 'Isi endpoint dan kredensial, lalu uji untuk memuat model yang tersedia.',
+    testRequiredHint: 'Uji koneksi ini hingga berhasil sebelum memilih model.',
+    testNoModels: 'Terhubung, tetapi provider ini tidak menampilkan daftar model. Masukkan nama model secara manual.',
     provider: 'Provider',
     presetHints: {
       openai: 'Model GPT dari OpenAI',
@@ -2547,6 +2567,8 @@ const id: Messages = {
     useSuggested: 'Gunakan model yang disarankan',
   },
   workspace: {
+    manualPath: 'Masukkan path folder secara manual',
+    browser: { title: 'Pilih folder project', lead: 'Folder pada komputer yang menjalankan Extalia. Isi berkas tidak ditampilkan.', home: 'Beranda', up: 'Folder induk', select: 'Gunakan folder ini', empty: 'Tidak ada subfolder.', loading: 'Memuat folder…', error: 'Folder ini tidak dapat dibuka.', truncated: 'Hanya 200 folder pertama yang ditampilkan. Buka folder induk atau folder yang lebih spesifik.', roots: 'Lokasi' },
     name: 'Nama',
     folder: 'Folder project',
     choose: 'Pilih folder', change: 'Ganti folder',
@@ -2671,7 +2693,7 @@ const id: Messages = {
     stopped: 'Anda menghentikan proses ini.',
     failed: 'Proses gagal:',
     agentError: 'Error agent:',
-    noWorkspace: 'Tambahkan workspace di Pengaturan untuk mulai chat.',
+    noWorkspace: 'Pilih folder project untuk memulai chat pertama. Workspace juga dapat diatur dari Pengaturan.',
     openSettings: 'Buka Pengaturan',
   },
   /* v0.0.49 composer: attachments, permission mode, model and effort, context ring. */
@@ -3033,7 +3055,7 @@ const id: Messages = {
     status: { available: 'Tersedia', 'via-agent-host': 'Melalui host agent', 'requires-bridge': 'Perlu Extalia Bridge', unavailable: 'Tidak tersedia' },
     capability: { agents: 'Agent', filesystem: 'Pemilih folder', terminal: 'Perintah / terminal', git: 'Inspeksi Git', secureStorage: 'Penyimpanan kredensial', notifications: 'Notifikasi', updater: 'Pemeriksaan pembaruan' },
     hostToolsHint: 'Host agent menangani perintah yang disetujui, inspeksi Git, dan penyimpanan kredensial. Akses mengikuti izin workspace yang dipilih.',
-    workspacesHint: 'Simpan project di Pengaturan → Workspace, lalu pilih workspace dan session-nya di Chat. Bridge web memeriksa path folder lengkap; pemilih folder browser tidak mengungkapkan path itu.',
+    workspacesHint: 'Tambahkan workspace dari Chat atau Pengaturan. Desktop membuka pemilih folder sistem; Web dapat menjelajahi folder pada komputer yang menjalankan Bridge.',
     manageWorkspaces: 'Kelola workspace', projects: 'Project terdaftar', sessions: 'Session',
     supported: 'Didukung', unsupported: 'Tidak didukung', unknown: 'Tidak diketahui',
     folderTitle: 'Akses folder project',

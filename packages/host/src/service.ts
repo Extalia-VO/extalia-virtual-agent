@@ -27,6 +27,7 @@ import { mkdtemp, readFile, realpath, rename, rm, stat, writeFile } from 'node:f
 import { homedir } from 'node:os';
 import path from 'node:path';
 import { AttachmentStore, type TakenAttachment } from './attachments.js';
+import { browseDirectories } from './directories.js';
 import { BUILTIN_SKILLS } from './builtinSkills.js';
 import { buildContinuation } from './continuation.js';
 import { HermesEndpointError, continuationPrompt, discoverRuntimes, findHermes, hermesComplete, hermesModelCatalog, hermesSupportsReasoning, runHermesTurn } from './hermes.js';
@@ -921,6 +922,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     },
 
     checkFolder,
+    browseDirectories: requested => browseDirectories(requested, { homeDirectory: options.importHome ?? homeDirectory }),
 
     async saveWorkspace(input: WorkspaceInput) {
       const folder = await checkFolder(input.projectLocation);
@@ -1001,9 +1003,12 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     async completeSetup(mode = 'managed') {
       if (mode !== 'managed' && mode !== 'observe') throw userError('Invalid workflow mode.');
       // A model connection is only needed for Extalia Native workspaces; Hermes Agent brings its own models.
-      const native = !config.workspaces.length || config.workspaces.some(item => workspaceRuntime(item) === 'extalia-native');
+      const native = config.workspaces.some(item => workspaceRuntime(item) === 'extalia-native');
       if (mode === 'managed' && native && !config.connections.length) throw userError('Add a model connection first.');
-      if (mode === 'managed' && !config.workspaces.length) throw userError('Add a workspace first.');
+      if (mode === 'managed' && !config.workspaces.length && !config.connections.length) {
+        const runtimes = await discoverRuntimes(env, options.importHome ?? homeDirectory);
+        if (!runtimes.some(runtime => runtime.id === 'hermes' && runtime.available)) throw userError('Add a model connection or install Hermes Agent first.');
+      }
       config = { ...config, setupComplete: true, setupVersion: SETUP_VERSION, workflow: mode };
       await save();
       return state();
