@@ -1,6 +1,6 @@
 import { RUNTIME_IDS, type PermissionMode } from '@extalia/core';
 import type { AgentHostApi, ConnectionView, FileSystemCapability, HermesModelCatalog, RuntimeInfo } from '@extalia/platform';
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { errorMessage } from '../host/remote';
 import type { Messages } from '../i18n';
 import { Icon } from '../ui/Icon';
@@ -14,6 +14,7 @@ import { availableHermes } from './useRuntimes';
 import { useGateSuggestion } from './gateSuggestion';
 import { validateWorkspace, type WorkspaceDraft, type WorkspaceField } from './validation';
 import { DirectoryBrowser } from './DirectoryBrowser';
+import { createWorkspaceFolderRequests } from './workspaceFolderRequest';
 
 /**
  * Workspace editor used by the wizard and Settings. Desktop picks folders with
@@ -42,45 +43,74 @@ export function WorkspaceForm({ t, agents, picker, draft, onChange, connections,
 }) {
   const id = useId();
   const [touched, setTouched] = useState<ReadonlySet<WorkspaceField>>(new Set());
-  const [checking, setChecking] = useState(false);
-  const [folderError, setFolderError] = useState<string | null>(null);
+  const [checkingFolder, setCheckingFolder] = useState<{ path: string; workspaceId?: string } | null>(null);
+  const [folderFailure, setFolderFailure] = useState<{ path: string; workspaceId?: string; message: string } | null>(null);
   const [browsing, setBrowsing] = useState(false);
+  const [folderRequests] = useState(() => createWorkspaceFolderRequests(draft));
+  useLayoutEffect(() => {
+    folderRequests.sync(draft);
+  }, [draft, folderRequests]);
+  useLayoutEffect(() => () => folderRequests.invalidate(), [folderRequests]);
+  const checking = Boolean(checkingFolder && checkingFolder.workspaceId === draft.id && checkingFolder.path === draft.folderInput && !draft.folder);
+  const folderError = folderFailure && folderFailure.workspaceId === draft.id && folderFailure.path === draft.folderInput ? folderFailure.message : null;
+  const setChecking = (value: boolean) => {
+    const current = folderRequests.draft();
+    setCheckingFolder(value ? { path: current.folderInput, workspaceId: current.id } : null);
+  };
+  const setFolderError = (message: string | null) => {
+    const current = folderRequests.draft();
+    setFolderFailure(message === null ? null : { path: current.folderInput, workspaceId: current.id, message });
+  };
   const errors = validateWorkspace(draft);
   const errorFor = (field: WorkspaceField) => (showAllErrors || touched.has(field)) && errors[field] ? t.workspace.errors[errors[field]] : undefined;
   const touch = (field: WorkspaceField) => setTouched(previous => new Set(previous).add(field));
-  const update = (patch: Partial<WorkspaceDraft>) => onChange({ ...draft, ...patch });
+  const update = (patch: Partial<WorkspaceDraft>) => {
+    const next = { ...folderRequests.draft(), ...patch };
+    folderRequests.sync(next);
+    onChange(next);
+  };
+  const invalidateFolder = () => {
+    folderRequests.invalidate();
+    setChecking(false);
+    setFolderError(null);
+  };
 
-  async function check(path: string, current: WorkspaceDraft) {
-    if (!path.trim()) return;
+  async function check(path: string) {
+    if (!path.trim()) { invalidateFolder(); return; }
+    const pending = folderRequests.check(path);
     setChecking(true);
     setFolderError(null);
-    onChange({ ...current, folderInput: path.trim(), folder: undefined });
+    onChange(pending.draft);
     try {
       const result = await agents.checkFolder(path.trim());
+      if (!folderRequests.current(pending.request)) return;
       if (result.ok && result.path) {
-        const name = result.name ?? result.path.split(/[\\/]/).pop() ?? result.path;
-        // Suggest the folder's name unless the user already named the workspace.
-        const keepName = current.name.trim() && current.name !== current.folder?.name;
-        onChange({ ...current, folderInput: result.path, folder: { path: result.path, name }, name: keepName ? current.name : name });
+        const next = folderRequests.accept(pending.request, result);
+        if (next) onChange(next);
       } else {
         setFolderError(result.error ?? t.workspace.errors.folderRequired);
       }
     } catch (error) {
-      setFolderError(errorMessage(error));
+      if (folderRequests.current(pending.request)) setFolderError(errorMessage(error));
     } finally {
-      setChecking(false);
-      touch('folder');
+      if (folderRequests.current(pending.request)) {
+        setChecking(false);
+        touch('folder');
+      }
     }
   }
 
   async function choose() {
+    invalidateFolder();
+    const request = folderRequests.begin();
     if (!picker) { setBrowsing(true); return; }
     try {
       const selection = await picker.selectDirectory();
-      if (selection?.path) await check(selection.path, draft);
+      if (!folderRequests.current(request)) return;
+      if (selection?.path) await check(selection.path);
       else if (selection) setBrowsing(true);
     } catch (error) {
-      setFolderError(errorMessage(error));
+      if (folderRequests.current(request)) setFolderError(errorMessage(error));
     }
   }
 
@@ -152,10 +182,10 @@ export function WorkspaceForm({ t, agents, picker, draft, onChange, connections,
           <div className="input-row">
             <input id={`${id}-folder-input`} type="text" value={draft.folderInput} spellCheck={false} autoComplete="off" placeholder={t.workspace.pathPlaceholder}
               aria-invalid={Boolean(folderMessage)} aria-describedby={`${id}-folder-status`}
-              onChange={event => { setFolderError(null); onChange({ ...draft, folderInput: event.target.value, folder: undefined }); }}
-              onBlur={() => { if (!draft.folder) void check(draft.folderInput, draft); }}
-              onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); void check(draft.folderInput, draft); } }} />
-            <button type="button" className="button" disabled={checking || !draft.folderInput.trim() || Boolean(draft.folder)} onClick={() => check(draft.folderInput, draft)}>
+              onChange={event => { invalidateFolder(); update({ folderInput: event.target.value, folder: undefined }); }}
+              onBlur={() => { const current = folderRequests.draft(); if (!current.folder) void check(current.folderInput); }}
+              onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); void check(folderRequests.draft().folderInput); } }} />
+            <button type="button" className="button" disabled={checking || !draft.folderInput.trim() || Boolean(draft.folder)} onClick={() => check(folderRequests.draft().folderInput)}>
               {checking ? t.workspace.checking : t.workspace.check}
             </button>
           </div>
@@ -165,7 +195,7 @@ export function WorkspaceForm({ t, agents, picker, draft, onChange, connections,
         </small>
       </div>
       {browsing && <DirectoryBrowser t={t} agents={agents} {...(draft.folder ? { startPath: draft.folder.path } : {})}
-        onClose={() => setBrowsing(false)} onSelect={selected => { setBrowsing(false); void check(selected, draft); }} />}
+        onClose={() => { invalidateFolder(); setBrowsing(false); }} onSelect={selected => { setBrowsing(false); void check(selected); }} />}
 
       <div className="form-grid">
         <div className="field">

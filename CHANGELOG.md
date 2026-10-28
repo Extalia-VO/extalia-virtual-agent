@@ -16,6 +16,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.117] - 2026-10-28
+
+### Fixed
+
+- Folder selection preserves workspace name, runtime and permission edits made while validation is pending. Older folder checks and canceled or closed pickers cannot restore stale editor state.
+
 ## [0.4.116] - 2026-10-28
 
 ### Added
