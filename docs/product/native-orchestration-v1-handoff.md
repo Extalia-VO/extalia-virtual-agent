@@ -1,8 +1,14 @@
 # Native orchestration v1: implementation ledger and continuation handoff
 
-Updated: 2026-10-18. Scope: baseline audit, Stage 1 contracts, Stage 2 kernel/host, lead planning, Missions UI, reliability hardening, transactional checkpoints, atomic events (3.1) and runtime budgets (3.2).
+Updated: 2026-10-29. Scope: baseline audit, contracts, native kernel/host, Missions UI, durable events/budgets and recovery inspection/lease heartbeat/reaping/execution observations/local drain/coherent review (3.3A–D3); full native acceptance remains open.
 This ledger records current implementation evidence, not a claim that the v1 PRD
 is complete. Continue updating it after each stage.
+
+**Incoming PRD v2 review (2026-10-29):** the [code audit](prd-v2-audit.md) and
+[staged additions plan](prd-v2-development-plan.md) map the ten-document proposal
+onto this checkout. They are documentation-only recommendations, not stack/repo
+migration approval or supersession of accepted Rust/Python/reliability decisions.
+Resolve the proposed adoption/compatibility gate before activating new contracts.
 
 ## Planning sources and precedence
 
@@ -142,6 +148,151 @@ Full v0.4.109 check passes: 274 suites / 3,064 tests, one skipped; Rust and
 Web/Desktop/CLI builds pass. No live provider or complete gate 3.3 acceptance is
 claimed.
 
+### Gate 3.3B: independent lease heartbeat and expiry fencing (v0.4.118)
+
+Rust now serves profile-scoped `mission.heartbeat` with exact task/lease/holder
+claims. Renewal is atomic, refuses expired grants and preserves acquisition time,
+mission version, task attempts and journal count. Fresh task activity, completion
+and lead mission-state events cannot bypass expired leases. Recovering missions
+refuse fresh mutations; identical historical retries only acknowledge old commits.
+
+The host requires this capability for Rust mission admission, serializes renewal
+with commits and renews independently every 30 seconds while leases exist. Tool
+policy checks first renew exact claims and validate acknowledged expiry before
+and after the decision. A distinct runtime authority signal permanently latches
+persistence failure, aborts active workers and blocks queued work, including while
+a provider or commit acknowledgement is silent. Timers/listeners stop after the
+invocation. No provider/tool replay or physical-settlement claim is introduced.
+
+Targeted proof includes real daemon silent-provider renewal without journal
+activity, expiry and daemon death, ignored abort with a late tool reply, restart
+quarantine and no replay. Core tests cover exact expiry, wrong epoch/profile/
+holder, multi-claim rollback, injected storage failure and clock rollback. Shared
+wire fixtures are consumed by TypeScript and Rust. Full `pnpm check` passes: 286 suites / 3,261 tests, one skipped; 219 Rust tests,
+strict Clippy/format, schema parity and Web/Desktop/CLI builds pass.
+
+Full gate 3.3 remains incomplete: periodic live reaping, durable intent and physical
+settlement, and Rust-owned worktree fencing remain; gate 3.4 action approvals
+still follows. Python was re-audited: no `workers/intelligence`, locked environment,
+worker process supervision or embedded CPython resources exist. ADR 0022 is a
+plan, not delivered packaging; the real scanner stays unavailable and imported
+skills remain quarantined. Do not mistake Blender asset scripts for native workers.
+
+### Gate 3.3C: periodic logical lease quarantine (v0.4.119)
+
+The daemon sweeps expired leases while stdin is idle. Its scoped sweep thread and
+mission/skill requests share the same owned store mutex; knowledge indexing keeps
+its existing worker. The core handles at most 16 affected missions atomically per
+tick, reusing canonical snapshot validation inside the write transaction. A bad
+row or storage failure rolls the entire batch back. Reaping quarantines in-flight
+siblings as unknown, clears their leases and marks the mission recovering;
+queued/terminal task payloads and the journal remain unchanged. It never proves
+physical settlement, retries execution or touches worktree integration/cleanup.
+
+Renewal and reaping serialize: a valid renewal can win first, but reaped work can
+never renew. Sweep failure or mutex poison permanently refuses mutation/policy
+requests in that daemon instance. EOF, fatal frames or request-loop IO failure
+wake and join the sweep thread before the store closes. Knowledge worker output
+failure cannot stop reaping while the request loop can still accept mutations.
+
+Core proof covers exact expiry, alternate valid UTC formats, 16+3 batch progress,
+64-task graphs, profile isolation, siblings/queued/terminal preservation, rollback,
+corruption refusal and restart idempotence. Actual daemon/host acceptance, shutdown/poison and knowledge-output failure
+regressions pass. Full `pnpm check`: 286 suites / 3,262 passing tests, one skipped;
+232 Rust tests, strict Clippy/format and Web/Desktop/CLI builds pass.
+
+Full gate 3.3 still requires durable intent/physical-settlement reconciliation
+and Rust-owned writer fencing, followed by scoped execution approvals (3.4).
+Python worker infrastructure/distribution, a pinned scanner and learning are not
+implemented by this increment. The v0.5 milestone remains incomplete.
+
+### Gate 3.3D1: durable admissions and weak settlement observations (v0.4.120)
+
+Core schema 7 captures supervisor/task/attempt/lease admission identity in the
+running-transition transaction, including profile-bound canonical digest and
+captured task/graph hashes. It never invents historical admissions. Immutable
+once-only `execution.observe` receipts and bounded `mission.executions` reads
+survive lease reaping and restart without changing task/mission states or journal
+activity. Exact repeats are idempotent; conflicting identities/digests refuse.
+
+The runtime notifies only actual `runTurn` fulfillment/rejection, including late
+settlement after supervisory timeout. The host uses captured admission identity
+and the original daemon connection; shutdown suppresses new callbacks and failed
+recording leaves quarantine/evidence unavailable. Recovery checks supervisor and
+canonical identity, then displays the weak observations in English/Indonesian.
+No new retry, reconciliation/close, result reconstruction or worktree release is
+introduced. The separate ADR 0030 terminal display-shadow repair is unchanged.
+
+Full `pnpm check` passes: 286 suites / 3,321 tests, one skipped; 237 Rust
+tests, strict Clippy/format, schema parity and Web/Desktop/CLI builds pass.
+Real host failure/late/restart tests and EN/ID light/dark/390px previews pass.
+
+Remaining proof is essential: `Promise.all` in the turn loop can reject before a
+parallel sibling finishes, and the search adapter currently resolves without
+awaiting worker termination. Therefore these observations say only that the turn
+promise settled. Before terminal reconciliation, seal admission and account for
+every underlying operation and child-exit obligation, bind reviewed snapshot and
+worktree identities, then commit explicit closure before clearing guards. Remote
+computation cancellation remains a separate unsupported claim. Full gate 3.3,
+scoped approvals (3.4), Python/scanner workers and v0.5 acceptance remain open.
+
+### Gate 3.3D2: tracked local operations and owned search-worker exit (v0.4.121)
+
+Native tasks seal admission and track raw provider/tool promises plus full tool
+pipelines. Actual turn settlement alone no longer frees a slot while a sibling
+or delayed preflight remains pending. Late settlement can emit scoped local-drain
+evidence only after the turn actually settled, admission is sealed and all tracked
+work settled. Both task tools and provider bindings need trusted host-selected
+`extalia-native-local-v1` coverage; unknown/custom adapters default unsupported.
+The native composition provides this independently of model/mission request data.
+Commands and delegation remain excluded. Generic turn-loop parallel coverage is
+in place, but mission tool wrappers still do not enable the parallel metadata.
+
+Search now waits for confirmed worker termination/exit; termination failure with
+no exit preserves an unresolved operation. Core schema 8 adds a separate immutable
+local proof table and `execution.recordLocalDrain`, bound to exact admission,
+coverage, operation counts and prior weak turn observation. Read-only recovery
+shows evidence and scope. Reaping/restart preserve proofs but never invent them;
+recording failure/shutdown do not reconnect, replay or clear uncertainty.
+
+This is not full physical settlement or terminal closure: adapter promises and
+known owned children do not certify remote cancellation, transport shutdown,
+arbitrary detached descendants, rollback or other processes. Next reconcile only
+a reviewed snapshot/version/sequence/digest with complete task/worktree ownership
+and commit the explicit decision before clearing guards. Scoped action approvals,
+Python/scanner workers and v0.5 acceptance remain incomplete.
+
+Full `pnpm check` passes at v0.4.121: 288 suites / 3,387 tests, one skipped;
+241 Rust tests, strict Clippy/format, schema parity and Web/Desktop/CLI builds.
+Real host late/restart/failure tests, search exit lifecycle and EN/ID light/dark/
+390px recovery previews pass. No live-provider or cross-OS release claim.
+
+### Gate 3.3D3 prerequisite: coherent recovery review (v0.4.122)
+
+`mission.recoveryReview` takes one validated SQLite read view of the canonical
+mission/task graph, current snapshot/leases and execution admissions/evidence.
+A versioned profile-bound digest includes full mission/graph hashes, version,
+sequence, leases and late evidence. Missing admission IDs are explicit for every
+uncovered graph task, including never-started tasks. Ownership of worktrees is
+unverified; graph membership does not certify planner or unknown work.
+
+The host prefers this coherent read, rejects failure without mixing fallback
+reads, and rechecks guards/identity after awaits. Legacy daemons retain clearly
+informational inspection. EN/ID recovery shows scope, missing admissions and an
+expandable fingerprint, clearing the previous review on refresh. This read does
+not persist decisions, change authority or clear genuine quarantine; the separate
+already-terminal host-restart projection repair is unchanged. Reviewed explicit
+terminal reconciliation and applicable ownership/writer fencing remain pending,
+then action approvals, Python/scanner workers and full v0.5 acceptance.
+
+Full `pnpm check` passes: 288 suites / 3,437 passing tests, one skipped;
+249 Rust tests (178 core, 71 daemon), strict Clippy/format, schema parity and
+Web/Desktop/CLI builds. Light/dark and 390px EN/ID previews pass without
+horizontal overflow; preview server/browser and temporary sources were removed.
+No live-provider or cross-OS release claim. Hermes model discovery is unavailable
+and Codex subagents hit their usage limit before work; the current Codex
+implemented directly under the configured fallback.
+
 ## Baseline audit (before this task edited code)
 
 - Starting package version: 0.0.38; HEAD: `f214f4f`.
@@ -192,7 +343,7 @@ No memory savings or unchanged-render guarantee is claimed without measurements.
 | 0 Baseline | Audit done; performance baseline incomplete | Source/process/storage/security/Office map above; baseline checks passed. Measure resource profiles on stated hardware later. |
 | 1 Core contracts | Gate passed on resume | `pnpm check` exit 0 at v0.0.39: 111 files / 1,109 tests. Previous four failures resolved by shared-checkout changes; added focused regressions. |
 | 2 Native MVP | Kernel, host API and lead planning delivered; product acceptance incomplete | Local two-adapter host/API tests, correlated session events and retained results. `planNativeMission` (ADR 0010) proposes a read-only two-provider DAG from the session lead, with a deterministic fallback; nothing runs until launch. The Missions page (ADR 0011) launches, reviews and monitors these missions. Live-provider/artifact certification remains required. Latest verification is recorded below. |
-| 3 Durable control | Checkpoints, atomic control events (3.1) and runtime budgets (3.2) delivered; full stage incomplete | Host-owned SQLite WAL checkpoints/change rows and legacy import; native control events commit with their checkpoint before each effect; mission budgets and reported usage are enforced and persisted. Leases/reaper, crash reconciliation and scoped approvals remain pending. |
+| 3 Durable control | Checkpoints, atomic control events (3.1) and runtime budgets (3.2) delivered; full stage incomplete | Host-owned SQLite WAL checkpoints/change rows and legacy import; native control events commit with their checkpoint before each effect; mission budgets and reported usage are enforced and persisted. Rust exact-claim leases, independent heartbeats and expiry fencing are delivered (3.3B); periodic live reaping and coherent recovery review are delivered; explicit physical crash reconciliation, writer fencing and scoped approvals remain pending. |
 | 4 Observe | Existing observer functionality; v1 acceptance unverified | Explicit capabilities and truthful freshness; permission-scoped observation. Preserve working adapters and certify actual supported versions. |
 | 5 Mission UX | Launch/plan-review/monitor UI delivered (mock-verified); Mission Control incomplete | Missions page (ADR 0011): eligible-session picker, goal + allowed connections/models (in-place allowlist editing), lead planning, editable DAG plan with inline validation, launch, task-state monitor with unverified answers, cancel and Office entry links. Office projection of mission workers delivered (ADR 0016, mock-verified): queued workers listed but not admitted, running workers admitted via the spawn queue, ended workers linger then leave, unknown/recovering shown explicitly. Evidence, approvals, reconciliation and replay remain pending. Chat and Office preserved. |
 | 6 Workspace isolation | Not implemented | Write-capable workers in separate worktrees, ownership, integration queue, conflict review and test gates. |

@@ -1,7 +1,8 @@
 export {
-  createConnectService, resolveNodePath, splitCommand, VERIFIED_VERSIONS,
+  createConnectService, splitCommand, VERIFIED_VERSIONS,
   type ConnectContext, type ConnectService, type RunCommand, type RunResult,
 } from './service.js';
+export { resolveNodePath } from './nodeRuntime.js';
 export { ConnectError, displayPath, findOnPath } from './util.js';
 export { FORWARDER_SOURCE, FORWARDER_VERSION, forwarderPath, installForwarder } from './forwarder.js';
 export { DEFAULT_HOOK_PORT, ensureToken, readEndpoint, readToken, tokenFile, endpointFile } from './endpoint.js';

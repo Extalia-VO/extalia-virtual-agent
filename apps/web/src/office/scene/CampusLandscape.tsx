@@ -17,6 +17,7 @@ import {
 } from "three";
 import { CAMPUS_ENTRY_LAYOUT } from "./layout";
 import { FRONT_APPROACH } from "./campusSiteLayout";
+import { insideParkingFootprint } from "./campusParkingLots";
 import { useSolarEnvironment } from "./Environment";
 import { ExteriorPart, useExteriorDisplayGeometries, useExteriorInstancedGeometries } from "./ExteriorPart";
 
@@ -133,8 +134,8 @@ export function landscapeClear(x: number, z: number, radius: number) {
   const inCorridor = x + radius > CORRIDOR.minX && x - radius < CORRIDOR.maxX
     && z + radius > CORRIDOR.minZ && z - radius < CORRIDOR.maxZ;
   const inEnvelope = Math.abs(x) < 24 && Math.abs(z) < 18;
-  const inParking = x + radius > -51 && x - radius < -33.5 && z + radius > -14 && z - radius < 20;
-  return !inCorridor && !inEnvelope && !inParking;
+  // Both lots, their aisle stub and access aprons/ramps (campusParkingLots footprints).
+  return !inCorridor && !inEnvelope && !insideParkingFootprint(x, z, radius);
 }
 
 function onRoad(x: number, z: number, radius: number) {

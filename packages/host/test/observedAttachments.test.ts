@@ -34,7 +34,7 @@ describe('attachments of observed prompts', () => {
       const ref = files![0]!.ref!;
       expect(await observer.attachment(id, ref)).toEqual({ mimeType: 'image/png', data: PNG });
       const copy = path.join(directory, 'observed-files', id, ref);
-      expect((await stat(copy)).mode & 0o777).toBe(0o600);
+      if (process.platform !== 'win32') expect((await stat(copy)).mode & 0o777).toBe(0o600);
       // Only this session's own references resolve.
       expect(await observer.attachment(id, 'f'.repeat(64))).toBeUndefined();
       expect(await observer.attachment(id, '../observations.json')).toBeUndefined();

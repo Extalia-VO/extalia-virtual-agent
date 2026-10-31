@@ -12,8 +12,20 @@
 pub mod canonical;
 pub mod contract;
 mod event_body;
+mod execution;
+mod planned_tasks;
+pub use planned_tasks::{
+    OriginalPlannedTask, PlannedTaskMembership, PlannedTaskMembershipAvailability,
+};
+mod recovery_review;
+pub use recovery_review::MissionRecoveryReview;
 pub mod policy;
 mod transitions;
+pub use execution::{
+    ExecutionAdmission, ExecutionLocalDrain, ExecutionLocalDrainAck, ExecutionLocalDrainRecord,
+    ExecutionObservation, ExecutionObservationAck, ExecutionObservationRecord, MissionExecution,
+    MissionExecutions,
+};
 
 use std::fmt;
 
@@ -93,9 +105,11 @@ pub const MAX_EVENT_BYTES_PER_MISSION: u64 = 8 * 1024 * 1024;
 /// Tasks per created mission (`MAX_TASKS = 64` in `packages/runtime/src/mission.ts`).
 pub const MAX_TASKS_PER_MISSION: usize = 64;
 /// Lifetime of a task lease without activity: the largest native task timeout
-/// (`timeoutMs` at most 600 000 in `packages/runtime/src/mission.ts`). A committed event or
-/// transition of the task by its holder renews it.
+/// (`timeoutMs` at most 600 000 in `packages/runtime/src/mission.ts`). Independent
+/// epoch-bound heartbeats and accepted task activity renew only unexpired leases.
 pub const LEASE_TTL_MS: i64 = 600_000;
+/// Maximum missions quarantined by one live lease-reaper tick. Each graph has at most 64 tasks.
+pub const MAX_REAP_MISSIONS_PER_TICK: usize = 16;
 
 /// Task states that hold an assignee (`ASSIGNED_TASK_STATES` of the contract's `checkTask`).
 pub const ASSIGNED_TASK_STATES: [TaskState; 5] = [
@@ -206,6 +220,49 @@ pub struct TaskTransition {
     pub event_id: String,
     pub from: TaskState,
     pub to: TaskState,
+    pub supervisor_id: Option<String>,
+}
+
+/// Epoch-bound ownership claim for one running task lease.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LeaseClaim {
+    pub task_id: String,
+    pub lease_id: String,
+    pub holder_agent_id: String,
+}
+
+/// Independent renewal of up to 64 exact leases, without appending journal events.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MissionHeartbeat {
+    pub mission_id: String,
+    pub leases: Vec<LeaseClaim>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HeartbeatAck {
+    pub mission_id: String,
+    pub leases: Vec<SnapshotLease>,
+}
+
+impl MissionHeartbeat {
+    pub fn to_value(&self) -> Value {
+        serde_json::json!({ "missionId": self.mission_id,
+            "leases": self.leases.iter().map(|lease| serde_json::json!({
+                "taskId": lease.task_id, "leaseId": lease.lease_id,
+                "holderAgentId": lease.holder_agent_id,
+            })).collect::<Vec<_>>() })
+    }
+}
+
+impl HeartbeatAck {
+    pub fn to_value(&self) -> Value {
+        serde_json::json!({ "missionId": self.mission_id,
+            "leases": self.leases.iter().map(|lease| serde_json::json!({
+                "taskId": lease.task_id, "leaseId": lease.lease_id,
+                "holderAgentId": lease.holder_agent_id,
+                "acquiredAt": lease.acquired_at, "expiresAt": lease.expires_at,
+            })).collect::<Vec<_>>() })
+    }
 }
 
 /// Atomic, read-only canonical mission inspection (ADR 0030).
@@ -272,6 +329,7 @@ pub struct TransitionAck {
     pub task_id: String,
     pub state: TaskState,
     pub sequence: u64,
+    pub admission: Option<ExecutionAdmission>,
 }
 
 /// Acknowledgement of `event.commit`; `duplicate` marks an identical retry.
@@ -416,6 +474,7 @@ impl TaskTransition {
         insert(&mut map, "eventId", self.event_id.clone());
         insert(&mut map, "from", self.from.as_str());
         insert(&mut map, "to", self.to.as_str());
+        insert_some(&mut map, "supervisorId", &self.supervisor_id);
         Value::Object(map)
     }
 }

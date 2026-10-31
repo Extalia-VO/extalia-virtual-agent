@@ -40,7 +40,8 @@ asks: embedded runtime or `uv`-managed on first use.
 4. **Protocol v1:** NDJSON over stdio, one JSON object per line, bounded line length; startup
    handshake (`schema_version`, worker version, operations); requests carry `request_id`,
    `operation`, `deadline_ms`, `schema_version`, `payload`; responses carry `result` or
-   `error` (code + safe message); cancellation request then kill after a grace period; exit
+   `error` (fixed code, with optional safe text only in a future operation-specific contract;
+   the initial health subset is code-only); cancellation request then kill after a grace period; exit
    code recorded; stderr is logs only, bounded and redacted; schemas live in
    `@extalia/protocol` like the daemon contract. Large inputs are passed as paths inside a
    per-job staging directory, never arbitrary paths; operations are a fixed allow-list, never
@@ -51,6 +52,10 @@ asks: embedded runtime or `uv`-managed on first use.
    Windows Job Objects, macOS sandboxing) are chosen and tested per OS in W3; where a limit
    cannot be enforced for an operation that needs it, the operation fails closed.
 6. Started on demand, stopped when idle (no always-on Python; AC-27).
+
+The first protocol-only implementation is specified in
+[ADR 0041](0041-probe-only-worker-protocol.md). It does not yet implement the
+process, distribution or sandbox decisions above.
 
 ## Consequences
 

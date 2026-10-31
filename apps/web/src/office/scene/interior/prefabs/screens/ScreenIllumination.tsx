@@ -10,6 +10,7 @@ import {
 } from './screenLightBudget';
 import { projectedPanelHeight, setScreenView } from './screenView';
 import { screenTextures } from './screenTextureHost';
+import { isCampusOverview } from '../../../environment/overviewLod';
 
 /** Pool lights are re-targeted this often. */
 const LIGHT_INTERVAL = 0.2;
@@ -86,6 +87,8 @@ export function ScreenIllumination() {
   useFrame(({ camera, clock, size }) => {
     setScreenView(camera, size.height);
     screenTextures.tick();
+    // The campus view sees desks through glass only: the spill pool leaves the light set there.
+    pool.group.visible = !isCampusOverview();
     if (clock.elapsedTime < pool.nextUpdate) return;
     pool.nextUpdate = clock.elapsedTime + LIGHT_INTERVAL;
     if (pool.spill <= 0.001) {

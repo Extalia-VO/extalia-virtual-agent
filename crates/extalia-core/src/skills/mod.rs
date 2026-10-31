@@ -20,6 +20,12 @@
 //!   `validated`, reject → `quarantined`) and stores matched W0 consent as review input.
 //! - [`consent`] reads the W0 `skill-consent.json` as review input only (ADR 0025 §7): a
 //!   consent is matched to revisions by the `SKILL.md` SHA-256 and never changes a state.
+//! - [`resolver`] and [`version_range`] provide exact-pin dependency diagnostics over
+//!   claims; the registry's read-only preflight binds source observations. No report
+//!   admits execution or replaces the existing activation gate (ADR 0039).
+//! - [`routing`] ranks eligible category/intent diagnostic matches, preserving ties;
+//!   the registry checks source and approval applicability in one shared read view.
+//!   Every result still denies dispatch (ADR 0040).
 //! - [`builtin`] is the built-in skill catalog (gap-map decision 10): packages shipped with
 //!   the app, staged and content-hashed like any other, exempt from the scanner gate and
 //!   registered only through this daemon-internal API, never through an import. Their
@@ -39,10 +45,17 @@ pub mod lifecycle;
 pub mod manifest;
 pub mod policy;
 pub mod registry;
+pub mod resolver;
+#[cfg(test)]
+mod resolver_tests;
 pub mod review;
+pub mod routing;
+#[cfg(test)]
+mod routing_tests;
 #[cfg(test)]
 mod tests;
 pub mod tree;
+pub mod version_range;
 pub mod views;
 
 use std::fmt;

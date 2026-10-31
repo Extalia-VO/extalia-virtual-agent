@@ -1,6 +1,7 @@
 import { nativeTheme, type BrowserWindow } from 'electron';
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { textureProbeScript } from './smokeTextureProbe';
 
 /**
  * `electron . --smoke-test` loads the bundled UI in a hidden window, checks that
@@ -80,8 +81,11 @@ async function captureScreenshots(window: BrowserWindow, directory: string, setu
 
 export async function runSmokeTest(window: BrowserWindow, screenshotDir = process.env.EXTALIA_SMOKE_SCREENSHOTS): Promise<number> {
   const modelErrors: string[] = [];
+  const rendererErrors: string[] = [];
   window.webContents.on('console-message', (event: unknown) => {
     const message = typeof event === 'object' && event && 'message' in event ? String(event.message) : '';
+    const level = typeof event === 'object' && event && 'level' in event ? String(event.level) : '';
+    if ((level === 'error' || level === '3') && rendererErrors.length < 20) rendererErrors.push(message.slice(0, 1000));
     if (/GLTFLoader.*(Couldn.t|Error)|WebAssembly.*(violates|failed)/i.test(message)) modelErrors.push(message.slice(0, 500));
   });
   const rendered = await waitFor(window, `Boolean(${SHELL} || ${SETUP})`);
@@ -139,23 +143,27 @@ export async function runSmokeTest(window: BrowserWindow, screenshotDir = proces
   }
   const officeOpened = rendered && await open(window, 'office');
   const officeRendered = officeOpened && await waitFor(window, `Boolean(document.querySelector('.office-stage canvas') || document.querySelector('.office-stage [role="alert"]'))`);
-  const sceneReady = officeRendered && await waitFor(window, `!document.querySelector('.office-loading:not(.done)')`, 30_000);
+  const officeReady = `Boolean(document.querySelector('.office-stage canvas')) && !document.querySelector('.office-loading:not(.done)') && !document.querySelector('.office-stage [role="alert"]')`;
+  // Software WebGL and hosted macOS runners need minutes for the first shaders and models.
+  const sceneReady = officeRendered && await waitFor(window, officeReady, 120_000);
   const office = officeOpened ? await window.webContents.executeJavaScript(`({
     route: document.querySelector('.nav-item[data-page="office"]')?.getAttribute('aria-current'),
     canvas: Boolean(document.querySelector('.office-stage canvas')),
     separateFrame: Boolean(document.querySelector('.office-stage iframe')),
     protocol: location.protocol,
+    alert: document.querySelector('.office-stage [role="alert"]')?.textContent ?? null,
+    loading: document.querySelector('.office-loading:not(.done) [role="progressbar"]')?.getAttribute('aria-valuenow') ?? null,
   })`) as Record<string, unknown> : {};
-  const settingsOpened = rendered && await open(window, 'settings');
   const floorViews: boolean[] = [];
   if (screenshotDir && officeOpened) {
-    await open(window, 'office');
+    await waitFor(window, officeReady, 30_000);
     const file = path.join(screenshotDir, 'office-desktop.png');
     await writeFile(file, (await window.webContents.capturePage()).toPNG());
     screenshots.push(file);
   }
   if (officeOpened) {
     await open(window, 'office');
+    await waitFor(window, officeReady, 30_000);
     for (const floor of [1, 2, 3]) {
       const chosen = await window.webContents.executeJavaScript(`(() => {
         const button = document.querySelector('.topbar-office button[data-view="${floor}"]');
@@ -171,9 +179,17 @@ export async function runSmokeTest(window: BrowserWindow, screenshotDir = proces
     }
   }
 
+  // Check Settings after the scene captures so navigation cannot remount the
+  // Office and replace the verified scene with a fresh loading overlay.
+  const settingsOpened = rendered && await open(window, 'settings');
+  // Probe retained failing blobs for bounded source hashes and original decoder errors.
+  // The original model error still fails the gate even if a diagnostic decode now succeeds.
+  const textureDiagnostics = modelErrors.length ? await window.webContents.executeJavaScript(textureProbeScript(modelErrors))
+    .catch(() => [{ error: 'Texture diagnostics unavailable' }]) : [];
+
   const ok = rendered && report.desktopBridge === true && report.nodeExposed === false && String(report.host).startsWith('Desktop')
     && String(report.splashVideo).startsWith('canplay') && String(report.splashRange).startsWith('206 video/mp4')
     && officeRendered && sceneReady && modelErrors.length === 0 && office.route === 'page' && office.separateFrame === false && settingsOpened && floorViews.length === 3 && floorViews.every(Boolean);
-  console.log(JSON.stringify({ ok, rendered, ...report, office, sceneReady, modelErrors, floorViews, settingsOpened, diagnostics, screenshots }, null, 2));
+  console.log(JSON.stringify({ ok, rendered, ...report, office, sceneReady, modelErrors, textureDiagnostics, rendererErrors, floorViews, settingsOpened, diagnostics, screenshots }, null, 2));
   return ok ? 0 : 1;
 }

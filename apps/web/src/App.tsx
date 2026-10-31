@@ -10,6 +10,7 @@ import { ApprovalProvider } from './approvals/ApprovalProvider';
 import { ApprovalInboxButton } from './approvals/ApprovalInbox';
 import { resolveChat, type ChatSelection } from './chat/selection';
 import { useHostState } from './host/useHostState';
+import { HostConnectionBanner } from './host/HostConnectionBanner';
 import { showsOfficeControls } from './office/officeControls';
 import { OfficeTopbarControls } from './office/OfficeTopbarControls';
 import { MESSAGES, type PageId } from './i18n';
@@ -162,7 +163,8 @@ export function App({ platform }: { platform: Platform }) {
     },
     onOpenSettings: () => setPage('settings'),
   };
-  const banner = <UpdateBanner t={t} updater={updater} status={updateStatus} />;
+  const banner = <><UpdateBanner t={t} updater={updater} status={updateStatus} />
+    <HostConnectionBanner t={t} error={host.error} desktop={platform.info.kind === 'desktop'} onRetry={host.retry} /></>;
 
   let body;
   if (splash) {
@@ -212,11 +214,11 @@ export function App({ platform }: { platform: Platform }) {
             <span className="topbar-meta">{hostLabel} · v{platform.info.appVersion}</span>
           </header>
           <main className={`content ${activePage === 'chat' ? 'content-chat' : activePage === 'office' ? 'content-office' : ''}`} key={activePage}>
-            {activePage === 'office' && <OfficePage t={t} language={preferences.language} agents={agents} state={hostState} onState={host.apply} workspaceId={chatWorkspaceId}
+            {activePage === 'office' && <OfficePage t={t} language={preferences.language} agents={agents} hostDisconnected={Boolean(host.error)} state={hostState} onState={host.apply} workspaceId={chatWorkspaceId}
               onWorkspace={workspaceId => setSelection({ workspaceId })}
               onOpenSession={session => { setSelection({ workspaceId: session.workspaceId, sessionId: session.id }); setPage(session.control === 'observed' ? 'observe' : 'chat'); }}
               onOpenMissions={hostState?.workspaces.length ? session => { if (session) setSelection({ workspaceId: session.workspaceId, sessionId: session.id }); setPage('missions'); } : undefined}
-              onStartChat={() => setPage(!agents ? 'start' : hostState?.workspaces.length ? 'chat' : 'settings')}
+              onStartChat={() => setPage(!agents ? 'start' : 'chat')}
               onOpenSettings={() => setPage('settings')} />}
             {activePage === 'missions' && agents && hostState && (
               <MissionsPage t={t} language={preferences.language} agents={agents} state={hostState} onState={host.apply} sessionId={selection.sessionId ?? undefined}
@@ -224,7 +226,7 @@ export function App({ platform }: { platform: Platform }) {
                 onEditGate={workspaceId => { setGateFocus(workspaceId); setPage('settings'); }} />
             )}
             {activePage === 'chat' && agents && hostState && (
-              <ChatPage t={t} language={preferences.language} agents={agents} state={hostState} onState={host.apply}
+              <ChatPage t={t} language={preferences.language} agents={agents} picker={hostState.host.kind === 'desktop' ? platform.capabilities.filesystem : undefined} state={hostState} onState={host.apply}
                 selection={chatSelection} onSelect={setSelection} onOpenSettings={() => setPage('settings')} onReviewSkills={() => openSkills()} />
             )}
             {activePage === 'history' && agents && hostState && (

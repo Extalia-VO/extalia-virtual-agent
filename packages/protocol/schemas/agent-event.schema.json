@@ -1253,6 +1253,14 @@
                 "user",
                 "policy"
               ]
+            },
+            "choice": {
+              "type": "string",
+              "enum": [
+                "once",
+                "session",
+                "reject"
+              ]
             }
           }
         },

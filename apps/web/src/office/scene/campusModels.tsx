@@ -5,17 +5,17 @@ import { useSolarEnvironment } from "./Environment";
 
 /**
  * Campus models exported from Blender (tooling/blender/export-building-shell.py). They are
- * local-only, like the source avatars: git-ignored files in `apps/web/local-assets/building/`,
- * already in world coordinates. Each part falls back to its three.js version when its file is
+ * shared public assets in `apps/web/public-assets/building/`, already in world coordinates.
+ * Each part falls back to its three.js version when its file is
  * absent or fails to load; `?building=threejs` forces every backup.
  */
 export type CampusModelName = "extalia-shell" | "roof-utilities" | "roof-stair" | "elevators" | "terrace";
 
-const urls = import.meta.glob<string>("/local-assets/building/*.glb", { eager: true, query: "?url", import: "default" });
+const urls = import.meta.glob<string>("/public-assets/building/*.glb", { eager: true, query: "?url", import: "default" });
 const forceThreeJs = typeof location !== "undefined" && new URLSearchParams(location.search).get("building") === "threejs";
 
 export function campusModelUrl(name: CampusModelName): string | undefined {
-  return forceThreeJs ? undefined : urls[`/local-assets/building/${name}.glb`];
+  return forceThreeJs ? undefined : urls[`/public-assets/building/${name}.glb`];
 }
 for (const name of ["extalia-shell", "roof-utilities", "roof-stair", "elevators", "terrace"] as const) {
   const url = campusModelUrl(name);

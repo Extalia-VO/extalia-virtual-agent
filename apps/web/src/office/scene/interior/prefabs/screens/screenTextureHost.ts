@@ -34,6 +34,9 @@ const host: TextureHost<ScreenSurface, SurfaceSpec> = {
   create(spec) {
     const canvas = document.createElement('canvas');
     canvas.width = spec.pixelWidth; canvas.height = spec.pixelHeight;
+    // A CPU-backed 2D canvas: every paint is sampled for photometry (drawImage + getImageData below), and
+    // reading back a GPU-accelerated canvas stalled the WebGL frame on each repaint.
+    canvas.getContext('2d', { willReadFrequently: true });
     const texture = new CanvasTexture(canvas);
     texture.colorSpace = SRGBColorSpace;
     // Screens are tiny in the overview: mip-mapping keeps them from shimmering while the camera moves.

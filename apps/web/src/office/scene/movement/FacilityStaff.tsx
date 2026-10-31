@@ -13,7 +13,8 @@ import { doorTraffic } from '../interior/doorTrafficRegistry';
 import { visibleOnFloor, type MovementDirector } from './director';
 import { liveElevatorAccess } from './elevatorAccess';
 import { FacilityNpcDirector, type FacilityNpc } from './facilityDirector';
-import { barServicePhase, type FacilityCharacterState } from './facilityNpcs';
+import { barServicePhase, facilityAppearance, type FacilityCharacterState } from './facilityNpcs';
+import type { CharacterAppearance, CharacterAppearances } from '@extalia/core';
 import { officeNavigation } from './navGraph';
 import { bindFacilityStatus } from './facilityStatus';
 import { useHoverReveal } from '../hoverReveal';
@@ -43,9 +44,11 @@ const inView = (view: FurnishedOfficeView, low: number, high: number) => view ==
  * opens a staff card without session actions; they never appear in agent lists
  * or counters, and their speech is building flavour, styled apart from agent bubbles.
  */
-export function FacilityNpcs({ director, view, reducedMotion, language, selectedId, onSelect }: {
+export function FacilityNpcs({ director, view, reducedMotion, language, selectedId, onSelect, appearances }: {
   director: FacilityNpcDirector; view: FurnishedOfficeView; reducedMotion: boolean; language: Language;
   selectedId: string | null; onSelect: (id: string) => void;
+  /** Saved (or previewed) looks; staff keep their role uniform whatever is saved. */
+  appearances?: Readonly<CharacterAppearances> | undefined;
 }) {
   useEffect(() => { director.setReducedMotion(reducedMotion); }, [director, reducedMotion]);
   useSyncExternalStore(director.subscribe, director.version);
@@ -67,17 +70,19 @@ export function FacilityNpcs({ director, view, reducedMotion, language, selected
     servingSince={npc.brain.serving?.since ?? null} seated={npc.mover.motion.sit >= 0.5}
     shown={view === 'campus' || view === 'stack' || visibleOnFloor(npc.mover, view)}
     tagged={view !== 'campus' && inView(view, npc.mover.floorLow, npc.mover.floorHigh)}
-    selected={npc.definition.id === selectedId} onSelect={onSelect}
+    selected={npc.definition.id === selectedId} onSelect={onSelect} saved={appearances?.[npc.definition.id]}
     reducedMotion={reducedMotion} language={language} register={register} />)}</>;
 }
 
-const FacilityCharacter = memo(function FacilityCharacter({ npc, state, servingSince, seated, shown, tagged, onSelect, reducedMotion, language, register }: {
+const FacilityCharacter = memo(function FacilityCharacter({ npc, state, servingSince, seated, shown, tagged, onSelect, reducedMotion, language, register, saved }: {
   npc: FacilityNpc; state: FacilityCharacterState; servingSince: number | null; seated: boolean; shown: boolean; tagged: boolean;
+  saved?: CharacterAppearance | undefined;
   selected: boolean; onSelect: (id: string) => void;
   reducedMotion: boolean; language: Language; register: (id: string, group: Group | null) => void;
 }) {
   const { definition, mover } = npc;
   const id = definition.id;
+  const appearance = useMemo(() => facilityAppearance(definition, saved), [definition, saved]);
   const ref = useCallback((group: Group | null) => register(id, group), [register, id]);
   const t = MESSAGES[language].facility;
   const atStation = mover.seat?.seatId === definition.homeResourceId && (state === 'ON_DUTY' || state === 'SERVING');
@@ -89,7 +94,7 @@ const FacilityCharacter = memo(function FacilityCharacter({ npc, state, servingS
   const hover = useHoverReveal();
   return <group ref={ref} position={[mover.position[0], mover.position[1], mover.position[2]]} rotation={[0, mover.yaw, 0]} visible={shown}>
     <group onClick={pick} onPointerOver={event => { event.stopPropagation(); hover.enter(); }} onPointerOut={hover.leave}>
-      <CharacterBody id={id} resourceId={mover.seat?.seatId} appearance={definition.appearance} seated={seated} typing={typing} seatHeight={mover.seat?.seatHeight} seatFront={mover.seat?.seatFront}
+      <CharacterBody id={id} resourceId={mover.seat?.seatId} appearance={appearance} seated={seated} typing={typing} seatHeight={mover.seat?.seatHeight} seatFront={mover.seat?.seatFront}
         reducedMotion={reducedMotion} motion={mover.motion} desk={definition.role === 'receptionist' && atStation ? deskReachForSeat(mover.seat?.seatId) : undefined} />
     </group>
     {/* Same name-only hover label as agents: the role, on pointer hover. */}

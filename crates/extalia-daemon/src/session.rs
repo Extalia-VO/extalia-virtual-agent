@@ -22,12 +22,13 @@
 //!   [`Session::handle`] alone (no [`serve`]) runs knowledge requests inline.
 
 use std::io::{self, Read, Write};
-use std::sync::Mutex;
-use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
 use extalia_core::security::permissions;
+use extalia_core::time::now_millis;
 
 use crate::knowledge::{self, Knowledge};
 use crate::missions::{self, Missions};
@@ -41,6 +42,7 @@ use crate::wire::{
 pub const CAPABILITIES: [Op; 3] = [Op::Hello, Op::PermissionCheck, Op::Health];
 const READ_CHUNK_BYTES: usize = 64 * 1024;
 const MAX_SAFE_MS: u128 = (1 << 53) - 1;
+const REAPER_INTERVAL: Duration = Duration::from_secs(1);
 
 /// What one incoming frame produced.
 #[derive(Debug, PartialEq)]
@@ -74,7 +76,7 @@ struct KnowledgeJob {
 pub struct Session {
     started: Instant,
     handshaken: bool,
-    missions: Option<Missions>,
+    missions: Option<Arc<Mutex<Missions>>>,
     skills: Option<Skills>,
     /// The knowledge index when requests run inline; taken by [`serve`]'s knowledge thread.
     knowledge: Option<Knowledge>,
@@ -103,7 +105,7 @@ impl Session {
     /// A session that serves the slice A operations from one profile's core store.
     pub fn with_missions(missions: Missions) -> Self {
         Self {
-            missions: Some(missions),
+            missions: Some(Arc::new(Mutex::new(missions))),
             ..Self::new()
         }
     }
@@ -133,17 +135,37 @@ impl Session {
         &mut self,
         source: &std::path::Path,
     ) -> Option<Result<String, extalia_core::skills::SkillError>> {
-        match (&mut self.missions, &mut self.skills) {
-            (Some(missions), Some(skills)) => {
-                Some(skills.register_builtin(missions.store_mut(), source))
-            }
+        match (&self.missions, &mut self.skills) {
+            (Some(missions), Some(skills)) => Some(match missions.lock() {
+                Ok(mut missions) if missions.available() => {
+                    skills.register_builtin(missions.store_mut(), source)
+                }
+                _ => Err(extalia_core::skills::SkillError::Corrupt(
+                    "store_unavailable",
+                )),
+            }),
             _ => None,
         }
     }
 
     /// Hand the store back, for an explicit close after the connection ended.
     pub fn into_missions(self) -> Option<Missions> {
+        let shared = self.missions?;
+        let mutex = Arc::into_inner(shared)?;
+        Some(match mutex.into_inner() {
+            Ok(missions) => missions,
+            Err(poisoned) => {
+                let mut missions = poisoned.into_inner();
+                missions.fail();
+                missions
+            }
+        })
+    }
+
+    fn storage_available(&self) -> bool {
         self.missions
+            .as_ref()
+            .is_none_or(|missions| missions.lock().is_ok_and(|missions| missions.available()))
     }
 
     pub fn handle(&mut self, incoming: Result<Frame, Rejection>) -> Reply {
@@ -186,10 +208,17 @@ impl Session {
                     }
                     _ if !self.handshaken => Err((ErrorCode::HandshakeRequired, None)),
                     RequestParams::Health => Ok(ResponseResult::Health {
-                        status: HealthStatus::Ok,
+                        status: if self.storage_available() {
+                            HealthStatus::Ok
+                        } else {
+                            HealthStatus::Degraded
+                        },
                         uptime_ms: self.started.elapsed().as_millis().min(MAX_SAFE_MS) as u64,
                     }),
                     // The daemon is the decision point (ADR 0026); the host only enforces it.
+                    RequestParams::PermissionCheck(_) if !self.storage_available() => {
+                        Err((ErrorCode::StorageFailure, None))
+                    }
                     RequestParams::PermissionCheck(check) => Ok(ResponseResult::PermissionCheck {
                         decision: permissions::decide(
                             check.access,
@@ -199,20 +228,34 @@ impl Session {
                         ),
                     }),
                     ref params @ (RequestParams::MissionCreate(_)
+                    | RequestParams::PlanningBegin(_)
+                    | RequestParams::PlanningObserve(_)
+                    | RequestParams::PlanningInspect { .. }
                     | RequestParams::MissionSnapshot { .. }
+                    | RequestParams::MissionHeartbeat(_)
+                    | RequestParams::MissionExecutions { .. }
+                    | RequestParams::MissionRecoveryReview { .. }
+                    | RequestParams::ExecutionObserve(_)
+                    | RequestParams::ExecutionRecordLocalDrain(_)
                     | RequestParams::TaskTransition(_)
-                    | RequestParams::EventCommit(_)) => match &mut self.missions {
-                        Some(missions) => missions.handle(params).map_err(|code| (code, None)),
+                    | RequestParams::EventCommit(_)) => match &self.missions {
+                        Some(missions) => match missions.lock() {
+                            Ok(mut missions) => {
+                                missions.handle(params).map_err(|code| (code, None))
+                            }
+                            Err(_) => Err((ErrorCode::StorageFailure, None)),
+                        },
                         None => Err((ErrorCode::UnknownOp, None)),
                     },
-                    RequestParams::Skill(ref request) => {
-                        match (&mut self.missions, &mut self.skills) {
-                            (Some(missions), Some(skills)) => {
+                    RequestParams::Skill(ref request) => match (&self.missions, &mut self.skills) {
+                        (Some(missions), Some(skills)) => match missions.lock() {
+                            Ok(mut missions) if missions.available() => {
                                 skills.handle(missions.store_mut(), request)
                             }
-                            _ => Err((ErrorCode::UnknownOp, None)),
-                        }
-                    }
+                            _ => Err((ErrorCode::StorageFailure, None)),
+                        },
+                        _ => Err((ErrorCode::UnknownOp, None)),
+                    },
                     RequestParams::Knowledge(knowledge_request) => {
                         match (&mut self.knowledge, &self.knowledge_jobs) {
                             (Some(knowledge), _) => knowledge.handle(&knowledge_request),
@@ -318,13 +361,88 @@ pub fn serve<R: Read, W: Write + Send>(
     session: &mut Session,
 ) -> io::Result<Exit> {
     let output = Mutex::new(output);
+    let (stop, stopped) = mpsc::channel();
+    let missions = session.missions.as_ref().map(Arc::clone);
+    thread::scope(|scope| {
+        // Reader stays on the calling thread: stdin's lock need not be Send.
+        let reaper = match missions {
+            Some(missions) => Some(
+                thread::Builder::new()
+                    .name("mission-reaper".to_owned())
+                    .spawn_scoped(scope, move || run_reaper(missions, stopped))?,
+            ),
+            None => None,
+        };
+        let stop = ReaperStop(stop);
+        let outcome = serve_connection(input, &output, session, &stop.0);
+        stop.send();
+        if let Some(reaper) = reaper {
+            reaper
+                .join()
+                .map_err(|_| io::Error::other("the mission reaper failed"))?;
+        }
+        outcome
+    })
+}
+
+/// Wakes the reaper even if the connection path unwinds before returning.
+struct ReaperStop(Sender<()>);
+
+impl ReaperStop {
+    fn send(&self) {
+        let _ = self.0.send(());
+    }
+}
+
+impl Drop for ReaperStop {
+    fn drop(&mut self) {
+        self.send();
+    }
+}
+
+fn run_reaper(missions: Arc<Mutex<Missions>>, stop: Receiver<()>) {
+    loop {
+        match stop.recv_timeout(REAPER_INTERVAL) {
+            Ok(()) | Err(RecvTimeoutError::Disconnected) => return,
+            Err(RecvTimeoutError::Timeout) => {}
+        }
+        let mut missions = match missions.lock() {
+            Ok(missions) => missions,
+            Err(poisoned) => {
+                // Only latch refusal; never repair the poisoned lock or use its store.
+                poisoned.into_inner().fail();
+                eprintln!(
+                    "extalia-daemon: the core store lock is poisoned; mission execution fenced"
+                );
+                return;
+            }
+        };
+        match missions.reap_expired(now_millis()) {
+            Ok(report) if report.missions > 0 => eprintln!(
+                "extalia-daemon: lease reaper quarantined {} mission(s) and {} task(s); nothing is replayed",
+                report.missions, report.tasks
+            ),
+            Ok(_) => {}
+            Err(_) => return,
+        }
+    }
+}
+
+fn serve_connection<R: Read, W: Write + Send>(
+    input: R,
+    output: &Mutex<W>,
+    session: &mut Session,
+    stop: &Sender<()>,
+) -> io::Result<Exit> {
     let Some(mut knowledge) = session.knowledge.take() else {
-        return read_frames(input, &output, session);
+        let outcome = read_frames(input, output, session);
+        let _ = stop.send(());
+        return outcome;
     };
     let (jobs, queue) = mpsc::channel();
     session.knowledge_jobs = Some(jobs);
     let (outcome, worker) = thread::scope(|scope| {
-        let (index, writer) = (&mut knowledge, &output);
+        let (index, writer) = (&mut knowledge, output);
         let worker = thread::Builder::new()
             .name("knowledge".to_owned())
             .spawn_scoped(scope, move || run_knowledge(index, queue, writer));
@@ -332,7 +450,8 @@ pub fn serve<R: Read, W: Write + Send>(
             Ok(worker) => worker,
             Err(error) => return (Err(error), None),
         };
-        let outcome = read_frames(input, &output, session);
+        let outcome = read_frames(input, output, session);
+        let _ = stop.send(());
         // No further knowledge request: the thread finishes the queued ones, then ends.
         session.knowledge_jobs = None;
         (outcome, Some(worker.join()))
@@ -432,11 +551,250 @@ fn write_frame<W: Write>(output: &Mutex<W>, frame: &Frame) -> io::Result<()> {
 mod tests {
     use super::*;
     use serde_json::json;
+    use std::path::PathBuf;
+    use std::sync::atomic::{AtomicU32, Ordering};
 
     const ID: &str = "00000000-0000-4000-8000-000000000100";
 
     fn frame(value: serde_json::Value) -> Vec<u8> {
         wire::encode(&wire::parse_frame(&value).unwrap()).unwrap()
+    }
+
+    struct TempStore(PathBuf);
+
+    impl TempStore {
+        fn new() -> Self {
+            static NEXT: AtomicU32 = AtomicU32::new(0);
+            loop {
+                let root = std::env::temp_dir().join(format!(
+                    "extalia-daemon-reaper-{}-{}",
+                    std::process::id(),
+                    NEXT.fetch_add(1, Ordering::Relaxed)
+                ));
+                match std::fs::create_dir(&root) {
+                    Ok(()) => return Self(root),
+                    Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {}
+                    Err(error) => panic!("cannot create temporary store: {error}"),
+                }
+            }
+        }
+
+        fn session(&self) -> Session {
+            Session::with_missions(Missions::new(
+                extalia_core::CoreStore::open(&extalia_core::adapters::sqlite::store_path(&self.0))
+                    .unwrap(),
+                "default".to_owned(),
+            ))
+        }
+    }
+
+    impl Drop for TempStore {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    struct TestWriter {
+        fail: bool,
+    }
+
+    impl Write for TestWriter {
+        fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+            if self.fail {
+                Err(io::Error::from(io::ErrorKind::BrokenPipe))
+            } else {
+                Ok(bytes.len())
+            }
+        }
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn reaper_joins_and_releases_the_store_on_eof_fatal_frame_and_output_failure() {
+        let hello = frame(
+            json!({ "schemaVersion": 1, "kind": "request", "requestId": ID, "op": "hello", "params": { "clientVersion": "test", "capabilities": ["hello"] } }),
+        );
+        let invalid_payload = serde_json::to_vec(&json!({ "schemaVersion": 2, "kind": "request", "requestId": ID, "op": "hello", "params": { "clientVersion": "test", "capabilities": ["hello"] } })).unwrap();
+        let invalid = [
+            (invalid_payload.len() as u32).to_be_bytes().to_vec(),
+            invalid_payload,
+        ]
+        .concat();
+        for (input, fail_writer) in [(Vec::new(), false), (invalid, false), (hello, true)] {
+            let temp = TempStore::new();
+            let mut session = temp.session();
+            let outcome = serve(
+                input.as_slice(),
+                TestWriter { fail: fail_writer },
+                &mut session,
+            );
+            if fail_writer {
+                assert_eq!(outcome.unwrap_err().kind(), io::ErrorKind::BrokenPipe);
+            } else {
+                assert!(matches!(outcome.unwrap(), Exit::Eof | Exit::ProtocolError));
+            }
+            assert_eq!(
+                Arc::strong_count(session.missions.as_ref().unwrap()),
+                1,
+                "the reaper cannot retain a store lock after serve returns"
+            );
+            session
+                .into_missions()
+                .unwrap()
+                .into_store()
+                .close()
+                .unwrap();
+            let reopened =
+                extalia_core::CoreStore::open(&extalia_core::adapters::sqlite::store_path(&temp.0))
+                    .unwrap();
+            reopened.close().unwrap();
+        }
+    }
+
+    #[test]
+    fn poisoned_reaper_lock_latches_without_repair_or_panic_and_degrades_health() {
+        let temp = TempStore::new();
+        let mut session = temp.session();
+        let shared = Arc::clone(session.missions.as_ref().unwrap());
+        let poison = Arc::clone(&shared);
+        assert!(
+            thread::spawn(move || {
+                let _guard = poison.lock().unwrap();
+                panic!("synthetic core worker panic");
+            })
+            .join()
+            .is_err()
+        );
+        let (_stop, stopped) = mpsc::channel();
+        run_reaper(Arc::clone(&shared), stopped);
+        assert!(shared.is_poisoned(), "poison must never be repaired");
+        assert!(!shared.lock().unwrap_err().into_inner().available());
+        let request = |op: &str, params: serde_json::Value| {
+            Ok(wire::parse_frame(&json!({ "schemaVersion": 1, "kind": "request", "requestId": ID, "op": op, "params": params })).unwrap())
+        };
+        session.handle(request(
+            "hello",
+            json!({ "clientVersion": "test", "capabilities": ["hello"] }),
+        ));
+        assert!(matches!(
+            session.handle(request("health", json!({}))).frame,
+            Some(Frame::Response(Response {
+                result: ResponseResult::Health {
+                    status: HealthStatus::Degraded,
+                    ..
+                },
+                ..
+            }))
+        ));
+        assert!(matches!(
+            session
+                .handle(request("mission.snapshot", json!({ "missionId": ID })))
+                .frame,
+            Some(Frame::Error(ErrorFrame {
+                code: ErrorCode::StorageFailure,
+                ..
+            }))
+        ));
+        assert!(matches!(session.handle(request("permission.check", json!({ "access": "read", "mode": "workspace", "workspacePermissions": { "fileWrite": "ask", "commands": "ask" }, "sessionGrants": [] }))).frame, Some(Frame::Error(ErrorFrame { code: ErrorCode::StorageFailure, .. }))));
+        drop(shared);
+        session
+            .into_missions()
+            .unwrap()
+            .into_store()
+            .close()
+            .unwrap();
+    }
+
+    #[test]
+    fn knowledge_output_failure_cannot_disable_reaping_while_input_remains_open() {
+        struct BrokenWriter(Sender<()>);
+        impl Write for BrokenWriter {
+            fn write(&mut self, _bytes: &[u8]) -> io::Result<usize> {
+                let _ = self.0.send(());
+                Err(io::Error::from(io::ErrorKind::BrokenPipe))
+            }
+            fn flush(&mut self) -> io::Result<()> {
+                Ok(())
+            }
+        }
+        let temp = TempStore::new();
+        let mut session = temp
+            .session()
+            .with_knowledge(Knowledge::new(&temp.0, "default"));
+        let request = |op: &str, params: serde_json::Value| {
+            Ok(wire::parse_frame(&json!({ "schemaVersion": 1, "kind": "request", "requestId": ID, "op": op, "params": params })).unwrap())
+        };
+        session.handle(request(
+            "hello",
+            json!({ "clientVersion": "test", "capabilities": ["hello"] }),
+        ));
+        let mission = "00000000-0000-4000-8000-000000000200";
+        let task = "00000000-0000-4000-8000-000000000201";
+        let worker = "00000000-0000-4000-8000-000000000202";
+        let created = session.handle(request("mission.create", json!({
+            "mission": { "schemaVersion": 1, "id": mission, "workspaceId": ID, "leadAgentId": worker, "budgetId": ID,
+                "state": "queued", "createdAt": "2026-10-22T11:00:00.000Z", "updatedAt": "2026-10-22T11:00:00.000Z", "version": 1 },
+            "graph": { "schemaVersion": 1, "missionId": mission, "tasks": [{ "schemaVersion": 1, "id": task, "missionId": mission,
+                "dependsOn": [], "assignedAgentId": worker, "state": "queued", "attempt": 0, "requirements": ["Read only"], "evidenceIds": [] }] }
+        })));
+        assert!(matches!(created.frame, Some(Frame::Response(_))));
+        let running = session.handle(request("task.transition", json!({ "missionId": mission, "taskId": task, "eventId": ID, "from": "queued", "to": "running" })));
+        assert!(matches!(running.frame, Some(Frame::Response(_))));
+        let conn = rusqlite::Connection::open(extalia_core::adapters::sqlite::store_path(&temp.0))
+            .unwrap();
+        let acquired: String = conn
+            .query_row(
+                "SELECT acquired_at FROM leases WHERE task_id = ?1",
+                [task],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let expiry =
+            extalia_core::time::format_utc(extalia_core::time::parse_utc(&acquired).unwrap() + 1);
+        conn.execute(
+            "UPDATE leases SET expires_at = ?1 WHERE task_id = ?2",
+            [&expiry, task],
+        )
+        .unwrap();
+        let (input, mut writer) = std::io::pipe().unwrap();
+        let (broken, broken_rx) = mpsc::channel();
+        let server = thread::spawn(move || {
+            let outcome = serve(input, BrokenWriter(broken), &mut session);
+            (outcome, session)
+        });
+        writer.write_all(&frame(json!({ "schemaVersion": 1, "kind": "request", "requestId": ID, "op": "knowledge.status", "params": {} }))).unwrap();
+        broken_rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("knowledge worker attempted its reply");
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            let state: String = conn
+                .query_row(
+                    "SELECT state FROM missions WHERE mission_id = ?1",
+                    [mission],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            if state == "recovering" {
+                break;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "knowledge output failure stopped the live reaper"
+            );
+            thread::sleep(Duration::from_millis(10));
+        }
+        drop(writer);
+        let (outcome, session) = server.join().unwrap();
+        assert_eq!(outcome.unwrap_err().kind(), io::ErrorKind::BrokenPipe);
+        session
+            .into_missions()
+            .unwrap()
+            .into_store()
+            .close()
+            .unwrap();
     }
 
     #[test]

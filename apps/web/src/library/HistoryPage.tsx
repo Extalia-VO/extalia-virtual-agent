@@ -8,6 +8,7 @@ import { Segmented } from '../ui/Segmented';
 import { ContinueInExtalia } from './ContinueInExtalia';
 import { countByState, groupLibrary } from './library';
 import { LibraryTranscript } from './LibraryTranscript';
+import { MessageFileProvider } from '../chat/MessageFilePreview';
 
 type Loaded = { id: string; session?: LibrarySession; error?: string };
 
@@ -94,7 +95,9 @@ function Viewer({ t, language, agents, state, summary, onState, onClose, onConti
       )}
       {!current ? <p className="muted" role="status">{t.common.loading}</p>
         : current.error ? <p className="form-error"><Icon name="alert" />{t.history.loadFailed} {current.error}</p>
-          : current.session && <LibraryTranscript t={t} messages={current.session.messages} />}
+          : current.session && <MessageFileProvider key={summary.id} t={t} agents={agents} workspaces={state.workspaces} projectPath={summary.projectLocation}>
+              <LibraryTranscript t={t} messages={current.session.messages} />
+            </MessageFileProvider>}
     </article>
   );
 }

@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { Markdown } from '../chat/Markdown';
 import type { Messages } from '../i18n';
 import { Icon } from '../ui/Icon';
+import { UserMessage } from '../chat/UserMessage';
 
 const LIMIT = 200;
 
@@ -30,7 +31,7 @@ export function LibraryTranscript({ t, messages }: { t: Messages; messages: read
         {shown.map(message => {
           switch (message.role) {
             case 'user':
-              return <li key={message.index} className="msg user"><span className="visually-hidden">{t.history.roles.user}: </span><div className="bubble">{message.content}</div></li>;
+              return <UserMessage key={message.index} t={t} item={{ kind: 'user', id: `library-${message.index}`, text: message.content, at: message.createdAt }} />;
             case 'assistant':
               return <li key={message.index} className="msg assistant"><span className="visually-hidden">{t.history.roles.assistant}: </span><Markdown text={message.content} /></li>;
             default:

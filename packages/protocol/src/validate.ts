@@ -73,7 +73,7 @@ export const EVENT_SPECS: Readonly<Record<EventType, BodySpec>> = {
   'task.progress': { fields: { progress: ratio, summary: optLabel }, requires: ['taskId'] },
   'task.completed': { fields: { ok: bool, summary: optText }, requires: ['taskId'] },
   'approval.requested': { fields: { approvalId: id, action: label, detail: optText, risk: { kind: 'enum', values: ['low', 'medium', 'high'], optional: true } } },
-  'approval.resolved': { fields: { approvalId: id, decision: { kind: 'enum', values: ['granted', 'rejected'] }, by: { kind: 'enum', values: ['user', 'policy'] } } },
+  'approval.resolved': { fields: { approvalId: id, decision: { kind: 'enum', values: ['granted', 'rejected'] }, by: { kind: 'enum', values: ['user', 'policy'] }, choice: { kind: 'enum', values: ['once', 'session', 'reject'], optional: true } } },
   'git.status': { fields: { changedFiles: { kind: 'number', integer: true, min: 0 }, branch: optLabel, ahead: optCount, behind: optCount } },
   'git.commit': { fields: { sha: { kind: 'id' }, message: optText } },
   'git.push': { fields: { ok: bool, remote: optLabel, branch: optLabel } },

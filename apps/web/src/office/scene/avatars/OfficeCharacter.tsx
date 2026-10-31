@@ -23,6 +23,7 @@ import { Bag, Earrings, Hand, HairStyle, Limb } from './CharacterParts';
 import { HumanoidFace } from './HumanoidFace';
 import { DetailedShoe, GarmentDetails, GarmentTorso, resolveWardrobe, SkirtDrape, SkirtYoke, SleeveCuff } from './AvatarWardrobe';
 import { SourceHumanoid } from './SourceHumanoid';
+import { SourcePieceAssets } from './SourcePieceAssets';
 import { SourceAvatarBoundary } from './SourceAvatarBoundary';
 import { sourceHairAsset } from './hairAssets';
 import { sourceAvatarUrls } from './sourceAssets';
@@ -319,14 +320,16 @@ export function CharacterBody({ id, appearance, presentation, seated, typing, se
     // Keep per-URL caches: different hairstyles still share the same body asset.
     useGLTF.preload(sourceUrls.body, false, false);
     useGLTF.preload(sourceUrls.hair, false, false);
+    if (sourceUrls.outfit) useGLTF.preload(sourceUrls.outfit, false, false);
+    for (const url of Object.values(sourceUrls.parts ?? {})) if (url) useGLTF.preload(url, false, false);
   }, [sourceUrls]);
   const fallback = <CharacterMesh visual={visual} seated={seated} typing={typing} seatHeight={seatHeight} seatFront={seatFront} reducedMotion={reducedMotion} motion={motion} desk={desk} resourceId={resourceId} expressionId={expressionId} expressionState={expressionState} />;
   // Show one body style: wait for selected source assets; use the procedural
   // character only when sources are absent or fail, not as a loading placeholder.
   return sourceUrls
-    ? <SourceAvatarBoundary key={`${sourceUrls.body}|${sourceUrls.hair}`} fallback={fallback}>
+    ? <SourceAvatarBoundary key={`${sourceUrls.body}|${sourceUrls.hair}|${sourceUrls.outfit ?? ''}|${JSON.stringify(sourceUrls.parts)}`} fallback={fallback}>
       <Suspense fallback={null}>
-        <SourceHumanoid visual={visual} urls={sourceUrls} seated={seated} typing={typing} reducedMotion={reducedMotion} seatHeight={seatHeight} seatFront={seatFront} motion={motion} desk={desk} resourceId={resourceId} expressionId={expressionId} expressionState={expressionState} />
+        <SourcePieceAssets urls={sourceUrls.parts}>{pieces => <SourceHumanoid pieces={pieces} visual={visual} urls={sourceUrls} seated={seated} typing={typing} reducedMotion={reducedMotion} seatHeight={seatHeight} seatFront={seatFront} motion={motion} desk={desk} resourceId={resourceId} expressionId={expressionId} expressionState={expressionState} />}</SourcePieceAssets>
       </Suspense>
     </SourceAvatarBoundary>
     : fallback;

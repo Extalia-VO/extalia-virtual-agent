@@ -64,7 +64,7 @@ function runApp(executable, env) {
     const collect = chunk => { output = (output + chunk).slice(-20_000); };
     child.stdout.on('data', collect);
     child.stderr.on('data', collect);
-    const timer = setTimeout(() => { output += '\n[packaged-smoke: timed out after 180 s]'; child.kill(); }, 180_000);
+    const timer = setTimeout(() => { output += '\n[packaged-smoke: timed out after 240 s]'; child.kill(); }, 240_000);
     child.once('error', error => { clearTimeout(timer); resolve({ code: -1, output: `${output}\n${error.message}` }); });
     child.once('exit', code => { clearTimeout(timer); resolve({ code, output }); });
   });

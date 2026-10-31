@@ -2,6 +2,7 @@
 import type { CharacterBottom, CharacterTop } from "@extalia/core";
 import { humanoidInstanceSeed } from "./rig";
 import { SEEDED_OUTFITS, type AvatarOutfitStyle, type AvatarVisualConfig } from "./appearance";
+import { seededPalette, staffRoleOfModel } from "./outfitCatalog";
 
 export interface ResolvedWardrobe {
   outfit: AvatarOutfitStyle;
@@ -70,8 +71,12 @@ export function resolveWardrobe(visual: AvatarVisualConfig, seed: number): Resol
   const outfit = clothing?.style ?? (legacyLayer?.includes("executive") ? "executive" : SEEDED_OUTFITS[seed % SEEDED_OUTFITS.length] ?? "business-casual");
   // Procedural/portrait fallbacks use the existing executive cut for source garments.
   const preset = AVATAR_OUTFIT_CATALOG.find(item => item.style === (outfit === "source-outfit" ? "executive" : outfit)) ?? AVATAR_OUTFIT_CATALOG[0]!;
-  const seeded = PALETTES[seed % PALETTES.length]!;
-  const palette = preset.palette ?? { ...seeded, trim: "#b9b3a6" };
+  // Tasteful per-zone palettes, picked per identity from the outfit's family (office or casual).
+  const zones = outfit === "source-outfit" ? PALETTES[seed % PALETTES.length]! : (() => {
+    const pick = seededPalette(visual.identityId, outfit, clothing?.model);
+    return { top: pick.top, bottom: pick.bottom, jacket: pick.outer, accent: pick.accent };
+  })();
+  const palette = preset.palette && !clothing?.model ? preset.palette : { ...zones, trim: "#b9b3a6" };
   const layer = legacyLayer === "none" ? "none" : legacyLayer?.includes("vest") ? "vest"
     : legacyLayer?.includes("cardigan") ? "cardigan" : legacyLayer?.includes("coat") ? "coat"
     : legacyLayer && !legacyLayer.startsWith("#") ? "blazer" : preset.layer;
@@ -109,6 +114,9 @@ export function resolveWardrobe(visual: AvatarVisualConfig, seed: number): Resol
   };
 }
 
+/** Mesh name of an attached fitted outfit model (it shares the `ScanOutfit` slot rules). */
+export const SCAN_OUTFIT_MODEL = "ScanOutfitModel";
+
 /** Outfit styles that wear the casual scanned outfit when a body ships one. */
 const CASUAL_STYLES: ReadonlySet<AvatarOutfitStyle> = new Set(["casual", "technical", "creative"]);
 
@@ -117,7 +125,9 @@ const CASUAL_STYLES: ReadonlySet<AvatarOutfitStyle> = new Set(["casual", "techni
  * accessory meshes (`Acc*`). The look's outfit style picks one outfit; casual styles wear the
  * casual one when the body has it, everything else the office one.
  */
-export function scanOutfitSlot(outfit: AvatarOutfitStyle, slots: ReadonlySet<string>): string | undefined {
+export function scanOutfitSlot(outfit: AvatarOutfitStyle, slots: ReadonlySet<string>, model?: string): string | undefined {
+  // A fitted outfit model is attached to the body as `ScanOutfitModel` once it has loaded.
+  if (model && slots.has(SCAN_OUTFIT_MODEL)) return SCAN_OUTFIT_MODEL;
   if (CASUAL_STYLES.has(outfit) && slots.has("ScanOutfitCasual")) return "ScanOutfitCasual";
   if (slots.has("ScanOutfit")) return "ScanOutfit";
   return [...slots].find(slot => slot.startsWith("ScanOutfit"));
@@ -127,12 +137,14 @@ export function scanOutfitSlot(outfit: AvatarOutfitStyle, slots: ReadonlySet<str
  * The accessory meshes a look wears on a local Blender body. The watch sits on the bare wrist, so it
  * shows only with an outfit that leaves the forearm bare (the casual one, sleeves rolled).
  */
-export function scanAccessorySlots(accessories: AvatarVisualConfig["accessories"], outfitSlot?: string): Set<string> {
+export function scanAccessorySlots(accessories: AvatarVisualConfig["accessories"], outfitSlot?: string, model?: string): Set<string> {
   const worn = new Set<string>();
+  // Staff uniforms carry their own name badge on the lapel.
+  const ownBadge = outfitSlot === SCAN_OUTFIT_MODEL && staffRoleOfModel(model) !== undefined;
   if (accessories?.glasses) worn.add("AccGlasses");
   if (accessories?.watch && outfitSlot === "ScanOutfitCasual") worn.add("AccWatch");
   if (accessories?.earrings) worn.add("AccEarrings");
-  if (accessories?.badge) worn.add("AccBadge");
+  if (accessories?.badge && !ownBadge) worn.add("AccBadge");
   if (accessories?.headphones) worn.add("AccHeadphones");
   return worn;
 }

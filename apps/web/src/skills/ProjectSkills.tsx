@@ -6,8 +6,8 @@ import { Icon } from '../ui/Icon';
 import { useSkillRegistryMode } from './skillCenterModel';
 
 /**
- * W0 project-skill consent: a workspace's `.extalia/skills/<skill>/SKILL.md` files reach the agent only after the
- * user allows them, bound to each file's SHA-256. The sections live on the Skills page, one per workspace; Settings
+ * Legacy project review input is bound to each file's SHA-256; it never bypasses
+ * the mandatory scanner/registry gate. The sections live on the Skills page, one per workspace; Settings
  * and Chat show a short "waiting for review" link that opens that page on the workspace.
  */
 
@@ -137,6 +137,7 @@ export function ProjectSkillsView({ t, workspaceId, title, report, busy, error, 
     <section className="project-skills" id={id} aria-labelledby={`${id}-title`}>
       <h3 id={`${id}-title`} tabIndex={-1}><Icon name={title ? 'folder' : 'book'} />{title ?? s.title}</h3>
       {!title && <p className="muted small">{s.lead}</p>}
+      <p className="note small">{s.scannerRequired}</p>
 
       {report.pending.length > 0 && (
         <div className="project-skills-group">
@@ -158,7 +159,7 @@ export function ProjectSkillsView({ t, workspaceId, title, report, busy, error, 
                     <code title={s.sourceTitle}>{s.sourcePath(skill.name)}</code>{' · '}{hash(skill.sha256)}
                   </span>
                 </div>
-                <button type="button" className="button small primary" disabled={busy} aria-label={s.allowLabel(skill.name)}
+                <button type="button" className="button small" disabled={busy} aria-label={s.allowLabel(skill.name)}
                   onClick={() => onAllow([{ name: skill.name, sha256: skill.sha256 }])}>{s.allow}</button>
               </li>
             ))}

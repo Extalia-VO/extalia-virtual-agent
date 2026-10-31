@@ -1,3 +1,4 @@
+import { skillRoutingParams, skillRoutingResult } from './daemonSkillRoutingRules.js';
 /**
  * Validator rules of the skill registry operations (`daemonSkills.ts`). Internal to the
  * package: `daemonValidate.ts` merges them into the daemon frame rules and `$defs`.
@@ -10,6 +11,7 @@ import {
   SKILL_WORKSPACE_ID_PATTERN, type DaemonSkillOp,
 } from './daemonSkills.js';
 import { NONBLANK_PATTERN, schemaRef, type JsonSchema } from './jsonSchema.js';
+import { skillPreflightParams, skillPreflightResult } from './daemonSkillPreflightRules.js';
 import {
   array, boolean, count, digest, enumeration, fail, literal, number, object, optional, positive, rule, text, timestamp, withSchema,
   type Rule,
@@ -66,6 +68,8 @@ const activation = def('SkillActivationResult', object({ packageId: packageId.re
 const decision = enumeration(SKILL_REVIEW_DECISIONS);
 
 export const SKILL_PARAMS: Record<DaemonSkillOp, Rule> = {
+  'skill.preflight': skillPreflightParams,
+  'skill.routingPreview': skillRoutingParams,
   'skill.import': object({ origin: enumeration(SKILL_IMPORT_ORIGINS), path: skillPath.ref, sourceRef: optional(text(DAEMON_SKILL_LIMITS.sourceRef)) }),
   'skill.list': object({
     cursor: optional(matching(SKILL_LIST_CURSOR_PATTERN, 'expected a cursor from a previous page')),
@@ -84,6 +88,8 @@ export const SKILL_PARAMS: Record<DaemonSkillOp, Rule> = {
   'skill.scanner': object({}),
 };
 export const SKILL_RESULTS: Record<DaemonSkillOp, Rule> = {
+  'skill.preflight': skillPreflightResult,
+  'skill.routingPreview': skillRoutingResult,
   'skill.import': object({
     packageId: packageId.ref, revisionId: revisionId.ref, treeSha256: digest, version: text(128), state: state.ref, stateReason: optional(skillReason.ref), created: boolean,
   }),

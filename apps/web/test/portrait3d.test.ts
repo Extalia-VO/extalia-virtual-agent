@@ -87,7 +87,7 @@ describe('shared portrait renderer lifecycle', () => {
   }
 
   function renderedEntries() {
-    return fiber.render.mock.lastCall?.[0].props.entries as Array<{ targets: Set<unknown>; scene: { add: (mesh: Mesh) => void } }>;
+    return fiber.render.mock.lastCall?.[0].props.entries as Array<{ targets: Set<unknown>; scene: { add: (mesh: Mesh) => void }; subject: { appearance?: unknown } }>;
   }
 
   function runFrame(time: number) {
@@ -123,6 +123,32 @@ describe('shared portrait renderer lifecycle', () => {
     await show(c.handle);
     expect(fiber.createRoot).toHaveBeenCalledTimes(1);
     expect(renderedEntries()).toHaveLength(2);
+  });
+
+  it('skips refreshes for equivalent subject references and refreshes changed visible subjects', async () => {
+    const a = await attach();
+    await show(a.handle);
+    const original = { characterId: 'presence-a' };
+    fiber.render.mockClear();
+    a.handle.update({ ...original });
+    expect(fiber.render).not.toHaveBeenCalled();
+
+    const appearance = defaultCharacterAppearance('presence-a');
+    a.handle.update({ ...original, appearance });
+    expect(fiber.render).toHaveBeenCalledTimes(1);
+    expect(renderedEntries()[0]!.subject.appearance).toBe(appearance);
+  });
+
+  it('stores hidden subject changes without rendering until the target becomes visible', async () => {
+    const a = await attach();
+    const appearance = defaultCharacterAppearance('presence-a');
+    fiber.render.mockClear();
+    a.handle.update({ characterId: 'presence-a', appearance });
+    expect(fiber.render).not.toHaveBeenCalled();
+
+    await show(a.handle);
+    expect(fiber.render).toHaveBeenCalled();
+    expect(renderedEntries()[0]!.subject.appearance).toBe(appearance);
   });
 
   it('unmounts invisible scenes, pauses a hidden document and releases the final context', async () => {
@@ -197,7 +223,7 @@ describe('shared portrait renderer lifecycle', () => {
     expect(fiber.advance).toHaveBeenCalledTimes(3);
     const third = fiber.advance.mock.lastCall![0] as number;
     expect(third - second).toBeCloseTo(.0833333333, 6);
-    a.handle.update({ characterId: 'presence-a' });
+    a.handle.update({ characterId: 'presence-a', appearance: defaultCharacterAppearance('presence-a') });
     runFrame(310);
     expect(fiber.advance).toHaveBeenCalledTimes(4);
     expect((fiber.advance.mock.lastCall![0] as number) - third).toBeCloseTo(.01, 6);

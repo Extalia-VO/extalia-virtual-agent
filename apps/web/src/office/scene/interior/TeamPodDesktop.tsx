@@ -3,7 +3,7 @@ import type { Group, Mesh } from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { createTeamPodDesktopGeometry, createTeamPodDividerGeometry, TEAM_POD_DESKTOP as PROFILE } from './teamPodDesktopGeometry';
 
-const urls = import.meta.glob<string>('/local-assets/furniture/team-pod-desktop.glb', { eager: true, query: '?url', import: 'default' });
+const urls = import.meta.glob<string>('/public-assets/furniture/team-pod-desktop.glb', { eager: true, query: '?url', import: 'default' });
 const forceProcedural = typeof location !== 'undefined' && new URLSearchParams(location.search).get('desks') === 'procedural';
 let model: Group | null = null;
 let requested = false;
@@ -12,13 +12,13 @@ const subscribe = (listener: () => void) => { listeners.add(listener); return ()
 const snapshot = () => model;
 
 async function load(): Promise<void> {
-  const url = forceProcedural ? undefined : urls['/local-assets/furniture/team-pod-desktop.glb'];
+  const url = forceProcedural ? undefined : urls['/public-assets/furniture/team-pod-desktop.glb'];
   if (!url || requested) return;
   requested = true;
   try {
     const gltf = await new GLTFLoader().loadAsync(url);
     if (gltf.scene.getObjectByName('TeamPodDesktop')) model = gltf.scene;
-  } catch { /* Missing or broken local models retain the contour-matched backup. */ }
+  } catch { /* Missing or broken models retain the contour-matched backup. */ }
   listeners.forEach(listener => listener());
 }
 

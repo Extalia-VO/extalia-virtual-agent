@@ -8,7 +8,7 @@ import type { JsonSchema } from '../src/index.js';
 const ANNOTATIONS = new Set(['$schema', '$id', 'title', 'description', '$comment', '$defs']);
 export const SUPPORTED_KEYWORDS = new Set([
   ...ANNOTATIONS, '$ref', 'type', 'const', 'enum', 'pattern', 'minLength', 'maxLength', 'minimum', 'maximum',
-  'items', 'minItems', 'maxItems', 'uniqueItems', 'properties', 'required', 'additionalProperties',
+  'items', 'minItems', 'maxItems', 'uniqueItems', 'properties', 'required', 'additionalProperties', 'maxProperties', 'propertyNames',
   'dependentRequired', 'allOf', 'oneOf', 'not', 'if', 'then',
 ]);
 
@@ -67,11 +67,14 @@ export function validateJsonSchema(schema: JsonSchema, value: unknown, root: Jso
     if (s.items !== undefined && !value.every(item => sub(s.items, item))) return false;
   }
   if (isObject(value)) {
+    if (typeof s.maxProperties === 'number' && Object.keys(value).length > s.maxProperties) return false;
     const properties = (s.properties ?? {}) as Record<string, unknown>;
     if (Array.isArray(s.required) && !s.required.every(key => Object.hasOwn(value, key as string))) return false;
     for (const [key, item] of Object.entries(value)) {
+      if (s.propertyNames !== undefined && !sub(s.propertyNames, key)) return false;
       if (Object.hasOwn(properties, key)) { if (!sub(properties[key], item)) return false; }
       else if (s.additionalProperties === false) return false;
+      else if (typeof s.additionalProperties === 'object' && !sub(s.additionalProperties, item)) return false;
     }
     for (const [key, needs] of Object.entries((s.dependentRequired ?? {}) as Record<string, string[]>)) {
       if (Object.hasOwn(value, key) && !needs.every(other => Object.hasOwn(value, other))) return false;

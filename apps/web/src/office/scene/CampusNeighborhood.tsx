@@ -17,11 +17,10 @@ const ROAD_THICK = 0.03;
 const ROAD_TONE = "#3b4248";
 const DASH_TONE = "#e6e1d2";
 
-// The west parking entrance meets the former front carriageway at z=-28.5.
-// One ramp links the plinth top (-0.23) to the city avenue; unused stubs stay removed.
+// Both parking accesses meet the flanking avenues at z=-28.5. Their eased ramps, kerb returns and
+// footway crossings are Blender-authored (campus-parking.glb, drawn by CampusParking); the avenue
+// footways leave the same gap for them as for the pedestrian ramps at z=±35.
 const CAMPUS_ROAD_Z = 28.5;
-const CAMPUS_ROAD_END_X = 52;
-const CAMPUS_ROAD_TOP = -0.23;
 const CAMPUS_ROAD_WIDTH = 8;
 
 // City-grid streets (CampusSkyline: BLOCK 24, offset 12) that the neighborhood
@@ -136,30 +135,6 @@ function InstanceSlabs({ name, slabs }: { name: string; slabs: readonly Slab[] }
       <boxGeometry args={[1, 1, 1]} />
       <meshStandardMaterial color="#ffffff" roughness={0.95} />
     </instancedMesh>
-  );
-}
-
-/** The single parking access ramp joins the plinth to the west avenue. */
-function CampusRoadRamps() {
-  const run = AVENUE_X - STREET / 2 - CAMPUS_ROAD_END_X;
-  const drop = CAMPUS_ROAD_TOP - ROAD_TOP;
-  const length = Math.hypot(run, drop);
-  const slope = Math.atan2(drop, run);
-  const centreY = (CAMPUS_ROAD_TOP + ROAD_TOP) / 2 - ROAD_THICK;
-  return (
-    <group name="neighborhood-campus-ramps">
-      {[-1].flatMap((side) => [-CAMPUS_ROAD_Z].map((z) => (
-        <mesh
-          key={`${side}:${z}`}
-          receiveShadow
-          position={[side * (CAMPUS_ROAD_END_X + run / 2), centreY, z]}
-          rotation={[0, 0, -side * slope]}
-        >
-          <boxGeometry args={[length + 0.4, ROAD_THICK * 2, CAMPUS_ROAD_WIDTH]} />
-          <meshStandardMaterial color={ROAD_TONE} roughness={0.95} />
-        </mesh>
-      )))}
-    </group>
   );
 }
 
@@ -285,7 +260,6 @@ export function CampusNeighborhood() {
       <InstanceSlabs name="neighborhood-roads" slabs={roads} />
       <InstanceSlabs name="neighborhood-road-markings" slabs={dashes} />
       <InstanceSlabs name="neighborhood-city-walks" slabs={walks} />
-      <CampusRoadRamps />
       <CampusParking />
       <CampusTraffic />
       <CityWalkRamps />

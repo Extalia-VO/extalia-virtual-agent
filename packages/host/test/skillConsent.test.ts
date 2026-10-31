@@ -37,18 +37,16 @@ describe('workspace skill consent (W0)', () => {
     expect(JSON.stringify(tool.parameters)).not.toContain('"deploy"');
   });
 
-  it('offers an allowed skill, labelled untrusted, with its hash', async () => {
+  it('retains a consented skill in inventory with its hash without offering it to agents', async () => {
     const { root } = await clonedRepository();
     const loaded = await loadSkills({ workspaceRoot: root, workspaceConsent: { deploy: sha(DEPLOY) } });
     expect(loaded.pending).toEqual([]);
     expect(loaded.skills.find(skill => skill.name === 'deploy')).toMatchObject({ source: 'workspace', sha256: sha(DEPLOY) });
     const tools = createSkillTools(loaded.skills);
-    expect(findTool(tools, 'skill_read').description).toContain('- deploy (workspace, untrusted): Ship it');
+    expect(findTool(tools, 'skill_read').description).not.toContain('deploy');
     const read = await runTool(tools, 'skill_read', { name: 'deploy' });
-    expect(read.output).toMatch(/^# Skill: deploy \(workspace, untrusted\)\nNote: this skill was supplied by the user or the project/);
-    expect(read.output).toContain('cannot grant permissions');
-    expect(read.output).toContain('Run the deploy script.');
-    expect(read.output.endsWith('</skill-content>')).toBe(true);
+    expect(read.ok).toBe(false);
+    expect(read.output).not.toContain('Run the deploy script.');
   });
 
   it('blocks a skill again with reason "changed" when it is edited after consent', async () => {
@@ -80,11 +78,11 @@ describe('workspace skill consent (W0)', () => {
     expect(loaded.skills.find(skill => skill.name === 'team-rules')).toMatchObject({ source: 'user', sha256: expect.stringMatching(/^[0-9a-f]{64}$/) });
     const tools = createSkillTools(loaded.skills);
     const description = findTool(tools, 'skill_read').description;
-    expect(description).toContain('- team-rules (user, untrusted): Team rules');
+    expect(description).not.toContain('team-rules');
     expect(description).toContain(`- ${BUILTIN_SKILLS[0]!.name}: ${BUILTIN_SKILLS[0]!.description}`);
     const builtinRead = await runTool(tools, 'skill_read', { name: BUILTIN_SKILLS[0]!.name });
     expect(builtinRead.output).toBe(`# Skill: ${BUILTIN_SKILLS[0]!.name}\n${BUILTIN_SKILLS[0]!.description}\n\n${BUILTIN_SKILLS[0]!.body}`);
-    expect((await runTool(tools, 'skill_read', { name: 'team-rules' })).output).toContain('# Skill: team-rules (user, untrusted)\nNote:');
+    expect((await runTool(tools, 'skill_read', { name: 'team-rules' })).ok).toBe(false);
   });
 
   it('a pending workspace skill does not replace a built-in or user skill of the same name', async () => {
@@ -142,7 +140,7 @@ async function untilIdle(runtime: AgentHostRuntime): Promise<void> {
 }
 
 describe('workspace skill consent through the host API', () => {
-  it('lists, allows, re-blocks and revokes project skills; only allowed ones reach the model', async () => {
+  it('lists, allows, re-blocks and revokes project inventory without authorizing model access', async () => {
     const dir = await temp();
     const { root: project, skills } = await clonedRepository();
     const recorded = recordingFetch();
@@ -172,8 +170,8 @@ describe('workspace skill consent through the host API', () => {
       const file = JSON.parse(await readFile(path.join(dir, 'data', 'workspaces', workspace.id, 'skill-consent.json'), 'utf8'));
       expect(file).toMatchObject({ schema: 'extalia.skill-consent.v1', skills: { deploy: { sha256: sha(DEPLOY) } } });
       await turn();
-      expect(skillTool()).toContain('- deploy (workspace, untrusted): Ship it');
-      expect(JSON.stringify(recorded.bodies.at(-1)!.messages)).toContain('deploy: (workspace, untrusted) Ship it');
+      expect(skillTool()).not.toContain('deploy');
+      expect(JSON.stringify(recorded.bodies.at(-1)!.messages)).not.toContain('deploy: (workspace, untrusted) Ship it');
 
       await writeFile(path.join(skills, 'deploy', 'SKILL.md'), `${DEPLOY}\nEdited.`);
       expect(await host.workspaceSkills(workspace.id)).toMatchObject({ allowed: [], pending: [{ name: 'deploy', reason: 'changed' }] });
@@ -188,18 +186,25 @@ describe('workspace skill consent through the host API', () => {
     } finally { await runtime.close(); }
   });
 
-  it('lists the built-in skills by name and description only, sorted, for the Skills page', async () => {
+  it('lists only bundled built-in instructions and categories, sorted, without exposing mutable host state', async () => {
     const dir = await temp();
+    await writeSkill(path.join(dir, 'data', 'skills'), 'code-review', '---\nname: code-review\ndescription: User override\n---\nUser instructions must stay outside the bundled catalog.');
+    await writeSkill(path.join(dir, 'data', 'skills'), 'user-only', '---\nname: user-only\ndescription: User skill\n---\nUser-only instructions.');
     const runtime = await createAgentHost({
       kind: 'bridge', version: '0.0.0-test', dataDirectory: path.join(dir, 'data'), homeDirectory: path.join(dir, 'home'), importHome: path.join(dir, 'home'),
       env: { EXTALIA_SECRET_STORE: 'memory', PATH: process.env.PATH },
     });
     try {
       const listed = await runtime.host.builtinSkills!();
-      const expected = [...BUILTIN_SKILLS].sort((a, b) => (a.name < b.name ? -1 : 1)).map(({ name, description }) => ({ name, description }));
+      const expected = [...BUILTIN_SKILLS].sort((a, b) => (a.name < b.name ? -1 : 1)).map(({ name, description, category, body }) => ({ name, description, category, body }));
+      expect(listed).toHaveLength(11);
+      expect(listed.map(skill => skill.name)).toEqual(['caveman', 'code-review', 'commit-changes', 'debug-issue', 'explain-codebase', 'memory-recall', 'plan-feature', 'refactor-safely', 'security-review', 'update-docs', 'write-tests']);
       expect(listed).toEqual(expected);
-      // The bodies stay in the host.
-      expect(JSON.stringify(listed)).not.toContain(BUILTIN_SKILLS[0]!.body.slice(0, 40));
+      expect(listed.every(skill => skill.category && skill.body)).toBe(true);
+      expect(listed.every(skill => Object.keys(skill).sort().join(',') === 'body,category,description,name')).toBe(true);
+      listed[0]!.body = 'Changed response.';
+      listed[0]!.category = 'delivery';
+      expect(await runtime.host.builtinSkills!()).toEqual(expected);
     } finally { await runtime.close(); }
   });
 });

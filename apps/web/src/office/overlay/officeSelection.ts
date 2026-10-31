@@ -4,7 +4,7 @@
  * the agents board; opening the dialog collapses the board and closing it puts
  * the board back the way it was.
  */
-export type SessionDialogTab = 'messages' | 'activity';
+export type SessionDialogTab = 'messages' | 'activity' | 'files';
 
 export interface SessionDialogState {
   sessionId: string;

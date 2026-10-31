@@ -8,7 +8,7 @@ import type { ExtaliaEvent } from '@extalia/protocol';
 import type { HostMissionRequest, HostMissionRun, HostMissionRecoveryResult, MissionPlan, MissionPlanRequest } from './missions.js';
 import type { AttachmentPreview, PromptAttachment, PromptAttachmentInput } from './attachments.js';
 import type { BuiltinSkillInfo, SkillConsentInput, WorkspaceSkills } from './skills.js';
-import type { SkillActionResult, SkillApprovalInput, SkillImportSource, SkillRegistryReport, SkillReviewInput, SkillRevisionDetails } from './skillRegistry.js';
+import type { SkillActionResult, SkillApprovalInput, SkillImportSource, SkillRegistryReport, SkillReviewInput, SkillRevisionDetails, SkillPreflightInput, SkillPreflightReport, SkillRoutingInput, SkillRoutingReport } from './skillRegistry.js';
 import type {
   IntegrationApproval, IntegrationGateInput, IntegrationProposalView, IntegrationRequest, WorktreeDiffView, WorktreeDiscardConfirmation, WorktreeOrphanView, WorktreeStatusView, WorktreeView,
 } from './worktrees.js';
@@ -433,6 +433,22 @@ export interface FolderCheck {
   error?: string;
 }
 
+/** Host directories available for the workspace folder picker. No files are returned. */
+export interface DirectoryListing {
+  /** Canonical absolute directory currently being browsed. */
+  path: string;
+  /** Canonical host home directory; the picker can return here at any time. */
+  homePath: string;
+  /** Parent directory, absent at the filesystem root. */
+  parentPath?: string;
+  /** Direct child directories, sorted by name and limited to 200. Symlinks are omitted. */
+  entries: Array<{ name: string; path: string }>;
+  /** Filesystem roots available on this host. */
+  roots: Array<{ name: string; path: string }>;
+  /** True if more than 200 child directories were present. */
+  truncated: boolean;
+}
+
 /** One entry of a project-folder listing (Files view). Paths are relative to the project folder, `/`-separated. */
 export interface FileEntry {
   name: string;
@@ -560,6 +576,8 @@ export type AgentAppTrustStatus = 'trusted' | 'untrusted' | 'modified' | 'unknow
 /** What `connections` knows about one agent app. Nothing here contains a secret. */
 export interface AgentAppConnection {
   app: AgentAppId;
+  /** Availability of the Node runtime used by command hooks, not integration support. */
+  nodeStatus?: 'ready' | 'missing' | 'not-required';
   label: string;
   /** False for apps whose hooks arrive in a later phase (Gemini CLI, Hermes). */
   supported: boolean;
@@ -582,6 +600,8 @@ export interface AgentAppConnection {
   events: string[];
   /** ISO time of the latest hook event received from this app, when a host reports it. */
   lastEventAt?: string;
+  /** Latest local connector configuration revision time; older events prove no restart of this revision. */
+  configuredAt?: string;
   /** A host is listening for hook events on this computer. */
   hostRunning: boolean;
   /** Port hooks will use (from the running host, or the default). */
@@ -590,6 +610,8 @@ export interface AgentAppConnection {
 
 export interface AgentAppConnectPlan {
   app: AgentAppId;
+  /** Command-hook prerequisite; webhook-only integrations do not require a Node binary. */
+  nodeStatus?: 'ready' | 'missing' | 'not-required';
   supported: boolean;
   installed: boolean;
   version?: string;
@@ -599,6 +621,8 @@ export interface AgentAppConnectPlan {
   changes: boolean;
   /** Readable unified diff of the user-level config file (tokens are masked); empty when nothing changes. */
   diff: string;
+  /** Opaque host digest binding approval to this preview; absent on older hosts. */
+  previewDigest?: string;
   /** Hook events that will be added or updated. */
   events: string[];
   /** New Codex hooks need approval before they run. */
@@ -615,6 +639,8 @@ export interface AgentAppConnectPlan {
 }
 
 export interface AgentAppConnectOptions {
+  /** Apply only if the current configuration still matches the approved preview. */
+  expectedPreviewDigest?: string;
   /** Port of the host's hook endpoint (default: the running host, else 4317). */
   port?: number;
   /** Replace the ingest token. Claude Code hooks must be connected again afterwards. */
@@ -670,6 +696,7 @@ export interface AgentHostApi {
   deleteConnection(id: string): Promise<HostState>;
   testConnection(input: ConnectionInput, secret?: string): Promise<ConnectionTestResult>;
   checkFolder(path: string): Promise<FolderCheck>;
+  browseDirectories(path?: string): Promise<DirectoryListing>;
   saveWorkspace(input: WorkspaceInput): Promise<HostState>;
   /** Explicitly permit additional saved model connections for this workspace's native missions. */
   setWorkspaceMissionConnections(workspaceId: string, connectionIds: string[]): Promise<HostState>;
@@ -739,7 +766,7 @@ export interface AgentHostApi {
    * Send a prompt; `attachmentIds` name files uploaded with `uploadAttachment` to this session (up to ten).
    * Their contents go to the model for this turn only; the stored history keeps their names.
    */
-  sendPrompt(sessionId: string, text: string, options?: { attachmentIds?: string[] }): Promise<void>;
+  sendPrompt(sessionId: string, text: string, options?: { attachmentIds?: string[]; learnSkill?: boolean }): Promise<void>;
   /**
    * Store a file to attach to the session's next prompt. Images up to 5 MB (png, jpeg, webp, gif), text files
    * up to 1 MB, other files up to 10 MB (named to the model, not read). Kept privately in the data directory,
@@ -786,6 +813,10 @@ export interface AgentHostApi {
    * (W0 consent decides); `status: 'unavailable'` when the daemon cannot answer. Feature-detected by clients.
    */
   skillRegistry(): Promise<SkillRegistryReport>;
+  /** Diagnostic only; older hosts omit this optional method. */
+  preflightSkill?(input: SkillPreflightInput): Promise<SkillPreflightReport>;
+  /** Read-only diagnostics; never invokes a skill or records approval. */
+  previewSkillRouting?(input: SkillRoutingInput): Promise<SkillRoutingReport>;
   /** One revision with its manifest, files, inspections, approvals and state history. */
   inspectSkill(revisionId: string): Promise<SkillRevisionDetails>;
   /** Copy a chosen folder (or a project skill) into the profile's import inbox and stage it in quarantine. */
@@ -801,7 +832,8 @@ export interface AgentHostApi {
   rollbackSkill(packageId: string, revisionId: string): Promise<SkillActionResult>;
   revokeSkill(revisionId: string): Promise<SkillActionResult>;
   /**
-   * The skills that ship with the app (name and description only, read-only; validate with `normalizeBuiltinSkills`).
+   * The skills that ship with the app (read-only catalog; optional category and plain-text instructions).
+   * Validate with `normalizeBuiltinSkills`; metadata does not establish permissions or skill activation.
    * Optional: an older host omits it and the Skills page hides the list.
    */
   builtinSkills?(): Promise<BuiltinSkillInfo[]>;
@@ -892,13 +924,13 @@ export interface AgentHostApi {
 
 /** Methods a transport may forward. `subscribe` is carried separately (IPC push or SSE). */
 export const AGENT_HOST_METHODS = [
-  'getState', 'getProfile', 'saveProfile', 'saveConnection', 'deleteConnection', 'testConnection', 'checkFolder', 'saveWorkspace', 'deleteWorkspace',
+  'getState', 'getProfile', 'saveProfile', 'saveConnection', 'deleteConnection', 'testConnection', 'checkFolder', 'browseDirectories', 'saveWorkspace', 'deleteWorkspace',
   'setWorkspaceMissionConnections', 'planNativeMission', 'startNativeMission', 'nativeMissionRun', 'listNativeMissions', 'refreshNativeMissionRecovery',
   'completeSetup', 'createSession', 'setSessionOptions', 'modelChoices', 'getSessionTeam', 'saveSessionTeam', 'saveWorkspaceTeam', 'planTeam', 'continueSession', 'renameSession', 'deleteSession', 'sessionEvents', 'sendPrompt', 'uploadAttachment', 'removeAttachment', 'attachmentPreview', 'resolveApproval', 'cancel',
   'setWorkflow', 'observeImports', 'observationSession', 'setObservation', 'setAutoWatch',
   'importLocations', 'scanImports', 'previewImports', 'commitImports', 'importPortable', 'librarySession', 'organizeLibrarySession',
   'listFiles', 'readFile', 'gitStatus', 'gitDiff', 'workspaceSkills', 'allowWorkspaceSkills', 'revokeWorkspaceSkills',
-  'skillRegistry', 'inspectSkill', 'importSkill', 'reviewSkill', 'approveSkill', 'activateSkill', 'deactivateSkill', 'rollbackSkill', 'revokeSkill', 'builtinSkills',
+  'skillRegistry', 'preflightSkill', 'previewSkillRouting', 'inspectSkill', 'importSkill', 'reviewSkill', 'approveSkill', 'activateSkill', 'deactivateSkill', 'rollbackSkill', 'revokeSkill', 'builtinSkills',
   'runtimes', 'hermesModels', 'characterAppearances', 'saveCharacterAppearance', 'hookIngest', 'setHookPrivacy',
   'agentAppConnections', 'planAgentAppConnect', 'applyAgentAppConnect', 'disconnectAgentApp', 'testAgentAppConnection',
   'listWorktrees', 'worktreeStatus', 'worktreeDiff', 'worktreeOrphans', 'removeWorktree', 'proposeIntegration', 'integrationProposals', 'applyIntegration',

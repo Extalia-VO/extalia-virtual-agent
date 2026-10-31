@@ -42,8 +42,11 @@ use crate::wire::{
     SkillRequest,
 };
 
+mod preflight;
+mod routing;
+
 /// Skill operations served when a core store is open, advertised in the `hello` result.
-pub const CAPABILITIES: [Op; 11] = [
+pub const CAPABILITIES: [Op; 13] = [
     Op::SkillImport,
     Op::SkillList,
     Op::SkillInspect,
@@ -55,6 +58,8 @@ pub const CAPABILITIES: [Op; 11] = [
     Op::SkillRevoke,
     Op::SkillRead,
     Op::SkillScanner,
+    Op::SkillPreflight,
+    Op::SkillRoutingPreview,
 ];
 /// `DAEMON_SKILL_LIST_DEFAULT_LIMIT`.
 pub const LIST_DEFAULT_LIMIT: u64 = 50;
@@ -195,6 +200,11 @@ impl Skills {
         let now = now_millis();
         let ctx = self.context();
         match request {
+            SkillRequest::RoutingPreview { input } => routing::run(self, store, input, &ctx, now),
+            SkillRequest::Preflight {
+                root_revision_id,
+                pins,
+            } => preflight::run(self, store, root_revision_id, pins, &ctx, now),
             SkillRequest::Import {
                 origin,
                 path,

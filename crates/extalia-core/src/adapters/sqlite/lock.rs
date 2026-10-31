@@ -8,7 +8,9 @@ use std::fs::{self, File, OpenOptions, TryLockError};
 use std::io;
 use std::path::Path;
 
-use super::{PRIVATE_FILE_MODE, StoreError};
+#[cfg(unix)]
+use super::PRIVATE_FILE_MODE;
+use super::StoreError;
 
 /// Held exclusive lock; released when dropped (or when the process exits, however it ends).
 #[derive(Debug)]

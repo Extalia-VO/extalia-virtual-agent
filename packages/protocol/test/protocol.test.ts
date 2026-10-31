@@ -10,6 +10,12 @@ const base = {
 };
 
 describe('parseEvent', () => {
+  it('accepts optional bounded approval choice metadata and legacy events', () => {
+    const body = { type: 'approval.resolved', approvalId: 'a1', decision: 'granted', by: 'user' };
+    expect(parseEvent({ ...base, body }).ok).toBe(true);
+    for (const choice of ['once', 'session', 'reject']) expect(parseEvent({ ...base, body: { ...body, choice } }).ok).toBe(true);
+    expect(parseEvent({ ...base, body: { ...body, choice: 'always' } }).ok).toBe(false);
+  });
   it('accepts a minimal valid event', () => {
     const result = parseEvent({ ...base, body: { type: 'model.delta', text: 'Hello' } });
     expect(result.ok).toBe(true);

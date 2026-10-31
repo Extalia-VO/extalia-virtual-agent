@@ -46,6 +46,30 @@ pub(super) const MIGRATIONS: &[Migration] = &[
         version: 6,
         sql: include_str!("../../../migrations/0006_learning.sql"),
     },
+    Migration {
+        version: 7,
+        sql: include_str!("../../../migrations/0007_execution_observations.sql"),
+    },
+    Migration {
+        version: 8,
+        sql: include_str!("../../../migrations/0008_execution_local_drains.sql"),
+    },
+    Migration {
+        version: 9,
+        sql: include_str!("../../../migrations/0009_delegation_reservations.sql"),
+    },
+    Migration {
+        version: 10,
+        sql: include_str!("../../../migrations/0010_native_action_intents.sql"),
+    },
+    Migration {
+        version: 11,
+        sql: include_str!("../../../migrations/0011_original_planned_tasks.sql"),
+    },
+    Migration {
+        version: 12,
+        sql: include_str!("../../../migrations/0012_planning_lifetime_receipts.sql"),
+    },
 ];
 
 pub(super) fn user_version(conn: &Connection) -> rusqlite::Result<i64> {

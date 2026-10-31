@@ -9,6 +9,7 @@ import { composeIrradiance, type IrradianceField } from "./composeIrradiance";
 import { getScreenEmitters, screenEmitterRevision, screenEmitterUrgentRevision } from "../prefabs/screens/screenEmitterRegistry";
 import { ceilingYForFloor, type CeilingFloor } from "../prefabs/architecture/ceilingMounting";
 import { getRenderBudget } from "../../environment/renderBudget";
+import { isCampusOverview } from "../../environment/overviewLod";
 import { deviceIrradiancePower, screenCastStrength, WALL_SCREEN_SIZE } from "../prefabs/screens/screenLightBudget";
 
 export interface RegisteredFixture {
@@ -277,7 +278,8 @@ export function FixtureLighting() {
       }
       candidates.sort((a, b) => b.score - a.score); cache.selected.clear();
       // The adaptive render budget may drop the live pool; hidden lights leave the shaders entirely.
-      const budget = Math.min(LIVE_BEAM_BUDGET, getRenderBudget().liveBeams);
+      // The campus view sees the interior through glass: baked pools only (see `isCampusOverview`).
+      const budget = isCampusOverview() ? 0 : Math.min(LIVE_BEAM_BUDGET, getRenderBudget().liveBeams);
       cache.lights.forEach((light, i) => {
         light.visible = i < budget;
         const fixture = i < budget ? candidates[i]?.fixture : undefined;

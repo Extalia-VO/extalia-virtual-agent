@@ -8,6 +8,7 @@
 import type { CharacterAppearance } from '@extalia/core';
 import { BARTENDER_BAR_BLUEPRINT } from '../interior/spatialBlueprints';
 import { resourceById, type SpatialResource } from '../interior/resourceRegistry';
+import { STAFF_UNIFORMS, staffAppearance } from '../avatars/outfitCatalog';
 
 export type FacilityRole = 'receptionist' | 'bartender';
 export type FacilityCharacterState = 'ON_DUTY' | 'BREAK' | 'RECREATION' | 'RETURNING' | 'SERVING';
@@ -47,17 +48,22 @@ export interface FacilityNpcDefinition {
 /** F3 rooms facility staff may visit; every other F3 room and all of F2 are offices. */
 export const FACILITY_F3_ROOMS: ReadonlySet<string> = new Set(['rooftop-terrace', 'fitness']);
 
+// Role uniforms use the reviewed original suit/vest where available, with generated
+// native-clothing fallbacks for the other body. Role model ids remain stable across exports.
+// The brand accent colours the tie, scarf, bow tie and badge stripe.
 const RECEPTIONIST_LOOK: CharacterAppearance = {
   presentation: 'feminine', hairStyle: 'bob', hairColor: '#292426', skinTone: '#c79a82',
-  outfit: 'business-casual', top: 'blouse', bottom: 'skirt', topColor: '#f3efe6', bottomColor: '#2f3a4f',
+  outfit: 'executive', outfitModel: STAFF_UNIFORMS.receptionist, top: 'blouse', bottom: 'trousers',
+  topColor: '#f3efe6', bottomColor: '#262c38', outerColor: '#262c38', accentColor: '#10b9ac',
   stature: 'default', gait: 'feminine',
   accessories: { glasses: 'none', watch: 'classic', earrings: 'studs', bag: 'none', tie: false, badge: true, headphones: false },
 };
 const BARTENDER_LOOK: CharacterAppearance = {
   presentation: 'masculine', hairStyle: 'short-fade', hairColor: '#16110f', skinTone: '#a9765e',
-  outfit: 'service', top: 'shirt', bottom: 'trousers', topColor: '#f5f3ee', bottomColor: '#23262b',
+  outfit: 'service', outfitModel: STAFF_UNIFORMS.bartender, top: 'shirt', bottom: 'trousers',
+  topColor: '#f5f3ee', bottomColor: '#1f2228', outerColor: '#23262d', accentColor: '#10b9ac',
   stature: 'default', gait: 'masculine',
-  accessories: { glasses: 'none', watch: 'none', earrings: 'none', bag: 'none', tie: true, badge: true, headphones: false },
+  accessories: { glasses: 'none', watch: 'none', earrings: 'none', bag: 'none', tie: false, badge: true, headphones: false },
 };
 
 export const FACILITY_NPCS: readonly FacilityNpcDefinition[] = Object.freeze([
@@ -78,6 +84,14 @@ export const FACILITY_NPCS: readonly FacilityNpcDefinition[] = Object.freeze([
     timing: { dutyMs: 210_000, quietMs: 30_000, breakMs: 45_000, recreationMs: 70_000, serviceMs: 19_000, queueGraceMs: 30_000, urgency: 1.15 },
   },
 ]);
+
+/**
+ * What a staff member wears: the role uniform always, with the person's saved features (hair,
+ * skin, body, accessories) and uniform accent colour when the user edited them.
+ */
+export function facilityAppearance(definition: Pick<FacilityNpcDefinition, 'role' | 'appearance'>, saved?: CharacterAppearance): CharacterAppearance {
+  return staffAppearance(definition.role, definition.appearance, saved);
+}
 
 /** Stations owned by facility staff: generic agent seating never reserves them. */
 export const FACILITY_RESERVED_RESOURCE_IDS: ReadonlySet<string> = new Set(FACILITY_NPCS.map(npc => npc.homeResourceId));

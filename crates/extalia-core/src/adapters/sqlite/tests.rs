@@ -47,13 +47,13 @@ impl Drop for TempDir {
 }
 
 const BROKEN: Migration = Migration {
-    version: 7,
+    version: CoreStore::LATEST + 1,
     sql: "CREATE TABLE extra (id INTEGER PRIMARY KEY) STRICT;
           INSERT INTO extra (id) VALUES (1);
           INSERT INTO missing_table VALUES (1);",
 };
 const SECOND: Migration = Migration {
-    version: 7,
+    version: CoreStore::LATEST + 1,
     sql: "CREATE INDEX missions_state ON missions (profile_id, state);",
 };
 
@@ -114,7 +114,7 @@ fn creates_a_fresh_store_with_durable_pragmas() {
     let dir = TempDir::new();
     let store = CoreStore::open(&dir.store()).unwrap();
     assert_eq!(store.schema_version().unwrap(), CoreStore::LATEST);
-    assert_eq!(CoreStore::LATEST, 6);
+    assert_eq!(CoreStore::LATEST, 12);
     let conn = &store.conn;
     let pragma = |name: &str| -> String {
         conn.pragma_query_value(None, name, |row| row.get::<_, rusqlite::types::Value>(0))
@@ -130,7 +130,7 @@ fn creates_a_fresh_store_with_durable_pragmas() {
     assert_eq!(pragma("foreign_keys"), "1");
     assert_eq!(pragma("busy_timeout"), "1000");
     let objects: Vec<(String, String)> = conn
-        .prepare("SELECT type, name FROM sqlite_schema WHERE name NOT LIKE 'sqlite%' AND name NOT LIKE 'skill%' AND name NOT LIKE 'learning%' ORDER BY type, name")
+        .prepare("SELECT type, name FROM sqlite_schema WHERE name NOT LIKE 'sqlite%' AND name NOT LIKE 'skill%' AND name NOT LIKE 'learning%' AND name NOT LIKE 'execution%' AND name NOT LIKE 'delegation%' AND name NOT LIKE 'native_action%' AND name NOT LIKE 'mission_planned_tasks%' AND name NOT LIKE 'planning_%' ORDER BY type, name")
         .unwrap()
         .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
         .unwrap()
@@ -199,7 +199,7 @@ fn reopening_is_idempotent() {
     store.close().unwrap();
     for _ in 0..2 {
         let store = CoreStore::open(&dir.store()).unwrap();
-        assert_eq!(store.schema_version().unwrap(), 6);
+        assert_eq!(store.schema_version().unwrap(), CoreStore::LATEST);
         let count: i64 = store
             .conn
             .query_row("SELECT count(*) FROM missions", [], |row| row.get(0))
@@ -215,14 +215,12 @@ fn newer_user_version_fails_closed_without_writing() {
     let dir = TempDir::new();
     CoreStore::open(&dir.store()).unwrap().close().unwrap();
     raw(&dir.store())
-        .pragma_update(None, "user_version", 7)
+        .pragma_update(None, "user_version", CoreStore::LATEST + 1)
         .unwrap();
     let before = fs::read(dir.store()).unwrap();
     match CoreStore::open(&dir.store()) {
-        Err(StoreError::NewerSchema {
-            found: 7,
-            supported: 6,
-        }) => {}
+        Err(StoreError::NewerSchema { found, supported })
+            if found == i64::from(CoreStore::LATEST + 1) && supported == CoreStore::LATEST => {}
         other => panic!("expected NewerSchema, got {other:?}"),
     }
     assert_eq!(
@@ -230,7 +228,10 @@ fn newer_user_version_fails_closed_without_writing() {
         before,
         "file left untouched"
     );
-    assert_eq!(version_of(&raw(&dir.store())), 7);
+    assert_eq!(
+        version_of(&raw(&dir.store())),
+        i64::from(CoreStore::LATEST + 1)
+    );
     assert!(backups(&dir.0).is_empty());
 }
 
@@ -275,11 +276,11 @@ fn injected_failure_mid_migration_keeps_the_previous_state() {
     store.close().unwrap();
 
     match CoreStore::open_with(&dir.store(), &plus(BROKEN)) {
-        Err(StoreError::Migration { version: 7, .. }) => {}
+        Err(StoreError::Migration { version, .. }) if version == CoreStore::LATEST + 1 => {}
         other => panic!("expected a failed migration 7, got {other:?}"),
     }
     let conn = raw(&dir.store());
-    assert_eq!(version_of(&conn), 6);
+    assert_eq!(version_of(&conn), i64::from(CoreStore::LATEST));
     super::migrate::verify_schema(&conn, MIGRATIONS).unwrap();
     let missions: i64 = conn
         .query_row("SELECT count(*) FROM missions", [], |row| row.get(0))
@@ -294,15 +295,18 @@ fn injected_failure_mid_migration_keeps_the_previous_state() {
         .unwrap()
         .to_string_lossy()
         .into_owned();
-    assert!(name.starts_with("core.sqlite.bak-6-"), "{name}");
+    assert!(
+        name.starts_with(&format!("core.sqlite.bak-{}-", CoreStore::LATEST)),
+        "{name}"
+    );
     let copy = raw(&copies[0]);
-    assert_eq!(version_of(&copy), 6);
+    assert_eq!(version_of(&copy), i64::from(CoreStore::LATEST));
     let saved: i64 = copy
         .query_row("SELECT count(*) FROM missions", [], |row| row.get(0))
         .unwrap();
     assert_eq!(saved, 1);
 
-    // The released build still opens the untouched version 6.
+    // The released build still opens the untouched released schema.
     CoreStore::open(&dir.store()).unwrap().close().unwrap();
 }
 
@@ -332,18 +336,15 @@ fn upgrade_backs_up_then_migrates() {
     let dir = TempDir::new();
     CoreStore::open(&dir.store()).unwrap().close().unwrap();
     let store = CoreStore::open_with(&dir.store(), &plus(SECOND)).unwrap();
-    assert_eq!(store.schema_version().unwrap(), 7);
+    assert_eq!(store.schema_version().unwrap(), CoreStore::LATEST + 1);
     store.close().unwrap();
     let copies = backups(&dir.0);
     assert_eq!(copies.len(), 1);
-    assert_eq!(version_of(&raw(&copies[0])), 6);
+    assert_eq!(version_of(&raw(&copies[0])), i64::from(CoreStore::LATEST));
     // This build does not know version 7.
     assert!(matches!(
         CoreStore::open(&dir.store()),
-        Err(StoreError::NewerSchema {
-            found: 7,
-            supported: 6
-        })
+        Err(StoreError::NewerSchema { found, supported }) if found == i64::from(CoreStore::LATEST + 1) && supported == CoreStore::LATEST
     ));
 }
 
@@ -922,7 +923,7 @@ fn upgrades_a_schema_5_store_with_data_to_the_learning_loop() {
     store.close().unwrap();
 
     let mut store = CoreStore::open(&dir.store()).unwrap();
-    assert_eq!(store.schema_version().unwrap(), 6);
+    assert_eq!(store.schema_version().unwrap(), CoreStore::LATEST);
     let after: Vec<_> = tables
         .iter()
         .map(|table| dump(&store.conn, table))
@@ -1097,4 +1098,21 @@ fn refuses_a_symlinked_store() {
         CoreStore::open(&dir.store()),
         Err(StoreError::InvalidPath)
     ));
+}
+
+#[test]
+fn upgrades_schema_6_preserving_legacy_rows_without_inventing_execution_receipts() {
+    let dir = TempDir::new();
+    std::fs::create_dir_all(dir.store().parent().unwrap()).unwrap();
+    let mut conn = raw(&dir.store());
+    super::migrate::apply(&mut conn, &super::migrate::MIGRATIONS[..6], 0).unwrap();
+    insert_mission(&conn, MISSION, "default").unwrap();
+    let before = dump(&conn, "missions");
+    drop(conn);
+    let store = CoreStore::open(&dir.store()).unwrap();
+    assert_eq!(store.schema_version().unwrap(), CoreStore::LATEST);
+    assert_eq!(dump(&store.conn, "missions"), before);
+    assert!(dump(&store.conn, "execution_admissions").is_empty());
+    assert!(dump(&store.conn, "execution_observations").is_empty());
+    assert!(!backups(&dir.0).is_empty());
 }

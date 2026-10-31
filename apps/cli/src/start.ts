@@ -90,17 +90,6 @@ export async function startBridge(options: StartOptions, deps: StartDeps): Promi
     ready => {
       runtime = ready;
       void ready.hooks?.announce(server.port).catch(() => undefined);
-      void (async () => {
-        try {
-          const connections = await ready.host.agentAppConnections();
-          const hermes = connections.find(c => c.app === 'hermes');
-          if (hermes?.installed && hermes.state !== 'connected') {
-            await ready.host.applyAgentAppConnect('hermes');
-          }
-        } catch {
-          // non-blocking auto-connect for Hermes
-        }
-      })();
       resolveRuntime(ready);
     },
     error => { deps.err(`Agents are not available: ${message(error)}`); rejectRuntime(error); },

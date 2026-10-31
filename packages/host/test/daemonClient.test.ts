@@ -7,9 +7,10 @@ import {
   type DaemonErrorCode, type DaemonFrame, type DaemonOp, type DaemonRequest,
 } from '@extalia/protocol';
 import {
-  DaemonClient, DaemonRequestError, DaemonSidecar, DaemonUnavailableError, createDaemonMission, daemonPackageName, exitFailure, resolveDaemonBinary,
+  DaemonClient, DaemonRequestError, DaemonSidecar, DAEMON_HELLO_BASELINE, createDaemonMission, daemonPackageName, exitFailure, resolveDaemonBinary,
   type DaemonFailureCode, type DaemonProcess,
 } from '../src/daemon/index.js';
+import { SKILL_REGISTRY_OPS, SkillRegistry } from '../src/skillRegistry.js';
 
 /** A scripted daemon on in-memory pipes: answers `hello` unless told otherwise, records every request. */
 class FakeDaemon extends EventEmitter implements DaemonProcess {
@@ -64,7 +65,7 @@ describe('daemon frame client', () => {
     const held: DaemonRequest[] = [];
     const daemon = new FakeDaemon(request => hello(request) ?? (held.push(request), undefined));
     const client = await ready(daemon);
-    expect(daemon.requests[0]).toMatchObject({ op: 'hello', params: { clientVersion: 'test', capabilities: [...DAEMON_OPS] } });
+    expect(daemon.requests[0]).toMatchObject({ op: 'hello', params: { clientVersion: 'test', capabilities: [...DAEMON_HELLO_BASELINE] } });
     const first = client.request('health', {}, 1_000), second = client.request('permission.check', { access: 'read', mode: 'workspace', workspacePermissions: { fileWrite: 'ask', commands: 'ask' }, sessionGrants: [] });
     await flush();
     expect(held.map(request => [request.op, request.deadlineMs])).toEqual([['health', 1_000], ['permission.check', 5_000]]);
@@ -304,32 +305,154 @@ describe('daemon mission port', () => {
   } as const;
   const event = (n: number, body: Record<string, unknown>, taskId?: string) => ({ schemaVersion: 1, id: id(100 + n), workspaceId: id(2), sessionId: id(5), missionId: id(1), ...(taskId ? { taskId } : {}), agentId: taskId ? id(11) : id(3), source: { runtime: 'extalia-native', channel: 'system' }, observedAt: '2026-10-22T00:00:01.000Z', sequence: n, confidence: 'reported', body }) as never;
 
+  const transitionReply = (request: Extract<DaemonRequest, { op: 'task.transition' }>, sequence: number) => {
+    const admission = request.params.supervisorId ? {
+      missionId: id(1), workspaceId: id(2), taskId: request.params.taskId, leaseId: request.params.eventId,
+      holderAgentId: id(11), supervisorId: request.params.supervisorId, attempt: 1, missionVersion: 2,
+      taskDigest: 'a'.repeat(64), graphDigest: 'b'.repeat(64), admissionDigest: 'c'.repeat(64), admittedAt: '2026-10-22T00:00:01.000Z',
+    } : undefined;
+    return { missionId: id(1), taskId: request.params.taskId, state: request.params.to, sequence, ...(admission ? { admission } : {}) };
+  };
+
+  const heartbeatReply = (request: Extract<DaemonRequest, { op: 'mission.heartbeat' }>) => ({ missionId: request.params.missionId,
+    leases: request.params.leases.map(lease => ({ ...lease, acquiredAt: '2026-10-22T00:00:01.000Z', expiresAt: new Date(Date.now() + 600_000).toISOString() })) });
+  const leaseFixture = async (heartbeat: (request: Extract<DaemonRequest, { op: 'mission.heartbeat' }>) => DaemonFrame | undefined) => {
+    let sequence = 1;
+    const daemon = new FakeDaemon(request => hello(request) ?? (
+      request.op === 'mission.create' ? respond(request, { missionId: id(1), version: 1 })
+        : request.op === 'task.transition' ? respond(request, transitionReply(request, ++sequence))
+          : request.op === 'mission.heartbeat' ? heartbeat(request) : request.op === 'permission.check' ? respond(request, { decision: 'allow' }) : undefined));
+    const client = await ready(daemon);
+    const mission = await createDaemonMission(client, plan as never);
+    return { daemon, client, mission };
+  };
+
+  it('renews silent admitted work independently, and stops heartbeats after the last task settles', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+    const { daemon, client, mission } = await leaseFixture(request => respond(request, heartbeatReply(request)));
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(daemon.requests.some(request => request.op === 'mission.heartbeat')).toBe(false);
+    await mission.commit(event(2, { type: 'task.state', state: 'running' }, id(10)));
+    await vi.advanceTimersByTimeAsync(60_000);
+    const beats = daemon.requests.filter(request => request.op === 'mission.heartbeat');
+    expect(beats).toHaveLength(2);
+    expect(beats[0]!.params).toEqual({ missionId: id(1), leases: [{ taskId: id(10), leaseId: id(102), holderAgentId: id(11) }] });
+    expect(mission.authoritySignal.aborted).toBe(false);
+    await mission.commit(event(3, { type: 'task.state', state: 'completed' }, id(10)));
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(daemon.requests.filter(request => request.op === 'mission.heartbeat')).toHaveLength(2);
+    mission.dispose(); await client.close();
+  });
+
+  it('latches a refused heartbeat and denies commits and tools without local fallback', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+    const { daemon, client, mission } = await leaseFixture(request => refuse(request, 'conflict'));
+    await mission.commit(event(2, { type: 'task.state', state: 'running' }, id(10)));
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(mission.authoritySignal.aborted).toBe(true);
+    const count = daemon.requests.length;
+    await expect(mission.commit(event(3, { type: 'task.state', state: 'completed' }, id(10)))).rejects.toThrow(/authority/);
+    expect(await mission.checkPermission({ access: 'read', mode: 'workspace', permissions: { fileWrite: 'ask', commands: 'ask' }, sessionGrants: [] })).toEqual({ decision: 'deny', reason: 'policy_unavailable' });
+    await vi.advanceTimersByTimeAsync(90_000);
+    expect(daemon.requests).toHaveLength(count);
+    mission.dispose(); await client.close();
+  });
+
+  it.each(['mission', 'holder', 'epoch', 'missing', 'expired'] as const)('rejects %s mismatches in heartbeat acknowledgements', async kind => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+    const { client, mission } = await leaseFixture(request => {
+      const ack = heartbeatReply(request);
+      if (kind === 'mission') ack.missionId = id(999);
+      if (kind === 'holder') ack.leases[0]!.holderAgentId = id(999);
+      if (kind === 'epoch') ack.leases[0]!.leaseId = id(999);
+      if (kind === 'missing') ack.leases[0]!.taskId = id(999);
+      if (kind === 'expired') ack.leases[0]!.expiresAt = '2026-10-22T00:00:02.000Z';
+      return respond(request, ack);
+    });
+    await mission.commit(event(2, { type: 'task.state', state: 'running' }, id(10)));
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(mission.authoritySignal.aborted).toBe(true);
+    mission.dispose(); await client.close();
+  });
+
+  it('serializes a terminal transition behind renewal and ignores a late renewal after disposal', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+    let held: Extract<DaemonRequest, { op: 'mission.heartbeat' }> | undefined;
+    const { daemon, client, mission } = await leaseFixture(request => { held = request; return undefined; });
+    await mission.commit(event(2, { type: 'task.state', state: 'running' }, id(10)));
+    await vi.advanceTimersByTimeAsync(30_000);
+    const completed = mission.commit(event(3, { type: 'task.state', state: 'completed' }, id(10)));
+    expect(daemon.requests.filter(request => request.op === 'task.transition')).toHaveLength(1);
+    daemon.send(respond(held!, heartbeatReply(held!)));
+    await completed;
+    mission.dispose(); await client.close();
+    const next = await leaseFixture(request => { held = request; return undefined; });
+    await next.mission.commit(event(2, { type: 'task.state', state: 'running' }, id(10)));
+    await vi.advanceTimersByTimeAsync(30_000);
+    next.mission.dispose();
+    next.daemon.send(refuse(held!, 'conflict'));
+    await vi.advanceTimersByTimeAsync(1);
+    expect(next.mission.authoritySignal.aborted).toBe(false);
+    await next.client.close();
+  });
+
+  it('refuses Rust mission admission before creation if independent heartbeat is unsupported', async () => {
+    const daemon = new FakeDaemon(request => hello(request, DAEMON_OPS.filter(op => op !== 'mission.heartbeat')));
+    const client = await ready(daemon);
+    await expect(createDaemonMission(client, plan as never)).rejects.toEqual(unavailable('missing_capability'));
+    expect(daemon.requests.map(request => request.op)).toEqual(['hello']);
+    await client.close();
+  });
+
+  it('checks leases before permission and refuses an allow reply received after the acknowledged expiry', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+    let policy: DaemonRequest | undefined;
+    let sequence = 1;
+    const daemon = new FakeDaemon(request => hello(request) ?? (
+      request.op === 'mission.create' ? respond(request, { missionId: id(1), version: 1 })
+        : request.op === 'task.transition' ? respond(request, transitionReply(request, ++sequence))
+          : request.op === 'mission.heartbeat' ? respond(request, heartbeatReply(request))
+            : request.op === 'permission.check' ? (policy = request, undefined) : undefined));
+    const client = await ready(daemon), mission = await createDaemonMission(client, plan as never);
+    await mission.commit(event(2, { type: 'task.state', state: 'running' }, id(10)));
+    const deciding = mission.checkPermission({ access: 'read', mode: 'workspace', permissions: { fileWrite: 'ask', commands: 'ask' }, sessionGrants: [] });
+    await flush();
+    expect(daemon.requests.slice(-2).map(request => request.op)).toEqual(['mission.heartbeat', 'permission.check']);
+    // Jump the wall clock as after suspension, without processing the heartbeat timer.
+    vi.setSystemTime(Date.now() + 600_000);
+    daemon.send(respond(policy!, { decision: 'allow' }));
+    expect(await deciding).toEqual({ decision: 'deny', reason: 'policy_unavailable' });
+    expect(mission.authoritySignal.aborted).toBe(true);
+    mission.dispose(); await client.close();
+  });
+
   it('creates the mission, routes task states to compare-and-set transitions and other events to commits', async () => {
     let sequence = 1;
     const daemon = new FakeDaemon(request => hello(request) ?? (
       request.op === 'mission.create' ? respond(request, { missionId: id(1), version: 1 })
-        : request.op === 'task.transition' ? respond(request, { missionId: id(1), taskId: request.params.taskId, state: request.params.to, sequence: ++sequence })
+        : request.op === 'task.transition' ? respond(request, transitionReply(request, ++sequence))
           : request.op === 'event.commit' ? respond(request, { eventId: request.params.event.id, missionId: id(1), sequence: ++sequence, duplicate: false })
+            : request.op === 'mission.heartbeat' ? respond(request, heartbeatReply(request))
             : request.op === 'permission.check' ? respond(request, { decision: request.params.access === 'read' ? 'allow' : 'ask' }) : undefined));
     const client = await ready(daemon);
     const mission = await createDaemonMission(client, plan as never);
     expect(await mission.commit(event(0, { type: 'mission.state', state: 'running' }))).toBe(2);
     expect(await mission.commit(event(1, { type: 'task.assigned', assigneeAgentId: id(11) }, id(10)))).toBe(3);
     expect(await mission.commit(event(2, { type: 'task.state', state: 'running' }, id(10)))).toBe(4);
-    expect(await mission.commit(event(3, { type: 'task.state', state: 'completed' }, id(10)))).toBe(5);
-    expect(daemon.requests.filter(request => request.op === 'task.transition').map(request => request.params)).toEqual([
-      { missionId: id(1), taskId: id(10), eventId: id(102), from: 'queued', to: 'running' },
-      { missionId: id(1), taskId: id(10), eventId: id(103), from: 'running', to: 'completed' },
-    ]);
     const request = { access: 'read' as const, mode: 'workspace' as const, permissions: { fileWrite: 'ask' as const, commands: 'ask' as const }, sessionGrants: [] };
     expect(await mission.checkPermission(request)).toEqual({ decision: 'allow' });
     expect(await mission.checkPermission({ ...request, access: 'write' })).toEqual({ decision: 'ask' });
+    expect(await mission.commit(event(3, { type: 'task.state', state: 'completed' }, id(10)))).toBe(5);
+    expect(daemon.requests.filter(request => request.op === 'task.transition').map(request => request.params)).toEqual([
+      { missionId: id(1), taskId: id(10), eventId: id(102), from: 'queued', to: 'running', supervisorId: mission.supervisorId },
+      { missionId: id(1), taskId: id(10), eventId: id(103), from: 'running', to: 'completed' },
+    ]);
     await mission.cancelUnstarted(id(5));
     expect(daemon.requests.at(-1)).toMatchObject({ op: 'event.commit', params: { event: { missionId: id(1), sessionId: id(5), agentId: id(3), body: { type: 'mission.state', state: 'cancelled' } } } });
     daemon.exit(null, 'SIGKILL');
     await flush();
     expect(await mission.checkPermission(request)).toEqual({ decision: 'deny', reason: 'policy_unavailable' });
-    await expect(mission.commit(event(4, { type: 'mission.state', state: 'completed' }))).rejects.toBeInstanceOf(DaemonUnavailableError);
+    await expect(mission.commit(event(4, { type: 'mission.state', state: 'completed' }))).rejects.toThrow(/authority/);
   });
 });
 
@@ -368,5 +491,37 @@ describe('resolveDaemonBinary', () => {
     expect(resolveDaemonBinary({ ...base, packageFrom: path.join(import.meta.dirname, 'daemonClient.test.ts') })).toBeUndefined();
     expect(daemonPackageName('win32', 'x64')).toBe('@extalia/daemon-win32-x64');
     expect(resolveDaemonBinary({ ...base, platform: 'win32', resourcesPath: resources, isFile: files(path.join(resources, 'daemon', 'extalia-daemon.exe')) })?.path).toMatch(/extalia-daemon\.exe$/);
+  });
+});
+
+
+describe('baseline hello compatibility with strict legacy peers', () => {
+  it('keeps legacy registry reads ready and sends no unsupported preflight', async () => {
+    const legacyOps: readonly DaemonOp[] = ([...DAEMON_HELLO_BASELINE, ...SKILL_REGISTRY_OPS, 'skill.scanner'] as const).filter((op, index, all) => all.indexOf(op) === index);
+    const daemon = new FakeDaemon(request => {
+      if (request.op === 'hello') {
+        if (request.params.capabilities.some(op => !legacyOps.includes(op))) return refuse(request, 'invalid_request');
+        return hello(request, legacyOps);
+      }
+      if (request.op === 'skill.list') return respond(request, { revisions: [], indexGeneration: 1 });
+      if (request.op === 'skill.scanner') return respond(request, { scannerId: 'unavailable', pinned: false, policyVersion: 'extalia.skill-policy.v1', status: 'unavailable' });
+      throw new Error(`unexpected legacy request ${request.op}`);
+    });
+    const client = await ready(daemon);
+    const sidecar = { connect: async () => client } as unknown as DaemonSidecar;
+    const registry = new SkillRegistry({ daemon: sidecar, dataDirectory: '/unused', profile: 'default', workspaceRoot: () => '' });
+    expect(await registry.report()).toMatchObject({ mode: 'registry', status: 'ready', preflight: false, revisions: [] });
+    await expect(registry.preflight({ rootRevisionId: `skr_${'a'.repeat(64)}`, pins: {} })).rejects.toThrow('not supported');
+    expect(daemon.requests.map(request => request.op)).toEqual(['hello', 'skill.list', 'skill.scanner']);
+    await client.close();
+  });
+  it('discovers and uses new operations from a modern server despite baseline advertisement', async () => {
+    const root = `skr_${'a'.repeat(64)}`;
+    const daemon = new FakeDaemon(request => hello(request) ?? respond(request, { rootRevisionId: root, dispatchEligible: false, status: 'blocked', truncated: false, issues: [{ code: 'root_unavailable' }] }));
+    const client = await ready(daemon);
+    expect(client.capabilities).toContain('skill.preflight');
+    expect(daemon.requests[0]).toMatchObject({ params: { capabilities: [...DAEMON_HELLO_BASELINE] } });
+    await expect(client.request('skill.preflight', { rootRevisionId: root, pins: {} })).resolves.toMatchObject({ dispatchEligible: false, status: 'blocked' });
+    await client.close();
   });
 });

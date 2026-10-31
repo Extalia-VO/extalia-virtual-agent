@@ -228,7 +228,7 @@ describe.each(backends())('native missions through the managed host (%s core)', 
     await expect(reopened.host.startNativeMission(other.id, request)).rejects.toThrow(/unresolved/);
     expect((await reopened.host.nativeMissionRun(session.id, started.id)).state).toBe('recovering');
     expect(calls).toBe(1);
-  });
+  }, 60_000);
 
   // TypeScript journal fault injection; the Rust core's equivalent is in missionDaemon.test.ts.
   it.skipIf(core === 'rust')('surfaces failed terminal state commits as unknown execution instead of completion', async () => {

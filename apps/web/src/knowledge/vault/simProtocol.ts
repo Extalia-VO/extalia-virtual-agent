@@ -9,6 +9,8 @@ export type SimCommand =
   | { type: 'mask'; active: Uint8Array }
   | { type: 'drag'; index: number; x: number; y: number; z: number }
   | { type: 'release'; index: number }
+  | { type: 'interaction'; returnToLayout: boolean; reducedMotion?: boolean }
+  | { type: 'restore' }
   | { type: 'reheat'; alpha: number }
   | { type: 'pause' }
   | { type: 'resume' };
@@ -44,7 +46,8 @@ export function encodeFrame(positions: Float32Array, alpha: number, running: boo
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null;
 const finite = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value);
-const index = (value: unknown): value is number => typeof value === 'number' && Number.isInteger(value) && value >= 0;
+const index = (value: unknown): value is number => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+const coordinate = (value: unknown): value is number => finite(value) && Number.isFinite(Math.fround(value));
 
 /** Validate a command received by the simulation; anything malformed is ignored (`null`). */
 export function decodeCommand(data: unknown): SimCommand | null {
@@ -55,13 +58,22 @@ export function decodeCommand(data: unknown): SimCommand | null {
       if (!index(count) || !(edges instanceof Uint32Array) || edges.length % 2 || !(degree instanceof Uint32Array) || degree.length !== count) return null;
       for (const at of edges) if (at >= count) return null;
       if (seed !== undefined && (!(seed instanceof Float32Array) || seed.length !== count * 3)) return null;
+      if (seed instanceof Float32Array) {
+        for (let at = 0; at < seed.length; at += 3) {
+          const xyz = seed.subarray(at, at + 3);
+          // Refreshes retain known positions; an all-NaN triple asks d3 to seed a new note.
+          if (!xyz.every(Number.isFinite) && !xyz.every(Number.isNaN)) return null;
+        }
+      }
       return { type: 'init', count, edges, degree, ...(seed ? { seed } : {}) };
     }
     case 'mask': return data.active instanceof Uint8Array ? { type: 'mask', active: data.active } : null;
-    case 'drag': return index(data.index) && finite(data.x) && finite(data.y) && finite(data.z) ? { type: 'drag', index: data.index, x: data.x, y: data.y, z: data.z } : null;
+    case 'drag': return index(data.index) && coordinate(data.x) && coordinate(data.y) && coordinate(data.z) ? { type: 'drag', index: data.index, x: data.x, y: data.y, z: data.z } : null;
     case 'release': return index(data.index) ? { type: 'release', index: data.index } : null;
+    case 'interaction': return typeof data.returnToLayout === 'boolean' && (data.reducedMotion === undefined || typeof data.reducedMotion === 'boolean')
+      ? { type: 'interaction', returnToLayout: data.returnToLayout, ...(data.reducedMotion === undefined ? {} : { reducedMotion: data.reducedMotion }) } : null;
     case 'reheat': return finite(data.alpha) && data.alpha > 0 && data.alpha <= 1 ? { type: 'reheat', alpha: data.alpha } : null;
-    case 'pause': case 'resume': return { type: data.type };
+    case 'pause': case 'resume': case 'restore': return { type: data.type };
     default: return null;
   }
 }
@@ -70,5 +82,6 @@ export function decodeCommand(data: unknown): SimCommand | null {
 export function decodeFrame(data: unknown, count: number): SimFrame | null {
   if (!isRecord(data) || data.type !== 'positions' || !(data.positions instanceof Float32Array) || data.positions.length !== count * 3) return null;
   if (!finite(data.alpha) || typeof data.running !== 'boolean') return null;
+  if (!data.positions.every(Number.isFinite)) return null;
   return { type: 'positions', positions: data.positions, alpha: data.alpha, running: data.running };
 }

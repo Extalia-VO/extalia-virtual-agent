@@ -13,6 +13,8 @@
  */
 import { DAEMON_KNOWLEDGE_OPS, type DaemonKnowledgeOperations } from './daemonKnowledge.js';
 import { DAEMON_SKILL_OPS, type DaemonSkillOperations } from './daemonSkills.js';
+import { DAEMON_EXECUTION_OPS, type DaemonExecutionAdmission, type DaemonExecutionOperations } from './daemonExecutions.js';
+import { DAEMON_PLANNING_OPS, type DaemonPlanningOperations } from './daemonPlanning.js';
 import type { AgentEvent, Mission, Permission, TaskGraph, TaskState, MissionState } from './orchestration.js';
 
 export const DAEMON_SCHEMA_VERSION = 1 as const;
@@ -27,7 +29,7 @@ export const DAEMON_MAX_DEADLINE_MS = 10 * 60_000;
  * Contract v1 operations; the skill registry operations (`daemonSkills.ts`) and the knowledge
  * index operations (`daemonKnowledge.ts`) were added later, additively.
  */
-export const DAEMON_OPS = ['hello', 'mission.create', 'mission.snapshot', 'task.transition', 'event.commit', 'permission.check', 'health', ...DAEMON_SKILL_OPS, ...DAEMON_KNOWLEDGE_OPS] as const;
+export const DAEMON_OPS = ['hello', 'mission.create', 'mission.snapshot', 'mission.heartbeat', 'task.transition', 'event.commit', 'permission.check', 'health', ...DAEMON_EXECUTION_OPS, ...DAEMON_PLANNING_OPS, ...DAEMON_SKILL_OPS, ...DAEMON_KNOWLEDGE_OPS] as const;
 export type DaemonOp = (typeof DAEMON_OPS)[number];
 
 /**
@@ -76,6 +78,9 @@ export type DaemonPermissionMode = 'workspace' | 'ask' | 'accept-edits' | 'plan'
 export const DAEMON_PERMISSION_MODES: readonly DaemonPermissionMode[] = ['workspace', 'ask', 'accept-edits', 'plan'];
 export interface DaemonWorkspacePermissions { fileWrite: 'ask' | 'allow'; commands: 'ask' | 'allow' }
 
+/** Exact fencing identity of one admitted execution attempt. */
+export interface DaemonLeaseClaim { taskId: string; leaseId: string; holderAgentId: string }
+
 /** Profile-scoped authoritative state, read atomically without changing execution. */
 export interface DaemonMissionSnapshot {
   missionId: string;
@@ -90,7 +95,7 @@ export interface DaemonMissionSnapshot {
   leases: { leaseId: string; taskId: string; holderAgentId: string; acquiredAt: string; expiresAt: string }[];
 }
 
-export interface DaemonOperations extends DaemonSkillOperations, DaemonKnowledgeOperations {
+export interface DaemonOperations extends DaemonSkillOperations, DaemonKnowledgeOperations, DaemonExecutionOperations, DaemonPlanningOperations {
   /** Capabilities list operations, never authorization to invoke them. */
   hello: {
     params: { clientVersion: string; capabilities: DaemonOp[] };
@@ -103,10 +108,15 @@ export interface DaemonOperations extends DaemonSkillOperations, DaemonKnowledge
   };
   /** Reads this daemon profile's canonical mission, tasks and leases in one transaction. */
   'mission.snapshot': { params: { missionId: string }; result: DaemonMissionSnapshot };
+  /** Renew current unexpired leases atomically; never authorizes replay or changes task state. */
+  'mission.heartbeat': {
+    params: { missionId: string; leases: DaemonLeaseClaim[] };
+    result: { missionId: string; leases: DaemonMissionSnapshot['leases'] };
+  };
   /** Compare-and-set of one task state, journaled as a `task.state` event with `eventId` (idempotent). */
   'task.transition': {
-    params: { missionId: string; taskId: string; eventId: string; from: TaskState; to: TaskState };
-    result: { missionId: string; taskId: string; state: TaskState; sequence: number };
+    params: { missionId: string; taskId: string; eventId: string; from: TaskState; to: TaskState; supervisorId?: string };
+    result: { missionId: string; taskId: string; state: TaskState; sequence: number; admission?: DaemonExecutionAdmission };
   };
   /** Commits one mission control event; the daemon assigns the per-mission sequence (ADR 0014). */
   'event.commit': {

@@ -66,33 +66,49 @@ export function normalizeSkillNames(value: unknown): string[] | undefined {
   return [...new Set(value as string[])];
 }
 
-/**
- * A skill that ships with Extalia (read-only; updated with app releases). Only the name and description are
- * exposed to clients: the body stays in the host.
- */
+/** Catalog categories for bundled skills; unknown host values remain uncategorized. */
+export const BUILTIN_SKILL_CATEGORIES = ['planning', 'development', 'quality', 'security', 'documentation', 'delivery'] as const;
+export type BuiltinSkillCategory = typeof BUILTIN_SKILL_CATEGORIES[number];
+
+/** A skill that ships with Extalia (read-only; updated with app releases). */
 export interface BuiltinSkillInfo {
   name: string;
   description: string;
+  /** Optional so clients can still list older hosts' catalogs. */
+  category?: BuiltinSkillCategory;
+  /** Bundled instructions for plain-text inspection only; never an execution or permission grant. */
+  body?: string;
 }
 
 /** Built-in skills a host may list. */
 export const MAX_BUILTIN_SKILLS = 200;
 /** Longest built-in skill description a client shows. */
 export const MAX_BUILTIN_SKILL_DESCRIPTION = 1000;
+/** Longest bundled instruction body a client accepts for inspection. */
+export const MAX_BUILTIN_SKILL_BODY = 16_000;
 
 /**
- * Validate a host's built-in skill list before showing it: a list of `{ name, description }` with valid names,
- * de-duplicated and sorted by name. Throws a message safe to show.
+ * Validate a host's built-in skill list before showing it, de-duplicated and sorted by name. Legacy name/description
+ * lists remain valid. Unknown categories and malformed optional bodies are omitted, without dropping the skill.
+ * This validates presentation data only; instruction text must be rendered as plain text. Throws a message safe to show.
  */
 export function normalizeBuiltinSkills(value: unknown): BuiltinSkillInfo[] {
   if (!Array.isArray(value)) throw new Error('Invalid built-in skill list.');
   if (value.length > MAX_BUILTIN_SKILLS) throw new Error(`At most ${MAX_BUILTIN_SKILLS} built-in skills are listed.`);
   const byName = new Map<string, BuiltinSkillInfo>();
   for (const item of value) {
-    const { name, description } = (typeof item === 'object' && item !== null ? item : {}) as Record<string, unknown>;
+    const { name, description, category, body } = (typeof item === 'object' && item !== null ? item : {}) as Record<string, unknown>;
     if (typeof name !== 'string' || !SKILL_NAME_PATTERN.test(name)) throw new Error('Invalid built-in skill name.');
     if (typeof description !== 'string' || description.length > MAX_BUILTIN_SKILL_DESCRIPTION) throw new Error(`Invalid description for built-in skill "${name}".`);
-    byName.set(name, { name, description: description.trim() });
+    const normalized: BuiltinSkillInfo = { name, description: description.trim() };
+    if (typeof category === 'string' && BUILTIN_SKILL_CATEGORIES.some(value => value === category)) normalized.category = category as BuiltinSkillCategory;
+    // Permit ordinary multiline text but omit terminal controls and oversized values instead of truncating instructions.
+    if (typeof body === 'string' && body.length <= MAX_BUILTIN_SKILL_BODY && body.trim()
+      && !Array.from(body).some(character => {
+        const code = character.charCodeAt(0);
+        return (code < 32 && code !== 9 && code !== 10 && code !== 13) || (code >= 127 && code <= 159);
+      })) normalized.body = body.trim();
+    byName.set(name, normalized);
   }
   return [...byName.values()].sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
 }

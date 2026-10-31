@@ -1,12 +1,13 @@
 import { sourceLabel } from '@extalia/core';
 import type { ApprovalDecisionInput } from '@extalia/platform';
 import type { ActivityKind } from '@extalia/protocol';
-import { useEffect, useState } from 'react';
-import { createPortal } from 'react-dom';
+import { useRef, useState } from 'react';
 import type { Messages } from '../i18n';
+import { CopyButton } from '../ui/CopyButton';
 import { Icon, type IconName } from '../ui/Icon';
-import { formatBytes, type AttachmentMetadata, type AttachmentPreviewLoader } from './attachments';
+import type { AttachmentPreviewLoader } from './attachments';
 import { Markdown } from './Markdown';
+import { UserMessage } from './UserMessage';
 import type { ApprovalItem, ToolItem, TranscriptItem, UsageItem, WorkerItem } from './transcript';
 
 const KIND_ICON: Record<ActivityKind, IconName> = {
@@ -25,8 +26,8 @@ function ToolRow({ t, item }: { t: Messages; item: ToolItem }) {
   const label = <>
     <span className="tool-icon" aria-hidden="true"><Icon name={KIND_ICON[item.activity] ?? 'tool'} /></span>
     <span className="tool-label">
-      {item.label}
-      {showTarget && <code className="tool-target">{item.target}</code>}
+      <span className="tool-label-text" title={item.label}>{item.label}</span>
+      {showTarget && <code className="tool-target" title={item.target}>{item.target}</code>}
       {hasOutput && <Icon name="chevron" className="tool-row-chevron" />}
     </span>
   </>;
@@ -43,9 +44,10 @@ function ToolRow({ t, item }: { t: Messages; item: ToolItem }) {
             {item.command.durationMs !== undefined && ` · ${t.tool.seconds((item.command.durationMs / 1000).toFixed(1))}`}
           </span>
         )}
-        <span className={`tool-status ${item.status}`}>
+        {/* A finished call needs no label; running, failed and stopped ones do. */}
+        <span className={`tool-status ${item.status}`} title={t.tool.status[item.status]}>
           {item.status === 'running' ? <span className="pulse" aria-hidden="true" /> : <Icon name={item.status === 'ok' ? 'check' : item.status === 'failed' ? 'alert' : 'stop'} />}
-          {t.tool.status[item.status]}
+          <span className={item.status === 'ok' ? 'visually-hidden' : undefined}>{t.tool.status[item.status]}</span>
         </span>
       </div>
       {item.files.length > 0 && <FileList t={t} files={item.files} />}
@@ -141,18 +143,37 @@ function FileList({ t, files }: { t: Messages; files: ToolItem['files'] }) {
   );
 }
 
-function ApprovalCard({ t, item, onDecide }: { t: Messages; item: ApprovalItem; onDecide: (approvalId: string, decision: ApprovalDecisionInput) => Promise<void> }) {
-  const [busy, setBusy] = useState(false);
-  const decide = (decision: ApprovalDecisionInput) => {
-    setBusy(true);
-    onDecide(item.approvalId, decision).finally(() => setBusy(false));
+function ApprovalCard({ t, item, onDecide, actionable }: { t: Messages; item: ApprovalItem; onDecide: (approvalId: string, decision: ApprovalDecisionInput) => Promise<void | boolean>; actionable: boolean }) {
+  const [selected, setSelected] = useState<ApprovalDecisionInput>();
+  const [error, setError] = useState(false);
+  const locked = useRef(false);
+  const decide = async (decision: ApprovalDecisionInput) => {
+    if (locked.current || item.status !== 'pending' || !actionable) return;
+    locked.current = true;
+    setSelected(decision);
+    setError(false);
+    try {
+      if (await onDecide(item.approvalId, decision) === false) throw new Error('Approval was not sent.');
+      // Keep controls locked until the host's resolved event arrives; a successful RPC is not a grant.
+    } catch {
+      locked.current = false;
+      setSelected(undefined);
+      setError(true);
+    }
   };
   const pending = item.status === 'pending';
+  const choices = [
+    { value: 'once', label: t.approval.allowOnce },
+    { value: 'session', label: t.approval.allowSession },
+    { value: 'reject', label: t.approval.deny },
+  ] as const;
+  const answer = item.by === 'policy' && item.status === 'granted' ? t.approval.byPolicy
+    : choices.find(choice => choice.value === item.choice)?.label ?? t.approval.status[item.status as Exclude<ApprovalItem['status'], 'pending'>];
   return (
     <div className={`approval-card ${item.status}`} role={pending ? 'group' : undefined} aria-label={pending ? t.approval.title : undefined}>
       <div className="approval-head">
         <Icon name="shield" />
-        <strong>{pending ? t.approval.title : item.action}</strong>
+        <strong>{t.approval.title}</strong>
         {item.risk && <span className={`risk ${item.risk}`}>{t.approval.risk[item.risk]}</span>}
         {!pending && (
           <span className={`approval-status ${item.status}`}>
@@ -160,15 +181,20 @@ function ApprovalCard({ t, item, onDecide }: { t: Messages; item: ApprovalItem; 
           </span>
         )}
       </div>
-      {pending && <p className="approval-action">{item.action}</p>}
-      {item.detail && <p className="approval-detail">{item.detail}</p>}
-      {pending && (
-        <div className="actions">
-          <button type="button" className="primary" disabled={busy} onClick={() => decide('once')}><Icon name="check" />{t.approval.allowOnce}</button>
-          <button type="button" disabled={busy} onClick={() => decide('session')}>{t.approval.allowSession}</button>
-          <button type="button" className="danger" disabled={busy} onClick={() => decide('reject')}><Icon name="close" />{t.approval.deny}</button>
+      <div className="approval-action"><Markdown text={item.action} /></div>
+      {item.detail && <pre className="approval-detail">{item.detail}</pre>}
+      {pending && actionable && (
+        <div className="approval-options" aria-busy={Boolean(selected)}>
+          {choices.map((choice, index) => <button key={choice.value} type="button" className={`approval-option${selected === choice.value ? ' selected' : ''}`} disabled={Boolean(selected)} onClick={() => void decide(choice.value)}>
+            <span className="choice-number" aria-hidden="true">{index + 1}</span><span>{choice.label}</span>
+            {selected === choice.value && <Icon name="check" />}
+          </button>)}
         </div>
       )}
+      {pending && selected && <p className="approval-feedback" role="status">{t.approval.submitting}</p>}
+      {pending && !actionable && <p className="approval-feedback">{t.approval.inSource}</p>}
+      {error && pending && <p className="form-error" role="alert">{t.approval.sendFailed}</p>}
+      {!pending && <p className="approval-answer"><Icon name={item.status === 'granted' ? 'check' : item.status === 'rejected' ? 'close' : 'stop'} /><span>{answer}</span></p>}
     </div>
   );
 }
@@ -201,49 +227,13 @@ export function groupToolRuns(items: readonly TranscriptItem[]): (Exclude<Transc
   return out;
 }
 
-/** An attached file listed by name, kind and size. */
-function AttachmentRow({ file }: { file: AttachmentMetadata }) {
-  return <li className={`bubble-file kind-${file.kind}`}><Icon name="file" /><span className="bubble-file-name">{file.name}</span>
-    {file.size > 0 && <span className="bubble-file-size">{formatBytes(file.size)}</span>}</li>;
-}
-
-/** A small preview of an attached image the host kept a copy of; it opens full size and closes on a click or Escape. */
-function AttachmentThumb({ t, file, ref_, load }: { t: Messages; file: AttachmentMetadata; ref_: string; load: AttachmentPreviewLoader }) {
-  const [url, setUrl] = useState<string | null | undefined>(undefined);
-  const [open, setOpen] = useState(false);
-  useEffect(() => {
-    let live = true;
-    void load(ref_).then(found => { if (live) setUrl(found ?? null); });
-    return () => { live = false; };
-  }, [load, ref_]);
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') setOpen(false); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [open]);
-  // No copy (yet): the file is listed like any other.
-  if (url === null) return <AttachmentRow file={file} />;
-  return <li className="bubble-thumb">
-    <button type="button" className="bubble-thumb-button" title={file.name} aria-label={t.chat.openAttachment(file.name)} disabled={!url} onClick={() => setOpen(true)}>
-      {url ? <img src={url} alt="" /> : <span className="bubble-thumb-loading" aria-hidden="true" />}
-    </button>
-    {/* Rendered on the page body: dialogs with transforms or blur would otherwise clip a fixed overlay. */}
-    {open && url && typeof document !== 'undefined' && createPortal(<div className="attachment-viewer" role="dialog" aria-modal="true" aria-label={file.name} onClick={() => setOpen(false)}>
-      <figure onClick={event => event.stopPropagation()}>
-        <img src={url} alt={file.name} />
-        <figcaption><span>{file.name}</span>{file.size > 0 && <span>{formatBytes(file.size)}</span>}
-          <button type="button" className="icon-button small" aria-label={t.chat.closeAttachment} onClick={() => setOpen(false)}><Icon name="close" /></button></figcaption>
-      </figure>
-    </div>, document.body)}
-  </li>;
-}
-
-export function TranscriptView({ t, items, language, onDecide, previewAttachment }: {
+export function TranscriptView({ t, items, language, onDecide, previewAttachment, approvalsEnabled = false }: {
   t: Messages;
   items: TranscriptItem[];
   language: string;
-  onDecide: (approvalId: string, decision: ApprovalDecisionInput) => Promise<void>;
+  onDecide: (approvalId: string, decision: ApprovalDecisionInput) => Promise<void | boolean>;
+  /** Explicitly enabled only for a managed session that can actually accept decisions. */
+  approvalsEnabled?: boolean;
   /** Loads images the host kept a copy of (observed transcripts); without it every file is listed. */
   previewAttachment?: AttachmentPreviewLoader | undefined;
 }) {
@@ -258,22 +248,16 @@ export function TranscriptView({ t, items, language, onDecide, previewAttachment
         }
         switch (item.kind) {
           case 'user':
-            return <li key={item.id} className="msg user"><span className="visually-hidden">{t.chat.you}: </span><div className="bubble">
-              {item.attachments && <ul className="bubble-files" aria-label={t.composer.sentAttachments}>{item.attachments.map((file, index) => (
-                file.kind === 'image' && file.ref && previewAttachment
-                  ? <AttachmentThumb key={index} t={t} file={file} ref_={file.ref} load={previewAttachment} />
-                  : <AttachmentRow key={index} file={file} />
-              ))}</ul>}
-              {item.text}
-            </div></li>;
+            return <UserMessage key={item.id} t={t} item={item} previewAttachment={previewAttachment} language={language} />;
           case 'assistant':
             return (
               <li key={item.id} className={`msg assistant ${item.streaming ? 'streaming' : ''}`} aria-busy={item.streaming || undefined}>
                 <span className="visually-hidden">{t.chat.agent}: </span>
                 <Markdown text={item.text} />
+                {!item.streaming && item.text.trim() && <div className="message-actions"><CopyButton text={item.text} label={t.chat.copyMessage} /></div>}
               </li>
             );
-          case 'approval': return <li key={item.id} className="msg"><ApprovalCard t={t} item={item} onDecide={onDecide} /></li>;
+          case 'approval': return <li key={item.id} className="msg"><ApprovalCard t={t} item={item} onDecide={onDecide} actionable={approvalsEnabled} /></li>;
           case 'files': return <li key={item.id} className="msg"><div className="tool-card status-ok"><FileList t={t} files={item.files} /></div></li>;
           case 'notice':
             return (

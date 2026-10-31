@@ -1,9 +1,10 @@
 import type { Messages } from '../../i18n';
+import { markdownPreview } from '../../chat/markdownParser';
 import { Icon, type IconName } from '../../ui/Icon';
 import { activityText } from '../activityFeed';
 import { formatDuration, type TeamMember, type TimelineEntry } from './timeline';
 
-const ICON: Record<TimelineEntry['kind'], IconName> = { prompt: 'chat', reply: 'chat', tool: 'tool', delegated: 'users', approval: 'shield', turn: 'check' };
+const ICON: Record<TimelineEntry['kind'], IconName> = { prompt: 'chat', notice: 'spark', reply: 'chat', tool: 'tool', delegated: 'users', approval: 'shield', turn: 'check' };
 
 /** A character's steps, newest first, plus the workers its lead agent delegated to. */
 export function ActivityTimeline({ t, language, entries, team, onSelectCharacter }: {
@@ -22,7 +23,7 @@ export function ActivityTimeline({ t, language, entries, team, onSelectCharacter
     </section>}
     {!entries.length ? <p className="muted-note">{c.noActivity}</p> : <ol className="character-timeline">
       {[...entries].reverse().map(entry => {
-        const failed = (entry.kind === 'tool' && entry.status === 'failed') || (entry.kind === 'turn' && !entry.ok) || (entry.kind === 'approval' && entry.decision === 'rejected');
+        const failed = (entry.kind === 'notice' && entry.failed) || (entry.kind === 'tool' && entry.status === 'failed') || (entry.kind === 'turn' && !entry.ok) || (entry.kind === 'approval' && entry.decision === 'rejected');
         return <li key={entry.id} className={`timeline-${entry.kind} ${failed ? 'failed' : ''}`}>
           <Icon name={entry.kind === 'turn' && !entry.ok ? 'alert' : ICON[entry.kind]} />
           <div>
@@ -32,7 +33,8 @@ export function ActivityTimeline({ t, language, entries, team, onSelectCharacter
               {entry.kind === 'approval' && <span className={`badge ${entry.decision === 'granted' ? 'ok' : entry.decision === 'rejected' ? 'error' : 'warn'}`}>{c.decision[entry.decision]}</span>}
             </p>
             <p className="timeline-text">
-              {entry.kind === 'prompt' || entry.kind === 'reply' ? activityText(entry.text, 220)
+              {entry.kind === 'reply' ? activityText(markdownPreview(entry.text) || entry.text, 220)
+                : entry.kind === 'prompt' || entry.kind === 'notice' ? activityText(entry.text, 220)
                 : entry.kind === 'tool' || entry.kind === 'delegated' ? entry.label
                   : entry.kind === 'approval' ? entry.action
                     : entry.text ? activityText(entry.text, 220) : entry.ok ? c.turnDone : c.turnFailed}

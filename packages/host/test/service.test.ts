@@ -32,7 +32,7 @@ async function setup() {
   const project = path.join(root, 'project');
   await import('node:fs/promises').then(fs => fs.mkdir(project));
   const scripted = scriptedFetch();
-  const runtime = await createAgentHost({ kind: 'bridge', version: '0.0.0-test', dataDirectory: path.join(root, 'data'), env: { EXTALIA_SECRET_STORE: 'memory', PATH: process.env.PATH }, fetch: scripted.fetch });
+  const runtime = await createAgentHost({ kind: 'bridge', version: '0.0.0-test', dataDirectory: path.join(root, 'data'), homeDirectory: path.join(root, 'home'), importHome: path.join(root, 'home'), env: { EXTALIA_SECRET_STORE: 'memory', PATH: process.env.PATH, EXTALIA_HERMES_BIN: path.join(root, 'not-installed') }, fetch: scripted.fetch });
   cleanups.push(async () => { await runtime.close(); await rm(root, { recursive: true, force: true }); });
   const events: ExtaliaEvent[] = [];
   runtime.host.subscribe(event => events.push(event));
@@ -58,6 +58,20 @@ async function configure(runtime: AgentHostRuntime, project: string) {
 }
 
 describe('agent host service', () => {
+  it('completes managed setup with a saved model connection while deferring the first workspace', async () => {
+    const { runtime, root } = await setup();
+    const { host } = runtime;
+    await expect(host.completeSetup()).rejects.toThrow(/connection/);
+    await host.saveConnection({ name: 'Mock', preset: 'custom', api: 'openai-chat', baseUrl: 'http://mock.test/v1', model: 'mock-agent', credential: { kind: 'none' }, features: { memory: 'off', skills: 'off' } });
+    expect(await host.completeSetup()).toMatchObject({ setupComplete: true, workflow: 'managed', workspaces: [], sessions: [] });
+    expect((await host.getState()).connections).toHaveLength(1);
+    await expect(host.createSession('not-created')).rejects.toThrow(/workspace/i);
+    await runtime.close();
+    const reopened = await createAgentHost({ kind: 'bridge', version: '0.0.0-test', dataDirectory: path.join(root, 'data'), homeDirectory: path.join(root, 'home'), importHome: path.join(root, 'home'), env: { EXTALIA_SECRET_STORE: 'memory', EXTALIA_HERMES_BIN: path.join(root, 'not-installed') } });
+    cleanups.push(() => reopened.close());
+    expect(await reopened.host.getState()).toMatchObject({ setupComplete: true, workflow: 'managed', workspaces: [], sessions: [] });
+  });
+
   it('runs an agent turn end to end with approvals and persists the session', async () => {
     const { project, runtime, events, scripted } = await setup();
     const { host } = runtime;

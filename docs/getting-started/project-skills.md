@@ -1,94 +1,61 @@
-# Project skills
+# Project skills and recorded reviews
 
-A project skill is a set of instructions that lives in a project folder, so
-the agent can follow how that project works. Extalia does not give a project
-skill to the agent until you allow it.
+External skills require a verified scanner result, approval and an active registry
+revision before Extalia offers their catalog metadata or serves their instructions through
+`skill_read`.
+This requirement also applies when the TypeScript core is selected: local project
+review never bypasses the scanner gate. Without the production scanner, external
+skills remain unavailable; shipped canonical built-ins remain usable.
 
-## What a project skill is
+## Inventory and review
 
-A project skill is a `SKILL.md` file inside a folder under the workspace:
+A project may contain `.extalia/skills/<name>/SKILL.md`. Open **Skills** and find
+its workspace under **Project skills** to inspect the name, description, path
+and SHA-256. This is local review information, not an agent catalog.
 
-```text
-<project>/.extalia/skills/<name>/SKILL.md
-```
+**Record review** or **Record all reviews** stores the exact hash you inspected.
+Reviewed files appear under **Reviewed**. **Remove review** removes that record.
+The historical API/data fields still use allow/allowed for compatibility, but
+those records provide review input only. They do not mean scanned, approved,
+active or available to the model.
 
-The file starts with a front matter block that has a `description`, and an
-optional `name` (it defaults to the folder name). The rest of the file holds
-the instructions:
+A changed hash returns to the pending review list. A stale click is refused and
+the list reloads. Reviews belong to the exact project folder and do not follow a
+workspace to a different directory. Existing review records are preserved;
+recording them again cannot unlock an external skill.
 
-```markdown
----
-name: release-notes
-description: How this project writes release notes.
----
+## Use through the registry
 
-Write release notes in the Keep a Changelog format.
-```
+Import the package through the [Skill Security Center](skill-security-center.md).
+Staging and quarantined review are allowed before scanning, but activation and
+registered-skill access require current scanner evidence bound to the exact revision and
+policy, followed by the registry's approval and activation checks. Missing,
+partial, failed, stale or otherwise blocking scan evidence denies use.
 
-- `name` uses lowercase letters, numbers and hyphens, up to 64 characters.
-- `description` and the instructions are required.
-- A file is read only up to 256 KB. Symbolic links are not loaded from a
-  workspace.
-- A file that cannot be loaded is skipped and listed as a skipped file, with
-  the reason.
+Every external agent catalog is built from fresh authoritative registry reads;
+every `skill_read` repeats verification. Changed bytes, scanner/policy changes,
+deactivation or an unavailable daemon cannot fall back to a cached body. A
+project/user skill cannot replace a canonical shipped builtin by copying its
+name or claiming a builtin source.
 
-## Why they wait for your review
+## Links and ordinary documents
 
-A project folder can come from anyone, for example a repository you cloned.
-Its instructions would otherwise reach the agent without you seeing them, so
-Extalia holds each project skill until you allow it. Built-in skills are not
-affected.
+`skill_read` accepts only an approved catalog name. URL, filesystem-path and
+extra-field requests are refused without download, import or scan fallback.
+A link in a prompt is not an installation or scanner result.
 
-## Allow or revoke a skill
+Ordinary file/search/web/attachment content may still be reviewed or edited as
+unverified task data. This gate does not automatically scan all documents or
+provide deterministic protection from every prompt injection. Native lead and
+worker guidance forbids treating such content as an activated external skill or
+a replacement for the registered scanner-gated workflow.
 
-1. Open **Skills** in the sidebar and find the workspace under **Project skills**.
-2. Its section lists the skills waiting for your review.
-   Each entry shows the description, the file path and a short SHA-256 hash.
-   The full hash is in the tooltip.
-3. Click **Allow** for one skill, or **Allow all**.
+Production SkillSpector execution remains separate work; this update enforces
+its absence rather than inventing a successful scan. Workspace/agent ACL and
+scanner subprocess ownership/sandboxing remain separate gates.
 
-Allowed skills are listed under **Allowed (n)**. Click **Revoke** to remove one
-skill, or **Revoke all** to remove every allowed skill in that workspace.
+## Related guides
 
-When the active workspace has skills waiting, Chat shows a notice with a
-**Review skills** button that opens this section. In **Settings → Workspaces**,
-a workspace with skills waiting shows **Review**, which opens the Skills page on
-that workspace.
-
-## What "Changed since you allowed it" means
-
-Your allowance covers the exact file you reviewed, identified by its SHA-256
-hash. If you edit the file, or a new version arrives (for example after a
-pull), the hash no longer matches. The skill then returns to the review list
-marked **Changed since you allowed it**, and it does not reach the agent until
-you allow the new version.
-
-A skill you have never allowed is marked **New in this project**.
-
-If a skill changes after the list is loaded and you click **Allow**, Extalia
-refuses that allowance, reloads the list and shows the current version to
-review.
-
-## How the agent receives allowed skills
-
-- The agent sees the name and description of each allowed skill in a catalog,
-  marked as untrusted, and reads its instructions when a task needs them.
-- The instructions open with a notice that the skill was supplied by the user
-  or the project, not by Extalia.
-- An allowed skill cannot grant permissions, approve actions or override
-  system and safety instructions. File edits and commands still follow the
-  usual approval rules.
-- Your allowance applies to one project folder. The same skill in another
-  folder needs its own review.
-
-## Planned: a stricter registry with a security scanner
-
-This is planned work and is not available yet. Extalia is building a stricter
-skill registry that checks skills with a security scanner. Until a verified
-scanner is configured, imported skills stay in quarantine, which means they are
-not activated. The registry has no screen yet.
-
-## Where to go next
-
+- [Built-in skills](builtin-skills.md)
+- [Skill Security Center](skill-security-center.md)
 - [Security architecture](../architecture/security.md)
-- [Getting started](README.md)

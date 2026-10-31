@@ -13,7 +13,7 @@ function fixture(points: number[][], influences: number[][], name = 'ScanOutfit_
   geometry.setAttribute('skinWeight', new Float32BufferAttribute(influences.flat(), 4));
   geometry.morphTargetsRelative = true;
   geometry.morphAttributes.position = [new Float32BufferAttribute(points.flatMap(() => [0, .01, 0]), 3)];
-  const mesh = new SkinnedMesh(geometry, new MeshStandardMaterial()); mesh.name = name;
+  const mesh: SkinnedMesh = new SkinnedMesh(geometry, new MeshStandardMaterial()); mesh.name = name;
   const skeleton = new Skeleton([upper, lower, foot, other]); mesh.bind(skeleton, new Matrix4());
   return { mesh, geometry, skeleton, dispose() { geometry.dispose(); (mesh.material as MeshStandardMaterial).dispose(); skeleton.dispose(); } };
 }
@@ -64,6 +64,35 @@ describe('conservative cloth hinge weight correction', () => {
       for (let slot = 0; slot < 4; slot++) expect(geometry.getAttribute('skinWeight').getComponent(1, slot))
         .toBe(f.geometry.getAttribute('skinWeight').getComponent(1, slot));
     } finally { geometry.dispose(); f.dispose(); }
+  });
+
+  it('retains reviewed original weights even when the fitted full set uses the scan model slot', () => {
+    const f = fixture([[0, -.2, 0]], [[.8, .2, 0, 0]], 'ScanOutfitModel_2');
+    const native = f.mesh.material as MeshStandardMaterial;
+    const original = new MeshStandardMaterial(); original.name = 'OriginalBottom_P0S1';
+    f.mesh.material = [native, original];
+    const weights = Array.from(f.geometry.getAttribute('skinWeight').array);
+    try {
+      expect(sourceLimbWeights(f.mesh)).toBeUndefined();
+      expect(Array.from(f.geometry.getAttribute('skinWeight').array)).toEqual(weights);
+      // The same pure hinge case still receives the native repair when no
+      // source garment is present; an unknown mesh name alone is not the guard.
+      f.mesh.material = native;
+      const corrected = sourceLimbWeights(f.mesh);
+      expect(corrected).toBeDefined(); corrected?.dispose();
+    } finally { f.mesh.material = native; original.dispose(); f.dispose(); }
+  });
+
+  it('keeps separate skin/context primitives of a fitted set in the same reviewed binding', () => {
+    const f = fixture([[0, -.2, 0]], [[.8, .2, 0, 0]], 'ScanOutfitModel');
+    (f.mesh.material as MeshStandardMaterial).name = 'Skin_SourceSkin';
+    const before = Array.from(f.geometry.getAttribute('skinWeight').array);
+    try {
+      expect(sourceLimbWeights(f.mesh, true)).toBeUndefined();
+      expect(Array.from(f.geometry.getAttribute('skinWeight').array)).toEqual(before);
+      const native = sourceLimbWeights(f.mesh, false);
+      expect(native).toBeDefined(); native?.dispose();
+    } finally { f.dispose(); }
   });
 
   it('keeps normalized totals and a continuous joint blend, with zero upper influence by t=.24', () => {

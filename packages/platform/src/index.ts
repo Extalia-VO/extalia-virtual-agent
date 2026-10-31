@@ -6,6 +6,7 @@ export * from './knowledge.js';
 export * from './knowledgeEdit.js';
 export * from './knowledgeVault.js';
 export * from './missions.js';
+export * from './promptOptions.js';
 export * from './missionPlan.js';
 export * from './skills.js';
 export * from './skillRegistry.js';

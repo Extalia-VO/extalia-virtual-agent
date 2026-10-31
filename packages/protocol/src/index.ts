@@ -8,11 +8,21 @@ export * from './transitions.js';
 export * from './missionJournal.js';
 export * from './jsonSchema.js';
 export * from './daemon.js';
+export * from './workerProtocol.js';
+export * from './workerBundle.js';
+export * from './daemonExecutions.js';
+export * from './daemonPlanning.js';
 export * from './daemonSkills.js';
+export * from './daemonSkillRouting.js';
 export * from './daemonKnowledge.js';
 export * from './daemonValidate.js';
 export * from './daemonFrame.js';
 export * from './protocolSchemas.js';
+export * from './control.js';
+export * from './controlDelegation.js';
+export * from './controlTask.js';
+export * from './controlIdentity.js';
+export * from './controlValidate.js';
 
 export function classifyTool(name: string): { kind: ActivityKind; label: string } {
   const lower = name.toLowerCase();

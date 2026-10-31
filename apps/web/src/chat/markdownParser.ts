@@ -1,6 +1,6 @@
 /**
- * A small, safe Markdown subset for assistant replies: paragraphs, headings,
- * lists, quotes, rules, fenced code, GFM tables, inline code, bold, italic and links.
+ * A small, safe Markdown subset for assistant replies: paragraphs, headings, nested and
+ * task lists, quotes, rules, fenced code, GFM tables, inline code, bold, italic, strikethrough and links.
  * The parser builds a plain tree; the renderer turns it into React elements,
  * so raw HTML in a reply is always shown as text and never interpreted.
  */
@@ -11,12 +11,23 @@ export type Inline =
   | { type: 'code'; text: string }
   | { type: 'strong'; children: Inline[] }
   | { type: 'em'; children: Inline[] }
+  | { type: 'del'; children: Inline[] }
   | { type: 'link'; href: string; children: Inline[] }
+  | { type: 'filelink'; path: string; children: Inline[] }
   /** Only with `{ wikilinks: true }` (Knowledge notes): `[[target#heading|display]]`, `![[…]]` embeds. */
   | { type: 'wikilink'; target: string; heading?: string; display?: string; embed: boolean };
 
 /** Parser options. Chat replies use the defaults; Knowledge notes turn wikilinks on. */
-export interface MarkdownOptions { wikilinks?: boolean }
+export interface MarkdownOptions { wikilinks?: boolean; fileLinks?: boolean }
+
+/** A display reference only. The file preview resolves it against registered roots before any read. */
+function fileReference(raw: string): string | undefined {
+  const value = raw.trim();
+  if (!value || value.length > 4096 || /[\p{Cc}\p{Cf}]/u.test(value)) return;
+  if (/^[a-z][a-z0-9+.-]*:/i.test(value) && !/^[a-z]:[\\/]/i.test(value)) return;
+  if (value.startsWith('//') || value.startsWith('\\\\') || value.startsWith('#')) return;
+  return /^(?:\/|[a-z]:[\\/]|\.{1,2}[\\/])/i.test(value) || /^[^<>:*?"|]+\.[a-z0-9]{1,12}(?::\d+(?::\d+)?)?(?:#L\d+)?$/i.test(value) ? value : undefined;
+}
 
 /** Column alignment from a GFM delimiter row (`:---`, `:---:`, `---:`); `null` when unspecified. */
 export type TableAlign = 'left' | 'center' | 'right' | null;
@@ -25,8 +36,10 @@ export type Block =
   | { type: 'paragraph'; children: Inline[] }
   | { type: 'table'; align: TableAlign[]; header: Inline[][]; rows: Inline[][][] }
   | { type: 'heading'; level: 1 | 2 | 3 | 4 | 5 | 6; children: Inline[] }
-  | { type: 'list'; ordered: boolean; start: number; items: Inline[][] }
-  | { type: 'quote'; children: Inline[] }
+  /** `nested` holds each item's sub-lists and code by item index; `checks` its task box, when any item has one. */
+  | { type: 'list'; ordered: boolean; start: number; items: Inline[][]; nested?: (Block[] | undefined)[]; checks?: (boolean | undefined)[] }
+  /** `blocks` is set when the quote holds more than one paragraph of text, e.g. a list. */
+  | { type: 'quote'; children: Inline[]; blocks?: Block[] }
   | { type: 'code'; language?: string; text: string }
   | { type: 'rule' };
 
@@ -50,6 +63,10 @@ const QUOTE = /^ {0,3}>[ \t]?(.*)$/;
 const BLANK = /^\s*$/;
 const DELIMITER_CELL = /^:?-+:?$/;
 
+const TASK = /^\[([ xX])\][ \t]+(.*)$/s;
+const NESTED_INDENT = 2;
+/** Tabs count as four columns, so mixed indentation still nests. */
+const indentOf = (line: string) => /^[ \t]*/.exec(line)![0].replace(/\t/g, '    ').length;
 const isOrdered = (match: RegExpExecArray) => /\d/.test(match[1]!);
 const startsBlock = (line: string) => FENCE.test(line) || HEADING.test(line) || RULE.test(line) || ITEM.test(line) || QUOTE.test(line);
 
@@ -132,13 +149,36 @@ export function parseMarkdown(source: string, options: MarkdownOptions = {}): Bl
       const ordered = isOrdered(item);
       const start = ordered ? Number.parseInt(item[1]!, 10) : 1;
       const entries: string[] = [];
+      const nested: (Block[] | undefined)[] = [];
+      const base = indentOf(line);
+      let afterBlank = false;
       while (index < lines.length) {
         const current = lines[index]!;
         const next = ITEM.exec(current);
+        // Indented lists, code and quotes (or text after a blank line) belong to the item above.
+        if (entries.length && !BLANK.test(current) && indentOf(current) >= base + NESTED_INDENT && (next || afterBlank || FENCE.test(current) || QUOTE.test(current))) {
+          const inner: string[] = [];
+          while (index < lines.length) {
+            const row = lines[index]!;
+            if (BLANK.test(row)) {
+              let ahead = index + 1;
+              while (ahead < lines.length && BLANK.test(lines[ahead]!)) ahead++;
+              if (ahead >= lines.length || indentOf(lines[ahead]!) < base + NESTED_INDENT) break;
+            } else if (indentOf(row) < base + NESTED_INDENT) break;
+            inner.push(row);
+            index++;
+          }
+          const strip = Math.min(...inner.filter(row => !BLANK.test(row)).map(indentOf));
+          const parsed = parseMarkdown(inner.map(row => row.replace(/\t/g, '    ').slice(strip)).join('\n'), options);
+          nested[entries.length - 1] = [...(nested[entries.length - 1] ?? []), ...parsed];
+          afterBlank = false;
+          continue;
+        }
         if (next) {
           if (isOrdered(next) !== ordered) break;
           entries.push(next[2]!);
           index++;
+          afterBlank = false;
           continue;
         }
         if (BLANK.test(current)) {
@@ -146,8 +186,10 @@ export function parseMarkdown(source: string, options: MarkdownOptions = {}): Bl
           let ahead = index + 1;
           while (ahead < lines.length && BLANK.test(lines[ahead]!)) ahead++;
           const following = ahead < lines.length ? ITEM.exec(lines[ahead]!) : null;
-          if (!following || isOrdered(following) !== ordered) break;
+          const inside = ahead < lines.length && indentOf(lines[ahead]!) >= base + NESTED_INDENT;
+          if (!inside && (!following || isOrdered(following) !== ordered)) break;
           index = ahead;
+          afterBlank = true;
           continue;
         }
         if (startsBlock(current) && !/^[ \t]+\S/.test(current)) break;
@@ -155,14 +197,20 @@ export function parseMarkdown(source: string, options: MarkdownOptions = {}): Bl
         entries[entries.length - 1] += `\n${current.trim()}`;
         index++;
       }
-      blocks.push({ type: 'list', ordered, start, items: entries.map(entry => parseInline(entry)) });
+      const tasks = entries.map(entry => TASK.exec(entry));
+      const checks = tasks.map(task => task ? task[1] !== ' ' : undefined);
+      blocks.push({
+        type: 'list', ordered, start, items: entries.map((entry, at) => parseInline(tasks[at]?.[2] ?? entry)),
+        ...(nested.length ? { nested } : {}), ...(tasks.some(Boolean) ? { checks } : {}),
+      });
       continue;
     }
 
     if (QUOTE.test(line)) {
       const quoted: string[] = [];
       while (index < lines.length && QUOTE.test(lines[index]!)) quoted.push(QUOTE.exec(lines[index++]!)![1]!);
-      blocks.push({ type: 'quote', children: parseInline(quoted.join('\n')) });
+      const rich = quoted.some(row => BLANK.test(row) || startsBlock(row));
+      blocks.push({ type: 'quote', children: parseInline(quoted.join('\n')), ...(rich ? { blocks: parseMarkdown(quoted.join('\n'), options) } : {}) });
       continue;
     }
 
@@ -269,13 +317,16 @@ function parseInlineText(text: string, depth: number, options: MarkdownOptions):
     }
 
     if (char === '[' && depth < MAX_DEPTH) {
-      const match = /^\[((?:[^[\]\\]|\\.)*)\]\(\s*([^\s()]*(?:\([^\s()]*\)[^\s()]*)*)(?:\s+"[^"]*")?\s*\)/.exec(text.slice(index));
+      const angle = /^\[((?:[^[\]\\]|\\.)*)\]\(<([^<>\n]{1,4096})>\)/.exec(text.slice(index));
+      const match = angle ?? /^\[((?:[^[\]\\]|\\.)*)\]\(\s*([^\s()]*(?:\([^\s()]*\)[^\s()]*)*)(?:\s+"[^"]*")?\s*\)/.exec(text.slice(index));
       if (match) {
         flush();
-        const children = parseInlineText(match[1]!, depth + 1, options).filter(child => child.type !== 'link' && child.type !== 'wikilink');
+        const children = parseInlineText(match[1]!, depth + 1, options).filter(child => child.type !== 'link' && child.type !== 'wikilink' && child.type !== 'filelink');
         const href = safeHref(match[2]!);
+        const file = options.fileLinks ? fileReference(match[2]!) : undefined;
         // Unsafe targets keep their label as plain text.
         if (href) result.push({ type: 'link', href, children });
+        else if (file) result.push({ type: 'filelink', path: file, children });
         else result.push(...children);
         index += match[0].length;
         continue;
@@ -293,6 +344,16 @@ function parseInlineText(text: string, depth: number, options: MarkdownOptions):
           index += url.length;
           continue;
         }
+      }
+    }
+
+    if (char === '~' && text[index + 1] === '~' && depth < MAX_DEPTH && text[index + 2] && !/\s/.test(text[index + 2]!)) {
+      const close = findCloser('~~', index + 3, at => !/\s/.test(text[at - 1]!));
+      if (close !== -1) {
+        flush();
+        result.push({ type: 'del', children: parseInlineText(text.slice(index + 2, close), depth + 1, options) });
+        index = close + 2;
+        continue;
       }
     }
 
@@ -327,6 +388,17 @@ function parseInlineText(text: string, depth: number, options: MarkdownOptions):
   }
   flush();
   return result;
+}
+
+/** A reply as one line of plain words for timelines: no markers, and code is left out. */
+export function markdownPreview(source: string): string {
+  const words = (blocks: readonly Block[]): string[] => blocks.flatMap(block => {
+    if (block.type === 'paragraph' || block.type === 'heading') return [inlineText(block.children)];
+    if (block.type === 'quote') return block.blocks ? words(block.blocks) : [inlineText(block.children)];
+    if (block.type === 'list') return block.items.flatMap((item, index) => [inlineText(item), ...words(block.nested?.[index] ?? [])]);
+    return [];
+  });
+  return words(parseMarkdown(source.slice(0, 8192))).join(' ').replace(/\s+/g, ' ').trim();
 }
 
 /** Plain text of inline content, for labels and tests. */

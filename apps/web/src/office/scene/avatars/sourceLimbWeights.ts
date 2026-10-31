@@ -5,9 +5,14 @@ const smooth = (value: number) => { const x = Math.max(0, Math.min(1, value)); r
 const EPSILON = 1e-6;
 
 /** Correct only cloth influenced exclusively by one upper/lower joint pair below its hinge. */
-export function sourceLimbWeights(mesh: SkinnedMesh): BufferGeometry | undefined {
+export function sourceLimbWeights(mesh: SkinnedMesh, preserveFittedBinding = false): BufferGeometry | undefined {
+  if (preserveFittedBinding) return undefined;
   const name = mesh.name.replace(/_\d+$/, '');
   if (!/^(?:ScanOutfit[A-Za-z]*|Source(?:Top|Bottom)|Office(?:Top|Outer|Bottom))$/.test(name) || !mesh.skeleton) return undefined;
+  const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+  // Fitted originals carry their reviewed elbow/knee binding. Native scan
+  // cleanup must not replace that binding after source-pose validation.
+  if (materials.some(material => material.name.startsWith('Original'))) return undefined;
   const source = mesh.geometry, position = source.getAttribute('position');
   const joints = source.getAttribute('skinIndex'), weights = source.getAttribute('skinWeight');
   if (!position || !joints || !weights || joints.itemSize !== 4 || weights.itemSize !== 4

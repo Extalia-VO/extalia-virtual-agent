@@ -1,4 +1,5 @@
 import type { ActivityKind, AgentState, ExtaliaEvent, Usage } from '@extalia/protocol';
+import { promptPreview } from '../../chat/messagePresentation';
 import type { OfficeAgent } from '../presence';
 
 /**
@@ -7,6 +8,8 @@ import type { OfficeAgent } from '../presence';
  */
 export type TimelineEntry =
   | { kind: 'prompt'; id: string; at: string; text: string }
+  /** Text the agent app wrote into the turn (a finished background task, a slash command), not a prompt. */
+  | { kind: 'notice'; id: string; at: string; text: string; failed: boolean }
   | { kind: 'reply'; id: string; at: string; text: string }
   | { kind: 'tool'; id: string; at: string; label: string; activity: ActivityKind; status: 'running' | 'ok' | 'failed' | 'stopped'; durationMs?: number }
   | { kind: 'delegated'; id: string; at: string; label: string; workerId: string }
@@ -43,10 +46,16 @@ export function characterTimeline(events: readonly ExtaliaEvent[], agent: Pick<O
   for (const event of characterEvents(events, agent)) {
     const { body, id, at } = event;
     switch (body.type) {
-      case 'prompt.submitted':
+      case 'prompt.submitted': {
+        const preview = promptPreview(body.text);
+        if (preview.notice) {
+          if (preview.text) entries.push({ kind: 'notice', id, at, text: preview.text, failed: preview.status === 'failed' });
+          break;
+        }
         turnStart = at;
-        entries.push({ kind: 'prompt', id, at, text: body.text });
+        entries.push({ kind: 'prompt', id, at, text: preview.text });
         break;
+      }
       case 'model.completed':
         if (body.text.trim()) entries.push({ kind: 'reply', id, at, text: body.text });
         break;

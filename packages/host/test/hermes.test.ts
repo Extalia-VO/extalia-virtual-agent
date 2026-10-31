@@ -14,6 +14,8 @@ const PROCESS_TEST_TIMEOUT_MS = 30_000;
  * environment names to `$HERMES_HOME/calls.jsonl`, then prints scripted
  * stream-json lines like Hermes Agent 0.21. The real Hermes is never run.
  */
+/** The fake Hermes is a `#!` script, which Windows cannot start directly. */
+const POSIX_SCRIPTS_ONLY = process.platform === 'win32';
 const FAKE_HERMES = `#!/usr/bin/env node
 const fs = require('node:fs');
 const path = require('node:path');
@@ -125,7 +127,7 @@ async function hermesWorkspace(host: AgentHostRuntime['host'], project: string, 
 }
 
 describe('Hermes Agent discovery', () => {
-  it('finds the executable without a shell and lists profile names only', async () => {
+  it.skipIf(POSIX_SCRIPTS_ONLY)('finds the executable without a shell and lists profile names only', async () => {
     const root = await tempDir();
     const home = path.join(root, 'home'), hermes = path.join(home, '.hermes'), bin = path.join(root, 'bin');
     for (const name of ['beta', 'alpha', 'Not Valid', '.deleted']) await mkdir(path.join(hermes, 'profiles', name), { recursive: true });
@@ -155,6 +157,15 @@ describe('Hermes Agent discovery', () => {
 });
 
 describe('Hermes Agent workspaces', { timeout: PROCESS_TEST_TIMEOUT_MS }, () => {
+  it('completes managed setup without a workspace only when Hermes is available', async () => {
+    const available = await setup();
+    expect(await available.host.completeSetup()).toMatchObject({ setupComplete: true, workflow: 'managed', connections: [], workspaces: [], sessions: [] });
+    expect(await calls(available.hermesHome)).toEqual([]);
+    const missing = await setup({ missingBinary: true });
+    await expect(missing.host.completeSetup()).rejects.toThrow(/connection.*Hermes/i);
+    expect(await missing.host.getState()).toMatchObject({ setupComplete: false, workflow: 'managed', connections: [], workspaces: [] });
+  });
+
   it('needs no model connection and validates the profile and model', async () => {
     const { host, project } = await setup();
     expect((await host.runtimes()).find(item => item.id === 'hermes')).toEqual({ id: 'hermes', available: true, profiles: ['default', 'work'] });
@@ -170,7 +181,7 @@ describe('Hermes Agent workspaces', { timeout: PROCESS_TEST_TIMEOUT_MS }, () => 
     expect((await host.setWorkflow('managed')).setupComplete).toBe(true);
   });
 
-  it('runs prompts through hermes, streams protocol events and resumes the Hermes session', async () => {
+  it.skipIf(POSIX_SCRIPTS_ONLY)('runs prompts through hermes, streams protocol events and resumes the Hermes session', async () => {
     const { runtime, host, events, project, hermesHome } = await setup();
     const workspace = await hermesWorkspace(host, project);
     await host.completeSetup();
@@ -217,7 +228,7 @@ describe('Hermes Agent workspaces', { timeout: PROCESS_TEST_TIMEOUT_MS }, () => 
     expect(all.filter(event => event.body.type === 'turn.completed')).toHaveLength(2);
   });
 
-  it('passes the model and bypasses Hermes approvals only when the workspace allows everything', async () => {
+  it.skipIf(POSIX_SCRIPTS_ONLY)('passes the model and bypasses Hermes approvals only when the workspace allows everything', async () => {
     const { runtime, host, events, project, hermesHome } = await setup();
     const careful = await hermesWorkspace(host, project, { runtimeModel: 'example/model', permissions: { fileWrite: 'allow', commands: 'ask' } });
     const session = await host.createSession(careful.id);
@@ -243,7 +254,7 @@ describe('Hermes Agent workspaces', { timeout: PROCESS_TEST_TIMEOUT_MS }, () => 
     expect((await host.sessionEvents(session.id)).map(event => event.body.type)).toEqual(['session.started']);
   });
 
-  it('reports a failed run with Hermes’ own error text', async () => {
+  it.skipIf(POSIX_SCRIPTS_ONLY)('reports a failed run with Hermes’ own error text', async () => {
     const { runtime, host, events, project } = await setup();
     const session = await host.createSession((await hermesWorkspace(host, project)).id);
     await host.sendPrompt(session.id, 'FAIL please');
@@ -264,7 +275,7 @@ describe('Hermes Agent workspaces', { timeout: PROCESS_TEST_TIMEOUT_MS }, () => 
     expect((crashed.body as Extract<EventBody, { type: 'turn.failed' }>).error).toMatch(/exited with code 2[\s\S]*the provider exploded/);
   });
 
-  it('stops a running Hermes process on cancel and when the host closes', async () => {
+  it.skipIf(POSIX_SCRIPTS_ONLY)('stops a running Hermes process on cancel and when the host closes', async () => {
     const { runtime, host, events, project, hermesHome } = await setup();
     const session = await host.createSession((await hermesWorkspace(host, project)).id);
     await host.sendPrompt(session.id, 'SLOW work');
@@ -290,7 +301,7 @@ describe('Hermes Agent workspaces', { timeout: PROCESS_TEST_TIMEOUT_MS }, () => 
     expect(alive(second)).toBe(false);
   });
 
-  it('carries a continued conversation into the first Hermes prompt', async () => {
+  it.skipIf(POSIX_SCRIPTS_ONLY)('carries a continued conversation into the first Hermes prompt', async () => {
     const { runtime, host, events, project, hermesHome } = await setup();
     const workspace = await hermesWorkspace(host, project);
     const at = (minute: number) => `2026-10-01T10:${String(minute).padStart(2, '0')}:00.000Z`;
@@ -320,7 +331,7 @@ describe('Hermes Agent workspaces', { timeout: PROCESS_TEST_TIMEOUT_MS }, () => 
 });
 
 describe('runHermesTurn', { timeout: PROCESS_TEST_TIMEOUT_MS }, () => {
-  it('kills a Hermes process that ignores SIGTERM after the grace period', async () => {
+  it.skipIf(POSIX_SCRIPTS_ONLY)('kills a Hermes process that ignores SIGTERM after the grace period', async () => {
     const root = await tempDir();
     const executable = await fakeHermes(root);
     const bodies: EventBody[] = [];
@@ -359,7 +370,7 @@ describe('Hermes Agent subagent teams', { timeout: PROCESS_TEST_TIMEOUT_MS }, ()
     ],
   };
 
-  it('saves the team, prepends the team brief to the Hermes prompt and shows delegations as the named member', async () => {
+  it.skipIf(POSIX_SCRIPTS_ONLY)('saves the team, prepends the team brief to the Hermes prompt and shows delegations as the named member', async () => {
     const { runtime, host, events, project, hermesHome } = await setup();
     const workspace = await hermesWorkspace(host, project);
     await host.completeSetup();
@@ -399,7 +410,7 @@ describe('Hermes Agent subagent teams', { timeout: PROCESS_TEST_TIMEOUT_MS }, ()
     expect(bodies).toContainEqual({ type: 'subagent.state', subagentId: 'm-elena', state: 'idle' });
   });
 
-  it('applies a team written into a Hermes prompt and sends no brief when the team is off', async () => {
+  it.skipIf(POSIX_SCRIPTS_ONLY)('applies a team written into a Hermes prompt and sends no brief when the team is off', async () => {
     const { runtime, host, events, project, hermesHome } = await setup();
     const workspace = await hermesWorkspace(host, project);
     await host.completeSetup();
@@ -423,7 +434,7 @@ describe('Hermes Agent subagent teams', { timeout: PROCESS_TEST_TIMEOUT_MS }, ()
     expect((await calls(hermesHome))[1]!.stdin).toBe('Plain request');
   });
 
-  it('v0.0.47: a session copies the workspace default team and every Hermes prompt (resumed and continued) carries the brief', async () => {
+  it.skipIf(POSIX_SCRIPTS_ONLY)('v0.0.47: a session copies the workspace default team and every Hermes prompt (resumed and continued) carries the brief', async () => {
     const { runtime, host, events, project, hermesHome } = await setup();
     const workspace = await hermesWorkspace(host, project);
     await host.completeSetup();

@@ -6,6 +6,19 @@ const seats = ['qa.station-1', 'research.laptop-2', 'engineering.pod-a.seat-ne',
 const distance = (a: readonly number[], b: readonly number[]) => Math.hypot(...a.map((value, index) => value - b[index]!));
 
 describe('desk hand contacts and activity transitions', () => {
+  it('enters a seated contact at its real target while smoothly enabling the arm solve', () => {
+    const shown = createHandGoals();
+    const target = writeHandGoals(createHandGoals(), 'desk-idle', 0, 0, deskReachForSeat(undefined), 1, 1, 0);
+    blendHandGoals(shown, target, .2);
+    for (const hand of [0, 1] as const) {
+      expect(shown.target[hand]).toEqual(target.target[hand]);
+      expect(shown.weight[hand]).toBeCloseTo(.2);
+    }
+    const previous = shown.target[0][0]; target.target[0][0] += .1;
+    blendHandGoals(shown, target, .2);
+    expect(shown.target[0][0]).toBeCloseTo(previous + .02);
+  });
+
   it('uses contact goals for seated callers without an explicit movement clip', () => {
     expect(resolveDeskHandClip('none', 1, true)).toBe('typing');
     expect(resolveDeskHandClip('none', 1, false)).toBe('desk-idle');
@@ -61,9 +74,10 @@ describe('desk hand contacts and activity transitions', () => {
       writeHandGoals(target, clip, 2, 0, reach, 1, 1, 0);
       for (let frame = 0; frame < 120; frame++) {
         const before = shown.target.map(point => [...point]);
+        const active = shown.weight.map(weight => weight > 1e-3);
         blendHandGoals(shown, target, 1 - Math.exp(-1 / 60 * 5));
         expect([...shown.target.flat(), ...shown.direction.flat(), ...shown.palm.flat(), ...shown.curl.flat()].every(Number.isFinite)).toBe(true);
-        for (const hand of [0, 1] as const) expect(distance(shown.target[hand], before[hand]!)).toBeLessThan(.13);
+        for (const hand of [0, 1] as const) if (active[hand]) expect(distance(shown.target[hand], before[hand]!)).toBeLessThan(.13);
       }
       for (const hand of [0, 1] as const) expect(distance(shown.target[hand], target.target[hand])).toBeLessThan(.0001);
     }

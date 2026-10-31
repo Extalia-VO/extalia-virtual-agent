@@ -1,0 +1,90 @@
+{
+  "contract": "pythonWorkerRawFrames",
+  "cases": [
+    {
+      "name": "canonical hello",
+      "valid": true,
+      "line": "{\"schema_version\":1,\"kind\":\"hello\",\"worker_version\":\"1\",\"operations\":[\"health\"]}"
+    },
+    {
+      "name": "escaped ASCII version and member",
+      "valid": true,
+      "line": "{\"schema_version\":1,\"k\\u0069nd\":\"hello\",\"worker_version\":\"\\u0031\",\"operations\":[\"health\"]}"
+    },
+    {
+      "name": "semantic exponent integer request",
+      "valid": true,
+      "line": "{\"schema_version\":1.0,\"kind\":\"request\",\"request_id\":\"00000000-0000-4000-8000-000000000001\",\"operation\":\"health\",\"deadline_ms\":5e1,\"payload\":{}}"
+    },
+    {
+      "name": "duplicate version",
+      "valid": false,
+      "line": "{\"schema_version\":1,\"kind\":\"hello\",\"worker_version\":\"2\",\"worker_version\":\"1\",\"operations\":[\"health\"]}"
+    },
+    {
+      "name": "escaped duplicate version key",
+      "valid": false,
+      "line": "{\"schema_version\":1,\"kind\":\"hello\",\"worker_version\":\"2\",\"worker_\\u0076ersion\":\"1\",\"operations\":[\"health\"]}"
+    },
+    {
+      "name": "overwritten lone surrogate",
+      "valid": false,
+      "line": "{\"schema_version\":1,\"kind\":\"hello\",\"worker_version\":\"\\ud800\",\"worker_version\":\"1\",\"operations\":[\"health\"]}"
+    },
+    {
+      "name": "overwritten astral string",
+      "valid": false,
+      "line": "{\"schema_version\":1,\"kind\":\"hello\",\"worker_version\":\"\\ud83d\\ude00\",\"worker_version\":\"1\",\"operations\":[\"health\"]}"
+    },
+    {
+      "name": "overwritten invalid request payload",
+      "valid": false,
+      "line": "{\"schema_version\":1,\"kind\":\"request\",\"request_id\":\"00000000-0000-4000-8000-000000000001\",\"operation\":\"health\",\"deadline_ms\":50,\"payload\":{\"command\":\"run\"},\"payload\":{}}"
+    },
+    {
+      "name": "nested duplicate error code",
+      "valid": false,
+      "line": "{\"schema_version\":1,\"kind\":\"error\",\"request_id\":\"00000000-0000-4000-8000-000000000001\",\"error\":{\"code\":\"cancelled\",\"code\":\"unavailable\"}}"
+    },
+    {
+      "name": "depth three object",
+      "valid": false,
+      "line": "{\"schema_version\":1,\"kind\":\"request\",\"request_id\":\"00000000-0000-4000-8000-000000000001\",\"operation\":\"health\",\"deadline_ms\":50,\"payload\":{\"nested\":{}}}"
+    },
+    {
+      "name": "depth three array",
+      "valid": false,
+      "line": "{\"schema_version\":1,\"kind\":\"hello\",\"worker_version\":\"1\",\"operations\":[[\"health\"]]}"
+    },
+    {
+      "name": "non ASCII version",
+      "valid": false,
+      "line": "{\"schema_version\":1,\"kind\":\"hello\",\"worker_version\":\"é\",\"operations\":[\"health\"]}"
+    },
+    {
+      "name": "unmatched container",
+      "valid": false,
+      "line": "{\"schema_version\":1,\"kind\":\"hello\",\"worker_version\":\"1\",\"operations\":[\"health\"]]"
+    },
+    {
+      "name": "invalid JSON escape",
+      "valid": false,
+      "line": "{\"schema_version\":1,\"kind\":\"hello\",\"worker_version\":\"\\q\",\"operations\":[\"health\"]}"
+    },
+    {
+      "name": "embedded BOM",
+      "valid": false,
+      "line": "﻿{\"schema_version\":1,\"kind\":\"hello\",\"worker_version\":\"1\",\"operations\":[\"health\"]}"
+    },
+    {
+      "name": "trailing JSON object",
+      "valid": false,
+      "line": "{\"schema_version\":1,\"kind\":\"hello\",\"worker_version\":\"1\",\"operations\":[\"health\"]}{}"
+    },
+    {
+      "name": "seventh root field",
+      "valid": false,
+      "line": "{\"schema_version\":1,\"kind\":\"request\",\"request_id\":\"00000000-0000-4000-8000-000000000001\",\"operation\":\"health\",\"deadline_ms\":50,\"payload\":{},\"extra\":0}"
+    }
+  ]
+}

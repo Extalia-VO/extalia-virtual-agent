@@ -1,8 +1,9 @@
 import {
   type CharacterAccessories, type CharacterAppearance, type CharacterBottom, type CharacterGait, type CharacterHairStyle,
-  type CharacterOutfit, type CharacterPresentation, type CharacterTop,
+  type CharacterOutfit, type CharacterOutfitParts, type CharacterPresentation, type CharacterTop,
 } from "@extalia/core";
 import { HUMANOID_HEAD_ELONGATION, createHumanoidRigProfile, humanoidInstanceSeed, type HumanoidRigProfile, type HumanoidStature } from "./rig";
+import { seededOutfitChoice, seededOutfitParts } from "./outfitCatalog";
 
 export type { CharacterAppearance, CharacterPresentation } from "@extalia/core";
 
@@ -24,6 +25,10 @@ export type AvatarGlassesStyle = "rectangular" | "round" | "rimless";
 
 export interface AvatarClothingConfig {
   style?: AvatarOutfitStyle;
+  /** Fitted outfit model id (`avatars/outfits/<group>/<id>.glb`) worn instead of the scanned outfit. */
+  model?: string;
+  /** Independent fitted top, bottom and optional outer layer. */
+  parts?: CharacterOutfitParts;
   /** Garment cuts; omitted keeps the outfit's own neckline and trousers. */
   topCut?: CharacterTop;
   bottomCut?: CharacterBottom;
@@ -134,12 +139,17 @@ export function defaultCharacterAppearance(id: string, presentation?: CharacterP
   const seed = humanoidInstanceSeed(id);
   presentation ??= (seed & 1) === 0 ? "masculine" : "feminine";
   const preset = PRESENTATION_PRESETS[presentation];
-  const outfit = SEEDED_OUTFITS[seed % SEEDED_OUTFITS.length] ?? preset.outfit;
+  // First spawn: an everyday style or one of the gender group's fitted outfit models, picked from
+  // the catalog found at build time (stable per id; see `seededOutfitChoice`).
+  const choice = seededOutfitChoice(id, presentation);
+  const parts = seededOutfitParts(id, presentation);
+  const outfit = choice.kind === "style" ? choice.style : SEEDED_OUTFITS[seed % SEEDED_OUTFITS.length] ?? preset.outfit;
   const hairStyle = preset.hair[(seed >>> 10) % preset.hair.length] ?? preset.hair[0]!;
   const top = presentation === "feminine" && outfit === "business-casual" ? "blouse" : OUTFIT_TOPS[outfit];
   const bottom = presentation === "feminine" && (seed >>> 6) % 2 === 0 ? "skirt" : "trousers";
   return {
     presentation,
+    ...(choice.kind === "model" ? { outfitModel: choice.id } : parts ? { outfitParts: parts } : {}),
     hairStyle,
     hairColor: SEEDED_HAIR[(seed >>> 15) % SEEDED_HAIR.length] ?? "#292426",
     skinTone: SEEDED_SKINS[(seed >>> 12) % SEEDED_SKINS.length] ?? "#c79a82",
@@ -165,13 +175,17 @@ export function defaultCharacterAppearance(id: string, presentation?: CharacterP
 export function applyPresentationPreset(base: CharacterAppearance, presentation: CharacterPresentation, id: string): CharacterAppearance {
   const preset = PRESENTATION_PRESETS[presentation];
   const seed = humanoidInstanceSeed(id, "appearance-preset");
-  return {
+  const look: CharacterAppearance = {
     ...base,
     presentation,
     hairStyle: preset.hair[seed % preset.hair.length] ?? preset.hair[0]!,
     outfit: preset.outfit, top: preset.top, bottom: preset.bottom, gait: preset.gait,
     accessories: { ...base.accessories, ...preset.accessories },
   };
+  // A preset applies its scanned style; a fitted model may belong to the previous body.
+  delete look.outfitModel;
+  delete look.outfitParts;
+  return look;
 }
 
 /** Renderer configuration for a saved (or default) appearance. */
@@ -188,8 +202,12 @@ export function avatarVisual(id: string, appearance: CharacterAppearance): Avata
     gait: appearance.gait,
     clothing: {
       style: appearance.outfit, topCut: appearance.top, bottomCut: appearance.bottom,
+      ...(appearance.outfitModel ? { model: appearance.outfitModel } : {}),
+      ...(appearance.outfitParts ? { parts: { ...appearance.outfitParts } } : {}),
       ...(appearance.topColor ? { top: appearance.topColor } : {}),
       ...(appearance.bottomColor ? { bottom: appearance.bottomColor } : {}),
+      ...(appearance.outerColor ? { outerwear: appearance.outerColor } : {}),
+      ...(appearance.accentColor ? { accent: appearance.accentColor } : {}),
     },
     accessories: {
       glasses: a.glasses !== "none", ...(a.glasses !== "none" ? { glassesStyle: a.glasses } : {}),
