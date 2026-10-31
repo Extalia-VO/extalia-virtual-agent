@@ -66,7 +66,8 @@ jobs:
       - run: node tooling/check-rust.mjs --build-daemon
       # Include newly added planning, admission, recovery and scanner/learning suites;
       # the non-Rust check job alone would silently skip their real-daemon cases.
-      - run: pnpm exec vitest run packages/host/test
+      # One file at a time: parallel daemons starve small Windows runners into startup timeouts.
+      - run: pnpm exec vitest run packages/host/test --maxWorkers=1
       # Smoke check only, not a gate: the benchmark numbers are not compared in CI.
       - run: node tooling/bench/native-core.mjs --quick --json
         if: matrix.os == 'ubuntu-latest'
