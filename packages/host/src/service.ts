@@ -12,7 +12,7 @@ import {
   type MissionPlan, type MissionPlanCandidate, type MissionPlanContext, isModelId, normalizeAgentIdentity, normalizeAgentTeam, normalizeSessionOptions, normalizeTeamPlanRequest, resolveDataDirectory, SETUP_VERSION, type ModelChoices, type SessionOptions,
   type AgentAppId, type AgentHostApi, type ApprovalDecisionInput, type ConnectionInput, type ConnectionTestResult, type ConnectionView,
   type FolderCheck, type HostState, type LibrarySessionSummary, type NativeCore, type SessionSummary, type WorkspaceInput,
-  HERMES_PERMISSION_MODES, PERMISSION_MODES, normalizeAttachmentUpload, normalizePromptAttachmentIds, type PermissionMode, type PromptAttachment, type PromptAttachmentInput,
+  HERMES_PERMISSION_MODES, PERMISSION_MODES, normalizeAttachmentUpload, normalizePromptAttachmentIds, normalizePromptLearnSkill, type PermissionMode, type PromptAttachment, type PromptAttachmentInput,
   normalizeBuiltinSkills, normalizeSkillConsent, normalizeSkillNames, type SkillConsentInput, type WorkspaceSkills,
   normalizeIntegrationGate,
   KNOWLEDGE_EVENT_SESSION_ID, normalizeKnowledgeVaultRoot,
@@ -22,7 +22,7 @@ import {
   ProviderError, buildSystemPrompt, createDelegationTool, createFallbackProvider, createManageTeamTool, createProvider, hermesTeamBrief, modelChain, runTurn,
   type AnyTool, type ApprovalOutcome, type ModelMessage, type ModelProvider, type NativeMissionAccounting, type NativeMissionTaskResult, type ToolAccess, type TurnAttachment,
 } from '@extalia/runtime';
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { mkdtemp, readFile, realpath, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import path from 'node:path';
@@ -40,6 +40,7 @@ import { createConnectService, resolveNodePath, type ConnectService } from './co
 import { DaemonSidecar, DaemonUnavailableError, createDaemonMission, resolveDaemonBinary, type DaemonBinaryOptions, type DaemonFailureCode, type DaemonMission, type SpawnDaemon } from './daemon/index.js';
 import { createHookIngest, type HookIngest } from './hooks/ingest.js';
 import { MissionRecovery } from './missionRecovery.js';
+import { PlanningOwnership, type OwnedPlanning } from './planningOwnership.js';
 import { MissionRecords, prepareMission, projectMissionEvent, finishMission, runNativeMission } from './mission.js';
 import { MemoryStore, createMemoryTools } from './memory.js';
 import { NativeImportService } from './nativeImport.js';
@@ -48,7 +49,8 @@ import { mapObservedWorkspaces } from './observedWorkspace.js';
 import { dataLayout, ensureLayout, ensurePrivateDirectory, PRIVATE_FILE_MODE } from './paths.js';
 import { createSecretStore, resolveCredential, type SecretStore } from './secrets.js';
 import { MemorySessionStore, SessionStore, newSessionId, type SessionRecord, type SessionStorage } from './sessions.js';
-import { SkillConsentStore, createSkillTools, loadSkills, skillOrigin, withBuiltinSkills } from './skills.js';
+import { SkillConsentStore, buildAgentSkillCatalog, createSkillTools, loadSkills, skillOrigin } from './skills.js';
+import { createSkillProposalTool } from './skillLearning.js';
 import { SkillRegistry } from './skillRegistry.js';
 import { KnowledgeService, knowledgeHostMethods, type KnowledgeServiceOptions } from './knowledge.js';
 import { KnowledgeVault } from './knowledgeVault.js';
@@ -361,6 +363,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
   // W3 Skill Security Center: the daemon's skill registry; legacy (W0 consent) while the flag is off.
   const skillRegistry = new SkillRegistry({
     daemon, dataDirectory: layout.root, profile: 'default', log: options.daemon?.log ?? (line => console.warn(line)),
+    workspaceKnown: workspaceId => config.workspaces.some(item => item.id === workspaceId),
     workspaceRoot: workspaceId => {
       const root = config.workspaces.find(item => item.id === workspaceId)?.projectLocation;
       if (!root) throw userError('That workspace has no project folder.');
@@ -387,6 +390,8 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
   const worktreeFailure = (error: unknown): Error => userError(error instanceof WorktreeError ? error.message : 'The isolated worktree for a write-capable task could not be prepared.');
   try {
   await missions.initialize(await savedSessions.list());
+  // Write-ahead planning blockers follow recorded Rust ownership across backend changes.
+  const planningOwnership = await PlanningOwnership.open(path.join(layout.state, 'native-planning.json'), () => recoveryDaemon.connect());
   let closing = false;
   const storeOf = (id: string): SessionStorage => (unsavedSessions.has(id) ? unsavedSessions : savedSessions);
   /** Saved sessions live on disk; sessions of connections with history off only in memory. */
@@ -412,10 +417,20 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
   const runs = new Map<string, Run>();
   const missionRecovery = new MissionRecovery({
     records: missions, profileId: 'default', active: sessionId => closing || runs.has(sessionId),
+    review: async missionId => {
+      const client = await recoveryDaemon.connect();
+      if (!client.capabilities.includes('mission.recoveryReview')) return undefined;
+      return client.request('mission.recoveryReview', { missionId });
+    },
     snapshot: async missionId => {
       const client = await recoveryDaemon.connect();
       if (!client.capabilities.includes('mission.snapshot')) return undefined;
       return client.request('mission.snapshot', { missionId });
+    },
+    executions: async missionId => {
+      const client = await recoveryDaemon.connect();
+      if (!client.capabilities.includes('mission.executions')) return undefined;
+      return client.request('mission.executions', { missionId });
     },
   });
 
@@ -749,11 +764,13 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
 
   /** Models the connection's endpoint lists (short timeout, cached); empty when it cannot list them. */
   function connectionModels(connection: Connection): Promise<string[]> {
+    planningOwnership.assertClear(undefined, [connection.id]);
     const cached = modelLists.get(connection.id);
     if (cached && cached.key === modelListKey(connection) && cached.expires > Date.now()) return cached.models;
     return rememberModels(connection, (async () => {
       try {
         const { provider } = await providerFor(connection);
+        planningOwnership.assertClear(undefined, [connection.id]);
         return cleanModels(await provider.listModels(AbortSignal.timeout(MODEL_LIST_TIMEOUT_MS)));
       } catch { return []; }
     })());
@@ -839,9 +856,11 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     return JSON.stringify({ runtime, connections });
   }
   function assertMissionPolicyEditable(workspaceId: string, records: SessionRecord[]): void {
+    planningOwnership.assertWorkspaceClear(workspaceId);
     if (records.filter(record => record.workspaceId === workspaceId).some(record => runs.has(record.id) || missions.list(record.id).some(run => run.state === 'running' || run.state === 'recovering'))) throw userError('Stop or reconcile native missions before changing their workspace connection policy.');
   }
   function clearMissionResources(connectionIds: string[], exceptSession?: string): void {
+    planningOwnership.assertClear(undefined, connectionIds);
     missions.assertConnectionsClear(connectionIds, exceptSession);
     for (const [sessionId, run] of runs) if (sessionId !== exceptSession && run.connectionIds?.some(id => connectionIds.includes(id))) throw userError('A selected connection is still working in another session.');
   }
@@ -850,16 +869,17 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
   /** Agent-app connection logic (Codex, Claude Code); created on first use. */
   const agentApps = (): Promise<ConnectService> => (connectService ??= (async () => {
     const importHome = options.importHome ?? homeDirectory;
-    const nodePath = options.hookNodePath ?? await resolveNodePath({ execPath: process.execPath, electron: Boolean(process.versions.electron), env, platform: process.platform, homeDirectory: importHome });
-    if (!nodePath) throw userError('Node.js was not found on this computer. Install Node.js 22 or newer, or run `npx -y extalia-vo@latest connect <app>` in a terminal.');
     return createConnectService({
       platform: process.platform,
-      env: { ...env, PATH: [path.dirname(nodePath), env.PATH].filter(Boolean).join(path.delimiter) },
-      homeDirectory: importHome, extaliaHome: dataDirectory, nodePath,
+      env,
+      homeDirectory: importHome, extaliaHome: dataDirectory,
+      ...(options.hookNodePath !== undefined ? { nodePath: options.hookNodePath } : {}),
+      resolveNodePath: () => resolveNodePath({ execPath: process.execPath, electron: Boolean(process.versions.electron), env, platform: process.platform, homeDirectory: importHome }),
+      ...(process.versions.electron ? { electronPath: process.execPath } : {}),
       lastEvent: options.lastHookEvent ?? (app => ingest.status().lastEvents[app]),
     });
   })().catch(error => {
-    // A missing installation can be fixed while Settings is open; Refresh retries.
+    // Construction failures can be fixed while Settings is open; Refresh retries.
     connectService = undefined;
     throw error;
   }));
@@ -871,6 +891,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
 
     async saveConnection(input, secret) {
       const existing = input.id ? config.connections.find(item => item.id === input.id) : undefined;
+      if (existing) planningOwnership.assertClear(undefined, [existing.id]);
       const connection = draftConnection(input, existing);
       const trimmed = secret?.trim();
       if (connection.credential.kind === 'stored') {
@@ -900,8 +921,10 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       const existing = input.id ? config.connections.find(item => item.id === input.id) : undefined;
       const started = Date.now();
       try {
+        if (existing) planningOwnership.assertClear(undefined, [existing.id]);
         const connection = draftConnection(input, existing);
         const { provider } = await providerFor(connection, secret);
+        if (existing) planningOwnership.assertClear(undefined, [existing.id]);
         try {
           const models = await provider.listModels(AbortSignal.timeout(15_000));
           // A test of a saved connection, unchanged where it matters, refreshes the prompt's model list.
@@ -913,6 +936,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
         } catch (error) {
           // Some endpoints cannot list models; a one-word request proves the connection instead.
           if (!(error instanceof ProviderError) || ![404, 405, 501].includes(error.status ?? 0)) throw error;
+          if (existing) planningOwnership.assertClear(undefined, [existing.id]);
           await provider.complete({ system: 'Reply with OK.', messages: [{ role: 'user', text: 'OK?' }], tools: [], signal: AbortSignal.timeout(30_000) });
           return { ok: true, latencyMs: Date.now() - started };
         }
@@ -990,6 +1014,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
 
     async deleteWorkspace(id) {
       findWorkspace(id);
+      planningOwnership.assertWorkspaceClear(id);
       const owned = (await sessions.list()).filter(record => record.workspaceId === id);
       if (owned.some(record => runs.has(record.id))) throw userError('Stop the running session in this workspace first.');
       for (const record of owned) missions.assertRemovable(record.id);
@@ -1090,6 +1115,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       let request: TeamPlanRequest;
       try { request = normalizeTeamPlanRequest(raw); } catch (error) { throw userError(error instanceof Error ? error.message : 'Invalid team request.'); }
       const hermes = workspaceRuntime(workspace) === 'hermes';
+      if (!hermes && workspace.providerProfileId) planningOwnership.assertClear(undefined, [workspace.providerProfileId]);
       const home = options.importHome ?? homedir();
       // Without a goal the plan is a general team for the workspace, based on its name and recent sessions.
       const records = await sessions.list();
@@ -1145,7 +1171,9 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       if (!workspace.providerProfileId) return heuristic('the workspace has no model connection.');
       if (!planningModel) return heuristic('no model is set for planning.');
       try {
+        planningOwnership.assertClear(undefined, [workspace.providerProfileId]);
         const { provider } = await providerFor({ ...findConnection(workspace.providerProfileId), model: planningModel });
+        planningOwnership.assertClear(undefined, [workspace.providerProfileId]);
         const result = await provider.complete({ system: prompt.system, messages: [{ role: 'user', text: prompt.user }], tools: [], signal: AbortSignal.timeout(teamPlanTimeout(request.count)) });
         return fromReply(result.text);
       } catch (error) { return failed(error); }
@@ -1192,6 +1220,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       const run = runs.get(sessionId);
       if (run) { run.controller.abort(); run.pending?.resolve('reject'); await run.done; }
       await writeChains.get(sessionId);
+      planningOwnership.assertClear(sessionId);
       missions.assertRemovable(sessionId);
       await missions.remove(sessionId);
       await sessions.remove(sessionId);
@@ -1214,6 +1243,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       try { request = normalizeMissionPlanRequest(raw); } catch (error) { throw userError(error instanceof Error ? error.message : 'Invalid mission plan request.'); }
       // Reserve the session before the first await; provider capacity is added when its lead is known.
       if (runs.has(sessionId)) throw userError('This session is still working. Wait for it or stop it first.');
+      planningOwnership.assertClear(sessionId);
       missions.assertSessionClear(sessionId);
       const controller = new AbortController();
       let releaseRun!: () => void;
@@ -1221,6 +1251,14 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       runs.set(sessionId, run);
       let outstanding: Promise<unknown> | undefined;
       let physicallySettled = false;
+      let ownership: OwnedPlanning | undefined;
+      const checkPlanning = () => {
+        if (closing) throw userError('The host is shutting down.');
+        controller.signal.throwIfAborted();
+        ownership?.check();
+      };
+      // This is only a local-pipeline observation, never remote/descendant settlement.
+      const finishOwnership = async () => { if (ownership && !closing) await ownership.settle(); };
       const release = () => {
         missions.release(sessionId);
         if (runs.get(sessionId) === run) {
@@ -1240,16 +1278,44 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
         const selected = request.connectionIds ? allowed.filter(id => request.connectionIds!.includes(id)) : allowed;
         const transient = unsavedSessions.has(sessionId);
         const leadSaved = config.connections.find(item => item.id === record.connectionId);
+        const durablePlanning = Boolean(daemon && !transient);
+        const touched = [...new Set([...selected, ...(leadSaved ? [leadSaved.id] : [])])]
+          .filter(id => config.connections.some(item => item.id === id)).sort();
         let leadBusy = false;
-        if (leadSaved) {
+        if (leadSaved || durablePlanning && touched.length) {
           // Catalog discovery can also acquire credentials and call the endpoint.
           // Own the lead before any such await, not only before inference.
           try {
-            clearMissionResources([leadSaved.id], sessionId);
-            missions.reserve(sessionId, [leadSaved.id]);
-            run.connectionIds = [leadSaved.id];
-          } catch { leadBusy = true; }
+            const resources = durablePlanning ? touched : [leadSaved!.id];
+            clearMissionResources(resources, sessionId);
+            missions.reserve(sessionId, resources);
+            run.connectionIds = resources;
+          } catch (error) { if (durablePlanning) throw error; leadBusy = true; }
         }
+        if (durablePlanning && touched.length) {
+          const client = await daemon!.connect();
+          checkPlanning();
+          ownership = await planningOwnership.begin(client, {
+            invocationId: randomUUID(), supervisorId: randomUUID(), sessionId,
+            workspaceId: workspace.id, connectionIds: touched,
+          });
+          checkPlanning();
+        }
+        // Rust planning never borrows another caller's pending catalog promise.
+        const planningModels = async (connection: Connection): Promise<string[]> => {
+          if (!ownership) return connectionModels(connection);
+          checkPlanning();
+          try {
+            const { provider } = await providerFor(connection);
+            checkPlanning();
+            const result = await provider.listModels(AbortSignal.any([controller.signal, AbortSignal.timeout(MODEL_LIST_TIMEOUT_MS)]));
+            checkPlanning();
+            return cleanModels(result);
+          } catch {
+            checkPlanning();
+            return [];
+          }
+        };
         const leadModel = storedOptions(record).model || leadSaved?.model || undefined;
         const team = storedTeam(record);
         const notes: string[] = [];
@@ -1264,7 +1330,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
           const isLead = id === record.connectionId;
           let models = [connection.model, ...(isLead ? [leadModel, ...(team?.allowedModels ?? []), ...(team?.members.flatMap(member => member.models) ?? [])] : [])];
           if (request.models) {
-            const listed = leadBusy && isLead ? [] : await connectionModels(connection);
+            const listed = leadBusy && isLead ? [] : await planningModels(connection);
             if (controller.signal.aborted || closing) throw userError('Mission planning was cancelled before preparation finished.');
             models = [...models, ...request.models.filter(model => listed.includes(model))].filter(model => model !== undefined && request.models!.includes(model));
           }
@@ -1294,13 +1360,11 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
         const timer = setTimeout(() => { timedOut = true; controller.abort(); }, MISSION_PLAN_TIMEOUT_MS);
         try {
           const attempt = Promise.resolve().then(async () => {
-            if (closing) controller.abort();
-            controller.signal.throwIfAborted();
+            checkPlanning();
             const { provider, secret } = await providerFor({ ...leadSaved, model: leadModel });
             if (secret) mask = text => text.split(secret).join('[redacted]');
             // Credential acquisition can outlive cancellation; never enter the provider afterwards.
-            if (closing) controller.abort();
-            controller.signal.throwIfAborted();
+            checkPlanning();
             const prompt = missionPlanPrompt({ ...context, ...(mask ? { mask } : {}) });
             return provider.complete({ system: prompt.system, messages: [{ role: 'user', text: prompt.user }], tools: [], signal: controller.signal });
           });
@@ -1324,8 +1388,13 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       } finally {
         // A fallback releases the caller, not an abort-ignoring provider. Its live
         // reservation remains until the underlying preparation/request actually settles.
-        if (outstanding && !physicallySettled) void outstanding.then(release, release);
-        else release();
+        if (outstanding && !physicallySettled) {
+          void outstanding.then(finishOwnership, finishOwnership)
+            .catch(() => undefined) // Retained marker blocks new work; never fabricate settlement.
+            .finally(release);
+        } else {
+          try { await finishOwnership(); } finally { release(); }
+        }
       }
     },
 
@@ -1334,6 +1403,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       if (typeof sessionId !== 'string' || observations.has(sessionId)) throw userError('Native missions need an existing managed Extalia Native session.');
       const request = normalizeHostMissionRequest(rawRequest);
       if (runs.has(sessionId)) throw userError('This session is still working. Wait for it or stop it first.');
+      planningOwnership.assertClear(sessionId);
       missions.assertSessionClear(sessionId);
       const connectionIds = [...new Set(request.tasks.map(task => task.connectionId))];
       clearMissionResources(connectionIds);
@@ -1361,7 +1431,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
         const resolvedSecrets: string[] = [];
         const mask = (value: string) => resolvedSecrets.reduce((text, secret) => text.split(secret).join('[redacted]'), value);
         const sanitize = (value: HostMissionRun): HostMissionRun => ({ ...value, title: safeLabel(mask(value.title), 200), tasks: value.tasks.map(task => ({ ...task, title: safeLabel(mask(task.title), 200), ...(task.answer !== undefined ? { answer: safeText(mask(task.answer), 16_000) } : {}) })) });
-        const prepared = await prepareMission({ request, session: record, transient, root: workspace.projectLocation, connections,
+        const prepared = await prepareMission({ request, session: record, transient, root: workspace.projectLocation, connections, localSettlementCoverage: 'extalia-native-local-v1',
           providerFor: async connection => {
             const { provider, secret } = await providerFor(connection).catch(() => { throw userError('A selected connection needs valid credentials before this native mission can start.'); });
             if (secret) { resolvedSecrets.push(secret); resolvedSecrets.sort((a, b) => b.length - a.length); }
@@ -1396,7 +1466,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
           if (controller.signal.aborted || closing) throw userError('The native mission was cancelled before execution.');
         }
         metadata = sanitize({ ...prepared.run, authority: core
-          ? { backend: 'rust', profileId: 'default', workspaceId: prepared.options.plan.mission.workspaceId }
+          ? { backend: 'rust', profileId: 'default', workspaceId: prepared.options.plan.mission.workspaceId, supervisorId: core.supervisorId }
           : { backend: 'typescript' } });
         await missions.save(metadata);
         const missionId = metadata.id;
@@ -1416,6 +1486,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
         if (persistenceFailed) throw userError('The native mission could not record its start.');
         // The session reservation remains held through all event and metadata writes.
         void (async () => {
+          const observationWrites = new Set<Promise<void>>();
           try {
             /** The checkpoint after `event`; usage/budget state travels with the event (ADR 0015). */
             const advance = (event: AgentEvent, outcome?: NativeMissionTaskResult, accounting?: NativeMissionAccounting): HostMissionRun => {
@@ -1435,7 +1506,22 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
               });
             };
             const routed = core;
-            const sink: Pick<Parameters<typeof runNativeMission>[0], 'commitEvent' | 'commitEventAsync' | 'checkPermission'> = routed ? {
+            const sink: Pick<Parameters<typeof runNativeMission>[0], 'commitEvent' | 'commitEventAsync' | 'checkPermission' | 'authoritySignal' | 'onTurnSettled' | 'onLocalOperationsDrained'> = routed ? {
+              authoritySignal: routed.authoritySignal,
+              onTurnSettled: observation => {
+                if (closing) return;
+                const write = routed.observeTurnSettlement(observation).catch(() => {
+                  (options.daemon?.log ?? (line => console.warn(line)))('Native execution observation could not be recorded; recovery evidence remains unavailable.');
+                }).finally(() => { observationWrites.delete(write); });
+                observationWrites.add(write);
+              },
+              onLocalOperationsDrained: proof => {
+                if (closing) return;
+                const write = routed.recordLocalDrain(proof).catch(() => {
+                  (options.daemon?.log ?? (line => console.warn(line)))('Native local drain could not be recorded; recovery uncertainty remains.');
+                }).finally(() => { observationWrites.delete(write); });
+                observationWrites.add(write);
+              },
               // The daemon's journal acknowledges each event (ADR 0014 amendment). The host keeps the
               // result projection in memory and checkpoints it after the run, as before for the start.
               commitEventAsync: async (event, outcome, accounting) => {
@@ -1457,6 +1543,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
             const result = await runNativeMission({ ...prepared.options, signal: controller.signal, ...sink, onEvent: event => {
               for (const projected of projectMissionEvent(event, prepared.leadId)) strictPublish(projected.body, projected.agentId, projected.taskId);
             } });
+            await Promise.all([...observationWrites]);
             metadata = sanitize(finishMission(metadata!, result));
             if (metadata.state === 'recovering') metadata = { ...metadata, recovery: metadata.recovery ?? { source: 'execution-uncertain', at: now() } };
             await Promise.all(writes);
@@ -1472,6 +1559,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
             missions.updateMemory(metadata);
             await missions.save(metadata).catch(() => undefined);
           } finally {
+            core?.dispose();
             // Commit what each write-capable worker wrote and release its worktree. A task whose
             // execution is unknown keeps an active worktree, which orphan detection reports.
             if (worktreesCreated.length) {
@@ -1543,17 +1631,30 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
 
     async sendPrompt(sessionId, text, promptOptions) {
       if (closing) throw userError('The host is shutting down.');
+      planningOwnership.assertClear(sessionId);
       missions.assertSessionClear(sessionId);
       if (observations.has(sessionId)) throw userError('Observed sessions are read-only. Prompt in the agent’s own app.');
       const prompt = text.trim();
       let attachmentIds: string[];
-      try { attachmentIds = normalizePromptAttachmentIds(promptOptions); } catch (error) { throw userError(error instanceof Error ? error.message : 'Invalid prompt options.'); }
+      let learnSkill: boolean;
+      try {
+        attachmentIds = normalizePromptAttachmentIds(promptOptions);
+        // Only a current-message client action or exact first command token authorizes a draft.
+        // History, quoted text, attachments, project files and model assertions are not authority.
+        learnSkill = normalizePromptLearnSkill(promptOptions) || /^\/learn-skill(?:\s|$)/u.test(prompt);
+      } catch (error) { throw userError(error instanceof Error ? error.message : 'Invalid prompt options.'); }
       if (!prompt && !attachmentIds.length) throw userError('Write a prompt first.');
       if (prompt.length > 100_000) throw userError('The prompt is too long.');
       if (runs.has(sessionId)) throw userError('This session is still working. Wait for it or stop it first.');
       const record = await sessions.get(sessionId);
       if (!record) throw userError('That session no longer exists.');
       const workspace = findWorkspace(record.workspaceId);
+      if (learnSkill) {
+        if (record.runtime || workspace.runtimeId === 'hermes') throw userError('Learning a skill here requires an Extalia Native session.');
+        if (storedOptions(record).permissionMode === 'plan') throw userError('Skill learning writes a library candidate and is unavailable in read-only plan mode.');
+        if (!skillRegistry.enabled || !resolveFeatures(findConnection(record.connectionId)).extaliaSkills) throw userError('Skill learning requires Extalia skills and the Rust skill registry. Nothing was saved.');
+        if (/^\/learn-skill\s*$/u.test(prompt) && !attachmentIds.length) throw userError('Add source text, a link or an attachment after /learn-skill.');
+      }
       // Refused (unknown, foreign or consumed ids) before anything starts; the files are removed only once the turn has started.
       const files = await attachments.take(sessionId, attachmentIds);
       if (record.runtime) {
@@ -1603,30 +1704,32 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       const commandTool = createCommandTool(root);
       const tools: AnyTool[] = [...fileTools, commandTool];
       let memoryNotes: { name: string; summary: string }[] | undefined;
+      let memoryCatalog: { omitted: number; incomplete: boolean } | undefined;
       if (features.extaliaMemory) {
         const memory = new MemoryStore(path.join(layout.workspaces, workspace.id, 'memory'));
-        memoryNotes = (await memory.list()).map(note => ({ name: note.name, summary: note.summary }));
+        const catalog = await memory.catalog({ limit: 8 });
+        memoryNotes = catalog.notes.map(note => ({ name: note.name, summary: note.summary }));
+        memoryCatalog = { omitted: catalog.omitted, incomplete: catalog.incomplete };
         const memoryTools = createMemoryTools(memory);
         tools.push(...memoryTools);
         readOnly.push(...memoryTools.filter(tool => tool.name !== 'memory_write'));
       }
       let skills: { name: string; description: string }[] | undefined;
       if (features.extaliaSkills) {
-        let offered;
+        let inventory: Awaited<ReturnType<SkillRegistry['activeSkills']>> = [];
         if (skillRegistry.enabled) {
           // W3 (flag on): user and project skills come only from the Rust core's active, verified revisions. When the
           // daemon cannot answer they are not offered at all (fail closed); built-in skills stay available.
-          const active = await skillRegistry.activeSkills().catch(() => {
+          inventory = await skillRegistry.activeSkills().catch(() => {
             (options.daemon?.log ?? (line => console.warn(line)))('Skill registry unavailable: only built-in skills are offered.');
             return [];
           });
-          offered = withBuiltinSkills(active);
-        } else {
-          // W0: project skills reach the model only after the user allowed them (bound to each file's hash).
-          offered = (await loadSkills({ userDirectory: layout.skills, workspaceRoot: root, workspaceConsent: await skillConsent(workspace.id).allowed(root) })).skills;
         }
+        // Legacy inventory/consent is review information, never scanner authority.
+        const catalog = await buildAgentSkillCatalog(inventory, skillRegistry.enabled ? { reload: skill => skillRegistry.reload(skill) } : {});
+        const offered = catalog.skills;
         skills = offered.map(skill => ({ name: skill.name, description: `${skillOrigin(skill).trim()} ${skill.description}`.trim() }));
-        const skillTools = createSkillTools(offered, skillRegistry.enabled ? { reload: skill => skillRegistry.reload(skill) } : {});
+        const skillTools = createSkillTools(catalog);
         tools.push(...skillTools);
         readOnly.push(...skillTools);
       }
@@ -1636,6 +1739,10 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       const permissions = workspace.permissions ?? DEFAULT_PERMISSIONS;
       // v0.0.49: the session's permission mode. Plan mode offers no edit or command tools (to the lead or to workers).
       const permissionMode: PermissionMode = sessionOptions.permissionMode ?? 'workspace';
+      if (learnSkill) tools.push(createSkillProposalTool({
+        provenance: { sessionId, workspaceId: workspace.id, promptSha256: createHash('sha256').update(prompt).digest('hex') },
+        propose: (input, provenance, signal) => skillRegistry.propose(input, provenance, signal),
+      }));
       const sessionGrants = grants.get(sessionId) ?? new Set<ToolAccess>();
       grants.set(sessionId, sessionGrants);
       /** Approvals of the lead and of write members share the session's one pending slot (writers run one at a time). */
@@ -1684,8 +1791,9 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
         workspace: { name: workspace.name, root },
         platform: { os: process.platform === 'darwin' ? 'macOS' : process.platform === 'win32' ? 'Windows' : 'Linux', shell: process.platform === 'win32' ? 'cmd.exe' : path.basename(env.SHELL || '/bin/sh') },
         projectInstructions: await projectInstructions(root),
-        ...(memoryNotes ? { memory: memoryNotes } : {}),
+        ...(memoryNotes ? { memory: memoryNotes, memoryCatalog } : {}),
         ...(skills ? { skills } : {}),
+        ...(learnSkill ? { skillLearning: true } : {}),
         ...(maxDelegations > 0 ? { orchestration: { maxDelegations } } : {}),
         ...(activeTeam ? { team: { members: activeTeam.members, ...(activeTeam.rules ? { rules: activeTeam.rules } : {}), ...(spec ? { fromPrompt: true } : {}) } } : {}),
         manageTeam: true,
@@ -1698,6 +1806,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
 
       const controller = new AbortController();
       if (closing || runs.has(sessionId)) throw userError('This session is still working or the host is shutting down.');
+      planningOwnership.assertClear(sessionId);
       missions.assertSessionClear(sessionId);
       clearMissionResources([record.connectionId]);
       const run: Run = { controller, connectionIds: [record.connectionId], done: Promise.resolve() };
@@ -1838,6 +1947,8 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
 
     // W3 Skill Security Center (inputs validated by `@extalia/platform` inside the registry service).
     skillRegistry: () => skillRegistry.report(),
+    preflightSkill: input => skillRegistry.preflight(input),
+    previewSkillRouting: input => skillRegistry.routingPreview(input),
     inspectSkill: revisionId => skillRegistry.inspect(revisionId),
     importSkill: source => skillRegistry.import(source),
     reviewSkill: input => skillRegistry.review(input),
@@ -1846,8 +1957,8 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     deactivateSkill: packageId => skillRegistry.deactivate(packageId),
     rollbackSkill: (packageId, revisionId) => skillRegistry.rollback(packageId, revisionId),
     revokeSkill: revisionId => skillRegistry.revoke(revisionId),
-    // Read-only list for the Skills page: names and descriptions only, never the bodies.
-    builtinSkills: async () => normalizeBuiltinSkills(BUILTIN_SKILLS.map(({ name, description }) => ({ name, description }))),
+    // Read-only catalog for the Skills page, including bundled instruction text for inspection.
+    builtinSkills: async () => normalizeBuiltinSkills(BUILTIN_SKILLS.map(({ name, description, category, body }) => ({ name, description, category, body }))),
 
     async runtimes() {
       return discoverRuntimes(env, options.importHome ?? homedir());
@@ -1996,6 +2107,8 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     },
     async close() {
       closing = true;
+      // Never release the profile lock while an old registry can still rename markers.
+      const planningClosed = planningOwnership.close();
       vaultWatcher?.stop();
       await ingest.close();
       await observations.close();
@@ -2005,6 +2118,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       listeners.clear();
       // After the runs: their final commits reach the daemon before its stdin closes.
       await recoveryDaemon.stop().catch(() => undefined);
+      await planningClosed;
       try { missions.close(); } finally { await lock.release(); }
     },
   };

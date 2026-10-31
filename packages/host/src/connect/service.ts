@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
-import { mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { randomBytes } from 'node:crypto';
+import { mkdir, readdir, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import type {
@@ -24,8 +25,9 @@ import {
   listExtaliaHooks, spawnCodexAppServer, summarizeTrust, trustExtaliaHooks, type CodexRpc, type CodexRpcFactory,
 } from './codexAppServer.js';
 import { unifiedDiff } from './diff.js';
-import { DEFAULT_HOOK_PORT, ensureToken, readEndpoint, readToken } from './endpoint.js';
-import { forwarderPath, forwarderStatus, installForwarder } from './forwarder.js';
+import { DEFAULT_HOOK_PORT, hookTargetsFile, readEndpoint, readHookTargets, readToken, tokenFile } from './endpoint.js';
+import { commitConfigWrites, type ConfigWrite } from './configTransaction.js';
+import { FORWARDER_SOURCE, forwarderPath, forwarderStatus, installForwarder } from './forwarder.js';
 import {
   GEMINI_EVENTS, existingGeminiCommand, geminiCommand, inspectGeminiSettings, planGeminiSettings, removeGeminiEntries, type GeminiDesired,
 } from './gemini.js';
@@ -58,8 +60,12 @@ export interface ConnectContext {
   homeDirectory: string;
   /** The Extalia data directory (`EXTALIA_HOME`): hooks, connect backups and manifest live below it. */
   extaliaHome: string;
-  /** Absolute path of a Node.js binary for hook commands. */
-  nodePath: string;
+  /** Absolute path of a standalone Node.js binary for hook commands, when known. */
+  nodePath?: string;
+  /** Lazy GUI discovery; failures are retried by the next command-hook operation. */
+  resolveNodePath?: () => Promise<string | undefined>;
+  /** An Electron host executable must never be installed as a hook's Node runtime. */
+  electronPath?: string;
   now?: () => Date;
   run?: RunCommand;
   findBinary?: (name: string) => Promise<string | undefined>;
@@ -84,6 +90,9 @@ export interface ConnectService {
 
 interface ExtraProfileRecord {
   configPath: string;
+  resolvedTarget?: string;
+  /** Preexisting owned hooks have no trustworthy pre-connect original. */
+  surgicalOnly?: boolean;
   original: { existed: boolean; sha256?: string; backupDir: string; backupFile?: string };
   writtenSha256: string;
   inserted?: string;
@@ -93,6 +102,9 @@ interface AppRecord {
   connectedAt: string;
   updatedAt: string;
   configPath: string;
+  resolvedTarget?: string;
+  /** Preexisting owned hooks have no trustworthy pre-connect original. */
+  surgicalOnly?: boolean;
   /** The file as it was before Extalia first touched it. */
   original: { existed: boolean; sha256?: string; backupDir: string; backupFile?: string };
   lastBackupDir?: string;
@@ -159,11 +171,16 @@ const ENV_BIN: Record<AgentAppId, string> = {
 export function createConnectService(ctx: ConnectContext): ConnectService {
   const now = ctx.now ?? (() => new Date());
   const run = ctx.run ?? defaultRun;
-  const findBinary = ctx.findBinary ?? ((name: string) => findOnPath(name, ctx.env, ctx.platform));
   const rpcFactory = ctx.codexRpc ?? spawnCodexAppServer;
   const connectDirectory = path.join(ctx.extaliaHome, 'connect');
   const manifestFile = path.join(connectDirectory, 'manifest.json');
   const forwarder = forwarderPath(ctx.extaliaHome);
+  const targetChanged = async (record: { resolvedTarget?: string }, file: string, target: string) => {
+    // Resolve directory aliases (for example system temp-directory aliases) for
+    // old records, while refusing an unrecorded file symlink target.
+    const expected = record.resolvedTarget ?? path.join(await writableTarget(path.dirname(file)), path.basename(file));
+    return path.resolve(expected) !== path.resolve(target);
+  };
 
   const hermesRootDir = (): string => {
     const configured = ctx.env.HERMES_HOME?.trim();
@@ -179,13 +196,15 @@ export function createConnectService(ctx: ConnectContext): ConnectService {
     return path.join(ctx.env.HERMES_HOME?.trim() || path.join(ctx.homeDirectory, '.hermes'), 'config.yaml');
   };
 
-  /** Named Hermes profile config files (`<hermesRoot>/profiles/<name>/config.yaml`), sorted by profile name. */
+  /** The default and named Hermes configs other than the selected primary profile. */
   async function extraHermesProfileConfigs(primaryFile: string): Promise<Array<{ profile: string; file: string }>> {
     const root = hermesRootDir();
     const profilesDir = path.join(root, 'profiles');
+    const found: Array<{ profile: string; file: string }> = [];
+    const defaultFile = path.join(root, 'config.yaml');
+    if (path.resolve(defaultFile) !== path.resolve(primaryFile)) found.push({ profile: 'default', file: defaultFile });
     try {
       const entries = await readdir(profilesDir, { withFileTypes: true });
-      const found: Array<{ profile: string; file: string }> = [];
       for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
         if (!entry.isDirectory() || !HERMES_PROFILE_PATTERN.test(entry.name)) continue;
         const candidate = path.join(profilesDir, entry.name, 'config.yaml');
@@ -193,10 +212,8 @@ export function createConnectService(ctx: ConnectContext): ConnectService {
           found.push({ profile: entry.name, file: candidate });
         }
       }
-      return found;
-    } catch {
-      return [];
-    }
+    } catch { /* no named profiles; the default config still belongs to this installation */ }
+    return found;
   }
 
   const isSupported = (_app: AgentAppId) => true;
@@ -215,11 +232,48 @@ export function createConnectService(ctx: ConnectContext): ConnectService {
     await writeJsonAtomic(manifestFile, manifest);
   }
 
+  let resolvedNodePath: string | undefined;
+  const commandEnv = (): Env => resolvedNodePath
+    ? { ...ctx.env, PATH: [path.dirname(resolvedNodePath), ctx.env.PATH].filter(Boolean).join(ctx.platform === 'win32' ? ';' : ':') }
+    : ctx.env;
+  async function nodeValid(candidate: string | undefined): Promise<boolean> {
+    if (!candidate || !path.isAbsolute(candidate) || !await isExecutable(candidate)) return false;
+    const electron = ctx.electronPath ?? (process.versions.electron ? process.execPath : undefined);
+    if (!electron) return true;
+    const [actual, excluded] = await Promise.all([realpath(candidate), realpath(electron)]).catch(() => [path.resolve(candidate), path.resolve(electron)]);
+    return ctx.platform === 'win32' ? actual?.toLowerCase() !== excluded?.toLowerCase() : actual !== excluded;
+  }
+  type NodeLookup = () => Promise<string | undefined>;
+  let pendingNodeLookup: Promise<string | undefined> | undefined;
+  /** One failed discovery per operation, shared across all apps in a status snapshot. */
+  function nodeLookup(): NodeLookup {
+    let result: Promise<string | undefined> | undefined;
+    return () => (result ??= (pendingNodeLookup ??= (async () => {
+      if (await nodeValid(resolvedNodePath)) return resolvedNodePath;
+      resolvedNodePath = undefined;
+      const candidate = ctx.nodePath ?? await ctx.resolveNodePath?.().catch(() => undefined);
+      if (await nodeValid(candidate)) resolvedNodePath = candidate;
+      return resolvedNodePath;
+    })().finally(() => { pendingNodeLookup = undefined; })));
+  }
+  const nodePrerequisite = (app: AgentAppId) => `${LABELS[app]} command hooks need a standalone Node.js installation. Install Node.js 22 or newer, then refresh or connect again. Existing hooks can still be disconnected.`;
+  async function hookCommand(app: Exclude<AgentAppId, 'hermes'>, existing: string | undefined, lookup: NodeLookup): Promise<string | undefined> {
+    if (await commandValid(existing, app)) return existing;
+    const node = await lookup();
+    if (!await nodeValid(node)) return undefined;
+    const build = { codex: codexCommand, claude: claudeCommand, gemini: geminiCommand, antigravity: antigravityCommand }[app];
+    return build(node!, forwarder, ctx.platform);
+  }
+
   async function detect(app: AgentAppId): Promise<{ installed: boolean; bin?: string; version?: string; verified?: boolean }> {
     if (!isSupported(app)) return { installed: false };
+    const env = commandEnv();
+    const findBinary = ctx.findBinary ?? ((name: string) => findOnPath(name, env, ctx.platform));
     const override = ctx.env[ENV_BIN[app]]?.trim();
     const bin = override || (app === 'antigravity' ? (await findBinary('agy')) || (await findBinary('antigravity')) : await findBinary(app));
-    const text = await readTextSafe(configPath(app));
+    // Detection is independent of config readability; describe/plan report the
+    // specific file error without hiding the other apps' diagnostics.
+    const text = await readTextSafe(configPath(app)).catch(() => undefined);
     const configDirExists = text !== undefined
       || (await dirExists(path.dirname(configPath(app))))
       || (app === 'antigravity' && (
@@ -227,15 +281,16 @@ export function createConnectService(ctx: ConnectContext): ConnectService {
         || (await dirExists(path.join(ctx.homeDirectory, '.gemini', 'tasks')))
         || (await dirExists(path.join(ctx.homeDirectory, '.gemini')))
       ));
-    const version = bin ? parseVersion(await run(bin, ['--version'], { env: ctx.env, timeoutMs: 8000 }), app) : undefined;
+    const version = bin ? parseVersion(await run(bin, ['--version'], { env, timeoutMs: 8000 }), app) : undefined;
     const rule = VERIFIED_VERSIONS[app];
     return { installed: Boolean(bin) || configDirExists, ...(bin ? { bin } : {}), ...(version ? { version, verified: rule.pattern.test(version) } : {}) };
   }
 
-  async function commandValid(command: string | undefined): Promise<boolean> {
+  async function commandValid(command: string | undefined, app: Exclude<AgentAppId, 'hermes'>): Promise<boolean> {
     if (!command) return false;
-    const [node, script] = splitCommand(command);
-    return Boolean(node && script && path.resolve(script) === path.resolve(forwarder) && (await isExecutable(node)));
+    const args = splitCommand(command);
+    const [node, script, source] = args;
+    return Boolean(args.length === 3 && source === app && node && script && path.resolve(script) === path.resolve(forwarder) && path.isAbsolute(script) && (await nodeValid(node)));
   }
 
   async function resolvePort(options: AgentAppConnectOptions, existing: number | undefined): Promise<{ port: number; hostRunning: boolean }> {
@@ -262,7 +317,7 @@ export function createConnectService(ctx: ConnectContext): ConnectService {
   }
 
   async function withRpc<T>(bin: string, fn: (rpc: CodexRpc) => Promise<T>): Promise<T> {
-    const rpc = await rpcFactory({ bin, codexHome: path.dirname(configPath('codex')), env: ctx.env, cwd: os.tmpdir() });
+    const rpc = await rpcFactory({ bin, codexHome: path.dirname(configPath('codex')), env: commandEnv(), cwd: os.tmpdir() });
     try { return await fn(rpc); } finally { rpc.close(); }
   }
 
@@ -278,27 +333,33 @@ export function createConnectService(ctx: ConnectContext): ConnectService {
 
   // ---- state of one app --------------------------------------------------------------------------------------------
 
-  async function describe(app: AgentAppId): Promise<AgentAppConnection> {
+  async function describe(app: AgentAppId, lookup: NodeLookup): Promise<AgentAppConnection> {
     const label = LABELS[app];
     const file = configPath(app);
     const base: AgentAppConnection = {
-      app, label, supported: isSupported(app), installed: false, connected: false, state: 'not-connected',
+      app, label, supported: isSupported(app), nodeStatus: app === 'hermes' ? 'not-required' : 'missing', installed: false, connected: false, state: 'not-connected',
       trust: { status: 'not-applicable', trusted: 0, total: 0 }, warnings: [], events: [], hostRunning: false, port: DEFAULT_HOOK_PORT, configPath: file,
     };
     const endpoint = await readEndpoint(ctx.extaliaHome, ctx.alive);
     base.hostRunning = Boolean(endpoint?.alive);
     if (endpoint?.alive) base.port = endpoint.port;
-    const last = await ctx.lastEvent?.(app);
-    if (last) base.lastEventAt = last;
+    const recordedEvents = ctx.lastEvent ? undefined : await readJson<Record<string, unknown>>(path.join(ctx.extaliaHome, 'hooks', 'last-events.json'), {}).catch((): Record<string, unknown> => ({}));
+    const candidateLast = ctx.lastEvent ? await ctx.lastEvent(app) : recordedEvents?.[app];
+    const last = typeof candidateLast === 'string' && Number.isFinite(Date.parse(candidateLast)) ? candidateLast : undefined;
+    const connectedRevision = (await readManifest()).apps[app]?.updatedAt;
+    if (connectedRevision) base.configuredAt = connectedRevision;
+    if (last && (!connectedRevision || Date.parse(last) >= Date.parse(connectedRevision))) base.lastEventAt = last;
     if (!isSupported(app)) { base.warnings.push(`${label} hooks arrive in a later release.`); return base; }
 
+    if (app !== 'hermes' && await lookup()) base.nodeStatus = 'ready';
     const detected = await detect(app);
     base.installed = detected.installed;
     if (detected.version) { base.version = detected.version; base.versionVerified = Boolean(detected.verified); }
     if (detected.version && !detected.verified) base.warnings.push(`${label} ${detected.version} was not verified; hooks were tested with ${VERIFIED_VERSIONS[app].text}.`);
 
     let text: string | undefined;
-    try { text = await readTextSafe(file); } catch { /* handled below */ }
+    try { text = await readTextSafe(file); }
+    catch (error) { base.warnings.push(error instanceof Error ? error.message : 'The configuration could not be read.'); }
     const token = await readToken(ctx.extaliaHome);
     let fwd = await forwarderStatus(ctx.extaliaHome);
     if (fwd === 'outdated') {
@@ -321,7 +382,10 @@ export function createConnectService(ctx: ConnectContext): ConnectService {
         const existing = existingClaudeEntries(text, file);
         noteLegacy(existing.command);
         const port = (await resolvePort({}, existing.port)).port;
-        const command = (await commandValid(existing.command)) ? (existing.command as string) : claudeCommand(ctx.nodePath, forwarder, ctx.platform);
+        const availableCommand = await hookCommand('claude', existing.command, lookup);
+        base.nodeStatus = availableCommand ? 'ready' : 'missing';
+        if (!availableCommand) base.warnings.push(nodePrerequisite(app));
+        const command = availableCommand ?? '';
         const inspected = inspectClaudeSettings(text, file, { port: base.hostRunning ? port : undefined, token: token ?? '', command });
         const ours = CLAUDE_EVENTS.length - inspected.missing.length;
         base.events = CLAUDE_EVENTS.filter(event => !inspected.missing.includes(event));
@@ -335,7 +399,10 @@ export function createConnectService(ctx: ConnectContext): ConnectService {
       } else if (app === 'gemini') {
         const existing = existingGeminiCommand(text, file);
         noteLegacy(existing);
-        const command = (await commandValid(existing)) ? (existing as string) : geminiCommand(ctx.nodePath, forwarder, ctx.platform);
+        const availableCommand = await hookCommand('gemini', existing, lookup);
+        base.nodeStatus = availableCommand ? 'ready' : 'missing';
+        if (!availableCommand) base.warnings.push(nodePrerequisite(app));
+        const command = availableCommand ?? '';
         const inspected = inspectGeminiSettings(text, file, { command });
         const ours = GEMINI_EVENTS.length - inspected.missing.length;
         base.events = GEMINI_EVENTS.filter(event => !inspected.missing.includes(event));
@@ -345,7 +412,10 @@ export function createConnectService(ctx: ConnectContext): ConnectService {
       } else if (app === 'antigravity') {
         const existing = existingAntigravityCommand(text, file);
         noteLegacy(existing);
-        const command = (await commandValid(existing)) ? (existing as string) : antigravityCommand(ctx.nodePath, forwarder, ctx.platform);
+        const availableCommand = await hookCommand('antigravity', existing, lookup);
+        base.nodeStatus = availableCommand ? 'ready' : 'missing';
+        if (!availableCommand) base.warnings.push(nodePrerequisite(app));
+        const command = availableCommand ?? '';
         const inspected = inspectAntigravityHooks(text, file, { command });
         const ours = ANTIGRAVITY_EVENTS.length - inspected.missing.length;
         base.events = ANTIGRAVITY_EVENTS.filter(event => !inspected.missing.includes(event));
@@ -353,19 +423,42 @@ export function createConnectService(ctx: ConnectContext): ConnectService {
         if (base.state === 'stale') base.warnings.push(token ? 'The hooks point to a Node binary or forwarder that is missing or moved. Connect again to update them.' : 'The ingest token is missing. Connect again to create it.');
         if (base.state === 'partial') base.warnings.push(`Some hooks are missing (${inspected.missing.join(', ')}). Connect again to repair them.`);
       } else if (app === 'hermes') {
-        const existingPort = existingHermesPort(text, file);
+        let existingPort: number | undefined;
+        try { existingPort = existingHermesPort(text, file); } catch { /* reported with the profile inspection below */ }
         const port = (await resolvePort({}, existingPort)).port;
-        const inspected = inspectHermesConfig(text, file, { port: base.hostRunning ? port : undefined, token: token ?? '' });
-        const ours = HERMES_EVENTS.length - inspected.missing.length;
-        base.events = HERMES_EVENTS.filter(event => !inspected.missing.includes(event));
-        base.state = ours === 0 ? 'not-connected' : inspected.missing.length ? 'partial' : inspected.stale.length || !token ? 'stale' : 'connected';
-        if (base.state === 'stale') base.warnings.push(token ? 'The webhook uses an old secret or port. Connect again to update it.' : 'The ingest token is missing. Connect again to create it.');
-        if (base.state === 'partial') base.warnings.push(`Some webhook events are missing (${inspected.missing.join(', ')}). Connect again to repair them.`);
+        const desired = { port: base.hostRunning ? port : undefined, token: token ?? '' };
+        const record = (await readManifest()).apps.hermes;
+        const profiles = new Map<string, string>([[path.resolve(file), file]]);
+        for (const extra of record?.profiles ?? []) profiles.set(path.resolve(extra.configPath), extra.configPath);
+        const inspections: Array<{ file: string; inspected: ReturnType<typeof inspectHermesConfig> }> = [];
+        for (const profileFile of profiles.values()) {
+          try {
+            const profileText = profileFile === file ? text : await readTextSafe(profileFile);
+            inspections.push({ file: profileFile, inspected: inspectHermesConfig(profileText, profileFile, desired) });
+          } catch (error) {
+            base.warnings.push(error instanceof Error ? error.message : `The Hermes profile ${displayPath(profileFile, ctx.homeDirectory)} could not be read.`);
+            inspections.push({ file: profileFile, inspected: inspectHermesConfig(undefined, profileFile, desired) });
+          }
+        }
+        const ours = inspections.reduce((total, item) => total + HERMES_EVENTS.length - item.inspected.missing.length, 0);
+        const missing = inspections.some(item => item.inspected.missing.length > 0);
+        const stale = inspections.some(item => item.inspected.stale.length > 0);
+        base.events = HERMES_EVENTS.filter(event => inspections.every(item => !item.inspected.missing.includes(event)));
+        base.state = ours === 0 ? 'not-connected' : missing ? 'partial' : stale || !token ? 'stale' : 'connected';
+        if (!token && ours) base.warnings.push('The ingest token is missing. Connect again to create it.');
+        if (ours || record) for (const item of inspections) {
+          const profile = displayPath(item.file, ctx.homeDirectory);
+          if (item.inspected.missing.length) base.warnings.push(`Hermes profile ${profile} is missing webhook events (${item.inspected.missing.join(', ')}). Connect again to repair it.`);
+          if (item.inspected.stale.length) base.warnings.push(`Hermes profile ${profile} uses an old secret or port. Connect again to update it.`);
+        }
         base.port = port;
       } else {
         const existing = existingCodexCommand(text, file);
         noteLegacy(existing);
-        const command = (await commandValid(existing)) ? (existing as string) : codexCommand(ctx.nodePath, forwarder, ctx.platform);
+        const availableCommand = await hookCommand('codex', existing, lookup);
+        base.nodeStatus = availableCommand ? 'ready' : 'missing';
+        if (!availableCommand) base.warnings.push(nodePrerequisite(app));
+        const command = availableCommand ?? '';
         const inspected = inspectCodexConfig(text, file, { command });
         const ours = CODEX_EVENTS.length - inspected.missing.length;
         base.events = CODEX_EVENTS.filter(event => !inspected.missing.includes(event));
@@ -384,12 +477,18 @@ export function createConnectService(ctx: ConnectContext): ConnectService {
       base.state = 'not-connected';
     }
     if (base.state !== 'not-connected' && app !== 'hermes' && fwd !== 'current') {
+      base.state = 'stale';
       base.warnings.push(fwd === 'missing' ? 'The Extalia forwarder script is missing. Connect again to reinstall it.' : 'The Extalia forwarder script is out of date. Connect again to update it.');
     }
     if (legacyHooks && migrated && base.state !== 'not-connected') {
       base.warnings.unshift(`Extalia moved its data folder to ${ctx.extaliaHome}. These hooks still run the forwarder in the previous folder (${migrated.from}), which passes events on for now. Run \`extalia connect ${app}\` (or Connect again) to point them to the new folder.`);
     }
     base.connected = base.state === 'connected';
+    const overridePort = (await readHookTargets(ctx.extaliaHome))[app];
+    if (overridePort !== undefined) {
+      base.port = overridePort;
+      base.hostRunning = Boolean(endpoint?.alive && endpoint.port === overridePort);
+    }
     return base;
   }
 
@@ -415,13 +514,25 @@ export function createConnectService(ctx: ConnectContext): ConnectService {
     needsWrite: boolean;
   }
 
-  async function compute(app: AgentAppId, options: AgentAppConnectOptions, real: { token: string } | undefined): Promise<Computed> {
+  async function compute(app: AgentAppId, options: AgentAppConnectOptions, real: { token: string } | undefined, lookup: NodeLookup): Promise<Computed> {
+    const requestedOptions = options;
+    const targets = await readHookTargets(ctx.extaliaHome);
+    options = { ...options, ...(options.port === undefined && targets[app] !== undefined ? { port: targets[app] } : {}) };
     const label = LABELS[app];
     const file = configPath(app);
+    const previous = (await readManifest()).apps[app];
+    if (previous && path.resolve(previous.configPath) !== path.resolve(file)) {
+      throw new ConnectError(`${label} is already connected using ${displayPath(previous.configPath, ctx.homeDirectory)}. Disconnect that configuration first with \`${undoCommand(app)}\`, then connect again to use ${displayPath(file, ctx.homeDirectory)}. Extalia left both configurations unchanged.`);
+    }
+    const resolvedTarget = await writableTarget(file);
+    if (previous && await targetChanged(previous, file, resolvedTarget)) {
+      throw new ConnectError('The connected configuration target changed. Restore its original file/link before disconnecting or connecting again. Nothing was written.');
+    }
+    if (app !== 'hermes') await lookup();
     const detected = await detect(app);
     const warnings: string[] = [];
     const base: AgentAppConnectPlan = {
-      app, supported: isSupported(app), installed: detected.installed, ...(detected.version ? { version: detected.version, versionVerified: Boolean(detected.verified) } : {}),
+      app, supported: isSupported(app), nodeStatus: app === 'hermes' ? 'not-required' : 'ready', installed: detected.installed, ...(detected.version ? { version: detected.version, versionVerified: Boolean(detected.verified) } : {}),
       configPath: file, changes: false, diff: '', events: [], needsTrust: false, warnings, backupRoot: path.join(connectDirectory, 'backups', app),
       forwarderPath: forwarder, port: options.port ?? DEFAULT_HOOK_PORT, restartHint: '',
     };
@@ -429,11 +540,23 @@ export function createConnectService(ctx: ConnectContext): ConnectService {
       warnings.push(`${label} hooks arrive in a later release.`);
       return { plan: base, before: undefined, after: '', file, needsWrite: false };
     }
-    if (!detected.installed) warnings.push(`${label} was not found on PATH or in ${displayPath(path.dirname(file), ctx.homeDirectory)}. Hooks are written anyway and work once ${label} is installed.`);
     if (detected.version && !detected.verified) warnings.push(`${label} ${detected.version} was not verified; hooks were tested with ${VERIFIED_VERSIONS[app].text}.`);
     if (ctx.platform === 'win32' && app !== 'hermes') warnings.push('Windows command quoting for hooks is untested.');
 
     const before = await readTextSafe(file);
+    let selectedCommand: string | undefined;
+    if (app !== 'hermes') {
+      const existing = app === 'claude' ? existingClaudeEntries(before, file).command
+        : app === 'gemini' ? existingGeminiCommand(before, file)
+          : app === 'antigravity' ? existingAntigravityCommand(before, file) : existingCodexCommand(before, file);
+      selectedCommand = await hookCommand(app, existing, lookup);
+      if (!selectedCommand) {
+        warnings.push(nodePrerequisite(app));
+        base.nodeStatus = 'missing';
+        return { plan: base, before, after: before ?? '', file, needsWrite: false };
+      }
+    }
+    if (!detected.installed) warnings.push(`${label} was not found on PATH or in ${displayPath(path.dirname(file), ctx.homeDirectory)}. Hooks are written anyway and work once ${label} is installed.`);
     const fwd = await forwarderStatus(ctx.extaliaHome);
     const existingToken = await readToken(ctx.extaliaHome);
     const tokenForPlan = real?.token ?? (options.rotate ? NEW_TOKEN : existingToken ?? NEW_TOKEN);
@@ -446,7 +569,7 @@ export function createConnectService(ctx: ConnectContext): ConnectService {
       const { port, hostRunning } = await resolvePort(options, existing.port);
       base.port = port;
       if (!hostRunning) warnings.push(`No Extalia host is running, so port ${port} is a guess; Claude Code hooks keep this port until you connect again with --port.`);
-      const command = (await commandValid(existing.command)) ? (existing.command as string) : claudeCommand(ctx.nodePath, forwarder, ctx.platform);
+      const command = selectedCommand!;
       const desired: ClaudeDesired = { port, token: tokenForPlan, command };
       const planned = planClaudeSettings(before, file, desired);
       after = planned.after; events = planned.events;
@@ -457,8 +580,7 @@ export function createConnectService(ctx: ConnectContext): ConnectService {
       if (before !== undefined && before.trim() && wouldReformat(before)) warnings.push('The settings file is formatted differently from standard JSON output, so its layout will be normalised (content and key order stay the same).');
       base.restartHint = 'Restart Claude Code (or open /hooks in a running session) so it loads the new hooks.';
     } else if (app === 'gemini') {
-      const existing = existingGeminiCommand(before, file);
-      const command = (await commandValid(existing)) ? (existing as string) : geminiCommand(ctx.nodePath, forwarder, ctx.platform);
+      const command = selectedCommand!;
       const desired: GeminiDesired = { command };
       const planned = planGeminiSettings(before, file, desired);
       after = planned.after; events = planned.events;
@@ -467,8 +589,7 @@ export function createConnectService(ctx: ConnectContext): ConnectService {
       base.port = port;
       base.restartHint = 'Restart Gemini CLI so it loads the new hooks.';
     } else if (app === 'antigravity') {
-      const existing = existingAntigravityCommand(before, file);
-      const command = (await commandValid(existing)) ? (existing as string) : antigravityCommand(ctx.nodePath, forwarder, ctx.platform);
+      const command = selectedCommand!;
       const desired: AntigravityDesired = { command };
       const planned = planAntigravityHooks(before, file, desired);
       after = planned.after; events = planned.events;
@@ -497,8 +618,7 @@ export function createConnectService(ctx: ConnectContext): ConnectService {
       }
       base.restartHint = 'Restart running Hermes sessions so they load the outbound webhook configuration.';
     } else {
-      const existing = existingCodexCommand(before, file);
-      const command = (await commandValid(existing)) ? (existing as string) : codexCommand(ctx.nodePath, forwarder, ctx.platform);
+      const command = selectedCommand!;
       const desired: CodexDesired = { command };
       const planned = planCodexConfig(before, file, desired);
       after = planned.after; inserted = planned.inserted; events = planned.events;
@@ -526,11 +646,19 @@ export function createConnectService(ctx: ConnectContext): ConnectService {
     base.events = events;
     base.diff = diff;
     base.changes = fileChanges || needsForwarder || tokenChanges;
+    if (requestedOptions.port !== undefined && targets[app] !== base.port) base.changes = true;
     if (needsForwarder) warnings.push(`The forwarder script ${fwd === 'missing' ? 'will be installed' : 'will be updated'} at ${displayPath(forwarder, ctx.homeDirectory)}.`);
     if (!existingToken) warnings.push('A new ingest token will be created (kept only on this computer).');
     if (options.rotate && existingToken) warnings.push(app === 'claude' || app === 'hermes'
       ? 'The ingest token will be replaced; hooks of other connected apps that store the token (Claude Code, Hermes) must be connected again.'
       : 'The ingest token will be replaced; Claude Code or Hermes hooks, if connected, must be connected again.');
+    base.previewDigest = sha256(JSON.stringify({
+      app, file, resolvedTarget, before: before === undefined ? null : sha256(before),
+      after: display(after).replaceAll(NEW_TOKEN, MASK),
+      profiles: await Promise.all(extraProfiles.map(async extra => ({ file: extra.file, target: await writableTarget(extra.file), before: extra.before === undefined ? null : sha256(extra.before), after: display(extra.after).replaceAll(NEW_TOKEN, MASK) }))),
+      port: base.port, rotate: Boolean(requestedOptions.rotate), token: existingToken ? sha256(existingToken) : null,
+      forwarder: fwd, targets,
+    }));
     return {
       plan: base,
       before,
@@ -557,12 +685,12 @@ export function createConnectService(ctx: ConnectContext): ConnectService {
     return directory;
   }
 
-  async function sendTest(app: AgentAppId): Promise<AgentAppTestResult> {
+  async function sendTest(app: AgentAppId, requestedPort?: number): Promise<AgentAppTestResult> {
     const token = await readToken(ctx.extaliaHome);
     if (!token) return { ok: false, status: 'skipped', message: 'No ingest token yet; connect an app first.' };
     const endpoint = await readEndpoint(ctx.extaliaHome, ctx.alive);
-    if (endpoint && !endpoint.alive) return { ok: false, status: 'host-down', message: 'No Extalia host is running. Start Extalia (Desktop or `extalia`) and test again.' };
-    const port = endpoint?.port ?? DEFAULT_HOOK_PORT;
+    const port = requestedPort ?? (await readHookTargets(ctx.extaliaHome))[app] ?? endpoint?.port ?? DEFAULT_HOOK_PORT;
+    if (endpoint && !endpoint.alive && requestedPort === undefined && !(await readHookTargets(ctx.extaliaHome))[app]) return { ok: false, status: 'host-down', message: 'No Extalia host is running. Start Extalia (Desktop or `extalia`) and test again.' };
     const fetchImpl = ctx.fetch ?? globalThis.fetch;
     const body = JSON.stringify({ hook_event_name: 'ExtaliaConnectTest', session_id: 'extalia-connect-test', extalia_test: true, app });
     const headers: Record<string, string> = { 'content-type': 'application/json', authorization: `Bearer ${token}` };
@@ -585,74 +713,84 @@ export function createConnectService(ctx: ConnectContext): ConnectService {
 
   async function apply(app: AgentAppId, options: AgentAppConnectOptions = {}): Promise<AgentAppConnectResult> {
     if (!isSupported(app)) throw new ConnectError(`${LABELS[app]} hooks arrive in a later release.`);
-    const preview = await compute(app, options, undefined);
+    const lookup = nodeLookup();
+    const preview = await compute(app, options, undefined, lookup);
+    if (preview.plan.nodeStatus === 'missing') throw new ConnectError(nodePrerequisite(app));
+    if (options.expectedPreviewDigest !== undefined && options.expectedPreviewDigest !== preview.plan.previewDigest) {
+      throw new ConnectError('The connection preview changed. Review a new preview before applying. Nothing was written.');
+    }
     const detected = await detect(app);
     const warnings = [...preview.plan.warnings];
-    const { token } = await ensureToken(ctx.extaliaHome, Boolean(options.rotate));
-    if (app !== 'hermes') await installForwarder(ctx.extaliaHome);
-    const real = await compute(app, { ...options, rotate: false }, { token });
+    const priorToken = await readToken(ctx.extaliaHome);
+    const token = !priorToken || options.rotate ? randomBytes(32).toString('hex') : priorToken;
+    const real = await compute(app, { ...options, rotate: false }, { token }, lookup);
+    if (real.plan.nodeStatus === 'missing') throw new ConnectError(nodePrerequisite(app));
     const file = real.file;
     const target = await writableTarget(file);
+    const manifestBefore = await readTextSafe(manifestFile);
     const manifest = await readManifest();
+    const previous = manifest.apps[app];
+    const writes: ConfigWrite[] = [];
     let backupPath: string | undefined;
     let changed = false;
-
-    if (real.needsWrite) {
-      let current: Buffer | undefined;
-      try { current = await readFile(target); } catch (error) { if (!isNotFound(error)) throw error; }
-      if (current && current.toString('utf8') !== real.before) throw new ConnectError('The configuration changed while Extalia was preparing the update. Nothing was written; run the command again.');
-      backupPath = await backupFile(app, file, current);
-      await writeConfigFile(target, real.after);
-      changed = true;
-
-      const previous = manifest.apps[app];
-      const profileRecords: ExtraProfileRecord[] = [];
-      for (const extra of real.extraProfiles ?? []) {
-        const extraTarget = await writableTarget(extra.file);
-        let extraCurrent: Buffer | undefined;
-        try { extraCurrent = await readFile(extraTarget); } catch (error) { if (!isNotFound(error)) throw error; }
-        if (extraCurrent && extraCurrent.toString('utf8') !== extra.before) {
-          throw new ConnectError('A profile configuration changed while Extalia was preparing the update.');
-        }
-        const prevExtra = previous?.profiles?.find(item => path.resolve(item.configPath) === path.resolve(extra.file));
-        const extraBackup = await backupFile(app, extra.file, extraCurrent, `profile-${extra.profile}`);
-        await writeConfigFile(extraTarget, extra.after);
-        profileRecords.push({
-          configPath: extra.file,
-          original: prevExtra?.original ?? {
-            existed: Boolean(extraCurrent),
-            ...(extraCurrent ? { sha256: sha256(extraCurrent), backupFile: path.join(extraBackup, path.basename(extra.file)) } : {}),
-            backupDir: extraBackup,
-          },
-          writtenSha256: sha256(extra.after),
-          ...(extra.inserted ? { inserted: extra.inserted } : prevExtra?.inserted ? { inserted: prevExtra.inserted } : {}),
-        });
+    const sameBaseline = real.before === preview.before && real.plan.port === preview.plan.port
+      && JSON.stringify((real.extraProfiles ?? []).map(extra => [extra.file, extra.before]))
+        === JSON.stringify((preview.extraProfiles ?? []).map(extra => [extra.file, extra.before]));
+    if (!sameBaseline) throw new ConnectError('The configuration changed after preview. Review a new preview. Nothing was written.');
+    const configWrites = [
+      { file, before: real.before, after: real.after, profile: undefined as string | undefined, inserted: real.inserted },
+      ...(real.extraProfiles ?? []).map(extra => ({ ...extra, profile: extra.profile })),
+    ];
+    const prepared = await Promise.all(configWrites.map(async entry => {
+      const resolved = await writableTarget(entry.file);
+      const prior = entry.profile === undefined ? previous : previous?.profiles?.find(item => path.resolve(item.configPath) === path.resolve(entry.file));
+      if (prior && await targetChanged(prior, entry.file, resolved)) {
+        throw new ConnectError('A connected configuration link target changed. Restore the original target before retrying. Nothing was written.');
       }
-
-      const allEvents = app === 'claude'
-        ? [...CLAUDE_EVENTS]
-        : app === 'gemini'
-          ? [...GEMINI_EVENTS]
-          : app === 'antigravity'
-            ? [...ANTIGRAVITY_EVENTS]
-            : app === 'hermes'
-              ? [...HERMES_EVENTS]
-              : [...CODEX_EVENTS];
-
-      manifest.apps[app] = {
-        connectedAt: previous?.connectedAt ?? now().toISOString(),
-        updatedAt: now().toISOString(),
-        configPath: file,
-        original: previous?.original ?? { existed: Boolean(current), ...(current ? { sha256: sha256(current), backupFile: path.join(backupPath, path.basename(file)) } : {}), backupDir: backupPath },
-        lastBackupDir: backupPath,
-        writtenSha256: sha256(real.after),
-        ...(real.inserted ? { inserted: real.inserted } : previous?.inserted ? { inserted: previous.inserted } : {}),
-        ...(profileRecords.length ? { profiles: profileRecords } : previous?.profiles ? { profiles: previous.profiles } : {}),
-        trustedKeys: previous?.trustedKeys ?? [],
-        events: allEvents,
-      };
-      await writeManifest(manifest);
+      if (await readTextSafe(resolved) !== entry.before) throw new ConnectError('A configuration changed after preview. Nothing was written.');
+      return { ...entry, target: resolved, prior };
+    }));
+    if (new Set(prepared.map(entry => path.resolve(entry.target))).size !== prepared.length) {
+      throw new ConnectError('Connection profiles resolve to the same file. Nothing was written.');
     }
+    const profileRecords = [...previous?.profiles ?? []];
+    const allEvents = app === 'claude' ? [...CLAUDE_EVENTS] : app === 'gemini' ? [...GEMINI_EVENTS]
+      : app === 'antigravity' ? [...ANTIGRAVITY_EVENTS] : app === 'hermes' ? [...HERMES_EVENTS] : [...CODEX_EVENTS];
+    for (const entry of prepared) {
+      if (entry.after === entry.before && entry.prior) continue;
+      const current = entry.before === undefined ? undefined : Buffer.from(entry.before);
+      const backup = await backupFile(app, entry.file, current, entry.profile === undefined ? undefined : `profile-${entry.profile}`);
+      const record = {
+        configPath: entry.file, resolvedTarget: entry.target,
+        original: entry.prior?.original ?? { existed: current !== undefined, ...(current ? { sha256: sha256(current), backupFile: path.join(backup, path.basename(entry.file)) } : {}), backupDir: backup },
+        writtenSha256: sha256(entry.after),
+        ...(entry.inserted ? { inserted: entry.inserted } : entry.prior?.inserted ? { inserted: entry.prior.inserted } : {}),
+        surgicalOnly: entry.prior?.surgicalOnly ?? (entry.before !== undefined && hasOwnedHooks(app, entry.before, entry.file)),
+      };
+      if (entry.profile === undefined) {
+        backupPath = backup;
+        manifest.apps[app] = { ...record, connectedAt: previous?.connectedAt ?? now().toISOString(), updatedAt: now().toISOString(), lastBackupDir: backup, trustedKeys: previous?.trustedKeys ?? [], events: allEvents };
+      } else {
+        const index = profileRecords.findIndex(item => path.resolve(item.configPath) === path.resolve(entry.file));
+        if (index < 0) profileRecords.push(record); else profileRecords[index] = record;
+      }
+      writes.push({ file: entry.file, target: entry.target, before: entry.before, after: entry.after });
+      changed = true;
+    }
+    if (profileRecords.length && manifest.apps[app]) manifest.apps[app]!.profiles = profileRecords;
+    const addOwnedWrite = async (ownedFile: string, after: string, mode = 0o600) => {
+      const before = await readTextSafe(ownedFile);
+      if (before !== after) writes.push({ file: ownedFile, target: await writableTarget(ownedFile), before, after, mode });
+    };
+    await mkdir(path.join(ctx.extaliaHome, 'hooks'), { recursive: true, mode: 0o700 });
+    await addOwnedWrite(tokenFile(ctx.extaliaHome), token);
+    if (app !== 'hermes') await addOwnedWrite(forwarder, FORWARDER_SOURCE, 0o755);
+    if (options.port !== undefined) await addOwnedWrite(hookTargetsFile(ctx.extaliaHome), `${JSON.stringify({ ...await readHookTargets(ctx.extaliaHome), [app]: options.port }, null, 2)}\n`);
+    changed ||= writes.length > 0;
+    if (changed && manifest.apps[app]) manifest.apps[app]!.updatedAt = now().toISOString();
+    if (changed) await addOwnedWrite(manifestFile, `${JSON.stringify(manifest, null, 2)}\n`);
+    if (await readTextSafe(manifestFile) !== manifestBefore) throw new ConnectError('The connection manifest changed. Review a new preview before applying.');
+    await commitConfigWrites(writes);
 
     let trust: { status: AgentAppTrustStatus; trusted: number; total: number } = { status: 'not-applicable', trusted: 0, total: 0 };
     if (app === 'codex') {
@@ -686,7 +824,7 @@ export function createConnectService(ctx: ConnectContext): ConnectService {
     }
 
     await enableAutoWatchOnConnect(app);
-    const test = await sendTest(app);
+    const test = await sendTest(app, real.plan.port);
     return {
       app, changed, configPath: file, ...(backupPath ? { backupPath } : {}), undoCommand: undoCommand(app), trust, test,
       restartHint: real.plan.restartHint, warnings,
@@ -744,8 +882,9 @@ export function createConnectService(ctx: ConnectContext): ConnectService {
       const text = current.toString('utf8');
       const forThis = record && path.resolve(record.configPath) === path.resolve(file) ? record : undefined;
 
+      if (forThis && await targetChanged(forThis, file, target)) throw new ConnectError('The connected configuration target changed. Restore the original link before disconnecting. Nothing was written.');
       // Untouched since Extalia wrote it: put the original bytes back.
-      if (forThis && sha256(current) === forThis.writtenSha256) {
+      if (forThis && !forThis.surgicalOnly && sha256(current) === forThis.writtenSha256) {
         if (!forThis.original.existed) {
           await rm(target, { force: true });
           result = { app, changed: true, configPath: file, restoredExactly: true, removed: forThis.events.length, warnings };
@@ -790,6 +929,13 @@ export function createConnectService(ctx: ConnectContext): ConnectService {
     }
 
     if (app === 'hermes') {
+      const noteProfileChange = (file: string, removed: number, restoredExactly: boolean) => {
+        result = {
+          app, changed: true, configPath: result.configPath ?? file,
+          restoredExactly: (!result.changed || result.restoredExactly) && restoredExactly,
+          removed: result.removed + removed, warnings,
+        };
+      };
       const extraCandidates = new Map<string, ExtraProfileRecord | undefined>();
       for (const extra of record?.profiles ?? []) extraCandidates.set(path.resolve(extra.configPath), extra);
       for (const extra of await extraHermesProfileConfigs(configPath('hermes'))) {
@@ -800,15 +946,18 @@ export function createConnectService(ctx: ConnectContext): ConnectService {
         const extraTarget = await writableTarget(extraFile);
         let extraCurrent: Buffer;
         try { extraCurrent = await readFile(extraTarget); } catch (error) { if (isNotFound(error)) continue; throw error; }
-        if (profileRecord && sha256(extraCurrent) === profileRecord.writtenSha256) {
+        if (profileRecord && await targetChanged(profileRecord, extraFile, extraTarget)) throw new ConnectError('A connected profile link target changed. Restore the original link before disconnecting.');
+        if (profileRecord && !profileRecord.surgicalOnly && sha256(extraCurrent) === profileRecord.writtenSha256) {
           if (!profileRecord.original.existed) {
             await rm(extraTarget, { force: true });
+            noteProfileChange(extraFile, HERMES_EVENTS.length, true);
             continue;
           }
           if (profileRecord.original.backupFile) {
             const orig = await readFile(profileRecord.original.backupFile);
             if (sha256(orig) === profileRecord.original.sha256) {
               await writeConfigFile(extraTarget, orig.toString('utf8'));
+              noteProfileChange(extraFile, HERMES_EVENTS.length, true);
               continue;
             }
           }
@@ -816,7 +965,9 @@ export function createConnectService(ctx: ConnectContext): ConnectService {
         const extraText = extraCurrent.toString('utf8');
         const removedExtra = removeHermesBlock(extraText, profileRecord?.inserted);
         if (removedExtra.removed && removedExtra.after !== extraText) {
+          await backupFile(app, extraFile, extraCurrent);
           await writeConfigFile(extraTarget, removedExtra.after);
+          noteProfileChange(extraFile, removedExtra.removed, false);
         }
       }
     }
@@ -825,16 +976,37 @@ export function createConnectService(ctx: ConnectContext): ConnectService {
       delete manifest.apps[app];
       await writeManifest(manifest);
     }
+    const targets = await readHookTargets(ctx.extaliaHome);
+    if (targets[app] !== undefined) {
+      delete targets[app];
+      await writeJsonAtomic(hookTargetsFile(ctx.extaliaHome), targets, { mode: 0o600 });
+    }
     return result;
   }
 
+  let pendingConnections: Promise<AgentAppConnection[]> | undefined;
   return {
-    async connections() { return Promise.all((['codex', 'claude', 'gemini', 'antigravity', 'hermes'] as const).map(describe)); },
-    async plan(app, options = {}) { return (await compute(app, options, undefined)).plan; },
+    connections() {
+      if (!pendingConnections) {
+        const lookup = nodeLookup();
+        pendingConnections = Promise.all((['codex', 'claude', 'gemini', 'antigravity', 'hermes'] as const).map(app => describe(app, lookup)))
+          .finally(() => { pendingConnections = undefined; });
+      }
+      return pendingConnections;
+    },
+    async plan(app, options = {}) { return (await compute(app, options, undefined, nodeLookup())).plan; },
     apply,
     disconnect,
     test: sendTest,
   };
+}
+
+function hasOwnedHooks(app: AgentAppId, text: string, file: string): boolean {
+  if (app === 'claude') return removeClaudeEntries(text, file).removed > 0;
+  if (app === 'gemini') return removeGeminiEntries(text, file).removed > 0;
+  if (app === 'antigravity') return removeAntigravityEntries(text, file).removed > 0;
+  if (app === 'hermes') return removeHermesBlock(text).removed > 0;
+  return removeCodexBlock(text).removed;
 }
 
 async function readTextSafe(file: string): Promise<string | undefined> {

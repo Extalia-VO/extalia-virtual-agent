@@ -59,17 +59,20 @@ describe('runTurn', () => {
     expect(result.history.map(message => message.role)).toEqual(['user', 'assistant', 'tool', 'assistant']);
     expect(h.provider.requests[1]?.messages.at(-1)).toMatchObject({ role: 'tool', results: [{ toolCallId: 'c1', isError: false }] });
     expect(result.usage).toEqual({ inputTokens: 3, outputTokens: 2 });
+    expect(h.events.find(event => event.type === 'approval.resolved')).toMatchObject({ decision: 'granted', choice: 'once' });
   });
 
   it('tells the model when the user declines, and remembers session grants', async () => {
     const declined = harness([toolCallStep(), finalStep], 'reject');
     const result = await declined.run();
     expect(declined.written).toEqual([]);
+    expect(declined.events.find(event => event.type === 'approval.resolved')).toMatchObject({ decision: 'rejected', choice: 'reject' });
     expect(result.history[2]).toMatchObject({ role: 'tool', results: [{ isError: true, content: expect.stringContaining('declined') }] });
 
     const granted = harness([toolCallStep(), finalStep, toolCallStep(), finalStep], 'session');
     await granted.run();
     expect(granted.grants.has('write')).toBe(true);
+    expect(granted.events.find(event => event.type === 'approval.resolved')).toMatchObject({ decision: 'granted', choice: 'session' });
     granted.events.length = 0;
     await granted.run('again');
     expect(granted.events.some(event => event.type === 'approval.requested')).toBe(false);
@@ -102,8 +105,21 @@ describe('runTurn', () => {
     });
     const result = await run;
     expect(result.outcome).toBe('cancelled');
+    expect(h.events.find(event => event.type === 'approval.resolved')).not.toHaveProperty('choice');
     expect(result.history.at(-1)).toMatchObject({ role: 'tool', results: [{ toolCallId: 'c1' }, { toolCallId: 'c2', isError: true }] });
     expect(h.events.at(-2)).toMatchObject({ type: 'turn.failed' });
+  });
+
+  it('does not report an approval transport failure as the user choosing Deny', async () => {
+    const h = harness([toolCallStep(), finalStep]);
+    await runTurn({
+      provider: h.provider, system: '', history: [], prompt: 'x', tools: [writeTool(h.written)], permissions: { fileWrite: 'ask', commands: 'ask' }, sessionGrants: h.grants,
+      emit: body => h.events.push(body), signal: h.controller.signal,
+      requestApproval: async () => { throw new Error('Approval connection lost'); },
+    });
+    expect(h.events.find(event => event.type === 'approval.resolved')).toMatchObject({ decision: 'rejected' });
+    expect(h.events.find(event => event.type === 'approval.resolved')).not.toHaveProperty('choice');
+    expect(h.written).toEqual([]);
   });
 
   it('reports provider failures, refusals and truncated tool calls without running tools', async () => {
@@ -151,7 +167,7 @@ describe('policy, validation and prompt', () => {
     expect(plain).not.toContain('memory_write');
     expect(plain).not.toContain('skill_read');
     const full = buildSystemPrompt({ ...base, memory: [{ name: 'stack', summary: 'Vue + Laravel' }], skills: [{ name: 'code-review', description: 'Review changes' }], projectInstructions: [{ file: 'AGENTS.md', text: 'Use pnpm.' }] });
-    expect(full).toContain('stack: Vue + Laravel');
+    expect(full).toContain('"name":"stack","summary":"Vue + Laravel"');
     expect(full).toContain('code-review: Review changes');
     expect(full).toContain('Use pnpm.');
   });

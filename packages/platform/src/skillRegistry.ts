@@ -18,6 +18,10 @@ export type {
   SkillActivationResult, SkillApprovalRecord, SkillConsentRecord, SkillFileEntry, SkillInspectionRecord, SkillReviewDecision, SkillRevisionState,
   SkillRevisionSummary, SkillScannerReport, SkillScannerStatus, SkillStateEvent,
 };
+export type { SkillRoutingInput, SkillRoutingReport, SkillRoutingCandidate, SkillRoutingExclusion, SkillRoutingInputIssue, SkillRoutingScore } from '@extalia/protocol';
+import type { SkillRoutingInput, SkillRoutingReport } from '@extalia/protocol';
+export type { SkillPreflightInput, SkillPreflightReport, SkillPreflightIssue } from '@extalia/protocol';
+import { parseDaemonFrame, type SkillPreflightInput, type SkillPreflightReport } from '@extalia/protocol';
 
 /** The local user: the only principal that reviews or approves (ADR 0026 decision 5). */
 export const SKILL_USER_PRINCIPAL = 'user:local';
@@ -54,6 +58,10 @@ export interface SkillRegistryReport {
   inspector?: SkillScannerReport;
   /** The daemon serves `skill.review` (recording a human review needs core migration 0004). */
   review: boolean;
+  /** Optional additive capability; older hosts/daemons omit it. */
+  preflight?: boolean;
+  /** Optional read-only routing diagnostics; true only when advertised by the daemon. */
+  routingPreview?: boolean;
   /** Expiry of a new approval in milliseconds. */
   approvalTtlMs: number;
   /** Every revision of the profile (built-in skills excluded), by package id then revision id. */
@@ -101,6 +109,24 @@ export interface SkillActionResult {
 }
 
 const record = (value: unknown): Record<string, unknown> => (typeof value === 'object' && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : {});
+
+/** Exact user-selected pins only. Never fill from active/latest revisions. */
+export function normalizeSkillPreflight(value: unknown): SkillPreflightInput {
+  const input = record(value);
+  if (Object.keys(input).some(key => key !== 'rootRevisionId' && key !== 'pins')) throw new Error('Invalid dependency check.');
+  const rootRevisionId = normalizeSkillRevisionId(input.rootRevisionId);
+  if (!input.pins || typeof input.pins !== 'object' || Array.isArray(input.pins) || Object.keys(input.pins).length > 128) throw new Error('Choose at most 128 exact dependency revisions.');
+  const pins: Record<string, string> = {};
+  for (const [packageId, revision] of Object.entries(input.pins)) pins[normalizeSkillPackageId(packageId)] = normalizeSkillRevisionId(revision);
+  return { rootRevisionId, pins };
+}
+
+/** Validate the wire-shaped result even for remote/mocked hosts. No success can admit dispatch. */
+export function normalizeSkillPreflightReport(value: unknown, rootRevisionId: string): SkillPreflightReport {
+  const parsed = parseDaemonFrame({ schemaVersion: 1, kind: 'response', requestId: '00000000-0000-4000-8000-000000000000', op: 'skill.preflight', result: value });
+  if (!parsed.ok || record(value).rootRevisionId !== rootRevisionId) throw new Error('Invalid dependency check result.');
+  return value as SkillPreflightReport;
+}
 
 /** Validate a revision id (`skr_` + SHA-256). Throws a message safe to show. */
 export function normalizeSkillRevisionId(value: unknown): string {
@@ -166,4 +192,26 @@ export function normalizeSkillReview(value: unknown): SkillReviewInput {
     if (input.note.trim()) result.note = input.note;
   }
   return result;
+}
+
+/** Explicit selectors and exact revisions; callers cannot provide runtime facts or grants. */
+export function normalizeSkillRouting(value: unknown): SkillRoutingInput {
+  const parsed = parseDaemonFrame({ schemaVersion: 1, kind: 'request', requestId: '00000000-0000-4000-8000-000000000000', op: 'skill.routingPreview', params: value });
+  if (!parsed.ok) throw new Error('Invalid skill routing preview.');
+  return JSON.parse(JSON.stringify(value)) as SkillRoutingInput;
+}
+
+/** Bind the response to the exact preview request, including workspace applicability. */
+export function normalizeSkillRoutingReport(value: unknown, input: SkillRoutingInput): SkillRoutingReport {
+  const parsed = parseDaemonFrame({ schemaVersion: 1, kind: 'response', requestId: '00000000-0000-4000-8000-000000000000', op: 'skill.routingPreview', result: value });
+  if (!parsed.ok) throw new Error('Invalid skill routing preview result.');
+  const report = value as SkillRoutingReport, actual = report.input;
+  const sameSet = (a: readonly string[], b: readonly string[]) => {
+    const left = [...a].sort(), right = [...b].sort();
+    return left.length === right.length && left.every((item, i) => item === right[i]);
+  };
+  if (actual.workspaceId !== input.workspaceId || actual.maxResults !== input.maxResults
+    || !sameSet(actual.categories, input.categories) || !sameSet(actual.intents, input.intents) || !sameSet(actual.candidateRevisionIds, input.candidateRevisionIds)
+    || !sameSet(Object.keys(actual.pins), Object.keys(input.pins)) || Object.keys(input.pins).some(key => input.pins[key] !== actual.pins[key])) throw new Error('Invalid skill routing preview result.');
+  return report;
 }

@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { constants } from 'node:fs';
-import { access, chmod, mkdir, readFile, realpath, stat } from 'node:fs/promises';
+import { access, chmod, lstat, mkdir, readFile, realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { isNotFound, writeFileAtomic } from '../jsonStore.js';
 
@@ -34,7 +34,14 @@ export async function readTextIfExists(file: string): Promise<string | undefined
  */
 export async function writableTarget(file: string): Promise<string> {
   try { return await realpath(file); }
-  catch (error) { if (isNotFound(error)) return file; throw error; }
+  catch (error) {
+    if (!isNotFound(error)) throw error;
+    try {
+      if ((await lstat(file)).isSymbolicLink()) throw new ConnectError('The configuration link has no readable target. Restore its target before connecting.');
+    } catch (linkError) { if (!isNotFound(linkError)) throw linkError; }
+    const absolute = path.resolve(file), parent = path.dirname(absolute);
+    return parent === absolute ? absolute : path.join(await writableTarget(parent), path.basename(absolute));
+  }
 }
 
 /** Atomic write that keeps the mode of an existing file (new files get `fallbackMode`). */

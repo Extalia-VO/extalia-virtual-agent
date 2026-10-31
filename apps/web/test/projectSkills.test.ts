@@ -53,32 +53,32 @@ describe('project skills section', () => {
   it('lists pending skills with reason, source, short hash and full-hash tooltip, then allowed skills and warnings', () => {
     const html = renderToStaticMarkup(createElement(ProjectSkillsView, { t, workspaceId: 'w1', report: REPORT, busy: false, error: null, onAllow: () => undefined, onRevoke: () => undefined }));
     expect(html).toContain('Project skills');
-    expect(html).toContain('untrusted guidance');
+    expect(html).toContain(t.projectSkills.scannerRequired);
     expect(html).toContain('Waiting for your review (2)');
     expect(html).toContain('Ship &lt;the&gt; app.');
     expect(html).toContain('New in this project');
-    expect(html).toContain('Changed since you allowed it');
+    expect(html).toContain(t.projectSkills.reasons.changed);
     expect(html).toContain('.extalia/skills/deploy/SKILL.md');
     expect(shortHash(DEPLOY)).toBe('dddddddddddd');
     expect(html).toContain(`title="SHA-256 ${DEPLOY}">dddddddddddd</code>`);
     expect(html).not.toContain(`>${DEPLOY}<`);
-    expect(html).toContain('aria-label="Allow skill deploy"');
-    expect(html).toContain('Allow all');
-    expect(html).toContain('Allowed (1)');
-    expect(html).toContain('aria-label="Revoke skill docs"');
-    expect(html).toContain('Revoke all');
+    expect(html).toContain(`aria-label="${t.projectSkills.allowLabel('deploy')}"`);
+    expect(html).toContain(t.projectSkills.allowAll);
+    expect(html).toContain(t.projectSkills.allowed(1));
+    expect(html).toContain(`aria-label="${t.projectSkills.revokeLabel('docs')}"`);
+    expect(html).toContain(t.projectSkills.revokeAll);
     expect(html).toContain('missing front matter.');
 
     const id = renderToStaticMarkup(createElement(ProjectSkillsView, { t: MESSAGES.id, workspaceId: 'w1', report: REPORT, busy: false, error: 'Gagal.', onAllow: () => undefined, onRevoke: () => undefined }));
     expect(id).toContain('Skill project');
     expect(id).toContain('Baru di project ini');
-    expect(id).toContain('Izinkan semua');
+    expect(id).toContain(MESSAGES.id.projectSkills.allowAll);
     expect(id).toContain('role="alert"');
   });
 
   it('offers Allow all only with more than one pending skill and hides an empty project', () => {
     const one = renderToStaticMarkup(createElement(ProjectSkillsView, { t, workspaceId: 'w1', report: { ...REPORT, pending: REPORT.pending.slice(0, 1) }, busy: false, error: null, onAllow: () => undefined, onRevoke: () => undefined }));
-    expect(one).not.toContain('Allow all');
+    expect(one).not.toContain(t.projectSkills.allowAll);
     const empty: WorkspaceSkills = { workspaceId: 'w1', allowed: [], pending: [], warnings: [] };
     expect(hasProjectSkills(empty)).toBe(false);
     expect(view({ report: empty })).toBeNull();
@@ -88,19 +88,19 @@ describe('project skills section', () => {
   it('allows exactly the name and hash shown, one skill or all of them', async () => {
     const host = fakeHost();
     const onAllow = (skills: SkillConsentInput[]) => void applyProjectSkillsAction(host, 'w1', { kind: 'allow', skills });
-    button(view({ onAllow }), 'Allow skill deploy').onClick();
+    button(view({ onAllow }), t.projectSkills.allowLabel('deploy')).onClick();
     expect(host.allowWorkspaceSkills).toHaveBeenLastCalledWith('w1', [{ name: 'deploy', sha256: DEPLOY }]);
-    button(view({ onAllow }), 'Allow all').onClick();
+    button(view({ onAllow }), t.projectSkills.allowAll).onClick();
     expect(host.allowWorkspaceSkills).toHaveBeenLastCalledWith('w1', [{ name: 'deploy', sha256: DEPLOY }, { name: 'lint', sha256: LINT }]);
-    expect(button(view({ busy: true }), 'Allow skill deploy').disabled).toBe(true);
+    expect(button(view({ busy: true }), t.projectSkills.allowLabel('deploy')).disabled).toBe(true);
   });
 
   it('revokes one skill or every skill of the workspace', async () => {
     const host = fakeHost();
     const onRevoke = (names?: string[]) => void applyProjectSkillsAction(host, 'w1', { kind: 'revoke', names });
-    button(view({ onRevoke }), 'Revoke skill docs').onClick();
+    button(view({ onRevoke }), t.projectSkills.revokeLabel('docs')).onClick();
     expect(host.revokeWorkspaceSkills).toHaveBeenLastCalledWith('w1', ['docs']);
-    button(view({ onRevoke }), 'Revoke all').onClick();
+    button(view({ onRevoke }), t.projectSkills.revokeAll).onClick();
     expect(host.revokeWorkspaceSkills).toHaveBeenLastCalledWith('w1', undefined);
   });
 
@@ -136,4 +136,14 @@ describe('project skills section', () => {
     const revoked = await applyProjectSkillsAction(agents, workspaceId, { kind: 'revoke' });
     expect(revoked.report?.pending).toHaveLength(1);
   });
+});
+
+
+it.each(['en', 'id'] as const)('labels legacy consent as review without scanner authority in a named workspace (%s)', language => {
+  const messages = MESSAGES[language];
+  const html = renderToStaticMarkup(createElement(ProjectSkillsView, { t: messages, workspaceId: 'w1', title: 'Example project', report: REPORT, busy: false, error: null, onAllow: vi.fn(), onRevoke: vi.fn() }));
+  expect(html).toContain(messages.projectSkills.scannerRequired);
+  expect(html).toContain(messages.projectSkills.allowed(1));
+  expect(html).toContain(messages.projectSkills.allowAll);
+  expect(html).not.toContain('Activate');
 });

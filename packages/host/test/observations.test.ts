@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { NativeImportService } from '../src/nativeImport.js';
 import { Observations } from '../src/observations.js';
 import { createAgentHost } from '../src/service.js';
+import { normalizeCodexHook } from '../src/hooks/normalize.js';
 import { useTempDirs } from './helpers.js';
 
 const temp = useTempDirs();
@@ -31,6 +32,40 @@ async function fixture() {
 }
 
 describe('live transcript observation', () => {
+  it('recovers a missing transcript status when a real hook reports activity without fabricating transcript history', async () => {
+    const f = await fixture();
+    try {
+      await rm(f.file);
+      await f.observer.refresh();
+      expect(f.observer.summaries()[0]?.observation).toMatchObject({ status: 'unavailable' });
+      const probe = normalizeCodexHook({ session_id: 'native-one', hook_event_name: 'ExtaliaConnectTest' })!;
+      await f.observer.receiveHook(probe);
+      expect(f.observer.summaries()[0]?.observation?.status).toBe('unavailable');
+      const unknown = normalizeCodexHook({ session_id: 'native-one', hook_event_name: 'UnknownExampleEvent' })!;
+      await f.observer.receiveHook(unknown);
+      expect(f.observer.summaries()[0]?.observation?.status).toBe('unavailable');
+      expect(f.observer.summaries()[0]?.observation?.hook).toBeUndefined();
+      const activity = normalizeCodexHook({ session_id: 'native-one', hook_event_name: 'PreToolUse', tool_name: 'read_file', tool_input: {}, cwd: '/projects/example' })!;
+      await f.observer.receiveHook(activity);
+      expect(f.observer.summaries()[0]?.observation).toMatchObject({ status: 'watching', channel: 'hook', hook: true });
+      expect(f.observer.summaries()[0]?.observation?.error).toBeUndefined();
+      await f.observer.refresh();
+      expect(f.observer.summaries()[0]?.observation?.status).toBe('watching');
+      expect(f.observer.snapshot(f.id).messages.map(message => message.content)).toEqual(['Plan']);
+      expect(f.observer.events(f.id).some(event => event.body.type === 'agent.state' && event.body.state === 'working')).toBe(true);
+      await expect(readFile(f.file)).rejects.toMatchObject({ code: 'ENOENT' });
+    } finally { await f.observer.close(); }
+  });
+
+  it('does not undo a user pause when hooks arrive while transcript history is unavailable', async () => {
+    const f = await fixture();
+    try {
+      await rm(f.file); await f.observer.refresh(); await f.observer.setWatching(f.id, false);
+      const hook = normalizeCodexHook({ session_id: 'native-one', hook_event_name: 'UserPromptSubmit', prompt: 'Example request' })!;
+      await f.observer.receiveHook(hook);
+      expect(f.observer.summaries()[0]?.observation).toMatchObject({ status: 'paused', watching: false });
+    } finally { await f.observer.close(); }
+  });
   it('preserves a damaged observer registry and releases the host lock when startup fails', async () => {
     const root = await temp(), dataDirectory = path.join(root, 'data'), file = path.join(dataDirectory, 'state', 'observations.json');
     await mkdir(path.dirname(file), { recursive: true }); await writeFile(file, '{}');

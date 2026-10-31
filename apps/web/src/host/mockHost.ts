@@ -4,7 +4,7 @@ import type {
   AgentAppId, AgentAppTestResult, AgentHostApi, ApprovalDecisionInput, ConnectionInput, ConnectionView,
   HookIngestStatus, HostState, ModelChoices, Platform, ProfilePreferences, SessionSummary, UpdateCapability, UpdateStatus, UserProfile,
 } from '@extalia/platform';
-import { attachmentLimit, classifyAttachment, normalizeAgentTeam, normalizeIntegrationGate, normalizeSessionOptions, normalizeTeamPlanRequest, sanitizeAttachmentName, type PromptAttachment } from '@extalia/platform';
+import { attachmentLimit, classifyAttachment, normalizeAgentTeam, normalizeIntegrationGate, normalizePromptLearnSkill, normalizeSessionOptions, normalizeTeamPlanRequest, sanitizeAttachmentName, type PromptAttachment } from '@extalia/platform';
 import { createEvent, type EventBody, type ExtaliaEvent, type RiskLevel, type Usage } from '@extalia/protocol';
 import { createMockAppearances } from './mockAppearances';
 import { createMockLibrary } from './mockLibrary';
@@ -296,7 +296,7 @@ function createMockAgents(options: MockOptions): AgentHostApi {
         run.clock = now;
       }
       if (decision === 'session') grants.set(id, new Set([...(grants.get(id) ?? []), access]));
-      send({ type: 'approval.resolved', approvalId, decision: decision === 'reject' ? 'rejected' : 'granted', by: 'user' });
+      send({ type: 'approval.resolved', approvalId, decision: decision === 'reject' ? 'rejected' : 'granted', by: 'user', choice: decision });
       return decision !== 'reject';
     };
 
@@ -642,6 +642,36 @@ function createMockAgents(options: MockOptions): AgentHostApi {
     record(stale, { type: 'prompt.submitted', via: 'native', text: 'Summarize this week in the changelog.' }, minutesAgo(26));
     record(stale, { type: 'agent.state', state: 'working', activity: 'edit', target: 'CHANGELOG.md' }, minutesAgo(25.5));
     record(stale, { type: 'turn.completed', summary: 'Changelog updated.' }, minutesAgo(25));
+    // A Claude Code session with every message form the transcript can show.
+    const rich = observe('Polish the conversation view', workspaces[0], 1, { sourceId: 'claude-code', channel: 'hook', model: 'claude-opus-5-5' });
+    record(rich, { type: 'session.started', control: 'observed', title: 'Polish the conversation view', model: 'claude-opus-5-5' }, minutesAgo(30));
+    record(rich, { type: 'prompt.submitted', via: 'native', text: '<command-name>/compact</command-name>\n<command-message>compact</command-message>\n<command-args>keep the UI notes</command-args>' }, minutesAgo(29.5));
+    record(rich, { type: 'prompt.submitted', via: 'native', text: `Make the session dialog easier to read.\n\n${Array.from({ length: 18 }, (_, index) => `${index + 1}. Requirement ${index + 1}: keep the transcript calm and readable.`).join('\n')}` }, minutesAgo(29));
+    for (const [tool, kind, label, target] of [['Read', 'read', 'Read TranscriptView.tsx', 'TranscriptView.tsx'], ['Grep', 'search', 'Searched for "bubble"', 'bubble'], ['Edit', 'edit', 'Edited styles.css', 'styles.css'], ['Bash', 'test', 'Ran pnpm test', 'pnpm test']] as const) {
+      record(rich, { type: 'tool.started', tool, kind, label, target }, minutesAgo(28));
+      record(rich, { type: 'tool.completed', tool, kind, label, ok: true, target }, minutesAgo(27.5));
+    }
+    record(rich, { type: 'file.written', path: 'apps/web/src/chat/codeHighlight.ts', change: 'add' }, minutesAgo(27.4));
+    record(rich, { type: 'file.written', path: 'apps/web/src/styles.css', change: 'update' }, minutesAgo(27.3));
+    record(rich, { type: 'file.written', path: 'apps/web/src/chat/UserMessage.tsx', change: 'update' }, minutesAgo(27.2));
+    record(rich, { type: 'file.written', path: 'apps/web/src/chat/UserMessage.tsx', change: 'update' }, minutesAgo(27.1));
+    record(rich, { type: 'file.written', path: 'docs/old-notes.md', change: 'delete' }, minutesAgo(27.05));
+    record(rich, { type: 'model.completed', model: 'claude-opus-5-5', text: [
+      '## What changed', '', 'The transcript now reads like a document. **User turns** stay in a quiet bubble, and ~~raw tags~~ never appear.', '',
+      '### Checklist', '', '- [x] Parse every notification field', '- [ ] Record the release notes', '- Tool runs', '  - Fold into one line', '  - Open on demand', '    1. Show each call', '    2. Keep the output', '',
+      '> Keep the source intact.', '>', '> - Presentation only', '> - Originals stay one click away', '',
+      '| Surface | Status | Notes |', '| :--- | :---: | ---: |', '| Chat | Done | 14 px |', '| Observe | Done | Same view |', '',
+      '```ts', '// Highlighted without any dependency.', 'export const pick = async (id: string) => { return `agent ${id}`; };', '```', '',
+      '```diff', '@@ -1,2 +1,2 @@', '-border-radius: 16px 16px 4px 16px;', '+border-radius: 18px;', '```', '', 'See `apps/web/src/chat/UserMessage.tsx` for the details.',
+    ].join('\n') }, minutesAgo(27));
+    record(rich, { type: 'prompt.submitted', via: 'native', text: '<bash-input>pnpm test chat</bash-input><bash-stdout> ✓ markdown.test.ts (64 tests)\n ✓ messagePresentation.test.ts (31 tests)\n</bash-stdout><bash-stderr></bash-stderr>' }, minutesAgo(26));
+    record(rich, { type: 'prompt.submitted', via: 'native', text: '<task-notification>\n<task-id>a6f476de8d30e625a</task-id>\n<output-file>/tmp/mock/tasks/a6f476de8d30e625a.output</output-file>\n<status>completed</status>\n<summary>Agent "More traffic with intervals + truck" is waiting on its own background work</summary>\n<note>This agent stopped with background work of its own still running.</note>\n<result>Traffic intervals are in place and the truck route is live.\n\n- 3 new spawn points\n- `pnpm test` passes</result>\n<usage><subagent_tokens>324115</subagent_tokens><tool_uses>115</tool_uses><duration_ms>2073526</duration_ms></usage>\n</task-notification>' }, minutesAgo(25));
+    record(rich, { type: 'prompt.submitted', via: 'native', text: '<task-notification>\n<task-id>b4so3seay</task-id>\n<status>failed</status>\n<summary>Background command "Run the checks" failed with exit code 143</summary>\n</task-notification>' }, minutesAgo(24));
+    record(rich, { type: 'prompt.submitted', via: 'native', text: '<system-reminder>The date changed.</system-reminder>' }, minutesAgo(23));
+    record(rich, { type: 'prompt.submitted', via: 'native', text: '<local-command-stdout>Compacted the conversation.</local-command-stdout>' }, minutesAgo(22.5));
+    record(rich, { type: 'prompt.submitted', via: 'native', text: 'Bagus, sekarang samakan juga halaman Observe.\n[Image: source: /tmp/mock/review.png]' }, minutesAgo(22));
+    record(rich, { type: 'model.completed', model: 'claude-opus-5-5', text: 'Selesai. Halaman Chat, Observe dan modal memakai tampilan yang sama.' }, minutesAgo(21));
+    record(rich, { type: 'turn.completed' }, minutesAgo(21));
     // v0.0.43: a Claude Code agent that went silent mid-work 5 minutes ago (its app stopped without a final hook): "No response".
     const silent = observe('Migrate the settings store', workspaces[0], 5, { sourceId: 'claude-code', channel: 'hook', model: 'claude-sonnet-5' });
     record(silent, { type: 'prompt.submitted', via: 'native', text: 'Migrate the settings store to the new schema.' }, minutesAgo(7));
@@ -1027,6 +1057,7 @@ function createMockAgents(options: MockOptions): AgentHostApi {
     },
     async sendPrompt(sessionId, text, promptOptions) {
       await latency();
+      if (normalizePromptLearnSkill(promptOptions) || /^\/learn-skill(?:\s|$)/.test(text.trim())) throw new Error('Skill learning requires the native skill registry; it is not available in this preview.');
       const summary = session(sessionId);
       if (summary.running) throw new Error('The agent is still working on the previous prompt.');
       const ids = promptOptions?.attachmentIds ?? [];

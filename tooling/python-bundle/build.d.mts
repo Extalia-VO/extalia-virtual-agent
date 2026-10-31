@@ -1,0 +1,3 @@
+export interface CandidatePin { target: {os:string;arch:string};runtime_version:string;release:string;name:string;url:string;bytes:number;sha256:string }
+export function candidatePins(): Promise<{schema_version:number;status:string;source:string;assets:CandidatePin[]}>;
+export function buildPythonBundle(options: { target?: string;out?: string;archive?: string;download?: boolean }): Promise<{status:string;target:{os:string;arch:string};runtime_version:string;archive_sha256:string;archive_bytes:number;manifest_sha256:string;file_count:number;total_bytes:number;relocated:boolean;original_payload_removed:boolean;source:string;production_ready:boolean;scanner_ready:boolean}>;

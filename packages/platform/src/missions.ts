@@ -1,4 +1,4 @@
-import type { DaemonMissionSnapshot, TaskState } from '@extalia/protocol';
+import type { DaemonMissionExecutions, DaemonMissionRecoveryReview, DaemonMissionSnapshot, TaskState } from '@extalia/protocol';
 import { isModelId } from './agentHost.js';
 
 export interface HostMissionTaskInput {
@@ -87,7 +87,7 @@ export interface HostMissionTask {
 }
 
 /** Persisted ownership; absent on old records means unknown, regardless of current settings. */
-export type HostMissionAuthority = { backend: 'typescript' } | { backend: 'rust'; profileId: string; workspaceId: string };
+export type HostMissionAuthority = { backend: 'typescript' } | { backend: 'rust'; profileId: string; workspaceId: string; supervisorId?: string };
 /** Only host-restart uncertainty can be repaired from an already-terminal canonical snapshot. */
 export interface HostMissionRecovery { source: 'host-restart' | 'execution-uncertain'; at: string }
 export type HostMissionRecoveryReason = 'authority-unknown' | 'authority-typescript' | 'profile-mismatch' | 'identity-mismatch'
@@ -98,6 +98,9 @@ export interface HostMissionRecoveryResult {
   status: 'refreshed' | 'quarantined' | 'unavailable';
   reason?: HostMissionRecoveryReason;
   snapshot?: DaemonMissionSnapshot;
+  /** Available only when state and evidence came from one canonical read transaction. */
+  reviewInspection?: { status: 'available'; review: DaemonMissionRecoveryReview } | { status: 'unsupported' | 'unavailable' };
+  executionInspection?: { status: 'available'; executions: DaemonMissionExecutions['executions'] } | { status: 'unsupported' | 'unavailable' };
 }
 
 export interface HostMissionRun {
@@ -130,11 +133,12 @@ const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-
 export function isHostMissionRecoveryMetadata(run: Pick<HostMissionRun, 'authority' | 'recovery'>): boolean {
   try {
     if (run.authority !== undefined) {
-      const authority = object(run.authority, ['backend', 'profileId', 'workspaceId'], ['backend']);
+      const authority = object(run.authority, ['backend', 'profileId', 'workspaceId', 'supervisorId'], ['backend']);
       if (authority.backend === 'typescript' && Object.keys(authority).some(key => key !== 'backend')) return false;
       if (authority.backend !== 'typescript' && authority.backend !== 'rust') return false;
       if (authority.backend === 'rust' && (typeof authority.profileId !== 'string' || !/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/.test(authority.profileId)
-        || typeof authority.workspaceId !== 'string' || !UUID.test(authority.workspaceId))) return false;
+        || typeof authority.workspaceId !== 'string' || !UUID.test(authority.workspaceId)
+        || (authority.supervisorId !== undefined && (typeof authority.supervisorId !== 'string' || !UUID.test(authority.supervisorId))))) return false;
     }
     if (run.recovery !== undefined) {
       const recovery = object(run.recovery, ['source', 'at'], ['source', 'at']);
