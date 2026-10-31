@@ -1,7 +1,7 @@
 name: Release
 
-# Pushing a tag such as v0.1.0 builds Extalia Desktop on every platform and uploads the
-# installers and update metadata (latest*.yml) to a draft GitHub release. A maintainer
+# Pushing a tag such as v0.1.0 builds Extalia Desktop/Web and uploads validated installers,
+# Web ZIP, packed npm tarballs and update metadata to a draft GitHub release. A maintainer
 # reviews the draft and publishes it; installed apps only see published releases.
 #
 # Installers are self-contained (owner decision 9, ADR 0021): the `daemon` matrix builds the
@@ -108,7 +108,7 @@ jobs:
 
   npm-packages:
     name: CLI npm packages (dry run)
-    needs: daemon
+    needs: [draft, daemon]
     runs-on: ubuntu-latest
     env:
       ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
@@ -137,12 +137,53 @@ jobs:
           mkdir -p npm-tarballs
           for dir in npm-packages/*/; do npm pack --pack-destination npm-tarballs "$dir"; done
           ls -l npm-tarballs
+      - name: Verify six version-matched tarballs
+        run: node tooling/package-release-assets.mjs npm --directory npm-tarballs
       - uses: actions/upload-artifact@v4
         with:
           name: npm-packages
           path: npm-tarballs/
           if-no-files-found: error
           retention-days: 14
+      - name: Upload validated tarballs to the draft (not npm publication)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          node tooling/package-release-assets.mjs draft
+          gh release upload "$GITHUB_REF_NAME" npm-tarballs/*.tgz --clobber
+
+  web:
+    name: Web distribution ZIP
+    needs: draft
+    runs-on: ubuntu-latest
+    env:
+      ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Build a fresh public Web distribution
+        run: |
+          node -e "require('node:fs').rmSync('apps/web/dist', { recursive: true, force: true })"
+          pnpm --filter @extalia/web build
+      - name: Validate registered models and package Web files
+        run: node tooling/package-release-assets.mjs web --out release-artifacts
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web-distribution
+          path: release-artifacts/*.zip
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload the validated Web ZIP to the draft
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          node tooling/package-release-assets.mjs draft
+          gh release upload "$GITHUB_REF_NAME" release-artifacts/*.zip --clobber
 
   build:
     name: Build (${{ matrix.os }})
@@ -235,3 +276,28 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: node scripts/release.mjs upload
+
+  checksums:
+    name: Complete draft release checksums
+    # A partial or failed matrix must never look like a complete release inventory.
+    needs: [draft, daemon, build, npm-packages, web]
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      EXTALIA_MAC_RELEASE_MODE: ${{ vars.EXTALIA_MAC_RELEASE_MODE || 'preview' }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .node-version
+      - name: Download every completed draft asset
+        run: |
+          node tooling/package-release-assets.mjs draft
+          mkdir release-checksums
+          gh release download "$GITHUB_REF_NAME" --dir release-checksums
+      - name: Verify complete inventory and generate checksums
+        run: node tooling/package-release-assets.mjs checksums --directory release-checksums --mac-mode "$EXTALIA_MAC_RELEASE_MODE"
+      - name: Upload checksums to the same draft
+        run: |
+          node tooling/package-release-assets.mjs draft
+          gh release upload "$GITHUB_REF_NAME" release-checksums/SHA256SUMS.txt --clobber

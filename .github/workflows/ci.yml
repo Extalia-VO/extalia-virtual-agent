@@ -64,7 +64,9 @@ jobs:
         env:
           ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
       - run: node tooling/check-rust.mjs --build-daemon
-      - run: pnpm exec vitest run packages/host/test/missionDaemon.test.ts packages/host/test/daemonClient.test.ts packages/host/test/missions.test.ts packages/host/test/missionBudget.test.ts
+      # Include newly added planning, admission, recovery and scanner/learning suites;
+      # the non-Rust check job alone would silently skip their real-daemon cases.
+      - run: pnpm exec vitest run packages/host/test
       # Smoke check only, not a gate: the benchmark numbers are not compared in CI.
       - run: node tooling/bench/native-core.mjs --quick --json
         if: matrix.os == 'ubuntu-latest'

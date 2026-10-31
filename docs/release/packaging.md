@@ -98,18 +98,32 @@ developer. Removing that warning requires a Developer ID signed and notarized bu
 
 ## Shared public scene assets
 
-`apps/web/public-assets/models.json` registers 16 project-authored scene models
-with hashes, sizes, MIT license and provenance, plus 12 retained Blender avatar
-exports under their separate RenderHub Extended Use License. Two physical body
-files serve the four existing appearance variants; ten detailed hair exports
-retain the original fallback. Default Web, Desktop and CLI builds use this same
-28-model inventory, including on a clean checkout. Unregistered avatar files do
-not enter the default Vite graph even when installed on the build machine; only
-an explicit development server with `--mode local-assets` may load them. Its output
-is not a production packaging mode.
+The 2026-10-31 snapshot of `apps/web/public-assets/models.json` registers **106
+models**, totaling **691,568,420 GLB bytes** (about 660 MiB before packaging
+compression): 17 project-authored scene models, 12 retained body/hair exports,
+32 fitted outfits/wardrobe pieces and 45 campus vehicles. Declared-license counts
+are MIT 17, RenderHub Extended Use 23, CC-BY-4.0 57, CC-BY-NC-SA-4.0 4,
+CC-BY-NC-4.0 1 and Sketchfab Standard 4. No unverified-license vehicle is currently
+registered. These classifications and validation are technical inventory records,
+not a blanket grant of commercial or redistribution rights.
+
+Two physical body files serve the four existing appearance variants; ten detailed
+hair exports retain the original fallback. Fitted original garments and staff
+uniforms retain the component licenses documented in the inventory and notices.
+Default Web, Desktop and CLI builds use the same complete inventory, including
+on a clean checkout. `EXTALIA_COMMERCIAL_ASSETS_ONLY=1` filters the runtime car
+catalog but **does not remove files from the package**; the five registered
+non-commercial cars remain in the output. Excluding their bytes requires changing
+the source inventory/catalog and rebuilding, followed by output verification.
+
+Unregistered avatar files do not enter the default Vite graph even when installed
+on the build machine; only an explicit development server with `--mode local-assets`
+may load them. It is not a production packaging mode. Source archives, private
+review manifests and temporary garment-review entry pages are not public assets.
 
 `tooling/public-models.mjs` validates sources and output content, and CLI/Desktop
-packaging validates the copied UI again. The built UI carries `models.json` and
+packaging validates the copied UI again. The built UI carries `models.json`,
+`source-garments.json` (exact reviewed source-garment receipts),
 `OFFICE_ASSETS_LICENSE.md`, `AVATAR_SOURCE_LICENSE.md` and third-party notices;
 every registered model must be present, with no unknown,
 modified or inlined models. See the [public inventory](../../apps/web/public-assets/README.md).

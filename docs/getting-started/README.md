@@ -60,7 +60,9 @@ walking style, with feminine, masculine and neutral presets; walking and
 navigation are still being developed.
 
 Open Chat and describe the task. The agent reads and searches the project,
-asks before it edits files or runs commands, and reports every step.
+asks before it edits files or runs commands, and reports every step. When the
+connection uses Extalia memory, [workspace recall](workspace-memory.md) starts
+with a small catalog and searches/reads selected notes on demand.
 
 ### Projects, sessions and Diagnostics
 

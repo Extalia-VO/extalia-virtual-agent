@@ -10,7 +10,7 @@ machine, with your files and your model connections.
 Requires Node.js 22.13 or newer (Node 23 needs 23.4+).
 
 ```bash
-npm i -g extalia-vo
+npm i -g extalia-vo@latest
 ```
 
 Install the application package `extalia-vo`; its matching daemon is installed
@@ -81,4 +81,19 @@ Report vulnerabilities as described in
 
 ## License
 
-MIT
+Application code: MIT. Bundled scene assets retain their individual licenses in
+`dist/web/THIRD_PARTY_NOTICES.md`, including non-commercial vehicle assets. The
+runtime commercial-assets switch does not remove their files from this package.
+
+## Native skills and knowledge
+
+Built-in skills and progressive workspace memory are available in Native Chat.
+With Extalia skills enabled and the opt-in Rust registry, choose **Learn as
+skill** for a message or begin it with `/learn-skill` to propose one generated
+candidate. It is stored in Skills with provenance and mandatory inspection;
+approval and activation remain separate. Production SkillSpector/Python workers
+are not bundled or ready, so external/generated candidates remain quarantined.
+An ordinary answer or source URL alone is not a saved or verified skill.
+
+The Web client also includes bounded Obsidian-compatible graph views and filters.
+These do not establish complete effect-time vault/agent ACL enforcement.

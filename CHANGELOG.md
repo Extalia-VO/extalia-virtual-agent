@@ -16,6 +16,371 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.157] - 2026-10-31
+
+### Added
+
+- Release drafts now collect the Desktop installers, standalone Web client, six npm tarballs and a complete SHA-256 inventory from the same tag, after their required build and packaged-smoke gates. Publishing and npm authentication remain explicit maintainer operations.
+
+### Changed
+
+- Refresh installation and release documentation with npm first, current download links, Native skills/memory/Obsidian capabilities and their remaining scanner/Python/ACL limits. Document the current shared asset footprint and individual asset licenses instead of implying unrestricted commercial reuse.
+- Run the full host suite against the real daemon on CI platforms, including durable planning, registry and prompt-learning regressions. Exclude Python bytecode and local visual-review entries from release source.
+
+## [0.4.156] - 2026-10-31
+
+### Added
+
+- Native Chat can learn one generated skill candidate from an explicitly opted-in message or `/learn-skill` command. Candidates carry host-bound provenance, appear in the user's Skills library and request mandatory registry inspection; scanner-unavailable candidates remain quarantined without approval or activation.
+- Shared Chat and character-dialog composers provide a per-message Learn as skill option in English and Indonesian. Learning authority never comes from ordinary reading, history, quoted instructions, delegated workers or prior write grants.
+
+### Fixed
+
+- A first-message session handoff preserves the prompt, learning choice and uploaded attachment IDs if sending fails. Unrelated navigation still discards stale completion effects; preview hosts refuse unsupported learning through both entry forms.
+
+## [0.4.155] - 2026-10-31
+
+### Changed
+
+- External agent skills now require fresh scanner-gated registry reads for both catalog metadata and instructions. Legacy user/project consent remains review input and cannot bypass scanning; canonical shipped built-ins cannot be shadowed by external names or source flags.
+- Legacy Skills controls now record/remove review instead of implying activation. Native lead and worker guidance treats skill documents and prompt links as unverified data that cannot replace the registered scanner workflow.
+- External skill catalogs no longer reuse cached instructions or fall back to supplied bodies. Opaque host catalogs and exact identity checks reject forged offerings, changed revisions, stale scan context and URL/path skill requests without download/import fallback.
+
+### Added
+
+- Source GLB clothing intake preserves original panels, UV layers, embedded texture bytes and native material graphs. Every example has a recipe; variants and separate garments have independent, hash-bound appearance/pose reviews and per-file geometry budgets before entering the public or reviewed local catalogue.
+
+### Fixed
+
+- Fitted garment layers can own their neckline, gloves and footwear. Native clothes tuck behind actual jacket surfaces, while source-specific sleeve landmarks, leg sections and articulated skirt weights improve activity poses without replacing original fabric motifs.
+
+## [0.4.154] - 2026-10-31
+
+### Added
+
+- The Skills page can preview category/intent routing over exact registered revisions and dependency pins. Read-only results preserve ranked matches, ambiguity, exclusions and omitted diagnostics; no skill is activated or dispatched.
+- The Obsidian vault graph can filter loaded notes by exact folder, note kind and any tag, including root/uncategorized/untagged notes. Filters combine with time and neighbourhood focus across the canvas, search, counts and accessible list.
+
+### Fixed
+
+- Routing diagnostics reject conflicting metadata for the same exact revision across dependency plans. Host and input changes discard late routing replies; filtered graph notes no longer leave their content visible in the selected-note panel.
+
+## [0.4.153] - 2026-10-31
+
+### Added
+
+- Saved Rust Native automatic planning records its invocation before credential, catalog or model calls. Unfinished session/connection scopes stay blocked across restarts and backend changes; only actual local pipeline completion records a weak observation. TypeScript and history-off planning keep their existing behavior.
+
+### Fixed
+
+- Connection testing, team planning and saved-connection edits respect unresolved planning scopes. Shutdown drains pending planning-marker writes before releasing the profile lock, preventing an older host from overwriting a new host's records.
+
+## [0.4.152] - 2026-10-31
+
+### Added
+
+- Native missions retain an immutable original task plan in the Rust store, captured atomically with creation. Admission and recovery inspection refuse missing, extra or changed task definitions while allowing normal execution state changes. A bounded internal reader reports legacy history as unavailable; this does not certify executor or child-process settlement.
+
+## [0.4.151] - 2026-10-31
+
+### Added
+
+- Characters can combine body-specific tops, bottoms and optional outer layers, save each combination, and receive a stable random outfit on first spawn. The appearance editor filters garments by body and keeps staff uniforms tied to their roles.
+- Original textured clothing exports preserve the supplied jacket, dress, receptionist suit, bartender vest and denim garments, with source attribution and separate licensing for added avatar context.
+
+### Fixed
+
+- Garment conversion preserves source panel seams before reduction, binds cuffs to arms, and uses normalized export weights. Runtime layering retains safe native clothing for missing pieces, preserves original colours on Auto, and chooses the selected shoes' sole height. Added skin joins the native ankles, internal cloth covers separated armholes, and opaque suit layers no longer disappear behind the shirt.
+
+## [0.4.150] - 2026-10-30
+
+### Added
+
+- A Files tab in the session dialog, Chat and Observe lists every file a session changed, newest first, with its change, edit count and time; a row opens the file preview. A lead shows its team's edits, a worker its own.
+- Replies render nested lists, task boxes, strikethrough and rich quotes, code blocks get light syntax colouring (including diffs), messages offer copy on hover, and long prompts fold with Show more.
+
+### Changed
+
+- Conversations share one reading view across Chat, Observe, History and the session dialog: a centred column, calm user bubbles, and tool runs as one quiet line that opens into a thin rail.
+
+### Fixed
+
+- Claude task notifications with `<usage>` no longer show as raw XML; fields added later no longer break the card, and tokens, tool uses and duration are shown. Slash commands, shell commands, command output, Codex subagent reports and injected app context now appear as what they are, and the Activity tab and Office activity use plain text for them.
+
+## [0.4.149] - 2026-10-31
+
+### Fixed
+
+- Claude task notifications containing a result now remain readable source cards, with a separate task-result section. Failed status is preserved and result text never becomes a new user request.
+
+## [0.4.148] - 2026-10-30
+
+### Added
+
+- 36 wearable outfits (28 female, 8 male) refitted from the owner's RenderHub and Sketchfab clothing downloads: skinned to the avatar rig without arm-to-torso webbing, simplified to about 7k triangles, recoloured into tint zones and credited in `THIRD_PARTY_NOTICES.md`. A catalog-driven Blender pipeline (`prepare-avatar-outfits.py`, `avatar-outfits.json`, `publish-avatar-outfits.py`) turns each new garment into one catalog entry.
+- Office characters start in a generated outfit picked from the scanned styles and the fitted outfit catalog of their gender, with coordinated office or casual colours; the look is stable per character and stored only when you save an edit. The appearance editor offers every outfit for the character's gender, jacket and accent colours, Randomize outfit and Default outfit.
+- The receptionist and the bartender wear locked role uniforms (receptionist: blazer, name badge, brand-teal scarf or tie; bartender: waistcoat, bow tie, rolled sleeves, long bistro apron); their accent colour, hair, skin and accessories stay editable. Built reproducibly by `tooling/blender/create-staff-uniforms.py` from the avatars' licensed outfits.
+
+### Fixed
+
+- A departing car's give-way stop is interpolated between path samples, so its front bumper never ends past the painted line.
+
+## [0.4.147] - 2026-10-30
+
+### Added
+
+- Clickable message attachments and local Markdown file links, with read-only workspace previews and an explicit local-only file chooser for unavailable/out-of-scope files. Preview dialogs handle focus, background isolation and stale requests without opening arbitrary paths or launching files.
+
+### Changed
+
+- Chat, Office, Observe and History share readable message presentation and consistent typography. Attachment envelopes tolerate real export spacing/CRLF; task notifications and context summaries become collapsed source cards. Observe can show hook events even before a portable snapshot is available.
+
+## [0.4.146] - 2026-10-30
+
+### Changed
+
+- Chat and Office conversations render user links as safe Markdown, show attachment envelopes as file chips, and present exported question replies as readable question/answer cards while preserving source messages.
+- Native approvals use numbered options, prevent duplicate submissions, allow retry after failed delivery, and retain the exact selected option in replayed history. Read-only conversations do not show actionable approval buttons; cancelled/failed requests do not invent a Deny selection.
+
+## [0.4.145] - 2026-10-30
+
+### Added
+
+- Progressive workspace memory in Native Chat and Teams: a bounded initial catalog, ranked literal search, metadata pages and Unicode-aware note pages. Read-time masking covers externally edited notes; bounded scans reject unsafe files and report partial results. Workers receive recall tools without memory writes.
+- Built-in `memory-recall` and opt-in `caveman` guidance, maintained by Extalia without installing upstream hooks or proxies. No automatic transcript capture or measured token-saving claim.
+
+## [0.4.144] - 2026-10-30
+
+### Added
+
+- Opt-in developer CPython staging from exact source candidates, with bounded streaming USTAR preflight, internal file-link materialization, preserved notices, exclusive output ownership and relocation before a feature-gated Rust health probe. The macOS ARM64 candidate runs without system Python; ordinary checks never download it. No production Python/scanner or application route is enabled.
+
+### Changed
+
+- Worker bundle paths allow sixteen components, retaining the native candidate's license paths measured at depth eleven. Path length, component, inventory and byte limits remain bounded; older validators refuse deeper manifests.
+
+## [0.4.143] - 2026-10-30
+
+### Added
+
+- Worker bundle manifest and bounded artifact observations: independent exact-byte manifest pins, portable sorted inventories, target/role/size checks and streaming SHA-256 over trusted Unix staging trees. Descriptor-relative checks reject ordinary link/inventory changes; Windows observation remains explicitly unsupported. Shared TS/schema/Rust fixtures cover the contract. No actual Python download/bundle, scanner, launcher integration or execution authority is enabled.
+
+## [0.4.142] - 2026-10-30
+
+### Added
+
+- Campus east parking lot: 14 bays (3 EV bays with chargers), a footway link to the building, planting and 5 lamp posts, joined to the east avenue's southbound lane. Layout and geometry are authored in Blender (`tooling/blender/create-campus-parking.py` → `landscape/campus-parking.glb`, MIT, about 1,700 triangles in one draw); a shared `PARKING_LOTS` contract is generated from the Blender layout markers, with `parkingSurfaceY` for drivable heights.
+- Cars leave and arrive in both lots on a daily deterministic schedule (more arrivals in the morning, departures in the evening; lots never empty or full). Departing cars start with lamps on, drive out on smooth paths, give way at the painted line and merge; arriving cars turn in, reverse into the bay with a white reverse lamp, flash their brake lamps and switch every lamp off a second after parking. Moving lot cars reuse the per-style batches and get headlight beams and glare; reduced motion pauses manoeuvres.
+- `tooling/bench/office-fps.mjs`: production-mode Office benchmark (day/rush/night, overview and close-ups, `--lod off`, `--tier auto`, `--breakdown`).
+
+### Changed
+
+- Rebuilt the west parking access (the step, the gap and the trees in the aisle are gone). Both accesses have a level throat, an eased ramp with retaining walls, a dropped-kerb footway crossing with curved kerb returns, tactile paving, a zebra crossing, a give-way line and a centre line.
+- Performance: the campus overview holds about 57–59 FPS at day, rush hour and night (previously 23–44) on the reference machine. In the campus view the Office skips sub-pixel non-emissive detail, leaves interior furniture out of the sun/moon shadow pass and drops the 14 interior live spot lights at overview zoom (baked light pools and every lamp, LED and screen glow stay); screen textures no longer stall the GPU on repaint. The adaptive render budget reacts within about a second when frames exceed 25 ms, ignores one-off hitches and steps back up only after 12 smooth seconds.
+
+## [0.4.141] - 2026-10-30
+
+### Added
+
+- Rust health-probe process ownership with independent watchdogs, bounded stdout/stderr, cooperative cancellation and forced direct-child reaping. Abandoned callers retain a cleanup owner; unresolved cleanup blocks future probes. Feature-gated Rust subprocess fixtures cover timeout, cancellation, overflow and inherited-pipe cases without requiring system Python. This library is not connected to scanner, runtime or application routes, and direct-child exit never proves descendant settlement.
+
+## [0.4.140] - 2026-10-30
+
+### Added
+
+- Probe-only Python worker protocol foundation: a strict versioned health contract, generated JSON Schema, matching bounded TypeScript/Rust NDJSON codecs and a pure Rust exchange with correlation, deadlines, cancellation retirement and lifetime request identities. Shared fixtures and an opt-in isolated stdlib Python reference verify interoperability. No production launcher, Python requirement, scanner, activation or process-settlement authority is enabled.
+
+## [0.4.139] - 2026-10-30
+
+### Added
+
+- Rust core category/intent routing preview over exact active skill revisions, with dependency/permission eligibility before ranking, deterministic match reasons, preserved ambiguity and bounded sanitized exclusions. One shared read-only source snapshot checks approval applicability for candidate and dependency workspaces while retaining all ambient conflicts. Every result denies dispatch; runtime selection, scanner and activation gates remain unchanged. Official scanner source evidence is documented without installing or enabling a scanner.
+
+## [0.4.138] - 2026-10-30
+
+### Added
+
+- Read-only dependency checks on the Skills page, with exact revision/pin selectors, localized blockers and diagnostic ordering. The optional daemon/host capability preserves older peers; bounded results always deny dispatch and never run inspection, write consent, approve or activate skills. Unknown compatibility facts and an empty diagnostic permission ceiling remain explicit. Pending reports are discarded when inputs, host, scanner/policy or registry context change.
+
+### Fixed
+
+- Daemon clients negotiate with the original v1 capability vocabulary, then discover optional operations from the server reply. Adding a new operation no longer makes strict older daemons reject the initial handshake; required-operation checks and optional feature gates remain unchanged.
+
+## [0.4.137] - 2026-10-30
+
+### Added
+
+- Rust skill dependency and compatibility preflight with explicit immutable pins, bounded version/graph diagnostics, dependency ordering, cycles, bidirectional conflicts, active-consumer constraints and literal permission ceilings. A read-only profile snapshot reconstructs manifests from verified staged sources and checks active approval/inspection bindings. Results never authorize dispatch or activation; scanner and existing resolver gates remain closed. No daemon/UI/runtime integration or Python worker is enabled.
+
+## [0.4.136] - 2026-10-30
+
+### Added
+
+- Built-in skills library with name/description/category search, six categorized groups, match counts and read-only instruction disclosures in English and Indonesian. Optional bounded category/body metadata keeps older host catalogs usable; unknown categories stay uncategorized and unavailable instructions are labelled honestly. Viewing or filtering a skill never changes runtime selection, consent, permissions or activation.
+
+### Fixed
+
+- Skill Security Center action buttons pass React keys directly, avoiding development console warnings without changing review or activation behavior.
+
+## [0.4.135] - 2026-10-30
+
+### Added
+
+- Whole-vault 3D graph neighbourhood focus: explicitly focus a selected note and explore one, two or three steps through actual visible links. Focus stays on its stable note identity across selection and refresh; unavailable or time-filtered roots explain why the focused view is empty. Clear focus preserves the time filter and camera. Visible note/link counts and colour legend follow the focused subset without changing palette assignments or vault data.
+
+### Fixed
+
+- Graph filters and refresh cancel camera flights toward hidden or removed notes. Search keyboard selection uses stable note identity and stays within rendered options; an empty refreshed vault retains its missing-focus explanation and clear action. Hidden links no longer reappear faintly through fog, and hidden note halos are extinguished.
+
+## [0.4.134] - 2026-10-29
+
+### Added
+
+- Whole-vault 3D graph notes return to their pre-drag positions by default, with reactive neighbours/links, a free-settling toggle and explicit layout restore that preserves the camera. Exact snapshots stay in the view worker and never modify notes or links; reduced-motion restores are immediate, background work pauses and filter/refresh clears old restore points. English and Indonesian controls and gesture/lifecycle regressions cover the interaction.
+
+### Fixed
+
+- Filtering, refreshing or hiding a vault graph during a drag releases pointer capture and orbit controls. Late terminal frames cannot replace a newly dragged node, and final position easing ends at the exact target.
+
+## [0.4.133] - 2026-10-29
+
+### Changed
+
+- Campus traffic comes in waves on six straight lanes (front road and both avenues in both directions): deterministic per-lane schedules from the day's seed with 1–3 cars 2.2–4 s apart and 10–30 s gaps; busiest in the morning and evening rush, calmer by day, quiet but never empty at night. Cars keep 1.8 m clearance and queue behind a waiting car at the zebra crossing with brake lamps on. Only the day's styles drive; the long box truck and limousine appear rarely and only on lanes without a crossing. Moving cars are capped per render tier (16/14/10/6) and stay instanced; still at most two real headlight spots.
+- The procedural single-cab truck is retired: `campus-mobility.glb` holds only the EV charger and cycle shelter, `mobility-truck` resolves to the day's derived mid-size pickup, and every day's rotation parks at least one derived pickup.
+- Campus cars fix pass: remaining brand emblems and lettering removed from 18 cars (new `emblems` catalog key), the Audi estate grille smear and the Yangwang U8 lamp-housing patches fixed, the Hummer EV side windows closed (new `side_caps` key), and the BYD ETP3 listed as an EV. The Volvo XC90, Cadillac Escalade and GMC Sierra are under the Sketchfab Standard licence (ActsOfDoge) and the 1970 Dodge Charger under CC-BY-NC-SA-4.0 (OUTPISTON, non-commercial), with matching embedded notices. Third-party notices omit the unverified-licence sentence while no car uses that licence.
+
+## [0.4.132] - 2026-10-29
+
+### Added
+
+- Rust schema 10 adds immutable native edit-intent history bound to actual execution admissions, exact live leases and write-capable running tasks. Scoped replay, digest-bound withdrawal, per-execution clocks and atomic recovery/expiry preserve pending/revoked/expired history without storing raw arguments.
+- Native intent SQL guards reject replacement/clock rewind, legacy-grant attachment and promotion to granted/rejected. Parameter/policy fingerprints stay explicitly unverified; this storage format has no positive approval, consumption, RPC/runtime or tool-execution route.
+
+## [0.4.131] - 2026-10-29
+
+### Added
+
+- Rust schema 9 adds a separate provisional delegation allocation ledger with explicit scoped seeds, hierarchical subtree escrow, CAS and immutable idempotency receipts. Child reservations carve shared slots and all four budget caps atomically; descendants do not double-charge ancestors.
+- Ledger reconstruction checks balances, revision/receipt chronology and canonical payloads; whole-pool revocation never refunds capacity. Persisted clock observations prevent recorded expiry denials from being bypassed by clock rewind, while SQL/precommit failures roll back writes. Temporary-store race, replay/restart, corruption and migration regressions cover the boundary. No grant verification, metering, daemon/RPC/runtime wiring or dispatch authority is enabled.
+
+## [0.4.130] - 2026-10-29
+
+### Added
+
+- Additive scoped delegation intents with explicit authority/definition references, acyclic task lineage, bounded descendant allowances, integer budget caps and expiry. TypeScript and Rust validators share generated-schema conformance fixtures; legacy aliases cannot supply authority implicitly.
+- Pure TypeScript/Rust inspection rejects expanded child scope, lineage resets, reused parent identities, increased budgets/windows and conflicting idempotency intents. A consistent result never authorizes execution or replay; real grant resolution, atomic sibling reservations, receipts and broker activation remain pending.
+
+## [0.4.129] - 2026-10-29
+
+### Added
+
+- Additive control task snapshots separate definition/state revisions, lifecycle, execution outcome, validation and acceptance/waiver claims. TypeScript, generated JSON Schema and Rust reject malformed records and inconsistent completed/accepted claims using shared fixtures, without changing legacy task enums or activating dispatch.
+- Pure read-only legacy task projection preserves installation/source-workspace/task provenance and original verification labels. It keeps unknown revisions and acceptance explicit, without treating old completion, assignments or generic waits as new execution authority. Record resolution, dependency admission and storage remain future work.
+
+## [0.4.128] - 2026-10-29
+
+### Added
+
+- Additive `extalia.control.v1` identity-map contract with strict TypeScript/Rust validation, generated JSON Schema and shared conformance fixtures. Explicit session/workspace bindings retain the complete source namespace and reject source/canonical collisions.
+- Pure scoped forward/reverse identity lookup rejects foreign profiles/workspaces and unmapped IDs, returning detached bindings without inferring aliases. This increment does not migrate existing records, verify source ownership, grant execution authority or activate a new runtime.
+
+## [0.4.127] - 2026-10-29
+
+### Fixed
+
+- Agent-app connections now treat Node availability as a per-app prerequisite. Hermes webhooks and existing-hook diagnostics/undo remain available without GUI Node discovery; command-hook setup refuses missing, invalid or Electron runtime paths and retries failed discovery on a later action.
+- Connect agent apps refreshes real event status with lightweight reads while visible and checks installed connections on focus, without repeatedly probing Codex trust. Serialized refreshes preserve previews and unsaved dashboard edits, ignore stale replies around changes, and stop on unmount.
+- English and Indonesian connection controls explain that disconnecting hooks leaves separately enabled transcript watching unchanged. Missing-Node setup no longer reports "Already connected" in the CLI, and changing hosts during a pending action no longer leaves the controls locked.
+- A valid live hook now clears a stale "Source unavailable" state caused by an unreadable transcript, while preserving user pauses and cached history. Test probes and unrecognized events cannot establish recovery or invent a live session.
+
+## [0.4.126] - 2026-10-29
+
+### Added
+
+- 34 more campus vehicles (45 in total) derived from reference models, including a micro EV, large and rugged electric SUVs, an electric pickup, estates, hot hatches, crossovers, sports and classic cars, mid- and full-size pickups, a stretch limousine and a traffic-only 11 m rigid truck. Parking and traffic rotate 12–14 styles a day (deterministic per local date, weighted so rare cars stay rare; only that day's models load).
+- Vehicle licences include CC-BY-NC, CC-BY-NC-SA, Sketchfab Standard and owner-provided files still awaiting confirmation, each credited in `THIRD_PARTY_NOTICES.md`; non-commercial ones are marked "non-commercial use only". Building with `EXTALIA_COMMERCIAL_ASSETS_ONLY=1` keeps non-commercial and unverified cars out of the scene (the files still ship; a commercial distribution must remove them).
+- Car pipeline options for texture atlases, ancestor rules, positional role boxes, roof caps, source boxes, rear-only spare detection, staged decimation of heavy sources and parallel exports.
+
+## [0.4.125] - 2026-10-29
+
+### Added
+
+- Campus double-cab pickup (`pickup`) derived from "2019 Ford Ranger Raptor CIVIL (Cities Skylines)" by TSB3DMODELS (CC-BY-4.0, credited in `THIRD_PARTY_NOTICES.md`), about 3,100 triangles and 107 KB. It replaces the procedural double-cab; the old `mobility-double-cabin` name still resolves to it and the single-cab truck stays procedural. The car pipeline gains `colourFrom: "texture"` (material roles from texture samples and position) and accepts single `.glb` sources.
+
+### Changed
+
+- Campus traffic at night: each moving car casts two headlight beams from its own headlamp positions (read from each model's lamp geometry), lying flat on the asphalt and fading within about 13 m. Lit head and tail lamps show soft halos, two small red pools sit just behind the tail lamps and brighten while braking, and the two budgeted real headlight spots sit at headlamp height and aim 12 m ahead so the road and lane markings visibly brighten. Road lights follow Lights Auto/On/Off and skip their draws in daytime.
+
+## [0.4.124] - 2026-10-29
+
+### Added
+
+- Additive control capability manifests distinguish engines, coding workers and providers, with explicit per-mode support claims, runtime/policy/evidence references and experimental opt-in requirements. Strict TypeScript and Rust validators share conformance fixtures and a generated JSON Schema; validation grants no execution authority or integration certification.
+- PRD v2 compatibility decisions and a requirement-to-acceptance map preserve existing protocols, runtime IDs, Rust/Python direction and staged release gates.
+
+### Fixed
+
+- Agent-app hooks reject revoked tokens on the next authentication check, and endpoint test probes no longer count as real application activity. Connection indicators ignore events older than the current configuration revision.
+- Connection approval is bound to the displayed preview in Web/Desktop and CLI. Config-root or symlink-target changes cannot reuse another file's backup; caught multi-file apply failures roll back safely without overwriting concurrent edits.
+- Hermes connection status and undo cover default and named profiles, with backups for edited profile removal. Inline webhook YAML is refused safely instead of creating duplicate keys.
+- Explicit hook ports reach both test probes and command forwarders without changing the running host's endpoint. Missing forwarders report stale connections, CLI can read last-event history, and oversized UTF-8 payloads are clipped by byte length.
+- Campus headlight integration uses the measured lamp anchors and current shared light settings consistently in rendering and tests.
+
+## [0.4.123] - 2026-10-29
+
+### Added
+
+- Ten campus cars derived from reference models (EV sedan, long EV sedan, EV SUV, EV MPV, sedan, hatchback, off-road jeep, MPV, van and a rare sports car), simplified in Blender to about 6,000 smooth triangles each, with no interior, badges or textures. Each ships as its own licensed GLB (RenderHub Extended Use; the sports car is CC-BY-4.0) with notices. A data-driven catalog (`tooling/blender/campus-vehicles.json`) and `prepare-campus-vehicles.py` make adding a car one catalog entry plus two script runs.
+- Vehicle wheels roll with the distance travelled and stop at the crossing. At dusk and night, moving cars light head and tail lamps, brighten their brake lamps while waiting and paint soft light pools on the road; at most two budgeted spot lights follow the cars nearest the camera.
+- Asset intake map (`docs/product/asset-intake.md`) for the owner's downloaded hair, clothing, character and furniture models, processed in stages after the cars.
+
+### Changed
+
+- EV charging bays hold electric cars and traffic mixes electric and conventional cars; only the vehicle files actually placed are loaded. The project-generated campus library now covers only the pickups, chargers and cycle shelter.
+
+## [0.4.122] - 2026-10-29
+
+### Added
+
+- Native recovery can inspect canonical mission state and execution evidence together, with a profile-bound review fingerprint and explicit missing task admissions. English and Indonesian panels explain the remaining ownership and settlement limits.
+
+### Fixed
+
+- Recovery prefers one atomic daemon read and never falls back to mixed inspection after that operation fails. Refresh clears the old displayed review; no retry, terminal closure or quarantine release is authorized.
+
+## [0.4.121] - 2026-10-29
+
+### Added
+
+- Native tasks track and seal local provider/tool operations and full tool pipelines. Trusted built-in adapter coverage can record separate durable local-drain evidence after actual settlement, including late settlement, without clearing recovery quarantine.
+
+### Fixed
+
+- Search now waits for worker termination or exit before returning an outcome. Pending sibling/preflight work keeps native capacity quarantined instead of treating an early aggregate failure as completion.
+
+## [0.4.120] - 2026-10-29
+
+### Added
+
+- Native recovery inspection shows durable execution identities and observations of actual turn completion, including late completion after a timeout. Rust records admissions atomically before execution and preserves observations across reaping and restart, without treating them as physical-settlement proof or clearing quarantine.
+
+## [0.4.119] - 2026-10-29
+
+### Added
+
+- The Rust daemon periodically quarantines missions with expired leases even while its input is idle. Bounded, profile-scoped transactions preserve queued and terminal work, fence uncertain siblings without replay, and fail closed if reaping cannot persist. The sweep thread stops with the daemon.
+
+## [0.4.118] - 2026-10-29
+
+### Added
+
+- Rust-owned native missions renew exact task leases independently of model activity. Renewal failure revokes runtime authority, stops active workers and blocks queued work while preserving uncertain execution for recovery.
+
+### Fixed
+
+- Expired native leases cannot be revived by late task completions or activity. Tool permission checks renew and verify current lease authority before accepting policy decisions, including after host suspension.
+
 ## [0.4.117] - 2026-10-28
 
 ### Fixed

@@ -5,9 +5,13 @@
 - Notable changes go under `## [Unreleased]` in `CHANGELOG.md` with the change.
 - `pnpm version:patch` bumps every package and turns the Unreleased notes into
   a dated section for the new version. Run `pnpm check` afterwards.
-- Pre-1.0 milestones follow the roadmap: `0.1.0-alpha` (Phases 0–2),
-  `0.2.0-alpha` (Phase 3), `0.3.0-beta` (Phases 4–5), `0.4.0-beta` (Phases 6–7),
-  `1.0.0` (Phase 8).
+- Keep application, protocol, data schema and PRD document versions distinct.
+  PRD v2 does not imply an application `2.0.0` release. Existing targets remain
+  v0.4 project orchestration, v0.5 durable control/knowledge with retained
+  scanner/Python gates, v0.6 Evolve and v1.0 declared stable SDK/release scope.
+  Earlier v0.1/v0.2/v0.3 milestones remain historical; stage T0–T8 labels are
+  independent of application versions. See [PRD v2 tracking](prd-v2-tracking.md)
+  for live issue/milestone links and release-gate requirements.
 - Desktop releases: push a tag `v<version>` matching `apps/desktop/package.json`.
   The release workflow creates a draft GitHub release (tags with `-` become
   pre-releases), builds macOS (DMG + ZIP, arm64 and x64), Windows (NSIS) and
