@@ -101,7 +101,7 @@ Pre-built desktop installers and standalone packages are available on the [Extal
 | **Linux** | Universal AppImage | x64 | [Extalia-0.4.157-linux-x86_64.AppImage](https://github.com/Extalia-VO/extalia-virtual-agent/releases/download/v0.4.157/Extalia-0.4.157-linux-x86_64.AppImage) |
 | **Linux** | Debian / Ubuntu Package | x64 | [Extalia-0.4.157-linux-amd64.deb](https://github.com/Extalia-VO/extalia-virtual-agent/releases/download/v0.4.157/Extalia-0.4.157-linux-amd64.deb) |
 | **Windows** | Desktop installer | x64 | [Extalia-0.4.157-win-x64-setup.exe](https://github.com/Extalia-VO/extalia-virtual-agent/releases/download/v0.4.157/Extalia-0.4.157-win-x64-setup.exe) |
-| **Web** | Static Web Client | Universal | [extalia-web-0.4.157.zip](https://github.com/Extalia-VO/extalia-virtual-agent/releases/download/v0.4.157/extalia-web-0.4.157.zip) |
+| **Web** | Static Web Client | Universal | [Extalia-0.4.157-web.zip](https://github.com/Extalia-VO/extalia-virtual-agent/releases/download/v0.4.157/Extalia-0.4.157-web.zip) |
 | **CLI** | Local Web Bridge | Universal | [extalia-vo-0.4.157.tgz](https://github.com/Extalia-VO/extalia-virtual-agent/releases/download/v0.4.157/extalia-vo-0.4.157.tgz) |
 
 Free macOS previews use verified ad-hoc signatures and are **not Apple-notarized**.
@@ -110,7 +110,7 @@ download, use **System Settings → Privacy & Security → Open Anyway** after t
 first launch attempt; previews update by manual download. See
 [macOS release modes](docs/release/packaging.md#macos-release-modes).
 
-Check downloaded files against **SHA256SUMS.txt** on the release page. The static
+Check downloaded files against [SHA256SUMS.txt](https://github.com/Extalia-VO/extalia-virtual-agent/releases/download/v0.4.157/SHA256SUMS.txt) on the release page. The static
 Web ZIP contains the client; running agents still requires the local Bridge or
 Desktop host. npm installs the Bridge, client and matching daemon together.
 

@@ -276,6 +276,17 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: node scripts/release.mjs upload
+      - name: Retain unverified macOS archives for failure diagnosis
+        if: failure() && runner.os == 'macOS'
+        uses: actions/upload-artifact@v4
+        with:
+          name: unverified-macos-${{ github.ref_name }}
+          path: |
+            apps/desktop/release/*-mac-*.dmg
+            apps/desktop/release/*-mac-*.zip
+          if-no-files-found: ignore
+          retention-days: 3
+          compression-level: 0
 
   checksums:
     name: Complete draft release checksums
