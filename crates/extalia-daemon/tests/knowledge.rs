@@ -472,6 +472,7 @@ fn overview_ranks_notes_and_keeps_only_resolved_links() {
 }
 
 #[test]
+#[cfg_attr(windows, ignore = "its note paths use quotes and exceed Windows path limits")]
 fn overview_stays_below_the_frame_limit_at_the_maximum_sizes() {
     let dir = TempDir::new();
     // 300 notes with long escaped and multi-byte paths, titles and tags, each linking to the
@@ -949,6 +950,7 @@ fn rebuild_and_incremental_syncs_agree_over_the_wire() {
 }
 
 #[test]
+#[cfg_attr(windows, ignore = "its note paths use quotes and exceed Windows path limits")]
 fn large_results_stay_below_the_frame_limit() {
     let dir = TempDir::new();
     // A hub linking to 600 notes with long names, and a note body above the body cap.
