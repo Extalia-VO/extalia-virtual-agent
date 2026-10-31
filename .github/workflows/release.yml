@@ -25,7 +25,7 @@ jobs:
     name: Create draft release
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - name: Check that the tag matches the app version
         run: |
           version="$(node -p "require('./apps/desktop/package.json').version")"
@@ -60,7 +60,7 @@ jobs:
           - { target: aarch64-unknown-linux-gnu, runner: ubuntu-22.04-arm }
     runs-on: ${{ matrix.runner }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v5
         with:
@@ -113,7 +113,7 @@ jobs:
     env:
       ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v5
         with:
@@ -159,7 +159,7 @@ jobs:
     env:
       ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v5
         with:
@@ -200,7 +200,7 @@ jobs:
       # Set this repository variable to notarized when Developer ID credentials are available.
       EXTALIA_MAC_RELEASE_MODE: ${{ vars.EXTALIA_MAC_RELEASE_MODE || 'preview' }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v5
         with:
@@ -297,7 +297,7 @@ jobs:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       EXTALIA_MAC_RELEASE_MODE: ${{ vars.EXTALIA_MAC_RELEASE_MODE || 'preview' }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v5
         with:
           node-version-file: .node-version
