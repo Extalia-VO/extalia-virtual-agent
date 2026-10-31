@@ -1,12 +1,13 @@
 import { chmod, lstat, mkdir, readdir, symlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 import { HOST_WORKSPACE_ID_PATTERN, type DaemonOp, type SkillRevisionSummary } from '@extalia/protocol';
 import { describe, expect, it } from 'vitest';
 import { BUILTIN_SKILLS } from '../src/builtinSkills.js';
 import { DaemonRequestError, DaemonUnavailableError, type DaemonClient, type DaemonSidecar } from '../src/daemon/index.js';
 import { createAgentHost, type AgentHostRuntime } from '../src/service.js';
 import { SKILL_REGISTRY_OPS, SkillRegistry, copyPackage, type SkillConsentWorkspace } from '../src/skillRegistry.js';
-import { createSkillTools, withBuiltinSkills } from '../src/skills.js';
+import { buildAgentSkillCatalog, createSkillTools } from '../src/skills.js';
 import { DAEMON_BINARY, HAS_DAEMON, queryCore } from './daemonBackend.js';
 import { findTool, runTool, useTempDirs } from './helpers.js';
 
@@ -79,7 +80,7 @@ async function hostFixture(env: Record<string, string>) {
 }
 
 describe('skill registry with the native core flag off (legacy)', () => {
-  it('reports legacy mode and keeps the W0 path: consented project skills and user skills reach the model', async () => {
+  it('reports legacy consent inventory while only canonical builtins reach the model', async () => {
     const fixture = await hostFixture({});
     try {
       const { host, workspace } = fixture;
@@ -87,8 +88,8 @@ describe('skill registry with the native core flag off (legacy)', () => {
       await expect(host.importSkill({ kind: 'workspace', workspaceId: workspace.id, name: 'deploy' })).rejects.toThrow(/does not serve the skill registry/);
       await host.allowWorkspaceSkills(workspace.id, (await host.workspaceSkills(workspace.id)).pending);
       await fixture.turn();
-      expect(fixture.catalog()).toContain('- deploy (workspace, untrusted)');
-      expect(fixture.catalog()).toContain('- team-rules (user, untrusted)');
+      expect(fixture.catalog()).not.toContain('deploy');
+      expect(fixture.catalog()).not.toContain('team-rules');
       for (const skill of BUILTIN_SKILLS) expect(fixture.catalog()).toContain(`- ${skill.name}: `);
     } finally { await fixture.close(); }
   });
@@ -239,13 +240,15 @@ describe('package copy into the import inbox', () => {
   });
 });
 
-/** A fake daemon connection with active revisions, for the model catalog path. */
+/** Synthetic current-attestation fixture for positive catalog tests; no production scanner is emulated. */
 function fakeDaemon(
   revisions: SkillRevisionSummary[], files: Record<string, string>, ops: readonly DaemonOp[] = SKILL_REGISTRY_OPS,
   extra: Partial<Record<DaemonOp, (params: Record<string, unknown>) => unknown>> = {},
 ) {
   const calls: { op: string; params: unknown }[] = [];
   let down = false;
+  let denied: string | undefined;
+  for (const revision of revisions) if (files[revision.packageId]) revision.skillMdSha256 = createHash('sha256').update(files[revision.packageId]!).digest('hex');
   const client = {
     capabilities: ops,
     async request(op: string, params: Record<string, unknown>) {
@@ -254,9 +257,12 @@ function fakeDaemon(
       if (op === 'skill.list') return { revisions, indexGeneration: 1 };
       if (op === 'skill.review') return { revisionId: params.revisionId, decision: params.decision, state: params.decision === 'accept' ? 'validated' : 'quarantined', stateReason: params.decision === 'accept' ? 'review-accepted' : 'review-rejected', reviewId: 7 };
       if (op === 'skill.read') {
+        if (denied) throw new DaemonRequestError('denied', denied);
+        if (extra['skill.read']) return extra['skill.read'](params);
         const revision = revisions.find(item => item.revisionId === params.revisionId);
         if (!revision?.active) throw new DaemonRequestError('denied', 'not_active');
-        return { revisionId: revision.revisionId, packageId: revision.packageId, path: 'SKILL.md', size: 1, sha256: 'f'.repeat(64), content: files[revision.packageId]! };
+        const content = files[revision.packageId]!;
+        return { revisionId: revision.revisionId, packageId: revision.packageId, path: 'SKILL.md', size: Buffer.byteLength(content), sha256: createHash('sha256').update(content).digest('hex'), content };
       }
       const handler = extra[op as DaemonOp];
       if (handler) return handler(params);
@@ -264,7 +270,7 @@ function fakeDaemon(
     },
   } as unknown as DaemonClient;
   const sidecar = { connect: async () => { if (down) throw new DaemonUnavailableError('crashed'); return client; } } as unknown as DaemonSidecar;
-  return { sidecar, calls, fail: () => { down = true; } };
+  return { sidecar, calls, fail: () => { down = true; }, denyRead: (reason: string) => { denied = reason; } };
 }
 
 const summary = (packageId: string, state: SkillRevisionSummary['state'], active: boolean, origin: SkillRevisionSummary['origin'] = 'imported'): SkillRevisionSummary => ({
@@ -274,6 +280,48 @@ const summary = (packageId: string, state: SkillRevisionSummary['state'], active
 });
 
 describe('model catalog from active registry revisions', () => {
+  it.each(['revisionId', 'packageId', 'path', 'size', 'sha256', 'content'] as const)('refuses mismatched authoritative SKILL.md %s instead of accepting stale metadata or instructions', async field => {
+    const active = { ...summary('release-notes', 'active', true), revisionId: `skr_${'1'.repeat(64)}` };
+    const content = SKILL('release-notes', 'Verified fixture metadata');
+    let mismatch = false;
+    const file = { revisionId: active.revisionId, packageId: active.packageId, path: 'SKILL.md', size: Buffer.byteLength(content), sha256: createHash('sha256').update(content).digest('hex'), content };
+    const daemon = fakeDaemon([active], { 'release-notes': content }, SKILL_REGISTRY_OPS, { 'skill.read': () => mismatch ? { ...file, [field]: field === 'size' ? file.size + 1 : 'mismatched' } : { ...file } });
+    const registry = new SkillRegistry({ daemon: daemon.sidecar, dataDirectory: await temp(), profile: 'default', workspaceRoot: () => { throw new Error('none'); } });
+    const current = await registry.activeSkills(); expect(current).toHaveLength(1);
+    const tools = createSkillTools(await buildAgentSkillCatalog(current, { reload: skill => registry.reload(skill) }));
+    mismatch = true;
+    expect(await registry.activeSkills()).toEqual([]);
+    const read = await runTool(tools, 'skill_read', { name: active.packageId });
+    expect(read.ok).toBe(false); expect(read.output).not.toContain('Collect merged changes');
+  });
+
+  it('derives the current origin from the registry rather than a supplied source label', async () => {
+    const active = { ...summary('release-notes', 'active', true), revisionId: `skr_${'1'.repeat(64)}` };
+    const daemon = fakeDaemon([active], { 'release-notes': SKILL('release-notes') });
+    const registry = new SkillRegistry({ daemon: daemon.sidecar, dataDirectory: await temp(), profile: 'default', workspaceRoot: () => { throw new Error('none'); } });
+    const [skill] = await registry.activeSkills();
+    await expect(registry.reload({ ...skill!, source: 'workspace' })).rejects.toThrow(/no longer available/);
+  });
+  it.each(['scanner pin', 'policy', 'approval', 'hash', 'deactivation', 'daemon loss'] as const)('invalidates metadata and bodies after earlier success when %s changes', async cause => {
+    const active = { ...summary('release-notes', 'active', true), revisionId: `skr_${'1'.repeat(64)}` };
+    const files = { 'release-notes': SKILL('release-notes', 'Current attested fixture metadata') };
+    const daemon = fakeDaemon([active], files);
+    const registry = new SkillRegistry({ daemon: daemon.sidecar, dataDirectory: await temp(), profile: 'default', workspaceRoot: () => { throw new Error('none'); } });
+    const current = await registry.activeSkills();
+    const catalog = await buildAgentSkillCatalog(current, { reload: skill => registry.reload(skill) });
+    const tools = createSkillTools(catalog);
+    expect(findTool(tools, 'skill_read').description).toContain('Current attested fixture metadata');
+    expect((await runTool(tools, 'skill_read', { name: active.packageId })).ok).toBe(true);
+    if (cause === 'hash') files['release-notes'] += '\nChanged after inspection.';
+    else if (cause === 'deactivation') active.active = false;
+    else if (cause === 'daemon loss') daemon.fail();
+    else daemon.denyRead(cause === 'scanner pin' ? 'scanner_unpinned' : 'attestation_invalid');
+    const next = await registry.activeSkills().catch(() => []);
+    expect(next).toEqual([]);
+    expect((await buildAgentSkillCatalog(next, { reload: skill => registry.reload(skill) })).skills.some(skill => skill.name === active.packageId)).toBe(false);
+    const refused = await runTool(tools, 'skill_read', { name: active.packageId });
+    expect(refused.ok).toBe(false); expect(refused.output).not.toContain('Collect merged changes');
+  });
   it('offers only active non-built-in revisions, read through the daemon, and fails closed on reload', async () => {
     const active = { ...summary('release-notes', 'active', true), revisionId: `skr_${'1'.repeat(64)}` };
     const approved = { ...summary('changelog', 'approved', false), revisionId: `skr_${'2'.repeat(64)}` };
@@ -283,11 +331,11 @@ describe('model catalog from active registry revisions', () => {
     const skills = await registry.activeSkills();
     expect(skills).toMatchObject([{ name: 'release-notes', source: 'imported', revisionId: active.revisionId, description: 'Draft release notes' }]);
     expect(daemon.calls.filter(call => call.op === 'skill.read')).toEqual([{ op: 'skill.read', params: { revisionId: active.revisionId, path: 'SKILL.md' } }]);
-    // Cached by revision id (content-addressed): the next turn lists but does not re-read.
+    // Scanner/policy/approval validity can change while the revision ID stays fixed.
     await registry.activeSkills();
-    expect(daemon.calls.filter(call => call.op === 'skill.read')).toHaveLength(1);
+    expect(daemon.calls.filter(call => call.op === 'skill.read')).toHaveLength(2);
 
-    const tools = createSkillTools(withBuiltinSkills(skills), { reload: skill => registry.reload(skill) });
+    const tools = createSkillTools(await buildAgentSkillCatalog(skills, { reload: skill => registry.reload(skill) }));
     const tool = findTool(tools, 'skill_read');
     expect(tool.description).toContain('- release-notes (imported, untrusted): Draft release notes');
     for (const skill of BUILTIN_SKILLS) expect(tool.description).toContain(`- ${skill.name}: `);
@@ -414,5 +462,38 @@ describe('scanner status and consent review inputs', () => {
     // Unreadable consent never blocks the details.
     const broken = new SkillRegistry({ daemon: strict.sidecar, dataDirectory: '/unused', profile: 'default', workspaceRoot: () => '', consentWorkspaces: async () => { throw new Error('disk'); } });
     expect((await broken.inspect(revision.revisionId)).revision.packageId).toBe('deploy');
+  });
+});
+
+
+describe('read-only skill dependency preflight', () => {
+  const root = `skr_${'a'.repeat(64)}`;
+  const blocked = { rootRevisionId: root, dispatchEligible: false, status: 'blocked', issues: [{ code: 'root_unavailable', packageId: 'demo' }], truncated: false };
+  const options = (daemon: ReturnType<typeof fakeDaemon>) => ({ daemon: daemon.sidecar, dataDirectory: '/unused', profile: 'default', workspaceRoot: () => '',
+    consentWorkspaces: async () => { throw new Error('preflight must not read consent'); } });
+  it('uses only the optional diagnostic operation with explicit pins and never inspect', async () => {
+    const daemon = fakeDaemon([], {}, [...SKILL_REGISTRY_OPS, 'skill.preflight'], { 'skill.preflight': () => blocked });
+    const registry = new SkillRegistry(options(daemon));
+    expect((await registry.report()).preflight).toBe(true);
+    daemon.calls.length = 0;
+    expect(await registry.preflight({ rootRevisionId: root, pins: {} })).toEqual(blocked);
+    expect(daemon.calls).toEqual([{ op: 'skill.preflight', params: { rootRevisionId: root, pins: {} } }]);
+  });
+  it('leaves old-daemon registry mode intact and does not send an unsupported operation', async () => {
+    const daemon = fakeDaemon([], {}), registry = new SkillRegistry(options(daemon));
+    expect(await registry.report()).toMatchObject({ mode: 'registry', status: 'ready', preflight: false });
+    daemon.calls.length = 0;
+    await expect(registry.preflight({ rootRevisionId: root, pins: {} })).rejects.toThrow('not supported');
+    expect(daemon.calls).toEqual([]);
+  });
+  it('rejects injected authority and malformed/false-authority responses without fallback', async () => {
+    const daemon = fakeDaemon([], {}, [...SKILL_REGISTRY_OPS, 'skill.preflight'], { 'skill.preflight': () => ({ ...blocked, dispatchEligible: true }) });
+    const registry = new SkillRegistry(options(daemon));
+    await expect(registry.preflight({ rootRevisionId: root, pins: {}, profile: 'foreign' } as never)).rejects.toThrow();
+    expect(daemon.calls).toEqual([]);
+    await expect(registry.preflight({ rootRevisionId: root, pins: {} })).rejects.toThrow('Invalid dependency check result');
+    expect(daemon.calls).toHaveLength(1);
+    daemon.fail();
+    await expect(registry.preflight({ rootRevisionId: root, pins: {} })).rejects.toThrow('unavailable');
   });
 });

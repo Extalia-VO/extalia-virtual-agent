@@ -1,8 +1,8 @@
 import {
   CHARACTER_BAGS, CHARACTER_BOTTOMS, CHARACTER_EARRINGS, CHARACTER_GAITS, CHARACTER_GLASSES, CHARACTER_HEIGHT_CM,
-  CHARACTER_OUTFITS, CHARACTER_PRESENTATIONS, CHARACTER_STATURES, CHARACTER_TOPS, CHARACTER_WATCHES,
+  CHARACTER_PRESENTATIONS, CHARACTER_STATURES, CHARACTER_TOPS, CHARACTER_WATCHES,
   getCharacterHairOptions, resolveCharacterHair,
-  type CharacterAccessories, type CharacterAppearance, type CharacterHairStyle,
+  type CharacterAccessories, type CharacterAppearance, type CharacterHairStyle, type CharacterOutfitSlot,
 } from '@extalia/core';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { errorMessage } from '../host/remote';
@@ -14,6 +14,10 @@ import { localHairStyles } from './scene/avatars/sourceAssets';
 import {
   applyPresentationPreset, avatarVisual, characterHeightCm, defaultCharacterAppearance, HAIR_COLORS, lookSeed, SKIN_TONES, type LookIdentity,
 } from './scene/avatars/appearance';
+import {
+  applyOutfitChoice, applyOutfitPiece, appearanceChoice, choiceValue, defaultOutfit, outfitChoices, pieceChoices, randomizeOutfit, staffAppearance, UNIFORM_ACCENTS,
+  type StaffRole,
+} from './scene/avatars/outfitCatalog';
 
 /** Garment swatches; "auto" keeps the outfit's own palette. */
 export const GARMENT_COLORS = ['#26324a', '#3a3d42', '#efe9dc', '#a9c4dc', '#9fb39a', '#6d2333', '#b0875c', '#5f4a6e'] as const;
@@ -28,7 +32,15 @@ function sameAppearance(a: CharacterAppearance, b: CharacterAppearance): boolean
   return JSON.stringify(canonical(a)) === JSON.stringify(canonical(b));
 }
 
-function withOptional<K extends 'topColor' | 'bottomColor' | 'heightCm'>(draft: CharacterAppearance, key: K, value: CharacterAppearance[K]): CharacterAppearance {
+type OptionalKey = 'topColor' | 'bottomColor' | 'outerColor' | 'accentColor' | 'heightCm';
+
+/** `outfit-relaxed-streetwear` → "Relaxed streetwear". */
+export function outfitModelLabel(id: string): string {
+  const words = id.replace(/^(?:outfit-)?(?:source-)?/, '').split('-').join(' ');
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+function withOptional<K extends OptionalKey>(draft: CharacterAppearance, key: K, value: CharacterAppearance[K]): CharacterAppearance {
   const next = { ...draft };
   if (value === undefined) delete next[key];
   else next[key] = value;
@@ -79,20 +91,33 @@ function Toggle({ label, checked, onChange }: { label: string; checked: boolean;
  * previews on the selected character; Save stores it in the agent host so Web
  * and Desktop share it.
  */
-export function AppearanceEditor({ t, characterId: presenceId, identity, saved, onPreview, onSave, onClose }: {
+export function AppearanceEditor({ t, characterId: presenceId, identity, saved, uniform, defaults, onPreview, onSave, onClose }: {
   t: Text;
   characterId: string;
   /** v0.0.30: a named character's look seed; its generated look and palette come from the name. */
   identity?: LookIdentity | undefined;
   saved: CharacterAppearance | undefined;
+  /** Facility staff: the role's uniform is locked; only its accent colour changes. */
+  uniform?: StaffRole | undefined;
+  /** The look "Default outfit" and Reset return to; the seeded generated look when omitted. */
+  defaults?: CharacterAppearance | undefined;
   onPreview(appearance: CharacterAppearance | null): void;
   onSave(appearance: CharacterAppearance | null): Promise<void>;
   onClose(): void;
 }) {
   const characterId = lookSeed(presenceId, identity);
   const presentation = identity?.presentation;
-  const baseline = useMemo(() => saved ?? defaultCharacterAppearance(characterId, presentation), [saved, characterId, presentation]);
+  // First spawn wears the generated (seeded) look; nothing is stored until the user saves.
+  const generated = useMemo(() => {
+    const look = defaults ?? defaultCharacterAppearance(characterId, presentation);
+    return uniform ? staffAppearance(uniform, look) : look;
+  }, [defaults, characterId, presentation, uniform]);
+  const baseline = useMemo(() => uniform && saved ? staffAppearance(uniform, generated, saved) : saved ?? generated, [saved, generated, uniform]);
   const [draft, setDraft] = useState(baseline);
+  // "Default outfit" follows the body currently being edited after a preset switch.
+  const outfitDefaults = useMemo(() => uniform || generated.presentation === draft.presentation
+    ? generated : defaultCharacterAppearance(characterId, draft.presentation), [uniform, generated, draft.presentation, characterId]);
+  const [roll, setRoll] = useState(0);
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -105,7 +130,37 @@ export function AppearanceEditor({ t, characterId: presenceId, identity, saved, 
   const changed = !sameAppearance(draft, baseline);
   const generatedHeight = useMemo(() => characterHeightCm(avatarVisual(characterId, withOptional(draft, 'heightCm', undefined))), [characterId, draft]);
   const edit = (next: CharacterAppearance) => { setNotice(null); setDraft(next); };
-  const set = (patch: Partial<Omit<CharacterAppearance, 'topColor' | 'bottomColor' | 'heightCm'>>) => edit({ ...draft, ...patch });
+  const set = (patch: Partial<Omit<CharacterAppearance, OptionalKey>>) => edit({ ...draft, ...patch });
+  const outfitOptions: SelectOption<string>[] = outfitChoices(draft.presentation).map(choice => ({
+    value: choiceValue(choice),
+    label: choice.kind === 'style' ? t.outfits[choice.style] : `${t.outfitModels} · ${t.modelOutfit(outfitModelLabel(choice.id))}`,
+  }));
+  const currentOutfit = appearanceChoice(draft);
+  // A saved model that is not in this build stays visible as the current value.
+  if (!outfitOptions.some(option => option.value === currentOutfit)) {
+    outfitOptions.push({ value: currentOutfit, label: draft.outfitParts ? t.separateOutfit : draft.outfitModel ? t.modelOutfit(outfitModelLabel(draft.outfitModel)) : currentOutfit, disabled: true });
+  }
+  const pieceOptions = (slot: CharacterOutfitSlot): SelectOption<string>[] => {
+    const result: SelectOption<string>[] = [
+      { value: slot === 'outer' ? 'none' : '__body_default__', label: slot === 'outer' ? t.none : t.scanDefault },
+      ...pieceChoices(draft.presentation, slot).map(piece => ({ value: piece.id,
+        label: (t.pieceNames as Record<string, string>)[piece.id] ?? t.modelOutfit(outfitModelLabel(piece.id)) })),
+    ];
+    if (!draft.outfitParts) result.unshift({ value: 'complete', label: t.fromCompleteOutfit, disabled: true });
+    const current = draft.outfitParts?.[slot];
+    if (current && !result.some(option => option.value === current)) {
+      return [...result, { value: current, label: t.modelOutfit(outfitModelLabel(current)), disabled: true }];
+    }
+    return result;
+  };
+  const randomize = () => {
+    const next = roll + 1;
+    setRoll(next);
+    if (uniform) {
+      const choices = UNIFORM_ACCENTS.filter(color => color !== draft.accentColor);
+      edit({ ...draft, accentColor: choices[(next * 7 + characterId.length) % choices.length]! });
+    } else edit(randomizeOutfit(draft, characterId, next));
+  };
   const accessory = (patch: Partial<CharacterAccessories>) => edit({ ...draft, accessories: { ...draft.accessories, ...patch } });
   const options = <T extends string>(values: readonly T[], label: (value: T) => string): SelectOption<T>[] => values.map(value => ({ value, label: label(value) }));
   const withNone = <T extends string>(values: readonly ('none' | T)[], labels: Record<T, string>) =>
@@ -128,7 +183,7 @@ export function AppearanceEditor({ t, characterId: presenceId, identity, saved, 
     setSaving(true); setError(null); setNotice(null);
     try {
       await onSave(next);
-      if (!next) setDraft(defaultCharacterAppearance(characterId, presentation));
+      if (!next) setDraft(generated);
       setNotice(t.saved);
     } catch (failure) { setError(errorMessage(failure)); }
     finally { setSaving(false); }
@@ -159,15 +214,37 @@ export function AppearanceEditor({ t, characterId: presenceId, identity, saved, 
 
     <fieldset className="appearance-group">
       <legend>{t.clothing}</legend>
-      <div className="appearance-grid">
-        <Field label={t.top} value={draft.top} options={options(CHARACTER_TOPS, value => t.tops[value])} onChange={top => set({ top })} />
-        <Field label={t.bottom} value={draft.bottom} options={options(CHARACTER_BOTTOMS, value => t.bottoms[value])} onChange={bottom => set({ bottom })} />
-        <Field label={t.outfit} value={draft.outfit} options={options(CHARACTER_OUTFITS, value => t.outfits[value])} onChange={outfit => set({ outfit })} />
+      {uniform ? <>
+        <p className="appearance-uniform"><strong>{t.staffUniform}</strong> · {t.uniformRoles[uniform]}</p>
+        <p className="muted-note">{t.uniformNote}</p>
+        <Swatches legend={t.accentColor} value={draft.accentColor} colors={UNIFORM_ACCENTS} names={UNIFORM_ACCENTS} custom={t.customColor}
+          onChange={value => value && edit({ ...draft, accentColor: value })} />
+      </> : <>
+        <div className="appearance-grid">
+          <Field label={t.outfit} value={currentOutfit} options={outfitOptions} onChange={value => edit(applyOutfitChoice(draft, value))} />
+          {(['top', 'bottom', 'outer'] as const).map(slot => <Field key={slot} label={t.pieceSlots[slot]}
+            value={draft.outfitParts ? draft.outfitParts[slot] ?? (slot === 'outer' ? 'none' : '__body_default__') : 'complete'} options={pieceOptions(slot)}
+            onChange={value => edit(applyOutfitPiece(draft, slot, value === '__body_default__' ? undefined : value))} />)}
+          {!draft.outfitParts && !draft.outfitModel && <>
+            <Field label={t.fallbackTop} value={draft.top} options={options(CHARACTER_TOPS, value => t.tops[value])} onChange={top => set({ top })} />
+            <Field label={t.fallbackBottom} value={draft.bottom} options={options(CHARACTER_BOTTOMS, value => t.bottoms[value])} onChange={bottom => set({ bottom })} />
+          </>}
+        </div>
+        <p className="muted-note">{t.pieceNote}</p>
+        {(draft.outfitParts || draft.bottom !== 'dress') && <Swatches legend={t.topColor} value={draft.topColor} colors={GARMENT_COLORS} names={t.garmentColors} auto={t.autoColor} custom={t.customColor}
+          onChange={value => edit(withOptional(draft, 'topColor', value))} />}
+        <Swatches legend={!draft.outfitParts && draft.bottom === 'dress' ? t.dressColor : t.bottomColor} value={draft.bottomColor} colors={GARMENT_COLORS} names={t.garmentColors} auto={t.autoColor} custom={t.customColor}
+          onChange={value => edit(withOptional(draft, 'bottomColor', value))} />
+        <Swatches legend={t.outerColor} value={draft.outerColor} colors={GARMENT_COLORS} names={t.garmentColors} auto={t.autoColor} custom={t.customColor}
+          onChange={value => edit(withOptional(draft, 'outerColor', value))} />
+        <Swatches legend={t.accentColor} value={draft.accentColor} colors={GARMENT_COLORS} names={t.garmentColors} auto={t.autoColor} custom={t.customColor}
+          onChange={value => edit(withOptional(draft, 'accentColor', value))} />
+        <p className="muted-note">{t.outfitNote}</p>
+      </>}
+      <div className="appearance-outfit-actions">
+        <button type="button" className="button" disabled={saving} onClick={randomize}><Icon name="refresh" />{t.randomize}</button>
+        <button type="button" className="button" disabled={saving || sameAppearance(defaultOutfit(draft, outfitDefaults), draft)} onClick={() => edit(defaultOutfit(draft, outfitDefaults))}>{t.defaultOutfit}</button>
       </div>
-      {draft.bottom !== 'dress' && <Swatches legend={t.topColor} value={draft.topColor} colors={GARMENT_COLORS} names={t.garmentColors} auto={t.autoColor} custom={t.customColor}
-        onChange={value => edit(withOptional(draft, 'topColor', value))} />}
-      <Swatches legend={draft.bottom === 'dress' ? t.dressColor : t.bottomColor} value={draft.bottomColor} colors={GARMENT_COLORS} names={t.garmentColors} auto={t.autoColor} custom={t.customColor}
-        onChange={value => edit(withOptional(draft, 'bottomColor', value))} />
     </fieldset>
 
     <fieldset className="appearance-group">

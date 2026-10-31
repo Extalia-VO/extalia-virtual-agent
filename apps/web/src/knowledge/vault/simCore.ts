@@ -17,6 +17,12 @@ interface Node extends SimNode { degree: number }
 
 /** Milliseconds of ticking per slice: leaves the worker (or the main thread) responsive. */
 const SLICE_MS = 8;
+const MAX_SLICE_TICKS = 32;
+const RETURN_MS = 600;
+// A stalled host clock must not leave a return scheduling work forever.
+const MAX_RETURN_SLICES = 600;
+
+interface ReturnAnimation { from: Float64Array; elapsed: number; lastTime: number; slices: number }
 
 export function createSimCore(host: SimHost) {
   let simulation: Simulation<Node> | null = null;
@@ -28,6 +34,31 @@ export function createSimCore(host: SimHost) {
   let scheduled = false;
   let lastPost = -Infinity;
   let dragging = -1;
+  let returnToLayout = true;
+  let reducedMotion = false;
+  // Never transfer this buffer: renderer-owned frames can be detached on post.
+  let rest: Float64Array | null = null;
+  let returning: ReturnAnimation | null = null;
+
+  const unpin = () => {
+    const node = nodes[dragging];
+    if (node) { node.fx = null; node.fy = null; node.fz = null; }
+    dragging = -1;
+    simulation?.alphaTarget(0);
+  };
+
+  const snapshot = () => {
+    const positions = new Float64Array(nodes.length * 3);
+    nodes.forEach((node, i) => { positions[i * 3] = node.x ?? 0; positions[i * 3 + 1] = node.y ?? 0; positions[i * 3 + 2] = node.z ?? 0; });
+    return positions;
+  };
+
+  const clearInteraction = () => {
+    unpin();
+    rest = null;
+    returning = null;
+    simulation?.stop();
+  };
 
   const linkPairs = () => {
     // Node objects, not indices: the simulation renumbers the notes it is given (only the shown ones).
@@ -68,11 +99,51 @@ export function createSimCore(host: SimHost) {
     host.post(encodeFrame(frame(), simulation?.alpha() ?? 0, running));
   };
 
+  const applyReturn = (progress: number) => {
+    if (!rest || !returning) return;
+    const target = rest;
+    const from = returning.from;
+    const ease = 1 - Math.pow(1 - progress, 3);
+    nodes.forEach((node, i) => {
+      const at = i * 3;
+      // Assign the stored coordinates at completion, without interpolation roundoff.
+      node.x = progress === 1 ? target[at]! : from[at]! + (target[at]! - from[at]!) * ease;
+      node.y = progress === 1 ? target[at + 1]! : from[at + 1]! + (target[at + 1]! - from[at + 1]!) * ease;
+      node.z = progress === 1 ? target[at + 2]! : from[at + 2]! + (target[at + 2]! - from[at + 2]!) * ease;
+      node.vx = 0; node.vy = 0; node.vz = 0;
+    });
+    if (progress === 1) {
+      returning = null;
+      running = false;
+      simulation?.alphaTarget(0).alpha(0).stop();
+      post(true);
+    } else post();
+  };
+
+  const restore = () => {
+    if (!rest || !simulation) return;
+    unpin();
+    returning = { from: snapshot(), elapsed: 0, lastTime: host.now(), slices: 0 };
+    running = true;
+    if (reducedMotion) applyReturn(1);
+    else wake();
+  };
+
   const slice = () => {
     scheduled = false;
     if (!simulation || !running || paused) return;
+    if (returning) {
+      const now = host.now();
+      returning.elapsed += Math.max(0, now - returning.lastTime);
+      returning.lastTime = now;
+      returning.slices++;
+      applyReturn(returning.slices >= MAX_RETURN_SLICES ? 1 : Math.min(1, returning.elapsed / RETURN_MS));
+      wake();
+      return;
+    }
     const start = host.now();
-    do simulation.tick(); while (host.now() - start < SLICE_MS && (simulation.alpha() >= SIM_ALPHA_MIN || dragging >= 0));
+    let ticks = 0;
+    do { simulation.tick(); ticks++; } while (ticks < MAX_SLICE_TICKS && host.now() - start < SLICE_MS && (simulation.alpha() >= SIM_ALPHA_MIN || dragging >= 0));
     if (simulation.alpha() < SIM_ALPHA_MIN && dragging < 0) { running = false; post(true); return; }
     post();
     wake();
@@ -84,6 +155,7 @@ export function createSimCore(host: SimHost) {
     handle(command: SimCommand) {
       switch (command.type) {
         case 'init': {
+          clearInteraction();
           edges = command.edges;
           active = new Uint8Array(command.count).fill(1);
           nodes = Array.from({ length: command.count }, (_, i) => {
@@ -102,6 +174,7 @@ export function createSimCore(host: SimHost) {
         }
         case 'mask': {
           if (command.active.length !== nodes.length) return;
+          clearInteraction();
           active = command.active;
           configure();
           start(SIM_REHEAT_ALPHA);
@@ -109,7 +182,15 @@ export function createSimCore(host: SimHost) {
         }
         case 'drag': {
           const node = nodes[command.index];
-          if (!node || !simulation) return;
+          if (!node || !simulation || !active[command.index] || !Number.isFinite(command.x) || !Number.isFinite(command.y) || !Number.isFinite(command.z)) return;
+          if (dragging < 0 && !returning) {
+            const captured = snapshot();
+            if (!captured.every(Number.isFinite)) return;
+            rest = captured;
+          }
+          // A new drag may interrupt a return, but must retain its original target.
+          returning = null;
+          unpin();
           dragging = command.index;
           node.fx = command.x; node.fy = command.y; node.fz = command.z;
           simulation.alphaTarget(0.25);
@@ -117,15 +198,22 @@ export function createSimCore(host: SimHost) {
           return;
         }
         case 'release': {
-          const node = nodes[command.index];
-          if (node) { node.fx = null; node.fy = null; node.fz = null; }
-          dragging = -1;
-          simulation?.alphaTarget(0);
+          if (command.index !== dragging || dragging < 0) return;
+          unpin();
+          if (returnToLayout) restore();
           return;
         }
-        case 'reheat': start(command.alpha); return;
+        case 'interaction': {
+          returnToLayout = command.returnToLayout;
+          reducedMotion = command.reducedMotion ?? false;
+          if (returning && !returnToLayout) { returning = null; start(SIM_REHEAT_ALPHA); }
+          else if (returning && reducedMotion) applyReturn(1);
+          return;
+        }
+        case 'restore': restore(); return;
+        case 'reheat': if (!returning) start(command.alpha); return;
         case 'pause': paused = true; return;
-        case 'resume': paused = false; wake(); return;
+        case 'resume': paused = false; if (returning) returning.lastTime = host.now(); wake(); return;
       }
     },
     /** For tests: whether the layout is still moving. */

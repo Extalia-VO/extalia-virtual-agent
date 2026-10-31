@@ -1,0 +1,692 @@
+{
+  "contract": "pythonWorkerFrame",
+  "cases": [
+    {
+      "name": "hello",
+      "valid": true,
+      "value": {
+        "schema_version": 1,
+        "kind": "hello",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ]
+      }
+    },
+    {
+      "name": "request",
+      "valid": true,
+      "value": {
+        "schema_version": 1,
+        "kind": "request",
+        "request_id": "00000000-0000-4000-8000-000000000001",
+        "operation": "health",
+        "deadline_ms": 50,
+        "payload": {}
+      }
+    },
+    {
+      "name": "cancel",
+      "valid": true,
+      "value": {
+        "schema_version": 1,
+        "kind": "cancel",
+        "request_id": "00000000-0000-4000-8000-000000000001"
+      }
+    },
+    {
+      "name": "response",
+      "valid": true,
+      "value": {
+        "schema_version": 1,
+        "kind": "response",
+        "request_id": "00000000-0000-4000-8000-000000000001",
+        "result": {
+          "status": "ok",
+          "worker_version": "0.0.0-reference"
+        }
+      }
+    },
+    {
+      "name": "error",
+      "valid": true,
+      "value": {
+        "schema_version": 1,
+        "kind": "error",
+        "request_id": "00000000-0000-4000-8000-000000000001",
+        "error": {
+          "code": "unavailable"
+        }
+      }
+    },
+    {
+      "name": "error invalid_request",
+      "valid": true,
+      "value": {
+        "schema_version": 1,
+        "kind": "error",
+        "request_id": "00000000-0000-4000-8000-000000000001",
+        "error": {
+          "code": "invalid_request"
+        }
+      }
+    },
+    {
+      "name": "error unsupported_operation",
+      "valid": true,
+      "value": {
+        "schema_version": 1,
+        "kind": "error",
+        "request_id": "00000000-0000-4000-8000-000000000001",
+        "error": {
+          "code": "unsupported_operation"
+        }
+      }
+    },
+    {
+      "name": "error cancelled",
+      "valid": true,
+      "value": {
+        "schema_version": 1,
+        "kind": "error",
+        "request_id": "00000000-0000-4000-8000-000000000001",
+        "error": {
+          "code": "cancelled"
+        }
+      }
+    },
+    {
+      "name": "error internal_error",
+      "valid": true,
+      "value": {
+        "schema_version": 1,
+        "kind": "error",
+        "request_id": "00000000-0000-4000-8000-000000000001",
+        "error": {
+          "code": "internal_error"
+        }
+      }
+    },
+    {
+      "name": "semantic integer float",
+      "valid": true,
+      "value": {
+        "schema_version": 1.0,
+        "kind": "request",
+        "request_id": "00000000-0000-4000-8000-000000000001",
+        "operation": "health",
+        "deadline_ms": 50.0,
+        "payload": {}
+      }
+    },
+    {
+      "name": "negative deadline",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "kind": "request",
+        "request_id": "00000000-0000-4000-8000-000000000001",
+        "operation": "health",
+        "deadline_ms": -1,
+        "payload": {}
+      }
+    },
+    {
+      "name": "zero deadline",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "kind": "request",
+        "request_id": "00000000-0000-4000-8000-000000000001",
+        "operation": "health",
+        "deadline_ms": 0,
+        "payload": {}
+      }
+    },
+    {
+      "name": "fractional deadline",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "kind": "request",
+        "request_id": "00000000-0000-4000-8000-000000000001",
+        "operation": "health",
+        "deadline_ms": 1.5,
+        "payload": {}
+      }
+    },
+    {
+      "name": "oversize deadline",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "kind": "request",
+        "request_id": "00000000-0000-4000-8000-000000000001",
+        "operation": "health",
+        "deadline_ms": 300001,
+        "payload": {}
+      }
+    },
+    {
+      "name": "boolean deadline",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "kind": "request",
+        "request_id": "00000000-0000-4000-8000-000000000001",
+        "operation": "health",
+        "deadline_ms": true,
+        "payload": {}
+      }
+    },
+    {
+      "name": "string deadline",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "kind": "request",
+        "request_id": "00000000-0000-4000-8000-000000000001",
+        "operation": "health",
+        "deadline_ms": "50",
+        "payload": {}
+      }
+    },
+    {
+      "name": "maximum deadline",
+      "valid": true,
+      "value": {
+        "schema_version": 1,
+        "kind": "request",
+        "request_id": "00000000-0000-4000-8000-000000000001",
+        "operation": "health",
+        "deadline_ms": 300000,
+        "payload": {}
+      }
+    },
+    {
+      "name": "newer schema",
+      "valid": false,
+      "value": {
+        "schema_version": 2,
+        "kind": "hello",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ]
+      }
+    },
+    {
+      "name": "older schema",
+      "valid": false,
+      "value": {
+        "schema_version": 0,
+        "kind": "hello",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ]
+      }
+    },
+    {
+      "name": "string schema",
+      "valid": false,
+      "value": {
+        "schema_version": "1",
+        "kind": "hello",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ]
+      }
+    },
+    {
+      "name": "boolean schema",
+      "valid": false,
+      "value": {
+        "schema_version": true,
+        "kind": "hello",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ]
+      }
+    },
+    {
+      "name": "unknown authority profile",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "kind": "hello",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "profile": "other"
+      }
+    },
+    {
+      "name": "unknown authority scanner_ready",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "kind": "hello",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "scanner_ready": true
+      }
+    },
+    {
+      "name": "unknown authority argv",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "kind": "hello",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "argv": []
+      }
+    },
+    {
+      "name": "unknown authority permissions",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "kind": "hello",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "permissions": {}
+      }
+    },
+    {
+      "name": "unknown authority pid",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "kind": "hello",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "pid": 1
+      }
+    },
+    {
+      "name": "bad worker version 26",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "kind": "hello",
+        "worker_version": "",
+        "operations": [
+          "health"
+        ]
+      }
+    },
+    {
+      "name": "bad worker version 27",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "kind": "hello",
+        "worker_version": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+        "operations": [
+          "health"
+        ]
+      }
+    },
+    {
+      "name": "bad worker version 28",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "kind": "hello",
+        "worker_version": "a\n",
+        "operations": [
+          "health"
+        ]
+      }
+    },
+    {
+      "name": "bad worker version 29",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "kind": "hello",
+        "worker_version": "a\r",
+        "operations": [
+          "health"
+        ]
+      }
+    },
+    {
+      "name": "bad worker version 30",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "kind": "hello",
+        "worker_version": "a b",
+        "operations": [
+          "health"
+        ]
+      }
+    },
+    {
+      "name": "bad worker version 31",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "kind": "hello",
+        "worker_version": "a/../b",
+        "operations": [
+          "health"
+        ]
+      }
+    },
+    {
+      "name": "bad worker version 33",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "kind": "hello",
+        "worker_version": "a\ud83d\ude00",
+        "operations": [
+          "health"
+        ]
+      }
+    },
+    {
+      "name": "bounded worker version",
+      "valid": true,
+      "value": {
+        "schema_version": 1,
+        "kind": "hello",
+        "worker_version": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+        "operations": [
+          "health"
+        ]
+      }
+    },
+    {
+      "name": "unsupported operations 35",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "kind": "hello",
+        "worker_version": "0.0.0-reference",
+        "operations": []
+      }
+    },
+    {
+      "name": "unsupported operations 36",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "kind": "hello",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health",
+          "health"
+        ]
+      }
+    },
+    {
+      "name": "unsupported operations 37",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "kind": "hello",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "skill.inspect"
+        ]
+      }
+    },
+    {
+      "name": "unsupported operations 38",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "kind": "hello",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health",
+          "skill.inspect"
+        ]
+      }
+    },
+    {
+      "name": "unsupported operations 39",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "kind": "hello",
+        "worker_version": "0.0.0-reference",
+        "operations": "health"
+      }
+    },
+    {
+      "name": "nonhealth operation",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "kind": "request",
+        "request_id": "00000000-0000-4000-8000-000000000001",
+        "operation": "skill.inspect",
+        "deadline_ms": 50,
+        "payload": {}
+      }
+    },
+    {
+      "name": "arbitrary command",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "kind": "request",
+        "request_id": "00000000-0000-4000-8000-000000000001",
+        "operation": "bash",
+        "deadline_ms": 50,
+        "payload": {}
+      }
+    },
+    {
+      "name": "nonempty payload 42",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "kind": "request",
+        "request_id": "00000000-0000-4000-8000-000000000001",
+        "operation": "health",
+        "deadline_ms": 50,
+        "payload": {
+          "path": "../outside"
+        }
+      }
+    },
+    {
+      "name": "nonempty payload 43",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "kind": "request",
+        "request_id": "00000000-0000-4000-8000-000000000001",
+        "operation": "health",
+        "deadline_ms": 50,
+        "payload": []
+      }
+    },
+    {
+      "name": "nonempty payload 44",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "kind": "request",
+        "request_id": "00000000-0000-4000-8000-000000000001",
+        "operation": "health",
+        "deadline_ms": 50,
+        "payload": null
+      }
+    },
+    {
+      "name": "bad request identity 45",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "kind": "request",
+        "request_id": "x",
+        "operation": "health",
+        "deadline_ms": 50,
+        "payload": {}
+      }
+    },
+    {
+      "name": "bad request identity 46",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "kind": "request",
+        "request_id": "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA",
+        "operation": "health",
+        "deadline_ms": 50,
+        "payload": {}
+      }
+    },
+    {
+      "name": "bad request identity 47",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "kind": "request",
+        "request_id": "00000000-0000-0000-8000-000000000001",
+        "operation": "health",
+        "deadline_ms": 50,
+        "payload": {}
+      }
+    },
+    {
+      "name": "bad request identity 48",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "kind": "request",
+        "request_id": "00000000-0000-4000-7000-000000000001",
+        "operation": "health",
+        "deadline_ms": 50,
+        "payload": {}
+      }
+    },
+    {
+      "name": "bad request identity 49",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "kind": "request",
+        "request_id": "00000000-0000-4000-8000-000000000001\n",
+        "operation": "health",
+        "deadline_ms": 50,
+        "payload": {}
+      }
+    },
+    {
+      "name": "uppercase-letter lower UUID accepted",
+      "valid": true,
+      "value": {
+        "schema_version": 1,
+        "kind": "request",
+        "request_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        "operation": "health",
+        "deadline_ms": 50,
+        "payload": {}
+      }
+    },
+    {
+      "name": "raw error",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "kind": "error",
+        "request_id": "00000000-0000-4000-8000-000000000001",
+        "error": {
+          "code": "unavailable",
+          "message": "raw detail"
+        }
+      }
+    },
+    {
+      "name": "unknown error",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "kind": "error",
+        "request_id": "00000000-0000-4000-8000-000000000001",
+        "error": {
+          "code": "future"
+        }
+      }
+    },
+    {
+      "name": "scanner success",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "kind": "response",
+        "request_id": "00000000-0000-4000-8000-000000000001",
+        "result": {
+          "status": "ok",
+          "worker_version": "0.0.0-reference",
+          "scanner_ready": true
+        }
+      }
+    },
+    {
+      "name": "non-ok status",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "kind": "response",
+        "request_id": "00000000-0000-4000-8000-000000000001",
+        "result": {
+          "status": "ready",
+          "worker_version": "0.0.0-reference"
+        }
+      }
+    },
+    {
+      "name": "extra cancel",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "kind": "cancel",
+        "request_id": "00000000-0000-4000-8000-000000000001",
+        "cancel": true
+      }
+    },
+    {
+      "name": "unknown kind",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "kind": "worker",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ]
+      }
+    },
+    {
+      "name": "array root",
+      "valid": false,
+      "value": []
+    },
+    {
+      "name": "null root",
+      "valid": false,
+      "value": null
+    }
+  ]
+}

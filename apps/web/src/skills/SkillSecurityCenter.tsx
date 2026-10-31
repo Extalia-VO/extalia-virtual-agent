@@ -5,6 +5,9 @@ import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { errorMessage } from '../host/remote';
 import type { Messages } from '../i18n';
 import { Icon } from '../ui/Icon';
+import { SkillPreflightPanel } from './SkillPreflightPanel';
+import { SkillRoutingPanel } from './SkillRoutingPanel';
+import { skillHostKey, skillPreflightContext } from './skillPreflightContext';
 import {
   applySkillCenterAction, approvalFor, groupSkillPackages, revisionActions, shortDigest, skillCenterSupported, stateTone,
   type SkillCenterAction, type SkillPackageGroup, type SkillRevisionAction,
@@ -27,7 +30,12 @@ const day = (iso: string) => { const date = new Date(iso); return Number.isNaN(d
 /** Workspace id → name, to name the project a W0 consent came from. */
 type WorkspaceNames = Readonly<Record<string, string>>;
 
-export function SkillSecurityCenter({ t, agents, picker, state, onChanged }: { t: Messages; agents: AgentHostApi; picker?: FileSystemCapability; state: HostState; onChanged?: () => void }) {
+type CenterProps = { t: Messages; agents: AgentHostApi; picker?: FileSystemCapability; state: HostState; onChanged?: () => void };
+export function SkillSecurityCenter(props: CenterProps) {
+  // A replacement host must never inherit the old host's catalog or pending actions.
+  return <SkillSecurityCenterHost key={skillHostKey(props.agents)} {...props} />;
+}
+function SkillSecurityCenterHost({ t, agents, picker, state, onChanged }: CenterProps) {
   const supported = skillCenterSupported(agents);
   const [report, setReport] = useState<SkillRegistryReport | null>(null);
   const [busy, setBusy] = useState(false);
@@ -79,11 +87,13 @@ export function SkillSecurityCenter({ t, agents, picker, state, onChanged }: { t
       workspaces={state.workspaces.filter(item => item.projectLocation)}
       onImport={source => void run({ kind: 'import', source })} onCancel={() => setImporter(null)} />
   );
-  return (
+  return (<>
     <SkillSecurityCenterView t={t} report={report} busy={busy} error={error} notice={notice} confirm={confirm} importer={importer} details={details}
       importPanel={importPanel} workspaceNames={workspaceNames} onRetry={() => { setError(null); load(); }} onConfirm={setConfirm} onImporter={next => { setNotice(null); setImporter(next); }}
       onAction={action => void run(action)} onToggleDetails={toggleDetails} />
-  );
+    <SkillPreflightPanel key={skillPreflightContext(agents, report)} agents={agents} report={report} t={t} />
+    <SkillRoutingPanel agents={agents} report={report} workspaces={state.workspaces} t={t} />
+  </>);
 }
 
 /** Stateless so tests can render it and press its buttons. */
@@ -215,13 +225,13 @@ export function SkillRevisionRow({ t, revision, busy, report, confirm, detail, w
   const label = (action: string) => s.actionLabel(action, name, version);
   const actions = revisionActions(revision);
   const button = (action: SkillRevisionAction) => {
-    const common = { type: 'button' as const, disabled: busy, key: action };
-    if (action === 'review') return <button {...common} className="button small" aria-label={label(s.review)} aria-expanded={open === 'review'} onClick={() => onConfirm(open === 'review' ? null : { kind: 'review', revisionId: revision.revisionId })}>{s.review}</button>;
-    if (action === 'approve') return <button {...common} className="button small primary" aria-label={label(s.approve)} aria-expanded={open === 'approve'} onClick={() => onConfirm(open === 'approve' ? null : { kind: 'approve', revisionId: revision.revisionId })}>{s.approve}</button>;
-    if (action === 'activate') return <button {...common} className="button small primary" aria-label={label(s.activate)} onClick={() => onAction({ kind: 'activate', revisionId: revision.revisionId })}>{s.activate}</button>;
-    if (action === 'deactivate') return <button {...common} className="button small" aria-label={label(s.deactivate)} onClick={() => onAction({ kind: 'deactivate', packageId: revision.packageId })}>{s.deactivate}</button>;
-    if (action === 'rollback') return <button {...common} className="button small" aria-label={label(s.rollback)} onClick={() => onAction({ kind: 'rollback', packageId: revision.packageId, revisionId: revision.revisionId })}>{s.rollback}</button>;
-    return <button {...common} className="button small" aria-label={label(s.revoke)} aria-expanded={open === 'revoke'} onClick={() => onConfirm(open === 'revoke' ? null : { kind: 'revoke', revisionId: revision.revisionId })}>{s.revoke}</button>;
+    const common = { type: 'button' as const, disabled: busy };
+    if (action === 'review') return <button key={action} {...common} className="button small" aria-label={label(s.review)} aria-expanded={open === 'review'} onClick={() => onConfirm(open === 'review' ? null : { kind: 'review', revisionId: revision.revisionId })}>{s.review}</button>;
+    if (action === 'approve') return <button key={action} {...common} className="button small primary" aria-label={label(s.approve)} aria-expanded={open === 'approve'} onClick={() => onConfirm(open === 'approve' ? null : { kind: 'approve', revisionId: revision.revisionId })}>{s.approve}</button>;
+    if (action === 'activate') return <button key={action} {...common} className="button small primary" aria-label={label(s.activate)} onClick={() => onAction({ kind: 'activate', revisionId: revision.revisionId })}>{s.activate}</button>;
+    if (action === 'deactivate') return <button key={action} {...common} className="button small" aria-label={label(s.deactivate)} onClick={() => onAction({ kind: 'deactivate', packageId: revision.packageId })}>{s.deactivate}</button>;
+    if (action === 'rollback') return <button key={action} {...common} className="button small" aria-label={label(s.rollback)} onClick={() => onAction({ kind: 'rollback', packageId: revision.packageId, revisionId: revision.revisionId })}>{s.rollback}</button>;
+    return <button key={action} {...common} className="button small" aria-label={label(s.revoke)} aria-expanded={open === 'revoke'} onClick={() => onConfirm(open === 'revoke' ? null : { kind: 'revoke', revisionId: revision.revisionId })}>{s.revoke}</button>;
   };
   return (
     <li key={revision.revisionId} className="skill-revision">

@@ -121,7 +121,7 @@ describe('memory', () => {
 });
 
 describe('skills', () => {
-  it('loads built-ins and lets user and allowed workspace skills override them', async () => {
+  it('keeps user and consented workspace overrides in inventory, outside agent tools', async () => {
     const dir = await temp();
     const user = path.join(dir, 'skills');
     const workspace = path.join(dir, 'project');
@@ -140,7 +140,8 @@ describe('skills', () => {
     expect(byName.deploy).toMatchObject({ source: 'workspace' });
     expect(byName['write-tests']).toMatchObject({ source: 'builtin' });
     const read = await runTool(createSkillTools(loaded.skills), 'skill_read', { name: 'deploy' });
-    expect(read.output).toContain('Run the deploy script.');
+    expect(read.ok).toBe(false);
+    expect(read.output).not.toContain('Run the deploy script.');
   });
 });
 

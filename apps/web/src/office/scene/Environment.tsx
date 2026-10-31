@@ -1,3 +1,4 @@
+import { QA_HOOKS } from './qaHooks';
 import { createContext, useContext, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { deviceSolarLocation } from '../../environment/deviceLocation';
 import type { LightOverride } from './environment/lightOverride';
@@ -26,9 +27,11 @@ let previewMinutes: number | null = null;
 const previewListeners = new Set<() => void>();
 const subscribePreview = (listener: () => void) => { previewListeners.add(listener); return () => { previewListeners.delete(listener); }; };
 const getPreview = () => previewMinutes;
+/** Local wall-clock minute the scene shows (the development time preview, else this device's clock). */
+export function sceneLocalMinutes(now = new Date()): number { return previewMinutes ?? now.getHours() * 60 + now.getMinutes() + now.getSeconds() / 60; }
 let latest: SolarEnvironmentValue = fallback;
 type QaWindow = Window & { __EXTALIA_SOLAR_PREVIEW__?: (minutes: number | null) => void; __EXTALIA_ENV_STATE__?: () => unknown };
-if (import.meta.env.DEV && typeof window !== 'undefined') {
+if (QA_HOOKS && typeof window !== 'undefined') {
   (window as QaWindow).__EXTALIA_SOLAR_PREVIEW__ = minutes => {
     previewMinutes = minutes === null || !Number.isFinite(minutes) ? null : ((minutes % 1440) + 1440) % 1440;
     previewListeners.forEach(listener => listener());

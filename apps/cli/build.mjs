@@ -1,5 +1,7 @@
 import { cp, readFile, rm, stat } from 'node:fs/promises';
 import { build } from 'esbuild';
+import { fileURLToPath } from 'node:url';
+import { verifyModelBuild } from '../../tooling/public-models.mjs';
 
 const manifest = JSON.parse(await readFile(new URL('./package.json', import.meta.url), 'utf8'));
 
@@ -31,7 +33,9 @@ const webDist = new URL('../web/dist/', import.meta.url);
 const target = new URL('./dist/web/', import.meta.url);
 await rm(target, { recursive: true, force: true });
 if (await stat(new URL('index.html', webDist)).then(info => info.isFile(), () => false)) {
+  verifyModelBuild(fileURLToPath(webDist));
   await cp(webDist, target, { recursive: true });
+  verifyModelBuild(fileURLToPath(target));
 } else {
   console.warn('extalia-vo: apps/web/dist not found; the Bridge will show build instructions instead of the UI. Run `pnpm --filter @extalia/web build` first.');
 }

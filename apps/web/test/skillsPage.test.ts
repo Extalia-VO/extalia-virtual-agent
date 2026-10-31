@@ -89,13 +89,13 @@ describe('Skills page modes', () => {
     const html = renderToStaticMarkup(tree);
     expect(html).toContain('Project skills');
     for (const workspace of state.workspaces.filter(item => item.projectLocation)) expect(html).toContain(`aria-label="${workspace.name}"`);
-    expect(html).toContain('available with the preview native core');
+    expect(html).toContain(t.skillsPage.registryNote);
     expect(html).not.toContain('Show all workspaces');
 
     const id = renderToStaticMarkup(SkillsPageView({ t: MESSAGES.id, agents, state, mode: 'legacy', filter: null, onFilter: () => undefined, builtin: null, builtinLoading: false }));
     expect(id).toContain('<h1>Skill</h1>');
     expect(id).toContain('Skill project');
-    expect(id).toContain('native core pratinjau');
+    expect(id).toContain(MESSAGES.id.skillsPage.registryNote);
   });
 
   it('waits for the host before choosing a mode', async () => {
@@ -146,7 +146,9 @@ describe('built-in skills', () => {
       expect(html).toContain(`>${skill.name}</code>`);
       expect(html).toContain(skill.description);
     }
-    expect(html).not.toContain('<button');
+    expect(html).toContain(t.skillsPage.builtinBrowseOnly);
+    expect(html).toContain('<details');
+    expect(html).toContain(t.skillsPage.builtinCategory);
     expect(renderToStaticMarkup(createElement(BuiltinSkillsSection, { t, skills: null, loading: true }))).toContain('Loading skills…');
     expect(renderToStaticMarkup(createElement(BuiltinSkillsSection, { t, skills: null, loading: false }))).toBe('');
     expect(renderToStaticMarkup(createElement(BuiltinSkillsSection, { t: MESSAGES.id, skills: [...MOCK_BUILTIN_SKILLS], loading: false }))).toContain('Skill bawaan');
@@ -215,4 +217,13 @@ describe('links into the Skills page', () => {
     expect(onClose).toHaveBeenCalledOnce();
     expect(renderToStaticMarkup(ProjectSkillsNoticeView({ t: MESSAGES.id, workspaceId: 'w9', count: 1, onReview, onClose }))).toContain('Tinjau skill');
   });
+});
+
+
+it.each(['en', 'id'] as const)('keeps the mandatory scanner notice visible in all registry modes (%s)', async language => {
+  const { agents, state } = await mockHost();
+  for (const mode of ['legacy', 'registry', null] as const) {
+    const html = renderToStaticMarkup(page(agents, state, { mode, t: MESSAGES[language] }));
+    expect(html).toContain(MESSAGES[language].skillsPage.scannerRequired);
+  }
 });

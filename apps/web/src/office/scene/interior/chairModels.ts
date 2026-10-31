@@ -5,7 +5,7 @@ import type { DeskChairVariant } from './deskChairs';
 import { mergeChair } from './chairGeometry';
 
 /** Blender files stay local, like campus/source-avatar models. Missing/broken files keep the backup. */
-const urls = import.meta.glob<string>('/local-assets/furniture/office-chair-*.glb', { eager: true, query: '?url', import: 'default' });
+const urls = import.meta.glob<string>('/public-assets/furniture/office-chair-*.glb', { eager: true, query: '?url', import: 'default' });
 const forceProcedural = typeof location !== 'undefined' && new URLSearchParams(location.search).get('chairs') === 'procedural';
 const cache = new Map<DeskChairVariant, BufferGeometry | null>();
 const pending = new Set<DeskChairVariant>();
@@ -16,7 +16,7 @@ const subscribe = (listener: () => void) => { listeners.add(listener); return ()
 export const OFFICE_CHAIR_MODEL_MATERIAL = new MeshStandardMaterial({ vertexColors: true, roughness: .74, metalness: .14 });
 
 async function load(variant: DeskChairVariant): Promise<void> {
-  const url = forceProcedural ? undefined : urls[`/local-assets/furniture/office-chair-${variant}.glb`];
+  const url = forceProcedural ? undefined : urls[`/public-assets/furniture/office-chair-${variant}.glb`];
   if (!url || pending.has(variant) || cache.has(variant)) return;
   pending.add(variant);
   try {

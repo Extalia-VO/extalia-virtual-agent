@@ -5,7 +5,7 @@ import path from 'node:path';
 import { Readable } from 'node:stream';
 import { createAgentHost, createConnectService, type AgentHostRuntime } from '@extalia/host';
 import type { AgentHostApi, UpdateStatus } from '@extalia/platform';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { startBridgeServer, type BridgeServer } from '../src/bridge/server';
 import { run, type CliHost } from '../src/cli';
 
@@ -106,6 +106,41 @@ describe('extalia connect / disconnect / connections CLI and Bridge hook route',
     expect(io.out.join('\n')).toContain('Codex 0.161.0');
     expect(io.out.join('\n')).toContain('[[hooks.SessionStart]]');
     expect(io.out.join('\n')).toContain('Dry run complete. No files were changed.');
+    await expect(access(path.join(homeDirectory, '.codex', 'config.toml'))).rejects.toThrow();
+  });
+
+  it.each(['--yes', '--dry-run'])('reports a missing command runtime instead of Already connected (%s)', async flag => {
+    const io = makeHost();
+    const service = await io.value.connectService!();
+    const preview = await service.plan('codex');
+    const apply = vi.fn(service.apply);
+    io.value.connectService = async () => ({
+      ...service, plan: async () => ({ ...preview, nodeStatus: 'missing', changes: false }), apply,
+    });
+    expect(await run(['connect', 'codex', flag], io.value)).toBe(1);
+    expect(io.err.join('\n')).toContain('need an available Node.js runtime');
+    expect(io.out.join('\n')).not.toContain('Already connected');
+    expect(apply).not.toHaveBeenCalled();
+    await expect(access(path.join(homeDirectory, '.codex', 'config.toml'))).rejects.toThrow();
+  });
+
+  it.each([undefined, 'approved-preview-digest'])('passes the approved preview digest to apply when available (%s)', async previewDigest => {
+    const io = makeHost({ prompt: async () => true });
+    const service = await io.value.connectService!();
+    const preview = await service.plan('codex', { port: 54321, trust: true });
+    const plan = vi.fn(async () => ({ ...preview, previewDigest }));
+    const apply = vi.fn(async () => ({
+      app: 'codex' as const, changed: true, configPath: preview.configPath!, undoCommand: 'extalia disconnect codex',
+      trust: { status: 'trusted' as const, trusted: 1, total: 1 },
+      test: { ok: true, status: 'delivered' as const, message: 'Accepted.' }, restartHint: preview.restartHint, warnings: [],
+    }));
+    io.value.connectService = async () => ({ ...service, plan, apply });
+
+    expect(await run(['connect', 'codex', '--port', '54321', '--trust'], io.value)).toBe(0);
+    expect(apply).toHaveBeenCalledWith('codex', {
+      port: 54321, trust: true,
+      ...(previewDigest !== undefined ? { expectedPreviewDigest: previewDigest } : {}),
+    });
     await expect(access(path.join(homeDirectory, '.codex', 'config.toml'))).rejects.toThrow();
   });
 

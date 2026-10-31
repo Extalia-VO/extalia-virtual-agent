@@ -33,7 +33,7 @@ export interface ToolItem {
   command?: CommandRun;
   files: FileChange[];
 }
-export interface ApprovalItem { kind: 'approval'; id: string; approvalId: string; action: string; detail?: string; risk?: RiskLevel; status: ApprovalStatus; by?: 'user' | 'policy' }
+export interface ApprovalItem { kind: 'approval'; id: string; approvalId: string; action: string; detail?: string; risk?: RiskLevel; status: ApprovalStatus; by?: 'user' | 'policy'; choice?: 'once' | 'session' | 'reject' }
 export interface FilesItem { kind: 'files'; id: string; files: FileChange[] }
 export interface NoticeItem { kind: 'notice'; id: string; reason: 'cancelled' | 'failed' | 'agent-error'; text?: string }
 export interface UsageItem { kind: 'usage'; id: string; usage?: Usage; model?: string; costUsd?: number; summary?: string }
@@ -183,7 +183,11 @@ export function projectTranscript(events: readonly ExtaliaEvent[]): TranscriptIt
       }
       case 'approval.resolved': {
         const item = approvals.get(body.approvalId);
-        if (item) { item.status = body.decision; item.by = body.by; }
+        if (item) {
+          item.status = body.decision; item.by = body.by;
+          // Historical display metadata cannot change the actual granted/rejected decision.
+          if (body.by === 'user' && ((body.decision === 'granted' && (body.choice === 'once' || body.choice === 'session')) || (body.decision === 'rejected' && body.choice === 'reject'))) item.choice = body.choice;
+        }
         break;
       }
       case 'tool.started': {

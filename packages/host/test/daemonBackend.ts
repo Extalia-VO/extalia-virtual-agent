@@ -34,6 +34,8 @@ export const coreFile = (data: string) => path.join(data, 'state', 'core.sqlite'
 /** Read-only query of the daemon's store (tests only; the daemon is its single writer). */
 export function queryCore<T>(data: string, sql: string, ...params: string[]): T[] {
   const db = new DatabaseSync(coreFile(data), { readOnly: true });
+  // The daemon may be mid-commit; Windows reports that as a lock instead of letting the reader through.
+  db.exec('PRAGMA busy_timeout = 5000');
   try { return db.prepare(sql).all(...params) as T[]; } finally { db.close(); }
 }
 /** Make the daemon's next insert of an `eventType` journal record fail (rolled back by SQLite). */

@@ -1,0 +1,511 @@
+{
+  "schemaVersion": 1,
+  "purpose": "Read-only attribution evidence for existing detailed hair GLBs; no model files modified.",
+  "methods": {
+    "textureComparison": "Blender 5.1.2 factory startup, source packed images and target embedded PNGs sampled at 256x256. Alpha red-channel fit over documented converter density/gamma candidates; grayscale Pearson correlation where variable. Metrics measure pixel correspondence, not licenses.",
+    "uvComparison": "Evaluated Blender mesh loop triangles vs GLB UV triangles, GLB V inverted to Blender convention, UV coordinates rounded to 4 decimal places. Triangle multiplicity and unique UV correspondence reported separately. Geometry can be edited or duplicated; no claim of exact original conversion config.",
+    "converter": "tooling/convert-detailed-hair.py",
+    "networkUsed": false,
+    "testsRun": false
+  },
+  "sourceGroups": [
+    {
+      "id": "next-gen",
+      "sourceArchiveBasename": "next-gen 3d male hairstyle with beard mustache pbr ready.zip",
+      "sourceArchiveSha256": "12ad0613930aa34e5cb87b67a515bb251a48a049aed58177c8eff9a9564c7395",
+      "sourceArchiveBytes": 431246795,
+      "sourceBlendBasename": "blender file.blend",
+      "sourceBlendSha256": "65c45e16414a12f3aff74210edff971215e2020f0dc625140655f8e320a92a0d"
+    },
+    {
+      "id": "realistic",
+      "sourceArchiveBasename": "realistic 3d male hair beard mustache game cgi ready.zip",
+      "sourceArchiveSha256": "8e153a9f57543d85c9eeaa5c3bec9c627049e6ee2c1f174543dadf9d88296ce0",
+      "sourceArchiveBytes": 485000403,
+      "sourceBlendBasename": "blender file.blend",
+      "sourceBlendSha256": "af483da176538513a75df883547e8296554f862f1880547862b2617a85031def"
+    },
+    {
+      "id": "female",
+      "sourceArchiveBasename": "female hair.zip",
+      "sourceArchiveSha256": "6c02340db0d4cfc657f09ec2662ca93a545270146d548e2182efb6024059b344",
+      "sourceArchiveBytes": 294810791,
+      "sourceBlendBasename": "Hair 1.blend",
+      "sourceBlendSha256": "62669908275d75c666b1a05795ad4f6c68de09d1735d0786155e869115d7bd20"
+    }
+  ],
+  "models": [
+    {
+      "glbBasename": "short-fade-detail.glb",
+      "glbSha256": "752fbd9d1b8749450d8658ee75fbea3750ca2b59c37b16659577e8b01516d526",
+      "sourceGroup": "next-gen",
+      "sourceArchiveBasename": "next-gen 3d male hairstyle with beard mustache pbr ready.zip",
+      "sourceBlendBasename": "blender file.blend",
+      "attribution": "texture-pair confirmed; source-mesh UV correspondence corroborated",
+      "textures": [
+        {
+          "targetImageSha256": "af9a64ab8d153acad54fe000e39e2c3b4e06c8a3cc02309dcfdceb8bc3a3b777",
+          "sourceOpacityImageName": "sm_2_m_hair_a_Transparency_Opacity",
+          "sourceOpacityFileBasename": "sm_2_m_hair_a_Transparency_Opacity.png",
+          "sourceOpacityPackedSha256": "13a4c31b3aa2678a2c6b9df1e6d837784eee835ed605918bce7d5343cef5622e",
+          "alphaMeanAbsoluteError": 0.0003194065939169377,
+          "densityGain": 1,
+          "alphaGamma": 1,
+          "grayscaleMatch": null
+        },
+        {
+          "targetImageSha256": "5034300a58d395635e8908d03f78f8e4bbce14794bf4355df8aa8edd43a2950c",
+          "sourceOpacityImageName": "Scalp1_Transparency_Opacity",
+          "sourceOpacityFileBasename": "Scalp1_Transparency_Opacity.jpg",
+          "sourceOpacityPackedSha256": "ed540e8702d414dab5fcb0ae4b66cf78a718b75562dc453a5d120569bf24d72a",
+          "alphaMeanAbsoluteError": 0.00042005456634797156,
+          "densityGain": 1.5,
+          "alphaGamma": 1,
+          "grayscaleMatch": {
+            "sourceImageName": "Scalp1_Transparency_Diffuse",
+            "correlation": 0.9289339124195308
+          }
+        }
+      ],
+      "geometryEvidence": {
+        "targetTriangles": 17094,
+        "matchingUvTriangleCount": 17094,
+        "matchingUvTriangleFraction": 1.0,
+        "uvTrianglePresentFraction": 1.0,
+        "uniqueUvAffineFit": {
+          "correspondences": 4094,
+          "medianErrorMeters": 0.00876429889797535,
+          "p95ErrorMeters": 0.023294623051830384
+        },
+        "matchingUvVertexFraction": 1.0
+      }
+    },
+    {
+      "glbBasename": "textured-crop-detail.glb",
+      "glbSha256": "6339d21cb1a7d7e6a331b51b1cd537ee3944bd0028a70cdff9164a2c931241b3",
+      "sourceGroup": "next-gen",
+      "sourceArchiveBasename": "next-gen 3d male hairstyle with beard mustache pbr ready.zip",
+      "sourceBlendBasename": "blender file.blend",
+      "attribution": "texture-pair confirmed; source-mesh UV correspondence corroborated",
+      "textures": [
+        {
+          "targetImageSha256": "af9a64ab8d153acad54fe000e39e2c3b4e06c8a3cc02309dcfdceb8bc3a3b777",
+          "sourceOpacityImageName": "sm_2_m_hair_a_Transparency_Opacity",
+          "sourceOpacityFileBasename": "sm_2_m_hair_a_Transparency_Opacity.png",
+          "sourceOpacityPackedSha256": "13a4c31b3aa2678a2c6b9df1e6d837784eee835ed605918bce7d5343cef5622e",
+          "alphaMeanAbsoluteError": 0.0003194065939169377,
+          "densityGain": 1,
+          "alphaGamma": 1,
+          "grayscaleMatch": null
+        },
+        {
+          "targetImageSha256": "5034300a58d395635e8908d03f78f8e4bbce14794bf4355df8aa8edd43a2950c",
+          "sourceOpacityImageName": "Scalp1_Transparency_Opacity",
+          "sourceOpacityFileBasename": "Scalp1_Transparency_Opacity.jpg",
+          "sourceOpacityPackedSha256": "ed540e8702d414dab5fcb0ae4b66cf78a718b75562dc453a5d120569bf24d72a",
+          "alphaMeanAbsoluteError": 0.00042005456634797156,
+          "densityGain": 1.5,
+          "alphaGamma": 1,
+          "grayscaleMatch": {
+            "sourceImageName": "Scalp1_Transparency_Diffuse",
+            "correlation": 0.9289339124195308
+          }
+        }
+      ],
+      "geometryEvidence": {
+        "targetTriangles": 17124,
+        "matchingUvTriangleCount": 17122,
+        "matchingUvTriangleFraction": 0.9998832048586779,
+        "uvTrianglePresentFraction": 0.9998832048586779,
+        "uniqueUvAffineFit": {
+          "correspondences": 4161,
+          "medianErrorMeters": 0.0010338558937718746,
+          "p95ErrorMeters": 0.002067581608774877
+        },
+        "matchingUvVertexFraction": 0.9998496692723993
+      }
+    },
+    {
+      "glbBasename": "side-part-detail.glb",
+      "glbSha256": "4e91468303818bf0917068a8dfe3824645cd6c4eb8e070d7d05e0336a106c72d",
+      "sourceGroup": "realistic",
+      "sourceArchiveBasename": "realistic 3d male hair beard mustache game cgi ready.zip",
+      "sourceBlendBasename": "blender file.blend",
+      "attribution": "texture-pair confirmed; source-mesh UV correspondence corroborated",
+      "textures": [
+        {
+          "targetImageSha256": "4a8d081e20c7c6fc6e1ef9f8c1140c371f7a47239c12441e70708db13eff40dc",
+          "sourceOpacityImageName": "MI_Jacob_Hair_Transparency_Opacity",
+          "sourceOpacityFileBasename": "MI_Jacob_Hair_Transparency_Opacity.jpg",
+          "sourceOpacityPackedSha256": "89358db4a5dd8021981b6c820271761ba4383591b86b513389a698a1de25345c",
+          "alphaMeanAbsoluteError": 0.00035763924825005233,
+          "densityGain": 1,
+          "alphaGamma": 1,
+          "grayscaleMatch": {
+            "sourceImageName": "MI_Jacob_Hair_Transparency_Diffuse",
+            "correlation": 0.9893453643780429
+          }
+        },
+        {
+          "targetImageSha256": "223c892a0491f627dad58db3276f8461acea1de55088e40f816da7b48b3e31b0",
+          "sourceOpacityImageName": "Scalp1_Transparency_Opacity",
+          "sourceOpacityFileBasename": "Scalp1_Transparency_Opacity.jpg",
+          "sourceOpacityPackedSha256": "3f17d21ffc8e8ce0522fe6829ecf0bf3048ab8ca9fb02313694e53b482398c65",
+          "alphaMeanAbsoluteError": 0.00040402263402938843,
+          "densityGain": 1.5,
+          "alphaGamma": 1,
+          "grayscaleMatch": {
+            "sourceImageName": "Scalp1_Transparency_Diffuse",
+            "correlation": 0.917303544144918
+          }
+        }
+      ],
+      "geometryEvidence": {
+        "targetTriangles": 17497,
+        "matchingUvTriangleCount": 17497,
+        "matchingUvTriangleFraction": 1.0,
+        "uvTrianglePresentFraction": 1.0,
+        "uniqueUvAffineFit": {
+          "correspondences": 4168,
+          "medianErrorMeters": 0.018253792129144276,
+          "p95ErrorMeters": 0.0509231813577099
+        },
+        "matchingUvVertexFraction": 1.0
+      }
+    },
+    {
+      "glbBasename": "slicked-back-detail.glb",
+      "glbSha256": "2c64ee762edeeb927ca1c50e73eb090b51e0f09cc6366ef76a7757ab333ec0ab",
+      "sourceGroup": "realistic",
+      "sourceArchiveBasename": "realistic 3d male hair beard mustache game cgi ready.zip",
+      "sourceBlendBasename": "blender file.blend",
+      "attribution": "texture-pair confirmed; source-mesh UV correspondence corroborated",
+      "textures": [
+        {
+          "targetImageSha256": "4a8d081e20c7c6fc6e1ef9f8c1140c371f7a47239c12441e70708db13eff40dc",
+          "sourceOpacityImageName": "MI_Jacob_Hair_Transparency_Opacity",
+          "sourceOpacityFileBasename": "MI_Jacob_Hair_Transparency_Opacity.jpg",
+          "sourceOpacityPackedSha256": "89358db4a5dd8021981b6c820271761ba4383591b86b513389a698a1de25345c",
+          "alphaMeanAbsoluteError": 0.00035763924825005233,
+          "densityGain": 1,
+          "alphaGamma": 1,
+          "grayscaleMatch": {
+            "sourceImageName": "MI_Jacob_Hair_Transparency_Diffuse",
+            "correlation": 0.9893453643780429
+          }
+        },
+        {
+          "targetImageSha256": "223c892a0491f627dad58db3276f8461acea1de55088e40f816da7b48b3e31b0",
+          "sourceOpacityImageName": "Scalp1_Transparency_Opacity",
+          "sourceOpacityFileBasename": "Scalp1_Transparency_Opacity.jpg",
+          "sourceOpacityPackedSha256": "3f17d21ffc8e8ce0522fe6829ecf0bf3048ab8ca9fb02313694e53b482398c65",
+          "alphaMeanAbsoluteError": 0.00040402263402938843,
+          "densityGain": 1.5,
+          "alphaGamma": 1,
+          "grayscaleMatch": {
+            "sourceImageName": "Scalp1_Transparency_Diffuse",
+            "correlation": 0.917303544144918
+          }
+        }
+      ],
+      "geometryEvidence": {
+        "targetTriangles": 17497,
+        "matchingUvTriangleCount": 17497,
+        "matchingUvTriangleFraction": 1.0,
+        "uvTrianglePresentFraction": 1.0,
+        "uniqueUvAffineFit": {
+          "correspondences": 4172,
+          "medianErrorMeters": 0.0008019898854467368,
+          "p95ErrorMeters": 0.002177519761659956
+        },
+        "matchingUvVertexFraction": 1.0
+      }
+    },
+    {
+      "glbBasename": "undercut-detail.glb",
+      "glbSha256": "bc7f3d50bee36a42a31ca6bc3c1d01c0a2d47307d7dc44d59d0e8107049cbfd1",
+      "sourceGroup": "realistic",
+      "sourceArchiveBasename": "realistic 3d male hair beard mustache game cgi ready.zip",
+      "sourceBlendBasename": "blender file.blend",
+      "attribution": "texture-pair confirmed; source-mesh UV correspondence corroborated",
+      "textures": [
+        {
+          "targetImageSha256": "4a8d081e20c7c6fc6e1ef9f8c1140c371f7a47239c12441e70708db13eff40dc",
+          "sourceOpacityImageName": "MI_Jacob_Hair_Transparency_Opacity",
+          "sourceOpacityFileBasename": "MI_Jacob_Hair_Transparency_Opacity.jpg",
+          "sourceOpacityPackedSha256": "89358db4a5dd8021981b6c820271761ba4383591b86b513389a698a1de25345c",
+          "alphaMeanAbsoluteError": 0.00035763924825005233,
+          "densityGain": 1,
+          "alphaGamma": 1,
+          "grayscaleMatch": {
+            "sourceImageName": "MI_Jacob_Hair_Transparency_Diffuse",
+            "correlation": 0.9893453643780429
+          }
+        },
+        {
+          "targetImageSha256": "223c892a0491f627dad58db3276f8461acea1de55088e40f816da7b48b3e31b0",
+          "sourceOpacityImageName": "Scalp1_Transparency_Opacity",
+          "sourceOpacityFileBasename": "Scalp1_Transparency_Opacity.jpg",
+          "sourceOpacityPackedSha256": "3f17d21ffc8e8ce0522fe6829ecf0bf3048ab8ca9fb02313694e53b482398c65",
+          "alphaMeanAbsoluteError": 0.00040402263402938843,
+          "densityGain": 1.5,
+          "alphaGamma": 1,
+          "grayscaleMatch": {
+            "sourceImageName": "Scalp1_Transparency_Diffuse",
+            "correlation": 0.917303544144918
+          }
+        }
+      ],
+      "geometryEvidence": {
+        "targetTriangles": 16979,
+        "matchingUvTriangleCount": 16979,
+        "matchingUvTriangleFraction": 1.0,
+        "uvTrianglePresentFraction": 1.0,
+        "uniqueUvAffineFit": {
+          "correspondences": 4905,
+          "medianErrorMeters": 0.014720624792201657,
+          "p95ErrorMeters": 0.03871591622428415
+        },
+        "matchingUvVertexFraction": 1.0
+      }
+    },
+    {
+      "glbBasename": "bob-detail.glb",
+      "glbSha256": "a2702d3aa2625daab6305ee98871b0425fcb9d2b8e356b65b2afa497a18179b4",
+      "sourceGroup": "female",
+      "sourceArchiveBasename": "female hair.zip",
+      "sourceBlendBasename": "Hair 1.blend",
+      "attribution": "texture-pair confirmed; geometry-source chain partial",
+      "textures": [
+        {
+          "targetImageSha256": "a3b0848bf1a5e398481305ab0013aed8c3ec4f5eef7535332130927bd48853da",
+          "sourceOpacityImageName": "Scalp_High_polytail_Transparency_Opacity",
+          "sourceOpacityFileBasename": "Scalp_High_polytail_Transparency_Opacity.jpg",
+          "sourceOpacityPackedSha256": "237185f41dfad3db8129ba889f0c7913422864e66ff6a4d9efc630d11348918b",
+          "alphaMeanAbsoluteError": 0.0012267990969121456,
+          "densityGain": 1.5,
+          "alphaGamma": 1,
+          "grayscaleMatch": null
+        },
+        {
+          "targetImageSha256": "df139e1aa7651c179bbbdd382ef6730ce586f133172ecd5db522b18410a2b92b",
+          "sourceOpacityImageName": "High_polytail_Transparency_Opacity",
+          "sourceOpacityFileBasename": "High_polytail_Transparency_Opacity.jpg",
+          "sourceOpacityPackedSha256": "4d44a1b871227c4adc0fe1d7b8f09b1f22f38534a87d8f9d6b1d581b4bd7f203",
+          "alphaMeanAbsoluteError": 3.8870111893629655e-05,
+          "densityGain": 1,
+          "alphaGamma": 1,
+          "grayscaleMatch": {
+            "sourceImageName": "High_polytail_Transparency_Bump",
+            "correlation": 0.9968708119708771
+          }
+        }
+      ],
+      "geometryEvidence": {
+        "targetTriangles": 15369,
+        "matchingUvTriangleCount": 3773,
+        "matchingUvTriangleFraction": 0.24549417658923808,
+        "uvTrianglePresentFraction": 0.24549417658923808,
+        "uniqueUvAffineFit": {
+          "correspondences": 1182,
+          "medianErrorMeters": 0.01784343560605012,
+          "p95ErrorMeters": 0.07153210802567424
+        },
+        "matchingUvVertexFraction": 0.4065958388667552
+      }
+    },
+    {
+      "glbBasename": "bun-detail.glb",
+      "glbSha256": "58ff338fb1c8283ee9f1af26628779c9af669aeef7374170a1269fb865ff6adf",
+      "sourceGroup": "female",
+      "sourceArchiveBasename": "female hair.zip",
+      "sourceBlendBasename": "Hair 1.blend",
+      "attribution": "texture-pair confirmed; source-mesh UV correspondence corroborated",
+      "textures": [
+        {
+          "targetImageSha256": "a3b0848bf1a5e398481305ab0013aed8c3ec4f5eef7535332130927bd48853da",
+          "sourceOpacityImageName": "Scalp_High_polytail_Transparency_Opacity",
+          "sourceOpacityFileBasename": "Scalp_High_polytail_Transparency_Opacity.jpg",
+          "sourceOpacityPackedSha256": "237185f41dfad3db8129ba889f0c7913422864e66ff6a4d9efc630d11348918b",
+          "alphaMeanAbsoluteError": 0.0012267990969121456,
+          "densityGain": 1.5,
+          "alphaGamma": 1,
+          "grayscaleMatch": null
+        },
+        {
+          "targetImageSha256": "df139e1aa7651c179bbbdd382ef6730ce586f133172ecd5db522b18410a2b92b",
+          "sourceOpacityImageName": "High_polytail_Transparency_Opacity",
+          "sourceOpacityFileBasename": "High_polytail_Transparency_Opacity.jpg",
+          "sourceOpacityPackedSha256": "4d44a1b871227c4adc0fe1d7b8f09b1f22f38534a87d8f9d6b1d581b4bd7f203",
+          "alphaMeanAbsoluteError": 3.8870111893629655e-05,
+          "densityGain": 1,
+          "alphaGamma": 1,
+          "grayscaleMatch": {
+            "sourceImageName": "High_polytail_Transparency_Bump",
+            "correlation": 0.9968708119708771
+          }
+        }
+      ],
+      "geometryEvidence": {
+        "targetTriangles": 15902,
+        "matchingUvTriangleCount": 5160,
+        "matchingUvTriangleFraction": 0.32448748585083637,
+        "uvTrianglePresentFraction": 1.0,
+        "uniqueUvAffineFit": {
+          "correspondences": 421,
+          "medianErrorMeters": 0.0009736519797104864,
+          "p95ErrorMeters": 0.0022075011829623533
+        },
+        "matchingUvVertexFraction": 1.0
+      }
+    },
+    {
+      "glbBasename": "medium-detail.glb",
+      "glbSha256": "6f67aa4f37c5edad57a8a81d23f920ee0e6adf1bf50a056988a591e4bbd7ceb9",
+      "sourceGroup": "female",
+      "sourceArchiveBasename": "female hair.zip",
+      "sourceBlendBasename": "Hair 1.blend",
+      "attribution": "texture-pair confirmed; geometry-source chain partial",
+      "textures": [
+        {
+          "targetImageSha256": "a3b0848bf1a5e398481305ab0013aed8c3ec4f5eef7535332130927bd48853da",
+          "sourceOpacityImageName": "Scalp_High_polytail_Transparency_Opacity",
+          "sourceOpacityFileBasename": "Scalp_High_polytail_Transparency_Opacity.jpg",
+          "sourceOpacityPackedSha256": "237185f41dfad3db8129ba889f0c7913422864e66ff6a4d9efc630d11348918b",
+          "alphaMeanAbsoluteError": 0.0012267990969121456,
+          "densityGain": 1.5,
+          "alphaGamma": 1,
+          "grayscaleMatch": null
+        },
+        {
+          "targetImageSha256": "df139e1aa7651c179bbbdd382ef6730ce586f133172ecd5db522b18410a2b92b",
+          "sourceOpacityImageName": "High_polytail_Transparency_Opacity",
+          "sourceOpacityFileBasename": "High_polytail_Transparency_Opacity.jpg",
+          "sourceOpacityPackedSha256": "4d44a1b871227c4adc0fe1d7b8f09b1f22f38534a87d8f9d6b1d581b4bd7f203",
+          "alphaMeanAbsoluteError": 3.8870111893629655e-05,
+          "densityGain": 1,
+          "alphaGamma": 1,
+          "grayscaleMatch": {
+            "sourceImageName": "High_polytail_Transparency_Bump",
+            "correlation": 0.9968708119708771
+          }
+        }
+      ],
+      "geometryEvidence": {
+        "targetTriangles": 15913,
+        "matchingUvTriangleCount": 3773,
+        "matchingUvTriangleFraction": 0.23710174071513856,
+        "uvTrianglePresentFraction": 0.23710174071513856,
+        "uniqueUvAffineFit": {
+          "correspondences": 1182,
+          "medianErrorMeters": 0.01784343560605012,
+          "p95ErrorMeters": 0.07153210802567424
+        },
+        "matchingUvVertexFraction": 0.4252314814814815
+      }
+    },
+    {
+      "glbBasename": "ponytail-detail.glb",
+      "glbSha256": "a106e4da29f4ce66474cc1258318b9eb16e0e724f087682db9b1bd206604b7c1",
+      "sourceGroup": "female",
+      "sourceArchiveBasename": "female hair.zip",
+      "sourceBlendBasename": "Hair 1.blend",
+      "attribution": "texture-pair confirmed; source-mesh UV correspondence corroborated",
+      "textures": [
+        {
+          "targetImageSha256": "a3b0848bf1a5e398481305ab0013aed8c3ec4f5eef7535332130927bd48853da",
+          "sourceOpacityImageName": "Scalp_High_polytail_Transparency_Opacity",
+          "sourceOpacityFileBasename": "Scalp_High_polytail_Transparency_Opacity.jpg",
+          "sourceOpacityPackedSha256": "237185f41dfad3db8129ba889f0c7913422864e66ff6a4d9efc630d11348918b",
+          "alphaMeanAbsoluteError": 0.0012267990969121456,
+          "densityGain": 1.5,
+          "alphaGamma": 1,
+          "grayscaleMatch": null
+        },
+        {
+          "targetImageSha256": "df139e1aa7651c179bbbdd382ef6730ce586f133172ecd5db522b18410a2b92b",
+          "sourceOpacityImageName": "High_polytail_Transparency_Opacity",
+          "sourceOpacityFileBasename": "High_polytail_Transparency_Opacity.jpg",
+          "sourceOpacityPackedSha256": "4d44a1b871227c4adc0fe1d7b8f09b1f22f38534a87d8f9d6b1d581b4bd7f203",
+          "alphaMeanAbsoluteError": 3.8870111893629655e-05,
+          "densityGain": 1,
+          "alphaGamma": 1,
+          "grayscaleMatch": {
+            "sourceImageName": "High_polytail_Transparency_Bump",
+            "correlation": 0.9968708119708771
+          }
+        }
+      ],
+      "geometryEvidence": {
+        "targetTriangles": 14421,
+        "matchingUvTriangleCount": 5727,
+        "matchingUvTriangleFraction": 0.39712918660287083,
+        "uvTrianglePresentFraction": 1.0,
+        "uniqueUvAffineFit": {
+          "correspondences": 618,
+          "medianErrorMeters": 0.046071129310248496,
+          "p95ErrorMeters": 0.11473521395672794
+        },
+        "matchingUvVertexFraction": 1.0
+      }
+    },
+    {
+      "glbBasename": "high-ponytail-detail.glb",
+      "glbSha256": "c76887839b6907332ed493c1aeb93e89215585c7da55ff1fa947f98ea371e712",
+      "sourceGroup": "female",
+      "sourceArchiveBasename": "female hair.zip",
+      "sourceBlendBasename": "Hair 1.blend",
+      "attribution": "texture-pair confirmed; source-mesh UV correspondence corroborated",
+      "textures": [
+        {
+          "targetImageSha256": "a3b0848bf1a5e398481305ab0013aed8c3ec4f5eef7535332130927bd48853da",
+          "sourceOpacityImageName": "Scalp_High_polytail_Transparency_Opacity",
+          "sourceOpacityFileBasename": "Scalp_High_polytail_Transparency_Opacity.jpg",
+          "sourceOpacityPackedSha256": "237185f41dfad3db8129ba889f0c7913422864e66ff6a4d9efc630d11348918b",
+          "alphaMeanAbsoluteError": 0.0012267990969121456,
+          "densityGain": 1.5,
+          "alphaGamma": 1,
+          "grayscaleMatch": null
+        },
+        {
+          "targetImageSha256": "df139e1aa7651c179bbbdd382ef6730ce586f133172ecd5db522b18410a2b92b",
+          "sourceOpacityImageName": "High_polytail_Transparency_Opacity",
+          "sourceOpacityFileBasename": "High_polytail_Transparency_Opacity.jpg",
+          "sourceOpacityPackedSha256": "4d44a1b871227c4adc0fe1d7b8f09b1f22f38534a87d8f9d6b1d581b4bd7f203",
+          "alphaMeanAbsoluteError": 3.8870111893629655e-05,
+          "densityGain": 1,
+          "alphaGamma": 1,
+          "grayscaleMatch": {
+            "sourceImageName": "High_polytail_Transparency_Bump",
+            "correlation": 0.9968708119708771
+          }
+        }
+      ],
+      "geometryEvidence": {
+        "targetTriangles": 7317,
+        "matchingUvTriangleCount": 7317,
+        "matchingUvTriangleFraction": 1.0,
+        "uvTrianglePresentFraction": 1.0,
+        "uniqueUvAffineFit": {
+          "correspondences": 1671,
+          "medianErrorMeters": 0.0007534091164779382,
+          "p95ErrorMeters": 0.0022397440324919476
+        },
+        "matchingUvVertexFraction": 1.0
+      }
+    }
+  ],
+  "limitations": [
+    "Original per-style conversion configurations are absent. Exact editing history cannot be reconstructed.",
+    "bob-detail.glb and medium-detail.glb decisively reuse the female hair archive texture pair, but only partial UV correspondence supports their geometry source. Remaining geometry provenance is unresolved.",
+    "Affine position residuals are retained as supplemental evidence only; altered styles need not be affine clones.",
+    "Product license classifications were supplied by the parent investigation; this report independently verifies local asset correspondence only."
+  ],
+  "ruledOutAlternate": {
+    "archiveBasename": "female long straight hair free.zip",
+    "archiveSha256": "9d1f92cd2b53a427fccf9935eb7c0ba60ec85bcb9a916ecacd5508ba51d8e21c",
+    "sourceBlendBasename": "blender file 7.blend",
+    "bobAndMediumMatchingUvVertexFraction": 0.0,
+    "bobAndMediumMatchingUvTriangleFraction": 0.0
+  }
+}

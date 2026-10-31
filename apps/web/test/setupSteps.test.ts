@@ -68,6 +68,18 @@ describe('can-advance rules', () => {
     expect(canFinish(state, 'h')).toBe(true);
     expect(canFinish(state, 'x')).toBe(false);
   });
+  it('allows explicit workspace deferral only with the selected saved connection or available Hermes', () => {
+    const empty = { connections: [], workspaces: [] };
+    expect(canFinish(empty, undefined)).toBe(false);
+    expect(canFinish(empty, undefined, { runtimeId: 'extalia-native', connectionId: 'draft', hermesAvailable: true })).toBe(false);
+    expect(canFinish({ connections: [connection('saved')], workspaces: [] }, undefined, { runtimeId: 'extalia-native', connectionId: 'saved', hermesAvailable: false })).toBe(true);
+    expect(canFinish(empty, undefined, { runtimeId: 'hermes', hermesAvailable: false })).toBe(false);
+    expect(canFinish(empty, undefined, { runtimeId: 'hermes', hermesAvailable: true })).toBe(true);
+    // Deferral preserves old workspaces without accepting an unsaved or unrelated Native connection.
+    const migrated = { connections: [connection('saved')], workspaces: [workspace('old', { providerProfileId: 'saved' })] };
+    expect(canFinish(migrated, 'old', { runtimeId: 'extalia-native', connectionId: 'draft', hermesAvailable: false })).toBe(false);
+    expect(canFinish(migrated, 'old')).toBe(true);
+  });
 });
 
 describe('data folder', () => {

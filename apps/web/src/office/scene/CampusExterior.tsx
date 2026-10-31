@@ -5,13 +5,15 @@ import { useFrame } from "@react-three/fiber";
 import { outdoorKioskState } from "./movement/outdoorKiosk";
 import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import type { InstancedMesh, Mesh, MeshStandardMaterial} from "three";
-import { CanvasTexture, DoubleSide, Object3D, QuadraticBezierCurve3, SRGBColorSpace, Vector3 } from "three";
+import { BoxGeometry, CanvasTexture, DoubleSide, Object3D, QuadraticBezierCurve3, SRGBColorSpace, Vector3 } from "three";
 import { useSolarEnvironment } from "./Environment";
 import { OFFICE_BUILDING } from "./layout";
 import { CampusLandscape } from "./CampusLandscape";
 import { FRONT_APPROACH } from "./campusSiteLayout";
 import { GLASS_ELEVATORS } from "./prefabs/architecture/elevatorController";
 import { CampusGrass } from "./CampusGrass";
+import { PARKING_ACCESS_NOTCHES, rectsWithout } from "./campusParkingLots";
+import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { ExteriorPart } from "./ExteriorPart";
 import { OutdoorSolids } from "./movement/OutdoorSolids";
 import { OUTDOOR_FACILITIES_BLUEPRINT as outdoor } from "./spatialBlueprints";
@@ -952,6 +954,26 @@ function FrontEntranceWalkway() {
   );
 }
 
+
+/** The campus plinth (104 × 94 m, top -0.26): one merged draw, open where the parking access ramps descend. */
+const PLINTH = { x0: -52, x1: 52, z0: -47, z1: 47, bottom: -0.68, top: -0.26 } as const;
+function CampusPlinth() {
+  const geometry = useMemo(() => {
+    const boxes = rectsWithout(PLINTH, PARKING_ACCESS_NOTCHES).map(rect => {
+      const box = new BoxGeometry(rect.x1 - rect.x0, PLINTH.top - PLINTH.bottom, rect.z1 - rect.z0);
+      box.translate((rect.x0 + rect.x1) / 2, (PLINTH.top + PLINTH.bottom) / 2, (rect.z0 + rect.z1) / 2);
+      return box;
+    });
+    const merged = mergeGeometries(boxes, false)!;
+    boxes.forEach(box => box.dispose());
+    return merged;
+  }, []);
+  useEffect(() => () => geometry.dispose(), [geometry]);
+  return <mesh name="campus-plinth" receiveShadow geometry={geometry}>
+    <meshStandardMaterial color="#58715a" roughness={0.99} />
+  </mesh>;
+}
+
 export function CampusExterior() {
   const b = OFFICE_BUILDING;
   // Paving ends at the shaft/landing structure, never under its coplanar floors.
@@ -967,10 +989,7 @@ export function CampusExterior() {
   const promenadeDepth = promenadeSouth - promenadeNorth;
   return (
     <group name="extalia-expanded-pedestrian-campus">
-      <mesh receiveShadow position={[0, -0.47, 0]}>
-        <boxGeometry args={[104, 0.42, 94]} />
-        <meshStandardMaterial color="#58715a" roughness={0.99} />
-      </mesh>
+      <CampusPlinth />
       <CampusGrass />
       <CampusLandscape />
       <ElevatorGarden />

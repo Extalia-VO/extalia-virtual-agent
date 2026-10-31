@@ -2,8 +2,9 @@
 .blend or .fbx) into a detailed hair GLB for the local avatars: fitted to the
 canonical head, bound rigidly to the canonical skeleton's `head` bone, with one
 grey-shaded RGBA texture per material (tinted by the character's hair colour at
-runtime, alpha from the pack's opacity map). Outputs are local-only
-(apps/web/local-assets is git-ignored) and must never be committed.
+runtime, alpha from the pack's opacity map). Outputs remain in the ignored
+local asset folder until their license, provenance and hashes are explicitly
+reviewed and registered for the public application bundle.
 
 Usage (run Blender with factory settings so user add-ons do not start):
   Blender -b --factory-startup --python tooling/convert-detailed-hair.py -- '<json>'

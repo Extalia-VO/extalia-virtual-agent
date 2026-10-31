@@ -1,0 +1,4773 @@
+{
+  "cases": [
+    {
+      "name": "root delegation claim",
+      "valid": true,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "grant-a",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 3,
+        "childRemaining": 12,
+        "budget": {
+          "maxWallClockMs": 60000,
+          "maxTokens": 50000,
+          "maxToolCalls": 30,
+          "maxEstimatedCostMicrousd": 1000000
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z"
+      }
+    },
+    {
+      "name": "child delegation claim",
+      "valid": true,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000009-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "hermes",
+        "targetEngineId": "openclaw",
+        "parentTaskId": "00000007-1111-4111-8111-111111111111",
+        "taskId": "0000000a-1111-4111-8111-111111111111",
+        "executionId": "0000000b-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "grant-b",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          },
+          {
+            "engineId": "hermes",
+            "taskId": "00000007-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 2,
+        "childRemaining": 11,
+        "budget": {
+          "maxWallClockMs": 60000,
+          "maxTokens": 50000,
+          "maxToolCalls": 30,
+          "maxEstimatedCostMicrousd": 1000000
+        },
+        "idempotencyKey": "delegation-b",
+        "issuedAt": "2026-01-01T00:01:00Z",
+        "expiresAt": "2026-01-01T00:30:00Z"
+      }
+    },
+    {
+      "name": "leaf allowance zero",
+      "valid": true,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "grant-a",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 0,
+        "childRemaining": 0,
+        "budget": {
+          "maxWallClockMs": 60000,
+          "maxTokens": 50000,
+          "maxToolCalls": 30,
+          "maxEstimatedCostMicrousd": 1000000
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z"
+      }
+    },
+    {
+      "name": "same engine different child task",
+      "valid": true,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "native",
+        "targetEngineId": "native",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "grant-a",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 3,
+        "childRemaining": 12,
+        "budget": {
+          "maxWallClockMs": 60000,
+          "maxTokens": 50000,
+          "maxToolCalls": 30,
+          "maxEstimatedCostMicrousd": 1000000
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z"
+      }
+    },
+    {
+      "name": "approval reference separate from authority",
+      "valid": true,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "grant-a",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 3,
+        "childRemaining": 12,
+        "budget": {
+          "maxWallClockMs": 60000,
+          "maxTokens": 50000,
+          "maxToolCalls": 30,
+          "maxEstimatedCostMicrousd": 1000000
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z",
+        "approvalRef": "approval-record"
+      }
+    },
+    {
+      "name": "zero caps carry no permission",
+      "valid": true,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "grant-a",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 3,
+        "childRemaining": 12,
+        "budget": {
+          "maxWallClockMs": 0,
+          "maxTokens": 0,
+          "maxToolCalls": 0,
+          "maxEstimatedCostMicrousd": 0
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z"
+      }
+    },
+    {
+      "name": "maximum safe revisions and caps",
+      "valid": true,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 9007199254740991,
+        "taskDefinitionVersion": 9007199254740991,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "grant-a",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 3,
+        "childRemaining": 12,
+        "budget": {
+          "maxWallClockMs": 9007199254740991,
+          "maxTokens": 9007199254740991,
+          "maxToolCalls": 9007199254740991,
+          "maxEstimatedCostMicrousd": 9007199254740991
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z"
+      }
+    },
+    {
+      "name": "maximum lineage 32",
+      "valid": true,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000083-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "grant-a",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000064-1111-4111-8111-111111111111"
+          },
+          {
+            "engineId": "native",
+            "taskId": "00000065-1111-4111-8111-111111111111"
+          },
+          {
+            "engineId": "native",
+            "taskId": "00000066-1111-4111-8111-111111111111"
+          },
+          {
+            "engineId": "native",
+            "taskId": "00000067-1111-4111-8111-111111111111"
+          },
+          {
+            "engineId": "native",
+            "taskId": "00000068-1111-4111-8111-111111111111"
+          },
+          {
+            "engineId": "native",
+            "taskId": "00000069-1111-4111-8111-111111111111"
+          },
+          {
+            "engineId": "native",
+            "taskId": "0000006a-1111-4111-8111-111111111111"
+          },
+          {
+            "engineId": "native",
+            "taskId": "0000006b-1111-4111-8111-111111111111"
+          },
+          {
+            "engineId": "native",
+            "taskId": "0000006c-1111-4111-8111-111111111111"
+          },
+          {
+            "engineId": "native",
+            "taskId": "0000006d-1111-4111-8111-111111111111"
+          },
+          {
+            "engineId": "native",
+            "taskId": "0000006e-1111-4111-8111-111111111111"
+          },
+          {
+            "engineId": "native",
+            "taskId": "0000006f-1111-4111-8111-111111111111"
+          },
+          {
+            "engineId": "native",
+            "taskId": "00000070-1111-4111-8111-111111111111"
+          },
+          {
+            "engineId": "native",
+            "taskId": "00000071-1111-4111-8111-111111111111"
+          },
+          {
+            "engineId": "native",
+            "taskId": "00000072-1111-4111-8111-111111111111"
+          },
+          {
+            "engineId": "native",
+            "taskId": "00000073-1111-4111-8111-111111111111"
+          },
+          {
+            "engineId": "native",
+            "taskId": "00000074-1111-4111-8111-111111111111"
+          },
+          {
+            "engineId": "native",
+            "taskId": "00000075-1111-4111-8111-111111111111"
+          },
+          {
+            "engineId": "native",
+            "taskId": "00000076-1111-4111-8111-111111111111"
+          },
+          {
+            "engineId": "native",
+            "taskId": "00000077-1111-4111-8111-111111111111"
+          },
+          {
+            "engineId": "native",
+            "taskId": "00000078-1111-4111-8111-111111111111"
+          },
+          {
+            "engineId": "native",
+            "taskId": "00000079-1111-4111-8111-111111111111"
+          },
+          {
+            "engineId": "native",
+            "taskId": "0000007a-1111-4111-8111-111111111111"
+          },
+          {
+            "engineId": "native",
+            "taskId": "0000007b-1111-4111-8111-111111111111"
+          },
+          {
+            "engineId": "native",
+            "taskId": "0000007c-1111-4111-8111-111111111111"
+          },
+          {
+            "engineId": "native",
+            "taskId": "0000007d-1111-4111-8111-111111111111"
+          },
+          {
+            "engineId": "native",
+            "taskId": "0000007e-1111-4111-8111-111111111111"
+          },
+          {
+            "engineId": "native",
+            "taskId": "0000007f-1111-4111-8111-111111111111"
+          },
+          {
+            "engineId": "native",
+            "taskId": "00000080-1111-4111-8111-111111111111"
+          },
+          {
+            "engineId": "native",
+            "taskId": "00000081-1111-4111-8111-111111111111"
+          },
+          {
+            "engineId": "native",
+            "taskId": "00000082-1111-4111-8111-111111111111"
+          },
+          {
+            "engineId": "native",
+            "taskId": "00000083-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 0,
+        "childRemaining": 12,
+        "budget": {
+          "maxWallClockMs": 60000,
+          "maxTokens": 50000,
+          "maxToolCalls": 30,
+          "maxEstimatedCostMicrousd": 1000000
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z"
+      }
+    },
+    {
+      "name": "reference UTF16 boundary",
+      "valid": true,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 3,
+        "childRemaining": 12,
+        "budget": {
+          "maxWallClockMs": 60000,
+          "maxTokens": 50000,
+          "maxToolCalls": 30,
+          "maxEstimatedCostMicrousd": 1000000
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z"
+      }
+    },
+    {
+      "name": "missing protocol",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "grant-a",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 3,
+        "childRemaining": 12,
+        "budget": {
+          "maxWallClockMs": 60000,
+          "maxTokens": 50000,
+          "maxToolCalls": 30,
+          "maxEstimatedCostMicrousd": 1000000
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z"
+      }
+    },
+    {
+      "name": "missing schemaVersion",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "grant-a",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 3,
+        "childRemaining": 12,
+        "budget": {
+          "maxWallClockMs": 60000,
+          "maxTokens": 50000,
+          "maxToolCalls": 30,
+          "maxEstimatedCostMicrousd": 1000000
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z"
+      }
+    },
+    {
+      "name": "missing kind",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "grant-a",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 3,
+        "childRemaining": 12,
+        "budget": {
+          "maxWallClockMs": 60000,
+          "maxTokens": 50000,
+          "maxToolCalls": 30,
+          "maxEstimatedCostMicrousd": 1000000
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z"
+      }
+    },
+    {
+      "name": "missing delegationId",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "grant-a",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 3,
+        "childRemaining": 12,
+        "budget": {
+          "maxWallClockMs": 60000,
+          "maxTokens": 50000,
+          "maxToolCalls": 30,
+          "maxEstimatedCostMicrousd": 1000000
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z"
+      }
+    },
+    {
+      "name": "missing profileId",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "grant-a",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 3,
+        "childRemaining": 12,
+        "budget": {
+          "maxWallClockMs": 60000,
+          "maxTokens": 50000,
+          "maxToolCalls": 30,
+          "maxEstimatedCostMicrousd": 1000000
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z"
+      }
+    },
+    {
+      "name": "missing workspaceId",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "grant-a",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 3,
+        "childRemaining": 12,
+        "budget": {
+          "maxWallClockMs": 60000,
+          "maxTokens": 50000,
+          "maxToolCalls": 30,
+          "maxEstimatedCostMicrousd": 1000000
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z"
+      }
+    },
+    {
+      "name": "missing rootMissionId",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "grant-a",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 3,
+        "childRemaining": 12,
+        "budget": {
+          "maxWallClockMs": 60000,
+          "maxTokens": 50000,
+          "maxToolCalls": 30,
+          "maxEstimatedCostMicrousd": 1000000
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z"
+      }
+    },
+    {
+      "name": "missing rootRunId",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "grant-a",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 3,
+        "childRemaining": 12,
+        "budget": {
+          "maxWallClockMs": 60000,
+          "maxTokens": 50000,
+          "maxToolCalls": 30,
+          "maxEstimatedCostMicrousd": 1000000
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z"
+      }
+    },
+    {
+      "name": "missing rootEngineId",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "sourceEngineId": "native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "grant-a",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 3,
+        "childRemaining": 12,
+        "budget": {
+          "maxWallClockMs": 60000,
+          "maxTokens": 50000,
+          "maxToolCalls": 30,
+          "maxEstimatedCostMicrousd": 1000000
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z"
+      }
+    },
+    {
+      "name": "missing sourceEngineId",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "grant-a",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 3,
+        "childRemaining": 12,
+        "budget": {
+          "maxWallClockMs": 60000,
+          "maxTokens": 50000,
+          "maxToolCalls": 30,
+          "maxEstimatedCostMicrousd": 1000000
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z"
+      }
+    },
+    {
+      "name": "missing targetEngineId",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "native",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "grant-a",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 3,
+        "childRemaining": 12,
+        "budget": {
+          "maxWallClockMs": 60000,
+          "maxTokens": 50000,
+          "maxToolCalls": 30,
+          "maxEstimatedCostMicrousd": 1000000
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z"
+      }
+    },
+    {
+      "name": "missing parentTaskId",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "native",
+        "targetEngineId": "hermes",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "grant-a",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 3,
+        "childRemaining": 12,
+        "budget": {
+          "maxWallClockMs": 60000,
+          "maxTokens": 50000,
+          "maxToolCalls": 30,
+          "maxEstimatedCostMicrousd": 1000000
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z"
+      }
+    },
+    {
+      "name": "missing taskId",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "grant-a",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 3,
+        "childRemaining": 12,
+        "budget": {
+          "maxWallClockMs": 60000,
+          "maxTokens": 50000,
+          "maxToolCalls": 30,
+          "maxEstimatedCostMicrousd": 1000000
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z"
+      }
+    },
+    {
+      "name": "missing executionId",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "grant-a",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 3,
+        "childRemaining": 12,
+        "budget": {
+          "maxWallClockMs": 60000,
+          "maxTokens": 50000,
+          "maxToolCalls": 30,
+          "maxEstimatedCostMicrousd": 1000000
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z"
+      }
+    },
+    {
+      "name": "missing engineGeneration",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "grant-a",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 3,
+        "childRemaining": 12,
+        "budget": {
+          "maxWallClockMs": 60000,
+          "maxTokens": 50000,
+          "maxToolCalls": 30,
+          "maxEstimatedCostMicrousd": 1000000
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z"
+      }
+    },
+    {
+      "name": "missing taskDefinitionVersion",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "grant-a",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 3,
+        "childRemaining": 12,
+        "budget": {
+          "maxWallClockMs": 60000,
+          "maxTokens": 50000,
+          "maxToolCalls": 30,
+          "maxEstimatedCostMicrousd": 1000000
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z"
+      }
+    },
+    {
+      "name": "missing taskDefinitionDigest",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "authorityRef": "grant-a",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 3,
+        "childRemaining": 12,
+        "budget": {
+          "maxWallClockMs": 60000,
+          "maxTokens": 50000,
+          "maxToolCalls": 30,
+          "maxEstimatedCostMicrousd": 1000000
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z"
+      }
+    },
+    {
+      "name": "missing authorityRef",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 3,
+        "childRemaining": 12,
+        "budget": {
+          "maxWallClockMs": 60000,
+          "maxTokens": 50000,
+          "maxToolCalls": 30,
+          "maxEstimatedCostMicrousd": 1000000
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z"
+      }
+    },
+    {
+      "name": "missing lineage",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "grant-a",
+        "hopRemaining": 3,
+        "childRemaining": 12,
+        "budget": {
+          "maxWallClockMs": 60000,
+          "maxTokens": 50000,
+          "maxToolCalls": 30,
+          "maxEstimatedCostMicrousd": 1000000
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z"
+      }
+    },
+    {
+      "name": "missing hopRemaining",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "grant-a",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "childRemaining": 12,
+        "budget": {
+          "maxWallClockMs": 60000,
+          "maxTokens": 50000,
+          "maxToolCalls": 30,
+          "maxEstimatedCostMicrousd": 1000000
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z"
+      }
+    },
+    {
+      "name": "missing childRemaining",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "grant-a",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 3,
+        "budget": {
+          "maxWallClockMs": 60000,
+          "maxTokens": 50000,
+          "maxToolCalls": 30,
+          "maxEstimatedCostMicrousd": 1000000
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z"
+      }
+    },
+    {
+      "name": "missing budget",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "grant-a",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 3,
+        "childRemaining": 12,
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z"
+      }
+    },
+    {
+      "name": "missing idempotencyKey",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "grant-a",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 3,
+        "childRemaining": 12,
+        "budget": {
+          "maxWallClockMs": 60000,
+          "maxTokens": 50000,
+          "maxToolCalls": 30,
+          "maxEstimatedCostMicrousd": 1000000
+        },
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z"
+      }
+    },
+    {
+      "name": "missing issuedAt",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "grant-a",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 3,
+        "childRemaining": 12,
+        "budget": {
+          "maxWallClockMs": 60000,
+          "maxTokens": 50000,
+          "maxToolCalls": 30,
+          "maxEstimatedCostMicrousd": 1000000
+        },
+        "idempotencyKey": "delegation-a",
+        "expiresAt": "2026-01-01T01:00:00Z"
+      }
+    },
+    {
+      "name": "missing expiresAt",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "grant-a",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 3,
+        "childRemaining": 12,
+        "budget": {
+          "maxWallClockMs": 60000,
+          "maxTokens": 50000,
+          "maxToolCalls": 30,
+          "maxEstimatedCostMicrousd": 1000000
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z"
+      }
+    },
+    {
+      "name": "invalid protocol 34",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.v0",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "grant-a",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 3,
+        "childRemaining": 12,
+        "budget": {
+          "maxWallClockMs": 60000,
+          "maxTokens": 50000,
+          "maxToolCalls": 30,
+          "maxEstimatedCostMicrousd": 1000000
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z"
+      }
+    },
+    {
+      "name": "invalid schemaVersion 35",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": "1.0",
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "grant-a",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 3,
+        "childRemaining": 12,
+        "budget": {
+          "maxWallClockMs": 60000,
+          "maxTokens": 50000,
+          "maxToolCalls": 30,
+          "maxEstimatedCostMicrousd": 1000000
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z"
+      }
+    },
+    {
+      "name": "invalid schemaVersion 36",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": true,
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "grant-a",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 3,
+        "childRemaining": 12,
+        "budget": {
+          "maxWallClockMs": 60000,
+          "maxTokens": 50000,
+          "maxToolCalls": 30,
+          "maxEstimatedCostMicrousd": 1000000
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z"
+      }
+    },
+    {
+      "name": "invalid schemaVersion 37",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 2,
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "grant-a",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 3,
+        "childRemaining": 12,
+        "budget": {
+          "maxWallClockMs": 60000,
+          "maxTokens": 50000,
+          "maxToolCalls": 30,
+          "maxEstimatedCostMicrousd": 1000000
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z"
+      }
+    },
+    {
+      "name": "invalid kind 38",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation-envelope",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "grant-a",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 3,
+        "childRemaining": 12,
+        "budget": {
+          "maxWallClockMs": 60000,
+          "maxTokens": 50000,
+          "maxToolCalls": 30,
+          "maxEstimatedCostMicrousd": 1000000
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z"
+      }
+    },
+    {
+      "name": "invalid delegationId 39",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "opaque",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "grant-a",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 3,
+        "childRemaining": 12,
+        "budget": {
+          "maxWallClockMs": 60000,
+          "maxTokens": 50000,
+          "maxToolCalls": 30,
+          "maxEstimatedCostMicrousd": 1000000
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z"
+      }
+    },
+    {
+      "name": "invalid rootRunId 40",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "run",
+        "rootEngineId": "native",
+        "sourceEngineId": "native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "grant-a",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 3,
+        "childRemaining": 12,
+        "budget": {
+          "maxWallClockMs": 60000,
+          "maxTokens": 50000,
+          "maxToolCalls": 30,
+          "maxEstimatedCostMicrousd": 1000000
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z"
+      }
+    },
+    {
+      "name": "invalid taskDefinitionVersion 41",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 0,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "grant-a",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 3,
+        "childRemaining": 12,
+        "budget": {
+          "maxWallClockMs": 60000,
+          "maxTokens": 50000,
+          "maxToolCalls": 30,
+          "maxEstimatedCostMicrousd": 1000000
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z"
+      }
+    },
+    {
+      "name": "invalid taskDefinitionVersion 42",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 1.5,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "grant-a",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 3,
+        "childRemaining": 12,
+        "budget": {
+          "maxWallClockMs": 60000,
+          "maxTokens": 50000,
+          "maxToolCalls": 30,
+          "maxEstimatedCostMicrousd": 1000000
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z"
+      }
+    },
+    {
+      "name": "invalid engineGeneration 43",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": "1",
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "grant-a",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 3,
+        "childRemaining": 12,
+        "budget": {
+          "maxWallClockMs": 60000,
+          "maxTokens": 50000,
+          "maxToolCalls": 30,
+          "maxEstimatedCostMicrousd": 1000000
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z"
+      }
+    },
+    {
+      "name": "invalid engineGeneration 44",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": true,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "grant-a",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 3,
+        "childRemaining": 12,
+        "budget": {
+          "maxWallClockMs": 60000,
+          "maxTokens": 50000,
+          "maxToolCalls": 30,
+          "maxEstimatedCostMicrousd": 1000000
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z"
+      }
+    },
+    {
+      "name": "invalid engineGeneration 45",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 9007199254740992,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "grant-a",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 3,
+        "childRemaining": 12,
+        "budget": {
+          "maxWallClockMs": 60000,
+          "maxTokens": 50000,
+          "maxToolCalls": 30,
+          "maxEstimatedCostMicrousd": 1000000
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z"
+      }
+    },
+    {
+      "name": "invalid taskDefinitionDigest 46",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "authorityRef": "grant-a",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 3,
+        "childRemaining": 12,
+        "budget": {
+          "maxWallClockMs": 60000,
+          "maxTokens": 50000,
+          "maxToolCalls": 30,
+          "maxEstimatedCostMicrousd": 1000000
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z"
+      }
+    },
+    {
+      "name": "invalid taskDefinitionDigest 47",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "not-digest",
+        "authorityRef": "grant-a",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 3,
+        "childRemaining": 12,
+        "budget": {
+          "maxWallClockMs": 60000,
+          "maxTokens": 50000,
+          "maxToolCalls": 30,
+          "maxEstimatedCostMicrousd": 1000000
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z"
+      }
+    },
+    {
+      "name": "invalid sourceEngineId 48",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "extalia-native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "grant-a",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 3,
+        "childRemaining": 12,
+        "budget": {
+          "maxWallClockMs": 60000,
+          "maxTokens": 50000,
+          "maxToolCalls": 30,
+          "maxEstimatedCostMicrousd": 1000000
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z"
+      }
+    },
+    {
+      "name": "invalid targetEngineId 49",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "native",
+        "targetEngineId": "codex",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "grant-a",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 3,
+        "childRemaining": 12,
+        "budget": {
+          "maxWallClockMs": 60000,
+          "maxTokens": 50000,
+          "maxToolCalls": 30,
+          "maxEstimatedCostMicrousd": 1000000
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z"
+      }
+    },
+    {
+      "name": "invalid rootEngineId 50",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "unknown",
+        "sourceEngineId": "native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "grant-a",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 3,
+        "childRemaining": 12,
+        "budget": {
+          "maxWallClockMs": 60000,
+          "maxTokens": 50000,
+          "maxToolCalls": 30,
+          "maxEstimatedCostMicrousd": 1000000
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z"
+      }
+    },
+    {
+      "name": "invalid authorityRef 51",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 3,
+        "childRemaining": 12,
+        "budget": {
+          "maxWallClockMs": 60000,
+          "maxTokens": 50000,
+          "maxToolCalls": 30,
+          "maxEstimatedCostMicrousd": 1000000
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z"
+      }
+    },
+    {
+      "name": "invalid authorityRef 52",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "\ufeff",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 3,
+        "childRemaining": 12,
+        "budget": {
+          "maxWallClockMs": 60000,
+          "maxTokens": 50000,
+          "maxToolCalls": 30,
+          "maxEstimatedCostMicrousd": 1000000
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z"
+      }
+    },
+    {
+      "name": "invalid authorityRef 53",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "a\nb",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 3,
+        "childRemaining": 12,
+        "budget": {
+          "maxWallClockMs": 60000,
+          "maxTokens": 50000,
+          "maxToolCalls": 30,
+          "maxEstimatedCostMicrousd": 1000000
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z"
+      }
+    },
+    {
+      "name": "invalid authorityRef 54",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 3,
+        "childRemaining": 12,
+        "budget": {
+          "maxWallClockMs": 60000,
+          "maxTokens": 50000,
+          "maxToolCalls": 30,
+          "maxEstimatedCostMicrousd": 1000000
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z"
+      }
+    },
+    {
+      "name": "invalid authorityRef 55",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00x",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 3,
+        "childRemaining": 12,
+        "budget": {
+          "maxWallClockMs": 60000,
+          "maxTokens": 50000,
+          "maxToolCalls": 30,
+          "maxEstimatedCostMicrousd": 1000000
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z"
+      },
+      "schemaGap": "JSON Schema maxLength counts code points; validators count UTF-16 code units"
+    },
+    {
+      "name": "invalid approvalRef 56",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "grant-a",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 3,
+        "childRemaining": 12,
+        "budget": {
+          "maxWallClockMs": 60000,
+          "maxTokens": 50000,
+          "maxToolCalls": 30,
+          "maxEstimatedCostMicrousd": 1000000
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z",
+        "approvalRef": ""
+      }
+    },
+    {
+      "name": "invalid approvalRef 57",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "grant-a",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 3,
+        "childRemaining": 12,
+        "budget": {
+          "maxWallClockMs": 60000,
+          "maxTokens": 50000,
+          "maxToolCalls": 30,
+          "maxEstimatedCostMicrousd": 1000000
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z",
+        "approvalRef": null
+      }
+    },
+    {
+      "name": "invalid idempotencyKey 58",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "grant-a",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 3,
+        "childRemaining": 12,
+        "budget": {
+          "maxWallClockMs": 60000,
+          "maxTokens": 50000,
+          "maxToolCalls": 30,
+          "maxEstimatedCostMicrousd": 1000000
+        },
+        "idempotencyKey": "",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z"
+      }
+    },
+    {
+      "name": "invalid hopRemaining 59",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "grant-a",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": -1,
+        "childRemaining": 12,
+        "budget": {
+          "maxWallClockMs": 60000,
+          "maxTokens": 50000,
+          "maxToolCalls": 30,
+          "maxEstimatedCostMicrousd": 1000000
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z"
+      }
+    },
+    {
+      "name": "invalid hopRemaining 60",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "grant-a",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 33,
+        "childRemaining": 12,
+        "budget": {
+          "maxWallClockMs": 60000,
+          "maxTokens": 50000,
+          "maxToolCalls": 30,
+          "maxEstimatedCostMicrousd": 1000000
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z"
+      }
+    },
+    {
+      "name": "invalid hopRemaining 61",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "grant-a",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 1.1,
+        "childRemaining": 12,
+        "budget": {
+          "maxWallClockMs": 60000,
+          "maxTokens": 50000,
+          "maxToolCalls": 30,
+          "maxEstimatedCostMicrousd": 1000000
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z"
+      }
+    },
+    {
+      "name": "invalid childRemaining 62",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "grant-a",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 3,
+        "childRemaining": 1001,
+        "budget": {
+          "maxWallClockMs": 60000,
+          "maxTokens": 50000,
+          "maxToolCalls": 30,
+          "maxEstimatedCostMicrousd": 1000000
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z"
+      }
+    },
+    {
+      "name": "invalid childRemaining 63",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "grant-a",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 3,
+        "childRemaining": true,
+        "budget": {
+          "maxWallClockMs": 60000,
+          "maxTokens": 50000,
+          "maxToolCalls": 30,
+          "maxEstimatedCostMicrousd": 1000000
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z"
+      }
+    },
+    {
+      "name": "invalid lineage 64",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "grant-a",
+        "lineage": [],
+        "hopRemaining": 3,
+        "childRemaining": 12,
+        "budget": {
+          "maxWallClockMs": 60000,
+          "maxTokens": 50000,
+          "maxToolCalls": 30,
+          "maxEstimatedCostMicrousd": 1000000
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z"
+      }
+    },
+    {
+      "name": "invalid lineage 65",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "grant-a",
+        "lineage": null,
+        "hopRemaining": 3,
+        "childRemaining": 12,
+        "budget": {
+          "maxWallClockMs": 60000,
+          "maxTokens": 50000,
+          "maxToolCalls": 30,
+          "maxEstimatedCostMicrousd": 1000000
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z"
+      }
+    },
+    {
+      "name": "invalid lineage 66",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "grant-a",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111",
+            "processId": "ignored"
+          }
+        ],
+        "hopRemaining": 3,
+        "childRemaining": 12,
+        "budget": {
+          "maxWallClockMs": 60000,
+          "maxTokens": 50000,
+          "maxToolCalls": 30,
+          "maxEstimatedCostMicrousd": 1000000
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z"
+      }
+    },
+    {
+      "name": "invalid issuedAt 67",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "grant-a",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 3,
+        "childRemaining": 12,
+        "budget": {
+          "maxWallClockMs": 60000,
+          "maxTokens": 50000,
+          "maxToolCalls": 30,
+          "maxEstimatedCostMicrousd": 1000000
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-02-30T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z"
+      }
+    },
+    {
+      "name": "invalid expiresAt 68",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "grant-a",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 3,
+        "childRemaining": 12,
+        "budget": {
+          "maxWallClockMs": 60000,
+          "maxTokens": 50000,
+          "maxToolCalls": 30,
+          "maxEstimatedCostMicrousd": 1000000
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "not-a-time"
+      }
+    },
+    {
+      "name": "invalid budget maxWallClockMs None",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "grant-a",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 3,
+        "childRemaining": 12,
+        "budget": {
+          "maxWallClockMs": null,
+          "maxTokens": 50000,
+          "maxToolCalls": 30,
+          "maxEstimatedCostMicrousd": 1000000
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z"
+      }
+    },
+    {
+      "name": "invalid budget maxWallClockMs -1",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "grant-a",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 3,
+        "childRemaining": 12,
+        "budget": {
+          "maxWallClockMs": -1,
+          "maxTokens": 50000,
+          "maxToolCalls": 30,
+          "maxEstimatedCostMicrousd": 1000000
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z"
+      }
+    },
+    {
+      "name": "invalid budget maxWallClockMs 1.5",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "grant-a",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 3,
+        "childRemaining": 12,
+        "budget": {
+          "maxWallClockMs": 1.5,
+          "maxTokens": 50000,
+          "maxToolCalls": 30,
+          "maxEstimatedCostMicrousd": 1000000
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z"
+      }
+    },
+    {
+      "name": "invalid budget maxWallClockMs True",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "grant-a",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 3,
+        "childRemaining": 12,
+        "budget": {
+          "maxWallClockMs": true,
+          "maxTokens": 50000,
+          "maxToolCalls": 30,
+          "maxEstimatedCostMicrousd": 1000000
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z"
+      }
+    },
+    {
+      "name": "invalid budget maxWallClockMs 9007199254740992",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "grant-a",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 3,
+        "childRemaining": 12,
+        "budget": {
+          "maxWallClockMs": 9007199254740992,
+          "maxTokens": 50000,
+          "maxToolCalls": 30,
+          "maxEstimatedCostMicrousd": 1000000
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z"
+      }
+    },
+    {
+      "name": "missing budget maxWallClockMs",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "grant-a",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 3,
+        "childRemaining": 12,
+        "budget": {
+          "maxTokens": 50000,
+          "maxToolCalls": 30,
+          "maxEstimatedCostMicrousd": 1000000
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z"
+      }
+    },
+    {
+      "name": "invalid budget maxTokens None",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "grant-a",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 3,
+        "childRemaining": 12,
+        "budget": {
+          "maxWallClockMs": 60000,
+          "maxTokens": null,
+          "maxToolCalls": 30,
+          "maxEstimatedCostMicrousd": 1000000
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z"
+      }
+    },
+    {
+      "name": "invalid budget maxTokens -1",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "grant-a",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 3,
+        "childRemaining": 12,
+        "budget": {
+          "maxWallClockMs": 60000,
+          "maxTokens": -1,
+          "maxToolCalls": 30,
+          "maxEstimatedCostMicrousd": 1000000
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z"
+      }
+    },
+    {
+      "name": "invalid budget maxTokens 1.5",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "grant-a",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 3,
+        "childRemaining": 12,
+        "budget": {
+          "maxWallClockMs": 60000,
+          "maxTokens": 1.5,
+          "maxToolCalls": 30,
+          "maxEstimatedCostMicrousd": 1000000
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z"
+      }
+    },
+    {
+      "name": "invalid budget maxTokens True",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "grant-a",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 3,
+        "childRemaining": 12,
+        "budget": {
+          "maxWallClockMs": 60000,
+          "maxTokens": true,
+          "maxToolCalls": 30,
+          "maxEstimatedCostMicrousd": 1000000
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z"
+      }
+    },
+    {
+      "name": "invalid budget maxTokens 9007199254740992",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "grant-a",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 3,
+        "childRemaining": 12,
+        "budget": {
+          "maxWallClockMs": 60000,
+          "maxTokens": 9007199254740992,
+          "maxToolCalls": 30,
+          "maxEstimatedCostMicrousd": 1000000
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z"
+      }
+    },
+    {
+      "name": "missing budget maxTokens",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "grant-a",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 3,
+        "childRemaining": 12,
+        "budget": {
+          "maxWallClockMs": 60000,
+          "maxToolCalls": 30,
+          "maxEstimatedCostMicrousd": 1000000
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z"
+      }
+    },
+    {
+      "name": "invalid budget maxToolCalls None",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "grant-a",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 3,
+        "childRemaining": 12,
+        "budget": {
+          "maxWallClockMs": 60000,
+          "maxTokens": 50000,
+          "maxToolCalls": null,
+          "maxEstimatedCostMicrousd": 1000000
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z"
+      }
+    },
+    {
+      "name": "invalid budget maxToolCalls -1",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "grant-a",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 3,
+        "childRemaining": 12,
+        "budget": {
+          "maxWallClockMs": 60000,
+          "maxTokens": 50000,
+          "maxToolCalls": -1,
+          "maxEstimatedCostMicrousd": 1000000
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z"
+      }
+    },
+    {
+      "name": "invalid budget maxToolCalls 1.5",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "grant-a",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 3,
+        "childRemaining": 12,
+        "budget": {
+          "maxWallClockMs": 60000,
+          "maxTokens": 50000,
+          "maxToolCalls": 1.5,
+          "maxEstimatedCostMicrousd": 1000000
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z"
+      }
+    },
+    {
+      "name": "invalid budget maxToolCalls True",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "grant-a",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 3,
+        "childRemaining": 12,
+        "budget": {
+          "maxWallClockMs": 60000,
+          "maxTokens": 50000,
+          "maxToolCalls": true,
+          "maxEstimatedCostMicrousd": 1000000
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z"
+      }
+    },
+    {
+      "name": "invalid budget maxToolCalls 9007199254740992",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "grant-a",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 3,
+        "childRemaining": 12,
+        "budget": {
+          "maxWallClockMs": 60000,
+          "maxTokens": 50000,
+          "maxToolCalls": 9007199254740992,
+          "maxEstimatedCostMicrousd": 1000000
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z"
+      }
+    },
+    {
+      "name": "missing budget maxToolCalls",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "grant-a",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 3,
+        "childRemaining": 12,
+        "budget": {
+          "maxWallClockMs": 60000,
+          "maxTokens": 50000,
+          "maxEstimatedCostMicrousd": 1000000
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z"
+      }
+    },
+    {
+      "name": "invalid budget maxEstimatedCostMicrousd None",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "grant-a",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 3,
+        "childRemaining": 12,
+        "budget": {
+          "maxWallClockMs": 60000,
+          "maxTokens": 50000,
+          "maxToolCalls": 30,
+          "maxEstimatedCostMicrousd": null
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z"
+      }
+    },
+    {
+      "name": "invalid budget maxEstimatedCostMicrousd -1",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "grant-a",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 3,
+        "childRemaining": 12,
+        "budget": {
+          "maxWallClockMs": 60000,
+          "maxTokens": 50000,
+          "maxToolCalls": 30,
+          "maxEstimatedCostMicrousd": -1
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z"
+      }
+    },
+    {
+      "name": "invalid budget maxEstimatedCostMicrousd 1.5",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "grant-a",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 3,
+        "childRemaining": 12,
+        "budget": {
+          "maxWallClockMs": 60000,
+          "maxTokens": 50000,
+          "maxToolCalls": 30,
+          "maxEstimatedCostMicrousd": 1.5
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z"
+      }
+    },
+    {
+      "name": "invalid budget maxEstimatedCostMicrousd True",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "grant-a",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 3,
+        "childRemaining": 12,
+        "budget": {
+          "maxWallClockMs": 60000,
+          "maxTokens": 50000,
+          "maxToolCalls": 30,
+          "maxEstimatedCostMicrousd": true
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z"
+      }
+    },
+    {
+      "name": "invalid budget maxEstimatedCostMicrousd 9007199254740992",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "grant-a",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 3,
+        "childRemaining": 12,
+        "budget": {
+          "maxWallClockMs": 60000,
+          "maxTokens": 50000,
+          "maxToolCalls": 30,
+          "maxEstimatedCostMicrousd": 9007199254740992
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z"
+      }
+    },
+    {
+      "name": "missing budget maxEstimatedCostMicrousd",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "grant-a",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 3,
+        "childRemaining": 12,
+        "budget": {
+          "maxWallClockMs": 60000,
+          "maxTokens": 50000,
+          "maxToolCalls": 30
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z"
+      }
+    },
+    {
+      "name": "foreign cost units alias",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "grant-a",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 3,
+        "childRemaining": 12,
+        "budget": {
+          "maxWallClockMs": 60000,
+          "maxTokens": 50000,
+          "maxToolCalls": 30,
+          "maxEstimatedCostMicrousd": 1000000,
+          "maxEstimatedUSD": 1
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z"
+      }
+    },
+    {
+      "name": "unknown alias ownershipToken",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "grant-a",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 3,
+        "childRemaining": 12,
+        "budget": {
+          "maxWallClockMs": 60000,
+          "maxTokens": 50000,
+          "maxToolCalls": 30,
+          "maxEstimatedCostMicrousd": 1000000
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z",
+        "ownershipToken": "untrusted"
+      }
+    },
+    {
+      "name": "unknown alias originEngineId",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "grant-a",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 3,
+        "childRemaining": 12,
+        "budget": {
+          "maxWallClockMs": 60000,
+          "maxTokens": 50000,
+          "maxToolCalls": 30,
+          "maxEstimatedCostMicrousd": 1000000
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z",
+        "originEngineId": "untrusted"
+      }
+    },
+    {
+      "name": "unknown alias delegateeEngineId",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "grant-a",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 3,
+        "childRemaining": 12,
+        "budget": {
+          "maxWallClockMs": 60000,
+          "maxTokens": 50000,
+          "maxToolCalls": 30,
+          "maxEstimatedCostMicrousd": 1000000
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z",
+        "delegateeEngineId": "untrusted"
+      }
+    },
+    {
+      "name": "unknown alias approvalEnvelopeId",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "grant-a",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 3,
+        "childRemaining": 12,
+        "budget": {
+          "maxWallClockMs": 60000,
+          "maxTokens": 50000,
+          "maxToolCalls": 30,
+          "maxEstimatedCostMicrousd": 1000000
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z",
+        "approvalEnvelopeId": "untrusted"
+      }
+    },
+    {
+      "name": "unknown alias workerAdapterId",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "grant-a",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 3,
+        "childRemaining": 12,
+        "budget": {
+          "maxWallClockMs": 60000,
+          "maxTokens": 50000,
+          "maxToolCalls": 30,
+          "maxEstimatedCostMicrousd": 1000000
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z",
+        "workerAdapterId": "untrusted"
+      }
+    },
+    {
+      "name": "unknown alias parentAuthorityRef",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "grant-a",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 3,
+        "childRemaining": 12,
+        "budget": {
+          "maxWallClockMs": 60000,
+          "maxTokens": 50000,
+          "maxToolCalls": 30,
+          "maxEstimatedCostMicrousd": 1000000
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z",
+        "parentAuthorityRef": "untrusted"
+      }
+    },
+    {
+      "name": "unknown alias processId",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "grant-a",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 3,
+        "childRemaining": 12,
+        "budget": {
+          "maxWallClockMs": 60000,
+          "maxTokens": 50000,
+          "maxToolCalls": 30,
+          "maxEstimatedCostMicrousd": 1000000
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z",
+        "processId": "untrusted"
+      }
+    },
+    {
+      "name": "unknown alias rootSessionId",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "grant-a",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 3,
+        "childRemaining": 12,
+        "budget": {
+          "maxWallClockMs": 60000,
+          "maxTokens": 50000,
+          "maxToolCalls": 30,
+          "maxEstimatedCostMicrousd": 1000000
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z",
+        "rootSessionId": "untrusted"
+      }
+    },
+    {
+      "name": "expiry equal issue",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "grant-a",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 3,
+        "childRemaining": 12,
+        "budget": {
+          "maxWallClockMs": 60000,
+          "maxTokens": 50000,
+          "maxToolCalls": 30,
+          "maxEstimatedCostMicrousd": 1000000
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T00:00:00Z"
+      },
+      "schemaGap": "Cross-field identity/lineage or timestamp comparison"
+    },
+    {
+      "name": "root mismatch",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "hermes",
+        "sourceEngineId": "native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "grant-a",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 3,
+        "childRemaining": 12,
+        "budget": {
+          "maxWallClockMs": 60000,
+          "maxTokens": 50000,
+          "maxToolCalls": 30,
+          "maxEstimatedCostMicrousd": 1000000
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z"
+      },
+      "schemaGap": "Cross-field identity/lineage or timestamp comparison"
+    },
+    {
+      "name": "source mismatch",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "hermes",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "grant-a",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 3,
+        "childRemaining": 12,
+        "budget": {
+          "maxWallClockMs": 60000,
+          "maxTokens": 50000,
+          "maxToolCalls": 30,
+          "maxEstimatedCostMicrousd": 1000000
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z"
+      },
+      "schemaGap": "Cross-field identity/lineage or timestamp comparison"
+    },
+    {
+      "name": "parent mismatch",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000063-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "grant-a",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 3,
+        "childRemaining": 12,
+        "budget": {
+          "maxWallClockMs": 60000,
+          "maxTokens": 50000,
+          "maxToolCalls": 30,
+          "maxEstimatedCostMicrousd": 1000000
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z"
+      },
+      "schemaGap": "Cross-field identity/lineage or timestamp comparison"
+    },
+    {
+      "name": "target cycle",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000006-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "grant-a",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 3,
+        "childRemaining": 12,
+        "budget": {
+          "maxWallClockMs": 60000,
+          "maxTokens": 50000,
+          "maxToolCalls": 30,
+          "maxEstimatedCostMicrousd": 1000000
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z"
+      },
+      "schemaGap": "Cross-field identity/lineage or timestamp comparison"
+    },
+    {
+      "name": "repeated ancestor task",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000009-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "hermes",
+        "targetEngineId": "openclaw",
+        "parentTaskId": "00000007-1111-4111-8111-111111111111",
+        "taskId": "0000000a-1111-4111-8111-111111111111",
+        "executionId": "0000000b-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "grant-b",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          },
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          },
+          {
+            "engineId": "hermes",
+            "taskId": "00000007-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 2,
+        "childRemaining": 11,
+        "budget": {
+          "maxWallClockMs": 60000,
+          "maxTokens": 50000,
+          "maxToolCalls": 30,
+          "maxEstimatedCostMicrousd": 1000000
+        },
+        "idempotencyKey": "delegation-b",
+        "issuedAt": "2026-01-01T00:01:00Z",
+        "expiresAt": "2026-01-01T00:30:00Z"
+      },
+      "schemaGap": "Cross-field identity/lineage or timestamp comparison"
+    },
+    {
+      "name": "task cycle across engines",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000009-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "hermes",
+        "targetEngineId": "openclaw",
+        "parentTaskId": "00000007-1111-4111-8111-111111111111",
+        "taskId": "0000000a-1111-4111-8111-111111111111",
+        "executionId": "0000000b-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "grant-b",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          },
+          {
+            "engineId": "openclaw",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          },
+          {
+            "engineId": "hermes",
+            "taskId": "00000007-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 2,
+        "childRemaining": 11,
+        "budget": {
+          "maxWallClockMs": 60000,
+          "maxTokens": 50000,
+          "maxToolCalls": 30,
+          "maxEstimatedCostMicrousd": 1000000
+        },
+        "idempotencyKey": "delegation-b",
+        "issuedAt": "2026-01-01T00:01:00Z",
+        "expiresAt": "2026-01-01T00:30:00Z"
+      },
+      "schemaGap": "Cross-field identity/lineage or timestamp comparison"
+    },
+    {
+      "name": "lineage overflow",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "delegation",
+        "delegationId": "00000001-1111-4111-8111-111111111111",
+        "profileId": "00000002-1111-4111-8111-111111111111",
+        "workspaceId": "00000003-1111-4111-8111-111111111111",
+        "rootMissionId": "00000004-1111-4111-8111-111111111111",
+        "rootRunId": "00000005-1111-4111-8111-111111111111",
+        "rootEngineId": "native",
+        "sourceEngineId": "native",
+        "targetEngineId": "hermes",
+        "parentTaskId": "00000006-1111-4111-8111-111111111111",
+        "taskId": "00000007-1111-4111-8111-111111111111",
+        "executionId": "00000008-1111-4111-8111-111111111111",
+        "engineGeneration": 1,
+        "taskDefinitionVersion": 3,
+        "taskDefinitionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authorityRef": "grant-a",
+        "lineage": [
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          },
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          },
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          },
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          },
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          },
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          },
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          },
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          },
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          },
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          },
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          },
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          },
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          },
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          },
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          },
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          },
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          },
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          },
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          },
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          },
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          },
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          },
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          },
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          },
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          },
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          },
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          },
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          },
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          },
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          },
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          },
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          },
+          {
+            "engineId": "native",
+            "taskId": "00000006-1111-4111-8111-111111111111"
+          }
+        ],
+        "hopRemaining": 3,
+        "childRemaining": 12,
+        "budget": {
+          "maxWallClockMs": 60000,
+          "maxTokens": 50000,
+          "maxToolCalls": 30,
+          "maxEstimatedCostMicrousd": 1000000
+        },
+        "idempotencyKey": "delegation-a",
+        "issuedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T01:00:00Z"
+      }
+    },
+    {
+      "name": "invalid root null",
+      "valid": false,
+      "value": null
+    },
+    {
+      "name": "invalid root array",
+      "valid": false,
+      "value": []
+    },
+    {
+      "name": "invalid root string",
+      "valid": false,
+      "value": "extalia.control.v1"
+    }
+  ]
+}

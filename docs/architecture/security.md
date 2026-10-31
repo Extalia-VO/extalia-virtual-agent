@@ -43,6 +43,23 @@ Security policy overrides user, project and agent instructions.
 - One host owns a data directory at a time (lock file), so Desktop and the
   Bridge cannot corrupt each other's sessions.
 
+## Mandatory external-skill gate
+
+External skill catalog metadata and `skill_read` bodies require current
+authoritative registry reads bound to the active revision, scanner identity,
+policy and file digest. Legacy user/project inventory and hash consent are
+review input only. There is no caller-supplied `verified` switch or cached-body
+fallback. Missing, unavailable, incomplete, failed or stale scanner evidence
+denies external offerings; the production scanner adapter remains unavailable.
+Exact canonical shipped built-ins remain a separate first-party source, not an
+external-scan attestation. Name/source impersonation cannot establish that source.
+
+This gate covers the registered skill workflow. Generic file, search, web and
+attachment contents remain unverified data rather than activated skills; they
+are not automatically scanned by this change. Native lead and worker prompts
+state that they cannot substitute for scanner approval. That guidance is not a
+deterministic generic-content sandbox or complete workspace/agent ACL enforcement.
+
 ## Files and Git views
 
 - The Files and Git pages are read-only and use the same path rules as the

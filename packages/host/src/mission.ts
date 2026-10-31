@@ -276,6 +276,8 @@ export async function prepareMission(input: {
   request: HostMissionRequest; session: SessionRecord; transient: boolean; root: string;
   connections: ReadonlyMap<string, Connection>;
   providerFor(connection: Connection): Promise<ModelProvider>;
+  /** Trusted composition provenance, never copied from a mission/model request. */
+  localSettlementCoverage?: 'extalia-native-local-v1';
   /**
    * Tool root for a write-capable task (ADR 0028): the host creates the worker's own Git worktree and
    * returns the folder its file tools are bound to. Required when any task has `access: 'write'`.
@@ -307,7 +309,7 @@ export async function prepareMission(input: {
     models: [...profiles.values()].map(profile => ({ ...version, id: profile.id, providerId: providerIds.get(profile.connection.id)!, model: profile.model, toolCalling: true, streaming: true, vision: false })),
     graph: { ...version, missionId, tasks: tasks.map((task, index) => ({ ...version, id: task.taskId, missionId, assignedAgentId: task.agentId, state: 'queued', attempt: 0, dependsOn: request.tasks[index]!.dependsOn.map(alias => tasks.find(task => task.id === alias)!.taskId), requirements: [task.title], evidenceIds: [], ...(task.access === 'write' ? { access: 'write' as const } : {}) })) },
   };
-  const bindings = await Promise.all([...profiles.values()].map(async profile => ({ modelProfileId: profile.id, providerId: providerIds.get(profile.connection.id)!, model: profile.model, provider: await input.providerFor({ ...profile.connection, model: profile.model }) })));
+  const bindings = await Promise.all([...profiles.values()].map(async profile => ({ modelProfileId: profile.id, providerId: providerIds.get(profile.connection.id)!, model: profile.model, provider: await input.providerFor({ ...profile.connection, model: profile.model }), ...(input.localSettlementCoverage ? { localSettlementCoverage: input.localSettlementCoverage } : {}) })));
   const tools = createFileTools(input.root).filter(tool => tool.access === 'read');
   // Write-capable tasks get every file tool, rooted in their own worktree; nothing is bound to the project folder.
   const writeTools = new Map<string, ReturnType<typeof createFileTools>>();
@@ -323,6 +325,7 @@ export async function prepareMission(input: {
     options: { plan, sessionId, bindings, maxConcurrency,
       budget: { ...(budget.maxTokens !== undefined ? { maxTokens: budget.maxTokens } : {}), ...(budget.maxTaskTokens !== undefined ? { maxTaskTokens: budget.maxTaskTokens } : {}), ...(budget.maxDurationMs !== undefined ? { maxDurationMs: budget.maxDurationMs } : {}) },
       tasks: tasks.map((task, index) => ({ taskId: task.taskId, instructions: request.tasks[index]!.instructions, timeoutMs: request.tasks[index]!.timeoutMs ?? 60_000, maxSteps: request.tasks[index]!.maxSteps ?? 8,
+        ...(input.localSettlementCoverage ? { localSettlementCoverage: input.localSettlementCoverage } : {}),
         ...(writeTools.has(task.taskId) ? { tools: writeTools.get(task.taskId)!, writeCapable: true } : { tools }) })) },
   };
 }

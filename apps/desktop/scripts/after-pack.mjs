@@ -10,12 +10,14 @@
 import { chmod, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { daemonBinaryName, readExecutableKind } from '../../../tooling/daemon.mjs';
+import { verifyModelBuild } from '../../../tooling/public-models.mjs';
 
 // builder-util's Arch enum.
 const ARCH = ['ia32', 'x64', 'armv7l', 'arm64', 'universal'];
 const PLATFORM = { darwin: 'darwin', mas: 'darwin', win32: 'win32', linux: 'linux' };
 
 export default async function afterPack(context) {
+  verifyModelBuild(path.join(context.packager.getResourcesDir(context.appOutDir), 'web'));
   const platform = PLATFORM[context.electronPlatformName];
   const arch = ARCH[context.arch];
   const binary = path.join(context.packager.getResourcesDir(context.appOutDir), 'daemon', daemonBinaryName(platform));

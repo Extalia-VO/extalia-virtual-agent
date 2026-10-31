@@ -42,8 +42,8 @@ if (process.platform === 'darwin' && !env.CC) env.CC = 'clang';
 const buildOnly = process.argv.includes('--build-daemon');
 const steps = buildOnly ? [['build', '-p', 'extalia-daemon', '--locked']] : [
   ['fmt', '--all', '--check'],
-  ['clippy', '--workspace', '--all-targets', '--locked', '--', '-D', 'warnings'],
-  ['test', '--workspace', '--locked'],
+  ['clippy', '--workspace', '--all-targets', '--locked', '--features', 'extalia-daemon/test-fixtures', '--', '-D', 'warnings'],
+  ['test', '--workspace', '--locked', '--features', 'extalia-daemon/test-fixtures'],
 ];
 for (const args of steps) {
   console.log(`$ cargo ${args.join(' ')}`);

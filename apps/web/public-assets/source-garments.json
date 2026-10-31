@@ -1,0 +1,4301 @@
+{
+  "schemaVersion": 1,
+  "exporter": "tooling/blender/fit-source-garments.py",
+  "garments": [
+    {
+      "path": "avatars/outfits/female/outfit-source-denim-dress.glb",
+      "id": "source-denim-dress",
+      "group": "female",
+      "mode": "outfit",
+      "source": {
+        "path": "female/woman_dress.glb",
+        "sha256": "b3144a3e92744c15859087850d65872c41dcaa0a87a1088bfb5fc3e84dd20d5e"
+      },
+      "fittedSHA256": "a05234b88eea64ded8523e1ae4effa761599414f2747504d5b12d2ee82864b0c",
+      "sha256": "4134373289bb8370459eed51f938058f15796b1259a912eaec262cdc44e8708f",
+      "triangles": 16465,
+      "bytes": 9314536,
+      "budgets": {
+        "triangles": 16465,
+        "bytes": 9326592
+      },
+      "fitChecks": {
+        "rest": true,
+        "walk": true,
+        "sit": true,
+        "reach": true,
+        "sourceAppearance": true
+      },
+      "materials": {
+        "OriginalTop_P0S1": {
+          "sourceMaterialIndex": 1,
+          "graphSHA256": "f94aaf370e93c58729979e5336e4713677fe15a0ec30728a7720ee26267a5b62",
+          "requiredImages": [
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "2dd7cc0955904071ac9ba83b5a7efaecbadda2575d69afb193ee77581f845614",
+              "bytes": 2218823
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "65ac948557e54431bf4b257facf106382b29e8cd939dafedd7234f892cda8a2b",
+              "bytes": 2293241
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/metallicRoughnessTexture",
+              "sha256": "2de0a52ccd1269fbfcb2b6bf30d13159ef7bcdfcb054fef5ac2247d4517ec98e",
+              "bytes": 797562
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {}
+        },
+        "OriginalBottom_P1S0": {
+          "sourceMaterialIndex": 0,
+          "graphSHA256": "b7e61450bc49301162d4fadf4edf44eb51645ec5e371c31a298f6bd0b046257f",
+          "requiredImages": [
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "85e4e35c5283db50e6eed5d27490a9478fd9ca7a53ef45e61bcb724e5095dc07",
+              "bytes": 2201686
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/metallicRoughnessTexture",
+              "sha256": "e99f3731c1e1ad06e917f7c50bbb09d9994fe40c48a0bc8e0fe56899eb6c89f7",
+              "bytes": 727439
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {}
+        }
+      },
+      "materialGraphSHA256": "66f848264f63f4a5f83f95aacc1e72917aacd7601456af58b3a284f6e79aedfe",
+      "imageSHA256s": [
+        "2dd7cc0955904071ac9ba83b5a7efaecbadda2575d69afb193ee77581f845614",
+        "2de0a52ccd1269fbfcb2b6bf30d13159ef7bcdfcb054fef5ac2247d4517ec98e",
+        "65ac948557e54431bf4b257facf106382b29e8cd939dafedd7234f892cda8a2b",
+        "85e4e35c5283db50e6eed5d27490a9478fd9ca7a53ef45e61bcb724e5095dc07",
+        "e99f3731c1e1ad06e917f7c50bbb09d9994fe40c48a0bc8e0fe56899eb6c89f7"
+      ],
+      "license": "CC-BY-4.0",
+      "attribution": {
+        "title": "Woman Dress",
+        "author": "Ali \u015eahan Yal\u00e7\u0131n (https://sketchfab.com/alisahanyalcin)",
+        "source": "https://sketchfab.com/3d-models/woman-dress-7f36459d7f7b43548d56e63d899d7354",
+        "license": "CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)"
+      },
+      "componentLicenses": {
+        "sourceGarment": "CC-BY-4.0",
+        "referenceAvatarRigAndContext": "LicenseRef-RenderHub-Extended-Use"
+      }
+    },
+    {
+      "path": "avatars/outfits/female/outfit-source-jumper-skirt.glb",
+      "id": "source-jumper-skirt",
+      "group": "female",
+      "mode": "outfit",
+      "source": {
+        "path": "female/puff_sleeve_and_jumper_skirt.glb",
+        "sha256": "5628f5eee851c570dcddc466c6a4446d4a17e749f99f073d7015ac7d491d3bab"
+      },
+      "fittedSHA256": "e927d27afa603600ae016fe2cc7c25c90cff4ca2555631e02c1bdab72e35246b",
+      "sha256": "412f8b0a178db488ff6541dc4a0c222b104375fdaa8f244f251efe3af9267a3e",
+      "triangles": 17012,
+      "bytes": 6491644,
+      "budgets": {
+        "triangles": 17012,
+        "bytes": 6504448
+      },
+      "fitChecks": {
+        "rest": true,
+        "walk": true,
+        "sit": true,
+        "reach": true,
+        "sourceAppearance": true
+      },
+      "materials": {
+        "OriginalTop_P0S0": {
+          "sourceMaterialIndex": 0,
+          "graphSHA256": "69fe072a8712b2e10c42fa5324f976636be8d09607780960f0bdc3b66f507c3a",
+          "requiredImages": [
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "ab88a878de146a6f21c9fceb4e2cae6e65e92aaf47e7892d36484c2a6e7c83bf",
+              "bytes": 702943
+            },
+            {
+              "textureInfo": "/occlusionTexture",
+              "sha256": "575e86baf9fe12eb8bbba0ec6586dda707053edf7602076108288eb7b93c1b31",
+              "bytes": 882222
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "958367ec410d74314ab81bfecf25199ac8d764523c63a4e87d7fd27f6de6280a",
+              "bytes": 1030776
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/metallicRoughnessTexture",
+              "sha256": "575e86baf9fe12eb8bbba0ec6586dda707053edf7602076108288eb7b93c1b31",
+              "bytes": 882222
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {}
+        },
+        "OriginalBottom_P1S1": {
+          "sourceMaterialIndex": 1,
+          "graphSHA256": "acd09460d3a55af2fbdf69c2586edf6727f57f5717be93e58c1cc447c044e44b",
+          "requiredImages": [
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "acf5e1ac52395ad9c50e49ce1665102a301a21fe5c104cbacd186f3dbf7eda17",
+              "bytes": 887310
+            },
+            {
+              "textureInfo": "/occlusionTexture",
+              "sha256": "5447cd35455a158af26d518131de2859a03c091d8ca4ccb5a42e961825c5e10f",
+              "bytes": 988360
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "10e01d5669807f7dfd1215950eca810aaa0514d012c534186a9df72636fe0969",
+              "bytes": 1039150
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/metallicRoughnessTexture",
+              "sha256": "5447cd35455a158af26d518131de2859a03c091d8ca4ccb5a42e961825c5e10f",
+              "bytes": 988360
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {}
+        }
+      },
+      "materialGraphSHA256": "99d2bfe7f2fa7c0d0a3d41c3392e4c596024b5ac522ea505343ce49a2233a70b",
+      "imageSHA256s": [
+        "10e01d5669807f7dfd1215950eca810aaa0514d012c534186a9df72636fe0969",
+        "5447cd35455a158af26d518131de2859a03c091d8ca4ccb5a42e961825c5e10f",
+        "575e86baf9fe12eb8bbba0ec6586dda707053edf7602076108288eb7b93c1b31",
+        "958367ec410d74314ab81bfecf25199ac8d764523c63a4e87d7fd27f6de6280a",
+        "ab88a878de146a6f21c9fceb4e2cae6e65e92aaf47e7892d36484c2a6e7c83bf",
+        "acf5e1ac52395ad9c50e49ce1665102a301a21fe5c104cbacd186f3dbf7eda17"
+      ],
+      "license": "CC-BY-4.0",
+      "attribution": {
+        "title": "puff sleeve and jumper (skirt)",
+        "author": "Takeru (https://sketchfab.com/takeru1124)",
+        "source": "https://sketchfab.com/3d-models/puff-sleeve-and-jumper-skirt-1f94546fb3c04051957958098fe1ee06",
+        "license": "CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)"
+      },
+      "componentLicenses": {
+        "sourceGarment": "CC-BY-4.0",
+        "referenceAvatarRigAndContext": "LicenseRef-RenderHub-Extended-Use"
+      }
+    },
+    {
+      "path": "avatars/outfits/male/outfit-black-business-suit.glb",
+      "id": "black-business-suit",
+      "group": "male",
+      "mode": "outfit",
+      "source": {
+        "path": "male/man_black_business_suit.glb",
+        "sha256": "f1783701928d7a6707831fb1360c76ef32a967f17b89ff08076d773ecc4842cd"
+      },
+      "fittedSHA256": "4f5e3089d58c066b5c86b6340b6e040fde4012177b27965dea9807bd55a0cc62",
+      "sha256": "ee06fde976d9a0722730053e992cd512496f126fda3d798e469a46c8034c1922",
+      "triangles": 666717,
+      "bytes": 41038756,
+      "budgets": {
+        "triangles": 666717,
+        "bytes": 41050112
+      },
+      "fitChecks": {
+        "rest": true,
+        "walk": true,
+        "sit": true,
+        "reach": true,
+        "sourceAppearance": true
+      },
+      "materials": {
+        "OriginalTop_P0S3": {
+          "sourceMaterialIndex": 3,
+          "graphSHA256": "9f7af05959608975845963101ea658b0d46ff647179b6f8115b6f44db4123c1f",
+          "requiredImages": [
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "90da72718a81ec39f1464d277b8450829b537327472ce6ccf8fe050f2dea9568",
+              "bytes": 8349883
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "fd5a074e4a965b9a8656ccb1da9bfc6a688d0925e4a9114434233108cfb63d63",
+              "bytes": 1228522
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {}
+        },
+        "OriginalTop_P1S3": {
+          "sourceMaterialIndex": 3,
+          "graphSHA256": "9f7af05959608975845963101ea658b0d46ff647179b6f8115b6f44db4123c1f",
+          "requiredImages": [
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "90da72718a81ec39f1464d277b8450829b537327472ce6ccf8fe050f2dea9568",
+              "bytes": 8349883
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "fd5a074e4a965b9a8656ccb1da9bfc6a688d0925e4a9114434233108cfb63d63",
+              "bytes": 1228522
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {}
+        },
+        "OriginalTop_P2S3": {
+          "sourceMaterialIndex": 3,
+          "graphSHA256": "9f7af05959608975845963101ea658b0d46ff647179b6f8115b6f44db4123c1f",
+          "requiredImages": [
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "90da72718a81ec39f1464d277b8450829b537327472ce6ccf8fe050f2dea9568",
+              "bytes": 8349883
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "fd5a074e4a965b9a8656ccb1da9bfc6a688d0925e4a9114434233108cfb63d63",
+              "bytes": 1228522
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {}
+        },
+        "OriginalTop_P3S3": {
+          "sourceMaterialIndex": 3,
+          "graphSHA256": "9f7af05959608975845963101ea658b0d46ff647179b6f8115b6f44db4123c1f",
+          "requiredImages": [
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "90da72718a81ec39f1464d277b8450829b537327472ce6ccf8fe050f2dea9568",
+              "bytes": 8349883
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "fd5a074e4a965b9a8656ccb1da9bfc6a688d0925e4a9114434233108cfb63d63",
+              "bytes": 1228522
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {}
+        },
+        "OriginalTop_P4S3": {
+          "sourceMaterialIndex": 3,
+          "graphSHA256": "9f7af05959608975845963101ea658b0d46ff647179b6f8115b6f44db4123c1f",
+          "requiredImages": [
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "90da72718a81ec39f1464d277b8450829b537327472ce6ccf8fe050f2dea9568",
+              "bytes": 8349883
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "fd5a074e4a965b9a8656ccb1da9bfc6a688d0925e4a9114434233108cfb63d63",
+              "bytes": 1228522
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {}
+        },
+        "OriginalTop_P5S3": {
+          "sourceMaterialIndex": 3,
+          "graphSHA256": "9f7af05959608975845963101ea658b0d46ff647179b6f8115b6f44db4123c1f",
+          "requiredImages": [
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "90da72718a81ec39f1464d277b8450829b537327472ce6ccf8fe050f2dea9568",
+              "bytes": 8349883
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "fd5a074e4a965b9a8656ccb1da9bfc6a688d0925e4a9114434233108cfb63d63",
+              "bytes": 1228522
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {}
+        },
+        "OriginalTop_P6S3": {
+          "sourceMaterialIndex": 3,
+          "graphSHA256": "9f7af05959608975845963101ea658b0d46ff647179b6f8115b6f44db4123c1f",
+          "requiredImages": [
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "90da72718a81ec39f1464d277b8450829b537327472ce6ccf8fe050f2dea9568",
+              "bytes": 8349883
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "fd5a074e4a965b9a8656ccb1da9bfc6a688d0925e4a9114434233108cfb63d63",
+              "bytes": 1228522
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {}
+        },
+        "OriginalTop_P7S3": {
+          "sourceMaterialIndex": 3,
+          "graphSHA256": "9f7af05959608975845963101ea658b0d46ff647179b6f8115b6f44db4123c1f",
+          "requiredImages": [
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "90da72718a81ec39f1464d277b8450829b537327472ce6ccf8fe050f2dea9568",
+              "bytes": 8349883
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "fd5a074e4a965b9a8656ccb1da9bfc6a688d0925e4a9114434233108cfb63d63",
+              "bytes": 1228522
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {}
+        },
+        "OriginalTop_P8S3": {
+          "sourceMaterialIndex": 3,
+          "graphSHA256": "9f7af05959608975845963101ea658b0d46ff647179b6f8115b6f44db4123c1f",
+          "requiredImages": [
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "90da72718a81ec39f1464d277b8450829b537327472ce6ccf8fe050f2dea9568",
+              "bytes": 8349883
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "fd5a074e4a965b9a8656ccb1da9bfc6a688d0925e4a9114434233108cfb63d63",
+              "bytes": 1228522
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {}
+        },
+        "OriginalTop_P9S3": {
+          "sourceMaterialIndex": 3,
+          "graphSHA256": "9f7af05959608975845963101ea658b0d46ff647179b6f8115b6f44db4123c1f",
+          "requiredImages": [
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "90da72718a81ec39f1464d277b8450829b537327472ce6ccf8fe050f2dea9568",
+              "bytes": 8349883
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "fd5a074e4a965b9a8656ccb1da9bfc6a688d0925e4a9114434233108cfb63d63",
+              "bytes": 1228522
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {}
+        },
+        "OriginalAccent_P10S8": {
+          "sourceMaterialIndex": 8,
+          "graphSHA256": "e4d3382bf9adae666e0fe7cbab6c71b5d8bb747813cae87578f0916398f09f7e",
+          "requiredImages": [],
+          "requiredUVSets": [],
+          "overrides": {}
+        },
+        "OriginalTop_P11S3": {
+          "sourceMaterialIndex": 3,
+          "graphSHA256": "9f7af05959608975845963101ea658b0d46ff647179b6f8115b6f44db4123c1f",
+          "requiredImages": [
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "90da72718a81ec39f1464d277b8450829b537327472ce6ccf8fe050f2dea9568",
+              "bytes": 8349883
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "fd5a074e4a965b9a8656ccb1da9bfc6a688d0925e4a9114434233108cfb63d63",
+              "bytes": 1228522
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {}
+        },
+        "OriginalAccent_P12S4": {
+          "sourceMaterialIndex": 4,
+          "graphSHA256": "b18b9c35109751137174d0bddaea5c8c5efc9c53bae9fa39c1ea526be07a1253",
+          "requiredImages": [],
+          "requiredUVSets": [],
+          "overrides": {}
+        },
+        "OriginalAccent_P13S4": {
+          "sourceMaterialIndex": 4,
+          "graphSHA256": "b18b9c35109751137174d0bddaea5c8c5efc9c53bae9fa39c1ea526be07a1253",
+          "requiredImages": [],
+          "requiredUVSets": [],
+          "overrides": {}
+        },
+        "OriginalAccent_P14S4": {
+          "sourceMaterialIndex": 4,
+          "graphSHA256": "b18b9c35109751137174d0bddaea5c8c5efc9c53bae9fa39c1ea526be07a1253",
+          "requiredImages": [],
+          "requiredUVSets": [],
+          "overrides": {}
+        },
+        "OriginalAccent_P15S4": {
+          "sourceMaterialIndex": 4,
+          "graphSHA256": "b18b9c35109751137174d0bddaea5c8c5efc9c53bae9fa39c1ea526be07a1253",
+          "requiredImages": [],
+          "requiredUVSets": [],
+          "overrides": {}
+        },
+        "OriginalAccent_P16S4": {
+          "sourceMaterialIndex": 4,
+          "graphSHA256": "b18b9c35109751137174d0bddaea5c8c5efc9c53bae9fa39c1ea526be07a1253",
+          "requiredImages": [],
+          "requiredUVSets": [],
+          "overrides": {}
+        },
+        "OriginalAccent_P17S5": {
+          "sourceMaterialIndex": 5,
+          "graphSHA256": "9959e31b2bb1fd92c94a7829a01603a83de7f186a83740b1a1e8b5a218b5e585",
+          "requiredImages": [],
+          "requiredUVSets": [],
+          "overrides": {}
+        },
+        "OriginalAccent_P18S5": {
+          "sourceMaterialIndex": 5,
+          "graphSHA256": "9959e31b2bb1fd92c94a7829a01603a83de7f186a83740b1a1e8b5a218b5e585",
+          "requiredImages": [],
+          "requiredUVSets": [],
+          "overrides": {}
+        },
+        "OriginalAccent_P19S6": {
+          "sourceMaterialIndex": 6,
+          "graphSHA256": "bfb42f6b487a8f519d555ffb10a9de253b7029c46802ffebc830e6d7b75ea14c",
+          "requiredImages": [],
+          "requiredUVSets": [],
+          "overrides": {}
+        },
+        "OriginalAccent_P20S6": {
+          "sourceMaterialIndex": 6,
+          "graphSHA256": "bfb42f6b487a8f519d555ffb10a9de253b7029c46802ffebc830e6d7b75ea14c",
+          "requiredImages": [],
+          "requiredUVSets": [],
+          "overrides": {}
+        },
+        "OriginalAccent_P21S0": {
+          "sourceMaterialIndex": 0,
+          "graphSHA256": "e4d32b29ddfdc7218756972f264e28e2cc0e6d12c16e3ec3031fb581deeb6c41",
+          "requiredImages": [
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "c28dc765b7a51921fc0a67e89de229fe55ff975b24fcde355f0701ce2d59362c",
+              "bytes": 8086
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {}
+        },
+        "OriginalAccent_P22S6": {
+          "sourceMaterialIndex": 6,
+          "graphSHA256": "bfb42f6b487a8f519d555ffb10a9de253b7029c46802ffebc830e6d7b75ea14c",
+          "requiredImages": [],
+          "requiredUVSets": [],
+          "overrides": {}
+        },
+        "OriginalAccent_P23S6": {
+          "sourceMaterialIndex": 6,
+          "graphSHA256": "bfb42f6b487a8f519d555ffb10a9de253b7029c46802ffebc830e6d7b75ea14c",
+          "requiredImages": [],
+          "requiredUVSets": [],
+          "overrides": {}
+        },
+        "OriginalAccent_P24S6": {
+          "sourceMaterialIndex": 6,
+          "graphSHA256": "bfb42f6b487a8f519d555ffb10a9de253b7029c46802ffebc830e6d7b75ea14c",
+          "requiredImages": [],
+          "requiredUVSets": [],
+          "overrides": {}
+        },
+        "OriginalAccent_P25S6": {
+          "sourceMaterialIndex": 6,
+          "graphSHA256": "bfb42f6b487a8f519d555ffb10a9de253b7029c46802ffebc830e6d7b75ea14c",
+          "requiredImages": [],
+          "requiredUVSets": [],
+          "overrides": {}
+        },
+        "OriginalAccent_P26S6": {
+          "sourceMaterialIndex": 6,
+          "graphSHA256": "bfb42f6b487a8f519d555ffb10a9de253b7029c46802ffebc830e6d7b75ea14c",
+          "requiredImages": [],
+          "requiredUVSets": [],
+          "overrides": {}
+        },
+        "OriginalAccent_P27S6": {
+          "sourceMaterialIndex": 6,
+          "graphSHA256": "bfb42f6b487a8f519d555ffb10a9de253b7029c46802ffebc830e6d7b75ea14c",
+          "requiredImages": [],
+          "requiredUVSets": [],
+          "overrides": {}
+        },
+        "OriginalAccent_P28S7": {
+          "sourceMaterialIndex": 7,
+          "graphSHA256": "f03ec28722eb5a95cf2b8bd79ca20c99a7c3f6784792e8515d7888f45045f73f",
+          "requiredImages": [],
+          "requiredUVSets": [],
+          "overrides": {}
+        },
+        "OriginalAccent_P29S7": {
+          "sourceMaterialIndex": 7,
+          "graphSHA256": "f03ec28722eb5a95cf2b8bd79ca20c99a7c3f6784792e8515d7888f45045f73f",
+          "requiredImages": [],
+          "requiredUVSets": [],
+          "overrides": {}
+        },
+        "OriginalAccent_P30S7": {
+          "sourceMaterialIndex": 7,
+          "graphSHA256": "f03ec28722eb5a95cf2b8bd79ca20c99a7c3f6784792e8515d7888f45045f73f",
+          "requiredImages": [],
+          "requiredUVSets": [],
+          "overrides": {}
+        },
+        "OriginalAccent_P31S1": {
+          "sourceMaterialIndex": 1,
+          "graphSHA256": "1bd944820bfe6fc822303cc74b8ac4eeda377b219e9eee9fd058847ec440a573",
+          "requiredImages": [
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "c28dc765b7a51921fc0a67e89de229fe55ff975b24fcde355f0701ce2d59362c",
+              "bytes": 8086
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {}
+        },
+        "OriginalAccent_P32S2": {
+          "sourceMaterialIndex": 2,
+          "graphSHA256": "cb99dfbffc28c8e121e4b0239d471b9737865b361d6b3f0d598f7661e4f8ce4e",
+          "requiredImages": [],
+          "requiredUVSets": [],
+          "overrides": {}
+        },
+        "OriginalTop_P33S3": {
+          "sourceMaterialIndex": 3,
+          "graphSHA256": "9f7af05959608975845963101ea658b0d46ff647179b6f8115b6f44db4123c1f",
+          "requiredImages": [
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "90da72718a81ec39f1464d277b8450829b537327472ce6ccf8fe050f2dea9568",
+              "bytes": 8349883
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "fd5a074e4a965b9a8656ccb1da9bfc6a688d0925e4a9114434233108cfb63d63",
+              "bytes": 1228522
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {}
+        },
+        "OriginalTop_P34S3": {
+          "sourceMaterialIndex": 3,
+          "graphSHA256": "9f7af05959608975845963101ea658b0d46ff647179b6f8115b6f44db4123c1f",
+          "requiredImages": [
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "90da72718a81ec39f1464d277b8450829b537327472ce6ccf8fe050f2dea9568",
+              "bytes": 8349883
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "fd5a074e4a965b9a8656ccb1da9bfc6a688d0925e4a9114434233108cfb63d63",
+              "bytes": 1228522
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {}
+        },
+        "OriginalTop_P35S3": {
+          "sourceMaterialIndex": 3,
+          "graphSHA256": "9f7af05959608975845963101ea658b0d46ff647179b6f8115b6f44db4123c1f",
+          "requiredImages": [
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "90da72718a81ec39f1464d277b8450829b537327472ce6ccf8fe050f2dea9568",
+              "bytes": 8349883
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "fd5a074e4a965b9a8656ccb1da9bfc6a688d0925e4a9114434233108cfb63d63",
+              "bytes": 1228522
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {}
+        },
+        "OriginalTop_P36S3": {
+          "sourceMaterialIndex": 3,
+          "graphSHA256": "9f7af05959608975845963101ea658b0d46ff647179b6f8115b6f44db4123c1f",
+          "requiredImages": [
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "90da72718a81ec39f1464d277b8450829b537327472ce6ccf8fe050f2dea9568",
+              "bytes": 8349883
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "fd5a074e4a965b9a8656ccb1da9bfc6a688d0925e4a9114434233108cfb63d63",
+              "bytes": 1228522
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {}
+        },
+        "OriginalBottom_P8S3": {
+          "sourceMaterialIndex": 3,
+          "graphSHA256": "9f7af05959608975845963101ea658b0d46ff647179b6f8115b6f44db4123c1f",
+          "requiredImages": [
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "90da72718a81ec39f1464d277b8450829b537327472ce6ccf8fe050f2dea9568",
+              "bytes": 8349883
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "fd5a074e4a965b9a8656ccb1da9bfc6a688d0925e4a9114434233108cfb63d63",
+              "bytes": 1228522
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {}
+        },
+        "OriginalBottom_P9S3": {
+          "sourceMaterialIndex": 3,
+          "graphSHA256": "9f7af05959608975845963101ea658b0d46ff647179b6f8115b6f44db4123c1f",
+          "requiredImages": [
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "90da72718a81ec39f1464d277b8450829b537327472ce6ccf8fe050f2dea9568",
+              "bytes": 8349883
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "fd5a074e4a965b9a8656ccb1da9bfc6a688d0925e4a9114434233108cfb63d63",
+              "bytes": 1228522
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {}
+        },
+        "OriginalBottom_P11S3": {
+          "sourceMaterialIndex": 3,
+          "graphSHA256": "9f7af05959608975845963101ea658b0d46ff647179b6f8115b6f44db4123c1f",
+          "requiredImages": [
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "90da72718a81ec39f1464d277b8450829b537327472ce6ccf8fe050f2dea9568",
+              "bytes": 8349883
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "fd5a074e4a965b9a8656ccb1da9bfc6a688d0925e4a9114434233108cfb63d63",
+              "bytes": 1228522
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {}
+        },
+        "OriginalBottom_P33S3": {
+          "sourceMaterialIndex": 3,
+          "graphSHA256": "9f7af05959608975845963101ea658b0d46ff647179b6f8115b6f44db4123c1f",
+          "requiredImages": [
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "90da72718a81ec39f1464d277b8450829b537327472ce6ccf8fe050f2dea9568",
+              "bytes": 8349883
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "fd5a074e4a965b9a8656ccb1da9bfc6a688d0925e4a9114434233108cfb63d63",
+              "bytes": 1228522
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {}
+        },
+        "OriginalTop_AdditiveUnderlap_S3": {
+          "sourceMaterialIndex": 3,
+          "graphSHA256": "9f7af05959608975845963101ea658b0d46ff647179b6f8115b6f44db4123c1f",
+          "requiredImages": [
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "90da72718a81ec39f1464d277b8450829b537327472ce6ccf8fe050f2dea9568",
+              "bytes": 8349883
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "fd5a074e4a965b9a8656ccb1da9bfc6a688d0925e4a9114434233108cfb63d63",
+              "bytes": 1228522
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {}
+        }
+      },
+      "materialGraphSHA256": "3149f9b95ae59084c3a25c6cf82e0af2c24f0792adb0cddb7f41198298a60024",
+      "imageSHA256s": [
+        "90da72718a81ec39f1464d277b8450829b537327472ce6ccf8fe050f2dea9568",
+        "c28dc765b7a51921fc0a67e89de229fe55ff975b24fcde355f0701ce2d59362c",
+        "fd5a074e4a965b9a8656ccb1da9bfc6a688d0925e4a9114434233108cfb63d63"
+      ],
+      "license": "CC-BY-4.0",
+      "attribution": {
+        "title": "Man Black Business Suit",
+        "author": "Style3D CG (https://sketchfab.com/Style3DMeta)",
+        "source": "https://sketchfab.com/3d-models/man-black-business-suit-7a669a06fb954d459985ccaa98672177",
+        "license": "CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)"
+      },
+      "componentLicenses": {
+        "sourceGarment": "CC-BY-4.0",
+        "referenceAvatarRigAndContext": "LicenseRef-RenderHub-Extended-Use"
+      }
+    },
+    {
+      "path": "avatars/outfits/male/outfit-mens-two-piece-suit.glb",
+      "id": "mens-two-piece-suit",
+      "group": "male",
+      "mode": "outfit",
+      "source": {
+        "path": "male/mens_two_piece_suit.glb",
+        "sha256": "fd0cd49ce80c65e0e312e7f6437cd854159ebef670aa1c0091d094eb392ec5de"
+      },
+      "fittedSHA256": "c5dd6a890ba3b1dbf7a760ffa660e1be098d45daed6f6ff561939a0f97431008",
+      "sha256": "5fed0203890c228663eb868d30d5378d54d894272972652c0de47ac2f4eceb58",
+      "triangles": 12311,
+      "bytes": 22627580,
+      "budgets": {
+        "triangles": 12311,
+        "bytes": 22638592
+      },
+      "fitChecks": {
+        "rest": true,
+        "walk": true,
+        "sit": true,
+        "reach": true,
+        "sourceAppearance": true
+      },
+      "materials": {
+        "OriginalTop_P0S0": {
+          "sourceMaterialIndex": 0,
+          "graphSHA256": "88ca7cf646e4022fa813dcd09f8498c5bfebd3679634cb6b341c27afe76cff90",
+          "requiredImages": [
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "e2bc358286ceb2dc9b0209c5a55107be8a0f7e95fd2ad4ca32be9bf16970a36a",
+              "bytes": 19225127
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "d732a78decca3c99ab64c185da0545a52811740db060a91ae0924b5fa42eedf5",
+              "bytes": 2139946
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {
+            "alphaMode": "OPAQUE"
+          }
+        },
+        "OriginalBottom_P0S0": {
+          "sourceMaterialIndex": 0,
+          "graphSHA256": "88ca7cf646e4022fa813dcd09f8498c5bfebd3679634cb6b341c27afe76cff90",
+          "requiredImages": [
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "e2bc358286ceb2dc9b0209c5a55107be8a0f7e95fd2ad4ca32be9bf16970a36a",
+              "bytes": 19225127
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "d732a78decca3c99ab64c185da0545a52811740db060a91ae0924b5fa42eedf5",
+              "bytes": 2139946
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {
+            "alphaMode": "OPAQUE"
+          }
+        },
+        "OriginalTop_AdditiveUnderlap_S0": {
+          "sourceMaterialIndex": 0,
+          "graphSHA256": "88ca7cf646e4022fa813dcd09f8498c5bfebd3679634cb6b341c27afe76cff90",
+          "requiredImages": [
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "e2bc358286ceb2dc9b0209c5a55107be8a0f7e95fd2ad4ca32be9bf16970a36a",
+              "bytes": 19225127
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "d732a78decca3c99ab64c185da0545a52811740db060a91ae0924b5fa42eedf5",
+              "bytes": 2139946
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {
+            "alphaMode": "OPAQUE"
+          }
+        }
+      },
+      "materialGraphSHA256": "4b9a39735bd54532b89fcb3c6bac649abfd8357b682bb9618c5e707f1ab25ecd",
+      "imageSHA256s": [
+        "d732a78decca3c99ab64c185da0545a52811740db060a91ae0924b5fa42eedf5",
+        "e2bc358286ceb2dc9b0209c5a55107be8a0f7e95fd2ad4ca32be9bf16970a36a"
+      ],
+      "license": "CC-BY-4.0",
+      "attribution": {
+        "title": "Men's Two Piece Suit",
+        "author": "DineshThennarasan (https://sketchfab.com/dineshthennarasan)",
+        "source": "https://sketchfab.com/3d-models/mens-two-piece-suit-8cafbab7a73e4fb7966a00659a4e31ef",
+        "license": "CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)"
+      },
+      "componentLicenses": {
+        "sourceGarment": "CC-BY-4.0",
+        "referenceAvatarRigAndContext": "LicenseRef-RenderHub-Extended-Use"
+      }
+    },
+    {
+      "path": "avatars/outfits/male/outfit-printed-hoodie-jeans.glb",
+      "id": "printed-hoodie-jeans",
+      "group": "male",
+      "mode": "outfit",
+      "source": {
+        "path": "male/hoodie_and_jeans.glb",
+        "sha256": "98fa6246cf28b3c5901cf769cd83e56e37cd13016120a22565f3f263263d4911"
+      },
+      "fittedSHA256": "0fdc686346562450611afa78aab1bd6fae85374b66d61585be1fb50b0ff3a01a",
+      "sha256": "7ee1bb2cdb8d8fcbd26d67c74d8bf9160d052a1c4e9c4d216c83f7893aaac0fa",
+      "triangles": 11280,
+      "bytes": 10688268,
+      "budgets": {
+        "triangles": 11280,
+        "bytes": 10698752
+      },
+      "fitChecks": {
+        "rest": true,
+        "walk": true,
+        "sit": true,
+        "reach": true,
+        "sourceAppearance": true
+      },
+      "materials": {
+        "OriginalTop_P0S0": {
+          "sourceMaterialIndex": 0,
+          "graphSHA256": "979ada2137d84d7778c5a0ea8d34e9236a9d359010ffd582491c3052eb2dd87e",
+          "requiredImages": [
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "ef36f3547b6c471e3fd28d89254d0e700e9d50aac2ac12e468a00edb17f6e5ca",
+              "bytes": 1770309
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "79f92b88acc7e8ba0512fcaa068da967d34b9906bcb65b03e4a950380a384be8",
+              "bytes": 3149251
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {}
+        },
+        "OriginalBottom_P1S1": {
+          "sourceMaterialIndex": 1,
+          "graphSHA256": "bf8e84e09ec77d73c98a99b15ff8d0fd57a2fccf7c9b5a91bebf10a26bab2aee",
+          "requiredImages": [
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "deb6e13fff1478b1101a73bd0c3b77c9e17f415b529250785679eed1b0530fd7",
+              "bytes": 1552573
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "2a75cd75fe451c705f9597fc5179e297191e2189709582ccf834b0ef35eb3a23",
+              "bytes": 3646050
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {}
+        },
+        "OriginalShoes_P1S1": {
+          "sourceMaterialIndex": 1,
+          "graphSHA256": "bf8e84e09ec77d73c98a99b15ff8d0fd57a2fccf7c9b5a91bebf10a26bab2aee",
+          "requiredImages": [
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "deb6e13fff1478b1101a73bd0c3b77c9e17f415b529250785679eed1b0530fd7",
+              "bytes": 1552573
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "2a75cd75fe451c705f9597fc5179e297191e2189709582ccf834b0ef35eb3a23",
+              "bytes": 3646050
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {}
+        }
+      },
+      "materialGraphSHA256": "c681c0d5e0fbe5eb4090ed5a6216af3662eb89e957af1aa16f75cdcde50e538c",
+      "imageSHA256s": [
+        "2a75cd75fe451c705f9597fc5179e297191e2189709582ccf834b0ef35eb3a23",
+        "79f92b88acc7e8ba0512fcaa068da967d34b9906bcb65b03e4a950380a384be8",
+        "deb6e13fff1478b1101a73bd0c3b77c9e17f415b529250785679eed1b0530fd7",
+        "ef36f3547b6c471e3fd28d89254d0e700e9d50aac2ac12e468a00edb17f6e5ca"
+      ],
+      "license": "CC-BY-4.0",
+      "attribution": {
+        "title": "Hoodie and Jeans",
+        "author": "lizhiqiang (https://sketchfab.com/lizhiqiang89)",
+        "source": "https://sketchfab.com/3d-models/hoodie-and-jeans-4fc7bc06a5b94568b1923268f4a6e825",
+        "license": "CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)"
+      },
+      "componentLicenses": {
+        "sourceGarment": "CC-BY-4.0",
+        "referenceAvatarRigAndContext": "LicenseRef-RenderHub-Extended-Use"
+      }
+    },
+    {
+      "path": "avatars/outfits/male/outfit-prom-suit.glb",
+      "id": "prom-suit",
+      "group": "male",
+      "mode": "outfit",
+      "source": {
+        "path": "male/prom_suit.glb",
+        "sha256": "c0b9b3ba31cc2e7e31cac3ab02f2b8a576f6714f982dc82df90e1613d443271a"
+      },
+      "fittedSHA256": "99f9087c92f223d1f2c5e64dab59287ad66fca9ce3329ea63eb0f9814eec3637",
+      "sha256": "4f8d749d42eae4148127ec720adf8226058304d80151bca3c632c65cee706d8c",
+      "triangles": 14384,
+      "bytes": 3124972,
+      "budgets": {
+        "triangles": 14384,
+        "bytes": 3137536
+      },
+      "fitChecks": {
+        "rest": true,
+        "walk": true,
+        "sit": true,
+        "reach": true,
+        "sourceAppearance": true
+      },
+      "materials": {
+        "OriginalTop_P0S0": {
+          "sourceMaterialIndex": 0,
+          "graphSHA256": "7466047f5e001bc1cb23d7003c003d502621cad55fd3bfc0cd8bfcec1b215d2d",
+          "requiredImages": [
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "1fba5f12860666b14f5feca7c319e9e86944c514838a1bd8e50716bb71f49c08",
+              "bytes": 1088328
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {}
+        },
+        "OriginalTop_P1S1": {
+          "sourceMaterialIndex": 1,
+          "graphSHA256": "7466047f5e001bc1cb23d7003c003d502621cad55fd3bfc0cd8bfcec1b215d2d",
+          "requiredImages": [
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "1fba5f12860666b14f5feca7c319e9e86944c514838a1bd8e50716bb71f49c08",
+              "bytes": 1088328
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {}
+        },
+        "OriginalShoes_P2S2": {
+          "sourceMaterialIndex": 2,
+          "graphSHA256": "3ec11a2e3091ae0743fd5d1d2f501d942a1ffced55acec68cf1a5eed96c156d3",
+          "requiredImages": [
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "bd0a0a9e905c4bbd63b4310add141af29bb68e1c84927558e680ae492ffe3d2e",
+              "bytes": 135713
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {}
+        },
+        "OriginalAccent_P3S3": {
+          "sourceMaterialIndex": 3,
+          "graphSHA256": "8be7e39bc81a85e058c40fcd32ac95e36539533a5bd27946aad491a836e62aeb",
+          "requiredImages": [
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "190c6d8396f55a9464b84e00ca66370eb723a7770d54ef0f7178a5f5018a7bd3",
+              "bytes": 106730
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {}
+        },
+        "OriginalAccent_P4S4": {
+          "sourceMaterialIndex": 4,
+          "graphSHA256": "202e1b373504a95b73ae2aa0ed8c1db0647ce8c598802da666848e44c43339b0",
+          "requiredImages": [
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "ef6f3708b0a429f064e5d0a43058ffc12de990cb3477f5bb8a79c98e45881173",
+              "bytes": 563205
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {}
+        },
+        "OriginalBottom_P1S1": {
+          "sourceMaterialIndex": 1,
+          "graphSHA256": "7466047f5e001bc1cb23d7003c003d502621cad55fd3bfc0cd8bfcec1b215d2d",
+          "requiredImages": [
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "1fba5f12860666b14f5feca7c319e9e86944c514838a1bd8e50716bb71f49c08",
+              "bytes": 1088328
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {}
+        },
+        "OriginalTop_AdditiveUnderlap_S0": {
+          "sourceMaterialIndex": 0,
+          "graphSHA256": "7466047f5e001bc1cb23d7003c003d502621cad55fd3bfc0cd8bfcec1b215d2d",
+          "requiredImages": [
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "1fba5f12860666b14f5feca7c319e9e86944c514838a1bd8e50716bb71f49c08",
+              "bytes": 1088328
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {}
+        }
+      },
+      "materialGraphSHA256": "cdc99cb983c15ebecfde16e1564dc201df540b94f16c64a16400829fb45c54f7",
+      "imageSHA256s": [
+        "190c6d8396f55a9464b84e00ca66370eb723a7770d54ef0f7178a5f5018a7bd3",
+        "1fba5f12860666b14f5feca7c319e9e86944c514838a1bd8e50716bb71f49c08",
+        "bd0a0a9e905c4bbd63b4310add141af29bb68e1c84927558e680ae492ffe3d2e",
+        "ef6f3708b0a429f064e5d0a43058ffc12de990cb3477f5bb8a79c98e45881173"
+      ],
+      "license": "CC-BY-4.0",
+      "attribution": {
+        "title": "Prom Suit",
+        "author": "jpg. (https://sketchfab.com/jpg.)",
+        "source": "https://sketchfab.com/3d-models/prom-suit-a0d13b4678684e5ab62b08d4a8ef1835",
+        "license": "CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)"
+      },
+      "componentLicenses": {
+        "sourceGarment": "CC-BY-4.0",
+        "referenceAvatarRigAndContext": "LicenseRef-RenderHub-Extended-Use"
+      }
+    },
+    {
+      "path": "avatars/outfits/male/outfit-sweatshirt-jacket-workwear.glb",
+      "id": "sweatshirt-jacket-workwear",
+      "group": "male",
+      "mode": "outfit",
+      "source": {
+        "path": "male/sweatshirt_and_jacket_and_workwear_pants.glb",
+        "sha256": "d01f2e27118ee64cbbc3a0cd9d4f4e3840e5fb2760a90e1bfc1abe120ddfd0ae"
+      },
+      "fittedSHA256": "14f6c6a4b4f89c632480e1406350e0bf74cba9699719969356a9b24f55e8a9c4",
+      "sha256": "aa97dac3fc5a1a9f966d6d280e8225ba0faef556bb5f4008073f517bd5e587a2",
+      "triangles": 312068,
+      "bytes": 28344264,
+      "budgets": {
+        "triangles": 312068,
+        "bytes": 28356608
+      },
+      "fitChecks": {
+        "rest": true,
+        "walk": true,
+        "sit": true,
+        "reach": true,
+        "sourceAppearance": true
+      },
+      "materials": {
+        "OriginalAccent_P0S10": {
+          "sourceMaterialIndex": 10,
+          "graphSHA256": "5a693686e7956e89647d57caaea551837bfed3c7ce917e5eb5589b35e6dc7a77",
+          "requiredImages": [],
+          "requiredUVSets": [],
+          "overrides": {}
+        },
+        "OriginalTop_P1S11": {
+          "sourceMaterialIndex": 11,
+          "graphSHA256": "5a693686e7956e89647d57caaea551837bfed3c7ce917e5eb5589b35e6dc7a77",
+          "requiredImages": [],
+          "requiredUVSets": [],
+          "overrides": {}
+        },
+        "OriginalAccent_P2S12": {
+          "sourceMaterialIndex": 12,
+          "graphSHA256": "5a693686e7956e89647d57caaea551837bfed3c7ce917e5eb5589b35e6dc7a77",
+          "requiredImages": [],
+          "requiredUVSets": [],
+          "overrides": {}
+        },
+        "OriginalTop_P3S13": {
+          "sourceMaterialIndex": 13,
+          "graphSHA256": "5a693686e7956e89647d57caaea551837bfed3c7ce917e5eb5589b35e6dc7a77",
+          "requiredImages": [],
+          "requiredUVSets": [],
+          "overrides": {}
+        },
+        "OriginalAccent_P4S14": {
+          "sourceMaterialIndex": 14,
+          "graphSHA256": "5a693686e7956e89647d57caaea551837bfed3c7ce917e5eb5589b35e6dc7a77",
+          "requiredImages": [],
+          "requiredUVSets": [],
+          "overrides": {}
+        },
+        "OriginalAccent_P6S16": {
+          "sourceMaterialIndex": 16,
+          "graphSHA256": "f7a7845e7bc5b835e21cdd9e041f67f6c1d93b9c9c791a01854109fefb9450f6",
+          "requiredImages": [
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "bd1f6dc448095645530f792cb63a3fd814683c8f6c33623b545f9409e9f59ecc",
+              "bytes": 973980
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {}
+        },
+        "OriginalTop_P7S17": {
+          "sourceMaterialIndex": 17,
+          "graphSHA256": "974da95b9e64e90ea6e84f8fcac52b20d08c2f52005d82b896c198108810bc7d",
+          "requiredImages": [],
+          "requiredUVSets": [],
+          "overrides": {}
+        },
+        "OriginalAccent_P8S18": {
+          "sourceMaterialIndex": 18,
+          "graphSHA256": "5a693686e7956e89647d57caaea551837bfed3c7ce917e5eb5589b35e6dc7a77",
+          "requiredImages": [],
+          "requiredUVSets": [],
+          "overrides": {}
+        },
+        "OriginalAccent_P9S20": {
+          "sourceMaterialIndex": 20,
+          "graphSHA256": "639c64a5d82b70df3194e1416239d75b3db9c68598eea5000ee42eb901b453d7",
+          "requiredImages": [],
+          "requiredUVSets": [],
+          "overrides": {}
+        },
+        "OriginalAccent_P10S0": {
+          "sourceMaterialIndex": 0,
+          "graphSHA256": "974da95b9e64e90ea6e84f8fcac52b20d08c2f52005d82b896c198108810bc7d",
+          "requiredImages": [],
+          "requiredUVSets": [],
+          "overrides": {}
+        },
+        "OriginalTop_P11S4": {
+          "sourceMaterialIndex": 4,
+          "graphSHA256": "20c89ce3a09846ebabcee99e909ec0bfe799d1000c9b014752bea17fc822780b",
+          "requiredImages": [
+            {
+              "textureInfo": "/emissiveTexture",
+              "sha256": "a3cf97dd4988169b90821d552a61c0329241928e95df3f5947a543f6a76f809b",
+              "bytes": 1731191
+            },
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "d1b2a3372332d8784b2a9e0b18ebef27cc00ad94bd19ab8d577f861f4d8e2a48",
+              "bytes": 7995063
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "2f3c5b503f3b78add209e38349098861bb007feb9addecf52e427a584ee19566",
+              "bytes": 1855156
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {
+            "alphaMode": "OPAQUE"
+          }
+        },
+        "OriginalTop_P12S4": {
+          "sourceMaterialIndex": 4,
+          "graphSHA256": "20c89ce3a09846ebabcee99e909ec0bfe799d1000c9b014752bea17fc822780b",
+          "requiredImages": [
+            {
+              "textureInfo": "/emissiveTexture",
+              "sha256": "a3cf97dd4988169b90821d552a61c0329241928e95df3f5947a543f6a76f809b",
+              "bytes": 1731191
+            },
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "d1b2a3372332d8784b2a9e0b18ebef27cc00ad94bd19ab8d577f861f4d8e2a48",
+              "bytes": 7995063
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "2f3c5b503f3b78add209e38349098861bb007feb9addecf52e427a584ee19566",
+              "bytes": 1855156
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {
+            "alphaMode": "OPAQUE"
+          }
+        },
+        "OriginalTop_P13S4": {
+          "sourceMaterialIndex": 4,
+          "graphSHA256": "20c89ce3a09846ebabcee99e909ec0bfe799d1000c9b014752bea17fc822780b",
+          "requiredImages": [
+            {
+              "textureInfo": "/emissiveTexture",
+              "sha256": "a3cf97dd4988169b90821d552a61c0329241928e95df3f5947a543f6a76f809b",
+              "bytes": 1731191
+            },
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "d1b2a3372332d8784b2a9e0b18ebef27cc00ad94bd19ab8d577f861f4d8e2a48",
+              "bytes": 7995063
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "2f3c5b503f3b78add209e38349098861bb007feb9addecf52e427a584ee19566",
+              "bytes": 1855156
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {
+            "alphaMode": "OPAQUE"
+          }
+        },
+        "OriginalTop_P14S4": {
+          "sourceMaterialIndex": 4,
+          "graphSHA256": "20c89ce3a09846ebabcee99e909ec0bfe799d1000c9b014752bea17fc822780b",
+          "requiredImages": [
+            {
+              "textureInfo": "/emissiveTexture",
+              "sha256": "a3cf97dd4988169b90821d552a61c0329241928e95df3f5947a543f6a76f809b",
+              "bytes": 1731191
+            },
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "d1b2a3372332d8784b2a9e0b18ebef27cc00ad94bd19ab8d577f861f4d8e2a48",
+              "bytes": 7995063
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "2f3c5b503f3b78add209e38349098861bb007feb9addecf52e427a584ee19566",
+              "bytes": 1855156
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {
+            "alphaMode": "OPAQUE"
+          }
+        },
+        "OriginalTop_P15S4": {
+          "sourceMaterialIndex": 4,
+          "graphSHA256": "20c89ce3a09846ebabcee99e909ec0bfe799d1000c9b014752bea17fc822780b",
+          "requiredImages": [
+            {
+              "textureInfo": "/emissiveTexture",
+              "sha256": "a3cf97dd4988169b90821d552a61c0329241928e95df3f5947a543f6a76f809b",
+              "bytes": 1731191
+            },
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "d1b2a3372332d8784b2a9e0b18ebef27cc00ad94bd19ab8d577f861f4d8e2a48",
+              "bytes": 7995063
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "2f3c5b503f3b78add209e38349098861bb007feb9addecf52e427a584ee19566",
+              "bytes": 1855156
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {
+            "alphaMode": "OPAQUE"
+          }
+        },
+        "OriginalTop_P18S4": {
+          "sourceMaterialIndex": 4,
+          "graphSHA256": "20c89ce3a09846ebabcee99e909ec0bfe799d1000c9b014752bea17fc822780b",
+          "requiredImages": [
+            {
+              "textureInfo": "/emissiveTexture",
+              "sha256": "a3cf97dd4988169b90821d552a61c0329241928e95df3f5947a543f6a76f809b",
+              "bytes": 1731191
+            },
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "d1b2a3372332d8784b2a9e0b18ebef27cc00ad94bd19ab8d577f861f4d8e2a48",
+              "bytes": 7995063
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "2f3c5b503f3b78add209e38349098861bb007feb9addecf52e427a584ee19566",
+              "bytes": 1855156
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {
+            "alphaMode": "OPAQUE"
+          }
+        },
+        "OriginalTop_P19S4": {
+          "sourceMaterialIndex": 4,
+          "graphSHA256": "20c89ce3a09846ebabcee99e909ec0bfe799d1000c9b014752bea17fc822780b",
+          "requiredImages": [
+            {
+              "textureInfo": "/emissiveTexture",
+              "sha256": "a3cf97dd4988169b90821d552a61c0329241928e95df3f5947a543f6a76f809b",
+              "bytes": 1731191
+            },
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "d1b2a3372332d8784b2a9e0b18ebef27cc00ad94bd19ab8d577f861f4d8e2a48",
+              "bytes": 7995063
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "2f3c5b503f3b78add209e38349098861bb007feb9addecf52e427a584ee19566",
+              "bytes": 1855156
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {
+            "alphaMode": "OPAQUE"
+          }
+        },
+        "OriginalTop_P20S4": {
+          "sourceMaterialIndex": 4,
+          "graphSHA256": "20c89ce3a09846ebabcee99e909ec0bfe799d1000c9b014752bea17fc822780b",
+          "requiredImages": [
+            {
+              "textureInfo": "/emissiveTexture",
+              "sha256": "a3cf97dd4988169b90821d552a61c0329241928e95df3f5947a543f6a76f809b",
+              "bytes": 1731191
+            },
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "d1b2a3372332d8784b2a9e0b18ebef27cc00ad94bd19ab8d577f861f4d8e2a48",
+              "bytes": 7995063
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "2f3c5b503f3b78add209e38349098861bb007feb9addecf52e427a584ee19566",
+              "bytes": 1855156
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {
+            "alphaMode": "OPAQUE"
+          }
+        },
+        "OriginalTop_P22S4": {
+          "sourceMaterialIndex": 4,
+          "graphSHA256": "20c89ce3a09846ebabcee99e909ec0bfe799d1000c9b014752bea17fc822780b",
+          "requiredImages": [
+            {
+              "textureInfo": "/emissiveTexture",
+              "sha256": "a3cf97dd4988169b90821d552a61c0329241928e95df3f5947a543f6a76f809b",
+              "bytes": 1731191
+            },
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "d1b2a3372332d8784b2a9e0b18ebef27cc00ad94bd19ab8d577f861f4d8e2a48",
+              "bytes": 7995063
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "2f3c5b503f3b78add209e38349098861bb007feb9addecf52e427a584ee19566",
+              "bytes": 1855156
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {
+            "alphaMode": "OPAQUE"
+          }
+        },
+        "OriginalTop_P23S4": {
+          "sourceMaterialIndex": 4,
+          "graphSHA256": "20c89ce3a09846ebabcee99e909ec0bfe799d1000c9b014752bea17fc822780b",
+          "requiredImages": [
+            {
+              "textureInfo": "/emissiveTexture",
+              "sha256": "a3cf97dd4988169b90821d552a61c0329241928e95df3f5947a543f6a76f809b",
+              "bytes": 1731191
+            },
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "d1b2a3372332d8784b2a9e0b18ebef27cc00ad94bd19ab8d577f861f4d8e2a48",
+              "bytes": 7995063
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "2f3c5b503f3b78add209e38349098861bb007feb9addecf52e427a584ee19566",
+              "bytes": 1855156
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {
+            "alphaMode": "OPAQUE"
+          }
+        },
+        "OriginalTop_P24S4": {
+          "sourceMaterialIndex": 4,
+          "graphSHA256": "20c89ce3a09846ebabcee99e909ec0bfe799d1000c9b014752bea17fc822780b",
+          "requiredImages": [
+            {
+              "textureInfo": "/emissiveTexture",
+              "sha256": "a3cf97dd4988169b90821d552a61c0329241928e95df3f5947a543f6a76f809b",
+              "bytes": 1731191
+            },
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "d1b2a3372332d8784b2a9e0b18ebef27cc00ad94bd19ab8d577f861f4d8e2a48",
+              "bytes": 7995063
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "2f3c5b503f3b78add209e38349098861bb007feb9addecf52e427a584ee19566",
+              "bytes": 1855156
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {
+            "alphaMode": "OPAQUE"
+          }
+        },
+        "OriginalTop_P25S4": {
+          "sourceMaterialIndex": 4,
+          "graphSHA256": "20c89ce3a09846ebabcee99e909ec0bfe799d1000c9b014752bea17fc822780b",
+          "requiredImages": [
+            {
+              "textureInfo": "/emissiveTexture",
+              "sha256": "a3cf97dd4988169b90821d552a61c0329241928e95df3f5947a543f6a76f809b",
+              "bytes": 1731191
+            },
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "d1b2a3372332d8784b2a9e0b18ebef27cc00ad94bd19ab8d577f861f4d8e2a48",
+              "bytes": 7995063
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "2f3c5b503f3b78add209e38349098861bb007feb9addecf52e427a584ee19566",
+              "bytes": 1855156
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {
+            "alphaMode": "OPAQUE"
+          }
+        },
+        "OriginalTop_P26S4": {
+          "sourceMaterialIndex": 4,
+          "graphSHA256": "20c89ce3a09846ebabcee99e909ec0bfe799d1000c9b014752bea17fc822780b",
+          "requiredImages": [
+            {
+              "textureInfo": "/emissiveTexture",
+              "sha256": "a3cf97dd4988169b90821d552a61c0329241928e95df3f5947a543f6a76f809b",
+              "bytes": 1731191
+            },
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "d1b2a3372332d8784b2a9e0b18ebef27cc00ad94bd19ab8d577f861f4d8e2a48",
+              "bytes": 7995063
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "2f3c5b503f3b78add209e38349098861bb007feb9addecf52e427a584ee19566",
+              "bytes": 1855156
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {
+            "alphaMode": "OPAQUE"
+          }
+        },
+        "OriginalTop_P27S4": {
+          "sourceMaterialIndex": 4,
+          "graphSHA256": "20c89ce3a09846ebabcee99e909ec0bfe799d1000c9b014752bea17fc822780b",
+          "requiredImages": [
+            {
+              "textureInfo": "/emissiveTexture",
+              "sha256": "a3cf97dd4988169b90821d552a61c0329241928e95df3f5947a543f6a76f809b",
+              "bytes": 1731191
+            },
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "d1b2a3372332d8784b2a9e0b18ebef27cc00ad94bd19ab8d577f861f4d8e2a48",
+              "bytes": 7995063
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "2f3c5b503f3b78add209e38349098861bb007feb9addecf52e427a584ee19566",
+              "bytes": 1855156
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {
+            "alphaMode": "OPAQUE"
+          }
+        },
+        "OriginalTop_P28S4": {
+          "sourceMaterialIndex": 4,
+          "graphSHA256": "20c89ce3a09846ebabcee99e909ec0bfe799d1000c9b014752bea17fc822780b",
+          "requiredImages": [
+            {
+              "textureInfo": "/emissiveTexture",
+              "sha256": "a3cf97dd4988169b90821d552a61c0329241928e95df3f5947a543f6a76f809b",
+              "bytes": 1731191
+            },
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "d1b2a3372332d8784b2a9e0b18ebef27cc00ad94bd19ab8d577f861f4d8e2a48",
+              "bytes": 7995063
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "2f3c5b503f3b78add209e38349098861bb007feb9addecf52e427a584ee19566",
+              "bytes": 1855156
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {
+            "alphaMode": "OPAQUE"
+          }
+        },
+        "OriginalAccent_P29S5": {
+          "sourceMaterialIndex": 5,
+          "graphSHA256": "5a693686e7956e89647d57caaea551837bfed3c7ce917e5eb5589b35e6dc7a77",
+          "requiredImages": [],
+          "requiredUVSets": [],
+          "overrides": {}
+        },
+        "OriginalAccent_P30S19": {
+          "sourceMaterialIndex": 19,
+          "graphSHA256": "5a693686e7956e89647d57caaea551837bfed3c7ce917e5eb5589b35e6dc7a77",
+          "requiredImages": [],
+          "requiredUVSets": [],
+          "overrides": {}
+        },
+        "OriginalAccent_P31S2": {
+          "sourceMaterialIndex": 2,
+          "graphSHA256": "f7a7845e7bc5b835e21cdd9e041f67f6c1d93b9c9c791a01854109fefb9450f6",
+          "requiredImages": [
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "bd1f6dc448095645530f792cb63a3fd814683c8f6c33623b545f9409e9f59ecc",
+              "bytes": 973980
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {}
+        },
+        "OriginalAccent_P32S3": {
+          "sourceMaterialIndex": 3,
+          "graphSHA256": "5fbfa520fa73eaa3ca53d058644abde163e1902634da37a4e6ff70553b3f5990",
+          "requiredImages": [
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "9075baf9725875e8e9dd7ac6066275ad544b1ae38b6f7bf1f56a89fe6b9ce277",
+              "bytes": 1223446
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {}
+        },
+        "OriginalAccent_P33S6": {
+          "sourceMaterialIndex": 6,
+          "graphSHA256": "5251cfdf64715d89b6afafd12d8191c109ce91dd4b18045b87daaa7774701278",
+          "requiredImages": [],
+          "requiredUVSets": [],
+          "overrides": {}
+        },
+        "OriginalAccent_P34S7": {
+          "sourceMaterialIndex": 7,
+          "graphSHA256": "07a9453ddc26fa4152f73164ad75c6aa58fa1572f5f9696e7661ea1dade693ac",
+          "requiredImages": [
+            {
+              "textureInfo": "/emissiveTexture",
+              "sha256": "97491de403f9383d9cd5181a0db21859b2099cf65736be896272c1b7444a7745",
+              "bytes": 222820
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "97491de403f9383d9cd5181a0db21859b2099cf65736be896272c1b7444a7745",
+              "bytes": 222820
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {}
+        },
+        "OriginalAccent_P35S8": {
+          "sourceMaterialIndex": 8,
+          "graphSHA256": "4c1a28213e8512c38095a335de33db395e5b99056461fa3cdaa66bc1e4929ddf",
+          "requiredImages": [
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "ae0c4a58b78ff700599e8093b6de94fbdc49600543550d4b13dd409c2e3ef16a",
+              "bytes": 140037
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {}
+        },
+        "OriginalTop_P36S9": {
+          "sourceMaterialIndex": 9,
+          "graphSHA256": "5a693686e7956e89647d57caaea551837bfed3c7ce917e5eb5589b35e6dc7a77",
+          "requiredImages": [],
+          "requiredUVSets": [],
+          "overrides": {}
+        },
+        "OriginalBottom_P5S15": {
+          "sourceMaterialIndex": 15,
+          "graphSHA256": "5251cfdf64715d89b6afafd12d8191c109ce91dd4b18045b87daaa7774701278",
+          "requiredImages": [],
+          "requiredUVSets": [],
+          "overrides": {}
+        },
+        "OriginalBottom_P14S4": {
+          "sourceMaterialIndex": 4,
+          "graphSHA256": "20c89ce3a09846ebabcee99e909ec0bfe799d1000c9b014752bea17fc822780b",
+          "requiredImages": [
+            {
+              "textureInfo": "/emissiveTexture",
+              "sha256": "a3cf97dd4988169b90821d552a61c0329241928e95df3f5947a543f6a76f809b",
+              "bytes": 1731191
+            },
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "d1b2a3372332d8784b2a9e0b18ebef27cc00ad94bd19ab8d577f861f4d8e2a48",
+              "bytes": 7995063
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "2f3c5b503f3b78add209e38349098861bb007feb9addecf52e427a584ee19566",
+              "bytes": 1855156
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {
+            "alphaMode": "OPAQUE"
+          }
+        },
+        "OriginalBottom_P15S4": {
+          "sourceMaterialIndex": 4,
+          "graphSHA256": "20c89ce3a09846ebabcee99e909ec0bfe799d1000c9b014752bea17fc822780b",
+          "requiredImages": [
+            {
+              "textureInfo": "/emissiveTexture",
+              "sha256": "a3cf97dd4988169b90821d552a61c0329241928e95df3f5947a543f6a76f809b",
+              "bytes": 1731191
+            },
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "d1b2a3372332d8784b2a9e0b18ebef27cc00ad94bd19ab8d577f861f4d8e2a48",
+              "bytes": 7995063
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "2f3c5b503f3b78add209e38349098861bb007feb9addecf52e427a584ee19566",
+              "bytes": 1855156
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {
+            "alphaMode": "OPAQUE"
+          }
+        },
+        "OriginalBottom_P16S4": {
+          "sourceMaterialIndex": 4,
+          "graphSHA256": "20c89ce3a09846ebabcee99e909ec0bfe799d1000c9b014752bea17fc822780b",
+          "requiredImages": [
+            {
+              "textureInfo": "/emissiveTexture",
+              "sha256": "a3cf97dd4988169b90821d552a61c0329241928e95df3f5947a543f6a76f809b",
+              "bytes": 1731191
+            },
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "d1b2a3372332d8784b2a9e0b18ebef27cc00ad94bd19ab8d577f861f4d8e2a48",
+              "bytes": 7995063
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "2f3c5b503f3b78add209e38349098861bb007feb9addecf52e427a584ee19566",
+              "bytes": 1855156
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {
+            "alphaMode": "OPAQUE"
+          }
+        },
+        "OriginalBottom_P17S4": {
+          "sourceMaterialIndex": 4,
+          "graphSHA256": "20c89ce3a09846ebabcee99e909ec0bfe799d1000c9b014752bea17fc822780b",
+          "requiredImages": [
+            {
+              "textureInfo": "/emissiveTexture",
+              "sha256": "a3cf97dd4988169b90821d552a61c0329241928e95df3f5947a543f6a76f809b",
+              "bytes": 1731191
+            },
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "d1b2a3372332d8784b2a9e0b18ebef27cc00ad94bd19ab8d577f861f4d8e2a48",
+              "bytes": 7995063
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "2f3c5b503f3b78add209e38349098861bb007feb9addecf52e427a584ee19566",
+              "bytes": 1855156
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {
+            "alphaMode": "OPAQUE"
+          }
+        },
+        "OriginalBottom_P18S4": {
+          "sourceMaterialIndex": 4,
+          "graphSHA256": "20c89ce3a09846ebabcee99e909ec0bfe799d1000c9b014752bea17fc822780b",
+          "requiredImages": [
+            {
+              "textureInfo": "/emissiveTexture",
+              "sha256": "a3cf97dd4988169b90821d552a61c0329241928e95df3f5947a543f6a76f809b",
+              "bytes": 1731191
+            },
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "d1b2a3372332d8784b2a9e0b18ebef27cc00ad94bd19ab8d577f861f4d8e2a48",
+              "bytes": 7995063
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "2f3c5b503f3b78add209e38349098861bb007feb9addecf52e427a584ee19566",
+              "bytes": 1855156
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {
+            "alphaMode": "OPAQUE"
+          }
+        },
+        "OriginalBottom_P21S1": {
+          "sourceMaterialIndex": 1,
+          "graphSHA256": "5251cfdf64715d89b6afafd12d8191c109ce91dd4b18045b87daaa7774701278",
+          "requiredImages": [],
+          "requiredUVSets": [],
+          "overrides": {}
+        },
+        "OriginalBottom_P22S4": {
+          "sourceMaterialIndex": 4,
+          "graphSHA256": "20c89ce3a09846ebabcee99e909ec0bfe799d1000c9b014752bea17fc822780b",
+          "requiredImages": [
+            {
+              "textureInfo": "/emissiveTexture",
+              "sha256": "a3cf97dd4988169b90821d552a61c0329241928e95df3f5947a543f6a76f809b",
+              "bytes": 1731191
+            },
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "d1b2a3372332d8784b2a9e0b18ebef27cc00ad94bd19ab8d577f861f4d8e2a48",
+              "bytes": 7995063
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "2f3c5b503f3b78add209e38349098861bb007feb9addecf52e427a584ee19566",
+              "bytes": 1855156
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {
+            "alphaMode": "OPAQUE"
+          }
+        },
+        "OriginalBottom_P25S4": {
+          "sourceMaterialIndex": 4,
+          "graphSHA256": "20c89ce3a09846ebabcee99e909ec0bfe799d1000c9b014752bea17fc822780b",
+          "requiredImages": [
+            {
+              "textureInfo": "/emissiveTexture",
+              "sha256": "a3cf97dd4988169b90821d552a61c0329241928e95df3f5947a543f6a76f809b",
+              "bytes": 1731191
+            },
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "d1b2a3372332d8784b2a9e0b18ebef27cc00ad94bd19ab8d577f861f4d8e2a48",
+              "bytes": 7995063
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "2f3c5b503f3b78add209e38349098861bb007feb9addecf52e427a584ee19566",
+              "bytes": 1855156
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {
+            "alphaMode": "OPAQUE"
+          }
+        },
+        "OriginalBottom_P26S4": {
+          "sourceMaterialIndex": 4,
+          "graphSHA256": "20c89ce3a09846ebabcee99e909ec0bfe799d1000c9b014752bea17fc822780b",
+          "requiredImages": [
+            {
+              "textureInfo": "/emissiveTexture",
+              "sha256": "a3cf97dd4988169b90821d552a61c0329241928e95df3f5947a543f6a76f809b",
+              "bytes": 1731191
+            },
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "d1b2a3372332d8784b2a9e0b18ebef27cc00ad94bd19ab8d577f861f4d8e2a48",
+              "bytes": 7995063
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "2f3c5b503f3b78add209e38349098861bb007feb9addecf52e427a584ee19566",
+              "bytes": 1855156
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {
+            "alphaMode": "OPAQUE"
+          }
+        },
+        "OriginalBottom_P27S4": {
+          "sourceMaterialIndex": 4,
+          "graphSHA256": "20c89ce3a09846ebabcee99e909ec0bfe799d1000c9b014752bea17fc822780b",
+          "requiredImages": [
+            {
+              "textureInfo": "/emissiveTexture",
+              "sha256": "a3cf97dd4988169b90821d552a61c0329241928e95df3f5947a543f6a76f809b",
+              "bytes": 1731191
+            },
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "d1b2a3372332d8784b2a9e0b18ebef27cc00ad94bd19ab8d577f861f4d8e2a48",
+              "bytes": 7995063
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "2f3c5b503f3b78add209e38349098861bb007feb9addecf52e427a584ee19566",
+              "bytes": 1855156
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {
+            "alphaMode": "OPAQUE"
+          }
+        },
+        "OriginalBottom_P28S4": {
+          "sourceMaterialIndex": 4,
+          "graphSHA256": "20c89ce3a09846ebabcee99e909ec0bfe799d1000c9b014752bea17fc822780b",
+          "requiredImages": [
+            {
+              "textureInfo": "/emissiveTexture",
+              "sha256": "a3cf97dd4988169b90821d552a61c0329241928e95df3f5947a543f6a76f809b",
+              "bytes": 1731191
+            },
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "d1b2a3372332d8784b2a9e0b18ebef27cc00ad94bd19ab8d577f861f4d8e2a48",
+              "bytes": 7995063
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "2f3c5b503f3b78add209e38349098861bb007feb9addecf52e427a584ee19566",
+              "bytes": 1855156
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {
+            "alphaMode": "OPAQUE"
+          }
+        },
+        "OriginalTop_AdditiveUnderlap_S4": {
+          "sourceMaterialIndex": 4,
+          "graphSHA256": "20c89ce3a09846ebabcee99e909ec0bfe799d1000c9b014752bea17fc822780b",
+          "requiredImages": [
+            {
+              "textureInfo": "/emissiveTexture",
+              "sha256": "a3cf97dd4988169b90821d552a61c0329241928e95df3f5947a543f6a76f809b",
+              "bytes": 1731191
+            },
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "d1b2a3372332d8784b2a9e0b18ebef27cc00ad94bd19ab8d577f861f4d8e2a48",
+              "bytes": 7995063
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "2f3c5b503f3b78add209e38349098861bb007feb9addecf52e427a584ee19566",
+              "bytes": 1855156
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {
+            "alphaMode": "OPAQUE"
+          }
+        }
+      },
+      "materialGraphSHA256": "9c0f7fb282a0af6017a9707508a9f084bbafceb8d571299d1677703620c61f97",
+      "imageSHA256s": [
+        "2f3c5b503f3b78add209e38349098861bb007feb9addecf52e427a584ee19566",
+        "9075baf9725875e8e9dd7ac6066275ad544b1ae38b6f7bf1f56a89fe6b9ce277",
+        "97491de403f9383d9cd5181a0db21859b2099cf65736be896272c1b7444a7745",
+        "a3cf97dd4988169b90821d552a61c0329241928e95df3f5947a543f6a76f809b",
+        "ae0c4a58b78ff700599e8093b6de94fbdc49600543550d4b13dd409c2e3ef16a",
+        "bd1f6dc448095645530f792cb63a3fd814683c8f6c33623b545f9409e9f59ecc",
+        "d1b2a3372332d8784b2a9e0b18ebef27cc00ad94bd19ab8d577f861f4d8e2a48"
+      ],
+      "license": "CC-BY-4.0",
+      "attribution": {
+        "title": "Sweatshirt and jacket and workwear pants",
+        "author": "Style3D CG (https://sketchfab.com/Style3DMeta)",
+        "source": "https://sketchfab.com/3d-models/sweatshirt-and-jacket-and-workwear-pants-ceabc26ccd8a48ed9dea753c6f7bcd2e",
+        "license": "CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)"
+      },
+      "componentLicenses": {
+        "sourceGarment": "CC-BY-4.0",
+        "referenceAvatarRigAndContext": "LicenseRef-RenderHub-Extended-Use"
+      }
+    },
+    {
+      "path": "avatars/outfits/male/outfit-victorian-bartender.glb",
+      "id": "victorian-bartender",
+      "group": "male",
+      "mode": "outfit",
+      "source": {
+        "path": "male/bartender_clothes.glb",
+        "sha256": "9bb912aee3c97dc00919ffbcb6b14feac66c466ae10c06c35302448fb43a35b9"
+      },
+      "fittedSHA256": "b1e4c578fa19e29fa48923a5f096f7509e8f805a736b828036aefd4a7a1afe29",
+      "sha256": "a425d1ed4c025b9ffe0ee53b7d8492c05bab764222cedae80814f9fa45d32633",
+      "triangles": 198678,
+      "bytes": 46972844,
+      "budgets": {
+        "triangles": 198678,
+        "bytes": 46985216
+      },
+      "fitChecks": {
+        "rest": true,
+        "walk": true,
+        "sit": true,
+        "reach": true,
+        "sourceAppearance": true
+      },
+      "materials": {
+        "OriginalTop_P0S0": {
+          "sourceMaterialIndex": 0,
+          "graphSHA256": "d33bd80bc315c527f8c565a87508f8dd49435ee6670ac7cd4ad68e3b8eace08b",
+          "requiredImages": [
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "a93e8e8111cdba456595a89c92fe0a17c64b9b8d72a73980a406c9a45a29fa19",
+              "bytes": 27403023
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "d46ca71b2590acf83a2bbe093b5f6c0077de37a662cb3f79d9e78aea98411c7f",
+              "bytes": 4198493
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/metallicRoughnessTexture",
+              "sha256": "cfee325c9689a4790553b083c12c25724059ef9aa62f96206e5282f761f32138",
+              "bytes": 5469901
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {}
+        },
+        "OriginalTop_P1S0": {
+          "sourceMaterialIndex": 0,
+          "graphSHA256": "d33bd80bc315c527f8c565a87508f8dd49435ee6670ac7cd4ad68e3b8eace08b",
+          "requiredImages": [
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "a93e8e8111cdba456595a89c92fe0a17c64b9b8d72a73980a406c9a45a29fa19",
+              "bytes": 27403023
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "d46ca71b2590acf83a2bbe093b5f6c0077de37a662cb3f79d9e78aea98411c7f",
+              "bytes": 4198493
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/metallicRoughnessTexture",
+              "sha256": "cfee325c9689a4790553b083c12c25724059ef9aa62f96206e5282f761f32138",
+              "bytes": 5469901
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {}
+        },
+        "OriginalTop_AdditiveUnderlap_S0": {
+          "sourceMaterialIndex": 0,
+          "graphSHA256": "d33bd80bc315c527f8c565a87508f8dd49435ee6670ac7cd4ad68e3b8eace08b",
+          "requiredImages": [
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "a93e8e8111cdba456595a89c92fe0a17c64b9b8d72a73980a406c9a45a29fa19",
+              "bytes": 27403023
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "d46ca71b2590acf83a2bbe093b5f6c0077de37a662cb3f79d9e78aea98411c7f",
+              "bytes": 4198493
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/metallicRoughnessTexture",
+              "sha256": "cfee325c9689a4790553b083c12c25724059ef9aa62f96206e5282f761f32138",
+              "bytes": 5469901
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {}
+        }
+      },
+      "materialGraphSHA256": "7124793a55210d25336e31822bafcd32b362226a968b805c2fa2f3fd122a873f",
+      "imageSHA256s": [
+        "a93e8e8111cdba456595a89c92fe0a17c64b9b8d72a73980a406c9a45a29fa19",
+        "cfee325c9689a4790553b083c12c25724059ef9aa62f96206e5282f761f32138",
+        "d46ca71b2590acf83a2bbe093b5f6c0077de37a662cb3f79d9e78aea98411c7f"
+      ],
+      "license": "CC-BY-4.0",
+      "attribution": {
+        "title": "a set of Victorian clothes",
+        "author": "deymar (https://sketchfab.com/deymar)",
+        "source": "https://sketchfab.com/3d-models/a-set-of-victorian-clothes-cfe0ad26828a42cebf49aea928ea8a15",
+        "license": "CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)"
+      },
+      "componentLicenses": {
+        "sourceGarment": "CC-BY-4.0",
+        "referenceAvatarRigAndContext": "LicenseRef-RenderHub-Extended-Use"
+      }
+    },
+    {
+      "path": "avatars/wardrobe/female/bottom/source-gothic-skirt.glb",
+      "id": "source-gothic-skirt",
+      "group": "female",
+      "mode": "bottom",
+      "source": {
+        "path": "female/womens_blouse_and_skirt.glb",
+        "sha256": "4fb33d66371720052110c2daa275bfc49ef85b9fcc14952f92b64f084262defd"
+      },
+      "fittedSHA256": "e3f2a2badd9c5b07ddc8aaafe397f7f01debf3edeff7e5d52e72f850d9eff55d",
+      "sha256": "e8c82dc53ffa574403e3ebae7ff4586a6e772085b3d917ff64f8c9dc49fb8fcb",
+      "triangles": 53900,
+      "bytes": 3450128,
+      "budgets": {
+        "triangles": 53900,
+        "bytes": 3461120
+      },
+      "fitChecks": {
+        "rest": true,
+        "walk": true,
+        "sit": true,
+        "reach": true,
+        "sourceAppearance": true
+      },
+      "materials": {
+        "OriginalBottom_P0S2": {
+          "sourceMaterialIndex": 2,
+          "graphSHA256": "314d1cf73b4fd179ba3eabba9ab01a3f4f7fd15a9a12ffb267307c787b347533",
+          "requiredImages": [],
+          "requiredUVSets": [],
+          "overrides": {}
+        }
+      },
+      "materialGraphSHA256": "b82fb29e355f4ab75d8050f663effab34b37ef848ebf597e8e91b27091684376",
+      "imageSHA256s": [],
+      "license": "CC-BY-4.0",
+      "attribution": {
+        "title": "Women's blouse and skirt",
+        "author": "ps2enthusiast (https://sketchfab.com/kosicky.jozef2308)",
+        "source": "https://sketchfab.com/3d-models/womens-blouse-and-skirt-f9d46dfe0bf4431195f4044861ce568f",
+        "license": "CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)"
+      },
+      "componentLicenses": {
+        "sourceGarment": "CC-BY-4.0",
+        "referenceAvatarRigAndContext": "LicenseRef-RenderHub-Extended-Use"
+      }
+    },
+    {
+      "path": "avatars/wardrobe/female/bottom/source-gothic-trousers.glb",
+      "id": "source-gothic-trousers",
+      "group": "female",
+      "mode": "bottom",
+      "source": {
+        "path": "female/womens_blouse_and_skirt.glb",
+        "sha256": "4fb33d66371720052110c2daa275bfc49ef85b9fcc14952f92b64f084262defd"
+      },
+      "fittedSHA256": "8cdc3cbc0aacbd20116f7cb184b554936dcef2d3f29589097ba478775fc4c141",
+      "sha256": "29aeea37abe50421b0b87a1fb15bc8f9e67ab24f55613467f89bedbb75e36331",
+      "triangles": 9873,
+      "bytes": 437300,
+      "budgets": {
+        "triangles": 9873,
+        "bytes": 450560
+      },
+      "fitChecks": {
+        "rest": true,
+        "walk": true,
+        "sit": true,
+        "reach": true,
+        "sourceAppearance": true
+      },
+      "materials": {
+        "OriginalBottom_P0S0": {
+          "sourceMaterialIndex": 0,
+          "graphSHA256": "49a91f8f418121fce0e6a5aa1db6a0a9b25cee52cb143d735af73d24867a979f",
+          "requiredImages": [],
+          "requiredUVSets": [],
+          "overrides": {}
+        }
+      },
+      "materialGraphSHA256": "23d3753d39e51d29a9949559c9e50e49a06ead0ca7fd39e94064c43300b5d144",
+      "imageSHA256s": [],
+      "license": "CC-BY-4.0",
+      "attribution": {
+        "title": "Women's blouse and skirt",
+        "author": "ps2enthusiast (https://sketchfab.com/kosicky.jozef2308)",
+        "source": "https://sketchfab.com/3d-models/womens-blouse-and-skirt-f9d46dfe0bf4431195f4044861ce568f",
+        "license": "CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)"
+      },
+      "componentLicenses": {
+        "sourceGarment": "CC-BY-4.0",
+        "referenceAvatarRigAndContext": "LicenseRef-RenderHub-Extended-Use"
+      }
+    },
+    {
+      "path": "avatars/wardrobe/female/bottom/source-ray-trousers.glb",
+      "id": "source-ray-trousers",
+      "group": "female",
+      "mode": "bottom",
+      "source": {
+        "path": "female/real_suit_for_ray_ii_retopo.glb",
+        "sha256": "801be57040157694ffdd8243d39c48c837b5f8f9348b16f236cb8f6a88f1a315"
+      },
+      "fittedSHA256": "1ff18e89a1d150b7f45ef47ee847a449a407d073de5b1f72ad491ecdb2a51508",
+      "sha256": "40fd7d7d0023e1f45bc6db811804550154cf747948a188402de823501192cd43",
+      "triangles": 4516,
+      "bytes": 31184748,
+      "budgets": {
+        "triangles": 4516,
+        "bytes": 31195136
+      },
+      "fitChecks": {
+        "rest": true,
+        "walk": true,
+        "sit": true,
+        "reach": true,
+        "sourceAppearance": true
+      },
+      "materials": {
+        "OriginalBottom_P0S2": {
+          "sourceMaterialIndex": 2,
+          "graphSHA256": "a599cde75e9b4babb5f23c28084444964aee71cfb6e1a83dbc4ced5f44be4537",
+          "requiredImages": [
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "74450439ac777b17afd8b1dcd8fb2b4293c7ec750042a4eded7b267f212ee9ff",
+              "bytes": 4075512
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "1fd2d98b009f17ebeb29a1c7ca1ba8799cb52dac68035f64bf2aad562a1592d5",
+              "bytes": 1561675
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {}
+        }
+      },
+      "materialGraphSHA256": "f93bcfed3c4cd99a64aefc44995ff47e29ed4cef30175ca3b12de16acb110909",
+      "imageSHA256s": [
+        "1fd2d98b009f17ebeb29a1c7ca1ba8799cb52dac68035f64bf2aad562a1592d5",
+        "74450439ac777b17afd8b1dcd8fb2b4293c7ec750042a4eded7b267f212ee9ff"
+      ],
+      "license": "CC-BY-4.0",
+      "attribution": {
+        "title": "Real Suit For Ray II Retopo",
+        "author": "ChamberSu1996 (https://sketchfab.com/chambersu1996)",
+        "source": "https://sketchfab.com/3d-models/real-suit-for-ray-ii-retopo-3e543b8199f548cf99077c89929888b5",
+        "license": "CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)"
+      },
+      "componentLicenses": {
+        "sourceGarment": "CC-BY-4.0",
+        "referenceAvatarRigAndContext": "LicenseRef-RenderHub-Extended-Use"
+      }
+    },
+    {
+      "path": "avatars/wardrobe/female/outer/source-leather-cloak.glb",
+      "id": "source-leather-cloak",
+      "group": "female",
+      "mode": "outer",
+      "source": {
+        "path": "female/old_leather_cloak_female.glb",
+        "sha256": "3ab591440266c88605fc18eeb375e62894286c5af66d130ed6d53774ebb26b5e"
+      },
+      "fittedSHA256": "b7719da49a6c602796e83b75c58e992c18759d8610021b6a4fb1f48fa8101957",
+      "sha256": "f424cdd5c4bb6dcb3187cfa1cb1052534c2d732923deec9f48804b5d25675753",
+      "triangles": 6108,
+      "bytes": 43126348,
+      "budgets": {
+        "triangles": 6108,
+        "bytes": 43139072
+      },
+      "fitChecks": {
+        "rest": true,
+        "walk": true,
+        "sit": true,
+        "reach": true,
+        "sourceAppearance": true
+      },
+      "materials": {
+        "OriginalOuter_P0S0": {
+          "sourceMaterialIndex": 0,
+          "graphSHA256": "fd3efd301322ccbb04735ca2c598bcd88f5770d456ff12860770883c8fac6a4a",
+          "requiredImages": [
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "57bd962c14466c9a42380726f07a22ef3c2bcce19f796f28a117bc5b31bca99a",
+              "bytes": 8645398
+            },
+            {
+              "textureInfo": "/occlusionTexture",
+              "sha256": "e3e82d4666e76f6fddd11d3cadc8876b0f578676dae7babd4de62cbbc1fcf45a",
+              "bytes": 17242294
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "6d3f5fbcc3362086afaf0e66046792e73265f0a2888f4c06faea8fc02e78258e",
+              "bytes": 16906437
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/metallicRoughnessTexture",
+              "sha256": "e3e82d4666e76f6fddd11d3cadc8876b0f578676dae7babd4de62cbbc1fcf45a",
+              "bytes": 17242294
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {}
+        }
+      },
+      "materialGraphSHA256": "0411d66a9ffbbeed6295c816fa14a3b557ec4a3d025effc746a4e0f7cf5e9a41",
+      "imageSHA256s": [
+        "57bd962c14466c9a42380726f07a22ef3c2bcce19f796f28a117bc5b31bca99a",
+        "6d3f5fbcc3362086afaf0e66046792e73265f0a2888f4c06faea8fc02e78258e",
+        "e3e82d4666e76f6fddd11d3cadc8876b0f578676dae7babd4de62cbbc1fcf45a"
+      ],
+      "license": "CC-BY-4.0",
+      "attribution": {
+        "title": "Old leather cloak (female)",
+        "author": "KIFIR (https://sketchfab.com/kifir)",
+        "source": "https://sketchfab.com/3d-models/old-leather-cloak-female-e81f214036f34635bccfce842da6a13d",
+        "license": "CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)"
+      },
+      "componentLicenses": {
+        "sourceGarment": "CC-BY-4.0",
+        "referenceAvatarRigAndContext": "LicenseRef-RenderHub-Extended-Use"
+      }
+    },
+    {
+      "path": "avatars/wardrobe/female/outer/source-overcoat.glb",
+      "id": "source-overcoat",
+      "group": "female",
+      "mode": "outer",
+      "source": {
+        "path": "female/female_overcoat.glb",
+        "sha256": "544439275a72efc1ca9351ff5321b473316989c55ae6e204a12970a70f40093f"
+      },
+      "fittedSHA256": "ee615a7db1767469dd255b36349cf9a372ad6c03a4e55075fe9233a08f0f40b7",
+      "sha256": "3ea7c268f4bd047cf7c1473c8052ade8a8e85a0eaaaa40010f4f0189370b3965",
+      "triangles": 14648,
+      "bytes": 45538636,
+      "budgets": {
+        "triangles": 14648,
+        "bytes": 45551616
+      },
+      "fitChecks": {
+        "rest": true,
+        "walk": true,
+        "sit": true,
+        "reach": true,
+        "sourceAppearance": true
+      },
+      "materials": {
+        "OriginalAccent_P0S0": {
+          "sourceMaterialIndex": 0,
+          "graphSHA256": "25f4f1367502932e1186465743f78df954651e3f5b7ec202f3bb76e38ba8c7b9",
+          "requiredImages": [
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "cdb687cd4c59ec3ef396dca743f0a4eac024d0511190f0a746403bbe2f485c51",
+              "bytes": 37019781
+            },
+            {
+              "textureInfo": "/occlusionTexture",
+              "sha256": "e3f7876702fde620cef4db973fe78cb0122cab07b5a54effbdd4e199b15025df",
+              "bytes": 4178351
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "5ebf44889a2726941ae861ef8331b89518b061a332e5bbc731aac906aafd82dd",
+              "bytes": 3600364
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/metallicRoughnessTexture",
+              "sha256": "e3f7876702fde620cef4db973fe78cb0122cab07b5a54effbdd4e199b15025df",
+              "bytes": 4178351
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {}
+        },
+        "OriginalAccent_P1S0": {
+          "sourceMaterialIndex": 0,
+          "graphSHA256": "25f4f1367502932e1186465743f78df954651e3f5b7ec202f3bb76e38ba8c7b9",
+          "requiredImages": [
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "cdb687cd4c59ec3ef396dca743f0a4eac024d0511190f0a746403bbe2f485c51",
+              "bytes": 37019781
+            },
+            {
+              "textureInfo": "/occlusionTexture",
+              "sha256": "e3f7876702fde620cef4db973fe78cb0122cab07b5a54effbdd4e199b15025df",
+              "bytes": 4178351
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "5ebf44889a2726941ae861ef8331b89518b061a332e5bbc731aac906aafd82dd",
+              "bytes": 3600364
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/metallicRoughnessTexture",
+              "sha256": "e3f7876702fde620cef4db973fe78cb0122cab07b5a54effbdd4e199b15025df",
+              "bytes": 4178351
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {}
+        },
+        "OriginalOuter_P2S0": {
+          "sourceMaterialIndex": 0,
+          "graphSHA256": "25f4f1367502932e1186465743f78df954651e3f5b7ec202f3bb76e38ba8c7b9",
+          "requiredImages": [
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "cdb687cd4c59ec3ef396dca743f0a4eac024d0511190f0a746403bbe2f485c51",
+              "bytes": 37019781
+            },
+            {
+              "textureInfo": "/occlusionTexture",
+              "sha256": "e3f7876702fde620cef4db973fe78cb0122cab07b5a54effbdd4e199b15025df",
+              "bytes": 4178351
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "5ebf44889a2726941ae861ef8331b89518b061a332e5bbc731aac906aafd82dd",
+              "bytes": 3600364
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/metallicRoughnessTexture",
+              "sha256": "e3f7876702fde620cef4db973fe78cb0122cab07b5a54effbdd4e199b15025df",
+              "bytes": 4178351
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {}
+        },
+        "OriginalOuter_P3S0": {
+          "sourceMaterialIndex": 0,
+          "graphSHA256": "25f4f1367502932e1186465743f78df954651e3f5b7ec202f3bb76e38ba8c7b9",
+          "requiredImages": [
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "cdb687cd4c59ec3ef396dca743f0a4eac024d0511190f0a746403bbe2f485c51",
+              "bytes": 37019781
+            },
+            {
+              "textureInfo": "/occlusionTexture",
+              "sha256": "e3f7876702fde620cef4db973fe78cb0122cab07b5a54effbdd4e199b15025df",
+              "bytes": 4178351
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "5ebf44889a2726941ae861ef8331b89518b061a332e5bbc731aac906aafd82dd",
+              "bytes": 3600364
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/metallicRoughnessTexture",
+              "sha256": "e3f7876702fde620cef4db973fe78cb0122cab07b5a54effbdd4e199b15025df",
+              "bytes": 4178351
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {}
+        },
+        "OriginalAccent_P4S0": {
+          "sourceMaterialIndex": 0,
+          "graphSHA256": "25f4f1367502932e1186465743f78df954651e3f5b7ec202f3bb76e38ba8c7b9",
+          "requiredImages": [
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "cdb687cd4c59ec3ef396dca743f0a4eac024d0511190f0a746403bbe2f485c51",
+              "bytes": 37019781
+            },
+            {
+              "textureInfo": "/occlusionTexture",
+              "sha256": "e3f7876702fde620cef4db973fe78cb0122cab07b5a54effbdd4e199b15025df",
+              "bytes": 4178351
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "5ebf44889a2726941ae861ef8331b89518b061a332e5bbc731aac906aafd82dd",
+              "bytes": 3600364
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/metallicRoughnessTexture",
+              "sha256": "e3f7876702fde620cef4db973fe78cb0122cab07b5a54effbdd4e199b15025df",
+              "bytes": 4178351
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {}
+        },
+        "OriginalAccent_P5S0": {
+          "sourceMaterialIndex": 0,
+          "graphSHA256": "25f4f1367502932e1186465743f78df954651e3f5b7ec202f3bb76e38ba8c7b9",
+          "requiredImages": [
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "cdb687cd4c59ec3ef396dca743f0a4eac024d0511190f0a746403bbe2f485c51",
+              "bytes": 37019781
+            },
+            {
+              "textureInfo": "/occlusionTexture",
+              "sha256": "e3f7876702fde620cef4db973fe78cb0122cab07b5a54effbdd4e199b15025df",
+              "bytes": 4178351
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "5ebf44889a2726941ae861ef8331b89518b061a332e5bbc731aac906aafd82dd",
+              "bytes": 3600364
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/metallicRoughnessTexture",
+              "sha256": "e3f7876702fde620cef4db973fe78cb0122cab07b5a54effbdd4e199b15025df",
+              "bytes": 4178351
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {}
+        }
+      },
+      "materialGraphSHA256": "3b070a155c2cd0cfae9c242f4806c7f86351f8d6d3b36ea84d147c2ed65dda15",
+      "imageSHA256s": [
+        "5ebf44889a2726941ae861ef8331b89518b061a332e5bbc731aac906aafd82dd",
+        "cdb687cd4c59ec3ef396dca743f0a4eac024d0511190f0a746403bbe2f485c51",
+        "e3f7876702fde620cef4db973fe78cb0122cab07b5a54effbdd4e199b15025df"
+      ],
+      "license": "CC-BY-4.0",
+      "attribution": {
+        "title": "Female Overcoat",
+        "author": "3DGunsmith (https://sketchfab.com/3DGunsmith)",
+        "source": "https://sketchfab.com/3d-models/female-overcoat-4bc89e3be7fb4c11b3b1153e9ea384dd",
+        "license": "CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)"
+      },
+      "componentLicenses": {
+        "sourceGarment": "CC-BY-4.0",
+        "referenceAvatarRigAndContext": "LicenseRef-RenderHub-Extended-Use"
+      }
+    },
+    {
+      "path": "avatars/wardrobe/female/outer/source-ray-vest.glb",
+      "id": "source-ray-vest",
+      "group": "female",
+      "mode": "outer",
+      "source": {
+        "path": "female/real_suit_for_ray_ii_retopo.glb",
+        "sha256": "801be57040157694ffdd8243d39c48c837b5f8f9348b16f236cb8f6a88f1a315"
+      },
+      "fittedSHA256": "5eef827dc2f40fe163946984d3cd901cd082a79cda3f87945dce440b61f2edda",
+      "sha256": "d4cb037a04da7aeeb4d86efd5286af452541b783aa8261cb1083d68622d10753",
+      "triangles": 1124,
+      "bytes": 31030952,
+      "budgets": {
+        "triangles": 1124,
+        "bytes": 31043584
+      },
+      "fitChecks": {
+        "rest": true,
+        "walk": true,
+        "sit": true,
+        "reach": true,
+        "sourceAppearance": true
+      },
+      "materials": {
+        "OriginalOuter_P0S4": {
+          "sourceMaterialIndex": 4,
+          "graphSHA256": "30d0b06e2e0e83ee47f1cb1171d13f7f9ece5145766e95894b0da9f9439493cd",
+          "requiredImages": [
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "640978e46ea91e27b054736fa3c24eac361392419458e4b7c6e85e1a668ecf1e",
+              "bytes": 1741457
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "99727a110ea2eb202372c9fe64817aed30d9840f7ebfe608a386c8342779474c",
+              "bytes": 1139612
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {}
+        }
+      },
+      "materialGraphSHA256": "1f88280326e9b9ba14919cd535aafb295241187f9ca3038b3684e6c9f589edb8",
+      "imageSHA256s": [
+        "640978e46ea91e27b054736fa3c24eac361392419458e4b7c6e85e1a668ecf1e",
+        "99727a110ea2eb202372c9fe64817aed30d9840f7ebfe608a386c8342779474c"
+      ],
+      "license": "CC-BY-4.0",
+      "attribution": {
+        "title": "Real Suit For Ray II Retopo",
+        "author": "ChamberSu1996 (https://sketchfab.com/chambersu1996)",
+        "source": "https://sketchfab.com/3d-models/real-suit-for-ray-ii-retopo-3e543b8199f548cf99077c89929888b5",
+        "license": "CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)"
+      },
+      "componentLicenses": {
+        "sourceGarment": "CC-BY-4.0",
+        "referenceAvatarRigAndContext": "LicenseRef-RenderHub-Extended-Use"
+      }
+    },
+    {
+      "path": "avatars/wardrobe/female/outer/source-red-leather-jacket.glb",
+      "id": "source-red-leather-jacket",
+      "group": "female",
+      "mode": "outer",
+      "source": {
+        "path": "female/red_leather_jacket.glb",
+        "sha256": "4065124d8d8f8208f73a97b0facced62137e9bc85ade2bfb07800eaa7aa9a07d"
+      },
+      "fittedSHA256": "98c0fe5db53fda01c49b74219916148ac1cac52367746913057281023ae816f2",
+      "sha256": "25a5838cb30c366392621da70da8745109293b25073b4539c31e1d6868fc7049",
+      "triangles": 15833,
+      "bytes": 14005440,
+      "budgets": {
+        "triangles": 15833,
+        "bytes": 14016512
+      },
+      "fitChecks": {
+        "rest": true,
+        "walk": true,
+        "sit": true,
+        "reach": true,
+        "sourceAppearance": true
+      },
+      "materials": {
+        "OriginalAccent_P0S0": {
+          "sourceMaterialIndex": 0,
+          "graphSHA256": "794e22b84469e0fccd847348bd585101c9e91ac47ce824b1fec46f1d30833d1a",
+          "requiredImages": [
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "ccc9b4eb549488cf18cc113fdbcd915066078a76ea9707438ec3ea0ad133ccf5",
+              "bytes": 5756865
+            },
+            {
+              "textureInfo": "/occlusionTexture",
+              "sha256": "d0d42878c6e413e95641d008ae5834be04b5e4c6b231b18d6a54701745752449",
+              "bytes": 4123033
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "c58a5955d7883595318fe3c8a0d8668f34ce7ba508ed027f1b7dd0c175a67e45",
+              "bytes": 2183074
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/metallicRoughnessTexture",
+              "sha256": "d0d42878c6e413e95641d008ae5834be04b5e4c6b231b18d6a54701745752449",
+              "bytes": 4123033
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {}
+        },
+        "OriginalOuter_P1S0": {
+          "sourceMaterialIndex": 0,
+          "graphSHA256": "794e22b84469e0fccd847348bd585101c9e91ac47ce824b1fec46f1d30833d1a",
+          "requiredImages": [
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "ccc9b4eb549488cf18cc113fdbcd915066078a76ea9707438ec3ea0ad133ccf5",
+              "bytes": 5756865
+            },
+            {
+              "textureInfo": "/occlusionTexture",
+              "sha256": "d0d42878c6e413e95641d008ae5834be04b5e4c6b231b18d6a54701745752449",
+              "bytes": 4123033
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "c58a5955d7883595318fe3c8a0d8668f34ce7ba508ed027f1b7dd0c175a67e45",
+              "bytes": 2183074
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/metallicRoughnessTexture",
+              "sha256": "d0d42878c6e413e95641d008ae5834be04b5e4c6b231b18d6a54701745752449",
+              "bytes": 4123033
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {}
+        },
+        "OriginalOuter_P2S0": {
+          "sourceMaterialIndex": 0,
+          "graphSHA256": "794e22b84469e0fccd847348bd585101c9e91ac47ce824b1fec46f1d30833d1a",
+          "requiredImages": [
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "ccc9b4eb549488cf18cc113fdbcd915066078a76ea9707438ec3ea0ad133ccf5",
+              "bytes": 5756865
+            },
+            {
+              "textureInfo": "/occlusionTexture",
+              "sha256": "d0d42878c6e413e95641d008ae5834be04b5e4c6b231b18d6a54701745752449",
+              "bytes": 4123033
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "c58a5955d7883595318fe3c8a0d8668f34ce7ba508ed027f1b7dd0c175a67e45",
+              "bytes": 2183074
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/metallicRoughnessTexture",
+              "sha256": "d0d42878c6e413e95641d008ae5834be04b5e4c6b231b18d6a54701745752449",
+              "bytes": 4123033
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {}
+        },
+        "OriginalOuter_P3S0": {
+          "sourceMaterialIndex": 0,
+          "graphSHA256": "794e22b84469e0fccd847348bd585101c9e91ac47ce824b1fec46f1d30833d1a",
+          "requiredImages": [
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "ccc9b4eb549488cf18cc113fdbcd915066078a76ea9707438ec3ea0ad133ccf5",
+              "bytes": 5756865
+            },
+            {
+              "textureInfo": "/occlusionTexture",
+              "sha256": "d0d42878c6e413e95641d008ae5834be04b5e4c6b231b18d6a54701745752449",
+              "bytes": 4123033
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "c58a5955d7883595318fe3c8a0d8668f34ce7ba508ed027f1b7dd0c175a67e45",
+              "bytes": 2183074
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/metallicRoughnessTexture",
+              "sha256": "d0d42878c6e413e95641d008ae5834be04b5e4c6b231b18d6a54701745752449",
+              "bytes": 4123033
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {}
+        },
+        "OriginalTop_P4S0": {
+          "sourceMaterialIndex": 0,
+          "graphSHA256": "794e22b84469e0fccd847348bd585101c9e91ac47ce824b1fec46f1d30833d1a",
+          "requiredImages": [
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "ccc9b4eb549488cf18cc113fdbcd915066078a76ea9707438ec3ea0ad133ccf5",
+              "bytes": 5756865
+            },
+            {
+              "textureInfo": "/occlusionTexture",
+              "sha256": "d0d42878c6e413e95641d008ae5834be04b5e4c6b231b18d6a54701745752449",
+              "bytes": 4123033
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "c58a5955d7883595318fe3c8a0d8668f34ce7ba508ed027f1b7dd0c175a67e45",
+              "bytes": 2183074
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/metallicRoughnessTexture",
+              "sha256": "d0d42878c6e413e95641d008ae5834be04b5e4c6b231b18d6a54701745752449",
+              "bytes": 4123033
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {}
+        },
+        "OriginalAccent_P5S0": {
+          "sourceMaterialIndex": 0,
+          "graphSHA256": "794e22b84469e0fccd847348bd585101c9e91ac47ce824b1fec46f1d30833d1a",
+          "requiredImages": [
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "ccc9b4eb549488cf18cc113fdbcd915066078a76ea9707438ec3ea0ad133ccf5",
+              "bytes": 5756865
+            },
+            {
+              "textureInfo": "/occlusionTexture",
+              "sha256": "d0d42878c6e413e95641d008ae5834be04b5e4c6b231b18d6a54701745752449",
+              "bytes": 4123033
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "c58a5955d7883595318fe3c8a0d8668f34ce7ba508ed027f1b7dd0c175a67e45",
+              "bytes": 2183074
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/metallicRoughnessTexture",
+              "sha256": "d0d42878c6e413e95641d008ae5834be04b5e4c6b231b18d6a54701745752449",
+              "bytes": 4123033
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {}
+        }
+      },
+      "materialGraphSHA256": "03a7c19fa42c1146a55e2b78e212286b709ee9c7a7e09f689947b3eda8150b27",
+      "imageSHA256s": [
+        "c58a5955d7883595318fe3c8a0d8668f34ce7ba508ed027f1b7dd0c175a67e45",
+        "ccc9b4eb549488cf18cc113fdbcd915066078a76ea9707438ec3ea0ad133ccf5",
+        "d0d42878c6e413e95641d008ae5834be04b5e4c6b231b18d6a54701745752449"
+      ],
+      "license": "CC-BY-4.0",
+      "attribution": {
+        "title": "Red Leather Jacket",
+        "author": "kmichy (https://sketchfab.com/kmichy)",
+        "source": "https://sketchfab.com/3d-models/red-leather-jacket-33e80ed4b76d4a8397e669ce66493374",
+        "license": "CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)"
+      },
+      "componentLicenses": {
+        "sourceGarment": "CC-BY-4.0",
+        "referenceAvatarRigAndContext": "LicenseRef-RenderHub-Extended-Use"
+      }
+    },
+    {
+      "path": "avatars/wardrobe/female/top/source-belted-top.glb",
+      "id": "source-belted-top",
+      "group": "female",
+      "mode": "top",
+      "source": {
+        "path": "female/women_top_with_belt.glb",
+        "sha256": "6d010732e1697a2a73bcbb71d1aa25470506e9fe66a8bdeb1902de897c719b1b"
+      },
+      "fittedSHA256": "cc0c9b0c5805e196f5fb0eecb3489b00a265f0deeb986d1e1111e5ac78a3c162",
+      "sha256": "27a44e1587ab2d96bdc375f6e6bc16075f056b100f1033d9e446acb4be88db0e",
+      "triangles": 15251,
+      "bytes": 14060328,
+      "budgets": {
+        "triangles": 15251,
+        "bytes": 14069760
+      },
+      "fitChecks": {
+        "rest": true,
+        "walk": true,
+        "sit": true,
+        "reach": true,
+        "sourceAppearance": true
+      },
+      "materials": {
+        "OriginalTop_P0S0": {
+          "sourceMaterialIndex": 0,
+          "graphSHA256": "ba6e444ad19cc6f4ef5585022daaa8df9f92a10bd5eb4444e83d8feb2900aae7",
+          "requiredImages": [
+            {
+              "textureInfo": "/emissiveTexture",
+              "sha256": "d1a77e8d38602635e6ec0850819f15919df3fffd613f625f5b40f48daafad9b4",
+              "bytes": 49436
+            },
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "6ea4c5679be3583cc421ee7545361284b1ae7b6a5487c3399993b84944c8e3f5",
+              "bytes": 4484314
+            },
+            {
+              "textureInfo": "/occlusionTexture",
+              "sha256": "0dfbd96553dba786ae58e268aca679584946661e6fd0d8d34513101f5b0f821d",
+              "bytes": 3385691
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "02c1b54fef8a6d9a3da9d2039e0955db0e6c2e00ea4e5abb0a0aae7155c2e939",
+              "bytes": 5471320
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/metallicRoughnessTexture",
+              "sha256": "0dfbd96553dba786ae58e268aca679584946661e6fd0d8d34513101f5b0f821d",
+              "bytes": 3385691
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {}
+        }
+      },
+      "materialGraphSHA256": "9515a74c180377648b45fe1cc3104ebf3cec5ca56509124271415ad52d572355",
+      "imageSHA256s": [
+        "02c1b54fef8a6d9a3da9d2039e0955db0e6c2e00ea4e5abb0a0aae7155c2e939",
+        "0dfbd96553dba786ae58e268aca679584946661e6fd0d8d34513101f5b0f821d",
+        "6ea4c5679be3583cc421ee7545361284b1ae7b6a5487c3399993b84944c8e3f5",
+        "d1a77e8d38602635e6ec0850819f15919df3fffd613f625f5b40f48daafad9b4"
+      ],
+      "license": "CC-BY-4.0",
+      "attribution": {
+        "title": "Women Top with belt",
+        "author": "Annie88 (https://sketchfab.com/LIU_CG)",
+        "source": "https://sketchfab.com/3d-models/women-top-with-belt-9b0d33a10d8345e682d2e642703210f7",
+        "license": "CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)"
+      },
+      "componentLicenses": {
+        "sourceGarment": "CC-BY-4.0",
+        "referenceAvatarRigAndContext": "LicenseRef-RenderHub-Extended-Use"
+      }
+    },
+    {
+      "path": "avatars/wardrobe/female/top/source-female-cloth1.glb",
+      "id": "source-female-cloth1",
+      "group": "female",
+      "mode": "top",
+      "source": {
+        "path": "female/female_cloth1.glb",
+        "sha256": "6880956a89a8be5b520f2f6a7166830611e983cfd2f3a039c86b044675fe586f"
+      },
+      "fittedSHA256": "63a7828b91d51dccf8fe18b703998584a6fd7356d87a1852e0e256cb6b203339",
+      "sha256": "441f4f5ab85672ee08b726442bfebf515fddfcd4fd1a866612b4deb2d38e8659",
+      "triangles": 21861,
+      "bytes": 35802172,
+      "budgets": {
+        "triangles": 21861,
+        "bytes": 35815424
+      },
+      "fitChecks": {
+        "rest": true,
+        "walk": true,
+        "sit": true,
+        "reach": true,
+        "sourceAppearance": true
+      },
+      "materials": {
+        "OriginalTop_P0S0": {
+          "sourceMaterialIndex": 0,
+          "graphSHA256": "90b78b999117c7dafb438622c46acd9daf92d0838b9175d34fc4bf140e94741e",
+          "requiredImages": [
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "bdda2562d1b660baa90319ea09c0077fd41563c77bf06e26f8bbdd4388d40a4a",
+              "bytes": 28854761
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "b919cbcc380ea814cc46ff4965a1c3595e258737a8ecf113cde615a741755fda",
+              "bytes": 2761483
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/metallicRoughnessTexture",
+              "sha256": "2e81f5704eeeaa08b64f7152a6e72e5285ee4069fbd14c2ec4a80c85131bc954",
+              "bytes": 3230361
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {}
+        },
+        "OriginalTop_P1S0": {
+          "sourceMaterialIndex": 0,
+          "graphSHA256": "90b78b999117c7dafb438622c46acd9daf92d0838b9175d34fc4bf140e94741e",
+          "requiredImages": [
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "bdda2562d1b660baa90319ea09c0077fd41563c77bf06e26f8bbdd4388d40a4a",
+              "bytes": 28854761
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "b919cbcc380ea814cc46ff4965a1c3595e258737a8ecf113cde615a741755fda",
+              "bytes": 2761483
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/metallicRoughnessTexture",
+              "sha256": "2e81f5704eeeaa08b64f7152a6e72e5285ee4069fbd14c2ec4a80c85131bc954",
+              "bytes": 3230361
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {}
+        }
+      },
+      "materialGraphSHA256": "62db894bcd40946ff5d6a99d48e9be5b3b68baf8d1af9b8957ce223da346e9e4",
+      "imageSHA256s": [
+        "2e81f5704eeeaa08b64f7152a6e72e5285ee4069fbd14c2ec4a80c85131bc954",
+        "b919cbcc380ea814cc46ff4965a1c3595e258737a8ecf113cde615a741755fda",
+        "bdda2562d1b660baa90319ea09c0077fd41563c77bf06e26f8bbdd4388d40a4a"
+      ],
+      "license": "CC-BY-4.0",
+      "attribution": {
+        "title": "Female Cloth1",
+        "author": "mega3d (https://sketchfab.com/mega-3d)",
+        "source": "https://sketchfab.com/3d-models/female-cloth1-c5f828cf2c52461496a058f590e26cd6",
+        "license": "CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)"
+      },
+      "componentLicenses": {
+        "sourceGarment": "CC-BY-4.0",
+        "referenceAvatarRigAndContext": "LicenseRef-RenderHub-Extended-Use"
+      }
+    },
+    {
+      "path": "avatars/wardrobe/female/top/source-flame-hoodie.glb",
+      "id": "source-flame-hoodie",
+      "group": "female",
+      "mode": "top",
+      "source": {
+        "path": "female/classic_black_flame_hoodie.glb",
+        "sha256": "ebd98523474fbb788a1d1a33f8b11efedfbd3dd36db1eeeb9a19be5972795428"
+      },
+      "fittedSHA256": "4dc49155600e9775aff4b20632b9cc41b71e3c80cd11f404b294082460370698",
+      "sha256": "945a131e665545ea454938ebc645562ba2f8010deab56de3e0cee8a7b17d2f5c",
+      "triangles": 227132,
+      "bytes": 24514840,
+      "budgets": {
+        "triangles": 227132,
+        "bytes": 24526848
+      },
+      "fitChecks": {
+        "rest": true,
+        "walk": true,
+        "sit": true,
+        "reach": true,
+        "sourceAppearance": true
+      },
+      "materials": {
+        "OriginalTop_P0S0": {
+          "sourceMaterialIndex": 0,
+          "graphSHA256": "97138717b4e8313a06d301d055c57ecad4821a346ecc3f314fa58d410709e80c",
+          "requiredImages": [
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "a35f7e52a4d5ff64fed500d8ebd35dfeb30bd4d844da50ee49eb44eb8cbeff00",
+              "bytes": 8700486
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "c6ef202c814fe4b4c8177335acc180eed1e51b935b97985b46c000958577d92b",
+              "bytes": 79362
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/metallicRoughnessTexture",
+              "sha256": "3b3d7fa8fd936e154c9e02cbce7b29334dc79d456c01ef8c41b1da7b33975570",
+              "bytes": 1863380
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {}
+        },
+        "OriginalTop_P1S1": {
+          "sourceMaterialIndex": 1,
+          "graphSHA256": "97138717b4e8313a06d301d055c57ecad4821a346ecc3f314fa58d410709e80c",
+          "requiredImages": [
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "a35f7e52a4d5ff64fed500d8ebd35dfeb30bd4d844da50ee49eb44eb8cbeff00",
+              "bytes": 8700486
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "c6ef202c814fe4b4c8177335acc180eed1e51b935b97985b46c000958577d92b",
+              "bytes": 79362
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/metallicRoughnessTexture",
+              "sha256": "3b3d7fa8fd936e154c9e02cbce7b29334dc79d456c01ef8c41b1da7b33975570",
+              "bytes": 1863380
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {}
+        },
+        "OriginalTop_P2S2": {
+          "sourceMaterialIndex": 2,
+          "graphSHA256": "97138717b4e8313a06d301d055c57ecad4821a346ecc3f314fa58d410709e80c",
+          "requiredImages": [
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "a35f7e52a4d5ff64fed500d8ebd35dfeb30bd4d844da50ee49eb44eb8cbeff00",
+              "bytes": 8700486
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "c6ef202c814fe4b4c8177335acc180eed1e51b935b97985b46c000958577d92b",
+              "bytes": 79362
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/metallicRoughnessTexture",
+              "sha256": "3b3d7fa8fd936e154c9e02cbce7b29334dc79d456c01ef8c41b1da7b33975570",
+              "bytes": 1863380
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {}
+        },
+        "OriginalTop_P3S3": {
+          "sourceMaterialIndex": 3,
+          "graphSHA256": "013011bb70296ad5e079d01c2ce3446cf6be11ef69252d97bd9caf7968805b86",
+          "requiredImages": [],
+          "requiredUVSets": [],
+          "overrides": {}
+        },
+        "OriginalTop_P4S3": {
+          "sourceMaterialIndex": 3,
+          "graphSHA256": "013011bb70296ad5e079d01c2ce3446cf6be11ef69252d97bd9caf7968805b86",
+          "requiredImages": [],
+          "requiredUVSets": [],
+          "overrides": {}
+        },
+        "OriginalTop_P5S3": {
+          "sourceMaterialIndex": 3,
+          "graphSHA256": "013011bb70296ad5e079d01c2ce3446cf6be11ef69252d97bd9caf7968805b86",
+          "requiredImages": [],
+          "requiredUVSets": [],
+          "overrides": {}
+        },
+        "OriginalTop_P6S3": {
+          "sourceMaterialIndex": 3,
+          "graphSHA256": "013011bb70296ad5e079d01c2ce3446cf6be11ef69252d97bd9caf7968805b86",
+          "requiredImages": [],
+          "requiredUVSets": [],
+          "overrides": {}
+        },
+        "OriginalTop_P7S3": {
+          "sourceMaterialIndex": 3,
+          "graphSHA256": "013011bb70296ad5e079d01c2ce3446cf6be11ef69252d97bd9caf7968805b86",
+          "requiredImages": [],
+          "requiredUVSets": [],
+          "overrides": {}
+        },
+        "OriginalTop_P8S3": {
+          "sourceMaterialIndex": 3,
+          "graphSHA256": "013011bb70296ad5e079d01c2ce3446cf6be11ef69252d97bd9caf7968805b86",
+          "requiredImages": [],
+          "requiredUVSets": [],
+          "overrides": {}
+        },
+        "OriginalTop_P9S3": {
+          "sourceMaterialIndex": 3,
+          "graphSHA256": "013011bb70296ad5e079d01c2ce3446cf6be11ef69252d97bd9caf7968805b86",
+          "requiredImages": [],
+          "requiredUVSets": [],
+          "overrides": {}
+        },
+        "OriginalTop_P10S3": {
+          "sourceMaterialIndex": 3,
+          "graphSHA256": "013011bb70296ad5e079d01c2ce3446cf6be11ef69252d97bd9caf7968805b86",
+          "requiredImages": [],
+          "requiredUVSets": [],
+          "overrides": {}
+        },
+        "OriginalTop_P11S3": {
+          "sourceMaterialIndex": 3,
+          "graphSHA256": "013011bb70296ad5e079d01c2ce3446cf6be11ef69252d97bd9caf7968805b86",
+          "requiredImages": [],
+          "requiredUVSets": [],
+          "overrides": {}
+        },
+        "OriginalTop_P12S3": {
+          "sourceMaterialIndex": 3,
+          "graphSHA256": "013011bb70296ad5e079d01c2ce3446cf6be11ef69252d97bd9caf7968805b86",
+          "requiredImages": [],
+          "requiredUVSets": [],
+          "overrides": {}
+        },
+        "OriginalTop_P13S3": {
+          "sourceMaterialIndex": 3,
+          "graphSHA256": "013011bb70296ad5e079d01c2ce3446cf6be11ef69252d97bd9caf7968805b86",
+          "requiredImages": [],
+          "requiredUVSets": [],
+          "overrides": {}
+        },
+        "OriginalTop_AdditiveUnderlap_S1": {
+          "sourceMaterialIndex": 1,
+          "graphSHA256": "97138717b4e8313a06d301d055c57ecad4821a346ecc3f314fa58d410709e80c",
+          "requiredImages": [
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "a35f7e52a4d5ff64fed500d8ebd35dfeb30bd4d844da50ee49eb44eb8cbeff00",
+              "bytes": 8700486
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "c6ef202c814fe4b4c8177335acc180eed1e51b935b97985b46c000958577d92b",
+              "bytes": 79362
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/metallicRoughnessTexture",
+              "sha256": "3b3d7fa8fd936e154c9e02cbce7b29334dc79d456c01ef8c41b1da7b33975570",
+              "bytes": 1863380
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {}
+        }
+      },
+      "materialGraphSHA256": "f0c2070733d72bc6c77f10a88d990b6049ba22807957f3f3770d96c820cbb2a3",
+      "imageSHA256s": [
+        "3b3d7fa8fd936e154c9e02cbce7b29334dc79d456c01ef8c41b1da7b33975570",
+        "a35f7e52a4d5ff64fed500d8ebd35dfeb30bd4d844da50ee49eb44eb8cbeff00",
+        "c6ef202c814fe4b4c8177335acc180eed1e51b935b97985b46c000958577d92b"
+      ],
+      "license": "CC-BY-4.0",
+      "attribution": {
+        "title": "Classic Black Flame Hoodie",
+        "author": "kril (https://sketchfab.com/krrril_)",
+        "source": "https://sketchfab.com/3d-models/classic-black-flame-hoodie-0fd0effa321e456cb2a7467e2899b658",
+        "license": "CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)"
+      },
+      "componentLicenses": {
+        "sourceGarment": "CC-BY-4.0",
+        "referenceAvatarRigAndContext": "LicenseRef-RenderHub-Extended-Use"
+      }
+    },
+    {
+      "path": "avatars/wardrobe/female/top/source-gothic-blouse.glb",
+      "id": "source-gothic-blouse",
+      "group": "female",
+      "mode": "top",
+      "source": {
+        "path": "female/womens_blouse_and_skirt.glb",
+        "sha256": "4fb33d66371720052110c2daa275bfc49ef85b9fcc14952f92b64f084262defd"
+      },
+      "fittedSHA256": "e290812d37f723602ed76a26d6fe6f2bf646e29d4232baecab74042ac3725496",
+      "sha256": "f0f5102a851b701e25895ec9d8645952826808663aec9a3403ea46d5a6a4cc1e",
+      "triangles": 83703,
+      "bytes": 4249676,
+      "budgets": {
+        "triangles": 83703,
+        "bytes": 4259840
+      },
+      "fitChecks": {
+        "rest": true,
+        "walk": true,
+        "sit": true,
+        "reach": true,
+        "sourceAppearance": true
+      },
+      "materials": {
+        "OriginalTop_P0S1": {
+          "sourceMaterialIndex": 1,
+          "graphSHA256": "02a32411b4008a46dc44bc0d4c140a75bc87c2a458a3ef67761fa16a58e104b4",
+          "requiredImages": [],
+          "requiredUVSets": [],
+          "overrides": {}
+        },
+        "OriginalAccent_P1S0": {
+          "sourceMaterialIndex": 0,
+          "graphSHA256": "49a91f8f418121fce0e6a5aa1db6a0a9b25cee52cb143d735af73d24867a979f",
+          "requiredImages": [],
+          "requiredUVSets": [],
+          "overrides": {}
+        }
+      },
+      "materialGraphSHA256": "0e68e37438e1f7ff3bc2e898704ea75dd3627139294b5a8488000199a90bee7d",
+      "imageSHA256s": [],
+      "license": "CC-BY-4.0",
+      "attribution": {
+        "title": "Women's blouse and skirt",
+        "author": "ps2enthusiast (https://sketchfab.com/kosicky.jozef2308)",
+        "source": "https://sketchfab.com/3d-models/womens-blouse-and-skirt-f9d46dfe0bf4431195f4044861ce568f",
+        "license": "CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)"
+      },
+      "componentLicenses": {
+        "sourceGarment": "CC-BY-4.0",
+        "referenceAvatarRigAndContext": "LicenseRef-RenderHub-Extended-Use"
+      }
+    },
+    {
+      "path": "avatars/wardrobe/female/top/source-oversize-shirt.glb",
+      "id": "source-oversize-shirt",
+      "group": "female",
+      "mode": "top",
+      "source": {
+        "path": "female/low_poly_woman_oversize_shirt_with_tie.glb",
+        "sha256": "cddcbd87c7ce147f1bc3012fdaf17961d166c2565b6d7285b400d0a6e58669b0"
+      },
+      "fittedSHA256": "e01c7dfd1078479bbd5a7674100544d770291fdada9d53125c88fe56b5d04c02",
+      "sha256": "5a238ef6133df5a54f660f9ff392d12a9aa1bc3d03f026f2e41ac2544ce22dad",
+      "triangles": 2532,
+      "bytes": 2917664,
+      "budgets": {
+        "triangles": 2532,
+        "bytes": 2928640
+      },
+      "fitChecks": {
+        "rest": true,
+        "walk": true,
+        "sit": true,
+        "reach": true,
+        "sourceAppearance": true
+      },
+      "materials": {
+        "OriginalTop_P0S0": {
+          "sourceMaterialIndex": 0,
+          "graphSHA256": "8dd28798b278c895664ff3d9ae06e479ad1de2cd08b09c0a84210ef398144d7a",
+          "requiredImages": [
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "515def85ac0d7d198a81f2852292b2ee111562bbbaedea6004119e8bb7871d5e",
+              "bytes": 1089573
+            },
+            {
+              "textureInfo": "/occlusionTexture",
+              "sha256": "2c65ea9647279f86284dcfafa1f85e39b0904a9806c48cc9f1cbe1f6ff582663",
+              "bytes": 1031921
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "8f2d76615724ba38dc98f16e32528a14766f384e5b0368fc54bad83e728adfd9",
+              "bytes": 635236
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/metallicRoughnessTexture",
+              "sha256": "2c65ea9647279f86284dcfafa1f85e39b0904a9806c48cc9f1cbe1f6ff582663",
+              "bytes": 1031921
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {}
+        },
+        "OriginalAccent_P1S0": {
+          "sourceMaterialIndex": 0,
+          "graphSHA256": "8dd28798b278c895664ff3d9ae06e479ad1de2cd08b09c0a84210ef398144d7a",
+          "requiredImages": [
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "515def85ac0d7d198a81f2852292b2ee111562bbbaedea6004119e8bb7871d5e",
+              "bytes": 1089573
+            },
+            {
+              "textureInfo": "/occlusionTexture",
+              "sha256": "2c65ea9647279f86284dcfafa1f85e39b0904a9806c48cc9f1cbe1f6ff582663",
+              "bytes": 1031921
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "8f2d76615724ba38dc98f16e32528a14766f384e5b0368fc54bad83e728adfd9",
+              "bytes": 635236
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/metallicRoughnessTexture",
+              "sha256": "2c65ea9647279f86284dcfafa1f85e39b0904a9806c48cc9f1cbe1f6ff582663",
+              "bytes": 1031921
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {}
+        }
+      },
+      "materialGraphSHA256": "3e4b710dd107da13d642cc04d7bf97a32c5b9979dc29b04dab43b9a87399f424",
+      "imageSHA256s": [
+        "2c65ea9647279f86284dcfafa1f85e39b0904a9806c48cc9f1cbe1f6ff582663",
+        "515def85ac0d7d198a81f2852292b2ee111562bbbaedea6004119e8bb7871d5e",
+        "8f2d76615724ba38dc98f16e32528a14766f384e5b0368fc54bad83e728adfd9"
+      ],
+      "license": "CC-BY-4.0",
+      "attribution": {
+        "title": "Low poly woman oversize shirt with tie",
+        "author": "rkuzmin260 (https://sketchfab.com/rkuzmin260)",
+        "source": "https://sketchfab.com/3d-models/low-poly-woman-oversize-shirt-with-tie-8f0c1d170b1d4f38b9ba23a11cc4a87c",
+        "license": "CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)"
+      },
+      "componentLicenses": {
+        "sourceGarment": "CC-BY-4.0",
+        "referenceAvatarRigAndContext": "LicenseRef-RenderHub-Extended-Use"
+      }
+    },
+    {
+      "path": "avatars/wardrobe/female/top/source-pink-hoodie.glb",
+      "id": "source-pink-hoodie",
+      "group": "female",
+      "mode": "top",
+      "source": {
+        "path": "female/pink_drawstring_hooded_sweatshirt.glb",
+        "sha256": "6b7fd8dcfb80fdc5d068c1a88eacbadbf4b310fa48636a406a6a01678480bc25"
+      },
+      "fittedSHA256": "68f76602c6cc0a6ad011676c49249bd359ca480e907a342afd2330b45458d54e",
+      "sha256": "c86249f1a5ed19ba5765b61f48d5c54fd4a170244816558d0c727bd5cdc1a550",
+      "triangles": 117711,
+      "bytes": 24968556,
+      "budgets": {
+        "triangles": 117711,
+        "bytes": 24981504
+      },
+      "fitChecks": {
+        "rest": true,
+        "walk": true,
+        "sit": true,
+        "reach": true,
+        "sourceAppearance": true
+      },
+      "materials": {
+        "OriginalTop_P0S1": {
+          "sourceMaterialIndex": 1,
+          "graphSHA256": "eb60e666a5b50c2480579fcaaaeaebc889c000d8151c198b407c2d6baf90a42f",
+          "requiredImages": [
+            {
+              "textureInfo": "/emissiveTexture",
+              "sha256": "bb41b9eb322f844a05e37f77f4b8d06c768250309295e3f3cf27f840cbfe04be",
+              "bytes": 27310
+            },
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "def86a32c01f425c1ad5358ac1ba40ed5ff2af83de74f46650bc9963ee5c2abc",
+              "bytes": 19601252
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "88bdea406d06406d1754dcb95df840ec60948cff57108dd46927a4757e3cdb61",
+              "bytes": 26957
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {}
+        },
+        "OriginalTop_P1S1": {
+          "sourceMaterialIndex": 1,
+          "graphSHA256": "eb60e666a5b50c2480579fcaaaeaebc889c000d8151c198b407c2d6baf90a42f",
+          "requiredImages": [
+            {
+              "textureInfo": "/emissiveTexture",
+              "sha256": "bb41b9eb322f844a05e37f77f4b8d06c768250309295e3f3cf27f840cbfe04be",
+              "bytes": 27310
+            },
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "def86a32c01f425c1ad5358ac1ba40ed5ff2af83de74f46650bc9963ee5c2abc",
+              "bytes": 19601252
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "88bdea406d06406d1754dcb95df840ec60948cff57108dd46927a4757e3cdb61",
+              "bytes": 26957
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {}
+        },
+        "OriginalTop_P2S1": {
+          "sourceMaterialIndex": 1,
+          "graphSHA256": "eb60e666a5b50c2480579fcaaaeaebc889c000d8151c198b407c2d6baf90a42f",
+          "requiredImages": [
+            {
+              "textureInfo": "/emissiveTexture",
+              "sha256": "bb41b9eb322f844a05e37f77f4b8d06c768250309295e3f3cf27f840cbfe04be",
+              "bytes": 27310
+            },
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "def86a32c01f425c1ad5358ac1ba40ed5ff2af83de74f46650bc9963ee5c2abc",
+              "bytes": 19601252
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "88bdea406d06406d1754dcb95df840ec60948cff57108dd46927a4757e3cdb61",
+              "bytes": 26957
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {}
+        },
+        "OriginalAccent_P3S0": {
+          "sourceMaterialIndex": 0,
+          "graphSHA256": "da05780deeb9a5284eb0dc68ac1667d15bf442f942d8188cba77bf0f84c301b9",
+          "requiredImages": [],
+          "requiredUVSets": [],
+          "overrides": {}
+        },
+        "OriginalAccent_P4S2": {
+          "sourceMaterialIndex": 2,
+          "graphSHA256": "da05780deeb9a5284eb0dc68ac1667d15bf442f942d8188cba77bf0f84c301b9",
+          "requiredImages": [],
+          "requiredUVSets": [],
+          "overrides": {}
+        },
+        "OriginalAccent_P5S3": {
+          "sourceMaterialIndex": 3,
+          "graphSHA256": "da05780deeb9a5284eb0dc68ac1667d15bf442f942d8188cba77bf0f84c301b9",
+          "requiredImages": [],
+          "requiredUVSets": [],
+          "overrides": {}
+        },
+        "OriginalAccent_P6S4": {
+          "sourceMaterialIndex": 4,
+          "graphSHA256": "da05780deeb9a5284eb0dc68ac1667d15bf442f942d8188cba77bf0f84c301b9",
+          "requiredImages": [],
+          "requiredUVSets": [],
+          "overrides": {}
+        },
+        "OriginalTop_P7S1": {
+          "sourceMaterialIndex": 1,
+          "graphSHA256": "eb60e666a5b50c2480579fcaaaeaebc889c000d8151c198b407c2d6baf90a42f",
+          "requiredImages": [
+            {
+              "textureInfo": "/emissiveTexture",
+              "sha256": "bb41b9eb322f844a05e37f77f4b8d06c768250309295e3f3cf27f840cbfe04be",
+              "bytes": 27310
+            },
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "def86a32c01f425c1ad5358ac1ba40ed5ff2af83de74f46650bc9963ee5c2abc",
+              "bytes": 19601252
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "88bdea406d06406d1754dcb95df840ec60948cff57108dd46927a4757e3cdb61",
+              "bytes": 26957
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {}
+        },
+        "OriginalTop_P8S1": {
+          "sourceMaterialIndex": 1,
+          "graphSHA256": "eb60e666a5b50c2480579fcaaaeaebc889c000d8151c198b407c2d6baf90a42f",
+          "requiredImages": [
+            {
+              "textureInfo": "/emissiveTexture",
+              "sha256": "bb41b9eb322f844a05e37f77f4b8d06c768250309295e3f3cf27f840cbfe04be",
+              "bytes": 27310
+            },
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "def86a32c01f425c1ad5358ac1ba40ed5ff2af83de74f46650bc9963ee5c2abc",
+              "bytes": 19601252
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "88bdea406d06406d1754dcb95df840ec60948cff57108dd46927a4757e3cdb61",
+              "bytes": 26957
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {}
+        },
+        "OriginalTop_P9S1": {
+          "sourceMaterialIndex": 1,
+          "graphSHA256": "eb60e666a5b50c2480579fcaaaeaebc889c000d8151c198b407c2d6baf90a42f",
+          "requiredImages": [
+            {
+              "textureInfo": "/emissiveTexture",
+              "sha256": "bb41b9eb322f844a05e37f77f4b8d06c768250309295e3f3cf27f840cbfe04be",
+              "bytes": 27310
+            },
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "def86a32c01f425c1ad5358ac1ba40ed5ff2af83de74f46650bc9963ee5c2abc",
+              "bytes": 19601252
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "88bdea406d06406d1754dcb95df840ec60948cff57108dd46927a4757e3cdb61",
+              "bytes": 26957
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {}
+        },
+        "OriginalTop_P10S1": {
+          "sourceMaterialIndex": 1,
+          "graphSHA256": "eb60e666a5b50c2480579fcaaaeaebc889c000d8151c198b407c2d6baf90a42f",
+          "requiredImages": [
+            {
+              "textureInfo": "/emissiveTexture",
+              "sha256": "bb41b9eb322f844a05e37f77f4b8d06c768250309295e3f3cf27f840cbfe04be",
+              "bytes": 27310
+            },
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "def86a32c01f425c1ad5358ac1ba40ed5ff2af83de74f46650bc9963ee5c2abc",
+              "bytes": 19601252
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "88bdea406d06406d1754dcb95df840ec60948cff57108dd46927a4757e3cdb61",
+              "bytes": 26957
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {}
+        },
+        "OriginalTop_AdditiveUnderlap_S1": {
+          "sourceMaterialIndex": 1,
+          "graphSHA256": "eb60e666a5b50c2480579fcaaaeaebc889c000d8151c198b407c2d6baf90a42f",
+          "requiredImages": [
+            {
+              "textureInfo": "/emissiveTexture",
+              "sha256": "bb41b9eb322f844a05e37f77f4b8d06c768250309295e3f3cf27f840cbfe04be",
+              "bytes": 27310
+            },
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "def86a32c01f425c1ad5358ac1ba40ed5ff2af83de74f46650bc9963ee5c2abc",
+              "bytes": 19601252
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "88bdea406d06406d1754dcb95df840ec60948cff57108dd46927a4757e3cdb61",
+              "bytes": 26957
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {}
+        }
+      },
+      "materialGraphSHA256": "dcaa70b51616260b237420d71a6d4525de19fd153e84a13196e112bbb46a4b17",
+      "imageSHA256s": [
+        "88bdea406d06406d1754dcb95df840ec60948cff57108dd46927a4757e3cdb61",
+        "bb41b9eb322f844a05e37f77f4b8d06c768250309295e3f3cf27f840cbfe04be",
+        "def86a32c01f425c1ad5358ac1ba40ed5ff2af83de74f46650bc9963ee5c2abc"
+      ],
+      "license": "CC-BY-4.0",
+      "attribution": {
+        "title": "Pink Drawstring Hooded Sweatshirt",
+        "author": "Style3D CG (https://sketchfab.com/Style3DMeta)",
+        "source": "https://sketchfab.com/3d-models/pink-drawstring-hooded-sweatshirt-fd03f442026f4252b2507dda53bba564",
+        "license": "CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)"
+      },
+      "componentLicenses": {
+        "sourceGarment": "CC-BY-4.0",
+        "referenceAvatarRigAndContext": "LicenseRef-RenderHub-Extended-Use"
+      }
+    },
+    {
+      "path": "avatars/wardrobe/female/top/source-ray-underlayer.glb",
+      "id": "source-ray-underlayer",
+      "group": "female",
+      "mode": "top",
+      "source": {
+        "path": "female/real_suit_for_ray_ii_retopo.glb",
+        "sha256": "801be57040157694ffdd8243d39c48c837b5f8f9348b16f236cb8f6a88f1a315"
+      },
+      "fittedSHA256": "6ab6f760f74771eb7cb1151997836512da7befd3ac2ef0bc264db8863203128d",
+      "sha256": "6457ea897f657cdd3f3155f319a1b12b0fd53163808cf89030081b287c9fa18f",
+      "triangles": 6729,
+      "bytes": 31287724,
+      "budgets": {
+        "triangles": 6729,
+        "bytes": 31297536
+      },
+      "fitChecks": {
+        "rest": true,
+        "walk": true,
+        "sit": true,
+        "reach": true,
+        "sourceAppearance": true
+      },
+      "materials": {
+        "OriginalTop_P0S3": {
+          "sourceMaterialIndex": 3,
+          "graphSHA256": "f17a8048abb660b0d0f4a9f86380f19305849601208df404fcf8dc7cd15ebd0f",
+          "requiredImages": [
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "d701b8b0842cccacbb4734ef7ef9cee6fcac1261ade78b8ed31d49fdd4656645",
+              "bytes": 3109032
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "083280d3872ce0dfa086651698c8b0b025c121efc0aad713c3658d122e012c83",
+              "bytes": 2112212
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {}
+        }
+      },
+      "materialGraphSHA256": "455cb9089b8bba4f1c4ad7164d40ec6bbdd2ed8140e48fa90a8ad7b7e72d3368",
+      "imageSHA256s": [
+        "083280d3872ce0dfa086651698c8b0b025c121efc0aad713c3658d122e012c83",
+        "d701b8b0842cccacbb4734ef7ef9cee6fcac1261ade78b8ed31d49fdd4656645"
+      ],
+      "license": "CC-BY-4.0",
+      "attribution": {
+        "title": "Real Suit For Ray II Retopo",
+        "author": "ChamberSu1996 (https://sketchfab.com/chambersu1996)",
+        "source": "https://sketchfab.com/3d-models/real-suit-for-ray-ii-retopo-3e543b8199f548cf99077c89929888b5",
+        "license": "CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)"
+      },
+      "componentLicenses": {
+        "sourceGarment": "CC-BY-4.0",
+        "referenceAvatarRigAndContext": "LicenseRef-RenderHub-Extended-Use"
+      }
+    },
+    {
+      "path": "avatars/wardrobe/male/outer/denim-jacket.glb",
+      "id": "denim-jacket",
+      "group": "male",
+      "mode": "outer",
+      "source": {
+        "path": "male/denim_jacket.glb",
+        "sha256": "76fbc668988b5d9d06db8cf3952a80728456372cdda2675eec3e442026286836"
+      },
+      "fittedSHA256": "7f3e5f8f59183d5f33decf7374293cc58002fbc1792faefe4a4dea24a8c06ae0",
+      "sha256": "6901d2f8db3bd2c0b9a9d806cc48c8278d7523453e37d978937f9f4bbd61b295",
+      "triangles": 13829,
+      "bytes": 16528944,
+      "budgets": {
+        "triangles": 13829,
+        "bytes": 16539648
+      },
+      "fitChecks": {
+        "rest": true,
+        "walk": true,
+        "sit": true,
+        "reach": true,
+        "sourceAppearance": true
+      },
+      "materials": {
+        "OriginalOuter_P0S1": {
+          "sourceMaterialIndex": 1,
+          "graphSHA256": "d1931eec64f5376d2f02226f0ea99c15c1e6ec15d76b41e6c2bb2d8be099160c",
+          "requiredImages": [
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "d8a62c0602c045cb196704b3d4cef4012b7c700c5e4708f5f7d075473fda7f4f",
+              "bytes": 7273522
+            },
+            {
+              "textureInfo": "/occlusionTexture",
+              "sha256": "6f95b3da7670372ca9423e580b5ed9ed5fcd9bcbc0f4bc96a2f784330fd37778",
+              "bytes": 2951961
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "56f5b3b2d93900d1cefcd9387e402984f37da703c1ee35279fac5e683864266c",
+              "bytes": 1681114
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/metallicRoughnessTexture",
+              "sha256": "6f95b3da7670372ca9423e580b5ed9ed5fcd9bcbc0f4bc96a2f784330fd37778",
+              "bytes": 2951961
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {}
+        },
+        "OriginalAccent_P1S0": {
+          "sourceMaterialIndex": 0,
+          "graphSHA256": "c07931f12547fd4c60e1629b667ebfde006446c9cd9aaf5200bbfb0464856a42",
+          "requiredImages": [
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "048a28b99c43fb1c520a0849cb9c5e156eb3a4f08c51fd40a330f707db3a2f53",
+              "bytes": 1051036
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "5fdcf1ddb8521af2e8f9c3f872f8286f47a0331514245441d0e87284a63d76f6",
+              "bytes": 657092
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/metallicRoughnessTexture",
+              "sha256": "0e76034d597b918a17ca9936def6cfe947c2d26c7e3f8ca8818f858262312faa",
+              "bytes": 1320928
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {}
+        }
+      },
+      "materialGraphSHA256": "7b8d70599ef23aab9c8a1ec1affb36240e64e6e094d67babc8b80f22b821116d",
+      "imageSHA256s": [
+        "048a28b99c43fb1c520a0849cb9c5e156eb3a4f08c51fd40a330f707db3a2f53",
+        "0e76034d597b918a17ca9936def6cfe947c2d26c7e3f8ca8818f858262312faa",
+        "56f5b3b2d93900d1cefcd9387e402984f37da703c1ee35279fac5e683864266c",
+        "5fdcf1ddb8521af2e8f9c3f872f8286f47a0331514245441d0e87284a63d76f6",
+        "6f95b3da7670372ca9423e580b5ed9ed5fcd9bcbc0f4bc96a2f784330fd37778",
+        "d8a62c0602c045cb196704b3d4cef4012b7c700c5e4708f5f7d075473fda7f4f"
+      ],
+      "license": "CC-BY-4.0",
+      "attribution": {
+        "title": "Denim Jacket",
+        "author": "k_Helferty99 (https://sketchfab.com/k_Helferty99)",
+        "source": "https://sketchfab.com/3d-models/denim-jacket-1f11ec52bd8c4421abc18f45197c198e",
+        "license": "CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)"
+      },
+      "componentLicenses": {
+        "sourceGarment": "CC-BY-4.0",
+        "referenceAvatarRigAndContext": "LicenseRef-RenderHub-Extended-Use"
+      }
+    },
+    {
+      "path": "avatars/wardrobe/male/top/green-white-hoodie.glb",
+      "id": "green-white-hoodie",
+      "group": "male",
+      "mode": "top",
+      "source": {
+        "path": "male/green_and_white_hoodie.glb",
+        "sha256": "dc49014c8b22e9cb21a31215472bbc30653e8421fd02d603e6200093e6631e8a"
+      },
+      "fittedSHA256": "7dc261735a7263a98b76d9dbfdfa597569a41fd809980d8fa5583ad1dfca8fcf",
+      "sha256": "6107b13397ea06a0481df27491cd17361fb74b28e49aa0289638b99acbf1a383",
+      "triangles": 116010,
+      "bytes": 17897184,
+      "budgets": {
+        "triangles": 116010,
+        "bytes": 17907712
+      },
+      "fitChecks": {
+        "rest": true,
+        "walk": true,
+        "sit": true,
+        "reach": true,
+        "sourceAppearance": true
+      },
+      "materials": {
+        "OriginalTop_P0S0": {
+          "sourceMaterialIndex": 0,
+          "graphSHA256": "8905774622ce865d33385c112cc9a67c991618bd0f0c9c849da0f0facca97b14",
+          "requiredImages": [
+            {
+              "textureInfo": "/emissiveTexture",
+              "sha256": "8a9b5221135e3371488983c9ebb24c22159cff54cbb4ec9c930c72015844429a",
+              "bytes": 4328283
+            },
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "5baf865ea9c9f995600db391e88f2e732c823dc401b0d8e759b64c251ece20f4",
+              "bytes": 3709184
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "5c8d15cb659786b07094aaf6ee49a21b36317d88bb81bba53a6d27dedb508c1e",
+              "bytes": 4601502
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/metallicRoughnessTexture",
+              "sha256": "4f840ad6cdbd32ab9e8b70f6c74c9dc795c2a90828e821e63a3027fcab1cca19",
+              "bytes": 33139
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {
+            "alphaMode": "OPAQUE"
+          }
+        },
+        "OriginalTop_P1S0": {
+          "sourceMaterialIndex": 0,
+          "graphSHA256": "8905774622ce865d33385c112cc9a67c991618bd0f0c9c849da0f0facca97b14",
+          "requiredImages": [
+            {
+              "textureInfo": "/emissiveTexture",
+              "sha256": "8a9b5221135e3371488983c9ebb24c22159cff54cbb4ec9c930c72015844429a",
+              "bytes": 4328283
+            },
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "5baf865ea9c9f995600db391e88f2e732c823dc401b0d8e759b64c251ece20f4",
+              "bytes": 3709184
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "5c8d15cb659786b07094aaf6ee49a21b36317d88bb81bba53a6d27dedb508c1e",
+              "bytes": 4601502
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/metallicRoughnessTexture",
+              "sha256": "4f840ad6cdbd32ab9e8b70f6c74c9dc795c2a90828e821e63a3027fcab1cca19",
+              "bytes": 33139
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {
+            "alphaMode": "OPAQUE"
+          }
+        },
+        "OriginalTop_P2S0": {
+          "sourceMaterialIndex": 0,
+          "graphSHA256": "8905774622ce865d33385c112cc9a67c991618bd0f0c9c849da0f0facca97b14",
+          "requiredImages": [
+            {
+              "textureInfo": "/emissiveTexture",
+              "sha256": "8a9b5221135e3371488983c9ebb24c22159cff54cbb4ec9c930c72015844429a",
+              "bytes": 4328283
+            },
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "5baf865ea9c9f995600db391e88f2e732c823dc401b0d8e759b64c251ece20f4",
+              "bytes": 3709184
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "5c8d15cb659786b07094aaf6ee49a21b36317d88bb81bba53a6d27dedb508c1e",
+              "bytes": 4601502
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/metallicRoughnessTexture",
+              "sha256": "4f840ad6cdbd32ab9e8b70f6c74c9dc795c2a90828e821e63a3027fcab1cca19",
+              "bytes": 33139
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {
+            "alphaMode": "OPAQUE"
+          }
+        },
+        "OriginalTop_P3S0": {
+          "sourceMaterialIndex": 0,
+          "graphSHA256": "8905774622ce865d33385c112cc9a67c991618bd0f0c9c849da0f0facca97b14",
+          "requiredImages": [
+            {
+              "textureInfo": "/emissiveTexture",
+              "sha256": "8a9b5221135e3371488983c9ebb24c22159cff54cbb4ec9c930c72015844429a",
+              "bytes": 4328283
+            },
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "5baf865ea9c9f995600db391e88f2e732c823dc401b0d8e759b64c251ece20f4",
+              "bytes": 3709184
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "5c8d15cb659786b07094aaf6ee49a21b36317d88bb81bba53a6d27dedb508c1e",
+              "bytes": 4601502
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/metallicRoughnessTexture",
+              "sha256": "4f840ad6cdbd32ab9e8b70f6c74c9dc795c2a90828e821e63a3027fcab1cca19",
+              "bytes": 33139
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {
+            "alphaMode": "OPAQUE"
+          }
+        },
+        "OriginalTop_P4S0": {
+          "sourceMaterialIndex": 0,
+          "graphSHA256": "8905774622ce865d33385c112cc9a67c991618bd0f0c9c849da0f0facca97b14",
+          "requiredImages": [
+            {
+              "textureInfo": "/emissiveTexture",
+              "sha256": "8a9b5221135e3371488983c9ebb24c22159cff54cbb4ec9c930c72015844429a",
+              "bytes": 4328283
+            },
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "5baf865ea9c9f995600db391e88f2e732c823dc401b0d8e759b64c251ece20f4",
+              "bytes": 3709184
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "5c8d15cb659786b07094aaf6ee49a21b36317d88bb81bba53a6d27dedb508c1e",
+              "bytes": 4601502
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/metallicRoughnessTexture",
+              "sha256": "4f840ad6cdbd32ab9e8b70f6c74c9dc795c2a90828e821e63a3027fcab1cca19",
+              "bytes": 33139
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {
+            "alphaMode": "OPAQUE"
+          }
+        },
+        "OriginalTop_P5S0": {
+          "sourceMaterialIndex": 0,
+          "graphSHA256": "8905774622ce865d33385c112cc9a67c991618bd0f0c9c849da0f0facca97b14",
+          "requiredImages": [
+            {
+              "textureInfo": "/emissiveTexture",
+              "sha256": "8a9b5221135e3371488983c9ebb24c22159cff54cbb4ec9c930c72015844429a",
+              "bytes": 4328283
+            },
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "5baf865ea9c9f995600db391e88f2e732c823dc401b0d8e759b64c251ece20f4",
+              "bytes": 3709184
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "5c8d15cb659786b07094aaf6ee49a21b36317d88bb81bba53a6d27dedb508c1e",
+              "bytes": 4601502
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/metallicRoughnessTexture",
+              "sha256": "4f840ad6cdbd32ab9e8b70f6c74c9dc795c2a90828e821e63a3027fcab1cca19",
+              "bytes": 33139
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {
+            "alphaMode": "OPAQUE"
+          }
+        },
+        "OriginalTop_P6S0": {
+          "sourceMaterialIndex": 0,
+          "graphSHA256": "8905774622ce865d33385c112cc9a67c991618bd0f0c9c849da0f0facca97b14",
+          "requiredImages": [
+            {
+              "textureInfo": "/emissiveTexture",
+              "sha256": "8a9b5221135e3371488983c9ebb24c22159cff54cbb4ec9c930c72015844429a",
+              "bytes": 4328283
+            },
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "5baf865ea9c9f995600db391e88f2e732c823dc401b0d8e759b64c251ece20f4",
+              "bytes": 3709184
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "5c8d15cb659786b07094aaf6ee49a21b36317d88bb81bba53a6d27dedb508c1e",
+              "bytes": 4601502
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/metallicRoughnessTexture",
+              "sha256": "4f840ad6cdbd32ab9e8b70f6c74c9dc795c2a90828e821e63a3027fcab1cca19",
+              "bytes": 33139
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {
+            "alphaMode": "OPAQUE"
+          }
+        },
+        "OriginalTop_P7S0": {
+          "sourceMaterialIndex": 0,
+          "graphSHA256": "8905774622ce865d33385c112cc9a67c991618bd0f0c9c849da0f0facca97b14",
+          "requiredImages": [
+            {
+              "textureInfo": "/emissiveTexture",
+              "sha256": "8a9b5221135e3371488983c9ebb24c22159cff54cbb4ec9c930c72015844429a",
+              "bytes": 4328283
+            },
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "5baf865ea9c9f995600db391e88f2e732c823dc401b0d8e759b64c251ece20f4",
+              "bytes": 3709184
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "5c8d15cb659786b07094aaf6ee49a21b36317d88bb81bba53a6d27dedb508c1e",
+              "bytes": 4601502
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/metallicRoughnessTexture",
+              "sha256": "4f840ad6cdbd32ab9e8b70f6c74c9dc795c2a90828e821e63a3027fcab1cca19",
+              "bytes": 33139
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {
+            "alphaMode": "OPAQUE"
+          }
+        },
+        "OriginalTop_AdditiveUnderlap_S0": {
+          "sourceMaterialIndex": 0,
+          "graphSHA256": "8905774622ce865d33385c112cc9a67c991618bd0f0c9c849da0f0facca97b14",
+          "requiredImages": [
+            {
+              "textureInfo": "/emissiveTexture",
+              "sha256": "8a9b5221135e3371488983c9ebb24c22159cff54cbb4ec9c930c72015844429a",
+              "bytes": 4328283
+            },
+            {
+              "textureInfo": "/normalTexture",
+              "sha256": "5baf865ea9c9f995600db391e88f2e732c823dc401b0d8e759b64c251ece20f4",
+              "bytes": 3709184
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/baseColorTexture",
+              "sha256": "5c8d15cb659786b07094aaf6ee49a21b36317d88bb81bba53a6d27dedb508c1e",
+              "bytes": 4601502
+            },
+            {
+              "textureInfo": "/pbrMetallicRoughness/metallicRoughnessTexture",
+              "sha256": "4f840ad6cdbd32ab9e8b70f6c74c9dc795c2a90828e821e63a3027fcab1cca19",
+              "bytes": 33139
+            }
+          ],
+          "requiredUVSets": [
+            0
+          ],
+          "overrides": {
+            "alphaMode": "OPAQUE"
+          }
+        }
+      },
+      "materialGraphSHA256": "b6d661011c9a6ab82416f5b41044b11fa35570a1bc2ac0af4a8fbdadbdd5c889",
+      "imageSHA256s": [
+        "4f840ad6cdbd32ab9e8b70f6c74c9dc795c2a90828e821e63a3027fcab1cca19",
+        "5baf865ea9c9f995600db391e88f2e732c823dc401b0d8e759b64c251ece20f4",
+        "5c8d15cb659786b07094aaf6ee49a21b36317d88bb81bba53a6d27dedb508c1e",
+        "8a9b5221135e3371488983c9ebb24c22159cff54cbb4ec9c930c72015844429a"
+      ],
+      "license": "CC-BY-4.0",
+      "attribution": {
+        "title": "Green and white hoodie",
+        "author": "Style3D CG (https://sketchfab.com/Style3DMeta)",
+        "source": "https://sketchfab.com/3d-models/green-and-white-hoodie-af100701826e4bb9abc1ff1a1d24ab1e",
+        "license": "CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)"
+      },
+      "componentLicenses": {
+        "sourceGarment": "CC-BY-4.0",
+        "referenceAvatarRigAndContext": "LicenseRef-RenderHub-Extended-Use"
+      }
+    }
+  ]
+}

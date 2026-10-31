@@ -3,7 +3,7 @@
  * core's skill registry, and the model's catalog of active registry skills.
  *
  * - Exists only with the native core flag on (`nativeCore: 'rust'`); otherwise the report is
- *   `mode: 'legacy'` and W0 consent stays the gate (unchanged).
+ *   `mode: 'legacy'` and W0 consent is review input only, never agent skill authority.
  * - Imports never pass a source path to the daemon: the host copies the chosen folder (or a
  *   workspace's `.extalia/skills/<name>`) into `<data>/profiles/<profile>/skill-imports/<unique>`,
  *   refusing what the daemon would refuse, and sends only `<unique>` (ADR 0025 note, slice 2).
@@ -21,14 +21,17 @@ import {
 import {
   SKILL_APPROVAL_TTL_MS, SKILL_USER_PRINCIPAL, normalizeSkillApproval, normalizeSkillApprovalId, normalizeSkillImportSource, normalizeSkillPackageId,
   normalizeSkillReview, normalizeSkillRevisionId, type SkillActionResult, type SkillImportSource, type SkillRegistryReport, type SkillRevisionDetails,
+  normalizeSkillPreflight, normalizeSkillPreflightReport, type SkillPreflightInput, type SkillPreflightReport,
+  normalizeSkillRouting, normalizeSkillRoutingReport, type SkillRoutingInput, type SkillRoutingReport,
 } from '@extalia/platform';
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { constants } from 'node:fs';
-import { lstat, mkdir, open, readdir, realpath, rm } from 'node:fs/promises';
+import { lstat, mkdir, open, readdir, realpath, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { DaemonRequestError, DaemonUnavailableError, type DaemonClient, type DaemonSidecar } from './daemon/index.js';
 import { ensurePrivateDirectory } from './paths.js';
 import { parseSkill, type Skill, type SkillSource } from './skills.js';
+import { normalizeSkillProposal, normalizeSkillProposalProvenance, skillProposalFiles, type SkillProposalProvenance, type SkillProposalResult } from './skillLearning.js';
 
 /**
  * Operations the Security Center needs. Optional: `skill.review` (core migration 0004) and `skill.scanner` (the installed
@@ -54,7 +57,6 @@ const SEGMENT = /^[A-Za-z0-9_][A-Za-z0-9._-]{0,127}$/;
 const WINDOWS_DEVICE = /^(?:con|prn|aux|nul|com[0-9]|lpt[0-9])(?:\..*)?$/i;
 /** Finder metadata is skipped instead of refused; every other hidden entry is refused (not reviewable). */
 const SKIPPED_FILES = new Set(['.DS_Store']);
-const MAX_CACHED_SKILLS = 200;
 
 /** A refusal with a message safe to show; the host turns it into a user error. */
 export class SkillRegistryError extends Error {
@@ -72,6 +74,8 @@ export interface SkillRegistryOptions {
   profile: string;
   /** A workspace's project folder, or an error message when it has none. */
   workspaceRoot(workspaceId: string): string;
+  /** Host-owned membership lookup; routing needs approval applicability, not a project folder. */
+  workspaceKnown?(workspaceId: string): boolean;
   /**
    * The W0 consent of each workspace with a project folder (allowed skill name → SKILL.md SHA-256). Details
    * pass the matching workspaces to `skill.inspect`, which stores the consent as review input.
@@ -144,9 +148,6 @@ function sourceOf(revision: Pick<SkillRevisionSummary, 'origin'>): SkillSource {
 }
 
 export class SkillRegistry {
-  /** Parsed SKILL.md of active revisions; revisions are content-addressed, so entries never go stale. */
-  private readonly cache = new Map<string, Skill>();
-
   constructor(private readonly options: SkillRegistryOptions) {}
 
   /** Registry mode: the native core flag is on (whether or not the daemon is ready). */
@@ -168,6 +169,8 @@ export class SkillRegistry {
     let client: DaemonClient;
     try { client = await this.client(); } catch (error) { throw unavailable(error instanceof DaemonUnavailableError ? error.code : 'not-served'); }
     if (op === 'skill.review' && !client.capabilities.includes('skill.review')) throw new SkillRegistryError(REFUSALS.review_unavailable);
+    if (op === 'skill.routingPreview' && !client.capabilities.includes('skill.routingPreview')) throw new SkillRegistryError('Routing previews are not supported by this native core.');
+    if (op === 'skill.preflight' && !client.capabilities.includes('skill.preflight')) throw new SkillRegistryError('Dependency checks are not supported by this native core.');
     try { return await client.request(op, params); } catch (error) {
       if (error instanceof DaemonRequestError) throw refusal(error);
       if (error instanceof DaemonUnavailableError) throw unavailable(error.code);
@@ -190,7 +193,7 @@ export class SkillRegistry {
 
   /** The Security Center's view. Never throws: an unavailable daemon is a status, not an error. */
   async report(): Promise<SkillRegistryReport> {
-    const base = { scanner: 'unpinned' as const, review: false, approvalTtlMs: SKILL_APPROVAL_TTL_MS, revisions: [], truncated: false };
+    const base = { scanner: 'unpinned' as const, review: false, preflight: false, approvalTtlMs: SKILL_APPROVAL_TTL_MS, revisions: [], truncated: false };
     if (!this.options.daemon) return { mode: 'legacy', status: 'off', ...base };
     try {
       const client = await this.client();
@@ -202,11 +205,34 @@ export class SkillRegistry {
         mode: 'registry', status: 'ready', ...base, revisions, truncated: listed.truncated, indexGeneration: listed.indexGeneration,
         scanner: inspector?.status === 'ready' && inspector.pinned ? 'pinned' : 'unpinned', ...(inspector ? { inspector } : {}),
         review: client.capabilities.includes('skill.review'),
+        preflight: client.capabilities.includes('skill.preflight'),
+        routingPreview: client.capabilities.includes('skill.routingPreview'),
       };
     } catch (error) {
       const reason = error instanceof DaemonUnavailableError ? error.code : error instanceof DaemonRequestError ? error.code : 'not-served';
       return { mode: 'registry', status: 'unavailable', unavailableReason: reason, ...base };
     }
+  }
+
+  /** Routing observes the registry only; inspect() would record consent review input. */
+  async routingPreview(value: SkillRoutingInput): Promise<SkillRoutingReport> {
+    let input: SkillRoutingInput;
+    try {
+      input = normalizeSkillRouting(value);
+      if (input.workspaceId !== undefined) {
+        if (this.options.workspaceKnown) {
+          if (!this.options.workspaceKnown(input.workspaceId)) throw new SkillRegistryError('Unknown workspace.');
+        } else this.options.workspaceRoot(input.workspaceId);
+      }
+    } catch (error) { throw failed(error); }
+    return normalizeSkillRoutingReport(await this.call('skill.routingPreview', input), input);
+  }
+
+  /** Read only: do not call inspect() here; that method records consent review input. */
+  async preflight(value: SkillPreflightInput): Promise<SkillPreflightReport> {
+    let input: SkillPreflightInput;
+    try { input = normalizeSkillPreflight(value); } catch (error) { throw failed(error); }
+    return normalizeSkillPreflightReport(await this.call('skill.preflight', input), input.rootRevisionId);
   }
 
   /** The daemon's installed inspector, or undefined when it does not serve `skill.scanner` (an older daemon) or refuses it. */
@@ -289,6 +315,44 @@ export class SkillRegistry {
     }
   }
 
+  /** Save a user-requested generated draft. The daemon imports/scans; this host cannot approve or activate. */
+  async propose(raw: unknown, rawProvenance: SkillProposalProvenance, signal?: AbortSignal): Promise<SkillProposalResult> {
+    let input, provenance: SkillProposalProvenance;
+    try { input = normalizeSkillProposal(raw); provenance = normalizeSkillProposalProvenance(rawProvenance); } catch (error) { throw failed(error); }
+    const cancelled = () => { if (signal?.aborted) throw new SkillRegistryError('Cancelled before importing the skill candidate.'); };
+    cancelled();
+    // Refuse unsupported/offline cores before any candidate directory or file is written.
+    try { await this.client(); } catch (error) { throw unavailable(error instanceof DaemonUnavailableError ? error.code : 'not-served'); }
+    cancelled();
+    await ensurePrivateDirectory(this.inbox);
+    const unique = `proposal-${randomBytes(16).toString('hex')}`;
+    const staged = path.join(this.inbox, unique);
+    await mkdir(staged, { mode: 0o700 });
+    try {
+      for (const [file, content] of Object.entries(skillProposalFiles(input, provenance))) {
+        await writeFile(path.join(staged, file), content, { mode: 0o600, flag: 'wx' });
+      }
+      cancelled();
+      const imported = await this.call('skill.import', { origin: 'generated', path: unique, sourceRef: `prompt:${provenance.sessionId}:${provenance.promptSha256}` });
+      const base: SkillProposalResult = { packageId: imported.packageId, revisionId: imported.revisionId, state: imported.state,
+        ...(imported.stateReason ? { stateReason: imported.stateReason } : {}), created: imported.created,
+        inspection: 'unavailable', activationPerformed: false, cancellationObserved: Boolean(signal?.aborted) };
+      // Once import was acknowledged, always request its inspection report, even if the caller cancelled.
+      // Cancellation never implies that a persistent import was rolled back or a scan succeeded.
+      try {
+        const details = await this.call('skill.inspect', { revisionId: imported.revisionId });
+        if (details.revision.revisionId !== imported.revisionId || details.revision.packageId !== imported.packageId) return base;
+        const latest = [...details.inspections].sort((a, b) => b.inspectionId - a.inspectionId)[0];
+        return { ...base, state: details.revision.state, stateReason: details.revision.stateReason,
+          inspection: latest ? 'recorded' : 'unavailable', ...(latest ? { inspectionOutcome: latest.outcome } : {}), cancellationObserved: Boolean(signal?.aborted) };
+      } catch {
+        return { ...base, cancellationObserved: Boolean(signal?.aborted) };
+      }
+    } finally {
+      await rm(staged, { recursive: true, force: true }).catch(() => undefined);
+    }
+  }
+
   private async refuseInsideData(folder: string): Promise<void> {
     const [real, data] = await Promise.all([realpath(folder).catch(() => folder), realpath(this.options.dataDirectory).catch(() => this.options.dataDirectory)]);
     if (real === data || real.startsWith(data + path.sep) || data.startsWith(real + path.sep)) {
@@ -359,12 +423,8 @@ export class SkillRegistry {
     const skills: Skill[] = [];
     for (const revision of revisions) {
       if (!revision.active || revision.origin === 'builtin' || revision.state !== 'active') continue;
-      const cached = this.cache.get(revision.revisionId);
-      if (cached) { skills.push(cached); continue; }
       try {
-        const skill = await this.readSkill(client, revision.revisionId, revision.packageId, sourceOf(revision));
-        if (this.cache.size >= MAX_CACHED_SKILLS) this.cache.delete(this.cache.keys().next().value!);
-        this.cache.set(revision.revisionId, skill);
+        const skill = await this.readSkill(client, revision);
         skills.push(skill);
       } catch (error) {
         if (error instanceof DaemonUnavailableError) throw error;
@@ -376,15 +436,22 @@ export class SkillRegistry {
 
   /** Re-read an offered skill when the model asks for it: still active, bytes verified by the daemon. */
   async reload(skill: Skill): Promise<Skill> {
-    if (!skill.revisionId) throw new Error('Not a registry skill.');
-    return this.readSkill(await this.client(), skill.revisionId, skill.name, skill.source);
+    if (!skill.revisionId || !skill.sha256 || skill.source === 'builtin') throw new Error('Not a registry skill.');
+    const client = await this.client();
+    const { revisions } = await this.listAll(client);
+    const revision = revisions.find(item => item.revisionId === skill.revisionId);
+    if (!revision || !revision.active || revision.state !== 'active' || revision.origin === 'builtin' || revision.packageId !== skill.name
+      || sourceOf(revision) !== skill.source || revision.skillMdSha256 !== skill.sha256) throw new Error('Skill revision is no longer available.');
+    return this.readSkill(client, revision);
   }
 
-  private async readSkill(client: DaemonClient, revisionId: string, packageId: string, source: SkillSource): Promise<Skill> {
+  private async readSkill(client: DaemonClient, revision: SkillRevisionSummary): Promise<Skill> {
+    const { revisionId, packageId } = revision;
     const file = await client.request('skill.read', { revisionId, path: 'SKILL.md' });
-    if (file.revisionId !== revisionId || file.packageId !== packageId) throw new Error('Mismatched skill.');
+    if (file.revisionId !== revisionId || file.packageId !== packageId || file.path !== 'SKILL.md' || file.sha256 !== revision.skillMdSha256
+      || file.size !== Buffer.byteLength(file.content, 'utf8') || createHash('sha256').update(file.content).digest('hex') !== file.sha256) throw new Error('Mismatched skill.');
     // The package id names the skill: it is unique per profile, unlike a front-matter name.
-    const parsed = parseSkill(file.content, packageId, source);
+    const parsed = parseSkill(file.content, packageId, sourceOf(revision));
     return { ...parsed, name: packageId, sha256: file.sha256, revisionId };
   }
 }

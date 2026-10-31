@@ -177,18 +177,30 @@ lights, a café, bicycle fixtures, pond and pergola. Background crowns use a
 grass tufts appear only at useful projected size. Foreground planting reserves
 both the arrival corridor and the west parking footprint.
 
-`create-campus-mobility.py` exports eight distinct vehicle forms—sedan, SUV,
-Jeep-style off-road, MPV, hatchback, single-cab truck, double-cab pickup and EV—plus
-charger and solar cycle shelter. The actual 14,280-triangle / 1.21 MB library
-uses at most twenty body/lamp instance batches. All eight vehicle styles appear
-in parking. Cars fit the 5.5 m bays (actual maximum footprint 5.106 by 2.11 m);
-three EV bays have separate chargers, pedestrian access stays outside the drive
-lane, and the canopy covers the existing bicycle rack. Four sparse, separated
-through-lanes pause at the arrival crosswalk. This is ambient traffic; characters
-currently stay on campus paths and do not cross active vehicle lanes. Moving
-vehicles stop while the scene is hidden and disappear under reduced motion.
-Their photocell lamps preserve red tail lamps; charger/shelter lighting also
-responds to manual controls. There are no individual vehicle lights or shadows.
+Passenger cars are simplified, debadged derivatives of reference models listed in
+`tooling/blender/campus-vehicles.json` (EV sedan, long EV sedan, EV SUV, EV MPV,
+sedan, hatchback, off-road jeep, MPV, van, double-cab pickup and a rare sports car).
+`prepare-campus-vehicles.py` exports one licensed GLB per car (about 5,800
+smooth triangles, no interior, textures or badges; see
+`tooling/blender/README.md`). `create-campus-mobility.py` keeps only the
+project-generated charger and solar cycle shelter; the old
+`mobility-double-cabin` name resolves to the derived `mobility-pickup`, and the
+retired procedural `mobility-truck` to the day's derived mid-size pickup (else
+`mobility-pickup`). Every day's rotation includes at least one derived pickup. Every vehicle has one wheel template plus four hub markers; wheels are
+instanced and roll with the distance travelled. Each model uses three instance
+batches (body, lamps, wheels) and only the files of styles actually placed are
+fetched. Electric cars take the charging bays; the day's common styles drive and
+rare ones only park. Cars fit the 5.5 m bays. Six straight left-hand lanes (the
+front road both ways, pausing at the arrival crosswalk, and both flanking
+avenues both ways) carry deterministic waves from the day's seed: one to three
+cars 2.2–4 s apart, then 10–30 s of quiet, denser in the morning and evening
+rush and sparser at night. Cars keep 1.8 m clearance, queue behind a waiting car
+with brake lamps on, and the moving total is capped by render tier (16/14/10/6). Moving vehicles
+stop while the scene is hidden and disappear under reduced motion. At dusk and
+night (or with Lights On) moving cars light warm head lamps and red tail lamps,
+brighter brake lamps while waiting, and paint soft additive light pools on the
+road; at most two budgeted spot lights follow the cars nearest the camera and
+are disabled on the lowest render tier. Parked cars stay unlit.
 
 `create-district-buildings.py` adds 461 physical mullions, 470 transoms and twelve
 recessed glazed lobbies to the nearby shells. The local district remains four

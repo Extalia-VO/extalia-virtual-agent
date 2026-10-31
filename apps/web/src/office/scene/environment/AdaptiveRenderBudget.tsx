@@ -1,6 +1,7 @@
+import { QA_HOOKS } from '../qaHooks';
 import { useEffect, useRef, useSyncExternalStore } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
-import { budgetPixelRatio, createBudgetController, getRenderBudget, getRenderBudgetLevel, RENDER_BUDGET_LEVELS, setRenderBudgetLevel, subscribeRenderBudget, updateBudget } from './renderBudget';
+import { budgetPixelRatio, createBudgetController, createRenderFrameSampler, getRenderBudget, getRenderBudgetLevel, RENDER_BUDGET_LEVELS, resetRenderFrameSampler, sampleRenderFrame, setRenderBudgetLevel, subscribeRenderBudget, updateBudget } from './renderBudget';
 
 type BudgetWindow = Window & {
   __EXTALIA_RENDER_BUDGET__?: unknown;
@@ -14,16 +15,16 @@ export function useBudgetPixelRatio(): number {
 }
 
 /**
- * Keeps the Office above 40 fps: measures two-second windows after a warm-up and moves
+ * Keeps the Office above 40 fps: measures one-second windows after a warm-up and moves
  * between budget levels (pixel ratio, live beams, shadow detail) with hysteresis.
  */
 export function AdaptiveRenderBudget() {
   const gl = useThree(state => state.gl);
   // A remounted canvas resumes from the level this session already settled on.
-  const sample = useRef({ controller: { ...createBudgetController(), level: getRenderBudgetLevel() }, seconds: 0, frames: 0, warmup: 3, last: 0, pinned: false, fps: 0 });
+  const sample = useRef({ controller: { ...createBudgetController(), level: getRenderBudgetLevel() }, sampler: createRenderFrameSampler(), pinned: false, fps: 0 });
 
   useEffect(() => {
-    if (import.meta.env.DEV) {
+    if (QA_HOOKS) {
       // QA: pin a level (or null to resume adaptation) when measuring a specific budget.
       (window as BudgetWindow).__EXTALIA_SET_RENDER_BUDGET__ = level => {
         sample.current.pinned = level !== null;
@@ -32,32 +33,30 @@ export function AdaptiveRenderBudget() {
       };
     }
     return () => {
-      if (import.meta.env.DEV) {
+      if (QA_HOOKS) {
         delete (window as BudgetWindow).__EXTALIA_SET_RENDER_BUDGET__;
         delete (window as BudgetWindow).__EXTALIA_RENDER_BUDGET__;
       }
     };
   }, []);
 
+  useEffect(() => {
+    const resetAfterVisibilityChange = () => resetRenderFrameSampler(sample.current.sampler);
+    document.addEventListener('visibilitychange', resetAfterVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', resetAfterVisibilityChange);
+  }, []);
+
   useFrame(() => {
     const data = sample.current;
-    const now = performance.now();
-    const seconds = data.last ? (now - data.last) / 1000 : 0;
-    data.last = now;
-    // Hidden tabs and long stalls (shader compiles, tab switches) are not representative.
-    if (document.hidden || seconds > 0.5) { data.seconds = 0; data.frames = 0; data.warmup = Math.max(data.warmup, 1); return; }
-    if (data.warmup > 0) { data.warmup -= seconds; return; }
-    data.seconds += seconds;
-    data.frames += 1;
-    if (data.seconds < 2) return;
-    data.fps = data.frames / data.seconds;
-    data.seconds = 0; data.frames = 0;
+    const fps = sampleRenderFrame(data.sampler, performance.now(), !document.hidden);
+    if (fps === null) return;
+    data.fps = fps;
     if (!data.pinned) {
       const before = getRenderBudgetLevel();
       const next = updateBudget(data.controller, { fps: data.fps });
-      if (next !== before) { setRenderBudgetLevel(next); data.warmup = 1.5; }
+      if (next !== before) { setRenderBudgetLevel(next); data.sampler.warmup = 1.5; }
     }
-    if (import.meta.env.DEV) {
+    if (QA_HOOKS) {
       const budget = getRenderBudget();
       (window as BudgetWindow).__EXTALIA_RENDER_BUDGET__ = {
         level: getRenderBudgetLevel(), levels: RENDER_BUDGET_LEVELS.length, fps: Math.round(data.fps * 10) / 10,

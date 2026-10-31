@@ -1,3 +1,4 @@
+import { promptPreview } from '../chat/messagePresentation';
 import type { ActivityKind, ExtaliaEvent } from '@extalia/protocol';
 
 /**
@@ -54,7 +55,10 @@ export function activityFromEvent(event: ExtaliaEvent): OfficeActivity | undefin
   const agentId = body.type === 'subagent.spawned' && !missionSpawn ? body.subagentId : event.agentId ?? 'primary';
   const base = { id: event.id, characterId: `${event.sessionId}:${agentId}`, sessionId: event.sessionId, at: event.at };
   switch (body.type) {
-    case 'prompt.submitted': return { ...base, characterId: `${event.sessionId}:primary`, kind: 'prompt', text: activityText(body.text) };
+    case 'prompt.submitted': {
+      const preview = promptPreview(body.text);
+      return preview.text ? { ...base, characterId: `${event.sessionId}:primary`, kind: 'prompt', text: activityText(preview.text) } : undefined;
+    }
     case 'model.completed': return body.text.trim() ? { ...base, kind: 'reply', text: activityText(body.text) } : undefined;
     case 'tool.started': return { ...base, kind: 'tool', text: activityText(body.target && !body.label.includes(body.target) ? `${body.label} ${body.target}` : body.label), activity: body.kind };
     case 'approval.requested': return { ...base, kind: 'approval', text: activityText(body.detail ? `${body.action}: ${body.detail}` : body.action) };

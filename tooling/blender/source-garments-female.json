@@ -1,0 +1,2870 @@
+{
+  "schemaVersion": 1,
+  "group": "female",
+  "comment": "Source-preserving initial recipes from29 original GLBs. All contain explicit CC-BY-4.0 metadata. Existing4 reviewed female outputs are protected. No garment is excluded for style. Publish only after fit/pose QA.",
+  "entries": [
+    {
+      "source": "female/beige_business_suit_with_short_skirt.glb",
+      "id": "source-beige-suit",
+      "mode": "outfit",
+      "targetSpan": [
+        0.65,
+        1.64
+      ],
+      "rotate": [
+        0,
+        0,
+        0
+      ],
+      "defaultRole": "top",
+      "roleRules": [
+        [
+          "material",
+          "Button|Ring|Eyelet|Puller|^front$",
+          "accent"
+        ]
+      ],
+      "dropObjects": [],
+      "dropMaterials": [],
+      "sourceAvatar": [],
+      "publish": false,
+      "license": "CC-BY-4.0",
+      "sourceBounds": [
+        [
+          -270.9209899902344,
+          -184.60890197753906,
+          625.2980346679688
+        ],
+        [
+          266.42999267578125,
+          155.20921325683594,
+          1551.270263671875
+        ]
+      ],
+      "sourceDimensions": [
+        537.3509521484375,
+        339.818115234375,
+        925.9722290039062
+      ],
+      "sourceTriangles": 305464,
+      "sourcePartCount": 31,
+      "sourceRig": {
+        "skins": 0,
+        "animations": 0
+      },
+      "sourceFrontAxis": "-Y",
+      "reviewNotes": [
+        "Double-breasted jacket with short skirt; 31 original parts, including modeled buttons/rings and dense small trim. Keep all original cloth/trim and the shared atlas.",
+        "Most body panels span torso and skirt/sleeves together; do not split generic Object_* nodes into separate wardrobe pieces without panel-level inspection.",
+        "Audited original front/back renders and per-part bounds; no rig/animations in source. Initial target span still requires body/pose QA before promotion."
+      ],
+      "skirt": [
+        1.04,
+        0.65
+      ],
+      "topologyBinding": {
+        "ribMaterials": [],
+        "openCuffAnchors": true,
+        "cuffMinimumX": 0.18,
+        "cuffMinimumHeight": 0.85,
+        "cuffMaximumHeight": 1.15,
+        "cuffGeodesicMinimum": 0.3,
+        "cuffAnchorDepth": 0.1,
+        "componentSeamDistance": 0.004,
+        "componentOwnership": true,
+        "preserveLegs": true,
+        "mainMaterials": [
+          9
+        ],
+        "followMaterials": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          10,
+          11,
+          12,
+          13,
+          14
+        ]
+      },
+      "armholeUnderlap": {
+        "sourceMaterial": 9,
+        "clearance": 0.008,
+        "lateralMax": 0.28,
+        "rearInset": false,
+        "overlapFaces": true,
+        "shoulderAbove": 0.06,
+        "frontMinimum": -0.2
+      },
+      "radialTorsoFit": true,
+      "radialTorsoMinimumHeight": 0.62
+    },
+    {
+      "source": "female/black_mesh_dress.glb",
+      "id": "source-black-mesh-dress",
+      "mode": "outfit",
+      "targetSpan": [
+        0.24,
+        1.64
+      ],
+      "rotate": [
+        0,
+        0,
+        0
+      ],
+      "defaultRole": "top",
+      "roleRules": [
+        [
+          "material",
+          "Button",
+          "accent"
+        ]
+      ],
+      "dropObjects": [],
+      "dropMaterials": [],
+      "sourceAvatar": [],
+      "publish": false,
+      "license": "CC-BY-4.0",
+      "sourceBounds": [
+        [
+          -288.5769958496094,
+          -263.17999267578125,
+          216.5340118408203
+        ],
+        [
+          274.0299987792969,
+          208.01918029785156,
+          1535.5401611328125
+        ]
+      ],
+      "sourceDimensions": [
+        562.6069946289062,
+        471.19915771484375,
+        1319.006103515625
+      ],
+      "sourceTriangles": 387166,
+      "sourcePartCount": 34,
+      "sourceRig": {
+        "skins": 0,
+        "animations": 0
+      },
+      "sourceFrontAxis": "-Y",
+      "reviewNotes": [
+        "Actual sheer/mesh long dress with opaque lining/cuffs/belt; alphaFactor .94 and mesh texture are meaningful. Do not force uniform_1001 opaque.",
+        "Provide continuous underlying body/lining in transparent regions; geometry-only visibility culling would remove skin behind lace and create empty holes.",
+        "Audited original front/back renders and per-part bounds; no rig/animations in source. Initial target span still requires body/pose QA before promotion."
+      ],
+      "skirt": [
+        1.04,
+        0.24
+      ],
+      "sheer": true,
+      "radialTorsoFit": true,
+      "skirtThighDepth": 0.1,
+      "topologyBinding": {
+        "ribMaterials": [],
+        "openCuffAnchors": true,
+        "cuffMinimumX": 0.18,
+        "cuffMinimumHeight": 0.85,
+        "cuffMaximumHeight": 1.15,
+        "cuffGeodesicMinimum": 0.3,
+        "cuffAnchorDepth": 0.1,
+        "componentSeamDistance": 0.004,
+        "componentOwnership": true,
+        "preserveLegs": true,
+        "mainMaterials": [
+          0
+        ],
+        "followMaterials": [
+          1,
+          2
+        ]
+      },
+      "seatedDrape": true,
+      "seatedDrapeOptions": {
+        "mode": "offline_cloth",
+        "pose_profile": {
+          "scale": 0.9189189189189189,
+          "seat_height": 0.46,
+          "seat_front": 0.22,
+          "sole_heights": {
+            "leftFoot": -0.07414725422859192,
+            "rightFoot": -0.07123086601495743
+          }
+        },
+        "tall_pose_profile": {
+          "scale": 1.054054054054054,
+          "seat_height": 0.46,
+          "seat_front": 0.22,
+          "sole_heights": {
+            "leftFoot": -0.07414725422859192,
+            "rightFoot": -0.07123086601495743
+          }
+        },
+        "short_pose_profile": {
+          "scale": 0.7837837837837838,
+          "seat_height": 0.46,
+          "seat_front": 0.22,
+          "sole_heights": {
+            "leftFoot": -0.07414725422859192,
+            "rightFoot": -0.07123086601495743
+          }
+        },
+        "frames": 120,
+        "sit_frame": 60,
+        "quality": 8,
+        "collision_quality": 5,
+        "proxy_vertices": 60000,
+        "proxy_weld_distance": 0.0005,
+        "follow_unanchored": true,
+        "weld_consistent_transfer": true,
+        "selection_height": 1.17,
+        "floor_collider": true,
+        "rigid_detail_span": 0.04,
+        "height_bank_clearance": true
+      }
+    },
+    {
+      "source": "female/black_simple_outfit.glb",
+      "id": "source-black-simple",
+      "mode": "outfit",
+      "targetSpan": [
+        0.1,
+        1.66
+      ],
+      "rotate": [
+        0,
+        0,
+        0
+      ],
+      "defaultRole": "top",
+      "roleRules": [
+        [
+          "object",
+          "^Object_5$",
+          "shoes"
+        ],
+        [
+          "material",
+          "^uniform_1012$",
+          "bottom"
+        ]
+      ],
+      "dropObjects": [],
+      "dropMaterials": [],
+      "sourceAvatar": [],
+      "publish": false,
+      "license": "CC-BY-4.0",
+      "sourceBounds": [
+        [
+          -0.09662719815969467,
+          -0.1197538822889328,
+          0.11710300296545029
+        ],
+        [
+          0.5128470063209534,
+          0.18117724359035492,
+          1.647720217704773
+        ]
+      ],
+      "sourceDimensions": [
+        0.6094741821289062,
+        0.3009311258792877,
+        1.5306172370910645
+      ],
+      "sourceTriangles": 267618,
+      "sourcePartCount": 17,
+      "sourceRig": {
+        "skins": 0,
+        "animations": 0
+      },
+      "sourceFrontAxis": "-Y",
+      "reviewNotes": [
+        "Layered white/black upper outfit with brown trousers; Object_5 is a low foot-level part (Z .117-.281) and must be reviewed as footwear.",
+        "uniform_1012 owns trousers/waist details; original world centre X is approximately .208m, so recenter before fitting. Main upper layers remain together.",
+        "Audited original front/back renders and per-part bounds; no rig/animations in source. Initial target span still requires body/pose QA before promotion.",
+        "Native alpha is intentional layered color construction: raw-source PBR becomes brown instead of original white upper if alpha is forced opaque. Preserve original BLEND for all three materials; measured UV-surface alpha P05 .396/.271/.282. Do not apply opaque-fabric override."
+      ],
+      "nativeContext": {
+        "footwear": "source-owned"
+      },
+      "topologyBinding": {
+        "ribMaterials": [],
+        "mainMaterials": [
+          0,
+          1,
+          2
+        ],
+        "followMaterials": [],
+        "openCuffAnchors": true,
+        "cuffMinimumX": 0.18,
+        "cuffMinimumHeight": 0.85,
+        "cuffMaximumHeight": 1.15,
+        "preserveLegs": true,
+        "componentSeamDistance": 0.004,
+        "cuffAnchorDepth": 0.1,
+        "cuffGeodesicMinimum": 0.3,
+        "componentOwnership": true,
+        "componentCoreContactX": 0.05,
+        "componentSleeveSideX": 0.06
+      }
+    },
+    {
+      "source": "female/blue_white_floral_cheongsam_dress.glb",
+      "id": "source-cheongsam-blue",
+      "mode": "outfit",
+      "targetSpan": [
+        0.25,
+        1.64
+      ],
+      "rotate": [
+        0,
+        0,
+        -90
+      ],
+      "defaultRole": "top",
+      "roleRules": [
+        [
+          "material",
+          "chinesebutton",
+          "accent"
+        ]
+      ],
+      "dropObjects": [],
+      "dropMaterials": [],
+      "sourceAvatar": [],
+      "publish": false,
+      "license": "CC-BY-4.0",
+      "sourceBounds": [
+        [
+          -11.541099548339844,
+          -17.634199142456055,
+          23.981199264526367
+        ],
+        [
+          14.207799911499023,
+          18.211200714111328,
+          153.04800415039062
+        ]
+      ],
+      "sourceDimensions": [
+        25.748899459838867,
+        35.84539794921875,
+        129.06680297851562
+      ],
+      "sourceTriangles": 142668,
+      "sourcePartCount": 10,
+      "sourceRig": {
+        "skins": 0,
+        "animations": 0
+      },
+      "sourceFrontAxis": "+X",
+      "reviewNotes": [
+        "Original source faces +X, not -Y: dedicated Chinese-button parts lie on the +X face. Rotate -90 degrees around Blender Z before fitting.",
+        "Sleeveless, fitted long floral cheongsam with original side slit and narrow trim/closure strips. Preserve skirt silhouette and printed atlas; do not close the original slit.",
+        "Keep alpha on narrow uniform_1006/uniform_1016 trim materials; only the solid floral body material index2 is an opaque candidate.",
+        "Audited original front/back renders and per-part bounds; no rig/animations in source. Initial target span still requires body/pose QA before promotion."
+      ],
+      "skirt": [
+        1.04,
+        0.25
+      ],
+      "landmarks": {
+        "frontEvidence": "Dedicated Chinese-button nodes lie on positive source X; left/right textured views confirm side-on default orientation."
+      },
+      "sleeveless": true,
+      "radialTorsoFit": true,
+      "skirtThighDepth": 0.1,
+      "review": {
+        "status": "pending",
+        "fittedSHA256": "c812ca78df5fbff90e981dec2b9b2df33b8a484b92402f03e746a5c8f5fcef08",
+        "budgets": {
+          "triangles": 151127,
+          "bytes": 61870080
+        },
+        "fitChecks": {
+          "rest": true,
+          "walk": false,
+          "sit": true,
+          "reach": true,
+          "sourceAppearance": true
+        }
+      }
+    },
+    {
+      "source": "female/chiffon_dress.glb",
+      "id": "source-chiffon-dress",
+      "mode": "outfit",
+      "targetSpan": [
+        0.28,
+        1.65
+      ],
+      "rotate": [
+        0,
+        0,
+        0
+      ],
+      "defaultRole": "top",
+      "roleRules": [],
+      "dropObjects": [],
+      "dropMaterials": [],
+      "sourceAvatar": [],
+      "publish": false,
+      "license": "CC-BY-4.0",
+      "sourceBounds": [
+        [
+          -305.6730041503906,
+          -251.92100524902344,
+          260.8580017089844
+        ],
+        [
+          309.6579895019531,
+          219.28012084960938,
+          1547.1002197265625
+        ]
+      ],
+      "sourceDimensions": [
+        615.3309936523438,
+        471.20111083984375,
+        1286.2421875
+      ],
+      "sourceTriangles": 139879,
+      "sourcePartCount": 9,
+      "sourceRig": {
+        "skins": 0,
+        "animations": 0
+      },
+      "sourceFrontAxis": "-Y",
+      "reviewNotes": [
+        "Actual translucent layered chiffon, long sleeves with flare cuffs and tiered/ruffled hem. Preserve native alpha, maps, all layers and original hem.",
+        "Object_3 is an isolated side sleeve panel (centre X215.9, width170.7, Z899.7-1449.9 source units); remaining broad panels cannot safely be named sleeve-only.",
+        "Audited original front/back renders and per-part bounds; no rig/animations in source. Initial target span still requires body/pose QA before promotion."
+      ],
+      "skirt": [
+        1.04,
+        0.28
+      ],
+      "sheer": true,
+      "anatomyRules": [
+        [
+          "^Object_3$",
+          "arm"
+        ]
+      ],
+      "radialTorsoFit": true,
+      "skirtThighDepth": 0.1,
+      "topologyBinding": {
+        "ribMaterials": [],
+        "openCuffAnchors": true,
+        "cuffMinimumX": 0.18,
+        "cuffMinimumHeight": 0.85,
+        "cuffMaximumHeight": 1.15,
+        "cuffGeodesicMinimum": 0.3,
+        "cuffAnchorDepth": 0.1,
+        "componentSeamDistance": 0.004,
+        "componentOwnership": true,
+        "preserveLegs": true,
+        "mainMaterials": [
+          0
+        ],
+        "followMaterials": []
+      },
+      "armholeUnderlap": {
+        "sourceMaterial": 0,
+        "clearance": 0.008,
+        "lateralMax": 0.28,
+        "rearInset": false,
+        "overlapFaces": true,
+        "shoulderAbove": 0.06,
+        "frontMinimum": -0.2
+      },
+      "radialTorsoMinimumHeight": 0.62
+    },
+    {
+      "source": "female/classic_black_flame_hoodie.glb",
+      "id": "source-flame-hoodie",
+      "mode": "top",
+      "targetSpan": [
+        0.91,
+        1.65
+      ],
+      "rotate": [
+        0,
+        0,
+        0
+      ],
+      "defaultRole": "top",
+      "roleRules": [],
+      "dropObjects": [],
+      "dropMaterials": [],
+      "sourceAvatar": [],
+      "publish": true,
+      "license": "CC-BY-4.0",
+      "sourceBounds": [
+        [
+          -0.30169400572776794,
+          -0.08405624330043793,
+          0.8119871020317078
+        ],
+        [
+          0.303056001663208,
+          0.2255558967590332,
+          1.4527461528778076
+        ]
+      ],
+      "sourceDimensions": [
+        0.6047500371932983,
+        0.3096121549606323,
+        0.6407590508460999
+      ],
+      "sourceTriangles": 1339224,
+      "sourcePartCount": 14,
+      "sourceRig": {
+        "skins": 0,
+        "animations": 0
+      },
+      "sourceFrontAxis": "-Y",
+      "reviewNotes": [
+        "Original flame motifs are already in the native base-colour atlas. Preserve the three fabric materials and hood; no tint palette should overwrite them.",
+        "1,339,224 source triangles, mostly modeled stitches: stitches alone exceed1M triangles. No blind6k decimation or stitch deletion; requires source-faithful detailed geometry/LOD review.",
+        "Mixed torso/sleeves in hoodie_Sweat_Rib_1X1_319gsm_hoodie_0; stitch objects include both torso and arm areas.",
+        "Audited original front/back renders and per-part bounds; no rig/animations in source. Initial target span still requires body/pose QA before promotion."
+      ],
+      "nativeContext": {
+        "bottom": true,
+        "footwear": "native"
+      },
+      "partLod": [
+        [
+          "stitch",
+          10000
+        ]
+      ],
+      "detailObjects": [
+        "stitch"
+      ],
+      "topologyBinding": {
+        "mainMaterials": [
+          1
+        ],
+        "ribMaterials": [
+          0
+        ],
+        "followMaterials": [
+          2,
+          3
+        ]
+      },
+      "armholeUnderlap": {
+        "sourceMaterial": 1,
+        "clearance": 0.008,
+        "lateralMax": 0.25,
+        "rearInset": false,
+        "overlapFaces": true
+      },
+      "review": {
+        "status": "passed",
+        "fittedSHA256": "4dc49155600e9775aff4b20632b9cc41b71e3c80cd11f404b294082460370698",
+        "budgets": {
+          "triangles": 227132,
+          "bytes": 24526848
+        },
+        "fitChecks": {
+          "rest": true,
+          "walk": true,
+          "sit": true,
+          "reach": true,
+          "sourceAppearance": true
+        }
+      }
+    },
+    {
+      "source": "female/cloth_jacket.glb",
+      "id": "cloth-jacket",
+      "mode": "outer",
+      "targetSpan": [
+        0.95,
+        1.64
+      ],
+      "rotate": [
+        0,
+        0,
+        0
+      ],
+      "defaultRole": "outer",
+      "roleRules": [
+        [
+          "object",
+          ".*",
+          "outer"
+        ]
+      ],
+      "dropObjects": [],
+      "dropMaterials": [],
+      "sourceAvatar": [],
+      "publish": false,
+      "license": "CC-BY-4.0",
+      "sourceBounds": [
+        [
+          -2.7511329650878906,
+          -0.5837101340293884,
+          4.349147796630859
+        ],
+        [
+          2.750369071960449,
+          0.8130891919136047,
+          7.201115131378174
+        ]
+      ],
+      "sourceDimensions": [
+        5.50150203704834,
+        1.3967993259429932,
+        2.8519673347473145
+      ],
+      "sourceTriangles": 6467,
+      "sourcePartCount": 2,
+      "sourceRig": {
+        "skins": 0,
+        "animations": 0
+      },
+      "sourceFrontAxis": "-Y",
+      "reviewNotes": [
+        "Existing reviewed original; do not rebuild. Jacket_low/defaultMaterial owns6157 triangles. Shirt_low/defaultMaterial has310 triangles and is deliberately incomplete behind the jacket.",
+        "Shared JacketAndShirt atlas/normal/roughness maps; partial white inner must stay with the paired jacket or native underlay, never become a standalone top.",
+        "Audited original front/back renders and per-part bounds; no rig/animations in source. Initial target span still requires body/pose QA before promotion."
+      ],
+      "existing": [
+        "avatars/wardrobe/female/outer/cloth-jacket.glb"
+      ],
+      "existingOnly": true,
+      "nativeContext": {
+        "top": true,
+        "bottom": true,
+        "footwear": "native"
+      },
+      "nonStandaloneParts": [
+        "Shirt_low/defaultMaterial"
+      ]
+    },
+    {
+      "source": "female/dress.glb",
+      "id": "original-dress",
+      "mode": "outfit",
+      "targetSpan": [
+        0.42,
+        1.675
+      ],
+      "rotate": [
+        0,
+        0,
+        0
+      ],
+      "defaultRole": "top",
+      "roleRules": [],
+      "dropObjects": [],
+      "dropMaterials": [],
+      "sourceAvatar": [],
+      "publish": false,
+      "license": "CC-BY-4.0",
+      "sourceBounds": [
+        [
+          -0.26670828461647034,
+          -0.1573067456483841,
+          0.4171617329120636
+        ],
+        [
+          0.2654811143875122,
+          0.18581350147724152,
+          1.6752179861068726
+        ]
+      ],
+      "sourceDimensions": [
+        0.5321893692016602,
+        0.3431202471256256,
+        1.2580562829971313
+      ],
+      "sourceTriangles": 269238,
+      "sourcePartCount": 9,
+      "sourceRig": {
+        "skins": 0,
+        "animations": 0
+      },
+      "sourceFrontAxis": "-Y",
+      "reviewNotes": [
+        "Existing reviewed original; do not rebuild. Nine explicit original sleeve/bodice/skirt/belt parts with one shared atlas.",
+        "Preserve existing ankle seam, native footwear and authored neckline flags, sleeve/front envelopes and source seam correspondence.",
+        "Audited original front/back renders and per-part bounds; no rig/animations in source. Initial target span still requires body/pose QA before promotion."
+      ],
+      "existing": [
+        "avatars/outfits/female/outfit-original-dress.glb"
+      ],
+      "existingOnly": true,
+      "skirt": [
+        1.04,
+        0.42
+      ],
+      "opaqueMaterials": [
+        0
+      ],
+      "anatomyRules": [
+        [
+          "^[RL]_Sleeve_",
+          "arm"
+        ]
+      ]
+    },
+    {
+      "source": "female/female_cloth1.glb",
+      "id": "source-female-cloth1",
+      "mode": "top",
+      "targetSpan": [
+        0.94,
+        1.72
+      ],
+      "rotate": [
+        0,
+        0,
+        0
+      ],
+      "defaultRole": "top",
+      "roleRules": [],
+      "dropObjects": [],
+      "dropMaterials": [],
+      "sourceAvatar": [],
+      "publish": true,
+      "license": "CC-BY-4.0",
+      "sourceBounds": [
+        [
+          -96.7083969116211,
+          -54.31057357788086,
+          260.3004455566406
+        ],
+        [
+          98.3939208984375,
+          41.36946487426758,
+          453.7598571777344
+        ]
+      ],
+      "sourceDimensions": [
+        195.10232543945312,
+        95.68003845214844,
+        193.45941162109375
+      ],
+      "sourceTriangles": 19843,
+      "sourcePartCount": 2,
+      "sourceRig": {
+        "skins": 0,
+        "animations": 0
+      },
+      "sourceFrontAxis": "-Y",
+      "reviewNotes": [
+        "Short-sleeve black hoodie with red lining/cuffs/hem, not shorts or a full outfit. Object_2 is main body+sleeves14390 triangles; Object_3 is hood5453 triangles.",
+        "Source is translated far above origin (Z260.3-453.76) and scaled in large units. Preserve red/black atlas and roomy hood, fit neck clearance explicitly.",
+        "Audited original front/back renders and per-part bounds; no rig/animations in source. Initial target span still requires body/pose QA before promotion."
+      ],
+      "nativeContext": {
+        "bottom": true,
+        "footwear": "native"
+      },
+      "topologyBinding": {
+        "ribMaterials": [],
+        "mainMaterials": [
+          0
+        ],
+        "followMaterials": [],
+        "openCuffAnchors": true,
+        "cuffMinimumX": 0.18,
+        "cuffMinimumHeight": 1.2,
+        "cuffMaximumHeight": 1.45,
+        "preserveLegs": true,
+        "componentSeamDistance": 0.004,
+        "cuffAnchorDepth": 0.06,
+        "cuffGeodesicMinimum": 0.3,
+        "componentOwnership": true,
+        "componentCoreContactX": 0.05,
+        "lowerTorsoHalfWidth": 0.24,
+        "armBlend": [
+          0.18,
+          0.5
+        ]
+      },
+      "review": {
+        "status": "passed",
+        "fittedSHA256": "63a7828b91d51dccf8fe18b703998584a6fd7356d87a1852e0e256cb6b203339",
+        "budgets": {
+          "triangles": 21861,
+          "bytes": 35815424
+        },
+        "fitChecks": {
+          "rest": true,
+          "walk": true,
+          "sit": true,
+          "reach": true,
+          "sourceAppearance": true
+        }
+      }
+    },
+    {
+      "source": "female/female_overcoat.glb",
+      "id": "source-overcoat",
+      "mode": "outer",
+      "targetSpan": [
+        0.88,
+        1.67
+      ],
+      "rotate": [
+        0,
+        0,
+        0
+      ],
+      "defaultRole": "outer",
+      "roleRules": [
+        [
+          "object",
+          "Metal|Buttons|Belt|Loop",
+          "accent"
+        ]
+      ],
+      "dropObjects": [],
+      "dropMaterials": [],
+      "sourceAvatar": [],
+      "publish": true,
+      "license": "CC-BY-4.0",
+      "sourceBounds": [
+        [
+          -0.5244988203048706,
+          -0.14442384243011475,
+          0.8747009634971619
+        ],
+        [
+          0.5255506634712219,
+          0.139034241437912,
+          1.6715080738067627
+        ]
+      ],
+      "sourceDimensions": [
+        1.0500495433807373,
+        0.28345808386802673,
+        0.7968071103096008
+      ],
+      "sourceTriangles": 14344,
+      "sourcePartCount": 6,
+      "sourceRig": {
+        "skins": 0,
+        "animations": 0
+      },
+      "sourceFrontAxis": "-Y",
+      "reviewNotes": [
+        "Six parts: main Jacket3_low plus metal, belt, buttons, detail and loops;14344 original triangles. Black belted double-breasted coat, no trousers.",
+        "Original A-pose sleeves; preserve native belt and lapels. Main coat and sleeve topology are mixed; do not mark whole Jacket3_low as arm-only.",
+        "Audited original front/back renders and per-part bounds; no rig/animations in source. Initial target span still requires body/pose QA before promotion."
+      ],
+      "nativeContext": {
+        "top": true,
+        "bottom": true,
+        "footwear": "native"
+      },
+      "coverage": {
+        "kind": "closed-jacket",
+        "frontHalfWidth": 0.045,
+        "frontMinDepth": 0,
+        "collarMinHeight": 1.5
+      },
+      "radialTorsoFit": true,
+      "review": {
+        "status": "passed",
+        "fittedSHA256": "ee615a7db1767469dd255b36349cf9a372ad6c03a4e55075fe9233a08f0f40b7",
+        "budgets": {
+          "triangles": 14648,
+          "bytes": 45551616
+        },
+        "fitChecks": {
+          "rest": true,
+          "walk": true,
+          "sit": true,
+          "reach": true,
+          "sourceAppearance": true
+        }
+      }
+    },
+    {
+      "source": "female/female_short_jeans.glb",
+      "id": "short-jeans",
+      "mode": "bottom",
+      "targetSpan": [
+        0.73,
+        1.07
+      ],
+      "rotate": [
+        0,
+        0,
+        0
+      ],
+      "defaultRole": "bottom",
+      "roleRules": [],
+      "dropObjects": [],
+      "dropMaterials": [],
+      "sourceAvatar": [],
+      "publish": false,
+      "license": "CC-BY-4.0",
+      "sourceBounds": [
+        [
+          -16.27519989013672,
+          -12.376056671142578,
+          78.26095581054688
+        ],
+        [
+          16.270944595336914,
+          10.753144264221191,
+          108.57369232177734
+        ]
+      ],
+      "sourceDimensions": [
+        32.546142578125,
+        23.129199981689453,
+        30.31273651123047
+      ],
+      "sourceTriangles": 13782,
+      "sourcePartCount": 1,
+      "sourceRig": {
+        "skins": 0,
+        "animations": 0
+      },
+      "sourceFrontAxis": "-Y",
+      "reviewNotes": [
+        "Existing reviewed original denim shorts; do not rebuild. One original13782-triangle object with embedded stitched denim maps.",
+        "Preserve fitted leg skin, actual native ankle seam and native footwear context.",
+        "Audited original front/back renders and per-part bounds; no rig/animations in source. Initial target span still requires body/pose QA before promotion."
+      ],
+      "existing": [
+        "avatars/wardrobe/female/bottom/short-jeans.glb"
+      ],
+      "existingOnly": true
+    },
+    {
+      "source": "female/jk_school_uniform.glb",
+      "id": "source-school-uniform",
+      "mode": "outfit",
+      "targetSpan": [
+        0.7,
+        1.6
+      ],
+      "rotate": [
+        0,
+        0,
+        0
+      ],
+      "defaultRole": "top",
+      "roleRules": [
+        [
+          "material",
+          "Button",
+          "accent"
+        ]
+      ],
+      "dropObjects": [],
+      "dropMaterials": [],
+      "sourceAvatar": [],
+      "publish": false,
+      "license": "CC-BY-4.0",
+      "sourceBounds": [
+        [
+          -219.0019989013672,
+          -166.27392578125,
+          681.6040649414062
+        ],
+        [
+          229.69000244140625,
+          113.41716003417969,
+          1499.4700927734375
+        ]
+      ],
+      "sourceDimensions": [
+        448.6920166015625,
+        279.69110107421875,
+        817.8660278320312
+      ],
+      "sourceTriangles": 158486,
+      "sourcePartCount": 11,
+      "sourceRig": {
+        "skins": 0,
+        "animations": 0
+      },
+      "sourceFrontAxis": "-Y",
+      "reviewNotes": [
+        "Original white short-sleeve blouse, blue checked pleated skirt and neck bow. Native fabric is already OPAQUE; keep plaid atlas and modeled buttons.",
+        "Eleven source panels; blouse/pleats/sleeves share uniform_1001. Keep the full set initially; top/bottom extraction needs panel ownership beyond material names.",
+        "Audited original front/back renders and per-part bounds; no rig/animations in source. Initial target span still requires body/pose QA before promotion."
+      ],
+      "skirt": [
+        1.04,
+        0.7
+      ],
+      "posteriorPelvisFit": true,
+      "seatedDrape": true,
+      "seatedDrapeOptions": {
+        "mode": "offline_cloth",
+        "pose_profile": {
+          "scale": 0.9189189189189189,
+          "seat_height": 0.46,
+          "seat_front": 0.22,
+          "sole_heights": {
+            "leftFoot": -0.07414725422859192,
+            "rightFoot": -0.07123086601495743
+          }
+        },
+        "frames": 120,
+        "sit_frame": 60,
+        "quality": 8,
+        "collision_quality": 5,
+        "proxy_vertices": 60000,
+        "proxy_weld_distance": 0.0005,
+        "follow_unanchored": true,
+        "selection_height": 1.17,
+        "tall_pose_profile": {
+          "scale": 1.054054054054054,
+          "seat_height": 0.46,
+          "seat_front": 0.22,
+          "sole_heights": {
+            "leftFoot": -0.07414725422859192,
+            "rightFoot": -0.07123086601495743
+          }
+        },
+        "rigid_detail_span": 0.04,
+        "weld_consistent_transfer": true
+      }
+    },
+    {
+      "source": "female/jk_school_uniform_2.glb",
+      "id": "source-school-uniform-2",
+      "mode": "outfit",
+      "targetSpan": [
+        0.5,
+        1.6
+      ],
+      "rotate": [
+        0,
+        0,
+        0
+      ],
+      "defaultRole": "top",
+      "roleRules": [
+        [
+          "material",
+          "Button",
+          "accent"
+        ]
+      ],
+      "dropObjects": [],
+      "dropMaterials": [],
+      "sourceAvatar": [],
+      "publish": false,
+      "license": "CC-BY-4.0",
+      "sourceBounds": [
+        [
+          -242.7270050048828,
+          -162.10995483398438,
+          477.8480529785156
+        ],
+        [
+          245.0780029296875,
+          110.1401596069336,
+          1495.66015625
+        ]
+      ],
+      "sourceDimensions": [
+        487.80499267578125,
+        272.2501220703125,
+        1017.8121337890625
+      ],
+      "sourceTriangles": 179212,
+      "sourcePartCount": 12,
+      "sourceRig": {
+        "skins": 0,
+        "animations": 0
+      },
+      "sourceFrontAxis": "-Y",
+      "reviewNotes": [
+        "White blouse and longer pleated skirt; original12 panels and modeled fasteners. Source Body panels3/7/8/9 are upper; Object_4 and Object_6 are lower skirt panels by Z.",
+        "Keep full set and plaid/pleat shape first; opaque fabric override avoids BLEND order hiding front panels.",
+        "Audited original front/back renders and per-part bounds; no rig/animations in source. Initial target span still requires body/pose QA before promotion."
+      ],
+      "skirt": [
+        1.04,
+        0.5
+      ],
+      "posteriorPelvisFit": true,
+      "seatedDrape": true,
+      "seatedDrapeOptions": {
+        "mode": "offline_cloth",
+        "pose_profile": {
+          "scale": 0.9189189189189189,
+          "seat_height": 0.46,
+          "seat_front": 0.22,
+          "sole_heights": {
+            "leftFoot": -0.07414725422859192,
+            "rightFoot": -0.07123086601495743
+          }
+        },
+        "frames": 120,
+        "sit_frame": 60,
+        "quality": 8,
+        "collision_quality": 5,
+        "proxy_vertices": 60000,
+        "proxy_weld_distance": 0.0005,
+        "follow_unanchored": true,
+        "selection_height": 1.17,
+        "tall_pose_profile": {
+          "scale": 1.054054054054054,
+          "seat_height": 0.46,
+          "seat_front": 0.22,
+          "sole_heights": {
+            "leftFoot": -0.07414725422859192,
+            "rightFoot": -0.07123086601495743
+          }
+        },
+        "rigid_detail_span": 0.04,
+        "weld_consistent_transfer": true,
+        "short_pose_profile": {
+          "scale": 0.7837837837837838,
+          "seat_height": 0.46,
+          "seat_front": 0.22,
+          "sole_heights": {
+            "leftFoot": -0.07414725422859192,
+            "rightFoot": -0.07123086601495743
+          }
+        },
+        "body_distance": 0.007
+      }
+    },
+    {
+      "source": "female/jk_school_uniform_4.glb",
+      "id": "source-school-uniform-4",
+      "mode": "outfit",
+      "targetSpan": [
+        0.7,
+        1.6
+      ],
+      "rotate": [
+        0,
+        0,
+        0
+      ],
+      "defaultRole": "top",
+      "roleRules": [
+        [
+          "material",
+          "Button",
+          "accent"
+        ]
+      ],
+      "dropObjects": [],
+      "dropMaterials": [],
+      "sourceAvatar": [],
+      "publish": false,
+      "license": "CC-BY-4.0",
+      "sourceBounds": [
+        [
+          -265.1189880371094,
+          -163.05992126464844,
+          675.3810424804688
+        ],
+        [
+          265.0950012207031,
+          116.63317108154297,
+          1497.93017578125
+        ]
+      ],
+      "sourceDimensions": [
+        530.2139892578125,
+        279.6930847167969,
+        822.5491333007812
+      ],
+      "sourceTriangles": 189522,
+      "sourcePartCount": 14,
+      "sourceRig": {
+        "skins": 0,
+        "animations": 0
+      },
+      "sourceFrontAxis": "-Y",
+      "reviewNotes": [
+        "Layered white/patterned blouse, blue knit/vest-like upper layer and checked skirt.14 original panels; all fabrics share uniform_1001 atlas.",
+        "Do not infer panel roles solely from Object_* numeric IDs; main source panels mix sleeves/torso/skirts.",
+        "Audited original front/back renders and per-part bounds; no rig/animations in source. Initial target span still requires body/pose QA before promotion."
+      ],
+      "skirt": [
+        1.04,
+        0.7
+      ],
+      "topologyBinding": {
+        "ribMaterials": [],
+        "mainMaterials": [
+          0
+        ],
+        "followMaterials": [
+          1
+        ],
+        "openCuffAnchors": true,
+        "cuffMinimumX": 0.18,
+        "cuffMinimumHeight": 0.85,
+        "cuffMaximumHeight": 1.15,
+        "preserveLegs": true,
+        "componentSeamDistance": 0.004,
+        "cuffAnchorDepth": 0.1,
+        "cuffGeodesicMinimum": 0.3,
+        "componentOwnership": true,
+        "componentCoreContactX": 0.05
+      },
+      "posteriorPelvisFit": true
+    },
+    {
+      "source": "female/low_poly_woman_oversize_shirt_with_tie.glb",
+      "id": "source-oversize-shirt",
+      "mode": "top",
+      "targetSpan": [
+        0.84,
+        1.6
+      ],
+      "rotate": [
+        0,
+        0,
+        0
+      ],
+      "defaultRole": "top",
+      "roleRules": [
+        [
+          "object",
+          "^Tie_lo",
+          "accent"
+        ]
+      ],
+      "dropObjects": [],
+      "dropMaterials": [],
+      "sourceAvatar": [],
+      "publish": true,
+      "license": "CC-BY-4.0",
+      "sourceBounds": [
+        [
+          -0.459786981344223,
+          -0.11786278337240219,
+          0.8636886477470398
+        ],
+        [
+          0.44759607315063477,
+          0.1474936604499817,
+          1.420891523361206
+        ]
+      ],
+      "sourceDimensions": [
+        0.9073830842971802,
+        0.2653564512729645,
+        0.5572028756141663
+      ],
+      "sourceTriangles": 2003,
+      "sourcePartCount": 2,
+      "sourceRig": {
+        "skins": 0,
+        "animations": 0
+      },
+      "sourceFrontAxis": "-Y",
+      "reviewNotes": [
+        "Very low-poly original: shirt1737 triangles and tie266 triangles. Shared M_cloth atlas with base colour, normal, occlusion and packed roughness/metalness.",
+        "Retain the oversized silhouette and wide cuffs; generic fitting must not shrink the shirt into skin.",
+        "Audited original front/back renders and per-part bounds; no rig/animations in source. Initial target span still requires body/pose QA before promotion."
+      ],
+      "nativeContext": {
+        "bottom": true,
+        "footwear": "native"
+      },
+      "review": {
+        "status": "passed",
+        "fittedSHA256": "e01c7dfd1078479bbd5a7674100544d770291fdada9d53125c88fe56b5d04c02",
+        "budgets": {
+          "triangles": 2532,
+          "bytes": 2928640
+        },
+        "fitChecks": {
+          "rest": true,
+          "walk": true,
+          "sit": true,
+          "reach": true,
+          "sourceAppearance": true
+        }
+      }
+    },
+    {
+      "source": "female/old_leather_cloak_female.glb",
+      "id": "source-leather-cloak",
+      "mode": "outer",
+      "targetSpan": [
+        0.55,
+        1.64
+      ],
+      "rotate": [
+        0,
+        0,
+        0
+      ],
+      "defaultRole": "outer",
+      "roleRules": [],
+      "dropObjects": [],
+      "dropMaterials": [],
+      "sourceAvatar": [],
+      "publish": true,
+      "license": "CC-BY-4.0",
+      "sourceBounds": [
+        [
+          -70.35134887695312,
+          -15.487351417541504,
+          51.38712692260742
+        ],
+        [
+          71.79882049560547,
+          14.976567268371582,
+          155.93499755859375
+        ]
+      ],
+      "sourceDimensions": [
+        142.15017700195312,
+        30.463918685913086,
+        104.54786682128906
+      ],
+      "sourceTriangles": 5960,
+      "sourcePartCount": 1,
+      "sourceRig": {
+        "skins": 0,
+        "animations": 0
+      },
+      "sourceFrontAxis": "-Y",
+      "reviewNotes": [
+        "Single5960-triangle long leather coat/cloak with horizontal T-pose sleeves; original leather grain/stitch maps, no mannequin or separate hood.",
+        "Requires90-degree arm-pose correspondence and lower coat/lap deformation in seated/walking QA. Never delete this source as fantasy/office-inappropriate.",
+        "Audited original front/back renders and per-part bounds; no rig/animations in source. Initial target span still requires body/pose QA before promotion."
+      ],
+      "nativeContext": {
+        "top": true,
+        "bottom": true,
+        "footwear": "native"
+      },
+      "landmarks": {
+        "sourcePose": "T",
+        "mixedSleeveObject": "Tops__0"
+      },
+      "skirt": [
+        1.04,
+        0.55
+      ],
+      "coverage": {
+        "kind": "closed-jacket",
+        "frontHalfWidth": 0.01,
+        "frontMinDepth": 0,
+        "collarMinHeight": 1.54
+      },
+      "review": {
+        "status": "passed",
+        "fittedSHA256": "b7719da49a6c602796e83b75c58e992c18759d8610021b6a4fb1f48fa8101957",
+        "budgets": {
+          "triangles": 6108,
+          "bytes": 43139072
+        },
+        "fitChecks": {
+          "rest": true,
+          "walk": true,
+          "sit": true,
+          "reach": true,
+          "sourceAppearance": true
+        }
+      }
+    },
+    {
+      "source": "female/pink_drawstring_hooded_sweatshirt.glb",
+      "id": "source-pink-hoodie",
+      "mode": "top",
+      "targetSpan": [
+        0.86,
+        1.66
+      ],
+      "rotate": [
+        0,
+        0,
+        0
+      ],
+      "defaultRole": "top",
+      "roleRules": [
+        [
+          "material",
+          "Eyelet|Material20",
+          "accent"
+        ]
+      ],
+      "dropObjects": [],
+      "dropMaterials": [],
+      "sourceAvatar": [],
+      "publish": true,
+      "license": "CC-BY-4.0",
+      "sourceBounds": [
+        [
+          -248.96800231933594,
+          -157.56884765625,
+          764.091064453125
+        ],
+        [
+          254.26400756835938,
+          147.52621459960938,
+          1478.840087890625
+        ]
+      ],
+      "sourceDimensions": [
+        503.23199462890625,
+        305.0950622558594,
+        714.7490234375
+      ],
+      "sourceTriangles": 109770,
+      "sourcePartCount": 11,
+      "sourceRig": {
+        "skins": 0,
+        "animations": 0
+      },
+      "sourceFrontAxis": "-Y",
+      "reviewNotes": [
+        "Cropped pink hoodie with drawstrings/eyelets and long sleeves; all source details and native pink atlas must stay.",
+        "Object_8 and Object_9 are isolated sleeve panels: centres X+194.8/-188.7, width~119, Z859-1296. Other broad panels include torso/hood/mixed seam layers.",
+        "Audited original front/back renders and per-part bounds; no rig/animations in source. Initial target span still requires body/pose QA before promotion."
+      ],
+      "anatomyRules": [
+        [
+          "^Object_(?:8|9)$",
+          "arm"
+        ]
+      ],
+      "nativeContext": {
+        "bottom": true,
+        "footwear": "native"
+      },
+      "topologyBinding": {
+        "ribMaterials": [],
+        "mainMaterials": [
+          1
+        ],
+        "followMaterials": [
+          0,
+          2,
+          3,
+          4
+        ],
+        "openCuffAnchors": true,
+        "cuffMinimumX": 0.18,
+        "cuffMinimumHeight": 0.75,
+        "cuffMaximumHeight": 1.15,
+        "preserveLegs": true,
+        "componentSeamDistance": 0.004,
+        "cuffAnchorDepth": 0.1,
+        "cuffGeodesicMinimum": 0.3,
+        "componentOwnership": true,
+        "componentCoreTailX": 0.26
+      },
+      "radialTorsoFit": true,
+      "armholeUnderlap": {
+        "sourceMaterial": 1,
+        "clearance": 0.008,
+        "lateralMax": 0.28,
+        "rearInset": false,
+        "overlapFaces": true,
+        "shoulderAbove": 0.06,
+        "frontMinimum": -0.2
+      },
+      "sleeveEnvelope": {
+        "margin": 0.006,
+        "maximumDisplacement": 0.07,
+        "shoulderTransition": true
+      },
+      "review": {
+        "status": "passed",
+        "fittedSHA256": "68f76602c6cc0a6ad011676c49249bd359ca480e907a342afd2330b45458d54e",
+        "budgets": {
+          "triangles": 117711,
+          "bytes": 24981504
+        },
+        "fitChecks": {
+          "rest": true,
+          "walk": true,
+          "sit": true,
+          "reach": true,
+          "sourceAppearance": true
+        }
+      }
+    },
+    {
+      "source": "female/pink_floral_cheongsam.glb",
+      "id": "source-cheongsam-pink",
+      "mode": "outfit",
+      "targetSpan": [
+        0.33,
+        1.64
+      ],
+      "rotate": [
+        0,
+        0,
+        -90
+      ],
+      "defaultRole": "top",
+      "roleRules": [
+        [
+          "material",
+          "chinesebutton",
+          "accent"
+        ]
+      ],
+      "dropObjects": [],
+      "dropMaterials": [],
+      "sourceAvatar": [],
+      "publish": false,
+      "license": "CC-BY-4.0",
+      "sourceBounds": [
+        [
+          -163.8204345703125,
+          -250.3829803466797,
+          304.4891662597656
+        ],
+        [
+          175.3436279296875,
+          270.0914611816406,
+          1523.326416015625
+        ]
+      ],
+      "sourceDimensions": [
+        339.1640625,
+        520.4744262695312,
+        1218.8372802734375
+      ],
+      "sourceTriangles": 186930,
+      "sourcePartCount": 10,
+      "sourceRig": {
+        "skins": 0,
+        "animations": 0
+      },
+      "sourceFrontAxis": "+X",
+      "reviewNotes": [
+        "Source faces +X (three dedicated Chinese-button nodes at X69.5/106.5/127.8); rotate -90 degrees around Blender Z.",
+        "Floral cheongsam with short sleeves and asymmetric wrap/ruffled lower drape. Preserve all panels, decorative closure and original hem; seated/stride deformation is a complex review case.",
+        "Audited original front/back renders and per-part bounds; no rig/animations in source. Initial target span still requires body/pose QA before promotion."
+      ],
+      "skirt": [
+        1.04,
+        0.33
+      ],
+      "landmarks": {
+        "frontEvidence": "Dedicated Chinese-button nodes lie on positive source X; left/right textured views confirm side-on default orientation."
+      },
+      "posteriorPelvisFit": true
+    },
+    {
+      "source": "female/polka_dot_dress.glb",
+      "id": "source-polka-dress",
+      "mode": "outfit",
+      "targetSpan": [
+        0.71,
+        1.6
+      ],
+      "rotate": [
+        0,
+        0,
+        0
+      ],
+      "defaultRole": "top",
+      "roleRules": [
+        [
+          "material",
+          "Eyelet|Button",
+          "accent"
+        ]
+      ],
+      "dropObjects": [],
+      "dropMaterials": [],
+      "sourceAvatar": [],
+      "publish": false,
+      "license": "CC-BY-4.0",
+      "sourceBounds": [
+        [
+          -236.0229949951172,
+          -181.06192016601562,
+          693.0650634765625
+        ],
+        [
+          233.6719970703125,
+          176.9481658935547,
+          1472.0601806640625
+        ]
+      ],
+      "sourceDimensions": [
+        469.69500732421875,
+        358.01007080078125,
+        778.9951171875
+      ],
+      "sourceTriangles": 125122,
+      "sourcePartCount": 8,
+      "sourceRig": {
+        "skins": 0,
+        "animations": 0
+      },
+      "sourceFrontAxis": "-Y",
+      "reviewNotes": [
+        "Blue polka-dot short-sleeve dress with belt/eyelet buckle and modeled buttons. Source waist accessories are separate; body/bodice/skirt share one atlas.",
+        "Object_3/Object_5 are lower skirt panels, others upper/mixed. Keep the full original dress before attempting any modular split.",
+        "Audited original front/back renders and per-part bounds; no rig/animations in source. Initial target span still requires body/pose QA before promotion."
+      ],
+      "skirt": [
+        1.04,
+        0.71
+      ],
+      "posteriorPelvisFit": true,
+      "seatedDrape": true,
+      "seatedDrapeOptions": {
+        "mode": "offline_cloth",
+        "pose_profile": {
+          "scale": 0.9189189189189189,
+          "seat_height": 0.46,
+          "seat_front": 0.22,
+          "sole_heights": {
+            "leftFoot": -0.07414725422859192,
+            "rightFoot": -0.07123086601495743
+          }
+        },
+        "frames": 120,
+        "sit_frame": 60,
+        "quality": 8,
+        "collision_quality": 5,
+        "proxy_vertices": 6000,
+        "proxy_weld_distance": 0.003,
+        "follow_unanchored": true,
+        "selection_height": 1.17,
+        "tall_pose_profile": {
+          "scale": 1.054054054054054,
+          "seat_height": 0.46,
+          "seat_front": 0.22,
+          "sole_heights": {
+            "leftFoot": -0.07414725422859192,
+            "rightFoot": -0.07123086601495743
+          }
+        }
+      },
+      "review": {
+        "status": "pending",
+        "fittedSHA256": "11d70ce2dc1bd19c4d50d7acd3c9c7dffbbd9397de9cca73ef1f9cdb6e9909b3",
+        "budgets": {
+          "triangles": 133581,
+          "bytes": 22302720
+        },
+        "fitChecks": {
+          "rest": true,
+          "walk": false,
+          "sit": true,
+          "reach": true,
+          "sourceAppearance": true
+        }
+      }
+    },
+    {
+      "source": "female/puff_sleeve_and_jumper_skirt.glb",
+      "id": "source-jumper-skirt",
+      "mode": "outfit",
+      "targetSpan": [
+        0.58,
+        1.62
+      ],
+      "rotate": [
+        0,
+        0,
+        0
+      ],
+      "defaultRole": "top",
+      "roleRules": [
+        [
+          "object",
+          "^shirt_",
+          "top"
+        ],
+        [
+          "object",
+          "^skirt_",
+          "bottom"
+        ]
+      ],
+      "dropObjects": [],
+      "dropMaterials": [],
+      "sourceAvatar": [],
+      "publish": true,
+      "license": "CC-BY-4.0",
+      "sourceBounds": [
+        [
+          -361.4077453613281,
+          -260.1618347167969,
+          338.8774719238281
+        ],
+        [
+          361.10430908203125,
+          5.471542835235596,
+          1032.2657470703125
+        ]
+      ],
+      "sourceDimensions": [
+        722.5120849609375,
+        265.6333923339844,
+        693.3883056640625
+      ],
+      "sourceTriangles": 12967,
+      "sourcePartCount": 2,
+      "sourceRig": {
+        "skins": 0,
+        "animations": 0
+      },
+      "sourceFrontAxis": "-Y",
+      "reviewNotes": [
+        "Two clean original objects: shirt_shirt1_0 (6548 triangles), skirt_skirt1_0 (6419 triangles). Original green jumper includes its bodice/straps, not a waist-only skirt.",
+        "Preserve puffy blouse sleeves and jumper overlap. Do not flatten jumper bodice into a normal skirt or let its straps follow the arms.",
+        "Audited original front/back renders and per-part bounds; no rig/animations in source. Initial target span still requires body/pose QA before promotion."
+      ],
+      "skirt": [
+        1.04,
+        0.58
+      ],
+      "posteriorPelvisFit": true,
+      "radialTorsoFit": true,
+      "seatedDrape": true,
+      "seatedDrapeOptions": {
+        "mode": "offline_cloth",
+        "pose_profile": {
+          "scale": 0.9189189189189189,
+          "seat_height": 0.46,
+          "seat_front": 0.22,
+          "sole_heights": {
+            "leftFoot": -0.07414725422859192,
+            "rightFoot": -0.07123086601495743
+          }
+        },
+        "frames": 120,
+        "sit_frame": 60,
+        "quality": 8,
+        "collision_quality": 5,
+        "proxy_vertices": 6000,
+        "seam_height": 1.16,
+        "follow_unanchored": true,
+        "tall_pose_profile": {
+          "scale": 1.054054054054054,
+          "seat_height": 0.46,
+          "seat_front": 0.22,
+          "sole_heights": {
+            "leftFoot": -0.07414725422859192,
+            "rightFoot": -0.07123086601495743
+          }
+        }
+      },
+      "review": {
+        "status": "passed",
+        "fittedSHA256": "e927d27afa603600ae016fe2cc7c25c90cff4ca2555631e02c1bdab72e35246b",
+        "budgets": {
+          "triangles": 17012,
+          "bytes": 6504448
+        },
+        "fitChecks": {
+          "rest": true,
+          "walk": true,
+          "sit": true,
+          "reach": true,
+          "sourceAppearance": true
+        }
+      }
+    },
+    {
+      "source": "female/real_suit_for_ray_ii_retopo.glb",
+      "id": "source-ray-suit",
+      "mode": "outfit",
+      "targetSpan": [
+        0,
+        1.64
+      ],
+      "rotate": [
+        0,
+        0,
+        0
+      ],
+      "defaultRole": "top",
+      "roleRules": [
+        [
+          "object",
+          "^BootLD",
+          "shoes"
+        ],
+        [
+          "object",
+          "^StandardTrousers",
+          "bottom"
+        ],
+        [
+          "object",
+          "^Standard(?:Vest|Coat)",
+          "outer"
+        ]
+      ],
+      "dropObjects": [],
+      "dropMaterials": [],
+      "sourceAvatar": [],
+      "publish": false,
+      "license": "CC-BY-4.0",
+      "sourceBounds": [
+        [
+          -162.92367553710938,
+          -19.521146774291992,
+          -1.8877536058425903
+        ],
+        [
+          162.90621948242188,
+          8.339147567749023,
+          143.16824340820312
+        ]
+      ],
+      "sourceDimensions": [
+        325.82989501953125,
+        27.860294342041016,
+        145.05599975585938
+      ],
+      "sourceTriangles": 13392,
+      "sourcePartCount": 11,
+      "sourceRig": {
+        "skins": 0,
+        "animations": 0
+      },
+      "sourceFrontAxis": "-Y",
+      "reviewNotes": [
+        "Pack of one assembled central layered outfit plus separate displaced shirt/trouser/vest/underlayer copies; whole-pack width325.83 vs central coat width108.68. Never fit the entire layout as one body.",
+        "Central source-owned boots must retain native atlas and own sole profile. Main source parts have useful stable semantic names; all are unrigged.",
+        "Separate variants below retain displaced originals and recenter each chosen object; none is a mannequin.",
+        "Audited original front/back renders and per-part bounds; no rig/animations in source. Initial target span still requires body/pose QA before promotion."
+      ],
+      "sourceSelection": [
+        "^(?:BootLD_BootLD_0|StandardShirt_StandardShirt_0|StandardTrousers_StandardTrousers_0|StandardUnderwear_StandUnderwear_0|StandardVest_StandardVest_0|StandardCoat_StandardCoat_0)$"
+      ],
+      "anatomyRules": [
+        [
+          "^StandardTrousers",
+          "leg"
+        ]
+      ],
+      "nativeContext": {
+        "footwear": "source-owned"
+      },
+      "variants": [
+        {
+          "id": "source-ray-suit",
+          "mode": "outfit",
+          "targetSpan": [
+            0,
+            1.64
+          ],
+          "sourceSelection": [
+            "^(?:BootLD_BootLD_0|StandardShirt_StandardShirt_0|StandardTrousers_StandardTrousers_0|StandardUnderwear_StandUnderwear_0|StandardVest_StandardVest_0|StandardCoat_StandardCoat_0)$"
+          ],
+          "roleRules": [
+            [
+              "object",
+              "^BootLD",
+              "shoes"
+            ],
+            [
+              "object",
+              "^StandardTrousers",
+              "bottom"
+            ],
+            [
+              "object",
+              "^Standard(?:Vest|Coat)",
+              "outer"
+            ]
+          ],
+          "defaultRole": "top",
+          "dropObjects": [],
+          "dropMaterials": [],
+          "anatomyRules": [
+            [
+              "^StandardTrousers",
+              "leg"
+            ]
+          ],
+          "nativeContext": {
+            "footwear": "source-owned"
+          },
+          "reviewNotes": [
+            "Pack of one assembled central layered outfit plus separate displaced shirt/trouser/vest/underlayer copies; whole-pack width325.83 vs central coat width108.68. Never fit the entire layout as one body.",
+            "Central source-owned boots must retain native atlas and own sole profile. Main source parts have useful stable semantic names; all are unrigged.",
+            "Separate variants below retain displaced originals and recenter each chosen object; none is a mannequin.",
+            "Audited original front/back renders and per-part bounds; no rig/animations in source. Initial target span still requires body/pose QA before promotion.",
+            "Explicit central-six variant so the shared variant-container iterator preserves the central complete suit, including original boots, coat, vest, shirt, underlayer and trousers."
+          ],
+          "radialTorsoFit": true,
+          "posteriorPelvisFit": true
+        },
+        {
+          "id": "source-ray-shirt-left",
+          "mode": "top",
+          "sourceSelection": [
+            "^StandardShirt\\.002_"
+          ],
+          "targetSpan": [
+            0.9,
+            1.6
+          ],
+          "radialTorsoFit": true
+        },
+        {
+          "id": "source-ray-shirt-right",
+          "mode": "top",
+          "sourceSelection": [
+            "^StandardShirt\\.003_"
+          ],
+          "targetSpan": [
+            0.9,
+            1.6
+          ],
+          "radialTorsoFit": true
+        },
+        {
+          "id": "source-ray-trousers",
+          "mode": "bottom",
+          "sourceSelection": [
+            "^StandardTrousers\\.003_"
+          ],
+          "targetSpan": [
+            0.18,
+            1.1
+          ],
+          "partialAnklePolicy": "retain-covered-patches",
+          "radialTorsoFit": true,
+          "legCageUpperFade": 0.04,
+          "posteriorPelvisFit": true,
+          "publish": true,
+          "review": {
+            "status": "passed",
+            "fittedSHA256": "1ff18e89a1d150b7f45ef47ee847a449a407d073de5b1f72ad491ecdb2a51508",
+            "budgets": {
+              "triangles": 4516,
+              "bytes": 31195136
+            },
+            "fitChecks": {
+              "rest": true,
+              "walk": true,
+              "sit": true,
+              "reach": true,
+              "sourceAppearance": true
+            }
+          }
+        },
+        {
+          "id": "source-ray-vest",
+          "mode": "outer",
+          "sourceSelection": [
+            "^StandardVest\\.003_"
+          ],
+          "targetSpan": [
+            1.02,
+            1.6
+          ],
+          "anatomyRules": [
+            [
+              "^StandardVest",
+              "torso"
+            ]
+          ],
+          "sleeveless": true,
+          "radialTorsoFit": true,
+          "publish": true,
+          "review": {
+            "status": "passed",
+            "fittedSHA256": "5eef827dc2f40fe163946984d3cd901cd082a79cda3f87945dce440b61f2edda",
+            "budgets": {
+              "triangles": 1124,
+              "bytes": 31043584
+            },
+            "fitChecks": {
+              "rest": true,
+              "walk": true,
+              "sit": true,
+              "reach": true,
+              "sourceAppearance": true
+            }
+          }
+        },
+        {
+          "id": "source-ray-underlayer",
+          "mode": "top",
+          "sourceSelection": [
+            "^StandardUnderwear\\.003_"
+          ],
+          "targetSpan": [
+            0.95,
+            1.58
+          ],
+          "anatomyRules": [
+            [
+              "^StandardUnderwear",
+              "torso"
+            ]
+          ],
+          "sleeveless": true,
+          "radialTorsoFit": true,
+          "radialTorsoIterations": 4,
+          "radialTorsoClearance": 0.025,
+          "publish": true,
+          "review": {
+            "status": "passed",
+            "fittedSHA256": "6ab6f760f74771eb7cb1151997836512da7befd3ac2ef0bc264db8863203128d",
+            "budgets": {
+              "triangles": 6729,
+              "bytes": 31297536
+            },
+            "fitChecks": {
+              "rest": true,
+              "walk": true,
+              "sit": true,
+              "reach": true,
+              "sourceAppearance": true
+            }
+          }
+        }
+      ],
+      "posteriorPelvisFit": true
+    },
+    {
+      "source": "female/receptionist_black_business_suit_set.glb",
+      "id": "reception-uniform",
+      "mode": "outfit",
+      "targetSpan": [
+        0.72,
+        1.63
+      ],
+      "rotate": [
+        0,
+        0,
+        0
+      ],
+      "defaultRole": "top",
+      "roleRules": [],
+      "dropObjects": [],
+      "dropMaterials": [],
+      "sourceAvatar": [],
+      "publish": false,
+      "license": "CC-BY-4.0",
+      "sourceBounds": [
+        [
+          -0.2501755654811859,
+          -0.15670007467269897,
+          0.7178560495376587
+        ],
+        [
+          0.2500041127204895,
+          0.1295222043991089,
+          1.5612002611160278
+        ]
+      ],
+      "sourceDimensions": [
+        0.500179648399353,
+        0.28622227907180786,
+        0.8433442115783691
+      ],
+      "sourceTriangles": 836530,
+      "sourcePartCount": 51,
+      "sourceRig": {
+        "skins": 0,
+        "animations": 0
+      },
+      "sourceFrontAxis": "-Y",
+      "reviewNotes": [
+        "Existing reviewed original receptionist suit; do not rebuild. Preserve original cream/grey/black fabric colours, maps, sewn panel correspondence and neckline/native-footwear seam flags.",
+        "51 original mesh panels with modeled fasteners and separate atlas fabrics; source collection has no rig/mannequin.",
+        "Audited original front/back renders and per-part bounds; no rig/animations in source. Initial target span still requires body/pose QA before promotion."
+      ],
+      "existing": [
+        "avatars/outfits/female/reception-uniform.glb"
+      ],
+      "existingOnly": true,
+      "opaqueMaterials": [
+        2,
+        3,
+        4
+      ]
+    },
+    {
+      "source": "female/red_leather_jacket.glb",
+      "id": "source-red-leather-jacket",
+      "mode": "outer",
+      "targetSpan": [
+        0.89,
+        1.65
+      ],
+      "rotate": [
+        0,
+        0,
+        0
+      ],
+      "defaultRole": "outer",
+      "roleRules": [
+        [
+          "object",
+          "^Tshirt_low",
+          "top"
+        ],
+        [
+          "object",
+          "Buttons|Zipper",
+          "accent"
+        ],
+        [
+          "object",
+          "Jacket_low|Epaulette",
+          "outer"
+        ]
+      ],
+      "dropObjects": [],
+      "dropMaterials": [],
+      "sourceAvatar": [],
+      "publish": true,
+      "license": "CC-BY-4.0",
+      "sourceBounds": [
+        [
+          -0.024792224168777466,
+          -0.005960164591670036,
+          0.04178005829453468
+        ],
+        [
+          0.025426426902413368,
+          0.007005091290920973,
+          0.06789114326238632
+        ]
+      ],
+      "sourceDimensions": [
+        0.050218649208545685,
+        0.012965256348252296,
+        0.02611108496785164
+      ],
+      "sourceTriangles": 15454,
+      "sourcePartCount": 6,
+      "sourceRig": {
+        "skins": 0,
+        "animations": 0
+      },
+      "sourceFrontAxis": "-Y",
+      "reviewNotes": [
+        "Six original parts with single shared LeatherJacket atlas. Main jacket7504 triangles, inner Tshirt1088, epaulettes2x1344, buttons3240, zipper934.",
+        "The inner tee is only a narrow front insert (source width.00618 vs jacket.05022); never expose it as standalone top. Preserve all red leather/zipper/epaulette geometry and atlas.",
+        "Source import height.02611, translated Z.04178-.06789: explicit span calibration is mandatory, not metres inference.",
+        "Audited original front/back renders and per-part bounds; no rig/animations in source. Initial target span still requires body/pose QA before promotion."
+      ],
+      "nativeContext": {
+        "top": true,
+        "bottom": true,
+        "footwear": "native"
+      },
+      "nonStandaloneParts": [
+        "^Tshirt_low"
+      ],
+      "coverage": {
+        "kind": "closed-jacket",
+        "frontHalfWidth": 0.025,
+        "frontMinDepth": 0,
+        "collarMinHeight": 1.5
+      },
+      "review": {
+        "status": "passed",
+        "fittedSHA256": "98c0fe5db53fda01c49b74219916148ac1cac52367746913057281023ae816f2",
+        "budgets": {
+          "triangles": 15833,
+          "bytes": 14016512
+        },
+        "fitChecks": {
+          "rest": true,
+          "walk": true,
+          "sit": true,
+          "reach": true,
+          "sourceAppearance": true
+        }
+      }
+    },
+    {
+      "source": "female/skirt_and_t-shirt.glb",
+      "id": "source-skirt-tee",
+      "mode": "outfit",
+      "targetSpan": [
+        0.54,
+        1.61
+      ],
+      "rotate": [
+        0,
+        0,
+        0
+      ],
+      "defaultRole": "top",
+      "roleRules": [
+        [
+          "material",
+          "^skirt_",
+          "bottom"
+        ],
+        [
+          "material",
+          "PT_FABRIC|pocket",
+          "accent"
+        ]
+      ],
+      "dropObjects": [],
+      "dropMaterials": [],
+      "sourceAvatar": [],
+      "publish": false,
+      "license": "CC-BY-4.0",
+      "sourceBounds": [
+        [
+          -246.2050018310547,
+          -168.0684051513672,
+          510.6217346191406
+        ],
+        [
+          293.3799743652344,
+          244.68716430664062,
+          1508.7625732421875
+        ]
+      ],
+      "sourceDimensions": [
+        539.5849609375,
+        412.75555419921875,
+        998.140869140625
+      ],
+      "sourceTriangles": 19192,
+      "sourcePartCount": 4,
+      "sourceRig": {
+        "skins": 0,
+        "animations": 0
+      },
+      "sourceFrontAxis": "-Y",
+      "reviewNotes": [
+        "Native black cropped tee with rabbit print and pink polka-dot skirt; four original objects. Patterned skirt13717 triangles, tee5220, print151 and pocket104.",
+        "PT_FABRIC_FRONT_12672 uses MASK for the rabbit print/decal: retain mask/alpha and its exact UV/placement; do not classify it as disposable logo/stitching.",
+        "Audited original front/back renders and per-part bounds; no rig/animations in source. Initial target span still requires body/pose QA before promotion."
+      ],
+      "skirt": [
+        1.04,
+        0.54
+      ],
+      "posteriorPelvisFit": true,
+      "seatedDrape": true,
+      "seatedDrapeOptions": {
+        "mode": "offline_cloth",
+        "pose_profile": {
+          "scale": 0.9189189189189189,
+          "seat_height": 0.46,
+          "seat_front": 0.22,
+          "sole_heights": {
+            "leftFoot": -0.07414725422859192,
+            "rightFoot": -0.07123086601495743
+          }
+        },
+        "frames": 120,
+        "sit_frame": 60,
+        "quality": 8,
+        "collision_quality": 5,
+        "proxy_vertices": 6000,
+        "follow_unanchored": true,
+        "tall_pose_profile": {
+          "scale": 1.054054054054054,
+          "seat_height": 0.46,
+          "seat_front": 0.22,
+          "sole_heights": {
+            "leftFoot": -0.07414725422859192,
+            "rightFoot": -0.07123086601495743
+          }
+        },
+        "short_pose_profile": {
+          "scale": 0.7837837837837838,
+          "seat_height": 0.46,
+          "seat_front": 0.22,
+          "sole_heights": {
+            "leftFoot": -0.07414725422859192,
+            "rightFoot": -0.07123086601495743
+          }
+        }
+      },
+      "review": {
+        "status": "pending",
+        "fittedSHA256": "e70242bbcc843b40de85eed9f73ef6b2c0d68c81bc6feb5e9cd6c42d37821bab",
+        "budgets": {
+          "triangles": 24585,
+          "bytes": 6606848
+        },
+        "fitChecks": {
+          "rest": true,
+          "walk": true,
+          "sit": false,
+          "reach": true,
+          "sourceAppearance": true
+        }
+      }
+    },
+    {
+      "source": "female/white_shirt_black_leather_skirt_outfit.glb",
+      "id": "source-leather-skirt-set",
+      "mode": "outfit",
+      "targetSpan": [
+        0.27,
+        1.63
+      ],
+      "rotate": [
+        0,
+        0,
+        0
+      ],
+      "defaultRole": "top",
+      "roleRules": [
+        [
+          "material",
+          "Button",
+          "accent"
+        ]
+      ],
+      "dropObjects": [],
+      "dropMaterials": [],
+      "sourceAvatar": [],
+      "publish": false,
+      "license": "CC-BY-4.0",
+      "sourceBounds": [
+        [
+          -245.26800537109375,
+          -167.51686096191406,
+          247.6530303955078
+        ],
+        [
+          241.98500061035156,
+          145.4372100830078,
+          1535.14013671875
+        ]
+      ],
+      "sourceDimensions": [
+        487.25299072265625,
+        312.9540710449219,
+        1287.487060546875
+      ],
+      "sourceTriangles": 199796,
+      "sourcePartCount": 13,
+      "sourceRig": {
+        "skins": 0,
+        "animations": 0
+      },
+      "sourceFrontAxis": "-Y",
+      "reviewNotes": [
+        "White long-sleeve blouse and long black leather skirt share uniform_1001; original thirteen panels and modeled buttons stay.",
+        "Some panels span blouse and skirt ranges together; do not split this source by broad object bounds or material. Preserve long hem and wrap/slit details during pose QA.",
+        "Audited original front/back renders and per-part bounds; no rig/animations in source. Initial target span still requires body/pose QA before promotion."
+      ],
+      "skirt": [
+        1.04,
+        0.27
+      ],
+      "topologyBinding": {
+        "ribMaterials": [],
+        "mainMaterials": [
+          0
+        ],
+        "followMaterials": [
+          1
+        ],
+        "openCuffAnchors": true,
+        "cuffMinimumX": 0.18,
+        "cuffMinimumHeight": 0.85,
+        "cuffMaximumHeight": 1.15,
+        "preserveLegs": true,
+        "componentSeamDistance": 0.004,
+        "cuffAnchorDepth": 0.1,
+        "cuffGeodesicMinimum": 0.3,
+        "componentOwnership": true,
+        "componentCoreContactX": 0.05
+      },
+      "posteriorPelvisFit": true
+    },
+    {
+      "source": "female/white_suit_set.glb",
+      "id": "source-white-suit",
+      "mode": "outfit",
+      "targetSpan": [
+        0.6,
+        1.65
+      ],
+      "rotate": [
+        0,
+        0,
+        0
+      ],
+      "defaultRole": "top",
+      "roleRules": [
+        [
+          "material",
+          "Button",
+          "accent"
+        ]
+      ],
+      "dropObjects": [],
+      "dropMaterials": [],
+      "sourceAvatar": [],
+      "publish": false,
+      "license": "CC-BY-4.0",
+      "sourceBounds": [
+        [
+          -232.83099365234375,
+          -163.0019073486328,
+          567.9060668945312
+        ],
+        [
+          284.93701171875,
+          178.1652069091797,
+          1549.8402099609375
+        ]
+      ],
+      "sourceDimensions": [
+        517.7680053710938,
+        341.1671142578125,
+        981.9341430664062
+      ],
+      "sourceTriangles": 212632,
+      "sourcePartCount": 17,
+      "sourceRig": {
+        "skins": 0,
+        "animations": 0
+      },
+      "sourceFrontAxis": "-Y",
+      "reviewNotes": [
+        "Original white jacket/inner and lower shorts-like panels;17 original parts all in same atlas plus buttons. Keep full set before semantic panel splitting.",
+        "Dense button geometry and broad mixed panels explain why prior 6k automatic fit destroyed shape; no blanket culling or pattern removal.",
+        "Audited original front/back renders and per-part bounds; no rig/animations in source. Initial target span still requires body/pose QA before promotion."
+      ],
+      "topologyBinding": {
+        "ribMaterials": [],
+        "mainMaterials": [
+          0
+        ],
+        "followMaterials": [
+          1,
+          2
+        ],
+        "openCuffAnchors": true,
+        "cuffMinimumX": 0.18,
+        "cuffMinimumHeight": 0.75,
+        "cuffMaximumHeight": 1.15,
+        "preserveLegs": true,
+        "componentSeamDistance": 0.004,
+        "cuffAnchorDepth": 0.1,
+        "cuffGeodesicMinimum": 0.3,
+        "componentOwnership": true,
+        "componentCoreContactX": 0.11,
+        "componentCoreTailX": 0.3,
+        "componentSleeveTopHeight": 1.4
+      }
+    },
+    {
+      "source": "female/woman_dress.glb",
+      "id": "source-denim-dress",
+      "mode": "outfit",
+      "targetSpan": [
+        0.64,
+        1.61
+      ],
+      "rotate": [
+        0,
+        0,
+        0
+      ],
+      "defaultRole": "top",
+      "roleRules": [
+        [
+          "material",
+          "Stretch_Denim",
+          "bottom"
+        ],
+        [
+          "material",
+          "Cotton_Oxford",
+          "top"
+        ]
+      ],
+      "dropObjects": [],
+      "dropMaterials": [],
+      "sourceAvatar": [],
+      "publish": true,
+      "license": "CC-BY-4.0",
+      "sourceBounds": [
+        [
+          -268.39990234375,
+          -246.992431640625,
+          609.8944091796875
+        ],
+        [
+          283.87713623046875,
+          179.68011474609375,
+          1422.986083984375
+        ]
+      ],
+      "sourceDimensions": [
+        552.2770385742188,
+        426.67254638671875,
+        813.0916748046875
+      ],
+      "sourceTriangles": 10382,
+      "sourcePartCount": 2,
+      "sourceRig": {
+        "skins": 0,
+        "animations": 0
+      },
+      "sourceFrontAxis": "-Y",
+      "reviewNotes": [
+        "Clean10382-triangle original sleeveless Oxford bodice and flared denim skirt, two source fabric primitives under one dress node.",
+        "Native source colour is light blue/white with dark skirt; preserve both material graphs, skirt flare, neckline and armhole silhouette.",
+        "Audited original front/back renders and per-part bounds; no rig/animations in source. Initial target span still requires body/pose QA before promotion.",
+        "Visual QA: original Oxford top is sleeveless and must remain torso-owned; armhole vertices must not follow raised arms. Separate denim skirt retains lower skirt binding."
+      ],
+      "skirt": [
+        1.04,
+        0.64
+      ],
+      "anatomyRules": [
+        [
+          "^dress_Cotton_Oxford_",
+          "torso"
+        ],
+        [
+          "^dress_Stretch_Denim_",
+          "skirt"
+        ]
+      ],
+      "sleeveless": true,
+      "seatedDrape": true,
+      "seatedDrapeOptions": {
+        "mode": "offline_cloth",
+        "pose_profile": {
+          "scale": 0.9189189189189189,
+          "seat_height": 0.46,
+          "seat_front": 0.22,
+          "sole_heights": {
+            "leftFoot": -0.07414725422859192,
+            "rightFoot": -0.07123086601495743
+          }
+        },
+        "frames": 120,
+        "sit_frame": 60,
+        "quality": 8,
+        "collision_quality": 5,
+        "proxy_vertices": 6000,
+        "tall_pose_profile": {
+          "scale": 1.054054054054054,
+          "seat_height": 0.46,
+          "seat_front": 0.22,
+          "sole_heights": {
+            "leftFoot": -0.07414725422859192,
+            "rightFoot": -0.07123086601495743
+          }
+        }
+      },
+      "review": {
+        "status": "passed",
+        "fittedSHA256": "a05234b88eea64ded8523e1ae4effa761599414f2747504d5b12d2ee82864b0c",
+        "budgets": {
+          "triangles": 16465,
+          "bytes": 9326592
+        },
+        "fitChecks": {
+          "rest": true,
+          "walk": true,
+          "sit": true,
+          "reach": true,
+          "sourceAppearance": true
+        }
+      }
+    },
+    {
+      "source": "female/women_top_with_belt.glb",
+      "id": "source-belted-top",
+      "mode": "top",
+      "targetSpan": [
+        0.95,
+        1.6
+      ],
+      "rotate": [
+        0,
+        0,
+        0
+      ],
+      "defaultRole": "top",
+      "roleRules": [],
+      "dropObjects": [],
+      "dropMaterials": [],
+      "sourceAvatar": [],
+      "publish": true,
+      "license": "CC-BY-4.0",
+      "sourceBounds": [
+        [
+          -0.5968430042266846,
+          -0.4827111065387726,
+          -1.000000238418579
+        ],
+        [
+          0.5968430042266846,
+          0.4827111065387726,
+          1.000000238418579
+        ]
+      ],
+      "sourceDimensions": [
+        1.1936860084533691,
+        0.9654222130775452,
+        2.000000476837158
+      ],
+      "sourceTriangles": 9482,
+      "sourcePartCount": 1,
+      "sourceRig": {
+        "skins": 0,
+        "animations": 0
+      },
+      "sourceFrontAxis": "-Y",
+      "reviewNotes": [
+        "Single9482-triangle sleeveless red top with tied belt; native dark red motifs are in the PBR atlas. Preserve belt geometry and pattern.",
+        "Source is normalized to Z[-1,1], not anatomically placed. Surface UV alpha samples are99.3%mean/.976p05: solid fabric despite BLEND; OPAQUE prevents spurious patch transparency.",
+        "Audited original front/back renders and per-part bounds; no rig/animations in source. Initial target span still requires body/pose QA before promotion."
+      ],
+      "anatomyRules": [
+        [
+          "^defaultMaterial$",
+          "torso"
+        ]
+      ],
+      "nativeContext": {
+        "bottom": true,
+        "footwear": "native"
+      },
+      "sleeveless": true,
+      "radialTorsoFit": true,
+      "review": {
+        "status": "passed",
+        "fittedSHA256": "cc0c9b0c5805e196f5fb0eecb3489b00a265f0deeb986d1e1111e5ac78a3c162",
+        "budgets": {
+          "triangles": 15251,
+          "bytes": 14069760
+        },
+        "fitChecks": {
+          "rest": true,
+          "walk": true,
+          "sit": true,
+          "reach": true,
+          "sourceAppearance": true
+        }
+      }
+    },
+    {
+      "source": "female/womens_blouse_and_skirt.glb",
+      "id": "source-blouse-skirt",
+      "mode": "outfit",
+      "targetSpan": [
+        0.1,
+        1.62
+      ],
+      "rotate": [
+        0,
+        0,
+        0
+      ],
+      "defaultRole": "top",
+      "roleRules": [
+        [
+          "object",
+          "^Gothic buttons",
+          "accent"
+        ],
+        [
+          "object",
+          "^Gothic (?:pants|skirt)",
+          "bottom"
+        ]
+      ],
+      "dropObjects": [],
+      "dropMaterials": [],
+      "sourceAvatar": [],
+      "publish": false,
+      "license": "CC-BY-4.0",
+      "sourceBounds": [
+        [
+          -0.548539400100708,
+          -0.17905203998088837,
+          0.10134029388427734
+        ],
+        [
+          0.5428668260574341,
+          0.1958489567041397,
+          1.5368726253509521
+        ]
+      ],
+      "sourceDimensions": [
+        1.091406226158142,
+        0.3749009966850281,
+        1.4355323314666748
+      ],
+      "sourceTriangles": 142339,
+      "sourcePartCount": 4,
+      "sourceRig": {
+        "skins": 0,
+        "animations": 0
+      },
+      "sourceFrontAxis": "-Y",
+      "reviewNotes": [
+        "Four explicit original parts: buttons42825 triangles, blouse39540, trousers9522, skirt50452. No image textures: native plain material colours and modeled detail are the original look.",
+        "The complete source layers trousers beneath the pleated skirt. Do not apply global skirt weights to the trouser part; only Gothic skirt needs skirt binding.",
+        "Useful future separate variants are blouse+buttons, trousers alone and skirt alone; full set remains intact first.",
+        "Audited original front/back renders and per-part bounds; no rig/animations in source. Initial target span still requires body/pose QA before promotion."
+      ],
+      "anatomyRules": [
+        [
+          "^Gothic buttons",
+          "torso"
+        ],
+        [
+          "^Gothic pants",
+          "leg"
+        ],
+        [
+          "^Gothic skirt",
+          "skirt"
+        ]
+      ],
+      "skirtObjects": [
+        "^Gothic skirt_skirt_0$"
+      ],
+      "variants": [
+        {
+          "id": "source-gothic-blouse",
+          "mode": "top",
+          "sourceSelection": [
+            "^Gothic (?:blouse|buttons)"
+          ],
+          "targetSpan": [
+            0.96,
+            1.62
+          ],
+          "radialTorsoFit": true,
+          "posteriorPelvisFit": true,
+          "publish": true,
+          "review": {
+            "status": "passed",
+            "fittedSHA256": "e290812d37f723602ed76a26d6fe6f2bf646e29d4232baecab74042ac3725496",
+            "budgets": {
+              "triangles": 83703,
+              "bytes": 4259840
+            },
+            "fitChecks": {
+              "rest": true,
+              "walk": true,
+              "sit": true,
+              "reach": true,
+              "sourceAppearance": true
+            }
+          }
+        },
+        {
+          "id": "source-gothic-trousers",
+          "mode": "bottom",
+          "sourceSelection": [
+            "^Gothic pants"
+          ],
+          "targetSpan": [
+            0.1,
+            1.1
+          ],
+          "publish": true,
+          "review": {
+            "status": "passed",
+            "fittedSHA256": "8cdc3cbc0aacbd20116f7cb184b554936dcef2d3f29589097ba478775fc4c141",
+            "budgets": {
+              "triangles": 9873,
+              "bytes": 450560
+            },
+            "fitChecks": {
+              "rest": true,
+              "walk": true,
+              "sit": true,
+              "reach": true,
+              "sourceAppearance": true
+            }
+          }
+        },
+        {
+          "id": "source-gothic-skirt",
+          "mode": "bottom",
+          "sourceSelection": [
+            "^Gothic skirt"
+          ],
+          "targetSpan": [
+            0.52,
+            1.1
+          ],
+          "skirt": [
+            1.04,
+            0.52
+          ],
+          "posteriorPelvisFit": true,
+          "radialTorsoFit": true,
+          "radialTorsoIterations": 4,
+          "seatedDrape": true,
+          "seatedDrapeOptions": {
+            "mode": "offline_cloth",
+            "pose_profile": {
+              "scale": 0.9189189189189189,
+              "seat_height": 0.46,
+              "seat_front": 0.22,
+              "sole_heights": {
+                "leftFoot": -0.07414725422859192,
+                "rightFoot": -0.07123086601495743
+              }
+            },
+            "frames": 120,
+            "sit_frame": 60,
+            "quality": 8,
+            "collision_quality": 5,
+            "proxy_vertices": 6000,
+            "proxy_weld_distance": 0.003,
+            "follow_unanchored": true,
+            "tall_pose_profile": {
+              "scale": 1.054054054054054,
+              "seat_height": 0.46,
+              "seat_front": 0.22,
+              "sole_heights": {
+                "leftFoot": -0.07414725422859192,
+                "rightFoot": -0.07123086601495743
+              }
+            }
+          },
+          "publish": true,
+          "review": {
+            "status": "passed",
+            "fittedSHA256": "e3f2a2badd9c5b07ddc8aaafe397f7f01debf3edeff7e5d52e72f850d9eff55d",
+            "budgets": {
+              "triangles": 53900,
+              "bytes": 3461120
+            },
+            "fitChecks": {
+              "rest": true,
+              "walk": true,
+              "sit": true,
+              "reach": true,
+              "sourceAppearance": true
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -265,9 +265,9 @@ function findHooksSection(text: string): { mode: 'root' | 'hooks' | 'outbound'; 
     }
 
     if (outboundIndent === undefined) {
-      if (/^\s+outbound\s*:(?:\s*#.*)?$/.test(line)) {
-        if (/^\s+outbound\s*:\s*\[\s*\]/.test(line)) {
-          throw new ConnectError('The "hooks.outbound" entry in the Hermes config is an empty inline list ([]). Change it to "outbound:" or remove it first.');
+      if (/^\s+outbound\s*:/.test(line)) {
+        if (!/^\s+outbound\s*:(?:\s*#.*)?$/.test(line)) {
+          throw new ConnectError('The "hooks.outbound" entry in the Hermes config uses an inline value. Extalia left it unchanged; change it to a block list or remove it first.');
         }
         outboundIndent = leading;
       }

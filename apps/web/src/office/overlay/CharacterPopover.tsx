@@ -208,7 +208,7 @@ export function CharacterPopover({ t, character, appearance, look, activity, fol
         <p><Icon name="shield" /><span>{approval.action}</span></p>
         <ApprovalActions t={t} approval={approval} compact />
       </div>}
-      {editing && appearance ? <AppearanceEditor t={t.appearance} characterId={character.id} identity={appearance.identity} saved={appearance.saved}
+      {editing && appearance ? <AppearanceEditor t={t.appearance} characterId={character.id} identity={appearance.identity} saved={appearance.saved} uniform={appearance.uniform} defaults={appearance.defaults}
         onPreview={appearance.onPreview} onSave={appearance.onSave} onClose={() => { setEditing(false); requestAnimationFrame(() => first.current?.focus({ preventScroll: true })); }} />
         : <>
           {prompt && <QuickPrompt t={t} name={character.displayName} prompt={prompt} />}

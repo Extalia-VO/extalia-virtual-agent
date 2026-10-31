@@ -1,0 +1,2518 @@
+{
+  "schemaVersion": 1,
+  "group": "male",
+  "entries": [
+    {
+      "source": "male/bartender_clothes.glb",
+      "id": "victorian-bartender",
+      "mode": "outfit",
+      "targetSpan": [
+        0.06,
+        1.62
+      ],
+      "rotate": [
+        0,
+        0,
+        0
+      ],
+      "roleRules": [],
+      "defaultRole": "top",
+      "dropObjects": [],
+      "dropMaterials": [],
+      "publish": true,
+      "sourceBounds": {
+        "min": [
+          -0.5319557785987854,
+          -0.24623818695545197,
+          0.054423462599515915
+        ],
+        "max": [
+          0.5345489382743835,
+          0.13504892587661743,
+          1.5796421766281128
+        ]
+      },
+      "sourceTriangleCount": 193040,
+      "sourceImageCount": 3,
+      "fidelity": {
+        "preserveSourceGeometry": true,
+        "preserveAllUVLayers": true,
+        "preserveTexturePayloads": true,
+        "preserveNativeMaterialFactors": true,
+        "replaceWithTemplateClothes": false
+      },
+      "reviewNotes": [
+        "Complete Victorian shirt, pinstriped waistcoat, burgundy cravat and trousers. Preserve this distinct source design; it is not the existing leather-vest uniform.",
+        "Source already has metre-like world magnitudes and a bilateral downward A pose. Shoulder/elbow/cuff registration and proper trouser leg binding are required.",
+        "Both defaultMaterial and defaultMaterial.001 are mixed-region chunks spanning trouser hems to collar, not separate top/bottom objects. Never classify either whole object as bottom; preserve the complete one-atlas outfit and derive anatomical ownership from actual source geometry. The first chunk has65532 vertices, consistent with an indexed serialization split.",
+        "Native preview shows pant ends but no separate footwear object; verify ankle/shoe coverage using the actual source before borrowing context."
+      ],
+      "difficulty": "complex",
+      "initialUnitScale": 1.0,
+      "registrationStatus": "initial source-scale registration; fitted pose QA required",
+      "sourceGeometrySections": {
+        "coordinateSpace": "Unmodified Blender source world Z-up; clothing geometry samples, not anatomical joint centres.",
+        "method": "At stated Z slice, measure XY bounds and centroid of outermost lateral20percent on each side. Sleeves can be distinguished only where separated from torso. These are calibration evidence, not automatic joint assignments.",
+        "samples": [
+          {
+            "z": 1.5,
+            "halfBand": 0.018303,
+            "pointCount": 3911,
+            "xyBounds": [
+              [
+                -0.15777857543151264,
+                -0.09602661344019126
+              ],
+              [
+                0.1646576826915105,
+                0.09587850011389687
+              ]
+            ],
+            "negativeXOuterBandCentroid": [
+              -0.1405215930644763,
+              0.029663515672994037,
+              1.487448453415657
+            ],
+            "positiveXOuterBandCentroid": [
+              0.14571388203065697,
+              0.030222932414015125,
+              1.4879026633352295
+            ]
+          },
+          {
+            "z": 1.45,
+            "halfBand": 0.018303,
+            "pointCount": 2610,
+            "xyBounds": [
+              [
+                -0.23653492256586972,
+                -0.12018789060241453
+              ],
+              [
+                0.2357130946872772,
+                0.11651683739511842
+              ]
+            ],
+            "negativeXOuterBandCentroid": [
+              -0.21032657825761827,
+              0.02026258822193889,
+              1.4477630244621382
+            ],
+            "positiveXOuterBandCentroid": [
+              0.20993885819503927,
+              0.019572314457573237,
+              1.4479483580130368
+            ]
+          },
+          {
+            "z": 1.22,
+            "halfBand": 0.018303,
+            "pointCount": 4332,
+            "xyBounds": [
+              [
+                -0.382342188067458,
+                -0.15385240273942458
+              ],
+              [
+                0.38151381293189957,
+                0.1221893745697118
+              ]
+            ],
+            "negativeXOuterBandCentroid": [
+              -0.3419168846145278,
+              0.0006490755109485987,
+              1.2184586800539978
+            ],
+            "positiveXOuterBandCentroid": [
+              0.34113107752594957,
+              -0.01170536002262265,
+              1.219477806757826
+            ]
+          },
+          {
+            "z": 1.05,
+            "halfBand": 0.018303,
+            "pointCount": 4896,
+            "xyBounds": [
+              [
+                -0.496732992753234,
+                -0.2084474327517878
+              ],
+              [
+                0.4984710687836298,
+                0.08084643660444524
+              ]
+            ],
+            "negativeXOuterBandCentroid": [
+              -0.44649639843463784,
+              -0.1316746798620919,
+              1.047807686105789
+            ],
+            "positiveXOuterBandCentroid": [
+              0.44900489011464395,
+              -0.13897848767990081,
+              1.0477615797969588
+            ]
+          },
+          {
+            "z": 1.0,
+            "halfBand": 0.018303,
+            "pointCount": 5849,
+            "xyBounds": [
+              [
+                -0.5235140692018625,
+                -0.24623818886811222
+              ],
+              [
+                0.5245098407781619,
+                0.10110155697624901
+              ]
+            ],
+            "negativeXOuterBandCentroid": [
+              -0.46560368782054756,
+              -0.16652481631787328,
+              1.0023865408908976
+            ],
+            "positiveXOuterBandCentroid": [
+              0.46677365271589866,
+              -0.16764447022668408,
+              1.0020719935029072
+            ]
+          },
+          {
+            "z": 0.5,
+            "halfBand": 0.018303,
+            "pointCount": 1381,
+            "xyBounds": [
+              [
+                -0.18581580565903444,
+                -0.09343194971631164
+              ],
+              [
+                0.18676754877135515,
+                0.05416139369721673
+              ]
+            ],
+            "negativeXOuterBandCentroid": [
+              -0.1713766852547843,
+              -0.017160873781642317,
+              0.4996830487853164
+            ],
+            "positiveXOuterBandCentroid": [
+              0.17231224071718054,
+              -0.009575741824528429,
+              0.4992148489310464
+            ]
+          },
+          {
+            "z": 0.08,
+            "halfBand": 0.018303,
+            "pointCount": 915,
+            "xyBounds": [
+              [
+                -0.1783962370494372,
+                -0.07357678682079216
+              ],
+              [
+                0.18086418510216262,
+                0.06423526544606828
+              ]
+            ],
+            "negativeXOuterBandCentroid": [
+              -0.168366863237527,
+              0.009003726276071048,
+              0.08563535609374615
+            ],
+            "positiveXOuterBandCentroid": [
+              0.1683059039213117,
+              0.01217758819723234,
+              0.08552992207140489
+            ]
+          }
+        ]
+      },
+      "hasShoes": false,
+      "opaqueMaterials": [],
+      "sourceFootwearNotes": "Source has draped trouser cuffs but no toe/sole/heel footwear; use canonical feet context.",
+      "hasGloves": false,
+      "armholeUnderlap": {
+        "sourceMaterial": 0,
+        "clearance": 0.008,
+        "lateralMax": 0.28,
+        "rearInset": false,
+        "overlapFaces": true,
+        "shoulderAbove": 0.06,
+        "frontMinimum": -0.2
+      },
+      "review": {
+        "status": "passed",
+        "fittedSHA256": "b1e4c578fa19e29fa48923a5f096f7509e8f805a736b828036aefd4a7a1afe29",
+        "budgets": {
+          "triangles": 198678,
+          "bytes": 46985216
+        },
+        "fitChecks": {
+          "rest": true,
+          "walk": true,
+          "sit": true,
+          "reach": true,
+          "sourceAppearance": true
+        }
+      }
+    },
+    {
+      "source": "male/bartender_vest_style.glb",
+      "id": "bartender-vest-style",
+      "mode": "outer",
+      "targetSpan": [
+        1.05,
+        1.61
+      ],
+      "rotate": [
+        0,
+        0,
+        0
+      ],
+      "roleRules": [
+        [
+          "material",
+          "^Metal$",
+          "accent"
+        ]
+      ],
+      "defaultRole": "outer",
+      "dropObjects": [],
+      "dropMaterials": [],
+      "publish": false,
+      "sourceBounds": {
+        "min": [
+          -13.892349243164062,
+          -14.982288360595703,
+          94.74713134765625
+        ],
+        "max": [
+          14.571402549743652,
+          7.234659194946289,
+          138.76351928710938
+        ]
+      },
+      "sourceTriangleCount": 198098,
+      "sourceImageCount": 2,
+      "fidelity": {
+        "preserveSourceGeometry": true,
+        "preserveAllUVLayers": true,
+        "preserveTexturePayloads": true,
+        "preserveNativeMaterialFactors": true,
+        "replaceWithTemplateClothes": false
+      },
+      "reviewNotes": [
+        "Sleeveless original leather waistcoat with gold buttons and dense seam geometry. Existing reviewed uniform route must remain unchanged.",
+        "Source world magnitudes are cm-like and vertically offset (z 94.747 to 138.764); use the reviewed body-specific affine registration, not min/max-only reprocessing.",
+        "Independent waistcoat needs a complete original or native-context shirt and bottom; the current reviewed set already supplies those."
+      ],
+      "existing": [
+        "avatars/outfits/male/bartender-uniform.glb"
+      ],
+      "existingOnly": true,
+      "difficulty": "existing-reviewed",
+      "initialUnitScale": 0.01,
+      "registrationStatus": "initial source-scale registration; fitted pose QA required",
+      "hasShoes": false,
+      "opaqueMaterials": [],
+      "hasGloves": false
+    },
+    {
+      "source": "male/denim_jacket.glb",
+      "id": "denim-jacket",
+      "mode": "outer",
+      "targetSpan": [
+        0.99,
+        1.6
+      ],
+      "rotate": [
+        0,
+        0,
+        0
+      ],
+      "roleRules": [
+        [
+          "material",
+          "^buttons$",
+          "accent"
+        ]
+      ],
+      "defaultRole": "outer",
+      "dropObjects": [],
+      "dropMaterials": [],
+      "publish": true,
+      "sourceBounds": {
+        "min": [
+          -0.6350061297416687,
+          -0.16241109371185303,
+          -0.32128456234931946
+        ],
+        "max": [
+          0.6350061297416687,
+          0.16241109371185303,
+          0.32128456234931946
+        ]
+      },
+      "sourceTriangleCount": 13518,
+      "sourceImageCount": 6,
+      "fidelity": {
+        "preserveSourceGeometry": true,
+        "preserveAllUVLayers": true,
+        "preserveTexturePayloads": true,
+        "preserveNativeMaterialFactors": true,
+        "replaceWithTemplateClothes": false
+      },
+      "reviewNotes": [
+        "Low-poly original denim jacket with buttons, stitching, pockets and an integrated white inner strip. Native blue denim maps are present; keep all six images and PBR channels.",
+        "Source is centred near its own origin, z -0.321 to +0.321, with widely spread downward A-pose sleeves. It needs torso translation plus explicit upper/forearm reposing.",
+        "The white inner strip is visible through the jacket opening but does not establish a complete standalone shirt. Keep it with the outer; use separate context underneath.",
+        "Objects separate buttons from the main denim. Jacket material also includes its paired white details, so colour-based geometry deletion is unsafe."
+      ],
+      "difficulty": "straightforward",
+      "initialUnitScale": 1.0,
+      "registrationStatus": "initial source-scale registration; fitted pose QA required",
+      "sourceGeometrySections": {
+        "coordinateSpace": "Unmodified Blender source world Z-up; clothing geometry samples, not anatomical joint centres.",
+        "method": "At stated Z slice, measure XY bounds and centroid of outermost lateral20percent on each side. Sleeves can be distinguished only where separated from torso. These are calibration evidence, not automatic joint assignments.",
+        "samples": [
+          {
+            "z": 0.3,
+            "halfBand": 0.007711,
+            "pointCount": 63,
+            "xyBounds": [
+              [
+                -0.09337320927695014,
+                0.015367469312206894
+              ],
+              [
+                0.09417903065123134,
+                0.10764308352485141
+              ]
+            ],
+            "negativeXOuterBandCentroid": [
+              -0.08147107484631791,
+              0.05492274215592844,
+              0.29805253037633583
+            ],
+            "positiveXOuterBandCentroid": [
+              0.08293981796685196,
+              0.05706672532371236,
+              0.29670381026821646
+            ]
+          },
+          {
+            "z": 0.2,
+            "halfBand": 0.007711,
+            "pointCount": 76,
+            "xyBounds": [
+              [
+                -0.28340514706382436,
+                -0.07934911154042679
+              ],
+              [
+                0.28687227677150595,
+                0.1512267385510242
+              ]
+            ],
+            "negativeXOuterBandCentroid": [
+              -0.2644811439195419,
+              0.060830883579559555,
+              0.1993270112851341
+            ],
+            "positiveXOuterBandCentroid": [
+              0.2676139503292616,
+              0.05939450752562828,
+              0.19928020188725426
+            ]
+          },
+          {
+            "z": 0.04,
+            "halfBand": 0.007711,
+            "pointCount": 1479,
+            "xyBounds": [
+              [
+                -0.4877685102636775,
+                -0.14058657502813432
+              ],
+              [
+                0.49051303977798,
+                0.15129658947458857
+              ]
+            ],
+            "negativeXOuterBandCentroid": [
+              -0.4467907059475873,
+              0.0188356383547255,
+              0.03958029277326881
+            ],
+            "positiveXOuterBandCentroid": [
+              0.4452706208492157,
+              0.019264330709461663,
+              0.039812207761150305
+            ]
+          },
+          {
+            "z": -0.12,
+            "halfBand": 0.007711,
+            "pointCount": 386,
+            "xyBounds": [
+              [
+                -0.6328071224014842,
+                -0.09575957923991396
+              ],
+              [
+                0.6313510214120654,
+                0.12896214935159467
+              ]
+            ],
+            "negativeXOuterBandCentroid": [
+              -0.5568998478252761,
+              0.0002035922542681857,
+              -0.1245038569561127
+            ],
+            "positiveXOuterBandCentroid": [
+              0.5633462570058427,
+              0.009627523960019995,
+              -0.12509003573868163
+            ]
+          },
+          {
+            "z": -0.3,
+            "halfBand": 0.007711,
+            "pointCount": 111,
+            "xyBounds": [
+              [
+                -0.1822302572374035,
+                -0.15681415953537137
+              ],
+              [
+                0.18267475959033774,
+                0.13799575109483442
+              ]
+            ],
+            "negativeXOuterBandCentroid": [
+              -0.17094930681253118,
+              -0.03077377701330255,
+              -0.2956604213908339
+            ],
+            "positiveXOuterBandCentroid": [
+              0.17146024252963424,
+              -0.02439979122382423,
+              -0.2958377603920788
+            ]
+          }
+        ]
+      },
+      "hasShoes": false,
+      "opaqueMaterials": [],
+      "hasGloves": false,
+      "coverage": {
+        "kind": "closed-jacket",
+        "frontHalfWidth": 0.025,
+        "frontMinDepth": 0,
+        "collarMinHeight": 1.52
+      },
+      "review": {
+        "status": "passed",
+        "fittedSHA256": "7f3e5f8f59183d5f33decf7374293cc58002fbc1792faefe4a4dea24a8c06ae0",
+        "budgets": {
+          "triangles": 13829,
+          "bytes": 16539648
+        },
+        "fitChecks": {
+          "rest": true,
+          "walk": true,
+          "sit": true,
+          "reach": true,
+          "sourceAppearance": true
+        }
+      }
+    },
+    {
+      "source": "male/green_and_white_hoodie.glb",
+      "id": "green-white-hoodie",
+      "mode": "top",
+      "targetSpan": [
+        0.98,
+        1.63
+      ],
+      "rotate": [
+        0,
+        0,
+        0
+      ],
+      "roleRules": [],
+      "defaultRole": "top",
+      "dropObjects": [],
+      "dropMaterials": [],
+      "publish": true,
+      "sourceBounds": {
+        "min": [
+          -32.214599609375,
+          -18.88189125061035,
+          75.6747055053711
+        ],
+        "max": [
+          32.78889846801758,
+          20.118820190429688,
+          144.15101623535156
+        ]
+      },
+      "sourceTriangleCount": 113550,
+      "sourceImageCount": 4,
+      "fidelity": {
+        "preserveSourceGeometry": true,
+        "preserveAllUVLayers": true,
+        "preserveTexturePayloads": true,
+        "preserveNativeMaterialFactors": true,
+        "replaceWithTemplateClothes": false
+      },
+      "reviewNotes": [
+        "Oversized layered green short-sleeve hoodie over white long sleeves, white hood/lining and visible chest logo. Preserve the loose silhouette, sleeve layering and every texture channel including emissive.",
+        "Cm-like source magnitudes: hem/cuff extent z75.675, hood top144.151. Loose dropped shoulders differ from anatomical shoulders; do not collapse that ease onto the body.",
+        "Eight source cloth-panel objects share one atlas. Left sleeve panels include Object_3/Object_4; Object_9 covers right sleeve while Object_6 crosses multiple regions. Object-regex-only arm assignment is incomplete.",
+        "Needs original hood/back-neck clearance, measured shoulder/elbow/cuff correspondence and joined boundary weights, not independent per-panel nearest-body projection.",
+        "Independent top needs bottom context; reuse reviewed male jeans only as context, without copying its source design into the hoodie.",
+        "Solid cloth BLEND correction is confirmed by source-mapped triangle-interior alpha samples; preserve every colour/normal/PBR image payload. Only the listed source material indices may be forced OPAQUE."
+      ],
+      "difficulty": "complex",
+      "initialUnitScale": 0.01,
+      "registrationStatus": "initial source-scale registration; fitted pose QA required",
+      "sourceGeometrySections": {
+        "coordinateSpace": "Unmodified Blender source world Z-up; clothing geometry samples, not anatomical joint centres.",
+        "method": "At stated Z slice, measure XY bounds and centroid of outermost lateral20percent on each side. Sleeves can be distinguished only where separated from torso. These are calibration evidence, not automatic joint assignments.",
+        "samples": [
+          {
+            "z": 140,
+            "halfBand": 0.821716,
+            "pointCount": 1879,
+            "xyBounds": [
+              [
+                -13.101499557495117,
+                -4.673552001207184
+              ],
+              [
+                12.35890007019043,
+                19.961820750724243
+              ]
+            ],
+            "negativeXOuterBandCentroid": [
+              -11.460127115249634,
+              4.661449126242743,
+              139.82350502378182
+            ],
+            "positiveXOuterBandCentroid": [
+              10.757850668896204,
+              3.633294092696596,
+              139.78954538452706
+            ]
+          },
+          {
+            "z": 130,
+            "halfBand": 0.821716,
+            "pointCount": 681,
+            "xyBounds": [
+              [
+                -21.597700119018555,
+                -9.57580367508987
+              ],
+              [
+                21.682199478149414,
+                19.88701905454601
+              ]
+            ],
+            "negativeXOuterBandCentroid": [
+              -20.093953441566146,
+              -0.08242680292133711,
+              129.99900133597245
+            ],
+            "positiveXOuterBandCentroid": [
+              20.454968762088132,
+              -0.26121776002190383,
+              129.88034024092505
+            ]
+          },
+          {
+            "z": 123,
+            "halfBand": 0.821716,
+            "pointCount": 1173,
+            "xyBounds": [
+              [
+                -24.58639907836914,
+                -12.750584905783048
+              ],
+              [
+                24.374399185180664,
+                14.744018802208084
+              ]
+            ],
+            "negativeXOuterBandCentroid": [
+              -23.41279971368425,
+              -1.3536528601130282,
+              122.95552445835568
+            ],
+            "positiveXOuterBandCentroid": [
+              22.686598884312268,
+              -0.6081828913033577,
+              122.93393305807187
+            ]
+          },
+          {
+            "z": 104,
+            "halfBand": 0.821716,
+            "pointCount": 2112,
+            "xyBounds": [
+              [
+                -30.34830093383789,
+                -15.757687950173615
+              ],
+              [
+                30.798099517822266,
+                14.004115396993464
+              ]
+            ],
+            "negativeXOuterBandCentroid": [
+              -27.33496738819594,
+              -1.2515447506883006,
+              104.03992240495413
+            ],
+            "positiveXOuterBandCentroid": [
+              27.699676089816624,
+              -3.0845664245935294,
+              104.05600409763576
+            ]
+          },
+          {
+            "z": 83,
+            "halfBand": 0.821716,
+            "pointCount": 1874,
+            "xyBounds": [
+              [
+                -28.778400421142578,
+                -16.4859907659993
+              ],
+              [
+                29.383100509643555,
+                14.055113377576813
+              ]
+            ],
+            "negativeXOuterBandCentroid": [
+              -24.875859725766066,
+              -8.17582484917196,
+              82.81441134126975
+            ],
+            "positiveXOuterBandCentroid": [
+              26.322732945705983,
+              -8.495210011953922,
+              82.80892398011348
+            ]
+          }
+        ]
+      },
+      "hasShoes": false,
+      "opaqueMaterials": [
+        0
+      ],
+      "hasGloves": false,
+      "topologyBinding": {
+        "ribMaterials": [],
+        "mainMaterials": [
+          0
+        ],
+        "followMaterials": [],
+        "openCuffAnchors": true,
+        "cuffMinimumX": 0.18,
+        "cuffMinimumHeight": 0.85,
+        "cuffMaximumHeight": 1.15,
+        "preserveLegs": true,
+        "componentSeamDistance": 0.004,
+        "cuffAnchorDepth": 0.1,
+        "cuffGeodesicMinimum": 0.3,
+        "componentOwnership": true,
+        "componentCuffMinimumX": 0.175,
+        "componentSleeveTopHeight": 1.4
+      },
+      "radialTorsoFit": true,
+      "armholeUnderlap": {
+        "sourceMaterial": 0,
+        "clearance": 0.008,
+        "lateralMax": 0.28,
+        "rearInset": false,
+        "overlapFaces": true,
+        "shoulderAbove": 0.06,
+        "frontMinimum": -0.2
+      },
+      "review": {
+        "status": "passed",
+        "fittedSHA256": "7dc261735a7263a98b76d9dbfdfa597569a41fd809980d8fa5583ad1dfca8fcf",
+        "budgets": {
+          "triangles": 116010,
+          "bytes": 17907712
+        },
+        "fitChecks": {
+          "rest": true,
+          "walk": true,
+          "sit": true,
+          "reach": true,
+          "sourceAppearance": true
+        }
+      }
+    },
+    {
+      "source": "male/hoodie_and_jeans.glb",
+      "id": "printed-hoodie-jeans",
+      "mode": "outfit",
+      "targetSpan": [
+        0,
+        1.65
+      ],
+      "rotate": [
+        0,
+        0,
+        0
+      ],
+      "roleRules": [
+        [
+          "object",
+          ".*_M_Hoodie_0$",
+          "top"
+        ],
+        [
+          "object",
+          ".*_M_Jeans_0$",
+          "bottom"
+        ]
+      ],
+      "defaultRole": "top",
+      "dropObjects": [],
+      "dropMaterials": [],
+      "publish": true,
+      "sourceBounds": {
+        "min": [
+          -44.176177978515625,
+          -20.11276626586914,
+          0.8917676210403442
+        ],
+        "max": [
+          43.79796600341797,
+          23.34247398376465,
+          160.462890625
+        ]
+      },
+      "sourceTriangleCount": 10542,
+      "sourceImageCount": 4,
+      "fidelity": {
+        "preserveSourceGeometry": true,
+        "preserveAllUVLayers": true,
+        "preserveTexturePayloads": true,
+        "preserveNativeMaterialFactors": true,
+        "replaceWithTemplateClothes": false
+      },
+      "reviewNotes": [
+        "Complete low-poly outfit with printed two-tone hoodie, jeans and original sneakers. Preserve the chest graphic, denim wear, pockets, footwear and all four 2k maps.",
+        "Cm-like source extent z0.892 to160.463; downward A-pose arms need two-segment correspondence. Main object names reliably separate hoodie from jeans/footwear.",
+        "Existing male/bottom/jeans is derived from this source and must remain unchanged. The whole original outfit and standalone original hoodie are additional review candidates.",
+        "The jeans mesh includes original sneakers using its shared atlas. Do not add duplicate canonical footwear or delete shoe geometry merely because it shares the bottom material."
+      ],
+      "existing": [
+        "avatars/wardrobe/male/bottom/jeans.glb"
+      ],
+      "existingOnly": false,
+      "difficulty": "straightforward",
+      "initialUnitScale": 0.01,
+      "registrationStatus": "initial source-scale registration; fitted pose QA required",
+      "sourceGeometrySections": {
+        "coordinateSpace": "Unmodified Blender source world Z-up; clothing geometry samples, not anatomical joint centres.",
+        "method": "At stated Z slice, measure XY bounds and centroid of outermost lateral20percent on each side. Sleeves can be distinguished only where separated from torso. These are calibration evidence, not automatic joint assignments.",
+        "samples": [
+          {
+            "z": 155,
+            "halfBand": 1.914853,
+            "pointCount": 329,
+            "xyBounds": [
+              [
+                -20.371932983398438,
+                -3.308935954316894
+              ],
+              [
+                19.26864242553711,
+                23.342473826996866
+              ]
+            ],
+            "negativeXOuterBandCentroid": [
+              -18.604012489318848,
+              9.617513708474974,
+              153.5660079874924
+            ],
+            "positiveXOuterBandCentroid": [
+              17.417512373490766,
+              9.565496449479967,
+              153.70436431597807
+            ]
+          },
+          {
+            "z": 145,
+            "halfBand": 1.914853,
+            "pointCount": 172,
+            "xyBounds": [
+              [
+                -25.24893569946289,
+                -9.183798118542654
+              ],
+              [
+                26.57008171081543,
+                22.152062929167187
+              ]
+            ],
+            "negativeXOuterBandCentroid": [
+              -22.389110469818114,
+              10.259456851352311,
+              145.17870130030315
+            ],
+            "positiveXOuterBandCentroid": [
+              24.25699886522795,
+              8.541590819737621,
+              145.14096879554737
+            ]
+          },
+          {
+            "z": 123,
+            "halfBand": 1.914853,
+            "pointCount": 134,
+            "xyBounds": [
+              [
+                -36.625465393066406,
+                -12.04546738754857
+              ],
+              [
+                35.98196792602539,
+                18.62879243583393
+              ]
+            ],
+            "negativeXOuterBandCentroid": [
+              -33.837347984313965,
+              9.177928776246688,
+              122.51708624769617
+            ],
+            "positiveXOuterBandCentroid": [
+              33.24308688823994,
+              9.831408607194634,
+              122.90924479080716
+            ]
+          },
+          {
+            "z": 105,
+            "halfBand": 1.914853,
+            "pointCount": 128,
+            "xyBounds": [
+              [
+                -43.22123718261719,
+                -12.754724682503138
+              ],
+              [
+                42.88335418701172,
+                17.935102924132025
+              ]
+            ],
+            "negativeXOuterBandCentroid": [
+              -39.230700931033574,
+              9.276785201259372,
+              104.9740100295959
+            ],
+            "positiveXOuterBandCentroid": [
+              38.7041349057798,
+              9.037957721505345,
+              104.79034718176788
+            ]
+          },
+          {
+            "z": 100,
+            "halfBand": 1.914853,
+            "pointCount": 182,
+            "xyBounds": [
+              [
+                -44.176177978515625,
+                -12.355406845904326
+              ],
+              [
+                43.79796600341797,
+                17.899334406693015
+              ]
+            ],
+            "negativeXOuterBandCentroid": [
+              -40.724422145534206,
+              8.546984145695054,
+              99.75554045441419
+            ],
+            "positiveXOuterBandCentroid": [
+              40.176734044001655,
+              9.033284617069539,
+              99.8622037852423
+            ]
+          },
+          {
+            "z": 52,
+            "halfBand": 1.914853,
+            "pointCount": 122,
+            "xyBounds": [
+              [
+                -19.658126831054688,
+                -5.612180617375202
+              ],
+              [
+                19.84752655029297,
+                12.234799441050654
+              ]
+            ],
+            "negativeXOuterBandCentroid": [
+              -18.014694350106375,
+              5.1269344351473025,
+              52.110848725722654
+            ],
+            "positiveXOuterBandCentroid": [
+              18.22599610415372,
+              4.999986122951383,
+              52.22140655594165
+            ]
+          },
+          {
+            "z": 5,
+            "halfBand": 1.914853,
+            "pointCount": 182,
+            "xyBounds": [
+              [
+                -22.11702537536621,
+                -20.09865095583109
+              ],
+              [
+                22.357675552368164,
+                11.663188854023474
+              ]
+            ],
+            "negativeXOuterBandCentroid": [
+              -20.04052076668575,
+              -6.605510856034584,
+              4.725715473156272
+            ],
+            "positiveXOuterBandCentroid": [
+              19.938840293884276,
+              -5.943446702189116,
+              4.837859417086823
+            ]
+          }
+        ]
+      },
+      "hasShoes": true,
+      "opaqueMaterials": [],
+      "shoesBelow": 0.14,
+      "sourceFootwearNotes": "Source sneakers and jeans form one position-welded connected mesh (2657 vertices), so shoeObjects must not select the whole M_Jeans object. Classify only faces below0.14 in normalized fitted metres as OriginalShoes while preserving their UV/atlas and every source face; threshold includes the low cuff overlap.",
+      "hasGloves": false,
+      "review": {
+        "status": "passed",
+        "fittedSHA256": "0fdc686346562450611afa78aab1bd6fae85374b66d61585be1fb50b0ff3a01a",
+        "budgets": {
+          "triangles": 11280,
+          "bytes": 10698752
+        },
+        "fitChecks": {
+          "rest": true,
+          "walk": true,
+          "sit": true,
+          "reach": true,
+          "sourceAppearance": true
+        }
+      }
+    },
+    {
+      "source": "male/male_apparel_pack.glb",
+      "id": "male-apparel-pack",
+      "mode": "bottom",
+      "targetSpan": [
+        0.4,
+        1.09
+      ],
+      "rotate": [
+        0,
+        0,
+        0
+      ],
+      "roleRules": [],
+      "defaultRole": "bottom",
+      "dropObjects": [],
+      "dropMaterials": [],
+      "publish": false,
+      "sourceBounds": {
+        "min": [
+          -5.424078941345215,
+          -0.9942352771759033,
+          -0.03939661756157875
+        ],
+        "max": [
+          5.260485649108887,
+          1.4747314453125,
+          5.683341979980469
+        ]
+      },
+      "sourceTriangleCount": 79281,
+      "sourceImageCount": 9,
+      "fidelity": {
+        "preserveSourceGeometry": true,
+        "preserveAllUVLayers": true,
+        "preserveTexturePayloads": true,
+        "preserveNativeMaterialFactors": true,
+        "replaceWithTemplateClothes": false
+      },
+      "reviewNotes": [
+        "A display table of three different bottoms, not a complete outfit: leather trousers at x approximately -4, shorts at x approximately0, jeans at x approximately+4.",
+        "Fit selected variants independently and recenter each selected object group. Never fit the full display-table bounding box to one body.",
+        "All belt loops, pockets, straps and buttons belong to their selected bottom and must travel with it. Original material names separate variants reliably.",
+        "Embedded licence is SKETCHFAB Standard, not CC-BY. Acquisition and redistribution permissions are not established by embedded metadata; keep review-only.",
+        "Trousers3 geometry repeats standalone male_jeans after an X translation of four source units; avoid presenting it as an additional unique design."
+      ],
+      "difficulty": "licence-and-variant-selection",
+      "initialUnitScale": 0.18,
+      "sourceSelection": [
+        "^Cube\\.002_Trousers2_0$"
+      ],
+      "variants": [
+        {
+          "id": "apparel-leather-trousers",
+          "mode": "bottom",
+          "targetSpan": [
+            0.06,
+            1.09
+          ],
+          "sourceSelection": [
+            ".*_Material_0$"
+          ],
+          "defaultRole": "bottom",
+          "publish": false,
+          "hasShoes": false,
+          "hasGloves": false,
+          "review": {
+            "status": "passed",
+            "fittedSHA256": "82ba2b02c5b8b02027bad64d61bf668c48a662706ab79b00bf890692cfa3d9b1",
+            "budgets": {
+              "triangles": 51482,
+              "bytes": 23937024
+            },
+            "fitChecks": {
+              "rest": true,
+              "walk": true,
+              "sit": true,
+              "reach": true,
+              "sourceAppearance": true
+            }
+          }
+        },
+        {
+          "id": "apparel-shorts",
+          "mode": "bottom",
+          "targetSpan": [
+            0.4,
+            1.09
+          ],
+          "sourceSelection": [
+            ".*_Trousers2_0$"
+          ],
+          "defaultRole": "bottom",
+          "publish": false,
+          "hasShoes": false,
+          "hasGloves": false,
+          "continuousLowerBody": true,
+          "review": {
+            "status": "passed",
+            "fittedSHA256": "2e61bdcfa86fad5b056993075718002d83d8c7b354235da958ce808ccca98531",
+            "budgets": {
+              "triangles": 11704,
+              "bytes": 21835776
+            },
+            "fitChecks": {
+              "rest": true,
+              "walk": true,
+              "sit": true,
+              "reach": true,
+              "sourceAppearance": true
+            }
+          }
+        },
+        {
+          "id": "apparel-jeans",
+          "mode": "bottom",
+          "targetSpan": [
+            0.08,
+            1.09
+          ],
+          "sourceSelection": [
+            ".*_Trousers3_0$"
+          ],
+          "defaultRole": "bottom",
+          "publish": false,
+          "hasShoes": false,
+          "hasGloves": false,
+          "review": {
+            "status": "passed",
+            "fittedSHA256": "a907822b6ca7a379e72ea893df9753de6456cc6cdc878c094cf281220bd60a6e",
+            "budgets": {
+              "triangles": 27089,
+              "bytes": 22675456
+            },
+            "fitChecks": {
+              "rest": true,
+              "walk": true,
+              "sit": true,
+              "reach": true,
+              "sourceAppearance": true
+            }
+          }
+        }
+      ],
+      "licenceReviewRequired": true,
+      "registrationStatus": "initial source-scale registration; fitted pose QA required",
+      "hasShoes": false,
+      "opaqueMaterials": [],
+      "hasGloves": false
+    },
+    {
+      "source": "male/male_jeans.glb",
+      "id": "source-classic-jeans",
+      "mode": "bottom",
+      "targetSpan": [
+        0.08,
+        1.09
+      ],
+      "rotate": [
+        0,
+        0,
+        0
+      ],
+      "roleRules": [],
+      "defaultRole": "bottom",
+      "dropObjects": [],
+      "dropMaterials": [],
+      "publish": false,
+      "sourceBounds": {
+        "min": [
+          -1.2620186805725098,
+          -0.9278180599212646,
+          -0.03939661756157875
+        ],
+        "max": [
+          1.2604858875274658,
+          1.4747315645217896,
+          5.683341979980469
+        ]
+      },
+      "sourceTriangleCount": 23274,
+      "sourceImageCount": 3,
+      "fidelity": {
+        "preserveSourceGeometry": true,
+        "preserveAllUVLayers": true,
+        "preserveTexturePayloads": true,
+        "preserveNativeMaterialFactors": true,
+        "replaceWithTemplateClothes": false
+      },
+      "reviewNotes": [
+        "Original denim jeans only: seams, pockets, belt loops and metal fittings are individual objects sharing the original atlas. No shirt or footwear is included.",
+        "Arbitrary-scale source extent z -0.0394 to5.6833. Fit waistband/hip/crotch/knee/ankle as a bottom; do not scale this height as if it were a complete character.",
+        "This is the Trousers3 variant from male_apparel_pack, recentered by X -4. The currently reviewed/published CC-BY male jeans instead come from hoodie_and_jeans.",
+        "Embedded licence is SKETCHFAB Standard, not CC-BY; review-only until the acquisition/redistribution provenance is established separately."
+      ],
+      "difficulty": "licence-review",
+      "initialUnitScale": 0.18,
+      "licenceReviewRequired": true,
+      "registrationStatus": "initial source-scale registration; fitted pose QA required",
+      "hasShoes": false,
+      "opaqueMaterials": [],
+      "hasGloves": false,
+      "review": {
+        "status": "passed",
+        "fittedSHA256": "8aa7601edaf7eaf8ebfdd79953b41fd148ee2bee5f4bdf5a71538fde733e75e3",
+        "budgets": {
+          "triangles": 27089,
+          "bytes": 6463488
+        },
+        "fitChecks": {
+          "rest": true,
+          "walk": true,
+          "sit": true,
+          "reach": true,
+          "sourceAppearance": true
+        }
+      }
+    },
+    {
+      "source": "male/man_black_business_suit.glb",
+      "id": "black-business-suit",
+      "mode": "outfit",
+      "targetSpan": [
+        0.08,
+        1.62
+      ],
+      "rotate": [
+        0,
+        0,
+        0
+      ],
+      "roleRules": [
+        [
+          "material",
+          "(?i)(button|blinn6SG)",
+          "accent"
+        ]
+      ],
+      "defaultRole": "top",
+      "dropObjects": [],
+      "dropMaterials": [],
+      "publish": true,
+      "sourceBounds": {
+        "min": [
+          -272.7919921875,
+          -208.79193115234375,
+          100.87501525878906
+        ],
+        "max": [
+          272.2430114746094,
+          163.1602325439453,
+          1618.040283203125
+        ]
+      },
+      "sourceTriangleCount": 663736,
+      "sourceImageCount": 3,
+      "fidelity": {
+        "preserveSourceGeometry": true,
+        "preserveAllUVLayers": true,
+        "preserveTexturePayloads": true,
+        "preserveNativeMaterialFactors": true,
+        "replaceWithTemplateClothes": false
+      },
+      "reviewNotes": [
+        "Complete original layered business suit: jacket, light shirt, waistcoat/tie and trousers. Preserve all source clothing surfaces, lapels and button positions.",
+        "Mm-like source magnitudes, z100.875 to1618.040, with hanging sleeves. Preserve sleeve roots as a shared field instead of welding unrelated pocket/waist cloth.",
+        "Thirty-seven meshes include mixed-region cloth-panel objects; Object_18/Object_19/Object_20 extend from trousers into torso. Object-name-only top/bottom separation is unsafe; fit as a complete outfit first.",
+        "Objects21 to35 are 27,120-triangle small buttons each. These dominate the triangle count and can be moderately simplified separately while retaining their visible profile; do not decimate the whole suit to a tiny uniform budget.",
+        "Buttons have separate materials; main cloth uses a 4k base-colour map plus normal map. Keep native PBR factors and every referenced image."
+      ],
+      "difficulty": "complex",
+      "initialUnitScale": 0.001,
+      "registrationStatus": "initial source-scale registration; fitted pose QA required",
+      "sourceGeometrySections": {
+        "coordinateSpace": "Unmodified Blender source world Z-up; clothing geometry samples, not anatomical joint centres.",
+        "method": "At stated Z slice, measure XY bounds and centroid of outermost lateral20percent on each side. Sleeves can be distinguished only where separated from torso. These are calibration evidence, not automatic joint assignments.",
+        "samples": [
+          {
+            "z": 1580,
+            "halfBand": 18.205982,
+            "pointCount": 2117,
+            "xyBounds": [
+              [
+                -102.41100311279297,
+                -57.10599768500735
+              ],
+              [
+                105.26599884033203,
+                94.87492624536618
+              ]
+            ],
+            "negativeXOuterBandCentroid": [
+              -87.95926445855035,
+              25.08905156494386,
+              1565.7746841520145
+            ],
+            "positiveXOuterBandCentroid": [
+              89.31918061669194,
+              29.00389477149704,
+              1567.132795916892
+            ]
+          },
+          {
+            "z": 1500,
+            "halfBand": 18.205982,
+            "pointCount": 12500,
+            "xyBounds": [
+              [
+                -236.4969940185547,
+                -109.26481268254182
+              ],
+              [
+                236.4709930419922,
+                121.46821633712959
+              ]
+            ],
+            "negativeXOuterBandCentroid": [
+              -215.3733047536577,
+              24.65185068478158,
+              1501.772200747307
+            ],
+            "positiveXOuterBandCentroid": [
+              215.37252940969793,
+              23.930154622164494,
+              1501.9400429681687
+            ]
+          },
+          {
+            "z": 1200,
+            "halfBand": 18.205982,
+            "pointCount": 24938,
+            "xyBounds": [
+              [
+                -266.1839904785156,
+                -208.79187020541036
+              ],
+              [
+                266.11199951171875,
+                129.41218132259172
+              ]
+            ],
+            "negativeXOuterBandCentroid": [
+              -242.70300967876727,
+              22.602322695997376,
+              1199.657931111248
+            ],
+            "positiveXOuterBandCentroid": [
+              241.75007486789025,
+              20.77943564225565,
+              1199.667800941759
+            ]
+          },
+          {
+            "z": 880,
+            "halfBand": 18.205982,
+            "pointCount": 2457,
+            "xyBounds": [
+              [
+                -272.6029968261719,
+                -194.55590253351207
+              ],
+              [
+                271.97601318359375,
+                163.1601396407972
+              ]
+            ],
+            "negativeXOuterBandCentroid": [
+              -249.55802899315245,
+              -28.464647694097888,
+              878.0190195817195
+            ],
+            "positiveXOuterBandCentroid": [
+              249.3106885259551,
+              -27.735724202108216,
+              877.6593755346779
+            ]
+          },
+          {
+            "z": 1030,
+            "halfBand": 18.205982,
+            "pointCount": 23979,
+            "xyBounds": [
+              [
+                -272.7919921875,
+                -205.44888924965755
+              ],
+              [
+                272.2430114746094,
+                145.85415754940507
+              ]
+            ],
+            "negativeXOuterBandCentroid": [
+              -245.99848090277777,
+              6.630040487915334,
+              1028.9840141438067
+            ],
+            "positiveXOuterBandCentroid": [
+              245.0180926852756,
+              6.445786481600366,
+              1029.3102205560099
+            ]
+          },
+          {
+            "z": 550,
+            "halfBand": 18.205982,
+            "pointCount": 465,
+            "xyBounds": [
+              [
+                -170.1699981689453,
+                -94.6136360693965
+              ],
+              [
+                168.76499938964844,
+                87.44628292427579
+              ]
+            ],
+            "negativeXOuterBandCentroid": [
+              -158.61420275713945,
+              -14.736741384893081,
+              549.9940283631395
+            ],
+            "positiveXOuterBandCentroid": [
+              156.58757310755112,
+              -13.376862282542582,
+              549.9418514849023
+            ]
+          },
+          {
+            "z": 110,
+            "halfBand": 18.205982,
+            "pointCount": 694,
+            "xyBounds": [
+              [
+                -159.07899475097656,
+                -62.588091353110805
+              ],
+              [
+                158.86000061035156,
+                100.96002610327311
+              ]
+            ],
+            "negativeXOuterBandCentroid": [
+              -147.01216634114584,
+              4.586301413476878,
+              110.2133360779845
+            ],
+            "positiveXOuterBandCentroid": [
+              145.73498916625977,
+              10.27862681900028,
+              111.67286521427286
+            ]
+          }
+        ]
+      },
+      "hasShoes": false,
+      "opaqueMaterials": [],
+      "hasGloves": false,
+      "classifyTrouserComponents": true,
+      "topologyBinding": {
+        "ribMaterials": [],
+        "mainMaterials": [
+          3
+        ],
+        "followMaterials": [
+          0,
+          1,
+          2,
+          4,
+          5,
+          6,
+          7,
+          8
+        ],
+        "openCuffAnchors": true,
+        "cuffMinimumX": 0.18,
+        "cuffMinimumHeight": 0.85,
+        "cuffMaximumHeight": 1.15,
+        "preserveLegs": true,
+        "componentSeamDistance": 0.004,
+        "cuffAnchorDepth": 0.1,
+        "cuffGeodesicMinimum": 0.3,
+        "componentOwnership": true,
+        "componentCoreContactX": 0.05,
+        "componentSleeveTopHeight": 1.4,
+        "componentCoreBands": [
+          {
+            "maximumAbsX": 0.21,
+            "minimumHeight": 1.0,
+            "maximumHeight": 1.4
+          }
+        ]
+      },
+      "radialTorsoFit": true,
+      "armholeUnderlap": {
+        "sourceMaterial": 3,
+        "clearance": 0.008,
+        "lateralMax": 0.28,
+        "rearInset": false,
+        "overlapFaces": true,
+        "shoulderAbove": 0.06,
+        "frontMinimum": -0.2
+      },
+      "review": {
+        "status": "passed",
+        "fittedSHA256": "4f5e3089d58c066b5c86b6340b6e040fde4012177b27965dea9807bd55a0cc62",
+        "budgets": {
+          "triangles": 666717,
+          "bytes": 41050112
+        },
+        "fitChecks": {
+          "rest": true,
+          "walk": true,
+          "sit": true,
+          "reach": true,
+          "sourceAppearance": true
+        }
+      }
+    },
+    {
+      "source": "male/mens_two_piece_suit.glb",
+      "id": "mens-two-piece-suit",
+      "mode": "outfit",
+      "targetSpan": [
+        0.08,
+        1.62
+      ],
+      "rotate": [
+        0,
+        0,
+        0
+      ],
+      "roleRules": [],
+      "defaultRole": "top",
+      "dropObjects": [],
+      "dropMaterials": [],
+      "publish": true,
+      "sourceBounds": {
+        "min": [
+          -0.2696700096130371,
+          -0.09916102886199951,
+          0.07874602824449539
+        ],
+        "max": [
+          0.26898500323295593,
+          0.17476606369018555,
+          1.4740264415740967
+        ]
+      },
+      "sourceTriangleCount": 9170,
+      "sourceImageCount": 2,
+      "fidelity": {
+        "preserveSourceGeometry": true,
+        "preserveAllUVLayers": true,
+        "preserveTexturePayloads": true,
+        "preserveNativeMaterialFactors": true,
+        "replaceWithTemplateClothes": false
+      },
+      "reviewNotes": [
+        "Low-poly complete jacket/trousers with light shirt inset. One mesh and one shared atlas encompass multiple garment regions; preserve the complete pair first.",
+        "Metre-like source extent z0.0787 to1.4740, narrow hanging arms. Affine body registration plus modest arm-joint correspondence is simpler than the multi-panel high-poly suits.",
+        "A jacket opening and light shirt insert do not prove a complete standalone shirt. Separate future pieces only through verified connected regions while retaining source UV coordinates.",
+        "No separate footwear is present. Review canonical feet/ankle context without replacing source trousers.",
+        "Solid cloth BLEND correction is confirmed by source-mapped triangle-interior alpha samples; preserve every colour/normal/PBR image payload. Only the listed source material indices may be forced OPAQUE."
+      ],
+      "difficulty": "straightforward",
+      "initialUnitScale": 1.0,
+      "registrationStatus": "initial source-scale registration; fitted pose QA required",
+      "sourceGeometrySections": {
+        "coordinateSpace": "Unmodified Blender source world Z-up; clothing geometry samples, not anatomical joint centres.",
+        "method": "At stated Z slice, measure XY bounds and centroid of outermost lateral20percent on each side. Sleeves can be distinguished only where separated from torso. These are calibration evidence, not automatic joint assignments.",
+        "samples": [
+          {
+            "z": 1.45,
+            "halfBand": 0.016743,
+            "pointCount": 226,
+            "xyBounds": [
+              [
+                -0.07570600026407837,
+                -0.002771000872418286
+              ],
+              [
+                0.07570899837775524,
+                0.10449102810488498
+              ]
+            ],
+            "negativeXOuterBandCentroid": [
+              -0.0663846671539247,
+              0.05614235071821505,
+              1.4400319473047272
+            ],
+            "positiveXOuterBandCentroid": [
+              0.0663860013045768,
+              0.05614235022150952,
+              1.440030294268728
+            ]
+          },
+          {
+            "z": 1.38,
+            "halfBand": 0.016743,
+            "pointCount": 124,
+            "xyBounds": [
+              [
+                -0.20315101449416595,
+                -0.024821007568255005
+              ],
+              [
+                0.20225401226064577,
+                0.13206604083457574
+              ]
+            ],
+            "negativeXOuterBandCentroid": [
+              -0.18671931455611157,
+              0.058836144529225656,
+              1.372927612535221
+            ],
+            "positiveXOuterBandCentroid": [
+              0.183707066382573,
+              0.0615000189819838,
+              1.3734900540602522
+            ]
+          },
+          {
+            "z": 1.16,
+            "halfBand": 0.016743,
+            "pointCount": 140,
+            "xyBounds": [
+              [
+                -0.22338099812538914,
+                -0.093360030063391
+              ],
+              [
+                0.22338700627367203,
+                0.13125404650470784
+              ]
+            ],
+            "negativeXOuterBandCentroid": [
+              -0.20719638913130878,
+              0.07575717703849405,
+              1.1589518945879296
+            ],
+            "positiveXOuterBandCentroid": [
+              0.20720823394989393,
+              0.07579125325382405,
+              1.1589725966630302
+            ]
+          },
+          {
+            "z": 0.93,
+            "halfBand": 0.016743,
+            "pointCount": 300,
+            "xyBounds": [
+              [
+                -0.25998299509261535,
+                -0.09111902584879017
+              ],
+              [
+                0.25998299509261535,
+                0.16536904979868172
+              ]
+            ],
+            "negativeXOuterBandCentroid": [
+              -0.2436372539943047,
+              0.09288150796186512,
+              0.9173229048218574
+            ],
+            "positiveXOuterBandCentroid": [
+              0.243844752667021,
+              0.09294584116879186,
+              0.9172218888251032
+            ]
+          },
+          {
+            "z": 0.95,
+            "halfBand": 0.016743,
+            "pointCount": 180,
+            "xyBounds": [
+              [
+                -0.2529880084542633,
+                -0.09565902961550643
+              ],
+              [
+                0.2529880084542633,
+                0.16218004533320496
+              ]
+            ],
+            "negativeXOuterBandCentroid": [
+              -0.23581710689987395,
+              0.08172122651554972,
+              0.9557741962559796
+            ],
+            "positiveXOuterBandCentroid": [
+              0.23581740730728812,
+              0.08172112637971515,
+              0.9557741008885181
+            ]
+          },
+          {
+            "z": 0.5,
+            "halfBand": 0.016743,
+            "pointCount": 62,
+            "xyBounds": [
+              [
+                -0.16983100428925457,
+                -0.03929701187069701
+              ],
+              [
+                0.16983100428925457,
+                0.11878203294309841
+              ]
+            ],
+            "negativeXOuterBandCentroid": [
+              -0.15982114655364413,
+              0.028551009184541527,
+              0.4997770102262444
+            ],
+            "positiveXOuterBandCentroid": [
+              0.15982114655364413,
+              0.028551009184541527,
+              0.4997770102262444
+            ]
+          },
+          {
+            "z": 0.1,
+            "halfBand": 0.016743,
+            "pointCount": 72,
+            "xyBounds": [
+              [
+                -0.153032007113576,
+                -0.010314002880364548
+              ],
+              [
+                0.153032007113576,
+                0.09437103244350942
+              ]
+            ],
+            "negativeXOuterBandCentroid": [
+              -0.14256579335484854,
+              0.04554101451906648,
+              0.09542150440433178
+            ],
+            "positiveXOuterBandCentroid": [
+              0.14256579335484854,
+              0.045541066908428546,
+              0.09542166251354424
+            ]
+          }
+        ]
+      },
+      "hasShoes": false,
+      "opaqueMaterials": [
+        0
+      ],
+      "hasGloves": false,
+      "classifyTrouserComponents": true,
+      "radialTorsoFit": true,
+      "topologyBinding": {
+        "ribMaterials": [],
+        "mainMaterials": "all",
+        "followMaterials": [],
+        "openCuffAnchors": true,
+        "cuffMinimumX": 0.18,
+        "cuffMinimumHeight": 0.85,
+        "cuffMaximumHeight": 1.15,
+        "preserveLegs": true,
+        "componentSeamDistance": 0.004,
+        "cuffAnchorDepth": 0.1,
+        "cuffGeodesicMinimum": 0.3,
+        "componentOwnership": true,
+        "armBlend": [
+          0.15,
+          0.45
+        ]
+      },
+      "armholeUnderlap": {
+        "sourceMaterial": 0,
+        "clearance": 0.008,
+        "lateralMax": 0.28,
+        "rearInset": false,
+        "overlapFaces": true,
+        "shoulderAbove": 0.06,
+        "frontMinimum": -0.2
+      },
+      "review": {
+        "status": "passed",
+        "fittedSHA256": "c5dd6a890ba3b1dbf7a760ffa660e1be098d45daed6f6ff561939a0f97431008",
+        "budgets": {
+          "triangles": 12311,
+          "bytes": 22638592
+        },
+        "fitChecks": {
+          "rest": true,
+          "walk": true,
+          "sit": true,
+          "reach": true,
+          "sourceAppearance": true
+        }
+      }
+    },
+    {
+      "source": "male/prom_suit.glb",
+      "id": "prom-suit",
+      "mode": "outfit",
+      "targetSpan": [
+        0,
+        1.65
+      ],
+      "rotate": [
+        0,
+        0,
+        0
+      ],
+      "roleRules": [
+        [
+          "object",
+          "^Object_216$",
+          "shoes"
+        ],
+        [
+          "object",
+          "^Object_(218|220)$",
+          "accent"
+        ]
+      ],
+      "defaultRole": "top",
+      "dropObjects": [
+        "^Icosphere(?:\\.\\d+)?$"
+      ],
+      "dropMaterials": [],
+      "publish": true,
+      "sourceBounds": {
+        "min": [
+          -63.10997009277344,
+          -22.602848052978516,
+          -0.34027335047721863
+        ],
+        "max": [
+          63.09700012207031,
+          15.832571983337402,
+          162.46066284179688
+        ]
+      },
+      "sourceTriangleCount": 11959,
+      "sourceImageCount": 4,
+      "fidelity": {
+        "preserveSourceGeometry": true,
+        "preserveAllUVLayers": true,
+        "preserveTexturePayloads": true,
+        "preserveNativeMaterialFactors": true,
+        "replaceWithTemplateClothes": false
+      },
+      "reviewNotes": [
+        "Original tuxedo outfit includes jacket, shirt/bow tie, trousers, shoes and dark gloves. Preserve source accessories and its baked albedo appearance.",
+        "Source skin contains206 joints; only79 have nonzero weights. Several named upperarm/forearm nodes have unused identity inverse binds. Raw imported Blender bone heads are not valid garment-space landmarks.",
+        "Use weighted twist-helper inverse binds or explicit geometry correspondence before mapping to the20-bone Extalia rig. Arm pose is a downward A pose.",
+        "Object_216 is original shoes, Object_218 is gloves, and Object_220 is small cuff-detail geometry. Object_214 combines jacket/limb/trouser regions; preserve complete outfit first.",
+        "Drop only the importer-generated Icosphere bone custom shape (80 triangles, absent from original glTF meshes). It must not be counted as garment geometry.",
+        "Original gloves need a hand-visibility/coverage decision in review; canonical bare hands must not protrude through them."
+      ],
+      "difficulty": "special-rig-retarget",
+      "initialUnitScale": 0.01,
+      "specialRig": {
+        "sourceJoints": 206,
+        "weightedJoints": 79,
+        "reuseImportedBoneHeads": false
+      },
+      "registrationStatus": "initial source-scale registration; fitted pose QA required",
+      "hasShoes": true,
+      "opaqueMaterials": [],
+      "shoeObjects": [
+        "^Object_216$"
+      ],
+      "sourceFootwearNotes": "Object_216 is the original pair of shoes, independently separable from source trousers/gloves.",
+      "hasGloves": true,
+      "gloveObjects": [
+        "^Object_218$"
+      ],
+      "classifyTrouserComponents": true,
+      "topologyBinding": {
+        "ribMaterials": [],
+        "mainMaterials": [
+          0,
+          1
+        ],
+        "followMaterials": [
+          4
+        ],
+        "openCuffAnchors": true,
+        "cuffMinimumX": 0.18,
+        "cuffMinimumHeight": 0.85,
+        "cuffMaximumHeight": 1.25,
+        "preserveLegs": true,
+        "componentSeamDistance": 0.004,
+        "cuffAnchorDepth": 0.1,
+        "cuffGeodesicMinimum": 0.3,
+        "componentOwnership": true,
+        "armFollowMaterials": [
+          3,
+          4
+        ]
+      },
+      "radialTorsoFit": true,
+      "armholeUnderlap": {
+        "sourceMaterial": 0,
+        "clearance": 0.008,
+        "lateralMax": 0.28,
+        "rearInset": false,
+        "overlapFaces": true,
+        "shoulderAbove": 0.06,
+        "frontMinimum": -0.2
+      },
+      "review": {
+        "status": "passed",
+        "fittedSHA256": "99f9087c92f223d1f2c5e64dab59287ad66fca9ce3329ea63eb0f9814eec3637",
+        "budgets": {
+          "triangles": 14384,
+          "bytes": 3137536
+        },
+        "fitChecks": {
+          "rest": true,
+          "walk": true,
+          "sit": true,
+          "reach": true,
+          "sourceAppearance": true
+        }
+      }
+    },
+    {
+      "source": "male/shirt.glb",
+      "id": "blue-plaid-shirt",
+      "mode": "top",
+      "targetSpan": [
+        0.98,
+        1.62
+      ],
+      "rotate": [
+        0,
+        0,
+        0
+      ],
+      "roleRules": [
+        [
+          "material",
+          "^Shirt00_1Button_FRONT$",
+          "accent"
+        ]
+      ],
+      "defaultRole": "top",
+      "dropObjects": [],
+      "dropMaterials": [],
+      "publish": false,
+      "sourceBounds": {
+        "min": [
+          -0.3317599892616272,
+          -0.15986286103725433,
+          1.048132061958313
+        ],
+        "max": [
+          0.3125860095024109,
+          0.12662722170352936,
+          1.7068092823028564
+        ]
+      },
+      "sourceTriangleCount": 68468,
+      "sourceImageCount": 2,
+      "fidelity": {
+        "preserveSourceGeometry": true,
+        "preserveAllUVLayers": true,
+        "preserveTexturePayloads": true,
+        "preserveNativeMaterialFactors": true,
+        "replaceWithTemplateClothes": false
+      },
+      "reviewNotes": [
+        "Complete original long-sleeve blue plaid shirt, with real collar/placket/buttons and a continuous checked fabric atlas. Motif visibility and alignment are essential to source fidelity.",
+        "Metre-like source extents z1.0481 to1.7068; it is already positioned above a virtual floor rather than centred at origin. Anchor collar, shirt hem and cuff centres independently.",
+        "Six cloth/button meshes, no rig. Object_5 is the negative-X sleeve; positive-X sleeve shares Object_4 with other cloth regions. Do not treat every vertex in Object_4 as arm.",
+        "Keep both native images: a256-pixel button map and2048x1024 fabric map. No full-body template substitution, flat material recolour or destructive hidden-face cull.",
+        "Use reviewed bottom only as context; keep this original shirt independently wearable."
+      ],
+      "difficulty": "straightforward",
+      "initialUnitScale": 1.0,
+      "registrationStatus": "initial source-scale registration; fitted pose QA required",
+      "sourceGeometrySections": {
+        "coordinateSpace": "Unmodified Blender source world Z-up; clothing geometry samples, not anatomical joint centres.",
+        "method": "At stated Z slice, measure XY bounds and centroid of outermost lateral20percent on each side. Sleeves can be distinguished only where separated from torso. These are calibration evidence, not automatic joint assignments.",
+        "samples": [
+          {
+            "z": 1.68,
+            "halfBand": 0.007904,
+            "pointCount": 376,
+            "xyBounds": [
+              [
+                -0.0679979994893074,
+                -0.049366780641111406
+              ],
+              [
+                0.06853099912405014,
+                0.05655823338133938
+              ]
+            ],
+            "negativeXOuterBandCentroid": [
+              -0.06109443555275599,
+              -0.007477031919997385,
+              1.678272809069291
+            ],
+            "positiveXOuterBandCentroid": [
+              0.06082471873378381,
+              -0.0011065246905554841,
+              1.678094326477233
+            ]
+          },
+          {
+            "z": 1.58,
+            "halfBand": 0.007904,
+            "pointCount": 798,
+            "xyBounds": [
+              [
+                -0.23063400387763977,
+                -0.0945748024569838
+              ],
+              [
+                0.22820499539375305,
+                0.107657225064064
+              ]
+            ],
+            "negativeXOuterBandCentroid": [
+              -0.20906734830418297,
+              0.020204016887556613,
+              1.5790439536951664
+            ],
+            "positiveXOuterBandCentroid": [
+              0.206892414612973,
+              0.02005405506930236,
+              1.5798480173134737
+            ]
+          },
+          {
+            "z": 1.35,
+            "halfBand": 0.007904,
+            "pointCount": 941,
+            "xyBounds": [
+              [
+                -0.2996169924736023,
+                -0.13404783498989037
+              ],
+              [
+                0.2917490005493164,
+                0.11048719474875049
+              ]
+            ],
+            "negativeXOuterBandCentroid": [
+              -0.2740145043248222,
+              0.03017603248877102,
+              1.3499639501742795
+            ],
+            "positiveXOuterBandCentroid": [
+              0.268555422039593,
+              0.024555860716946775,
+              1.3499194557395464
+            ]
+          },
+          {
+            "z": 1.11,
+            "halfBand": 0.007904,
+            "pointCount": 951,
+            "xyBounds": [
+              [
+                -0.3303639888763428,
+                -0.15747286849880893
+              ],
+              [
+                0.3053480088710785,
+                0.10553516294038072
+              ]
+            ],
+            "negativeXOuterBandCentroid": [
+              -0.30471790043207314,
+              -0.05051276459202019,
+              1.1102328903229912
+            ],
+            "positiveXOuterBandCentroid": [
+              0.2815477105520539,
+              -0.0576438832385927,
+              1.1104428259989523
+            ]
+          },
+          {
+            "z": 1.06,
+            "halfBand": 0.007904,
+            "pointCount": 339,
+            "xyBounds": [
+              [
+                -0.10232499986886978,
+                -0.1598628720763055
+              ],
+              [
+                0.12405599653720856,
+                0.11013015165002245
+              ]
+            ],
+            "negativeXOuterBandCentroid": [
+              -0.09022377262061293,
+              0.023216009651456038,
+              1.0645389277512203
+            ],
+            "positiveXOuterBandCentroid": [
+              0.1124709490686655,
+              0.08000405240758483,
+              1.0627470102996583
+            ]
+          }
+        ]
+      },
+      "hasShoes": false,
+      "opaqueMaterials": [],
+      "hasGloves": false,
+      "topologyBinding": {
+        "mainMaterials": [
+          1
+        ],
+        "ribMaterials": [],
+        "followMaterials": [
+          0
+        ],
+        "openCuffAnchors": true
+      },
+      "sleeveLandmarks": {
+        "left": {
+          "elbowHeight": 1.27
+        },
+        "right": {
+          "elbowHeight": 1.27
+        }
+      },
+      "armClearance": true,
+      "armClearanceIterations": 2,
+      "armClearanceMargin": 0.006,
+      "armholeUnderlap": {
+        "sourceMaterial": 1,
+        "clearance": 0.008,
+        "lateralMax": 0.25,
+        "rearInset": false,
+        "overlapFaces": true
+      }
+    },
+    {
+      "source": "male/sweatshirt_and_jacket_and_workwear_pants.glb",
+      "id": "sweatshirt-jacket-workwear",
+      "mode": "outfit",
+      "targetSpan": [
+        0.08,
+        1.78
+      ],
+      "rotate": [
+        0,
+        0,
+        0
+      ],
+      "roleRules": [
+        [
+          "object",
+          "^Object_(6|7|8)$",
+          "accent"
+        ],
+        [
+          "material",
+          "(?i)(button|eyelet|stopper|puller|slider)",
+          "accent"
+        ]
+      ],
+      "defaultRole": "top",
+      "dropObjects": [],
+      "dropMaterials": [],
+      "publish": true,
+      "sourceBounds": {
+        "min": [
+          -336.6340026855469,
+          -158.53395080566406,
+          79.78900909423828
+        ],
+        "max": [
+          334.12298583984375,
+          194.2532501220703,
+          1779.2802734375
+        ]
+      },
+      "sourceTriangleCount": 305786,
+      "sourceImageCount": 7,
+      "fidelity": {
+        "preserveSourceGeometry": true,
+        "preserveAllUVLayers": true,
+        "preserveTexturePayloads": true,
+        "preserveNativeMaterialFactors": true,
+        "replaceWithTemplateClothes": false
+      },
+      "reviewNotes": [
+        "Original layered outfit includes dark hooded jacket, light inner sweatshirt, cream workwear trousers, hardware and sunglasses. Preserve its loose cloth shape and native colours/maps.",
+        "Mm-like source extents z79.789 to1779.280; sunglasses are above the clothing at z1721 to1779. Do not use the accessory height as a collar landmark.",
+        "Object_6/Object_7/Object_8 are the original glasses/lenses/frame. Preserve them as a separate head-bound accessory, not a torso/skirt panel. This is not an explicit mannequin body to discard.",
+        "Objects20 to35 include mixed-region cloth panels spanning torso/arms/legs. Fit as a complete source outfit first; regex-only garment splitting is not sufficient.",
+        "No mannequin-only object is confirmed by this audit. Beige inner collar/sweatshirt geometry must not be dropped as presumed skin.",
+        "Need consistent paired-panel seam weights, independent upper/forearm registration, loose hood clearance and knee/hip deformation. Keep all seven images including emissive/PBR source channels.",
+        "Solid cloth BLEND correction is confirmed by source-mapped triangle-interior alpha samples; preserve every colour/normal/PBR image payload. Only the listed source material indices may be forced OPAQUE.",
+        "Material8 is actual transparent sunglasses lens alpha; keep its native BLEND mode. Only cloth material4 is confirmed solid."
+      ],
+      "difficulty": "complex",
+      "initialUnitScale": 0.001,
+      "headAccessoryObjects": [
+        "^Object_(6|7|8)$"
+      ],
+      "registrationStatus": "initial source-scale registration; fitted pose QA required",
+      "sourceGeometrySections": {
+        "coordinateSpace": "Unmodified Blender source world Z-up; clothing geometry samples, not anatomical joint centres.",
+        "method": "At stated Z slice, measure XY bounds and centroid of outermost lateral20percent on each side. Sleeves can be distinguished only where separated from torso. These are calibration evidence, not automatic joint assignments.",
+        "samples": [
+          {
+            "z": 1650,
+            "halfBand": 19.193294,
+            "pointCount": 2377,
+            "xyBounds": [
+              [
+                -139.95399475097656,
+                -80.1473886964224
+              ],
+              [
+                145.41299438476562,
+                174.14324576562893
+              ]
+            ],
+            "negativeXOuterBandCentroid": [
+              -126.25459572474162,
+              72.28013265115295,
+              1639.4393484243155
+            ],
+            "positiveXOuterBandCentroid": [
+              132.56694660570798,
+              74.12880995465268,
+              1641.4105201514135
+            ]
+          },
+          {
+            "z": 1520,
+            "halfBand": 19.193294,
+            "pointCount": 4270,
+            "xyBounds": [
+              [
+                -231.49200439453125,
+                -133.2908140953695
+              ],
+              [
+                231.0330047607422,
+                192.7542272231845
+              ]
+            ],
+            "negativeXOuterBandCentroid": [
+              -208.57899370520286,
+              22.43858182195593,
+              1517.2080879306766
+            ],
+            "positiveXOuterBandCentroid": [
+              209.50084982977972,
+              23.293434874365825,
+              1518.7423711829579
+            ]
+          },
+          {
+            "z": 1180,
+            "halfBand": 19.193294,
+            "pointCount": 6476,
+            "xyBounds": [
+              [
+                -319.1059875488281,
+                -154.2328630066408
+              ],
+              [
+                321.0559997558594,
+                159.54117568329966
+              ]
+            ],
+            "negativeXOuterBandCentroid": [
+              -282.5023223046977,
+              14.772704233307138,
+              1180.4145311789107
+            ],
+            "positiveXOuterBandCentroid": [
+              282.0369954878284,
+              14.375441030459505,
+              1180.3052382591916
+            ]
+          },
+          {
+            "z": 880,
+            "halfBand": 19.193294,
+            "pointCount": 2638,
+            "xyBounds": [
+              [
+                -286.78399658203125,
+                -126.1878988143985
+              ],
+              [
+                281.510009765625,
+                117.0741316179773
+              ]
+            ],
+            "negativeXOuterBandCentroid": [
+              -273.6519284929548,
+              -40.78114063930331,
+              898.7996818907641
+            ],
+            "positiveXOuterBandCentroid": [
+              274.85560302734376,
+              -35.20293385967633,
+              898.7836079669336
+            ]
+          },
+          {
+            "z": 1080,
+            "halfBand": 19.193294,
+            "pointCount": 6742,
+            "xyBounds": [
+              [
+                -334.8689880371094,
+                -155.50187048903032
+              ],
+              [
+                334.12298583984375,
+                162.03916833697744
+              ]
+            ],
+            "negativeXOuterBandCentroid": [
+              -296.3889731877967,
+              -10.393778362868407,
+              1078.595628030824
+            ],
+            "positiveXOuterBandCentroid": [
+              296.1859356937372,
+              -13.978664930004959,
+              1079.6491815034021
+            ]
+          },
+          {
+            "z": 560,
+            "halfBand": 19.193294,
+            "pointCount": 1966,
+            "xyBounds": [
+              [
+                -178.73399353027344,
+                -87.11353932004394
+              ],
+              [
+                178.4720001220703,
+                109.97408948468998
+              ]
+            ],
+            "negativeXOuterBandCentroid": [
+              -159.75270683463964,
+              -7.00136633179659,
+              562.0732925060233
+            ],
+            "positiveXOuterBandCentroid": [
+              158.92464008876254,
+              -5.196299094620078,
+              562.774597466655
+            ]
+          },
+          {
+            "z": 110,
+            "halfBand": 19.193294,
+            "pointCount": 6430,
+            "xyBounds": [
+              [
+                -170.9600067138672,
+                -81.03939276161215
+              ],
+              [
+                176.09500122070312,
+                83.89672494357669
+              ]
+            ],
+            "negativeXOuterBandCentroid": [
+              -155.4117954166254,
+              -15.324344734358215,
+              111.18798047462177
+            ],
+            "positiveXOuterBandCentroid": [
+              161.02748380165292,
+              -11.012300452088315,
+              108.46338240117899
+            ]
+          }
+        ]
+      },
+      "hasShoes": false,
+      "opaqueMaterials": [
+        4
+      ],
+      "hasGloves": false,
+      "classifyTrouserComponents": true,
+      "topologyBinding": {
+        "ribMaterials": [],
+        "mainMaterials": [
+          4
+        ],
+        "followMaterials": [
+          0,
+          1,
+          2,
+          3,
+          5,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20
+        ],
+        "openCuffAnchors": true,
+        "cuffMinimumX": 0.18,
+        "cuffMinimumHeight": 0.85,
+        "cuffMaximumHeight": 1.15,
+        "preserveLegs": true,
+        "componentSeamDistance": 0.004,
+        "cuffAnchorDepth": 0.1,
+        "cuffGeodesicMinimum": 0.3,
+        "componentOwnership": true,
+        "componentCoreContactX": 0.05,
+        "componentSleeveTopHeight": 1.4,
+        "componentSleeveSideX": 0.06
+      },
+      "radialTorsoFit": true,
+      "armholeUnderlap": {
+        "sourceMaterial": 4,
+        "clearance": 0.008,
+        "lateralMax": 0.28,
+        "rearInset": false,
+        "overlapFaces": true,
+        "shoulderAbove": 0.06,
+        "frontMinimum": -0.2,
+        "shoulderBelow": 0.33
+      },
+      "rigidAccessories": [
+        {
+          "sourceMaterials": [
+            6,
+            7,
+            8
+          ],
+          "pivot": [
+            0.001833934106761751,
+            -0.13302024311757502,
+            1.78711694375628
+          ],
+          "translation": [
+            -0.001833934106761751,
+            0.015,
+            -0.04711694375627995
+          ],
+          "rotationDegrees": [
+            0.0,
+            0,
+            0
+          ],
+          "scale": 1.0,
+          "maximumDisplacement": 0.12
+        }
+      ],
+      "hasEyewear": true,
+      "review": {
+        "status": "passed",
+        "fittedSHA256": "14f6c6a4b4f89c632480e1406350e0bf74cba9699719969356a9b24f55e8a9c4",
+        "budgets": {
+          "triangles": 312068,
+          "bytes": 28356608
+        },
+        "fitChecks": {
+          "rest": true,
+          "walk": true,
+          "sit": true,
+          "reach": true,
+          "sourceAppearance": true
+        }
+      }
+    }
+  ]
+}

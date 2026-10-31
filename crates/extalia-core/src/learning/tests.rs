@@ -1,7 +1,9 @@
 //! Learning loop tests. Every test works in its own temporary directory only.
 
 use std::fs;
-use std::path::{Path, PathBuf};
+#[cfg(unix)]
+use std::path::Path;
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicU32, Ordering};
 
 use serde_json::{Value, json};
@@ -120,6 +122,7 @@ impl Env {
         to: TaskState,
     ) {
         let transition = TaskTransition {
+            supervisor_id: None,
             mission_id: mission.into(),
             task_id: task.into(),
             event_id: self.event_id(),

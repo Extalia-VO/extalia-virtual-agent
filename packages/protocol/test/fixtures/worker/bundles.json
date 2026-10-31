@@ -1,0 +1,3777 @@
+{
+  "contract": "workerBundleManifest",
+  "cases": [
+    {
+      "name": "linux x86_64",
+      "valid": true,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "bin/python",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "bin/python",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      }
+    },
+    {
+      "name": "linux aarch64",
+      "valid": true,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "aarch64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "bin/python",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "bin/python",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      }
+    },
+    {
+      "name": "macos x86_64",
+      "valid": true,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "macos",
+          "arch": "x86_64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "bin/python",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "bin/python",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      }
+    },
+    {
+      "name": "macos aarch64",
+      "valid": true,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "macos",
+          "arch": "aarch64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "bin/python",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "bin/python",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      }
+    },
+    {
+      "name": "windows x86_64",
+      "valid": true,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "windows",
+          "arch": "x86_64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "bin/python",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "bin/python",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      }
+    },
+    {
+      "name": "windows aarch64",
+      "valid": true,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "windows",
+          "arch": "aarch64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "bin/python",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "bin/python",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      }
+    },
+    {
+      "name": "invalid target os freebsd",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "freebsd",
+          "arch": "x86_64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "bin/python",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "bin/python",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      }
+    },
+    {
+      "name": "invalid target os Linux",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "Linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "bin/python",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "bin/python",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      }
+    },
+    {
+      "name": "invalid target arch arm64",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "arm64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "bin/python",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "bin/python",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      }
+    },
+    {
+      "name": "invalid target arch X86_64",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "X86_64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "bin/python",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "bin/python",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      }
+    },
+    {
+      "name": "invalid target arch ",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": ""
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "bin/python",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "bin/python",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      }
+    },
+    {
+      "name": "invalid target os True",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": true,
+          "arch": "x86_64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "bin/python",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "bin/python",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      }
+    },
+    {
+      "name": "invalid schema 0",
+      "valid": false,
+      "value": {
+        "schema_version": 0,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "bin/python",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "bin/python",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      }
+    },
+    {
+      "name": "invalid schema 2",
+      "valid": false,
+      "value": {
+        "schema_version": 2,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "bin/python",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "bin/python",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      }
+    },
+    {
+      "name": "invalid schema 1",
+      "valid": false,
+      "value": {
+        "schema_version": "1",
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "bin/python",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "bin/python",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      }
+    },
+    {
+      "name": "invalid schema True",
+      "valid": false,
+      "value": {
+        "schema_version": true,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "bin/python",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "bin/python",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      }
+    },
+    {
+      "name": "runtime_version empty",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": "",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "bin/python",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "bin/python",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      }
+    },
+    {
+      "name": "runtime_version too long",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "bin/python",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "bin/python",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      }
+    },
+    {
+      "name": "runtime_version newline",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": "a\n",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "bin/python",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "bin/python",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      }
+    },
+    {
+      "name": "runtime_version unicode",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": "aé",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "bin/python",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "bin/python",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      }
+    },
+    {
+      "name": "runtime_version leading dot",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": ".a",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "bin/python",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "bin/python",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      }
+    },
+    {
+      "name": "runtime_version slash",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": "a/b",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "bin/python",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "bin/python",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      }
+    },
+    {
+      "name": "runtime_version maximum",
+      "valid": true,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "bin/python",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "bin/python",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      }
+    },
+    {
+      "name": "runtime_version ASCII punctuation",
+      "valid": true,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": "v1.2+build_test-1",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "bin/python",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "bin/python",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      }
+    },
+    {
+      "name": "worker_version empty",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "bin/python",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "bin/python",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      }
+    },
+    {
+      "name": "worker_version too long",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "bin/python",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "bin/python",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      }
+    },
+    {
+      "name": "worker_version newline",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "a\n",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "bin/python",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "bin/python",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      }
+    },
+    {
+      "name": "worker_version unicode",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "aé",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "bin/python",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "bin/python",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      }
+    },
+    {
+      "name": "worker_version leading dot",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": ".a",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "bin/python",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "bin/python",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      }
+    },
+    {
+      "name": "worker_version slash",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "a/b",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "bin/python",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "bin/python",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      }
+    },
+    {
+      "name": "worker_version maximum",
+      "valid": true,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "bin/python",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "bin/python",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      }
+    },
+    {
+      "name": "worker_version ASCII punctuation",
+      "valid": true,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "v1.2+build_test-1",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "bin/python",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "bin/python",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      }
+    },
+    {
+      "name": "operations empty",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "0.0.0-reference",
+        "operations": [],
+        "interpreter": "bin/python",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "bin/python",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      }
+    },
+    {
+      "name": "operations duplicate",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health",
+          "health"
+        ],
+        "interpreter": "bin/python",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "bin/python",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      }
+    },
+    {
+      "name": "operations scanner",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "skill.inspect"
+        ],
+        "interpreter": "bin/python",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "bin/python",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      }
+    },
+    {
+      "name": "operations string",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "0.0.0-reference",
+        "operations": "health",
+        "interpreter": "bin/python",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "bin/python",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      }
+    },
+    {
+      "name": "zero byte support",
+      "valid": true,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "bin/python",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "bin/python",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "support/data",
+            "role": "support",
+            "bytes": 0,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      }
+    },
+    {
+      "name": "maximum single file",
+      "valid": true,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "bin/python",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "bin/python",
+            "role": "interpreter",
+            "bytes": 134217728,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      }
+    },
+    {
+      "name": "file bytes negative",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "bin/python",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "bin/python",
+            "role": "interpreter",
+            "bytes": -1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      }
+    },
+    {
+      "name": "file bytes fraction",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "bin/python",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "bin/python",
+            "role": "interpreter",
+            "bytes": 0.5,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      }
+    },
+    {
+      "name": "file bytes boolean",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "bin/python",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "bin/python",
+            "role": "interpreter",
+            "bytes": true,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      }
+    },
+    {
+      "name": "file bytes string",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "bin/python",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "bin/python",
+            "role": "interpreter",
+            "bytes": "1",
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      }
+    },
+    {
+      "name": "file bytes oversize",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "bin/python",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "bin/python",
+            "role": "interpreter",
+            "bytes": 134217729,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      }
+    },
+    {
+      "name": "zero interpreter",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "bin/python",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "bin/python",
+            "role": "interpreter",
+            "bytes": 0,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      },
+      "schemaGap": true
+    },
+    {
+      "name": "zero entry script",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "bin/python",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "bin/python",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 0,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      },
+      "schemaGap": true
+    },
+    {
+      "name": "digest short",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "bin/python",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "bin/python",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      }
+    },
+    {
+      "name": "digest long",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "bin/python",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "bin/python",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "00000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      }
+    },
+    {
+      "name": "digest uppercase",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "bin/python",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "bin/python",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      }
+    },
+    {
+      "name": "digest nonhex",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "bin/python",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "bin/python",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      }
+    },
+    {
+      "name": "digest newline",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "bin/python",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "bin/python",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000\n"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      }
+    },
+    {
+      "name": "single file",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "bin/python",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "bin/python",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      }
+    },
+    {
+      "name": "empty files",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "bin/python",
+        "entry_script": "worker/main.py",
+        "files": []
+      }
+    },
+    {
+      "name": "files object",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "bin/python",
+        "entry_script": "worker/main.py",
+        "files": {}
+      }
+    },
+    {
+      "name": "path dot",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": ".",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": ".",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      }
+    },
+    {
+      "name": "path dotdot",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "..",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "..",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      }
+    },
+    {
+      "name": "path nested dot",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "a/./b",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "a/./b",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      }
+    },
+    {
+      "name": "path nested dotdot",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "a/../b",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "a/../b",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      }
+    },
+    {
+      "name": "path absolute",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "/bin/python",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "/bin/python",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      }
+    },
+    {
+      "name": "path backslash",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "bin\\python",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "bin\\python",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      }
+    },
+    {
+      "name": "path drive",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "C:python",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "C:python",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      }
+    },
+    {
+      "name": "path unicode",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "bin/pythön",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "bin/pythön",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      }
+    },
+    {
+      "name": "path control",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "bin/py\n",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "bin/py\n",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      }
+    },
+    {
+      "name": "path empty component",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "bin//python",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "bin//python",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      }
+    },
+    {
+      "name": "path trailing slash",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "bin/python/",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "bin/python/",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      }
+    },
+    {
+      "name": "path trailing dot",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "bin/python.",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "bin/python.",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      }
+    },
+    {
+      "name": "path long component",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      }
+    },
+    {
+      "name": "path seventeen components",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "a/b/c/d/e/f/g/h/i/j/k/l/m/n/o/p/q",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "a/b/c/d/e/f/g/h/i/j/k/l/m/n/o/p/q",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      }
+    },
+    {
+      "name": "path path over bound",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      }
+    },
+    {
+      "name": "device path CON",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "CON",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "CON",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      }
+    },
+    {
+      "name": "device path con.py",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "con.py",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "con.py",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      }
+    },
+    {
+      "name": "device path PrN.txt",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "PrN.txt",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "PrN.txt",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      }
+    },
+    {
+      "name": "device path AUX",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "AUX",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "AUX",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      }
+    },
+    {
+      "name": "device path nul.data",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "nul.data",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "nul.data",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      }
+    },
+    {
+      "name": "device path COM0",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "COM0",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "COM0",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      }
+    },
+    {
+      "name": "device path com9.py",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "com9.py",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "com9.py",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      }
+    },
+    {
+      "name": "device path LPT0",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "LPT0",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "LPT0",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      }
+    },
+    {
+      "name": "device path lpt9.txt",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "lpt9.txt",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "lpt9.txt",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      }
+    },
+    {
+      "name": "device path a/CON.txt/b",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "a/CON.txt/b",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "a/CON.txt/b",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      }
+    },
+    {
+      "name": "portable path .hidden/python",
+      "valid": true,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": ".hidden/python",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": ".hidden/python",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      }
+    },
+    {
+      "name": "portable path ...hidden/python",
+      "valid": true,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "...hidden/python",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "...hidden/python",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      }
+    },
+    {
+      "name": "portable path COM10",
+      "valid": true,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "COM10",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "COM10",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      }
+    },
+    {
+      "name": "portable path LPT10.py",
+      "valid": true,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "LPT10.py",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "LPT10.py",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      }
+    },
+    {
+      "name": "portable path console/python",
+      "valid": true,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "console/python",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "console/python",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      }
+    },
+    {
+      "name": "portable path xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "valid": true,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      }
+    },
+    {
+      "name": "unsorted files",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "bin/python",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "bin/python",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      },
+      "schemaGap": true
+    },
+    {
+      "name": "duplicate file",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "bin/python",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "bin/python",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "bin/python",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      },
+      "schemaGap": true
+    },
+    {
+      "name": "casefold collision",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "bin/python",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "BIN/PYTHON",
+            "role": "support",
+            "bytes": 0,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "bin/python",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      },
+      "schemaGap": true
+    },
+    {
+      "name": "file directory prefix",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "bin/python",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "bin/python",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "bin/python/data",
+            "role": "support",
+            "bytes": 0,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      },
+      "schemaGap": true
+    },
+    {
+      "name": "casefold directory prefix",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "bin/python",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "BIN/PYTHON/data",
+            "role": "support",
+            "bytes": 0,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "bin/python",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      },
+      "schemaGap": true
+    },
+    {
+      "name": "prefix encountered later",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "bin/python",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "BIN",
+            "role": "support",
+            "bytes": 0,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "bin/python",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      },
+      "schemaGap": true
+    },
+    {
+      "name": "shared directories allowed",
+      "valid": true,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "bin/python",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "bin/data",
+            "role": "support",
+            "bytes": 0,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "bin/python",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      }
+    },
+    {
+      "name": "similar prefixes allowed",
+      "valid": true,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "bin/python",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "bin/python",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "bin/python-extra/data",
+            "role": "support",
+            "bytes": 0,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      }
+    },
+    {
+      "name": "missing interpreter reference",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "bin/missing",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "bin/python",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      },
+      "schemaGap": true
+    },
+    {
+      "name": "case mismatch reference",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "BIN/python",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "bin/python",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      },
+      "schemaGap": true
+    },
+    {
+      "name": "equal references",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "bin/python",
+        "entry_script": "bin/python",
+        "files": [
+          {
+            "path": "bin/python",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      },
+      "schemaGap": true
+    },
+    {
+      "name": "swapped reference roles",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "worker/main.py",
+        "entry_script": "bin/python",
+        "files": [
+          {
+            "path": "bin/python",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      },
+      "schemaGap": true
+    },
+    {
+      "name": "no interpreter role",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "bin/python",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "bin/python",
+            "role": "support",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      },
+      "schemaGap": true
+    },
+    {
+      "name": "two interpreter roles",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "bin/python",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "bin/python",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      },
+      "schemaGap": true
+    },
+    {
+      "name": "two entry script roles",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "bin/python",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "bin/python",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      },
+      "schemaGap": true
+    },
+    {
+      "name": "unknown role",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "bin/python",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "bin/python",
+            "role": "executable",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      }
+    },
+    {
+      "name": "maximum total bytes",
+      "valid": true,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "bin/python",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "bin/python",
+            "role": "interpreter",
+            "bytes": 134217728,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "support/a",
+            "role": "support",
+            "bytes": 134217728,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "support/b",
+            "role": "support",
+            "bytes": 134217728,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 134217728,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      }
+    },
+    {
+      "name": "total byte overflow",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "bin/python",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "bin/python",
+            "role": "interpreter",
+            "bytes": 134217728,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "support/a",
+            "role": "support",
+            "bytes": 134217728,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "support/b",
+            "role": "support",
+            "bytes": 134217728,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "support/c",
+            "role": "support",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 134217728,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      },
+      "schemaGap": true
+    },
+    {
+      "name": "unknown authority argv",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "bin/python",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "bin/python",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ],
+        "argv": []
+      }
+    },
+    {
+      "name": "unknown authority environment",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "bin/python",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "bin/python",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ],
+        "environment": {}
+      }
+    },
+    {
+      "name": "unknown authority permissions",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "bin/python",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "bin/python",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ],
+        "permissions": {}
+      }
+    },
+    {
+      "name": "unknown authority scanner_ready",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "bin/python",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "bin/python",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ],
+        "scanner_ready": true
+      }
+    },
+    {
+      "name": "unknown authority command",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "bin/python",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "bin/python",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ],
+        "command": "run"
+      }
+    },
+    {
+      "name": "unknown authority expected_digest",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "bin/python",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "bin/python",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ],
+        "expected_digest": "0000000000000000000000000000000000000000000000000000000000000000"
+      }
+    },
+    {
+      "name": "unknown target field",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64",
+          "profile": "other"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "bin/python",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "bin/python",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      }
+    },
+    {
+      "name": "unknown file field",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "bin/python",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "bin/python",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+            "executable": true
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      }
+    },
+    {
+      "name": "missing manifest field",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "bin/python",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "bin/python",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      }
+    },
+    {
+      "name": "missing target field",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "bin/python",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "bin/python",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      }
+    },
+    {
+      "name": "missing file field",
+      "valid": false,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "bin/python",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "bin/python",
+            "role": "interpreter",
+            "bytes": 1
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      }
+    },
+    {
+      "name": "null root",
+      "valid": false,
+      "value": null
+    },
+    {
+      "name": "array root",
+      "valid": false,
+      "value": []
+    },
+    {
+      "name": "string root",
+      "valid": false,
+      "value": "manifest"
+    },
+    {
+      "name": "ancestor directory case spelling collision",
+      "valid": false,
+      "schemaGap": true,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "bin/python",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "Python/bin/a",
+            "role": "support",
+            "bytes": 0,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "bin/python",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "python/lib/b",
+            "role": "support",
+            "bytes": 0,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      }
+    },
+    {
+      "name": "path sixteen components",
+      "valid": true,
+      "value": {
+        "schema_version": 1,
+        "target": {
+          "os": "linux",
+          "arch": "x86_64"
+        },
+        "runtime_version": "3.12.0",
+        "worker_version": "0.0.0-reference",
+        "operations": [
+          "health"
+        ],
+        "interpreter": "a/b/c/d/e/f/g/h/i/j/k/l/m/n/o/p",
+        "entry_script": "worker/main.py",
+        "files": [
+          {
+            "path": "a/b/c/d/e/f/g/h/i/j/k/l/m/n/o/p",
+            "role": "interpreter",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "path": "worker/main.py",
+            "role": "entry_script",
+            "bytes": 1,
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      }
+    }
+  ]
+}

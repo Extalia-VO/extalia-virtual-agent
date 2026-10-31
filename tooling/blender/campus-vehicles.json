@@ -1,0 +1,3438 @@
+{
+  "$comment": "Campus car catalog for tooling/blender/prepare-campus-vehicles.py. One entry per car; see tooling/blender/README.md (How to add a new car).",
+  "schemaVersion": 1,
+  "notices": {
+    "renderhub-extended-use": {
+      "text": "Free RenderHub downloads under RenderHub's Extended Use License: commercial and non-commercial use in a variety of mediums. Terms: RenderHub 3D Content Licensing Agreement (https://www.renderhub.com/info/3d-content-licensing). The individual RenderHub product pages and authors were not recorded with the archives.",
+      "item": "RenderHub free download, Extended Use License (owner-confirmed 2026-10-29); modified: simplified, interior removed, debadged, recoloured."
+    },
+    "sketchfab-ddiaz-huracan-gt3": {
+      "text": "This work is based on \"2019 Lamborghini Huracán GT3 EVO Racecar\" (https://sketchfab.com/3d-models/2019-lamborghini-huracan-gt3-evo-racecar-3cdc43d5cb33454b91434b9d8e2d6bc0) by Ddiaz Design (https://sketchfab.com/ddiaz-design) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/). Modified: simplified, debadged and recoloured (racing livery removed).",
+      "item": "Sketchfab, CC-BY-4.0; modified: simplified, interior removed, debadged, recoloured (racing livery removed)."
+    },
+    "sketchfab-tsb3dmodels-ranger-raptor": {
+      "text": "This work is based on \"2019 Ford Ranger Raptor CIVIL (Cities Skylines)\" (https://sketchfab.com/3d-models/2019-ford-ranger-raptor-civil-cities-skylines-c2d4113e6acd401cb1999f81bb318325) by TSB3DMODELS (https://sketchfab.com/TSB3DMODELS) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/). Modified: simplified, debadged, recoloured, wheels separated. Brand names are trademarks of their owners.",
+      "item": "Sketchfab, CC-BY-4.0; modified: simplified, debadged, recoloured (texture colours replaced by plain role colours), wheels separated and replaced by the generic wheel."
+    },
+    "sketchfab-007-micro-ev": {
+      "text": "This work is based on \"2020 Wuling Hongguang Mini EV\" (https://sketchfab.com/3d-models/2020-wuling-hongguang-mini-ev-d80877acc62d4387a1ed680cf35d54b2) by 007 (https://sketchfab.com/tangwang920) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/). Modified: simplified, interior removed, debadged, recoloured, wheels separated. Brand names are trademarks of their owners.",
+      "item": "Sketchfab, CC-BY-4.0; modified: simplified, interior removed, debadged, recoloured, wheels separated."
+    },
+    "sketchfab-ddiaz-design-ev-suv-large": {
+      "text": "This work is based on \"2023 BYD Yangwang U8\" (https://sketchfab.com/3d-models/2023-byd-yangwang-u8-a4990ac098274cb0ae1bc4ddcb977950) by Ddiaz Design (https://sketchfab.com/ddiaz-design) licensed under CC-BY-NC-SA-4.0 (http://creativecommons.org/licenses/by-nc-sa/4.0/). Non-commercial use only. Modified: simplified, interior removed, debadged, recoloured, wheels separated. This derivative is shared under the same licence, CC-BY-NC-SA-4.0. Brand names are trademarks of their owners.",
+      "item": "Sketchfab, CC-BY-NC-SA-4.0; non-commercial use only; modified: simplified, interior removed, debadged, recoloured, wheels separated."
+    },
+    "sketchfab-ddiaz-design-ev-suv-rugged": {
+      "text": "This work is based on \"2024 GMC Hummer EV SUV\" (https://sketchfab.com/3d-models/2024-gmc-hummer-ev-suv-7cd584fc9ba54acd9002d4286a08e419) by Ddiaz Design (https://sketchfab.com/ddiaz-design) licensed under CC-BY-NC-SA-4.0 (http://creativecommons.org/licenses/by-nc-sa/4.0/). Non-commercial use only. Modified: simplified, interior removed, debadged, recoloured, wheels separated. This derivative is shared under the same licence, CC-BY-NC-SA-4.0. Brand names are trademarks of their owners.",
+      "item": "Sketchfab, CC-BY-NC-SA-4.0; non-commercial use only; modified: simplified, interior removed, debadged, recoloured, wheels separated."
+    },
+    "sketchfab-veratech-ev-pickup": {
+      "text": "This work is based on \"(FREE) 2021 Tesla Cybertruck\" (https://sketchfab.com/3d-models/free-2021-tesla-cybertruck-99dd62153e5e4ab1be30013505d54bd3) by veratech (https://sketchfab.com/veratech) licensed under CC-BY-NC-4.0 (http://creativecommons.org/licenses/by-nc/4.0/). Non-commercial use only. Modified: simplified, interior removed, debadged, recoloured, wheels separated. This derivative keeps the licence CC-BY-NC-4.0. Brand names are trademarks of their owners.",
+      "item": "Sketchfab, CC-BY-NC-4.0; non-commercial use only; modified: simplified, interior removed, debadged, recoloured, wheels separated."
+    },
+    "sketchfab-ddiaz-design-classic-mini": {
+      "text": "This work is based on \"1965 Austin Mini Cooper S\" (https://sketchfab.com/3d-models/1965-austin-mini-cooper-s-8b063519ced9423db1210bb2423c7d2a) by Ddiaz Design (https://sketchfab.com/ddiaz-design) licensed under CC-BY-NC-SA-4.0 (http://creativecommons.org/licenses/by-nc-sa/4.0/). Non-commercial use only. Modified: simplified, interior removed, debadged, recoloured, wheels separated. This derivative is shared under the same licence, CC-BY-NC-SA-4.0. Brand names are trademarks of their owners.",
+      "item": "Sketchfab, CC-BY-NC-SA-4.0; non-commercial use only; modified: simplified, interior removed, debadged, recoloured, wheels separated."
+    },
+    "sketchfab-007-estate": {
+      "text": "This work is based on \"2013 Audi RS4 Avant\" (https://sketchfab.com/3d-models/2013-audi-rs4-avant-a4b718a307d242d4a0b1ac3c55e02e70) by 007 (https://sketchfab.com/tangwang920) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/). Modified: simplified, interior removed, debadged, recoloured, wheels separated. Brand names are trademarks of their owners.",
+      "item": "Sketchfab, CC-BY-4.0; modified: simplified, interior removed, debadged, recoloured, wheels separated."
+    },
+    "sketchfab-007-hot-hatch": {
+      "text": "This work is based on \"2013 Ford Focus ST\" (https://sketchfab.com/3d-models/2013-ford-focus-st-3895f5de52254c73b34ffe295990ec54) by 007 (https://sketchfab.com/tangwang920) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/). Modified: simplified, interior removed, debadged, recoloured, wheels separated. Brand names are trademarks of their owners.",
+      "item": "Sketchfab, CC-BY-4.0; modified: simplified, interior removed, debadged, recoloured, wheels separated."
+    },
+    "sketchfab-007-coupe-suv": {
+      "text": "This work is based on \"2015 Land- Rover Range Rover Evoque Coupe\" (https://sketchfab.com/3d-models/2015-land-rover-range-rover-evoque-coupe-ac88843d4ac841b9837ec9e7c49d50e7) by 007 (https://sketchfab.com/tangwang920) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/). Modified: simplified, interior removed, debadged, recoloured, wheels separated. Brand names are trademarks of their owners.",
+      "item": "Sketchfab, CC-BY-4.0; modified: simplified, interior removed, debadged, recoloured, wheels separated."
+    },
+    "sketchfab-007-crossover": {
+      "text": "This work is based on \"2015 Nissan Murano Hybrid\" (https://sketchfab.com/3d-models/2015-nissan-murano-hybrid-aaa86c5cca18496e8f637a926df73003) by 007 (https://sketchfab.com/tangwang920) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/). Modified: simplified, interior removed, debadged, recoloured, wheels separated. Brand names are trademarks of their owners.",
+      "item": "Sketchfab, CC-BY-4.0; modified: simplified, interior removed, debadged, recoloured, wheels separated."
+    },
+    "sketchfab-007-sports-gt": {
+      "text": "This work is based on \"2017_mercedes-benz_amg_gt_r\" (https://sketchfab.com/3d-models/2017-mercedes-benz-amg-gt-r-d7ea625b376b407298771af9c9129420) by 007 (https://sketchfab.com/tangwang920) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/). Modified: simplified, interior removed, debadged, recoloured, wheels separated. Brand names are trademarks of their owners.",
+      "item": "Sketchfab, CC-BY-4.0; modified: simplified, interior removed, debadged, recoloured, wheels separated."
+    },
+    "sketchfab-007-sports-rear-engine": {
+      "text": "This work is based on \"2017 Porsche 911 (991) GT3 RS\" (https://sketchfab.com/3d-models/2017-porsche-911-991-gt3-rs-f98e5c38814146749b202f967084e836) by 007 (https://sketchfab.com/tangwang920) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/). Modified: simplified, interior removed, debadged, recoloured, wheels separated. Brand names are trademarks of their owners.",
+      "item": "Sketchfab, CC-BY-4.0; modified: simplified, interior removed, debadged, recoloured, wheels separated."
+    },
+    "sketchfab-007-roadster": {
+      "text": "This work is based on \"2019 BMW I8 Roadster\" (https://sketchfab.com/3d-models/2019-bmw-i8-roadster-b875c94043484973a9b7c9c92e82f4af) by 007 (https://sketchfab.com/tangwang920) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/). Modified: simplified, interior removed, debadged, recoloured, wheels separated. Brand names are trademarks of their owners.",
+      "item": "Sketchfab, CC-BY-4.0; modified: simplified, interior removed, debadged, recoloured, wheels separated."
+    },
+    "sketchfab-007-muscle": {
+      "text": "This work is based on \"2020 Ford Mustang Shelby GT350R\" (https://sketchfab.com/3d-models/2020-ford-mustang-shelby-gt350r-81567332164c4bb08c11ef8e37487a9f) by 007 (https://sketchfab.com/tangwang920) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/). Modified: simplified, interior removed, debadged, recoloured, wheels separated. Brand names are trademarks of their owners.",
+      "item": "Sketchfab, CC-BY-4.0; modified: simplified, interior removed, debadged, recoloured, wheels separated."
+    },
+    "sketchfab-007-performance-suv": {
+      "text": "This work is based on \"2020 Porsche Cayenne Turbo Coupe\" (https://sketchfab.com/3d-models/2020-porsche-cayenne-turbo-coupe-275ec998f90b4743a2636bc9d1906811) by 007 (https://sketchfab.com/tangwang920) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/). Modified: simplified, interior removed, debadged, recoloured, wheels separated. Brand names are trademarks of their owners.",
+      "item": "Sketchfab, CC-BY-4.0; modified: simplified, interior removed, debadged, recoloured, wheels separated."
+    },
+    "sketchfab-007-suv-luxury": {
+      "text": "This work is based on \"2022 Hongqi LS7 Guoyao\" (https://sketchfab.com/3d-models/2022-hongqi-ls7-guoyao-36932731d5c544ed98394984945bdaee) by 007 (https://sketchfab.com/tangwang920) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/). Modified: simplified, interior removed, debadged, recoloured, wheels separated. Brand names are trademarks of their owners.",
+      "item": "Sketchfab, CC-BY-4.0; modified: simplified, interior removed, debadged, recoloured, wheels separated."
+    },
+    "sketchfab-007-suv-family": {
+      "text": "This work is based on \"2022 Volkswagen Tiguan L 430 PHEV\" (https://sketchfab.com/3d-models/2022-volkswagen-tiguan-l-430-phev-cbab7c2ec1c549bebb6bebf1fed6cbb9) by 007 (https://sketchfab.com/tangwang920) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/). Modified: simplified, interior removed, debadged, recoloured, wheels separated. Brand names are trademarks of their owners.",
+      "item": "Sketchfab, CC-BY-4.0; modified: simplified, interior removed, debadged, recoloured, wheels separated."
+    },
+    "sketchfab-007-suv-compact": {
+      "text": "This work is based on \"2023 Hyundai Creta\" (https://sketchfab.com/3d-models/2023-hyundai-creta-995cd59ae58b4527b079dc4bf8a36049) by 007 (https://sketchfab.com/tangwang920) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/). Modified: simplified, interior removed, debadged, recoloured, wheels separated. Brand names are trademarks of their owners.",
+      "item": "Sketchfab, CC-BY-4.0; modified: simplified, interior removed, debadged, recoloured, wheels separated."
+    },
+    "sketchfab-007-suv-urban": {
+      "text": "This work is based on \"2023 Hyundai Mufasa\" (https://sketchfab.com/3d-models/2023-hyundai-mufasa-fb43aac0ac9c415bbb31a098f90a6538) by 007 (https://sketchfab.com/tangwang920) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/). Modified: simplified, interior removed, debadged, recoloured, wheels separated. Brand names are trademarks of their owners.",
+      "item": "Sketchfab, CC-BY-4.0; modified: simplified, interior removed, debadged, recoloured, wheels separated."
+    },
+    "sketchfab-007-compact-van": {
+      "text": "This work is based on \"2024 BYD ETP3\" (https://sketchfab.com/3d-models/2024-byd-etp3-efced721fd7a404c88f26407c56edb8e) by 007 (https://sketchfab.com/tangwang920) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/). Modified: simplified, interior removed, debadged, recoloured, wheels separated. Brand names are trademarks of their owners.",
+      "item": "Sketchfab, CC-BY-4.0; modified: simplified, interior removed, debadged, recoloured, wheels separated."
+    },
+    "sketchfab-tonielpro520-offroad-4door": {
+      "text": "This work is based on \"2021 Jeep Wrangler\" (https://sketchfab.com/3d-models/2021-jeep-wrangler-49a2914dff81428998a76a3043487404) by tonielpro520 (https://sketchfab.com/tonielpro520) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/). Modified: simplified, interior removed, debadged, recoloured, wheels separated. Brand names are trademarks of their owners.",
+      "item": "Sketchfab, CC-BY-4.0; modified: simplified, interior removed, debadged, recoloured, wheels separated."
+    },
+    "sketchfab-vinishows-1753d1-suv-midsize": {
+      "text": "This work is based on \"HAVAL H6 HEV 2024\" (https://sketchfab.com/3d-models/haval-h6-hev-2024-5f4841ba0ea344b0b78f1938c6f3dd37) by vinishows-1753d1 (https://sketchfab.com/vinishows-1753d1) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/). Modified: simplified, interior removed, debadged, recoloured, wheels separated. Brand names are trademarks of their owners.",
+      "item": "Sketchfab, CC-BY-4.0; modified: simplified, interior removed, debadged, recoloured, wheels separated."
+    },
+    "sketchfab-lexyc16-sports-classic": {
+      "text": "This work is based on \"Honda NSX 1990\" (https://sketchfab.com/3d-models/honda-nsx-1990-1cc15628a00a4739a6b6c01128927c8d) by Lexyc16 (https://sketchfab.com/Lexyc16) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/). Modified: simplified, interior removed, debadged, recoloured, wheels separated. Brand names are trademarks of their owners.",
+      "item": "Sketchfab, CC-BY-4.0; modified: simplified, interior removed, debadged, recoloured, wheels separated."
+    },
+    "sketchfab-mona-x-supercars-city-hatch": {
+      "text": "This work is based on \"Mini Cooper S Facelift\" (https://sketchfab.com/3d-models/mini-cooper-s-facelift-2baca439d2494e02b99596014b49ebd3) by Mona x Supercars (https://sketchfab.com/Car2022) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/). Modified: simplified, interior removed, debadged, recoloured, wheels separated. Brand names are trademarks of their owners.",
+      "item": "Sketchfab, CC-BY-4.0; modified: simplified, interior removed, debadged, recoloured, wheels separated."
+    },
+    "sketchfab-nieve5677-rally-sedan": {
+      "text": "This work is based on \"Mitsubishi Lancer Evo 5\" (https://sketchfab.com/3d-models/mitsubishi-lancer-evo-5-cfc712804d2740e0852ef9ce016b7792) by Nieve5677 (https://sketchfab.com/niev) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/). Modified: simplified, interior removed, debadged, recoloured, wheels separated. Brand names are trademarks of their owners.",
+      "item": "Sketchfab, CC-BY-4.0; modified: simplified, interior removed, debadged, recoloured, wheels separated."
+    },
+    "sketchfab-nieve5677-limousine": {
+      "text": "This work is based on \"Monstrous\" (https://sketchfab.com/3d-models/monstrous-219a720fb30c48dfbf543caed454e742) by Nieve5677 (https://sketchfab.com/niev) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/). Modified: simplified, interior removed, debadged, recoloured, wheels separated. Brand names are trademarks of their owners.",
+      "item": "Sketchfab, CC-BY-4.0; modified: simplified, interior removed, debadged, recoloured, wheels separated."
+    },
+    "sketchfab-carmodifier-pickup-offroad": {
+      "text": "This work is based on \"PICKUP FORD RAPTOR R\" (https://sketchfab.com/3d-models/pickup-ford-raptor-r-4488b718abbb43c793b19ff30d3f703a) by carmodifier (https://sketchfab.com/carmodifier) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/). Modified: simplified, interior removed, debadged, recoloured, wheels separated. Brand names are trademarks of their owners.",
+      "item": "Sketchfab, CC-BY-4.0; modified: simplified, interior removed, debadged, recoloured, wheels separated."
+    },
+    "sketchfab-asadawut-kaewma-pickup-midsize": {
+      "text": "This work is based on \"Toyota Hilux Revo Prerunner 2021\" (https://sketchfab.com/3d-models/toyota-hilux-revo-prerunner-2021-04ae6d8e07e84f55a9e1d7e3261be171) by Asadawut.Kaewma (https://sketchfab.com/Asadawut.Kaewma) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/). Modified: simplified, interior removed, debadged, recoloured, wheels separated. Brand names are trademarks of their owners.",
+      "item": "Sketchfab, CC-BY-4.0; modified: simplified, interior removed, debadged, recoloured, wheels separated."
+    },
+    "sketchfab-max-box-truck": {
+      "text": "This work is based on \"Carrier Truck Renault Premium DXI 440\" (https://sketchfab.com/3d-models/carrier-truck-renault-premium-dxi-440-b63d1888fde442ffab2c6534abcee647) by Max (https://sketchfab.com/Max-5532) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/). Modified: simplified, interior removed, debadged, recoloured, wheels separated. Brand names are trademarks of their owners.",
+      "item": "Sketchfab, CC-BY-4.0; modified: simplified, interior removed, debadged, recoloured, wheels separated."
+    },
+    "sketchfab-meshava-hypercar": {
+      "text": "This work is based on \"AC - Mclaren P1 [FREE]\" (https://sketchfab.com/3d-models/ac-mclaren-p1-free-747cedadc302451db61deafc85941395) by Meshava (https://sketchfab.com/7093), downloaded from Sketchfab under the Sketchfab Standard licence (https://sketchfab.com/licenses). Modified: simplified, interior removed, debadged, recoloured, wheels separated. The derivative ships only as part of Extalia; it is not offered as a standalone model. Brand names are trademarks of their owners.",
+      "item": "Sketchfab, Sketchfab Standard licence; modified: simplified, interior removed, debadged, recoloured, wheels separated."
+    },
+    "sketchfab-boredvicuna8709-pickup-large": {
+      "text": "This work is based on \"Download Phasmophobia For Pc\" (https://sketchfab.com/3d-models/download-phasmophobia-for-pc-d8e1df6ddff14c01a4ef69d7dbc7e060) by BoredVicuna8709 (https://sketchfab.com/BoredVicuna8709) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/). Modified: simplified, interior removed, debadged, recoloured, wheels separated. Brand names are trademarks of their owners.",
+      "item": "Sketchfab, CC-BY-4.0; modified: simplified, interior removed, debadged, recoloured, wheels separated."
+    },
+    "sketchfab-outpiston-muscle-classic": {
+      "text": "This work is based on \"1970 Dodge Charger R/T Fast And Furious Edition\" (https://sketchfab.com/3d-models/1970-dodge-charger-rt-fast-and-furious-edition-fd195aaa9dad4aefbace532050b7fca6) by OUTPISTON (https://sketchfab.com/OUTPISTON) licensed under CC-BY-NC-SA-4.0 (http://creativecommons.org/licenses/by-nc-sa/4.0/). Non-commercial use only. Modified: simplified, interior removed, debadged, recoloured, wheels separated. This derivative is shared under the same licence, CC-BY-NC-SA-4.0. Brand names are trademarks of their owners.",
+      "item": "Sketchfab, CC-BY-NC-SA-4.0; non-commercial use only; modified: simplified, interior removed, debadged, recoloured, wheels separated."
+    },
+    "sketchfab-actsofdoge-suv-classic": {
+      "text": "This work is based on \"2004 Volvo XC90\" (https://sketchfab.com/3d-models/2004-volvo-xc90-0d311477a2934d0aa5c657f0a278b651) by ActsOfDoge (https://sketchfab.com/ActsOfDoge), downloaded from Sketchfab under the Sketchfab Standard licence (https://sketchfab.com/licenses). Modified: simplified, interior removed, debadged, recoloured, wheels separated. The derivative ships only as part of Extalia; it is not offered as a standalone model. Brand names are trademarks of their owners.",
+      "item": "Sketchfab, Sketchfab Standard licence; modified: simplified, interior removed, debadged, recoloured, wheels separated."
+    },
+    "sketchfab-actsofdoge-suv-large": {
+      "text": "This work is based on \"2007 Cadillac Escalade\" (https://sketchfab.com/3d-models/2007-cadillac-escalade-af13ac3244d24a678a4f6da97dd72eef) by ActsOfDoge (https://sketchfab.com/ActsOfDoge), downloaded from Sketchfab under the Sketchfab Standard licence (https://sketchfab.com/licenses). Modified: simplified, interior removed, debadged, recoloured, wheels separated. The derivative ships only as part of Extalia; it is not offered as a standalone model. Brand names are trademarks of their owners.",
+      "item": "Sketchfab, Sketchfab Standard licence; modified: simplified, interior removed, debadged, recoloured, wheels separated."
+    },
+    "sketchfab-actsofdoge-pickup-crew": {
+      "text": "This work is based on \"2007 GMC Sierra\" (https://sketchfab.com/3d-models/2007-gmc-sierra-e81e5adf739949ccaa54a6d00580ff4a) by ActsOfDoge (https://sketchfab.com/ActsOfDoge), downloaded from Sketchfab under the Sketchfab Standard licence (https://sketchfab.com/licenses). Modified: simplified, interior removed, debadged, recoloured, wheels separated. The derivative ships only as part of Extalia; it is not offered as a standalone model. Brand names are trademarks of their owners.",
+      "item": "Sketchfab, Sketchfab Standard licence; modified: simplified, interior removed, debadged, recoloured, wheels separated."
+    }
+  },
+  "vehicles": [
+    {
+      "style": "ev-sedan",
+      "category": "ev",
+      "weight": 3,
+      "title": "2024 Tesla Model 3",
+      "archive": "2024_tesla_model_3_with_interior.zip",
+      "source": "tesla_model3_2024_Lowpoly.fbx",
+      "length": 4.72,
+      "forward": "-Y",
+      "license": "LicenseRef-RenderHub-Extended-Use",
+      "notice": "renderhub-extended-use",
+      "tail_boxes": [
+        [
+          0.4,
+          1.0,
+          0,
+          0.45,
+          0.78,
+          1.02
+        ]
+      ],
+      "paint_boxes": [
+        [
+          0,
+          0.17,
+          0.55,
+          0.95,
+          0.78,
+          0.92
+        ]
+      ],
+      "rules": [
+        [
+          "material",
+          "Model30004$",
+          "paint"
+        ],
+        [
+          "material",
+          "Model30031$",
+          "rubber"
+        ],
+        [
+          "material",
+          "Model30033$",
+          "alloy"
+        ],
+        [
+          "material",
+          "Model300(35|18|38|39)$",
+          "drop"
+        ],
+        [
+          "material",
+          "Model30014$",
+          "glass"
+        ],
+        [
+          "material",
+          "Model300(10|13|20|21|25|26|27|30|36)$",
+          "lamp"
+        ],
+        [
+          "material",
+          ".",
+          "trim"
+        ]
+      ],
+      "note": "Low-poly FBX variant (the archive also has a high-poly one). Numbered materials: 04 body paint, 31 tyres, 33 rims, 14 glazing, 13/20/26/27 headlamp units, 10/25/30/36 tail lamps; 18 cabin screen, 35 brakes, 38/39 rear lettering dropped."
+    },
+    {
+      "style": "ev-sedan-long",
+      "category": "ev",
+      "weight": 2,
+      "title": "2024 Leapmotor C01",
+      "archive": "2024_leapmotor_c01_with_interior.zip",
+      "source": "c01.fbx",
+      "length": 5.05,
+      "forward": "-Y",
+      "license": "LicenseRef-RenderHub-Extended-Use",
+      "notice": "renderhub-extended-use",
+      "drop_below": 0.1,
+      "rules": [
+        [
+          "object",
+          "^C01004[128]$|^C010025$",
+          "lamp"
+        ],
+        [
+          "material",
+          "C010002$",
+          "rubber"
+        ],
+        [
+          "material",
+          "C010013$",
+          "lamp"
+        ]
+      ],
+      "note": "Seat frames are parked below the floor in the source; anything wholly under the sills (source z < 0.1) is interior."
+    },
+    {
+      "style": "ev-suv",
+      "category": "ev",
+      "weight": 2,
+      "title": "2025 Xiaomi YU7",
+      "archive": "2025_xiaomi_yu7.zip",
+      "source": "Yu7.blend",
+      "length": 5.0,
+      "forward": "-Y",
+      "license": "LicenseRef-RenderHub-Extended-Use",
+      "notice": "renderhub-extended-use",
+      "rules": [
+        [
+          "material",
+          "Yu70001$",
+          "paint"
+        ],
+        [
+          "material",
+          "Yu70013$",
+          "plate"
+        ],
+        [
+          "material",
+          "Yu700(03|12|16)$",
+          "lamp"
+        ],
+        [
+          "material",
+          "Yu70007$",
+          "alloy"
+        ],
+        [
+          "material",
+          "Yu700(09|10)$",
+          "rubber"
+        ],
+        [
+          "material",
+          "Yu700(14|17)$",
+          "drop"
+        ],
+        [
+          "material",
+          ".",
+          "trim"
+        ]
+      ],
+      "note": "Numbered source materials: 01 paint, 03 lamp lenses, 07 rims, 09/10 tyres, 12 lamp emitters, 13 number plates, 14 cabin, 16 indicators, 17 brakes; the rest black trim."
+    },
+    {
+      "style": "ev-mpv",
+      "category": "ev",
+      "weight": 1,
+      "title": "2024 Li Auto MEGA",
+      "archive": "2024_lixiang_mega.zip",
+      "source": "mega.blend",
+      "length": 5.35,
+      "forward": "-Y",
+      "license": "LicenseRef-RenderHub-Extended-Use",
+      "notice": "renderhub-extended-use",
+      "tail_boxes": [
+        [
+          0,
+          1.2,
+          0,
+          0.5,
+          1.2,
+          1.38
+        ]
+      ],
+      "rules": [
+        [
+          "material",
+          "Mega0020$",
+          "rubber"
+        ],
+        [
+          "material",
+          "Mega00(18|21)$",
+          "alloy"
+        ],
+        [
+          "material",
+          "Mega00(22|23)$",
+          "drop"
+        ],
+        [
+          "material",
+          "Mega00(01|02)$",
+          "paint"
+        ],
+        [
+          "material",
+          "Mega00(03|13)$",
+          "lamp"
+        ],
+        [
+          "material",
+          "Mega0009$",
+          "glass"
+        ],
+        [
+          "material",
+          ".",
+          "trim"
+        ]
+      ],
+      "note": "Numbered source materials; the full-width rear light band is a dark trim strip, recovered with a tail box."
+    },
+    {
+      "style": "sedan",
+      "category": "conventional",
+      "weight": 2,
+      "title": "2019 Polestar 1",
+      "archive": "polistar_1_2019.zip",
+      "source": "politser 1 2019.glb",
+      "length": 4.59,
+      "forward": "-Y",
+      "license": "LicenseRef-RenderHub-Extended-Use",
+      "notice": "renderhub-extended-use",
+      "rules": [
+        [
+          "object",
+          "Icosphere",
+          "drop"
+        ],
+        [
+          "object",
+          "Brake",
+          "drop"
+        ],
+        [
+          "object",
+          "_Lights$",
+          "lamp"
+        ],
+        [
+          "material",
+          "Car_Paint",
+          "paint"
+        ],
+        [
+          "material",
+          "Tire",
+          "rubber"
+        ],
+        [
+          "material",
+          "Chrome",
+          "alloy"
+        ],
+        [
+          "material",
+          "Glass_.*Red|Orange",
+          "lamp"
+        ],
+        [
+          "material",
+          "Glass",
+          "glass"
+        ],
+        [
+          "material",
+          "Yellow",
+          "drop"
+        ],
+        [
+          "material",
+          "White",
+          "plate"
+        ]
+      ]
+    },
+    {
+      "style": "hatchback",
+      "category": "conventional",
+      "weight": 2,
+      "title": "Fiat 500",
+      "archive": "fiat_500_3d_model.zip",
+      "source": "Fiat 500.glb",
+      "length": 3.57,
+      "forward": "-Y",
+      "license": "LicenseRef-RenderHub-Extended-Use",
+      "notice": "renderhub-extended-use",
+      "rules": [
+        [
+          "object",
+          "wipes|handles|bottom|muffler|steering|seats?_|door_interior|center_console|speakers",
+          "drop"
+        ],
+        [
+          "object",
+          "taillights",
+          "lamp_tail"
+        ],
+        [
+          "object",
+          "headlights|front_bumper_glass",
+          "lamp_head"
+        ],
+        [
+          "object",
+          "_tire",
+          "rubber"
+        ],
+        [
+          "object",
+          "_rim",
+          "alloy"
+        ],
+        [
+          "material",
+          "carpaint",
+          "paint"
+        ],
+        [
+          "material",
+          "glass_orange|glass_white|orange",
+          "lamp"
+        ],
+        [
+          "material",
+          "glass|mirror",
+          "glass"
+        ],
+        [
+          "material",
+          "chrome",
+          "alloy"
+        ],
+        [
+          "material",
+          "tyre",
+          "rubber"
+        ],
+        [
+          "material",
+          "Material #1020|21 - Default|05 - Default",
+          "trim"
+        ]
+      ]
+    },
+    {
+      "style": "jeep",
+      "category": "conventional",
+      "weight": 1,
+      "title": "BAIC BJ40",
+      "archive": "baic_bj40_3d_suv.zip",
+      "source": "BAIC BJ40.glb",
+      "length": 4.65,
+      "forward": "+Y",
+      "license": "LicenseRef-RenderHub-Extended-Use",
+      "notice": "renderhub-extended-use",
+      "nose": 0.12,
+      "head_boxes": [
+        [
+          0.48,
+          0.82,
+          0.05,
+          0.38,
+          0.98,
+          1.24
+        ]
+      ],
+      "rules": [
+        [
+          "object",
+          "^(fxp|zk|cd|wange|shachepan|lights_0_0)$",
+          "drop"
+        ],
+        [
+          "object",
+          "PAINT",
+          "paint"
+        ],
+        [
+          "object",
+          "^tyre$",
+          "rubber"
+        ],
+        [
+          "object",
+          "^black_wheel$",
+          "alloy"
+        ],
+        [
+          "object",
+          "glasswindows",
+          "glass"
+        ],
+        [
+          "object",
+          "^lights_(5|6|0_2)$",
+          "lamp_tail"
+        ],
+        [
+          "object",
+          "^lights_(1|2|3|4)$",
+          "lamp"
+        ],
+        [
+          "object",
+          "^lights_0_1$",
+          "lamp"
+        ],
+        [
+          "object",
+          ".",
+          "trim"
+        ]
+      ],
+      "note": "Object names are pinyin: fxp steering wheel, zk/cd cabin parts, shachepan brake discs, dipan chassis, wange trim. Round headlamps are dark housings (head box)."
+    },
+    {
+      "style": "mpv",
+      "category": "conventional",
+      "weight": 1,
+      "title": "2021 Honda Odyssey",
+      "archive": "2021_honda_odyssey.zip",
+      "source": "oddysey 2021.FBX",
+      "length": 5.21,
+      "forward": "+Y",
+      "license": "LicenseRef-RenderHub-Extended-Use",
+      "notice": "renderhub-extended-use",
+      "rules": [
+        [
+          "object",
+          "^wheel_",
+          "rubber"
+        ],
+        [
+          "object",
+          "enginebay|engine|chassis|seat|steering",
+          "drop"
+        ],
+        [
+          "object",
+          "logo",
+          "drop"
+        ],
+        [
+          "object",
+          "^glass$|windscreen|window",
+          "glass"
+        ],
+        [
+          "object",
+          "headlight|foglamp|indicator_.f",
+          "lamp_head"
+        ],
+        [
+          "object",
+          "taillight|brakelight|indicator_.r|reversing",
+          "lamp_tail"
+        ],
+        [
+          "material",
+          "^paint",
+          "paint"
+        ],
+        [
+          "material",
+          "^Chrome",
+          "alloy"
+        ],
+        [
+          "material",
+          "^lights",
+          "lamp"
+        ],
+        [
+          "material",
+          "^glass|^windows",
+          "glass"
+        ],
+        [
+          "material",
+          "undercarriage|^black|^door|^red|^int_black",
+          "trim"
+        ]
+      ]
+    },
+    {
+      "style": "van",
+      "category": "conventional",
+      "weight": 1,
+      "title": "2010 SsangYong Rodius",
+      "archive": "ssangyong_rodius_2010.zip",
+      "source": "SyRo/SyRo.blend",
+      "length": 5.13,
+      "forward": "+Y",
+      "license": "LicenseRef-RenderHub-Extended-Use",
+      "notice": "renderhub-extended-use",
+      "head_boxes": [
+        [
+          0.35,
+          1.2,
+          0,
+          0.75,
+          0.6,
+          0.98
+        ]
+      ],
+      "tail_boxes": [
+        [
+          0.4,
+          1.2,
+          0,
+          0.6,
+          0.7,
+          1.12
+        ]
+      ],
+      "rules": [
+        [
+          "object",
+          "^Int_|^Vol_|^IHL",
+          "drop"
+        ],
+        [
+          "object",
+          "p4b",
+          "rubber"
+        ],
+        [
+          "object",
+          "^K..?_alu",
+          "alloy"
+        ],
+        [
+          "object",
+          "_lak$",
+          "paint"
+        ],
+        [
+          "object",
+          "_skl$",
+          "glass"
+        ],
+        [
+          "object",
+          "_gum$|_cbs$|_sbs$|_vgr$|_vbl$",
+          "trim"
+        ],
+        [
+          "object",
+          "_chr$|_alu$",
+          "alloy"
+        ],
+        [
+          "object",
+          "^BL$",
+          "lamp_tail"
+        ]
+      ]
+    },
+    {
+      "style": "pickup",
+      "category": "conventional",
+      "weight": 1,
+      "title": "2019 Ford Ranger Raptor CIVIL (Cities Skylines)",
+      "archive": "2019_ford_ranger_raptor_civil_cities_skylines.glb",
+      "source": "2019_ford_ranger_raptor_civil_cities_skylines.glb",
+      "length": 5.38,
+      "forward": "-Y",
+      "license": "CC-BY-4.0",
+      "notice": "sketchfab-tsb3dmodels-ranger-raptor",
+      "colourFrom": "texture",
+      "note": "Loose Sketchfab .glb (no archive): one mesh and one textured material, so roles come from the base-colour and emission textures (colourFrom texture). Double-cab pickup; replaces the procedural mobility-double-cabin (legacy alias)."
+    },
+    {
+      "style": "sports",
+      "category": "conventional",
+      "weight": 0.2,
+      "title": "2019 Lamborghini Huracán GT3 EVO Racecar",
+      "archive": "lamborghini_huracan_super_trofeo_evo2.zip",
+      "source": "scene.gltf",
+      "length": 4.55,
+      "forward": "-Y",
+      "license": "CC-BY-4.0",
+      "notice": "sketchfab-ddiaz-huracan-gt3",
+      "tail_boxes": [
+        [
+          0.35,
+          1.0,
+          0,
+          0.4,
+          0.76,
+          1.0
+        ]
+      ],
+      "lamp_decals": true,
+      "rules": [
+        [
+          "object",
+          "Badge",
+          "drop"
+        ],
+        [
+          "object",
+          "Interior",
+          "drop"
+        ],
+        [
+          "object",
+          "WindowInside",
+          "drop"
+        ],
+        [
+          "object",
+          "Calliper|Caliper",
+          "drop"
+        ],
+        [
+          "material",
+          "Wheel",
+          "rubber"
+        ],
+        [
+          "material",
+          "LightEmissive|LightA",
+          "lamp"
+        ],
+        [
+          "material",
+          "Window",
+          "glass"
+        ],
+        [
+          "material",
+          "Coloured|Paint|Carbon",
+          "paint"
+        ],
+        [
+          "material",
+          "Base|Grille|Textured",
+          "trim"
+        ]
+      ],
+      "note": "The racing livery is texture-only artwork on the Paint and Coloured panels; both become plain paint and carbon aero panels are painted too. A livery shell covers the lamp lenses (lamp_decals)."
+    },
+    {
+      "style": "micro-ev",
+      "category": "ev",
+      "weight": 1,
+      "title": "2020 Wuling Hongguang Mini EV",
+      "archive": "2020_wuling_hongguang_mini_ev.glb",
+      "source": "2020_wuling_hongguang_mini_ev.glb",
+      "length": 2.92,
+      "forward": "-Y",
+      "license": "CC-BY-4.0",
+      "notice": "sketchfab-007-micro-ev",
+      "texture_paint": false,
+      "role_boxes": [
+        [
+          "paint",
+          0.3,
+          0.54,
+          2.72,
+          2.92,
+          1.02,
+          1.1,
+          [
+            "trim",
+            "alloy",
+            "plate",
+            "glass",
+            "lamp_tail",
+            "lamp"
+          ]
+        ]
+      ],
+      "spare": "rear",
+      "rules": [
+        [
+          "object",
+          "Icosphere",
+          "drop"
+        ],
+        [
+          "material",
+          "Details_INT|int_mat|Tire_Brake|Tire_Disk|Brake",
+          "drop"
+        ],
+        [
+          "material",
+          "Tire|Tyre|Hub|Wheel1A",
+          "rubber"
+        ],
+        [
+          "material",
+          "red_glass|red_glaas|light_glass|lught_glass|_Lights?_",
+          "lamp"
+        ],
+        [
+          "material",
+          "_Glass_|Glass1",
+          "glass"
+        ],
+        [
+          "material",
+          "Details_MAT|Details_EXT|Details_Add",
+          "texture"
+        ],
+        [
+          "material",
+          "Chassis|Grid|SoftTop|Base2_",
+          "trim"
+        ],
+        [
+          "material",
+          "Base_033",
+          "paint"
+        ]
+      ]
+    },
+    {
+      "style": "ev-suv-large",
+      "category": "ev",
+      "weight": 1,
+      "title": "2023 BYD Yangwang U8",
+      "archive": "2023_byd_yangwang_u8.glb",
+      "source": "2023_byd_yangwang_u8.glb",
+      "length": 5.319,
+      "forward": "-Y",
+      "license": "CC-BY-NC-SA-4.0",
+      "notice": "sketchfab-ddiaz-design-ev-suv-large",
+      "texture_paint": false,
+      "role_boxes": [
+        [
+          "trim",
+          0,
+          0.5,
+          0,
+          0.3,
+          0.3,
+          1.3,
+          [
+            "lamp",
+            "lamp_head"
+          ]
+        ],
+        [
+          "trim",
+          0.3,
+          0.95,
+          0,
+          0.45,
+          0.4,
+          0.95,
+          [
+            "lamp",
+            "lamp_head",
+            "glass"
+          ]
+        ]
+      ],
+      "spare": "rear",
+      "rules": [
+        [
+          "object",
+          "Icosphere",
+          "drop"
+        ],
+        [
+          "material",
+          "Details_INT|int_mat|Tire_Brake|Tire_Disk|Brake",
+          "drop"
+        ],
+        [
+          "material",
+          "Tire|Tyre|Hub|Wheel1A",
+          "rubber"
+        ],
+        [
+          "material",
+          "red_glass|red_glaas|light_glass|lught_glass|_Lights?_",
+          "lamp"
+        ],
+        [
+          "material",
+          "_Glass_|Glass1",
+          "glass"
+        ],
+        [
+          "material",
+          "Details_MAT|Details_EXT|Details_Add",
+          "texture"
+        ],
+        [
+          "material",
+          "Chassis|Grid|SoftTop|Base2_",
+          "trim"
+        ],
+        [
+          "material",
+          "CarPaint2",
+          "trim"
+        ],
+        [
+          "material",
+          "Carpaint",
+          "paint"
+        ],
+        [
+          "material",
+          "ChangeA_Tyre",
+          "rubber"
+        ]
+      ]
+    },
+    {
+      "style": "ev-suv-rugged",
+      "category": "ev",
+      "weight": 1,
+      "title": "2024 GMC Hummer EV SUV",
+      "archive": "2024_gmc_hummer_ev_suv.glb",
+      "source": "2024_gmc_hummer_ev_suv.glb",
+      "length": 5.0,
+      "forward": "-Y",
+      "license": "CC-BY-NC-SA-4.0",
+      "notice": "sketchfab-ddiaz-design-ev-suv-rugged",
+      "predecimate": 400000,
+      "role_boxes": [
+        [
+          "trim",
+          0,
+          0.55,
+          0,
+          0.25,
+          0.9,
+          1.4,
+          [
+            "lamp",
+            "lamp_head"
+          ]
+        ]
+      ],
+      "caps": [
+        [
+          "glass",
+          1.86,
+          0.78,
+          1.75,
+          3.55
+        ]
+      ],
+      "side_caps": [
+        [
+          "glass",
+          0.76,
+          1.55,
+          3.4,
+          1.33,
+          1.77
+        ]
+      ],
+      "spare": "rear",
+      "rules": [
+        [
+          "object",
+          "Door_F[LR]_glassclear",
+          "drop"
+        ],
+        [
+          "object",
+          "discbrake|Brake|Interior|^Int_|_Int_|Seat|Steer",
+          "drop"
+        ],
+        [
+          "material",
+          "Leather|Fabric|Cerpet|seatb|stitches|Costura|screen|Screen|Icons|Speaker|Sepaker|Airbag|floor_F|SQ_|Hev_|Line_?P_|Plast_SH|Gold_SH|orange_defrost|Alpha_L|Star_Black",
+          "drop"
+        ],
+        [
+          "material",
+          "Disk_BR",
+          "drop"
+        ],
+        [
+          "material",
+          "^tire",
+          "rubber"
+        ],
+        [
+          "material",
+          "aluminiumbrushed|Chrome_Br",
+          "alloy"
+        ],
+        [
+          "material",
+          "red_glass|red_plas",
+          "lamp_tail"
+        ],
+        [
+          "material",
+          "Light_glass|Light_Cold|orange_Glass|chaarge",
+          "lamp"
+        ],
+        [
+          "material",
+          "Windows|D_glass",
+          "glass"
+        ],
+        [
+          "material",
+          "^CarPaint",
+          "paint"
+        ],
+        [
+          "material",
+          "plate",
+          "plate"
+        ],
+        [
+          "material",
+          ".",
+          "trim"
+        ]
+      ],
+      "note": "The source ships without its removable roof panels; a tinted glass cap (caps) closes the roof so the cabin is culled."
+    },
+    {
+      "style": "ev-pickup",
+      "category": "ev",
+      "weight": 1,
+      "title": "(FREE) 2021 Tesla Cybertruck",
+      "archive": "free_2021_tesla_cybertruck.glb",
+      "source": "free_2021_tesla_cybertruck.glb",
+      "length": 5.885,
+      "forward": "-Y",
+      "license": "CC-BY-NC-4.0",
+      "notice": "sketchfab-veratech-ev-pickup",
+      "spare": "rear",
+      "rules": [
+        [
+          "material",
+          "^tyre$|material_13",
+          "rubber"
+        ],
+        [
+          "material",
+          "^Main$|TrunkMain",
+          "paint"
+        ],
+        [
+          "material",
+          "material_9|material_8",
+          "lamp_tail"
+        ],
+        [
+          "material",
+          "^material$",
+          "lamp_head"
+        ],
+        [
+          "material",
+          "Blinkers",
+          "lamp"
+        ],
+        [
+          "material",
+          "^Glass$|CamGlass",
+          "glass"
+        ],
+        [
+          "material",
+          ".",
+          "trim"
+        ]
+      ]
+    },
+    {
+      "style": "classic-mini",
+      "category": "conventional",
+      "weight": 0.5,
+      "title": "1965 Austin Mini Cooper S",
+      "archive": "1965_austin_mini_cooper_s.glb",
+      "source": "1965_austin_mini_cooper_s.glb",
+      "length": 3.054,
+      "forward": "-Y",
+      "license": "CC-BY-NC-SA-4.0",
+      "notice": "sketchfab-ddiaz-design-classic-mini",
+      "spare": "rear",
+      "rules": [
+        [
+          "material",
+          "internal|disk|phong19|pastillas|badges|mirroir",
+          "drop"
+        ],
+        [
+          "material",
+          "^tire$|rims",
+          "rubber"
+        ],
+        [
+          "material",
+          "red_glass",
+          "lamp_tail"
+        ],
+        [
+          "material",
+          "orange_glass|glass_light|Light_R|glass_N",
+          "lamp"
+        ],
+        [
+          "material",
+          "windows",
+          "glass"
+        ],
+        [
+          "material",
+          "CarPaint_Color_1",
+          "paint"
+        ],
+        [
+          "material",
+          "CarPaint_Color_2",
+          "paint"
+        ],
+        [
+          "material",
+          "chrome",
+          "alloy"
+        ],
+        [
+          "material",
+          "plate",
+          "plate"
+        ],
+        [
+          "material",
+          ".",
+          "trim"
+        ]
+      ]
+    },
+    {
+      "style": "estate",
+      "category": "conventional",
+      "weight": 1,
+      "title": "2013 Audi RS4 Avant",
+      "archive": "2013_audi_rs4_avant.glb",
+      "source": "2013_audi_rs4_avant.glb",
+      "length": 4.719,
+      "forward": "-Y",
+      "license": "CC-BY-4.0",
+      "notice": "sketchfab-007-estate",
+      "texture_paint": false,
+      "role_boxes": [
+        [
+          "trim",
+          0,
+          0.34,
+          0,
+          0.3,
+          0.35,
+          0.72,
+          [
+            "alloy",
+            "plate",
+            "glass"
+          ]
+        ],
+        [
+          "paint",
+          0,
+          0.11,
+          4.6,
+          4.66,
+          0.865,
+          0.945,
+          [
+            "alloy",
+            "trim",
+            "plate"
+          ]
+        ],
+        [
+          "drop",
+          0,
+          0.15,
+          0.03,
+          0.098,
+          0.555,
+          0.66,
+          [
+            "trim",
+            "alloy"
+          ]
+        ]
+      ],
+      "emblems": [
+        [
+          0,
+          0.15,
+          0.03,
+          0.12,
+          0.555,
+          0.657
+        ],
+        [
+          0,
+          0.11,
+          4.6,
+          4.66,
+          0.865,
+          0.945
+        ]
+      ],
+      "spare": "rear",
+      "rules": [
+        [
+          "object",
+          "seat|interior|steer|dash",
+          "drop"
+        ],
+        [
+          "material",
+          "^tyre$",
+          "rubber"
+        ],
+        [
+          "material",
+          "^glow$",
+          "lamp"
+        ],
+        [
+          "material",
+          "^glass$",
+          "glass"
+        ],
+        [
+          "material",
+          "^car_paint$",
+          "paint"
+        ],
+        [
+          "material",
+          "plate",
+          "plate"
+        ],
+        [
+          "material",
+          "Car_1|None1",
+          "texture"
+        ],
+        [
+          "material",
+          ".",
+          "trim"
+        ]
+      ]
+    },
+    {
+      "style": "hot-hatch",
+      "category": "conventional",
+      "weight": 1,
+      "title": "2013 Ford Focus ST",
+      "archive": "2013_ford_focus_st.glb",
+      "source": "2013_ford_focus_st.glb",
+      "length": 4.362,
+      "forward": "-Y",
+      "license": "CC-BY-4.0",
+      "notice": "sketchfab-007-hot-hatch",
+      "texture_paint": false,
+      "emblems": [
+        [
+          0,
+          0.1,
+          0,
+          0.2,
+          0.665,
+          0.755
+        ],
+        [
+          0,
+          0.09,
+          4.06,
+          4.362,
+          0.885,
+          0.975
+        ]
+      ],
+      "role_boxes": [
+        [
+          "paint",
+          0,
+          0.1,
+          0,
+          0.2,
+          0.665,
+          0.755,
+          [
+            "trim",
+            "alloy",
+            "plate",
+            "glass"
+          ]
+        ],
+        [
+          "paint",
+          0,
+          0.13,
+          4.06,
+          4.362,
+          0.88,
+          0.975,
+          [
+            "trim",
+            "alloy",
+            "plate",
+            "glass"
+          ]
+        ],
+        [
+          "paint",
+          0,
+          0.13,
+          4.06,
+          4.362,
+          0.975,
+          0.995,
+          [
+            "trim",
+            "alloy",
+            "plate"
+          ]
+        ]
+      ],
+      "spare": "rear",
+      "rules": [
+        [
+          "material",
+          "leather|stitch|Interior|cloth|gauge|mottled|Color_A06|Color_I16|calipers|disk|badges|niquel",
+          "drop"
+        ],
+        [
+          "material",
+          "f_focus_3_674r|f_focus_3_87k7",
+          "rubber"
+        ],
+        [
+          "material",
+          "rubber1",
+          "trim"
+        ],
+        [
+          "material",
+          "detail_glass_red",
+          "lamp_tail"
+        ],
+        [
+          "material",
+          "light_glass|emiss|METAL_light",
+          "lamp"
+        ],
+        [
+          "material",
+          "window1|glass1|black_glass",
+          "glass"
+        ],
+        [
+          "material",
+          "^body1$",
+          "paint"
+        ],
+        [
+          "material",
+          "chrome|mirror",
+          "alloy"
+        ],
+        [
+          "material",
+          "f_focus",
+          "texture"
+        ],
+        [
+          "material",
+          ".",
+          "trim"
+        ]
+      ]
+    },
+    {
+      "style": "coupe-suv",
+      "category": "conventional",
+      "weight": 1,
+      "title": "2015 Land- Rover Range Rover Evoque Coupe",
+      "archive": "2015_land-_rover_range_rover_evoque_coupe.glb",
+      "source": "2015_land-_rover_range_rover_evoque_coupe.glb",
+      "length": 4.355,
+      "forward": "-Y",
+      "license": "CC-BY-4.0",
+      "notice": "sketchfab-007-coupe-suv",
+      "texture_paint": false,
+      "emblems": [
+        [
+          0.25,
+          0.58,
+          4.1,
+          4.355,
+          0.9,
+          1.0
+        ]
+      ],
+      "role_boxes": [
+        [
+          "trim",
+          0,
+          0.5,
+          0,
+          0.3,
+          0.8,
+          0.95,
+          [
+            "plate"
+          ]
+        ],
+        [
+          "paint",
+          0.25,
+          0.58,
+          4.1,
+          4.355,
+          0.9,
+          1.0,
+          [
+            "trim",
+            "alloy",
+            "plate",
+            "lamp_tail",
+            "lamp",
+            "glass"
+          ]
+        ]
+      ],
+      "spare": "rear",
+      "rules": [
+        [
+          "object",
+          "seat|interior|steer|dash",
+          "drop"
+        ],
+        [
+          "material",
+          "^tyre$",
+          "rubber"
+        ],
+        [
+          "material",
+          "glows",
+          "lamp"
+        ],
+        [
+          "material",
+          "^glass$|black_glass",
+          "glass"
+        ],
+        [
+          "material",
+          "carpaint",
+          "paint"
+        ],
+        [
+          "material",
+          "chrome|mirror",
+          "alloy"
+        ],
+        [
+          "material",
+          "plate",
+          "plate"
+        ],
+        [
+          "material",
+          "^material$|None1",
+          "texture"
+        ],
+        [
+          "material",
+          ".",
+          "trim"
+        ]
+      ]
+    },
+    {
+      "style": "crossover",
+      "category": "conventional",
+      "weight": 1,
+      "title": "2015 Nissan Murano Hybrid",
+      "archive": "2015_nissan_murano_hybrid.glb",
+      "source": "2015_nissan_murano_hybrid.glb",
+      "length": 4.887,
+      "forward": "-Y",
+      "license": "CC-BY-4.0",
+      "notice": "sketchfab-007-crossover",
+      "emblems": [
+        [
+          0,
+          0.12,
+          0,
+          0.3,
+          0.76,
+          0.99
+        ]
+      ],
+      "role_boxes": [
+        [
+          "trim",
+          0,
+          0.12,
+          0,
+          0.3,
+          0.76,
+          0.99,
+          [
+            "paint",
+            "alloy",
+            "plate",
+            "glass"
+          ]
+        ]
+      ],
+      "spare": "rear",
+      "rules": [
+        [
+          "material",
+          "int_|interior|badge|brakes|manuf|Explorer",
+          "drop"
+        ],
+        [
+          "material",
+          "rubber1",
+          "trim"
+        ],
+        [
+          "material",
+          "tyre",
+          "rubber"
+        ],
+        [
+          "material",
+          "Lights|LIGHT_2",
+          "lamp"
+        ],
+        [
+          "material",
+          "^glass",
+          "glass"
+        ],
+        [
+          "material",
+          "car_paint",
+          "paint"
+        ],
+        [
+          "material",
+          "chrome|mirrors",
+          "alloy"
+        ],
+        [
+          "material",
+          ".",
+          "trim"
+        ]
+      ]
+    },
+    {
+      "style": "sports-gt",
+      "category": "conventional",
+      "weight": 0.2,
+      "title": "2017_mercedes-benz_amg_gt_r",
+      "archive": "2017_mercedes-benz_amg_gt_r.glb",
+      "source": "2017_mercedes-benz_amg_gt_r.glb",
+      "length": 4.551,
+      "forward": "-Y",
+      "license": "CC-BY-4.0",
+      "notice": "sketchfab-007-sports-gt",
+      "emblems": [
+        [
+          0,
+          0.12,
+          0,
+          0.1,
+          0.36,
+          0.6
+        ]
+      ],
+      "role_boxes": [
+        [
+          "trim",
+          0,
+          0.12,
+          0,
+          0.12,
+          0.37,
+          0.59,
+          [
+            "glass"
+          ]
+        ]
+      ],
+      "spare": "rear",
+      "rules": [
+        [
+          "object",
+          "Icosphere|GroundShadow",
+          "drop"
+        ],
+        [
+          "object",
+          "Calliper|Caliper|Brake|Disc",
+          "drop"
+        ],
+        [
+          "material",
+          "Interior|Engine|Int_Color|Calliper|Caliper|Badge|ManufacturerPlate|phong",
+          "drop"
+        ],
+        [
+          "material",
+          "Wheel1A|Wheel|Tyre|Tire",
+          "rubber"
+        ],
+        [
+          "material",
+          "LightA|Light_glass|red_glass|orange_glass|GlassRed|GlassAmber",
+          "lamp"
+        ],
+        [
+          "material",
+          "Window|GlassMtl",
+          "glass"
+        ],
+        [
+          "material",
+          "Paint|Coloured",
+          "paint"
+        ],
+        [
+          "material",
+          "LicensePlate",
+          "plate"
+        ],
+        [
+          "material",
+          ".",
+          "trim"
+        ]
+      ]
+    },
+    {
+      "style": "sports-rear-engine",
+      "category": "conventional",
+      "weight": 0.2,
+      "title": "2017 Porsche 911 (991) GT3 RS",
+      "archive": "2017_porsche_911_991_gt3_rs.glb",
+      "source": "2017_porsche_911_991_gt3_rs.glb",
+      "length": 4.545,
+      "forward": "-Y",
+      "license": "CC-BY-4.0",
+      "notice": "sketchfab-007-sports-rear-engine",
+      "spare": "rear",
+      "rules": [
+        [
+          "object",
+          "Icosphere|GroundShadow",
+          "drop"
+        ],
+        [
+          "object",
+          "Calliper|Caliper|Brake|Disc",
+          "drop"
+        ],
+        [
+          "material",
+          "Interior|Engine|Int_Color|Calliper|Caliper|Badge|ManufacturerPlate|phong",
+          "drop"
+        ],
+        [
+          "material",
+          "Wheel1A|Wheel|Tyre|Tire",
+          "rubber"
+        ],
+        [
+          "material",
+          "LightA|Light_glass|red_glass|orange_glass|GlassRed|GlassAmber",
+          "lamp"
+        ],
+        [
+          "material",
+          "Window|GlassMtl",
+          "glass"
+        ],
+        [
+          "material",
+          "Paint|Coloured",
+          "paint"
+        ],
+        [
+          "material",
+          "LicensePlate",
+          "plate"
+        ],
+        [
+          "material",
+          ".",
+          "trim"
+        ]
+      ]
+    },
+    {
+      "style": "roadster",
+      "category": "conventional",
+      "weight": 0.2,
+      "title": "2019 BMW I8 Roadster",
+      "archive": "2019_bmw_i8_roadster.glb",
+      "source": "2019_bmw_i8_roadster.glb",
+      "length": 4.689,
+      "forward": "-Y",
+      "license": "CC-BY-4.0",
+      "notice": "sketchfab-007-roadster",
+      "texture_paint": false,
+      "emblems": [
+        [
+          0,
+          0.06,
+          0.035,
+          0.12,
+          0.61,
+          0.67
+        ],
+        [
+          0,
+          0.065,
+          4.58,
+          4.65,
+          0.76,
+          0.91
+        ]
+      ],
+      "role_boxes": [
+        [
+          "paint",
+          0,
+          0.055,
+          0.035,
+          0.12,
+          0.615,
+          0.67,
+          [
+            "trim",
+            "alloy",
+            "plate",
+            "glass"
+          ]
+        ],
+        [
+          "trim",
+          0,
+          0.065,
+          4.58,
+          4.65,
+          0.76,
+          0.91,
+          [
+            "paint",
+            "alloy",
+            "plate",
+            "glass",
+            "lamp",
+            "lamp_tail"
+          ]
+        ]
+      ],
+      "spare": "rear",
+      "rules": [
+        [
+          "object",
+          "Icosphere",
+          "drop"
+        ],
+        [
+          "material",
+          "Details_INT|int_mat|Tire_Brake|Tire_Disk|Brake",
+          "drop"
+        ],
+        [
+          "material",
+          "Tire|Tyre|Hub|Wheel1A",
+          "rubber"
+        ],
+        [
+          "material",
+          "red_glass|red_glaas|light_glass|lught_glass|_Lights?_",
+          "lamp"
+        ],
+        [
+          "material",
+          "_Glass_|Glass1",
+          "glass"
+        ],
+        [
+          "material",
+          "Details_MAT|Details_EXT|Details_Add",
+          "texture"
+        ],
+        [
+          "material",
+          "Chassis|Grid|SoftTop|Base2_",
+          "trim"
+        ],
+        [
+          "material",
+          "Roadster_Base_",
+          "paint"
+        ]
+      ]
+    },
+    {
+      "style": "muscle",
+      "category": "conventional",
+      "weight": 0.3,
+      "title": "2020 Ford Mustang Shelby GT350R",
+      "archive": "2020_ford_mustang_shelby_gt350r.glb",
+      "source": "2020_ford_mustang_shelby_gt350r.glb",
+      "length": 4.818,
+      "forward": "-Y",
+      "license": "CC-BY-4.0",
+      "notice": "sketchfab-007-muscle",
+      "spare": "rear",
+      "rules": [
+        [
+          "object",
+          "Icosphere|GroundShadow",
+          "drop"
+        ],
+        [
+          "object",
+          "Calliper|Caliper|Brake|Disc",
+          "drop"
+        ],
+        [
+          "material",
+          "Interior|Engine|Int_Color|Calliper|Caliper|Badge|ManufacturerPlate|phong",
+          "drop"
+        ],
+        [
+          "material",
+          "Wheel1A|Wheel|Tyre|Tire",
+          "rubber"
+        ],
+        [
+          "material",
+          "LightA|Light_glass|red_glass|orange_glass|GlassRed|GlassAmber",
+          "lamp"
+        ],
+        [
+          "material",
+          "Window|GlassMtl",
+          "glass"
+        ],
+        [
+          "material",
+          "Paint|Coloured",
+          "paint"
+        ],
+        [
+          "material",
+          "LicensePlate",
+          "plate"
+        ],
+        [
+          "material",
+          ".",
+          "trim"
+        ]
+      ]
+    },
+    {
+      "style": "performance-suv",
+      "category": "conventional",
+      "weight": 0.5,
+      "title": "2020 Porsche Cayenne Turbo Coupe",
+      "archive": "2020_porsche_cayenne_turbo_coupe.glb",
+      "source": "2020_porsche_cayenne_turbo_coupe.glb",
+      "length": 4.939,
+      "forward": "-Y",
+      "license": "CC-BY-4.0",
+      "notice": "sketchfab-007-performance-suv",
+      "texture_paint": false,
+      "emblems": [
+        [
+          0,
+          0.04,
+          0.12,
+          0.22,
+          0.86,
+          0.92
+        ],
+        [
+          0,
+          0.07,
+          0,
+          0.25,
+          0.49,
+          0.62
+        ]
+      ],
+      "role_boxes": [
+        [
+          "paint",
+          0,
+          0.04,
+          0.12,
+          0.22,
+          0.86,
+          0.92,
+          [
+            "trim",
+            "alloy",
+            "plate",
+            "glass",
+            "lamp",
+            "lamp_head"
+          ]
+        ]
+      ],
+      "spare": "rear",
+      "rules": [
+        [
+          "object",
+          "Icosphere",
+          "drop"
+        ],
+        [
+          "material",
+          "Details_INT|int_mat|Tire_Brake|Tire_Disk|Brake",
+          "drop"
+        ],
+        [
+          "material",
+          "Tire|Tyre|Hub|Wheel1A",
+          "rubber"
+        ],
+        [
+          "material",
+          "red_glass|red_glaas|light_glass|lught_glass|_Lights?_",
+          "lamp"
+        ],
+        [
+          "material",
+          "_Glass_|Glass1",
+          "glass"
+        ],
+        [
+          "material",
+          "Details_MAT|Details_EXT|Details_Add",
+          "texture"
+        ],
+        [
+          "material",
+          "Chassis|Grid|SoftTop|Base2_",
+          "trim"
+        ],
+        [
+          "material",
+          "Porsche_Cayenne1",
+          "paint"
+        ],
+        [
+          "material",
+          "Calliper",
+          "drop"
+        ],
+        [
+          "material",
+          "Carbon",
+          "trim"
+        ]
+      ]
+    },
+    {
+      "style": "suv-luxury",
+      "category": "conventional",
+      "weight": 0.5,
+      "title": "2022 Hongqi LS7 Guoyao",
+      "archive": "2022_hongqi_ls7_guoyao.glb",
+      "source": "2022_hongqi_ls7_guoyao.glb",
+      "length": 5.695,
+      "forward": "-Y",
+      "license": "CC-BY-4.0",
+      "notice": "sketchfab-007-suv-luxury",
+      "texture_paint": false,
+      "spare": "rear",
+      "rules": [
+        [
+          "object",
+          "Icosphere",
+          "drop"
+        ],
+        [
+          "material",
+          "Details_INT|int_mat|Tire_Brake|Tire_Disk|Brake",
+          "drop"
+        ],
+        [
+          "material",
+          "Tire|Tyre|Hub|Wheel1A",
+          "rubber"
+        ],
+        [
+          "material",
+          "red_glass|red_glaas|light_glass|lught_glass|_Lights?_",
+          "lamp"
+        ],
+        [
+          "material",
+          "_Glass_|Glass1",
+          "glass"
+        ],
+        [
+          "material",
+          "Details_MAT|Details_EXT|Details_Add",
+          "texture"
+        ],
+        [
+          "material",
+          "Chassis|Grid|SoftTop|Base2_",
+          "trim"
+        ],
+        [
+          "material",
+          "LS7_Base",
+          "paint"
+        ],
+        [
+          "material",
+          "CarPaint_Chrome",
+          "alloy"
+        ],
+        [
+          "material",
+          "Default_Material",
+          "drop"
+        ]
+      ]
+    },
+    {
+      "style": "suv-family",
+      "category": "conventional",
+      "weight": 1,
+      "title": "2022 Volkswagen Tiguan L 430 PHEV",
+      "archive": "2022_volkswagen_tiguan_l_430_phev.glb",
+      "source": "2022_volkswagen_tiguan_l_430_phev.glb",
+      "length": 4.735,
+      "forward": "-Y",
+      "license": "CC-BY-4.0",
+      "notice": "sketchfab-007-suv-family",
+      "predecimate": 400000,
+      "tail_boxes": [
+        [
+          0.4,
+          1.0,
+          0,
+          0.3,
+          0.8,
+          1.1
+        ]
+      ],
+      "emblems": [
+        [
+          0,
+          0.1,
+          0,
+          0.3,
+          0.69,
+          0.84
+        ],
+        [
+          0,
+          0.08,
+          4.48,
+          4.735,
+          0.99,
+          1.1
+        ]
+      ],
+      "role_boxes": [
+        [
+          "trim",
+          0,
+          0.1,
+          0,
+          0.3,
+          0.69,
+          0.84,
+          [
+            "paint",
+            "alloy",
+            "plate",
+            "glass"
+          ]
+        ],
+        [
+          "paint",
+          0,
+          0.08,
+          4.48,
+          4.735,
+          0.99,
+          1.1,
+          [
+            "trim",
+            "alloy",
+            "plate",
+            "glass"
+          ]
+        ]
+      ],
+      "spare": "rear",
+      "rules": [
+        [
+          "material",
+          "inner|badges|breaks|blue_plastic",
+          "drop"
+        ],
+        [
+          "material",
+          "^tire$",
+          "rubber"
+        ],
+        [
+          "material",
+          "LIGHT_MAT",
+          "lamp"
+        ],
+        [
+          "material",
+          "red_plastic",
+          "lamp_tail"
+        ],
+        [
+          "material",
+          "^glass$",
+          "glass"
+        ],
+        [
+          "material",
+          "carPaint",
+          "paint"
+        ],
+        [
+          "material",
+          "chrome|mirror|white_plastic",
+          "alloy"
+        ],
+        [
+          "material",
+          ".",
+          "trim"
+        ]
+      ]
+    },
+    {
+      "style": "suv-compact",
+      "category": "conventional",
+      "weight": 1,
+      "title": "2023 Hyundai Creta",
+      "archive": "2023_hyundai_creta.glb",
+      "source": "2023_hyundai_creta.glb",
+      "length": 4.3,
+      "forward": "-Y",
+      "license": "CC-BY-4.0",
+      "notice": "sketchfab-007-suv-compact",
+      "role_boxes": [
+        [
+          "trim",
+          0,
+          0.2,
+          0,
+          0.3,
+          0.45,
+          1.0,
+          [
+            "alloy",
+            "plate"
+          ]
+        ],
+        [
+          "paint",
+          0,
+          0.08,
+          4.05,
+          4.3,
+          1.01,
+          1.1,
+          [
+            "trim",
+            "alloy",
+            "plate",
+            "glass"
+          ]
+        ]
+      ],
+      "emblems": [
+        [
+          0,
+          0.13,
+          0,
+          0.35,
+          0.77,
+          0.92
+        ],
+        [
+          0,
+          0.08,
+          4.05,
+          4.3,
+          1.01,
+          1.1
+        ]
+      ],
+      "spare": "rear",
+      "rules": [
+        [
+          "material",
+          "lether|seatbelt|blackinterior|speaker|Brown|display|floor|costura|int_plastic|icons|pedal|int1|wheel_Emblem|LicensePlate",
+          "drop"
+        ],
+        [
+          "material",
+          "TireBlack",
+          "rubber"
+        ],
+        [
+          "material",
+          "Redglass|^light$",
+          "lamp_tail"
+        ],
+        [
+          "material",
+          "orange_glass|light_chrome",
+          "lamp"
+        ],
+        [
+          "material",
+          "Windows",
+          "glass"
+        ],
+        [
+          "material",
+          "carpaint",
+          "paint"
+        ],
+        [
+          "material",
+          "Chrome|D_Metal",
+          "alloy"
+        ],
+        [
+          "material",
+          ".",
+          "trim"
+        ]
+      ]
+    },
+    {
+      "style": "suv-urban",
+      "category": "conventional",
+      "weight": 1,
+      "title": "2023 Hyundai Mufasa",
+      "archive": "2023_hyundai_mufasa.glb",
+      "source": "2023_hyundai_mufasa.glb",
+      "length": 4.475,
+      "forward": "-Y",
+      "license": "CC-BY-4.0",
+      "notice": "sketchfab-007-suv-urban",
+      "role_boxes": [
+        [
+          "trim",
+          0,
+          0.2,
+          0,
+          0.3,
+          0.45,
+          1.0,
+          [
+            "alloy",
+            "plate"
+          ]
+        ]
+      ],
+      "emblems": [
+        [
+          0,
+          0.14,
+          0,
+          0.35,
+          0.76,
+          0.9
+        ]
+      ],
+      "spare": "rear",
+      "rules": [
+        [
+          "object",
+          "^Object_(29|32|120)$",
+          "drop"
+        ],
+        [
+          "material",
+          "chair|Interior|iN_p|Plas_Int|SW_B|Z_Map|z_Map|BREAKS|INTERIOR|standardSurface",
+          "drop"
+        ],
+        [
+          "material",
+          "^tire$|rim",
+          "rubber"
+        ],
+        [
+          "material",
+          "R_Light",
+          "lamp_tail"
+        ],
+        [
+          "material",
+          "Lights|L_Map",
+          "lamp"
+        ],
+        [
+          "material",
+          "^glass$",
+          "glass"
+        ],
+        [
+          "material",
+          "CQ_Material",
+          "paint"
+        ],
+        [
+          "material",
+          "Chrome|CHROME",
+          "alloy"
+        ],
+        [
+          "material",
+          "plate",
+          "plate"
+        ],
+        [
+          "material",
+          ".",
+          "trim"
+        ]
+      ]
+    },
+    {
+      "style": "compact-van",
+      "category": "ev",
+      "weight": 1,
+      "title": "2024 BYD ETP3",
+      "archive": "2024_byd_etp3.glb",
+      "source": "2024_byd_etp3.glb",
+      "length": 4.46,
+      "forward": "-Y",
+      "license": "CC-BY-4.0",
+      "notice": "sketchfab-007-compact-van",
+      "role_boxes": [
+        [
+          "trim",
+          0,
+          0.25,
+          0,
+          0.3,
+          0.45,
+          1.1,
+          [
+            "alloy",
+            "plate"
+          ]
+        ],
+        [
+          "paint",
+          0,
+          0.065,
+          4.38,
+          4.46,
+          1.13,
+          1.245,
+          [
+            "lamp",
+            "lamp_tail",
+            "trim",
+            "alloy",
+            "plate"
+          ]
+        ]
+      ],
+      "emblems": [
+        [
+          0,
+          0.09,
+          0,
+          0.12,
+          0.83,
+          0.95
+        ],
+        [
+          0,
+          0.1,
+          4.38,
+          4.46,
+          1.13,
+          1.245
+        ]
+      ],
+      "spare": "rear",
+      "rules": [
+        [
+          "material",
+          "interior|Interior|breaks|defrost|lines|material_13|material_26|^material$",
+          "drop"
+        ],
+        [
+          "material",
+          "^tire$|rubber1|RIM_AO|Rim_Inner",
+          "rubber"
+        ],
+        [
+          "material",
+          "red_glass|Light_T|TL_Pattern|chrome_TL",
+          "lamp_tail"
+        ],
+        [
+          "material",
+          "light_glass|HL_",
+          "lamp"
+        ],
+        [
+          "material",
+          "windows",
+          "glass"
+        ],
+        [
+          "material",
+          "MAP_A_CAR_AO",
+          "texture"
+        ],
+        [
+          "material",
+          "mirrors|CHROME|Chrome",
+          "alloy"
+        ],
+        [
+          "material",
+          ".",
+          "trim"
+        ]
+      ],
+      "note": "Battery-electric BYD ETP3 (category ev, owner rule 2026-10-30). The BYD emblems on the grille and tailgate are removed (emblems)."
+    },
+    {
+      "style": "offroad-4door",
+      "category": "conventional",
+      "weight": 1,
+      "title": "2021 Jeep Wrangler",
+      "archive": "2021_jeep_wrangler.glb",
+      "source": "2021_jeep_wrangler.glb",
+      "length": 4.785,
+      "forward": "-Y",
+      "license": "CC-BY-4.0",
+      "notice": "sketchfab-tonielpro520-offroad-4door",
+      "predecimate": 400000,
+      "spare": "rear",
+      "rules": [
+        [
+          "object",
+          "^Object_(89|90|91|92)$",
+          "drop"
+        ],
+        [
+          "material",
+          "Interno|Freio",
+          "drop"
+        ],
+        [
+          "material",
+          "Pneu|Roda",
+          "rubber"
+        ],
+        [
+          "material",
+          "Vidro_Vermelho|Lanterna_Traseira|Metal_Vermelho_[12]",
+          "lamp_tail"
+        ],
+        [
+          "material",
+          "Farol|Laranja",
+          "lamp"
+        ],
+        [
+          "material",
+          "Vidros",
+          "glass"
+        ],
+        [
+          "material",
+          "Pintura",
+          "paint"
+        ],
+        [
+          "material",
+          "Cromado",
+          "alloy"
+        ],
+        [
+          "material",
+          ".",
+          "trim"
+        ]
+      ]
+    },
+    {
+      "style": "suv-midsize",
+      "category": "conventional",
+      "weight": 1,
+      "title": "HAVAL H6 HEV 2024",
+      "archive": "haval_h6_hev_2024.glb",
+      "source": "haval_h6_hev_2024.glb",
+      "length": 4.703,
+      "forward": "+Y",
+      "license": "CC-BY-4.0",
+      "notice": "sketchfab-vinishows-1753d1-suv-midsize",
+      "predecimate": 400000,
+      "role_boxes": [
+        [
+          "rubber",
+          0.62,
+          1.2,
+          0.56,
+          1.34,
+          0,
+          0.76,
+          [
+            "trim",
+            "alloy"
+          ]
+        ],
+        [
+          "rubber",
+          0.62,
+          1.2,
+          3.3,
+          4.08,
+          0,
+          0.76,
+          [
+            "trim",
+            "alloy"
+          ]
+        ]
+      ],
+      "spare": "rear",
+      "rules": [
+        [
+          "material",
+          "^mat5$|^mat8$|^mat1[5-9]$|^mat11$",
+          "drop"
+        ],
+        [
+          "material",
+          "^mat[13]$",
+          "paint"
+        ],
+        [
+          "material",
+          "^mat(4|9)$",
+          "glass"
+        ],
+        [
+          "material",
+          "^mat7$",
+          "glass"
+        ],
+        [
+          "material",
+          "^mat1[34]$",
+          "lamp"
+        ],
+        [
+          "material",
+          "^mat(12|20)$",
+          "lamp_tail"
+        ],
+        [
+          "material",
+          "^mat10$",
+          "alloy"
+        ],
+        [
+          "material",
+          ".",
+          "trim"
+        ]
+      ],
+      "note": "Merged-material source: tyres share the black material, so role_boxes mark them by position."
+    },
+    {
+      "style": "sports-classic",
+      "category": "conventional",
+      "weight": 0.2,
+      "title": "Honda NSX 1990",
+      "archive": "honda_nsx_1990.glb",
+      "source": "honda_nsx_1990.glb",
+      "length": 4.405,
+      "forward": "-Y",
+      "license": "CC-BY-4.0",
+      "notice": "sketchfab-lexyc16-sports-classic",
+      "tail_boxes": [
+        [
+          0,
+          0.9,
+          0,
+          0.35,
+          0.64,
+          0.92
+        ]
+      ],
+      "spare": "rear",
+      "rules": [
+        [
+          "material",
+          "Material\\.0(11|23|21|18)$",
+          "rubber"
+        ],
+        [
+          "material",
+          "Material\\.017$",
+          "trim"
+        ],
+        [
+          "material",
+          "Material\\.008$|material_0$|Material\\.007$",
+          "lamp_head"
+        ],
+        [
+          "material",
+          "Material\\.004$|Material\\.014$",
+          "glass"
+        ],
+        [
+          "material",
+          "Material\\.003$",
+          "paint"
+        ],
+        [
+          "material",
+          "Material\\.016$",
+          "plate"
+        ],
+        [
+          "material",
+          "Material\\.009$",
+          "drop"
+        ],
+        [
+          "material",
+          ".",
+          "trim"
+        ]
+      ]
+    },
+    {
+      "style": "city-hatch",
+      "category": "conventional",
+      "weight": 1,
+      "title": "Mini Cooper S Facelift",
+      "archive": "mini_cooper_s_facelift.glb",
+      "source": "mini_cooper_s_facelift.glb",
+      "length": 3.876,
+      "forward": "-X",
+      "license": "CC-BY-4.0",
+      "notice": "sketchfab-mona-x-supercars-city-hatch",
+      "spare": "rear",
+      "rules": [
+        [
+          "material",
+          "Salon|Torpeda|Tonel|seat|sideniya|Back_Door|Dveri|Potolok|potolok|Emblema|Logo|tormoz|Default|Holes",
+          "drop"
+        ],
+        [
+          "material",
+          "Tire|Koleso|Koles",
+          "rubber"
+        ],
+        [
+          "material",
+          "backlights|Back_lights",
+          "lamp_tail"
+        ],
+        [
+          "material",
+          "front_lights|Front_lights",
+          "lamp_head"
+        ],
+        [
+          "material",
+          "Glass_Windows|PANARAMA",
+          "glass"
+        ],
+        [
+          "material",
+          "Kuzov_Main",
+          "paint"
+        ],
+        [
+          "material",
+          "Nomera",
+          "plate"
+        ],
+        [
+          "material",
+          "Specular_Railing|Mirrors",
+          "alloy"
+        ],
+        [
+          "material",
+          ".",
+          "trim"
+        ]
+      ]
+    },
+    {
+      "style": "rally-sedan",
+      "category": "conventional",
+      "weight": 0.3,
+      "title": "Mitsubishi Lancer Evo 5",
+      "archive": "mitsubishi_lancer_evo_5.glb",
+      "source": "mitsubishi_lancer_evo_5.glb",
+      "length": 4.35,
+      "forward": "-Y",
+      "license": "CC-BY-4.0",
+      "notice": "sketchfab-nieve5677-rally-sedan",
+      "colourFrom": "texture",
+      "texture_roles": [
+        [
+          "lamp_head",
+          0.4,
+          0.82,
+          0,
+          0.25,
+          0.55,
+          0.82
+        ]
+      ],
+      "role_boxes": [
+        [
+          "paint",
+          0.28,
+          0.58,
+          4.1,
+          4.35,
+          0.91,
+          1.0,
+          [
+            "trim",
+            "alloy",
+            "plate",
+            "lamp_tail",
+            "lamp",
+            "glass"
+          ]
+        ]
+      ],
+      "spare": "rear",
+      "rules": [
+        [
+          "object",
+          "shadow|TexBlendObj|punch_add",
+          "drop"
+        ],
+        [
+          "parent",
+          "^Wheel_(FL|FR|RL|RR)$",
+          "rubber"
+        ]
+      ]
+    },
+    {
+      "style": "limousine",
+      "category": "conventional",
+      "weight": 0.2,
+      "title": "Monstrous",
+      "archive": "monstrous.glb",
+      "source": "monstrous.glb",
+      "length": 6.6,
+      "forward": "-Y",
+      "license": "CC-BY-4.0",
+      "notice": "sketchfab-nieve5677-limousine",
+      "placement": "traffic-only",
+      "colourFrom": "texture",
+      "emblems": [
+        [
+          0,
+          0.12,
+          6.3,
+          6.6,
+          0.84,
+          0.92
+        ]
+      ],
+      "role_boxes": [
+        [
+          "paint",
+          0,
+          0.12,
+          6.3,
+          6.6,
+          0.84,
+          0.92,
+          [
+            "trim",
+            "alloy",
+            "plate",
+            "glass"
+          ]
+        ]
+      ],
+      "spare": "rear",
+      "rules": [
+        [
+          "object",
+          "shadow|Flame|TexBlendObj|punch_add",
+          "drop"
+        ],
+        [
+          "parent",
+          "^Wheel_(FL|FR|RL|RR)$",
+          "rubber"
+        ]
+      ],
+      "note": "Ridge Racer-style fictional stretch limousine (\"Monstrous\", not a monster truck); too long for the 5.5 m bays, so traffic-only on the open lanes."
+    },
+    {
+      "style": "pickup-offroad",
+      "category": "conventional",
+      "weight": 0.5,
+      "title": "PICKUP FORD RAPTOR R",
+      "archive": "pickup_ford_raptor_r.glb",
+      "source": "pickup_ford_raptor_r.glb",
+      "length": 5.91,
+      "forward": "-Y",
+      "license": "CC-BY-4.0",
+      "notice": "sketchfab-carmodifier-pickup-offroad",
+      "source_box": [
+        -50,
+        20,
+        -100,
+        100,
+        -10,
+        100
+      ],
+      "predecimate": 400000,
+      "role_boxes": [
+        [
+          "drop",
+          0,
+          0.9,
+          4.05,
+          6.2,
+          1.34,
+          2.4
+        ]
+      ],
+      "spare": "rear",
+      "rules": [
+        [
+          "object",
+          "^Text|^Cube|^Cylinder|^Object_47\\.003",
+          "drop"
+        ],
+        [
+          "material",
+          "material_41",
+          "rubber"
+        ],
+        [
+          "material",
+          "material_26$",
+          "alloy"
+        ],
+        [
+          "material",
+          "material_9\\.001|material_34",
+          "lamp_head"
+        ],
+        [
+          "material",
+          "material_14$",
+          "lamp_tail"
+        ],
+        [
+          "material",
+          "^Material$",
+          "paint"
+        ],
+        [
+          "material",
+          ".",
+          "trim"
+        ]
+      ],
+      "note": "The source scene holds two trucks and props; source_box keeps the black truck, bed cargo and the roof light bar are dropped."
+    },
+    {
+      "style": "pickup-midsize",
+      "category": "conventional",
+      "weight": 1,
+      "title": "Toyota Hilux Revo Prerunner 2021",
+      "archive": "toyota_hilux_revo_prerunner_2021.glb",
+      "source": "toyota_hilux_revo_prerunner_2021.glb",
+      "length": 5.325,
+      "forward": "-Y",
+      "license": "CC-BY-4.0",
+      "notice": "sketchfab-asadawut-kaewma-pickup-midsize",
+      "predecimate": 400000,
+      "role_boxes": [
+        [
+          "trim",
+          0,
+          0.15,
+          0,
+          0.35,
+          0.9,
+          1.1,
+          [
+            "paint",
+            "alloy",
+            "plate",
+            "glass"
+          ]
+        ]
+      ],
+      "emblems": [
+        [
+          0,
+          0.15,
+          0,
+          0.35,
+          0.9,
+          1.1
+        ]
+      ],
+      "spare": "rear",
+      "rules": [
+        [
+          "object",
+          "HILUX_IN_|_INT_|SEAT|STEER",
+          "drop"
+        ],
+        [
+          "material",
+          "_int|int_|seat|stitch|ind_|sticker|logo|Android|dashboard|velvet|plastic_roof|brakepump|DRUM_BRAKE|TYRE_SHADOW|chromium_ext|Material_3(49|59|61)|Material_26$",
+          "drop"
+        ],
+        [
+          "material",
+          "^tire$",
+          "rubber"
+        ],
+        [
+          "material",
+          "r_glass|Material_363|^material$",
+          "lamp_tail"
+        ],
+        [
+          "material",
+          "glass_h|^light$|o_glass",
+          "lamp"
+        ],
+        [
+          "material",
+          "windows_glass",
+          "glass"
+        ],
+        [
+          "material",
+          "carpaint",
+          "paint"
+        ],
+        [
+          "material",
+          "chrome|silver",
+          "alloy"
+        ],
+        [
+          "material",
+          "plate",
+          "plate"
+        ],
+        [
+          "material",
+          ".",
+          "trim"
+        ]
+      ]
+    },
+    {
+      "style": "box-truck",
+      "category": "conventional",
+      "weight": 0.3,
+      "title": "Carrier Truck Renault Premium DXI 440",
+      "archive": "carrier_truck_renault_premium_dxi_440.glb",
+      "source": "carrier_truck_renault_premium_dxi_440.glb",
+      "length": 11.3,
+      "forward": "-Y",
+      "license": "CC-BY-4.0",
+      "notice": "sketchfab-max-box-truck",
+      "placement": "traffic-only",
+      "target": 10500,
+      "max_triangles": 12000,
+      "max_bytes": 600000,
+      "nose": 0.01,
+      "emblems": [
+        [
+          0,
+          0.12,
+          0,
+          0.3,
+          1.12,
+          1.37
+        ]
+      ],
+      "role_boxes": [
+        [
+          "paint",
+          0,
+          0.12,
+          0,
+          0.3,
+          1.12,
+          1.37,
+          [
+            "trim",
+            "alloy",
+            "plate",
+            "glass"
+          ]
+        ]
+      ],
+      "spare": "rear",
+      "rules": [
+        [
+          "material",
+          "Interieur|Sige|Volant|Tableau|Carrosserie_inte|Transmission|essuis",
+          "drop"
+        ],
+        [
+          "material",
+          "Pneu|Jante",
+          "rubber"
+        ],
+        [
+          "material",
+          "Phare",
+          "lamp"
+        ],
+        [
+          "material",
+          "Vitre",
+          "glass"
+        ],
+        [
+          "material",
+          "Carrosserie|Bache",
+          "paint"
+        ],
+        [
+          "material",
+          ".",
+          "trim"
+        ]
+      ],
+      "note": "Titled \"carrier truck\" but modelled as a two-axle rigid Renault Premium curtain-sider (no car-carrier deck). 11.3 m, traffic-only on the open lanes; budget 12k triangles / 600 KB."
+    },
+    {
+      "style": "hypercar",
+      "category": "conventional",
+      "weight": 0.2,
+      "title": "AC - Mclaren P1 [FREE]",
+      "archive": "ac_-_mclaren_p1_free.glb",
+      "source": "ac_-_mclaren_p1_free.glb",
+      "length": 4.588,
+      "forward": "-Y",
+      "license": "LicenseRef-Sketchfab-Standard",
+      "notice": "sketchfab-meshava-hypercar",
+      "spare": "rear",
+      "rules": [
+        [
+          "material",
+          "^INT_|IN_Cinture|Mechanicals|Brake",
+          "drop"
+        ],
+        [
+          "material",
+          "^Tyre$",
+          "rubber"
+        ],
+        [
+          "material",
+          "Taillights",
+          "lamp_tail"
+        ],
+        [
+          "material",
+          "Headlights",
+          "lamp_head"
+        ],
+        [
+          "material",
+          "Windows|Clear_Glass",
+          "glass"
+        ],
+        [
+          "material",
+          "^Carpaint$",
+          "paint"
+        ],
+        [
+          "material",
+          "Chrome|Mirror",
+          "alloy"
+        ],
+        [
+          "material",
+          ".",
+          "trim"
+        ]
+      ]
+    },
+    {
+      "style": "pickup-large",
+      "category": "conventional",
+      "weight": 1,
+      "title": "Download Phasmophobia For Pc",
+      "archive": "download_phasmophobia_for_pc.glb",
+      "source": "download_phasmophobia_for_pc.glb",
+      "length": 5.89,
+      "forward": "+X",
+      "license": "CC-BY-4.0",
+      "notice": "sketchfab-boredvicuna8709-pickup-large",
+      "colourFrom": "texture",
+      "texture_roles": [
+        [
+          "lamp_head",
+          0.6,
+          0.98,
+          0,
+          0.25,
+          0.9,
+          1.15
+        ]
+      ],
+      "spare": "rear",
+      "rules": [
+        [
+          "material",
+          "offroad|18in|17in|20in",
+          "rubber"
+        ],
+        [
+          "material",
+          "glass_ex",
+          "glass"
+        ]
+      ],
+      "note": "Sketchfab title as published by the author; the model is a 13th-generation Ford F-150 SuperCrew (game-style low-poly rip with texture atlases, colourFrom texture)."
+    },
+    {
+      "style": "muscle-classic",
+      "category": "conventional",
+      "weight": 0.2,
+      "title": "1970 Dodge Charger RT Fast And Furious Edition",
+      "archive": "1970-dodge-charger-rt-fast-and-furious-edition.zip",
+      "source": "source/1970 Dodge Charger RT Fast And Furious Edition.glb",
+      "length": 5.283,
+      "forward": "-Y",
+      "license": "CC-BY-NC-SA-4.0",
+      "notice": "sketchfab-outpiston-muscle-classic",
+      "spare": "rear",
+      "rules": [
+        [
+          "object",
+          "GroundShadow|SteeringWheel|Calliper",
+          "drop"
+        ],
+        [
+          "material",
+          "^rim$",
+          "rubber"
+        ],
+        [
+          "object",
+          "Icosphere|GroundShadow",
+          "drop"
+        ],
+        [
+          "object",
+          "Calliper|Caliper|Brake|Disc",
+          "drop"
+        ],
+        [
+          "material",
+          "Interior|Engine|Int_Color|Calliper|Caliper|Badge|ManufacturerPlate|phong",
+          "drop"
+        ],
+        [
+          "material",
+          "Wheel1A|Wheel|Tyre|Tire",
+          "rubber"
+        ],
+        [
+          "material",
+          "LightA|Light_glass|red_glass|orange_glass|GlassRed|GlassAmber",
+          "lamp"
+        ],
+        [
+          "material",
+          "Window|GlassMtl",
+          "glass"
+        ],
+        [
+          "material",
+          "Paint|Coloured",
+          "paint"
+        ],
+        [
+          "material",
+          "LicensePlate",
+          "plate"
+        ],
+        [
+          "material",
+          ".",
+          "trim"
+        ]
+      ]
+    },
+    {
+      "style": "suv-classic",
+      "category": "conventional",
+      "weight": 1,
+      "title": "2004 Volvo XC90",
+      "archive": "2004-volvo-xc90.zip",
+      "source": "source/2004 Volvo XC90.glb",
+      "length": 4.798,
+      "forward": "+X",
+      "license": "LicenseRef-Sketchfab-Standard",
+      "notice": "sketchfab-actsofdoge-suv-classic",
+      "colourFrom": "texture",
+      "spare": "rear",
+      "rules": [
+        [
+          "object",
+          "hook",
+          "drop"
+        ],
+        [
+          "material",
+          "offroad|18in|17in|20in",
+          "rubber"
+        ],
+        [
+          "material",
+          "glass_ex",
+          "glass"
+        ]
+      ]
+    },
+    {
+      "style": "suv-large",
+      "category": "conventional",
+      "weight": 1,
+      "title": "2007 Cadillac Escalade",
+      "archive": "2007-cadillac-escalade.zip",
+      "source": "source/2007 Cadillac Escalade.glb",
+      "length": 5.144,
+      "forward": "+X",
+      "license": "LicenseRef-Sketchfab-Standard",
+      "notice": "sketchfab-actsofdoge-suv-large",
+      "colourFrom": "texture",
+      "role_boxes": [
+        [
+          "trim",
+          0,
+          0.52,
+          0,
+          0.3,
+          0.78,
+          1.07,
+          [
+            "paint",
+            "alloy",
+            "plate",
+            "glass"
+          ]
+        ],
+        [
+          "paint",
+          0,
+          0.37,
+          4.84,
+          5.144,
+          1.06,
+          1.25,
+          [
+            "trim",
+            "alloy",
+            "plate",
+            "glass"
+          ]
+        ],
+        [
+          "drop",
+          0,
+          0.09,
+          0.04,
+          0.115,
+          0.855,
+          1.025,
+          [
+            "trim",
+            "paint",
+            "alloy",
+            "plate"
+          ]
+        ]
+      ],
+      "spare": "rear",
+      "rules": [
+        [
+          "material",
+          "offroad|18in|17in|20in",
+          "rubber"
+        ],
+        [
+          "material",
+          "glass_ex",
+          "glass"
+        ]
+      ]
+    },
+    {
+      "style": "pickup-crew",
+      "category": "conventional",
+      "weight": 1,
+      "title": "2007 GMC Sierra",
+      "archive": "2007-gmc-sierra.zip",
+      "source": "source/2007 GMC Sierra.glb",
+      "length": 5.84,
+      "forward": "+X",
+      "license": "LicenseRef-Sketchfab-Standard",
+      "notice": "sketchfab-actsofdoge-pickup-crew",
+      "colourFrom": "texture",
+      "spare": "rear",
+      "rules": [
+        [
+          "material",
+          "offroad|18in|17in|20in",
+          "rubber"
+        ],
+        [
+          "material",
+          "glass_ex",
+          "glass"
+        ]
+      ]
+    }
+  ]
+}

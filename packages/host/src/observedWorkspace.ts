@@ -1,4 +1,5 @@
 import { realpathSync } from 'node:fs';
+import path from 'node:path';
 import type { Workspace } from '@extalia/core';
 import type { SessionSummary } from '@extalia/platform';
 
@@ -8,7 +9,7 @@ function normalize(location: string): string {
   return trimmed || location.trim().slice(0, 1);
 }
 
-const contains = (root: string, child: string) => child === root || child.startsWith(root.endsWith('/') ? root : `${root}/`);
+const contains = (root: string, child: string) => child === root || (/[\\/]$/.test(root) ? child.startsWith(root) : child.startsWith(`${root}/`) || child.startsWith(`${root}\\`));
 
 /**
  * The workspace whose project location equals or contains an observed session's
@@ -29,8 +30,17 @@ export function workspaceForProject(
   return best?.id;
 }
 
-/** Follows symlinks (for example `/var` → `/private/var` on macOS) when the folder exists; otherwise keeps the text. */
-const canonical = (location: string) => { try { return realpathSync(location); } catch { return location; } };
+/**
+ * Follows symlinks (for example `/var` → `/private/var` on macOS) and Windows short names, as `checkFolder`'s
+ * `realpath` does. A project folder removed since keeps the canonical form of the part that still exists.
+ */
+function canonical(location: string): string {
+  try { return realpathSync.native(location); }
+  catch {
+    const parent = path.dirname(location);
+    return parent === location ? location : path.join(canonical(parent), path.basename(location));
+  }
+}
 
 /** Observed summaries carry no workspace of their own; map them by project path. */
 export function mapObservedWorkspaces(summaries: readonly SessionSummary[], workspaces: readonly Pick<Workspace, 'id' | 'projectLocation'>[]): SessionSummary[] {

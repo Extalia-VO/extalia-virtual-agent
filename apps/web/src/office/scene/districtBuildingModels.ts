@@ -19,7 +19,7 @@ export interface DistrictModelBatch {
   foliage: BufferGeometry;
 }
 
-const urls = import.meta.glob<string>("/local-assets/landscape/district-buildings.glb", {
+const urls = import.meta.glob<string>("/public-assets/landscape/district-buildings.glb", {
   eager: true,
   query: "?url",
   import: "default"
@@ -153,7 +153,7 @@ function disposeImportedScene(scene: Object3D): void {
 async function load(): Promise<void> {
   if (requested) return;
   requested = true;
-  const url = forceProcedural ? undefined : urls["/local-assets/landscape/district-buildings.glb"];
+  const url = forceProcedural ? undefined : urls["/public-assets/landscape/district-buildings.glb"];
   if (!url) return;
   try {
     const gltf = await new GLTFLoader().loadAsync(url);

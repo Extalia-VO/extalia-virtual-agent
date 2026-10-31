@@ -1,0 +1,66 @@
+{
+  "schemaVersion": 1,
+  "license": "LicenseRef-RenderHub-Extended-Use",
+  "models": [
+    {
+      "path": "avatars/bodies/female/female-casual.glb",
+      "sha256": "cd2f25993a2b5b698d7e74a7bccc5f67655f698503cbaef5fdf00fda6ff90225",
+      "bytes": 4236192
+    },
+    {
+      "path": "avatars/bodies/male/office-classic.glb",
+      "sha256": "c6469220ac2a9c49dd2dcabd2431d6643d56eb569074551b2fcffb27347026a2",
+      "bytes": 5074708
+    },
+    {
+      "path": "avatars/hair/female/bob-detail.glb",
+      "sha256": "a2702d3aa2625daab6305ee98871b0425fcb9d2b8e356b65b2afa497a18179b4",
+      "bytes": 2181224
+    },
+    {
+      "path": "avatars/hair/female/bun-detail.glb",
+      "sha256": "58ff338fb1c8283ee9f1af26628779c9af669aeef7374170a1269fb865ff6adf",
+      "bytes": 2108392
+    },
+    {
+      "path": "avatars/hair/female/high-ponytail-detail.glb",
+      "sha256": "c76887839b6907332ed493c1aeb93e89215585c7da55ff1fa947f98ea371e712",
+      "bytes": 1746268
+    },
+    {
+      "path": "avatars/hair/female/medium-detail.glb",
+      "sha256": "6f67aa4f37c5edad57a8a81d23f920ee0e6adf1bf50a056988a591e4bbd7ceb9",
+      "bytes": 2216324
+    },
+    {
+      "path": "avatars/hair/female/ponytail-detail.glb",
+      "sha256": "a106e4da29f4ce66474cc1258318b9eb16e0e724f087682db9b1bd206604b7c1",
+      "bytes": 2041236
+    },
+    {
+      "path": "avatars/hair/male/short-fade-detail.glb",
+      "sha256": "752fbd9d1b8749450d8658ee75fbea3750ca2b59c37b16659577e8b01516d526",
+      "bytes": 2129964
+    },
+    {
+      "path": "avatars/hair/male/side-part-detail.glb",
+      "sha256": "4e91468303818bf0917068a8dfe3824645cd6c4eb8e070d7d05e0336a106c72d",
+      "bytes": 2628896
+    },
+    {
+      "path": "avatars/hair/male/slicked-back-detail.glb",
+      "sha256": "2c64ee762edeeb927ca1c50e73eb090b51e0f09cc6366ef76a7757ab333ec0ab",
+      "bytes": 2628908
+    },
+    {
+      "path": "avatars/hair/male/textured-crop-detail.glb",
+      "sha256": "6339d21cb1a7d7e6a331b51b1cd537ee3944bd0028a70cdff9164a2c931241b3",
+      "bytes": 2134104
+    },
+    {
+      "path": "avatars/hair/male/undercut-detail.glb",
+      "sha256": "bc7f3d50bee36a42a31ca6bc3c1d01c0a2d47307d7dc44d59d0e8107049cbfd1",
+      "bytes": 2570404
+    }
+  ]
+}

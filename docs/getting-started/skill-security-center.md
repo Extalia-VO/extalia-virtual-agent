@@ -5,8 +5,30 @@ skills, review them, and decide which ones reach agents. It is part of the previ
 native core, so it appears only when that core is on. See
 [Native core (preview)](native-core.md) to turn it on.
 
-With the TypeScript core, project skills are allowed or revoked as described in
-[Project skills](project-skills.md). The Skill Security Center does not appear.
+With the TypeScript core, project review can be recorded or removed as described
+in [Project skills](project-skills.md), but external skills remain unavailable to
+agents. The Skill Security Center does not appear; old consent is not a scanner
+waiver.
+
+The native core also has a [read-only dependency check](../adr/0039-read-only-skill-dependency-preflight.md)
+in the Skills page. It cannot activate a skill. Packages declaring dependencies,
+conflicts or compatibility still wait for authoritative resolver integration;
+a consistent diagnostic plan does not pass scanner, approval or activation gates.
+
+## Check dependencies
+
+1. Choose one exact **Skill revision** in **Dependency check**.
+2. Optionally add the exact dependency revisions you want to pin. Nothing is
+   selected automatically; missing pins are reported. Remove a pin to change it.
+3. Click **Check dependencies**. Review blockers or the diagnostic ordering.
+
+This check uses unknown compatibility facts and an empty diagnostic permission
+ceiling, so it reports compatibility and permission findings conservatively.
+It neither scans nor approves anything. An unscanned or stale revision remains
+unavailable. Truncated reports say that more findings exist and stay blocked.
+Changing inputs clears the result; changed host, scanner/policy or registry
+context also discards pending replies. An older host/core shows that dependency
+checks are unavailable while preserving its existing registry controls.
 
 ## What it does
 
@@ -17,10 +39,37 @@ is a new revision and it needs its own review and approval.
 
 Agents receive user and project skills only from active, verified revisions.
 When the native core is unavailable, agents are offered only built-in skills.
-Built-in skills ship with the app, are checked by their content hash each time
-the daemon starts, and are not listed in the Center.
+Built-in skills ship with the app and remain separate from external imports.
+Native offerings use canonical shipped content, not an arbitrary builtin source
+flag or a same-name external override; this is not an external scanner result.
+Daemon-registered built-in objects retain their startup hash checks.
 
 ## Import a skill
+
+### Learn from a Native Chat prompt
+
+Select **Learn as skill** for one message, then ask naturally, for example:
+“Learn this procedure as a reusable skill.” Alternatively type
+`/learn-skill` followed by source text or a link. The command also works in the
+Office prompt dock. Plain document reading does not save a skill automatically.
+
+This requires Extalia skills enabled on the connection and the Rust skill
+registry. It is unavailable for plan/read-only, observed and Hermes sessions.
+Existing edit approval policy still applies. The model may propose one candidate
+per opted-in turn; an answer without a successful proposal receipt is not a save.
+
+The generated candidate appears in this profile's Skills library, with origin
+**Generated**, its exact revision and actual inspection state. It is an
+instructions-only draft with unverified source attribution; its package is what
+the registry inspects. This does not certify the original URL or all referenced
+files. The proposal tool does not fetch URLs, install packages or execute code.
+
+When the scanner is unavailable, the candidate remains **Quarantined** and cannot
+be used as a skill. Successful scan evidence and separate user approval/activation
+are still required. If an inspection response is lost after import, inspect the
+library before retrying: a saved candidate is not automatically rolled back.
+
+### Import an existing package
 
 1. Open **Skills** in the sidebar and find **Skill Security Center**.
 2. Click **Import from folder**, then type the path to a skill folder or click
@@ -122,6 +171,7 @@ wait for the scanner.
 
 ## Where to go next
 
+- [Built-in skills library](builtin-skills.md)
 - [Native core (preview)](native-core.md)
 - [Project skills](project-skills.md)
 - [ADR 0025: skill manifest and immutable revisions](../adr/0025-skill-manifest-and-immutable-revisions.md)

@@ -1,0 +1,2767 @@
+{
+  "cases": [
+    {
+      "name": "explicit category and exact candidate",
+      "valid": true,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000001",
+        "op": "skill.routingPreview",
+        "params": {
+          "categories": [
+            "quality"
+          ],
+          "intents": [],
+          "candidateRevisionIds": [
+            "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          ],
+          "pins": {},
+          "maxResults": 16
+        }
+      }
+    },
+    {
+      "name": "explicit intent workspace and exact dependency pin",
+      "valid": true,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000001",
+        "op": "skill.routingPreview",
+        "params": {
+          "categories": [],
+          "intents": [
+            "review_code"
+          ],
+          "candidateRevisionIds": [
+            "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          ],
+          "pins": {
+            "dependency": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+          },
+          "maxResults": 16,
+          "workspaceId": "w_mh3p2k1x9f04c2a7"
+        }
+      }
+    },
+    {
+      "name": "matched diagnostic only",
+      "valid": true,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "response",
+        "requestId": "00000000-0000-4000-8000-000000000001",
+        "op": "skill.routingPreview",
+        "result": {
+          "input": {
+            "categories": [
+              "quality"
+            ],
+            "intents": [],
+            "candidateRevisionIds": [
+              "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            ],
+            "pins": {},
+            "maxResults": 16
+          },
+          "dispatchEligible": false,
+          "status": "matched",
+          "eligibleCount": 1,
+          "topTieCount": 1,
+          "candidates": [
+            {
+              "identity": {
+                "packageId": "alpha",
+                "version": "1.0.0",
+                "revisionId": "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "treeSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "permissionDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+              },
+              "score": {
+                "exactIntents": 0,
+                "exactCategories": 1,
+                "descendantCategories": 0
+              },
+              "matches": {
+                "exactIntents": [],
+                "exactCategories": [
+                  "quality"
+                ],
+                "descendantCategories": [],
+                "rationaleTruncated": false
+              },
+              "plan": [
+                {
+                  "packageId": "alpha",
+                  "version": "1.0.0",
+                  "revisionId": "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "treeSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "permissionDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+                }
+              ]
+            }
+          ],
+          "exclusions": [],
+          "issues": []
+        }
+      }
+    },
+    {
+      "name": "no candidates no safe skill",
+      "valid": true,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "response",
+        "requestId": "00000000-0000-4000-8000-000000000001",
+        "op": "skill.routingPreview",
+        "result": {
+          "input": {
+            "categories": [
+              "quality"
+            ],
+            "intents": [],
+            "candidateRevisionIds": [],
+            "pins": {},
+            "maxResults": 16
+          },
+          "dispatchEligible": false,
+          "status": "no_safe_skill",
+          "eligibleCount": 0,
+          "topTieCount": 0,
+          "candidates": [],
+          "exclusions": [],
+          "issues": []
+        }
+      }
+    },
+    {
+      "name": "inactive root exclusion",
+      "valid": true,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "response",
+        "requestId": "00000000-0000-4000-8000-000000000001",
+        "op": "skill.routingPreview",
+        "result": {
+          "input": {
+            "categories": [
+              "quality"
+            ],
+            "intents": [],
+            "candidateRevisionIds": [
+              "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            ],
+            "pins": {},
+            "maxResults": 16
+          },
+          "dispatchEligible": false,
+          "status": "no_safe_skill",
+          "eligibleCount": 0,
+          "topTieCount": 0,
+          "candidates": [],
+          "exclusions": [
+            {
+              "identity": {
+                "packageId": "alpha",
+                "version": "1.0.0",
+                "revisionId": "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "treeSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "permissionDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+              },
+              "reason": "root_inactive",
+              "diagnostics": [],
+              "omittedDiagnostics": 0
+            }
+          ],
+          "issues": []
+        }
+      }
+    },
+    {
+      "name": "invalid duplicate package diagnostics",
+      "valid": true,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "response",
+        "requestId": "00000000-0000-4000-8000-000000000001",
+        "op": "skill.routingPreview",
+        "result": {
+          "input": {
+            "categories": [
+              "quality"
+            ],
+            "intents": [],
+            "candidateRevisionIds": [
+              "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            ],
+            "pins": {},
+            "maxResults": 16
+          },
+          "dispatchEligible": false,
+          "status": "invalid",
+          "eligibleCount": 0,
+          "topTieCount": 0,
+          "candidates": [],
+          "exclusions": [],
+          "issues": [
+            "duplicate_candidate_package"
+          ]
+        }
+      }
+    },
+    {
+      "name": "top ambiguity survives one result limit",
+      "valid": true,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "response",
+        "requestId": "00000000-0000-4000-8000-000000000001",
+        "op": "skill.routingPreview",
+        "result": {
+          "input": {
+            "categories": [
+              "quality"
+            ],
+            "intents": [],
+            "candidateRevisionIds": [
+              "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "skr_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+            ],
+            "pins": {},
+            "maxResults": 1
+          },
+          "dispatchEligible": false,
+          "status": "ambiguous",
+          "eligibleCount": 2,
+          "topTieCount": 2,
+          "candidates": [
+            {
+              "identity": {
+                "packageId": "alpha",
+                "version": "1.0.0",
+                "revisionId": "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "treeSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "permissionDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+              },
+              "score": {
+                "exactIntents": 0,
+                "exactCategories": 1,
+                "descendantCategories": 0
+              },
+              "matches": {
+                "exactIntents": [],
+                "exactCategories": [
+                  "quality"
+                ],
+                "descendantCategories": [],
+                "rationaleTruncated": false
+              },
+              "plan": [
+                {
+                  "packageId": "alpha",
+                  "version": "1.0.0",
+                  "revisionId": "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "treeSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "permissionDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+                }
+              ]
+            }
+          ],
+          "exclusions": [],
+          "issues": []
+        }
+      }
+    },
+    {
+      "name": "all tied results",
+      "valid": true,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "response",
+        "requestId": "00000000-0000-4000-8000-000000000001",
+        "op": "skill.routingPreview",
+        "result": {
+          "input": {
+            "categories": [
+              "quality"
+            ],
+            "intents": [],
+            "candidateRevisionIds": [
+              "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "skr_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+            ],
+            "pins": {},
+            "maxResults": 16
+          },
+          "dispatchEligible": false,
+          "status": "ambiguous",
+          "eligibleCount": 2,
+          "topTieCount": 2,
+          "candidates": [
+            {
+              "identity": {
+                "packageId": "alpha",
+                "version": "1.0.0",
+                "revisionId": "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "treeSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "permissionDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+              },
+              "score": {
+                "exactIntents": 0,
+                "exactCategories": 1,
+                "descendantCategories": 0
+              },
+              "matches": {
+                "exactIntents": [],
+                "exactCategories": [
+                  "quality"
+                ],
+                "descendantCategories": [],
+                "rationaleTruncated": false
+              },
+              "plan": [
+                {
+                  "packageId": "alpha",
+                  "version": "1.0.0",
+                  "revisionId": "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "treeSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "permissionDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+                }
+              ]
+            },
+            {
+              "identity": {
+                "packageId": "beta",
+                "version": "1.0.0",
+                "revisionId": "skr_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "treeSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "permissionDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+              },
+              "score": {
+                "exactIntents": 0,
+                "exactCategories": 1,
+                "descendantCategories": 0
+              },
+              "matches": {
+                "exactIntents": [],
+                "exactCategories": [
+                  "quality"
+                ],
+                "descendantCategories": [],
+                "rationaleTruncated": false
+              },
+              "plan": [
+                {
+                  "packageId": "beta",
+                  "version": "1.0.0",
+                  "revisionId": "skr_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                  "treeSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                  "permissionDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+                }
+              ]
+            }
+          ],
+          "exclusions": [],
+          "issues": []
+        }
+      }
+    },
+    {
+      "name": "dependency first exact plan",
+      "valid": true,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "response",
+        "requestId": "00000000-0000-4000-8000-000000000001",
+        "op": "skill.routingPreview",
+        "result": {
+          "input": {
+            "categories": [
+              "quality"
+            ],
+            "intents": [],
+            "candidateRevisionIds": [
+              "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            ],
+            "pins": {
+              "dependency": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+            },
+            "maxResults": 16
+          },
+          "dispatchEligible": false,
+          "status": "matched",
+          "eligibleCount": 1,
+          "topTieCount": 1,
+          "candidates": [
+            {
+              "identity": {
+                "packageId": "alpha",
+                "version": "1.0.0",
+                "revisionId": "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "treeSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "permissionDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+              },
+              "score": {
+                "exactIntents": 0,
+                "exactCategories": 1,
+                "descendantCategories": 0
+              },
+              "matches": {
+                "exactIntents": [],
+                "exactCategories": [
+                  "quality"
+                ],
+                "descendantCategories": [],
+                "rationaleTruncated": false
+              },
+              "plan": [
+                {
+                  "packageId": "dependency",
+                  "version": "1.0.0",
+                  "revisionId": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+                  "treeSha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+                  "permissionDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+                },
+                {
+                  "packageId": "alpha",
+                  "version": "1.0.0",
+                  "revisionId": "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "treeSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "permissionDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+                }
+              ]
+            }
+          ],
+          "exclusions": [],
+          "issues": []
+        }
+      }
+    },
+    {
+      "name": "descendant match rationale",
+      "valid": true,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "response",
+        "requestId": "00000000-0000-4000-8000-000000000001",
+        "op": "skill.routingPreview",
+        "result": {
+          "input": {
+            "categories": [
+              "quality"
+            ],
+            "intents": [],
+            "candidateRevisionIds": [
+              "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            ],
+            "pins": {},
+            "maxResults": 16
+          },
+          "dispatchEligible": false,
+          "status": "matched",
+          "eligibleCount": 1,
+          "topTieCount": 1,
+          "candidates": [
+            {
+              "identity": {
+                "packageId": "alpha",
+                "version": "1.0.0",
+                "revisionId": "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "treeSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "permissionDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+              },
+              "score": {
+                "exactIntents": 0,
+                "exactCategories": 0,
+                "descendantCategories": 1
+              },
+              "matches": {
+                "exactIntents": [],
+                "exactCategories": [],
+                "descendantCategories": [
+                  {
+                    "requested": "quality",
+                    "declared": "quality.review"
+                  }
+                ],
+                "rationaleTruncated": false
+              },
+              "plan": [
+                {
+                  "packageId": "alpha",
+                  "version": "1.0.0",
+                  "revisionId": "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "treeSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "permissionDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+                }
+              ]
+            }
+          ],
+          "exclusions": [],
+          "issues": []
+        }
+      }
+    },
+    {
+      "name": "missing categories",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000001",
+        "op": "skill.routingPreview",
+        "params": {
+          "intents": [],
+          "candidateRevisionIds": [
+            "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          ],
+          "pins": {},
+          "maxResults": 16
+        }
+      },
+      "code": "invalid_request"
+    },
+    {
+      "name": "missing intents",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000001",
+        "op": "skill.routingPreview",
+        "params": {
+          "categories": [
+            "quality"
+          ],
+          "candidateRevisionIds": [
+            "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          ],
+          "pins": {},
+          "maxResults": 16
+        }
+      },
+      "code": "invalid_request"
+    },
+    {
+      "name": "missing candidateRevisionIds",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000001",
+        "op": "skill.routingPreview",
+        "params": {
+          "categories": [
+            "quality"
+          ],
+          "intents": [],
+          "pins": {},
+          "maxResults": 16
+        }
+      },
+      "code": "invalid_request"
+    },
+    {
+      "name": "missing pins",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000001",
+        "op": "skill.routingPreview",
+        "params": {
+          "categories": [
+            "quality"
+          ],
+          "intents": [],
+          "candidateRevisionIds": [
+            "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          ],
+          "maxResults": 16
+        }
+      },
+      "code": "invalid_request"
+    },
+    {
+      "name": "missing maxResults",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000001",
+        "op": "skill.routingPreview",
+        "params": {
+          "categories": [
+            "quality"
+          ],
+          "intents": [],
+          "candidateRevisionIds": [
+            "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          ],
+          "pins": {}
+        }
+      },
+      "code": "invalid_request"
+    },
+    {
+      "name": "empty selectors",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000001",
+        "op": "skill.routingPreview",
+        "params": {
+          "categories": [],
+          "intents": [],
+          "candidateRevisionIds": [
+            "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          ],
+          "pins": {},
+          "maxResults": 16
+        }
+      },
+      "code": "invalid_request"
+    },
+    {
+      "name": "bad category",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000001",
+        "op": "skill.routingPreview",
+        "params": {
+          "categories": [
+            "quality..review"
+          ],
+          "intents": [],
+          "candidateRevisionIds": [
+            "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          ],
+          "pins": {},
+          "maxResults": 16
+        }
+      },
+      "code": "invalid_request"
+    },
+    {
+      "name": "too deep category",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000001",
+        "op": "skill.routingPreview",
+        "params": {
+          "categories": [
+            "a.b.c.d.e.f.g"
+          ],
+          "intents": [],
+          "candidateRevisionIds": [
+            "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          ],
+          "pins": {},
+          "maxResults": 16
+        }
+      },
+      "code": "invalid_request"
+    },
+    {
+      "name": "long category",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000001",
+        "op": "skill.routingPreview",
+        "params": {
+          "categories": [
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          ],
+          "intents": [],
+          "candidateRevisionIds": [
+            "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          ],
+          "pins": {},
+          "maxResults": 16
+        }
+      },
+      "code": "invalid_request"
+    },
+    {
+      "name": "bad intent",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000001",
+        "op": "skill.routingPreview",
+        "params": {
+          "categories": [
+            "quality"
+          ],
+          "intents": [
+            "Review"
+          ],
+          "candidateRevisionIds": [
+            "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          ],
+          "pins": {},
+          "maxResults": 16
+        }
+      },
+      "code": "invalid_request"
+    },
+    {
+      "name": "duplicate category",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000001",
+        "op": "skill.routingPreview",
+        "params": {
+          "categories": [
+            "quality",
+            "quality"
+          ],
+          "intents": [],
+          "candidateRevisionIds": [
+            "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          ],
+          "pins": {},
+          "maxResults": 16
+        }
+      },
+      "code": "invalid_request"
+    },
+    {
+      "name": "duplicate candidate",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000001",
+        "op": "skill.routingPreview",
+        "params": {
+          "categories": [
+            "quality"
+          ],
+          "intents": [],
+          "candidateRevisionIds": [
+            "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          ],
+          "pins": {},
+          "maxResults": 16
+        }
+      },
+      "code": "invalid_request"
+    },
+    {
+      "name": "too many candidates",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000001",
+        "op": "skill.routingPreview",
+        "params": {
+          "categories": [
+            "quality"
+          ],
+          "intents": [],
+          "candidateRevisionIds": [
+            "skr_0000000000000000000000000000000000000000000000000000000000000000",
+            "skr_0000000000000000000000000000000000000000000000000000000000000001",
+            "skr_0000000000000000000000000000000000000000000000000000000000000002",
+            "skr_0000000000000000000000000000000000000000000000000000000000000003",
+            "skr_0000000000000000000000000000000000000000000000000000000000000004",
+            "skr_0000000000000000000000000000000000000000000000000000000000000005",
+            "skr_0000000000000000000000000000000000000000000000000000000000000006",
+            "skr_0000000000000000000000000000000000000000000000000000000000000007",
+            "skr_0000000000000000000000000000000000000000000000000000000000000008",
+            "skr_0000000000000000000000000000000000000000000000000000000000000009",
+            "skr_000000000000000000000000000000000000000000000000000000000000000a",
+            "skr_000000000000000000000000000000000000000000000000000000000000000b",
+            "skr_000000000000000000000000000000000000000000000000000000000000000c",
+            "skr_000000000000000000000000000000000000000000000000000000000000000d",
+            "skr_000000000000000000000000000000000000000000000000000000000000000e",
+            "skr_000000000000000000000000000000000000000000000000000000000000000f",
+            "skr_0000000000000000000000000000000000000000000000000000000000000010"
+          ],
+          "pins": {},
+          "maxResults": 16
+        }
+      },
+      "code": "invalid_request"
+    },
+    {
+      "name": "too many selectors",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000001",
+        "op": "skill.routingPreview",
+        "params": {
+          "categories": [
+            "cat0",
+            "cat1",
+            "cat2",
+            "cat3",
+            "cat4",
+            "cat5",
+            "cat6",
+            "cat7",
+            "cat8",
+            "cat9",
+            "cat10",
+            "cat11",
+            "cat12",
+            "cat13",
+            "cat14",
+            "cat15",
+            "cat16",
+            "cat17",
+            "cat18",
+            "cat19",
+            "cat20",
+            "cat21",
+            "cat22",
+            "cat23",
+            "cat24",
+            "cat25",
+            "cat26",
+            "cat27",
+            "cat28",
+            "cat29",
+            "cat30",
+            "cat31",
+            "cat32"
+          ],
+          "intents": [],
+          "candidateRevisionIds": [
+            "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          ],
+          "pins": {},
+          "maxResults": 16
+        }
+      },
+      "code": "invalid_request"
+    },
+    {
+      "name": "too many pins",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000001",
+        "op": "skill.routingPreview",
+        "params": {
+          "categories": [
+            "quality"
+          ],
+          "intents": [],
+          "candidateRevisionIds": [
+            "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          ],
+          "pins": {
+            "p0": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p1": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p2": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p3": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p4": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p5": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p6": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p7": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p8": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p9": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p10": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p11": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p12": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p13": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p14": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p15": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p16": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p17": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p18": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p19": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p20": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p21": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p22": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p23": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p24": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p25": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p26": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p27": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p28": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p29": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p30": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p31": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p32": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p33": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p34": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p35": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p36": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p37": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p38": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p39": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p40": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p41": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p42": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p43": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p44": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p45": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p46": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p47": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p48": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p49": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p50": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p51": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p52": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p53": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p54": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p55": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p56": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p57": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p58": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p59": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p60": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p61": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p62": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p63": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p64": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p65": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p66": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p67": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p68": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p69": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p70": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p71": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p72": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p73": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p74": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p75": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p76": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p77": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p78": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p79": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p80": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p81": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p82": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p83": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p84": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p85": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p86": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p87": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p88": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p89": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p90": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p91": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p92": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p93": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p94": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p95": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p96": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p97": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p98": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p99": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p100": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p101": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p102": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p103": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p104": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p105": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p106": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p107": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p108": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p109": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p110": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p111": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p112": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p113": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p114": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p115": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p116": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p117": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p118": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p119": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p120": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p121": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p122": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p123": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p124": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p125": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p126": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p127": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "p128": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+          },
+          "maxResults": 16
+        }
+      },
+      "code": "invalid_request"
+    },
+    {
+      "name": "missing result bound",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000001",
+        "op": "skill.routingPreview",
+        "params": {
+          "categories": [
+            "quality"
+          ],
+          "intents": [],
+          "candidateRevisionIds": [
+            "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          ],
+          "pins": {},
+          "maxResults": 0
+        }
+      },
+      "code": "invalid_request"
+    },
+    {
+      "name": "oversized result bound",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000001",
+        "op": "skill.routingPreview",
+        "params": {
+          "categories": [
+            "quality"
+          ],
+          "intents": [],
+          "candidateRevisionIds": [
+            "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          ],
+          "pins": {},
+          "maxResults": 17
+        }
+      },
+      "code": "invalid_request"
+    },
+    {
+      "name": "foreign profile",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000001",
+        "op": "skill.routingPreview",
+        "params": {
+          "categories": [
+            "quality"
+          ],
+          "intents": [],
+          "candidateRevisionIds": [
+            "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          ],
+          "pins": {},
+          "maxResults": 16,
+          "profile": "foreign"
+        }
+      },
+      "code": "invalid_request"
+    },
+    {
+      "name": "caller runtime facts",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000001",
+        "op": "skill.routingPreview",
+        "params": {
+          "categories": [
+            "quality"
+          ],
+          "intents": [],
+          "candidateRevisionIds": [
+            "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          ],
+          "pins": {},
+          "maxResults": 16,
+          "runtimeFacts": {}
+        }
+      },
+      "code": "invalid_request"
+    },
+    {
+      "name": "caller permission grants",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000001",
+        "op": "skill.routingPreview",
+        "params": {
+          "categories": [
+            "quality"
+          ],
+          "intents": [],
+          "candidateRevisionIds": [
+            "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          ],
+          "pins": {},
+          "maxResults": 16,
+          "permissionsCeiling": {}
+        }
+      },
+      "code": "invalid_request"
+    },
+    {
+      "name": "opaque workspace",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000001",
+        "op": "skill.routingPreview",
+        "params": {
+          "categories": [
+            "quality"
+          ],
+          "intents": [],
+          "candidateRevisionIds": [
+            "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          ],
+          "pins": {},
+          "maxResults": 16,
+          "workspaceId": "other"
+        }
+      },
+      "code": "invalid_request"
+    },
+    {
+      "name": "null workspace",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000001",
+        "op": "skill.routingPreview",
+        "params": {
+          "categories": [
+            "quality"
+          ],
+          "intents": [],
+          "candidateRevisionIds": [
+            "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          ],
+          "pins": {},
+          "maxResults": 16,
+          "workspaceId": null
+        }
+      },
+      "code": "invalid_request"
+    },
+    {
+      "name": "category newline",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000001",
+        "op": "skill.routingPreview",
+        "params": {
+          "categories": [
+            "quality\n"
+          ],
+          "intents": [],
+          "candidateRevisionIds": [
+            "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          ],
+          "pins": {},
+          "maxResults": 16
+        }
+      },
+      "code": "invalid_request"
+    },
+    {
+      "name": "revision newline",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000001",
+        "op": "skill.routingPreview",
+        "params": {
+          "categories": [
+            "quality"
+          ],
+          "intents": [],
+          "candidateRevisionIds": [
+            "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n"
+          ],
+          "pins": {},
+          "maxResults": 16
+        }
+      },
+      "code": "invalid_request"
+    },
+    {
+      "name": "pin latest",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000001",
+        "op": "skill.routingPreview",
+        "params": {
+          "categories": [
+            "quality"
+          ],
+          "intents": [],
+          "candidateRevisionIds": [
+            "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          ],
+          "pins": {
+            "dependency": "latest"
+          },
+          "maxResults": 16
+        }
+      },
+      "code": "invalid_request"
+    },
+    {
+      "name": "false authority",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "response",
+        "requestId": "00000000-0000-4000-8000-000000000001",
+        "op": "skill.routingPreview",
+        "result": {
+          "input": {
+            "categories": [
+              "quality"
+            ],
+            "intents": [],
+            "candidateRevisionIds": [
+              "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            ],
+            "pins": {},
+            "maxResults": 16
+          },
+          "dispatchEligible": true,
+          "status": "matched",
+          "eligibleCount": 1,
+          "topTieCount": 1,
+          "candidates": [
+            {
+              "identity": {
+                "packageId": "alpha",
+                "version": "1.0.0",
+                "revisionId": "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "treeSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "permissionDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+              },
+              "score": {
+                "exactIntents": 0,
+                "exactCategories": 1,
+                "descendantCategories": 0
+              },
+              "matches": {
+                "exactIntents": [],
+                "exactCategories": [
+                  "quality"
+                ],
+                "descendantCategories": [],
+                "rationaleTruncated": false
+              },
+              "plan": [
+                {
+                  "packageId": "alpha",
+                  "version": "1.0.0",
+                  "revisionId": "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "treeSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "permissionDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+                }
+              ]
+            }
+          ],
+          "exclusions": [],
+          "issues": []
+        }
+      },
+      "code": "invalid_frame"
+    },
+    {
+      "name": "unknown result field",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "response",
+        "requestId": "00000000-0000-4000-8000-000000000001",
+        "op": "skill.routingPreview",
+        "result": {
+          "input": {
+            "categories": [
+              "quality"
+            ],
+            "intents": [],
+            "candidateRevisionIds": [
+              "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            ],
+            "pins": {},
+            "maxResults": 16
+          },
+          "dispatchEligible": false,
+          "status": "matched",
+          "eligibleCount": 1,
+          "topTieCount": 1,
+          "candidates": [
+            {
+              "identity": {
+                "packageId": "alpha",
+                "version": "1.0.0",
+                "revisionId": "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "treeSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "permissionDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+              },
+              "score": {
+                "exactIntents": 0,
+                "exactCategories": 1,
+                "descendantCategories": 0
+              },
+              "matches": {
+                "exactIntents": [],
+                "exactCategories": [
+                  "quality"
+                ],
+                "descendantCategories": [],
+                "rationaleTruncated": false
+              },
+              "plan": [
+                {
+                  "packageId": "alpha",
+                  "version": "1.0.0",
+                  "revisionId": "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "treeSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "permissionDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+                }
+              ]
+            }
+          ],
+          "exclusions": [],
+          "issues": [],
+          "grant": true
+        }
+      },
+      "code": "invalid_frame"
+    },
+    {
+      "name": "status lie",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "response",
+        "requestId": "00000000-0000-4000-8000-000000000001",
+        "op": "skill.routingPreview",
+        "result": {
+          "input": {
+            "categories": [
+              "quality"
+            ],
+            "intents": [],
+            "candidateRevisionIds": [
+              "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            ],
+            "pins": {},
+            "maxResults": 16
+          },
+          "dispatchEligible": false,
+          "status": "no_safe_skill",
+          "eligibleCount": 1,
+          "topTieCount": 1,
+          "candidates": [
+            {
+              "identity": {
+                "packageId": "alpha",
+                "version": "1.0.0",
+                "revisionId": "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "treeSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "permissionDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+              },
+              "score": {
+                "exactIntents": 0,
+                "exactCategories": 1,
+                "descendantCategories": 0
+              },
+              "matches": {
+                "exactIntents": [],
+                "exactCategories": [
+                  "quality"
+                ],
+                "descendantCategories": [],
+                "rationaleTruncated": false
+              },
+              "plan": [
+                {
+                  "packageId": "alpha",
+                  "version": "1.0.0",
+                  "revisionId": "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "treeSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "permissionDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+                }
+              ]
+            }
+          ],
+          "exclusions": [],
+          "issues": []
+        }
+      },
+      "code": "invalid_frame",
+      "schemaGap": "routing semantic invariants"
+    },
+    {
+      "name": "eligible count mismatch",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "response",
+        "requestId": "00000000-0000-4000-8000-000000000001",
+        "op": "skill.routingPreview",
+        "result": {
+          "input": {
+            "categories": [
+              "quality"
+            ],
+            "intents": [],
+            "candidateRevisionIds": [
+              "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            ],
+            "pins": {},
+            "maxResults": 16
+          },
+          "dispatchEligible": false,
+          "status": "matched",
+          "eligibleCount": 2,
+          "topTieCount": 1,
+          "candidates": [
+            {
+              "identity": {
+                "packageId": "alpha",
+                "version": "1.0.0",
+                "revisionId": "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "treeSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "permissionDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+              },
+              "score": {
+                "exactIntents": 0,
+                "exactCategories": 1,
+                "descendantCategories": 0
+              },
+              "matches": {
+                "exactIntents": [],
+                "exactCategories": [
+                  "quality"
+                ],
+                "descendantCategories": [],
+                "rationaleTruncated": false
+              },
+              "plan": [
+                {
+                  "packageId": "alpha",
+                  "version": "1.0.0",
+                  "revisionId": "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "treeSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "permissionDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+                }
+              ]
+            }
+          ],
+          "exclusions": [],
+          "issues": []
+        }
+      },
+      "code": "invalid_frame",
+      "schemaGap": "routing semantic invariants"
+    },
+    {
+      "name": "tie count mismatch",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "response",
+        "requestId": "00000000-0000-4000-8000-000000000001",
+        "op": "skill.routingPreview",
+        "result": {
+          "input": {
+            "categories": [
+              "quality"
+            ],
+            "intents": [],
+            "candidateRevisionIds": [
+              "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            ],
+            "pins": {},
+            "maxResults": 16
+          },
+          "dispatchEligible": false,
+          "status": "matched",
+          "eligibleCount": 1,
+          "topTieCount": 2,
+          "candidates": [
+            {
+              "identity": {
+                "packageId": "alpha",
+                "version": "1.0.0",
+                "revisionId": "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "treeSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "permissionDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+              },
+              "score": {
+                "exactIntents": 0,
+                "exactCategories": 1,
+                "descendantCategories": 0
+              },
+              "matches": {
+                "exactIntents": [],
+                "exactCategories": [
+                  "quality"
+                ],
+                "descendantCategories": [],
+                "rationaleTruncated": false
+              },
+              "plan": [
+                {
+                  "packageId": "alpha",
+                  "version": "1.0.0",
+                  "revisionId": "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "treeSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "permissionDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+                }
+              ]
+            }
+          ],
+          "exclusions": [],
+          "issues": []
+        }
+      },
+      "code": "invalid_frame",
+      "schemaGap": "routing semantic invariants"
+    },
+    {
+      "name": "foreign candidate",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "response",
+        "requestId": "00000000-0000-4000-8000-000000000001",
+        "op": "skill.routingPreview",
+        "result": {
+          "input": {
+            "categories": [
+              "quality"
+            ],
+            "intents": [],
+            "candidateRevisionIds": [
+              "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            ],
+            "pins": {},
+            "maxResults": 16
+          },
+          "dispatchEligible": false,
+          "status": "matched",
+          "eligibleCount": 1,
+          "topTieCount": 1,
+          "candidates": [
+            {
+              "identity": {
+                "packageId": "beta",
+                "version": "1.0.0",
+                "revisionId": "skr_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "treeSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "permissionDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+              },
+              "score": {
+                "exactIntents": 0,
+                "exactCategories": 1,
+                "descendantCategories": 0
+              },
+              "matches": {
+                "exactIntents": [],
+                "exactCategories": [
+                  "quality"
+                ],
+                "descendantCategories": [],
+                "rationaleTruncated": false
+              },
+              "plan": [
+                {
+                  "packageId": "beta",
+                  "version": "1.0.0",
+                  "revisionId": "skr_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                  "treeSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                  "permissionDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+                }
+              ]
+            }
+          ],
+          "exclusions": [],
+          "issues": []
+        }
+      },
+      "code": "invalid_frame",
+      "schemaGap": "routing semantic invariants"
+    },
+    {
+      "name": "plan root mismatch",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "response",
+        "requestId": "00000000-0000-4000-8000-000000000001",
+        "op": "skill.routingPreview",
+        "result": {
+          "input": {
+            "categories": [
+              "quality"
+            ],
+            "intents": [],
+            "candidateRevisionIds": [
+              "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            ],
+            "pins": {},
+            "maxResults": 16
+          },
+          "dispatchEligible": false,
+          "status": "matched",
+          "eligibleCount": 1,
+          "topTieCount": 1,
+          "candidates": [
+            {
+              "identity": {
+                "packageId": "alpha",
+                "version": "1.0.0",
+                "revisionId": "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "treeSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "permissionDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+              },
+              "score": {
+                "exactIntents": 0,
+                "exactCategories": 1,
+                "descendantCategories": 0
+              },
+              "matches": {
+                "exactIntents": [],
+                "exactCategories": [
+                  "quality"
+                ],
+                "descendantCategories": [],
+                "rationaleTruncated": false
+              },
+              "plan": [
+                {
+                  "packageId": "beta",
+                  "version": "1.0.0",
+                  "revisionId": "skr_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                  "treeSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                  "permissionDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+                }
+              ]
+            }
+          ],
+          "exclusions": [],
+          "issues": []
+        }
+      },
+      "code": "invalid_frame",
+      "schemaGap": "routing semantic invariants"
+    },
+    {
+      "name": "unpinned dependency",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "response",
+        "requestId": "00000000-0000-4000-8000-000000000001",
+        "op": "skill.routingPreview",
+        "result": {
+          "input": {
+            "categories": [
+              "quality"
+            ],
+            "intents": [],
+            "candidateRevisionIds": [
+              "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            ],
+            "pins": {},
+            "maxResults": 16
+          },
+          "dispatchEligible": false,
+          "status": "matched",
+          "eligibleCount": 1,
+          "topTieCount": 1,
+          "candidates": [
+            {
+              "identity": {
+                "packageId": "alpha",
+                "version": "1.0.0",
+                "revisionId": "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "treeSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "permissionDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+              },
+              "score": {
+                "exactIntents": 0,
+                "exactCategories": 1,
+                "descendantCategories": 0
+              },
+              "matches": {
+                "exactIntents": [],
+                "exactCategories": [
+                  "quality"
+                ],
+                "descendantCategories": [],
+                "rationaleTruncated": false
+              },
+              "plan": [
+                {
+                  "packageId": "dependency",
+                  "version": "1.0.0",
+                  "revisionId": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+                  "treeSha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+                  "permissionDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+                },
+                {
+                  "packageId": "alpha",
+                  "version": "1.0.0",
+                  "revisionId": "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "treeSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "permissionDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+                }
+              ]
+            }
+          ],
+          "exclusions": [],
+          "issues": []
+        }
+      },
+      "code": "invalid_frame",
+      "schemaGap": "routing semantic invariants"
+    },
+    {
+      "name": "wrong score",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "response",
+        "requestId": "00000000-0000-4000-8000-000000000001",
+        "op": "skill.routingPreview",
+        "result": {
+          "input": {
+            "categories": [
+              "quality"
+            ],
+            "intents": [],
+            "candidateRevisionIds": [
+              "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            ],
+            "pins": {},
+            "maxResults": 16
+          },
+          "dispatchEligible": false,
+          "status": "matched",
+          "eligibleCount": 1,
+          "topTieCount": 1,
+          "candidates": [
+            {
+              "identity": {
+                "packageId": "alpha",
+                "version": "1.0.0",
+                "revisionId": "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "treeSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "permissionDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+              },
+              "score": {
+                "exactIntents": 1,
+                "exactCategories": 1,
+                "descendantCategories": 0
+              },
+              "matches": {
+                "exactIntents": [],
+                "exactCategories": [
+                  "quality"
+                ],
+                "descendantCategories": [],
+                "rationaleTruncated": false
+              },
+              "plan": [
+                {
+                  "packageId": "alpha",
+                  "version": "1.0.0",
+                  "revisionId": "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "treeSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "permissionDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+                }
+              ]
+            }
+          ],
+          "exclusions": [],
+          "issues": []
+        }
+      },
+      "code": "invalid_frame",
+      "schemaGap": "routing semantic invariants"
+    },
+    {
+      "name": "wrong match selector",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "response",
+        "requestId": "00000000-0000-4000-8000-000000000001",
+        "op": "skill.routingPreview",
+        "result": {
+          "input": {
+            "categories": [
+              "quality"
+            ],
+            "intents": [],
+            "candidateRevisionIds": [
+              "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            ],
+            "pins": {},
+            "maxResults": 16
+          },
+          "dispatchEligible": false,
+          "status": "matched",
+          "eligibleCount": 1,
+          "topTieCount": 1,
+          "candidates": [
+            {
+              "identity": {
+                "packageId": "alpha",
+                "version": "1.0.0",
+                "revisionId": "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "treeSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "permissionDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+              },
+              "score": {
+                "exactIntents": 0,
+                "exactCategories": 1,
+                "descendantCategories": 0
+              },
+              "matches": {
+                "exactIntents": [],
+                "exactCategories": [
+                  "foreign"
+                ],
+                "descendantCategories": [],
+                "rationaleTruncated": false
+              },
+              "plan": [
+                {
+                  "packageId": "alpha",
+                  "version": "1.0.0",
+                  "revisionId": "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "treeSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "permissionDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+                }
+              ]
+            }
+          ],
+          "exclusions": [],
+          "issues": []
+        }
+      },
+      "code": "invalid_frame",
+      "schemaGap": "routing semantic invariants"
+    },
+    {
+      "name": "non descendant pair",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "response",
+        "requestId": "00000000-0000-4000-8000-000000000001",
+        "op": "skill.routingPreview",
+        "result": {
+          "input": {
+            "categories": [
+              "quality"
+            ],
+            "intents": [],
+            "candidateRevisionIds": [
+              "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            ],
+            "pins": {},
+            "maxResults": 16
+          },
+          "dispatchEligible": false,
+          "status": "matched",
+          "eligibleCount": 1,
+          "topTieCount": 1,
+          "candidates": [
+            {
+              "identity": {
+                "packageId": "alpha",
+                "version": "1.0.0",
+                "revisionId": "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "treeSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "permissionDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+              },
+              "score": {
+                "exactIntents": 0,
+                "exactCategories": 1,
+                "descendantCategories": 0
+              },
+              "matches": {
+                "exactIntents": [],
+                "exactCategories": [
+                  "quality"
+                ],
+                "descendantCategories": [
+                  {
+                    "requested": "quality",
+                    "declared": "quality-other"
+                  }
+                ],
+                "rationaleTruncated": false
+              },
+              "plan": [
+                {
+                  "packageId": "alpha",
+                  "version": "1.0.0",
+                  "revisionId": "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "treeSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "permissionDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+                }
+              ]
+            }
+          ],
+          "exclusions": [],
+          "issues": []
+        }
+      },
+      "code": "invalid_frame",
+      "schemaGap": "routing semantic invariants"
+    },
+    {
+      "name": "unknown issue",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "response",
+        "requestId": "00000000-0000-4000-8000-000000000001",
+        "op": "skill.routingPreview",
+        "result": {
+          "input": {
+            "categories": [
+              "quality"
+            ],
+            "intents": [],
+            "candidateRevisionIds": [
+              "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            ],
+            "pins": {},
+            "maxResults": 16
+          },
+          "dispatchEligible": false,
+          "status": "invalid",
+          "eligibleCount": 0,
+          "topTieCount": 0,
+          "candidates": [],
+          "exclusions": [],
+          "issues": [
+            "parser_error:example"
+          ]
+        }
+      },
+      "code": "invalid_frame"
+    },
+    {
+      "name": "invalid report has candidates",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "response",
+        "requestId": "00000000-0000-4000-8000-000000000001",
+        "op": "skill.routingPreview",
+        "result": {
+          "input": {
+            "categories": [
+              "quality"
+            ],
+            "intents": [],
+            "candidateRevisionIds": [
+              "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            ],
+            "pins": {},
+            "maxResults": 16
+          },
+          "dispatchEligible": false,
+          "status": "invalid",
+          "eligibleCount": 1,
+          "topTieCount": 1,
+          "candidates": [
+            {
+              "identity": {
+                "packageId": "alpha",
+                "version": "1.0.0",
+                "revisionId": "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "treeSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "permissionDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+              },
+              "score": {
+                "exactIntents": 0,
+                "exactCategories": 1,
+                "descendantCategories": 0
+              },
+              "matches": {
+                "exactIntents": [],
+                "exactCategories": [
+                  "quality"
+                ],
+                "descendantCategories": [],
+                "rationaleTruncated": false
+              },
+              "plan": [
+                {
+                  "packageId": "alpha",
+                  "version": "1.0.0",
+                  "revisionId": "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "treeSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "permissionDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+                }
+              ]
+            }
+          ],
+          "exclusions": [],
+          "issues": [
+            "invalid_context"
+          ]
+        }
+      },
+      "code": "invalid_frame",
+      "schemaGap": "routing semantic invariants"
+    },
+    {
+      "name": "unknown identity field",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "response",
+        "requestId": "00000000-0000-4000-8000-000000000001",
+        "op": "skill.routingPreview",
+        "result": {
+          "input": {
+            "categories": [
+              "quality"
+            ],
+            "intents": [],
+            "candidateRevisionIds": [
+              "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            ],
+            "pins": {},
+            "maxResults": 16
+          },
+          "dispatchEligible": false,
+          "status": "matched",
+          "eligibleCount": 1,
+          "topTieCount": 1,
+          "candidates": [
+            {
+              "identity": {
+                "packageId": "alpha",
+                "version": "1.0.0",
+                "revisionId": "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "treeSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "permissionDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+                "path": "example"
+              },
+              "score": {
+                "exactIntents": 0,
+                "exactCategories": 1,
+                "descendantCategories": 0
+              },
+              "matches": {
+                "exactIntents": [],
+                "exactCategories": [
+                  "quality"
+                ],
+                "descendantCategories": [],
+                "rationaleTruncated": false
+              },
+              "plan": [
+                {
+                  "packageId": "alpha",
+                  "version": "1.0.0",
+                  "revisionId": "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "treeSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "permissionDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+                }
+              ]
+            }
+          ],
+          "exclusions": [],
+          "issues": []
+        }
+      },
+      "code": "invalid_frame"
+    },
+    {
+      "name": "root digest mismatch",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "response",
+        "requestId": "00000000-0000-4000-8000-000000000001",
+        "op": "skill.routingPreview",
+        "result": {
+          "input": {
+            "categories": [
+              "quality"
+            ],
+            "intents": [],
+            "candidateRevisionIds": [
+              "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            ],
+            "pins": {},
+            "maxResults": 16
+          },
+          "dispatchEligible": false,
+          "status": "matched",
+          "eligibleCount": 1,
+          "topTieCount": 1,
+          "candidates": [
+            {
+              "identity": {
+                "packageId": "alpha",
+                "version": "1.0.0",
+                "revisionId": "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "treeSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "permissionDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+              },
+              "score": {
+                "exactIntents": 0,
+                "exactCategories": 1,
+                "descendantCategories": 0
+              },
+              "matches": {
+                "exactIntents": [],
+                "exactCategories": [
+                  "quality"
+                ],
+                "descendantCategories": [],
+                "rationaleTruncated": false
+              },
+              "plan": [
+                {
+                  "packageId": "alpha",
+                  "version": "1.0.0",
+                  "revisionId": "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "treeSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                  "permissionDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+                }
+              ]
+            }
+          ],
+          "exclusions": [],
+          "issues": []
+        }
+      },
+      "code": "invalid_frame",
+      "schemaGap": "routing semantic invariants"
+    },
+    {
+      "name": "path cannot be a package version",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "response",
+        "requestId": "00000000-0000-4000-8000-000000000001",
+        "op": "skill.routingPreview",
+        "result": {
+          "input": {
+            "categories": [
+              "quality"
+            ],
+            "intents": [],
+            "candidateRevisionIds": [
+              "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            ],
+            "pins": {},
+            "maxResults": 16
+          },
+          "dispatchEligible": false,
+          "status": "matched",
+          "eligibleCount": 1,
+          "topTieCount": 1,
+          "candidates": [
+            {
+              "identity": {
+                "packageId": "alpha",
+                "version": "/example/path",
+                "revisionId": "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "treeSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "permissionDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+              },
+              "score": {
+                "exactIntents": 0,
+                "exactCategories": 1,
+                "descendantCategories": 0
+              },
+              "matches": {
+                "exactIntents": [],
+                "exactCategories": [
+                  "quality"
+                ],
+                "descendantCategories": [],
+                "rationaleTruncated": false
+              },
+              "plan": [
+                {
+                  "packageId": "alpha",
+                  "version": "/example/path",
+                  "revisionId": "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "treeSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "permissionDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+                }
+              ]
+            }
+          ],
+          "exclusions": [],
+          "issues": []
+        }
+      },
+      "code": "invalid_frame"
+    },
+    {
+      "name": "shared dependency revision has conflicting version and permission digest",
+      "valid": false,
+      "code": "invalid_frame",
+      "schemaGap": "Report-wide exact revision identity consistency",
+      "value": {
+        "schemaVersion": 1,
+        "kind": "response",
+        "requestId": "00000000-0000-4000-8000-000000000001",
+        "op": "skill.routingPreview",
+        "result": {
+          "input": {
+            "categories": [
+              "quality"
+            ],
+            "intents": [],
+            "candidateRevisionIds": [
+              "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "skr_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+            ],
+            "pins": {
+              "dependency": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+            },
+            "maxResults": 16
+          },
+          "dispatchEligible": false,
+          "status": "ambiguous",
+          "eligibleCount": 2,
+          "topTieCount": 2,
+          "candidates": [
+            {
+              "identity": {
+                "packageId": "alpha",
+                "version": "1.0.0",
+                "revisionId": "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "treeSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "permissionDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+              },
+              "score": {
+                "exactIntents": 0,
+                "exactCategories": 1,
+                "descendantCategories": 0
+              },
+              "matches": {
+                "exactIntents": [],
+                "exactCategories": [
+                  "quality"
+                ],
+                "descendantCategories": [],
+                "rationaleTruncated": false
+              },
+              "plan": [
+                {
+                  "packageId": "dependency",
+                  "version": "1.0.0",
+                  "revisionId": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+                  "treeSha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+                  "permissionDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+                },
+                {
+                  "packageId": "alpha",
+                  "version": "1.0.0",
+                  "revisionId": "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "treeSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "permissionDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+                }
+              ]
+            },
+            {
+              "identity": {
+                "packageId": "beta",
+                "version": "1.0.0",
+                "revisionId": "skr_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "treeSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "permissionDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+              },
+              "score": {
+                "exactIntents": 0,
+                "exactCategories": 1,
+                "descendantCategories": 0
+              },
+              "matches": {
+                "exactIntents": [],
+                "exactCategories": [
+                  "quality"
+                ],
+                "descendantCategories": [],
+                "rationaleTruncated": false
+              },
+              "plan": [
+                {
+                  "packageId": "dependency",
+                  "version": "2.0.0",
+                  "revisionId": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+                  "treeSha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+                  "permissionDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+                },
+                {
+                  "packageId": "beta",
+                  "version": "1.0.0",
+                  "revisionId": "skr_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                  "treeSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                  "permissionDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+                }
+              ]
+            }
+          ],
+          "exclusions": [],
+          "issues": []
+        }
+      }
+    },
+    {
+      "name": "candidate root revision has conflicting metadata as another dependency",
+      "valid": false,
+      "code": "invalid_frame",
+      "schemaGap": "Report-wide exact revision identity consistency",
+      "value": {
+        "schemaVersion": 1,
+        "kind": "response",
+        "requestId": "00000000-0000-4000-8000-000000000001",
+        "op": "skill.routingPreview",
+        "result": {
+          "input": {
+            "categories": [
+              "quality"
+            ],
+            "intents": [],
+            "candidateRevisionIds": [
+              "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "skr_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+            ],
+            "pins": {
+              "alpha": "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            },
+            "maxResults": 16
+          },
+          "dispatchEligible": false,
+          "status": "ambiguous",
+          "eligibleCount": 2,
+          "topTieCount": 2,
+          "candidates": [
+            {
+              "identity": {
+                "packageId": "alpha",
+                "version": "1.0.0",
+                "revisionId": "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "treeSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "permissionDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+              },
+              "score": {
+                "exactIntents": 0,
+                "exactCategories": 1,
+                "descendantCategories": 0
+              },
+              "matches": {
+                "exactIntents": [],
+                "exactCategories": [
+                  "quality"
+                ],
+                "descendantCategories": [],
+                "rationaleTruncated": false
+              },
+              "plan": [
+                {
+                  "packageId": "alpha",
+                  "version": "1.0.0",
+                  "revisionId": "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "treeSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "permissionDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+                }
+              ]
+            },
+            {
+              "identity": {
+                "packageId": "beta",
+                "version": "1.0.0",
+                "revisionId": "skr_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "treeSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "permissionDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+              },
+              "score": {
+                "exactIntents": 0,
+                "exactCategories": 1,
+                "descendantCategories": 0
+              },
+              "matches": {
+                "exactIntents": [],
+                "exactCategories": [
+                  "quality"
+                ],
+                "descendantCategories": [],
+                "rationaleTruncated": false
+              },
+              "plan": [
+                {
+                  "packageId": "alpha",
+                  "version": "2.0.0",
+                  "revisionId": "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "treeSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "permissionDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+                },
+                {
+                  "packageId": "beta",
+                  "version": "1.0.0",
+                  "revisionId": "skr_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                  "treeSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                  "permissionDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+                }
+              ]
+            }
+          ],
+          "exclusions": [],
+          "issues": []
+        }
+      }
+    },
+    {
+      "name": "shared revision is claimed by different dependency packages",
+      "valid": false,
+      "code": "invalid_frame",
+      "schemaGap": "Report-wide exact revision identity consistency",
+      "value": {
+        "schemaVersion": 1,
+        "kind": "response",
+        "requestId": "00000000-0000-4000-8000-000000000001",
+        "op": "skill.routingPreview",
+        "result": {
+          "input": {
+            "categories": [
+              "quality"
+            ],
+            "intents": [],
+            "candidateRevisionIds": [
+              "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "skr_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+            ],
+            "pins": {
+              "dependency": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+              "other-dependency": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+            },
+            "maxResults": 16
+          },
+          "dispatchEligible": false,
+          "status": "ambiguous",
+          "eligibleCount": 2,
+          "topTieCount": 2,
+          "candidates": [
+            {
+              "identity": {
+                "packageId": "alpha",
+                "version": "1.0.0",
+                "revisionId": "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "treeSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "permissionDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+              },
+              "score": {
+                "exactIntents": 0,
+                "exactCategories": 1,
+                "descendantCategories": 0
+              },
+              "matches": {
+                "exactIntents": [],
+                "exactCategories": [
+                  "quality"
+                ],
+                "descendantCategories": [],
+                "rationaleTruncated": false
+              },
+              "plan": [
+                {
+                  "packageId": "dependency",
+                  "version": "1.0.0",
+                  "revisionId": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+                  "treeSha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+                  "permissionDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+                },
+                {
+                  "packageId": "alpha",
+                  "version": "1.0.0",
+                  "revisionId": "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "treeSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "permissionDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+                }
+              ]
+            },
+            {
+              "identity": {
+                "packageId": "beta",
+                "version": "1.0.0",
+                "revisionId": "skr_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "treeSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "permissionDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+              },
+              "score": {
+                "exactIntents": 0,
+                "exactCategories": 1,
+                "descendantCategories": 0
+              },
+              "matches": {
+                "exactIntents": [],
+                "exactCategories": [
+                  "quality"
+                ],
+                "descendantCategories": [],
+                "rationaleTruncated": false
+              },
+              "plan": [
+                {
+                  "packageId": "other-dependency",
+                  "version": "1.0.0",
+                  "revisionId": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+                  "treeSha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+                  "permissionDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+                },
+                {
+                  "packageId": "beta",
+                  "version": "1.0.0",
+                  "revisionId": "skr_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                  "treeSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                  "permissionDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+                }
+              ]
+            }
+          ],
+          "exclusions": [],
+          "issues": []
+        }
+      }
+    },
+    {
+      "name": "excluded root revision has conflicting dependency metadata",
+      "valid": false,
+      "code": "invalid_frame",
+      "schemaGap": "Report-wide exact revision identity consistency",
+      "value": {
+        "schemaVersion": 1,
+        "kind": "response",
+        "requestId": "00000000-0000-4000-8000-000000000001",
+        "op": "skill.routingPreview",
+        "result": {
+          "input": {
+            "categories": [
+              "quality"
+            ],
+            "intents": [],
+            "candidateRevisionIds": [
+              "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "skr_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+            ],
+            "pins": {
+              "alpha": "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            },
+            "maxResults": 16
+          },
+          "dispatchEligible": false,
+          "status": "matched",
+          "eligibleCount": 1,
+          "topTieCount": 1,
+          "candidates": [
+            {
+              "identity": {
+                "packageId": "beta",
+                "version": "1.0.0",
+                "revisionId": "skr_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "treeSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "permissionDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+              },
+              "score": {
+                "exactIntents": 0,
+                "exactCategories": 1,
+                "descendantCategories": 0
+              },
+              "matches": {
+                "exactIntents": [],
+                "exactCategories": [
+                  "quality"
+                ],
+                "descendantCategories": [],
+                "rationaleTruncated": false
+              },
+              "plan": [
+                {
+                  "packageId": "alpha",
+                  "version": "1.0.0",
+                  "revisionId": "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "treeSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "permissionDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+                },
+                {
+                  "packageId": "beta",
+                  "version": "1.0.0",
+                  "revisionId": "skr_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                  "treeSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                  "permissionDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+                }
+              ]
+            }
+          ],
+          "exclusions": [
+            {
+              "identity": {
+                "packageId": "alpha",
+                "version": "1.0.0",
+                "revisionId": "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "treeSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "permissionDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+              },
+              "reason": "root_inactive",
+              "diagnostics": [],
+              "omittedDiagnostics": 0
+            }
+          ],
+          "issues": []
+        }
+      }
+    },
+    {
+      "name": "consistent shared exact dependency identity across candidate plans",
+      "valid": true,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "response",
+        "requestId": "00000000-0000-4000-8000-000000000001",
+        "op": "skill.routingPreview",
+        "result": {
+          "input": {
+            "categories": [
+              "quality"
+            ],
+            "intents": [],
+            "candidateRevisionIds": [
+              "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "skr_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+            ],
+            "pins": {
+              "dependency": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+            },
+            "maxResults": 16
+          },
+          "dispatchEligible": false,
+          "status": "ambiguous",
+          "eligibleCount": 2,
+          "topTieCount": 2,
+          "candidates": [
+            {
+              "identity": {
+                "packageId": "alpha",
+                "version": "1.0.0",
+                "revisionId": "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "treeSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "permissionDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+              },
+              "score": {
+                "exactIntents": 0,
+                "exactCategories": 1,
+                "descendantCategories": 0
+              },
+              "matches": {
+                "exactIntents": [],
+                "exactCategories": [
+                  "quality"
+                ],
+                "descendantCategories": [],
+                "rationaleTruncated": false
+              },
+              "plan": [
+                {
+                  "packageId": "dependency",
+                  "version": "1.0.0",
+                  "revisionId": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+                  "treeSha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+                  "permissionDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+                },
+                {
+                  "packageId": "alpha",
+                  "version": "1.0.0",
+                  "revisionId": "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "treeSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "permissionDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+                }
+              ]
+            },
+            {
+              "identity": {
+                "packageId": "beta",
+                "version": "1.0.0",
+                "revisionId": "skr_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "treeSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "permissionDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+              },
+              "score": {
+                "exactIntents": 0,
+                "exactCategories": 1,
+                "descendantCategories": 0
+              },
+              "matches": {
+                "exactIntents": [],
+                "exactCategories": [
+                  "quality"
+                ],
+                "descendantCategories": [],
+                "rationaleTruncated": false
+              },
+              "plan": [
+                {
+                  "packageId": "dependency",
+                  "version": "1.0.0",
+                  "revisionId": "skr_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+                  "treeSha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+                  "permissionDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+                },
+                {
+                  "packageId": "beta",
+                  "version": "1.0.0",
+                  "revisionId": "skr_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                  "treeSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                  "permissionDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+                }
+              ]
+            }
+          ],
+          "exclusions": [],
+          "issues": []
+        }
+      }
+    }
+  ]
+}

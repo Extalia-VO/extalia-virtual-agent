@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { OrchestrationPlan } from '@extalia/protocol';
 import { createProvider, runNativeMission, type AnyTool, type FetchLike, type NativeMissionOptions, type PermissionRequest } from '../src/index.js';
+import { EXTERNAL_SKILL_GUIDANCE } from '../src/prompt.js';
 
 // Write-capable mission workers (ADR 0028): additive and opt-in per task; read-only tasks are unchanged.
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -30,6 +31,22 @@ const tool = (access: AnyTool['access'], kind: AnyTool['kind'], run: AnyTool['ru
 });
 
 describe('write-capable native mission workers', () => {
+  it.each([false, true])('includes external skill guidance in actual read/write mission requests (write=%s)', async writeCapable => {
+    const requests: { messages: { role: string; content: string }[]; tools?: { function: { name: string } }[] }[] = [];
+    const options = fixture(async (_url, init) => { requests.push(JSON.parse(String(init?.body))); return answer(); });
+    if (writeCapable) {
+      options.tasks[0]!.writeCapable = true;
+      options.tasks[0]!.tools = [tool('write', 'edit')];
+    } else delete options.plan.graph.tasks[0]!.access;
+    expect((await runNativeMission(options)).state).toBe('completed');
+    expect(requests).toHaveLength(1);
+    const system = requests[0]!.messages.find(message => message.role === 'system')!.content;
+    expect(system).toContain(EXTERNAL_SKILL_GUIDANCE);
+    expect(system).toContain('Model output is unverified.');
+    if (writeCapable) expect(system).toContain('isolated copy of the project');
+    else expect(system).toContain('assigned read-only task');
+    expect((requests[0]!.tools ?? []).map(item => item.function.name)).toEqual(writeCapable ? ['write_file'] : []);
+  });
   it('runs worktree-rooted write tools without a per-call approval and journals bounded edits', async () => {
     let calls = 0;
     const run = vi.fn(async () => ({ ok: true, output: 'Created a.txt', files: [{ path: 'a.txt', change: 'add' as const }] }));

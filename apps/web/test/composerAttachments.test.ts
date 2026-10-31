@@ -113,6 +113,19 @@ describe('uploading attachments', () => {
     await sendPromptWithAttachments(host, 's', 'hi', ['a', 'b']);
     expect(sendPrompt).toHaveBeenLastCalledWith('s', 'hi', { attachmentIds: ['a', 'b'] });
   });
+
+  it('sends learning only with an explicit per-message opt-in and preserves attachment ids', async () => {
+    const sendPrompt = vi.fn(async () => undefined);
+    const host: AttachmentHostApi = { sendPrompt };
+    await sendPromptWithAttachments(host, 's', 'Learn this procedure', [], true);
+    expect(sendPrompt).toHaveBeenLastCalledWith('s', 'Learn this procedure', { learnSkill: true });
+    const ids = ['a', 'b'];
+    await sendPromptWithAttachments(host, 's', 'Learn this procedure', ids, true);
+    expect(sendPrompt).toHaveBeenLastCalledWith('s', 'Learn this procedure', { learnSkill: true, attachmentIds: ['a', 'b'] });
+    expect(ids).toEqual(['a', 'b']);
+    await sendPromptWithAttachments(host, 's', 'Read as reference', [], false);
+    expect(sendPrompt).toHaveBeenLastCalledWith('s', 'Read as reference');
+  });
 });
 
 describe('prompt attachment metadata', () => {

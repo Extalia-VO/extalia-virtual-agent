@@ -14,13 +14,13 @@ export const INTERIOR_MODELS = [
   'floor-lamp','pendant-light','decor-plant','wall-art','decor-vignette','food-plate','drink-cup',
 ] as const;
 export type InteriorModel = typeof INTERIOR_MODELS[number];
-const urls = import.meta.glob<string>('/local-assets/furniture/interior-library.glb', { eager:true, query:'?url', import:'default' });
+const urls = import.meta.glob<string>('/public-assets/furniture/interior-library.glb', { eager:true, query:'?url', import:'default' });
 const procedural = typeof location !== 'undefined' && new URLSearchParams(location.search).get('interiors') === 'procedural';
 let library: ReadonlyMap<string,Object3D> | null = null, requested = false;
 const listeners = new Set<()=>void>();
 const subscribe = (listener:()=>void) => { listeners.add(listener);return()=>{listeners.delete(listener)}; };
 async function load() {
-  const url=procedural?undefined:urls['/local-assets/furniture/interior-library.glb'];
+  const url=procedural?undefined:urls['/public-assets/furniture/interior-library.glb'];
   if(!url||requested)return;
   requested=true;
   try {

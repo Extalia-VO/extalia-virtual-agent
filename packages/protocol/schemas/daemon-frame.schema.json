@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:extalia:protocol:daemon-frame:v1",
   "title": "Daemon wire frame v1",
-  "description": "Generated from @extalia/protocol by tooling/generate-schemas.mjs; do not edit. The TypeScript validators remain the reference. Validator-only checks: mission.create graph belongs to the mission; mission.snapshot unique task/lease IDs, task/holder/state lease correspondence and lease time order; TaskGraph unique task IDs, known references, acyclic dependsOn/parentTaskId and completed dependencies for started work; the checks of each nested contract; string lengths in UTF-16 code units (maxLength here counts code points).",
+  "description": "Generated from @extalia/protocol by tooling/generate-schemas.mjs; do not edit. The TypeScript validators remain the reference. Validator-only checks: mission.create graph belongs to the mission; mission.snapshot unique task/lease IDs, task/holder/state lease correspondence and lease time order; TaskGraph unique task IDs, known references, acyclic dependsOn/parentTaskId and completed dependencies for started work; planning connection IDs sorted by ASCII order, inspection observation identity/digest correspondence and observation time not before admission; planning receipts grant no execution or settlement authority; routing preview status/count/score/identity/pin/rationale correspondence, report-wide exact revision metadata consistency and 512 KiB result budget; the checks of each nested contract; string lengths in UTF-16 code units (maxLength here counts code points).",
   "$ref": "#/$defs/DaemonFrame",
   "$defs": {
     "AgentEvent": {
@@ -1253,6 +1253,14 @@
                 "user",
                 "policy"
               ]
+            },
+            "choice": {
+              "type": "string",
+              "enum": [
+                "once",
+                "session",
+                "reject"
+              ]
             }
           }
         },
@@ -1530,6 +1538,178 @@
         }
       }
     },
+    "DaemonExecutionObserveParams": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "missionId",
+        "taskId",
+        "leaseId",
+        "holderAgentId",
+        "supervisorId",
+        "attempt",
+        "admissionDigest",
+        "observationId",
+        "kind"
+      ],
+      "properties": {
+        "missionId": {
+          "$ref": "#/$defs/Uuid"
+        },
+        "taskId": {
+          "$ref": "#/$defs/Uuid"
+        },
+        "leaseId": {
+          "$ref": "#/$defs/Uuid"
+        },
+        "holderAgentId": {
+          "$ref": "#/$defs/Uuid"
+        },
+        "supervisorId": {
+          "$ref": "#/$defs/Uuid"
+        },
+        "attempt": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "admissionDigest": {
+          "$ref": "#/$defs/Sha256Digest"
+        },
+        "observationId": {
+          "$ref": "#/$defs/Uuid"
+        },
+        "kind": {
+          "const": "turn-promise-settled"
+        }
+      }
+    },
+    "DaemonExecutionObserveResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "missionId",
+        "taskId",
+        "leaseId",
+        "observationId",
+        "recordedAt",
+        "duplicate"
+      ],
+      "properties": {
+        "missionId": {
+          "$ref": "#/$defs/Uuid"
+        },
+        "taskId": {
+          "$ref": "#/$defs/Uuid"
+        },
+        "leaseId": {
+          "$ref": "#/$defs/Uuid"
+        },
+        "observationId": {
+          "$ref": "#/$defs/Uuid"
+        },
+        "recordedAt": {
+          "$ref": "#/$defs/UtcTimestamp"
+        },
+        "duplicate": {
+          "type": "boolean"
+        }
+      }
+    },
+    "DaemonExecutionRecordLocalDrainParams": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "missionId",
+        "taskId",
+        "leaseId",
+        "holderAgentId",
+        "supervisorId",
+        "attempt",
+        "admissionDigest",
+        "proofId",
+        "kind",
+        "coverage",
+        "providerOperations",
+        "toolOperations"
+      ],
+      "properties": {
+        "missionId": {
+          "$ref": "#/$defs/Uuid"
+        },
+        "taskId": {
+          "$ref": "#/$defs/Uuid"
+        },
+        "leaseId": {
+          "$ref": "#/$defs/Uuid"
+        },
+        "holderAgentId": {
+          "$ref": "#/$defs/Uuid"
+        },
+        "supervisorId": {
+          "$ref": "#/$defs/Uuid"
+        },
+        "attempt": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "admissionDigest": {
+          "$ref": "#/$defs/Sha256Digest"
+        },
+        "proofId": {
+          "$ref": "#/$defs/Uuid"
+        },
+        "kind": {
+          "const": "local-operations-drained"
+        },
+        "coverage": {
+          "const": "extalia-native-local-v1"
+        },
+        "providerOperations": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 20
+        },
+        "toolOperations": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 80
+        }
+      }
+    },
+    "DaemonExecutionRecordLocalDrainResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "missionId",
+        "taskId",
+        "leaseId",
+        "proofId",
+        "recordedAt",
+        "duplicate"
+      ],
+      "properties": {
+        "missionId": {
+          "$ref": "#/$defs/Uuid"
+        },
+        "taskId": {
+          "$ref": "#/$defs/Uuid"
+        },
+        "leaseId": {
+          "$ref": "#/$defs/Uuid"
+        },
+        "proofId": {
+          "$ref": "#/$defs/Uuid"
+        },
+        "recordedAt": {
+          "$ref": "#/$defs/UtcTimestamp"
+        },
+        "duplicate": {
+          "type": "boolean"
+        }
+      }
+    },
     "DaemonFrame": {
       "oneOf": [
         {
@@ -1591,7 +1771,7 @@
         "capabilities": {
           "type": "array",
           "minItems": 1,
-          "maxItems": 31,
+          "maxItems": 41,
           "uniqueItems": true,
           "items": {
             "$ref": "#/$defs/DaemonOp"
@@ -1621,7 +1801,7 @@
         "capabilities": {
           "type": "array",
           "minItems": 1,
-          "maxItems": 31,
+          "maxItems": 41,
           "uniqueItems": true,
           "items": {
             "$ref": "#/$defs/DaemonOp"
@@ -2400,6 +2580,602 @@
         }
       }
     },
+    "DaemonMissionExecutionsParams": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "missionId"
+      ],
+      "properties": {
+        "missionId": {
+          "$ref": "#/$defs/Uuid"
+        }
+      }
+    },
+    "DaemonMissionExecutionsResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "missionId",
+        "executions"
+      ],
+      "properties": {
+        "missionId": {
+          "$ref": "#/$defs/Uuid"
+        },
+        "executions": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "admission"
+            ],
+            "properties": {
+              "admission": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "missionId",
+                  "workspaceId",
+                  "taskId",
+                  "leaseId",
+                  "holderAgentId",
+                  "supervisorId",
+                  "attempt",
+                  "missionVersion",
+                  "taskDigest",
+                  "graphDigest",
+                  "admissionDigest",
+                  "admittedAt"
+                ],
+                "properties": {
+                  "missionId": {
+                    "$ref": "#/$defs/Uuid"
+                  },
+                  "workspaceId": {
+                    "$ref": "#/$defs/Uuid"
+                  },
+                  "taskId": {
+                    "$ref": "#/$defs/Uuid"
+                  },
+                  "leaseId": {
+                    "$ref": "#/$defs/Uuid"
+                  },
+                  "holderAgentId": {
+                    "$ref": "#/$defs/Uuid"
+                  },
+                  "supervisorId": {
+                    "$ref": "#/$defs/Uuid"
+                  },
+                  "attempt": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 9007199254740991
+                  },
+                  "missionVersion": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 9007199254740991
+                  },
+                  "taskDigest": {
+                    "$ref": "#/$defs/Sha256Digest"
+                  },
+                  "graphDigest": {
+                    "$ref": "#/$defs/Sha256Digest"
+                  },
+                  "admissionDigest": {
+                    "$ref": "#/$defs/Sha256Digest"
+                  },
+                  "admittedAt": {
+                    "$ref": "#/$defs/UtcTimestamp"
+                  }
+                }
+              },
+              "observation": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "observationId",
+                  "kind",
+                  "recordedAt"
+                ],
+                "properties": {
+                  "observationId": {
+                    "$ref": "#/$defs/Uuid"
+                  },
+                  "kind": {
+                    "const": "turn-promise-settled"
+                  },
+                  "recordedAt": {
+                    "$ref": "#/$defs/UtcTimestamp"
+                  }
+                }
+              },
+              "localDrain": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "proofId",
+                  "kind",
+                  "coverage",
+                  "providerOperations",
+                  "toolOperations",
+                  "recordedAt"
+                ],
+                "properties": {
+                  "proofId": {
+                    "$ref": "#/$defs/Uuid"
+                  },
+                  "kind": {
+                    "const": "local-operations-drained"
+                  },
+                  "coverage": {
+                    "const": "extalia-native-local-v1"
+                  },
+                  "providerOperations": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 20
+                  },
+                  "toolOperations": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 80
+                  },
+                  "recordedAt": {
+                    "$ref": "#/$defs/UtcTimestamp"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "DaemonMissionHeartbeatParams": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "missionId",
+        "leases"
+      ],
+      "properties": {
+        "missionId": {
+          "$ref": "#/$defs/Uuid"
+        },
+        "leases": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "taskId",
+              "leaseId",
+              "holderAgentId"
+            ],
+            "properties": {
+              "taskId": {
+                "$ref": "#/$defs/Uuid"
+              },
+              "leaseId": {
+                "$ref": "#/$defs/Uuid"
+              },
+              "holderAgentId": {
+                "$ref": "#/$defs/Uuid"
+              }
+            }
+          }
+        }
+      }
+    },
+    "DaemonMissionHeartbeatResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "missionId",
+        "leases"
+      ],
+      "properties": {
+        "missionId": {
+          "$ref": "#/$defs/Uuid"
+        },
+        "leases": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "taskId",
+              "leaseId",
+              "holderAgentId",
+              "acquiredAt",
+              "expiresAt"
+            ],
+            "properties": {
+              "taskId": {
+                "$ref": "#/$defs/Uuid"
+              },
+              "leaseId": {
+                "$ref": "#/$defs/Uuid"
+              },
+              "holderAgentId": {
+                "$ref": "#/$defs/Uuid"
+              },
+              "acquiredAt": {
+                "$ref": "#/$defs/UtcTimestamp"
+              },
+              "expiresAt": {
+                "$ref": "#/$defs/UtcTimestamp"
+              }
+            }
+          }
+        }
+      }
+    },
+    "DaemonMissionRecoveryReviewParams": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "missionId"
+      ],
+      "properties": {
+        "missionId": {
+          "$ref": "#/$defs/Uuid"
+        }
+      }
+    },
+    "DaemonMissionRecoveryReviewResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "snapshot",
+        "executions",
+        "missionDigest",
+        "graphDigest",
+        "reviewDigest",
+        "missingAdmissionTaskIds",
+        "worktreeOwnership"
+      ],
+      "properties": {
+        "kind": {
+          "const": "extalia-recovery-review-v1"
+        },
+        "snapshot": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "missionId",
+            "workspaceId",
+            "version",
+            "state",
+            "updatedAt",
+            "sequence",
+            "tasks",
+            "leases"
+          ],
+          "properties": {
+            "missionId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "workspaceId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "version": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "draft",
+                "planning",
+                "queued",
+                "running",
+                "waiting",
+                "awaiting_approval",
+                "reviewing",
+                "completed",
+                "failed",
+                "cancelled",
+                "recovering"
+              ]
+            },
+            "updatedAt": {
+              "$ref": "#/$defs/UtcTimestamp"
+            },
+            "sequence": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 8192
+            },
+            "tasks": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 64,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "taskId",
+                  "state",
+                  "attempt"
+                ],
+                "properties": {
+                  "taskId": {
+                    "$ref": "#/$defs/Uuid"
+                  },
+                  "assignedAgentId": {
+                    "$ref": "#/$defs/Uuid"
+                  },
+                  "state": {
+                    "$ref": "#/$defs/TaskState"
+                  },
+                  "attempt": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  }
+                }
+              }
+            },
+            "leases": {
+              "type": "array",
+              "maxItems": 64,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "leaseId",
+                  "taskId",
+                  "holderAgentId",
+                  "acquiredAt",
+                  "expiresAt"
+                ],
+                "properties": {
+                  "leaseId": {
+                    "$ref": "#/$defs/Uuid"
+                  },
+                  "taskId": {
+                    "$ref": "#/$defs/Uuid"
+                  },
+                  "holderAgentId": {
+                    "$ref": "#/$defs/Uuid"
+                  },
+                  "acquiredAt": {
+                    "$ref": "#/$defs/UtcTimestamp"
+                  },
+                  "expiresAt": {
+                    "$ref": "#/$defs/UtcTimestamp"
+                  }
+                }
+              }
+            }
+          },
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "leases": {
+                    "maxItems": 0
+                  }
+                }
+              },
+              "then": {
+                "properties": {
+                  "tasks": {
+                    "items": {
+                      "properties": {
+                        "state": {
+                          "not": {
+                            "enum": [
+                              "running",
+                              "waiting",
+                              "awaiting_approval",
+                              "verifying"
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "executions": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "admission"
+            ],
+            "properties": {
+              "admission": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "missionId",
+                  "workspaceId",
+                  "taskId",
+                  "leaseId",
+                  "holderAgentId",
+                  "supervisorId",
+                  "attempt",
+                  "missionVersion",
+                  "taskDigest",
+                  "graphDigest",
+                  "admissionDigest",
+                  "admittedAt"
+                ],
+                "properties": {
+                  "missionId": {
+                    "$ref": "#/$defs/Uuid"
+                  },
+                  "workspaceId": {
+                    "$ref": "#/$defs/Uuid"
+                  },
+                  "taskId": {
+                    "$ref": "#/$defs/Uuid"
+                  },
+                  "leaseId": {
+                    "$ref": "#/$defs/Uuid"
+                  },
+                  "holderAgentId": {
+                    "$ref": "#/$defs/Uuid"
+                  },
+                  "supervisorId": {
+                    "$ref": "#/$defs/Uuid"
+                  },
+                  "attempt": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 9007199254740991
+                  },
+                  "missionVersion": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 9007199254740991
+                  },
+                  "taskDigest": {
+                    "$ref": "#/$defs/Sha256Digest"
+                  },
+                  "graphDigest": {
+                    "$ref": "#/$defs/Sha256Digest"
+                  },
+                  "admissionDigest": {
+                    "$ref": "#/$defs/Sha256Digest"
+                  },
+                  "admittedAt": {
+                    "$ref": "#/$defs/UtcTimestamp"
+                  }
+                }
+              },
+              "observation": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "observationId",
+                  "kind",
+                  "recordedAt"
+                ],
+                "properties": {
+                  "observationId": {
+                    "$ref": "#/$defs/Uuid"
+                  },
+                  "kind": {
+                    "const": "turn-promise-settled"
+                  },
+                  "recordedAt": {
+                    "$ref": "#/$defs/UtcTimestamp"
+                  }
+                }
+              },
+              "localDrain": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "proofId",
+                  "kind",
+                  "coverage",
+                  "providerOperations",
+                  "toolOperations",
+                  "recordedAt"
+                ],
+                "properties": {
+                  "proofId": {
+                    "$ref": "#/$defs/Uuid"
+                  },
+                  "kind": {
+                    "const": "local-operations-drained"
+                  },
+                  "coverage": {
+                    "const": "extalia-native-local-v1"
+                  },
+                  "providerOperations": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 20
+                  },
+                  "toolOperations": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 80
+                  },
+                  "recordedAt": {
+                    "$ref": "#/$defs/UtcTimestamp"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "missionDigest": {
+          "$ref": "#/$defs/Sha256Digest"
+        },
+        "graphDigest": {
+          "$ref": "#/$defs/Sha256Digest"
+        },
+        "reviewDigest": {
+          "$ref": "#/$defs/Sha256Digest"
+        },
+        "missingAdmissionTaskIds": {
+          "type": "array",
+          "maxItems": 64,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/Uuid"
+          }
+        },
+        "worktreeOwnership": {
+          "const": "unverified"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "executions": {
+                "maxItems": 0
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "missingAdmissionTaskIds": {
+                "minItems": 1
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "missingAdmissionTaskIds": {
+                "maxItems": 0
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "executions": {
+                "minItems": 1
+              }
+            }
+          }
+        }
+      ]
+    },
     "DaemonMissionSnapshotParams": {
       "type": "object",
       "additionalProperties": false,
@@ -2562,10 +3338,18 @@
         "hello",
         "mission.create",
         "mission.snapshot",
+        "mission.heartbeat",
         "task.transition",
         "event.commit",
         "permission.check",
         "health",
+        "execution.observe",
+        "execution.recordLocalDrain",
+        "mission.executions",
+        "mission.recoveryReview",
+        "planning.begin",
+        "planning.observe",
+        "planning.inspect",
         "skill.import",
         "skill.list",
         "skill.inspect",
@@ -2577,6 +3361,8 @@
         "skill.revoke",
         "skill.read",
         "skill.scanner",
+        "skill.preflight",
+        "skill.routingPreview",
         "knowledge.status",
         "knowledge.sync",
         "knowledge.node",
@@ -2662,6 +3448,399 @@
             "ask",
             "deny"
           ]
+        }
+      }
+    },
+    "DaemonPlanningBeginParams": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "invocationId",
+        "supervisorId",
+        "sessionId",
+        "workspaceId",
+        "connectionIds"
+      ],
+      "properties": {
+        "invocationId": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/Uuid"
+            }
+          ],
+          "not": {
+            "pattern": "[\\r\\n\\u2028\\u2029]"
+          }
+        },
+        "supervisorId": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/Uuid"
+            }
+          ],
+          "not": {
+            "pattern": "[\\r\\n\\u2028\\u2029]"
+          }
+        },
+        "sessionId": {
+          "type": "string",
+          "maxLength": 200,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$",
+          "not": {
+            "pattern": "[^A-Za-z0-9._:-]"
+          }
+        },
+        "workspaceId": {
+          "type": "string",
+          "maxLength": 200,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$",
+          "not": {
+            "pattern": "[^A-Za-z0-9._:-]"
+          }
+        },
+        "connectionIds": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 16,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "maxLength": 200,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$",
+            "not": {
+              "pattern": "[^A-Za-z0-9._:-]"
+            }
+          }
+        }
+      }
+    },
+    "DaemonPlanningBeginResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "invocationId",
+        "supervisorId",
+        "sessionId",
+        "workspaceId",
+        "connectionIds",
+        "kind",
+        "admittedAt",
+        "admissionDigest"
+      ],
+      "properties": {
+        "invocationId": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/Uuid"
+            }
+          ],
+          "not": {
+            "pattern": "[\\r\\n\\u2028\\u2029]"
+          }
+        },
+        "supervisorId": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/Uuid"
+            }
+          ],
+          "not": {
+            "pattern": "[\\r\\n\\u2028\\u2029]"
+          }
+        },
+        "sessionId": {
+          "type": "string",
+          "maxLength": 200,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$",
+          "not": {
+            "pattern": "[^A-Za-z0-9._:-]"
+          }
+        },
+        "workspaceId": {
+          "type": "string",
+          "maxLength": 200,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$",
+          "not": {
+            "pattern": "[^A-Za-z0-9._:-]"
+          }
+        },
+        "connectionIds": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 16,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "maxLength": 200,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$",
+            "not": {
+              "pattern": "[^A-Za-z0-9._:-]"
+            }
+          }
+        },
+        "kind": {
+          "const": "native-planning"
+        },
+        "admittedAt": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/UtcTimestamp"
+            }
+          ],
+          "not": {
+            "pattern": "[\\r\\n\\u2028\\u2029]"
+          }
+        },
+        "admissionDigest": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/Sha256Digest"
+            }
+          ],
+          "not": {
+            "pattern": "[\\r\\n\\u2028\\u2029]"
+          }
+        }
+      }
+    },
+    "DaemonPlanningInspectParams": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "invocationId"
+      ],
+      "properties": {
+        "invocationId": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/Uuid"
+            }
+          ],
+          "not": {
+            "pattern": "[\\r\\n\\u2028\\u2029]"
+          }
+        }
+      }
+    },
+    "DaemonPlanningInspectResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "admission"
+      ],
+      "properties": {
+        "admission": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "invocationId",
+            "supervisorId",
+            "sessionId",
+            "workspaceId",
+            "connectionIds",
+            "kind",
+            "admittedAt",
+            "admissionDigest"
+          ],
+          "properties": {
+            "invocationId": {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/Uuid"
+                }
+              ],
+              "not": {
+                "pattern": "[\\r\\n\\u2028\\u2029]"
+              }
+            },
+            "supervisorId": {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/Uuid"
+                }
+              ],
+              "not": {
+                "pattern": "[\\r\\n\\u2028\\u2029]"
+              }
+            },
+            "sessionId": {
+              "type": "string",
+              "maxLength": 200,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$",
+              "not": {
+                "pattern": "[^A-Za-z0-9._:-]"
+              }
+            },
+            "workspaceId": {
+              "type": "string",
+              "maxLength": 200,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$",
+              "not": {
+                "pattern": "[^A-Za-z0-9._:-]"
+              }
+            },
+            "connectionIds": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 16,
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "maxLength": 200,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$",
+                "not": {
+                  "pattern": "[^A-Za-z0-9._:-]"
+                }
+              }
+            },
+            "kind": {
+              "const": "native-planning"
+            },
+            "admittedAt": {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/UtcTimestamp"
+                }
+              ],
+              "not": {
+                "pattern": "[\\r\\n\\u2028\\u2029]"
+              }
+            },
+            "admissionDigest": {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/Sha256Digest"
+                }
+              ],
+              "not": {
+                "pattern": "[\\r\\n\\u2028\\u2029]"
+              }
+            }
+          }
+        },
+        "observation": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "invocationId",
+            "admissionDigest",
+            "kind",
+            "recordedAt"
+          ],
+          "properties": {
+            "invocationId": {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/Uuid"
+                }
+              ],
+              "not": {
+                "pattern": "[\\r\\n\\u2028\\u2029]"
+              }
+            },
+            "admissionDigest": {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/Sha256Digest"
+                }
+              ],
+              "not": {
+                "pattern": "[\\r\\n\\u2028\\u2029]"
+              }
+            },
+            "kind": {
+              "const": "local-pipeline-settled"
+            },
+            "recordedAt": {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/UtcTimestamp"
+                }
+              ],
+              "not": {
+                "pattern": "[\\r\\n\\u2028\\u2029]"
+              }
+            }
+          }
+        }
+      }
+    },
+    "DaemonPlanningObserveParams": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "invocationId",
+        "admissionDigest",
+        "kind"
+      ],
+      "properties": {
+        "invocationId": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/Uuid"
+            }
+          ],
+          "not": {
+            "pattern": "[\\r\\n\\u2028\\u2029]"
+          }
+        },
+        "admissionDigest": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/Sha256Digest"
+            }
+          ],
+          "not": {
+            "pattern": "[\\r\\n\\u2028\\u2029]"
+          }
+        },
+        "kind": {
+          "const": "local-pipeline-settled"
+        }
+      }
+    },
+    "DaemonPlanningObserveResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "invocationId",
+        "admissionDigest",
+        "kind",
+        "recordedAt"
+      ],
+      "properties": {
+        "invocationId": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/Uuid"
+            }
+          ],
+          "not": {
+            "pattern": "[\\r\\n\\u2028\\u2029]"
+          }
+        },
+        "admissionDigest": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/Sha256Digest"
+            }
+          ],
+          "not": {
+            "pattern": "[\\r\\n\\u2028\\u2029]"
+          }
+        },
+        "kind": {
+          "const": "local-pipeline-settled"
+        },
+        "recordedAt": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/UtcTimestamp"
+            }
+          ],
+          "not": {
+            "pattern": "[\\r\\n\\u2028\\u2029]"
+          }
         }
       }
     },
@@ -2763,6 +3942,39 @@
             },
             "params": {
               "$ref": "#/$defs/DaemonMissionSnapshotParams"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "kind",
+            "requestId",
+            "op",
+            "params"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "kind": {
+              "const": "request"
+            },
+            "requestId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "op": {
+              "const": "mission.heartbeat"
+            },
+            "deadlineMs": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 600000
+            },
+            "params": {
+              "$ref": "#/$defs/DaemonMissionHeartbeatParams"
             }
           }
         },
@@ -2895,6 +4107,237 @@
             },
             "params": {
               "$ref": "#/$defs/DaemonHealthParams"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "kind",
+            "requestId",
+            "op",
+            "params"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "kind": {
+              "const": "request"
+            },
+            "requestId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "op": {
+              "const": "execution.observe"
+            },
+            "deadlineMs": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 600000
+            },
+            "params": {
+              "$ref": "#/$defs/DaemonExecutionObserveParams"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "kind",
+            "requestId",
+            "op",
+            "params"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "kind": {
+              "const": "request"
+            },
+            "requestId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "op": {
+              "const": "execution.recordLocalDrain"
+            },
+            "deadlineMs": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 600000
+            },
+            "params": {
+              "$ref": "#/$defs/DaemonExecutionRecordLocalDrainParams"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "kind",
+            "requestId",
+            "op",
+            "params"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "kind": {
+              "const": "request"
+            },
+            "requestId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "op": {
+              "const": "mission.executions"
+            },
+            "deadlineMs": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 600000
+            },
+            "params": {
+              "$ref": "#/$defs/DaemonMissionExecutionsParams"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "kind",
+            "requestId",
+            "op",
+            "params"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "kind": {
+              "const": "request"
+            },
+            "requestId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "op": {
+              "const": "mission.recoveryReview"
+            },
+            "deadlineMs": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 600000
+            },
+            "params": {
+              "$ref": "#/$defs/DaemonMissionRecoveryReviewParams"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "kind",
+            "requestId",
+            "op",
+            "params"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "kind": {
+              "const": "request"
+            },
+            "requestId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "op": {
+              "const": "planning.begin"
+            },
+            "deadlineMs": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 600000
+            },
+            "params": {
+              "$ref": "#/$defs/DaemonPlanningBeginParams"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "kind",
+            "requestId",
+            "op",
+            "params"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "kind": {
+              "const": "request"
+            },
+            "requestId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "op": {
+              "const": "planning.observe"
+            },
+            "deadlineMs": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 600000
+            },
+            "params": {
+              "$ref": "#/$defs/DaemonPlanningObserveParams"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "kind",
+            "requestId",
+            "op",
+            "params"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "kind": {
+              "const": "request"
+            },
+            "requestId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "op": {
+              "const": "planning.inspect"
+            },
+            "deadlineMs": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 600000
+            },
+            "params": {
+              "$ref": "#/$defs/DaemonPlanningInspectParams"
             }
           }
         },
@@ -3258,6 +4701,72 @@
             },
             "params": {
               "$ref": "#/$defs/DaemonSkillScannerParams"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "kind",
+            "requestId",
+            "op",
+            "params"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "kind": {
+              "const": "request"
+            },
+            "requestId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "op": {
+              "const": "skill.preflight"
+            },
+            "deadlineMs": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 600000
+            },
+            "params": {
+              "$ref": "#/$defs/DaemonSkillPreflightParams"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "kind",
+            "requestId",
+            "op",
+            "params"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "kind": {
+              "const": "request"
+            },
+            "requestId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "op": {
+              "const": "skill.routingPreview"
+            },
+            "deadlineMs": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 600000
+            },
+            "params": {
+              "$ref": "#/$defs/DaemonSkillRoutingPreviewParams"
             }
           }
         },
@@ -3799,6 +5308,34 @@
               "$ref": "#/$defs/Uuid"
             },
             "op": {
+              "const": "mission.heartbeat"
+            },
+            "result": {
+              "$ref": "#/$defs/DaemonMissionHeartbeatResult"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "kind",
+            "requestId",
+            "op",
+            "result"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "kind": {
+              "const": "response"
+            },
+            "requestId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "op": {
               "const": "task.transition"
             },
             "result": {
@@ -3887,6 +5424,202 @@
             },
             "result": {
               "$ref": "#/$defs/DaemonHealthResult"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "kind",
+            "requestId",
+            "op",
+            "result"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "kind": {
+              "const": "response"
+            },
+            "requestId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "op": {
+              "const": "execution.observe"
+            },
+            "result": {
+              "$ref": "#/$defs/DaemonExecutionObserveResult"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "kind",
+            "requestId",
+            "op",
+            "result"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "kind": {
+              "const": "response"
+            },
+            "requestId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "op": {
+              "const": "execution.recordLocalDrain"
+            },
+            "result": {
+              "$ref": "#/$defs/DaemonExecutionRecordLocalDrainResult"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "kind",
+            "requestId",
+            "op",
+            "result"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "kind": {
+              "const": "response"
+            },
+            "requestId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "op": {
+              "const": "mission.executions"
+            },
+            "result": {
+              "$ref": "#/$defs/DaemonMissionExecutionsResult"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "kind",
+            "requestId",
+            "op",
+            "result"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "kind": {
+              "const": "response"
+            },
+            "requestId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "op": {
+              "const": "mission.recoveryReview"
+            },
+            "result": {
+              "$ref": "#/$defs/DaemonMissionRecoveryReviewResult"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "kind",
+            "requestId",
+            "op",
+            "result"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "kind": {
+              "const": "response"
+            },
+            "requestId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "op": {
+              "const": "planning.begin"
+            },
+            "result": {
+              "$ref": "#/$defs/DaemonPlanningBeginResult"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "kind",
+            "requestId",
+            "op",
+            "result"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "kind": {
+              "const": "response"
+            },
+            "requestId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "op": {
+              "const": "planning.observe"
+            },
+            "result": {
+              "$ref": "#/$defs/DaemonPlanningObserveResult"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "kind",
+            "requestId",
+            "op",
+            "result"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "kind": {
+              "const": "response"
+            },
+            "requestId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "op": {
+              "const": "planning.inspect"
+            },
+            "result": {
+              "$ref": "#/$defs/DaemonPlanningInspectResult"
             }
           }
         },
@@ -4195,6 +5928,62 @@
             },
             "result": {
               "$ref": "#/$defs/DaemonSkillScannerResult"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "kind",
+            "requestId",
+            "op",
+            "result"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "kind": {
+              "const": "response"
+            },
+            "requestId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "op": {
+              "const": "skill.preflight"
+            },
+            "result": {
+              "$ref": "#/$defs/DaemonSkillPreflightResult"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "kind",
+            "requestId",
+            "op",
+            "result"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "kind": {
+              "const": "response"
+            },
+            "requestId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "op": {
+              "const": "skill.routingPreview"
+            },
+            "result": {
+              "$ref": "#/$defs/DaemonSkillRoutingPreviewResult"
             }
           }
         },
@@ -4875,6 +6664,210 @@
         }
       }
     },
+    "DaemonSkillPreflightParams": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "rootRevisionId",
+        "pins"
+      ],
+      "properties": {
+        "rootRevisionId": {
+          "type": "string",
+          "pattern": "^skr_[a-f0-9]{64}$"
+        },
+        "pins": {
+          "type": "object",
+          "maxProperties": 128,
+          "propertyNames": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+          },
+          "additionalProperties": {
+            "type": "string",
+            "pattern": "^skr_[a-f0-9]{64}$"
+          }
+        }
+      }
+    },
+    "DaemonSkillPreflightResult": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "rootRevisionId",
+            "dispatchEligible",
+            "status",
+            "issues",
+            "truncated"
+          ],
+          "properties": {
+            "rootRevisionId": {
+              "type": "string",
+              "pattern": "^skr_[a-f0-9]{64}$"
+            },
+            "dispatchEligible": {
+              "const": false
+            },
+            "status": {
+              "const": "blocked"
+            },
+            "issues": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 256,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "code"
+                ],
+                "properties": {
+                  "code": {
+                    "type": "string",
+                    "enum": [
+                      "bad_pin",
+                      "missing_pin",
+                      "dependency_unavailable",
+                      "dependency_inactive",
+                      "root_unavailable",
+                      "range_mismatch",
+                      "unsupported_range",
+                      "compatibility_unknown",
+                      "compatibility_mismatch",
+                      "conflict",
+                      "cycle",
+                      "permission_outside_ceiling",
+                      "bound_exceeded"
+                    ]
+                  },
+                  "packageId": {
+                    "type": "string",
+                    "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+                  },
+                  "relatedPackageId": {
+                    "type": "string",
+                    "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+                  }
+                }
+              }
+            },
+            "truncated": {
+              "type": "boolean"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "rootRevisionId",
+            "dispatchEligible",
+            "status",
+            "issues",
+            "truncated",
+            "plan"
+          ],
+          "properties": {
+            "rootRevisionId": {
+              "type": "string",
+              "pattern": "^skr_[a-f0-9]{64}$"
+            },
+            "dispatchEligible": {
+              "const": false
+            },
+            "status": {
+              "const": "consistent"
+            },
+            "issues": {
+              "type": "array",
+              "maxItems": 0,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "code"
+                ],
+                "properties": {
+                  "code": {
+                    "type": "string",
+                    "enum": [
+                      "bad_pin",
+                      "missing_pin",
+                      "dependency_unavailable",
+                      "dependency_inactive",
+                      "root_unavailable",
+                      "range_mismatch",
+                      "unsupported_range",
+                      "compatibility_unknown",
+                      "compatibility_mismatch",
+                      "conflict",
+                      "cycle",
+                      "permission_outside_ceiling",
+                      "bound_exceeded"
+                    ]
+                  },
+                  "packageId": {
+                    "type": "string",
+                    "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+                  },
+                  "relatedPackageId": {
+                    "type": "string",
+                    "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+                  }
+                }
+              }
+            },
+            "truncated": {
+              "const": false
+            },
+            "plan": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 128,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "packageId",
+                  "version",
+                  "revisionId",
+                  "treeSha256",
+                  "permissionDigest"
+                ],
+                "properties": {
+                  "packageId": {
+                    "type": "string",
+                    "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+                  },
+                  "version": {
+                    "type": "string",
+                    "maxLength": 128,
+                    "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+                    "allOf": [
+                      {
+                        "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+                      }
+                    ]
+                  },
+                  "revisionId": {
+                    "type": "string",
+                    "pattern": "^skr_[a-f0-9]{64}$"
+                  },
+                  "treeSha256": {
+                    "$ref": "#/$defs/Sha256Digest"
+                  },
+                  "permissionDigest": {
+                    "$ref": "#/$defs/Sha256Digest"
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
     "DaemonSkillReadParams": {
       "type": "object",
       "additionalProperties": false,
@@ -5050,6 +7043,629 @@
     "DaemonSkillRollbackResult": {
       "$ref": "#/$defs/SkillActivationResult"
     },
+    "DaemonSkillRoutingPreviewParams": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "categories",
+        "intents",
+        "candidateRevisionIds",
+        "pins",
+        "maxResults"
+      ],
+      "properties": {
+        "categories": {
+          "type": "array",
+          "maxItems": 32,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "maxLength": 128,
+            "pattern": "^[a-z0-9][a-z0-9_-]{0,31}(?:\\.[a-z0-9][a-z0-9_-]{0,31}){0,5}$",
+            "not": {
+              "pattern": "[\\r\\n\\u2028\\u2029]"
+            }
+          }
+        },
+        "intents": {
+          "type": "array",
+          "maxItems": 32,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "maxLength": 64,
+            "pattern": "^[a-z][a-z0-9_]{0,63}$",
+            "not": {
+              "pattern": "[\\r\\n\\u2028\\u2029]"
+            }
+          }
+        },
+        "candidateRevisionIds": {
+          "type": "array",
+          "maxItems": 16,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "maxLength": 68,
+            "pattern": "^skr_[a-f0-9]{64}$",
+            "not": {
+              "pattern": "[\\r\\n\\u2028\\u2029]"
+            }
+          }
+        },
+        "pins": {
+          "type": "object",
+          "maxProperties": 128,
+          "propertyNames": {
+            "type": "string",
+            "maxLength": 64,
+            "pattern": "^[a-z0-9][a-z0-9-]{0,63}$",
+            "not": {
+              "pattern": "[\\r\\n\\u2028\\u2029]"
+            }
+          },
+          "additionalProperties": {
+            "type": "string",
+            "maxLength": 68,
+            "pattern": "^skr_[a-f0-9]{64}$",
+            "not": {
+              "pattern": "[\\r\\n\\u2028\\u2029]"
+            }
+          }
+        },
+        "workspaceId": {
+          "type": "string",
+          "maxLength": 36,
+          "pattern": "^(?:w_[0-9a-z]{1,11}[0-9a-f]{8}|[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$",
+          "not": {
+            "pattern": "[\\r\\n\\u2028\\u2029]"
+          }
+        },
+        "maxResults": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 16
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "categories": {
+                "maxItems": 0
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "intents": {
+                "minItems": 1
+              }
+            }
+          }
+        }
+      ]
+    },
+    "DaemonSkillRoutingPreviewResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "input",
+        "dispatchEligible",
+        "status",
+        "candidates",
+        "exclusions",
+        "issues",
+        "eligibleCount",
+        "topTieCount"
+      ],
+      "properties": {
+        "input": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "categories",
+            "intents",
+            "candidateRevisionIds",
+            "pins",
+            "maxResults"
+          ],
+          "properties": {
+            "categories": {
+              "type": "array",
+              "maxItems": 32,
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "maxLength": 128,
+                "pattern": "^[a-z0-9][a-z0-9_-]{0,31}(?:\\.[a-z0-9][a-z0-9_-]{0,31}){0,5}$",
+                "not": {
+                  "pattern": "[\\r\\n\\u2028\\u2029]"
+                }
+              }
+            },
+            "intents": {
+              "type": "array",
+              "maxItems": 32,
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "maxLength": 64,
+                "pattern": "^[a-z][a-z0-9_]{0,63}$",
+                "not": {
+                  "pattern": "[\\r\\n\\u2028\\u2029]"
+                }
+              }
+            },
+            "candidateRevisionIds": {
+              "type": "array",
+              "maxItems": 16,
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "maxLength": 68,
+                "pattern": "^skr_[a-f0-9]{64}$",
+                "not": {
+                  "pattern": "[\\r\\n\\u2028\\u2029]"
+                }
+              }
+            },
+            "pins": {
+              "type": "object",
+              "maxProperties": 128,
+              "propertyNames": {
+                "type": "string",
+                "maxLength": 64,
+                "pattern": "^[a-z0-9][a-z0-9-]{0,63}$",
+                "not": {
+                  "pattern": "[\\r\\n\\u2028\\u2029]"
+                }
+              },
+              "additionalProperties": {
+                "type": "string",
+                "maxLength": 68,
+                "pattern": "^skr_[a-f0-9]{64}$",
+                "not": {
+                  "pattern": "[\\r\\n\\u2028\\u2029]"
+                }
+              }
+            },
+            "workspaceId": {
+              "type": "string",
+              "maxLength": 36,
+              "pattern": "^(?:w_[0-9a-z]{1,11}[0-9a-f]{8}|[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$",
+              "not": {
+                "pattern": "[\\r\\n\\u2028\\u2029]"
+              }
+            },
+            "maxResults": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 16
+            }
+          },
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "categories": {
+                    "maxItems": 0
+                  }
+                }
+              },
+              "then": {
+                "properties": {
+                  "intents": {
+                    "minItems": 1
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "dispatchEligible": {
+          "const": false
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "invalid",
+            "no_safe_skill",
+            "matched",
+            "ambiguous"
+          ]
+        },
+        "candidates": {
+          "type": "array",
+          "maxItems": 16,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "identity",
+              "score",
+              "matches",
+              "plan"
+            ],
+            "properties": {
+              "identity": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "packageId",
+                  "version",
+                  "revisionId",
+                  "treeSha256",
+                  "permissionDigest"
+                ],
+                "properties": {
+                  "packageId": {
+                    "type": "string",
+                    "maxLength": 64,
+                    "pattern": "^[a-z0-9][a-z0-9-]{0,63}$",
+                    "not": {
+                      "pattern": "[\\r\\n\\u2028\\u2029]"
+                    }
+                  },
+                  "version": {
+                    "type": "string",
+                    "maxLength": 128,
+                    "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:-(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(?:\\.(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$",
+                    "not": {
+                      "pattern": "[\\r\\n\\u2028\\u2029]"
+                    }
+                  },
+                  "revisionId": {
+                    "type": "string",
+                    "maxLength": 68,
+                    "pattern": "^skr_[a-f0-9]{64}$",
+                    "not": {
+                      "pattern": "[\\r\\n\\u2028\\u2029]"
+                    }
+                  },
+                  "treeSha256": {
+                    "type": "string",
+                    "maxLength": 64,
+                    "pattern": "^[a-f0-9]{64}$",
+                    "not": {
+                      "pattern": "[\\r\\n\\u2028\\u2029]"
+                    }
+                  },
+                  "permissionDigest": {
+                    "type": "string",
+                    "maxLength": 64,
+                    "pattern": "^[a-f0-9]{64}$",
+                    "not": {
+                      "pattern": "[\\r\\n\\u2028\\u2029]"
+                    }
+                  }
+                }
+              },
+              "score": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "exactIntents",
+                  "exactCategories",
+                  "descendantCategories"
+                ],
+                "properties": {
+                  "exactIntents": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 32
+                  },
+                  "exactCategories": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 32
+                  },
+                  "descendantCategories": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 32
+                  }
+                }
+              },
+              "matches": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "exactIntents",
+                  "exactCategories",
+                  "descendantCategories",
+                  "rationaleTruncated"
+                ],
+                "properties": {
+                  "exactIntents": {
+                    "type": "array",
+                    "maxItems": 32,
+                    "uniqueItems": true,
+                    "items": {
+                      "type": "string",
+                      "maxLength": 64,
+                      "pattern": "^[a-z][a-z0-9_]{0,63}$",
+                      "not": {
+                        "pattern": "[\\r\\n\\u2028\\u2029]"
+                      }
+                    }
+                  },
+                  "exactCategories": {
+                    "type": "array",
+                    "maxItems": 32,
+                    "uniqueItems": true,
+                    "items": {
+                      "type": "string",
+                      "maxLength": 128,
+                      "pattern": "^[a-z0-9][a-z0-9_-]{0,31}(?:\\.[a-z0-9][a-z0-9_-]{0,31}){0,5}$",
+                      "not": {
+                        "pattern": "[\\r\\n\\u2028\\u2029]"
+                      }
+                    }
+                  },
+                  "descendantCategories": {
+                    "type": "array",
+                    "maxItems": 32,
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "requested",
+                        "declared"
+                      ],
+                      "properties": {
+                        "requested": {
+                          "type": "string",
+                          "maxLength": 128,
+                          "pattern": "^[a-z0-9][a-z0-9_-]{0,31}(?:\\.[a-z0-9][a-z0-9_-]{0,31}){0,5}$",
+                          "not": {
+                            "pattern": "[\\r\\n\\u2028\\u2029]"
+                          }
+                        },
+                        "declared": {
+                          "type": "string",
+                          "maxLength": 128,
+                          "pattern": "^[a-z0-9][a-z0-9_-]{0,31}(?:\\.[a-z0-9][a-z0-9_-]{0,31}){0,5}$",
+                          "not": {
+                            "pattern": "[\\r\\n\\u2028\\u2029]"
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "rationaleTruncated": {
+                    "type": "boolean"
+                  }
+                }
+              },
+              "plan": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 128,
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "packageId",
+                    "version",
+                    "revisionId",
+                    "treeSha256",
+                    "permissionDigest"
+                  ],
+                  "properties": {
+                    "packageId": {
+                      "type": "string",
+                      "maxLength": 64,
+                      "pattern": "^[a-z0-9][a-z0-9-]{0,63}$",
+                      "not": {
+                        "pattern": "[\\r\\n\\u2028\\u2029]"
+                      }
+                    },
+                    "version": {
+                      "type": "string",
+                      "maxLength": 128,
+                      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:-(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(?:\\.(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$",
+                      "not": {
+                        "pattern": "[\\r\\n\\u2028\\u2029]"
+                      }
+                    },
+                    "revisionId": {
+                      "type": "string",
+                      "maxLength": 68,
+                      "pattern": "^skr_[a-f0-9]{64}$",
+                      "not": {
+                        "pattern": "[\\r\\n\\u2028\\u2029]"
+                      }
+                    },
+                    "treeSha256": {
+                      "type": "string",
+                      "maxLength": 64,
+                      "pattern": "^[a-f0-9]{64}$",
+                      "not": {
+                        "pattern": "[\\r\\n\\u2028\\u2029]"
+                      }
+                    },
+                    "permissionDigest": {
+                      "type": "string",
+                      "maxLength": 64,
+                      "pattern": "^[a-f0-9]{64}$",
+                      "not": {
+                        "pattern": "[\\r\\n\\u2028\\u2029]"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "exclusions": {
+          "type": "array",
+          "maxItems": 16,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "identity",
+              "reason",
+              "diagnostics",
+              "omittedDiagnostics"
+            ],
+            "properties": {
+              "identity": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "packageId",
+                  "version",
+                  "revisionId",
+                  "treeSha256",
+                  "permissionDigest"
+                ],
+                "properties": {
+                  "packageId": {
+                    "type": "string",
+                    "maxLength": 64,
+                    "pattern": "^[a-z0-9][a-z0-9-]{0,63}$",
+                    "not": {
+                      "pattern": "[\\r\\n\\u2028\\u2029]"
+                    }
+                  },
+                  "version": {
+                    "type": "string",
+                    "maxLength": 128,
+                    "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:-(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(?:\\.(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$",
+                    "not": {
+                      "pattern": "[\\r\\n\\u2028\\u2029]"
+                    }
+                  },
+                  "revisionId": {
+                    "type": "string",
+                    "maxLength": 68,
+                    "pattern": "^skr_[a-f0-9]{64}$",
+                    "not": {
+                      "pattern": "[\\r\\n\\u2028\\u2029]"
+                    }
+                  },
+                  "treeSha256": {
+                    "type": "string",
+                    "maxLength": 64,
+                    "pattern": "^[a-f0-9]{64}$",
+                    "not": {
+                      "pattern": "[\\r\\n\\u2028\\u2029]"
+                    }
+                  },
+                  "permissionDigest": {
+                    "type": "string",
+                    "maxLength": 64,
+                    "pattern": "^[a-f0-9]{64}$",
+                    "not": {
+                      "pattern": "[\\r\\n\\u2028\\u2029]"
+                    }
+                  }
+                }
+              },
+              "reason": {
+                "type": "string",
+                "enum": [
+                  "selector_mismatch",
+                  "root_inactive",
+                  "root_unavailable",
+                  "inconsistent_preflight"
+                ]
+              },
+              "diagnostics": {
+                "type": "array",
+                "maxItems": 32,
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "code"
+                  ],
+                  "properties": {
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "bad_pin",
+                        "missing_pin",
+                        "dependency_unavailable",
+                        "dependency_inactive",
+                        "root_unavailable",
+                        "range_mismatch",
+                        "unsupported_range",
+                        "compatibility_unknown",
+                        "compatibility_mismatch",
+                        "conflict",
+                        "cycle",
+                        "permission_outside_ceiling",
+                        "bound_exceeded"
+                      ]
+                    },
+                    "packageId": {
+                      "type": "string",
+                      "maxLength": 64,
+                      "pattern": "^[a-z0-9][a-z0-9-]{0,63}$",
+                      "not": {
+                        "pattern": "[\\r\\n\\u2028\\u2029]"
+                      }
+                    },
+                    "relatedPackageId": {
+                      "type": "string",
+                      "maxLength": 64,
+                      "pattern": "^[a-z0-9][a-z0-9-]{0,63}$",
+                      "not": {
+                        "pattern": "[\\r\\n\\u2028\\u2029]"
+                      }
+                    }
+                  }
+                }
+              },
+              "omittedDiagnostics": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              }
+            }
+          }
+        },
+        "issues": {
+          "type": "array",
+          "maxItems": 15,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "enum": [
+              "empty_selectors",
+              "selector_limit",
+              "invalid_category",
+              "invalid_intent",
+              "invalid_result_limit",
+              "candidate_limit",
+              "context_limit",
+              "graph_node_limit",
+              "graph_edge_limit",
+              "metadata_limit",
+              "invalid_claim",
+              "invalid_context",
+              "duplicate_candidate_package",
+              "runtime_fact_limit",
+              "permission_ceiling_limit"
+            ]
+          }
+        },
+        "eligibleCount": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 16
+        },
+        "topTieCount": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 16
+        }
+      }
+    },
     "DaemonSkillScannerParams": {
       "type": "object",
       "additionalProperties": false,
@@ -5083,8 +7699,33 @@
         },
         "to": {
           "$ref": "#/$defs/TaskState"
+        },
+        "supervisorId": {
+          "$ref": "#/$defs/Uuid"
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "supervisorId"
+            ]
+          },
+          "then": {
+            "properties": {
+              "from": {
+                "enum": [
+                  "queued",
+                  "assigned"
+                ]
+              },
+              "to": {
+                "const": "running"
+              }
+            }
+          }
+        }
+      ]
     },
     "DaemonTaskTransitionResult": {
       "type": "object",
@@ -5109,8 +7750,84 @@
           "type": "integer",
           "minimum": 1,
           "maximum": 9007199254740991
+        },
+        "admission": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "missionId",
+            "workspaceId",
+            "taskId",
+            "leaseId",
+            "holderAgentId",
+            "supervisorId",
+            "attempt",
+            "missionVersion",
+            "taskDigest",
+            "graphDigest",
+            "admissionDigest",
+            "admittedAt"
+          ],
+          "properties": {
+            "missionId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "workspaceId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "taskId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "leaseId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "holderAgentId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "supervisorId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "attempt": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            "missionVersion": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            "taskDigest": {
+              "$ref": "#/$defs/Sha256Digest"
+            },
+            "graphDigest": {
+              "$ref": "#/$defs/Sha256Digest"
+            },
+            "admissionDigest": {
+              "$ref": "#/$defs/Sha256Digest"
+            },
+            "admittedAt": {
+              "$ref": "#/$defs/UtcTimestamp"
+            }
+          }
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "admission"
+            ]
+          },
+          "then": {
+            "properties": {
+              "state": {
+                "const": "running"
+              }
+            }
+          }
+        }
+      ]
     },
     "DaemonToolAccess": {
       "type": "string",

@@ -3,7 +3,7 @@ import {
   LineBasicMaterial, CustomBlending, LineSegments, MeshMatcapMaterial, OneFactor, Plane, Points, Raycaster, ShaderMaterial, SRGBColorSpace, Vector2, Vector3, ZeroFactor,
   type Fog, type PerspectiveCamera, type Scene, type WebGLRenderer,
 } from 'three';
-import { decodeFrame, encodeInit, encodeMask, SIM_REHEAT_ALPHA, type Encoded, type SimCommand } from './simProtocol';
+import { decodeFrame, encodeInit, encodeMask, type Encoded, type SimCommand } from './simProtocol';
 import { edgeEndColour, labelCandidates, neighbourSet, nodeLook, QUALITY_TIERS, updateQuality, type NodeLook, type QualityState, type VaultGraph } from './vaultGraphModel';
 
 /**
@@ -27,6 +27,9 @@ export interface GraphOptions {
   showHalos: boolean;
   reducedMotion: boolean;
   showFps: boolean;
+  returnToLayout: boolean;
+  /** Increments only for an explicit layout restore; unrelated renders preserve interaction. */
+  restoreRevision: number;
   onSelect: (index: number) => void;
 }
 
@@ -241,9 +244,16 @@ export class VaultGraphRenderer {
     on('pointermove', event => this.onMove(event));
     on('pointerup', event => this.onUp(event));
     on('pointercancel', event => this.onUp(event));
+    on('lostpointercapture', event => this.onUp(event));
     on('pointerleave', () => { if (!this.drag) this.setHovered(null); });
     on('wheel', () => this.touch(), { passive: true });
-    const visibility = () => this.sim?.send(command({ type: document.hidden ? 'pause' : 'resume' }));
+    const visibility = () => {
+      if (document.hidden) {
+        const drag = this.clearDrag();
+        if (drag?.moved) this.sim?.send(command({ type: 'release', index: drag.index }));
+      }
+      this.sim?.send(command({ type: document.hidden ? 'pause' : 'resume' }));
+    };
     document.addEventListener('visibilitychange', visibility);
     this.cleanups.push(() => document.removeEventListener('visibilitychange', visibility));
     if (ctx.labels) {
@@ -268,8 +278,18 @@ export class VaultGraphRenderer {
       next.colours.forEach((hex, i) => { colour.set(hex); buffers.base[i * 3] = colour.r; buffers.base[i * 3 + 1] = colour.g; buffers.base[i * 3 + 2] = colour.b; });
     }
     if (before && before.graph === next.graph && before.mask !== next.mask) {
+      // Visibility changes are view filters, not a request to reframe or keep flying.
+      this.userStart();
+      this.clearDrag();
       this.sim?.send(encodeMask(next.mask));
       this.simRunning = true;
+    }
+    if (before?.graph === next.graph && (before.returnToLayout !== next.returnToLayout || before.reducedMotion !== next.reducedMotion)) {
+      this.sim?.send(command({ type: 'interaction', returnToLayout: next.returnToLayout, reducedMotion: next.reducedMotion }));
+    }
+    if (before?.graph === next.graph && before.restoreRevision !== next.restoreRevision) {
+      this.clearDrag();
+      this.sim?.send(command({ type: 'restore' }));
     }
     if (!before || before.showHalos !== next.showHalos || before.reducedMotion !== next.reducedMotion) this.syncPulse();
     this.restyle();
@@ -278,6 +298,7 @@ export class VaultGraphRenderer {
   }
 
   dispose() {
+    this.clearDrag();
     this.cleanups.splice(0).forEach(cleanup => cleanup());
     if (this.pulseTimer) clearInterval(this.pulseTimer);
     this.sim?.dispose();
@@ -287,7 +308,9 @@ export class VaultGraphRenderer {
 
   /** A new or refreshed vault: new buffers and simulation; notes it still has keep their place. */
   private setGraph(graph: VaultGraph) {
+    this.clearDrag();
     const previous = this.buffers;
+    if (previous) this.userStart();
     this.sim?.dispose();
     const buffers = createBuffers(graph);
     let seed: Float32Array | undefined;
@@ -306,7 +329,9 @@ export class VaultGraphRenderer {
     this.hasFrame = false; this.simRunning = true; this.hovered = null; this.drag = null;
     const sim = startSimulation(data => this.onFrame(buffers, data));
     sim.send(encodeInit(graph.nodes.length, graph.edges, graph.degree, seed));
+    sim.send(command({ type: 'interaction', returnToLayout: this.options!.returnToLayout, reducedMotion: this.options!.reducedMotion }));
     if (this.options && !this.options.mask.every(Boolean)) sim.send(encodeMask(this.options.mask));
+    if (document.hidden) sim.send(command({ type: 'pause' }));
     this.sim = sim;
   }
 
@@ -317,7 +342,7 @@ export class VaultGraphRenderer {
     buffers.target.set(frame.positions);
     const drag = this.drag;
     if (drag?.moved) buffers.target.set(buffers.display.subarray(drag.index * 3, drag.index * 3 + 3), drag.index * 3);
-    if (!this.hasFrame) { buffers.display.set(frame.positions); this.hasFrame = true; this.geometryDirty = true; }
+    if (!this.hasFrame || (this.options?.reducedMotion && !frame.running)) { buffers.display.set(buffers.target); this.hasFrame = true; this.geometryDirty = true; }
     this.simRunning = frame.running;
     this.moving = true;
     this.measureExtent();
@@ -348,7 +373,7 @@ export class VaultGraphRenderer {
         haloColour[i * 3 + c] = value;
       }
       haloSize[i] = visible && showHalos ? look.halo * tier.haloScale * (special ? 1.5 : 1) : 0;
-      haloGlow[i] = lit ? (focus && focus.size < 200 ? Math.max(look.glow, 0.32) : look.glow) * (special ? 1.4 : 1) : look.glow * 0.05;
+      haloGlow[i] = !visible ? 0 : lit ? (focus && focus.size < 200 ? Math.max(look.glow, 0.32) : look.glow) * (special ? 1.4 : 1) : look.glow * 0.05;
     }
     const a3 = [0, 0, 0], b3 = [0, 0, 0];
     for (let e = 0; e < buffers.edgeCount; e++) {
@@ -373,7 +398,7 @@ export class VaultGraphRenderer {
   /** Ease the camera and the orbit target to a note (selection, active search match). */
   private flyTo(index: number | null) {
     const orbit = this.controls, buffers = this.buffers;
-    if (index === null || !orbit || !buffers || !this.hasFrame) return;
+    if (index === null || !orbit || !buffers || !this.hasFrame || this.options?.mask[index] !== 1) return;
     const camera = this.ctx.camera;
     const at = new Vector3().fromArray(buffers.display, index * 3);
     const toward = camera.position.clone().sub(orbit.target).normalize();
@@ -422,7 +447,7 @@ export class VaultGraphRenderer {
 
   private onDown(event: PointerEvent) {
     this.touch();
-    if (event.button !== 0) return;
+    if (event.button !== 0 || this.drag) return;
     const index = this.pick(event);
     if (index === null || !this.buffers) return;
     this.ctx.gl.domElement.setPointerCapture(event.pointerId);
@@ -444,6 +469,7 @@ export class VaultGraphRenderer {
       this.raycaster.setFromCamera(this.ndc, this.ctx.camera);
       const hit = this.raycaster.ray.intersectPlane(drag.plane, new Vector3());
       if (!hit) return;
+      this.userStart();
       buffers.display.set([hit.x, hit.y, hit.z], drag.index * 3);
       buffers.target.set([hit.x, hit.y, hit.z], drag.index * 3);
       this.geometryDirty = true;
@@ -456,15 +482,21 @@ export class VaultGraphRenderer {
     this.setHovered(this.pick(event));
   }
 
+  /** Release capture before graph replacement/filtering can discard the gesture. */
+  private clearDrag() {
+    const drag = this.drag;
+    this.drag = null;
+    if (this.controls) this.controls.enabled = true;
+    if (drag && this.ctx.gl.domElement.hasPointerCapture(drag.pointer)) this.ctx.gl.domElement.releasePointerCapture(drag.pointer);
+    return drag;
+  }
+
   private onUp(event: PointerEvent) {
     const drag = this.drag;
     if (!drag || event.pointerId !== drag.pointer) return;
-    if (this.ctx.gl.domElement.hasPointerCapture(event.pointerId)) this.ctx.gl.domElement.releasePointerCapture(event.pointerId);
-    this.drag = null;
-    if (this.controls) this.controls.enabled = true;
+    this.clearDrag();
     if (drag.moved) {
       this.sim?.send(command({ type: 'release', index: drag.index }));
-      this.sim?.send(command({ type: 'reheat', alpha: SIM_REHEAT_ALPHA / 3 }));
     } else if (event.type === 'pointerup') this.options?.onSelect(drag.index);
   }
 
@@ -499,9 +531,13 @@ export class VaultGraphRenderer {
     halos.geometry.attributes.position!.needsUpdate = true;
     const positions = lines.geometry.attributes.position!.array as Float32Array;
     const edges = buffers.graph.edges;
-    for (let e = 0; e < edges.length; e++) {
-      const from = edges[e]! * 3;
-      positions[e * 3] = display[from]!; positions[e * 3 + 1] = display[from + 1]!; positions[e * 3 + 2] = display[from + 2]!;
+    for (let e = 0; e < edges.length; e += 2) {
+      // Black vertex colours alone still receive fog under additive blending.
+      // Collapse hidden segments so they cannot reappear as faint ghost links.
+      const a = edges[e]!, b = edges[e + 1]!;
+      if (this.options?.mask[a] !== 1 || this.options.mask[b] !== 1) { positions.fill(0, e * 3, e * 3 + 6); continue; }
+      positions.set(display.subarray(a * 3, a * 3 + 3), e * 3);
+      positions.set(display.subarray(b * 3, b * 3 + 3), e * 3 + 3);
     }
     lines.geometry.attributes.position!.needsUpdate = true;
   }
@@ -522,6 +558,7 @@ export class VaultGraphRenderer {
         if (Math.abs(step) > largest) largest = Math.abs(step);
       }
       this.moving = largest > 0.004 || this.simRunning;
+      if (!this.moving) display.set(target);
       this.geometryDirty = true;
     }
     if (this.geometryDirty) { this.geometryDirty = false; this.writeGeometry(buffers); }

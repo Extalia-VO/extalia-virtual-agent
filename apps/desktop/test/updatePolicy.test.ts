@@ -1,6 +1,21 @@
 import type { UpdateStatus } from '@extalia/platform';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { RESTART_DELAY_SECONDS, UpdatePolicy, WAITING_FOR_AGENTS, updateChannel, updateErrorDetail, type UpdateDriver } from '../src/updatePolicy';
+import { RESTART_DELAY_SECONDS, UpdatePolicy, WAITING_FOR_AGENTS, supportsPackagedUpdates, updateChannel, updateErrorDetail, type UpdateDriver } from '../src/updatePolicy';
+
+describe('packaged update eligibility', () => {
+  it('keeps ad-hoc previews and unknown macOS builds out of automatic installers', () => {
+    for (const mode of ['preview', undefined, null, 'unknown']) expect(supportsPackagedUpdates(true, false, 'darwin', mode)).toBe(false);
+    expect(supportsPackagedUpdates(true, false, 'darwin', 'notarized')).toBe(true);
+  });
+  it('retains Windows/Linux updates and disables all development/smoke installers', () => {
+    for (const platform of ['darwin', 'win32', 'linux']) {
+      expect(supportsPackagedUpdates(false, false, platform, 'notarized')).toBe(false);
+      expect(supportsPackagedUpdates(true, true, platform, 'notarized')).toBe(false);
+    }
+    expect(supportsPackagedUpdates(true, false, 'win32', undefined)).toBe(true);
+    expect(supportsPackagedUpdates(true, false, 'linux', undefined)).toBe(true);
+  });
+});
 
 class FakeWork {
   busy = false;

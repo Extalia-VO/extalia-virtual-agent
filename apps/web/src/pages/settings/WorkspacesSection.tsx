@@ -11,7 +11,7 @@ import { TeamSetupDialog } from '../../office/TeamSetupDialog';
 import { teamSupported, workspaceTeamSupported } from '../../office/team';
 import { ProjectSkillsPendingLink } from '../../skills/ProjectSkills';
 
-export function WorkspacesSection({ t, agents, picker, state, onState, editGateFor, onEditGateHandled, onReviewSkills }: {
+export function WorkspacesSection({ t, agents, picker, state, onState, editGateFor, onEditGateHandled, onReviewSkills, showGate = true }: {
   t: Messages;
   agents: AgentHostApi;
   picker?: FileSystemCapability;
@@ -22,6 +22,8 @@ export function WorkspacesSection({ t, agents, picker, state, onState, editGateF
   onEditGateHandled?: () => void;
   /** Opens the Skills page on this workspace ("N project skills waiting — Review"). */
   onReviewSkills?: (workspaceId: string) => void;
+  /** Settings exposes advanced merge checks; first-chat creation keeps them out of the initial form. */
+  showGate?: boolean;
 }) {
   const gateWorkspace = editGateFor ? state.workspaces.find(item => item.id === editGateFor) : undefined;
   const [draft, setDraft] = useState<WorkspaceDraft | null>(() => gateWorkspace ? draftFromWorkspace(gateWorkspace) : null);
@@ -70,10 +72,10 @@ export function WorkspacesSection({ t, agents, picker, state, onState, editGateF
       {draft ? (
         <form className="editor" aria-label={draft.id ? t.settings.editing(draft.name) : t.settings.addWorkspace} onSubmit={event => { event.preventDefault(); void save(); }}>
           <WorkspaceForm t={t} agents={agents} picker={picker} draft={draft} onChange={setDraft} connections={state.connections} runtimes={runtimes}
-            runtimesReady={runtimesReady} onRecheckRuntimes={refreshRuntimes} showAllErrors={attempted} showGate focusGate={focusGateId !== undefined && draft.id === focusGateId} />
+            runtimesReady={runtimesReady} onRecheckRuntimes={refreshRuntimes} showAllErrors={attempted} showGate={showGate} focusGate={focusGateId !== undefined && draft.id === focusGateId} />
           {error && <p className="form-error" role="alert"><Icon name="alert" />{error}</p>}
           <div className="actions">
-            <button type="submit" className="primary" disabled={busy}>{busy ? t.common.saving : t.common.save}</button>
+            <button type="submit" className="primary" disabled={busy || !draft.folder}>{busy ? t.common.saving : t.common.save}</button>
             <button type="button" disabled={busy} onClick={() => setDraft(null)}>{t.common.cancel}</button>
           </div>
         </form>

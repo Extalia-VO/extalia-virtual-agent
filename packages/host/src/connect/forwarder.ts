@@ -12,7 +12,7 @@ import { isNotFound, writeFileAtomic } from '../jsonStore.js';
  * no reconnect), one second overall, prints nothing, always exits 0 (agents read
  * hook stdout as decisions), never throws.
  */
-export const FORWARDER_VERSION = 2;
+export const FORWARDER_VERSION = 3;
 
 export const FORWARDER_SOURCE = `// extalia-hook-forwarder v${FORWARDER_VERSION}
 // Installed by \`extalia connect\`. Overwritten on the next connect; edit nothing here.
@@ -62,6 +62,10 @@ function main(app, body) {
     const endpoint = JSON.parse(readFileSync(path.join(home, 'hooks', 'endpoint.json'), 'utf8'));
     if (Number.isInteger(endpoint.port) && endpoint.port > 0 && endpoint.port < 65536) port = endpoint.port;
   } catch {}
+  try {
+    const overrides = JSON.parse(readFileSync(path.join(home, 'hooks', 'targets.json'), 'utf8'));
+    if (Object.hasOwn(overrides, app) && Number.isInteger(overrides[app]) && overrides[app] > 0 && overrides[app] < 65536) port = overrides[app];
+  } catch {}
   if (!token || !body) return done();
   let payload = body;
   if (event) {
@@ -73,9 +77,9 @@ function main(app, body) {
       }
     } catch {}
   }
-  if (payload.length > LIMIT) {
+  if (Buffer.byteLength(payload) > LIMIT) {
     try { payload = JSON.stringify(clip(JSON.parse(payload))); } catch { return done(); }
-    if (payload.length > LIMIT) return done();
+    if (Buffer.byteLength(payload) > LIMIT) return done();
   }
   const request = http.request({
     host: '127.0.0.1', port, path: '/api/hooks/' + encodeURIComponent(app), method: 'POST', timeout: 1000,

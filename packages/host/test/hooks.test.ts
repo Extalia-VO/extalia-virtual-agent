@@ -1,5 +1,5 @@
 import { createHmac } from 'node:crypto';
-import { chmod, mkdir, readFile, stat, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import http from 'node:http';
 import path from 'node:path';
 import { PassThrough } from 'node:stream';
@@ -229,6 +229,70 @@ describe('hook files (hooks/files.ts)', () => {
 });
 
 describe('HTTP hook ingest (hooks/http.ts & hooks/ingest.ts)', () => {
+  it.each(['bearer', 'hmac'] as const)('revokes rotated and invalidated tokens for %s without fresh-token traffic', async auth => {
+    const dataDirectory = path.join(await temp(), 'data');
+    const ingest = await createHookIngest({ dataDirectory, kind: 'desktop', now: () => 10_000, sink: () => undefined });
+    const listener = await startTestHookEndpoint((req, res, app) => ingest.handle(req, res, app), ingest);
+    const app = auth === 'hmac' ? 'hermes' : 'codex';
+    const body = JSON.stringify({ session_id: 'rotation-fixture', hook_event_name: auth === 'hmac' ? 'on_session_start' : 'SessionStart' });
+    const send = (token: string) => listener.request({
+      app, body, headers: {
+        'content-type': 'application/json',
+        ...(auth === 'hmac' ? { 'x-hermes-signature-256': hermesSignature(token, body) } : { authorization: `Bearer ${token}` }),
+      },
+    });
+    try {
+      const oldToken = (await readHookToken(dataDirectory))!;
+      expect((await send(oldToken)).status).toBe(204);
+      const newToken = await rotateHookToken(dataDirectory);
+      // No clock advance or new-token traffic: the first request after rotation must reject the old token.
+      expect((await send(oldToken)).status).toBe(401);
+      expect((await send(oldToken)).status).toBe(401);
+      expect((await send(newToken)).status).toBe(204);
+      await writeFile(hookFiles(dataDirectory).token, 'invalid-token');
+      expect((await send(newToken)).status).toBe(401);
+      await writeFile(hookFiles(dataDirectory).token, newToken);
+      expect((await send(newToken)).status).toBe(204);
+      await rm(hookFiles(dataDirectory).token);
+      expect((await send(newToken)).status).toBe(401);
+    } finally {
+      await ingest.close();
+    }
+  });
+
+  it.each(['codex', 'claude', 'gemini', 'antigravity', 'hermes'] as const)('keeps %s connection probes separate from app-event liveness', async app => {
+    const dataDirectory = path.join(await temp(), 'data');
+    let now = 10_000;
+    const received: unknown[] = [];
+    const ingest = await createHookIngest({ dataDirectory, kind: 'desktop', now: () => now, sink: hook => received.push(hook) });
+    const listener = await startTestHookEndpoint((req, res, source) => ingest.handle(req, res, source), ingest);
+    const token = (await readHookToken(dataDirectory))!;
+    const send = (payload: Record<string, unknown>) => listener.request({
+      app, body: JSON.stringify(payload), headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+    });
+    try {
+      const probe = { session_id: 'extalia-connect-test', hook_event_name: 'ExtaliaConnectTest', extalia_test: true };
+      expect((await send(probe)).status).toBe(204);
+      expect(received).toHaveLength(1);
+      expect(ingest.status().lastEvents[app]).toBeUndefined();
+      expect((await send({ malformed: true })).status).toBe(204);
+      expect((await send({ session_id: 'fixture', hook_event_name: 'UnknownEvent' })).status).toBe(204);
+      expect(ingest.status().lastEvents[app]).toBeUndefined();
+
+      const event = app === 'hermes' ? 'on_session_start' : app === 'antigravity' ? 'PreInvocation' : 'SessionStart';
+      expect((await send({ session_id: 'fixture', hook_event_name: event })).status).toBe(204);
+      const lastEvent = new Date(now).toISOString();
+      expect(ingest.status().lastEvents[app]).toBe(lastEvent);
+      now += 2_000;
+      expect((await send(probe)).status).toBe(204);
+      expect(ingest.status().lastEvents[app]).toBe(lastEvent);
+      await ingest.close();
+      expect(JSON.parse(await readFile(hookFiles(dataDirectory).lastEvents, 'utf8'))).toEqual({ [app]: lastEvent });
+    } finally {
+      await ingest.close();
+    }
+  });
+
   it('rejects Origin (403), non-POST (405), unknown app (404), non-JSON (415), invalid auth (401), body too large (413)', async () => {
     const delivered: { app: string; payload: unknown }[] = [];
     const validToken = 'a'.repeat(64);

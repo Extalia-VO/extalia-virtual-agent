@@ -10,8 +10,9 @@
 //! `decide` → `approve` / `approve_auto` → `activate`, then `deactivate`, `rollback` or
 //! `revoke`. In this slice the only inspector is `UnavailableInspector`, so `inspect`
 //! leaves every package `quarantined` with reason `scanner-unavailable`. Dependency,
-//! conflict and compatibility resolution are not built yet: `validate` refuses a revision
-//! that declares any (`resolver_unavailable`) instead of skipping the check.
+//! conflict and compatibility resolution have a separate read-only diagnostic API
+//! ([`SkillRegistry::dependency_preflight`]); activation integration is not built yet:
+//! `validate` refuses a revision that declares any (`resolver_unavailable`).
 //!
 //! Approval expiry (ADR 0026 defaults, see [`policy::DEFAULT_APPROVAL_TTL_MS`]): an approval
 //! expires 10 minutes after it is granted unless the caller asks for another expiry, at most
@@ -39,6 +40,12 @@ use super::tree::{ObjectStore, StagingLimits, Tree};
 use super::{Origin, ProfileId, Refusal, SkillError, is_workspace_id, refused};
 use crate::adapters::sqlite::CoreStore;
 use crate::time::{format_utc, parse_utc};
+
+mod preflight;
+mod routing;
+mod snapshot;
+pub use preflight::RegistryPreflightRequest;
+pub use routing::RegistryRoutingRequest;
 
 /// The current scanner identity and policy version every attestation must match.
 #[derive(Debug, Clone, PartialEq, Eq)]

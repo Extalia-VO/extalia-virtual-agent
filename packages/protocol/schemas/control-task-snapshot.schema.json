@@ -1,0 +1,310 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:extalia:protocol:control-task-snapshot:v1",
+  "title": "Control task snapshot v1 (claims only)",
+  "description": "Generated from @extalia/protocol by tooling/generate-schemas.mjs; do not edit. The TypeScript validators remain the reference. Validator-only checks: string lengths in UTF-16 code units (maxLength here counts code points).",
+  "$ref": "#/$defs/ControlTaskSnapshot",
+  "$defs": {
+    "ControlTaskSnapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "protocol",
+        "schemaVersion",
+        "kind",
+        "profileId",
+        "workspaceId",
+        "missionId",
+        "taskId",
+        "definitionVersion",
+        "stateVersion",
+        "state",
+        "executionOutcome",
+        "validation",
+        "acceptance",
+        "evidenceIds"
+      ],
+      "properties": {
+        "protocol": {
+          "const": "extalia.control.v1"
+        },
+        "schemaVersion": {
+          "const": 1
+        },
+        "kind": {
+          "const": "task-snapshot"
+        },
+        "profileId": {
+          "$ref": "#/$defs/Uuid"
+        },
+        "workspaceId": {
+          "$ref": "#/$defs/Uuid"
+        },
+        "missionId": {
+          "$ref": "#/$defs/Uuid"
+        },
+        "taskId": {
+          "$ref": "#/$defs/Uuid"
+        },
+        "definitionVersion": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "stateVersion": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "state": {
+          "type": "string",
+          "enum": [
+            "created",
+            "blocked",
+            "ready",
+            "leased",
+            "running",
+            "waiting_approval",
+            "retry_wait",
+            "validating",
+            "completed",
+            "failed",
+            "cancelling",
+            "cancelled",
+            "unknown",
+            "manual_intervention",
+            "superseded"
+          ]
+        },
+        "executionOutcome": {
+          "type": "string",
+          "enum": [
+            "not_started",
+            "running",
+            "succeeded",
+            "failed",
+            "cancelled",
+            "unknown"
+          ]
+        },
+        "executionId": {
+          "$ref": "#/$defs/Uuid"
+        },
+        "validation": {
+          "oneOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "state",
+                "recordRef"
+              ],
+              "properties": {
+                "state": {
+                  "type": "string",
+                  "enum": [
+                    "passed",
+                    "failed"
+                  ]
+                },
+                "recordRef": {
+                  "$ref": "#/$defs/Identifier"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "state"
+              ],
+              "properties": {
+                "state": {
+                  "type": "string",
+                  "enum": [
+                    "not_run",
+                    "pending",
+                    "unknown"
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        "acceptance": {
+          "oneOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "state",
+                "recordRef",
+                "reason"
+              ],
+              "properties": {
+                "state": {
+                  "const": "waived"
+                },
+                "recordRef": {
+                  "$ref": "#/$defs/Identifier"
+                },
+                "reason": {
+                  "$ref": "#/$defs/Label"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "state",
+                "recordRef"
+              ],
+              "properties": {
+                "state": {
+                  "type": "string",
+                  "enum": [
+                    "accepted",
+                    "rejected"
+                  ]
+                },
+                "recordRef": {
+                  "$ref": "#/$defs/Identifier"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "state"
+              ],
+              "properties": {
+                "state": {
+                  "type": "string",
+                  "enum": [
+                    "not_reviewed",
+                    "pending",
+                    "unknown"
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        "evidenceIds": {
+          "type": "array",
+          "maxItems": 1000,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/Uuid"
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "executionOutcome": {
+                "enum": [
+                  "running",
+                  "succeeded",
+                  "failed",
+                  "cancelled"
+                ]
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "executionId"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "acceptance": {
+                "properties": {
+                  "state": {
+                    "const": "accepted"
+                  }
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "executionOutcome": {
+                "const": "succeeded"
+              },
+              "validation": {
+                "properties": {
+                  "state": {
+                    "const": "passed"
+                  }
+                }
+              },
+              "evidenceIds": {
+                "minItems": 1
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "const": "completed"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "executionOutcome": {
+                "const": "succeeded"
+              },
+              "acceptance": {
+                "properties": {
+                  "state": {
+                    "enum": [
+                      "accepted",
+                      "waived"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "Identifier": {
+      "description": "Nonblank text without control characters, at most 200 UTF-16 code units.",
+      "type": "string",
+      "maxLength": 200,
+      "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+      "allOf": [
+        {
+          "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+        }
+      ]
+    },
+    "Label": {
+      "description": "Nonblank text without control characters, at most 2000 UTF-16 code units.",
+      "type": "string",
+      "maxLength": 2000,
+      "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+      "allOf": [
+        {
+          "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+        }
+      ]
+    },
+    "Uuid": {
+      "type": "string",
+      "description": "Lowercase RFC 9562 UUID, versions 1-8.",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    }
+  }
+}

@@ -7,7 +7,7 @@
  * to start a new process. Error frames that answer one request reject only that request.
  */
 import {
-  DAEMON_MAX_DEADLINE_MS, DAEMON_MAX_FRAME_BYTES, DAEMON_OPS, DAEMON_SCHEMA_VERSION, SKILL_REASON_PATTERN, createDaemonFrameReader, encodeDaemonFrame,
+  DAEMON_MAX_DEADLINE_MS, DAEMON_MAX_FRAME_BYTES, DAEMON_SCHEMA_VERSION, SKILL_REASON_PATTERN, createDaemonFrameReader, encodeDaemonFrame,
   type DaemonErrorCode, type DaemonFrame, type DaemonOp, type DaemonOperations, type DaemonRequest,
 } from '@extalia/protocol';
 import { randomUUID } from 'node:crypto';
@@ -46,6 +46,11 @@ export class DaemonRequestError extends Error {
 
 /** Operations the host needs; `hello` must advertise all of them. */
 export const REQUIRED_DAEMON_OPS = ['mission.create', 'task.transition', 'event.commit', 'permission.check'] as const satisfies readonly DaemonOp[];
+/** Frozen original v1 vocabulary: older daemons strictly validate hello names.
+ * Discover optional operations from the server reply, rather than sending new names
+ * before knowing the peer understands them. Do not grow this compatibility baseline.
+ */
+export const DAEMON_HELLO_BASELINE = Object.freeze(['hello', 'mission.create', 'task.transition', 'event.commit', 'permission.check', 'health'] as const satisfies readonly DaemonOp[]);
 export const DEFAULT_DAEMON_DEADLINE_MS = 5_000;
 const MAX_STDERR_LINE = 300;
 const MAX_STDERR_PENDING = 4_096;
@@ -108,7 +113,7 @@ export class DaemonClient {
 
   /** Send `hello`, check the advertised operations and adopt the daemon's frame limit. */
   async handshake(deadlineMs = DEFAULT_DAEMON_DEADLINE_MS): Promise<Result<'hello'>> {
-    const hello = await this.send('hello', { clientVersion: this.options.clientVersion, capabilities: [...DAEMON_OPS] }, deadlineMs).catch((error: unknown) => {
+    const hello = await this.send('hello', { clientVersion: this.options.clientVersion, capabilities: [...DAEMON_HELLO_BASELINE] }, deadlineMs).catch((error: unknown) => {
       if (error instanceof DaemonRequestError) this.fail(error.code === 'unsupported_schema_version' ? 'schema_mismatch' : 'handshake_failed');
       throw this.ended ? new DaemonUnavailableError(this.failureCode ?? 'handshake_failed') : error;
     });

@@ -158,7 +158,11 @@ and they glow and pulse gently. These controls are available:
 | --- | --- |
 | Rotate | Drag |
 | Zoom | Scroll |
-| Move a note | Drag the note |
+| Move a note | Drag the note. Its neighbours react and the links follow. |
+| Return after dragging | **Return after drag** is on by default. On release, all notes return to their positions before the gesture. Turn it off to let the graph settle freely. |
+| Restore positions | **Restore layout** restores the positions before the last drag without changing your camera. Filtering or refreshing the vault starts a new layout and clears the previous restore point. |
+| Focus linked notes | Select a note, then **Focus selected note**. Choose 1, 2 or 3 hops through links in the loaded graph. The time filter still applies, including to intermediate notes. |
+| Leave focus | **Clear focus** keeps your time filter, search and camera. Reading another note or closing its panel does not move the focus anchor. |
 | Highlight a note and its neighbours | Hover over the note |
 | Read a note | Click the note. It opens beside the graph, or as a bottom sheet on phones. |
 | Search | Press `/` and type. Use ↑ and ↓ to move through matches, Enter to open one, and Esc to close the note. |
@@ -169,6 +173,18 @@ and they glow and pulse gently. These controls are available:
 
 The 3D graph needs WebGL. Where WebGL is not available, use the list view or the
 local graph.
+
+Positions are temporary view state; moving notes does not edit Markdown or
+wikilinks. With reduced motion enabled in your system, return/restore finishes
+immediately. A hidden tab pauses the simulation; leaving the graph stops its
+worker. No persistent pins or saved layout are added by these controls.
+
+Focus is temporary and ends when you leave the whole-vault view. If its note is
+removed from the loaded graph or hidden by the time filter, the graph explains
+why it is empty; change the time filter or clear focus. Counts and legend show
+only visible notes/links, while note size and list degree reflect vault-wide
+connectedness. Focus follows actual loaded links, including backlinks, and
+does not infer relationships or expand beyond the displayed overview limit.
 
 ## Profiles
 

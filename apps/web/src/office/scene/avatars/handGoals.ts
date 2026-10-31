@@ -189,6 +189,12 @@ export function blendHandGoals(shown: HandGoals, target: HandGoals, k: number): 
   const t = clamp01(k);
   for (const i of [0, 1] as const) {
     const s = shown.target[i], g = target.target[i];
+    // An inactive contact has no meaningful position. Initialize its goal at
+    // the real desk/chair before blending IK strength, rather than reaching
+    // through the world origin on the first seated frames.
+    if (t > 0 && shown.weight[i] <= 1e-3 && target.weight[i] > 1e-3) {
+      s[0] = g[0]; s[1] = g[1]; s[2] = g[2];
+    }
     s[0] += (g[0] - s[0]) * t; s[1] += (g[1] - s[1]) * t; s[2] += (g[2] - s[2]) * t;
     for (const axis of [0, 1, 2] as const) {
       shown.direction[i][axis] += (target.direction[i][axis]! - shown.direction[i][axis]!) * t;

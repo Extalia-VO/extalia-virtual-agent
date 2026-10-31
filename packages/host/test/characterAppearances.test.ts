@@ -8,6 +8,7 @@ import { useTempDirs } from './helpers.js';
 const LOOK: CharacterAppearance = {
   presentation: 'masculine', hairStyle: 'side-part', hairColor: '#292426', skinTone: '#a9765e',
   outfit: 'executive', top: 'shirt', bottom: 'trousers', stature: 'default', gait: 'masculine',
+  outfitParts: { top: 'shirt', bottom: 'jeans', outer: 'vest' },
   accessories: { glasses: 'none', watch: 'classic', earrings: 'none', bag: 'briefcase', tie: true, badge: true, headphones: false },
 };
 

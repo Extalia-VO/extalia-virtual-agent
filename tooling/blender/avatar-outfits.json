@@ -1,0 +1,1928 @@
+{
+  "$comment": "Avatar outfit catalog for tooling/blender/prepare-avatar-outfits.py. One entry per outfit; see tooling/blender/README.md (Avatar outfits). Reserved for the staff uniforms (create-staff-uniforms.py), not listed here: female/receptionist_black_business_suit_set.glb, male/bartender_clothes.glb, male/bartender_vest_style.glb.",
+  "schemaVersion": 1,
+  "notices": {
+    "renderhub-extended-use": {
+      "text": "Free RenderHub downloads under RenderHub's Extended Use License: commercial and non-commercial use in a variety of mediums. Terms: RenderHub 3D Content Licensing Agreement (https://www.renderhub.com/info/3d-content-licensing). The individual RenderHub product pages and authors were not recorded with the archives.",
+      "item": "RenderHub free download, Extended Use License (owner-confirmed 2026-10-29); modified: refitted, re-rigged, simplified, recoloured."
+    },
+    "owner-provided-unverified": {
+      "text": "Owner-provided downloads without a recorded author or licence (pending owner confirmation). They stay out of builds made with EXTALIA_COMMERCIAL_ASSETS_ONLY=1 once the runtime honours that switch for outfits.",
+      "item": "Author and licence pending owner confirmation; modified: refitted, re-rigged, simplified, recoloured."
+    },
+    "sketchfab-white-suit-set": {
+      "text": "This work is based on \"White Suit Set\" (https://sketchfab.com/3d-models/white-suit-set-46111b5492f944bd862b8ca9ca4ba78b) by Style3D CG (https://sketchfab.com/Style3DMeta) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/). Modified: refitted to the Extalia avatar body, re-rigged to its 20-joint skeleton, simplified, debadged and recoloured (source textures removed).",
+      "item": "Sketchfab, CC-BY-4.0; modified: refitted, re-rigged, simplified, recoloured."
+    },
+    "sketchfab-pink-drawstring-hooded-sweatshirt": {
+      "text": "This work is based on \"Pink Drawstring Hooded Sweatshirt\" (https://sketchfab.com/3d-models/pink-drawstring-hooded-sweatshirt-fd03f442026f4252b2507dda53bba564) by Style3D CG (https://sketchfab.com/Style3DMeta) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/). Modified: refitted to the Extalia avatar body, re-rigged to its 20-joint skeleton, simplified, debadged and recoloured (source textures removed).",
+      "item": "Sketchfab, CC-BY-4.0; modified: refitted, re-rigged, simplified, recoloured."
+    },
+    "sketchfab-hoodie-and-jeans": {
+      "text": "This work is based on \"Hoodie and Jeans\" (https://sketchfab.com/3d-models/hoodie-and-jeans-4fc7bc06a5b94568b1923268f4a6e825) by lizhiqiang (https://sketchfab.com/lizhiqiang89) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/). Modified: refitted to the Extalia avatar body, re-rigged to its 20-joint skeleton, simplified, debadged and recoloured (source textures removed).",
+      "item": "Sketchfab, CC-BY-4.0; modified: refitted, re-rigged, simplified, recoloured."
+    },
+    "sketchfab-mens-two-piece-suit": {
+      "text": "This work is based on \"Men's Two Piece Suit\" (https://sketchfab.com/3d-models/mens-two-piece-suit-8cafbab7a73e4fb7966a00659a4e31ef) by DineshThennarasan (https://sketchfab.com/dineshthennarasan) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/). Modified: refitted to the Extalia avatar body, re-rigged to its 20-joint skeleton, simplified, debadged and recoloured (source textures removed).",
+      "item": "Sketchfab, CC-BY-4.0; modified: refitted, re-rigged, simplified, recoloured."
+    },
+    "sketchfab-prom-suit": {
+      "text": "This work is based on \"Prom Suit\" (https://sketchfab.com/3d-models/prom-suit-a0d13b4678684e5ab62b08d4a8ef1835) by jpg. (https://sketchfab.com/jpg.) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/). Modified: refitted to the Extalia avatar body, re-rigged to its 20-joint skeleton, simplified, debadged and recoloured (source textures removed).",
+      "item": "Sketchfab, CC-BY-4.0; modified: refitted, re-rigged, simplified, recoloured."
+    },
+    "sketchfab-denim-jacket": {
+      "text": "This work is based on \"Denim Jacket\" (https://sketchfab.com/3d-models/denim-jacket-1f11ec52bd8c4421abc18f45197c198e) by k_Helferty99 (https://sketchfab.com/k_Helferty99) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/). Modified: refitted to the Extalia avatar body, re-rigged to its 20-joint skeleton, simplified, debadged and recoloured (source textures removed).",
+      "item": "Sketchfab, CC-BY-4.0; modified: refitted, re-rigged, simplified, recoloured."
+    },
+    "sketchfab-shirt": {
+      "text": "This work is based on \"Shirt\" (https://sketchfab.com/3d-models/shirt-745d0d185b49405694ef4e16cf78e224) by eigenscene (https://sketchfab.com/eigenscene) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/). Modified: refitted to the Extalia avatar body, re-rigged to its 20-joint skeleton, simplified, debadged and recoloured (source textures removed).",
+      "item": "Sketchfab, CC-BY-4.0; modified: refitted, re-rigged, simplified, recoloured."
+    },
+    "sketchfab-green-and-white-hoodie": {
+      "text": "This work is based on \"Green and white hoodie\" (https://sketchfab.com/3d-models/green-and-white-hoodie-af100701826e4bb9abc1ff1a1d24ab1e) by Style3D CG (https://sketchfab.com/Style3DMeta) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/). Modified: refitted to the Extalia avatar body, re-rigged to its 20-joint skeleton, simplified, debadged and recoloured (source textures removed).",
+      "item": "Sketchfab, CC-BY-4.0; modified: refitted, re-rigged, simplified, recoloured."
+    },
+    "sketchfab-sweatshirt-and-jacket-and-workwear-pants": {
+      "text": "This work is based on \"Sweatshirt and jacket and workwear pants\" (https://sketchfab.com/3d-models/sweatshirt-and-jacket-and-workwear-pants-ceabc26ccd8a48ed9dea753c6f7bcd2e) by Style3D CG (https://sketchfab.com/Style3DMeta) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/). Modified: refitted to the Extalia avatar body, re-rigged to its 20-joint skeleton, simplified, debadged and recoloured (source textures removed).",
+      "item": "Sketchfab, CC-BY-4.0; modified: refitted, re-rigged, simplified, recoloured."
+    },
+    "sketchfab-beige-business-suit-with-short-skirt": {
+      "text": "This work is based on \"Beige Business Suit with Short Skirt\" (https://sketchfab.com/3d-models/beige-business-suit-with-short-skirt-83652198bbf2496d8d39ff4be41ad980) by Style3D CG (https://sketchfab.com/Style3DMeta) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/). Modified: refitted to the Extalia avatar body, re-rigged to its 20-joint skeleton, simplified, debadged and recoloured (source textures removed).",
+      "item": "Sketchfab, CC-BY-4.0; modified: refitted, re-rigged, simplified, recoloured."
+    },
+    "sketchfab-black-mesh-dress": {
+      "text": "This work is based on \"Black Mesh Dress\" (https://sketchfab.com/3d-models/black-mesh-dress-62b23d393c16485fae3e4b03608bf267) by Style3D CG (https://sketchfab.com/Style3DMeta) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/). Modified: refitted to the Extalia avatar body, re-rigged to its 20-joint skeleton, simplified, debadged and recoloured (source textures removed).",
+      "item": "Sketchfab, CC-BY-4.0; modified: refitted, re-rigged, simplified, recoloured."
+    },
+    "sketchfab-black-simple-outfit": {
+      "text": "This work is based on \"Black simple outfit\" (https://sketchfab.com/3d-models/black-simple-outfit-606416bf37b947e3890fcd1c16e70b8f) by Style3D CG (https://sketchfab.com/Style3DMeta) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/). Modified: refitted to the Extalia avatar body, re-rigged to its 20-joint skeleton, simplified, debadged and recoloured (source textures removed).",
+      "item": "Sketchfab, CC-BY-4.0; modified: refitted, re-rigged, simplified, recoloured."
+    },
+    "sketchfab-blue-white-floral-cheongsam-dress": {
+      "text": "This work is based on \"Blue White Floral Cheongsam dress\" (https://sketchfab.com/3d-models/blue-white-floral-cheongsam-dress-01f1e45152cd490faabd7f5effdf178c) by Style3D CG (https://sketchfab.com/Style3DMeta) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/). Modified: refitted to the Extalia avatar body, re-rigged to its 20-joint skeleton, simplified, debadged and recoloured (source textures removed).",
+      "item": "Sketchfab, CC-BY-4.0; modified: refitted, re-rigged, simplified, recoloured."
+    },
+    "sketchfab-chiffon-dress": {
+      "text": "This work is based on \"Chiffon Dress\" (https://sketchfab.com/3d-models/chiffon-dress-08f8c0d5076f4df69f4234f4971261e5) by Style3D CG (https://sketchfab.com/Style3DMeta) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/). Modified: refitted to the Extalia avatar body, re-rigged to its 20-joint skeleton, simplified, debadged and recoloured (source textures removed).",
+      "item": "Sketchfab, CC-BY-4.0; modified: refitted, re-rigged, simplified, recoloured."
+    },
+    "sketchfab-classic-black-flame-hoodie": {
+      "text": "This work is based on \"Classic Black Flame Hoodie\" (https://sketchfab.com/3d-models/classic-black-flame-hoodie-0fd0effa321e456cb2a7467e2899b658) by kril (https://sketchfab.com/krrril_) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/). Modified: refitted to the Extalia avatar body, re-rigged to its 20-joint skeleton, simplified, debadged and recoloured (source textures removed).",
+      "item": "Sketchfab, CC-BY-4.0; modified: refitted, re-rigged, simplified, recoloured."
+    },
+    "sketchfab-cloth-jacket": {
+      "text": "This work is based on \"Cloth Jacket\" (https://sketchfab.com/3d-models/cloth-jacket-f880b45cde9f41cf9b4afbfe25ce9887) by Curtis Kinney (https://sketchfab.com/ravenkumquat) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/). Modified: refitted to the Extalia avatar body, re-rigged to its 20-joint skeleton, simplified, debadged and recoloured (source textures removed).",
+      "item": "Sketchfab, CC-BY-4.0; modified: refitted, re-rigged, simplified, recoloured."
+    },
+    "sketchfab-dress": {
+      "text": "This work is based on \"Dress\" (https://sketchfab.com/3d-models/dress-e91b8bff85094f7cb0aa564e4df01a39) by Andrew Lebedev (https://sketchfab.com/Andrew_Lebedev_CGI) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/). Modified: refitted to the Extalia avatar body, re-rigged to its 20-joint skeleton, simplified, debadged and recoloured (source textures removed).",
+      "item": "Sketchfab, CC-BY-4.0; modified: refitted, re-rigged, simplified, recoloured."
+    },
+    "sketchfab-female-cloth1": {
+      "text": "This work is based on \"Female Cloth1\" (https://sketchfab.com/3d-models/female-cloth1-c5f828cf2c52461496a058f590e26cd6) by mega3d (https://sketchfab.com/mega-3d) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/). Modified: refitted to the Extalia avatar body, re-rigged to its 20-joint skeleton, simplified, debadged and recoloured (source textures removed).",
+      "item": "Sketchfab, CC-BY-4.0; modified: refitted, re-rigged, simplified, recoloured."
+    },
+    "sketchfab-female-overcoat": {
+      "text": "This work is based on \"Female Overcoat\" (https://sketchfab.com/3d-models/female-overcoat-4bc89e3be7fb4c11b3b1153e9ea384dd) by 3DGunsmith (https://sketchfab.com/3DGunsmith) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/). Modified: refitted to the Extalia avatar body, re-rigged to its 20-joint skeleton, simplified, debadged and recoloured (source textures removed).",
+      "item": "Sketchfab, CC-BY-4.0; modified: refitted, re-rigged, simplified, recoloured."
+    },
+    "sketchfab-female-short-jeans": {
+      "text": "This work is based on \"female short jeans\" (https://sketchfab.com/3d-models/female-short-jeans-6b42c4a5591e4122940bd0fccde6f2f8) by Toxic (https://sketchfab.com/wutianci) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/). Modified: refitted to the Extalia avatar body, re-rigged to its 20-joint skeleton, simplified, debadged and recoloured (source textures removed).",
+      "item": "Sketchfab, CC-BY-4.0; modified: refitted, re-rigged, simplified, recoloured."
+    },
+    "sketchfab-low-poly-woman-oversize-shirt-with-tie": {
+      "text": "This work is based on \"Low poly woman oversize shirt with tie\" (https://sketchfab.com/3d-models/low-poly-woman-oversize-shirt-with-tie-8f0c1d170b1d4f38b9ba23a11cc4a87c) by rkuzmin260 (https://sketchfab.com/rkuzmin260) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/). Modified: refitted to the Extalia avatar body, re-rigged to its 20-joint skeleton, simplified, debadged and recoloured (source textures removed).",
+      "item": "Sketchfab, CC-BY-4.0; modified: refitted, re-rigged, simplified, recoloured."
+    },
+    "sketchfab-pink-floral-cheongsam": {
+      "text": "This work is based on \"Pink Floral Cheongsam\" (https://sketchfab.com/3d-models/pink-floral-cheongsam-02e234d1a2104ce58dbc5feb5673048e) by Style3D CG (https://sketchfab.com/Style3DMeta) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/). Modified: refitted to the Extalia avatar body, re-rigged to its 20-joint skeleton, simplified, debadged and recoloured (source textures removed).",
+      "item": "Sketchfab, CC-BY-4.0; modified: refitted, re-rigged, simplified, recoloured."
+    },
+    "sketchfab-polka-dot-dress": {
+      "text": "This work is based on \"Polka Dot Dress\" (https://sketchfab.com/3d-models/polka-dot-dress-c27c8df7e86c4537b528401b3ccf6e74) by Style3D CG (https://sketchfab.com/Style3DMeta) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/). Modified: refitted to the Extalia avatar body, re-rigged to its 20-joint skeleton, simplified, debadged and recoloured (source textures removed).",
+      "item": "Sketchfab, CC-BY-4.0; modified: refitted, re-rigged, simplified, recoloured."
+    },
+    "sketchfab-puff-sleeve-and-jumper-skirt": {
+      "text": "This work is based on \"puff sleeve and jumper (skirt)\" (https://sketchfab.com/3d-models/puff-sleeve-and-jumper-skirt-1f94546fb3c04051957958098fe1ee06) by Takeru (https://sketchfab.com/takeru1124) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/). Modified: refitted to the Extalia avatar body, re-rigged to its 20-joint skeleton, simplified, debadged and recoloured (source textures removed).",
+      "item": "Sketchfab, CC-BY-4.0; modified: refitted, re-rigged, simplified, recoloured."
+    },
+    "sketchfab-real-suit-for-ray-ii-retopo": {
+      "text": "This work is based on \"Real Suit For Ray II Retopo\" (https://sketchfab.com/3d-models/real-suit-for-ray-ii-retopo-3e543b8199f548cf99077c89929888b5) by ChamberSu1996 (https://sketchfab.com/chambersu1996) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/). Modified: refitted to the Extalia avatar body, re-rigged to its 20-joint skeleton, simplified, debadged and recoloured (source textures removed).",
+      "item": "Sketchfab, CC-BY-4.0; modified: refitted, re-rigged, simplified, recoloured."
+    },
+    "sketchfab-red-leather-jacket": {
+      "text": "This work is based on \"Red Leather Jacket\" (https://sketchfab.com/3d-models/red-leather-jacket-33e80ed4b76d4a8397e669ce66493374) by kmichy (https://sketchfab.com/kmichy) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/). Modified: refitted to the Extalia avatar body, re-rigged to its 20-joint skeleton, simplified, debadged and recoloured (source textures removed).",
+      "item": "Sketchfab, CC-BY-4.0; modified: refitted, re-rigged, simplified, recoloured."
+    },
+    "sketchfab-skirt-and-t-shirt": {
+      "text": "This work is based on \"Skirt and t-shirt\" (https://sketchfab.com/3d-models/skirt-and-t-shirt-e0ea80504d914211a96a8c36a4e1a4db) by Virtual Pandora (https://sketchfab.com/virtualpandora) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/). Modified: refitted to the Extalia avatar body, re-rigged to its 20-joint skeleton, simplified, debadged and recoloured (source textures removed).",
+      "item": "Sketchfab, CC-BY-4.0; modified: refitted, re-rigged, simplified, recoloured."
+    },
+    "sketchfab-white-shirt-black-leather-skirt-outfit": {
+      "text": "This work is based on \"White shirt black leather skirt outfit\" (https://sketchfab.com/3d-models/white-shirt-black-leather-skirt-outfit-9f9e3d05217a4f969cd08224ad0b0aee) by Style3D CG (https://sketchfab.com/Style3DMeta) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/). Modified: refitted to the Extalia avatar body, re-rigged to its 20-joint skeleton, simplified, debadged and recoloured (source textures removed).",
+      "item": "Sketchfab, CC-BY-4.0; modified: refitted, re-rigged, simplified, recoloured."
+    },
+    "sketchfab-woman-dress": {
+      "text": "This work is based on \"Woman Dress\" (https://sketchfab.com/3d-models/woman-dress-7f36459d7f7b43548d56e63d899d7354) by Ali Şahan Yalçın (https://sketchfab.com/alisahanyalcin) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/). Modified: refitted to the Extalia avatar body, re-rigged to its 20-joint skeleton, simplified, debadged and recoloured (source textures removed).",
+      "item": "Sketchfab, CC-BY-4.0; modified: refitted, re-rigged, simplified, recoloured."
+    },
+    "sketchfab-women-top-with-belt": {
+      "text": "This work is based on \"Women Top with belt\" (https://sketchfab.com/3d-models/women-top-with-belt-9b0d33a10d8345e682d2e642703210f7) by Annie88 (https://sketchfab.com/LIU_CG) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/). Modified: refitted to the Extalia avatar body, re-rigged to its 20-joint skeleton, simplified, debadged and recoloured (source textures removed).",
+      "item": "Sketchfab, CC-BY-4.0; modified: refitted, re-rigged, simplified, recoloured."
+    },
+    "sketchfab-womens-blouse-and-skirt": {
+      "text": "This work is based on \"Women's blouse and skirt\" (https://sketchfab.com/3d-models/womens-blouse-and-skirt-f9d46dfe0bf4431195f4044861ce568f) by ps2enthusiast (https://sketchfab.com/kosicky.jozef2308) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/). Modified: refitted to the Extalia avatar body, re-rigged to its 20-joint skeleton, simplified, debadged and recoloured (source textures removed).",
+      "item": "Sketchfab, CC-BY-4.0; modified: refitted, re-rigged, simplified, recoloured."
+    },
+    "sketchfab-man-black-business-suit": {
+      "text": "This work is based on \"Man Black Business Suit\" (https://sketchfab.com/3d-models/man-black-business-suit-7a669a06fb954d459985ccaa98672177) by Style3D CG (https://sketchfab.com/Style3DMeta) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/). Modified: refitted to the Extalia avatar body, re-rigged to its 20-joint skeleton, simplified, debadged and recoloured (source textures removed).",
+      "item": "Sketchfab, CC-BY-4.0; modified: refitted, re-rigged, simplified, recoloured."
+    },
+    "sketchfab-standard-male-apparel-pack": {
+      "text": "\"Male apparel pack\" (https://sketchfab.com/3d-models/male-apparel-pack-e98b41c617ea4cb9a2b30ce93c31bda9) by assetfactory (https://sketchfab.com/assetfactory), used under the Sketchfab Standard License (https://sketchfab.com/licenses). Modified: refitted to the Extalia avatar body, re-rigged to its 20-joint skeleton, simplified, debadged and recoloured (source textures removed).",
+      "item": "Sketchfab Standard License; modified: refitted, re-rigged, simplified, recoloured."
+    },
+    "sketchfab-standard-male-jeans": {
+      "text": "\"Male jeans\" (https://sketchfab.com/3d-models/male-jeans-42c9ae9b6b724735851cb72417c296c5) by assetfactory (https://sketchfab.com/assetfactory), used under the Sketchfab Standard License (https://sketchfab.com/licenses). Modified: refitted to the Extalia avatar body, re-rigged to its 20-joint skeleton, simplified, debadged and recoloured (source textures removed).",
+      "item": "Sketchfab Standard License; modified: refitted, re-rigged, simplified, recoloured."
+    },
+    "sketchfab-jk-school-uniform": {
+      "text": "This work is based on \"Jk School Uniform\" (https://sketchfab.com/3d-models/jk-school-uniform-3eb53d4915ed49da94a4edd983e73d48) by Style3D CG (https://sketchfab.com/Style3DMeta) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/). Modified: refitted to the Extalia avatar body, re-rigged to its 20-joint skeleton, simplified, debadged and recoloured (source textures removed).",
+      "item": "Sketchfab, CC-BY-4.0; modified: refitted, re-rigged, simplified, recoloured."
+    },
+    "sketchfab-jk-school-uniform-2": {
+      "text": "This work is based on \"JK School Uniform 2\" (https://sketchfab.com/3d-models/jk-school-uniform-2-ef95017c55f4421189eb181e5418f4b2) by Style3D CG (https://sketchfab.com/Style3DMeta) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/). Modified: refitted to the Extalia avatar body, re-rigged to its 20-joint skeleton, simplified, debadged and recoloured (source textures removed).",
+      "item": "Sketchfab, CC-BY-4.0; modified: refitted, re-rigged, simplified, recoloured."
+    },
+    "sketchfab-jk-school-uniform-4": {
+      "text": "This work is based on \"Jk School Uniform 4\" (https://sketchfab.com/3d-models/jk-school-uniform-4-887e3a1705f040bc91597e1fad47a7c0) by Style3D CG (https://sketchfab.com/Style3DMeta) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/). Modified: refitted to the Extalia avatar body, re-rigged to its 20-joint skeleton, simplified, debadged and recoloured (source textures removed).",
+      "item": "Sketchfab, CC-BY-4.0; modified: refitted, re-rigged, simplified, recoloured."
+    },
+    "sketchfab-old-leather-cloak-female": {
+      "text": "This work is based on \"Old leather cloak (female)\" (https://sketchfab.com/3d-models/old-leather-cloak-female-e81f214036f34635bccfce842da6a13d) by KIFIR (https://sketchfab.com/kifir) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/). Modified: refitted to the Extalia avatar body, re-rigged to its 20-joint skeleton, simplified, debadged and recoloured (source textures removed).",
+      "item": "Sketchfab, CC-BY-4.0; modified: refitted, re-rigged, simplified, recoloured."
+    }
+  },
+  "outfits": [
+    {
+      "id": "outfit-dress",
+      "group": "female",
+      "label": "Day dress",
+      "category": "dress",
+      "archive": "jun_dress_white.zip",
+      "source": "jun dress/jun dress.obj",
+      "title": "Jun dress (white)",
+      "license": "LicenseRef-RenderHub-Extended-Use",
+      "notice": "renderhub-extended-use",
+      "span": [
+        0.62,
+        1.6
+      ],
+      "skirt": [
+        1.02,
+        0.6
+      ],
+      "borrow": [
+        {
+          "from": "ScanOutfit",
+          "materials": [
+            [
+              "OfficeShoes",
+              "shoes"
+            ],
+            [
+              "Skin_Outfit",
+              "skin"
+            ]
+          ],
+          "below": 0.2,
+          "triangles": 600
+        }
+      ],
+      "skin_above": 0.14,
+      "publish": false,
+      "fitReview": "Local review only: source sleeve/body correspondence and layered silhouettes have not passed walking and seated fit review. Use the body-fitted modular wardrobe for production."
+    },
+    {
+      "id": "outfit-skirt-shirt",
+      "group": "female",
+      "label": "Shirt and denim skirt",
+      "category": "casual",
+      "archive": "skirt_and_shirt.zip",
+      "source": "Skirt and shirt.fbx",
+      "title": "Skirt and shirt",
+      "license": "LicenseRef-RenderHub-Extended-Use",
+      "notice": "renderhub-extended-use",
+      "avatar": [
+        [
+          "object",
+          "avatar"
+        ]
+      ],
+      "zones": [
+        [
+          "material",
+          "denim",
+          "bottom"
+        ],
+        [
+          "material",
+          "poplin",
+          "top"
+        ]
+      ],
+      "skirt": [
+        1.0,
+        0.62
+      ],
+      "borrow": [
+        {
+          "from": "ScanOutfit",
+          "materials": [
+            [
+              "OfficeShoes",
+              "shoes"
+            ],
+            [
+              "Skin_Outfit",
+              "skin"
+            ]
+          ],
+          "below": 0.2,
+          "triangles": 600
+        }
+      ],
+      "skin_above": 0.14,
+      "publish": false,
+      "fitReview": "Local review only: source sleeve/body correspondence and layered silhouettes have not passed walking and seated fit review. Use the body-fitted modular wardrobe for production."
+    },
+    {
+      "id": "outfit-sport",
+      "group": "female",
+      "label": "Sports outfit",
+      "category": "sport",
+      "archive": "women_sports_outfit.zip",
+      "source": "1_woman_sports_outfit_fbx.rar::1_woman_sports_outfit_fbx.fbx",
+      "title": "Woman sports outfit",
+      "license": "LicenseRef-RenderHub-Extended-Use",
+      "notice": "renderhub-extended-use",
+      "avatar": [
+        [
+          "object",
+          "^body$"
+        ]
+      ],
+      "zones": [
+        [
+          "object",
+          "shoes",
+          "drop"
+        ],
+        [
+          "material",
+          "belt",
+          "accent"
+        ],
+        [
+          "material",
+          "t-shirt",
+          "top"
+        ],
+        [
+          "material",
+          "shorts",
+          "bottom"
+        ]
+      ],
+      "predecimate": 160000,
+      "publish": false,
+      "fitReview": "Local review only: source sleeve/body correspondence and layered silhouettes have not passed walking and seated fit review. Use the body-fitted modular wardrobe for production."
+    },
+    {
+      "id": "outfit-streetwear",
+      "group": "female",
+      "label": "Relaxed streetwear",
+      "category": "streetwear",
+      "archive": "free_relaxed_streetwear_set.zip",
+      "source": "obj/thin-weld.obj",
+      "title": "Free relaxed streetwear set",
+      "license": "LicenseRef-RenderHub-Extended-Use",
+      "notice": "renderhub-extended-use",
+      "zones": [
+        [
+          "material",
+          "pants",
+          "bottom"
+        ],
+        [
+          "material",
+          "^vest",
+          "outer"
+        ],
+        [
+          "material",
+          "linen",
+          "top"
+        ]
+      ],
+      "borrow": [
+        {
+          "from": "ScanOutfitCasual",
+          "materials": [
+            [
+              "OfficeShoes",
+              "shoes"
+            ]
+          ],
+          "triangles": 600
+        }
+      ],
+      "predecimate": 160000,
+      "publish": false,
+      "fitReview": "Local review only: source sleeve/body correspondence and layered silhouettes have not passed walking and seated fit review. Use the body-fitted modular wardrobe for production."
+    },
+    {
+      "id": "outfit-western",
+      "group": "female",
+      "label": "Western casual",
+      "category": "casual",
+      "archive": "cowgirl_simple_clothes-mdclo3d-obj-fbx.zip",
+      "source": "Cowgirl fbx.rar::Cowgirl fbx/Cowgirl fbx.fbx",
+      "title": "Cowgirl simple clothes",
+      "license": "LicenseRef-RenderHub-Extended-Use",
+      "notice": "renderhub-extended-use",
+      "zones": [
+        [
+          "material",
+          "hat",
+          "drop"
+        ],
+        [
+          "material",
+          "pant",
+          "bottom"
+        ],
+        [
+          "material",
+          "t_shirt",
+          "top"
+        ],
+        [
+          "material",
+          "belt",
+          "accent"
+        ],
+        [
+          "material",
+          "btn",
+          "trim"
+        ],
+        [
+          "material",
+          "black_1",
+          "shoes"
+        ]
+      ],
+      "predecimate": 160000,
+      "publish": false,
+      "fitReview": "Local review only: source sleeve/body correspondence and layered silhouettes have not passed walking and seated fit review. Use the body-fitted modular wardrobe for production."
+    },
+    {
+      "id": "outfit-vest",
+      "group": "female",
+      "label": "Knit vest over blouse",
+      "category": "smart",
+      "archive": "womens_vest_free_3d_sample-zprj-fbx-obj.zip",
+      "source": "FBX/Women’s Vest FBX.fbx",
+      "title": "Women's vest (free sample)",
+      "license": "LicenseRef-RenderHub-Extended-Use",
+      "notice": "renderhub-extended-use",
+      "default_zone": "outer",
+      "borrow": [
+        {
+          "from": "ScanOutfit",
+          "materials": [
+            [
+              "OfficeTop",
+              "top"
+            ]
+          ],
+          "triangles": 1200
+        },
+        {
+          "from": "ScanOutfit",
+          "materials": [
+            [
+              "OfficeBottom",
+              "bottom"
+            ]
+          ],
+          "triangles": 1400
+        },
+        {
+          "from": "ScanOutfit",
+          "materials": [
+            [
+              "OfficeShoes",
+              "shoes"
+            ],
+            [
+              "Skin_Outfit",
+              "skin"
+            ]
+          ],
+          "below": 0.2,
+          "triangles": 600
+        }
+      ],
+      "predecimate": 60000,
+      "publish": false,
+      "fitReview": "Local review only: source sleeve/body correspondence and layered silhouettes have not passed walking and seated fit review. Use the body-fitted modular wardrobe for production."
+    },
+    {
+      "id": "outfit-smart-4",
+      "group": "female",
+      "label": "Smart casual set",
+      "category": "smart",
+      "archive": "female_outfit_4.zip",
+      "source": "fbx_fd.zip::fbx_fd_thin.fbx",
+      "title": "Female outfit 4",
+      "license": "LicenseRef-RenderHub-Extended-Use",
+      "notice": "renderhub-extended-use",
+      "avatar": [
+        [
+          "object",
+          "^body$"
+        ]
+      ],
+      "zones": [
+        [
+          "object",
+          "shoe",
+          "drop"
+        ]
+      ],
+      "predecimate": 160000,
+      "publish": false,
+      "fitReview": "Local review only: source sleeve/body correspondence and layered silhouettes have not passed walking and seated fit review. Use the body-fitted modular wardrobe for production."
+    },
+    {
+      "id": "outfit-white-suit",
+      "group": "female",
+      "label": "White suit",
+      "category": "office",
+      "archive": "white_suit_set.glb",
+      "source": "white_suit_set.glb",
+      "title": "White Suit Set",
+      "license": "CC-BY-4.0",
+      "notice": "sketchfab-white-suit-set",
+      "publish": false,
+      "fitReview": "Local review only: source sleeve/body correspondence and layered silhouettes have not passed walking and seated fit review. Use the body-fitted modular wardrobe for production."
+    },
+    {
+      "id": "outfit-pink-hoodie",
+      "group": "female",
+      "label": "Pink hoodie",
+      "category": "streetwear",
+      "archive": "pink_drawstring_hooded_sweatshirt.glb",
+      "source": "pink_drawstring_hooded_sweatshirt.glb",
+      "title": "Pink Drawstring Hooded Sweatshirt",
+      "license": "CC-BY-4.0",
+      "notice": "sketchfab-pink-drawstring-hooded-sweatshirt",
+      "borrow": [
+        {
+          "from": "ScanOutfitCasual",
+          "materials": [
+            [
+              "OfficeBottom",
+              "bottom"
+            ]
+          ],
+          "triangles": 1400
+        },
+        {
+          "from": "ScanOutfitCasual",
+          "materials": [
+            [
+              "OfficeShoes",
+              "shoes"
+            ]
+          ],
+          "triangles": 600
+        }
+      ],
+      "publish": false,
+      "fitReview": "Local review only: source sleeve/body correspondence and layered silhouettes have not passed walking and seated fit review. Use the body-fitted modular wardrobe for production."
+    },
+    {
+      "id": "outfit-hoodie-jeans",
+      "group": "male",
+      "label": "Hoodie and jeans",
+      "category": "casual",
+      "archive": "hoodie_and_jeans.glb",
+      "source": "hoodie_and_jeans.glb",
+      "title": "Hoodie and Jeans",
+      "license": "CC-BY-4.0",
+      "notice": "sketchfab-hoodie-and-jeans",
+      "zones": [
+        [
+          "material",
+          "hoodie",
+          "top"
+        ],
+        [
+          "material",
+          "jeans",
+          "bottom"
+        ]
+      ],
+      "span": [
+        0.05,
+        1.76
+      ],
+      "borrow": [
+        {
+          "from": "ScanOutfit",
+          "materials": [
+            [
+              "OfficeShoes",
+              "shoes"
+            ]
+          ],
+          "triangles": 600
+        }
+      ],
+      "publish": false,
+      "fitReview": "Local review only: source sleeve/body correspondence and layered silhouettes have not passed walking and seated fit review. Use the body-fitted modular wardrobe for production."
+    },
+    {
+      "id": "outfit-two-piece-suit",
+      "group": "male",
+      "label": "Two-piece suit",
+      "category": "office",
+      "archive": "mens_two_piece_suit.glb",
+      "source": "mens_two_piece_suit.glb",
+      "title": "Men's Two Piece Suit",
+      "license": "CC-BY-4.0",
+      "notice": "sketchfab-mens-two-piece-suit",
+      "borrow": [
+        {
+          "from": "ScanOutfit",
+          "materials": [
+            [
+              "OfficeShoes",
+              "shoes"
+            ]
+          ],
+          "triangles": 600
+        }
+      ],
+      "publish": false,
+      "fitReview": "Local review only: source sleeve/body correspondence and layered silhouettes have not passed walking and seated fit review. Use the body-fitted modular wardrobe for production."
+    },
+    {
+      "id": "outfit-prom-suit",
+      "group": "male",
+      "label": "Evening suit",
+      "category": "smart",
+      "archive": "prom_suit.glb",
+      "source": "prom_suit.glb",
+      "title": "Prom Suit",
+      "license": "CC-BY-4.0",
+      "notice": "sketchfab-prom-suit",
+      "zones": [
+        [
+          "object",
+          "Object_21[80]",
+          "drop"
+        ]
+      ],
+      "publish": false,
+      "fitReview": "Local review only: source sleeve/body correspondence and layered silhouettes have not passed walking and seated fit review. Use the body-fitted modular wardrobe for production."
+    },
+    {
+      "id": "outfit-denim-jacket",
+      "group": "male",
+      "label": "Denim jacket",
+      "category": "casual",
+      "archive": "denim_jacket.glb",
+      "source": "denim_jacket.glb",
+      "title": "Denim Jacket",
+      "license": "CC-BY-4.0",
+      "notice": "sketchfab-denim-jacket",
+      "status": "skip",
+      "reason": "Sleeves modelled at 77 degrees fold into bulky, open panels at rest.",
+      "span": [
+        0.95,
+        1.62
+      ],
+      "zones": [
+        [
+          "material",
+          "denim",
+          "outer"
+        ],
+        [
+          "material",
+          "button",
+          "trim"
+        ]
+      ],
+      "borrow": [
+        {
+          "from": "ScanOutfit",
+          "materials": [
+            [
+              "OfficeBottom",
+              "bottom"
+            ],
+            [
+              "OfficeBelt",
+              "trim"
+            ]
+          ],
+          "triangles": 1400
+        },
+        {
+          "from": "ScanOutfit",
+          "materials": [
+            [
+              "OfficeShoes",
+              "shoes"
+            ]
+          ],
+          "triangles": 600
+        }
+      ]
+    },
+    {
+      "id": "outfit-shirt",
+      "group": "male",
+      "label": "Casual shirt",
+      "category": "casual",
+      "archive": "shirt.glb",
+      "source": "shirt.glb",
+      "title": "Shirt",
+      "license": "CC-BY-4.0",
+      "notice": "sketchfab-shirt",
+      "zones": [
+        [
+          "material",
+          "button",
+          "trim"
+        ]
+      ],
+      "default_zone": "top",
+      "borrow": [
+        {
+          "from": "ScanOutfit",
+          "materials": [
+            [
+              "OfficeBottom",
+              "bottom"
+            ],
+            [
+              "OfficeBelt",
+              "trim"
+            ]
+          ],
+          "triangles": 1400
+        },
+        {
+          "from": "ScanOutfit",
+          "materials": [
+            [
+              "OfficeShoes",
+              "shoes"
+            ]
+          ],
+          "triangles": 600
+        }
+      ],
+      "publish": false,
+      "fitReview": "Local review only: source sleeve/body correspondence and layered silhouettes have not passed walking and seated fit review. Use the body-fitted modular wardrobe for production."
+    },
+    {
+      "id": "outfit-green-hoodie",
+      "group": "male",
+      "label": "Green hoodie",
+      "category": "streetwear",
+      "archive": "green_and_white_hoodie.glb",
+      "source": "green_and_white_hoodie.glb",
+      "title": "Green and white hoodie",
+      "license": "CC-BY-4.0",
+      "notice": "sketchfab-green-and-white-hoodie",
+      "borrow": [
+        {
+          "from": "ScanOutfit",
+          "materials": [
+            [
+              "OfficeBottom",
+              "bottom"
+            ],
+            [
+              "OfficeBelt",
+              "trim"
+            ]
+          ],
+          "triangles": 1400
+        },
+        {
+          "from": "ScanOutfit",
+          "materials": [
+            [
+              "OfficeShoes",
+              "shoes"
+            ]
+          ],
+          "triangles": 600
+        }
+      ],
+      "publish": false,
+      "fitReview": "Local review only: source sleeve/body correspondence and layered silhouettes have not passed walking and seated fit review. Use the body-fitted modular wardrobe for production."
+    },
+    {
+      "id": "outfit-workwear",
+      "group": "male",
+      "label": "Workwear set",
+      "category": "streetwear",
+      "archive": "sweatshirt_and_jacket_and_workwear_pants.glb",
+      "source": "sweatshirt_and_jacket_and_workwear_pants.glb",
+      "title": "Sweatshirt and jacket and workwear pants",
+      "license": "CC-BY-4.0",
+      "notice": "sketchfab-sweatshirt-and-jacket-and-workwear-pants",
+      "status": "skip",
+      "reason": "Layered workwear panels and pockets shred when simplified to the outfit budget.",
+      "predecimate": 160000,
+      "borrow": [
+        {
+          "from": "ScanOutfit",
+          "materials": [
+            [
+              "OfficeShoes",
+              "shoes"
+            ]
+          ],
+          "triangles": 600
+        }
+      ]
+    },
+    {
+      "id": "outfit-beige-suit",
+      "group": "female",
+      "label": "Beige skirt suit",
+      "category": "office",
+      "archive": "beige_business_suit_with_short_skirt.glb",
+      "source": "beige_business_suit_with_short_skirt.glb",
+      "title": "Beige Business Suit with Short Skirt",
+      "license": "CC-BY-4.0",
+      "notice": "sketchfab-beige-business-suit-with-short-skirt",
+      "predecimate": 160000,
+      "skirt": [
+        1.0,
+        0.7
+      ],
+      "borrow": [
+        {
+          "from": "ScanOutfit",
+          "materials": [
+            [
+              "OfficeShoes",
+              "shoes"
+            ],
+            [
+              "Skin_Outfit",
+              "skin"
+            ]
+          ],
+          "below": 0.2,
+          "triangles": 600
+        }
+      ],
+      "skin_above": 0.14,
+      "publish": false,
+      "fitReview": "Local review only: source sleeve/body correspondence and layered silhouettes have not passed walking and seated fit review. Use the body-fitted modular wardrobe for production."
+    },
+    {
+      "id": "outfit-mesh-dress",
+      "group": "female",
+      "label": "Black evening dress",
+      "category": "dress",
+      "archive": "black_mesh_dress.glb",
+      "source": "black_mesh_dress.glb",
+      "title": "Black Mesh Dress",
+      "license": "CC-BY-4.0",
+      "notice": "sketchfab-black-mesh-dress",
+      "status": "skip",
+      "reason": "Sheer mesh fabric: without its transparency texture the simplified layers shred.",
+      "predecimate": 160000,
+      "skirt": [
+        1.0,
+        0.45
+      ],
+      "hem": 0.4,
+      "borrow": [
+        {
+          "from": "ScanOutfit",
+          "materials": [
+            [
+              "OfficeShoes",
+              "shoes"
+            ],
+            [
+              "Skin_Outfit",
+              "skin"
+            ]
+          ],
+          "below": 0.2,
+          "triangles": 600
+        }
+      ],
+      "skin_above": 0.14
+    },
+    {
+      "id": "outfit-black-simple",
+      "group": "female",
+      "label": "Black simple outfit",
+      "category": "casual",
+      "archive": "black_simple_outfit.glb",
+      "source": "black_simple_outfit.glb",
+      "title": "Black simple outfit",
+      "license": "CC-BY-4.0",
+      "notice": "sketchfab-black-simple-outfit",
+      "predecimate": 160000,
+      "borrow": [
+        {
+          "from": "ScanOutfit",
+          "materials": [
+            [
+              "OfficeShoes",
+              "shoes"
+            ],
+            [
+              "Skin_Outfit",
+              "skin"
+            ]
+          ],
+          "below": 0.2,
+          "triangles": 600
+        }
+      ],
+      "skin_above": 0.14,
+      "publish": false,
+      "fitReview": "Local review only: source sleeve/body correspondence and layered silhouettes have not passed walking and seated fit review. Use the body-fitted modular wardrobe for production."
+    },
+    {
+      "id": "outfit-cheongsam-blue",
+      "group": "female",
+      "label": "Cheongsam (blue)",
+      "category": "dress",
+      "archive": "blue_white_floral_cheongsam_dress.glb",
+      "source": "blue_white_floral_cheongsam_dress.glb",
+      "title": "Blue White Floral Cheongsam dress",
+      "license": "CC-BY-4.0",
+      "notice": "sketchfab-blue-white-floral-cheongsam-dress",
+      "skirt": [
+        1.0,
+        0.45
+      ],
+      "hem": 0.4,
+      "borrow": [
+        {
+          "from": "ScanOutfit",
+          "materials": [
+            [
+              "OfficeShoes",
+              "shoes"
+            ],
+            [
+              "Skin_Outfit",
+              "skin"
+            ]
+          ],
+          "below": 0.2,
+          "triangles": 600
+        }
+      ],
+      "skin_above": 0.14,
+      "publish": false,
+      "fitReview": "Local review only: source sleeve/body correspondence and layered silhouettes have not passed walking and seated fit review. Use the body-fitted modular wardrobe for production."
+    },
+    {
+      "id": "outfit-chiffon-dress",
+      "group": "female",
+      "label": "Chiffon dress",
+      "category": "dress",
+      "archive": "chiffon_dress.glb",
+      "source": "chiffon_dress.glb",
+      "title": "Chiffon Dress",
+      "license": "CC-BY-4.0",
+      "notice": "sketchfab-chiffon-dress",
+      "skirt": [
+        1.0,
+        0.45
+      ],
+      "hem": 0.4,
+      "borrow": [
+        {
+          "from": "ScanOutfit",
+          "materials": [
+            [
+              "OfficeShoes",
+              "shoes"
+            ],
+            [
+              "Skin_Outfit",
+              "skin"
+            ]
+          ],
+          "below": 0.2,
+          "triangles": 600
+        }
+      ],
+      "skin_above": 0.14,
+      "publish": false,
+      "fitReview": "Local review only: source sleeve/body correspondence and layered silhouettes have not passed walking and seated fit review. Use the body-fitted modular wardrobe for production."
+    },
+    {
+      "id": "outfit-flame-hoodie",
+      "group": "female",
+      "label": "Black hoodie",
+      "category": "streetwear",
+      "archive": "classic_black_flame_hoodie.glb",
+      "source": "classic_black_flame_hoodie.glb",
+      "title": "Classic Black Flame Hoodie",
+      "license": "CC-BY-4.0",
+      "notice": "sketchfab-classic-black-flame-hoodie",
+      "predecimate": 120000,
+      "borrow": [
+        {
+          "from": "ScanOutfitCasual",
+          "materials": [
+            [
+              "OfficeBottom",
+              "bottom"
+            ]
+          ],
+          "triangles": 1400
+        },
+        {
+          "from": "ScanOutfitCasual",
+          "materials": [
+            [
+              "OfficeShoes",
+              "shoes"
+            ]
+          ],
+          "triangles": 600
+        }
+      ],
+      "publish": false,
+      "fitReview": "Local review only: source sleeve/body correspondence and layered silhouettes have not passed walking and seated fit review. Use the body-fitted modular wardrobe for production."
+    },
+    {
+      "id": "outfit-cloth-jacket",
+      "group": "female",
+      "label": "Cloth jacket",
+      "category": "outerwear",
+      "archive": "cloth_jacket.glb",
+      "source": "cloth_jacket.glb",
+      "title": "Cloth Jacket",
+      "license": "CC-BY-4.0",
+      "notice": "sketchfab-cloth-jacket",
+      "span": [
+        0.9,
+        1.6
+      ],
+      "default_zone": "outer",
+      "borrow": [
+        {
+          "from": "ScanOutfit",
+          "materials": [
+            [
+              "OfficeTop",
+              "top"
+            ]
+          ],
+          "triangles": 1200
+        },
+        {
+          "from": "ScanOutfit",
+          "materials": [
+            [
+              "OfficeBottom",
+              "bottom"
+            ]
+          ],
+          "triangles": 1400
+        },
+        {
+          "from": "ScanOutfit",
+          "materials": [
+            [
+              "OfficeShoes",
+              "shoes"
+            ],
+            [
+              "Skin_Outfit",
+              "skin"
+            ]
+          ],
+          "below": 0.2,
+          "triangles": 600
+        }
+      ],
+      "publish": false,
+      "fitReview": "Local review only: source sleeve/body correspondence and layered silhouettes have not passed walking and seated fit review. Use the body-fitted modular wardrobe for production."
+    },
+    {
+      "id": "outfit-belted-dress",
+      "group": "female",
+      "label": "Belted dress",
+      "category": "dress",
+      "archive": "dress.glb",
+      "source": "dress.glb",
+      "title": "Dress",
+      "license": "CC-BY-4.0",
+      "notice": "sketchfab-dress",
+      "zones": [
+        [
+          "object",
+          "belt",
+          "accent"
+        ]
+      ],
+      "predecimate": 160000,
+      "skirt": [
+        1.0,
+        0.45
+      ],
+      "hem": 0.4,
+      "borrow": [
+        {
+          "from": "ScanOutfit",
+          "materials": [
+            [
+              "OfficeShoes",
+              "shoes"
+            ],
+            [
+              "Skin_Outfit",
+              "skin"
+            ]
+          ],
+          "below": 0.2,
+          "triangles": 600
+        }
+      ],
+      "skin_above": 0.14,
+      "publish": false,
+      "fitReview": "Local review only: source sleeve/body correspondence and layered silhouettes have not passed walking and seated fit review. Use the body-fitted modular wardrobe for production."
+    },
+    {
+      "id": "outfit-cloth-set",
+      "group": "female",
+      "label": "Casual set",
+      "category": "casual",
+      "archive": "female_cloth1.glb",
+      "source": "female_cloth1.glb",
+      "title": "Female Cloth1",
+      "license": "CC-BY-4.0",
+      "notice": "sketchfab-female-cloth1",
+      "span": [
+        0.95,
+        1.8
+      ],
+      "borrow": [
+        {
+          "from": "ScanOutfitCasual",
+          "materials": [
+            [
+              "OfficeShoes",
+              "shoes"
+            ]
+          ],
+          "triangles": 600
+        }
+      ],
+      "publish": false,
+      "fitReview": "Local review only: source sleeve/body correspondence and layered silhouettes have not passed walking and seated fit review. Use the body-fitted modular wardrobe for production."
+    },
+    {
+      "id": "outfit-overcoat",
+      "group": "female",
+      "label": "Overcoat",
+      "category": "outerwear",
+      "archive": "female_overcoat.glb",
+      "source": "female_overcoat.glb",
+      "title": "Female Overcoat",
+      "license": "CC-BY-4.0",
+      "notice": "sketchfab-female-overcoat",
+      "zones": [
+        [
+          "object",
+          "metal|buttons",
+          "trim"
+        ],
+        [
+          "object",
+          "belt",
+          "accent"
+        ]
+      ],
+      "default_zone": "outer",
+      "borrow": [
+        {
+          "from": "ScanOutfit",
+          "materials": [
+            [
+              "OfficeBottom",
+              "bottom"
+            ]
+          ],
+          "triangles": 1400
+        },
+        {
+          "from": "ScanOutfit",
+          "materials": [
+            [
+              "OfficeShoes",
+              "shoes"
+            ],
+            [
+              "Skin_Outfit",
+              "skin"
+            ]
+          ],
+          "below": 0.2,
+          "triangles": 600
+        }
+      ],
+      "publish": false,
+      "fitReview": "Local review only: source sleeve/body correspondence and layered silhouettes have not passed walking and seated fit review. Use the body-fitted modular wardrobe for production."
+    },
+    {
+      "id": "outfit-short-jeans",
+      "group": "female",
+      "label": "Denim shorts",
+      "category": "casual",
+      "archive": "female_short_jeans.glb",
+      "source": "female_short_jeans.glb",
+      "title": "female short jeans",
+      "license": "CC-BY-4.0",
+      "notice": "sketchfab-female-short-jeans",
+      "status": "skip",
+      "reason": "Shorts-only download; the fitted shorts disappear inside the hips at this budget.",
+      "span": [
+        0.66,
+        1.04
+      ],
+      "default_zone": "bottom",
+      "borrow": [
+        {
+          "from": "ScanOutfitCasual",
+          "materials": [
+            [
+              "OfficeTop",
+              "top"
+            ]
+          ],
+          "triangles": 1400
+        },
+        {
+          "from": "ScanOutfitCasual",
+          "materials": [
+            [
+              "OfficeShoes",
+              "shoes"
+            ]
+          ],
+          "triangles": 600
+        }
+      ]
+    },
+    {
+      "id": "outfit-oversize-shirt",
+      "group": "female",
+      "label": "Oversize shirt and tie",
+      "category": "smart",
+      "archive": "low_poly_woman_oversize_shirt_with_tie.glb",
+      "source": "low_poly_woman_oversize_shirt_with_tie.glb",
+      "title": "Low poly woman oversize shirt with tie",
+      "license": "CC-BY-4.0",
+      "notice": "sketchfab-low-poly-woman-oversize-shirt-with-tie",
+      "span": [
+        0.82,
+        1.58
+      ],
+      "zones": [
+        [
+          "object",
+          "tie",
+          "accent"
+        ]
+      ],
+      "default_zone": "top",
+      "borrow": [
+        {
+          "from": "ScanOutfit",
+          "materials": [
+            [
+              "OfficeBottom",
+              "bottom"
+            ]
+          ],
+          "triangles": 1400
+        },
+        {
+          "from": "ScanOutfit",
+          "materials": [
+            [
+              "OfficeShoes",
+              "shoes"
+            ],
+            [
+              "Skin_Outfit",
+              "skin"
+            ]
+          ],
+          "below": 0.2,
+          "triangles": 600
+        }
+      ],
+      "publish": false,
+      "fitReview": "Local review only: source sleeve/body correspondence and layered silhouettes have not passed walking and seated fit review. Use the body-fitted modular wardrobe for production."
+    },
+    {
+      "id": "outfit-cheongsam-pink",
+      "group": "female",
+      "label": "Cheongsam (pink)",
+      "category": "dress",
+      "archive": "pink_floral_cheongsam.glb",
+      "source": "pink_floral_cheongsam.glb",
+      "title": "Pink Floral Cheongsam",
+      "license": "CC-BY-4.0",
+      "notice": "sketchfab-pink-floral-cheongsam",
+      "status": "skip",
+      "reason": "Asymmetric draped panels do not survive the automatic fit.",
+      "skirt": [
+        1.0,
+        0.45
+      ],
+      "hem": 0.4,
+      "borrow": [
+        {
+          "from": "ScanOutfit",
+          "materials": [
+            [
+              "OfficeShoes",
+              "shoes"
+            ],
+            [
+              "Skin_Outfit",
+              "skin"
+            ]
+          ],
+          "below": 0.2,
+          "triangles": 600
+        }
+      ],
+      "skin_above": 0.14
+    },
+    {
+      "id": "outfit-polka-dress",
+      "group": "female",
+      "label": "Polka dot dress",
+      "category": "dress",
+      "archive": "polka_dot_dress.glb",
+      "source": "polka_dot_dress.glb",
+      "title": "Polka Dot Dress",
+      "license": "CC-BY-4.0",
+      "notice": "sketchfab-polka-dot-dress",
+      "skirt": [
+        1.0,
+        0.45
+      ],
+      "hem": 0.4,
+      "borrow": [
+        {
+          "from": "ScanOutfit",
+          "materials": [
+            [
+              "OfficeShoes",
+              "shoes"
+            ],
+            [
+              "Skin_Outfit",
+              "skin"
+            ]
+          ],
+          "below": 0.2,
+          "triangles": 600
+        }
+      ],
+      "skin_above": 0.14,
+      "publish": false,
+      "fitReview": "Local review only: source sleeve/body correspondence and layered silhouettes have not passed walking and seated fit review. Use the body-fitted modular wardrobe for production."
+    },
+    {
+      "id": "outfit-jumper-skirt",
+      "group": "female",
+      "label": "Puff sleeve and jumper skirt",
+      "category": "dress",
+      "archive": "puff_sleeve_and_jumper_skirt.glb",
+      "source": "puff_sleeve_and_jumper_skirt.glb",
+      "title": "puff sleeve and jumper (skirt)",
+      "license": "CC-BY-4.0",
+      "notice": "sketchfab-puff-sleeve-and-jumper-skirt",
+      "span": [
+        0.55,
+        1.6
+      ],
+      "zones": [
+        [
+          "object",
+          "shirt",
+          "top"
+        ],
+        [
+          "object",
+          "skirt",
+          "bottom"
+        ]
+      ],
+      "skirt": [
+        1.0,
+        0.45
+      ],
+      "hem": 0.4,
+      "borrow": [
+        {
+          "from": "ScanOutfit",
+          "materials": [
+            [
+              "OfficeShoes",
+              "shoes"
+            ],
+            [
+              "Skin_Outfit",
+              "skin"
+            ]
+          ],
+          "below": 0.2,
+          "triangles": 600
+        }
+      ],
+      "skin_above": 0.14,
+      "publish": false,
+      "fitReview": "Local review only: source sleeve/body correspondence and layered silhouettes have not passed walking and seated fit review. Use the body-fitted modular wardrobe for production."
+    },
+    {
+      "id": "outfit-ray-suit",
+      "group": "female",
+      "label": "Tailored coat and boots",
+      "category": "smart",
+      "archive": "real_suit_for_ray_ii_retopo.glb",
+      "source": "real_suit_for_ray_ii_retopo.glb",
+      "title": "Real Suit For Ray II Retopo",
+      "license": "CC-BY-4.0",
+      "notice": "sketchfab-real-suit-for-ray-ii-retopo",
+      "span": [
+        0.0,
+        1.6
+      ],
+      "zones": [
+        [
+          "object",
+          "\\.00[23]|underwear",
+          "drop"
+        ],
+        [
+          "object",
+          "boot",
+          "shoes"
+        ],
+        [
+          "object",
+          "coat",
+          "outer"
+        ],
+        [
+          "object",
+          "vest",
+          "outer"
+        ],
+        [
+          "object",
+          "trousers",
+          "bottom"
+        ]
+      ],
+      "publish": false,
+      "fitReview": "Local review only: source sleeve/body correspondence and layered silhouettes have not passed walking and seated fit review. Use the body-fitted modular wardrobe for production."
+    },
+    {
+      "id": "outfit-leather-jacket",
+      "group": "female",
+      "label": "Leather jacket",
+      "category": "outerwear",
+      "archive": "red_leather_jacket.glb",
+      "source": "red_leather_jacket.glb",
+      "title": "Red Leather Jacket",
+      "license": "CC-BY-4.0",
+      "notice": "sketchfab-red-leather-jacket",
+      "span": [
+        0.88,
+        1.6
+      ],
+      "zones": [
+        [
+          "object",
+          "tshirt",
+          "top"
+        ],
+        [
+          "object",
+          "button|zipper",
+          "trim"
+        ],
+        [
+          "object",
+          "jacket|epaulette",
+          "outer"
+        ]
+      ],
+      "borrow": [
+        {
+          "from": "ScanOutfit",
+          "materials": [
+            [
+              "OfficeBottom",
+              "bottom"
+            ]
+          ],
+          "triangles": 1400
+        },
+        {
+          "from": "ScanOutfit",
+          "materials": [
+            [
+              "OfficeShoes",
+              "shoes"
+            ],
+            [
+              "Skin_Outfit",
+              "skin"
+            ]
+          ],
+          "below": 0.2,
+          "triangles": 600
+        }
+      ],
+      "publish": false,
+      "fitReview": "Local review only: source sleeve/body correspondence and layered silhouettes have not passed walking and seated fit review. Use the body-fitted modular wardrobe for production."
+    },
+    {
+      "id": "outfit-skirt-tee",
+      "group": "female",
+      "label": "T-shirt and skirt",
+      "category": "casual",
+      "archive": "skirt_and_t-shirt.glb",
+      "source": "skirt_and_t-shirt.glb",
+      "title": "Skirt and t-shirt",
+      "license": "CC-BY-4.0",
+      "notice": "sketchfab-skirt-and-t-shirt",
+      "skirt": [
+        1.0,
+        0.5
+      ],
+      "borrow": [
+        {
+          "from": "ScanOutfitCasual",
+          "materials": [
+            [
+              "OfficeShoes",
+              "shoes"
+            ]
+          ],
+          "triangles": 600
+        }
+      ],
+      "publish": false,
+      "fitReview": "Local review only: source sleeve/body correspondence and layered silhouettes have not passed walking and seated fit review. Use the body-fitted modular wardrobe for production."
+    },
+    {
+      "id": "outfit-leather-skirt",
+      "group": "female",
+      "label": "Shirt and leather skirt",
+      "category": "smart",
+      "archive": "white_shirt_black_leather_skirt_outfit.glb",
+      "source": "white_shirt_black_leather_skirt_outfit.glb",
+      "title": "White shirt black leather skirt outfit",
+      "license": "CC-BY-4.0",
+      "notice": "sketchfab-white-shirt-black-leather-skirt-outfit",
+      "predecimate": 160000,
+      "skirt": [
+        1.0,
+        0.45
+      ],
+      "borrow": [
+        {
+          "from": "ScanOutfit",
+          "materials": [
+            [
+              "OfficeShoes",
+              "shoes"
+            ],
+            [
+              "Skin_Outfit",
+              "skin"
+            ]
+          ],
+          "below": 0.2,
+          "triangles": 600
+        }
+      ],
+      "skin_above": 0.14,
+      "publish": false,
+      "fitReview": "Local review only: source sleeve/body correspondence and layered silhouettes have not passed walking and seated fit review. Use the body-fitted modular wardrobe for production."
+    },
+    {
+      "id": "outfit-denim-dress",
+      "group": "female",
+      "label": "Denim pinafore dress",
+      "category": "dress",
+      "archive": "woman_dress.glb",
+      "source": "woman_dress.glb",
+      "title": "Woman Dress",
+      "license": "CC-BY-4.0",
+      "notice": "sketchfab-woman-dress",
+      "zones": [
+        [
+          "object",
+          "denim",
+          "bottom"
+        ],
+        [
+          "object",
+          "oxford",
+          "top"
+        ]
+      ],
+      "skirt": [
+        1.0,
+        0.45
+      ],
+      "borrow": [
+        {
+          "from": "ScanOutfit",
+          "materials": [
+            [
+              "OfficeShoes",
+              "shoes"
+            ],
+            [
+              "Skin_Outfit",
+              "skin"
+            ]
+          ],
+          "below": 0.2,
+          "triangles": 600
+        }
+      ],
+      "skin_above": 0.14,
+      "publish": false,
+      "fitReview": "Local review only: source sleeve/body correspondence and layered silhouettes have not passed walking and seated fit review. Use the body-fitted modular wardrobe for production."
+    },
+    {
+      "id": "outfit-belted-top",
+      "group": "female",
+      "label": "Belted top",
+      "category": "smart",
+      "archive": "women_top_with_belt.glb",
+      "source": "women_top_with_belt.glb",
+      "title": "Women Top with belt",
+      "license": "CC-BY-4.0",
+      "notice": "sketchfab-women-top-with-belt",
+      "span": [
+        0.92,
+        1.58
+      ],
+      "borrow": [
+        {
+          "from": "ScanOutfit",
+          "materials": [
+            [
+              "OfficeBottom",
+              "bottom"
+            ]
+          ],
+          "triangles": 1400
+        },
+        {
+          "from": "ScanOutfit",
+          "materials": [
+            [
+              "OfficeShoes",
+              "shoes"
+            ],
+            [
+              "Skin_Outfit",
+              "skin"
+            ]
+          ],
+          "below": 0.2,
+          "triangles": 600
+        }
+      ],
+      "publish": false,
+      "fitReview": "Local review only: source sleeve/body correspondence and layered silhouettes have not passed walking and seated fit review. Use the body-fitted modular wardrobe for production."
+    },
+    {
+      "id": "outfit-blouse-skirt",
+      "group": "female",
+      "label": "Blouse and long skirt",
+      "category": "smart",
+      "archive": "womens_blouse_and_skirt.glb",
+      "source": "womens_blouse_and_skirt.glb",
+      "title": "Women's blouse and skirt",
+      "license": "CC-BY-4.0",
+      "notice": "sketchfab-womens-blouse-and-skirt",
+      "zones": [
+        [
+          "object",
+          "skirt",
+          "bottom"
+        ],
+        [
+          "object",
+          "button",
+          "trim"
+        ]
+      ],
+      "predecimate": 120000,
+      "skirt": [
+        1.0,
+        0.45
+      ],
+      "hem": 0.4,
+      "borrow": [
+        {
+          "from": "ScanOutfit",
+          "materials": [
+            [
+              "OfficeShoes",
+              "shoes"
+            ],
+            [
+              "Skin_Outfit",
+              "skin"
+            ]
+          ],
+          "below": 0.2,
+          "triangles": 600
+        }
+      ],
+      "skin_above": 0.14,
+      "publish": false,
+      "fitReview": "Local review only: source sleeve/body correspondence and layered silhouettes have not passed walking and seated fit review. Use the body-fitted modular wardrobe for production."
+    },
+    {
+      "id": "outfit-business-suit",
+      "group": "male",
+      "label": "Black business suit",
+      "category": "office",
+      "archive": "man_black_business_suit.glb",
+      "source": "man_black_business_suit.glb",
+      "title": "Man Black Business Suit",
+      "license": "CC-BY-4.0",
+      "notice": "sketchfab-man-black-business-suit",
+      "status": "skip",
+      "reason": "The fitted suit lands behind the body (source orientation); the staff uniforms derive their suit from it instead.",
+      "span": [
+        0.03,
+        1.62
+      ],
+      "predecimate": 160000,
+      "borrow": [
+        {
+          "from": "ScanOutfit",
+          "materials": [
+            [
+              "OfficeShoes",
+              "shoes"
+            ]
+          ],
+          "triangles": 600
+        }
+      ]
+    },
+    {
+      "id": "outfit-apparel-pack",
+      "group": "male",
+      "label": "Apparel pack",
+      "category": "casual",
+      "archive": "male_apparel_pack.glb",
+      "source": "male_apparel_pack.glb",
+      "title": "Male apparel pack",
+      "license": "LicenseRef-Sketchfab-Standard",
+      "notice": "sketchfab-standard-male-apparel-pack",
+      "status": "skip",
+      "reason": "A pack of separate garments laid out side by side; needs per-item boxes before it can be fitted."
+    },
+    {
+      "id": "outfit-jeans",
+      "group": "male",
+      "label": "Jeans",
+      "category": "casual",
+      "archive": "male_jeans.glb",
+      "source": "male_jeans.glb",
+      "title": "Male jeans",
+      "license": "LicenseRef-Sketchfab-Standard",
+      "notice": "sketchfab-standard-male-jeans",
+      "default_zone": "bottom",
+      "borrow": [
+        {
+          "from": "ScanOutfit",
+          "materials": [
+            [
+              "OfficeShoes",
+              "shoes"
+            ]
+          ],
+          "triangles": 600
+        }
+      ],
+      "status": "skip",
+      "reason": "Trousers only; the male body has no casual top to pair them with yet."
+    },
+    {
+      "id": "outfit-black-suit",
+      "group": "male",
+      "label": "Black suit (owner file)",
+      "category": "office",
+      "archive": "black-suit.zip",
+      "source": "source/BlackSuit.glb",
+      "title": "Black suit (owner file)",
+      "license": "LicenseRef-Owner-Provided-Unverified",
+      "notice": "owner-provided-unverified",
+      "predecimate": 160000,
+      "borrow": [
+        {
+          "from": "ScanOutfit",
+          "materials": [
+            [
+              "OfficeShoes",
+              "shoes"
+            ]
+          ],
+          "triangles": 600
+        }
+      ],
+      "publish": false,
+      "fitReview": "Local review only: source sleeve/body correspondence and layered silhouettes have not passed walking and seated fit review. Use the body-fitted modular wardrobe for production."
+    },
+    {
+      "id": "outfit-camo-casual",
+      "group": "male",
+      "label": "Camouflage trousers and grey top",
+      "category": "casual",
+      "archive": "man-green-camouflage-pants-gap-gray-top.zip",
+      "source": "source/绿色迷彩裤+Gap灰色上衣.fbx",
+      "title": "Camouflage trousers and grey top",
+      "license": "LicenseRef-Owner-Provided-Unverified",
+      "notice": "owner-provided-unverified",
+      "status": "skip",
+      "reason": "The thin single-layer top shreds against the body when simplified; revisit with a cleaner source.",
+      "borrow": [
+        {
+          "from": "ScanOutfit",
+          "materials": [
+            [
+              "OfficeShoes",
+              "shoes"
+            ]
+          ],
+          "triangles": 600
+        }
+      ]
+    },
+    {
+      "id": "outfit-tshirt",
+      "group": "male",
+      "label": "T-shirt (owner file)",
+      "category": "casual",
+      "archive": "t-shirt.zip",
+      "source": "source/shirt.fbx",
+      "title": "T-shirt (owner file)",
+      "license": "LicenseRef-Owner-Provided-Unverified",
+      "notice": "owner-provided-unverified",
+      "borrow": [
+        {
+          "from": "ScanOutfit",
+          "materials": [
+            [
+              "OfficeBottom",
+              "bottom"
+            ],
+            [
+              "OfficeBelt",
+              "trim"
+            ]
+          ],
+          "triangles": 1400
+        },
+        {
+          "from": "ScanOutfit",
+          "materials": [
+            [
+              "OfficeShoes",
+              "shoes"
+            ]
+          ],
+          "triangles": 600
+        }
+      ],
+      "publish": false,
+      "fitReview": "Local review only: source sleeve/body correspondence and layered silhouettes have not passed walking and seated fit review. Use the body-fitted modular wardrobe for production."
+    },
+    {
+      "id": "outfit-white-suit-m",
+      "group": "male",
+      "label": "White suit (owner file)",
+      "category": "smart",
+      "archive": "white-suit.zip",
+      "source": "source/Whitesuit.glb",
+      "title": "White suit (owner file)",
+      "license": "LicenseRef-Owner-Provided-Unverified",
+      "notice": "owner-provided-unverified",
+      "predecimate": 160000,
+      "borrow": [
+        {
+          "from": "ScanOutfit",
+          "materials": [
+            [
+              "OfficeShoes",
+              "shoes"
+            ]
+          ],
+          "triangles": 600
+        }
+      ],
+      "publish": false,
+      "fitReview": "Local review only: source sleeve/body correspondence and layered silhouettes have not passed walking and seated fit review. Use the body-fitted modular wardrobe for production."
+    },
+    {
+      "id": "outfit-school-1",
+      "group": "female",
+      "label": "School uniform",
+      "category": "costume",
+      "archive": "jk_school_uniform.glb",
+      "source": "jk_school_uniform.glb",
+      "title": "Jk School Uniform",
+      "license": "CC-BY-4.0",
+      "notice": "sketchfab-jk-school-uniform",
+      "status": "skip",
+      "reason": "School uniform; not an office or everyday look for adult staff."
+    },
+    {
+      "id": "outfit-school-2",
+      "group": "female",
+      "label": "School uniform 2",
+      "category": "costume",
+      "archive": "jk_school_uniform_2.glb",
+      "source": "jk_school_uniform_2.glb",
+      "title": "JK School Uniform 2",
+      "license": "CC-BY-4.0",
+      "notice": "sketchfab-jk-school-uniform-2",
+      "status": "skip",
+      "reason": "School uniform; not an office or everyday look for adult staff."
+    },
+    {
+      "id": "outfit-school-4",
+      "group": "female",
+      "label": "School uniform 4",
+      "category": "costume",
+      "archive": "jk_school_uniform_4.glb",
+      "source": "jk_school_uniform_4.glb",
+      "title": "Jk School Uniform 4",
+      "license": "CC-BY-4.0",
+      "notice": "sketchfab-jk-school-uniform-4",
+      "status": "skip",
+      "reason": "School uniform; not an office or everyday look for adult staff."
+    },
+    {
+      "id": "outfit-cloak",
+      "group": "female",
+      "label": "Leather cloak",
+      "category": "costume",
+      "archive": "old_leather_cloak_female.glb",
+      "source": "old_leather_cloak_female.glb",
+      "title": "Old leather cloak (female)",
+      "license": "CC-BY-4.0",
+      "notice": "sketchfab-old-leather-cloak-female",
+      "status": "skip",
+      "reason": "Fantasy cloak; not office-appropriate and it hides the arms."
+    }
+  ]
+}

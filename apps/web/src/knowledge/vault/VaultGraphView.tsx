@@ -3,6 +3,10 @@ import { Component, lazy, Suspense, useEffect, useId, useMemo, useRef, useState,
 import type { Messages } from '../../i18n';
 import type { Loaded } from '../../inspect/useLoad';
 import { Icon } from '../../ui/Icon';
+import { GraphFocusControls } from './GraphFocusControls';
+import { GraphFilterControls, GraphSelectedNotePanel } from './GraphFilterControls';
+import { EMPTY_GRAPH_FILTERS, graphFacetMask, graphFacetOptions, hasGraphFilters, visibleGraphDegrees, type GraphFacetFilters } from './graphFilters';
+import { focusGraph, visibleColourLegend, visibleLinkCount, type FocusHops } from './graphFocus';
 import {
   assignColours, COLOUR_MODES, GRAPH_OTHER_COLOUR, prepareVaultGraph, rankSearch, TIME_WINDOWS, timeMask, type ColourMode, type TimeWindow, type VaultGraph,
 } from './vaultGraphModel';
@@ -73,18 +77,22 @@ export function VaultGraphView(props: VaultGraphViewProps) {
       ? <section className="card"><p className="form-error" role="alert"><Icon name="alert" />{props.overview.error}</p></section>
       : <section className="card"><p className="muted" role="status">{k.loading}</p></section>;
   }
-  if (!overview.nodes.length) return <section className="card empty-state" data-state="vault-empty"><p className="muted">{k.empty}</p></section>;
   return <VaultGraphLoaded {...props} overview={overview} />;
 }
 
 function VaultGraphLoaded({ t, overview, selectedId, onOpen, onClose, notePanel, now: givenNow }: Omit<VaultGraphViewProps, 'overview'> & { overview: KnowledgeOverview }) {
   const k = t.knowledge.vaultGraph;
   const [query, setQuery] = useState('');
-  const [active, setActive] = useState<number | null>(null);
+  const [active, setActive] = useState<string | null>(null);
+  const [focusRoot, setFocusRoot] = useState<{ nodeId: string; title: string } | null>(null);
+  const [focusHops, setFocusHops] = useState<FocusHops>(1);
   const [colourMode, setColourMode] = useState<ColourMode>('folder');
   const [timeWindow, setTimeWindow] = useState<TimeWindow>('all');
+  const [filters, setFilters] = useState<GraphFacetFilters>(() => ({ ...EMPTY_GRAPH_FILTERS }));
   const [showLabels, setShowLabels] = useState(true);
   const [showHalos, setShowHalos] = useState(true);
+  const [returnToLayout, setReturnToLayout] = useState(true);
+  const [restoreRevision, setRestoreRevision] = useState(0);
   const [now] = useState(() => givenNow ?? Date.now());
   const reducedMotion = usePrefersReducedMotion();
   const [showFps] = useState(() => devFlag('graphfps') !== null);
@@ -93,11 +101,20 @@ function VaultGraphLoaded({ t, overview, selectedId, onOpen, onClose, notePanel,
 
   const graph: VaultGraph = useMemo(() => prepareVaultGraph(overview), [overview]);
   const colours = useMemo(() => assignColours(graph.nodes, colourMode), [graph, colourMode]);
-  const mask = useMemo(() => timeMask(graph.nodes, timeWindow, now), [graph, timeWindow, now]);
+  const filterOptions = useMemo(() => graphFacetOptions(graph.nodes), [graph]);
+  const baseMask = useMemo(() => graphFacetMask(graph.nodes, filters, timeMask(graph.nodes, timeWindow, now)), [graph, filters, timeWindow, now]);
+  const focus = useMemo(() => focusGraph(graph, baseMask, focusRoot?.nodeId ?? null, focusHops), [graph, baseMask, focusRoot?.nodeId, focusHops]);
+  const mask = focus.mask;
+  const legend = useMemo(() => visibleColourLegend(colours, mask), [colours, mask]);
   const shownCount = useMemo(() => mask.reduce((sum, value) => sum + value, 0), [mask]);
+  const visibleDegrees = useMemo(() => visibleGraphDegrees(graph, mask), [graph, mask]);
   const results = useMemo(() => (query.trim() ? rankSearch(graph, query, 50, mask) : null), [graph, query, mask]);
   const selected = selectedId !== null ? graph.indexById.get(selectedId) ?? null : null;
-  const activeIndex = results && active !== null ? results[active] ?? null : null;
+  const activeCandidate = active === null ? undefined : graph.indexById.get(active);
+  const activeIndex = activeCandidate !== undefined && results?.slice(0, RESULT_LIST).includes(activeCandidate) ? activeCandidate : null;
+  const selectedNode = selected !== null && baseMask[selected] === 1 ? graph.nodes[selected]! : null;
+  const selectedVisible = selected !== null && mask[selected] === 1;
+  const rootTitle = focusRoot === null ? null : focus.root === null ? focusRoot.title : graph.nodes[focus.root]!.title;
 
   // `/` focuses the search; Escape closes the note (or clears the search when no note is open).
   useEffect(() => {
@@ -119,7 +136,10 @@ function VaultGraphLoaded({ t, overview, selectedId, onOpen, onClose, notePanel,
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
       event.preventDefault();
       const step = event.key === 'ArrowDown' ? 1 : -1;
-      setActive(current => (current === null ? (step > 0 ? 0 : results.length - 1) : (current + step + results.length) % results.length));
+      const reachable = results.slice(0, RESULT_LIST);
+      const current = activeIndex === null ? -1 : reachable.indexOf(activeIndex);
+      const next = current < 0 ? (step > 0 ? 0 : reachable.length - 1) : (current + step + reachable.length) % reachable.length;
+      setActive(graph.nodes[reachable[next]!]!.nodeId);
     } else if (event.key === 'Enter') {
       event.preventDefault();
       onOpen(graph.nodes[activeIndex ?? results[0]!]!.nodeId);
@@ -134,13 +154,17 @@ function VaultGraphLoaded({ t, overview, selectedId, onOpen, onClose, notePanel,
         <button type="button" className={`vault-graph-row ${extra ?? ''}`} aria-current={index === selected ? 'true' : undefined} onClick={() => onOpen(node.nodeId)}>
           <span className="vault-graph-dot" style={{ background: colours.colours[index] }} aria-hidden="true" />
           <span className="vault-graph-row-title">{node.title}</span>
-          <span className="muted small">{node.folder || k.root} · {k.links(graph.degree[index]!)}</span>
+          <span className="muted small">{node.folder || k.root} · {k.links(visibleDegrees[index]!)}</span>
         </button>
       </li>
     );
   };
   const hubs = graph.hubs.filter(index => mask[index]).slice(0, HUB_LIST);
-  const linkCount = graph.edges.length / 2;
+  const linkCount = useMemo(() => visibleLinkCount(graph, mask), [graph, mask]);
+
+  // Keep the rooted view mounted when sync removes every note, so the user can
+  // still see why the focus is unavailable and explicitly clear it.
+  if (!graph.nodes.length && focusRoot === null && selectedId === null && !hasGraphFilters(filters)) return <section className="card empty-state" data-state="vault-empty"><p className="muted">{k.empty}</p></section>;
 
   return (
     <section className={`vault-graph ${selectedId ? 'has-selection' : ''}`} aria-label={k.whole}>
@@ -153,9 +177,9 @@ function VaultGraphLoaded({ t, overview, selectedId, onOpen, onClose, notePanel,
           {results && (
             <ul className="vault-graph-results" id={listId} role="listbox" aria-label={k.results}>
               {results.length === 0 && <li className="muted small" role="presentation">{k.noMatches(query.trim())}</li>}
-              {results.slice(0, RESULT_LIST).map((index, at) => (
-                <li key={index} id={`${listId}-${index}`} role="option" aria-selected={at === active}>
-                  <button type="button" tabIndex={-1} className="vault-graph-row" onMouseEnter={() => setActive(at)} onClick={() => onOpen(graph.nodes[index]!.nodeId)}>
+              {results.slice(0, RESULT_LIST).map(index => (
+                <li key={index} id={`${listId}-${index}`} role="option" aria-selected={index === activeIndex}>
+                  <button type="button" tabIndex={-1} className="vault-graph-row" onMouseEnter={() => setActive(graph.nodes[index]!.nodeId)} onClick={() => onOpen(graph.nodes[index]!.nodeId)}>
                     <span className="vault-graph-dot" style={{ background: colours.colours[index] }} aria-hidden="true" />
                     <span className="vault-graph-row-title">{graph.nodes[index]!.title}</span>
                     <span className="muted small">{graph.nodes[index]!.folder || k.root}</span>
@@ -168,16 +192,23 @@ function VaultGraphLoaded({ t, overview, selectedId, onOpen, onClose, notePanel,
         </div>
         <div className="segmented vault-graph-time" role="group" aria-label={k.time}>
           {TIME_WINDOWS.map(item => (
-            <button key={item} type="button" className="chip-button" aria-pressed={timeWindow === item} title={k.timeTitles[item]} onClick={() => setTimeWindow(item)}>{k.timeWindows[item]}</button>
+            <button key={item} type="button" className="chip-button" aria-pressed={timeWindow === item} title={k.timeTitles[item]} onClick={() => { setTimeWindow(item); setActive(null); }}>{k.timeWindows[item]}</button>
           ))}
         </div>
+        <GraphFilterControls t={t} options={filterOptions} filters={filters} onChange={next => { setFilters(next); setActive(null); }}
+          onClear={() => { setFilters({ ...EMPTY_GRAPH_FILTERS }); setActive(null); }} />
         <div className="segmented" role="group" aria-label={k.colour}>
           {COLOUR_MODES.map(mode => <button key={mode} type="button" className="chip-button" aria-pressed={colourMode === mode} onClick={() => setColourMode(mode)}>{k.colourModes[mode]}</button>)}
         </div>
         <div className="vault-graph-toggles">
           <button type="button" className="chip-button" aria-pressed={showLabels} onClick={() => setShowLabels(value => !value)}>{k.labels}</button>
           <button type="button" className="chip-button" aria-pressed={showHalos} onClick={() => setShowHalos(value => !value)}>{k.halos}</button>
+          <button type="button" className="chip-button" aria-pressed={returnToLayout} title={k.returnHint} onClick={() => setReturnToLayout(value => !value)}>{k.returnToLayout}</button>
+          <button type="button" className="chip-button" title={k.restoreHint} onClick={() => setRestoreRevision(value => value + 1)}>{k.restoreLayout}</button>
         </div>
+        <GraphFocusControls t={t} selectedTitle={selectedNode?.title ?? null} rootTitle={rootTitle} status={focus.status} hops={focusHops}
+          onFocus={() => { if (selectedNode) { setFocusRoot({ nodeId: selectedNode.nodeId, title: selectedNode.title }); setActive(null); } }}
+          onClear={() => { setFocusRoot(null); setActive(null); }} onHops={depth => { setFocusHops(depth); setActive(null); }} />
         <p className="muted small vault-graph-counts">
           {k.counts(shownCount, linkCount)}
           {graph.truncated && <> · {k.truncated(graph.nodes.length, graph.totalNodes)}</>}
@@ -191,16 +222,17 @@ function VaultGraphLoaded({ t, overview, selectedId, onOpen, onClose, notePanel,
             <Suspense fallback={<p className="vault-graph-webgl" role="status">{k.loading}</p>}>
               <VaultGraphCanvas graph={graph} colours={colours.colours} mask={mask} selected={selected} highlight={results} activeResult={activeIndex}
                 showLabels={showLabels} showHalos={showHalos} reducedMotion={reducedMotion} showFps={showFps}
+                returnToLayout={returnToLayout} restoreRevision={restoreRevision}
                 onSelect={index => onOpen(graph.nodes[index]!.nodeId)} />
             </Suspense>
           </CanvasBoundary>
           <ul className="vault-graph-legend" aria-label={k.colour}>
-            {colours.legend.map(group => <li key={group.key}><span className="vault-graph-dot" style={{ background: group.colour }} aria-hidden="true" />{groupLabel(group.key)}<span>{group.count}</span></li>)}
-            {colours.other > 0 && <li><span className="vault-graph-dot" style={{ background: GRAPH_OTHER_COLOUR }} aria-hidden="true" />{k.other}<span>{colours.other}</span></li>}
+            {legend.legend.map(group => <li key={group.key}><span className="vault-graph-dot" style={{ background: group.colour }} aria-hidden="true" />{groupLabel(group.key)}<span>{group.count}</span></li>)}
+            {legend.other > 0 && <li><span className="vault-graph-dot" style={{ background: GRAPH_OTHER_COLOUR }} aria-hidden="true" />{k.other}<span>{legend.other}</span></li>}
           </ul>
           <p className="vault-graph-hint" aria-hidden="true">{k.hint}</p>
         </div>
-        {selectedId && <aside className="vault-graph-panel" aria-label={t.knowledge.title}>{notePanel}</aside>}
+        {selectedId && <GraphSelectedNotePanel t={t} visible={selectedVisible} onClose={onClose}>{notePanel}</GraphSelectedNotePanel>}
       </div>
       <details className="card vault-graph-list">
         <summary><Icon name="logs" />{k.listView}</summary>

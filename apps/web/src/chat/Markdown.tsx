@@ -1,7 +1,9 @@
 import { useMemo, type ReactNode } from 'react';
 import { CopyButton } from '../ui/CopyButton';
 import { useMessages } from '../ui/messages';
+import { highlightCode } from './codeHighlight';
 import { parseMarkdown, type Block, type Inline, type TableAlign } from './markdownParser';
+import { useMessageFiles } from './MessageFilePreview';
 
 export type WikilinkNode = Extract<Inline, { type: 'wikilink' }>;
 /** Renders a wikilink (Knowledge notes). Without one, a wikilink shows as its text. */
@@ -15,22 +17,30 @@ function renderInline(nodes: readonly Inline[], wikilink?: WikilinkRenderer): Re
       case 'code': return <code key={index}>{node.text}</code>;
       case 'strong': return <strong key={index}>{renderInline(node.children, wikilink)}</strong>;
       case 'em': return <em key={index}>{renderInline(node.children, wikilink)}</em>;
+      case 'del': return <del key={index}>{renderInline(node.children, wikilink)}</del>;
       case 'link': return <a key={index} href={node.href} target="_blank" rel="noopener noreferrer">{renderInline(node.children, wikilink)}</a>;
+      case 'filelink': return <FileLink key={index} path={node.path}>{renderInline(node.children, wikilink)}</FileLink>;
       case 'wikilink': return wikilink ? wikilink(node, index) : (node.display ?? node.target);
     }
   });
 }
 
+function FileLink({ path, children }: { path: string; children: ReactNode }) {
+  const openFile = useMessageFiles();
+  return <button type="button" className="message-file-link" onClick={() => openFile?.({ name: path.split(/[\\/]/).at(-1) ?? path, path, link: true })}>{children}</button>;
+}
+
 function CodeBlock({ block }: { block: Extract<Block, { type: 'code' }> }) {
   const t = useMessages();
   const label = block.language ?? t.markdown.code;
+  const tokens = useMemo(() => highlightCode(block.text, block.language), [block.text, block.language]);
   return (
     <div className="md-code">
       <div className="md-code-head">
         <span>{label}</span>
         <CopyButton text={block.text} label={label} />
       </div>
-      <pre tabIndex={0}><code>{block.text}</code></pre>
+      <pre tabIndex={0}><code>{tokens.map((token, index) => token.kind ? <span key={index} className={`code-${token.kind}`}>{token.text}</span> : token.text)}</code></pre>
     </div>
   );
 }
@@ -65,10 +75,18 @@ function renderBlock(block: Block, index: number, wikilink?: WikilinkRenderer): 
       return <Tag key={index} className={`md-h${block.level}`}>{renderInline(block.children, wikilink)}</Tag>;
     }
     case 'list': {
-      const items = block.items.map((item, itemIndex) => <li key={itemIndex}>{renderInline(item, wikilink)}</li>);
+      const items = block.items.map((item, itemIndex) => {
+        const checked = block.checks?.[itemIndex];
+        const inner = block.nested?.[itemIndex];
+        return <li key={itemIndex} className={checked === undefined ? undefined : 'md-task'}>
+          {checked !== undefined && <input type="checkbox" checked={checked} disabled readOnly />}
+          {renderInline(item, wikilink)}
+          {inner?.map((child, childIndex) => renderBlock(child, childIndex, wikilink))}
+        </li>;
+      });
       return block.ordered ? <ol key={index} start={block.start}>{items}</ol> : <ul key={index}>{items}</ul>;
     }
-    case 'quote': return <blockquote key={index}>{renderInline(block.children, wikilink)}</blockquote>;
+    case 'quote': return <blockquote key={index}>{block.blocks ? block.blocks.map((child, childIndex) => renderBlock(child, childIndex, wikilink)) : renderInline(block.children, wikilink)}</blockquote>;
     case 'code': return <CodeBlock key={index} block={block} />;
     case 'rule': return <hr key={index} />;
     case 'table': return <MarkdownTable key={index} block={block} wikilink={wikilink} />;
@@ -78,6 +96,7 @@ function renderBlock(block: Block, index: number, wikilink?: WikilinkRenderer): 
 /** With `wikilink`, `[[…]]` links are parsed (Knowledge notes) and drawn by it; chat replies leave it out. */
 export function Markdown({ text, wikilink }: { text: string; wikilink?: WikilinkRenderer | undefined }) {
   const wikilinks = Boolean(wikilink);
-  const blocks = useMemo(() => parseMarkdown(text, { wikilinks }), [text, wikilinks]);
+  const fileLinks = Boolean(useMessageFiles());
+  const blocks = useMemo(() => parseMarkdown(text, { wikilinks, fileLinks }), [text, wikilinks, fileLinks]);
   return <div className="markdown">{blocks.map((block, index) => renderBlock(block, index, wikilink))}</div>;
 }

@@ -130,8 +130,9 @@ export async function uploadAttachments(
 }
 
 /** Send a prompt, with its attachment ids when there are any. */
-export function sendPromptWithAttachments(host: AttachmentHostApi, sessionId: string, text: string, attachmentIds: readonly string[]): Promise<void> {
-  return attachmentIds.length ? host.sendPrompt(sessionId, text, { attachmentIds: [...attachmentIds] }) : host.sendPrompt(sessionId, text);
+export function sendPromptWithAttachments(host: AttachmentHostApi, sessionId: string, text: string, attachmentIds: readonly string[], learnSkill = false): Promise<void> {
+  const options = { ...(attachmentIds.length ? { attachmentIds: [...attachmentIds] } : {}), ...(learnSkill ? { learnSkill: true } : {}) };
+  return Object.keys(options).length ? host.sendPrompt(sessionId, text, options) : host.sendPrompt(sessionId, text);
 }
 
 /**

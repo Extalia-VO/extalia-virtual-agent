@@ -6,8 +6,6 @@ import { ensureHookToken, hookFiles, readHookToken, removeHookEndpoint, writeHoo
 import { handleHookRequest, HookRateLimiter, secretMatches, signatureMatches, startHookListener, type HookListener } from './http.js';
 import { HOOK_APPS, normalizeHook, type HookApp, type NormalizedHook } from './normalize.js';
 
-/** A rotated token is picked up from disk at most this often while wrong tokens arrive. */
-const TOKEN_RELOAD_MS = 1_000;
 const LAST_EVENTS_SAVE_MS = 5_000;
 
 export interface HookIngest {
@@ -35,8 +33,7 @@ export interface HookIngestOptions {
 export async function createHookIngest(options: HookIngestOptions): Promise<HookIngest> {
   const now = options.now ?? Date.now;
   const files = hookFiles(options.dataDirectory);
-  let token = await ensureHookToken(options.dataDirectory);
-  let reloadedAt = now();
+  await ensureHookToken(options.dataDirectory);
   let port: number | undefined;
   let listener: HookListener | undefined;
   let closed = false;
@@ -44,15 +41,10 @@ export async function createHookIngest(options: HookIngestOptions): Promise<Hook
   let saveTimer: ReturnType<typeof setTimeout> | undefined;
   const saveLastEvents = () => writeJsonAtomic(files.lastEvents, Object.fromEntries(HOOK_APPS.flatMap(app => lastEvents[app] ? [[app, lastEvents[app]]] : [])), { mode: PRIVATE_FILE_MODE }).catch(() => undefined);
 
-  /** `extalia connect --rotate` replaces the file while the host runs; re-read it (throttled) before refusing. */
+  /** Read the token for every authentication check so completed rotations revoke old credentials. */
   async function current(given: (secret: string) => boolean): Promise<boolean> {
-    if (given(token)) return true;
-    if (now() - reloadedAt < TOKEN_RELOAD_MS) return false;
-    reloadedAt = now();
-    const fresh = await readHookToken(options.dataDirectory).catch(() => undefined);
-    if (!fresh || fresh === token) return false;
-    token = fresh;
-    return given(token);
+    const token = await readHookToken(options.dataDirectory).catch(() => undefined);
+    return token !== undefined && given(token);
   }
 
   const limiter = new HookRateLimiter();
@@ -62,10 +54,13 @@ export async function createHookIngest(options: HookIngestOptions): Promise<Hook
     verifyToken: given => current(secret => secretMatches(secret, given)),
     verifySignature: (body, header) => current(secret => signatureMatches(secret, body, header)),
     deliver(app, payload) {
-      lastEvents[app] = new Date(now()).toISOString();
-      saveTimer ??= setTimeout(() => { saveTimer = undefined; void saveLastEvents(); }, LAST_EVENTS_SAVE_MS);
-      saveTimer.unref?.();
       const hook = normalizeHook(app, payload, { labelsOnly: isLabelsOnly() });
+      const synthetic = payload.extalia_test === true || hook?.sessionId === 'extalia-connect-test' || hook?.event === 'ExtaliaConnectTest';
+      if (hook && hook.steps.length > 0 && !synthetic) {
+        lastEvents[app] = new Date(now()).toISOString();
+        saveTimer ??= setTimeout(() => { saveTimer = undefined; void saveLastEvents(); }, LAST_EVENTS_SAVE_MS);
+        saveTimer.unref?.();
+      }
       if (hook) options.sink(hook);
     },
   });

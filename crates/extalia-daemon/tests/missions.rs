@@ -6,6 +6,7 @@ use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 use std::sync::atomic::{AtomicU32, Ordering};
+use std::time::{Duration, Instant};
 
 use extalia_daemon::wire::{self, ErrorCode, Frame, Op, ResponseResult};
 use rusqlite::Connection;
@@ -741,4 +742,590 @@ fn snapshot_serves_a_complete_maximum_size_task_graph() {
     );
     assert!(result.leases.is_empty());
     assert_eq!(daemon.finish(), 0);
+}
+
+fn heartbeat_params(mission: &str, task: &str, epoch: &str) -> Value {
+    json!({"missionId": mission, "leases": [{"taskId": task, "leaseId": epoch, "holderAgentId": WORKER}]})
+}
+
+fn expire_lease(conn: &Connection, epoch: &str) {
+    let acquired: String = conn
+        .query_row(
+            "SELECT acquired_at FROM leases WHERE lease_id = ?1",
+            [epoch],
+            |row| row.get(0),
+        )
+        .unwrap();
+    let expires =
+        extalia_core::time::format_utc(extalia_core::time::parse_utc(&acquired).unwrap() + 1);
+    conn.execute(
+        "UPDATE leases SET expires_at = ?1 WHERE lease_id = ?2",
+        [&expires, epoch],
+    )
+    .unwrap();
+}
+
+fn start_task(daemon: &mut Daemon, mission: &str, task: &str, epoch: &str) {
+    daemon
+        .call(
+            "task.transition",
+            transition(mission, task, epoch, "queued", "running"),
+        )
+        .unwrap();
+}
+
+#[test]
+fn reaper_quarantines_expiry_while_stdin_is_idle_without_events_or_replay() {
+    let dir = TempDir::new();
+    let (foreign_mission, foreign_task, foreign_epoch) = (uuid(0x200), uuid(0x201), uuid(0x202));
+    let (mut foreign, _) = Daemon::ready(&dir, Some("work"));
+    foreign
+        .call(
+            "mission.create",
+            create_params(&foreign_mission, &[&foreign_task]),
+        )
+        .unwrap();
+    start_task(
+        &mut foreign,
+        &foreign_mission,
+        &foreign_task,
+        &foreign_epoch,
+    );
+    assert_eq!(foreign.finish(), 0);
+
+    let (mut daemon, _) = Daemon::ready(&dir, None);
+    let (mission, first, second, queued) = (uuid(2), uuid(5), uuid(7), uuid(8));
+    daemon
+        .call(
+            "mission.create",
+            create_params(&mission, &[&first, &second, &queued]),
+        )
+        .unwrap();
+    daemon
+        .call(
+            "event.commit",
+            event(
+                &mission,
+                None,
+                &uuid(0x30),
+                json!({ "type": "mission.state", "state": "running" }),
+            ),
+        )
+        .unwrap();
+    start_task(&mut daemon, &mission, &first, &uuid(0x31));
+    start_task(&mut daemon, &mission, &second, &uuid(0x32));
+    let before = snapshot(&mut daemon, &mission);
+    let conn = Connection::open(dir.store()).unwrap();
+    expire_lease(&conn, &uuid(0x31));
+    expire_lease(&conn, &foreign_epoch);
+
+    // No input frame or provider event wakes the daemon during this wait.
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        let state: String = conn
+            .query_row(
+                "SELECT state FROM missions WHERE mission_id = ?1",
+                [&mission],
+                |row| row.get(0),
+            )
+            .unwrap();
+        if state == "recovering" {
+            break;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "idle daemon did not reap expired authority"
+        );
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    let reaped = snapshot(&mut daemon, &mission);
+    assert_eq!(reaped.state.as_str(), "recovering");
+    assert_eq!(reaped.sequence, before.sequence);
+    assert_eq!(reaped.version, before.version + 1);
+    assert_eq!(
+        reaped
+            .tasks
+            .iter()
+            .map(|task| task.state.as_str())
+            .collect::<Vec<_>>(),
+        ["unknown", "unknown", "queued"]
+    );
+    assert!(
+        reaped.leases.is_empty(),
+        "live sibling lease must also be fenced"
+    );
+    let foreign_state: String = conn
+        .query_row(
+            "SELECT state FROM tasks WHERE task_id = ?1",
+            [&foreign_task],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        foreign_state, "running",
+        "another profile must remain untouched"
+    );
+    let event_count: i64 = conn
+        .query_row(
+            "SELECT count(*) FROM events WHERE mission_id = ?1",
+            [&mission],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(event_count, i64::try_from(before.sequence).unwrap());
+    std::thread::sleep(Duration::from_millis(1_100));
+    assert_eq!(
+        snapshot(&mut daemon, &mission),
+        reaped,
+        "later ticks must not mutate a quarantine again"
+    );
+    assert_eq!(
+        daemon.call(
+            "mission.heartbeat",
+            heartbeat_params(&mission, &first, &uuid(0x31))
+        ),
+        Err(ErrorCode::Conflict)
+    );
+    assert_eq!(
+        daemon.call(
+            "task.transition",
+            transition(&mission, &first, &uuid(0x40), "unknown", "failed")
+        ),
+        Err(ErrorCode::Conflict)
+    );
+    assert_eq!(daemon.finish(), 0);
+    drop(conn);
+    let (mut restarted, _) = Daemon::ready(&dir, None);
+    assert_eq!(
+        snapshot(&mut restarted, &mission),
+        reaped,
+        "restart must neither replay nor rewrite settled quarantine"
+    );
+    assert_eq!(restarted.finish(), 0);
+}
+
+#[test]
+fn failed_reaper_latches_storage_failure_even_after_the_fault_is_removed() {
+    let dir = TempDir::new();
+    let (mut daemon, _) = Daemon::ready(&dir, None);
+    let (mission, task, epoch) = (uuid(2), uuid(5), uuid(0x31));
+    daemon
+        .call("mission.create", create_params(&mission, &[&task]))
+        .unwrap();
+    start_task(&mut daemon, &mission, &task, &epoch);
+    let before = snapshot(&mut daemon, &mission);
+    let conn = Connection::open(dir.store()).unwrap();
+    conn.execute_batch("CREATE TRIGGER fail_reaper BEFORE UPDATE OF state ON tasks WHEN NEW.state = 'unknown' BEGIN SELECT RAISE(ABORT, 'synthetic reaper failure'); END;").unwrap();
+    expire_lease(&conn, &epoch);
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        if matches!(
+            daemon.call("health", json!({})),
+            Ok(ResponseResult::Health {
+                status: extalia_daemon::wire::HealthStatus::Degraded,
+                ..
+            })
+        ) {
+            break;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "reaper storage failure did not degrade health"
+        );
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    assert_eq!(
+        snapshot(&mut daemon, &mission).state,
+        before.state,
+        "failed transaction must roll back"
+    );
+    conn.execute_batch("DROP TRIGGER fail_reaper").unwrap();
+    assert_eq!(
+        daemon.call(
+            "mission.heartbeat",
+            heartbeat_params(&mission, &task, &epoch)
+        ),
+        Err(ErrorCode::StorageFailure)
+    );
+    assert_eq!(
+        daemon.call(
+            "mission.create",
+            create_params(&uuid(0x200), &[&uuid(0x201)])
+        ),
+        Err(ErrorCode::StorageFailure)
+    );
+    assert_eq!(daemon.call("permission.check", json!({ "access": "read", "mode": "workspace", "workspacePermissions": { "fileWrite": "ask", "commands": "ask" }, "sessionGrants": [] })), Err(ErrorCode::StorageFailure));
+    assert!(matches!(
+        daemon.call("mission.executions", json!({"missionId": mission})),
+        Ok(ResponseResult::MissionExecutions(_))
+    ));
+    assert!(matches!(
+        daemon.call("mission.recoveryReview", json!({"missionId":mission})),
+        Ok(ResponseResult::MissionRecoveryReview(_))
+    ));
+    assert_eq!(daemon.call("execution.observe", json!({"missionId": mission, "taskId": task, "leaseId": epoch, "holderAgentId": WORKER,
+        "supervisorId": uuid(0x302), "attempt": 1, "admissionDigest": "a".repeat(64), "observationId": uuid(0x303), "kind": "turn-promise-settled"})), Err(ErrorCode::StorageFailure));
+    assert_eq!(daemon.call("execution.recordLocalDrain",json!({"missionId":mission,"taskId":task,"leaseId":epoch,"holderAgentId":WORKER,
+        "supervisorId":uuid(0x302),"attempt":1,"admissionDigest":"a".repeat(64),"proofId":uuid(0x304),"kind":"local-operations-drained","coverage":"extalia-native-local-v1","providerOperations":0,"toolOperations":0})),Err(ErrorCode::StorageFailure));
+    assert_eq!(daemon.finish(), 0);
+}
+
+#[test]
+fn independent_heartbeat_round_trips_and_fences_old_epochs_and_restart() {
+    let dir = TempDir::new();
+    let (mut daemon, capabilities) = Daemon::ready(&dir, None);
+    assert!(capabilities.contains(&Op::MissionHeartbeat));
+    let (mission, task, epoch) = (uuid(2), uuid(5), uuid(0x31));
+    daemon
+        .call("mission.create", create_params(&mission, &[&task]))
+        .unwrap();
+    daemon
+        .call(
+            "event.commit",
+            event(
+                &mission,
+                None,
+                &uuid(0x30),
+                json!({"type":"mission.state","state":"running"}),
+            ),
+        )
+        .unwrap();
+    let running = transition(&mission, &task, &epoch, "queued", "running");
+    let original = daemon.call("task.transition", running.clone()).unwrap();
+    let before = snapshot(&mut daemon, &mission);
+    let params = heartbeat_params(&mission, &task, &epoch);
+    let ack = daemon.call("mission.heartbeat", params.clone()).unwrap();
+    match ack {
+        ResponseResult::MissionHeartbeat(ack) => {
+            assert_eq!(ack.mission_id, mission);
+            assert_eq!(ack.leases[0].lease_id, epoch);
+            assert_eq!(ack.leases[0].holder_agent_id, WORKER);
+            assert_eq!(ack.leases[0].acquired_at, before.leases[0].acquired_at);
+            assert!(
+                extalia_core::time::parse_utc(&ack.leases[0].expires_at)
+                    >= extalia_core::time::parse_utc(&before.leases[0].expires_at)
+            );
+        }
+        other => panic!("expected heartbeat acknowledgement, got {other:?}"),
+    }
+    let after = snapshot(&mut daemon, &mission);
+    assert_eq!(
+        (after.sequence, after.version, after.tasks),
+        (before.sequence, before.version, before.tasks)
+    );
+    for (key, value) in [
+        ("leaseId", uuid(0x99)),
+        ("holderAgentId", LEAD.into()),
+        ("taskId", uuid(0x88)),
+    ] {
+        let mut invalid = params.clone();
+        invalid["leases"][0][key] = value.into();
+        assert!(matches!(
+            daemon.call("mission.heartbeat", invalid),
+            Err(ErrorCode::Conflict | ErrorCode::NotFound)
+        ));
+    }
+    assert_eq!(daemon.finish(), 0);
+    let (mut other, _) = Daemon::ready(&dir, Some("work"));
+    assert_eq!(
+        other.call("mission.heartbeat", params.clone()),
+        Err(ErrorCode::NotFound)
+    );
+    assert_eq!(other.finish(), 0);
+    let (mut daemon, _) = Daemon::ready(&dir, None);
+    let recovering = snapshot(&mut daemon, &mission);
+    assert_eq!(recovering.state.as_str(), "recovering");
+    assert_eq!(
+        daemon.call("mission.heartbeat", params),
+        Err(ErrorCode::Conflict)
+    );
+    assert_eq!(
+        daemon.call("task.transition", running),
+        Ok(original),
+        "identical retry is only an old acknowledgement"
+    );
+    assert_eq!(
+        daemon.call(
+            "task.transition",
+            transition(&mission, &task, &uuid(0x40), "unknown", "failed")
+        ),
+        Err(ErrorCode::Conflict)
+    );
+    assert_eq!(
+        daemon.call(
+            "event.commit",
+            event(
+                &mission,
+                None,
+                &uuid(0x41),
+                json!({"type":"mission.state","state":"failed"})
+            )
+        ),
+        Err(ErrorCode::Conflict)
+    );
+    assert_eq!(snapshot(&mut daemon, &mission), recovering);
+    assert_eq!(daemon.finish(), 0);
+}
+
+#[test]
+fn heartbeat_wire_refuses_empty_duplicate_extra_fields_and_expired_activity() {
+    let dir = TempDir::new();
+    let (mut daemon, _) = Daemon::ready(&dir, None);
+    let (mission, task, epoch) = (uuid(2), uuid(5), uuid(0x31));
+    daemon
+        .call("mission.create", create_params(&mission, &[&task]))
+        .unwrap();
+    daemon
+        .call(
+            "task.transition",
+            transition(&mission, &task, &epoch, "queued", "running"),
+        )
+        .unwrap();
+    let params = heartbeat_params(&mission, &task, &epoch);
+    let mut duplicate = params.clone();
+    duplicate["leases"] = json!([params["leases"][0], params["leases"][0]]);
+    let mut extra = params.clone();
+    extra["profileId"] = "work".into();
+    for invalid in [json!({"missionId":mission,"leases":[]}), duplicate, extra] {
+        assert_eq!(
+            daemon.call("mission.heartbeat", invalid),
+            Err(ErrorCode::InvalidRequest)
+        );
+    }
+    // The exact millisecond boundary is tested in core; the real wire must also
+    // reject a recorded expiry in the past rather than resurrecting it.
+    let conn = inspect(&dir.store());
+    conn.execute("UPDATE leases SET acquired_at = '2020-01-01T00:00:00.000Z', expires_at = '2020-01-01T00:10:00.000Z'", []).unwrap();
+    drop(conn);
+    let before = snapshot(&mut daemon, &mission);
+    assert_eq!(
+        daemon.call("mission.heartbeat", params),
+        Err(ErrorCode::Conflict)
+    );
+    assert_eq!(
+        daemon.call("event.commit", activity(&mission, &task, &uuid(0x42))),
+        Err(ErrorCode::Conflict)
+    );
+    assert_eq!(
+        daemon.call(
+            "task.transition",
+            transition(&mission, &task, &uuid(0x43), "running", "completed")
+        ),
+        Err(ErrorCode::Conflict)
+    );
+    assert_eq!(snapshot(&mut daemon, &mission), before);
+    assert_eq!(daemon.finish(), 0);
+}
+
+#[test]
+fn execution_observation_wire_survives_reaping_restart_and_profile_checks_without_authority() {
+    trait ExecutionValue {
+        fn to_value(self) -> Value;
+    }
+    impl ExecutionValue for ResponseResult {
+        fn to_value(self) -> Value {
+            match self {
+                Self::MissionExecutions(value) => value.to_value(),
+                Self::ExecutionObserve(value) => value.to_value(),
+                Self::ExecutionRecordLocalDrain(value) => value.to_value(),
+                other => panic!("unexpected execution response: {other:?}"),
+            }
+        }
+    }
+    let dir = TempDir::new();
+    let (mut daemon, caps) = Daemon::ready(&dir, None);
+    assert!(caps.contains(&Op::MissionExecutions));
+    assert!(caps.contains(&Op::ExecutionObserve));
+    assert!(caps.contains(&Op::ExecutionRecordLocalDrain));
+    let (mission, task, epoch, supervisor) = (uuid(2), uuid(5), uuid(0x301), uuid(0x302));
+    daemon
+        .call("mission.create", create_params(&mission, &[&task]))
+        .unwrap();
+    let admitted=daemon.call("task.transition",json!({"missionId":mission,"taskId":task,"eventId":epoch,"from":"queued","to":"running","supervisorId":supervisor})).unwrap();
+    let admission = match admitted {
+        ResponseResult::TaskTransition(ack) => ack.admission.unwrap(),
+        other => panic!("{other:?}"),
+    };
+    let before = daemon
+        .call("mission.executions", json!({"missionId":mission}))
+        .unwrap()
+        .to_value();
+    assert!(before["executions"][0].get("observation").is_none());
+    let conn = Connection::open(dir.store()).unwrap();
+    expire_lease(&conn, &epoch);
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while snapshot(&mut daemon, &mission).state != extalia_core::mission::MissionState::Recovering {
+        assert!(Instant::now() < deadline);
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    let canonical = snapshot(&mut daemon, &mission);
+    let params = json!({"missionId":mission,"taskId":task,"leaseId":epoch,"holderAgentId":WORKER,"supervisorId":supervisor,"attempt":1,
+        "admissionDigest":admission.admission_digest,"observationId":uuid(0x303),"kind":"turn-promise-settled"});
+    let proof = json!({"missionId":mission,"taskId":task,"leaseId":epoch,"holderAgentId":WORKER,"supervisorId":supervisor,"attempt":1,
+        "admissionDigest":admission.admission_digest,"proofId":uuid(0x305),"kind":"local-operations-drained","coverage":"extalia-native-local-v1","providerOperations":2,"toolOperations":3});
+    assert_eq!(
+        daemon.call("execution.recordLocalDrain", proof.clone()),
+        Err(ErrorCode::Conflict)
+    );
+    let first = daemon
+        .call("execution.observe", params.clone())
+        .unwrap()
+        .to_value();
+    assert_eq!(first["duplicate"], false);
+    let again = daemon
+        .call("execution.observe", params.clone())
+        .unwrap()
+        .to_value();
+    assert_eq!(again["duplicate"], true);
+    assert_eq!(first["recordedAt"], again["recordedAt"]);
+    let mut wrong = params.clone();
+    wrong["observationId"] = json!(uuid(0x304));
+    assert_eq!(
+        daemon.call("execution.observe", wrong),
+        Err(ErrorCode::Conflict)
+    );
+    let local = daemon
+        .call("execution.recordLocalDrain", proof.clone())
+        .unwrap()
+        .to_value();
+    assert_eq!(local["duplicate"], false);
+    let repeated = daemon
+        .call("execution.recordLocalDrain", proof.clone())
+        .unwrap()
+        .to_value();
+    assert_eq!(repeated["duplicate"], true);
+    assert_eq!(repeated["recordedAt"], local["recordedAt"]);
+    let mut wrong = proof.clone();
+    wrong["toolOperations"] = json!(4);
+    assert_eq!(
+        daemon.call("execution.recordLocalDrain", wrong),
+        Err(ErrorCode::Conflict)
+    );
+    for (field, value) in [
+        ("coverage", json!("remote")),
+        ("providerOperations", json!(21)),
+        ("toolOperations", json!(81)),
+        ("extra", json!(true)),
+    ] {
+        let mut invalid = proof.clone();
+        invalid[field] = value;
+        assert_eq!(
+            daemon.call("execution.recordLocalDrain", invalid),
+            Err(ErrorCode::InvalidRequest)
+        );
+    }
+    assert_eq!(snapshot(&mut daemon, &mission), canonical);
+    let expected = daemon
+        .call("mission.executions", json!({"missionId":mission}))
+        .unwrap()
+        .to_value();
+    assert_eq!(
+        expected["executions"][0]["observation"]["kind"],
+        "turn-promise-settled"
+    );
+    assert_eq!(daemon.finish(), 0);
+    drop(conn);
+    let (mut other, _) = Daemon::ready(&dir, Some("work"));
+    assert_eq!(
+        other.call("mission.executions", json!({"missionId":mission})),
+        Err(ErrorCode::NotFound)
+    );
+    assert_eq!(
+        other.call("execution.observe", params.clone()),
+        Err(ErrorCode::NotFound)
+    );
+    assert_eq!(
+        other.call("execution.recordLocalDrain", proof.clone()),
+        Err(ErrorCode::NotFound)
+    );
+    assert_eq!(other.finish(), 0);
+    let (mut reopened, _) = Daemon::ready(&dir, None);
+    assert_eq!(
+        reopened
+            .call("mission.executions", json!({"missionId":mission}))
+            .unwrap()
+            .to_value(),
+        expected
+    );
+    assert_eq!(
+        snapshot(&mut reopened, &mission).state,
+        extalia_core::mission::MissionState::Recovering
+    );
+    assert_eq!(reopened.finish(), 0);
+}
+
+#[test]
+fn recovery_review_round_trips_atomic_evidence_and_missing_membership_without_writes() {
+    let dir = TempDir::new();
+    let (mut daemon, caps) = Daemon::ready(&dir, None);
+    assert!(caps.contains(&Op::MissionRecoveryReview));
+    let (mission, task, other, epoch, supervisor) =
+        (uuid(2), uuid(5), uuid(6), uuid(0x401), uuid(0x402));
+    daemon
+        .call("mission.create", create_params(&mission, &[&task, &other]))
+        .unwrap();
+    let review = |daemon: &mut Daemon| match daemon
+        .call("mission.recoveryReview", json!({"missionId":mission}))
+        .unwrap()
+    {
+        ResponseResult::MissionRecoveryReview(review) => review,
+        other => panic!("unexpected review {other:?}"),
+    };
+    let queued = review(&mut daemon);
+    assert_eq!(
+        queued.missing_admission_task_ids,
+        vec![task.clone(), other.clone()]
+    );
+    assert_eq!(queued, review(&mut daemon));
+    let admitted=daemon.call("task.transition",json!({"missionId":mission,"taskId":task,"eventId":epoch,"from":"queued","to":"running","supervisorId":supervisor})).unwrap();
+    let admission = match admitted {
+        ResponseResult::TaskTransition(ack) => ack.admission.unwrap(),
+        other => panic!("{other:?}"),
+    };
+    let started = review(&mut daemon);
+    assert_eq!(started.missing_admission_task_ids, vec![other]);
+    assert_eq!(started.executions[0].admission, admission);
+    let event_rows = || {
+        inspect(&dir.store())
+            .prepare("SELECT sequence,event_id,digest,payload FROM events ORDER BY sequence")
+            .unwrap()
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                ))
+            })
+            .unwrap()
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .unwrap()
+    };
+    let before = event_rows();
+    daemon.call("execution.observe",json!({"missionId":mission,"taskId":task,"leaseId":epoch,"holderAgentId":WORKER,"supervisorId":supervisor,"attempt":1,"admissionDigest":admission.admission_digest,"observationId":uuid(0x403),"kind":"turn-promise-settled"})).unwrap();
+    let observed = review(&mut daemon);
+    assert_eq!(started.snapshot, observed.snapshot);
+    assert_ne!(started.review_digest, observed.review_digest);
+    assert_eq!(event_rows(), before);
+    assert_eq!(
+        daemon.call("mission.recoveryReview", json!({"missionId":uuid(999)})),
+        Err(ErrorCode::NotFound)
+    );
+    assert_eq!(daemon.finish(), 0);
+    let (mut foreign, _) = Daemon::ready(&dir, Some("other"));
+    assert_eq!(
+        foreign.call("mission.recoveryReview", json!({"missionId":mission})),
+        Err(ErrorCode::NotFound)
+    );
+    assert_eq!(foreign.finish(), 0);
+    let (mut restarted, _) = Daemon::ready(&dir, None);
+    let recovered = review(&mut restarted);
+    assert_eq!(recovered.executions, observed.executions);
+    assert_eq!(
+        recovered.snapshot.tasks[0].state,
+        extalia_core::mission::TaskState::Unknown
+    );
+    assert_ne!(recovered.review_digest, observed.review_digest);
+    assert_eq!(recovered, review(&mut restarted));
+    assert_eq!(restarted.finish(), 0);
 }

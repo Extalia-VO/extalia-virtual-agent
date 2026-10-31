@@ -2,6 +2,7 @@ import {
   SKILL_APPROVAL_TTL_MS, type BuiltinSkillInfo, normalizeSkillApproval, normalizeSkillApprovalId, normalizeSkillImportSource, normalizeSkillPackageId, normalizeSkillReview,
   normalizeSkillRevisionId, type AgentHostApi, type SkillActionResult, type SkillApprovalRecord, type SkillRegistryReport, type SkillRevisionDetails,
   type SkillRevisionState, type SkillRevisionSummary, type SkillStateEvent,
+  normalizeSkillPreflight,
 } from '@extalia/platform';
 
 /**
@@ -11,7 +12,7 @@ import {
  * Like the real daemon, nothing is approved while the scanner is unpinned unless a sample says otherwise.
  */
 export type MockSkillMode = 'registry' | 'legacy' | 'offline' | 'review';
-type Methods = 'skillRegistry' | 'inspectSkill' | 'importSkill' | 'reviewSkill' | 'approveSkill' | 'activateSkill' | 'deactivateSkill' | 'rollbackSkill' | 'revokeSkill';
+type Methods = 'skillRegistry' | 'preflightSkill' | 'inspectSkill' | 'importSkill' | 'reviewSkill' | 'approveSkill' | 'activateSkill' | 'deactivateSkill' | 'rollbackSkill' | 'revokeSkill';
 
 /** A stable, SHA-256-shaped hex string for sample data (not a real digest). */
 function hex(seed: string): string {
@@ -92,7 +93,7 @@ export function createMockSkillRegistry(mode: MockSkillMode, latency: () => Prom
   };
   const summary = ({ manifest: _m, files: _f, history: _h, approvals: _a, ...rest }: MockRevision): SkillRevisionSummary => ({ ...rest, permissions: rest.permissions.map(item => ({ ...item })) });
   const report = (): SkillRegistryReport => {
-    const base = { review: mode === 'review', approvalTtlMs: SKILL_APPROVAL_TTL_MS, truncated: false };
+    const base = { review: mode === 'review', preflight: mode !== 'legacy' && mode !== 'offline', approvalTtlMs: SKILL_APPROVAL_TTL_MS, truncated: false };
     if (mode === 'legacy') return { mode: 'legacy', status: 'off', scanner: 'unpinned', ...base, review: false, revisions: [] };
     if (mode === 'offline') return { mode: 'registry', status: 'unavailable', unavailableReason: 'binary_missing', scanner: 'unpinned', ...base, review: false, revisions: [] };
     const sorted = [...revisions].sort((a, b) => (a.packageId < b.packageId ? -1 : a.packageId > b.packageId ? 1 : a.revisionId < b.revisionId ? -1 : 1));
@@ -108,6 +109,15 @@ export function createMockSkillRegistry(mode: MockSkillMode, latency: () => Prom
   const activeOf = (packageId: string) => revisions.find(item => item.packageId === packageId && item.active);
 
   return {
+    preflightSkill: async value => {
+      await latency();
+      if (mode === 'legacy' || mode === 'offline') throw new Error('Dependency checks unavailable.');
+      const input = normalizeSkillPreflight(value);
+      const root = find(input.rootRevisionId);
+      // Presentation fixture only, never a simulated scanner/activation pass.
+      return { rootRevisionId: root.revisionId, dispatchEligible: false, status: 'blocked', truncated: false,
+        issues: [{ code: 'root_unavailable', packageId: root.packageId }] };
+    },
     async skillRegistry() { await latency(); return report(); },
     async inspectSkill(revisionId): Promise<SkillRevisionDetails> {
       await ready();
@@ -208,11 +218,15 @@ export function createMockSkillRegistry(mode: MockSkillMode, latency: () => Prom
 
 /** Sample built-in skills (the host lists the ones in `packages/host/src/builtinSkills.ts`); read-only in every mode. */
 export const MOCK_BUILTIN_SKILLS: readonly BuiltinSkillInfo[] = [
-  { name: 'code-review', description: 'Review the current changes for correctness bugs first, then clarity; report findings with file:line.' },
-  { name: 'debug-issue', description: 'Reproduce a bug, find the root cause, fix it and add a regression test.' },
-  { name: 'explain-codebase', description: 'Map the structure, entry points and data flow of a codebase; cite files.' },
-  { name: 'security-review', description: 'Check code for common security problems and report them by severity with concrete fixes.' },
-  { name: 'write-tests', description: 'Add focused tests next to the existing ones, run them, and fix failures.' },
+  { name: 'code-review', category: 'quality', description: 'Review the current changes for correctness bugs first, then clarity; report findings with file:line.', body: '# Code review\n\nInspect the sample changes and report findings with file references.' },
+  { name: 'commit-changes', category: 'delivery', description: 'Review the working tree, run the checks, and commit with a clear Conventional Commit message.', body: '# Commit changes\n\nReview the sample working tree, verify the changes and prepare a clear commit message.' },
+  { name: 'debug-issue', category: 'development', description: 'Reproduce a bug, find the root cause, fix it and add a regression test.', body: '# Debug an issue\n\nReproduce the sample issue, investigate its cause and verify a focused fix.' },
+  { name: 'explain-codebase', category: 'documentation', description: 'Map the structure, entry points and data flow of a codebase; cite files.', body: '# Explain a codebase\n\nDescribe the sample project structure, entry points and data flow with file references.' },
+  { name: 'plan-feature', category: 'planning', description: 'Turn a feature request into a short plan, research it, then build and verify it step by step.', body: '# Plan and build a feature\n\nClarify the sample goal, research the affected code and plan small verified steps.' },
+  { name: 'refactor-safely', category: 'development', description: 'Restructure code without changing behavior, in small verified steps.', body: '# Refactor safely\n\nCheck the sample behavior, make a small structural change and verify it.' },
+  { name: 'security-review', category: 'security', description: 'Check code for common security problems and report them by severity with concrete fixes.', body: '# Security review\n\nTrace sample inputs across trust boundaries and report security findings with concrete fixes.' },
+  { name: 'update-docs', category: 'documentation', description: 'Bring README and docs in line with the current code; keep them short and accurate.', body: '# Update documentation\n\nCompare the sample documentation with current behavior and update the relevant examples.' },
+  { name: 'write-tests', category: 'quality', description: 'Add focused tests next to the existing ones, run them, and fix failures.', body: '# Write tests\n\nFollow the sample project conventions and cover the changed behavior and its edge cases.' },
 ];
 
 export function createMockBuiltinSkills(latency: () => Promise<void>): Required<Pick<AgentHostApi, 'builtinSkills'>> {

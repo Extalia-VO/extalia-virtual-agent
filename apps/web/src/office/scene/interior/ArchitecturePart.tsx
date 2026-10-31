@@ -94,13 +94,13 @@ export function createArchitectureInstance(source: Object3D, wallColor?: string,
   return { root, retain: () => { leases.forEach(lease => lease.retain()); }, dispose: () => { leases.forEach(lease => lease.release()); } };
 }
 
-const urls = import.meta.glob<string>('/local-assets/architecture/interior-architecture.glb', { eager: true, query: '?url', import: 'default' });
+const urls = import.meta.glob<string>('/public-assets/architecture/interior-architecture.glb', { eager: true, query: '?url', import: 'default' });
 const procedural = typeof location !== 'undefined' && new URLSearchParams(location.search).get('architecture') === 'procedural';
 let library: ReadonlyMap<ArchitectureModel, Object3D> | null = null, requested = false;
 const listeners = new Set<() => void>();
 const subscribe = (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; };
 async function load() {
-  const url = procedural ? undefined : urls['/local-assets/architecture/interior-architecture.glb'];
+  const url = procedural ? undefined : urls['/public-assets/architecture/interior-architecture.glb'];
   if (!url || requested) return;
   requested = true;
   try { library = collectArchitectureModels((await new GLTFLoader().loadAsync(url)).scene); }

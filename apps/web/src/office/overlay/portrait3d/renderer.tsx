@@ -27,6 +27,11 @@ interface Entry {
   failed: boolean;
 }
 
+function sameSubject(a: PortraitSubject, b: PortraitSubject) {
+  return a.characterId === b.characterId && a.appearance === b.appearance &&
+    a.identity === b.identity && a.activity === b.activity && a.motion === b.motion;
+}
+
 class PortraitBoundary extends Component<{ children: ReactNode; onFailure: () => void }, { failed: boolean }> {
   override state = { failed: false };
   static getDerivedStateFromError() { return { failed: true }; }
@@ -108,7 +113,13 @@ class PortraitRenderer {
     const attachedEntry = entry;
     this.refresh();
     return {
-      update: (next: PortraitSubject) => { attachedEntry.subject = next; this.refresh(); },
+      update: (next: PortraitSubject) => {
+        if (sameSubject(attachedEntry.subject, next)) return;
+        attachedEntry.subject = next;
+        // Offscreen rows can retain the newest state without mounting or
+        // reconciling every visible portrait. setVisible() refreshes on entry.
+        if ([...attachedEntry.targets].some(item => item.visible)) this.refresh();
+      },
       setVisible: (visible: boolean) => { if (visible === target.visible) return; target.visible = visible; this.refresh(); },
       remove: () => {
         attachedEntry.targets.delete(target);

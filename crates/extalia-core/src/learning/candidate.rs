@@ -26,6 +26,7 @@ use crate::skills::manifest::parse_front_matter;
 use crate::skills::review::is_user_principal;
 use crate::time::format_utc;
 
+#[cfg(unix)]
 const PRIVATE_FILE_MODE: u32 = 0o600;
 const PRIVATE_DIRECTORY_MODE: u32 = 0o700;
 const SKILL_FILE: &str = "SKILL.md";

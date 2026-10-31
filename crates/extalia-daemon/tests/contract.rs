@@ -26,7 +26,14 @@ fn hex(text: &str) -> Vec<u8> {
 
 #[test]
 fn frame_verdicts_match_the_typescript_contract() {
-    let fixtures = fixture("frames.json");
+    let mut fixtures = fixture("frames.json");
+    fixtures["cases"].as_array_mut().unwrap().extend(
+        fixture("skill-routing.json")["cases"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .cloned(),
+    );
     assert_eq!(fixtures["contract"], "daemonFrame");
     let mut compared = Vec::new();
     for case in fixtures["cases"].as_array().unwrap() {

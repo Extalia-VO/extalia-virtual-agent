@@ -11,7 +11,7 @@ export const WORKSTATION_ASSETS = [
 ] as const;
 export type WorkstationAsset = typeof WORKSTATION_ASSETS[number];
 
-const urls = import.meta.glob<string>('/local-assets/furniture/workstation-set.glb', { eager: true, query: '?url', import: 'default' });
+const urls = import.meta.glob<string>('/public-assets/furniture/workstation-set.glb', { eager: true, query: '?url', import: 'default' });
 const forceProcedural = typeof location !== 'undefined' && new URLSearchParams(location.search).get('workstations') === 'procedural';
 let assets: ReadonlyMap<WorkstationAsset, Object3D> | null = null;
 let requested = false;
@@ -19,7 +19,7 @@ const listeners = new Set<() => void>();
 const subscribe = (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; };
 
 async function load(): Promise<void> {
-  const url = forceProcedural ? undefined : urls['/local-assets/furniture/workstation-set.glb'];
+  const url = forceProcedural ? undefined : urls['/public-assets/furniture/workstation-set.glb'];
   if (!url || requested) return;
   requested = true;
   try {

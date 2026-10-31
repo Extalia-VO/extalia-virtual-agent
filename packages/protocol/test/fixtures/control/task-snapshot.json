@@ -1,0 +1,2387 @@
+{
+  "cases": [
+    {
+      "name": "created with independent revisions",
+      "valid": true,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "task-snapshot",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "missionId": "00000003-1111-4111-8111-111111111111",
+        "taskId": "00000004-1111-4111-8111-111111111111",
+        "definitionVersion": 3,
+        "stateVersion": 7,
+        "state": "created",
+        "executionOutcome": "not_started",
+        "validation": {
+          "state": "not_run"
+        },
+        "acceptance": {
+          "state": "not_reviewed"
+        },
+        "evidenceIds": []
+      }
+    },
+    {
+      "name": "lifecycle blocked",
+      "valid": true,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "task-snapshot",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "missionId": "00000003-1111-4111-8111-111111111111",
+        "taskId": "00000004-1111-4111-8111-111111111111",
+        "definitionVersion": 3,
+        "stateVersion": 7,
+        "state": "blocked",
+        "executionOutcome": "not_started",
+        "validation": {
+          "state": "not_run"
+        },
+        "acceptance": {
+          "state": "not_reviewed"
+        },
+        "evidenceIds": []
+      }
+    },
+    {
+      "name": "lifecycle ready",
+      "valid": true,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "task-snapshot",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "missionId": "00000003-1111-4111-8111-111111111111",
+        "taskId": "00000004-1111-4111-8111-111111111111",
+        "definitionVersion": 3,
+        "stateVersion": 7,
+        "state": "ready",
+        "executionOutcome": "not_started",
+        "validation": {
+          "state": "not_run"
+        },
+        "acceptance": {
+          "state": "not_reviewed"
+        },
+        "evidenceIds": []
+      }
+    },
+    {
+      "name": "lifecycle leased",
+      "valid": true,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "task-snapshot",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "missionId": "00000003-1111-4111-8111-111111111111",
+        "taskId": "00000004-1111-4111-8111-111111111111",
+        "definitionVersion": 3,
+        "stateVersion": 7,
+        "state": "leased",
+        "executionOutcome": "not_started",
+        "validation": {
+          "state": "not_run"
+        },
+        "acceptance": {
+          "state": "not_reviewed"
+        },
+        "evidenceIds": []
+      }
+    },
+    {
+      "name": "lifecycle running",
+      "valid": true,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "task-snapshot",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "missionId": "00000003-1111-4111-8111-111111111111",
+        "taskId": "00000004-1111-4111-8111-111111111111",
+        "definitionVersion": 3,
+        "stateVersion": 7,
+        "state": "running",
+        "executionOutcome": "running",
+        "validation": {
+          "state": "not_run"
+        },
+        "acceptance": {
+          "state": "not_reviewed"
+        },
+        "evidenceIds": [],
+        "executionId": "00000005-1111-4111-8111-111111111111"
+      }
+    },
+    {
+      "name": "lifecycle waiting_approval",
+      "valid": true,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "task-snapshot",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "missionId": "00000003-1111-4111-8111-111111111111",
+        "taskId": "00000004-1111-4111-8111-111111111111",
+        "definitionVersion": 3,
+        "stateVersion": 7,
+        "state": "waiting_approval",
+        "executionOutcome": "not_started",
+        "validation": {
+          "state": "not_run"
+        },
+        "acceptance": {
+          "state": "not_reviewed"
+        },
+        "evidenceIds": []
+      }
+    },
+    {
+      "name": "lifecycle retry_wait",
+      "valid": true,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "task-snapshot",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "missionId": "00000003-1111-4111-8111-111111111111",
+        "taskId": "00000004-1111-4111-8111-111111111111",
+        "definitionVersion": 3,
+        "stateVersion": 7,
+        "state": "retry_wait",
+        "executionOutcome": "not_started",
+        "validation": {
+          "state": "not_run"
+        },
+        "acceptance": {
+          "state": "not_reviewed"
+        },
+        "evidenceIds": []
+      }
+    },
+    {
+      "name": "lifecycle validating",
+      "valid": true,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "task-snapshot",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "missionId": "00000003-1111-4111-8111-111111111111",
+        "taskId": "00000004-1111-4111-8111-111111111111",
+        "definitionVersion": 3,
+        "stateVersion": 7,
+        "state": "validating",
+        "executionOutcome": "not_started",
+        "validation": {
+          "state": "not_run"
+        },
+        "acceptance": {
+          "state": "not_reviewed"
+        },
+        "evidenceIds": []
+      }
+    },
+    {
+      "name": "lifecycle completed",
+      "valid": true,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "task-snapshot",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "missionId": "00000003-1111-4111-8111-111111111111",
+        "taskId": "00000004-1111-4111-8111-111111111111",
+        "definitionVersion": 3,
+        "stateVersion": 7,
+        "state": "completed",
+        "executionOutcome": "succeeded",
+        "validation": {
+          "state": "passed",
+          "recordRef": "validation-record"
+        },
+        "acceptance": {
+          "state": "accepted",
+          "recordRef": "acceptance-record"
+        },
+        "evidenceIds": [
+          "00000006-1111-4111-8111-111111111111"
+        ],
+        "executionId": "00000005-1111-4111-8111-111111111111"
+      }
+    },
+    {
+      "name": "lifecycle failed",
+      "valid": true,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "task-snapshot",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "missionId": "00000003-1111-4111-8111-111111111111",
+        "taskId": "00000004-1111-4111-8111-111111111111",
+        "definitionVersion": 3,
+        "stateVersion": 7,
+        "state": "failed",
+        "executionOutcome": "not_started",
+        "validation": {
+          "state": "not_run"
+        },
+        "acceptance": {
+          "state": "not_reviewed"
+        },
+        "evidenceIds": []
+      }
+    },
+    {
+      "name": "lifecycle cancelling",
+      "valid": true,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "task-snapshot",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "missionId": "00000003-1111-4111-8111-111111111111",
+        "taskId": "00000004-1111-4111-8111-111111111111",
+        "definitionVersion": 3,
+        "stateVersion": 7,
+        "state": "cancelling",
+        "executionOutcome": "not_started",
+        "validation": {
+          "state": "not_run"
+        },
+        "acceptance": {
+          "state": "not_reviewed"
+        },
+        "evidenceIds": []
+      }
+    },
+    {
+      "name": "lifecycle cancelled",
+      "valid": true,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "task-snapshot",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "missionId": "00000003-1111-4111-8111-111111111111",
+        "taskId": "00000004-1111-4111-8111-111111111111",
+        "definitionVersion": 3,
+        "stateVersion": 7,
+        "state": "cancelled",
+        "executionOutcome": "not_started",
+        "validation": {
+          "state": "not_run"
+        },
+        "acceptance": {
+          "state": "not_reviewed"
+        },
+        "evidenceIds": []
+      }
+    },
+    {
+      "name": "lifecycle unknown",
+      "valid": true,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "task-snapshot",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "missionId": "00000003-1111-4111-8111-111111111111",
+        "taskId": "00000004-1111-4111-8111-111111111111",
+        "definitionVersion": 3,
+        "stateVersion": 7,
+        "state": "unknown",
+        "executionOutcome": "not_started",
+        "validation": {
+          "state": "not_run"
+        },
+        "acceptance": {
+          "state": "not_reviewed"
+        },
+        "evidenceIds": []
+      }
+    },
+    {
+      "name": "lifecycle manual_intervention",
+      "valid": true,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "task-snapshot",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "missionId": "00000003-1111-4111-8111-111111111111",
+        "taskId": "00000004-1111-4111-8111-111111111111",
+        "definitionVersion": 3,
+        "stateVersion": 7,
+        "state": "manual_intervention",
+        "executionOutcome": "not_started",
+        "validation": {
+          "state": "not_run"
+        },
+        "acceptance": {
+          "state": "not_reviewed"
+        },
+        "evidenceIds": []
+      }
+    },
+    {
+      "name": "lifecycle superseded",
+      "valid": true,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "task-snapshot",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "missionId": "00000003-1111-4111-8111-111111111111",
+        "taskId": "00000004-1111-4111-8111-111111111111",
+        "definitionVersion": 3,
+        "stateVersion": 7,
+        "state": "superseded",
+        "executionOutcome": "not_started",
+        "validation": {
+          "state": "not_run"
+        },
+        "acceptance": {
+          "state": "not_reviewed"
+        },
+        "evidenceIds": []
+      }
+    },
+    {
+      "name": "outcome not_started",
+      "valid": true,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "task-snapshot",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "missionId": "00000003-1111-4111-8111-111111111111",
+        "taskId": "00000004-1111-4111-8111-111111111111",
+        "definitionVersion": 3,
+        "stateVersion": 7,
+        "state": "created",
+        "executionOutcome": "not_started",
+        "validation": {
+          "state": "not_run"
+        },
+        "acceptance": {
+          "state": "not_reviewed"
+        },
+        "evidenceIds": []
+      }
+    },
+    {
+      "name": "outcome running",
+      "valid": true,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "task-snapshot",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "missionId": "00000003-1111-4111-8111-111111111111",
+        "taskId": "00000004-1111-4111-8111-111111111111",
+        "definitionVersion": 3,
+        "stateVersion": 7,
+        "state": "created",
+        "executionOutcome": "running",
+        "validation": {
+          "state": "not_run"
+        },
+        "acceptance": {
+          "state": "not_reviewed"
+        },
+        "evidenceIds": [],
+        "executionId": "00000005-1111-4111-8111-111111111111"
+      }
+    },
+    {
+      "name": "outcome succeeded",
+      "valid": true,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "task-snapshot",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "missionId": "00000003-1111-4111-8111-111111111111",
+        "taskId": "00000004-1111-4111-8111-111111111111",
+        "definitionVersion": 3,
+        "stateVersion": 7,
+        "state": "created",
+        "executionOutcome": "succeeded",
+        "validation": {
+          "state": "not_run"
+        },
+        "acceptance": {
+          "state": "not_reviewed"
+        },
+        "evidenceIds": [],
+        "executionId": "00000005-1111-4111-8111-111111111111"
+      }
+    },
+    {
+      "name": "outcome failed",
+      "valid": true,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "task-snapshot",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "missionId": "00000003-1111-4111-8111-111111111111",
+        "taskId": "00000004-1111-4111-8111-111111111111",
+        "definitionVersion": 3,
+        "stateVersion": 7,
+        "state": "created",
+        "executionOutcome": "failed",
+        "validation": {
+          "state": "not_run"
+        },
+        "acceptance": {
+          "state": "not_reviewed"
+        },
+        "evidenceIds": [],
+        "executionId": "00000005-1111-4111-8111-111111111111"
+      }
+    },
+    {
+      "name": "outcome cancelled",
+      "valid": true,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "task-snapshot",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "missionId": "00000003-1111-4111-8111-111111111111",
+        "taskId": "00000004-1111-4111-8111-111111111111",
+        "definitionVersion": 3,
+        "stateVersion": 7,
+        "state": "created",
+        "executionOutcome": "cancelled",
+        "validation": {
+          "state": "not_run"
+        },
+        "acceptance": {
+          "state": "not_reviewed"
+        },
+        "evidenceIds": [],
+        "executionId": "00000005-1111-4111-8111-111111111111"
+      }
+    },
+    {
+      "name": "outcome unknown",
+      "valid": true,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "task-snapshot",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "missionId": "00000003-1111-4111-8111-111111111111",
+        "taskId": "00000004-1111-4111-8111-111111111111",
+        "definitionVersion": 3,
+        "stateVersion": 7,
+        "state": "created",
+        "executionOutcome": "unknown",
+        "validation": {
+          "state": "not_run"
+        },
+        "acceptance": {
+          "state": "not_reviewed"
+        },
+        "evidenceIds": []
+      }
+    },
+    {
+      "name": "validation not_run",
+      "valid": true,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "task-snapshot",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "missionId": "00000003-1111-4111-8111-111111111111",
+        "taskId": "00000004-1111-4111-8111-111111111111",
+        "definitionVersion": 3,
+        "stateVersion": 7,
+        "state": "created",
+        "executionOutcome": "not_started",
+        "validation": {
+          "state": "not_run"
+        },
+        "acceptance": {
+          "state": "not_reviewed"
+        },
+        "evidenceIds": []
+      }
+    },
+    {
+      "name": "validation pending",
+      "valid": true,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "task-snapshot",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "missionId": "00000003-1111-4111-8111-111111111111",
+        "taskId": "00000004-1111-4111-8111-111111111111",
+        "definitionVersion": 3,
+        "stateVersion": 7,
+        "state": "created",
+        "executionOutcome": "not_started",
+        "validation": {
+          "state": "pending"
+        },
+        "acceptance": {
+          "state": "not_reviewed"
+        },
+        "evidenceIds": []
+      }
+    },
+    {
+      "name": "validation passed",
+      "valid": true,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "task-snapshot",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "missionId": "00000003-1111-4111-8111-111111111111",
+        "taskId": "00000004-1111-4111-8111-111111111111",
+        "definitionVersion": 3,
+        "stateVersion": 7,
+        "state": "created",
+        "executionOutcome": "not_started",
+        "validation": {
+          "state": "passed",
+          "recordRef": "validation-record"
+        },
+        "acceptance": {
+          "state": "not_reviewed"
+        },
+        "evidenceIds": []
+      }
+    },
+    {
+      "name": "validation failed",
+      "valid": true,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "task-snapshot",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "missionId": "00000003-1111-4111-8111-111111111111",
+        "taskId": "00000004-1111-4111-8111-111111111111",
+        "definitionVersion": 3,
+        "stateVersion": 7,
+        "state": "created",
+        "executionOutcome": "not_started",
+        "validation": {
+          "state": "failed",
+          "recordRef": "validation-record"
+        },
+        "acceptance": {
+          "state": "not_reviewed"
+        },
+        "evidenceIds": []
+      }
+    },
+    {
+      "name": "validation unknown",
+      "valid": true,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "task-snapshot",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "missionId": "00000003-1111-4111-8111-111111111111",
+        "taskId": "00000004-1111-4111-8111-111111111111",
+        "definitionVersion": 3,
+        "stateVersion": 7,
+        "state": "created",
+        "executionOutcome": "not_started",
+        "validation": {
+          "state": "unknown"
+        },
+        "acceptance": {
+          "state": "not_reviewed"
+        },
+        "evidenceIds": []
+      }
+    },
+    {
+      "name": "acceptance not_reviewed",
+      "valid": true,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "task-snapshot",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "missionId": "00000003-1111-4111-8111-111111111111",
+        "taskId": "00000004-1111-4111-8111-111111111111",
+        "definitionVersion": 3,
+        "stateVersion": 7,
+        "state": "created",
+        "executionOutcome": "not_started",
+        "validation": {
+          "state": "not_run"
+        },
+        "acceptance": {
+          "state": "not_reviewed"
+        },
+        "evidenceIds": []
+      }
+    },
+    {
+      "name": "acceptance pending",
+      "valid": true,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "task-snapshot",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "missionId": "00000003-1111-4111-8111-111111111111",
+        "taskId": "00000004-1111-4111-8111-111111111111",
+        "definitionVersion": 3,
+        "stateVersion": 7,
+        "state": "created",
+        "executionOutcome": "not_started",
+        "validation": {
+          "state": "not_run"
+        },
+        "acceptance": {
+          "state": "pending"
+        },
+        "evidenceIds": []
+      }
+    },
+    {
+      "name": "acceptance accepted",
+      "valid": true,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "task-snapshot",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "missionId": "00000003-1111-4111-8111-111111111111",
+        "taskId": "00000004-1111-4111-8111-111111111111",
+        "definitionVersion": 3,
+        "stateVersion": 7,
+        "state": "completed",
+        "executionOutcome": "succeeded",
+        "validation": {
+          "state": "passed",
+          "recordRef": "validation-record"
+        },
+        "acceptance": {
+          "state": "accepted",
+          "recordRef": "acceptance-record"
+        },
+        "evidenceIds": [
+          "00000006-1111-4111-8111-111111111111"
+        ],
+        "executionId": "00000005-1111-4111-8111-111111111111"
+      }
+    },
+    {
+      "name": "acceptance rejected",
+      "valid": true,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "task-snapshot",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "missionId": "00000003-1111-4111-8111-111111111111",
+        "taskId": "00000004-1111-4111-8111-111111111111",
+        "definitionVersion": 3,
+        "stateVersion": 7,
+        "state": "created",
+        "executionOutcome": "not_started",
+        "validation": {
+          "state": "not_run"
+        },
+        "acceptance": {
+          "state": "rejected",
+          "recordRef": "acceptance-record"
+        },
+        "evidenceIds": []
+      }
+    },
+    {
+      "name": "acceptance waived",
+      "valid": true,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "task-snapshot",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "missionId": "00000003-1111-4111-8111-111111111111",
+        "taskId": "00000004-1111-4111-8111-111111111111",
+        "definitionVersion": 3,
+        "stateVersion": 7,
+        "state": "created",
+        "executionOutcome": "not_started",
+        "validation": {
+          "state": "not_run"
+        },
+        "acceptance": {
+          "state": "waived",
+          "recordRef": "acceptance-record",
+          "reason": "Explicit unresolved waiver claim"
+        },
+        "evidenceIds": []
+      }
+    },
+    {
+      "name": "acceptance unknown",
+      "valid": true,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "task-snapshot",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "missionId": "00000003-1111-4111-8111-111111111111",
+        "taskId": "00000004-1111-4111-8111-111111111111",
+        "definitionVersion": 3,
+        "stateVersion": 7,
+        "state": "created",
+        "executionOutcome": "not_started",
+        "validation": {
+          "state": "not_run"
+        },
+        "acceptance": {
+          "state": "unknown"
+        },
+        "evidenceIds": []
+      }
+    },
+    {
+      "name": "completed waiver retains failed validation",
+      "valid": true,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "task-snapshot",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "missionId": "00000003-1111-4111-8111-111111111111",
+        "taskId": "00000004-1111-4111-8111-111111111111",
+        "definitionVersion": 3,
+        "stateVersion": 7,
+        "state": "completed",
+        "executionOutcome": "succeeded",
+        "validation": {
+          "state": "failed",
+          "recordRef": "validation-record"
+        },
+        "acceptance": {
+          "state": "waived",
+          "recordRef": "waiver-record",
+          "reason": "Explicit unresolved policy waiver"
+        },
+        "evidenceIds": [],
+        "executionId": "00000005-1111-4111-8111-111111111111"
+      }
+    },
+    {
+      "name": "superseded does not imply executor settled",
+      "valid": true,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "task-snapshot",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "missionId": "00000003-1111-4111-8111-111111111111",
+        "taskId": "00000004-1111-4111-8111-111111111111",
+        "definitionVersion": 3,
+        "stateVersion": 7,
+        "state": "superseded",
+        "executionOutcome": "running",
+        "validation": {
+          "state": "not_run"
+        },
+        "acceptance": {
+          "state": "not_reviewed"
+        },
+        "evidenceIds": [],
+        "executionId": "00000005-1111-4111-8111-111111111111"
+      }
+    },
+    {
+      "name": "invalid protocol 34",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.v0",
+        "schemaVersion": 1,
+        "kind": "task-snapshot",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "missionId": "00000003-1111-4111-8111-111111111111",
+        "taskId": "00000004-1111-4111-8111-111111111111",
+        "definitionVersion": 3,
+        "stateVersion": 7,
+        "state": "created",
+        "executionOutcome": "not_started",
+        "validation": {
+          "state": "not_run"
+        },
+        "acceptance": {
+          "state": "not_reviewed"
+        },
+        "evidenceIds": []
+      }
+    },
+    {
+      "name": "invalid schemaVersion 35",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": "1.0",
+        "kind": "task-snapshot",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "missionId": "00000003-1111-4111-8111-111111111111",
+        "taskId": "00000004-1111-4111-8111-111111111111",
+        "definitionVersion": 3,
+        "stateVersion": 7,
+        "state": "created",
+        "executionOutcome": "not_started",
+        "validation": {
+          "state": "not_run"
+        },
+        "acceptance": {
+          "state": "not_reviewed"
+        },
+        "evidenceIds": []
+      }
+    },
+    {
+      "name": "invalid schemaVersion 36",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": true,
+        "kind": "task-snapshot",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "missionId": "00000003-1111-4111-8111-111111111111",
+        "taskId": "00000004-1111-4111-8111-111111111111",
+        "definitionVersion": 3,
+        "stateVersion": 7,
+        "state": "created",
+        "executionOutcome": "not_started",
+        "validation": {
+          "state": "not_run"
+        },
+        "acceptance": {
+          "state": "not_reviewed"
+        },
+        "evidenceIds": []
+      }
+    },
+    {
+      "name": "invalid schemaVersion 37",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 2,
+        "kind": "task-snapshot",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "missionId": "00000003-1111-4111-8111-111111111111",
+        "taskId": "00000004-1111-4111-8111-111111111111",
+        "definitionVersion": 3,
+        "stateVersion": 7,
+        "state": "created",
+        "executionOutcome": "not_started",
+        "validation": {
+          "state": "not_run"
+        },
+        "acceptance": {
+          "state": "not_reviewed"
+        },
+        "evidenceIds": []
+      }
+    },
+    {
+      "name": "invalid kind 38",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "task",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "missionId": "00000003-1111-4111-8111-111111111111",
+        "taskId": "00000004-1111-4111-8111-111111111111",
+        "definitionVersion": 3,
+        "stateVersion": 7,
+        "state": "created",
+        "executionOutcome": "not_started",
+        "validation": {
+          "state": "not_run"
+        },
+        "acceptance": {
+          "state": "not_reviewed"
+        },
+        "evidenceIds": []
+      }
+    },
+    {
+      "name": "invalid profileId 39",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "task-snapshot",
+        "profileId": "profile",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "missionId": "00000003-1111-4111-8111-111111111111",
+        "taskId": "00000004-1111-4111-8111-111111111111",
+        "definitionVersion": 3,
+        "stateVersion": 7,
+        "state": "created",
+        "executionOutcome": "not_started",
+        "validation": {
+          "state": "not_run"
+        },
+        "acceptance": {
+          "state": "not_reviewed"
+        },
+        "evidenceIds": []
+      }
+    },
+    {
+      "name": "invalid workspaceId 40",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "task-snapshot",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "w_abc123",
+        "missionId": "00000003-1111-4111-8111-111111111111",
+        "taskId": "00000004-1111-4111-8111-111111111111",
+        "definitionVersion": 3,
+        "stateVersion": 7,
+        "state": "created",
+        "executionOutcome": "not_started",
+        "validation": {
+          "state": "not_run"
+        },
+        "acceptance": {
+          "state": "not_reviewed"
+        },
+        "evidenceIds": []
+      }
+    },
+    {
+      "name": "invalid missionId 41",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "task-snapshot",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "missionId": "mission",
+        "taskId": "00000004-1111-4111-8111-111111111111",
+        "definitionVersion": 3,
+        "stateVersion": 7,
+        "state": "created",
+        "executionOutcome": "not_started",
+        "validation": {
+          "state": "not_run"
+        },
+        "acceptance": {
+          "state": "not_reviewed"
+        },
+        "evidenceIds": []
+      }
+    },
+    {
+      "name": "invalid taskId 42",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "task-snapshot",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "missionId": "00000003-1111-4111-8111-111111111111",
+        "taskId": "s_abc123",
+        "definitionVersion": 3,
+        "stateVersion": 7,
+        "state": "created",
+        "executionOutcome": "not_started",
+        "validation": {
+          "state": "not_run"
+        },
+        "acceptance": {
+          "state": "not_reviewed"
+        },
+        "evidenceIds": []
+      }
+    },
+    {
+      "name": "invalid definitionVersion 43",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "task-snapshot",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "missionId": "00000003-1111-4111-8111-111111111111",
+        "taskId": "00000004-1111-4111-8111-111111111111",
+        "definitionVersion": 0,
+        "stateVersion": 7,
+        "state": "created",
+        "executionOutcome": "not_started",
+        "validation": {
+          "state": "not_run"
+        },
+        "acceptance": {
+          "state": "not_reviewed"
+        },
+        "evidenceIds": []
+      }
+    },
+    {
+      "name": "invalid definitionVersion 44",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "task-snapshot",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "missionId": "00000003-1111-4111-8111-111111111111",
+        "taskId": "00000004-1111-4111-8111-111111111111",
+        "definitionVersion": 1.5,
+        "stateVersion": 7,
+        "state": "created",
+        "executionOutcome": "not_started",
+        "validation": {
+          "state": "not_run"
+        },
+        "acceptance": {
+          "state": "not_reviewed"
+        },
+        "evidenceIds": []
+      }
+    },
+    {
+      "name": "invalid definitionVersion 45",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "task-snapshot",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "missionId": "00000003-1111-4111-8111-111111111111",
+        "taskId": "00000004-1111-4111-8111-111111111111",
+        "definitionVersion": true,
+        "stateVersion": 7,
+        "state": "created",
+        "executionOutcome": "not_started",
+        "validation": {
+          "state": "not_run"
+        },
+        "acceptance": {
+          "state": "not_reviewed"
+        },
+        "evidenceIds": []
+      }
+    },
+    {
+      "name": "invalid definitionVersion 46",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "task-snapshot",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "missionId": "00000003-1111-4111-8111-111111111111",
+        "taskId": "00000004-1111-4111-8111-111111111111",
+        "definitionVersion": 9007199254740992,
+        "stateVersion": 7,
+        "state": "created",
+        "executionOutcome": "not_started",
+        "validation": {
+          "state": "not_run"
+        },
+        "acceptance": {
+          "state": "not_reviewed"
+        },
+        "evidenceIds": []
+      }
+    },
+    {
+      "name": "invalid stateVersion 47",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "task-snapshot",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "missionId": "00000003-1111-4111-8111-111111111111",
+        "taskId": "00000004-1111-4111-8111-111111111111",
+        "definitionVersion": 3,
+        "stateVersion": -1,
+        "state": "created",
+        "executionOutcome": "not_started",
+        "validation": {
+          "state": "not_run"
+        },
+        "acceptance": {
+          "state": "not_reviewed"
+        },
+        "evidenceIds": []
+      }
+    },
+    {
+      "name": "invalid stateVersion 48",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "task-snapshot",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "missionId": "00000003-1111-4111-8111-111111111111",
+        "taskId": "00000004-1111-4111-8111-111111111111",
+        "definitionVersion": 3,
+        "stateVersion": "1",
+        "state": "created",
+        "executionOutcome": "not_started",
+        "validation": {
+          "state": "not_run"
+        },
+        "acceptance": {
+          "state": "not_reviewed"
+        },
+        "evidenceIds": []
+      }
+    },
+    {
+      "name": "invalid state 49",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "task-snapshot",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "missionId": "00000003-1111-4111-8111-111111111111",
+        "taskId": "00000004-1111-4111-8111-111111111111",
+        "definitionVersion": 3,
+        "stateVersion": 7,
+        "state": "working",
+        "executionOutcome": "not_started",
+        "validation": {
+          "state": "not_run"
+        },
+        "acceptance": {
+          "state": "not_reviewed"
+        },
+        "evidenceIds": []
+      }
+    },
+    {
+      "name": "invalid state 50",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "task-snapshot",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "missionId": "00000003-1111-4111-8111-111111111111",
+        "taskId": "00000004-1111-4111-8111-111111111111",
+        "definitionVersion": 3,
+        "stateVersion": 7,
+        "state": "constructor",
+        "executionOutcome": "not_started",
+        "validation": {
+          "state": "not_run"
+        },
+        "acceptance": {
+          "state": "not_reviewed"
+        },
+        "evidenceIds": []
+      }
+    },
+    {
+      "name": "invalid executionOutcome 51",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "task-snapshot",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "missionId": "00000003-1111-4111-8111-111111111111",
+        "taskId": "00000004-1111-4111-8111-111111111111",
+        "definitionVersion": 3,
+        "stateVersion": 7,
+        "state": "created",
+        "executionOutcome": "completed",
+        "validation": {
+          "state": "not_run"
+        },
+        "acceptance": {
+          "state": "not_reviewed"
+        },
+        "evidenceIds": []
+      }
+    },
+    {
+      "name": "invalid executionOutcome 52",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "task-snapshot",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "missionId": "00000003-1111-4111-8111-111111111111",
+        "taskId": "00000004-1111-4111-8111-111111111111",
+        "definitionVersion": 3,
+        "stateVersion": 7,
+        "state": "created",
+        "executionOutcome": "provider-new-state",
+        "validation": {
+          "state": "not_run"
+        },
+        "acceptance": {
+          "state": "not_reviewed"
+        },
+        "evidenceIds": []
+      }
+    },
+    {
+      "name": "invalid validation 53",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "task-snapshot",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "missionId": "00000003-1111-4111-8111-111111111111",
+        "taskId": "00000004-1111-4111-8111-111111111111",
+        "definitionVersion": 3,
+        "stateVersion": 7,
+        "state": "created",
+        "executionOutcome": "not_started",
+        "validation": {
+          "state": "verified"
+        },
+        "acceptance": {
+          "state": "not_reviewed"
+        },
+        "evidenceIds": []
+      }
+    },
+    {
+      "name": "invalid validation 54",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "task-snapshot",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "missionId": "00000003-1111-4111-8111-111111111111",
+        "taskId": "00000004-1111-4111-8111-111111111111",
+        "definitionVersion": 3,
+        "stateVersion": 7,
+        "state": "created",
+        "executionOutcome": "not_started",
+        "validation": {
+          "state": "passed"
+        },
+        "acceptance": {
+          "state": "not_reviewed"
+        },
+        "evidenceIds": []
+      }
+    },
+    {
+      "name": "invalid validation 55",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "task-snapshot",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "missionId": "00000003-1111-4111-8111-111111111111",
+        "taskId": "00000004-1111-4111-8111-111111111111",
+        "definitionVersion": 3,
+        "stateVersion": 7,
+        "state": "created",
+        "executionOutcome": "not_started",
+        "validation": {
+          "state": "pending",
+          "recordRef": "unexpected"
+        },
+        "acceptance": {
+          "state": "not_reviewed"
+        },
+        "evidenceIds": []
+      }
+    },
+    {
+      "name": "invalid validation 56",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "task-snapshot",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "missionId": "00000003-1111-4111-8111-111111111111",
+        "taskId": "00000004-1111-4111-8111-111111111111",
+        "definitionVersion": 3,
+        "stateVersion": 7,
+        "state": "created",
+        "executionOutcome": "not_started",
+        "validation": {
+          "state": "failed",
+          "recordRef": ""
+        },
+        "acceptance": {
+          "state": "not_reviewed"
+        },
+        "evidenceIds": []
+      }
+    },
+    {
+      "name": "invalid acceptance 57",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "task-snapshot",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "missionId": "00000003-1111-4111-8111-111111111111",
+        "taskId": "00000004-1111-4111-8111-111111111111",
+        "definitionVersion": 3,
+        "stateVersion": 7,
+        "state": "created",
+        "executionOutcome": "not_started",
+        "validation": {
+          "state": "not_run"
+        },
+        "acceptance": {
+          "state": "accepted"
+        },
+        "evidenceIds": []
+      }
+    },
+    {
+      "name": "invalid acceptance 58",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "task-snapshot",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "missionId": "00000003-1111-4111-8111-111111111111",
+        "taskId": "00000004-1111-4111-8111-111111111111",
+        "definitionVersion": 3,
+        "stateVersion": 7,
+        "state": "created",
+        "executionOutcome": "not_started",
+        "validation": {
+          "state": "not_run"
+        },
+        "acceptance": {
+          "state": "rejected"
+        },
+        "evidenceIds": []
+      }
+    },
+    {
+      "name": "invalid acceptance 59",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "task-snapshot",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "missionId": "00000003-1111-4111-8111-111111111111",
+        "taskId": "00000004-1111-4111-8111-111111111111",
+        "definitionVersion": 3,
+        "stateVersion": 7,
+        "state": "created",
+        "executionOutcome": "not_started",
+        "validation": {
+          "state": "not_run"
+        },
+        "acceptance": {
+          "state": "waived",
+          "recordRef": "waiver",
+          "reason": ""
+        },
+        "evidenceIds": []
+      }
+    },
+    {
+      "name": "invalid acceptance 60",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "task-snapshot",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "missionId": "00000003-1111-4111-8111-111111111111",
+        "taskId": "00000004-1111-4111-8111-111111111111",
+        "definitionVersion": 3,
+        "stateVersion": 7,
+        "state": "created",
+        "executionOutcome": "not_started",
+        "validation": {
+          "state": "not_run"
+        },
+        "acceptance": {
+          "state": "waived",
+          "recordRef": "waiver"
+        },
+        "evidenceIds": []
+      }
+    },
+    {
+      "name": "invalid acceptance 61",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "task-snapshot",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "missionId": "00000003-1111-4111-8111-111111111111",
+        "taskId": "00000004-1111-4111-8111-111111111111",
+        "definitionVersion": 3,
+        "stateVersion": 7,
+        "state": "created",
+        "executionOutcome": "not_started",
+        "validation": {
+          "state": "not_run"
+        },
+        "acceptance": {
+          "state": "unknown",
+          "recordRef": "unexpected"
+        },
+        "evidenceIds": []
+      }
+    },
+    {
+      "name": "invalid executionId 62",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "task-snapshot",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "missionId": "00000003-1111-4111-8111-111111111111",
+        "taskId": "00000004-1111-4111-8111-111111111111",
+        "definitionVersion": 3,
+        "stateVersion": 7,
+        "state": "created",
+        "executionOutcome": "not_started",
+        "validation": {
+          "state": "not_run"
+        },
+        "acceptance": {
+          "state": "not_reviewed"
+        },
+        "evidenceIds": [],
+        "executionId": null
+      }
+    },
+    {
+      "name": "invalid evidenceIds 63",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "task-snapshot",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "missionId": "00000003-1111-4111-8111-111111111111",
+        "taskId": "00000004-1111-4111-8111-111111111111",
+        "definitionVersion": 3,
+        "stateVersion": 7,
+        "state": "created",
+        "executionOutcome": "not_started",
+        "validation": {
+          "state": "not_run"
+        },
+        "acceptance": {
+          "state": "not_reviewed"
+        },
+        "evidenceIds": [
+          "00000006-1111-4111-8111-111111111111",
+          "00000006-1111-4111-8111-111111111111"
+        ]
+      }
+    },
+    {
+      "name": "invalid evidenceIds 64",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "task-snapshot",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "missionId": "00000003-1111-4111-8111-111111111111",
+        "taskId": "00000004-1111-4111-8111-111111111111",
+        "definitionVersion": 3,
+        "stateVersion": 7,
+        "state": "created",
+        "executionOutcome": "not_started",
+        "validation": {
+          "state": "not_run"
+        },
+        "acceptance": {
+          "state": "not_reviewed"
+        },
+        "evidenceIds": [
+          "legacy-evidence"
+        ]
+      }
+    },
+    {
+      "name": "missing protocol",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "task-snapshot",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "missionId": "00000003-1111-4111-8111-111111111111",
+        "taskId": "00000004-1111-4111-8111-111111111111",
+        "definitionVersion": 3,
+        "stateVersion": 7,
+        "state": "created",
+        "executionOutcome": "not_started",
+        "validation": {
+          "state": "not_run"
+        },
+        "acceptance": {
+          "state": "not_reviewed"
+        },
+        "evidenceIds": []
+      }
+    },
+    {
+      "name": "missing schemaVersion",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "kind": "task-snapshot",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "missionId": "00000003-1111-4111-8111-111111111111",
+        "taskId": "00000004-1111-4111-8111-111111111111",
+        "definitionVersion": 3,
+        "stateVersion": 7,
+        "state": "created",
+        "executionOutcome": "not_started",
+        "validation": {
+          "state": "not_run"
+        },
+        "acceptance": {
+          "state": "not_reviewed"
+        },
+        "evidenceIds": []
+      }
+    },
+    {
+      "name": "missing kind",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "missionId": "00000003-1111-4111-8111-111111111111",
+        "taskId": "00000004-1111-4111-8111-111111111111",
+        "definitionVersion": 3,
+        "stateVersion": 7,
+        "state": "created",
+        "executionOutcome": "not_started",
+        "validation": {
+          "state": "not_run"
+        },
+        "acceptance": {
+          "state": "not_reviewed"
+        },
+        "evidenceIds": []
+      }
+    },
+    {
+      "name": "missing profileId",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "task-snapshot",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "missionId": "00000003-1111-4111-8111-111111111111",
+        "taskId": "00000004-1111-4111-8111-111111111111",
+        "definitionVersion": 3,
+        "stateVersion": 7,
+        "state": "created",
+        "executionOutcome": "not_started",
+        "validation": {
+          "state": "not_run"
+        },
+        "acceptance": {
+          "state": "not_reviewed"
+        },
+        "evidenceIds": []
+      }
+    },
+    {
+      "name": "missing workspaceId",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "task-snapshot",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "missionId": "00000003-1111-4111-8111-111111111111",
+        "taskId": "00000004-1111-4111-8111-111111111111",
+        "definitionVersion": 3,
+        "stateVersion": 7,
+        "state": "created",
+        "executionOutcome": "not_started",
+        "validation": {
+          "state": "not_run"
+        },
+        "acceptance": {
+          "state": "not_reviewed"
+        },
+        "evidenceIds": []
+      }
+    },
+    {
+      "name": "missing missionId",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "task-snapshot",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "taskId": "00000004-1111-4111-8111-111111111111",
+        "definitionVersion": 3,
+        "stateVersion": 7,
+        "state": "created",
+        "executionOutcome": "not_started",
+        "validation": {
+          "state": "not_run"
+        },
+        "acceptance": {
+          "state": "not_reviewed"
+        },
+        "evidenceIds": []
+      }
+    },
+    {
+      "name": "missing taskId",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "task-snapshot",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "missionId": "00000003-1111-4111-8111-111111111111",
+        "definitionVersion": 3,
+        "stateVersion": 7,
+        "state": "created",
+        "executionOutcome": "not_started",
+        "validation": {
+          "state": "not_run"
+        },
+        "acceptance": {
+          "state": "not_reviewed"
+        },
+        "evidenceIds": []
+      }
+    },
+    {
+      "name": "missing definitionVersion",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "task-snapshot",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "missionId": "00000003-1111-4111-8111-111111111111",
+        "taskId": "00000004-1111-4111-8111-111111111111",
+        "stateVersion": 7,
+        "state": "created",
+        "executionOutcome": "not_started",
+        "validation": {
+          "state": "not_run"
+        },
+        "acceptance": {
+          "state": "not_reviewed"
+        },
+        "evidenceIds": []
+      }
+    },
+    {
+      "name": "missing stateVersion",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "task-snapshot",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "missionId": "00000003-1111-4111-8111-111111111111",
+        "taskId": "00000004-1111-4111-8111-111111111111",
+        "definitionVersion": 3,
+        "state": "created",
+        "executionOutcome": "not_started",
+        "validation": {
+          "state": "not_run"
+        },
+        "acceptance": {
+          "state": "not_reviewed"
+        },
+        "evidenceIds": []
+      }
+    },
+    {
+      "name": "missing state",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "task-snapshot",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "missionId": "00000003-1111-4111-8111-111111111111",
+        "taskId": "00000004-1111-4111-8111-111111111111",
+        "definitionVersion": 3,
+        "stateVersion": 7,
+        "executionOutcome": "not_started",
+        "validation": {
+          "state": "not_run"
+        },
+        "acceptance": {
+          "state": "not_reviewed"
+        },
+        "evidenceIds": []
+      }
+    },
+    {
+      "name": "missing executionOutcome",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "task-snapshot",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "missionId": "00000003-1111-4111-8111-111111111111",
+        "taskId": "00000004-1111-4111-8111-111111111111",
+        "definitionVersion": 3,
+        "stateVersion": 7,
+        "state": "created",
+        "validation": {
+          "state": "not_run"
+        },
+        "acceptance": {
+          "state": "not_reviewed"
+        },
+        "evidenceIds": []
+      }
+    },
+    {
+      "name": "missing validation",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "task-snapshot",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "missionId": "00000003-1111-4111-8111-111111111111",
+        "taskId": "00000004-1111-4111-8111-111111111111",
+        "definitionVersion": 3,
+        "stateVersion": 7,
+        "state": "created",
+        "executionOutcome": "not_started",
+        "acceptance": {
+          "state": "not_reviewed"
+        },
+        "evidenceIds": []
+      }
+    },
+    {
+      "name": "missing acceptance",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "task-snapshot",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "missionId": "00000003-1111-4111-8111-111111111111",
+        "taskId": "00000004-1111-4111-8111-111111111111",
+        "definitionVersion": 3,
+        "stateVersion": 7,
+        "state": "created",
+        "executionOutcome": "not_started",
+        "validation": {
+          "state": "not_run"
+        },
+        "evidenceIds": []
+      }
+    },
+    {
+      "name": "missing evidenceIds",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "task-snapshot",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "missionId": "00000003-1111-4111-8111-111111111111",
+        "taskId": "00000004-1111-4111-8111-111111111111",
+        "definitionVersion": 3,
+        "stateVersion": 7,
+        "state": "created",
+        "executionOutcome": "not_started",
+        "validation": {
+          "state": "not_run"
+        },
+        "acceptance": {
+          "state": "not_reviewed"
+        }
+      }
+    },
+    {
+      "name": "unknown alias version",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "task-snapshot",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "missionId": "00000003-1111-4111-8111-111111111111",
+        "taskId": "00000004-1111-4111-8111-111111111111",
+        "definitionVersion": 3,
+        "stateVersion": 7,
+        "state": "created",
+        "executionOutcome": "not_started",
+        "validation": {
+          "state": "not_run"
+        },
+        "acceptance": {
+          "state": "not_reviewed"
+        },
+        "evidenceIds": [],
+        "version": 1
+      }
+    },
+    {
+      "name": "unknown alias attempt",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "task-snapshot",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "missionId": "00000003-1111-4111-8111-111111111111",
+        "taskId": "00000004-1111-4111-8111-111111111111",
+        "definitionVersion": 3,
+        "stateVersion": 7,
+        "state": "created",
+        "executionOutcome": "not_started",
+        "validation": {
+          "state": "not_run"
+        },
+        "acceptance": {
+          "state": "not_reviewed"
+        },
+        "evidenceIds": [],
+        "attempt": 1
+      }
+    },
+    {
+      "name": "unknown alias expectedVersion",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "task-snapshot",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "missionId": "00000003-1111-4111-8111-111111111111",
+        "taskId": "00000004-1111-4111-8111-111111111111",
+        "definitionVersion": 3,
+        "stateVersion": 7,
+        "state": "created",
+        "executionOutcome": "not_started",
+        "validation": {
+          "state": "not_run"
+        },
+        "acceptance": {
+          "state": "not_reviewed"
+        },
+        "evidenceIds": [],
+        "expectedVersion": 1
+      }
+    },
+    {
+      "name": "unknown alias engineGeneration",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "task-snapshot",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "missionId": "00000003-1111-4111-8111-111111111111",
+        "taskId": "00000004-1111-4111-8111-111111111111",
+        "definitionVersion": 3,
+        "stateVersion": 7,
+        "state": "created",
+        "executionOutcome": "not_started",
+        "validation": {
+          "state": "not_run"
+        },
+        "acceptance": {
+          "state": "not_reviewed"
+        },
+        "evidenceIds": [],
+        "engineGeneration": 1
+      }
+    },
+    {
+      "name": "unknown alias extra",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "task-snapshot",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "missionId": "00000003-1111-4111-8111-111111111111",
+        "taskId": "00000004-1111-4111-8111-111111111111",
+        "definitionVersion": 3,
+        "stateVersion": 7,
+        "state": "created",
+        "executionOutcome": "not_started",
+        "validation": {
+          "state": "not_run"
+        },
+        "acceptance": {
+          "state": "not_reviewed"
+        },
+        "evidenceIds": [],
+        "extra": 1
+      }
+    },
+    {
+      "name": "started running lacks execution ID",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "task-snapshot",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "missionId": "00000003-1111-4111-8111-111111111111",
+        "taskId": "00000004-1111-4111-8111-111111111111",
+        "definitionVersion": 3,
+        "stateVersion": 7,
+        "state": "created",
+        "executionOutcome": "running",
+        "validation": {
+          "state": "not_run"
+        },
+        "acceptance": {
+          "state": "not_reviewed"
+        },
+        "evidenceIds": []
+      }
+    },
+    {
+      "name": "started succeeded lacks execution ID",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "task-snapshot",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "missionId": "00000003-1111-4111-8111-111111111111",
+        "taskId": "00000004-1111-4111-8111-111111111111",
+        "definitionVersion": 3,
+        "stateVersion": 7,
+        "state": "created",
+        "executionOutcome": "succeeded",
+        "validation": {
+          "state": "not_run"
+        },
+        "acceptance": {
+          "state": "not_reviewed"
+        },
+        "evidenceIds": []
+      }
+    },
+    {
+      "name": "started failed lacks execution ID",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "task-snapshot",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "missionId": "00000003-1111-4111-8111-111111111111",
+        "taskId": "00000004-1111-4111-8111-111111111111",
+        "definitionVersion": 3,
+        "stateVersion": 7,
+        "state": "created",
+        "executionOutcome": "failed",
+        "validation": {
+          "state": "not_run"
+        },
+        "acceptance": {
+          "state": "not_reviewed"
+        },
+        "evidenceIds": []
+      }
+    },
+    {
+      "name": "started cancelled lacks execution ID",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "task-snapshot",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "missionId": "00000003-1111-4111-8111-111111111111",
+        "taskId": "00000004-1111-4111-8111-111111111111",
+        "definitionVersion": 3,
+        "stateVersion": 7,
+        "state": "created",
+        "executionOutcome": "cancelled",
+        "validation": {
+          "state": "not_run"
+        },
+        "acceptance": {
+          "state": "not_reviewed"
+        },
+        "evidenceIds": []
+      }
+    },
+    {
+      "name": "accepted refuses executionOutcome 88",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "task-snapshot",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "missionId": "00000003-1111-4111-8111-111111111111",
+        "taskId": "00000004-1111-4111-8111-111111111111",
+        "definitionVersion": 3,
+        "stateVersion": 7,
+        "state": "completed",
+        "executionOutcome": "unknown",
+        "validation": {
+          "state": "passed",
+          "recordRef": "validation-record"
+        },
+        "acceptance": {
+          "state": "accepted",
+          "recordRef": "acceptance-record"
+        },
+        "evidenceIds": [
+          "00000006-1111-4111-8111-111111111111"
+        ],
+        "executionId": "00000005-1111-4111-8111-111111111111"
+      }
+    },
+    {
+      "name": "accepted refuses validation 89",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "task-snapshot",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "missionId": "00000003-1111-4111-8111-111111111111",
+        "taskId": "00000004-1111-4111-8111-111111111111",
+        "definitionVersion": 3,
+        "stateVersion": 7,
+        "state": "completed",
+        "executionOutcome": "succeeded",
+        "validation": {
+          "state": "failed",
+          "recordRef": "validation-record"
+        },
+        "acceptance": {
+          "state": "accepted",
+          "recordRef": "acceptance-record"
+        },
+        "evidenceIds": [
+          "00000006-1111-4111-8111-111111111111"
+        ],
+        "executionId": "00000005-1111-4111-8111-111111111111"
+      }
+    },
+    {
+      "name": "accepted refuses validation 90",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "task-snapshot",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "missionId": "00000003-1111-4111-8111-111111111111",
+        "taskId": "00000004-1111-4111-8111-111111111111",
+        "definitionVersion": 3,
+        "stateVersion": 7,
+        "state": "completed",
+        "executionOutcome": "succeeded",
+        "validation": {
+          "state": "unknown"
+        },
+        "acceptance": {
+          "state": "accepted",
+          "recordRef": "acceptance-record"
+        },
+        "evidenceIds": [
+          "00000006-1111-4111-8111-111111111111"
+        ],
+        "executionId": "00000005-1111-4111-8111-111111111111"
+      }
+    },
+    {
+      "name": "accepted refuses evidenceIds 91",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "task-snapshot",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "missionId": "00000003-1111-4111-8111-111111111111",
+        "taskId": "00000004-1111-4111-8111-111111111111",
+        "definitionVersion": 3,
+        "stateVersion": 7,
+        "state": "completed",
+        "executionOutcome": "succeeded",
+        "validation": {
+          "state": "passed",
+          "recordRef": "validation-record"
+        },
+        "acceptance": {
+          "state": "accepted",
+          "recordRef": "acceptance-record"
+        },
+        "evidenceIds": [],
+        "executionId": "00000005-1111-4111-8111-111111111111"
+      }
+    },
+    {
+      "name": "completed lacks acceptance unknown",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "task-snapshot",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "missionId": "00000003-1111-4111-8111-111111111111",
+        "taskId": "00000004-1111-4111-8111-111111111111",
+        "definitionVersion": 3,
+        "stateVersion": 7,
+        "state": "completed",
+        "executionOutcome": "succeeded",
+        "validation": {
+          "state": "passed",
+          "recordRef": "validation-record"
+        },
+        "acceptance": {
+          "state": "unknown"
+        },
+        "evidenceIds": [
+          "00000006-1111-4111-8111-111111111111"
+        ],
+        "executionId": "00000005-1111-4111-8111-111111111111"
+      }
+    },
+    {
+      "name": "completed lacks acceptance pending",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "task-snapshot",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "missionId": "00000003-1111-4111-8111-111111111111",
+        "taskId": "00000004-1111-4111-8111-111111111111",
+        "definitionVersion": 3,
+        "stateVersion": 7,
+        "state": "completed",
+        "executionOutcome": "succeeded",
+        "validation": {
+          "state": "passed",
+          "recordRef": "validation-record"
+        },
+        "acceptance": {
+          "state": "pending"
+        },
+        "evidenceIds": [
+          "00000006-1111-4111-8111-111111111111"
+        ],
+        "executionId": "00000005-1111-4111-8111-111111111111"
+      }
+    },
+    {
+      "name": "completed lacks acceptance rejected",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "task-snapshot",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "missionId": "00000003-1111-4111-8111-111111111111",
+        "taskId": "00000004-1111-4111-8111-111111111111",
+        "definitionVersion": 3,
+        "stateVersion": 7,
+        "state": "completed",
+        "executionOutcome": "succeeded",
+        "validation": {
+          "state": "passed",
+          "recordRef": "validation-record"
+        },
+        "acceptance": {
+          "state": "rejected",
+          "recordRef": "review"
+        },
+        "evidenceIds": [
+          "00000006-1111-4111-8111-111111111111"
+        ],
+        "executionId": "00000005-1111-4111-8111-111111111111"
+      }
+    },
+    {
+      "name": "waiver cannot fabricate execution success",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "task-snapshot",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "missionId": "00000003-1111-4111-8111-111111111111",
+        "taskId": "00000004-1111-4111-8111-111111111111",
+        "definitionVersion": 3,
+        "stateVersion": 7,
+        "state": "completed",
+        "executionOutcome": "failed",
+        "validation": {
+          "state": "passed",
+          "recordRef": "validation-record"
+        },
+        "acceptance": {
+          "state": "waived",
+          "recordRef": "waiver",
+          "reason": "Cannot fabricate success"
+        },
+        "evidenceIds": [
+          "00000006-1111-4111-8111-111111111111"
+        ],
+        "executionId": "00000005-1111-4111-8111-111111111111"
+      }
+    },
+    {
+      "name": "invalid root null",
+      "valid": false,
+      "value": null
+    },
+    {
+      "name": "invalid root array",
+      "valid": false,
+      "value": []
+    },
+    {
+      "name": "invalid root old task",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "state": "completed",
+        "verification": "verified"
+      }
+    }
+  ]
+}

@@ -150,3 +150,97 @@ describe('canonical recovery inspection', () => {
     expect(save).toHaveBeenCalledTimes(2);
   });
 });
+
+describe('execution observation inspection', () => {
+  async function observedFixture() {
+    const f = await fixture(), supervisorId = randomUUID();
+    const run = { ...f.run, authority: { backend: 'rust' as const, profileId: 'default', workspaceId: f.snapshot.workspaceId, supervisorId }, recovery: { source: 'execution-uncertain' as const, at } };
+    await f.records.save(run);
+    f.snapshot.state = 'recovering'; f.snapshot.tasks.forEach(task => { task.state = 'unknown'; });
+    const executions = { missionId: f.run.id, executions: [{ admission: { missionId: f.run.id, workspaceId: f.snapshot.workspaceId, taskId: f.run.tasks[0]!.taskId, holderAgentId: f.run.tasks[0]!.agentId,
+      supervisorId, leaseId: randomUUID(), attempt: 1, missionVersion: 2, taskDigest: 'a'.repeat(64), graphDigest: 'b'.repeat(64), admissionDigest: 'c'.repeat(64), admittedAt: at },
+      observation: { observationId: randomUUID(), kind: 'turn-promise-settled' as const, recordedAt: at } }] };
+    const readExecutions = vi.fn(async () => structuredClone(executions));
+    const recovery = new MissionRecovery({ records: f.records, profileId: 'default', active: () => false, snapshot: f.read, executions: readExecutions });
+    return { ...f, executions, readExecutions, recovery };
+  }
+  it('exposes matching weak observations without clearing genuine uncertainty', async () => {
+    const f = await observedFixture();
+    expect(await f.recovery.refresh(f.session.id, f.run.id)).toMatchObject({ status: 'quarantined', reason: 'execution-uncertain', run: { state: 'recovering' }, executionInspection: { status: 'available', executions: f.executions.executions } });
+    expect(f.records.get(f.session.id, f.run.id).state).toBe('recovering');
+  });
+  it.each(['supervisorId', 'holderAgentId', 'workspaceId', 'taskId', 'missionId'] as const)('refuses %s evidence without changing the run', async key => {
+    const f = await observedFixture(); f.executions.executions[0]!.admission[key] = randomUUID();
+    expect(await f.recovery.refresh(f.session.id, f.run.id)).toMatchObject({ run: { state: 'recovering' }, executionInspection: { status: 'unavailable' } });
+  });
+  it('rechecks reservations after a delayed execution inspection', async () => {
+    const f = await observedFixture();
+    let resolve!: (value: typeof f.executions) => void;
+    f.readExecutions.mockImplementationOnce(() => new Promise(done => { resolve = done; }));
+    const pending = f.recovery.refresh(f.session.id, f.run.id);
+    await vi.waitFor(() => expect(f.readExecutions).toHaveBeenCalled());
+    vi.spyOn(f.records, 'isReserved').mockReturnValue(true); resolve(f.executions);
+    expect((await pending).reason).toBe('local-active');
+    expect(f.records.get(f.session.id, f.run.id).state).toBe('recovering');
+  });
+});
+
+describe('coherent recovery review', () => {
+  async function coherentFixture() {
+    const f = await fixture(), supervisorId = randomUUID();
+    const run = { ...f.run, authority: { backend: 'rust' as const, profileId: 'default', workspaceId: f.snapshot.workspaceId, supervisorId }, recovery: { source: 'execution-uncertain' as const, at } };
+    await f.records.save(run);
+    f.snapshot.state = 'recovering'; f.snapshot.tasks.forEach(task => { task.state = 'unknown'; });
+    const review = { kind: 'extalia-recovery-review-v1' as const, snapshot: structuredClone(f.snapshot), executions: [{ admission: {
+      missionId: f.run.id, workspaceId: f.snapshot.workspaceId, taskId: f.run.tasks[0]!.taskId, holderAgentId: f.run.tasks[0]!.agentId,
+      supervisorId, leaseId: randomUUID(), attempt: 1, missionVersion: 2, taskDigest: 'a'.repeat(64), graphDigest: 'b'.repeat(64), admissionDigest: 'c'.repeat(64), admittedAt: at,
+    } }], missionDigest: 'd'.repeat(64), graphDigest: 'e'.repeat(64), reviewDigest: 'f'.repeat(64), missingAdmissionTaskIds: [f.run.tasks[1]!.taskId], worktreeOwnership: 'unverified' as const };
+    const readReview = vi.fn(async () => structuredClone(review)), readExecutions = vi.fn();
+    const recovery = new MissionRecovery({ records: f.records, profileId: 'default', active: () => false, snapshot: f.read, executions: readExecutions, review: readReview });
+    return { ...f, review, readReview, readExecutions, recovery };
+  }
+  it('uses only the atomic read and preserves quarantine, results and capacity guards', async () => {
+    const f = await coherentFixture();
+    const before = f.records.get(f.session.id, f.run.id);
+    expect(await f.recovery.refresh(f.session.id, f.run.id)).toMatchObject({ status: 'quarantined', reason: 'execution-uncertain',
+      snapshot: f.review.snapshot, executionInspection: { status: 'available', executions: f.review.executions }, reviewInspection: { status: 'available', review: f.review } });
+    expect(f.read).not.toHaveBeenCalled(); expect(f.readExecutions).not.toHaveBeenCalled();
+    expect(f.records.get(f.session.id, f.run.id)).toEqual(before);
+  });
+  it('does not fall back to separate reads after a supported review fails', async () => {
+    const f = await coherentFixture(); f.readReview.mockRejectedValueOnce(new Error('unavailable'));
+    expect(await f.recovery.refresh(f.session.id, f.run.id)).toMatchObject({ status: 'unavailable', reason: 'core-unavailable', reviewInspection: { status: 'unavailable' } });
+    expect(f.read).not.toHaveBeenCalled(); expect(f.readExecutions).not.toHaveBeenCalled();
+    expect((await f.recovery.refresh(f.session.id, f.run.id)).reviewInspection?.status).toBe('available');
+  });
+  it('labels separate reads unsupported when the core lacks the new operation', async () => {
+    const f = await coherentFixture(); f.readReview.mockResolvedValueOnce(undefined as never);
+    expect(await f.recovery.refresh(f.session.id, f.run.id)).toMatchObject({ reviewInspection: { status: 'unsupported' } });
+    expect(f.read).toHaveBeenCalledTimes(1); expect(f.readExecutions).toHaveBeenCalledTimes(1);
+  });
+  it.each(['supervisorId', 'workspaceId', 'taskId', 'holderAgentId', 'missionId'] as const)('refuses mismatched %s without exposing a reviewed identity', async key => {
+    const f = await coherentFixture(); f.review.executions[0]!.admission[key] = randomUUID();
+    const result = await f.recovery.refresh(f.session.id, f.run.id);
+    expect(result).toMatchObject({ reason: 'identity-mismatch', reviewInspection: { status: 'unavailable' }, run: { state: 'recovering' } });
+    expect(result).not.toHaveProperty('executionInspection'); expect(result).not.toHaveProperty('snapshot');
+  });
+  it('rechecks local guards and saved ownership after the review await', async () => {
+    const f = await coherentFixture(); let resolve!: (value: typeof f.review) => void;
+    f.readReview.mockImplementationOnce(() => new Promise(done => { resolve = done; }));
+    const pending = f.recovery.refresh(f.session.id, f.run.id);
+    vi.spyOn(f.records, 'isReserved').mockReturnValue(true); resolve(f.review);
+    expect((await pending).reason).toBe('local-active'); expect(f.read).not.toHaveBeenCalled();
+    vi.mocked(f.records.isReserved).mockReturnValue(false);
+    f.readReview.mockImplementationOnce(() => new Promise(done => { resolve = done; }));
+    const second = f.recovery.refresh(f.session.id, f.run.id);
+    await f.records.save({ ...f.run, authority: { backend: 'typescript' } }); resolve(f.review);
+    expect((await second).reason).toBe('identity-mismatch');
+  });
+  it('shows missing legacy admissions without inventing a supervisor or certifying settlement', async () => {
+    const f = await coherentFixture(); f.review.executions = []; f.review.missingAdmissionTaskIds = f.run.tasks.map(task => task.taskId);
+    const run = f.records.get(f.session.id, f.run.id); await f.records.save({ ...run, authority: { backend: 'rust', profileId: 'default', workspaceId: f.snapshot.workspaceId } });
+    const result = await f.recovery.refresh(f.session.id, f.run.id);
+    expect(result).toMatchObject({ status: 'quarantined', reviewInspection: { status: 'available', review: { executions: [], missingAdmissionTaskIds: f.review.missingAdmissionTaskIds } } });
+    expect(result.run.authority).not.toHaveProperty('supervisorId');
+  });
+});

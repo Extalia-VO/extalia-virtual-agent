@@ -50,7 +50,7 @@ export const EXTERIOR_MODELS = [
 
 export type ExteriorModel = (typeof EXTERIOR_MODELS)[number];
 
-const urls = import.meta.glob<string>("/local-assets/landscape/exterior-landscape.glb", {
+const urls = import.meta.glob<string>("/public-assets/landscape/exterior-landscape.glb", {
   eager: true,
   query: "?url",
   import: "default"
@@ -236,7 +236,7 @@ export function useExteriorDisplayGeometries(): ReadonlyMap<ExteriorModel, Buffe
 }
 
 async function load() {
-  const url = procedural ? undefined : urls["/local-assets/landscape/exterior-landscape.glb"];
+  const url = procedural ? undefined : urls["/public-assets/landscape/exterior-landscape.glb"];
   if (!url || requested) return;
   requested = true;
   try {

@@ -36,6 +36,42 @@ beforeEach(() => { hooks.index = 0; hooks.state = []; hooks.effects = []; });
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
 
 describe('mission recovery UI', () => {
+  it.each(['en', 'id'] as const)('shows narrow observation evidence without offering quarantine release (%s)', async language => {
+    const t = MESSAGES[language], onChanged = vi.fn();
+    const admission = { missionId: 'mission', workspaceId: 'workspace', taskId: 'task', leaseId: 'epoch', holderAgentId: 'agent', supervisorId: 'supervisor', attempt: 1, missionVersion: 2,
+      taskDigest: 'a'.repeat(64), graphDigest: 'b'.repeat(64), admissionDigest: 'c'.repeat(64), admittedAt: at };
+    let result: HostMissionRecoveryResult = { run, status: 'quarantined', reason: 'execution-uncertain', executionInspection: { status: 'available', executions: [{ admission }] } };
+    const agents = { refreshNativeMissionRecovery: vi.fn(async () => result) } as unknown as AgentHostApi;
+    const render = () => { hooks.index = 0; return MissionMonitor({ t, language, agents, initial: run, session: { id: 'session' } as SessionSummary, connections: [], onBack: vi.fn(), onChanged }); };
+    for (const inspection of [
+      { status: 'available', executions: [{ admission }] },
+      { status: 'available', executions: [{ admission, observation: { observationId: 'receipt', kind: 'turn-promise-settled', recordedAt: at } }] },
+      { status: 'available', executions: [{ admission, observation: { observationId: 'receipt', kind: 'turn-promise-settled', recordedAt: at }, localDrain: { proofId: 'proof', kind: 'local-operations-drained', coverage: 'extalia-native-local-v1', providerOperations: 2, toolOperations: 1, recordedAt: at } }] },
+      { status: 'available', executions: [] }, { status: 'unsupported' }, { status: 'unavailable' },
+    ] as NonNullable<HostMissionRecoveryResult['executionInspection']>[]) {
+      result = { ...result, executionInspection: inspection };
+      (button(render(), t.missions.run.refreshRecovery)!.props.onClick as () => void)();
+      await vi.waitFor(() => expect(onChanged).toHaveBeenCalled());
+      await Promise.resolve(); await Promise.resolve();
+      const tree = render(), prose = text(tree);
+      expect(prose).toContain(t.missions.run.executionObservationLimit);
+      expect(button(tree, t.missions.run.cancel)).toBeUndefined();
+      if (inspection.status === 'available') {
+        if (!inspection.executions.length) expect(prose).toContain(t.missions.run.executionNoAdmissions);
+        else {
+          expect(prose).toContain(inspection.executions[0]!.observation ? t.missions.run.executionTurnSettled : t.missions.run.executionTurnPending);
+          const proof = inspection.executions[0]!.localDrain;
+          expect(prose).toContain(proof ? t.missions.run.executionLocalDrained : t.missions.run.executionLocalUnverified);
+          if (proof) {
+            expect(prose).toContain(t.missions.run.executionLocalCounts(proof.providerOperations, proof.toolOperations));
+            expect(prose).toContain(t.missions.run.executionLocalLimit);
+          }
+        }
+      } else expect(prose).toContain(inspection.status === 'unsupported' ? t.missions.run.executionUnsupported : t.missions.run.executionUnavailable);
+      onChanged.mockClear();
+    }
+  });
+
   it.each(['en', 'id'] as const)('forwards refresh, disables the pending button, and shows canonical quarantine detail (%s)', async language => {
     const t = MESSAGES[language], onChanged = vi.fn();
     let resolve!: (value: HostMissionRecoveryResult) => void;
@@ -167,4 +203,41 @@ describe('mission recovery UI', () => {
     expect(text(next)).toContain(t.missions.run.recoveryRefreshed);
     expect(button(next, t.missions.run.refreshRecovery)).toBeUndefined();
   });
+});
+
+it.each(['en', 'id'] as const)('shows coherent reviews, absent membership and scope without a close action (%s)', async language => {
+  const t = MESSAGES[language], onChanged = vi.fn();
+  const review = { kind: 'extalia-recovery-review-v1' as const, snapshot: { missionId: 'mission', workspaceId: 'workspace', state: 'recovering' as const, updatedAt: at, version: 7, sequence: 11,
+    tasks: [{ taskId: 'task', assignedAgentId: 'agent', state: 'unknown' as const, attempt: 1 }], leases: [] }, executions: [], missionDigest: 'a'.repeat(64), graphDigest: 'b'.repeat(64), reviewDigest: 'c'.repeat(64), missingAdmissionTaskIds: ['task'], worktreeOwnership: 'unverified' as const };
+  let result: HostMissionRecoveryResult = { run, status: 'quarantined', reason: 'execution-uncertain', snapshot: review.snapshot, reviewInspection: { status: 'available', review } };
+  const agents = { refreshNativeMissionRecovery: vi.fn(async () => result) } as unknown as AgentHostApi;
+  const render = () => { hooks.index = 0; return MissionMonitor({ t, language, agents, initial: run, session: { id: 'session' } as SessionSummary, connections: [], onBack: vi.fn(), onChanged }); };
+  for (const inspection of [{ status: 'available', review }, { status: 'available', review: { ...review, missingAdmissionTaskIds: [] } }, { status: 'unsupported' }, { status: 'unavailable' }] as NonNullable<HostMissionRecoveryResult['reviewInspection']>[]) {
+    result = { ...result, reviewInspection: inspection };
+    (button(render(), t.missions.run.refreshRecovery)!.props.onClick as () => void)();
+    await vi.waitFor(() => expect(onChanged).toHaveBeenCalled());
+    await Promise.resolve(); await Promise.resolve();
+    const tree = render(), prose = text(tree);
+    expect(prose).toContain(t.missions.run.recoveryReview);
+    if (inspection.status === 'available') {
+      expect(prose).toContain(t.missions.run.recoveryReviewScope);
+      expect(prose).toContain(review.reviewDigest);
+      if (inspection.review.missingAdmissionTaskIds.length) {
+        expect(prose).toContain(t.missions.run.recoveryReviewMissing); expect(prose).toContain('Inspect project');
+      } else expect(prose).toContain(t.missions.run.recoveryReviewComplete);
+    } else expect(prose).toContain(inspection.status === 'unsupported' ? t.missions.run.recoveryReviewUnsupported : t.missions.run.recoveryReviewUnavailable);
+    expect(button(tree, t.missions.run.cancel)).toBeUndefined();
+    expect(elements(tree).filter(element => element.type === 'button')).toHaveLength(2); // Back and read-only refresh.
+    onChanged.mockClear();
+  }
+  // A failed subsequent refresh must not leave an older coherent fingerprint on screen.
+  result = { ...result, reviewInspection: { status: 'available', review } };
+  (button(render(), t.missions.run.refreshRecovery)!.props.onClick as () => void)();
+  await vi.waitFor(() => expect(onChanged).toHaveBeenCalled());
+  await Promise.resolve(); await Promise.resolve();
+  expect(text(render())).toContain(review.reviewDigest);
+  vi.mocked(agents.refreshNativeMissionRecovery!).mockRejectedValueOnce(new Error('unavailable'));
+  (button(render(), t.missions.run.refreshRecovery)!.props.onClick as () => void)();
+  expect(text(render())).not.toContain(review.reviewDigest);
+  await vi.waitFor(() => expect(text(render())).toContain(t.missions.run.recoveryReasons['core-unavailable']));
 });

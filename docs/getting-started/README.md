@@ -19,6 +19,24 @@ in one of two ways:
   `extalia update` (it runs `npm i -g extalia-vo@latest --prefer-online`) or the
   "Update and restart" button in the app.
 
+  The matching `@extalia/daemon-*` package is installed automatically. Install
+  `extalia-vo`, rather than a daemon package by itself. Keep `-g`: this source
+  checkout uses pnpm, and local npm installs into its linked dependency tree can
+  fail inside npm with `Cannot read properties of null (reading 'matches')`.
+
+The macOS v0.4.109 DMG has an invalid ad-hoc app signature and no notarization
+ticket, so macOS can reject it as damaged or unverified. Use the npm Web command
+above until a replacement is available. Free macOS previews use a valid ad-hoc
+signature; they remain unnotarized and require manual opening approval and
+manual updates. See [macOS release modes](../release/packaging.md#macos-release-modes).
+
+Desktop and the Web Bridge share one profile and only one may own it at a time.
+If Desktop reports `Extalia is already running (Bridge, process ...)`, stop the
+`extalia` command in its terminal with Ctrl+C before opening Desktop. The recovery
+panel's **Try again** retries host startup once the other process has closed.
+For a separate development profile, set `EXTALIA_HOME` to a new temporary folder
+before `pnpm dev:desktop`; it will have its own setup and sessions.
+
 On first start a short setup asks for:
 
 1. **A model connection**: OpenAI, Anthropic, OpenRouter, 9Router, OmniRoute,
@@ -42,7 +60,9 @@ walking style, with feminine, masculine and neutral presets; walking and
 navigation are still being developed.
 
 Open Chat and describe the task. The agent reads and searches the project,
-asks before it edits files or runs commands, and reports every step.
+asks before it edits files or runs commands, and reports every step. When the
+connection uses Extalia memory, [workspace recall](workspace-memory.md) starts
+with a small catalog and searches/reads selected notes on demand.
 
 ### Projects, sessions and Diagnostics
 

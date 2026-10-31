@@ -3,6 +3,7 @@ import { MESSAGES } from '../src/i18n';
 import { connectionFailure, friendlyConnectionError } from '../src/setup/connectionErrors';
 import { bypassesHermesApprovals, hermesPermissions, permissionsLabel } from '../src/setup/permissions';
 import { TEST_MODEL_PLACEHOLDER, draftFromPreset, toConnectionTestInput, validateConnection } from '../src/setup/validation';
+import { createMockPlatform } from '../src/host/mockHost';
 
 const { en, id } = MESSAGES;
 
@@ -51,5 +52,16 @@ describe('setup wording', () => {
     expect(en.setup.finish).toBe('Enter the 3D Office');
     expect(id.setup.finish).toContain('Kantor 3D');
     expect(en.setup.welcomePoints).toHaveLength(id.setup.welcomePoints.length);
+  });
+});
+
+describe('deferred workspace setup in the mock host', () => {
+  it('keeps managed setup honest with a saved connection or available Hermes', async () => {
+    const native = createMockPlatform({ seed: 'setup', host: 'bridge' }).capabilities.agents!;
+    await expect(native.completeSetup()).rejects.toThrow(/connection/);
+    await native.saveConnection({ name: 'Mock', preset: 'custom', api: 'openai-chat', baseUrl: 'http://mock.test/v1', model: 'mock-agent', credential: { kind: 'none' }, features: { memory: 'off', skills: 'off' } });
+    expect(await native.completeSetup()).toMatchObject({ setupComplete: true, workflow: 'managed', workspaces: [] });
+    const hermes = createMockPlatform({ seed: 'setup', host: 'bridge', hermes: true }).capabilities.agents!;
+    expect(await hermes.completeSetup()).toMatchObject({ setupComplete: true, workflow: 'managed', connections: [], workspaces: [] });
   });
 });

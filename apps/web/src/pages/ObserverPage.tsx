@@ -1,6 +1,6 @@
 import { sourceLabel, type PortableSession } from '@extalia/core';
 import type { AgentHostApi, HostState } from '@extalia/platform';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { SessionList } from '../chat/SessionList';
 import { errorMessage } from '../host/remote';
 import type { Messages } from '../i18n';
@@ -10,6 +10,13 @@ import { LibraryTranscript } from '../library/LibraryTranscript';
 import { Icon } from '../ui/Icon';
 import { AutoWatchLocations, IgnoredFolders } from './AutoWatchLocations';
 import { ConnectAgentAppsCard } from './ConnectAgentAppsCard';
+import { MessageFileProvider } from '../chat/MessageFilePreview';
+import { useSessionEvents } from '../chat/useSessionEvents';
+import { projectTranscript } from '../chat/transcript';
+import { TranscriptView } from '../chat/TranscriptView';
+import { ConversationTabs } from '../chat/ChangedFilesView';
+import { projectChangedFiles } from '../chat/changedFiles';
+import { attachmentPreviewLoader } from '../chat/attachments';
 
 export function ObserverPage({ t, language, agents, state, initialSessionId, onState, onAdd, onContinued, onOpenSettings }: ContinueHandlers & {
   t: Messages; language: string; agents: AgentHostApi; state: HostState; onState: (state: HostState) => void; onAdd: () => void;
@@ -18,9 +25,14 @@ export function ObserverPage({ t, language, agents, state, initialSessionId, onS
   const sessions = state.sessions.filter(item => item.control === 'observed');
   const [chosen, setChosen] = useState<string | undefined>(initialSessionId);
   const selected = sessions.find(item => item.id === chosen) ?? sessions[0];
+  const selectedId = selected?.id;
   const [loaded, setLoaded] = useState<{ id: string; session?: PortableSession; error?: string }>();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
+  const { events } = useSessionEvents(agents, selectedId);
+  const transcript = useMemo(() => projectTranscript(events), [events]);
+  const changedFiles = useMemo(() => projectChangedFiles(events, selected?.observation?.projectPath), [events, selected?.observation?.projectPath]);
+  const previewAttachment = useMemo(() => selectedId ? attachmentPreviewLoader(agents, selectedId) : undefined, [agents, selectedId]);
 
   useEffect(() => {
     if (!selected?.id) return;
@@ -69,7 +81,13 @@ export function ObserverPage({ t, language, agents, state, initialSessionId, onS
             <ContinueInExtalia t={t} agents={agents} state={state} source={{ kind: 'observed', id: selected.id }}
               {...(observation?.projectPath ? { projectPath: observation.projectPath } : {})} onContinued={onContinued} onOpenSettings={onOpenSettings} />
           ) : null}
-          {content?.error ? <p className="form-error" role="alert">{content.error}</p> : !content?.session ? <p>{t.common.loading}</p> : <LibraryTranscript t={t} messages={content.session.messages} />}
+          {transcript.length || content?.session
+            ? <MessageFileProvider key={selected.id} t={t} agents={agents} workspaces={state.workspaces} workspaceId={selected.workspaceId} projectPath={observation?.projectPath}>
+                {transcript.length
+                  ? <ConversationTabs t={t} language={language} files={changedFiles}><TranscriptView t={t} items={transcript} language={language} onDecide={async () => false} previewAttachment={previewAttachment} /></ConversationTabs>
+                  : <LibraryTranscript t={t} messages={content?.session?.messages ?? []} />}
+              </MessageFileProvider>
+            : content?.error ? <p className="form-error" role="alert">{content.error}</p> : <p>{t.common.loading}</p>}
         </>}
       </section>
     </div>

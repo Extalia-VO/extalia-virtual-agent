@@ -1,0 +1,1232 @@
+{
+  "cases": [
+    {
+      "name": "legacy custom workspace",
+      "valid": true,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "identity-map",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "bindings": [
+          {
+            "entityKind": "session",
+            "source": {
+              "family": "extalia.v0",
+              "system": "extalia",
+              "instanceId": "bridge-a",
+              "workspaceId": "custom-workspace",
+              "id": "s_abc123"
+            },
+            "canonicalId": "00000003-1111-4111-8111-111111111111"
+          }
+        ]
+      }
+    },
+    {
+      "name": "empty map",
+      "valid": true,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "identity-map",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "bindings": []
+      }
+    },
+    {
+      "name": "legacy workspace generator ID",
+      "valid": true,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "identity-map",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "bindings": [
+          {
+            "entityKind": "workspace",
+            "source": {
+              "family": "extalia.v0",
+              "system": "extalia",
+              "instanceId": "bridge-a",
+              "workspaceId": "custom-workspace",
+              "id": "w_abc123"
+            },
+            "canonicalId": "00000003-1111-4111-8111-111111111111"
+          }
+        ]
+      }
+    },
+    {
+      "name": "orchestration UUID source",
+      "valid": true,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "identity-map",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "bindings": [
+          {
+            "entityKind": "session",
+            "source": {
+              "family": "orchestration.v1",
+              "system": "extalia",
+              "instanceId": "bridge-a",
+              "workspaceId": "00000008-1111-4111-8111-111111111111",
+              "id": "00000009-1111-4111-8111-111111111111"
+            },
+            "canonicalId": "00000003-1111-4111-8111-111111111111"
+          }
+        ]
+      }
+    },
+    {
+      "name": "external opaque ID",
+      "valid": true,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "identity-map",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "bindings": [
+          {
+            "entityKind": "session",
+            "source": {
+              "family": "external",
+              "system": "custom-adapter",
+              "instanceId": "bridge-a",
+              "workspaceId": "custom-workspace",
+              "id": "opaque/source:42"
+            },
+            "canonicalId": "00000003-1111-4111-8111-111111111111"
+          }
+        ]
+      }
+    },
+    {
+      "name": "same raw ID different instanceId",
+      "valid": true,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "identity-map",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "bindings": [
+          {
+            "entityKind": "session",
+            "source": {
+              "family": "extalia.v0",
+              "system": "extalia",
+              "instanceId": "bridge-a",
+              "workspaceId": "custom-workspace",
+              "id": "s_abc123"
+            },
+            "canonicalId": "00000003-1111-4111-8111-111111111111"
+          },
+          {
+            "entityKind": "session",
+            "source": {
+              "family": "extalia.v0",
+              "system": "extalia",
+              "instanceId": "bridge-b",
+              "workspaceId": "custom-workspace",
+              "id": "s_abc123"
+            },
+            "canonicalId": "00000004-1111-4111-8111-111111111111"
+          }
+        ]
+      }
+    },
+    {
+      "name": "same raw ID different workspaceId",
+      "valid": true,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "identity-map",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "bindings": [
+          {
+            "entityKind": "session",
+            "source": {
+              "family": "extalia.v0",
+              "system": "extalia",
+              "instanceId": "bridge-a",
+              "workspaceId": "custom-workspace",
+              "id": "s_abc123"
+            },
+            "canonicalId": "00000003-1111-4111-8111-111111111111"
+          },
+          {
+            "entityKind": "session",
+            "source": {
+              "family": "extalia.v0",
+              "system": "extalia",
+              "instanceId": "bridge-a",
+              "workspaceId": "other-workspace",
+              "id": "s_abc123"
+            },
+            "canonicalId": "00000004-1111-4111-8111-111111111111"
+          }
+        ]
+      }
+    },
+    {
+      "name": "same raw ID different family",
+      "valid": true,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "identity-map",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "bindings": [
+          {
+            "entityKind": "session",
+            "source": {
+              "family": "extalia.v0",
+              "system": "extalia",
+              "instanceId": "bridge-a",
+              "workspaceId": "custom-workspace",
+              "id": "s_abc123"
+            },
+            "canonicalId": "00000003-1111-4111-8111-111111111111"
+          },
+          {
+            "entityKind": "session",
+            "source": {
+              "family": "external",
+              "system": "extalia",
+              "instanceId": "bridge-a",
+              "workspaceId": "custom-workspace",
+              "id": "s_abc123"
+            },
+            "canonicalId": "00000004-1111-4111-8111-111111111111"
+          }
+        ]
+      }
+    },
+    {
+      "name": "separator-safe source tuple",
+      "valid": true,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "identity-map",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "bindings": [
+          {
+            "entityKind": "session",
+            "source": {
+              "family": "extalia.v0",
+              "system": "extalia",
+              "instanceId": "a|b",
+              "workspaceId": "c",
+              "id": "s_abc123"
+            },
+            "canonicalId": "00000003-1111-4111-8111-111111111111"
+          },
+          {
+            "entityKind": "session",
+            "source": {
+              "family": "extalia.v0",
+              "system": "extalia",
+              "instanceId": "a",
+              "workspaceId": "b|c",
+              "id": "s_abc123"
+            },
+            "canonicalId": "00000004-1111-4111-8111-111111111111"
+          }
+        ]
+      }
+    },
+    {
+      "name": "invalid protocol 0",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.v0",
+        "schemaVersion": 1,
+        "kind": "identity-map",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "bindings": [
+          {
+            "entityKind": "session",
+            "source": {
+              "family": "extalia.v0",
+              "system": "extalia",
+              "instanceId": "bridge-a",
+              "workspaceId": "custom-workspace",
+              "id": "s_abc123"
+            },
+            "canonicalId": "00000003-1111-4111-8111-111111111111"
+          }
+        ]
+      }
+    },
+    {
+      "name": "invalid protocol 1",
+      "valid": false,
+      "value": {
+        "protocol": "orchestration.v1",
+        "schemaVersion": 1,
+        "kind": "identity-map",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "bindings": [
+          {
+            "entityKind": "session",
+            "source": {
+              "family": "extalia.v0",
+              "system": "extalia",
+              "instanceId": "bridge-a",
+              "workspaceId": "custom-workspace",
+              "id": "s_abc123"
+            },
+            "canonicalId": "00000003-1111-4111-8111-111111111111"
+          }
+        ]
+      }
+    },
+    {
+      "name": "invalid schemaVersion 0",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": "1.0",
+        "kind": "identity-map",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "bindings": [
+          {
+            "entityKind": "session",
+            "source": {
+              "family": "extalia.v0",
+              "system": "extalia",
+              "instanceId": "bridge-a",
+              "workspaceId": "custom-workspace",
+              "id": "s_abc123"
+            },
+            "canonicalId": "00000003-1111-4111-8111-111111111111"
+          }
+        ]
+      }
+    },
+    {
+      "name": "invalid schemaVersion 1",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": "1",
+        "kind": "identity-map",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "bindings": [
+          {
+            "entityKind": "session",
+            "source": {
+              "family": "extalia.v0",
+              "system": "extalia",
+              "instanceId": "bridge-a",
+              "workspaceId": "custom-workspace",
+              "id": "s_abc123"
+            },
+            "canonicalId": "00000003-1111-4111-8111-111111111111"
+          }
+        ]
+      }
+    },
+    {
+      "name": "invalid schemaVersion 2",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": true,
+        "kind": "identity-map",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "bindings": [
+          {
+            "entityKind": "session",
+            "source": {
+              "family": "extalia.v0",
+              "system": "extalia",
+              "instanceId": "bridge-a",
+              "workspaceId": "custom-workspace",
+              "id": "s_abc123"
+            },
+            "canonicalId": "00000003-1111-4111-8111-111111111111"
+          }
+        ]
+      }
+    },
+    {
+      "name": "invalid schemaVersion 3",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 2,
+        "kind": "identity-map",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "bindings": [
+          {
+            "entityKind": "session",
+            "source": {
+              "family": "extalia.v0",
+              "system": "extalia",
+              "instanceId": "bridge-a",
+              "workspaceId": "custom-workspace",
+              "id": "s_abc123"
+            },
+            "canonicalId": "00000003-1111-4111-8111-111111111111"
+          }
+        ]
+      }
+    },
+    {
+      "name": "invalid schemaVersion 4",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": null,
+        "kind": "identity-map",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "bindings": [
+          {
+            "entityKind": "session",
+            "source": {
+              "family": "extalia.v0",
+              "system": "extalia",
+              "instanceId": "bridge-a",
+              "workspaceId": "custom-workspace",
+              "id": "s_abc123"
+            },
+            "canonicalId": "00000003-1111-4111-8111-111111111111"
+          }
+        ]
+      }
+    },
+    {
+      "name": "invalid kind 0",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "manifest",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "bindings": [
+          {
+            "entityKind": "session",
+            "source": {
+              "family": "extalia.v0",
+              "system": "extalia",
+              "instanceId": "bridge-a",
+              "workspaceId": "custom-workspace",
+              "id": "s_abc123"
+            },
+            "canonicalId": "00000003-1111-4111-8111-111111111111"
+          }
+        ]
+      }
+    },
+    {
+      "name": "invalid profileId 0",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "identity-map",
+        "profileId": "not-a-uuid",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "bindings": [
+          {
+            "entityKind": "session",
+            "source": {
+              "family": "extalia.v0",
+              "system": "extalia",
+              "instanceId": "bridge-a",
+              "workspaceId": "custom-workspace",
+              "id": "s_abc123"
+            },
+            "canonicalId": "00000003-1111-4111-8111-111111111111"
+          }
+        ]
+      }
+    },
+    {
+      "name": "invalid workspaceId 0",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "identity-map",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "w_abc123",
+        "bindings": [
+          {
+            "entityKind": "session",
+            "source": {
+              "family": "extalia.v0",
+              "system": "extalia",
+              "instanceId": "bridge-a",
+              "workspaceId": "custom-workspace",
+              "id": "s_abc123"
+            },
+            "canonicalId": "00000003-1111-4111-8111-111111111111"
+          }
+        ]
+      }
+    },
+    {
+      "name": "uppercase UUID",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "identity-map",
+        "profileId": "AAAAAAAA-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "bindings": [
+          {
+            "entityKind": "session",
+            "source": {
+              "family": "extalia.v0",
+              "system": "extalia",
+              "instanceId": "bridge-a",
+              "workspaceId": "custom-workspace",
+              "id": "s_abc123"
+            },
+            "canonicalId": "00000003-1111-4111-8111-111111111111"
+          }
+        ]
+      }
+    },
+    {
+      "name": "missing bindings",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "identity-map",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111"
+      }
+    },
+    {
+      "name": "missing bindings.0.source",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "identity-map",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "bindings": [
+          {
+            "entityKind": "session",
+            "canonicalId": "00000003-1111-4111-8111-111111111111"
+          }
+        ]
+      }
+    },
+    {
+      "name": "missing bindings.0.source.workspaceId",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "identity-map",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "bindings": [
+          {
+            "entityKind": "session",
+            "source": {
+              "family": "extalia.v0",
+              "system": "extalia",
+              "instanceId": "bridge-a",
+              "id": "s_abc123"
+            },
+            "canonicalId": "00000003-1111-4111-8111-111111111111"
+          }
+        ]
+      }
+    },
+    {
+      "name": "missing bindings.0.canonicalId",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "identity-map",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "bindings": [
+          {
+            "entityKind": "session",
+            "source": {
+              "family": "extalia.v0",
+              "system": "extalia",
+              "instanceId": "bridge-a",
+              "workspaceId": "custom-workspace",
+              "id": "s_abc123"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "unknown field []",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "identity-map",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "bindings": [
+          {
+            "entityKind": "session",
+            "source": {
+              "family": "extalia.v0",
+              "system": "extalia",
+              "instanceId": "bridge-a",
+              "workspaceId": "custom-workspace",
+              "id": "s_abc123"
+            },
+            "canonicalId": "00000003-1111-4111-8111-111111111111"
+          }
+        ],
+        "unexpected": true
+      }
+    },
+    {
+      "name": "unknown field ['bindings', 0]",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "identity-map",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "bindings": [
+          {
+            "entityKind": "session",
+            "source": {
+              "family": "extalia.v0",
+              "system": "extalia",
+              "instanceId": "bridge-a",
+              "workspaceId": "custom-workspace",
+              "id": "s_abc123"
+            },
+            "canonicalId": "00000003-1111-4111-8111-111111111111",
+            "unexpected": true
+          }
+        ]
+      }
+    },
+    {
+      "name": "unknown field ['bindings', 0, 'source']",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "identity-map",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "bindings": [
+          {
+            "entityKind": "session",
+            "source": {
+              "family": "extalia.v0",
+              "system": "extalia",
+              "instanceId": "bridge-a",
+              "workspaceId": "custom-workspace",
+              "id": "s_abc123",
+              "unexpected": true
+            },
+            "canonicalId": "00000003-1111-4111-8111-111111111111"
+          }
+        ]
+      }
+    },
+    {
+      "name": "invalid source family 0",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "identity-map",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "bindings": [
+          {
+            "entityKind": "session",
+            "source": {
+              "family": "constructor",
+              "system": "extalia",
+              "instanceId": "bridge-a",
+              "workspaceId": "custom-workspace",
+              "id": "s_abc123"
+            },
+            "canonicalId": "00000003-1111-4111-8111-111111111111"
+          }
+        ]
+      }
+    },
+    {
+      "name": "invalid source family 1",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "identity-map",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "bindings": [
+          {
+            "entityKind": "session",
+            "source": {
+              "family": "__proto__",
+              "system": "extalia",
+              "instanceId": "bridge-a",
+              "workspaceId": "custom-workspace",
+              "id": "s_abc123"
+            },
+            "canonicalId": "00000003-1111-4111-8111-111111111111"
+          }
+        ]
+      }
+    },
+    {
+      "name": "invalid source family 2",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "identity-map",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "bindings": [
+          {
+            "entityKind": "session",
+            "source": {
+              "family": "unknown",
+              "system": "extalia",
+              "instanceId": "bridge-a",
+              "workspaceId": "custom-workspace",
+              "id": "s_abc123"
+            },
+            "canonicalId": "00000003-1111-4111-8111-111111111111"
+          }
+        ]
+      }
+    },
+    {
+      "name": "invalid source system 0",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "identity-map",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "bindings": [
+          {
+            "entityKind": "session",
+            "source": {
+              "family": "extalia.v0",
+              "system": "codex",
+              "instanceId": "bridge-a",
+              "workspaceId": "custom-workspace",
+              "id": "s_abc123"
+            },
+            "canonicalId": "00000003-1111-4111-8111-111111111111"
+          }
+        ]
+      }
+    },
+    {
+      "name": "invalid source instanceId 0",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "identity-map",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "bindings": [
+          {
+            "entityKind": "session",
+            "source": {
+              "family": "extalia.v0",
+              "system": "extalia",
+              "instanceId": "",
+              "workspaceId": "custom-workspace",
+              "id": "s_abc123"
+            },
+            "canonicalId": "00000003-1111-4111-8111-111111111111"
+          }
+        ]
+      }
+    },
+    {
+      "name": "invalid source instanceId 1",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "identity-map",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "bindings": [
+          {
+            "entityKind": "session",
+            "source": {
+              "family": "extalia.v0",
+              "system": "extalia",
+              "instanceId": "\n",
+              "workspaceId": "custom-workspace",
+              "id": "s_abc123"
+            },
+            "canonicalId": "00000003-1111-4111-8111-111111111111"
+          }
+        ]
+      }
+    },
+    {
+      "name": "invalid source instanceId 2",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "identity-map",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "bindings": [
+          {
+            "entityKind": "session",
+            "source": {
+              "family": "extalia.v0",
+              "system": "extalia",
+              "instanceId": "\ufeff",
+              "workspaceId": "custom-workspace",
+              "id": "s_abc123"
+            },
+            "canonicalId": "00000003-1111-4111-8111-111111111111"
+          }
+        ]
+      }
+    },
+    {
+      "name": "invalid source instanceId 3",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "identity-map",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "bindings": [
+          {
+            "entityKind": "session",
+            "source": {
+              "family": "extalia.v0",
+              "system": "extalia",
+              "instanceId": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+              "workspaceId": "custom-workspace",
+              "id": "s_abc123"
+            },
+            "canonicalId": "00000003-1111-4111-8111-111111111111"
+          }
+        ]
+      }
+    },
+    {
+      "name": "invalid source workspaceId 0",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "identity-map",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "bindings": [
+          {
+            "entityKind": "session",
+            "source": {
+              "family": "extalia.v0",
+              "system": "extalia",
+              "instanceId": "bridge-a",
+              "workspaceId": "\t",
+              "id": "s_abc123"
+            },
+            "canonicalId": "00000003-1111-4111-8111-111111111111"
+          }
+        ]
+      }
+    },
+    {
+      "name": "invalid source workspaceId 1",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "identity-map",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "bindings": [
+          {
+            "entityKind": "session",
+            "source": {
+              "family": "extalia.v0",
+              "system": "extalia",
+              "instanceId": "bridge-a",
+              "workspaceId": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+              "id": "s_abc123"
+            },
+            "canonicalId": "00000003-1111-4111-8111-111111111111"
+          }
+        ]
+      }
+    },
+    {
+      "name": "invalid source id 0",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "identity-map",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "bindings": [
+          {
+            "entityKind": "session",
+            "source": {
+              "family": "extalia.v0",
+              "system": "extalia",
+              "instanceId": "bridge-a",
+              "workspaceId": "custom-workspace",
+              "id": ""
+            },
+            "canonicalId": "00000003-1111-4111-8111-111111111111"
+          }
+        ]
+      }
+    },
+    {
+      "name": "invalid source id 1",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "identity-map",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "bindings": [
+          {
+            "entityKind": "session",
+            "source": {
+              "family": "extalia.v0",
+              "system": "extalia",
+              "instanceId": "bridge-a",
+              "workspaceId": "custom-workspace",
+              "id": "a\u007fb"
+            },
+            "canonicalId": "00000003-1111-4111-8111-111111111111"
+          }
+        ]
+      }
+    },
+    {
+      "name": "invalid source id 2",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "identity-map",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "bindings": [
+          {
+            "entityKind": "session",
+            "source": {
+              "family": "extalia.v0",
+              "system": "extalia",
+              "instanceId": "bridge-a",
+              "workspaceId": "custom-workspace",
+              "id": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+            },
+            "canonicalId": "00000003-1111-4111-8111-111111111111"
+          }
+        ]
+      }
+    },
+    {
+      "name": "unknown entity kind",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "identity-map",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "bindings": [
+          {
+            "entityKind": "engine",
+            "source": {
+              "family": "extalia.v0",
+              "system": "extalia",
+              "instanceId": "bridge-a",
+              "workspaceId": "custom-workspace",
+              "id": "s_abc123"
+            },
+            "canonicalId": "00000003-1111-4111-8111-111111111111"
+          }
+        ]
+      }
+    },
+    {
+      "name": "non-UUID canonical",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "identity-map",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "bindings": [
+          {
+            "entityKind": "session",
+            "source": {
+              "family": "extalia.v0",
+              "system": "extalia",
+              "instanceId": "bridge-a",
+              "workspaceId": "custom-workspace",
+              "id": "s_abc123"
+            },
+            "canonicalId": "s_abc123"
+          }
+        ]
+      }
+    },
+    {
+      "name": "orchestration requires UUIDs",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "identity-map",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "bindings": [
+          {
+            "entityKind": "session",
+            "source": {
+              "family": "orchestration.v1",
+              "system": "extalia",
+              "instanceId": "bridge-a",
+              "workspaceId": "custom-workspace",
+              "id": "s_abc123"
+            },
+            "canonicalId": "00000003-1111-4111-8111-111111111111"
+          }
+        ]
+      }
+    },
+    {
+      "name": "external invalid system",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "identity-map",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "bindings": [
+          {
+            "entityKind": "session",
+            "source": {
+              "family": "external",
+              "system": "Invalid System",
+              "instanceId": "bridge-a",
+              "workspaceId": "custom-workspace",
+              "id": "s_abc123"
+            },
+            "canonicalId": "00000003-1111-4111-8111-111111111111"
+          }
+        ]
+      }
+    },
+    {
+      "name": "duplicate source and target",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "identity-map",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "bindings": [
+          {
+            "entityKind": "session",
+            "source": {
+              "family": "extalia.v0",
+              "system": "extalia",
+              "instanceId": "bridge-a",
+              "workspaceId": "custom-workspace",
+              "id": "s_abc123"
+            },
+            "canonicalId": "00000003-1111-4111-8111-111111111111"
+          },
+          {
+            "entityKind": "session",
+            "source": {
+              "family": "extalia.v0",
+              "system": "extalia",
+              "instanceId": "bridge-a",
+              "workspaceId": "custom-workspace",
+              "id": "s_abc123"
+            },
+            "canonicalId": "00000003-1111-4111-8111-111111111111"
+          }
+        ]
+      },
+      "schemaGap": true
+    },
+    {
+      "name": "duplicate source new target",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "identity-map",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "bindings": [
+          {
+            "entityKind": "session",
+            "source": {
+              "family": "extalia.v0",
+              "system": "extalia",
+              "instanceId": "bridge-a",
+              "workspaceId": "custom-workspace",
+              "id": "s_abc123"
+            },
+            "canonicalId": "00000003-1111-4111-8111-111111111111"
+          },
+          {
+            "entityKind": "session",
+            "source": {
+              "family": "extalia.v0",
+              "system": "extalia",
+              "instanceId": "bridge-a",
+              "workspaceId": "custom-workspace",
+              "id": "s_abc123"
+            },
+            "canonicalId": "00000004-1111-4111-8111-111111111111"
+          }
+        ]
+      },
+      "schemaGap": true
+    },
+    {
+      "name": "duplicate target new instance",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "identity-map",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "bindings": [
+          {
+            "entityKind": "session",
+            "source": {
+              "family": "extalia.v0",
+              "system": "extalia",
+              "instanceId": "bridge-a",
+              "workspaceId": "custom-workspace",
+              "id": "s_abc123"
+            },
+            "canonicalId": "00000003-1111-4111-8111-111111111111"
+          },
+          {
+            "entityKind": "session",
+            "source": {
+              "family": "extalia.v0",
+              "system": "extalia",
+              "instanceId": "bridge-b",
+              "workspaceId": "custom-workspace",
+              "id": "s_abc123"
+            },
+            "canonicalId": "00000003-1111-4111-8111-111111111111"
+          }
+        ]
+      },
+      "schemaGap": true
+    },
+    {
+      "name": "duplicate target other kind",
+      "valid": false,
+      "value": {
+        "protocol": "extalia.control.v1",
+        "schemaVersion": 1,
+        "kind": "identity-map",
+        "profileId": "00000001-1111-4111-8111-111111111111",
+        "workspaceId": "00000002-1111-4111-8111-111111111111",
+        "bindings": [
+          {
+            "entityKind": "session",
+            "source": {
+              "family": "extalia.v0",
+              "system": "extalia",
+              "instanceId": "bridge-a",
+              "workspaceId": "custom-workspace",
+              "id": "s_abc123"
+            },
+            "canonicalId": "00000003-1111-4111-8111-111111111111"
+          },
+          {
+            "entityKind": "workspace",
+            "source": {
+              "family": "extalia.v0",
+              "system": "extalia",
+              "instanceId": "bridge-a",
+              "workspaceId": "custom-workspace",
+              "id": "s_abc123"
+            },
+            "canonicalId": "00000003-1111-4111-8111-111111111111"
+          }
+        ]
+      },
+      "schemaGap": true
+    },
+    {
+      "name": "null root",
+      "valid": false,
+      "value": null
+    },
+    {
+      "name": "array root",
+      "valid": false,
+      "value": []
+    },
+    {
+      "name": "string root",
+      "valid": false,
+      "value": "extalia.control.v1"
+    }
+  ]
+}

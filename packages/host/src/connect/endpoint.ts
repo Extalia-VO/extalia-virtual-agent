@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { chmod, mkdir } from 'node:fs/promises';
 import path from 'node:path';
+import type { AgentAppId } from '@extalia/platform';
 import { writeFileAtomic } from '../jsonStore.js';
 import { readTextIfExists } from './util.js';
 
@@ -10,6 +11,19 @@ export const DEFAULT_HOOK_PORT = 4317;
 export const hooksDirectory = (extaliaHome: string) => path.join(extaliaHome, 'hooks');
 export const tokenFile = (extaliaHome: string) => path.join(hooksDirectory(extaliaHome), 'token');
 export const endpointFile = (extaliaHome: string) => path.join(hooksDirectory(extaliaHome), 'endpoint.json');
+export const hookTargetsFile = (extaliaHome: string) => path.join(hooksDirectory(extaliaHome), 'targets.json');
+
+/** Explicit per-app overrides; never overwrite the endpoint owned by a running host. */
+export async function readHookTargets(extaliaHome: string): Promise<Partial<Record<AgentAppId, number>>> {
+  try {
+    const value: unknown = JSON.parse((await readTextIfExists(hookTargetsFile(extaliaHome))) ?? '{}');
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+    return Object.fromEntries((['codex', 'claude', 'gemini', 'antigravity', 'hermes'] as const).flatMap(app => {
+      const port: unknown = (value as Record<string, unknown>)[app];
+      return Number.isInteger(port) && (port as number) > 0 && (port as number) < 65536 ? [[app, port]] : [];
+    }));
+  } catch { return {}; }
+}
 
 const TOKEN_PATTERN = /^[0-9a-f]{64}$/;
 

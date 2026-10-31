@@ -4,6 +4,7 @@ import { composeTurn, type TurnAttachment } from './attachments.js';
 import { ProviderError, type ModelMessage, type ModelProvider, type ToolCall, type ToolResultEntry } from './model.js';
 import { checkedVerdict, decide, offersAccess, POLICY_UNAVAILABLE, type PermissionRequest, type PermissionVerdict } from './policy.js';
 import { validateArguments, type AnyTool, type ToolAccess } from './tools.js';
+import type { LocalToolPipelines } from './localOperations.js';
 
 /**
  * One agent turn: send the conversation to the model, run the tools it asks
@@ -46,6 +47,8 @@ export interface TurnOptions {
   signal: AbortSignal;
   maxSteps?: number;
   newId?: () => string;
+  /** Internal native-mission lifecycle gate; tracks complete tool pipelines, including preflight waits. */
+  localOperations?: LocalToolPipelines;
 }
 
 export type TurnOutcome = 'completed' | 'failed' | 'cancelled' | 'refused' | 'step-limit';
@@ -162,7 +165,12 @@ export async function runTurn(options: TurnOptions): Promise<TurnResult> {
       // Runs of parallel-safe calls (for example several delegations) execute together, in order of results.
       let end = index + 1;
       if (parallel(result.toolCalls[index]!)) while (end < result.toolCalls.length && parallel(result.toolCalls[end]!)) end++;
-      results.push(...await Promise.all(result.toolCalls.slice(index, end).map(call => runTool(call, options, newId))));
+      const calls = result.toolCalls.slice(index, end);
+      // Reserve every branch before any starts: an early failure must not hide an unstarted sibling.
+      const pipelines = calls.map(() => options.localOperations?.reserveToolPipeline());
+      results.push(...await Promise.all(calls.map((call, branch) => pipelines[branch]
+        ? pipelines[branch]!.run(() => runTool(call, options, newId))
+        : runTool(call, options, newId))));
       index = end;
     }
     // Every tool call needs a result, even when the turn was stopped part-way.
@@ -177,6 +185,7 @@ export async function runTurn(options: TurnOptions): Promise<TurnResult> {
 
 async function runTool(call: ToolCall, options: TurnOptions, newId: () => string): Promise<ToolResultEntry> {
   const { emit, signal } = options;
+  options.localOperations?.assertOpen();
   const failure = (content: string): ToolResultEntry => ({ toolCallId: call.id, name: call.name, content, isError: true });
   const tool = options.tools.find(item => item.name === call.name);
   if (!tool) return failure(`Unknown tool "${call.name}". Available tools: ${options.tools.filter(item => offersAccess(item.access, options.permissionMode)).map(item => item.name).join(', ')}.`);
@@ -204,6 +213,7 @@ async function runTool(call: ToolCall, options: TurnOptions, newId: () => string
     const request: PermissionRequest = { access: tool.access, mode, permissions: { ...options.permissions }, sessionGrants: [...options.sessionGrants] };
     try { verdict = checkedVerdict(await options.checkPermission(request)); } catch { verdict = POLICY_UNAVAILABLE; }
   } else verdict = { decision: decide(tool.access, options.permissions, options.sessionGrants, mode) };
+  options.localOperations?.assertOpen();
   const decision = verdict.decision;
   if (decision === 'deny') {
     // Plan mode (or an unavailable decision point): refused without asking, shown like any failed tool call.
@@ -220,20 +230,25 @@ async function runTool(call: ToolCall, options: TurnOptions, newId: () => string
     emit({ type: 'agent.state', state: 'waiting', summary: description.label });
     emit({ type: 'approval.requested', approvalId, action: description.label, ...(description.detail ? { detail: description.detail } : {}), ...(description.risk ? { risk: description.risk } : {}) });
     let outcome: ApprovalOutcome;
+    let answered = false;
     try {
       outcome = await options.requestApproval({ approvalId, access: tool.access, action: description.label, ...(description.detail ? { detail: description.detail } : {}), ...(description.risk ? { risk: description.risk } : {}) });
+      answered = !options.signal.aborted;
     } catch {
       outcome = 'reject';
     }
-    emit({ type: 'approval.resolved', approvalId, decision: outcome === 'reject' ? 'rejected' : 'granted', by: 'user' });
+    options.localOperations?.assertOpen();
+    emit({ type: 'approval.resolved', approvalId, decision: outcome === 'reject' ? 'rejected' : 'granted', by: 'user', ...(answered ? { choice: outcome } : {}) });
     if (outcome === 'session') options.sessionGrants.add(tool.access);
     if (outcome === 'reject') return failure('The user declined this action. Do not retry it unchanged; continue without it or ask the user.');
   }
 
+  options.localOperations?.assertOpen();
   emit({ type: 'agent.state', state: 'working', activity: tool.kind, summary: description.label, ...(description.target ? { target: description.target } : {}) });
   emit({ type: 'tool.started', toolCallId: call.id, tool: tool.name, kind: tool.kind, label: description.label, ...(description.target ? { target: description.target } : {}) });
   let outcome;
   try {
+    options.localOperations?.assertOpen();
     outcome = await tool.run(call.input, { signal, toolCallId: call.id, emit: body => emit(body) });
   } catch (error) {
     outcome = { ok: false, output: error instanceof Error ? error.message : String(error) };

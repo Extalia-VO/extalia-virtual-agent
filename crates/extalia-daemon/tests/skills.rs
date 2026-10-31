@@ -33,6 +33,10 @@ const UUID_WORKSPACE: &str = "00000000-0000-4000-8000-0000000000aa";
 const SKILL_MD: &str = "---\nname: demo\ndescription: Demo skill\n---\nDo the \"thing\".\n";
 const USER: &str = "user:local";
 
+#[path = "skills/preflight.rs"]
+mod preflight;
+#[path = "skills/routing.rs"]
+mod routing;
 mod support;
 
 use support::Isolation;

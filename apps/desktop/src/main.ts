@@ -16,12 +16,42 @@ import { checkAfterLaunch, startUpdater } from './updater';
 
 const smokeTest = process.argv.includes('--smoke-test');
 let smokeDataDirectory: string | undefined;
+let smokeHomeDirectory: string | undefined;
 if (smokeTest) {
+  if (process.platform === 'darwin') {
+    // Hosted Macs can blocklist WebGL; use native ANGLE because this Electron
+    // distribution lacks the Vulkan loader required for macOS SwiftShader.
+    app.commandLine.appendSwitch('ignore-gpu-blocklist');
+  } else if (process.platform === 'linux' || process.platform === 'win32') {
+    // Headless CI runners have no usable GPU. Opt into Chromium's software WebGL
+    // only for the smoke test's bundled UI, before Electron initializes graphics.
+    app.commandLine.appendSwitch('use-gl', 'angle');
+    app.commandLine.appendSwitch('use-angle', 'swiftshader-webgl');
+    app.commandLine.appendSwitch('enable-unsafe-swiftshader');
+  }
   // Smoke tests use a throwaway profile and agent data directory so they never touch the user's data.
   const profile = mkdtempSync(path.join(tmpdir(), 'extalia-smoke-'));
   app.setPath('userData', profile);
+  smokeHomeDirectory = path.join(profile, 'home');
+  mkdirSync(smokeHomeDirectory);
   smokeDataDirectory = path.join(profile, 'extalia-home');
   mkdirSync(smokeDataDirectory);
+  // Keep Node/Electron helpers that consult process.env (including os.homedir)
+  // inside the disposable profile too. These are process-local overrides only.
+  process.env.HOME = smokeHomeDirectory;
+  process.env.USERPROFILE = smokeHomeDirectory;
+  process.env.APPDATA = path.join(smokeHomeDirectory, 'AppData', 'Roaming');
+  process.env.LOCALAPPDATA = path.join(smokeHomeDirectory, 'AppData', 'Local');
+  process.env.XDG_CONFIG_HOME = path.join(smokeHomeDirectory, '.config');
+  process.env.XDG_DATA_HOME = path.join(smokeHomeDirectory, '.local', 'share');
+  process.env.XDG_CACHE_HOME = path.join(smokeHomeDirectory, '.cache');
+  process.env.XDG_STATE_HOME = path.join(smokeHomeDirectory, '.local', 'state');
+  process.env.CODEX_HOME = path.join(smokeHomeDirectory, '.codex');
+  process.env.CLAUDE_CONFIG_DIR = path.join(smokeHomeDirectory, '.claude');
+  process.env.GEMINI_CLI_HOME = path.join(smokeHomeDirectory, '.gemini');
+  process.env.ANTIGRAVITY_CONFIG_DIR = path.join(smokeHomeDirectory, '.gemini', 'config');
+  process.env.ANTIGRAVITY_HOME = path.join(smokeHomeDirectory, '.gemini', 'antigravity');
+  process.env.HERMES_HOME = path.join(smokeHomeDirectory, '.hermes');
   process.env.EXTALIA_HOME = smokeDataDirectory;
   process.env.EXTALIA_SECRET_STORE = 'memory';
 } else if (app.isPackaged) {
@@ -62,7 +92,13 @@ function serveWebBuild(): void {
     if (!file) return new Response('Not found', { status: 404 });
     const media = MEDIA_TYPES[path.extname(file).toLowerCase()];
     if (media) return serveMedia(file, media, request.headers.get('range'));
-    const response = await net.fetch(pathToFileURL(file).toString());
+    let response: Response;
+    try {
+      response = await net.fetch(pathToFileURL(file).toString());
+    } catch {
+      console.error('Extalia asset request failed:', url.pathname);
+      return new Response('Not found', { status: 404 });
+    }
     if (!file.endsWith('.html')) return response;
     const headers = new Headers(response.headers);
     headers.set('Content-Security-Policy', CONTENT_SECURITY_POLICY);
@@ -138,7 +174,7 @@ if (!app.requestSingleInstanceLock()) {
   app.whenReady().then(() => {
     serveWebBuild();
     registerIpc();
-    const agents = startAgents({ devServer, dataDirectory: smokeDataDirectory });
+    const agents = startAgents({ devServer, dataDirectory: smokeDataDirectory, smokeTest, homeDirectory: smokeHomeDirectory });
     const updates = startUpdater({ smokeTest, work: agents.work, trusted });
     registerRestart({ smokeTest, work: agents.work, trusted });
     registerNotifications({ smokeTest, devServer });

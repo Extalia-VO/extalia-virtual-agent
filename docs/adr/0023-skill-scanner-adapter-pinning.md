@@ -2,6 +2,10 @@
 
 Status: Accepted (2026-10-21; the owner accepted the recommended option). The scanner pin itself stays open until its source, licence, version and OS support are verified.
 
+Current host ingress enforcement is tightened in [ADR 0049](0049-mandatory-external-skill-ingress.md):
+legacy consent cannot bypass scanning; external catalogs and reads require fresh
+registry verification. This does not make the production scanner available.
+
 ## Context
 
 FR-16 makes inspection by the scanner the PRD names (NVIDIA SkillSpector) mandatory before
@@ -68,6 +72,11 @@ The owner must confirm all of the above from the official source before W3 depen
 - Scanner upgrades are deliberate PRs with refreshed fixtures and mass rescans.
 
 ## Open questions for the owner
+
+The [2026-10-30 source audit](../architecture/skill-scanner-evidence.md) records
+an observed official release/tag identity and tagged runtime/network declarations.
+It does not verify an installed artifact, report contract, isolation or platform
+support, and does not close the pin or activate a scanner.
 
 1. Confirm the official source, licence compatibility, version to pin, and supported OSes
    (especially macOS and Windows).

@@ -1,0 +1,221 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:extalia:protocol:control-delegation-envelope:v1",
+  "title": "Delegation intent v1 (unresolved authority)",
+  "description": "Generated from @extalia/protocol by tooling/generate-schemas.mjs; do not edit. The TypeScript validators remain the reference. Validator-only checks: expiry after issue; root/source/parent correspondence and unique acyclic task lineage; string lengths in UTF-16 code units (maxLength here counts code points).",
+  "$ref": "#/$defs/ControlDelegationEnvelope",
+  "$defs": {
+    "ControlDelegationEnvelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "protocol",
+        "schemaVersion",
+        "kind",
+        "delegationId",
+        "profileId",
+        "workspaceId",
+        "rootMissionId",
+        "rootRunId",
+        "rootEngineId",
+        "sourceEngineId",
+        "targetEngineId",
+        "parentTaskId",
+        "taskId",
+        "executionId",
+        "engineGeneration",
+        "taskDefinitionVersion",
+        "taskDefinitionDigest",
+        "authorityRef",
+        "lineage",
+        "hopRemaining",
+        "childRemaining",
+        "budget",
+        "idempotencyKey",
+        "issuedAt",
+        "expiresAt"
+      ],
+      "properties": {
+        "protocol": {
+          "const": "extalia.control.v1"
+        },
+        "schemaVersion": {
+          "const": 1
+        },
+        "kind": {
+          "const": "delegation"
+        },
+        "delegationId": {
+          "$ref": "#/$defs/Uuid"
+        },
+        "profileId": {
+          "$ref": "#/$defs/Uuid"
+        },
+        "workspaceId": {
+          "$ref": "#/$defs/Uuid"
+        },
+        "rootMissionId": {
+          "$ref": "#/$defs/Uuid"
+        },
+        "rootRunId": {
+          "$ref": "#/$defs/Uuid"
+        },
+        "rootEngineId": {
+          "type": "string",
+          "enum": [
+            "native",
+            "hermes",
+            "openclaw"
+          ]
+        },
+        "sourceEngineId": {
+          "type": "string",
+          "enum": [
+            "native",
+            "hermes",
+            "openclaw"
+          ]
+        },
+        "targetEngineId": {
+          "type": "string",
+          "enum": [
+            "native",
+            "hermes",
+            "openclaw"
+          ]
+        },
+        "parentTaskId": {
+          "$ref": "#/$defs/Uuid"
+        },
+        "taskId": {
+          "$ref": "#/$defs/Uuid"
+        },
+        "executionId": {
+          "$ref": "#/$defs/Uuid"
+        },
+        "engineGeneration": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "taskDefinitionVersion": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "taskDefinitionDigest": {
+          "$ref": "#/$defs/Sha256Digest"
+        },
+        "authorityRef": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "approvalRef": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "lineage": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 32,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "engineId",
+              "taskId"
+            ],
+            "properties": {
+              "engineId": {
+                "type": "string",
+                "enum": [
+                  "native",
+                  "hermes",
+                  "openclaw"
+                ]
+              },
+              "taskId": {
+                "$ref": "#/$defs/Uuid"
+              }
+            }
+          }
+        },
+        "hopRemaining": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 32
+        },
+        "childRemaining": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000
+        },
+        "budget": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "maxWallClockMs",
+            "maxTokens",
+            "maxToolCalls",
+            "maxEstimatedCostMicrousd"
+          ],
+          "properties": {
+            "maxWallClockMs": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "maxTokens": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "maxToolCalls": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "maxEstimatedCostMicrousd": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            }
+          }
+        },
+        "idempotencyKey": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "issuedAt": {
+          "$ref": "#/$defs/UtcTimestamp"
+        },
+        "expiresAt": {
+          "$ref": "#/$defs/UtcTimestamp"
+        }
+      }
+    },
+    "Identifier": {
+      "description": "Nonblank text without control characters, at most 200 UTF-16 code units.",
+      "type": "string",
+      "maxLength": 200,
+      "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+      "allOf": [
+        {
+          "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+        }
+      ]
+    },
+    "Sha256Digest": {
+      "type": "string",
+      "description": "Lowercase hexadecimal SHA-256 digest.",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "UtcTimestamp": {
+      "type": "string",
+      "description": "UTC instant YYYY-MM-DDTHH:mm:ss[.sss]Z on a real calendar date.",
+      "pattern": "^(?:[0-9]{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12][0-9]|3[01])|(?:0[469]|11)-(?:0[1-9]|[12][0-9]|30)|02-(?:0[1-9]|1[0-9]|2[0-8]))|(?:[0-9]{2}(?:0[48]|[2468][048]|[13579][26])|(?:0[048]|[2468][048]|[13579][26])00)-02-29)T(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9](?:\\.[0-9]{1,3})?Z$"
+    },
+    "Uuid": {
+      "type": "string",
+      "description": "Lowercase RFC 9562 UUID, versions 1-8.",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    }
+  }
+}

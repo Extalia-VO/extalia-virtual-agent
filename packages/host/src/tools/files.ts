@@ -230,23 +230,59 @@ parentPort.postMessage({ matches, searched, skipped, truncated });
 `;
 
 function runSearch(data: Record<string, unknown>, timeoutMs: number, signal: AbortSignal): Promise<SearchResult | 'timeout' | 'cancelled'> {
+  if (signal.aborted) return Promise.resolve('cancelled');
   return new Promise((resolve, reject) => {
     const worker = new Worker(SEARCH_WORKER, { eval: true, workerData: data });
+    let finish: (() => void) | undefined;
     let settled = false;
-    const settle = (finish: () => void) => {
-      if (settled) return;
-      settled = true;
+    let exited = false;
+    let terminated = false;
+    let terminationError: Error | undefined;
+    const disarm = () => {
       clearTimeout(timer);
       signal.removeEventListener('abort', onAbort);
-      void worker.terminate();
-      finish();
+    };
+    const complete = () => {
+      // A result, cancellation or error is not physical settlement: the thread must exit first.
+      if (settled || !finish || (!exited && !terminated)) return;
+      settled = true;
+      disarm();
+      worker.off('message', onMessage);
+      worker.off('error', onError);
+      worker.off('exit', onExit);
+      if (terminationError) reject(terminationError);
+      else finish();
+    };
+    const settle = (outcome: () => void) => {
+      if (finish) return;
+      finish = outcome;
+      disarm();
+      worker.off('message', onMessage);
+      if (exited) { complete(); return; }
+      const failed = (cause: unknown) => {
+        terminationError = new Error('Search worker termination failed.', { cause });
+        // A failed terminate request does not prove the thread stopped. Keep observing exit.
+        complete();
+      };
+      try {
+        void worker.terminate().then(() => { terminated = true; complete(); }, failed);
+      } catch (error) { failed(error); }
+    };
+    const onMessage = (result: SearchResult) => settle(() => resolve(result));
+    const onError = (error: Error) => settle(() => reject(error));
+    const onExit = () => {
+      exited = true;
+      if (!finish) settle(() => reject(new Error('The search stopped unexpectedly.')));
+      else complete();
     };
     const onAbort = () => settle(() => resolve('cancelled'));
+    worker.once('message', onMessage);
+    worker.on('error', onError);
+    worker.once('exit', onExit);
     const timer = setTimeout(() => settle(() => resolve('timeout')), timeoutMs);
     signal.addEventListener('abort', onAbort, { once: true });
-    worker.once('message', (result: SearchResult) => settle(() => resolve(result)));
-    worker.once('error', error => settle(() => reject(error)));
-    worker.once('exit', () => settle(() => reject(new Error('The search stopped unexpectedly.'))));
+    // The signal may have changed while the worker was being constructed.
+    if (signal.aborted) onAbort();
   });
 }
 

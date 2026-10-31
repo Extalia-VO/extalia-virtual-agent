@@ -133,6 +133,88 @@ limit duration, reported tokens per mission/task and concurrency. Exhaustion sto
 admission (queued tasks become blocked) and refuses a running task's next model
 call; in-flight calls are not aborted for tokens. Unreported usage is unknown,
 never zero; a mission token budget with unknown usage fails closed. No cost is
-computed because no versioned price table exists. Durable leases, explicit
-recovery/reconciliation UI and write-capable isolated workers remain later
-stages. No performance/memory claim follows from this integration.
+computed because no versioned price table exists. No performance/memory claim
+follows from this integration.
+
+With the opt-in Rust core, `core.sqlite` owns canonical mission events and task
+leases behind the same host API. Gate 3.3A adds read-only recovery inspection
+([ADR 0030](../adr/0030-authoritative-mission-recovery-inspection.md)); the host
+checkpoint remains a separate display projection. Gate 3.3B adds independent
+30-second heartbeat renewal of exact task/lease/holder claims and strict expiry
+fencing ([ADR 0031](../adr/0031-native-lease-heartbeat-and-fencing.md)). Heartbeats
+do not grow the event journal. Tools require a fresh lease renewal before policy
+decisions; authority loss latches the runtime persistence-failure path, even
+when providers are silent. Restart and ignored cancellation retain uncertainty,
+never replay execution. Rust mission admission requires the heartbeat capability;
+an older daemon cannot silently fall back to TypeScript.
+
+Gate 3.3C adds a periodic daemon sweep sharing the single core store under a mutex
+([ADR 0032](../adr/0032-periodic-native-lease-reaping.md)). At most 16 affected
+missions are quarantined per transaction: an expired lease makes in-flight
+siblings unknown and the mission recovering, while queued and terminal tasks
+stay unchanged. Renewal and reaping serialize; neither can revive quarantine.
+The sweep continues while stdin is idle and stops when the request loop ends.
+Sweep failure latches mission, policy and skill mutations until daemon restart;
+canonical snapshots stay read-only. Knowledge indexing keeps its own worker.
+
+Gate 3.3D1 records immutable execution admissions in core schema 7 and once-only
+`turn-promise-settled` observations ([ADR 0033](../adr/0033-durable-execution-observations.md)).
+Admission identity binds the supervisor invocation, exact task/attempt/lease,
+profile, workspace and captured task/graph hashes. History without admission is
+never backfilled. Actual turn fulfillment/rejection may report late through its
+original daemon connection; abort, timeout, cleanup and restart cannot invent
+an observation. Recovery lists this evidence with its explicit limit, preserving
+unknown/recovering state, results and worktree ownership. A settled turn does not
+prove parallel tools drained, child exit or remote cancellation.
+
+Gate 3.3D2 seals and tracks raw provider/tool promises and complete tool pipelines
+([ADR 0034](../adr/0034-tracked-local-operation-drain.md)). Coverage version
+`extalia-native-local-v1` is selected by the trusted built-in host composition,
+not by model requests. Actual turn settlement, sealed admission and no outstanding
+tracked work are all required. Search waits for its known worker to terminate or
+exit; failed termination without exit retains pending work. Early parallel or
+preflight failure cannot hide siblings or start post-seal effects.
+
+Core schema 8 stores separate immutable local-drain proofs bound to the existing
+admission and prior weak observation. Counts describe actual raw calls only.
+Recovery can inspect this scoped evidence after reaping/restart; it never restores
+authority or releases quarantine/worktrees. Unknown/custom adapters, detached
+descendants, network shutdown and remote cancellation are not certified. Current
+mission tool wrappers still omit parallel metadata; the generic turn-loop hook
+also protects parallel use without enabling new mission parallelism.
+
+Gate 3.3D3 adds `mission.recoveryReview` ([ADR 0035](../adr/0035-atomic-canonical-recovery-review.md)):
+a single read transaction for canonical snapshot, execution evidence and complete
+mission/graph hashes. Its opaque profile-bound review digest includes late
+evidence and leases even when mission version/journal sequence are unchanged.
+The host prefers the coherent operation, refuses mixed fallback after failure,
+and rechecks local guards/identity after awaits. Legacy separate inspection stays
+informational. Missing admission IDs include never-started tasks; worktree
+ownership is always unverified. No review receipt, decision, closure or release
+is implemented. Future decisions must recompute the review in their write
+transaction and require applicable execution/worktree ownership and fencing.
+
+Core schema 9 adds a separate [provisional delegation allocation ledger](../adr/0037-provisional-delegation-reservations.md).
+Explicit scoped seeds, whole-subtree escrow, CAS and immutable receipts prevent
+double allocation within this local store. Bounded reconstruction checks balances,
+causal receipt chronology and revision accounting. Known-scope denials can persist
+only a conservative clock observation; SQL/precommit failures roll back allocation
+and clock together. Revocation is one-way and expiry/restart never refund capacity.
+The library API has no daemon/host/runtime caller and every result remains
+unverified and ineligible for dispatch. Mission state, source ownership, grant
+resolution, actual spending and physical settlement are unchanged.
+
+Core schema 10 adds [admission-bound native edit intents](../adr/0038-admission-bound-native-action-intents.md).
+Capture checks the actual admission plus exact live lease and write-capable running
+task/mission; it does not accept a caller's identity assertion alone. Parameter
+hashes, policy and skill references remain unverified, so every result stays
+ineligible for dispatch. No raw arguments are stored. Scoped replay, withdrawal,
+per-execution clock and immutable expiry history prevent request resurrection.
+Canonical profile recovery invalidates pending intents atomically with old leases;
+ordinary store opening is not profile recovery. No RPC/runtime or positive approval
+consumer is enabled, and legacy permission behavior is unchanged.
+
+Full gate 3.3 still needs physical-settlement reconciliation. Execution-time
+scoped approvals (3.4) and Rust-owned worktree
+fencing remain open. The Python worker and its embedded CPython distribution
+are not implemented; Python is not required for the current chat or mission loop.

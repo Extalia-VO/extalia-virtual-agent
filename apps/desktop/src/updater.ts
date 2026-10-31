@@ -1,8 +1,10 @@
 import type { UpdateChannel } from '@extalia/platform';
 import { BrowserWindow, app, ipcMain, type IpcMainInvokeEvent } from 'electron';
 import { autoUpdater } from 'electron-updater';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import { IPC, reply } from './ipc';
-import { UpdatePolicy, updateChannel, type UpdateDriver, type UpdaterEvent, type WorkState } from './updatePolicy';
+import { UpdatePolicy, supportsPackagedUpdates, updateChannel, type UpdateDriver, type UpdaterEvent, type WorkState } from './updatePolicy';
 
 /** Give the window time to settle before the first network request. */
 const LAUNCH_CHECK_DELAY_MS = 5_000;
@@ -37,13 +39,20 @@ function connectAutoUpdater(channel: UpdateChannel, handle: (event: UpdaterEvent
 
 export function startUpdater({ smokeTest, work, trusted }: UpdaterOptions): UpdatePolicy {
   const channel = updateChannel(process.env.EXTALIA_UPDATE_CHANNEL);
-  const supported = app.isPackaged && !smokeTest;
+  let macReleaseMode: unknown;
+  if (app.isPackaged && process.platform === 'darwin') {
+    try {
+      const manifest = JSON.parse(readFileSync(path.join(app.getAppPath(), 'package.json'), 'utf8'));
+      macReleaseMode = manifest.extaliaMacReleaseMode;
+    } catch { /* Unknown distribution modes do not start an automatic installer. */ }
+  }
+  const supported = supportsPackagedUpdates(app.isPackaged, smokeTest, process.platform, macReleaseMode);
   const policy: UpdatePolicy = new UpdatePolicy({
     current: app.getVersion(),
     channel,
     work,
     driver: supported ? connectAutoUpdater(channel, event => policy.handle(event)) : undefined,
-    unsupportedDetail: smokeTest ? 'Updates are disabled during smoke tests.' : 'Updates are installed by packaged builds.',
+    unsupportedDetail: smokeTest ? 'Updates are disabled during smoke tests.' : !app.isPackaged ? 'Updates are installed by packaged builds.' : undefined,
     onStatus: status => {
       for (const window of BrowserWindow.getAllWindows()) if (!window.isDestroyed()) window.webContents.send(IPC.updateStatus, status);
     },

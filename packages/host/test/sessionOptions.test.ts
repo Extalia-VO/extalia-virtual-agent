@@ -127,6 +127,8 @@ describe('session model and effort options (Extalia Native)', () => {
 });
 
 /** A stand-in `hermes`: `chat --help` prints a usage text (with `--reasoning` unless the name ends in `-old`); a turn records its arguments. */
+/** The fake Hermes is a `#!` script, which Windows cannot start directly. */
+const POSIX_SCRIPTS_ONLY = process.platform === 'win32';
 const FAKE_HERMES = `#!/usr/bin/env node
 const fs = require('node:fs');
 const path = require('node:path');
@@ -165,7 +167,7 @@ async function hermesSetup(name: string) {
 }
 
 describe('session model and effort options (Hermes Agent)', { timeout: 30_000 }, () => {
-  it('passes the model and, when Hermes supports it, the reasoning effort on the command line', async () => {
+  it.skipIf(POSIX_SCRIPTS_ONLY)('passes the model and, when Hermes supports it, the reasoning effort on the command line', async () => {
     const { runtime, host, events, workspace, calls } = await hermesSetup('hermes');
     expect(await host.modelChoices(workspace.id)).toEqual({ runtime: 'hermes', defaultModel: 'example/default-model', models: [], efforts: ['low', 'medium', 'high', 'xhigh', 'max'], permissionModes: ['workspace'] });
     const session = await host.createSession(workspace.id, { model: 'example/model-x', effort: 'high' });
@@ -178,7 +180,7 @@ describe('session model and effort options (Hermes Agent)', { timeout: 30_000 },
     expect(first!.args).not.toContain('--help');
   });
 
-  it('offers no effort for a Hermes version without --reasoning and refuses one', async () => {
+  it.skipIf(POSIX_SCRIPTS_ONLY)('offers no effort for a Hermes version without --reasoning and refuses one', async () => {
     const { runtime, host, events, workspace, calls } = await hermesSetup('hermes-old');
     expect((await host.modelChoices(workspace.id)).efforts).toEqual([]);
     await expect(host.createSession(workspace.id, { effort: 'low' })).rejects.toThrow(/Hermes Agent version/);

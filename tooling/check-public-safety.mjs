@@ -7,9 +7,8 @@
  * - e-mail addresses outside documentation/example domains;
  * - common credential formats;
  * - tracked .env files;
- * - 3D model files (.glb/.gltf/.fbx). Models derived from third-party packs have
- *   no redistribution license, so none may be tracked, staged or left untracked
- *   outside .gitignore. Keep them in the git-ignored apps/web/local-assets/ folder.
+ * - unregistered 3D model files (.glb/.gltf/.fbx). Only the validated licensed public
+ *   registry may be redistributed. Private models stay in ignored local-assets.
  * - maintainer-defined private terms, read from the untracked file
  *   `.extalia-private-terms` (one term per line) or EXTALIA_PRIVATE_TERMS
  *   (comma-separated). Those terms never need to be committed themselves.
@@ -21,12 +20,11 @@ import { execFileSync } from 'node:child_process';
 import { readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { ROOT } from './workspace.mjs';
+import { PUBLIC_MODEL_DIRECTORY, readModelMetadata, verifyPublicModels } from './public-models.mjs';
 
 const PLACEHOLDER_USERS = new Set(['someone', 'user', 'username', 'runner', 'me', 'you', 'example', 'name', 'shared', 'public', 'default', 'admin', 'jane', 'john', 'alice', 'bob']);
 const ALLOWED_EMAIL_DOMAINS = [/(^|\.)example\.(com|org|net)$/i, /(^|\.)users\.noreply\.github\.com$/i, /^noreply\.github\.com$/i, /^github\.com$/i];
 const THIRD_PARTY_TEXTS = new Set(['apps/web/public/fonts/Righteous-OFL.txt']);
-// Nothing is allow-listed: add a path here only with a license that permits redistribution.
-const ALLOWED_MODEL_FILES = new Set([]);
 const MODEL_FILE = /\.(glb|gltf|fbx)$/i;
 const SKIP = [/^pnpm-lock\.yaml$/, /\.(png|jpe?g|gif|webp|ico|glb|gltf|woff2?|ttf|otf|zip)$/i];
 
@@ -65,20 +63,27 @@ async function privateTerms() {
 const escape = value => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 const findings = [];
+const allowedModels = new Set();
+try {
+  for (const model of verifyPublicModels()) allowedModels.add(`${PUBLIC_MODEL_DIRECTORY}/${model.path}`);
+} catch (error) { findings.push(error.message); }
 const terms = (await privateTerms()).map(term => ({ term, pattern: new RegExp(`(^|[^A-Za-z0-9])${escape(term)}($|[^A-Za-z0-9])`, 'i') }));
 const files = await listFiles();
 
 for (const file of files) {
-  if (MODEL_FILE.test(file) && !ALLOWED_MODEL_FILES.has(file)) {
-    findings.push(`${file}: 3D model files must not be committed. Keep source-derived models in the git-ignored apps/web/local-assets/ folder (see apps/web/src/office/scene/avatars/README.md).`);
+  const registeredModel = allowedModels.has(file);
+  if (MODEL_FILE.test(file) && !registeredModel) {
+    findings.push(`${file}: unregistered 3D model. Only validated licensed registry entries may be committed; keep private source-derived models in the git-ignored apps/web/local-assets/ folder.`);
   }
   if (/(^|\/)\.env($|\.)/.test(file) && !file.endsWith('.env.example')) findings.push(`${file}: environment files must not be committed.`);
-  if (SKIP.some(pattern => pattern.test(file))) continue;
+  if (!registeredModel && SKIP.some(pattern => pattern.test(file))) continue;
   const full = path.join(ROOT, file);
   let info;
   try { info = await stat(full); } catch { continue; }
-  if (!info.isFile() || info.size > 2_000_000) continue;
-  const text = await readFile(full, 'utf8');
+  if (!info.isFile() || (!registeredModel && info.size > 2_000_000)) continue;
+  // Binary geometry is not prose. Its embedded JSON still receives every privacy
+  // and secret check, including maintainer-defined private terms.
+  const text = registeredModel ? JSON.stringify(readModelMetadata(full), null, 2) : await readFile(full, 'utf8');
   if (text.includes('\0')) continue;
   const thirdParty = THIRD_PARTY_TEXTS.has(file);
   text.split(/\r?\n/).forEach((line, index) => {

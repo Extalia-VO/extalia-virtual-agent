@@ -24,10 +24,17 @@ the result.
 | Host | How capabilities are provided |
 | --- | --- |
 | Desktop | Electron main process through a preload bridge (`window.extaliaDesktop`) with one audited IPC channel per method |
-| Web | Browser APIs where they exist (for example the directory picker); native features later through the Bridge |
+| Web | Browser APIs where available, with authenticated host-folder browsing through the Bridge |
 
 `apps/web/src/platform.ts` is the composition root and the only place that
 checks for the Desktop bridge.
+
+Workspace selection uses the native directory dialog on Desktop. Web uses
+`AgentHostApi.browseDirectories` on the Bridge computer; browser directory
+handles cannot reveal its absolute paths. The read-only listing contains at
+most 200 child directories, omits files and symlinks, and exposes home/parent/root
+navigation. `checkFolder` and `saveWorkspace` still validate the final selection
+and reject selecting a whole filesystem root as a project.
 
 ## Desktop shell security
 

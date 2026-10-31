@@ -1,15 +1,18 @@
+import type { DaemonMissionRecoveryReview } from './daemonExecutions.js';
 import {
   DAEMON_ERROR_CODES, DAEMON_MAX_DEADLINE_MS, DAEMON_MAX_FRAME_BYTES, DAEMON_OPS, DAEMON_PERMISSION_MODES,
   DAEMON_SCHEMA_VERSION, DAEMON_TOOL_ACCESS,
   type DaemonFrame, type DaemonFrameParseResult, type DaemonOp, type DaemonMissionSnapshot,
 } from './daemon.js';
 import { KNOWLEDGE_PARAMS, KNOWLEDGE_RESULTS, knowledgeJsonSchemaDefs } from './daemonKnowledgeRules.js';
+import { EXECUTION_PARAMS, EXECUTION_RESULTS, executionAdmission, executions, executionRecords } from './daemonExecutionRules.js';
+import { PLANNING_PARAMS, PLANNING_RESULTS } from './daemonPlanningRules.js';
 import { SKILL_PARAMS, SKILL_RESULTS, skillJsonSchemaDefs, skillReason } from './daemonSkillRules.js';
 import { schemaRef, type JsonSchema } from './jsonSchema.js';
 import type { OrchestrationContractKind } from './orchestration.js';
 import { parseOrchestration } from './orchestrationValidate.js';
 import {
-  array, boolean, count, enumeration, fail, isPlainObject, literal, number, object, optional, positive,
+  array, boolean, count, digest, enumeration, fail, isPlainObject, literal, number, object, optional, positive,
   rule, text, timestamp, UUID_PATTERN, uuid, withSchema, type Rule,
 } from './rules.js';
 import { MISSION_STATES, TASK_STATES } from './transitions.js';
@@ -27,6 +30,36 @@ const version = text(64);
 
 const missionCreate = object({ mission: contract('mission', 'Mission'), graph: contract('taskGraph', 'TaskGraph') });
 const commitEvent = contract('agentEvent', 'AgentEvent');
+const transitionShape = object({ missionId: uuid, taskId: uuid, eventId: uuid, from: taskState, to: taskState, supervisorId: optional(uuid) });
+const transition = rule((value, path, errors) => {
+  const before = errors.length;
+  transitionShape.check(value, path, errors);
+  if (errors.length !== before) return;
+  const params = value as { from: string; to: string; supervisorId?: string };
+  if (params.supervisorId !== undefined && (params.to !== 'running' || !['queued', 'assigned'].includes(params.from))) fail(`${path}.supervisorId`, 'supervisor is only valid for a fresh execution admission', errors);
+}, { ...transitionShape.schema, allOf: [{ if: { required: ['supervisorId'] }, then: { properties: { from: { enum: ['queued', 'assigned'] }, to: { const: 'running' } } } }] });
+const transitionResultShape = object({ missionId: uuid, taskId: uuid, state: taskState, sequence: positive, admission: optional(executionAdmission) });
+const transitionResult = rule((value, path, errors) => {
+  const before = errors.length;
+  transitionResultShape.check(value, path, errors);
+  if (errors.length !== before) return;
+  const result = value as { missionId: string; taskId: string; state: string; admission?: { missionId: string; taskId: string } };
+  if (result.admission && (result.state !== 'running' || result.admission.missionId !== result.missionId || result.admission.taskId !== result.taskId)) fail(`${path}.admission`, 'admission must match the running transition', errors);
+}, { ...transitionResultShape.schema, allOf: [{ if: { required: ['admission'] }, then: { properties: { state: { const: 'running' } } } }] });
+const heartbeatClaims = (result: boolean) => {
+  const shape = object({ missionId: uuid, leases: array(object({
+    taskId: uuid, leaseId: uuid, holderAgentId: uuid,
+    ...(result ? { acquiredAt: timestamp, expiresAt: timestamp } : {}),
+  }), false, 1, 64) });
+  return rule((value, path, errors) => {
+    const before = errors.length;
+    shape.check(value, path, errors);
+    if (errors.length !== before) return;
+    const { leases } = value as { leases: { taskId: string; leaseId: string; acquiredAt?: string; expiresAt?: string }[] };
+    if (new Set(leases.map(lease => lease.taskId)).size !== leases.length || new Set(leases.map(lease => lease.leaseId)).size !== leases.length) fail(`${path}.leases`, 'duplicate task or lease ID', errors);
+    if (result && leases.some(lease => Date.parse(lease.expiresAt!) <= Date.parse(lease.acquiredAt!))) fail(`${path}.leases`, 'expiry must follow acquisition', errors);
+  }, shape.schema);
+};
 const snapshotShape = object({
   missionId: uuid, workspaceId: uuid, version: positive, state: enumeration(MISSION_STATES), updatedAt: timestamp,
   sequence: number(1, true, 8192),
@@ -56,6 +89,35 @@ const snapshot = rule((value, path, errors) => {
   if: { properties: { leases: { maxItems: 0 } } },
   then: { properties: { tasks: { items: { properties: { state: { not: { enum: ['running', 'waiting', 'awaiting_approval', 'verifying'] } } } } } } },
 }] });
+const reviewShape = object({
+  kind: literal('extalia-recovery-review-v1'), snapshot, executions: executionRecords,
+  missionDigest: digest, graphDigest: digest, reviewDigest: digest, missingAdmissionTaskIds: array(uuid, true, 0, 64), worktreeOwnership: literal('unverified'),
+});
+const recoveryReview = rule((value, path, errors) => {
+  const before = errors.length;
+  reviewShape.check(value, path, errors);
+  if (errors.length !== before) return;
+  const review = value as DaemonMissionRecoveryReview;
+  executions.check({ missionId: review.snapshot.missionId, executions: review.executions }, path, errors);
+  if (errors.length !== before) return;
+  const admitted = new Set<string>();
+  for (const { admission } of review.executions) {
+    const task = review.snapshot.tasks.find(task => task.taskId === admission.taskId);
+    if (!task || task.assignedAgentId !== admission.holderAgentId || task.attempt !== admission.attempt
+      || admission.workspaceId !== review.snapshot.workspaceId || admission.missionVersion > review.snapshot.version) fail(`${path}.executions`, 'execution does not match the reviewed snapshot', errors);
+    const lease = review.snapshot.leases.find(lease => lease.taskId === admission.taskId);
+    if (lease && lease.leaseId !== admission.leaseId) fail(`${path}.executions`, 'admission does not match the reviewed lease', errors);
+    admitted.add(admission.taskId);
+  }
+  const missing = review.snapshot.tasks.filter(task => !admitted.has(task.taskId)).map(task => task.taskId);
+  if (review.missingAdmissionTaskIds.length !== missing.length || review.missingAdmissionTaskIds.some(id => !missing.includes(id))) fail(`${path}.missingAdmissionTaskIds`, 'missing membership must exactly match the graph', errors);
+}, { ...reviewShape.schema, allOf: [{
+  if: { properties: { executions: { maxItems: 0 } } },
+  then: { properties: { missingAdmissionTaskIds: { minItems: 1 } } },
+}, {
+  if: { properties: { missingAdmissionTaskIds: { maxItems: 0 } } },
+  then: { properties: { executions: { minItems: 1 } } },
+}] });
 const PARAMS: Record<DaemonOp, Rule> = {
   hello: object({ clientVersion: version, capabilities }),
   // Not expressible in JSON Schema: the graph must belong to the created mission.
@@ -66,7 +128,8 @@ const PARAMS: Record<DaemonOp, Rule> = {
     if (errors.length === before && params.graph.missionId !== params.mission.id) fail(`${path}.graph.missionId`, 'graph belongs to another mission', errors);
   }, missionCreate.schema),
   'mission.snapshot': object({ missionId: uuid }),
-  'task.transition': object({ missionId: uuid, taskId: uuid, eventId: uuid, from: taskState, to: taskState }),
+  'mission.heartbeat': heartbeatClaims(false),
+  'task.transition': transition,
   'event.commit': object({
     event: rule((value, path, errors) => {
       commitEvent.check(value, path, errors);
@@ -80,6 +143,8 @@ const PARAMS: Record<DaemonOp, Rule> = {
     sessionGrants: array(access, true, 0, DAEMON_TOOL_ACCESS.length),
   }),
   health: object({}),
+  ...EXECUTION_PARAMS,
+  ...PLANNING_PARAMS,
   ...SKILL_PARAMS,
   ...KNOWLEDGE_PARAMS,
 };
@@ -87,10 +152,14 @@ const RESULTS: Record<DaemonOp, Rule> = {
   hello: object({ daemonVersion: version, capabilities, maxFrameBytes: number(1, true, DAEMON_MAX_FRAME_BYTES) }),
   'mission.create': object({ missionId: uuid, version: positive }),
   'mission.snapshot': snapshot,
-  'task.transition': object({ missionId: uuid, taskId: uuid, state: taskState, sequence: positive }),
+  'mission.recoveryReview': recoveryReview,
+  'mission.heartbeat': heartbeatClaims(true),
+  'task.transition': transitionResult,
   'event.commit': object({ eventId: uuid, missionId: uuid, sequence: positive, duplicate: boolean }),
   'permission.check': object({ decision: enumeration(['allow', 'ask', 'deny']) }),
   health: object({ status: enumeration(['ok', 'degraded']), uptimeMs: count }),
+  ...EXECUTION_RESULTS,
+  ...PLANNING_RESULTS,
   ...SKILL_RESULTS,
   ...KNOWLEDGE_RESULTS,
 };

@@ -6,6 +6,7 @@ import { ProjectSkills, projectSkillsSupported } from './ProjectSkills';
 import { SkillSecurityCenter } from './SkillSecurityCenter';
 import { useSkillRegistryMode } from './skillCenterModel';
 import { useBuiltinSkills } from './skillsModel';
+import { BuiltinSkillsCatalog } from './BuiltinSkillsCatalog';
 
 /**
  * Skills: everything that decides which skills reach agents, in one page (moved out of Settings).
@@ -54,7 +55,10 @@ export function SkillsPageView({ t, agents, state, picker, mode, filter, onFilte
       <header className="page-header">
         <h1>{p.title}</h1>
         <p className="lead">{p.lead}</p>
+        {builtin && builtin.length > 0 && <a className="button small" href="#skills-builtin-title">{p.browseBuiltins}</a>}
       </header>
+      <p className="note small" role="note">{p.scannerRequired}</p>
+      <p className="muted small">{p.promptLearning}</p>
       {mode === null && <p className="muted" role="status">{p.loading}</p>}
       {mode === 'registry' && <SkillSecurityCenter t={t} agents={agents} picker={picker} state={state} onChanged={onChanged} />}
       {mode === 'legacy' && projectSkillsSupported(agents) && (
@@ -103,16 +107,7 @@ export function BuiltinSkillsSection({ t, skills, loading }: { t: Messages; skil
     <section className="card settings-section skills-builtin" aria-labelledby="skills-builtin-title">
       <h2 id="skills-builtin-title"><Icon name="spark" />{p.builtinTitle}</h2>
       <p className="muted small">{p.builtinLead}</p>
-      {!skills ? <p className="muted small" role="status">{p.loading}</p> : (
-        <ul className="skills-builtin-list">
-          {skills.map(skill => (
-            <li key={skill.name} className="skills-builtin-item">
-              <code className="skills-builtin-name">{skill.name}</code>
-              <span className="small">{skill.description}</span>
-            </li>
-          ))}
-        </ul>
-      )}
+      {!skills ? <p className="muted small" role="status">{p.loading}</p> : <BuiltinSkillsCatalog t={t} skills={skills} />}
     </section>
   );
 }

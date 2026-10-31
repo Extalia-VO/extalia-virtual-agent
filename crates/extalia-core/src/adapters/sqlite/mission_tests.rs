@@ -7,8 +7,8 @@ use serde_json::{Value, json};
 use super::tests::TempDir;
 use super::{CoreStore, StoreError};
 use crate::mission::{
-    AgentEvent, LEASE_TTL_MS, MAX_EVENT_BYTES, MAX_EVENTS_PER_MISSION, MissionCreate, MissionError,
-    TaskState, TaskTransition, contract,
+    AgentEvent, LEASE_TTL_MS, LeaseClaim, MAX_EVENT_BYTES, MAX_EVENTS_PER_MISSION, MissionCreate,
+    MissionError, MissionHeartbeat, TaskState, TaskTransition, contract,
 };
 use crate::time::parse_utc;
 
@@ -53,6 +53,7 @@ fn create(value: &Value) -> MissionCreate {
 
 fn transition(event: u32, task: &str, from: TaskState, to: TaskState) -> TaskTransition {
     TaskTransition {
+        supervisor_id: None,
         mission_id: MISSION.into(),
         task_id: task.into(),
         event_id: uuid(event),
@@ -99,6 +100,10 @@ fn dump(store: &CoreStore) -> Vec<String> {
         "events",
         "leases",
         "approvals",
+        "execution_admissions",
+        "execution_observations",
+        "execution_local_drains",
+        "mission_planned_tasks",
     ] {
         let mut statement = store
             .conn
@@ -496,9 +501,13 @@ fn stale_lease_is_recovered_as_unknown_and_never_replayed() {
     assert_eq!(dump(&store), before);
     // A second recovery changes nothing.
     assert_eq!(store.recover(PROFILE, now()).unwrap(), Default::default());
-    // Resolution without replay is allowed.
+    // Generic transitions cannot resolve uncertainty; controlled reconciliation is separate.
     let resolve = transition(84, TASK, TaskState::Unknown, TaskState::Failed);
-    store.transition_task(PROFILE, &resolve, now()).unwrap();
+    assert!(matches!(
+        store.transition_task(PROFILE, &resolve, now()),
+        Err(MissionError::Conflict(_))
+    ));
+    assert_eq!(dump(&store), before);
 
     // An unexpired lease is orphaned at open: the store lock proves its holder is gone.
     let dir = TempDir::new();
@@ -528,6 +537,253 @@ fn activity_renews_the_lease() {
         .commit_event(PROFILE, &activity(90), now() + 1_000)
         .unwrap();
     assert_eq!(expiry(&store), now() + 1_000 + LEASE_TTL_MS);
+}
+
+fn heartbeat(task: &str, epoch: u32) -> MissionHeartbeat {
+    MissionHeartbeat {
+        mission_id: MISSION.into(),
+        leases: vec![LeaseClaim {
+            task_id: task.into(),
+            lease_id: uuid(epoch),
+            holder_agent_id: WORKER.into(),
+        }],
+    }
+}
+
+#[test]
+fn independent_heartbeat_renews_without_journal_growth_or_clock_rollback_shortening() {
+    let dir = TempDir::new();
+    let mut store = running_store(&dir);
+    let initial = store.mission_snapshot(PROFILE, MISSION).unwrap();
+    for offset in 1..=100 {
+        let ack = store
+            .heartbeat_mission(PROFILE, &heartbeat(TASK, 51), now() + offset * 1_000)
+            .unwrap();
+        assert_eq!(ack.mission_id, MISSION);
+        assert_eq!(ack.leases.len(), 1);
+        assert_eq!(ack.leases[0].lease_id, uuid(51));
+        assert_eq!(parse_utc(&ack.leases[0].acquired_at), Some(now()));
+        assert_eq!(
+            parse_utc(&ack.leases[0].expires_at),
+            Some(now() + offset * 1_000 + LEASE_TTL_MS)
+        );
+    }
+    let before = dump(&store);
+    let ack = store
+        .heartbeat_mission(PROFILE, &heartbeat(TASK, 51), now() - 1_000)
+        .unwrap();
+    assert_eq!(
+        parse_utc(&ack.leases[0].expires_at),
+        Some(now() + 100_000 + LEASE_TTL_MS)
+    );
+    assert_eq!(
+        dump(&store),
+        before,
+        "clock rollback does not change an existing grant"
+    );
+    let snapshot = store.mission_snapshot(PROFILE, MISSION).unwrap();
+    assert_eq!(snapshot.tasks, initial.tasks);
+    assert_eq!(
+        (snapshot.version, snapshot.sequence, snapshot.updated_at),
+        (initial.version, initial.sequence, initial.updated_at)
+    );
+}
+
+#[test]
+fn heartbeat_refuses_wrong_profile_mission_task_epoch_and_holder_without_writes() {
+    let dir = TempDir::new();
+    let mut store = running_store(&dir);
+    let before = dump(&store);
+    assert!(matches!(
+        store.heartbeat_mission(OTHER_PROFILE, &heartbeat(TASK, 51), now()),
+        Err(MissionError::NotFound)
+    ));
+    let mut foreign_mission = heartbeat(TASK, 51);
+    foreign_mission.mission_id = uuid(999);
+    assert!(matches!(
+        store.heartbeat_mission(PROFILE, &foreign_mission, now()),
+        Err(MissionError::NotFound)
+    ));
+    for mut invalid in [
+        heartbeat(TASK, 99),
+        heartbeat(SECOND_TASK, 51),
+        heartbeat(TASK, 51),
+    ] {
+        if invalid == heartbeat(TASK, 51) {
+            invalid.leases[0].holder_agent_id = LEAD.into();
+        }
+        assert!(matches!(
+            store.heartbeat_mission(PROFILE, &invalid, now()),
+            Err(MissionError::Conflict(_))
+        ));
+    }
+    assert_eq!(dump(&store), before);
+}
+
+#[test]
+fn heartbeat_batch_validates_all_members_and_rolls_back_storage_failure() {
+    let dir = TempDir::new();
+    let mut store = CoreStore::open(&dir.store()).unwrap();
+    let mut plan = create_json("queued");
+    plan["graph"]["tasks"][1]["dependsOn"] = json!([]);
+    store
+        .create_mission(PROFILE, &create(&plan), now())
+        .unwrap();
+    for (task, epoch) in [(TASK, 51), (SECOND_TASK, 52)] {
+        store
+            .transition_task(
+                PROFILE,
+                &transition(epoch, task, TaskState::Queued, TaskState::Running),
+                now(),
+            )
+            .unwrap();
+    }
+    let mut request = heartbeat(TASK, 51);
+    request.leases.extend(heartbeat(SECOND_TASK, 52).leases);
+    let before = dump(&store);
+    let mut invalid = request.clone();
+    invalid.leases[1].lease_id = uuid(99);
+    assert!(matches!(
+        store.heartbeat_mission(PROFILE, &invalid, now() + 1_000),
+        Err(MissionError::Conflict(_))
+    ));
+    assert_eq!(dump(&store), before);
+    store.fail_before_commit.set(true);
+    assert!(matches!(
+        store.heartbeat_mission(PROFILE, &request, now() + 1_000),
+        Err(MissionError::Storage(_))
+    ));
+    store.fail_before_commit.set(false);
+    assert_eq!(dump(&store), before);
+    let ack = store
+        .heartbeat_mission(PROFILE, &request, now() + 1_000)
+        .unwrap();
+    assert_eq!(
+        ack.leases
+            .iter()
+            .map(|lease| lease.task_id.as_str())
+            .collect::<Vec<_>>(),
+        [TASK, SECOND_TASK]
+    );
+    assert!(
+        ack.leases
+            .iter()
+            .all(|lease| parse_utc(&lease.expires_at) == Some(now() + 1_000 + LEASE_TTL_MS))
+    );
+}
+
+#[test]
+fn exact_expiry_fences_heartbeat_activity_task_state_and_terminal_transitions() {
+    for offset in [0, 1] {
+        let dir = TempDir::new();
+        let mut store = running_store(&dir);
+        let at = now() + LEASE_TTL_MS + offset;
+        let before = dump(&store);
+        assert!(matches!(
+            store.heartbeat_mission(PROFILE, &heartbeat(TASK, 51), at),
+            Err(MissionError::Conflict(_))
+        ));
+        assert!(matches!(
+            store.commit_event(PROFILE, &activity(100), at),
+            Err(MissionError::Conflict(_))
+        ));
+        let same_state = event(&event_json(
+            101,
+            json!({"type": "task.state", "state": "running"}),
+        ));
+        assert!(matches!(
+            store.commit_event(PROFILE, &same_state, at),
+            Err(MissionError::Conflict(_))
+        ));
+        for to in [
+            TaskState::Completed,
+            TaskState::Failed,
+            TaskState::Cancelled,
+            TaskState::Waiting,
+        ] {
+            let change = transition(102, TASK, TaskState::Running, to);
+            assert!(matches!(
+                store.transition_task(PROFILE, &change, at),
+                Err(MissionError::Conflict(_))
+            ));
+        }
+        let terminal = event(&event_json(
+            103,
+            json!({"type": "mission.state", "state": "completed"}),
+        ));
+        assert!(matches!(
+            store.commit_event(PROFILE, &terminal, at),
+            Err(MissionError::Conflict(_))
+        ));
+        assert_eq!(dump(&store), before);
+    }
+    let dir = TempDir::new();
+    let mut store = running_store(&dir);
+    assert!(
+        store
+            .heartbeat_mission(PROFILE, &heartbeat(TASK, 51), now() + LEASE_TTL_MS - 1)
+            .is_ok()
+    );
+}
+
+#[test]
+fn restart_quarantine_refuses_late_heartbeats_and_completions_but_allows_identical_acks() {
+    let dir = TempDir::new();
+    let mut store = running_store(&dir);
+    let original = activity(95);
+    let original_ack = store.commit_event(PROFILE, &original, now() + 1).unwrap();
+    store.close().unwrap();
+    let mut store = CoreStore::open(&dir.store()).unwrap();
+    store.recover(PROFILE, now() + 2).unwrap();
+    let before = dump(&store);
+    assert!(matches!(
+        store.heartbeat_mission(PROFILE, &heartbeat(TASK, 51), now() + 3),
+        Err(MissionError::Conflict(_))
+    ));
+    assert!(
+        store
+            .transition_task(
+                PROFILE,
+                &transition(96, TASK, TaskState::Unknown, TaskState::Completed),
+                now() + 3
+            )
+            .is_err()
+    );
+    assert!(matches!(
+        store.transition_task(
+            PROFILE,
+            &transition(97, TASK, TaskState::Unknown, TaskState::Failed),
+            now() + 3
+        ),
+        Err(MissionError::Conflict(_))
+    ));
+    assert!(matches!(
+        store.commit_event(PROFILE, &activity(98), now() + 3),
+        Err(MissionError::Conflict(_))
+    ));
+    let terminal = event(&event_json(
+        99,
+        json!({"type": "mission.state", "state": "failed"}),
+    ));
+    assert!(matches!(
+        store.commit_event(PROFILE, &terminal, now() + 3),
+        Err(MissionError::Conflict(_))
+    ));
+    let retried = store
+        .commit_event(PROFILE, &original, now() + LEASE_TTL_MS * 2)
+        .unwrap();
+    assert!(retried.duplicate);
+    assert_eq!(retried.sequence, original_ack.sequence);
+    assert!(
+        store
+            .transition_task(
+                PROFILE,
+                &transition(51, TASK, TaskState::Queued, TaskState::Running),
+                now() + LEASE_TTL_MS * 2
+            )
+            .is_ok()
+    );
+    assert_eq!(dump(&store), before);
 }
 
 #[test]
@@ -904,6 +1160,7 @@ fn running_totals_equal_the_journal_after_random_workloads() {
             );
             store.commit_event(profile, &running, now()).unwrap();
             let start = TaskTransition {
+                supervisor_id: None,
                 mission_id: fixture.mission.clone(),
                 task_id: fixture.task.clone(),
                 event_id: uuid(id()),
@@ -1009,6 +1266,7 @@ fn running_totals_equal_the_journal_after_random_workloads() {
                         (TaskState::Running, TaskState::Waiting)
                     };
                     let transition = TaskTransition {
+                        supervisor_id: None,
                         mission_id: fixture.mission.clone(),
                         task_id: fixture.task.clone(),
                         event_id: uuid(id()),
@@ -1043,18 +1301,21 @@ fn running_totals_equal_the_journal_after_random_workloads() {
         let mut store = CoreStore::open(&dir.store()).unwrap();
         assert_totals_exact(&store, "reopen");
         assert_eq!(totals_and_aggregates(&store).0, before);
-        // A recovering mission still records its lead's state through the totals.
+        // A recovering mission refuses fresh lead state changes too, preserving quarantine.
         let fixture = &fixtures[0];
         let failed = fixture_event(
             id(),
             fixture,
             json!({ "type": "mission.state", "state": "failed" }),
         );
-        let ack = store.commit_event(fixture.profile, &failed, now()).unwrap();
-        assert_eq!(ack.sequence as i64, before[0][0] + 1);
+        assert!(matches!(
+            store.commit_event(fixture.profile, &failed, now()),
+            Err(MissionError::Conflict(_))
+        ));
+        assert_eq!(totals_and_aggregates(&store).0, before);
         assert_totals_exact(&store, "after recovery");
 
-        // Writers outside the store code keep them exact too: edit, delete, cascade.
+        // Writers outside the store code keep totals exact; planner history forbids mission deletion.
         store
             .conn
             .execute(
@@ -1073,23 +1334,32 @@ fn running_totals_equal_the_journal_after_random_workloads() {
         assert_totals_exact(&store, "raw delete");
         // The hole is detected as before: the next append is refused as corrupt.
         let fixture = &fixtures[1];
-        let late = fixture_event(
-            id(),
-            fixture,
-            json!({ "type": "mission.state", "state": "failed" }),
+        // Exercise the append invariant directly: the recovering-state fence above
+        // intentionally prevents public late events from reaching this lower layer.
+        {
+            let tx = store.conn.transaction().unwrap();
+            let event_id = uuid(id());
+            let entry = super::missions::tests_support::entry(
+                fixture.profile,
+                &fixture.mission,
+                &event_id,
+                serde_json::Map::new(),
+            );
+            assert!(matches!(
+                super::missions::tests_support::append(&tx, entry),
+                Err(MissionError::Corrupt(_))
+            ));
+        }
+        assert!(
+            store
+                .conn
+                .execute(
+                    "DELETE FROM missions WHERE mission_id = ?1",
+                    [&fixtures[2].mission],
+                )
+                .is_err()
         );
-        assert!(matches!(
-            store.commit_event(fixture.profile, &late, now()),
-            Err(MissionError::Corrupt(_))
-        ));
-        store
-            .conn
-            .execute(
-                "DELETE FROM missions WHERE mission_id = ?1",
-                [&fixtures[2].mission],
-            )
-            .unwrap();
-        assert_totals_exact(&store, "mission cascade");
+        assert_totals_exact(&store, "refused mission cascade");
     }
 }
 
@@ -1407,4 +1677,1243 @@ fn snapshot_rejects_corrupt_rows_graph_leases_and_totals_without_writes() {
         );
         assert_eq!(dump(&store), before, "{sql}");
     }
+}
+
+/// A disjoint one-task mission for bounded live-reaper batch tests.
+fn reaper_fixture(store: &mut CoreStore, profile: &str, index: u32) -> (String, String) {
+    let mission_id = uuid(0x10000 + index * 16);
+    let task_id = uuid(0x10001 + index * 16);
+    let mut plan = create_json("queued");
+    plan["mission"]["id"] = mission_id.clone().into();
+    plan["graph"]["missionId"] = mission_id.clone().into();
+    let mut task = task_json(&task_id, &[]);
+    task["missionId"] = mission_id.clone().into();
+    plan["graph"]["tasks"] = json!([task]);
+    store
+        .create_mission(profile, &create(&plan), now())
+        .unwrap();
+    store
+        .transition_task(
+            profile,
+            &TaskTransition {
+                supervisor_id: None,
+                mission_id: mission_id.clone(),
+                task_id: task_id.clone(),
+                event_id: uuid(0x10002 + index * 16),
+                from: TaskState::Queued,
+                to: TaskState::Running,
+            },
+            now(),
+        )
+        .unwrap();
+    (mission_id, task_id)
+}
+
+#[test]
+fn live_reaper_exact_expiry_is_idempotent_and_preserves_queued_tasks_and_journal() {
+    let dir = TempDir::new();
+    let mut store = running_store(&dir);
+    let before = dump(&store);
+    let snapshot = store.mission_snapshot(PROFILE, MISSION).unwrap();
+    let queued = task_state(&store, SECOND_TASK);
+    assert_eq!(
+        store
+            .reap_expired_leases(PROFILE, now() + LEASE_TTL_MS - 1)
+            .unwrap(),
+        Default::default()
+    );
+    assert_eq!(dump(&store), before);
+    let report = store
+        .reap_expired_leases(PROFILE, now() + LEASE_TTL_MS)
+        .unwrap();
+    assert_eq!(
+        (
+            report.missions,
+            report.tasks,
+            report.expired_leases,
+            report.orphaned_leases
+        ),
+        (1, 1, 1, 0)
+    );
+    let reaped = store.mission_snapshot(PROFILE, MISSION).unwrap();
+    assert_eq!(reaped.state.as_str(), "recovering");
+    assert_eq!(reaped.version, snapshot.version + 1);
+    assert_eq!(reaped.sequence, snapshot.sequence);
+    assert_eq!(
+        reaped
+            .tasks
+            .iter()
+            .find(|task| task.task_id == TASK)
+            .unwrap()
+            .state,
+        TaskState::Unknown
+    );
+    assert_eq!(
+        reaped
+            .tasks
+            .iter()
+            .find(|task| task.task_id == TASK)
+            .unwrap()
+            .attempt,
+        1
+    );
+    assert!(reaped.leases.is_empty());
+    assert_eq!(task_state(&store, SECOND_TASK), queued);
+    let after = dump(&store);
+    assert_eq!(
+        store
+            .reap_expired_leases(PROFILE, now() + LEASE_TTL_MS * 2)
+            .unwrap(),
+        Default::default()
+    );
+    assert_eq!(dump(&store), after);
+    store.close().unwrap();
+    let mut store = CoreStore::open(&dir.store()).unwrap();
+    assert_eq!(
+        store.recover(PROFILE, now() + LEASE_TTL_MS * 3).unwrap(),
+        Default::default()
+    );
+    assert_eq!(store.mission_snapshot(PROFILE, MISSION).unwrap(), reaped);
+    assert!(
+        store
+            .transition_task(
+                PROFILE,
+                &transition(0x999, TASK, TaskState::Unknown, TaskState::Running),
+                now() + LEASE_TTL_MS * 3
+            )
+            .is_err()
+    );
+    assert_eq!(dump(&store), after);
+}
+
+#[test]
+fn live_reaper_quarantines_unexpired_and_assigned_siblings_without_touching_terminal_results() {
+    let dir = TempDir::new();
+    let mut store = CoreStore::open(&dir.store()).unwrap();
+    let assigned = uuid(0x21);
+    let queued = uuid(0x22);
+    let completed = uuid(0x23);
+    let mut plan = create_json("queued");
+    plan["graph"]["tasks"] = json!([
+        task_json(TASK, &[]),
+        task_json(SECOND_TASK, &[]),
+        task_json(&assigned, &[]),
+        task_json(&queued, &[]),
+        task_json(&completed, &[]),
+    ]);
+    store
+        .create_mission(PROFILE, &create(&plan), now())
+        .unwrap();
+    for (id, task, time) in [
+        (51, TASK, now()),
+        (52, SECOND_TASK, now() + 1_000),
+        (53, &completed, now()),
+    ] {
+        store
+            .transition_task(
+                PROFILE,
+                &transition(id, task, TaskState::Queued, TaskState::Running),
+                time,
+            )
+            .unwrap();
+    }
+    store
+        .transition_task(
+            PROFILE,
+            &transition(54, &completed, TaskState::Running, TaskState::Completed),
+            now() + 1,
+        )
+        .unwrap();
+    store
+        .transition_task(
+            PROFILE,
+            &transition(55, &assigned, TaskState::Queued, TaskState::Assigned),
+            now(),
+        )
+        .unwrap();
+    let queued_before = task_state(&store, &queued);
+    let completed_before = task_state(&store, &completed);
+    let sequence = sequences(&store, PROFILE);
+    let report = store
+        .reap_expired_leases(PROFILE, now() + LEASE_TTL_MS)
+        .unwrap();
+    assert_eq!(
+        (
+            report.missions,
+            report.tasks,
+            report.expired_leases,
+            report.orphaned_leases
+        ),
+        (1, 3, 1, 1)
+    );
+    for task in [TASK, SECOND_TASK, assigned.as_str()] {
+        assert_eq!(task_state(&store, task).0, "unknown");
+    }
+    assert_eq!(task_state(&store, &queued), queued_before);
+    assert_eq!(task_state(&store, &completed), completed_before);
+    assert_eq!(lease_count(&store), 0);
+    assert_eq!(sequences(&store, PROFILE), sequence);
+}
+
+#[test]
+fn live_reaper_batches_missions_and_never_mutates_another_profile() {
+    let dir = TempDir::new();
+    let mut store = CoreStore::open(&dir.store()).unwrap();
+    let max = crate::mission::MAX_REAP_MISSIONS_PER_TICK;
+    let own = (0..max + 3)
+        .map(|index| reaper_fixture(&mut store, PROFILE, index as u32))
+        .collect::<Vec<_>>();
+    let (foreign, _) = reaper_fixture(&mut store, OTHER_PROFILE, 100);
+    let foreign_before = store.mission_snapshot(OTHER_PROFILE, &foreign).unwrap();
+    let report = store
+        .reap_expired_leases(PROFILE, now() + LEASE_TTL_MS)
+        .unwrap();
+    assert_eq!(
+        (report.missions, report.tasks, report.expired_leases),
+        (max as u64, max as u64, max as u64)
+    );
+    assert_eq!(
+        store.mission_snapshot(OTHER_PROFILE, &foreign).unwrap(),
+        foreign_before
+    );
+    assert_eq!(
+        own.iter()
+            .filter(|(mission, _)| store
+                .mission_snapshot(PROFILE, mission)
+                .unwrap()
+                .state
+                .as_str()
+                == "recovering")
+            .count(),
+        max
+    );
+    let report = store
+        .reap_expired_leases(PROFILE, now() + LEASE_TTL_MS)
+        .unwrap();
+    assert_eq!(
+        (report.missions, report.tasks, report.expired_leases),
+        (3, 3, 3)
+    );
+    assert_eq!(
+        store
+            .reap_expired_leases(PROFILE, now() + LEASE_TTL_MS)
+            .unwrap(),
+        Default::default()
+    );
+    for (mission, _) in own {
+        let snapshot = store.mission_snapshot(PROFILE, &mission).unwrap();
+        assert_eq!((snapshot.version, snapshot.sequence), (2, 2));
+    }
+    assert_eq!(
+        store.mission_snapshot(OTHER_PROFILE, &foreign).unwrap(),
+        foreign_before
+    );
+}
+
+#[test]
+fn live_reaper_respects_serialized_renewal_order_and_never_resurrects_quarantine() {
+    let dir = TempDir::new();
+    let mut store = running_store(&dir);
+    let ack = store
+        .heartbeat_mission(PROFILE, &heartbeat(TASK, 51), now() + LEASE_TTL_MS - 1)
+        .unwrap();
+    let before = dump(&store);
+    assert_eq!(
+        store
+            .reap_expired_leases(PROFILE, now() + LEASE_TTL_MS)
+            .unwrap(),
+        Default::default()
+    );
+    assert_eq!(dump(&store), before);
+    let expires = parse_utc(&ack.leases[0].expires_at).unwrap();
+    assert_eq!(
+        store
+            .reap_expired_leases(PROFILE, expires)
+            .unwrap()
+            .missions,
+        1
+    );
+    let quarantined = dump(&store);
+    assert!(matches!(
+        store.heartbeat_mission(PROFILE, &heartbeat(TASK, 51), expires),
+        Err(MissionError::Conflict(_))
+    ));
+    assert!(
+        store
+            .transition_task(
+                PROFILE,
+                &transition(0x99, TASK, TaskState::Unknown, TaskState::Failed),
+                expires
+            )
+            .is_err()
+    );
+    assert_eq!(dump(&store), quarantined);
+}
+
+#[test]
+fn live_reaper_storage_failure_rolls_back_the_entire_batch() {
+    let dir = TempDir::new();
+    let mut store = CoreStore::open(&dir.store()).unwrap();
+    for index in 0..3 {
+        reaper_fixture(&mut store, PROFILE, index);
+    }
+    let before = dump(&store);
+    store.fail_before_commit.set(true);
+    assert!(matches!(
+        store.reap_expired_leases(PROFILE, now() + LEASE_TTL_MS),
+        Err(MissionError::Storage(_))
+    ));
+    store.fail_before_commit.set(false);
+    assert_eq!(dump(&store), before);
+    assert_eq!(
+        store
+            .reap_expired_leases(PROFILE, now() + LEASE_TTL_MS)
+            .unwrap()
+            .missions,
+        3
+    );
+}
+
+#[test]
+fn live_reaper_refuses_corruption_or_terminal_leases_without_erasing_evidence() {
+    for sql in [
+        "UPDATE leases SET expires_at = 'invalid'",
+        "UPDATE leases SET expires_at = '2026-02-30T12:00:00.000Z'",
+        "UPDATE leases SET holder_agent_id = '00000000-0000-4000-8000-000000000099'",
+        "UPDATE leases SET lease_id = '00000000-0000-4000-8000-000000000099' WHERE task_id = '00000000-0000-4000-8000-000000000005'",
+        "UPDATE tasks SET attempt = attempt + 1",
+        "UPDATE missions SET version = version + 1",
+    ] {
+        let dir = TempDir::new();
+        let mut store = running_store(&dir);
+        // A valid sibling mission must not be partially reaped before the refusal.
+        reaper_fixture(&mut store, PROFILE, 0);
+        store.conn.execute(sql, []).unwrap();
+        let before = dump(&store);
+        assert!(
+            matches!(
+                store.reap_expired_leases(PROFILE, now() + LEASE_TTL_MS),
+                Err(MissionError::Corrupt(_))
+            ),
+            "{sql}"
+        );
+        assert_eq!(dump(&store), before, "{sql}");
+    }
+    let dir = TempDir::new();
+    let mut store = running_store(&dir);
+    store
+        .commit_event(
+            PROFILE,
+            &event(&event_json(
+                99,
+                json!({"type":"mission.state","state":"completed"}),
+            )),
+            now(),
+        )
+        .unwrap();
+    let before = dump(&store);
+    assert!(matches!(
+        store.reap_expired_leases(PROFILE, now() + LEASE_TTL_MS),
+        Err(MissionError::Corrupt(_))
+    ));
+    assert_eq!(dump(&store), before);
+}
+
+#[test]
+fn live_reaper_parses_timestamps_and_handles_a_full_64_task_mission() {
+    let dir = TempDir::new();
+    let mut store = CoreStore::open(&dir.store()).unwrap();
+    let tasks = (0..64).map(|index| uuid(0x100 + index)).collect::<Vec<_>>();
+    let mut plan = create_json("queued");
+    plan["graph"]["tasks"] = Value::Array(tasks.iter().map(|task| task_json(task, &[])).collect());
+    store
+        .create_mission(PROFILE, &create(&plan), now())
+        .unwrap();
+    for (index, task) in tasks.iter().enumerate() {
+        store
+            .transition_task(
+                PROFILE,
+                &transition(
+                    0x1000 + index as u32,
+                    task,
+                    TaskState::Queued,
+                    TaskState::Running,
+                ),
+                now() + i64::from(index != 0),
+            )
+            .unwrap();
+    }
+    // A real equivalent UTC instant without fractional digits must be compared
+    // numerically, not skipped because 'Z' sorts after '.000Z'.
+    store
+        .conn
+        .execute(
+            "UPDATE leases SET expires_at = replace(expires_at, '.000Z', 'Z') WHERE task_id = ?1",
+            [&tasks[0]],
+        )
+        .unwrap();
+    let report = store
+        .reap_expired_leases(PROFILE, now() + LEASE_TTL_MS)
+        .unwrap();
+    assert_eq!(
+        (
+            report.missions,
+            report.tasks,
+            report.expired_leases,
+            report.orphaned_leases
+        ),
+        (1, 64, 1, 63)
+    );
+    let snapshot = store.mission_snapshot(PROFILE, MISSION).unwrap();
+    assert!(
+        snapshot
+            .tasks
+            .iter()
+            .all(|task| task.state == TaskState::Unknown && task.attempt == 1)
+    );
+    assert_eq!(snapshot.sequence, 65);
+}
+
+#[test]
+fn live_reaper_advances_an_already_recovering_mission_only_when_quarantining_tasks() {
+    let dir = TempDir::new();
+    let mut store = running_store(&dir);
+    store
+        .commit_event(
+            PROFILE,
+            &event(&event_json(
+                99,
+                json!({"type":"mission.state","state":"recovering"}),
+            )),
+            now(),
+        )
+        .unwrap();
+    let before = store.mission_snapshot(PROFILE, MISSION).unwrap();
+    let report = store
+        .reap_expired_leases(PROFILE, now() + LEASE_TTL_MS)
+        .unwrap();
+    assert_eq!(
+        (
+            report.missions,
+            report.tasks,
+            report.expired_leases,
+            report.orphaned_leases
+        ),
+        (1, 1, 1, 0)
+    );
+    let after = store.mission_snapshot(PROFILE, MISSION).unwrap();
+    assert_eq!(
+        (after.version, after.sequence),
+        (before.version + 1, before.sequence)
+    );
+    let saved = dump(&store);
+    assert_eq!(
+        store
+            .reap_expired_leases(PROFILE, now() + LEASE_TTL_MS)
+            .unwrap(),
+        Default::default()
+    );
+    assert_eq!(dump(&store), saved);
+}
+
+fn admitted_execution(store: &mut CoreStore) -> crate::mission::ExecutionAdmission {
+    store
+        .create_mission(PROFILE, &create(&create_json("queued")), now())
+        .unwrap();
+    store
+        .commit_event(
+            PROFILE,
+            &event(&event_json(
+                200,
+                json!({"type":"mission.state","state":"running"}),
+            )),
+            now(),
+        )
+        .unwrap();
+    let mut request = transition(201, TASK, TaskState::Queued, TaskState::Running);
+    request.supervisor_id = Some(uuid(202));
+    let ack = store.transition_task(PROFILE, &request, now()).unwrap();
+    let admission = ack.admission.unwrap();
+    assert_eq!(
+        store
+            .transition_task(PROFILE, &request, now() + 1)
+            .unwrap()
+            .admission,
+        Some(admission.clone())
+    );
+    admission
+}
+fn observation(
+    admission: &crate::mission::ExecutionAdmission,
+) -> crate::mission::ExecutionObservation {
+    crate::mission::ExecutionObservation {
+        mission_id: admission.mission_id.clone(),
+        task_id: admission.task_id.clone(),
+        lease_id: admission.lease_id.clone(),
+        holder_agent_id: admission.holder_agent_id.clone(),
+        supervisor_id: admission.supervisor_id.clone(),
+        attempt: admission.attempt,
+        admission_digest: admission.admission_digest.clone(),
+        observation_id: uuid(203),
+        kind: "turn-promise-settled".into(),
+    }
+}
+
+#[test]
+fn execution_admission_is_atomic_and_legacy_absence_is_not_backfilled() {
+    let dir = TempDir::new();
+    let mut store = CoreStore::open(&dir.store()).unwrap();
+    store
+        .create_mission(PROFILE, &create(&create_json("queued")), now())
+        .unwrap();
+    let before = dump(&store);
+    let mut request = transition(201, TASK, TaskState::Queued, TaskState::Running);
+    request.supervisor_id = Some(uuid(202));
+    store.fail_before_commit.set(true);
+    assert!(store.transition_task(PROFILE, &request, now()).is_err());
+    assert_eq!(dump(&store), before);
+    store.fail_before_commit.set(false);
+    let admission = store
+        .transition_task(PROFILE, &request, now())
+        .unwrap()
+        .admission
+        .unwrap();
+    assert_eq!(admission.lease_id, request.event_id);
+    assert_eq!(admission.attempt, 1);
+    assert_eq!(
+        admission.admission_digest,
+        admission.captured_digest(PROFILE)
+    );
+    assert_ne!(
+        admission.admission_digest,
+        admission.captured_digest(OTHER_PROFILE)
+    );
+    assert!(
+        store
+            .conn
+            .execute("UPDATE execution_admissions SET attempt=2", [])
+            .is_err()
+    );
+    assert!(
+        store
+            .conn
+            .execute("DELETE FROM execution_admissions", [])
+            .is_err()
+    );
+    let mut second = transition(204, SECOND_TASK, TaskState::Queued, TaskState::Running);
+    second.supervisor_id = None;
+    // Dependency has not completed, so do not infer a historical admission for the second task.
+    assert!(store.transition_task(PROFILE, &second, now()).is_err());
+    let legacy_dir = TempDir::new();
+    let mut legacy = CoreStore::open(&legacy_dir.store()).unwrap();
+    legacy
+        .create_mission(PROFILE, &create(&create_json("queued")), now())
+        .unwrap();
+    legacy
+        .transition_task(
+            PROFILE,
+            &transition(201, TASK, TaskState::Queued, TaskState::Running),
+            now(),
+        )
+        .unwrap();
+    assert!(
+        legacy
+            .list_mission_executions(PROFILE, MISSION)
+            .unwrap()
+            .executions
+            .is_empty()
+    );
+    legacy.recover(PROFILE, now() + 1).unwrap();
+    assert!(
+        legacy
+            .list_mission_executions(PROFILE, MISSION)
+            .unwrap()
+            .executions
+            .is_empty()
+    );
+}
+
+#[test]
+fn execution_observation_survives_reaping_and_restart_without_changing_authority_or_events() {
+    let dir = TempDir::new();
+    let mut store = CoreStore::open(&dir.store()).unwrap();
+    let admission = admitted_execution(&mut store);
+    let recorded = observation(&admission);
+    assert!(
+        store
+            .list_mission_executions(PROFILE, MISSION)
+            .unwrap()
+            .executions[0]
+            .observation
+            .is_none()
+    );
+    store
+        .reap_expired_leases(PROFILE, now() + LEASE_TTL_MS)
+        .unwrap();
+    let before = dump(&store);
+    let ack = store
+        .observe_execution(PROFILE, &recorded, now() + LEASE_TTL_MS + 1)
+        .unwrap();
+    assert!(!ack.duplicate);
+    let after = dump(&store);
+    assert_eq!(
+        before
+            .iter()
+            .filter(|line| !line.starts_with("execution_observations:"))
+            .collect::<Vec<_>>(),
+        after
+            .iter()
+            .filter(|line| !line.starts_with("execution_observations:"))
+            .collect::<Vec<_>>()
+    );
+    let expected = store.list_mission_executions(PROFILE, MISSION).unwrap();
+    assert_eq!(expected.executions[0].admission, admission);
+    assert!(expected.executions[0].observation.is_some());
+    let repeated = store
+        .observe_execution(PROFILE, &recorded, now() + LEASE_TTL_MS + 99)
+        .unwrap();
+    assert!(repeated.duplicate);
+    assert_eq!(repeated.recorded_at, ack.recorded_at);
+    store.close().unwrap();
+    let mut next = CoreStore::open(&dir.store()).unwrap();
+    next.recover(PROFILE, now() + LEASE_TTL_MS + 100).unwrap();
+    assert_eq!(
+        next.list_mission_executions(PROFILE, MISSION).unwrap(),
+        expected
+    );
+    let snapshot = next.mission_snapshot(PROFILE, MISSION).unwrap();
+    assert_eq!(snapshot.state, crate::mission::MissionState::Recovering);
+    assert!(snapshot.leases.is_empty());
+    assert_eq!(
+        snapshot
+            .tasks
+            .iter()
+            .find(|task| task.task_id == TASK)
+            .unwrap()
+            .state,
+        TaskState::Unknown
+    );
+    assert!(
+        next.transition_task(
+            PROFILE,
+            &transition(210, TASK, TaskState::Unknown, TaskState::Failed),
+            now() + LEASE_TTL_MS + 101
+        )
+        .is_err()
+    );
+}
+
+#[test]
+fn execution_observation_rejects_wrong_identity_reuse_and_rolls_back_failed_writes() {
+    let dir = TempDir::new();
+    let mut store = CoreStore::open(&dir.store()).unwrap();
+    let admission = admitted_execution(&mut store);
+    let recorded = observation(&admission);
+    let before = dump(&store);
+    for key in [
+        "missionId",
+        "taskId",
+        "leaseId",
+        "holderAgentId",
+        "supervisorId",
+        "attempt",
+        "admissionDigest",
+    ] {
+        let mut value = recorded.to_value();
+        value[key] = match key {
+            "attempt" => json!(2),
+            "admissionDigest" => json!("d".repeat(64)),
+            _ => json!(uuid(220)),
+        };
+        let wrong =
+            contract::execution_observation(&value, "observation", &mut Vec::new()).unwrap();
+        assert!(
+            store.observe_execution(PROFILE, &wrong, now() + 1).is_err(),
+            "{key}"
+        );
+        assert_eq!(dump(&store), before, "{key}");
+    }
+    assert!(
+        store
+            .observe_execution(OTHER_PROFILE, &recorded, now() + 1)
+            .is_err()
+    );
+    store.fail_before_commit.set(true);
+    assert!(
+        store
+            .observe_execution(PROFILE, &recorded, now() + 1)
+            .is_err()
+    );
+    assert_eq!(dump(&store), before);
+    store.fail_before_commit.set(false);
+    let ack = store
+        .observe_execution(PROFILE, &recorded, now() - 1)
+        .unwrap();
+    assert_eq!(
+        ack.recorded_at, admission.admitted_at,
+        "clock rollback cannot predate admission"
+    );
+    let mut reused = recorded.clone();
+    reused.observation_id = uuid(221);
+    assert!(
+        store
+            .observe_execution(PROFILE, &reused, now() + 2)
+            .is_err()
+    );
+    assert!(
+        store
+            .conn
+            .execute(
+                "UPDATE execution_observations SET kind='effects-settled'",
+                []
+            )
+            .is_err()
+    );
+    assert!(
+        store
+            .conn
+            .execute("DELETE FROM execution_observations", [])
+            .is_err()
+    );
+}
+
+fn local_drain(
+    admission: &crate::mission::ExecutionAdmission,
+) -> crate::mission::ExecutionLocalDrain {
+    crate::mission::ExecutionLocalDrain {
+        mission_id: admission.mission_id.clone(),
+        task_id: admission.task_id.clone(),
+        lease_id: admission.lease_id.clone(),
+        holder_agent_id: admission.holder_agent_id.clone(),
+        supervisor_id: admission.supervisor_id.clone(),
+        attempt: admission.attempt,
+        admission_digest: admission.admission_digest.clone(),
+        proof_id: uuid(230),
+        kind: "local-operations-drained".into(),
+        coverage: "extalia-native-local-v1".into(),
+        provider_operations: 2,
+        tool_operations: 3,
+    }
+}
+
+#[test]
+fn local_drain_requires_exact_admission_weak_observation_and_atomic_scoped_record() {
+    let dir = TempDir::new();
+    let mut store = CoreStore::open(&dir.store()).unwrap();
+    let admission = admitted_execution(&mut store);
+    let proof = local_drain(&admission);
+    let before = dump(&store);
+    assert!(store.record_local_drain(PROFILE, &proof, now()).is_err());
+    assert_eq!(dump(&store), before);
+    let weak = store
+        .observe_execution(PROFILE, &observation(&admission), now() + 100)
+        .unwrap();
+    let before = dump(&store);
+    for (key, value) in [
+        ("missionId", json!(uuid(240))),
+        ("taskId", json!(uuid(240))),
+        ("leaseId", json!(uuid(240))),
+        ("holderAgentId", json!(uuid(240))),
+        ("supervisorId", json!(uuid(240))),
+        ("attempt", json!(2)),
+        ("admissionDigest", json!("f".repeat(64))),
+    ] {
+        let mut value_proof = proof.to_value();
+        value_proof[key] = value;
+        let wrong =
+            contract::execution_local_drain(&value_proof, "localDrain", &mut Vec::new()).unwrap();
+        assert!(
+            store.record_local_drain(PROFILE, &wrong, now()).is_err(),
+            "{key}"
+        );
+        assert_eq!(dump(&store), before, "{key}");
+    }
+    assert!(
+        store
+            .record_local_drain(OTHER_PROFILE, &proof, now())
+            .is_err()
+    );
+    for (key, value) in [
+        ("kind", json!("all-effects-stopped")),
+        ("coverage", json!("remote")),
+        ("providerOperations", json!(21)),
+        ("toolOperations", json!(81)),
+        ("providerOperations", json!(-1)),
+        ("toolOperations", json!(0.5)),
+        ("output", json!("untrusted")),
+    ] {
+        let mut invalid = proof.to_value();
+        invalid[key] = value;
+        assert!(
+            contract::execution_local_drain(&invalid, "localDrain", &mut Vec::new()).is_none(),
+            "{key}"
+        );
+    }
+    let mut invalid = proof.clone();
+    invalid.provider_operations = 21;
+    assert!(store.record_local_drain(PROFILE, &invalid, now()).is_err());
+    store.fail_before_commit.set(true);
+    assert!(store.record_local_drain(PROFILE, &proof, now()).is_err());
+    assert_eq!(dump(&store), before);
+    store.fail_before_commit.set(false);
+    let ack = store
+        .record_local_drain(PROFILE, &proof, now() - 1)
+        .unwrap();
+    assert_eq!(
+        ack.recorded_at, weak.recorded_at,
+        "clock rollback cannot predate weak observation or admission"
+    );
+    assert!(!ack.duplicate);
+    let after = dump(&store);
+    assert_eq!(
+        before,
+        after
+            .iter()
+            .filter(|line| !line.starts_with("execution_local_drains:"))
+            .cloned()
+            .collect::<Vec<_>>()
+    );
+    let duplicate = store
+        .record_local_drain(PROFILE, &proof, now() + 1000)
+        .unwrap();
+    assert!(duplicate.duplicate);
+    assert_eq!(duplicate.recorded_at, ack.recorded_at);
+    for (key, value) in [
+        ("proofId", json!(uuid(241))),
+        ("toolOperations", json!(4)),
+        ("providerOperations", json!(0)),
+    ] {
+        let mut conflict = proof.to_value();
+        conflict[key] = value;
+        let conflict =
+            contract::execution_local_drain(&conflict, "localDrain", &mut Vec::new()).unwrap();
+        assert!(store.record_local_drain(PROFILE, &conflict, now()).is_err());
+    }
+    for sql in [
+        "UPDATE execution_local_drains SET tool_operations=4",
+        "DELETE FROM execution_local_drains",
+    ] {
+        assert!(store.conn.execute(sql, []).is_err());
+    }
+    assert_eq!(dump(&store), after);
+}
+
+#[test]
+fn local_drain_survives_reaper_and_restart_and_accepts_late_proof_without_authority() {
+    let dir = TempDir::new();
+    let mut store = CoreStore::open(&dir.store()).unwrap();
+    let admission = admitted_execution(&mut store);
+    store
+        .observe_execution(PROFILE, &observation(&admission), now() + 1)
+        .unwrap();
+    store
+        .reap_expired_leases(PROFILE, now() + LEASE_TTL_MS)
+        .unwrap();
+    store.close().unwrap();
+    let mut store = CoreStore::open(&dir.store()).unwrap();
+    store.recover(PROFILE, now() + LEASE_TTL_MS + 1).unwrap();
+    let before = store.mission_snapshot(PROFILE, MISSION).unwrap();
+    let proof = local_drain(&admission);
+    store
+        .record_local_drain(PROFILE, &proof, now() + LEASE_TTL_MS + 2)
+        .unwrap();
+    assert_eq!(store.mission_snapshot(PROFILE, MISSION).unwrap(), before);
+    assert!(before.leases.is_empty());
+    let expected = store.list_mission_executions(PROFILE, MISSION).unwrap();
+    let saved = expected.executions[0].local_drain.as_ref().unwrap();
+    assert_eq!(saved.proof_id, proof.proof_id);
+    assert_eq!(saved.tool_operations, 3);
+    store.close().unwrap();
+    let mut store = CoreStore::open(&dir.store()).unwrap();
+    assert_eq!(
+        store.list_mission_executions(PROFILE, MISSION).unwrap(),
+        expected
+    );
+    assert!(
+        store
+            .record_local_drain(PROFILE, &proof, now())
+            .unwrap()
+            .duplicate
+    );
+}
+
+#[test]
+fn local_drain_accepts_terminal_task_and_rejects_global_proof_id_reuse() {
+    let dir = TempDir::new();
+    let mut store = CoreStore::open(&dir.store()).unwrap();
+    let admission = admitted_execution(&mut store);
+    store
+        .observe_execution(PROFILE, &observation(&admission), now())
+        .unwrap();
+    store
+        .transition_task(
+            PROFILE,
+            &transition(250, TASK, TaskState::Running, TaskState::Completed),
+            now() + 1,
+        )
+        .unwrap();
+    let before = store.mission_snapshot(PROFILE, MISSION).unwrap();
+    let proof = local_drain(&admission);
+    store
+        .record_local_drain(PROFILE, &proof, now() + 2)
+        .unwrap();
+    assert_eq!(store.mission_snapshot(PROFILE, MISSION).unwrap(), before);
+    let mut request = transition(251, SECOND_TASK, TaskState::Queued, TaskState::Running);
+    request.supervisor_id = Some(uuid(252));
+    let second = store
+        .transition_task(PROFILE, &request, now() + 3)
+        .unwrap()
+        .admission
+        .unwrap();
+    let mut weak = observation(&second);
+    weak.observation_id = uuid(253);
+    store.observe_execution(PROFILE, &weak, now() + 4).unwrap();
+    let reused = local_drain(&second);
+    let before = dump(&store);
+    assert!(
+        store
+            .record_local_drain(PROFILE, &reused, now() + 5)
+            .is_err()
+    );
+    assert_eq!(dump(&store), before);
+}
+
+#[test]
+fn migration_7_to_8_preserves_all_existing_rows_without_invented_local_proofs() {
+    let dir = TempDir::new();
+    // Current creation requires schema 11. Copy genuine canonical legacy-shaped rows
+    // into the historical schema instead of running current writes against old tables.
+    let fixture = TempDir::new();
+    let mut source = CoreStore::open(&fixture.store()).unwrap();
+    let admission = admitted_execution(&mut source);
+    source
+        .observe_execution(PROFILE, &observation(&admission), now())
+        .unwrap();
+    source.close().unwrap();
+    let store = CoreStore::open_with(&dir.store(), &super::migrate::MIGRATIONS[..7]).unwrap();
+    store
+        .conn
+        .execute(
+            "ATTACH DATABASE ?1 AS fixture",
+            [std::fs::canonicalize(fixture.store())
+                .unwrap()
+                .to_str()
+                .unwrap()],
+        )
+        .unwrap();
+    for table in [
+        "missions",
+        "tasks",
+        "events",
+        "leases",
+        "execution_admissions",
+        "execution_observations",
+    ] {
+        store
+            .conn
+            .execute_batch(&format!(
+                "INSERT INTO {table} SELECT * FROM fixture.{table};"
+            ))
+            .unwrap();
+    }
+    store
+        .conn
+        .execute_batch("DETACH DATABASE fixture;")
+        .unwrap();
+    fn every_row(store: &CoreStore) -> Vec<(String, Vec<Vec<rusqlite::types::Value>>)> {
+        let tables = store.conn.prepare("SELECT name FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name!='execution_local_drains' ORDER BY name").unwrap()
+            .query_map([],|row|row.get::<_,String>(0)).unwrap().collect::<rusqlite::Result<Vec<_>>>().unwrap();
+        tables
+            .into_iter()
+            .map(|name| {
+                let mut statement = store
+                    .conn
+                    .prepare(&format!("SELECT * FROM {name} ORDER BY rowid"))
+                    .unwrap();
+                let columns = statement.column_count();
+                let rows = statement
+                    .query_map([], |row| {
+                        (0..columns)
+                            .map(|index| row.get(index))
+                            .collect::<rusqlite::Result<Vec<rusqlite::types::Value>>>()
+                    })
+                    .unwrap()
+                    .collect::<rusqlite::Result<Vec<_>>>()
+                    .unwrap();
+                (name, rows)
+            })
+            .collect()
+    }
+    let before = every_row(&store);
+    store.close().unwrap();
+    let mut store = CoreStore::open_with(&dir.store(), &super::migrate::MIGRATIONS[..8]).unwrap();
+    assert_eq!(store.schema_version().unwrap(), 8);
+    assert_eq!(every_row(&store), before);
+    assert!(
+        store
+            .list_mission_executions(PROFILE, MISSION)
+            .unwrap()
+            .executions[0]
+            .local_drain
+            .is_none()
+    );
+    assert_eq!(
+        store
+            .conn
+            .query_row("SELECT count(*) FROM execution_local_drains", [], |row| row
+                .get::<_, i64>(0))
+            .unwrap(),
+        0
+    );
+}
+
+#[test]
+fn recovery_review_is_stable_read_only_and_profile_bound() {
+    let dir = TempDir::new();
+    let mut store = CoreStore::open(&dir.store()).unwrap();
+    admitted_execution(&mut store);
+    let before = dump(&store);
+    let first = store.mission_recovery_review(PROFILE, MISSION).unwrap();
+    assert_eq!(
+        first,
+        store.mission_recovery_review(PROFILE, MISSION).unwrap()
+    );
+    assert_eq!(
+        first.snapshot,
+        store.mission_snapshot(PROFILE, MISSION).unwrap()
+    );
+    assert_eq!(
+        first.executions,
+        store
+            .list_mission_executions(PROFILE, MISSION)
+            .unwrap()
+            .executions
+    );
+    assert_eq!(first.review_digest, first.captured_digest(PROFILE));
+    assert_ne!(first.review_digest, first.captured_digest(OTHER_PROFILE));
+    assert_eq!(first.to_value()["worktreeOwnership"], "unverified");
+    assert_eq!(
+        first.missing_admission_task_ids,
+        vec![SECOND_TASK.to_owned()]
+    );
+    assert_eq!(dump(&store), before);
+    assert!(matches!(
+        store.mission_recovery_review(OTHER_PROFILE, MISSION),
+        Err(MissionError::NotFound)
+    ));
+    assert!(matches!(
+        store.mission_recovery_review(PROFILE, &uuid(999)),
+        Err(MissionError::NotFound)
+    ));
+    assert!(matches!(
+        store.mission_recovery_review(PROFILE, "bad"),
+        Err(MissionError::Invalid(_))
+    ));
+    assert_eq!(dump(&store), before);
+}
+
+#[test]
+fn recovery_review_never_infers_missing_or_legacy_admissions() {
+    let dir = TempDir::new();
+    let mut store = CoreStore::open(&dir.store()).unwrap();
+    store
+        .create_mission(PROFILE, &create(&create_json("queued")), now())
+        .unwrap();
+    let queued = store.mission_recovery_review(PROFILE, MISSION).unwrap();
+    assert_eq!(
+        queued.missing_admission_task_ids,
+        vec![TASK.to_owned(), SECOND_TASK.to_owned()]
+    );
+    // Legacy admissions omitted the supervisor; a running task still has no captured execution identity.
+    store
+        .transition_task(
+            PROFILE,
+            &transition(44, TASK, TaskState::Queued, TaskState::Running),
+            now(),
+        )
+        .unwrap();
+    store
+        .reap_expired_leases(PROFILE, now() + LEASE_TTL_MS)
+        .unwrap();
+    let reviewed = store.mission_recovery_review(PROFILE, MISSION).unwrap();
+    assert!(reviewed.executions.is_empty());
+    assert_eq!(
+        reviewed.missing_admission_task_ids,
+        vec![TASK.to_owned(), SECOND_TASK.to_owned()]
+    );
+    assert_eq!(reviewed.snapshot.tasks[0].state, TaskState::Unknown);
+    store.close().unwrap();
+    let mut next = CoreStore::open(&dir.store()).unwrap();
+    assert_eq!(
+        next.mission_recovery_review(PROFILE, MISSION).unwrap(),
+        reviewed
+    );
+}
+
+#[test]
+fn recovery_review_changes_for_late_evidence_without_version_or_sequence_change() {
+    let dir = TempDir::new();
+    let mut store = CoreStore::open(&dir.store()).unwrap();
+    let admission = admitted_execution(&mut store);
+    store
+        .reap_expired_leases(PROFILE, now() + LEASE_TTL_MS)
+        .unwrap();
+    let first = store.mission_recovery_review(PROFILE, MISSION).unwrap();
+    let weak = observation(&admission);
+    store
+        .observe_execution(PROFILE, &weak, now() + LEASE_TTL_MS + 1)
+        .unwrap();
+    let observed = store.mission_recovery_review(PROFILE, MISSION).unwrap();
+    assert_eq!(first.snapshot, observed.snapshot);
+    assert_ne!(first.review_digest, observed.review_digest);
+    let drain = local_drain(&admission);
+    store
+        .record_local_drain(PROFILE, &drain, now() + LEASE_TTL_MS + 2)
+        .unwrap();
+    let drained = store.mission_recovery_review(PROFILE, MISSION).unwrap();
+    assert_eq!(observed.snapshot, drained.snapshot);
+    assert_ne!(observed.review_digest, drained.review_digest);
+    assert_eq!(first.mission_digest, drained.mission_digest);
+    assert_eq!(first.graph_digest, drained.graph_digest);
+    let before = dump(&store);
+    store
+        .record_local_drain(PROFILE, &drain, now() + LEASE_TTL_MS + 9)
+        .unwrap();
+    assert_eq!(
+        drained,
+        store.mission_recovery_review(PROFILE, MISSION).unwrap()
+    );
+    assert_eq!(dump(&store), before);
+    store.close().unwrap();
+    let mut next = CoreStore::open(&dir.store()).unwrap();
+    assert_eq!(
+        next.mission_recovery_review(PROFILE, MISSION).unwrap(),
+        drained
+    );
+}
+
+#[test]
+fn recovery_review_tracks_renewal_and_journal_changes() {
+    let dir = TempDir::new();
+    let mut store = CoreStore::open(&dir.store()).unwrap();
+    let admission = admitted_execution(&mut store);
+    let first = store.mission_recovery_review(PROFILE, MISSION).unwrap();
+    store
+        .heartbeat_mission(
+            PROFILE,
+            &MissionHeartbeat {
+                mission_id: MISSION.into(),
+                leases: vec![LeaseClaim {
+                    task_id: TASK.into(),
+                    lease_id: admission.lease_id,
+                    holder_agent_id: WORKER.into(),
+                }],
+            },
+            now() + 100,
+        )
+        .unwrap();
+    let renewed = store.mission_recovery_review(PROFILE, MISSION).unwrap();
+    assert_eq!(first.snapshot.sequence, renewed.snapshot.sequence);
+    assert_ne!(first.review_digest, renewed.review_digest);
+    store
+        .commit_event(
+            PROFILE,
+            &event(&event_json(
+                91,
+                json!({"type":"agent.state","state":"working","activity":"read"}),
+            )),
+            now() + 101,
+        )
+        .unwrap();
+    let journal = store.mission_recovery_review(PROFILE, MISSION).unwrap();
+    assert_ne!(renewed.review_digest, journal.review_digest);
+    assert!(journal.snapshot.sequence > renewed.snapshot.sequence);
+}
+
+#[test]
+fn recovery_review_uses_one_pinned_sqlite_view() {
+    use super::mission_recovery_review::review_in_transaction;
+    use crate::mission::canonical;
+    let dir = TempDir::new();
+    let mut store = CoreStore::open(&dir.store()).unwrap();
+    store
+        .create_mission(PROFILE, &create(&create_json("queued")), now())
+        .unwrap();
+    let before = store.mission_recovery_review(PROFILE, MISSION).unwrap();
+    let tx = store.conn.transaction().unwrap();
+    // Pin before a synthetic concurrent canonical writer changes non-projected task content.
+    let mut task = super::missions::load_task(&tx, PROFILE, MISSION, TASK).unwrap();
+    task.requirements = vec!["Changed task detail".into()];
+    let external = rusqlite::Connection::open(dir.store()).unwrap();
+    external
+        .execute(
+            "UPDATE tasks SET payload=?1,digest=?2 WHERE profile_id=?3 AND task_id=?4",
+            params![
+                canonical::to_string(&task.to_value()),
+                canonical::digest(&task.to_value()),
+                PROFILE,
+                TASK
+            ],
+        )
+        .unwrap();
+    assert_eq!(
+        review_in_transaction(&tx, PROFILE, MISSION).unwrap(),
+        before
+    );
+    tx.commit().unwrap();
+    // The original plan now detects this definition drift in a fresh read view.
+    assert!(matches!(
+        store.mission_recovery_review(PROFILE, MISSION),
+        Err(MissionError::Corrupt(_))
+    ));
+}
+
+#[test]
+fn recovery_review_refuses_corrupt_evidence_without_writes() {
+    let dir = TempDir::new();
+    let mut store = CoreStore::open(&dir.store()).unwrap();
+    admitted_execution(&mut store);
+    store
+        .conn
+        .execute_batch("DROP TRIGGER execution_admissions_no_update;")
+        .unwrap();
+    store
+        .conn
+        .execute(
+            "UPDATE execution_admissions SET admission_digest=?1",
+            ["f".repeat(64)],
+        )
+        .unwrap();
+    let before = dump(&store);
+    assert!(store.mission_recovery_review(PROFILE, MISSION).is_err());
+    assert_eq!(dump(&store), before);
+}
+
+#[test]
+fn recovery_review_covers_the_complete_bounded_graph() {
+    let dir = TempDir::new();
+    let mut store = CoreStore::open(&dir.store()).unwrap();
+    let mut value = create_json("queued");
+    value["graph"]["tasks"] = (0..64)
+        .map(|index| task_json(&uuid(1000 + index), &[]))
+        .collect();
+    store
+        .create_mission(PROFILE, &create(&value), now())
+        .unwrap();
+    let before = dump(&store);
+    let review = store.mission_recovery_review(PROFILE, MISSION).unwrap();
+    assert_eq!(review.snapshot.tasks.len(), 64);
+    assert_eq!(review.missing_admission_task_ids.len(), 64);
+    assert_eq!(
+        review.missing_admission_task_ids,
+        review
+            .snapshot
+            .tasks
+            .iter()
+            .map(|task| task.task_id.clone())
+            .collect::<Vec<_>>()
+    );
+    assert!(review.executions.is_empty());
+    assert!(crate::mission::canonical::to_string(&review.to_value()).len() < 512 * 1024);
+    assert_eq!(dump(&store), before);
 }

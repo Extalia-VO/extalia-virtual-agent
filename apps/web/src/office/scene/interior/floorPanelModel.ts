@@ -3,7 +3,7 @@ import type { BufferGeometry, Material, Mesh, Object3D, Texture } from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 
 /** Local Blender geometry is optional; floor finishes retain their application materials. */
-const urls = import.meta.glob<string>('/local-assets/floors/floor-panel.glb', { eager: true, query: '?url', import: 'default' });
+const urls = import.meta.glob<string>('/public-assets/floors/floor-panel.glb', { eager: true, query: '?url', import: 'default' });
 const forceProcedural = typeof location !== 'undefined' && new URLSearchParams(location.search).get('floors') === 'procedural';
 let cached: BufferGeometry | null = null;
 let requested = false;
@@ -58,7 +58,7 @@ function disposeImportedScene(scene: Object3D): void {
 async function load(): Promise<void> {
   if (requested) return;
   requested = true;
-  const url = forceProcedural ? undefined : urls['/local-assets/floors/floor-panel.glb'];
+  const url = forceProcedural ? undefined : urls['/public-assets/floors/floor-panel.glb'];
   if (!url) return;
   try {
     const gltf = await new GLTFLoader().loadAsync(url);

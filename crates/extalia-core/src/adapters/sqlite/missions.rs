@@ -20,26 +20,30 @@ use rusqlite::{OptionalExtension, Transaction, TransactionBehavior, params};
 use serde_json::{Map, Value, json};
 
 use super::CoreStore;
+use super::execution_receipts::{admit, load_admission};
+use super::planned_tasks;
 use crate::mission::{
-    AgentEvent, EventAck, LEASE_TTL_MS, MAX_EVENT_BYTES, MAX_EVENT_BYTES_PER_MISSION,
+    AgentEvent, EventAck, HeartbeatAck, LEASE_TTL_MS, MAX_EVENT_BYTES, MAX_EVENT_BYTES_PER_MISSION,
     MAX_EVENTS_PER_MISSION, MAX_TASKS_PER_MISSION, Mission, MissionAck, MissionCreate,
-    MissionError, MissionState, Task, TaskState, TaskTransition, TransitionAck, Verification,
-    canonical, contract, policy,
+    MissionError, MissionHeartbeat, MissionState, PlannedTaskMembership,
+    PlannedTaskMembershipAvailability, SnapshotLease, Task, TaskState, TaskTransition,
+    TransitionAck, Verification, canonical, contract, policy,
 };
 use crate::sha256;
 use crate::time::{format_utc, parse_utc};
 
-/// What [`CoreStore::recover`] changed for one profile.
+/// What restart recovery or a live lease-reaper transaction changed for one profile.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct RecoveryReport {
-    /// Missions moved to `recovering`.
+    /// Missions moved to `recovering` (or whose recovery version advanced while quarantining live tasks).
     pub missions: u64,
     /// In-flight tasks moved to `unknown`.
     pub tasks: u64,
-    /// Leases past their expiry.
+    /// Cleared leases with expiry at or before the transaction's supplied time.
     pub expired_leases: u64,
     /// Unexpired leases whose holder process is gone, leases of tasks that are no longer
-    /// in flight, and running work without a lease.
+    /// in flight, and running work without a lease. For live reaping, unexpired
+    /// sibling leases cleared because the same mission now has uncertain work.
     pub orphaned_leases: u64,
 }
 
@@ -81,7 +85,7 @@ pub(super) fn decode_task(payload: &str) -> Result<Task, MissionError> {
     contract::task(&value, "task", &mut Vec::new()).ok_or(corrupt("task payload"))
 }
 
-fn load_mission(
+pub(super) fn load_mission(
     tx: &Transaction<'_>,
     profile: &str,
     mission_id: &str,
@@ -100,7 +104,7 @@ fn load_mission(
     Ok(mission)
 }
 
-fn load_task(
+pub(super) fn load_task(
     tx: &Transaction<'_>,
     profile: &str,
     mission_id: &str,
@@ -120,7 +124,7 @@ fn load_task(
     Ok(task)
 }
 
-fn save_mission(
+pub(super) fn save_mission(
     tx: &Transaction<'_>,
     profile: &str,
     mission: &Mission,
@@ -146,7 +150,7 @@ fn save_mission(
     }
 }
 
-fn save_task(
+pub(super) fn save_task(
     tx: &Transaction<'_>,
     profile: &str,
     task: &Task,
@@ -292,8 +296,39 @@ fn object(value: Value) -> Map<String, Value> {
 }
 
 /// `max(now, current)` as a contract timestamp, so `updatedAt` never moves backwards.
-fn later(now: i64, current: &str) -> String {
+pub(super) fn later(now: i64, current: &str) -> String {
     format_utc(now.max(parse_utc(current).unwrap_or(now)))
+}
+
+/// Read and fence the task's exact current epoch before accepting new activity.
+pub(super) fn live_lease(
+    tx: &Transaction<'_>,
+    profile: &str,
+    task: &Task,
+    now: i64,
+) -> Result<SnapshotLease, MissionError> {
+    let lease: Option<SnapshotLease> = tx.query_row(
+        "SELECT lease_id, holder_agent_id, acquired_at, expires_at FROM leases WHERE profile_id = ?1 AND task_id = ?2",
+        params![profile, task.id], |row| Ok(SnapshotLease {
+            lease_id: row.get(0)?, task_id: task.id.clone(), holder_agent_id: row.get(1)?,
+            acquired_at: row.get(2)?, expires_at: row.get(3)?,
+        }),
+    ).optional()?;
+    let lease = lease.ok_or_else(|| conflict("task has no current lease"))?;
+    if task.lease_id.as_deref() != Some(lease.lease_id.as_str())
+        || task.assigned_agent_id.as_deref() != Some(lease.holder_agent_id.as_str())
+    {
+        return Err(corrupt("task lease ownership"));
+    }
+    let acquired = parse_utc(&lease.acquired_at).ok_or_else(|| corrupt("lease acquisition"))?;
+    let expires = parse_utc(&lease.expires_at).ok_or_else(|| corrupt("lease expiry"))?;
+    if expires <= acquired {
+        return Err(corrupt("lease time order"));
+    }
+    if expires <= now {
+        return Err(conflict("task lease expired"));
+    }
+    Ok(lease)
 }
 
 fn renew_lease(
@@ -301,17 +336,54 @@ fn renew_lease(
     profile: &str,
     task: &Task,
     now: i64,
-) -> Result<(), MissionError> {
-    tx.execute(
-        "UPDATE leases SET expires_at = ?3 WHERE profile_id = ?1 AND task_id = ?2",
-        params![profile, task.id, format_utc(now + LEASE_TTL_MS)],
+) -> Result<SnapshotLease, MissionError> {
+    let mut lease = live_lease(tx, profile, task, now)?;
+    let expires = parse_utc(&lease.expires_at).ok_or_else(|| corrupt("lease expiry"))?;
+    // A clock adjustment cannot shorten a lease already granted, or revive an expired epoch.
+    lease.expires_at = format_utc(expires.max(now.saturating_add(LEASE_TTL_MS)));
+    let changed = tx.execute(
+        "UPDATE leases SET expires_at = ?3 WHERE profile_id = ?1 AND task_id = ?2 AND lease_id = ?4 AND holder_agent_id = ?5",
+        params![profile, task.id, lease.expires_at, lease.lease_id, lease.holder_agent_id],
     )?;
+    if changed != 1 {
+        return Err(corrupt("lease renewal"));
+    }
+    Ok(lease)
+}
+
+fn fence_mission_leases(
+    tx: &Transaction<'_>,
+    profile: &str,
+    mission_id: &str,
+    now: i64,
+) -> Result<(), MissionError> {
+    let payloads = tx
+        .prepare("SELECT payload FROM tasks WHERE profile_id = ?1 AND mission_id = ?2 LIMIT 65")?
+        .query_map(params![profile, mission_id], |row| row.get::<_, String>(0))?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    if payloads.len() > MAX_TASKS_PER_MISSION {
+        return Err(corrupt("mission task count"));
+    }
+    for payload in payloads {
+        let task = decode_task(&payload)?;
+        if task.lease_id.is_some()
+            || matches!(
+                task.state,
+                TaskState::Running
+                    | TaskState::Waiting
+                    | TaskState::AwaitingApproval
+                    | TaskState::Verifying
+            )
+        {
+            live_lease(tx, profile, &task, now)?;
+        }
+    }
     Ok(())
 }
 
 /// Commit `tx`, unless a test injected a failure after the writes: dropping the
 /// transaction then rolls every write back, as a crash before the commit would.
-fn finish(tx: Transaction<'_>, inject_failure: bool) -> Result<(), MissionError> {
+pub(super) fn finish(tx: Transaction<'_>, inject_failure: bool) -> Result<(), MissionError> {
     if inject_failure {
         return Err(MissionError::Storage(rusqlite::Error::SqliteFailure(
             rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_IOERR),
@@ -324,12 +396,60 @@ fn finish(tx: Transaction<'_>, inject_failure: bool) -> Result<(), MissionError>
 
 impl CoreStore {
     #[cfg(test)]
-    fn inject_failure(&self) -> bool {
+    pub(super) fn inject_failure(&self) -> bool {
         self.fail_before_commit.get()
     }
 
+    /// Renew exact, live lease epochs atomically. Heartbeats are independent of the
+    /// bounded mission journal and never alter task attempts or mission versions.
+    pub fn heartbeat_mission(
+        &mut self,
+        profile: &str,
+        heartbeat: &MissionHeartbeat,
+        now: i64,
+    ) -> Result<HeartbeatAck, MissionError> {
+        if !(1..=MAX_TASKS_PER_MISSION).contains(&heartbeat.leases.len())
+            || contract::mission_heartbeat(&heartbeat.to_value(), "heartbeat", &mut Vec::new())
+                .is_none()
+        {
+            return Err(MissionError::Invalid("invalid heartbeat claims"));
+        }
+        let inject = self.inject_failure();
+        let tx = self
+            .conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let mission = load_mission(&tx, profile, &heartbeat.mission_id)?;
+        if mission.state.terminal() || mission.state == MissionState::Recovering {
+            return Err(conflict("mission cannot accept heartbeats"));
+        }
+        let mut tasks = Vec::with_capacity(heartbeat.leases.len());
+        for claim in &heartbeat.leases {
+            let task = load_task(&tx, profile, &heartbeat.mission_id, &claim.task_id)?;
+            if !task.state.in_flight()
+                || task.lease_id.as_deref() != Some(claim.lease_id.as_str())
+                || task.assigned_agent_id.as_deref() != Some(claim.holder_agent_id.as_str())
+            {
+                return Err(conflict("heartbeat does not own this task epoch"));
+            }
+            let lease = live_lease(&tx, profile, &task, now)?;
+            if lease.lease_id != claim.lease_id || lease.holder_agent_id != claim.holder_agent_id {
+                return Err(conflict("heartbeat does not own this lease"));
+            }
+            tasks.push(task);
+        }
+        let leases = tasks
+            .iter()
+            .map(|task| renew_lease(&tx, profile, task, now))
+            .collect::<Result<Vec<_>, _>>()?;
+        finish(tx, inject)?;
+        Ok(HeartbeatAck {
+            mission_id: heartbeat.mission_id.clone(),
+            leases,
+        })
+    }
+
     #[cfg(not(test))]
-    fn inject_failure(&self) -> bool {
+    pub(super) fn inject_failure(&self) -> bool {
         false
     }
 
@@ -343,6 +463,13 @@ impl CoreStore {
         let MissionCreate { mission, graph } = create;
         if graph.tasks.len() > MAX_TASKS_PER_MISSION {
             return Err(MissionError::Capacity("tasks per mission"));
+        }
+        if profile.is_empty()
+            || profile.len() > 200
+            || contract::mission_create(&create.to_value(), "create", &mut Vec::new()).as_ref()
+                != Some(create)
+        {
+            return Err(MissionError::Invalid("invalid mission creation contract"));
         }
         if graph.tasks.is_empty() || graph.mission_id != mission.id {
             return Err(MissionError::Invalid("a mission needs its own task graph"));
@@ -368,6 +495,10 @@ impl CoreStore {
         };
         let mission_value = mission.to_value();
         let mission_payload = canonical::to_string(&mission_value);
+        let membership = PlannedTaskMembership::capture(profile, create);
+        if canonical::to_string(&membership.to_value()).len() > 1024 * 1024 {
+            return Err(MissionError::Capacity("original planned tasks"));
+        }
         let now_text = format_utc(now);
         let inject = self.inject_failure();
         let tx = self
@@ -384,14 +515,12 @@ impl CoreStore {
             if owner != profile || payload != mission_payload {
                 return Err(conflict("mission ID is already used"));
             }
-            let mut stored: Vec<(String, String)> = tx
-                .prepare(
-                    "SELECT task_id, payload FROM tasks WHERE profile_id = ?1 AND mission_id = ?2",
-                )?
-                .query_map(params![profile, mission.id], |row| {
-                    Ok((row.get(0)?, row.get(1)?))
-                })?
-                .collect::<rusqlite::Result<_>>()?;
+            let mut stored: Vec<(String, String)> =
+                planned_tasks::current_graph(&tx, profile, &mission.id)?
+                    .tasks
+                    .into_iter()
+                    .map(|task| (task.id.clone(), canonical::to_string(&task.to_value())))
+                    .collect();
             let mut requested: Vec<(String, String)> = graph
                 .tasks
                 .iter()
@@ -400,6 +529,12 @@ impl CoreStore {
             stored.sort();
             requested.sort();
             return if stored == requested {
+                if let PlannedTaskMembershipAvailability::Available(original) =
+                    planned_tasks::load(&tx, profile, mission)?
+                    && original != membership
+                {
+                    return Err(conflict("original planned tasks differ"));
+                }
                 Ok(ack)
             } else {
                 Err(conflict("mission ID is already used"))
@@ -445,6 +580,7 @@ impl CoreStore {
                 ],
             )?;
         }
+        planned_tasks::capture(&tx, profile, &membership)?;
         let record = json!({
             "record": "mission.create", "type": "mission.state", "missionId": mission.id,
             "state": mission.state.as_str(), "version": mission.version,
@@ -483,8 +619,19 @@ impl CoreStore {
             event_id,
             from,
             to,
+            supervisor_id,
         } = transition;
         let (from, to) = (*from, *to);
+        let starts =
+            to == TaskState::Running && matches!(from, TaskState::Queued | TaskState::Assigned);
+        if supervisor_id
+            .as_ref()
+            .is_some_and(|id| !starts || !contract::is_uuid(id))
+        {
+            return Err(MissionError::Invalid(
+                "supervisorId is only valid for new running admissions",
+            ));
+        }
         let digest = canonical::digest(&transition.to_value());
         let now_text = format_utc(now);
         let inject = self.inject_failure();
@@ -493,14 +640,32 @@ impl CoreStore {
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
         if let Some(stored) = stored_event(&tx, event_id)? {
             let stored = replay(stored, profile, mission_id, &digest)?;
+            if starts {
+                let mission = load_mission(&tx, profile, mission_id)?;
+                let graph = planned_tasks::current_graph(&tx, profile, mission_id)?;
+                planned_tasks::guard(&tx, profile, &mission, &graph)?;
+            }
+            let admission = if supervisor_id.is_some() {
+                Some(
+                    load_admission(&tx, profile, mission_id, event_id)?
+                        .ok_or_else(|| corrupt("missing execution admission"))?,
+                )
+            } else {
+                None
+            };
             return Ok(TransitionAck {
                 mission_id: mission_id.clone(),
                 task_id: task_id.clone(),
                 state: to,
                 sequence: stored.sequence,
+                admission,
             });
         }
         let mission = load_mission(&tx, profile, mission_id)?;
+        if starts {
+            let graph = planned_tasks::current_graph(&tx, profile, mission_id)?;
+            planned_tasks::guard(&tx, profile, &mission, &graph)?;
+        }
         let mut task = load_task(&tx, profile, mission_id, task_id)?;
         if task.state != from {
             return Err(conflict("task state changed"));
@@ -511,14 +676,23 @@ impl CoreStore {
         if mission.state.terminal() {
             return Err(conflict("mission is finished"));
         }
-        if to.in_flight() && mission.state == MissionState::Recovering {
-            return Err(conflict("mission is recovering; no work starts"));
+        if mission.state == MissionState::Recovering {
+            return Err(conflict("mission is recovering; task changes are refused"));
+        }
+        if task.lease_id.is_some()
+            || matches!(
+                from,
+                TaskState::Running
+                    | TaskState::Waiting
+                    | TaskState::AwaitingApproval
+                    | TaskState::Verifying
+            )
+        {
+            live_lease(&tx, profile, &task, now)?;
         }
         if to.in_flight() && task.assigned_agent_id.is_none() {
             return Err(conflict("task has no assignee"));
         }
-        let starts =
-            to == TaskState::Running && matches!(from, TaskState::Queued | TaskState::Assigned);
         if starts {
             for dependency in &task.depends_on {
                 let state = load_task(&tx, profile, mission_id, dependency)?.state;
@@ -567,11 +741,14 @@ impl CoreStore {
         }
         task.state = to;
         save_task(&tx, profile, &task, &now_text)?;
-        let record = object(json!({
+        let mut record = object(json!({
             "record": "task.transition", "type": "task.state", "eventId": event_id,
             "missionId": mission_id, "taskId": task_id, "from": from.as_str(), "to": to.as_str(),
             "state": to.as_str(),
         }));
+        if let Some(supervisor) = supervisor_id {
+            record.insert("supervisorId".into(), supervisor.clone().into());
+        }
         let entry = Entry {
             profile,
             mission_id,
@@ -582,12 +759,18 @@ impl CoreStore {
             record,
         };
         let sequence = append(&tx, entry, &now_text)?;
+        let admission = if let Some(supervisor) = supervisor_id {
+            Some(admit(&tx, profile, &mission, &task, supervisor, &now_text)?)
+        } else {
+            None
+        };
         finish(tx, inject)?;
         Ok(TransitionAck {
             mission_id: mission_id.clone(),
             task_id: task_id.clone(),
             state: to,
             sequence,
+            admission,
         })
     }
 
@@ -640,12 +823,16 @@ impl CoreStore {
         if mission.state.terminal() {
             return Err(conflict("mission is finished"));
         }
+        if mission.state == MissionState::Recovering {
+            return Err(conflict("mission is recovering; late events are refused"));
+        }
         let body = event.body();
         let state = body.get("state").and_then(Value::as_str);
         if event.body_type() == "mission.state" {
             if event.agent_id() != Some(mission.lead_agent_id.as_str()) {
                 return Err(conflict("only the mission lead reports mission state"));
             }
+            fence_mission_leases(&tx, profile, mission_id, now)?;
             let to = state
                 .and_then(MissionState::parse)
                 .ok_or(corrupt("event body"))?;
@@ -659,13 +846,21 @@ impl CoreStore {
                 save_mission(&tx, profile, &mission)?;
             }
         } else {
-            if mission.state == MissionState::Recovering {
-                return Err(conflict("mission is recovering; late events are refused"));
-            }
             let task_id = event.task_id().ok_or(corrupt("event task"))?;
             let task = load_task(&tx, profile, mission_id, task_id)?;
             if task.assigned_agent_id.as_deref() != event.agent_id() {
                 return Err(conflict("event agent is not the task's assignee"));
+            }
+            if task.lease_id.is_some()
+                || matches!(
+                    task.state,
+                    TaskState::Running
+                        | TaskState::Waiting
+                        | TaskState::AwaitingApproval
+                        | TaskState::Verifying
+                )
+            {
+                live_lease(&tx, profile, &task, now)?;
             }
             // Edit activity only for a write-capable worker (ADR 0028); read-only tasks keep refusing it.
             if !admission.permits(task.write_access) {
@@ -784,6 +979,11 @@ impl CoreStore {
             mission.updated_at = later(now, &mission.updated_at);
             save_mission(&tx, profile, &mission)?;
             report.missions += 1;
+        }
+        // Older frozen migration fixtures have no intent records. Production opens
+        // the complete schema; recovery invalidates pending intents with its leases.
+        if tx.pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0))? >= 10 {
+            super::native_action_requests::expire_profile(&tx, profile, now)?;
         }
         finish(tx, inject)?;
         Ok(report)

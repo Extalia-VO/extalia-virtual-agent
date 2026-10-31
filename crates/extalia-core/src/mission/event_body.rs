@@ -348,6 +348,7 @@ const SPECS: &[Spec] = &[
             req("approvalId", Rule::Id),
             req("decision", Rule::Enum(&["granted", "rejected"])),
             req("by", Rule::Enum(&["user", "policy"])),
+            opt("choice", Rule::Enum(&["once", "session", "reject"])),
         ],
     ),
     spec(

@@ -797,6 +797,8 @@ export class Observations {
         if (added) await this.saveSettings();
         return;
       }
+      // No normalized report means no session/activity evidence to register.
+      if (hook.steps.length === 0) return;
       const sourceId = HOOK_SOURCE_IDS[hook.app];
       const skipKey = `${sourceId}:${hook.sessionId}`;
       if (this.skippedHooks.has(skipKey)) return;
@@ -904,6 +906,10 @@ export class Observations {
       live.hook.lastAt = at;
       live.lastEventAt = at;
       if (record.watching) {
+        // A real normalized hook is a working live channel even when transcript
+        // history was unavailable first. Tests/unknown hooks and user pauses do
+        // not establish recovery; no transcript content is invented here.
+        if (filteredSteps.length > 0) { live.status = 'watching'; live.error = undefined; }
         this.publish(events);
         this.notify(record);
       }

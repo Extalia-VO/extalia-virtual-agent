@@ -27,6 +27,7 @@ import { boardAbsolute, boardActivityAt, boardAgo, boardAgoShort, boardBranchAct
 import { useBoardFlip, useSettledBoardOrder } from '../office/overlay/boardMotion';
 import { inOffice } from '../office/overlay/kpis';
 import { facilityCard, useFacilityStaff } from '../office/scene/movement/facilityStatus';
+import { facilityAppearance } from '../office/scene/movement/facilityNpcs';
 import { characterCallouts } from '../office/scene/callouts';
 import { popoverState, popoverSummary } from '../office/overlay/popoverModel';
 import { initialOfficeSelection, officeSelectionReducer, type SessionDialogTab } from '../office/overlay/officeSelection';
@@ -69,8 +70,8 @@ const getDark = () => document.documentElement.dataset.theme === 'dark';
 const getReduced = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 const getFalse = () => false;
 
-export function OfficePage({ t, language, agents, state, onState, workspaceId, onWorkspace, onOpenSession, onOpenMissions, onStartChat, onOpenSettings }: {
-  t: Messages; language: Language; agents?: AgentHostApi; state: HostState | null; workspaceId?: string; onState(next: HostState): void;
+export function OfficePage({ t, language, agents, hostDisconnected = false, state, onState, workspaceId, onWorkspace, onOpenSession, onOpenMissions, onStartChat, onOpenSettings }: {
+  t: Messages; language: Language; agents?: AgentHostApi; hostDisconnected?: boolean; state: HostState | null; workspaceId?: string; onState(next: HostState): void;
   onWorkspace(id: string | undefined): void; onOpenSession(session: SessionSummary): void;
   /** v0.0.43 missions: open the Missions page, optionally for one session. */
   onOpenMissions?: ((session?: SessionSummary) => void) | undefined;
@@ -98,8 +99,15 @@ export function OfficePage({ t, language, agents, state, onState, workspaceId, o
   const [expandedRows, setExpandedRows] = useState<ReadonlySet<string>>(() => new Set());
   // Leads whose subagents are folded away on the agents board (all open by default).
   const [collapsedLeads, setCollapsedLeads] = useState<ReadonlySet<string>>(() => new Set());
-  const [earlierOpen, setEarlierOpen] = useState(readEarlierOpen);
-  const showEarlier = (open: boolean) => { setEarlierOpen(open); writeEarlierOpen(open); };
+  const [earlier, setEarlier] = useState(() => {
+    const open = readEarlierOpen();
+    return { open, mounted: open };
+  });
+  const earlierOpen = earlier.open;
+  const showEarlier = (open: boolean) => {
+    setEarlier(current => ({ open, mounted: open || current.mounted }));
+    writeEarlierOpen(open);
+  };
   const boardId = useId();
   const [attempt, setAttempt] = useState(0);
   const [loadStage, setLoadStage] = useState<OfficeLoadStage>('engine');
@@ -109,6 +117,15 @@ export function OfficePage({ t, language, agents, state, onState, workspaceId, o
   const markFailed = useCallback(() => setRenderFailed(true), []);
   const dark = useSyncExternalStore(subscribeTheme, getDark, getFalse);
   const reducedMotion = useSyncExternalStore(subscribeMotion, getReduced, getFalse);
+  // Avoid constructing the (potentially large) earlier tree on initial load. Keep it through the
+  // close transition, and cancel that unmount if the user reopens it quickly.
+  useEffect(() => {
+    if (earlierOpen || !earlier.mounted) return;
+    const timeout = window.setTimeout(() => {
+      setEarlier(current => current.open ? current : { ...current, mounted: false });
+    }, reducedMotion ? 0 : 240);
+    return () => window.clearTimeout(timeout);
+  }, [earlierOpen, earlier.mounted, reducedMotion]);
   const sessions = useMemo(() => (state?.sessions ?? []).filter(session => !workspaceId || session.workspaceId === workspaceId)
     .sort((a, b) => Number(b.running) - Number(a.running) || b.lastActiveAt.localeCompare(a.lastActiveAt)), [state?.sessions, workspaceId]);
   const visible = useMemo(() => sessions.slice(0, MAX_SESSIONS), [sessions]);
@@ -349,7 +366,7 @@ export function OfficePage({ t, language, agents, state, onState, workspaceId, o
       {agents && <button type="button" className="office-tool-button" aria-pressed={connectOpen} title={t.agentApps.title} onClick={() => setConnectOpen(value => !value)}>
         <Icon name="terminal" /><span>{t.agentApps.officeButton}</span>
       </button>}
-      <span className="office-live" role="status" title={agents ? t.office.connected : t.office.disconnected}><span className={agents ? 'pulse' : ''} aria-hidden="true" /><span className="office-live-text">{agents ? t.office.connected : t.office.disconnected}</span></span>
+      <span className="office-live" role="status" title={hostDisconnected ? t.hostConnection.title : agents ? t.office.connected : t.office.disconnected}><span className={agents && !hostDisconnected ? 'pulse' : ''} aria-hidden="true" /><span className="office-live-text">{hostDisconnected ? t.hostConnection.title : agents ? t.office.connected : t.office.disconnected}</span></span>
       <button type="button" className="button primary" onClick={onStartChat}><Icon name="chat" />{t.office.openChat}</button>
     </div>
     <div className={`office-stage ${showDock ? 'has-dock' : ''} ${showLeadBar ? 'has-lead-bar' : ''} ${boardOpen ? 'has-board' : ''}`} aria-label={t.office.title}>
@@ -375,9 +392,9 @@ export function OfficePage({ t, language, agents, state, onState, workspaceId, o
             {board.earlierCount > 0 && <section className="office-earlier" aria-label={composer.earlier(board.earlierCount)}>
               <button type="button" className="office-earlier-toggle" aria-expanded={earlierOpen} title={composer.earlierHint} data-focus-key="board:earlier"
                 onClick={() => showEarlier(!earlierOpen)}><Icon name="chevron" /><span>{composer.earlier(board.earlierCount)}</span></button>
-              {/* v0.0.48: the groups stay mounted so the section can animate closed; inert while closed */}
+              {/* Keep rows mounted through the close animation, then release hidden portraits. */}
               <div className="board-collapse" data-open={earlierOpen || undefined} inert={!earlierOpen}><div className="board-collapse-inner">
-                {board.earlier.map(group => <div key={group.sessionId} className="office-earlier-group">
+                {earlier.mounted && board.earlier.map(group => <div key={group.sessionId} className="office-earlier-group">
                   {group.presentLead && <p className="office-earlier-from">{composer.earlierFrom(group.presentLead.displayName)}</p>}
                   <ul className="office-agent-list">{group.rows.map(renderRow)}</ul>
                 </div>)}
@@ -401,8 +418,9 @@ export function OfficePage({ t, language, agents, state, onState, workspaceId, o
         onActivity={agents ? () => openDialog(popoverAgent, 'activity', 'popover:activity') : undefined}
         onFollow={toggleFollow} appearance={agents ? appearanceOf(popoverAgent.id) : undefined}
         onLocate={() => locateAgent(popoverAgent.id)} onClose={() => dispatch({ type: 'closePopover' })} />}
-      {popoverStaff && <CharacterPopover key={`popover:${popoverStaff.definition.id}`} t={t} look={popoverStaff.definition.appearance} following={following} suspended={Boolean(dialog)}
+      {popoverStaff && <CharacterPopover key={`popover:${popoverStaff.definition.id}`} t={t} look={facilityAppearance(popoverStaff.definition, looks.appearances[popoverStaff.definition.id])} following={following} suspended={Boolean(dialog)}
         character={facilityCard(t, popoverStaff)} onFollow={toggleFollow}
+        appearance={agents ? { ...appearanceOf(popoverStaff.definition.id), uniform: popoverStaff.definition.role, defaults: popoverStaff.definition.appearance } : undefined}
         onLocate={() => locateAgent(popoverStaff.definition.id)} onClose={() => dispatch({ type: 'closePopover' })} />}
       {dialog && agents && state && <AgentSessionDialog key={`dialog:${dialog.characterId}`} t={t} language={language} agents={agents} state={state} onState={onState}
         officeNames={officeNames} savedLooks={looks.saved}

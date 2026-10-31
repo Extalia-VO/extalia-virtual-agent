@@ -66,9 +66,9 @@ export function createStairLibraryStore(url?: string, loadScene = async (source:
     },
   };
 }
-const urls = import.meta.glob<string>('/local-assets/architecture/stair-library.glb', { eager: true, query: '?url', import: 'default' });
+const urls = import.meta.glob<string>('/public-assets/architecture/stair-library.glb', { eager: true, query: '?url', import: 'default' });
 const procedural = typeof location !== 'undefined' && new URLSearchParams(location.search).get('stairs') === 'procedural';
-const library = createStairLibraryStore(procedural ? undefined : urls['/local-assets/architecture/stair-library.glb']);
+const library = createStairLibraryStore(procedural ? undefined : urls['/public-assets/architecture/stair-library.glb']);
 
 /** Parent static batches observe readiness and rebake without remounting live scene state. */
 export function useStairLibrary() {

@@ -8,13 +8,17 @@ import { attachmentPreviewLoader, sendPromptWithAttachments, uploadAttachments }
 import { projectActivity } from '../chat/transcript';
 import { characterTranscript } from './characterHistory';
 import { TranscriptView } from '../chat/TranscriptView';
+import { MessageFileProvider } from '../chat/MessageFilePreview';
+import { projectChangedFiles } from '../chat/changedFiles';
+import { ChangedFilesView } from '../chat/ChangedFilesView';
 import { useSessionEvents } from '../chat/useSessionEvents';
 import type { OfficeAgent } from './presence';
 import { Icon } from '../ui/Icon';
 import { AppearanceEditor } from './AppearanceEditor';
+import type { StaffRole } from './scene/avatars/outfitCatalog';
 import type { LookIdentity } from './scene/avatars/appearance';
 import { ActivityTimeline } from './console/ActivityTimeline';
-import { characterTimeline, shortcutFor, teamRoster } from './console/timeline';
+import { characterEvents, characterTimeline, shortcutFor, teamRoster } from './console/timeline';
 
 const isTyping = (target: EventTarget | null) => target instanceof HTMLElement
   && (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName));
@@ -26,9 +30,13 @@ export interface CharacterAppearanceControls {
   identity?: LookIdentity | undefined;
   onPreview(appearance: CharacterAppearance | null): void;
   onSave(appearance: CharacterAppearance | null): Promise<void>;
+  /** Facility staff: the role uniform is locked (see `staffAppearance`). */
+  uniform?: StaffRole | undefined;
+  /** What "Default outfit" and Reset return to, when not the generated look. */
+  defaults?: CharacterAppearance | undefined;
 }
 
-export type ConversationTab = 'messages' | 'activity';
+export type ConversationTab = 'messages' | 'activity' | 'files';
 
 /**
  * Conversation controls for a character's native Extalia session, shown in the
@@ -75,6 +83,9 @@ export function CharacterConversation({ t, language, agents, state, session, age
   const activity = useMemo(() => projectActivity(events), [events]);
   const timeline = useMemo(() => characterTimeline(events, agent), [events, agent]);
   const team = useMemo(() => isWorker ? [] : teamRoster(events, session.id), [events, session.id, isWorker]);
+  const workspaceRoot = session.observation?.projectPath ?? state.workspaces.find(item => item.id === session.workspaceId)?.projectLocation;
+  // A lead answers for its whole team's edits; a worker shows its own.
+  const files = useMemo(() => projectChangedFiles(isWorker ? characterEvents(events, agent) : events, workspaceRoot), [events, agent, isWorker, workspaceRoot]);
 
   // Messages follow new output only while the reader is at the bottom.
   const scroller = useRef<HTMLDivElement>(null);
@@ -87,6 +98,7 @@ export function CharacterConversation({ t, language, agents, state, session, age
   // M / A / L / F / E act on this character unless the user is typing.
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
+      if (document.querySelector('[data-message-file-preview], .attachment-viewer')) return;
       const action = shortcutFor(event.key, { alt: event.altKey, ctrl: event.ctrlKey, meta: event.metaKey }, isTyping(event.target));
       if (!action) return;
       if ((action === 'locate' && !onLocate) || (action === 'follow' && !onToggleFollow) || (action === 'appearance' && !appearance)) return;
@@ -136,14 +148,16 @@ export function CharacterConversation({ t, language, agents, state, session, age
   }
 
   const refreshState = () => { void agents.getState().then(onState).catch(() => undefined); };
-  const send = ({ text, attachments, patch }: ComposerSend) => readOnly ? Promise.resolve(false) : guard(async () => {
+  const send = ({ text, attachments, patch, learnSkill }: ComposerSend) => readOnly ? Promise.resolve(false) : guard(async () => {
     const ids = await uploadAttachments(agents, session.id, attachments, patch);
-    await sendPromptWithAttachments(agents, session.id, text, ids);
+    await sendPromptWithAttachments(agents, session.id, text, ids, learnSkill);
     refreshState();
   });
   const decide = async (approvalId: string, decision: ApprovalDecisionInput) => {
-    if (readOnly) return;
-    if (await guard(() => agents.resolveApproval(session.id, approvalId, decision))) refreshState();
+    if (readOnly) return false;
+    const sent = await guard(() => agents.resolveApproval(session.id, approvalId, decision));
+    if (sent) refreshState();
+    return sent;
   };
 
   const panelId = (id: ConversationTab) => `${ids}-${id}`;
@@ -151,8 +165,8 @@ export function CharacterConversation({ t, language, agents, state, session, age
     <section className="chat-main character-conversation" aria-label={agent.displayName}>
       <div className="character-actions" title={c.shortcuts}>
         <div className="character-tabs" role="tablist" aria-label={agent.displayName}>
-          {(['messages', 'activity'] as const).map(id => <button key={id} id={`${panelId(id)}-tab`} type="button" role="tab" aria-selected={tab === id && !editing} aria-controls={panelId(id)}
-            onClick={() => { setTab(id); setEditing(false); }}>{id === 'messages' ? c.messages : c.activity}{id === 'activity' && team.length > 0 && <span className="badge">{team.length}</span>}</button>)}
+          {(['messages', 'activity', 'files'] as const).map(id => <button key={id} id={`${panelId(id)}-tab`} type="button" role="tab" aria-selected={tab === id && !editing} aria-controls={panelId(id)}
+            onClick={() => { setTab(id); setEditing(false); }}>{c[id]}{id === 'activity' && team.length > 0 && <span className="badge">{team.length}</span>}{id === 'files' && files.length > 0 && <span className="badge">{files.length}</span>}</button>)}
         </div>
         {onLocate && <button type="button" className="icon-button small" aria-label={c.locate} title={`${c.locate} (L)`} onClick={onLocate}><Icon name="search" /></button>}
         {onToggleFollow && <button type="button" className={`icon-button small follow-toggle ${following ? 'active' : ''}`} aria-pressed={following} aria-label={following ? t.officeOverlay.follow.stop : t.officeOverlay.follow.start}
@@ -161,7 +175,7 @@ export function CharacterConversation({ t, language, agents, state, session, age
           <Icon name="edit" />{t.appearance.open}
         </button>}
       </div>
-      {appearance && editing && <AppearanceEditor t={t.appearance} characterId={agent.id} identity={appearance.identity} saved={appearance.saved}
+      {appearance && editing && <AppearanceEditor t={t.appearance} characterId={agent.id} identity={appearance.identity} saved={appearance.saved} uniform={appearance.uniform} defaults={appearance.defaults}
         onPreview={appearance.onPreview} onSave={appearance.onSave} onClose={() => setEditing(false)} />}
       {readOnlyReason && <p className="muted-note character-ended-note" role="status"><Icon name="alert" />{readOnlyReason}</p>}
       {!readOnlyReason && isWorker && <p className="muted-note">{t.office.workerNote}</p>}
@@ -171,10 +185,17 @@ export function CharacterConversation({ t, language, agents, state, session, age
         onScroll={event => { const element = event.currentTarget; stick.current = element.scrollHeight - element.scrollTop - element.clientHeight < 80; }}>
         {!loading && items.length === 0
           ? <div className="chat-empty"><Icon name="chat" className="empty-icon" /><h3>{t.chat.emptyTitle}</h3><p className="muted">{workspace ? t.chat.emptyLead(workspace.name) : t.chat.noWorkspace}</p></div>
-          : <TranscriptView t={t} items={items} language={language} onDecide={decide} previewAttachment={previewAttachment} />}
+          : <MessageFileProvider key={session.id} t={t} agents={agents} workspaces={state.workspaces} workspaceId={session.workspaceId} projectPath={session.observation?.projectPath ?? workspace?.projectLocation}>
+              <TranscriptView t={t} items={items} language={language} onDecide={decide} previewAttachment={previewAttachment} approvalsEnabled={!readOnly} />
+            </MessageFileProvider>}
       </div>
       <div id={panelId('activity')} className="character-tab-panel" role="tabpanel" aria-labelledby={`${panelId('activity')}-tab`} hidden={editing || tab !== 'activity'}>
         <ActivityTimeline t={t} language={language} entries={timeline} team={team} {...(onSelectCharacter ? { onSelectCharacter } : {})} />
+      </div>
+      <div id={panelId('files')} className="character-tab-panel" role="tabpanel" aria-labelledby={`${panelId('files')}-tab`} hidden={editing || tab !== 'files'}>
+        <MessageFileProvider key={session.id} t={t} agents={agents} workspaces={state.workspaces} workspaceId={session.workspaceId} projectPath={workspaceRoot}>
+          <ChangedFilesView t={t} language={language} files={files} />
+        </MessageFileProvider>
       </div>
       <footer className="chat-footer">
         <p className={`chat-status ${running ? 'busy' : ''} ${waiting ? 'waiting' : ''}`} role="status" aria-live="polite">

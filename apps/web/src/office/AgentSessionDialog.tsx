@@ -95,6 +95,7 @@ export function AgentSessionDialog({ t, language, agents, state, onState, sessio
     });
     // Capture: Escape closes this dialog before anything behind it (the character card, select lists) sees it.
     const onKey = (event: KeyboardEvent) => {
+      if (document.querySelector('[data-message-file-preview], .attachment-viewer')) return;
       if (event.key === 'Escape') {
         if (document.querySelector('[role="listbox"]')) return;
         event.preventDefault(); event.stopPropagation(); close.current(); return;
