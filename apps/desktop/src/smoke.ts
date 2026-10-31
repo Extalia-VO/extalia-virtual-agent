@@ -1,6 +1,7 @@
 import { nativeTheme, type BrowserWindow } from 'electron';
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { textureProbeScript } from './smokeTextureProbe';
 
 /**
  * `electron . --smoke-test` loads the bundled UI in a hidden window, checks that
@@ -181,10 +182,14 @@ export async function runSmokeTest(window: BrowserWindow, screenshotDir = proces
   // Check Settings after the scene captures so navigation cannot remount the
   // Office and replace the verified scene with a fresh loading overlay.
   const settingsOpened = rendered && await open(window, 'settings');
+  // Probe retained failing blobs for bounded source hashes and original decoder errors.
+  // The original model error still fails the gate even if a diagnostic decode now succeeds.
+  const textureDiagnostics = modelErrors.length ? await window.webContents.executeJavaScript(textureProbeScript(modelErrors))
+    .catch(() => [{ error: 'Texture diagnostics unavailable' }]) : [];
 
   const ok = rendered && report.desktopBridge === true && report.nodeExposed === false && String(report.host).startsWith('Desktop')
     && String(report.splashVideo).startsWith('canplay') && String(report.splashRange).startsWith('206 video/mp4')
     && officeRendered && sceneReady && modelErrors.length === 0 && office.route === 'page' && office.separateFrame === false && settingsOpened && floorViews.length === 3 && floorViews.every(Boolean);
-  console.log(JSON.stringify({ ok, rendered, ...report, office, sceneReady, modelErrors, rendererErrors, floorViews, settingsOpened, diagnostics, screenshots }, null, 2));
+  console.log(JSON.stringify({ ok, rendered, ...report, office, sceneReady, modelErrors, textureDiagnostics, rendererErrors, floorViews, settingsOpened, diagnostics, screenshots }, null, 2));
   return ok ? 0 : 1;
 }

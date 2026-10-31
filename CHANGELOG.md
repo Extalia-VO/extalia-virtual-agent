@@ -32,6 +32,7 @@ All notable changes to this project are documented here. The format follows
 - Observed sessions on Windows now map to their workspace; project paths with backslashes never matched before.
 - README download names match the release workflow's Web archive, with a direct link to the complete checksum inventory.
 - Failed macOS release jobs retain unverified archive artifacts for diagnosis without uploading them to the public release or weakening signature checks.
+- Texture failures in the isolated Desktop smoke report bounded app-blob source hashes and fetch/decode diagnostics; a successful diagnostic retry never clears the original model-error gate.
 
 ## [0.4.156] - 2026-10-31
 
