@@ -29,7 +29,7 @@ describe('AttachmentStore', () => {
     expect(meta).toMatchObject({ name: 'shot.png', mimeType: 'image/png', size: 64, kind: 'image' });
     expect(meta.id).toMatch(/^att_[0-9a-f]{24}$/);
     const file = path.join(root, SESSION, `${meta.id}.bin`);
-    expect((await stat(file)).mode & 0o777).toBe(0o600);
+    if (process.platform !== 'win32') expect((await stat(file)).mode & 0o777).toBe(0o600);
     const [taken] = await attachments.take(SESSION, [meta.id]);
     expect(taken!.bytes.length).toBe(64);
     await attachments.consume(SESSION, [meta.id]);

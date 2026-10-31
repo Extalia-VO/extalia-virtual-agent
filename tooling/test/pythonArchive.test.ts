@@ -65,7 +65,7 @@ describe('pinned streaming Python archive staging', () => {
     for (const file of inventory.materialized) {
       const path = join(source.destination, file.path);
       expect((await lstat(path)).isFile()).toBe(true);
-      expect((await lstat(path)).mode & 0o7777).toBe(0o555);
+      if (process.platform !== 'win32') expect((await lstat(path)).mode & 0o7777).toBe(0o555);
       expect((await readFile(path)).toString()).toBe('binary\0bytes');
     }
     expect((await lstat(source.destination)).mode & 0o777).toBe(0o700);

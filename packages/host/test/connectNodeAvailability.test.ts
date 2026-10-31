@@ -51,7 +51,7 @@ describe('agent-app Node prerequisites', () => {
       const service = createConnectService(context({ platform, resolveNodePath }));
       const plan = await service.plan('hermes', { port: 4517 });
       expect(plan).toMatchObject({ nodeStatus: 'not-required', changes: true, port: 4517 });
-      expect(plan.diff).toContain('profiles/team/config.yaml');
+      expect(plan.diff.replaceAll('\\', '/')).toContain('profiles/team/config.yaml');
       expect(await readFile(primary.file, 'utf8')).toBe(primary.before);
       const applied = await service.apply('hermes', { port: 4517, expectedPreviewDigest: plan.previewDigest });
       expect(applied.test.ok).toBe(true);

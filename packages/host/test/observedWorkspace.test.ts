@@ -9,6 +9,14 @@ const temp = useTempDirs();
 const T = '2026-10-08T00:00:00.000Z';
 const T1 = '2026-10-08T00:00:01.000Z';
 
+describe('workspaceForProject paths', () => {
+  it('matches Windows project paths and not sibling folders', () => {
+    const workspaces = [{ id: 'site', projectLocation: 'C:\\Users\\me\\site\\' }];
+    expect(workspaceForProject(workspaces, 'C:\\Users\\me\\site\\src', value => value)).toBe('site');
+    expect(workspaceForProject(workspaces, 'C:\\Users\\me\\site-two', value => value)).toBeUndefined();
+  });
+});
+
 describe('workspaceForProject', () => {
   const workspaces = [
     { id: 'site', projectLocation: '/work/site/' },

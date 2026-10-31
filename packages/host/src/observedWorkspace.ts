@@ -8,7 +8,7 @@ function normalize(location: string): string {
   return trimmed || location.trim().slice(0, 1);
 }
 
-const contains = (root: string, child: string) => child === root || child.startsWith(root.endsWith('/') ? root : `${root}/`);
+const contains = (root: string, child: string) => child === root || (/[\\/]$/.test(root) ? child.startsWith(root) : child.startsWith(`${root}/`) || child.startsWith(`${root}\\`));
 
 /**
  * The workspace whose project location equals or contains an observed session's

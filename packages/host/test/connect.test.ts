@@ -419,8 +419,8 @@ describe('Connect service and hook forwarder', () => {
     expect(plan.supported).toBe(true);
     expect(plan.changes).toBe(true);
     expect(plan.diff).toContain('http://127.0.0.1:4317/api/hooks/hermes');
-    expect(plan.diff).toContain('~/.hermes/config.yaml');
-    expect(plan.diff).toContain('~/.hermes/profiles/team/config.yaml');
+    expect(plan.diff.replaceAll('\\', '/')).toContain('~/.hermes/config.yaml');
+    expect(plan.diff.replaceAll('\\', '/')).toContain('~/.hermes/profiles/team/config.yaml');
 
     const applied = await service.apply('hermes', { port: 4317 });
     expect(applied.changed).toBe(true);

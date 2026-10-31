@@ -27,6 +27,10 @@ All notable changes to this project are documented here. The format follows
 - Refresh installation and release documentation with npm first, current download links, Native skills/memory/Obsidian capabilities and their remaining scanner/Python/ACL limits. Document the current shared asset footprint and individual asset licenses instead of implying unrestricted commercial reuse.
 - Run the full host suite against the real daemon on CI platforms, including durable planning, registry and prompt-learning regressions. Exclude Python bytecode and local visual-review entries from release source.
 
+### Fixed
+
+- Observed sessions on Windows now map to their workspace; project paths with backslashes never matched before.
+
 ## [0.4.156] - 2026-10-31
 
 ### Added
