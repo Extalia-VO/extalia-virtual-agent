@@ -155,6 +155,358 @@
       }
     },
     {
+      "path": "avatars/outfits/female/bartender-uniform.glb",
+      "sha256": "2925e328051044f50fa40a0a11771d97d6f78c12d0eafb56e3b0ec118a61ad9a",
+      "bytes": 334276,
+      "license": "LicenseRef-RenderHub-Extended-Use",
+      "provenance": {
+        "kind": "licensed-avatar-export",
+        "exporter": "tooling/blender/create-staff-uniforms.py",
+        "note": "Staff uniform (bartender, female) cut from the licensed avatar's scanned outfit with project-generated accessories. Asset terms are recorded in THIRD_PARTY_NOTICES.md."
+      }
+    },
+    {
+      "path": "avatars/outfits/female/outfit-original-dress.glb",
+      "sha256": "16dc49a4efe82de6a5a2c13762436e183d04d1fbda49f01e14745a0d82e70c70",
+      "bytes": 9505804,
+      "license": "CC-BY-4.0",
+      "provenance": {
+        "kind": "third-party-derived",
+        "exporter": "tooling/blender/fit-original-sets.py",
+        "note": "Original Dress garment geometry, UVs and native material maps retained; fitted and re-rigged. Source garment: CC-BY-4.0. Any added avatar skin/context: RenderHub Extended Use License; see notices."
+      }
+    },
+    {
+      "path": "avatars/outfits/female/outfit-source-denim-dress.glb",
+      "sha256": "4134373289bb8370459eed51f938058f15796b1259a912eaec262cdc44e8708f",
+      "bytes": 9314536,
+      "license": "CC-BY-4.0",
+      "provenance": {
+        "kind": "third-party-derived",
+        "exporter": "tooling/blender/fit-source-garments.py",
+        "note": "Original garment geometry, UVs and native material maps retained; reviewed body fit and binding. Source garment: CC-BY-4.0. Reference avatar rig and any added skin/context: RenderHub Extended Use License."
+      }
+    },
+    {
+      "path": "avatars/outfits/female/outfit-source-jumper-skirt.glb",
+      "sha256": "412f8b0a178db488ff6541dc4a0c222b104375fdaa8f244f251efe3af9267a3e",
+      "bytes": 6491644,
+      "license": "CC-BY-4.0",
+      "provenance": {
+        "kind": "third-party-derived",
+        "exporter": "tooling/blender/fit-source-garments.py",
+        "note": "Original garment geometry, UVs and native material maps retained; reviewed body fit and binding. Source garment: CC-BY-4.0. Reference avatar rig and any added skin/context: RenderHub Extended Use License."
+      }
+    },
+    {
+      "path": "avatars/outfits/female/reception-uniform.glb",
+      "sha256": "d8b3bc7797ac09f5689191aeec427590255019acdd56188a78258e08c73f2fe1",
+      "bytes": 33732336,
+      "license": "CC-BY-4.0",
+      "provenance": {
+        "kind": "third-party-derived",
+        "exporter": "tooling/blender/fit-original-sets.py",
+        "note": "Original Black business suit set garment geometry, UVs and native material maps retained; fitted and re-rigged. Source garment: CC-BY-4.0. Any added avatar skin/context: RenderHub Extended Use License; see notices."
+      }
+    },
+    {
+      "path": "avatars/outfits/male/bartender-uniform.glb",
+      "sha256": "f51397ad7d309a6011dfc092db2fa672fd3c6b6ca7ce06fbff832a17c9b6a9e8",
+      "bytes": 38218956,
+      "license": "CC-BY-4.0",
+      "provenance": {
+        "kind": "third-party-derived",
+        "exporter": "tooling/blender/fit-original-bartender.py",
+        "note": "Original Vest For Ray II garment geometry, UVs and native material maps retained; fitted and re-rigged. Source garment: CC-BY-4.0. Any added avatar skin/context: RenderHub Extended Use License; see notices."
+      }
+    },
+    {
+      "path": "avatars/outfits/male/outfit-black-business-suit.glb",
+      "sha256": "ee06fde976d9a0722730053e992cd512496f126fda3d798e469a46c8034c1922",
+      "bytes": 41038756,
+      "license": "CC-BY-4.0",
+      "provenance": {
+        "kind": "third-party-derived",
+        "exporter": "tooling/blender/fit-source-garments.py",
+        "note": "Original garment geometry, UVs and native material maps retained; reviewed body fit and binding. Source garment: CC-BY-4.0. Reference avatar rig and any added skin/context: RenderHub Extended Use License."
+      }
+    },
+    {
+      "path": "avatars/outfits/male/outfit-mens-two-piece-suit.glb",
+      "sha256": "5fed0203890c228663eb868d30d5378d54d894272972652c0de47ac2f4eceb58",
+      "bytes": 22627580,
+      "license": "CC-BY-4.0",
+      "provenance": {
+        "kind": "third-party-derived",
+        "exporter": "tooling/blender/fit-source-garments.py",
+        "note": "Original garment geometry, UVs and native material maps retained; reviewed body fit and binding. Source garment: CC-BY-4.0. Reference avatar rig and any added skin/context: RenderHub Extended Use License."
+      }
+    },
+    {
+      "path": "avatars/outfits/male/outfit-printed-hoodie-jeans.glb",
+      "sha256": "7ee1bb2cdb8d8fcbd26d67c74d8bf9160d052a1c4e9c4d216c83f7893aaac0fa",
+      "bytes": 10688268,
+      "license": "CC-BY-4.0",
+      "provenance": {
+        "kind": "third-party-derived",
+        "exporter": "tooling/blender/fit-source-garments.py",
+        "note": "Original garment geometry, UVs and native material maps retained; reviewed body fit and binding. Source garment: CC-BY-4.0. Reference avatar rig and any added skin/context: RenderHub Extended Use License."
+      }
+    },
+    {
+      "path": "avatars/outfits/male/outfit-prom-suit.glb",
+      "sha256": "4f8d749d42eae4148127ec720adf8226058304d80151bca3c632c65cee706d8c",
+      "bytes": 3124972,
+      "license": "CC-BY-4.0",
+      "provenance": {
+        "kind": "third-party-derived",
+        "exporter": "tooling/blender/fit-source-garments.py",
+        "note": "Original garment geometry, UVs and native material maps retained; reviewed body fit and binding. Source garment: CC-BY-4.0. Reference avatar rig and any added skin/context: RenderHub Extended Use License."
+      }
+    },
+    {
+      "path": "avatars/outfits/male/outfit-sweatshirt-jacket-workwear.glb",
+      "sha256": "aa97dac3fc5a1a9f966d6d280e8225ba0faef556bb5f4008073f517bd5e587a2",
+      "bytes": 28344264,
+      "license": "CC-BY-4.0",
+      "provenance": {
+        "kind": "third-party-derived",
+        "exporter": "tooling/blender/fit-source-garments.py",
+        "note": "Original garment geometry, UVs and native material maps retained; reviewed body fit and binding. Source garment: CC-BY-4.0. Reference avatar rig and any added skin/context: RenderHub Extended Use License."
+      }
+    },
+    {
+      "path": "avatars/outfits/male/outfit-victorian-bartender.glb",
+      "sha256": "a425d1ed4c025b9ffe0ee53b7d8492c05bab764222cedae80814f9fa45d32633",
+      "bytes": 46972844,
+      "license": "CC-BY-4.0",
+      "provenance": {
+        "kind": "third-party-derived",
+        "exporter": "tooling/blender/fit-source-garments.py",
+        "note": "Original garment geometry, UVs and native material maps retained; reviewed body fit and binding. Source garment: CC-BY-4.0. Reference avatar rig and any added skin/context: RenderHub Extended Use License."
+      }
+    },
+    {
+      "path": "avatars/outfits/male/reception-uniform.glb",
+      "sha256": "a1b0ca79009818f7a9339ec6673d3171330b13840fe09ac33da98d2473b35271",
+      "bytes": 345348,
+      "license": "LicenseRef-RenderHub-Extended-Use",
+      "provenance": {
+        "kind": "licensed-avatar-export",
+        "exporter": "tooling/blender/create-staff-uniforms.py",
+        "note": "Staff uniform (receptionist, male) cut from the licensed avatar's scanned outfit with project-generated accessories. Asset terms are recorded in THIRD_PARTY_NOTICES.md."
+      }
+    },
+    {
+      "path": "avatars/wardrobe/female/bottom/short-jeans.glb",
+      "sha256": "7b88a89eacb86f0fed0f6ce43997acd618448c3e7ee3a04352eaa3b823c3df92",
+      "bytes": 20057364,
+      "license": "CC-BY-4.0",
+      "provenance": {
+        "kind": "third-party-derived",
+        "exporter": "tooling/blender/fit-original-bottoms.py",
+        "note": "Original female short jeans garment geometry, UVs and native material maps retained; fitted and re-rigged. Source garment: CC-BY-4.0. Any added avatar skin/context: RenderHub Extended Use License; see notices."
+      }
+    },
+    {
+      "path": "avatars/wardrobe/female/bottom/source-gothic-skirt.glb",
+      "sha256": "e8c82dc53ffa574403e3ebae7ff4586a6e772085b3d917ff64f8c9dc49fb8fcb",
+      "bytes": 3450128,
+      "license": "CC-BY-4.0",
+      "provenance": {
+        "kind": "third-party-derived",
+        "exporter": "tooling/blender/fit-source-garments.py",
+        "note": "Original garment geometry, UVs and native material maps retained; reviewed body fit and binding. Source garment: CC-BY-4.0. Reference avatar rig and any added skin/context: RenderHub Extended Use License."
+      }
+    },
+    {
+      "path": "avatars/wardrobe/female/bottom/source-gothic-trousers.glb",
+      "sha256": "29aeea37abe50421b0b87a1fb15bc8f9e67ab24f55613467f89bedbb75e36331",
+      "bytes": 437300,
+      "license": "CC-BY-4.0",
+      "provenance": {
+        "kind": "third-party-derived",
+        "exporter": "tooling/blender/fit-source-garments.py",
+        "note": "Original garment geometry, UVs and native material maps retained; reviewed body fit and binding. Source garment: CC-BY-4.0. Reference avatar rig and any added skin/context: RenderHub Extended Use License."
+      }
+    },
+    {
+      "path": "avatars/wardrobe/female/bottom/source-ray-trousers.glb",
+      "sha256": "40fd7d7d0023e1f45bc6db811804550154cf747948a188402de823501192cd43",
+      "bytes": 31184748,
+      "license": "CC-BY-4.0",
+      "provenance": {
+        "kind": "third-party-derived",
+        "exporter": "tooling/blender/fit-source-garments.py",
+        "note": "Original garment geometry, UVs and native material maps retained; reviewed body fit and binding. Source garment: CC-BY-4.0. Reference avatar rig and any added skin/context: RenderHub Extended Use License."
+      }
+    },
+    {
+      "path": "avatars/wardrobe/female/outer/cloth-jacket.glb",
+      "sha256": "2a0ea2e5757c8476aa710601f14823426f177c37a0cc3452bb571404ed64c036",
+      "bytes": 11964572,
+      "license": "CC-BY-4.0",
+      "provenance": {
+        "kind": "third-party-derived",
+        "exporter": "tooling/blender/fit-original-garments.py",
+        "note": "Original Cloth Jacket garment geometry, UVs and native material maps retained; fitted and re-rigged. Source garment: CC-BY-4.0. Any added avatar skin/context: RenderHub Extended Use License; see notices."
+      }
+    },
+    {
+      "path": "avatars/wardrobe/female/outer/source-leather-cloak.glb",
+      "sha256": "f424cdd5c4bb6dcb3187cfa1cb1052534c2d732923deec9f48804b5d25675753",
+      "bytes": 43126348,
+      "license": "CC-BY-4.0",
+      "provenance": {
+        "kind": "third-party-derived",
+        "exporter": "tooling/blender/fit-source-garments.py",
+        "note": "Original garment geometry, UVs and native material maps retained; reviewed body fit and binding. Source garment: CC-BY-4.0. Reference avatar rig and any added skin/context: RenderHub Extended Use License."
+      }
+    },
+    {
+      "path": "avatars/wardrobe/female/outer/source-overcoat.glb",
+      "sha256": "3ea7c268f4bd047cf7c1473c8052ade8a8e85a0eaaaa40010f4f0189370b3965",
+      "bytes": 45538636,
+      "license": "CC-BY-4.0",
+      "provenance": {
+        "kind": "third-party-derived",
+        "exporter": "tooling/blender/fit-source-garments.py",
+        "note": "Original garment geometry, UVs and native material maps retained; reviewed body fit and binding. Source garment: CC-BY-4.0. Reference avatar rig and any added skin/context: RenderHub Extended Use License."
+      }
+    },
+    {
+      "path": "avatars/wardrobe/female/outer/source-ray-vest.glb",
+      "sha256": "d4cb037a04da7aeeb4d86efd5286af452541b783aa8261cb1083d68622d10753",
+      "bytes": 31030952,
+      "license": "CC-BY-4.0",
+      "provenance": {
+        "kind": "third-party-derived",
+        "exporter": "tooling/blender/fit-source-garments.py",
+        "note": "Original garment geometry, UVs and native material maps retained; reviewed body fit and binding. Source garment: CC-BY-4.0. Reference avatar rig and any added skin/context: RenderHub Extended Use License."
+      }
+    },
+    {
+      "path": "avatars/wardrobe/female/outer/source-red-leather-jacket.glb",
+      "sha256": "25a5838cb30c366392621da70da8745109293b25073b4539c31e1d6868fc7049",
+      "bytes": 14005440,
+      "license": "CC-BY-4.0",
+      "provenance": {
+        "kind": "third-party-derived",
+        "exporter": "tooling/blender/fit-source-garments.py",
+        "note": "Original garment geometry, UVs and native material maps retained; reviewed body fit and binding. Source garment: CC-BY-4.0. Reference avatar rig and any added skin/context: RenderHub Extended Use License."
+      }
+    },
+    {
+      "path": "avatars/wardrobe/female/top/source-belted-top.glb",
+      "sha256": "27a44e1587ab2d96bdc375f6e6bc16075f056b100f1033d9e446acb4be88db0e",
+      "bytes": 14060328,
+      "license": "CC-BY-4.0",
+      "provenance": {
+        "kind": "third-party-derived",
+        "exporter": "tooling/blender/fit-source-garments.py",
+        "note": "Original garment geometry, UVs and native material maps retained; reviewed body fit and binding. Source garment: CC-BY-4.0. Reference avatar rig and any added skin/context: RenderHub Extended Use License."
+      }
+    },
+    {
+      "path": "avatars/wardrobe/female/top/source-female-cloth1.glb",
+      "sha256": "441f4f5ab85672ee08b726442bfebf515fddfcd4fd1a866612b4deb2d38e8659",
+      "bytes": 35802172,
+      "license": "CC-BY-4.0",
+      "provenance": {
+        "kind": "third-party-derived",
+        "exporter": "tooling/blender/fit-source-garments.py",
+        "note": "Original garment geometry, UVs and native material maps retained; reviewed body fit and binding. Source garment: CC-BY-4.0. Reference avatar rig and any added skin/context: RenderHub Extended Use License."
+      }
+    },
+    {
+      "path": "avatars/wardrobe/female/top/source-flame-hoodie.glb",
+      "sha256": "945a131e665545ea454938ebc645562ba2f8010deab56de3e0cee8a7b17d2f5c",
+      "bytes": 24514840,
+      "license": "CC-BY-4.0",
+      "provenance": {
+        "kind": "third-party-derived",
+        "exporter": "tooling/blender/fit-source-garments.py",
+        "note": "Primary fabric geometry/UVs retained; explicit reviewed modeled-stitch detail LOD; native material maps retained. Source garment: CC-BY-4.0. Reference avatar rig and any added skin/context: RenderHub Extended Use License."
+      }
+    },
+    {
+      "path": "avatars/wardrobe/female/top/source-gothic-blouse.glb",
+      "sha256": "f0f5102a851b701e25895ec9d8645952826808663aec9a3403ea46d5a6a4cc1e",
+      "bytes": 4249676,
+      "license": "CC-BY-4.0",
+      "provenance": {
+        "kind": "third-party-derived",
+        "exporter": "tooling/blender/fit-source-garments.py",
+        "note": "Original garment geometry, UVs and native material maps retained; reviewed body fit and binding. Source garment: CC-BY-4.0. Reference avatar rig and any added skin/context: RenderHub Extended Use License."
+      }
+    },
+    {
+      "path": "avatars/wardrobe/female/top/source-oversize-shirt.glb",
+      "sha256": "5a238ef6133df5a54f660f9ff392d12a9aa1bc3d03f026f2e41ac2544ce22dad",
+      "bytes": 2917664,
+      "license": "CC-BY-4.0",
+      "provenance": {
+        "kind": "third-party-derived",
+        "exporter": "tooling/blender/fit-source-garments.py",
+        "note": "Original garment geometry, UVs and native material maps retained; reviewed body fit and binding. Source garment: CC-BY-4.0. Reference avatar rig and any added skin/context: RenderHub Extended Use License."
+      }
+    },
+    {
+      "path": "avatars/wardrobe/female/top/source-pink-hoodie.glb",
+      "sha256": "c86249f1a5ed19ba5765b61f48d5c54fd4a170244816558d0c727bd5cdc1a550",
+      "bytes": 24968556,
+      "license": "CC-BY-4.0",
+      "provenance": {
+        "kind": "third-party-derived",
+        "exporter": "tooling/blender/fit-source-garments.py",
+        "note": "Original garment geometry, UVs and native material maps retained; reviewed body fit and binding. Source garment: CC-BY-4.0. Reference avatar rig and any added skin/context: RenderHub Extended Use License."
+      }
+    },
+    {
+      "path": "avatars/wardrobe/female/top/source-ray-underlayer.glb",
+      "sha256": "6457ea897f657cdd3f3155f319a1b12b0fd53163808cf89030081b287c9fa18f",
+      "bytes": 31287724,
+      "license": "CC-BY-4.0",
+      "provenance": {
+        "kind": "third-party-derived",
+        "exporter": "tooling/blender/fit-source-garments.py",
+        "note": "Original garment geometry, UVs and native material maps retained; reviewed body fit and binding. Source garment: CC-BY-4.0. Reference avatar rig and any added skin/context: RenderHub Extended Use License."
+      }
+    },
+    {
+      "path": "avatars/wardrobe/male/bottom/jeans.glb",
+      "sha256": "59cd0fdb93a26eebbcfe0d3d67b32c79860f3bad5eb7a410522d4ee196ec2c5b",
+      "bytes": 5444792,
+      "license": "CC-BY-4.0",
+      "provenance": {
+        "kind": "third-party-derived",
+        "exporter": "tooling/blender/fit-original-bottoms.py",
+        "note": "Original Hoodie and Jeans garment geometry, UVs and native material maps retained; fitted and re-rigged. Source garment: CC-BY-4.0. Any added avatar skin/context: RenderHub Extended Use License; see notices."
+      }
+    },
+    {
+      "path": "avatars/wardrobe/male/outer/denim-jacket.glb",
+      "sha256": "6901d2f8db3bd2c0b9a9d806cc48c8278d7523453e37d978937f9f4bbd61b295",
+      "bytes": 16528944,
+      "license": "CC-BY-4.0",
+      "provenance": {
+        "kind": "third-party-derived",
+        "exporter": "tooling/blender/fit-source-garments.py",
+        "note": "Original garment geometry, UVs and native material maps retained; reviewed body fit and binding. Source garment: CC-BY-4.0. Reference avatar rig and any added skin/context: RenderHub Extended Use License."
+      }
+    },
+    {
+      "path": "avatars/wardrobe/male/top/green-white-hoodie.glb",
+      "sha256": "6107b13397ea06a0481df27491cd17361fb74b28e49aa0289638b99acbf1a383",
+      "bytes": 17897184,
+      "license": "CC-BY-4.0",
+      "provenance": {
+        "kind": "third-party-derived",
+        "exporter": "tooling/blender/fit-source-garments.py",
+        "note": "Original garment geometry, UVs and native material maps retained; reviewed body fit and binding. Source garment: CC-BY-4.0. Reference avatar rig and any added skin/context: RenderHub Extended Use License."
+      }
+    },
+    {
       "path": "building/elevators.glb",
       "sha256": "951359711e93712b3532789b187d47ca92378fc377f8005b8a521d5e008b97f8",
       "bytes": 143360,
@@ -271,12 +623,22 @@
     },
     {
       "path": "landscape/campus-mobility.glb",
-      "sha256": "138bc7068b7e2e3cb4ace959ba9bd81f90fe53388e63082d07899918db469c6f",
-      "bytes": 1213812,
+      "sha256": "a8d157fc0b254627932ec2a9eefbe965beba94d6484d8d8ebaf1264c245856b4",
+      "bytes": 91344,
       "license": "MIT",
       "provenance": {
         "kind": "project-generated",
         "generator": "tooling/blender/create-campus-mobility.py"
+      }
+    },
+    {
+      "path": "landscape/campus-parking.glb",
+      "sha256": "e339abfbb1a5212abcc2ff2c7c79c5eaf9f8ae5e585621ca6f212259f4449fc5",
+      "bytes": 116172,
+      "license": "MIT",
+      "provenance": {
+        "kind": "project-generated",
+        "generator": "tooling/blender/create-campus-parking.py"
       }
     },
     {
@@ -297,6 +659,501 @@
       "provenance": {
         "kind": "project-generated",
         "generator": "tooling/blender/create-exterior-assets.py"
+      }
+    },
+    {
+      "path": "vehicles/box-truck.glb",
+      "sha256": "5396c35234d2eda644f190a6f8d82c525fb7e27ad97ed29c55d25e0a7e7640be",
+      "bytes": 439200,
+      "license": "CC-BY-4.0",
+      "provenance": {
+        "kind": "third-party-derived",
+        "exporter": "tooling/blender/prepare-campus-vehicles.py",
+        "note": "Simplified, debadged and recoloured campus car (box-truck, conventional) derived from Carrier Truck Renault Premium DXI 440. Source and credit are recorded in THIRD_PARTY_NOTICES.md."
+      }
+    },
+    {
+      "path": "vehicles/city-hatch.glb",
+      "sha256": "96e1bb9d44ff15ef26d4e93930be42341e45081ca20e7995284cb165b8852a8b",
+      "bytes": 236188,
+      "license": "CC-BY-4.0",
+      "provenance": {
+        "kind": "third-party-derived",
+        "exporter": "tooling/blender/prepare-campus-vehicles.py",
+        "note": "Simplified, debadged and recoloured campus car (city-hatch, conventional) derived from Mini Cooper S Facelift. Source and credit are recorded in THIRD_PARTY_NOTICES.md."
+      }
+    },
+    {
+      "path": "vehicles/classic-mini.glb",
+      "sha256": "3cc4e2df974b1877c9b40e112a2fbc6d9de7c000771b196ee622444a7efef78e",
+      "bytes": 220256,
+      "license": "CC-BY-NC-SA-4.0",
+      "provenance": {
+        "kind": "third-party-derived",
+        "exporter": "tooling/blender/prepare-campus-vehicles.py",
+        "note": "Simplified, debadged and recoloured campus car (classic-mini, conventional) derived from 1965 Austin Mini Cooper S. Source and credit are recorded in THIRD_PARTY_NOTICES.md."
+      }
+    },
+    {
+      "path": "vehicles/compact-van.glb",
+      "sha256": "c8b649226e44186061fa60a8020154576872e091a872c38a7afa11d204f45010",
+      "bytes": 245812,
+      "license": "CC-BY-4.0",
+      "provenance": {
+        "kind": "third-party-derived",
+        "exporter": "tooling/blender/prepare-campus-vehicles.py",
+        "note": "Simplified, debadged and recoloured campus car (compact-van, ev) derived from 2024 BYD ETP3. Source and credit are recorded in THIRD_PARTY_NOTICES.md."
+      }
+    },
+    {
+      "path": "vehicles/coupe-suv.glb",
+      "sha256": "a17725dbb372eb5cff1fab06bde33a3f3383411959304eb5d72a715a0591a828",
+      "bytes": 204152,
+      "license": "CC-BY-4.0",
+      "provenance": {
+        "kind": "third-party-derived",
+        "exporter": "tooling/blender/prepare-campus-vehicles.py",
+        "note": "Simplified, debadged and recoloured campus car (coupe-suv, conventional) derived from 2015 Land- Rover Range Rover Evoque Coupe. Source and credit are recorded in THIRD_PARTY_NOTICES.md."
+      }
+    },
+    {
+      "path": "vehicles/crossover.glb",
+      "sha256": "a0505750090013ef4a53f4f8769f8020640baf9974b21dd78de5c7dab4d98bd7",
+      "bytes": 270356,
+      "license": "CC-BY-4.0",
+      "provenance": {
+        "kind": "third-party-derived",
+        "exporter": "tooling/blender/prepare-campus-vehicles.py",
+        "note": "Simplified, debadged and recoloured campus car (crossover, conventional) derived from 2015 Nissan Murano Hybrid. Source and credit are recorded in THIRD_PARTY_NOTICES.md."
+      }
+    },
+    {
+      "path": "vehicles/estate.glb",
+      "sha256": "54ca61d951a46fe66ade2c776e03f59d65a6d39351049eefc5bf3a4a59971a85",
+      "bytes": 214940,
+      "license": "CC-BY-4.0",
+      "provenance": {
+        "kind": "third-party-derived",
+        "exporter": "tooling/blender/prepare-campus-vehicles.py",
+        "note": "Simplified, debadged and recoloured campus car (estate, conventional) derived from 2013 Audi RS4 Avant. Source and credit are recorded in THIRD_PARTY_NOTICES.md."
+      }
+    },
+    {
+      "path": "vehicles/ev-mpv.glb",
+      "sha256": "0ffb1de2f7f6b5c2e4403179536d26495c96303705d02bcafa7f1bdf2f470967",
+      "bytes": 225360,
+      "license": "LicenseRef-RenderHub-Extended-Use",
+      "provenance": {
+        "kind": "third-party-derived",
+        "exporter": "tooling/blender/prepare-campus-vehicles.py",
+        "note": "Simplified, debadged and recoloured campus car (ev-mpv, ev) derived from 2024 Li Auto MEGA. Source and credit are recorded in THIRD_PARTY_NOTICES.md."
+      }
+    },
+    {
+      "path": "vehicles/ev-pickup.glb",
+      "sha256": "17a3f2393fa2467f89f3340ef2a30dd7eea0943e370846da0f7a9147f6ba5710",
+      "bytes": 52000,
+      "license": "CC-BY-NC-4.0",
+      "provenance": {
+        "kind": "third-party-derived",
+        "exporter": "tooling/blender/prepare-campus-vehicles.py",
+        "note": "Simplified, debadged and recoloured campus car (ev-pickup, ev) derived from (FREE) 2021 Tesla Cybertruck. Source and credit are recorded in THIRD_PARTY_NOTICES.md."
+      }
+    },
+    {
+      "path": "vehicles/ev-sedan-long.glb",
+      "sha256": "b5ad2ab54a44438ef7f2e57b01cffd3979462ccc808a89e60b19b3a66182cb13",
+      "bytes": 240740,
+      "license": "LicenseRef-RenderHub-Extended-Use",
+      "provenance": {
+        "kind": "third-party-derived",
+        "exporter": "tooling/blender/prepare-campus-vehicles.py",
+        "note": "Simplified, debadged and recoloured campus car (ev-sedan-long, ev) derived from 2024 Leapmotor C01. Source and credit are recorded in THIRD_PARTY_NOTICES.md."
+      }
+    },
+    {
+      "path": "vehicles/ev-sedan.glb",
+      "sha256": "fadb2e0e744ba4a3364b304c75f8b5135cac58257e8b0d26c143b9a16d88b1b5",
+      "bytes": 226388,
+      "license": "LicenseRef-RenderHub-Extended-Use",
+      "provenance": {
+        "kind": "third-party-derived",
+        "exporter": "tooling/blender/prepare-campus-vehicles.py",
+        "note": "Simplified, debadged and recoloured campus car (ev-sedan, ev) derived from 2024 Tesla Model 3. Source and credit are recorded in THIRD_PARTY_NOTICES.md."
+      }
+    },
+    {
+      "path": "vehicles/ev-suv-large.glb",
+      "sha256": "64217999792d1a93c4df642a71ee1f4649d13e4acefb4206ae60d391e4e5c26a",
+      "bytes": 239956,
+      "license": "CC-BY-NC-SA-4.0",
+      "provenance": {
+        "kind": "third-party-derived",
+        "exporter": "tooling/blender/prepare-campus-vehicles.py",
+        "note": "Simplified, debadged and recoloured campus car (ev-suv-large, ev) derived from 2023 BYD Yangwang U8. Source and credit are recorded in THIRD_PARTY_NOTICES.md."
+      }
+    },
+    {
+      "path": "vehicles/ev-suv-rugged.glb",
+      "sha256": "0d8f073819d604b837e3806b6e3f52c637987b942cfcb4572c98549d5ad4aeb3",
+      "bytes": 280016,
+      "license": "CC-BY-NC-SA-4.0",
+      "provenance": {
+        "kind": "third-party-derived",
+        "exporter": "tooling/blender/prepare-campus-vehicles.py",
+        "note": "Simplified, debadged and recoloured campus car (ev-suv-rugged, ev) derived from 2024 GMC Hummer EV SUV. Source and credit are recorded in THIRD_PARTY_NOTICES.md."
+      }
+    },
+    {
+      "path": "vehicles/ev-suv.glb",
+      "sha256": "1839c7898c00b5fb8767b73736a57b2dd830db225a9a1c04d4324a91c6ef7a1f",
+      "bytes": 267436,
+      "license": "LicenseRef-RenderHub-Extended-Use",
+      "provenance": {
+        "kind": "third-party-derived",
+        "exporter": "tooling/blender/prepare-campus-vehicles.py",
+        "note": "Simplified, debadged and recoloured campus car (ev-suv, ev) derived from 2025 Xiaomi YU7. Source and credit are recorded in THIRD_PARTY_NOTICES.md."
+      }
+    },
+    {
+      "path": "vehicles/hatchback.glb",
+      "sha256": "899e5ce2b09655606a209f79624213904ec3749eea91a2a3f8d8f63026232208",
+      "bytes": 259240,
+      "license": "LicenseRef-RenderHub-Extended-Use",
+      "provenance": {
+        "kind": "third-party-derived",
+        "exporter": "tooling/blender/prepare-campus-vehicles.py",
+        "note": "Simplified, debadged and recoloured campus car (hatchback, conventional) derived from Fiat 500. Source and credit are recorded in THIRD_PARTY_NOTICES.md."
+      }
+    },
+    {
+      "path": "vehicles/hot-hatch.glb",
+      "sha256": "201c0f775fe99cf2fd899f80cc65a8dac977b5fb3546632a134c01f4bd47e486",
+      "bytes": 194444,
+      "license": "CC-BY-4.0",
+      "provenance": {
+        "kind": "third-party-derived",
+        "exporter": "tooling/blender/prepare-campus-vehicles.py",
+        "note": "Simplified, debadged and recoloured campus car (hot-hatch, conventional) derived from 2013 Ford Focus ST. Source and credit are recorded in THIRD_PARTY_NOTICES.md."
+      }
+    },
+    {
+      "path": "vehicles/hypercar.glb",
+      "sha256": "ca9bfdade521fe79b5bf520d0113537bd75ab1fd5a4a17728a21616885662ec9",
+      "bytes": 253048,
+      "license": "LicenseRef-Sketchfab-Standard",
+      "provenance": {
+        "kind": "third-party-derived",
+        "exporter": "tooling/blender/prepare-campus-vehicles.py",
+        "note": "Simplified, debadged and recoloured campus car (hypercar, conventional) derived from AC - Mclaren P1 [FREE]. Source and credit are recorded in THIRD_PARTY_NOTICES.md."
+      }
+    },
+    {
+      "path": "vehicles/jeep.glb",
+      "sha256": "02c599429aa2171c288be159812ab087a1850df2528a2a2d79f436b1bced1982",
+      "bytes": 226964,
+      "license": "LicenseRef-RenderHub-Extended-Use",
+      "provenance": {
+        "kind": "third-party-derived",
+        "exporter": "tooling/blender/prepare-campus-vehicles.py",
+        "note": "Simplified, debadged and recoloured campus car (jeep, conventional) derived from BAIC BJ40. Source and credit are recorded in THIRD_PARTY_NOTICES.md."
+      }
+    },
+    {
+      "path": "vehicles/limousine.glb",
+      "sha256": "eb090cab41d9d676f58137bf619c115ea4646a86ab33f08761a8676b830e8c5a",
+      "bytes": 247468,
+      "license": "CC-BY-4.0",
+      "provenance": {
+        "kind": "third-party-derived",
+        "exporter": "tooling/blender/prepare-campus-vehicles.py",
+        "note": "Simplified, debadged and recoloured campus car (limousine, conventional) derived from Monstrous. Source and credit are recorded in THIRD_PARTY_NOTICES.md."
+      }
+    },
+    {
+      "path": "vehicles/micro-ev.glb",
+      "sha256": "716a1aeb375b5fba6da7ae3bdee51d9f24fc1af531612b437ea5b54ba8c29a67",
+      "bytes": 224228,
+      "license": "CC-BY-4.0",
+      "provenance": {
+        "kind": "third-party-derived",
+        "exporter": "tooling/blender/prepare-campus-vehicles.py",
+        "note": "Simplified, debadged and recoloured campus car (micro-ev, ev) derived from 2020 Wuling Hongguang Mini EV. Source and credit are recorded in THIRD_PARTY_NOTICES.md."
+      }
+    },
+    {
+      "path": "vehicles/mpv.glb",
+      "sha256": "c9bc1154dd5767ea3b75d277d6b01a41b0f6632108690f57660fc871f447b06a",
+      "bytes": 249620,
+      "license": "LicenseRef-RenderHub-Extended-Use",
+      "provenance": {
+        "kind": "third-party-derived",
+        "exporter": "tooling/blender/prepare-campus-vehicles.py",
+        "note": "Simplified, debadged and recoloured campus car (mpv, conventional) derived from 2021 Honda Odyssey. Source and credit are recorded in THIRD_PARTY_NOTICES.md."
+      }
+    },
+    {
+      "path": "vehicles/muscle-classic.glb",
+      "sha256": "2f71253f21c266c4bb2d47b2f9e49bbfe09e9d353d3f7ef2c52d89579528a8aa",
+      "bytes": 251068,
+      "license": "CC-BY-NC-SA-4.0",
+      "provenance": {
+        "kind": "third-party-derived",
+        "exporter": "tooling/blender/prepare-campus-vehicles.py",
+        "note": "Simplified, debadged and recoloured campus car (muscle-classic, conventional) derived from 1970 Dodge Charger RT Fast And Furious Edition. Source and credit are recorded in THIRD_PARTY_NOTICES.md."
+      }
+    },
+    {
+      "path": "vehicles/muscle.glb",
+      "sha256": "f4ce5a1116123d5a379c2fd001631fb8ed82982980c8da3b15444e912bb53c47",
+      "bytes": 233176,
+      "license": "CC-BY-4.0",
+      "provenance": {
+        "kind": "third-party-derived",
+        "exporter": "tooling/blender/prepare-campus-vehicles.py",
+        "note": "Simplified, debadged and recoloured campus car (muscle, conventional) derived from 2020 Ford Mustang Shelby GT350R. Source and credit are recorded in THIRD_PARTY_NOTICES.md."
+      }
+    },
+    {
+      "path": "vehicles/offroad-4door.glb",
+      "sha256": "3ca14f6341bf16b312d4063d5662358fd982a412bcfbfb667d1abd5ed2d09082",
+      "bytes": 324228,
+      "license": "CC-BY-4.0",
+      "provenance": {
+        "kind": "third-party-derived",
+        "exporter": "tooling/blender/prepare-campus-vehicles.py",
+        "note": "Simplified, debadged and recoloured campus car (offroad-4door, conventional) derived from 2021 Jeep Wrangler. Source and credit are recorded in THIRD_PARTY_NOTICES.md."
+      }
+    },
+    {
+      "path": "vehicles/performance-suv.glb",
+      "sha256": "daf0c77a9bfe752c6b1795689c635914b6b03a3caf5abda143f41a9cc50f5d2b",
+      "bytes": 205344,
+      "license": "CC-BY-4.0",
+      "provenance": {
+        "kind": "third-party-derived",
+        "exporter": "tooling/blender/prepare-campus-vehicles.py",
+        "note": "Simplified, debadged and recoloured campus car (performance-suv, conventional) derived from 2020 Porsche Cayenne Turbo Coupe. Source and credit are recorded in THIRD_PARTY_NOTICES.md."
+      }
+    },
+    {
+      "path": "vehicles/pickup-crew.glb",
+      "sha256": "30029aaa0a2f676e0aa869fb0fe09686977975523461a3337ed0313b1155b079",
+      "bytes": 118012,
+      "license": "LicenseRef-Sketchfab-Standard",
+      "provenance": {
+        "kind": "third-party-derived",
+        "exporter": "tooling/blender/prepare-campus-vehicles.py",
+        "note": "Simplified, debadged and recoloured campus car (pickup-crew, conventional) derived from 2007 GMC Sierra. Source and credit are recorded in THIRD_PARTY_NOTICES.md."
+      }
+    },
+    {
+      "path": "vehicles/pickup-large.glb",
+      "sha256": "9559532a8ea4895fea223e2a40226a7ba99d485ace1e227015bbde1db3771065",
+      "bytes": 204804,
+      "license": "CC-BY-4.0",
+      "provenance": {
+        "kind": "third-party-derived",
+        "exporter": "tooling/blender/prepare-campus-vehicles.py",
+        "note": "Simplified, debadged and recoloured campus car (pickup-large, conventional) derived from Download Phasmophobia For Pc. Source and credit are recorded in THIRD_PARTY_NOTICES.md."
+      }
+    },
+    {
+      "path": "vehicles/pickup-midsize.glb",
+      "sha256": "a082a94632b52f7a14c94e6061a8c279ba0799c280579219d96ada3af129eba4",
+      "bytes": 309988,
+      "license": "CC-BY-4.0",
+      "provenance": {
+        "kind": "third-party-derived",
+        "exporter": "tooling/blender/prepare-campus-vehicles.py",
+        "note": "Simplified, debadged and recoloured campus car (pickup-midsize, conventional) derived from Toyota Hilux Revo Prerunner 2021. Source and credit are recorded in THIRD_PARTY_NOTICES.md."
+      }
+    },
+    {
+      "path": "vehicles/pickup-offroad.glb",
+      "sha256": "d335be084f91595d4c6e455dfa2c8c2fed2c1b499e103a84f88e6aa879d2a756",
+      "bytes": 295132,
+      "license": "CC-BY-4.0",
+      "provenance": {
+        "kind": "third-party-derived",
+        "exporter": "tooling/blender/prepare-campus-vehicles.py",
+        "note": "Simplified, debadged and recoloured campus car (pickup-offroad, conventional) derived from PICKUP FORD RAPTOR R. Source and credit are recorded in THIRD_PARTY_NOTICES.md."
+      }
+    },
+    {
+      "path": "vehicles/pickup.glb",
+      "sha256": "cc9c34a141130b5aa8c844bda07bf7c4a202ca339e50073158a2bbcf6b916b1f",
+      "bytes": 106632,
+      "license": "CC-BY-4.0",
+      "provenance": {
+        "kind": "third-party-derived",
+        "exporter": "tooling/blender/prepare-campus-vehicles.py",
+        "note": "Simplified, debadged and recoloured campus car (pickup, conventional) derived from 2019 Ford Ranger Raptor CIVIL (Cities Skylines). Source and credit are recorded in THIRD_PARTY_NOTICES.md."
+      }
+    },
+    {
+      "path": "vehicles/rally-sedan.glb",
+      "sha256": "95407bbafe80489ff8673732b6008c652d2723915277defc1db10ee85e5a50e6",
+      "bytes": 231772,
+      "license": "CC-BY-4.0",
+      "provenance": {
+        "kind": "third-party-derived",
+        "exporter": "tooling/blender/prepare-campus-vehicles.py",
+        "note": "Simplified, debadged and recoloured campus car (rally-sedan, conventional) derived from Mitsubishi Lancer Evo 5. Source and credit are recorded in THIRD_PARTY_NOTICES.md."
+      }
+    },
+    {
+      "path": "vehicles/roadster.glb",
+      "sha256": "27caca0413570e641201242dfb12cb9d83dff584f6371a063305784d34ea964b",
+      "bytes": 220912,
+      "license": "CC-BY-4.0",
+      "provenance": {
+        "kind": "third-party-derived",
+        "exporter": "tooling/blender/prepare-campus-vehicles.py",
+        "note": "Simplified, debadged and recoloured campus car (roadster, conventional) derived from 2019 BMW I8 Roadster. Source and credit are recorded in THIRD_PARTY_NOTICES.md."
+      }
+    },
+    {
+      "path": "vehicles/sedan.glb",
+      "sha256": "4f45c6f2d75ba0dbb0b94e87fbf4e6f6ff53bbc434c3cd159ea513b989ac92c3",
+      "bytes": 252404,
+      "license": "LicenseRef-RenderHub-Extended-Use",
+      "provenance": {
+        "kind": "third-party-derived",
+        "exporter": "tooling/blender/prepare-campus-vehicles.py",
+        "note": "Simplified, debadged and recoloured campus car (sedan, conventional) derived from 2019 Polestar 1. Source and credit are recorded in THIRD_PARTY_NOTICES.md."
+      }
+    },
+    {
+      "path": "vehicles/sports-classic.glb",
+      "sha256": "1d1e4c5b05133f655c6d6e801675b2c3930ebd16d1272d60d8a7a696eb378e88",
+      "bytes": 211400,
+      "license": "CC-BY-4.0",
+      "provenance": {
+        "kind": "third-party-derived",
+        "exporter": "tooling/blender/prepare-campus-vehicles.py",
+        "note": "Simplified, debadged and recoloured campus car (sports-classic, conventional) derived from Honda NSX 1990. Source and credit are recorded in THIRD_PARTY_NOTICES.md."
+      }
+    },
+    {
+      "path": "vehicles/sports-gt.glb",
+      "sha256": "f3e87676c23f959b396fe1a862e88bda55267bff5e854185128da3b09705a31f",
+      "bytes": 244576,
+      "license": "CC-BY-4.0",
+      "provenance": {
+        "kind": "third-party-derived",
+        "exporter": "tooling/blender/prepare-campus-vehicles.py",
+        "note": "Simplified, debadged and recoloured campus car (sports-gt, conventional) derived from 2017_mercedes-benz_amg_gt_r. Source and credit are recorded in THIRD_PARTY_NOTICES.md."
+      }
+    },
+    {
+      "path": "vehicles/sports-rear-engine.glb",
+      "sha256": "89554eeac4cb2e61dbcbb9ddad7352c5254934f1392f5cdbe0892258169cbd16",
+      "bytes": 225956,
+      "license": "CC-BY-4.0",
+      "provenance": {
+        "kind": "third-party-derived",
+        "exporter": "tooling/blender/prepare-campus-vehicles.py",
+        "note": "Simplified, debadged and recoloured campus car (sports-rear-engine, conventional) derived from 2017 Porsche 911 (991) GT3 RS. Source and credit are recorded in THIRD_PARTY_NOTICES.md."
+      }
+    },
+    {
+      "path": "vehicles/sports.glb",
+      "sha256": "12ec585a103c028a0fb0e523cfd09dad8ca2bbeffd7244e1a993b626187be2da",
+      "bytes": 255068,
+      "license": "CC-BY-4.0",
+      "provenance": {
+        "kind": "third-party-derived",
+        "exporter": "tooling/blender/prepare-campus-vehicles.py",
+        "note": "Simplified, debadged and recoloured campus car (sports, conventional) derived from 2019 Lamborghini Huracan GT3 EVO Racecar. Source and credit are recorded in THIRD_PARTY_NOTICES.md."
+      }
+    },
+    {
+      "path": "vehicles/suv-classic.glb",
+      "sha256": "2e0f12ff6f78c070dfc9e29f593051923c05549e89b89a2664d4c0d82c499e86",
+      "bytes": 108520,
+      "license": "LicenseRef-Sketchfab-Standard",
+      "provenance": {
+        "kind": "third-party-derived",
+        "exporter": "tooling/blender/prepare-campus-vehicles.py",
+        "note": "Simplified, debadged and recoloured campus car (suv-classic, conventional) derived from 2004 Volvo XC90. Source and credit are recorded in THIRD_PARTY_NOTICES.md."
+      }
+    },
+    {
+      "path": "vehicles/suv-compact.glb",
+      "sha256": "5eda37b6e2f97e7a2b86a21f410592d12df0a070bea64c553e367c37d34a01c3",
+      "bytes": 272416,
+      "license": "CC-BY-4.0",
+      "provenance": {
+        "kind": "third-party-derived",
+        "exporter": "tooling/blender/prepare-campus-vehicles.py",
+        "note": "Simplified, debadged and recoloured campus car (suv-compact, conventional) derived from 2023 Hyundai Creta. Source and credit are recorded in THIRD_PARTY_NOTICES.md."
+      }
+    },
+    {
+      "path": "vehicles/suv-family.glb",
+      "sha256": "b629bedba3dd1227af0e62ed47f407a07fc9a3651fe23a88aa60995e7178c619",
+      "bytes": 296104,
+      "license": "CC-BY-4.0",
+      "provenance": {
+        "kind": "third-party-derived",
+        "exporter": "tooling/blender/prepare-campus-vehicles.py",
+        "note": "Simplified, debadged and recoloured campus car (suv-family, conventional) derived from 2022 Volkswagen Tiguan L 430 PHEV. Source and credit are recorded in THIRD_PARTY_NOTICES.md."
+      }
+    },
+    {
+      "path": "vehicles/suv-large.glb",
+      "sha256": "c218337ae4a38d80826bf7bd96c096e56ff60511eb96306f1c450b908b1b64b9",
+      "bytes": 119324,
+      "license": "LicenseRef-Sketchfab-Standard",
+      "provenance": {
+        "kind": "third-party-derived",
+        "exporter": "tooling/blender/prepare-campus-vehicles.py",
+        "note": "Simplified, debadged and recoloured campus car (suv-large, conventional) derived from 2007 Cadillac Escalade. Source and credit are recorded in THIRD_PARTY_NOTICES.md."
+      }
+    },
+    {
+      "path": "vehicles/suv-luxury.glb",
+      "sha256": "a304077a1fc83b192d67cd129034c5f653a42333c88647550086644694711722",
+      "bytes": 261576,
+      "license": "CC-BY-4.0",
+      "provenance": {
+        "kind": "third-party-derived",
+        "exporter": "tooling/blender/prepare-campus-vehicles.py",
+        "note": "Simplified, debadged and recoloured campus car (suv-luxury, conventional) derived from 2022 Hongqi LS7 Guoyao. Source and credit are recorded in THIRD_PARTY_NOTICES.md."
+      }
+    },
+    {
+      "path": "vehicles/suv-midsize.glb",
+      "sha256": "fa2fcb017c6e2579fe55036430d03d0df16efe4ae1b1d6293c706beff123d02b",
+      "bytes": 309580,
+      "license": "CC-BY-4.0",
+      "provenance": {
+        "kind": "third-party-derived",
+        "exporter": "tooling/blender/prepare-campus-vehicles.py",
+        "note": "Simplified, debadged and recoloured campus car (suv-midsize, conventional) derived from HAVAL H6 HEV 2024. Source and credit are recorded in THIRD_PARTY_NOTICES.md."
+      }
+    },
+    {
+      "path": "vehicles/suv-urban.glb",
+      "sha256": "1a4abe2f79e2f420a6c7171852f9f88a533cbe0be22dca436422e1e5f20844b1",
+      "bytes": 246780,
+      "license": "CC-BY-4.0",
+      "provenance": {
+        "kind": "third-party-derived",
+        "exporter": "tooling/blender/prepare-campus-vehicles.py",
+        "note": "Simplified, debadged and recoloured campus car (suv-urban, conventional) derived from 2023 Hyundai Mufasa. Source and credit are recorded in THIRD_PARTY_NOTICES.md."
+      }
+    },
+    {
+      "path": "vehicles/van.glb",
+      "sha256": "efe70bf83d11f1e36ff6993c1d09a51c83a9bf4e5d07012a4530dd23ab4dc8c7",
+      "bytes": 248460,
+      "license": "LicenseRef-RenderHub-Extended-Use",
+      "provenance": {
+        "kind": "third-party-derived",
+        "exporter": "tooling/blender/prepare-campus-vehicles.py",
+        "note": "Simplified, debadged and recoloured campus car (van, conventional) derived from 2010 SsangYong Rodius. Source and credit are recorded in THIRD_PARTY_NOTICES.md."
       }
     }
   ]

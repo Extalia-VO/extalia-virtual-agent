@@ -1,3 +1,4 @@
+import { QA_HOOKS } from '../qaHooks';
 import { useEffect, useRef, useSyncExternalStore } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { budgetPixelRatio, createBudgetController, createRenderFrameSampler, getRenderBudget, getRenderBudgetLevel, RENDER_BUDGET_LEVELS, resetRenderFrameSampler, sampleRenderFrame, setRenderBudgetLevel, subscribeRenderBudget, updateBudget } from './renderBudget';
@@ -14,7 +15,7 @@ export function useBudgetPixelRatio(): number {
 }
 
 /**
- * Keeps the Office above 40 fps: measures two-second windows after a warm-up and moves
+ * Keeps the Office above 40 fps: measures one-second windows after a warm-up and moves
  * between budget levels (pixel ratio, live beams, shadow detail) with hysteresis.
  */
 export function AdaptiveRenderBudget() {
@@ -23,7 +24,7 @@ export function AdaptiveRenderBudget() {
   const sample = useRef({ controller: { ...createBudgetController(), level: getRenderBudgetLevel() }, sampler: createRenderFrameSampler(), pinned: false, fps: 0 });
 
   useEffect(() => {
-    if (import.meta.env.DEV) {
+    if (QA_HOOKS) {
       // QA: pin a level (or null to resume adaptation) when measuring a specific budget.
       (window as BudgetWindow).__EXTALIA_SET_RENDER_BUDGET__ = level => {
         sample.current.pinned = level !== null;
@@ -32,7 +33,7 @@ export function AdaptiveRenderBudget() {
       };
     }
     return () => {
-      if (import.meta.env.DEV) {
+      if (QA_HOOKS) {
         delete (window as BudgetWindow).__EXTALIA_SET_RENDER_BUDGET__;
         delete (window as BudgetWindow).__EXTALIA_RENDER_BUDGET__;
       }
@@ -55,7 +56,7 @@ export function AdaptiveRenderBudget() {
       const next = updateBudget(data.controller, { fps: data.fps });
       if (next !== before) { setRenderBudgetLevel(next); data.sampler.warmup = 1.5; }
     }
-    if (import.meta.env.DEV) {
+    if (QA_HOOKS) {
       const budget = getRenderBudget();
       (window as BudgetWindow).__EXTALIA_RENDER_BUDGET__ = {
         level: getRenderBudgetLevel(), levels: RENDER_BUDGET_LEVELS.length, fps: Math.round(data.fps * 10) / 10,

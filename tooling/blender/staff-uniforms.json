@@ -1,0 +1,128 @@
+{
+  "schema": "extalia.staff-uniforms.v1",
+  "brand_accent": "#10b9ac",
+  "uniforms": [
+    {
+      "id": "reception-uniform",
+      "group": "female",
+      "body": "female/female-casual.glb",
+      "role": "receptionist",
+      "mesh": "ScanOutfitReception",
+      "keep_base": [
+        "OfficeTop",
+        "OfficeBottom",
+        "OfficeShoes",
+        "Skin_"
+      ],
+      "layers": [
+        {
+          "kind": "blazer",
+          "offset": 0.008,
+          "hem": -0.16,
+          "v_depth": 0.3,
+          "v_width": 0.075,
+          "cuff_gap": 0.045,
+          "buttons": 2,
+          "button_pitch": 0.075,
+          "target_tris": 3200
+        }
+      ],
+      "extras": [
+        "badge",
+        "scarf"
+      ],
+      "base_tris": 6500
+    },
+    {
+      "id": "reception-uniform",
+      "group": "male",
+      "body": "male/office-classic.glb",
+      "role": "receptionist",
+      "mesh": "ScanOutfitReception",
+      "keep_base": [
+        "OfficeTop",
+        "OfficeAccent",
+        "OfficeBottom",
+        "OfficeShoes",
+        "OfficeBelt",
+        "OfficeOuter",
+        "OfficeLining"
+      ],
+      "layers": [
+        {
+          "kind": "blazer",
+          "offset": 0.009,
+          "hem": -0.16,
+          "v_depth": 0.32,
+          "v_width": 0.085,
+          "cuff_gap": 0.045,
+          "buttons": 2,
+          "button_pitch": 0.075,
+          "target_tris": 3200
+        }
+      ],
+      "extras": [
+        "badge"
+      ],
+      "base_tris": 6000,
+      "note": "Three-piece: the body's own waistcoat shows in the jacket's V."
+    },
+    {
+      "id": "bartender-uniform",
+      "group": "female",
+      "body": "female/female-casual.glb",
+      "role": "bartender",
+      "mesh": "ScanOutfitBartender",
+      "keep_base": [
+        "OfficeTop",
+        "OfficeBottom",
+        "OfficeShoes",
+        "Skin_"
+      ],
+      "layers": [
+        {
+          "kind": "waistcoat",
+          "offset": 0.006,
+          "hem": -0.03,
+          "v_depth": 0.27,
+          "v_width": 0.085,
+          "buttons": 4,
+          "button_pitch": 0.05,
+          "target_tris": 2600
+        }
+      ],
+      "extras": [
+        "apron",
+        "bowtie",
+        "rolled-sleeves"
+      ],
+      "base_tris": 6500
+    },
+    {
+      "id": "bartender-uniform",
+      "group": "male",
+      "body": "male/office-classic.glb",
+      "role": "bartender",
+      "mesh": "ScanOutfitBartender",
+      "keep_base": [
+        "OfficeTop",
+        "OfficeAccent",
+        "OfficeBottom",
+        "OfficeShoes",
+        "OfficeBelt",
+        "OfficeOuter",
+        "OfficeLining"
+      ],
+      "retint": {
+        "OfficeAccent": "OfficeTop"
+      },
+      "note": "The body's own waistcoat stays; its tie reads as the shirt placket under the bow tie.",
+      "extras": [
+        "apron",
+        "bowtie",
+        "rolled-sleeves"
+      ],
+      "base_tris": 6500
+    }
+  ]
+}

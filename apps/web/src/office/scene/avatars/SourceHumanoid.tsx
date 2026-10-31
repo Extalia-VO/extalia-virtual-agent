@@ -2,11 +2,11 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { useGLTF } from '@react-three/drei';
-import type { Group, Material, Mesh, SkinnedMesh } from 'three';
-import { Bone, Color, Euler, Matrix4, MeshStandardMaterial, Quaternion, Vector3 } from 'three';
+import type { Group, Material, Mesh, Object3D } from 'three';
+import { Bone, Color, Euler, Matrix4, MeshStandardMaterial, Quaternion, Skeleton, SkinnedMesh, Vector3 } from 'three';
 import { clone } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { resolveWardrobe, officeGarmentVisibility, OFFICE_WARDROBE_MESHES, SOURCE_WARDROBE_MESHES } from './AvatarWardrobe';
-import { scanAccessorySlots, scanOutfitSlot } from './wardrobe';
+import { SCAN_OUTFIT_MODEL, scanAccessorySlots, scanOutfitSlot } from './wardrobe';
 import { presentationPreset, type AvatarVisualConfig } from './appearance';
 import { createHumanoidRigProfile } from './rig';
 import { gaitParameters, idlePose } from './gait';
@@ -20,6 +20,8 @@ import { deskReachForSeat, type DeskReach } from './deskReach';
 import { createHandOrientationScratch, handPronationAngle, writeHandOrientation } from './handOrientation';
 import { sourceLimbWeights } from './sourceLimbWeights';
 import { sourceGarmentWeights } from './sourceGarmentWeights';
+import { applySeatedDrape, copyFittedMorphTargets, seatedDrapeBindings } from './sourceSeatedDrape';
+import { applyWalkDrape, walkDrapeBindings } from './sourceWalkDrape';
 import { fitSourceFootGeometry } from './sourceFootGeometry';
 import { isCanonicalSourceHandAsset, attachSourceHandCurl, sourceHandCurlInfluence, sourceHandCurlLengths } from './sourceHandCurl';
 import { mixReachGoal } from './reachPose';
@@ -29,6 +31,17 @@ import { bikeFootGoal, createFitnessLegSolution, fitnessHandGoal, fitnessMechani
 import { FITNESS_BLUEPRINT } from "../interior/spatialBlueprints";
 import { HospitalityProps } from './HospitalityProps';
 import type { SourceAvatarUrls } from './sourceAssets';
+import type { SourcePieceScenes } from './SourcePieceAssets';
+import { sourceWardrobeGeometry, wardrobeReplacementParts } from './sourceWardrobeGeometry';
+import { tintOriginalGarmentMaterial } from './sourceOriginalMaterials';
+import { attachWardrobePieces, wardrobePieceHasFootwear } from './sourceWardrobePieces';
+import { declaredWardrobeCoverage, underlayerCoverageGeometry } from './sourceWardrobeCoverage';
+import { footwearFloorContact, nativeFootwearGeometry, sourceFootwearProfiles, wardrobeFootSoleProfile } from './sourceNativeFootwear';
+import { resolvedOriginalSetFeatures } from './sourceOriginalSetFeatures';
+import { nativeBodyWithoutHands } from './sourceOwnHandsGeometry';
+import { sourceUnderlayerFit } from './sourceUnderlayerFit';
+import { applyShoulderCorrectives, shoulderCorrectiveBindings } from './sourceShoulderCorrective';
+import { sourceWaistBacking } from './sourceWaistBacking';
 import { createLodState, lodStep, lodTier, screenHeightPixels, setCastShadows, widenSkinnedBounds } from './avatarLod';
 import { createFacialPose, expressionTimeSeconds, resolveCharacterExpression, writeFacialPose, type CharacterExpressionState } from './facialExpression';
 import { attachSourceFaceExpressions, writeSourceFaceExpressions, type SourceFaceBinding } from './sourceFaceExpressions';
@@ -70,8 +83,40 @@ function cutOutHairCards(material: Material): void {
   material.needsUpdate = true;
 }
 
-export function SourceHumanoid({ visual, urls, seated, typing, reducedMotion, seatHeight = 0.46, seatFront = 0.22, motion, desk, resourceId, expressionId, expressionState }: {
-  visual: AvatarVisualConfig; urls: SourceAvatarUrls; seated: boolean; typing: boolean; reducedMotion: boolean; seatHeight?: number; seatFront?: number;
+/**
+ * Attach a fitted outfit model (`avatars/outfits/...`: the 20-joint rig plus one skinned mesh) to
+ * a cloned body: each skinned mesh is rebound to the body's own bones by name, keeps its bind
+ * pose, and joins the outfit slots as `ScanOutfitModel`. Materials are per-instance copies.
+ */
+function attachOutfitModel(body: Group, outfit: Group, name = SCAN_OUTFIT_MODEL): number {
+  const bones = new Map<string, Bone>();
+  let scan: SkinnedMesh | undefined;
+  body.traverse(child => {
+    if (child instanceof Bone) bones.set(child.name, child);
+    if (!scan && (child as SkinnedMesh).isSkinnedMesh && child.name.replace(/_\d+$/, '').startsWith('ScanOutfit')) scan = child as SkinnedMesh;
+  });
+  // The outfit shares the body's rig and export frame: bind it exactly like the scanned outfit.
+  const host: Object3D | undefined = scan?.parent ?? undefined;
+  const meshes: SkinnedMesh[] = [];
+  outfit.traverse(child => { if ((child as SkinnedMesh).isSkinnedMesh) meshes.push(child as SkinnedMesh); });
+  if (!host || meshes.some(source => source.skeleton.bones.some(bone => !bones.has(bone.name)))) return 0;
+  let attached = 0;
+  for (const source of meshes) {
+    const joints = source.skeleton.bones.map(bone => bones.get(bone.name));
+    if (!host || joints.some(bone => !bone)) continue;
+    const mesh = new SkinnedMesh(source.geometry, Array.isArray(source.material) ? source.material.map(material => material.clone()) : source.material.clone());
+    copyFittedMorphTargets(source, mesh);
+    mesh.name = name;
+    mesh.bind(new Skeleton(joints as Bone[], source.skeleton.boneInverses.map(matrix => matrix.clone())), (scan ?? source).bindMatrix.clone());
+    mesh.castShadow = mesh.receiveShadow = true;
+    host.add(mesh);
+    attached++;
+  }
+  return attached;
+}
+
+export function SourceHumanoid({ visual, urls, pieces, seated, typing, reducedMotion, seatHeight = 0.46, seatFront = 0.22, motion, desk, resourceId, expressionId, expressionState }: {
+  visual: AvatarVisualConfig; urls: SourceAvatarUrls; pieces?: SourcePieceScenes; seated: boolean; typing: boolean; reducedMotion: boolean; seatHeight?: number; seatFront?: number;
   resourceId?: string | undefined;
   expressionId?: string | undefined;
   expressionState?: CharacterExpressionState | undefined;
@@ -84,6 +129,8 @@ export function SourceHumanoid({ visual, urls, seated, typing, reducedMotion, se
   // Source packs are uncompressed: avoid Draco network downloads and an unused WebAssembly decoder.
   const gltf = useGLTF(urls.body, false, false);
   const hairGltf = useGLTF(urls.hair, false, false);
+  // Without a fitted outfit model this reads the (already cached) body again and is ignored.
+  const outfitGltf = useGLTF(urls.outfit ?? urls.body, false, false);
   const hairModel = useMemo(() => {
     const scene = clone(hairGltf.scene) as Group;
     const bones = new Map<string, Bone>();
@@ -113,6 +160,8 @@ export function SourceHumanoid({ visual, urls, seated, typing, reducedMotion, se
       }
     });
   }, [hairModel, female, visual.hairColor]);
+  const topPiece = pieces?.top, bottomPiece = pieces?.bottom, outerPiece = pieces?.outer;
+  const mixing = visual.clothing?.parts !== undefined, selectedOuter = visual.clothing?.parts?.outer;
   const model = useMemo(() => {
     const scene = clone(gltf.scene) as Group;
     scene.traverse(child => {
@@ -123,6 +172,19 @@ export function SourceHumanoid({ visual, urls, seated, typing, reducedMotion, se
       for (const material of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) if (STRAND_CARD_MATERIAL.test(material.name)) cutOutHairCards(material);
       mesh.castShadow = mesh.receiveShadow = true;
     });
+    const fittedOutfit = urls.outfit ? attachOutfitModel(scene, outfitGltf.scene) > 0 : false;
+    const loadedParts = attachWardrobePieces({
+      ...(topPiece ? { top: topPiece } : {}),
+      ...(bottomPiece ? { bottom: bottomPiece } : {}),
+      ...(outerPiece ? { outer: outerPiece } : {}),
+    }, (slot, piece) => attachOutfitModel(scene, piece, `WardrobePiece${slot[0]!.toUpperCase()}${slot.slice(1)}`) > 0);
+    const originalFeatures = resolvedOriginalSetFeatures(fittedOutfit ? outfitGltf.scene : undefined, {
+      ...(topPiece ? { top: topPiece } : {}), ...(outerPiece ? { outer: outerPiece } : {}),
+    }, loadedParts);
+    const replacements = wardrobeReplacementParts({
+      ...loadedParts,
+      ...(loadedParts.bottom && bottomPiece ? { footwear: wardrobePieceHasFootwear(bottomPiece) } : {}),
+    }, mixing, selectedOuter);
     scene.updateMatrixWorld(true);
     widenSkinnedBounds(scene);
     const inverse = scene.getWorldQuaternion(new Quaternion()).invert();
@@ -137,11 +199,64 @@ export function SourceHumanoid({ visual, urls, seated, typing, reducedMotion, se
     if (isCanonicalSourceHandAsset(urls.body)) for (const mesh of curlMeshes) {
       const sleeve = sourceGarmentWeights(mesh);
       if (sleeve) mesh.geometry = sleeve;
-      const corrected = sourceLimbWeights(mesh);
+      // Original sets include separately exported skin/context primitives too.
+      // Keep their shared, reviewed binding rather than repairing each primitive.
+      const corrected = sourceLimbWeights(mesh,
+        fittedOutfit && originalFeatures.ownNeckline && mesh.name === SCAN_OUTFIT_MODEL);
       if (corrected) mesh.geometry = corrected;
     }
     const feet = isCanonicalSourceHandAsset(urls.body) ? fitSourceFootGeometry(curlMeshes) : undefined;
     for (const correction of feet?.corrections ?? []) correction.mesh.geometry = correction.geometry;
+    // Full original sets can reuse the native feet AFTER the canonical correction above.
+    // Their own exposed-leg skin overlaps these ankle pieces while the original garment stays intact.
+    let nativeFootwear = false;
+    if (originalFeatures?.nativeFootwear) {
+      const additions: SkinnedMesh[] = [];
+      for (const source of curlMeshes) {
+        if (source.name.replace(/_\d+$/, '') !== 'ScanOutfit' || !source.parent) continue;
+        const geometry = nativeFootwearGeometry(source);
+        if (!geometry) continue;
+        const mesh = new SkinnedMesh(geometry, Array.isArray(source.material) ? source.material.map(material => material.clone()) : source.material.clone());
+        mesh.name = 'WardrobeNativeFootwear';
+        mesh.position.copy(source.position); mesh.quaternion.copy(source.quaternion); mesh.scale.copy(source.scale);
+        mesh.matrix.copy(source.matrix); mesh.matrixAutoUpdate = source.matrixAutoUpdate;
+        mesh.bind(source.skeleton, source.bindMatrix.clone());
+        mesh.castShadow = mesh.receiveShadow = true;
+        source.parent.add(mesh);
+        additions.push(mesh);
+      }
+      nativeFootwear = additions.length > 0;
+      curlMeshes.push(...additions);
+      widenSkinnedBounds(scene);
+    }
+    if (mixing) for (const mesh of curlMeshes) {
+      if (mesh.name.replace(/_\d+$/, '').startsWith('ScanOutfit')) mesh.geometry = sourceWardrobeGeometry(mesh, replacements);
+    }
+    const coverage = loadedParts.outer && outerPiece ? declaredWardrobeCoverage(outerPiece) : undefined;
+    if (coverage) for (const mesh of curlMeshes) {
+      const name = mesh.name.replace(/_\d+$/, '');
+      if (name.startsWith('ScanOutfit') || name === 'WardrobePieceTop' || name === 'BodyNeckline') {
+        mesh.geometry = underlayerCoverageGeometry(mesh, coverage);
+      }
+    }
+    if (originalFeatures.ownHands) for (const mesh of curlMeshes) {
+      mesh.geometry = nativeBodyWithoutHands(mesh, true);
+    }
+    const upperLayers = curlMeshes.filter(mesh => fittedOutfit && mesh.name === SCAN_OUTFIT_MODEL
+      || loadedParts.top && mesh.name === 'WardrobePieceTop' || loadedParts.outer && mesh.name === 'WardrobePieceOuter');
+    if (upperLayers.length) {
+      for (const mesh of curlMeshes) mesh.geometry = sourceUnderlayerFit(mesh, upperLayers);
+      widenSkinnedBounds(scene);
+    }
+    const bottomLayer = loadedParts.bottom && curlMeshes.find(mesh => mesh.name === 'WardrobePieceBottom');
+    if (bottomLayer) {
+      for (const mesh of curlMeshes) mesh.geometry = sourceWaistBacking(mesh, bottomLayer);
+      widenSkinnedBounds(scene);
+    }
+    const { profiles: footSoles, slot: footwearSlot } = sourceFootwearProfiles(feet?.soleByOutfit, curlMeshes, {
+      fullOutfit: fittedOutfit && !originalFeatures.nativeFootwear,
+      bottom: loadedParts.bottom === true && replacements.footwear === true,
+    });
     const curlLengths = sourceHandCurlLengths(curlMeshes);
     const faces: SourceFaceBinding[] = [];
     for (const mesh of curlMeshes) {
@@ -150,17 +265,17 @@ export function SourceHumanoid({ visual, urls, seated, typing, reducedMotion, se
       const face = attachSourceFaceExpressions(mesh, urls.body);
       if (face) faces.push(face);
     }
-    return { scene, bones, handCurls, faces, standingHip: bones.get('hips')?.bone.position.y ?? 1.0064, footSoles: feet?.soleByOutfit,
+    return { scene, bones, handCurls, faces, seatedDrapes: seatedDrapeBindings(curlMeshes), walkDrapes: walkDrapeBindings(curlMeshes), shoulderCorrectives: shoulderCorrectiveBindings(curlMeshes, bones), standingHip: bones.get('hips')?.bone.position.y ?? 1.0064, footSoles, footwearSlot, nativeFootwear, ownNeckline: originalFeatures?.ownNeckline === true, ownEyewear: originalFeatures.ownEyewear === true,
       slots: new Set(curlMeshes.map(mesh => mesh.name.replace(/_\d+$/, ''))) };
-  }, [gltf.scene, urls.body]);
+  }, [gltf.scene, urls.body, urls.outfit, outfitGltf.scene, topPiece, bottomPiece, outerPiece, mixing, selectedOuter]);
   useEffect(() => () => model.scene.traverse(child => {
     const mesh = child as Mesh;
     if (mesh.isMesh) for (const material of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) material.dispose();
   }), [model]);
   const rig = useMemo(() => createHumanoidRigProfile(visual.identityId, { stature: visual.stature }), [visual.identityId, visual.stature]);
   const wardrobe = useMemo(() => resolveWardrobe(visual, rig.seed), [visual, rig.seed]);
-  const footSoles = model.footSoles?.get(scanOutfitSlot(wardrobe.outfit, model.slots) ?? '');
-  const standingSoleLift = -Math.min(0, ...(footSoles?.values() ?? []));
+  const footSoles = wardrobeFootSoleProfile(model.footSoles, model.footwearSlot ?? scanOutfitSlot(wardrobe.outfit, model.slots, visual.clothing?.model), model.nativeFootwear);
+  const { standingOffset: standingSoleLift, soleByFoot: floorSoles } = useMemo(() => footwearFloorContact(footSoles), [footSoles]);
   const scale = (visual.heightMeters ?? 1.70) / 1.85;
   useEffect(() => {
     const slots = new Set<string>();
@@ -168,14 +283,16 @@ export function SourceHumanoid({ visual, urls, seated, typing, reducedMotion, se
     model.scene.traverse(child => { if ((child as Mesh).isMesh) slots.add(child.name.replace(/_\d+$/, '')); });
     model.scene.traverse(child => { if (child.name.replace(/_\d+$/, '') === 'Body' && child.userData.sourceFaceComplete === true) sourceFaceComplete = true; });
     const clothes = officeGarmentVisibility(wardrobe, slots.has('SourceTop'));
-    const scanOutfit = scanOutfitSlot(wardrobe.outfit, slots);
-    const accessories = scanAccessorySlots(visual.accessories, scanOutfit);
+    const scanOutfit = scanOutfitSlot(wardrobe.outfit, slots, visual.clothing?.model);
+    const accessories = scanAccessorySlots(visual.accessories, scanOutfit, visual.clothing?.model);
+    if (model.ownEyewear) accessories.delete('AccGlasses');
     model.scene.traverse(child => {
       const mesh = child as Mesh;
       if (!mesh.isMesh) return;
       const name = mesh.name.replace(/_\d+$/, '');
       if (name.startsWith('Hair_')) mesh.visible = false;
       else if (name === 'Eyes' || name === 'Eyebrows') mesh.visible = !sourceFaceComplete;
+      else if (name === 'BodyNeckline' && model.ownNeckline) mesh.visible = false;
       else if (name.startsWith('Facial')) mesh.visible = !female && Boolean(visual.accessories?.custom?.some(style => name.toLowerCase().includes(style)));
       else if (OFFICE_WARDROBE_MESHES.has(name) || SOURCE_WARDROBE_MESHES.has(name)) mesh.visible = clothes.has(name);
       else if (name.startsWith('ScanOutfit')) mesh.visible = name === scanOutfit;
@@ -183,6 +300,7 @@ export function SourceHumanoid({ visual, urls, seated, typing, reducedMotion, se
       if (mesh.morphTargetDictionary?.Female !== undefined && mesh.morphTargetInfluences) mesh.morphTargetInfluences[mesh.morphTargetDictionary.Female] = female ? 1 : 0;
       for (const material of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) {
         if (!(material instanceof MeshStandardMaterial)) continue;
+        if (tintOriginalGarmentMaterial(material, visual.clothing)) continue;
         const materialName = material.name;
         if (materialName.startsWith('Skin_') || materialName.startsWith('Nails')) material.color.set(visual.skinTone ?? '#bf9278');
         else if (/OfficeHair|Eyebrow|Beard|Mustache/.test(materialName)) material.color.set(visual.hairColor ?? '#302b2c');
@@ -288,7 +406,7 @@ export function SourceHumanoid({ visual, urls, seated, typing, reducedMotion, se
     const walk = motion && !reducedMotion ? motion.walk : 0;
     const still = 1 - walk;
     const thigh = legs[0]!.upper * scale, shin = legs[0]!.lower * scale;
-    const ankle = (legs[0]!.ankle - Math.min(0, footSoles?.get(legs[0]!.names[2]) ?? 0)) * scale;
+    const ankle = (legs[0]!.ankle - (floorSoles.get(legs[0]!.names[2]) ?? 0)) * scale;
     const stride = writeWalkPose(walkPose, gait, motion?.phase ?? 0, walk, thigh + shin + ankle, motion?.stride ?? 1);
     const idle = idlePose(gait, time, sit >= 0.5);
     // Activity clip (desk work, leisure, chat) over the base pose, shared with the procedural character.
@@ -305,9 +423,9 @@ export function SourceHumanoid({ visual, urls, seated, typing, reducedMotion, se
     if (hips) hips.position.y = deckLift + standingHip + ((seatHeight + 0.11 * scale) / scale - standingHip) * sit + (stride.bob + act.bob) / scale;
     for (let index = 0; index < 2; index++) {
       const geo = legs[index]!;
-      // The visible shoe's sole may sit below the source body's origin.
+      // The visible shoe's sole may sit above or below the source body's origin.
       // Keep the seat/desk contacts fixed and solve the legs to that sole.
-      const floorAnkle = (geo.ankle - Math.min(0, footSoles?.get(geo.names[2]) ?? 0)) * scale;
+      const floorAnkle = (geo.ankle - (floorSoles.get(geo.names[2]) ?? 0)) * scale;
       seatedLegPose(seatHeight, seatFront, (0.11 + geo.offsetY) * scale,
         geo.upper * scale, geo.lower * scale, floorAnkle, 0.08 * scale, legPose);
       const base = legPose.thigh * sit;
@@ -425,6 +543,9 @@ export function SourceHumanoid({ visual, urls, seated, typing, reducedMotion, se
     }
     // The terminal source rig has no finger joints: one relaxed GPU morph per
     // hand follows the average curl, without inventing independent key presses.
+    applySeatedDrape(model.seatedDrapes, sit, visual.heightMeters ?? 1.7);
+    applyWalkDrape(model.walkDrapes, walk, sit);
+    applyShoulderCorrectives(model.shoulderCorrectives);
     for (const binding of model.handCurls) {
       const influences = binding.mesh.morphTargetInfluences;
       if (!influences) continue;

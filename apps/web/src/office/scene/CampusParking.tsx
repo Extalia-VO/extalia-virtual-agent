@@ -1,18 +1,22 @@
 /* eslint-disable react-hooks/immutability -- Instanced Three.js matrices and materials are renderer-owned mutable resources. */
-import { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
-import { BoxGeometry, CanvasTexture, Color, CylinderGeometry, Matrix4, MeshStandardMaterial, SRGBColorSpace, type InstancedMesh } from 'three';
+import { useEffect, useLayoutEffect, useMemo, useRef, useSyncExternalStore } from 'react';
+import {
+  BoxGeometry, CanvasTexture, Color, CylinderGeometry, DoubleSide, Float32BufferAttribute, Matrix4, MeshStandardMaterial, SRGBColorSpace,
+  type BufferGeometry, type InstancedMesh, type Mesh, type Object3D,
+} from 'three';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { useSolarEnvironment, type LightOverride } from './Environment';
 import { useExteriorInstancedGeometries } from './ExteriorPart';
 import { FixtureSpotLight } from './prefabs/architecture/FixtureSpotLight';
-import { PARKING, PARKING_BAYS, PARKING_LIGHTS, PARKING_LIGHT_HEIGHT } from './campusMobilityLayout';
+import { ALL_PARKING_BAYS, ALL_PARKING_LIGHTS, PARKING, PARKING_BAYS, PARKING_LIGHT_HEIGHT } from './campusMobilityLayout';
 
 type Slab = { x: number; z: number; w: number; d: number; y: number; h: number; color: string };
 export function parkingSlabs(): Slab[] {
   const ground=PARKING.top;
   const out: Slab[] = [{x:(PARKING.west+PARKING.east)/2,z:(PARKING.north+PARKING.south)/2,w:PARKING.east-PARKING.west,d:PARKING.south-PARKING.north,y:ground-.04,h:.08,color:'#454c50'},
-    {x:-48,z:PARKING.entranceZ,w:8,d:6,y:ground-.04,h:.08,color:'#454c50'},
-    {x:PARKING.aisleX,z:-20,w:6,d:16,y:ground-.04,h:.08,color:'#454c50'},
+    // Aisle stub to the Blender-authored access apron (campus-parking.glb), which starts at z=-25.5.
+    {x:PARKING.aisleX,z:-18.75,w:6,d:13.5,y:ground-.04,h:.08,color:'#454c50'},
     {x:PARKING.footwayX,z:3,w:2,d:36,y:ground+.025,h:.06,color:'#c9c9bc'},
     {x:-28,z:8.5,w:9,d:2.8,y:ground+.025,h:.06,color:'#d9d4c8'}];
   // Low wheel stops, green EV pads and bright perpendicular bay divisions.
@@ -37,7 +41,7 @@ export function parkingLightPower(night: number, override: LightOverride): numbe
   return override === 'off' ? 0 : override === 'on' ? 1 : Math.max(0, Math.min(1, night));
 }
 
-/** Reuse the normalized Blender walk-lamp roles in two draws for all six poles. */
+/** Reuse the normalized Blender walk-lamp roles in two draws for the poles of both lots. */
 function ParkingLights() {
   const { state, lightOverride } = useSolarEnvironment();
   const factor = parkingLightPower(state.factors.exteriorLightFactor, lightOverride);
@@ -59,7 +63,7 @@ function ParkingLights() {
   useEffect(() => { materials.optics.emissiveIntensity = factor * 2.4; }, [materials, factor]);
   useLayoutEffect(() => {
     const matrix = new Matrix4();
-    PARKING_LIGHTS.forEach((pole, index) => {
+    ALL_PARKING_LIGHTS.forEach((pole, index) => {
       // ExteriorPart normalizes both lamp roles to y=[-.5,.5] and a .12m horizontal unit.
       matrix.makeScale(.12, PARKING_LIGHT_HEIGHT, .12);
       matrix.setPosition(pole.x, PARKING.top + PARKING_LIGHT_HEIGHT / 2, pole.z);
@@ -68,12 +72,66 @@ function ParkingLights() {
     for (const mesh of [body.current, optics.current]) if (mesh) { mesh.instanceMatrix.needsUpdate = true; mesh.computeBoundingSphere(); }
   }, [exterior, fallback]);
   return <group name="parking-perimeter-lighting" userData={{ officeDynamic: true }}>
-    <instancedMesh ref={body} name="parking-pole-bodies" args={[exterior?.lamp ?? fallback.body, materials.body, PARKING_LIGHTS.length]} dispose={null} />
-    <instancedMesh ref={optics} name="parking-pole-optics" args={[exterior?.lampOptics ?? fallback.optics, materials.optics, PARKING_LIGHTS.length]} dispose={null} />
-    {PARKING_LIGHTS.map(pole => <FixtureSpotLight key={pole.id} name={pole.id}
+    <instancedMesh ref={body} name="parking-pole-bodies" args={[exterior?.lamp ?? fallback.body, materials.body, ALL_PARKING_LIGHTS.length]} dispose={null} />
+    <instancedMesh ref={optics} name="parking-pole-optics" args={[exterior?.lampOptics ?? fallback.optics, materials.optics, ALL_PARKING_LIGHTS.length]} dispose={null} />
+    {ALL_PARKING_LIGHTS.map(pole => <FixtureSpotLight key={pole.id} name={pole.id}
       position={[pole.x, PARKING.top + PARKING_LIGHT_HEIGHT - .18, pole.z]} aim={[pole.poolX, PARKING.top, pole.z]}
       intensity={70 * factor} distance={12} angle={1.1} penumbra={.65} color="#ffdeaa" floorY={PARKING.top} bakedOnly />)}
   </group>;
+}
+
+const urls = import.meta.glob<string>('/public-assets/landscape/campus-parking.glb', { eager: true, query: '?url', import: 'default' });
+/** Roots of the Blender-authored parking GLB: the east lot and both access connectors. */
+export const PARKING_GLB_ROOTS = ['parking-east-lot', 'parking-access-west', 'parking-access-east'] as const;
+let parkingGeometry: BufferGeometry | null = null, requested = false;
+const listeners = new Set<() => void>();
+const subscribe = (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; };
+
+/** Merge every authored part into one vertex-coloured geometry (material colours become vertex colours): one draw. */
+export function bakeParkingGeometry(scene: Object3D): BufferGeometry | null {
+  scene.updateWorldMatrix(true, true);
+  const shapes: BufferGeometry[] = [], color = new Color();
+  scene.traverse(node => {
+    const mesh = node as Mesh;
+    if (!mesh.isMesh) return;
+    const material = (Array.isArray(mesh.material) ? mesh.material[0] : mesh.material) as MeshStandardMaterial | undefined;
+    const raw = mesh.geometry.clone(), shape = raw.index ? raw.toNonIndexed() : raw;
+    if (shape !== raw) raw.dispose();
+    shape.applyMatrix4(mesh.matrixWorld);
+    for (const key of Object.keys(shape.attributes)) if (key !== 'position' && key !== 'normal') shape.deleteAttribute(key);
+    const count = shape.getAttribute('position').count, colors = new Float32Array(count * 3);
+    color.copy(material?.color ?? new Color('#ffffff'));
+    for (let i = 0; i < count; i++) color.toArray(colors, i * 3);
+    shape.setAttribute('color', new Float32BufferAttribute(colors, 3));
+    shapes.push(shape);
+  });
+  if (!shapes.length) return null;
+  const merged = mergeGeometries(shapes, false);
+  shapes.forEach(shape => shape.dispose());
+  merged?.computeBoundingBox(); merged?.computeBoundingSphere();
+  return merged ?? null;
+}
+async function loadParking() {
+  const url = urls['/public-assets/landscape/campus-parking.glb'];
+  if (!url || requested) return;
+  requested = true;
+  try { parkingGeometry = bakeParkingGeometry((await new GLTFLoader().loadAsync(url)).scene); }
+  catch { /* Without the published GLB only the west lot's instanced slabs remain. */ }
+  listeners.forEach(listener => listener());
+}
+function useParkingGeometry(): BufferGeometry | null {
+  const geometry = useSyncExternalStore(subscribe, () => parkingGeometry, () => null);
+  useEffect(() => { void loadParking(); }, []);
+  return geometry;
+}
+
+/** East lot and both access connectors (ramps, kerb returns, footway crossings) from Blender, in one draw. */
+function AuthoredParking() {
+  const geometry = useParkingGeometry();
+  const material = useMemo(() => new MeshStandardMaterial({ vertexColors: true, roughness: .92, metalness: 0, side: DoubleSide }), []);
+  useEffect(() => () => material.dispose(), [material]);
+  if (!geometry) return null;
+  return <mesh name="parking-blender-lot-and-access" geometry={geometry} material={material} receiveShadow castShadow />;
 }
 
 /** Instanced hardscape, separated access and EV wayfinding; vehicle geometry is shared with traffic. */
@@ -86,11 +144,13 @@ export function CampusParking() {
   },[slabs]);
   return <group name="campus-parking-and-ev-bays" userData={{officePassable:true,officeCollision:false}}>
     <ParkingLights />
+    <AuthoredParking />
     <instancedMesh name="parking-paving-and-markings" ref={ref} args={[undefined,undefined,slabs.length]} receiveShadow>
       <boxGeometry/><meshStandardMaterial roughness={.95} color="#ffffff"/>
     </instancedMesh>
-    {PARKING_BAYS.filter(b=>b.ev).map(b=><mesh key={b.id} position={[b.x-.8,PARKING.top+.021,b.z]} rotation={[-Math.PI/2,0,Math.PI/2]}>
+    {/* EV stencils sit at the head of each charging bay, reading from the aisle. */}
+    {ALL_PARKING_BAYS.filter(b=>b.ev).map(b=>{const head=Math.sign(Math.sin(b.yaw))||1;return <mesh key={b.id} position={[b.x-head*.8,PARKING.top+.021,b.z]} rotation={[-Math.PI/2,0,head*Math.PI/2]}>
       <planeGeometry args={[1.3,.65]}/><meshBasicMaterial map={stencil} transparent depthWrite={false} polygonOffset polygonOffsetFactor={-1}/>
-    </mesh>)}
+    </mesh>;})}
   </group>;
 }

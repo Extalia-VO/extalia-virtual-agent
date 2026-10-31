@@ -40,6 +40,26 @@ describe('presentation presets', () => {
     // Different characters may get different cuts within the same preset.
     expect(new Set(ids.map(id => applyPresentationPreset(base, 'feminine', id).hairStyle)).size).toBeGreaterThan(1);
   });
+
+  it('removes a fitted outfit when applying a preset, including another body group', () => {
+    const base: CharacterAppearance = { ...defaultCharacterAppearance(ids[0]!, 'feminine'), outfitModel: 'outfit-dress', outfitParts: { top: 'blouse', bottom: 'skirt' } };
+    for (const presentation of CHARACTER_PRESENTATIONS) {
+      const look = applyPresentationPreset(base, presentation, ids[0]!);
+      expect(look.outfitModel).toBeUndefined();
+      expect(look.outfitParts).toBeUndefined();
+      expect(look.outfit).toBe(PRESENTATION_PRESETS[presentation].outfit);
+      expect(avatarVisual(ids[0]!, look).clothing?.model).toBeUndefined();
+      expect(avatarVisual(ids[0]!, look).clothing?.parts).toBeUndefined();
+    }
+    expect(base.outfitModel).toBe('outfit-dress');
+  });
+
+  it('passes independent garment choices to the renderer without sharing mutable state', () => {
+    const look: CharacterAppearance = { ...defaultCharacterAppearance(ids[0]!), outfitParts: { top: 'shirt', bottom: 'jeans', outer: 'vest' } };
+    const parts = avatarVisual(ids[0]!, look).clothing?.parts;
+    expect(parts).toEqual(look.outfitParts);
+    expect(parts).not.toBe(look.outfitParts);
+  });
 });
 
 describe('generated default look', () => {

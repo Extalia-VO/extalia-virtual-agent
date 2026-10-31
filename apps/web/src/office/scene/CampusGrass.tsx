@@ -3,7 +3,9 @@ import { useFrame } from "@react-three/fiber";
 import type { InstancedMesh} from "three";
 import { BufferGeometry, CanvasTexture, Color, DoubleSide, Float32BufferAttribute, Object3D, PlaneGeometry, RepeatWrapping, SRGBColorSpace } from "three";
 
+import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { useExteriorDisplayGeometries } from "./ExteriorPart";
+import { PARKING_ACCESS_NOTCHES, insideParkingFootprint, rectsWithout } from "./campusParkingLots";
 
 const WIDTH = 104, DEPTH = 94, TOP = -0.258;
 const TILE_METRES = 4;
@@ -42,17 +44,28 @@ function grassTexture() {
   return texture;
 }
 
+/** Turf over the plinth, open where the parking access ramps cut into it; UVs stay continuous across pieces. */
 function lawnGeometry() {
-  const geometry = new PlaneGeometry(WIDTH, DEPTH, 26, 24);
-  const positions = geometry.getAttribute("position"), colors = new Float32Array(positions.count * 3);
+  const pieces = rectsWithout({ x0: -WIDTH / 2, x1: WIDTH / 2, z0: -DEPTH / 2, z1: DEPTH / 2 }, PARKING_ACCESS_NOTCHES).map(rect => {
+    const w = rect.x1 - rect.x0, d = rect.z1 - rect.z0;
+    const piece = new PlaneGeometry(w, d, Math.max(1, Math.round(26 * w / WIDTH)), Math.max(1, Math.round(24 * d / DEPTH)));
+    // Plane Y is world -Z after the -90° X rotation.
+    piece.translate((rect.x0 + rect.x1) / 2, -(rect.z0 + rect.z1) / 2, 0);
+    return piece;
+  });
+  const geometry = mergeGeometries(pieces, false)!;
+  pieces.forEach(piece => piece.dispose());
+  const positions = geometry.getAttribute("position"), colors = new Float32Array(positions.count * 3), uvs = new Float32Array(positions.count * 2);
   const color = new Color();
   for (let i = 0; i < positions.count; i++) {
     const x = positions.getX(i), z = positions.getY(i);
     const variation = 0.035 * Math.sin(x * 0.18 + z * 0.11) + 0.025 * Math.cos(z * 0.22 - x * 0.07);
     color.setRGB(0.94 + variation, 0.98 + variation, 0.90 + variation);
     colors.set(color.toArray(), i * 3);
+    uvs[i * 2] = (x + WIDTH / 2) / WIDTH; uvs[i * 2 + 1] = (z + DEPTH / 2) / DEPTH;
   }
   geometry.setAttribute("color", new Float32BufferAttribute(colors, 3));
+  geometry.setAttribute("uv", new Float32BufferAttribute(uvs, 2));
   return geometry;
 }
 
@@ -87,7 +100,8 @@ export function CampusGrass() {
     // Front and rear turf meadows outside the arrival corridor and patio paving.
     for (const side of [-1, 1]) for (let i = 0; i < 70; i++) points.push([side * (12 + random() * 12), -34 - random() * 9, random() * Math.PI * 2]);
     for (const side of [-1, 1]) for (let i = 0; i < 60; i++) points.push([side * (10 + random() * 14), 24 + random() * 6, random() * Math.PI * 2]);
-    return points;
+    // Tufts never poke through either parking lot's asphalt or footways.
+    return points.filter(([x, z]) => !insideParkingFootprint(x, z, 0.1));
   }, []);
   useLayoutEffect(() => {
     if (!detail.current) return;

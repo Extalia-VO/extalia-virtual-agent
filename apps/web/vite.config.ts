@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import react from '@vitejs/plugin-react';
 import { defineConfig, type Plugin } from 'vite';
-import { verifyModelBuild, verifyPublicModels } from '../../tooling/public-models.mjs';
+import { PUBLIC_SOURCE_GARMENTS, verifyModelBuild, verifyPublicModels } from '../../tooling/public-models.mjs';
 import manifest from './package.json' with { type: 'json' };
 
 const projectRoot = fileURLToPath(new URL('../..', import.meta.url));
@@ -19,6 +19,7 @@ function publicOfficeModels(): Plugin {
     buildStart() { verifyPublicModels(projectRoot); },
     generateBundle() {
       this.emitFile({ type: 'asset', fileName: 'models.json', source: readFileSync(resolve(projectRoot, 'apps/web/public-assets/models.json')) });
+      this.emitFile({ type: 'asset', fileName: 'source-garments.json', source: readFileSync(resolve(projectRoot, PUBLIC_SOURCE_GARMENTS)) });
       this.emitFile({ type: 'asset', fileName: 'OFFICE_ASSETS_LICENSE.md', source: readFileSync(resolve(projectRoot, 'apps/web/public-assets/LICENSE.md')) });
       for (const notice of ['AVATAR_SOURCE_LICENSE.md', 'THIRD_PARTY_NOTICES.md']) {
         this.emitFile({ type: 'asset', fileName: notice, source: readFileSync(resolve(projectRoot, 'apps/web/public-assets', notice)) });
@@ -41,6 +42,10 @@ export default defineConfig(({ command, mode }) => {
     server: { host: '127.0.0.1', port: 5180 },
     // GLBs and fonts stay separate files for model verification and the app's Content Security Policy.
     build: { assetsInlineLimit: (file: string) => (/\.(glb|woff2?|ttf|otf)$/i.test(file) ? false : undefined) },
-    define: { __APP_VERSION__: JSON.stringify(manifest.version) },
+    define: {
+      __APP_VERSION__: JSON.stringify(manifest.version),
+      // Licence switch: leave non-commercial and unverified campus cars out of parking and traffic.
+      __EXTALIA_COMMERCIAL_ASSETS_ONLY__: JSON.stringify(process.env.EXTALIA_COMMERCIAL_ASSETS_ONLY === '1'),
+    },
   };
 });

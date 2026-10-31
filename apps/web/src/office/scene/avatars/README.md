@@ -208,3 +208,52 @@ shell without a skull — the light meshes cover it — so a look on that body t
 wears detailed hair uses the whole-head female body instead. Without a detailed
 file the light mesh is used (bun falls back to the bob mesh); the procedural
 character draws every style itself.
+
+### Outfits, first-spawn looks and staff uniforms
+
+`outfitCatalog.ts` lists what a character may wear: the scanned outfit styles every
+body carries, plus the fitted outfit models found at build time under
+`public-assets/avatars/outfits/<male|female>/<id>.glb` (reviewed source-preserving garments and the staff uniforms). No model id is
+hard-coded: a new file becomes a choice for its gender group. `SourceHumanoid`
+loads the selected model next to the body, rebinds its skinned mesh to the body's
+bones by name and shows it as the `ScanOutfitModel` slot; its `Office<Zone>_*` and
+`Skin_*` materials take the same tints as the scanned outfits. `Original*` materials preserve
+their source colours and maps on Auto and accept explicit colour tints on cloned materials.
+
+Without a saved look, a character wears a generated outfit picked from the
+reviewed pieces and its group's models by highest-random-weight hashing of its
+look seed (`seededOutfitChoice`): stable across reloads, varied across characters,
+and when the catalog gains an outfit only the characters it wins for change.
+Garment colours come from coordinated office or casual zone palettes
+(`OUTFIT_PALETTES`: top, bottom, jacket, accent). Nothing is stored on spawn; the
+look is saved only when the user saves an edit, as for every other appearance
+field. The appearance editor offers every outfit of the character's group,
+zone colours, **Randomize outfit** (re-rolls outfit and colours) and
+**Default outfit** (back to the generated one).
+
+The receptionist and the bartender always wear their role uniform
+(`STAFF_UNIFORMS`, `staffAppearance`): the editor shows the uniform as locked and
+only its accent colour (tie, scarf, bow tie, badge stripe), hair, skin, body and
+accessories change.
+
+
+### Independent fitted garments
+
+`CharacterAppearance.outfitParts` stores optional top, bottom and outer model ids. The host
+persists the same contract as other appearance fields; `outfitModel` and `outfitParts` are
+exclusive. Default combinations use stable seeds per identity and slot. Changing a bottom
+never rerolls a top; choosing a body preset clears incompatible fitted models/parts.
+
+Body-specific pieces come from `avatars/wardrobe/<male|female>/<top|bottom|outer>/`. They
+retain the original GLB meshes, UVs and textures, fitted by `tooling/blender/fit-original-*.py`
+on each body's reference rig.
+Their bone names/rest transforms match the body. The renderer rebinds the selected layers
+and removes only the replaced scan zones, retaining a missing part's scan fallback. Exposed
+arm skin belongs to the upper garment even below waist height; lower garments include exposed leg
+skin and may own source shoes. Otherwise corrected native feet and shoes remain. Outer layers
+carry no skin. Declared closed-jacket coverage hides only occluded underlayers. See the tooling README for publication.
+
+The raw downloaded garment conversions remain local review material. Their duplicate seams
+and weight inversion were repaired, but source sleeve correspondence and complex silhouettes
+still fail fit review. They are not offered in production or first-spawn choices. Reviewed original receptionist and bartender sets replace their matching role paths. Facility
+uniforms retain their role-specific complete outfit and editable personal features/accents.

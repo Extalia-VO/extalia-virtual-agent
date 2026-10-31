@@ -27,6 +27,7 @@ import { boardAbsolute, boardActivityAt, boardAgo, boardAgoShort, boardBranchAct
 import { useBoardFlip, useSettledBoardOrder } from '../office/overlay/boardMotion';
 import { inOffice } from '../office/overlay/kpis';
 import { facilityCard, useFacilityStaff } from '../office/scene/movement/facilityStatus';
+import { facilityAppearance } from '../office/scene/movement/facilityNpcs';
 import { characterCallouts } from '../office/scene/callouts';
 import { popoverState, popoverSummary } from '../office/overlay/popoverModel';
 import { initialOfficeSelection, officeSelectionReducer, type SessionDialogTab } from '../office/overlay/officeSelection';
@@ -417,8 +418,9 @@ export function OfficePage({ t, language, agents, hostDisconnected = false, stat
         onActivity={agents ? () => openDialog(popoverAgent, 'activity', 'popover:activity') : undefined}
         onFollow={toggleFollow} appearance={agents ? appearanceOf(popoverAgent.id) : undefined}
         onLocate={() => locateAgent(popoverAgent.id)} onClose={() => dispatch({ type: 'closePopover' })} />}
-      {popoverStaff && <CharacterPopover key={`popover:${popoverStaff.definition.id}`} t={t} look={popoverStaff.definition.appearance} following={following} suspended={Boolean(dialog)}
+      {popoverStaff && <CharacterPopover key={`popover:${popoverStaff.definition.id}`} t={t} look={facilityAppearance(popoverStaff.definition, looks.appearances[popoverStaff.definition.id])} following={following} suspended={Boolean(dialog)}
         character={facilityCard(t, popoverStaff)} onFollow={toggleFollow}
+        appearance={agents ? { ...appearanceOf(popoverStaff.definition.id), uniform: popoverStaff.definition.role, defaults: popoverStaff.definition.appearance } : undefined}
         onLocate={() => locateAgent(popoverStaff.definition.id)} onClose={() => dispatch({ type: 'closePopover' })} />}
       {dialog && agents && state && <AgentSessionDialog key={`dialog:${dialog.characterId}`} t={t} language={language} agents={agents} state={state} onState={onState}
         officeNames={officeNames} savedLooks={looks.saved}

@@ -31,7 +31,9 @@ def main():
         prepared.append((relative, original, item))
     manifest_path = PUBLIC / "models.json"
     manifest = json.loads(manifest_path.read_text())
-    manifest["models"] = [entry for entry in manifest["models"] if not entry["path"].startswith("avatars/")]
+    # Fitted outfits (avatars/outfits/) have their own exporters; keep them.
+    manifest["models"] = [entry for entry in manifest["models"]
+                          if not entry["path"].startswith("avatars/") or entry["path"].startswith("avatars/outfits/")]
     for relative, original, item in prepared:
         target = PUBLIC / relative
         target.parent.mkdir(parents=True, exist_ok=True)

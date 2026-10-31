@@ -2,7 +2,8 @@ import { getCharacterHairOptions, type CharacterHairAsset } from '@extalia/core'
 import { presentationPreset, type AvatarModelVariant, type AvatarVisualConfig } from './appearance';
 
 // Vite selects public Blender models; explicit local development adds private fallback files.
-import { bodyUrls, hairUrls } from './sourceAvatarFiles';
+import { bodyUrls, hairUrls, outfitUrls, pieceUrls } from './sourceAvatarFiles';
+import { outfitModelUrl } from './outfitCatalog';
 
 type UrlMap = Readonly<Record<string, string>>;
 
@@ -51,15 +52,23 @@ export function detailedHairUrl(asset: CharacterHairAsset, urls: UrlMap = hairUr
  */
 const PARTIAL_HEAD_BODIES: Readonly<Partial<Record<AvatarModelVariant, AvatarModelVariant>>> = { 'business-woman': 'female-casual' };
 
-export interface SourceAvatarUrls { body: string; hair: string }
+export type SourceAvatarPartUrls = Partial<Record<'top' | 'bottom' | 'outer', string>>;
+
+export interface SourceAvatarUrls {
+  body: string; hair: string;
+  /** Fitted outfit model worn instead of the body's scanned outfit (same rig). */
+  outfit?: string;
+  /** Selected body-specific pieces; omitted retains the original complete outfit. */
+  parts?: SourceAvatarPartUrls;
+}
 
 /**
  * URLs needed by `SourceHumanoid` for one look. Returns `undefined` unless both the body and the
  * hair model are present. Missing or failed assets retain the procedural error fallback.
  */
 export function sourceAvatarUrls(
-  visual: Pick<AvatarVisualConfig, 'presentation' | 'modelVariant'>, hair: CharacterHairAsset,
-  bodies: UrlMap = bodyUrls, hairs: UrlMap = hairUrls,
+  visual: Pick<AvatarVisualConfig, 'presentation' | 'modelVariant' | 'clothing'>, hair: CharacterHairAsset,
+  bodies: UrlMap = bodyUrls, hairs: UrlMap = hairUrls, outfits: UrlMap = outfitUrls, pieces: UrlMap = pieceUrls,
 ): SourceAvatarUrls | undefined {
   const variant = visual.modelVariant ?? (presentationPreset(visual.presentation) === 'feminine' ? 'business-woman' : 'office-classic');
   const detailed = detailedHairUrl(hair, hairs);
@@ -68,7 +77,21 @@ export function sourceAvatarUrls(
   const wholeHead = detailed ? PARTIAL_HEAD_BODIES[variant] : undefined;
   const body = (wholeHead && bodyAssetUrl(wholeHead, bodies)) || bodyAssetUrl(variant, bodies);
   const hairUrl = hairAssetUrl(hair, hairs) ?? groupHairUrl(hair, hairs);
-  return body && hairUrl ? { body, hair: hairUrl } : undefined;
+  const group = bodyGenderGroup(variant);
+  const selected = visual.clothing?.parts;
+  const parts: SourceAvatarPartUrls | undefined = selected === undefined ? undefined : {};
+  if (parts) for (const slot of ['top', 'bottom', 'outer'] as const) {
+    const id = selected?.[slot] ?? (slot === 'top' ? 'shirt' : slot === 'bottom' ? 'trousers' : undefined);
+    if (!id || id === 'none') continue;
+    const url = pieces[`/public-assets/avatars/wardrobe/${group}/${slot}/${id}.glb`]
+      ?? pieces[`/local-assets/avatars/wardrobe/${group}/${slot}/${id}.glb`];
+    const fallbackId = slot === 'top' ? 'shirt' : slot === 'bottom' ? 'trousers' : undefined;
+    const fallback = fallbackId ? pieces[`/public-assets/avatars/wardrobe/${group}/${slot}/${fallbackId}.glb`]
+      ?? pieces[`/local-assets/avatars/wardrobe/${group}/${slot}/${fallbackId}.glb`] : undefined;
+    if (url ?? fallback) parts[slot] = (url ?? fallback)!;
+  }
+  const outfit = parts === undefined ? outfitModelUrl(visual.clothing?.model, group, outfits) : undefined;
+  return body && hairUrl ? { body, hair: hairUrl, ...(outfit ? { outfit } : {}), ...(parts ? { parts } : {}) } : undefined;
 }
 
 /** An unavailable style wears the group's first available Blender style. */

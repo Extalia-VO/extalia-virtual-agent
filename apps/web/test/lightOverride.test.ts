@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DAYLIGHT_INTERIOR_LEVEL, LIGHT_OVERRIDE_STORAGE_KEY, loadLightOverride, resolveInteriorLights, saveLightOverride } from '../src/office/scene/environment/lightOverride';
-import { createBudgetController, createRenderFrameSampler, RENDER_BUDGET_LEVELS, budgetPixelRatio, resetRenderFrameSampler, sampleRenderFrame, updateBudget } from '../src/office/scene/environment/renderBudget';
+import { createBudgetController, createRenderFrameSampler, RECOVERY_WINDOWS, RENDER_BUDGET_LEVELS, budgetPixelRatio, resetRenderFrameSampler, sampleRenderFrame, updateBudget } from '../src/office/scene/environment/renderBudget';
 
 function memoryStorage(initial: Record<string, string> = {}) {
   const values = new Map(Object.entries(initial));
@@ -47,7 +47,7 @@ describe('lights override', () => {
 });
 
 describe('adaptive render budget', () => {
-  it('downgrades after repeated slow visible frame windows', () => {
+  it('downgrades after one slow visible frame window', () => {
     const sampler = createRenderFrameSampler(0);
     const controller = createBudgetController();
     let now = 100;
@@ -61,7 +61,7 @@ describe('adaptive render budget', () => {
         updateBudget(controller, { fps });
       }
     }
-    expect(windows).toBeGreaterThanOrEqual(2);
+    expect(windows).toBe(1);
     expect(controller.level).toBe(1);
   });
 
@@ -87,13 +87,36 @@ describe('adaptive render budget', () => {
     expect(controller.level).toBe(0);
   });
 
-  it('steps down after two slow windows and back up after sustained headroom', () => {
+  it('ignores one hitch in an otherwise smooth window but not a sustained slowdown', () => {
+    const sampler = createRenderFrameSampler(0);
+    let now = 1000;
+    sampleRenderFrame(sampler, now, true);
+    const windowFps = (frameMs: (i: number) => number) => {
+      for (let i = 0; i < 400; i++) {
+        now += frameMs(i);
+        const fps = sampleRenderFrame(sampler, now, true);
+        if (fps !== null) return fps;
+      }
+      return null;
+    };
+    // 300 ms compile stall followed by 60 fps frames.
+    expect(windowFps(i => (i === 0 ? 300 : 1000 / 60))).toBeGreaterThan(55);
+    // 30 ms frames throughout (33 fps) stay slow.
+    expect(windowFps(() => 30)).toBeLessThan(40);
+  });
+
+  it('steps down at once below 40 fps (frame time over 25 ms), after two marginal windows, and back up carefully', () => {
     const controller = createBudgetController();
-    expect(updateBudget(controller, { fps: 30 })).toBe(0);
     expect(updateBudget(controller, { fps: 30 })).toBe(1);
-    expect(updateBudget(controller, { fps: 50 })).toBe(1);
-    for (let i = 0; i < 7; i++) expect(updateBudget(controller, { fps: 60 })).toBe(1);
-    expect(updateBudget(controller, { fps: 60 })).toBe(0);
+    expect(updateBudget(controller, { fps: 42 })).toBe(1);
+    expect(updateBudget(controller, { fps: 42 })).toBe(2);
+    expect(updateBudget(controller, { fps: 50 })).toBe(2);
+    for (let i = 0; i < RECOVERY_WINDOWS - 1; i++) expect(updateBudget(controller, { fps: 60 })).toBe(2);
+    expect(updateBudget(controller, { fps: 60 })).toBe(1);
+    // One slow second interrupts recovery.
+    for (let i = 0; i < RECOVERY_WINDOWS - 1; i++) updateBudget(controller, { fps: 60 });
+    updateBudget(controller, { fps: 50 });
+    expect(updateBudget(controller, { fps: 60 })).toBe(1);
   });
 
   it('stays at the lowest level and does not retry a level that failed twice', () => {
@@ -102,12 +125,12 @@ describe('adaptive render budget', () => {
     expect(controller.level).toBe(RENDER_BUDGET_LEVELS.length - 1);
     const settled = createBudgetController();
     for (let round = 0; round < 2; round++) {
-      updateBudget(settled, { fps: 20 }); updateBudget(settled, { fps: 20 });
-      for (let i = 0; i < 8; i++) updateBudget(settled, { fps: 60 });
+      updateBudget(settled, { fps: 20 });
+      for (let i = 0; i < RECOVERY_WINDOWS; i++) updateBudget(settled, { fps: 60 });
     }
     // Level 0 failed twice, so recovering from a later slowdown settles at level 1, never 0.
-    updateBudget(settled, { fps: 20 }); updateBudget(settled, { fps: 20 });
-    for (let i = 0; i < 16; i++) updateBudget(settled, { fps: 60 });
+    updateBudget(settled, { fps: 20 });
+    for (let i = 0; i < 2 * RECOVERY_WINDOWS; i++) updateBudget(settled, { fps: 60 });
     expect(settled.level).toBe(1);
   });
 

@@ -1,6 +1,9 @@
 import { useLayoutEffect } from 'react';
 import { useThree } from '@react-three/fiber';
 import { DynamicDrawUsage, InstancedMesh, Matrix4, Object3D, type Mesh, type Material, type Scene } from 'three';
+import { OVERVIEW_CULLED_LAYER } from './environment/overviewLod';
+
+const OVERVIEW_CULLED_MASK = 1 << OVERVIEW_CULLED_LAYER;
 
 const MIN_INSTANCES = 2;
 const RESCAN_MS = 500;
@@ -28,10 +31,17 @@ function authored(mesh: Object3D, scene: Scene): boolean {
   return false;
 }
 
+function exteriorAuthored(mesh: Object3D, scene: Scene): boolean {
+  for (let node: Object3D | null = mesh; node && node !== scene; node = node.parent) if (node.userData.exteriorAuthored === true) return true;
+  return false;
+}
+
 function eligibleKey(mesh: Mesh, scene: Scene, owned: ReadonlyMap<Mesh, Source>): string | null {
   if (!mesh.isMesh || mesh.children.length > 0 || !(owned.get(mesh)?.visible ?? mesh.visible) || (mesh as InstancedMesh).isInstancedMesh || (mesh as Mesh & { isSkinnedMesh?: boolean }).isSkinnedMesh ||
     Array.isArray(mesh.material) || mesh.morphTargetInfluences?.length || mesh.customDepthMaterial || mesh.customDistanceMaterial ||
-    !authored(mesh, scene) || (mesh.userData.officeBatchSource && !owned.has(mesh))) return null;
+    !authored(mesh, scene) || (mesh.userData.officeBatchSource && !owned.has(mesh)) ||
+    // Overview level of detail parked this mesh on its culled layer; it batches again once restored.
+    mesh.layers.mask === OVERVIEW_CULLED_MASK) return null;
   if (mesh.onBeforeRender !== Object3D.prototype.onBeforeRender || mesh.onAfterRender !== Object3D.prototype.onAfterRender ||
     mesh.onBeforeShadow !== Object3D.prototype.onBeforeShadow || mesh.onAfterShadow !== Object3D.prototype.onAfterShadow) return null;
   const material = mesh.material as Material;
@@ -105,7 +115,9 @@ export class ModelBatchController {
       const first = meshes[0]!;
       const instance = new InstancedMesh(first.geometry, first.material, meshes.length);
       instance.name = 'loaded-model-instance-batch';
-      instance.userData = { officeCollision: false, officePassable: true, officeDynamic: true, modelInstanceBatch: true };
+      // Interior batches (no exterior-authored ancestor) may leave the campus overview's key-light shadow pass.
+      instance.userData = { officeCollision: false, officePassable: true, officeDynamic: true, modelInstanceBatch: true,
+        officeInterior: meshes.every(mesh => !exteriorAuthored(mesh, this.scene)) };
       instance.castShadow = first.castShadow;
       instance.receiveShadow = first.receiveShadow;
       instance.layers.mask = first.layers.mask;
@@ -191,7 +203,8 @@ export class ModelBatchController {
           source.shown = shown;
           if (shown) active++;
         }
-        batch.mesh.visible = active > 0;
+        // `officeDetailCulled`: campus-overview level of detail (environment/OverviewDetail).
+        batch.mesh.visible = active > 0 && batch.mesh.userData.officeDetailCulled !== true;
         if (dirty) batch.mesh.instanceMatrix.needsUpdate = true;
         visible += active;
       }

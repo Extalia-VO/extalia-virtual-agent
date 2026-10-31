@@ -1,6 +1,8 @@
 import { build, type ConfigEnv, type UserConfig } from 'vite';
 import { describe, expect, it } from 'vitest';
 import config from '../vite.config';
+import registered from '../public-assets/models.json';
+import sourceGarmentReceipts from '../public-assets/source-garments.json?raw';
 import { bodyUrls, hairUrls } from '../src/office/scene/avatars/publicAvatarFiles';
 
 function webConfig(command: ConfigEnv['command'], mode: string): UserConfig {
@@ -17,6 +19,25 @@ function avatarAlias(options: UserConfig): string | undefined {
 }
 
 describe('public model build boundary', () => {
+  it('emits the exact public source garment receipts without a private review manifest', async () => {
+    const options = webConfig('build', 'production');
+    const result = await build({
+      configFile: false, publicDir: false, logLevel: 'silent', plugins: [options.plugins, {
+        name: 'source-receipt-boundary-fixture',
+        resolveId(id) { if (id === 'virtual:source-receipts') return '\0source-receipts'; },
+        load(id) { if (id === '\0source-receipts') return 'export const receiptFixture = true;'; },
+      }],
+      build: { write: false, minify: false, rollupOptions: { input: 'virtual:source-receipts' } },
+    });
+    const bundles = Array.isArray(result) ? result : [result];
+    const outputs = bundles.flatMap(bundle => 'output' in bundle ? bundle.output : []);
+    const receipts = outputs.find(item => item.type === 'asset' && item.fileName === 'source-garments.json');
+    expect(receipts?.type).toBe('asset');
+    if (receipts?.type !== 'asset') throw new Error('Missing public source garment receipts.');
+    expect(Buffer.from(receipts.source).toString()).toBe(sourceGarmentReceipts);
+    expect(outputs.some(item => item.fileName.includes('reviewed-source-garments'))).toBe(false);
+  });
+
   it('uses public Blender avatar files in builds and ordinary development even with private files installed', () => {
     expect(Object.keys(bodyUrls).every(path => path.startsWith('/public-assets/avatars/bodies/'))).toBe(true);
     expect(Object.keys(hairUrls).every(path => path.startsWith('/public-assets/avatars/hair/'))).toBe(true);
@@ -56,7 +77,11 @@ describe('public model build boundary', () => {
     const outputs = bundles.flatMap(bundle => 'output' in bundle ? bundle.output : []);
     expect(outputs.some(item => item.type === 'chunk' && item.code.includes('function sourceAvatarUrls'))).toBe(true);
     const assets = outputs.filter(item => item.type === 'asset');
-    expect(assets).toHaveLength(12);
+    // Two bodies, ten detailed hair styles, four staff uniforms (two roles × two bodies) and the
+    // fitted outfit catalog (`outfit-*`), whose size grows with the catalog.
+    expect(assets.filter(item => /\/(?:reception|bartender)-uniform-/.test(item.fileName))).toHaveLength(4);
+    const garments = registered.models.filter(model => /^avatars\/(?:outfits|wardrobe)\//.test(model.path));
+    expect(assets).toHaveLength(12 + garments.length);
     expect(assets.every(item => item.fileName.endsWith('.glb'))).toBe(true);
     expect(assets.filter(item => /\/(?:office-classic|female-casual)-/.test(item.fileName))).toHaveLength(2);
     expect(assets.filter(item => /-detail-/.test(item.fileName))).toHaveLength(10);

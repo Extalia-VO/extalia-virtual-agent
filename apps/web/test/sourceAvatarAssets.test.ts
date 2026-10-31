@@ -1,6 +1,6 @@
 import { getCharacterHairOptions, resolveCharacterHair } from '@extalia/core';
 import { describe, expect, it } from 'vitest';
-import { publicBodyAliases } from '../src/office/scene/avatars/publicAvatarFiles';
+import { publicBodyAliases, reviewedPrivateAvatarFiles } from '../src/office/scene/avatars/publicAvatarFiles';
 import { bodyAssetUrl, detailedHairUrl, hairAssetUrl, localHairStyles, sourceAvatarUrls } from '../src/office/scene/avatars/sourceAssets';
 
 const bob = resolveCharacterHair('bob');
@@ -112,4 +112,61 @@ describe('Blender avatar asset resolution', () => {
     // No local hair at all: the procedural character draws every style, so nothing is filtered.
     expect(localHairStyles({})).toBeUndefined();
   });
+  it('resolves pieces per body and slot, preferring public files without hiding missing-slot fallbacks', () => {
+    const pieces = {
+      '/public-assets/avatars/wardrobe/female/top/tee.glb': 'female-tee.glb',
+      '/local-assets/avatars/wardrobe/female/top/tee.glb': 'private-tee.glb',
+      '/public-assets/avatars/wardrobe/male/bottom/jeans.glb': 'male-jeans.glb',
+      '/public-assets/avatars/wardrobe/female/outer/vest.glb': 'female-vest.glb',
+    };
+    const urls = sourceAvatarUrls({ presentation: 'feminine', clothing: { model: 'old-outfit', parts: { top: 'tee', bottom: 'jeans', outer: 'vest' } } }, bob, bodies, hairs, {}, pieces);
+    expect(urls).toEqual({ body: 'woman.glb', hair: 'bob.glb', parts: { top: 'female-tee.glb', outer: 'female-vest.glb' } });
+    expect(sourceAvatarUrls({ presentation: 'feminine', clothing: { parts: {} } }, bob, bodies, hairs, {}, pieces)?.parts).toEqual({});
+    expect(sourceAvatarUrls({ presentation: 'feminine', clothing: { parts: { outer: 'none' } } }, bob, bodies, hairs, {}, pieces)?.parts).toEqual({});
+    expect(sourceAvatarUrls({ presentation: 'feminine' }, bob, bodies, hairs, {}, pieces)?.parts).toBeUndefined();
+  });
+
+  it('uses complete fitted defaults for mix mode without depending on a vest to cover the chest', () => {
+    const pieces = {
+      '/public-assets/avatars/wardrobe/male/top/shirt.glb': 'fitted-shirt.glb',
+      '/public-assets/avatars/wardrobe/male/bottom/trousers.glb': 'fitted-trousers.glb',
+    };
+    const urls = sourceAvatarUrls({ presentation: 'masculine', clothing: { parts: { outer: 'none' } } }, bob, bodies, hairs, {}, pieces);
+    expect(urls?.parts).toEqual({ top: 'fitted-shirt.glb', bottom: 'fitted-trousers.glb' });
+    expect(sourceAvatarUrls({ presentation: 'masculine', clothing: { parts: { top: 'unavailable' } } }, bob, bodies, hairs, {}, pieces)?.parts).toEqual(urls?.parts);
+  });
+
+  it('keeps unreviewed or non-standalone garment drafts out of local character catalogs', () => {
+    const published = {
+      '/public-assets/avatars/wardrobe/female/outer/cloth-jacket.glb': 'public-jacket.glb',
+      '/public-assets/avatars/wardrobe/male/bottom/jeans.glb': 'public-jeans.glb',
+    };
+    const privateFiles = {
+      '/local-assets/avatars/wardrobe/female/outer/cloth-jacket.glb': 'private-jacket.glb',
+      '/local-assets/avatars/wardrobe/female/top/sourcecloth-shirt.glb': 'incomplete-inner.glb',
+      '/local-assets/avatars/wardrobe/female/bottom/jeans.glb': 'wrong-body-draft.glb',
+      '/local-assets/avatars/wardrobe/male/bottom/jeans.glb': 'private-jeans.glb',
+    };
+    expect(reviewedPrivateAvatarFiles(privateFiles, published)).toEqual({
+      '/local-assets/avatars/wardrobe/female/outer/cloth-jacket.glb': 'private-jacket.glb',
+      '/local-assets/avatars/wardrobe/male/bottom/jeans.glb': 'private-jeans.glb',
+    });
+    expect(sourceAvatarUrls({ presentation: 'feminine', clothing: { parts: { outer: 'cloth-jacket' } } }, bob, bodies, hairs, {}, { ...reviewedPrivateAvatarFiles(privateFiles, published), ...published })?.parts?.outer).toBe('public-jacket.glb');
+  });
+
+  it('resolves original source ids across independent slots and full outfits with public precedence', () => {
+    const pieces = {
+      '/local-assets/avatars/wardrobe/male/top/blue-plaid-shirt.glb': 'private-plaid.glb',
+      '/public-assets/avatars/wardrobe/male/top/blue-plaid-shirt.glb': 'public-plaid.glb',
+      '/public-assets/avatars/wardrobe/male/outer/denim-jacket.glb': 'public-denim.glb',
+      '/public-assets/avatars/wardrobe/male/bottom/source-jeans.glb': 'public-jeans.glb',
+    };
+    const outfits = { '/public-assets/avatars/outfits/male/outfit-black-business-suit.glb': 'public-suit.glb' };
+    const mix = sourceAvatarUrls({ presentation: 'masculine', clothing: { parts: {
+      top: 'blue-plaid-shirt', bottom: 'source-jeans', outer: 'denim-jacket',
+    } } }, bob, bodies, hairs, outfits, pieces);
+    expect(mix?.parts).toEqual({ top: 'public-plaid.glb', bottom: 'public-jeans.glb', outer: 'public-denim.glb' });
+    expect(sourceAvatarUrls({ presentation: 'masculine', clothing: { model: 'outfit-black-business-suit' } }, bob, bodies, hairs, outfits, pieces)?.outfit).toBe('public-suit.glb');
+  });
+
 });

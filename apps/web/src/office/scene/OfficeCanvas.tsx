@@ -12,6 +12,9 @@ import { SceneEnvironment, type LightOverride } from './Environment';
 import { SceneLighting } from './environment/SceneLighting';
 import { AdaptiveRenderBudget, useBudgetPixelRatio } from './environment/AdaptiveRenderBudget';
 import { CanvasContinuity } from './environment/CanvasContinuity';
+import { SceneBenchProbe } from './environment/SceneBenchProbe';
+import { OverviewDetail } from './environment/OverviewDetail';
+import { QA_HOOKS } from './qaHooks';
 import { ModelInstanceBatches } from './ModelInstanceBatches';
 import { CampusNightLighting } from './environment/CampusNightLighting';
 import { FurnishedFloors, type FurnishedOfficeView } from './FurnishedFloors';
@@ -108,8 +111,10 @@ export default function OfficeCanvas({ view, viewRequest, language, dark, reduce
       {/* Sky, fog and sun/moon follow the solar environment; the budget keeps the frame rate above 40 fps. */}
       <SceneLighting />
       <AdaptiveRenderBudget />
+      {QA_HOOKS && <SceneBenchProbe />}
+      <OverviewDetail campus={view === 'campus'} />
       <CameraView view={view} viewRequest={viewRequest} focus={focus} focusId={selectedId} live={live} focusRequest={focusRequest} reducedMotion={reducedMotion} following={follow} focusPoint={focusPoint} onFollowEnd={onFollowEnd} onFollowFloor={onFollowFloor} />
-      <group visible={view === 'campus'}>
+      <group visible={view === 'campus'} name="campus-site">
         <CampusNeighborhood /><CampusRoofSignage />
         <StaticCampusBatch><CampusExterior /></StaticCampusBatch>
         {/* The Blender building model when present locally; the three.js shell is its backup. */}
@@ -119,15 +124,17 @@ export default function OfficeCanvas({ view, viewRequest, language, dark, reduce
       </group>
       <NaturalWalkingClearance owner={director} />
       <FurnishedFloors view={view} agents={agents} language={language} allocations={allocations} />
-      {GLASS_ELEVATORS.map(({ id }) => <GlassElevator key={id} elevatorId={id} view={view} />)}
+      <group name="office-glass-elevators">{GLASS_ELEVATORS.map(({ id }) => <GlassElevator key={id} elevatorId={id} view={view} />)}</group>
       {/* Blender lift frames span every floor, so they show only in the whole-building views. */}
       <group visible={view === 'campus' || view === 'stack'}><CampusElevatorFrames /></group>
       <group visible={view === 'campus' || view === 'stack' || view === 3}><CampusRoofStair view={view} /><CampusTerraceGuard /></group>
       {/* Characters walk in, sit, and walk out at their live positions; tags follow them. */}
-      <OfficeOccupants director={director} allocations={allocations} agents={agents} appearances={appearances} view={view}
-        selectedId={selectedId} onSelect={onSelect} reducedMotion={reducedMotion} />
-      {/* Receptionist and bartender: facility staff owned by the scene, never agent sessions. */}
-      <FacilityNpcs director={facility} view={view} reducedMotion={reducedMotion} language={language} selectedId={selectedId} onSelect={onSelect} />
+      <group name="office-characters">
+        <OfficeOccupants director={director} allocations={allocations} agents={agents} appearances={appearances} view={view}
+          selectedId={selectedId} onSelect={onSelect} reducedMotion={reducedMotion} />
+        {/* Receptionist and bartender: facility staff owned by the scene, never agent sessions. */}
+        <FacilityNpcs director={facility} view={view} reducedMotion={reducedMotion} language={language} selectedId={selectedId} onSelect={onSelect} appearances={appearances} />
+      </group>
       <CharacterBubbles activities={activities} agents={agents} allocations={allocations} view={view} selectedId={selectedId} reducedMotion={reducedMotion} positions={director} language={language} />
       <PopoverAnchor characterId={popoverId} live={live} view={view} />
     </SceneEnvironment>
