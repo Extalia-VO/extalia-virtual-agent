@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { describe, expect, it } from 'vitest';
@@ -15,7 +16,7 @@ const notices = readFileSync(new URL('apps/web/public-assets/THIRD_PARTY_NOTICES
 const sourceProfiles = new Map(readSourceGarmentProfiles().map(profile => [profile.path, profile]));
 const ZONE = /^(?:(?:Belt|BadgeCard|Apron)|Office(?:Top|Outer|Accent|Trim|Bottom|Shoes|Lining)|Skin)_[A-Za-z0-9]+$/;
 const BODY_BONES = (group: string) => {
-  const document = readModelMetadata(new URL(`apps/web/public-assets/avatars/bodies/${group}/${group === 'female' ? 'female-casual' : 'office-classic'}.glb`, root).pathname) as
+  const document = readModelMetadata(fileURLToPath(new URL(`apps/web/public-assets/avatars/bodies/${group}/${group === 'female' ? 'female-casual' : 'office-classic'}.glb`, root))) as
     { nodes: { name: string; translation?: number[]; rotation?: number[] }[]; skins: { joints: number[] }[] };
   return new Map(document.skins[0]!.joints.map(index => [document.nodes[index]!.name, document.nodes[index]!]));
 };
@@ -71,7 +72,7 @@ describe('published wearable geometry', () => {
     if (source) expect(profile, model.path).toBeDefined();
     const original = source || originalExporters.has(model.provenance.exporter ?? '');
     expect(bytes.length).toBeLessThanOrEqual(profile?.budgets.bytes ?? (original ? 42_000_000 : 700_000));
-    const document = readModelMetadata(file.pathname) as {
+    const document = readModelMetadata(fileURLToPath(file)) as {
       asset: { extras?: { nonStandalone?: boolean } }; images?: unknown[]; meshes: unknown[];
       materials: { name: string; alphaMode?: string }[]; nodes: { name: string; rotation?: number[] }[]; skins: { joints: number[] }[];
     };
@@ -88,7 +89,7 @@ describe('published wearable geometry', () => {
     if (original) {
       // Some original source materials are native colors with no image maps.
       // Their receipt must prove that representation rather than impose a texture.
-      if (profile) verifySourceGarmentMaterialReceipts(file.pathname, profile.materials);
+      if (profile) verifySourceGarmentMaterialReceipts(fileURLToPath(file), profile.materials);
       else expect(document.images!.length).toBeGreaterThan(0);
       expect(document.materials.some(material => material.name.startsWith('Original'))).toBe(true);
       expect(model.license).toBe('CC-BY-4.0');

@@ -10,6 +10,8 @@ import { useTempDirs } from './helpers.js';
  * A stand-in `hermes`: records the prompt it reads on stdin and, for every attached file the prompt names
  * (lines `- /absolute/path (type, size)`), whether the file exists, its contents and its mode. The real Hermes is never run.
  */
+/** The fake Hermes is a `#!` script, which Windows cannot start directly. */
+const POSIX_SCRIPTS_ONLY = process.platform === 'win32';
 const FAKE_HERMES = `#!/usr/bin/env node
 const fs = require('node:fs');
 const path = require('node:path');
@@ -58,7 +60,7 @@ async function calls(hermesHome: string) {
 }
 
 describe('attachments in Hermes turns', () => {
-  it('writes the files to a private folder, names their paths in the prompt, and removes the folder after the turn', async () => {
+  it.skipIf(POSIX_SCRIPTS_ONLY)('writes the files to a private folder, names their paths in the prompt, and removes the folder after the turn', async () => {
     const { host, runtime, events, workspace, hermesHome, dataDirectory } = await setup();
     const session = await host.createSession(workspace.id);
     const notes = await host.uploadAttachment(session.id, { name: 'notes.md', mimeType: 'text/markdown', data: Buffer.from('# Plan\n').toString('base64') });

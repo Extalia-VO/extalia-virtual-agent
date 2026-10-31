@@ -19,7 +19,7 @@ const TOKEN = 'a'.repeat(64);
 /** A data folder as Extalia 0.0.20 left it, at the macOS location below a temporary home. */
 async function legacyFixture(platform = 'darwin', env: Record<string, string> = {}) {
   const home = await temp('extalia-migrate-');
-  const legacy = legacyDataDirectories({ platform, env, homeDirectory: home })[0]!;
+  const legacy = path.resolve(legacyDataDirectories({ platform, env, homeDirectory: home })[0]!);
   const target = resolveDataDirectory({ platform, env: {}, homeDirectory: home });
   const write = async (relative: string, text: string, mode = 0o600) => {
     const file = path.join(legacy, relative);
@@ -133,7 +133,8 @@ describe('legacy data migration', () => {
     expect(await exists(path.join(target, 'sessions'))).toBe(false);
   });
 
-  it('finds the Linux XDG location', async () => {
+  // XDG_DATA_HOME must be a POSIX absolute path, which a Windows temp folder is not.
+  it.skipIf(process.platform === 'win32')('finds the Linux XDG location', async () => {
     const xdg = await temp();
     const { target, home, legacy } = await legacyFixture('linux', { XDG_DATA_HOME: xdg });
     expect(legacy).toBe(path.join(xdg, 'extalia'));
