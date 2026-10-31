@@ -1,0 +1,1887 @@
+{
+  "cases": [
+    {
+      "name": "begin host opaque scope IDs",
+      "valid": true,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000003",
+        "op": "planning.begin",
+        "params": {
+          "invocationId": "00000000-0000-4000-8000-000000000001",
+          "supervisorId": "00000000-0000-4000-8000-000000000002",
+          "sessionId": "s_example",
+          "workspaceId": "w_example",
+          "connectionIds": [
+            "c_alpha",
+            "c_beta"
+          ]
+        }
+      }
+    },
+    {
+      "name": "begin admission receipt",
+      "valid": true,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "response",
+        "requestId": "00000000-0000-4000-8000-000000000003",
+        "op": "planning.begin",
+        "result": {
+          "invocationId": "00000000-0000-4000-8000-000000000001",
+          "supervisorId": "00000000-0000-4000-8000-000000000002",
+          "sessionId": "s_example",
+          "workspaceId": "w_example",
+          "connectionIds": [
+            "c_alpha",
+            "c_beta"
+          ],
+          "kind": "native-planning",
+          "admittedAt": "2026-10-31T12:00:00.000Z",
+          "admissionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      }
+    },
+    {
+      "name": "observe local pipeline only",
+      "valid": true,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000003",
+        "op": "planning.observe",
+        "params": {
+          "invocationId": "00000000-0000-4000-8000-000000000001",
+          "admissionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "kind": "local-pipeline-settled"
+        }
+      }
+    },
+    {
+      "name": "observe durable timestamp",
+      "valid": true,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "response",
+        "requestId": "00000000-0000-4000-8000-000000000003",
+        "op": "planning.observe",
+        "result": {
+          "invocationId": "00000000-0000-4000-8000-000000000001",
+          "admissionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "kind": "local-pipeline-settled",
+          "recordedAt": "2026-10-31T12:00:01.000Z"
+        }
+      }
+    },
+    {
+      "name": "inspect invocation",
+      "valid": true,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000003",
+        "op": "planning.inspect",
+        "params": {
+          "invocationId": "00000000-0000-4000-8000-000000000001"
+        }
+      }
+    },
+    {
+      "name": "inspect unresolved admission",
+      "valid": true,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "response",
+        "requestId": "00000000-0000-4000-8000-000000000003",
+        "op": "planning.inspect",
+        "result": {
+          "admission": {
+            "invocationId": "00000000-0000-4000-8000-000000000001",
+            "supervisorId": "00000000-0000-4000-8000-000000000002",
+            "sessionId": "s_example",
+            "workspaceId": "w_example",
+            "connectionIds": [
+              "c_alpha",
+              "c_beta"
+            ],
+            "kind": "native-planning",
+            "admittedAt": "2026-10-31T12:00:00.000Z",
+            "admissionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          }
+        }
+      }
+    },
+    {
+      "name": "inspect settled local pipeline",
+      "valid": true,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "response",
+        "requestId": "00000000-0000-4000-8000-000000000003",
+        "op": "planning.inspect",
+        "result": {
+          "admission": {
+            "invocationId": "00000000-0000-4000-8000-000000000001",
+            "supervisorId": "00000000-0000-4000-8000-000000000002",
+            "sessionId": "s_example",
+            "workspaceId": "w_example",
+            "connectionIds": [
+              "c_alpha",
+              "c_beta"
+            ],
+            "kind": "native-planning",
+            "admittedAt": "2026-10-31T12:00:00.000Z",
+            "admissionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "observation": {
+            "invocationId": "00000000-0000-4000-8000-000000000001",
+            "admissionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "kind": "local-pipeline-settled",
+            "recordedAt": "2026-10-31T12:00:01.000Z"
+          }
+        }
+      }
+    },
+    {
+      "name": "inspect observation at admission time",
+      "valid": true,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "response",
+        "requestId": "00000000-0000-4000-8000-000000000003",
+        "op": "planning.inspect",
+        "result": {
+          "admission": {
+            "invocationId": "00000000-0000-4000-8000-000000000001",
+            "supervisorId": "00000000-0000-4000-8000-000000000002",
+            "sessionId": "s_example",
+            "workspaceId": "w_example",
+            "connectionIds": [
+              "c_alpha",
+              "c_beta"
+            ],
+            "kind": "native-planning",
+            "admittedAt": "2026-10-31T12:00:00.000Z",
+            "admissionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "observation": {
+            "invocationId": "00000000-0000-4000-8000-000000000001",
+            "admissionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "kind": "local-pipeline-settled",
+            "recordedAt": "2026-10-31T12:00:00.000Z"
+          }
+        }
+      }
+    },
+    {
+      "name": "begin UUID version 1",
+      "valid": true,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000003",
+        "op": "planning.begin",
+        "params": {
+          "invocationId": "00000000-0000-1000-8000-000000000001",
+          "supervisorId": "00000000-0000-4000-8000-000000000002",
+          "sessionId": "s_example",
+          "workspaceId": "w_example",
+          "connectionIds": [
+            "c_alpha",
+            "c_beta"
+          ]
+        }
+      }
+    },
+    {
+      "name": "begin UUID version 2",
+      "valid": true,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000003",
+        "op": "planning.begin",
+        "params": {
+          "invocationId": "00000000-0000-2000-8000-000000000001",
+          "supervisorId": "00000000-0000-4000-8000-000000000002",
+          "sessionId": "s_example",
+          "workspaceId": "w_example",
+          "connectionIds": [
+            "c_alpha",
+            "c_beta"
+          ]
+        }
+      }
+    },
+    {
+      "name": "begin UUID version 3",
+      "valid": true,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000003",
+        "op": "planning.begin",
+        "params": {
+          "invocationId": "00000000-0000-3000-8000-000000000001",
+          "supervisorId": "00000000-0000-4000-8000-000000000002",
+          "sessionId": "s_example",
+          "workspaceId": "w_example",
+          "connectionIds": [
+            "c_alpha",
+            "c_beta"
+          ]
+        }
+      }
+    },
+    {
+      "name": "begin UUID version 4",
+      "valid": true,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000003",
+        "op": "planning.begin",
+        "params": {
+          "invocationId": "00000000-0000-4000-8000-000000000001",
+          "supervisorId": "00000000-0000-4000-8000-000000000002",
+          "sessionId": "s_example",
+          "workspaceId": "w_example",
+          "connectionIds": [
+            "c_alpha",
+            "c_beta"
+          ]
+        }
+      }
+    },
+    {
+      "name": "begin UUID version 5",
+      "valid": true,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000003",
+        "op": "planning.begin",
+        "params": {
+          "invocationId": "00000000-0000-5000-8000-000000000001",
+          "supervisorId": "00000000-0000-4000-8000-000000000002",
+          "sessionId": "s_example",
+          "workspaceId": "w_example",
+          "connectionIds": [
+            "c_alpha",
+            "c_beta"
+          ]
+        }
+      }
+    },
+    {
+      "name": "begin UUID version 6",
+      "valid": true,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000003",
+        "op": "planning.begin",
+        "params": {
+          "invocationId": "00000000-0000-6000-8000-000000000001",
+          "supervisorId": "00000000-0000-4000-8000-000000000002",
+          "sessionId": "s_example",
+          "workspaceId": "w_example",
+          "connectionIds": [
+            "c_alpha",
+            "c_beta"
+          ]
+        }
+      }
+    },
+    {
+      "name": "begin UUID version 7",
+      "valid": true,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000003",
+        "op": "planning.begin",
+        "params": {
+          "invocationId": "00000000-0000-7000-8000-000000000001",
+          "supervisorId": "00000000-0000-4000-8000-000000000002",
+          "sessionId": "s_example",
+          "workspaceId": "w_example",
+          "connectionIds": [
+            "c_alpha",
+            "c_beta"
+          ]
+        }
+      }
+    },
+    {
+      "name": "begin UUID version 8",
+      "valid": true,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000003",
+        "op": "planning.begin",
+        "params": {
+          "invocationId": "00000000-0000-8000-8000-000000000001",
+          "supervisorId": "00000000-0000-4000-8000-000000000002",
+          "sessionId": "s_example",
+          "workspaceId": "w_example",
+          "connectionIds": [
+            "c_alpha",
+            "c_beta"
+          ]
+        }
+      }
+    },
+    {
+      "name": "begin maximum ASCII scope IDs and connections",
+      "valid": true,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000003",
+        "op": "planning.begin",
+        "params": {
+          "invocationId": "00000000-0000-4000-8000-000000000001",
+          "supervisorId": "00000000-0000-4000-8000-000000000002",
+          "sessionId": "sxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+          "workspaceId": "wxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+          "connectionIds": [
+            "c00xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+            "c01xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+            "c02xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+            "c03xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+            "c04xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+            "c05xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+            "c06xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+            "c07xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+            "c08xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+            "c09xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+            "c10xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+            "c11xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+            "c12xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+            "c13xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+            "c14xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+            "c15xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+          ]
+        }
+      }
+    },
+    {
+      "name": "begin UTC 2024-02-29T00:00:00Z",
+      "valid": true,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "response",
+        "requestId": "00000000-0000-4000-8000-000000000003",
+        "op": "planning.begin",
+        "result": {
+          "invocationId": "00000000-0000-4000-8000-000000000001",
+          "supervisorId": "00000000-0000-4000-8000-000000000002",
+          "sessionId": "s_example",
+          "workspaceId": "w_example",
+          "connectionIds": [
+            "c_alpha",
+            "c_beta"
+          ],
+          "kind": "native-planning",
+          "admittedAt": "2024-02-29T00:00:00Z",
+          "admissionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      }
+    },
+    {
+      "name": "begin UTC 2026-10-31T12:00:00.1Z",
+      "valid": true,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "response",
+        "requestId": "00000000-0000-4000-8000-000000000003",
+        "op": "planning.begin",
+        "result": {
+          "invocationId": "00000000-0000-4000-8000-000000000001",
+          "supervisorId": "00000000-0000-4000-8000-000000000002",
+          "sessionId": "s_example",
+          "workspaceId": "w_example",
+          "connectionIds": [
+            "c_alpha",
+            "c_beta"
+          ],
+          "kind": "native-planning",
+          "admittedAt": "2026-10-31T12:00:00.1Z",
+          "admissionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      }
+    },
+    {
+      "name": "begin UTC 2026-10-31T12:00:00.12Z",
+      "valid": true,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "response",
+        "requestId": "00000000-0000-4000-8000-000000000003",
+        "op": "planning.begin",
+        "result": {
+          "invocationId": "00000000-0000-4000-8000-000000000001",
+          "supervisorId": "00000000-0000-4000-8000-000000000002",
+          "sessionId": "s_example",
+          "workspaceId": "w_example",
+          "connectionIds": [
+            "c_alpha",
+            "c_beta"
+          ],
+          "kind": "native-planning",
+          "admittedAt": "2026-10-31T12:00:00.12Z",
+          "admissionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      }
+    },
+    {
+      "name": "begin missing invocationId",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000003",
+        "op": "planning.begin",
+        "params": {
+          "supervisorId": "00000000-0000-4000-8000-000000000002",
+          "sessionId": "s_example",
+          "workspaceId": "w_example",
+          "connectionIds": [
+            "c_alpha",
+            "c_beta"
+          ]
+        }
+      },
+      "code": "invalid_request"
+    },
+    {
+      "name": "begin missing supervisorId",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000003",
+        "op": "planning.begin",
+        "params": {
+          "invocationId": "00000000-0000-4000-8000-000000000001",
+          "sessionId": "s_example",
+          "workspaceId": "w_example",
+          "connectionIds": [
+            "c_alpha",
+            "c_beta"
+          ]
+        }
+      },
+      "code": "invalid_request"
+    },
+    {
+      "name": "begin missing sessionId",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000003",
+        "op": "planning.begin",
+        "params": {
+          "invocationId": "00000000-0000-4000-8000-000000000001",
+          "supervisorId": "00000000-0000-4000-8000-000000000002",
+          "workspaceId": "w_example",
+          "connectionIds": [
+            "c_alpha",
+            "c_beta"
+          ]
+        }
+      },
+      "code": "invalid_request"
+    },
+    {
+      "name": "begin missing workspaceId",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000003",
+        "op": "planning.begin",
+        "params": {
+          "invocationId": "00000000-0000-4000-8000-000000000001",
+          "supervisorId": "00000000-0000-4000-8000-000000000002",
+          "sessionId": "s_example",
+          "connectionIds": [
+            "c_alpha",
+            "c_beta"
+          ]
+        }
+      },
+      "code": "invalid_request"
+    },
+    {
+      "name": "begin missing connectionIds",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000003",
+        "op": "planning.begin",
+        "params": {
+          "invocationId": "00000000-0000-4000-8000-000000000001",
+          "supervisorId": "00000000-0000-4000-8000-000000000002",
+          "sessionId": "s_example",
+          "workspaceId": "w_example"
+        }
+      },
+      "code": "invalid_request"
+    },
+    {
+      "name": "begin refuses prompt",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000003",
+        "op": "planning.begin",
+        "params": {
+          "invocationId": "00000000-0000-4000-8000-000000000001",
+          "supervisorId": "00000000-0000-4000-8000-000000000002",
+          "sessionId": "s_example",
+          "workspaceId": "w_example",
+          "connectionIds": [
+            "c_alpha",
+            "c_beta"
+          ],
+          "prompt": "example"
+        }
+      },
+      "code": "invalid_request"
+    },
+    {
+      "name": "begin refuses endpoint",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000003",
+        "op": "planning.begin",
+        "params": {
+          "invocationId": "00000000-0000-4000-8000-000000000001",
+          "supervisorId": "00000000-0000-4000-8000-000000000002",
+          "sessionId": "s_example",
+          "workspaceId": "w_example",
+          "connectionIds": [
+            "c_alpha",
+            "c_beta"
+          ],
+          "endpoint": "example.com"
+        }
+      },
+      "code": "invalid_request"
+    },
+    {
+      "name": "begin refuses leaseId",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000003",
+        "op": "planning.begin",
+        "params": {
+          "invocationId": "00000000-0000-4000-8000-000000000001",
+          "supervisorId": "00000000-0000-4000-8000-000000000002",
+          "sessionId": "s_example",
+          "workspaceId": "w_example",
+          "connectionIds": [
+            "c_alpha",
+            "c_beta"
+          ],
+          "leaseId": "00000000-0000-4000-8000-000000000002"
+        }
+      },
+      "code": "invalid_request"
+    },
+    {
+      "name": "begin refuses kind",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000003",
+        "op": "planning.begin",
+        "params": {
+          "invocationId": "00000000-0000-4000-8000-000000000001",
+          "supervisorId": "00000000-0000-4000-8000-000000000002",
+          "sessionId": "s_example",
+          "workspaceId": "w_example",
+          "connectionIds": [
+            "c_alpha",
+            "c_beta"
+          ],
+          "kind": "native-planning"
+        }
+      },
+      "code": "invalid_request"
+    },
+    {
+      "name": "begin sessionId empty",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000003",
+        "op": "planning.begin",
+        "params": {
+          "invocationId": "00000000-0000-4000-8000-000000000001",
+          "supervisorId": "00000000-0000-4000-8000-000000000002",
+          "sessionId": "",
+          "workspaceId": "w_example",
+          "connectionIds": [
+            "c_alpha",
+            "c_beta"
+          ]
+        }
+      },
+      "code": "invalid_request"
+    },
+    {
+      "name": "begin sessionId path",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000003",
+        "op": "planning.begin",
+        "params": {
+          "invocationId": "00000000-0000-4000-8000-000000000001",
+          "supervisorId": "00000000-0000-4000-8000-000000000002",
+          "sessionId": "/example",
+          "workspaceId": "w_example",
+          "connectionIds": [
+            "c_alpha",
+            "c_beta"
+          ]
+        }
+      },
+      "code": "invalid_request"
+    },
+    {
+      "name": "begin sessionId endpoint",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000003",
+        "op": "planning.begin",
+        "params": {
+          "invocationId": "00000000-0000-4000-8000-000000000001",
+          "supervisorId": "00000000-0000-4000-8000-000000000002",
+          "sessionId": "https://example.com",
+          "workspaceId": "w_example",
+          "connectionIds": [
+            "c_alpha",
+            "c_beta"
+          ]
+        }
+      },
+      "code": "invalid_request"
+    },
+    {
+      "name": "begin sessionId space",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000003",
+        "op": "planning.begin",
+        "params": {
+          "invocationId": "00000000-0000-4000-8000-000000000001",
+          "supervisorId": "00000000-0000-4000-8000-000000000002",
+          "sessionId": "not opaque",
+          "workspaceId": "w_example",
+          "connectionIds": [
+            "c_alpha",
+            "c_beta"
+          ]
+        }
+      },
+      "code": "invalid_request"
+    },
+    {
+      "name": "begin sessionId unicode",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000003",
+        "op": "planning.begin",
+        "params": {
+          "invocationId": "00000000-0000-4000-8000-000000000001",
+          "supervisorId": "00000000-0000-4000-8000-000000000002",
+          "sessionId": "\u00e9",
+          "workspaceId": "w_example",
+          "connectionIds": [
+            "c_alpha",
+            "c_beta"
+          ]
+        }
+      },
+      "code": "invalid_request"
+    },
+    {
+      "name": "begin sessionId leading dash",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000003",
+        "op": "planning.begin",
+        "params": {
+          "invocationId": "00000000-0000-4000-8000-000000000001",
+          "supervisorId": "00000000-0000-4000-8000-000000000002",
+          "sessionId": "-scope",
+          "workspaceId": "w_example",
+          "connectionIds": [
+            "c_alpha",
+            "c_beta"
+          ]
+        }
+      },
+      "code": "invalid_request"
+    },
+    {
+      "name": "begin sessionId oversized",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000003",
+        "op": "planning.begin",
+        "params": {
+          "invocationId": "00000000-0000-4000-8000-000000000001",
+          "supervisorId": "00000000-0000-4000-8000-000000000002",
+          "sessionId": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+          "workspaceId": "w_example",
+          "connectionIds": [
+            "c_alpha",
+            "c_beta"
+          ]
+        }
+      },
+      "code": "invalid_request"
+    },
+    {
+      "name": "begin sessionId trailing newline",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000003",
+        "op": "planning.begin",
+        "params": {
+          "invocationId": "00000000-0000-4000-8000-000000000001",
+          "supervisorId": "00000000-0000-4000-8000-000000000002",
+          "sessionId": "s_example\n",
+          "workspaceId": "w_example",
+          "connectionIds": [
+            "c_alpha",
+            "c_beta"
+          ]
+        }
+      },
+      "code": "invalid_request"
+    },
+    {
+      "name": "begin workspaceId empty",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000003",
+        "op": "planning.begin",
+        "params": {
+          "invocationId": "00000000-0000-4000-8000-000000000001",
+          "supervisorId": "00000000-0000-4000-8000-000000000002",
+          "sessionId": "s_example",
+          "workspaceId": "",
+          "connectionIds": [
+            "c_alpha",
+            "c_beta"
+          ]
+        }
+      },
+      "code": "invalid_request"
+    },
+    {
+      "name": "begin workspaceId path",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000003",
+        "op": "planning.begin",
+        "params": {
+          "invocationId": "00000000-0000-4000-8000-000000000001",
+          "supervisorId": "00000000-0000-4000-8000-000000000002",
+          "sessionId": "s_example",
+          "workspaceId": "/example",
+          "connectionIds": [
+            "c_alpha",
+            "c_beta"
+          ]
+        }
+      },
+      "code": "invalid_request"
+    },
+    {
+      "name": "begin workspaceId endpoint",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000003",
+        "op": "planning.begin",
+        "params": {
+          "invocationId": "00000000-0000-4000-8000-000000000001",
+          "supervisorId": "00000000-0000-4000-8000-000000000002",
+          "sessionId": "s_example",
+          "workspaceId": "https://example.com",
+          "connectionIds": [
+            "c_alpha",
+            "c_beta"
+          ]
+        }
+      },
+      "code": "invalid_request"
+    },
+    {
+      "name": "begin workspaceId space",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000003",
+        "op": "planning.begin",
+        "params": {
+          "invocationId": "00000000-0000-4000-8000-000000000001",
+          "supervisorId": "00000000-0000-4000-8000-000000000002",
+          "sessionId": "s_example",
+          "workspaceId": "not opaque",
+          "connectionIds": [
+            "c_alpha",
+            "c_beta"
+          ]
+        }
+      },
+      "code": "invalid_request"
+    },
+    {
+      "name": "begin workspaceId unicode",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000003",
+        "op": "planning.begin",
+        "params": {
+          "invocationId": "00000000-0000-4000-8000-000000000001",
+          "supervisorId": "00000000-0000-4000-8000-000000000002",
+          "sessionId": "s_example",
+          "workspaceId": "\u00e9",
+          "connectionIds": [
+            "c_alpha",
+            "c_beta"
+          ]
+        }
+      },
+      "code": "invalid_request"
+    },
+    {
+      "name": "begin workspaceId leading dash",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000003",
+        "op": "planning.begin",
+        "params": {
+          "invocationId": "00000000-0000-4000-8000-000000000001",
+          "supervisorId": "00000000-0000-4000-8000-000000000002",
+          "sessionId": "s_example",
+          "workspaceId": "-scope",
+          "connectionIds": [
+            "c_alpha",
+            "c_beta"
+          ]
+        }
+      },
+      "code": "invalid_request"
+    },
+    {
+      "name": "begin workspaceId oversized",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000003",
+        "op": "planning.begin",
+        "params": {
+          "invocationId": "00000000-0000-4000-8000-000000000001",
+          "supervisorId": "00000000-0000-4000-8000-000000000002",
+          "sessionId": "s_example",
+          "workspaceId": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+          "connectionIds": [
+            "c_alpha",
+            "c_beta"
+          ]
+        }
+      },
+      "code": "invalid_request"
+    },
+    {
+      "name": "begin workspaceId trailing newline",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000003",
+        "op": "planning.begin",
+        "params": {
+          "invocationId": "00000000-0000-4000-8000-000000000001",
+          "supervisorId": "00000000-0000-4000-8000-000000000002",
+          "sessionId": "s_example",
+          "workspaceId": "s_example\n",
+          "connectionIds": [
+            "c_alpha",
+            "c_beta"
+          ]
+        }
+      },
+      "code": "invalid_request"
+    },
+    {
+      "name": "begin invocationId non UUID",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000003",
+        "op": "planning.begin",
+        "params": {
+          "invocationId": "s_example",
+          "supervisorId": "00000000-0000-4000-8000-000000000002",
+          "sessionId": "s_example",
+          "workspaceId": "w_example",
+          "connectionIds": [
+            "c_alpha",
+            "c_beta"
+          ]
+        }
+      },
+      "code": "invalid_request"
+    },
+    {
+      "name": "begin invocationId version zero",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000003",
+        "op": "planning.begin",
+        "params": {
+          "invocationId": "00000000-0000-0000-8000-000000000001",
+          "supervisorId": "00000000-0000-4000-8000-000000000002",
+          "sessionId": "s_example",
+          "workspaceId": "w_example",
+          "connectionIds": [
+            "c_alpha",
+            "c_beta"
+          ]
+        }
+      },
+      "code": "invalid_request"
+    },
+    {
+      "name": "begin invocationId version nine",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000003",
+        "op": "planning.begin",
+        "params": {
+          "invocationId": "00000000-0000-9000-8000-000000000001",
+          "supervisorId": "00000000-0000-4000-8000-000000000002",
+          "sessionId": "s_example",
+          "workspaceId": "w_example",
+          "connectionIds": [
+            "c_alpha",
+            "c_beta"
+          ]
+        }
+      },
+      "code": "invalid_request"
+    },
+    {
+      "name": "begin invocationId variant",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000003",
+        "op": "planning.begin",
+        "params": {
+          "invocationId": "00000000-0000-4000-7000-000000000001",
+          "supervisorId": "00000000-0000-4000-8000-000000000002",
+          "sessionId": "s_example",
+          "workspaceId": "w_example",
+          "connectionIds": [
+            "c_alpha",
+            "c_beta"
+          ]
+        }
+      },
+      "code": "invalid_request"
+    },
+    {
+      "name": "begin invocationId uppercase",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000003",
+        "op": "planning.begin",
+        "params": {
+          "invocationId": "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA",
+          "supervisorId": "00000000-0000-4000-8000-000000000002",
+          "sessionId": "s_example",
+          "workspaceId": "w_example",
+          "connectionIds": [
+            "c_alpha",
+            "c_beta"
+          ]
+        }
+      },
+      "code": "invalid_request"
+    },
+    {
+      "name": "begin invocationId trailing newline",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000003",
+        "op": "planning.begin",
+        "params": {
+          "invocationId": "00000000-0000-4000-8000-000000000001\n",
+          "supervisorId": "00000000-0000-4000-8000-000000000002",
+          "sessionId": "s_example",
+          "workspaceId": "w_example",
+          "connectionIds": [
+            "c_alpha",
+            "c_beta"
+          ]
+        }
+      },
+      "code": "invalid_request"
+    },
+    {
+      "name": "begin supervisorId non UUID",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000003",
+        "op": "planning.begin",
+        "params": {
+          "invocationId": "00000000-0000-4000-8000-000000000001",
+          "supervisorId": "s_example",
+          "sessionId": "s_example",
+          "workspaceId": "w_example",
+          "connectionIds": [
+            "c_alpha",
+            "c_beta"
+          ]
+        }
+      },
+      "code": "invalid_request"
+    },
+    {
+      "name": "begin supervisorId version zero",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000003",
+        "op": "planning.begin",
+        "params": {
+          "invocationId": "00000000-0000-4000-8000-000000000001",
+          "supervisorId": "00000000-0000-0000-8000-000000000001",
+          "sessionId": "s_example",
+          "workspaceId": "w_example",
+          "connectionIds": [
+            "c_alpha",
+            "c_beta"
+          ]
+        }
+      },
+      "code": "invalid_request"
+    },
+    {
+      "name": "begin supervisorId version nine",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000003",
+        "op": "planning.begin",
+        "params": {
+          "invocationId": "00000000-0000-4000-8000-000000000001",
+          "supervisorId": "00000000-0000-9000-8000-000000000001",
+          "sessionId": "s_example",
+          "workspaceId": "w_example",
+          "connectionIds": [
+            "c_alpha",
+            "c_beta"
+          ]
+        }
+      },
+      "code": "invalid_request"
+    },
+    {
+      "name": "begin supervisorId variant",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000003",
+        "op": "planning.begin",
+        "params": {
+          "invocationId": "00000000-0000-4000-8000-000000000001",
+          "supervisorId": "00000000-0000-4000-7000-000000000001",
+          "sessionId": "s_example",
+          "workspaceId": "w_example",
+          "connectionIds": [
+            "c_alpha",
+            "c_beta"
+          ]
+        }
+      },
+      "code": "invalid_request"
+    },
+    {
+      "name": "begin supervisorId uppercase",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000003",
+        "op": "planning.begin",
+        "params": {
+          "invocationId": "00000000-0000-4000-8000-000000000001",
+          "supervisorId": "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA",
+          "sessionId": "s_example",
+          "workspaceId": "w_example",
+          "connectionIds": [
+            "c_alpha",
+            "c_beta"
+          ]
+        }
+      },
+      "code": "invalid_request"
+    },
+    {
+      "name": "begin supervisorId trailing newline",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000003",
+        "op": "planning.begin",
+        "params": {
+          "invocationId": "00000000-0000-4000-8000-000000000001",
+          "supervisorId": "00000000-0000-4000-8000-000000000001\n",
+          "sessionId": "s_example",
+          "workspaceId": "w_example",
+          "connectionIds": [
+            "c_alpha",
+            "c_beta"
+          ]
+        }
+      },
+      "code": "invalid_request"
+    },
+    {
+      "name": "begin connection IDs empty",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000003",
+        "op": "planning.begin",
+        "params": {
+          "invocationId": "00000000-0000-4000-8000-000000000001",
+          "supervisorId": "00000000-0000-4000-8000-000000000002",
+          "sessionId": "s_example",
+          "workspaceId": "w_example",
+          "connectionIds": []
+        }
+      },
+      "code": "invalid_request"
+    },
+    {
+      "name": "begin connection IDs duplicate",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000003",
+        "op": "planning.begin",
+        "params": {
+          "invocationId": "00000000-0000-4000-8000-000000000001",
+          "supervisorId": "00000000-0000-4000-8000-000000000002",
+          "sessionId": "s_example",
+          "workspaceId": "w_example",
+          "connectionIds": [
+            "c_alpha",
+            "c_alpha"
+          ]
+        }
+      },
+      "code": "invalid_request"
+    },
+    {
+      "name": "begin connection IDs unsorted",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000003",
+        "op": "planning.begin",
+        "params": {
+          "invocationId": "00000000-0000-4000-8000-000000000001",
+          "supervisorId": "00000000-0000-4000-8000-000000000002",
+          "sessionId": "s_example",
+          "workspaceId": "w_example",
+          "connectionIds": [
+            "c_beta",
+            "c_alpha"
+          ]
+        }
+      },
+      "code": "invalid_request",
+      "schemaGap": "ASCII connection order"
+    },
+    {
+      "name": "begin connection IDs ASCII order",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000003",
+        "op": "planning.begin",
+        "params": {
+          "invocationId": "00000000-0000-4000-8000-000000000001",
+          "supervisorId": "00000000-0000-4000-8000-000000000002",
+          "sessionId": "s_example",
+          "workspaceId": "w_example",
+          "connectionIds": [
+            "c_alpha",
+            "C_alpha"
+          ]
+        }
+      },
+      "code": "invalid_request",
+      "schemaGap": "ASCII connection order"
+    },
+    {
+      "name": "begin connection IDs too many",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000003",
+        "op": "planning.begin",
+        "params": {
+          "invocationId": "00000000-0000-4000-8000-000000000001",
+          "supervisorId": "00000000-0000-4000-8000-000000000002",
+          "sessionId": "s_example",
+          "workspaceId": "w_example",
+          "connectionIds": [
+            "c00",
+            "c01",
+            "c02",
+            "c03",
+            "c04",
+            "c05",
+            "c06",
+            "c07",
+            "c08",
+            "c09",
+            "c10",
+            "c11",
+            "c12",
+            "c13",
+            "c14",
+            "c15",
+            "c16"
+          ]
+        }
+      },
+      "code": "invalid_request"
+    },
+    {
+      "name": "begin connection IDs invalid ID",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000003",
+        "op": "planning.begin",
+        "params": {
+          "invocationId": "00000000-0000-4000-8000-000000000001",
+          "supervisorId": "00000000-0000-4000-8000-000000000002",
+          "sessionId": "s_example",
+          "workspaceId": "w_example",
+          "connectionIds": [
+            "c_ok",
+            "/example"
+          ]
+        }
+      },
+      "code": "invalid_request"
+    },
+    {
+      "name": "begin connection IDs not array",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000003",
+        "op": "planning.begin",
+        "params": {
+          "invocationId": "00000000-0000-4000-8000-000000000001",
+          "supervisorId": "00000000-0000-4000-8000-000000000002",
+          "sessionId": "s_example",
+          "workspaceId": "w_example",
+          "connectionIds": "c_alpha"
+        }
+      },
+      "code": "invalid_request"
+    },
+    {
+      "name": "admission wrong kind",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "response",
+        "requestId": "00000000-0000-4000-8000-000000000003",
+        "op": "planning.begin",
+        "result": {
+          "invocationId": "00000000-0000-4000-8000-000000000001",
+          "supervisorId": "00000000-0000-4000-8000-000000000002",
+          "sessionId": "s_example",
+          "workspaceId": "w_example",
+          "connectionIds": [
+            "c_alpha",
+            "c_beta"
+          ],
+          "kind": "native-execution",
+          "admittedAt": "2026-10-31T12:00:00.000Z",
+          "admissionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      },
+      "code": "invalid_frame"
+    },
+    {
+      "name": "admission uppercase digest",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "response",
+        "requestId": "00000000-0000-4000-8000-000000000003",
+        "op": "planning.begin",
+        "result": {
+          "invocationId": "00000000-0000-4000-8000-000000000001",
+          "supervisorId": "00000000-0000-4000-8000-000000000002",
+          "sessionId": "s_example",
+          "workspaceId": "w_example",
+          "connectionIds": [
+            "c_alpha",
+            "c_beta"
+          ],
+          "kind": "native-planning",
+          "admittedAt": "2026-10-31T12:00:00.000Z",
+          "admissionDigest": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+        }
+      },
+      "code": "invalid_frame"
+    },
+    {
+      "name": "admission short digest",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "response",
+        "requestId": "00000000-0000-4000-8000-000000000003",
+        "op": "planning.begin",
+        "result": {
+          "invocationId": "00000000-0000-4000-8000-000000000001",
+          "supervisorId": "00000000-0000-4000-8000-000000000002",
+          "sessionId": "s_example",
+          "workspaceId": "w_example",
+          "connectionIds": [
+            "c_alpha",
+            "c_beta"
+          ],
+          "kind": "native-planning",
+          "admittedAt": "2026-10-31T12:00:00.000Z",
+          "admissionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      },
+      "code": "invalid_frame"
+    },
+    {
+      "name": "admission digest newline",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "response",
+        "requestId": "00000000-0000-4000-8000-000000000003",
+        "op": "planning.begin",
+        "result": {
+          "invocationId": "00000000-0000-4000-8000-000000000001",
+          "supervisorId": "00000000-0000-4000-8000-000000000002",
+          "sessionId": "s_example",
+          "workspaceId": "w_example",
+          "connectionIds": [
+            "c_alpha",
+            "c_beta"
+          ],
+          "kind": "native-planning",
+          "admittedAt": "2026-10-31T12:00:00.000Z",
+          "admissionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n"
+        }
+      },
+      "code": "invalid_frame"
+    },
+    {
+      "name": "admission unknown field",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "response",
+        "requestId": "00000000-0000-4000-8000-000000000003",
+        "op": "planning.begin",
+        "result": {
+          "invocationId": "00000000-0000-4000-8000-000000000001",
+          "supervisorId": "00000000-0000-4000-8000-000000000002",
+          "sessionId": "s_example",
+          "workspaceId": "w_example",
+          "connectionIds": [
+            "c_alpha",
+            "c_beta"
+          ],
+          "kind": "native-planning",
+          "admittedAt": "2026-10-31T12:00:00.000Z",
+          "admissionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "leaseId": "00000000-0000-4000-8000-000000000002"
+        }
+      },
+      "code": "invalid_frame"
+    },
+    {
+      "name": "admission bad timestamp",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "response",
+        "requestId": "00000000-0000-4000-8000-000000000003",
+        "op": "planning.begin",
+        "result": {
+          "invocationId": "00000000-0000-4000-8000-000000000001",
+          "supervisorId": "00000000-0000-4000-8000-000000000002",
+          "sessionId": "s_example",
+          "workspaceId": "w_example",
+          "connectionIds": [
+            "c_alpha",
+            "c_beta"
+          ],
+          "kind": "native-planning",
+          "admittedAt": "2026-02-30T12:00:00Z",
+          "admissionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      },
+      "code": "invalid_frame"
+    },
+    {
+      "name": "admission offset timestamp",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "response",
+        "requestId": "00000000-0000-4000-8000-000000000003",
+        "op": "planning.begin",
+        "result": {
+          "invocationId": "00000000-0000-4000-8000-000000000001",
+          "supervisorId": "00000000-0000-4000-8000-000000000002",
+          "sessionId": "s_example",
+          "workspaceId": "w_example",
+          "connectionIds": [
+            "c_alpha",
+            "c_beta"
+          ],
+          "kind": "native-planning",
+          "admittedAt": "2026-10-31T12:00:00+00:00",
+          "admissionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      },
+      "code": "invalid_frame"
+    },
+    {
+      "name": "admission timestamp newline",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "response",
+        "requestId": "00000000-0000-4000-8000-000000000003",
+        "op": "planning.begin",
+        "result": {
+          "invocationId": "00000000-0000-4000-8000-000000000001",
+          "supervisorId": "00000000-0000-4000-8000-000000000002",
+          "sessionId": "s_example",
+          "workspaceId": "w_example",
+          "connectionIds": [
+            "c_alpha",
+            "c_beta"
+          ],
+          "kind": "native-planning",
+          "admittedAt": "2026-10-31T12:00:00Z\n",
+          "admissionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      },
+      "code": "invalid_frame"
+    },
+    {
+      "name": "admission timestamp precision",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "response",
+        "requestId": "00000000-0000-4000-8000-000000000003",
+        "op": "planning.begin",
+        "result": {
+          "invocationId": "00000000-0000-4000-8000-000000000001",
+          "supervisorId": "00000000-0000-4000-8000-000000000002",
+          "sessionId": "s_example",
+          "workspaceId": "w_example",
+          "connectionIds": [
+            "c_alpha",
+            "c_beta"
+          ],
+          "kind": "native-planning",
+          "admittedAt": "2026-10-31T12:00:00.0000Z",
+          "admissionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      },
+      "code": "invalid_frame"
+    },
+    {
+      "name": "observe wrong kind",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000003",
+        "op": "planning.observe",
+        "params": {
+          "invocationId": "00000000-0000-4000-8000-000000000001",
+          "admissionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "kind": "remote-settled"
+        }
+      },
+      "code": "invalid_request"
+    },
+    {
+      "name": "observe unknown field",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000003",
+        "op": "planning.observe",
+        "params": {
+          "invocationId": "00000000-0000-4000-8000-000000000001",
+          "admissionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "kind": "local-pipeline-settled",
+          "supervisorId": "00000000-0000-4000-8000-000000000002"
+        }
+      },
+      "code": "invalid_request"
+    },
+    {
+      "name": "observe digest newline",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000003",
+        "op": "planning.observe",
+        "params": {
+          "invocationId": "00000000-0000-4000-8000-000000000001",
+          "admissionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n",
+          "kind": "local-pipeline-settled"
+        }
+      },
+      "code": "invalid_request"
+    },
+    {
+      "name": "observe missing digest",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000003",
+        "op": "planning.observe",
+        "params": {
+          "invocationId": "00000000-0000-4000-8000-000000000001",
+          "kind": "local-pipeline-settled"
+        }
+      },
+      "code": "invalid_request"
+    },
+    {
+      "name": "observe result unknown duplicate field",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "response",
+        "requestId": "00000000-0000-4000-8000-000000000003",
+        "op": "planning.observe",
+        "result": {
+          "invocationId": "00000000-0000-4000-8000-000000000001",
+          "admissionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "kind": "local-pipeline-settled",
+          "recordedAt": "2026-10-31T12:00:01.000Z",
+          "duplicate": true
+        }
+      },
+      "code": "invalid_frame"
+    },
+    {
+      "name": "observe result invalid timestamp",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "response",
+        "requestId": "00000000-0000-4000-8000-000000000003",
+        "op": "planning.observe",
+        "result": {
+          "invocationId": "00000000-0000-4000-8000-000000000001",
+          "admissionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "kind": "local-pipeline-settled",
+          "recordedAt": "2026-02-30T12:00:00Z"
+        }
+      },
+      "code": "invalid_frame"
+    },
+    {
+      "name": "inspect params unknown scope",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000003",
+        "op": "planning.inspect",
+        "params": {
+          "invocationId": "00000000-0000-4000-8000-000000000001",
+          "workspaceId": "w_example"
+        }
+      },
+      "code": "invalid_request"
+    },
+    {
+      "name": "inspect params missing identity",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000003",
+        "op": "planning.inspect",
+        "params": {}
+      },
+      "code": "invalid_request"
+    },
+    {
+      "name": "inspect result missing admission",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "response",
+        "requestId": "00000000-0000-4000-8000-000000000003",
+        "op": "planning.inspect",
+        "result": {
+          "observation": {
+            "invocationId": "00000000-0000-4000-8000-000000000001",
+            "admissionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "kind": "local-pipeline-settled",
+            "recordedAt": "2026-10-31T12:00:01.000Z"
+          }
+        }
+      },
+      "code": "invalid_frame"
+    },
+    {
+      "name": "inspect result unknown field",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "response",
+        "requestId": "00000000-0000-4000-8000-000000000003",
+        "op": "planning.inspect",
+        "result": {
+          "admission": {
+            "invocationId": "00000000-0000-4000-8000-000000000001",
+            "supervisorId": "00000000-0000-4000-8000-000000000002",
+            "sessionId": "s_example",
+            "workspaceId": "w_example",
+            "connectionIds": [
+              "c_alpha",
+              "c_beta"
+            ],
+            "kind": "native-planning",
+            "admittedAt": "2026-10-31T12:00:00.000Z",
+            "admissionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "settled": true
+        }
+      },
+      "code": "invalid_frame"
+    },
+    {
+      "name": "inspect result unknown nested field",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "response",
+        "requestId": "00000000-0000-4000-8000-000000000003",
+        "op": "planning.inspect",
+        "result": {
+          "admission": {
+            "invocationId": "00000000-0000-4000-8000-000000000001",
+            "supervisorId": "00000000-0000-4000-8000-000000000002",
+            "sessionId": "s_example",
+            "workspaceId": "w_example",
+            "connectionIds": [
+              "c_alpha",
+              "c_beta"
+            ],
+            "kind": "native-planning",
+            "admittedAt": "2026-10-31T12:00:00.000Z",
+            "admissionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "prompt": "example"
+          }
+        }
+      },
+      "code": "invalid_frame"
+    },
+    {
+      "name": "inspect result foreign invocation",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "response",
+        "requestId": "00000000-0000-4000-8000-000000000003",
+        "op": "planning.inspect",
+        "result": {
+          "admission": {
+            "invocationId": "00000000-0000-4000-8000-000000000001",
+            "supervisorId": "00000000-0000-4000-8000-000000000002",
+            "sessionId": "s_example",
+            "workspaceId": "w_example",
+            "connectionIds": [
+              "c_alpha",
+              "c_beta"
+            ],
+            "kind": "native-planning",
+            "admittedAt": "2026-10-31T12:00:00.000Z",
+            "admissionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "observation": {
+            "invocationId": "00000000-0000-4000-8000-000000000002",
+            "admissionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "kind": "local-pipeline-settled",
+            "recordedAt": "2026-10-31T12:00:01.000Z"
+          }
+        }
+      },
+      "code": "invalid_frame",
+      "schemaGap": "Admission/observation identity, digest and temporal correspondence"
+    },
+    {
+      "name": "inspect result foreign digest",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "response",
+        "requestId": "00000000-0000-4000-8000-000000000003",
+        "op": "planning.inspect",
+        "result": {
+          "admission": {
+            "invocationId": "00000000-0000-4000-8000-000000000001",
+            "supervisorId": "00000000-0000-4000-8000-000000000002",
+            "sessionId": "s_example",
+            "workspaceId": "w_example",
+            "connectionIds": [
+              "c_alpha",
+              "c_beta"
+            ],
+            "kind": "native-planning",
+            "admittedAt": "2026-10-31T12:00:00.000Z",
+            "admissionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "observation": {
+            "invocationId": "00000000-0000-4000-8000-000000000001",
+            "admissionDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "kind": "local-pipeline-settled",
+            "recordedAt": "2026-10-31T12:00:01.000Z"
+          }
+        }
+      },
+      "code": "invalid_frame",
+      "schemaGap": "Admission/observation identity, digest and temporal correspondence"
+    },
+    {
+      "name": "inspect result earlier observation",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "response",
+        "requestId": "00000000-0000-4000-8000-000000000003",
+        "op": "planning.inspect",
+        "result": {
+          "admission": {
+            "invocationId": "00000000-0000-4000-8000-000000000001",
+            "supervisorId": "00000000-0000-4000-8000-000000000002",
+            "sessionId": "s_example",
+            "workspaceId": "w_example",
+            "connectionIds": [
+              "c_alpha",
+              "c_beta"
+            ],
+            "kind": "native-planning",
+            "admittedAt": "2026-10-31T12:00:00.000Z",
+            "admissionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "observation": {
+            "invocationId": "00000000-0000-4000-8000-000000000001",
+            "admissionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "kind": "local-pipeline-settled",
+            "recordedAt": "2026-10-31T11:59:59.999Z"
+          }
+        }
+      },
+      "code": "invalid_frame",
+      "schemaGap": "Admission/observation identity, digest and temporal correspondence"
+    }
+  ]
+}

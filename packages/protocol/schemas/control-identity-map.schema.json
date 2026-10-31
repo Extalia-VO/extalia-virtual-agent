@@ -1,0 +1,172 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:extalia:protocol:control-identity-map:v1",
+  "title": "Scoped identity map v1 (no authority)",
+  "description": "Generated from @extalia/protocol by tooling/generate-schemas.mjs; do not edit. The TypeScript validators remain the reference. Validator-only checks: unique exact source tuples and canonical IDs; string lengths in UTF-16 code units (maxLength here counts code points).",
+  "$ref": "#/$defs/ControlIdentityMap",
+  "$defs": {
+    "ControlIdentityMap": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "protocol",
+        "schemaVersion",
+        "kind",
+        "profileId",
+        "workspaceId",
+        "bindings"
+      ],
+      "properties": {
+        "protocol": {
+          "const": "extalia.control.v1"
+        },
+        "schemaVersion": {
+          "const": 1
+        },
+        "kind": {
+          "const": "identity-map"
+        },
+        "profileId": {
+          "$ref": "#/$defs/Uuid"
+        },
+        "workspaceId": {
+          "$ref": "#/$defs/Uuid"
+        },
+        "bindings": {
+          "type": "array",
+          "maxItems": 1000,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "entityKind",
+              "source",
+              "canonicalId"
+            ],
+            "properties": {
+              "entityKind": {
+                "type": "string",
+                "enum": [
+                  "session",
+                  "workspace"
+                ]
+              },
+              "source": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "family",
+                      "system",
+                      "instanceId",
+                      "workspaceId",
+                      "id"
+                    ],
+                    "properties": {
+                      "family": {
+                        "const": "extalia.v0"
+                      },
+                      "system": {
+                        "const": "extalia"
+                      },
+                      "instanceId": {
+                        "$ref": "#/$defs/Identifier"
+                      },
+                      "workspaceId": {
+                        "$ref": "#/$defs/Identifier"
+                      },
+                      "id": {
+                        "$ref": "#/$defs/Identifier"
+                      }
+                    }
+                  },
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "family",
+                      "system",
+                      "instanceId",
+                      "workspaceId",
+                      "id"
+                    ],
+                    "properties": {
+                      "family": {
+                        "const": "orchestration.v1"
+                      },
+                      "system": {
+                        "const": "extalia"
+                      },
+                      "instanceId": {
+                        "$ref": "#/$defs/Identifier"
+                      },
+                      "workspaceId": {
+                        "$ref": "#/$defs/Uuid"
+                      },
+                      "id": {
+                        "$ref": "#/$defs/Uuid"
+                      }
+                    }
+                  },
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "family",
+                      "system",
+                      "instanceId",
+                      "workspaceId",
+                      "id"
+                    ],
+                    "properties": {
+                      "family": {
+                        "const": "external"
+                      },
+                      "system": {
+                        "$ref": "#/$defs/RuntimeId"
+                      },
+                      "instanceId": {
+                        "$ref": "#/$defs/Identifier"
+                      },
+                      "workspaceId": {
+                        "$ref": "#/$defs/Identifier"
+                      },
+                      "id": {
+                        "$ref": "#/$defs/Identifier"
+                      }
+                    }
+                  }
+                ]
+              },
+              "canonicalId": {
+                "$ref": "#/$defs/Uuid"
+              }
+            }
+          }
+        }
+      }
+    },
+    "Identifier": {
+      "description": "Nonblank text without control characters, at most 200 UTF-16 code units.",
+      "type": "string",
+      "maxLength": 200,
+      "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+      "allOf": [
+        {
+          "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+        }
+      ]
+    },
+    "RuntimeId": {
+      "type": "string",
+      "description": "Lowercase adapter or engine identifier.",
+      "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+    },
+    "Uuid": {
+      "type": "string",
+      "description": "Lowercase RFC 9562 UUID, versions 1-8.",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    }
+  }
+}

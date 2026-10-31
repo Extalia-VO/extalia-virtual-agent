@@ -1,25 +1,39 @@
 import { describe, expect, it } from 'vitest';
 import {
-  isUtcTimestamp, parseDaemonFrame, parseOrchestration, protocolJsonSchemas, serializeJsonSchema,
+  isUtcTimestamp, parseDaemonFrame, parseOrchestration, parseWorkerFrame, parseWorkerBundleManifest, protocolJsonSchemas, serializeJsonSchema,
   type JsonSchema, type OrchestrationContractKind,
 } from '../src/index.js';
 import { schemaKeywords, SUPPORTED_KEYWORDS, validateJsonSchema } from './jsonSchemaSubset.js';
 import agentEventSchema from '../schemas/agent-event.schema.json' with { type: 'json' };
 import approvalSchema from '../schemas/approval.schema.json' with { type: 'json' };
 import daemonFrameSchema from '../schemas/daemon-frame.schema.json' with { type: 'json' };
+import workerFrameSchema from '../schemas/python-worker-frame.schema.json' with { type: 'json' };
+import workerBundleSchema from '../schemas/worker-bundle-manifest.schema.json' with { type: 'json' };
 import missionSchema from '../schemas/mission.schema.json' with { type: 'json' };
 import permissionSchema from '../schemas/permission.schema.json' with { type: 'json' };
 import taskSchema from '../schemas/task.schema.json' with { type: 'json' };
+import controlManifestSchema from '../schemas/control-capability-manifest.schema.json' with { type: 'json' };
+import identityMapSchema from '../schemas/control-identity-map.schema.json' with { type: 'json' };
+import controlTaskSchema from '../schemas/control-task-snapshot.schema.json' with { type: 'json' };
+import controlDelegationSchema from '../schemas/control-delegation-envelope.schema.json' with { type: 'json' };
 import agentEventFixtures from './fixtures/orchestration/agent-event.json' with { type: 'json' };
 import approvalFixtures from './fixtures/orchestration/approval.json' with { type: 'json' };
 import missionFixtures from './fixtures/orchestration/mission.json' with { type: 'json' };
 import permissionFixtures from './fixtures/orchestration/permission.json' with { type: 'json' };
 import taskFixtures from './fixtures/orchestration/task.json' with { type: 'json' };
 import frameFixtures from './fixtures/daemon/frames.json' with { type: 'json' };
+import workerFixtures from './fixtures/worker/frames.json' with { type: 'json' };
+import bundleFixtures from './fixtures/worker/bundles.json' with { type: 'json' };
 
 interface Case { name: string; valid: boolean; value: unknown; schemaGap?: string; code?: string }
 /** Committed files, read as the Rust daemon and `cargo test` will read them. */
 const COMMITTED: Record<string, JsonSchema> = {
+  'worker-bundle-manifest.schema.json': workerBundleSchema,
+  'python-worker-frame.schema.json': workerFrameSchema,
+  'control-delegation-envelope.schema.json': controlDelegationSchema,
+  'control-task-snapshot.schema.json': controlTaskSchema,
+  'control-identity-map.schema.json': identityMapSchema,
+  'control-capability-manifest.schema.json': controlManifestSchema,
   'mission.schema.json': missionSchema, 'task.schema.json': taskSchema, 'agent-event.schema.json': agentEventSchema,
   'approval.schema.json': approvalSchema, 'permission.schema.json': permissionSchema, 'daemon-frame.schema.json': daemonFrameSchema,
 };
@@ -44,6 +58,14 @@ describe('generated JSON Schema files', () => {
 });
 
 describe('golden fixtures: validator and JSON Schema verdicts agree', () => {
+  it.each((bundleFixtures as { cases: Case[] }).cases)('worker bundle: $name', ({ valid, value, schemaGap }) => {
+    expect(parseWorkerBundleManifest(value).ok).toBe(valid);
+    expect(schemaAccepts(workerBundleSchema, value)).toBe(schemaGap ? true : valid);
+  });
+  it.each((workerFixtures as { cases: Case[] }).cases)('worker frame: $name', ({ valid, value }) => {
+    expect(parseWorkerFrame(value).ok).toBe(valid);
+    expect(schemaAccepts(workerFrameSchema, value)).toBe(valid);
+  });
   for (const [kind, schema, { cases }] of ORCHESTRATION) {
     it.each(cases)(`${kind}: $name`, ({ valid, value, schemaGap }) => {
       expect(parseOrchestration(kind, value).ok).toBe(valid);

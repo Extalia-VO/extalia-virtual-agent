@@ -45,6 +45,19 @@ describe('character appearance contract', () => {
     expect(result.ok && result.value).toEqual({ ...plain, hairColor: '#4d382d' });
   });
 
+  it('round-trips separate garments and rejects unknown slots, unsafe ids and conflicting whole outfits', () => {
+    const look = { ...LOOK, outfitParts: { top: 'shirt', bottom: 'jeans', outer: 'none' } };
+    const decoded = decodeCharacterAppearance(JSON.parse(JSON.stringify(look)));
+    expect(decoded.ok && decoded.value.outfitParts).toEqual(look.outfitParts);
+    for (const outfitParts of [{ shoes: 'boots' }, { top: '../shirt' }, { bottom: 'none' }, { top: 7 }, { outer: 'x'.repeat(65) }, [], null]) {
+      expect(decodeCharacterAppearance({ ...LOOK, outfitParts }).ok, JSON.stringify(outfitParts)).toBe(false);
+    }
+    expect(decodeCharacterAppearance({ ...look, outfitModel: 'outfit-dress' }).ok).toBe(false);
+    expect(decodeCharacterAppearance({ ...LOOK, outfitParts: {} }).ok).toBe(true);
+    const stored = decodeCharacterAppearanceStore({ schema: CHARACTER_APPEARANCES_SCHEMA, characters: { 's_1:primary': look } });
+    expect(stored.ok && stored.value.characters['s_1:primary']?.outfitParts).toEqual(look.outfitParts);
+  });
+
   it('accepts only bounded, session-scoped character ids', () => {
     expect(isCharacterId('s_abc:primary')).toBe(true);
     expect(isCharacterId('s_abc:worker:2')).toBe(true);

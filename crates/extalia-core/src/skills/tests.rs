@@ -1,5 +1,8 @@
 //! Skill registry tests. Every test works in its own temporary directory only.
 
+mod preflight;
+mod routing;
+
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -739,6 +742,10 @@ fn scanner_unavailable_keeps_every_package_quarantined() {
         registry.activate(&id, 1, &ctx, NOW),
         Err(SkillError::WrongState(RevisionState::Quarantined))
     ));
+    assert!(matches!(
+        registry.read_active_file("demo", "SKILL.md", &ctx, NOW),
+        Err(SkillError::NotFound)
+    ));
     assert!(registry.invalidate_stale(&ctx, NOW).unwrap().is_empty());
     drop(registry);
     assert_eq!(
@@ -1374,6 +1381,127 @@ fn stale_attestations_requarantine_and_void_approvals() {
         ),
         0
     );
+}
+
+#[test]
+fn active_reads_recheck_every_scanner_identity_field_and_policy_without_fallback() {
+    let inspector = FakeInspector::clean();
+    let ctx = PolicyContext::current(&inspector);
+    let changed_scanner = |scanner| PolicyContext {
+        scanner,
+        ..ctx.clone()
+    };
+    let cases = [
+        (
+            PolicyContext {
+                policy_version: "extalia.skill-policy.v2".into(),
+                ..ctx.clone()
+            },
+            "policy_changed",
+        ),
+        (
+            changed_scanner(ScannerIdentity {
+                id: "changed-scanner".into(),
+                ..pinned()
+            }),
+            "scanner_changed",
+        ),
+        (
+            changed_scanner(ScannerIdentity {
+                pin: Some("changed-pin+sha256:changed".into()),
+                ..pinned()
+            }),
+            "scanner_changed",
+        ),
+        (
+            changed_scanner(ScannerIdentity {
+                version: Some("2.0.0".into()),
+                ..pinned()
+            }),
+            "scanner_changed",
+        ),
+        (
+            changed_scanner(ScannerIdentity {
+                normalizer_version: Some("2".into()),
+                ..pinned()
+            }),
+            "scanner_changed",
+        ),
+        (
+            changed_scanner(ScannerIdentity {
+                pin: None,
+                ..pinned()
+            }),
+            "scanner_unpinned",
+        ),
+        (
+            PolicyContext::current(&UnavailableInspector),
+            "scanner_unpinned",
+        ),
+    ];
+    for (changed, reason) in cases {
+        let dir = TempDir::new();
+        let mut store = open(&dir);
+        let source = dir.package("demo", &[("SKILL.md", SKILL_MD)]);
+        let mut registry = SkillRegistry::new(&mut store, &dir.data(), profile("default"));
+        let (id, approval) = approve(&mut registry, &source, &inspector);
+        registry.activate(&id, approval, &ctx, NOW).unwrap();
+        assert_eq!(
+            registry
+                .read_active_file("demo", "SKILL.md", &ctx, NOW)
+                .unwrap(),
+            SKILL_MD.as_bytes()
+        );
+        assert!(matches!(
+            registry.read_active_file("demo", "SKILL.md", &changed, NOW + 1),
+            Err(SkillError::Denied(found)) if found == reason
+        ));
+        let revision = registry.revision(&id).unwrap();
+        assert_eq!(revision.state, RevisionState::Quarantined);
+        assert_eq!(revision.state_reason.as_deref(), Some(reason));
+        assert_eq!(registry.active("demo").unwrap(), None);
+        assert_eq!(
+            registry.history("demo").unwrap().last().unwrap().action,
+            "deactivate"
+        );
+        // The unchanged source and previously valid context cannot restore the pointer
+        // or provide an unscanned fallback after the read discovers stale evidence.
+        assert_eq!(
+            fs::read(source.join("SKILL.md")).unwrap(),
+            SKILL_MD.as_bytes()
+        );
+        assert!(matches!(
+            registry.read_active_file("demo", "SKILL.md", &ctx, NOW + 2),
+            Err(SkillError::NotFound)
+        ));
+        assert!(matches!(
+            registry.activate(&id, approval, &ctx, NOW + 2),
+            Err(SkillError::WrongState(RevisionState::Quarantined))
+        ));
+        drop(registry);
+        assert_eq!(
+            count(
+                &mut store,
+                "SELECT count(*) FROM skill_approvals WHERE status='granted'"
+            ),
+            0
+        );
+        assert_eq!(
+            count(
+                &mut store,
+                "SELECT count(*) FROM skill_approvals WHERE status='revoked'"
+            ),
+            1
+        );
+        assert_eq!(
+            count(&mut store, "SELECT count(*) FROM skill_activations"),
+            0
+        );
+        assert_eq!(
+            count(&mut store, "SELECT count(*) FROM skill_inspections"),
+            1
+        );
+    }
 }
 
 #[test]

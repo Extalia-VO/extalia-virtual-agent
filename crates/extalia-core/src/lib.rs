@@ -2,9 +2,11 @@
 //! (ADR 0019); domain types and ports are added with the operations that use them.
 
 pub mod adapters;
+pub mod control;
 pub mod knowledge;
 pub mod learning;
 pub mod mission;
+pub mod planning;
 pub mod security;
 mod sha256;
 pub mod skills;

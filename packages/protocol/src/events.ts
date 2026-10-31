@@ -123,7 +123,7 @@ export type EventBody =
   | { type: 'task.completed'; ok: boolean; summary?: string }
   // Approvals
   | { type: 'approval.requested'; approvalId: string; action: string; detail?: string; risk?: RiskLevel }
-  | { type: 'approval.resolved'; approvalId: string; decision: ApprovalDecision; by: 'user' | 'policy' }
+  | { type: 'approval.resolved'; approvalId: string; decision: ApprovalDecision; by: 'user' | 'policy'; /** Display history only; never an execution grant. */ choice?: 'once' | 'session' | 'reject' }
   // Git
   | { type: 'git.status'; changedFiles: number; branch?: string; ahead?: number; behind?: number }
   | { type: 'git.commit'; sha: string; message?: string }

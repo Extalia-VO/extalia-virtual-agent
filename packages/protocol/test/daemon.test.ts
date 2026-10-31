@@ -9,9 +9,11 @@ import { utf8Length } from '../src/daemonKnowledgeRules.js';
 import { UUID_PATTERN } from '../src/rules.js';
 import frameFixtures from './fixtures/daemon/frames.json' with { type: 'json' };
 import framingFixtures from './fixtures/daemon/framing.json' with { type: 'json' };
+import routingFixtures from './fixtures/daemon/skill-routing.json' with { type: 'json' };
+import planningFixtures from './fixtures/daemon/planning.json' with { type: 'json' };
 
 interface Case { name: string; valid: boolean; value: unknown; code?: string }
-const cases = (frameFixtures as { cases: Case[] }).cases;
+const cases = [...(frameFixtures as { cases: Case[] }).cases, ...(planningFixtures as { cases: Case[] }).cases, ...(routingFixtures as { cases: Case[] }).cases];
 const valid = cases.filter(item => item.valid).map(item => [item.name, item.value as DaemonFrame] as const);
 const hex = (text: string) => new Uint8Array(text.match(/../g)?.map(byte => parseInt(byte, 16)) ?? []);
 const requestId = '00000000-0000-4000-8000-000000000100';

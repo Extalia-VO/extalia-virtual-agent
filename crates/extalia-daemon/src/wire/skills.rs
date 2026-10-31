@@ -12,6 +12,10 @@ use super::{Check, MAX_SAFE_INTEGER, Op, RequestParams, ResponseResult, is_js_sp
 const PARAMS: &str = "frame.params";
 const RESULT: &str = "frame.result";
 
+mod preflight;
+mod routing;
+pub use routing::RoutingInput;
+
 /// `DAEMON_SKILL_LIST_MAX_LIMIT`.
 pub const LIST_MAX_LIMIT: u64 = 100;
 /// `DAEMON_SKILL_READ_MAX_BYTES`.
@@ -76,6 +80,13 @@ impl ReviewDecision {
 /// Parameters of one skill operation.
 #[derive(Debug, Clone, PartialEq)]
 pub enum SkillRequest {
+    RoutingPreview {
+        input: RoutingInput,
+    },
+    Preflight {
+        root_revision_id: String,
+        pins: std::collections::BTreeMap<String, String>,
+    },
     Import {
         origin: Origin,
         /// Relative to the profile's import inbox.
@@ -132,6 +143,8 @@ pub enum SkillRequest {
 impl SkillRequest {
     pub fn op(&self) -> Op {
         match self {
+            Self::RoutingPreview { .. } => Op::SkillRoutingPreview,
+            Self::Preflight { .. } => Op::SkillPreflight,
             Self::Import { .. } => Op::SkillImport,
             Self::List { .. } => Op::SkillList,
             Self::Inspect { .. } => Op::SkillInspect,
@@ -153,6 +166,16 @@ impl SkillRequest {
         };
         let text = |value: &str| Value::from(value);
         match self {
+            Self::RoutingPreview { input } => {
+                return serde_json::to_value(input).expect("routing input serializes");
+            }
+            Self::Preflight {
+                root_revision_id,
+                pins,
+            } => {
+                put("rootRevisionId", text(root_revision_id));
+                put("pins", serde_json::json!(pins));
+            }
             Self::Import {
                 origin,
                 path,
@@ -621,6 +644,8 @@ pub(super) fn request(check: &mut Check, op: Op, params: &Value) -> Option<Reque
                 revision_id: check.revision_id(fields.get("revisionId"), &at("revisionId"))?,
             }
         }
+        Op::SkillRoutingPreview => routing::request(check, params)?,
+        Op::SkillPreflight => preflight::request(check, params)?,
         Op::SkillScanner => {
             check.object(params, PARAMS, &[], &[])?;
             SkillRequest::Scanner
@@ -1235,6 +1260,8 @@ pub(super) fn result(check: &mut Check, op: Op, result: &Value) -> Option<Respon
                     .is_some(),
             ])
         }
+        Op::SkillRoutingPreview => routing::result(check, result),
+        Op::SkillPreflight => preflight::result(check, result),
         Op::SkillScanner => {
             let fields = check.object(
                 result,

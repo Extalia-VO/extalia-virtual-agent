@@ -14,6 +14,7 @@
 
 mod knowledge;
 mod missions;
+mod planning;
 mod skills;
 
 pub use knowledge::{
@@ -25,10 +26,16 @@ pub use knowledge::{
 pub use skills::{
     LIST_MAX_LIMIT as SKILL_LIST_MAX_LIMIT, READ_MAX_BYTES as SKILL_READ_MAX_BYTES, is_reason,
 };
-pub use skills::{ReviewDecision, SkillRequest};
+pub use skills::{ReviewDecision, RoutingInput as SkillRoutingInput, SkillRequest};
 
 use extalia_core::mission::{
-    AgentEvent, EventAck, MissionAck, MissionCreate, MissionSnapshot, TaskTransition, TransitionAck,
+    AgentEvent, EventAck, ExecutionLocalDrain, ExecutionLocalDrainAck, ExecutionObservation,
+    ExecutionObservationAck, HeartbeatAck, MissionAck, MissionCreate, MissionExecutions,
+    MissionHeartbeat, MissionRecoveryReview, MissionSnapshot, TaskTransition, TransitionAck,
+};
+use extalia_core::planning::{
+    PlanningAdmission, PlanningBegin, PlanningInspection, PlanningObservation,
+    PlanningObservationRecord,
 };
 use extalia_core::security::permissions::{
     Decision, PermissionMode, SessionPermissionMode, ToolAccess, WorkspacePermissions,
@@ -69,6 +76,14 @@ names!(
         Hello = "hello",
         MissionCreate = "mission.create",
         MissionSnapshot = "mission.snapshot",
+        MissionHeartbeat = "mission.heartbeat",
+        MissionExecutions = "mission.executions",
+        MissionRecoveryReview = "mission.recoveryReview",
+        ExecutionObserve = "execution.observe",
+        ExecutionRecordLocalDrain = "execution.recordLocalDrain",
+        PlanningBegin = "planning.begin",
+        PlanningObserve = "planning.observe",
+        PlanningInspect = "planning.inspect",
         TaskTransition = "task.transition",
         EventCommit = "event.commit",
         PermissionCheck = "permission.check",
@@ -84,6 +99,8 @@ names!(
         SkillRevoke = "skill.revoke",
         SkillRead = "skill.read",
         SkillScanner = "skill.scanner",
+        SkillPreflight = "skill.preflight",
+        SkillRoutingPreview = "skill.routingPreview",
         KnowledgeStatus = "knowledge.status",
         KnowledgeSync = "knowledge.sync",
         KnowledgeNode = "knowledge.node",
@@ -152,8 +169,22 @@ pub enum RequestParams {
     Health,
     PermissionCheck(PermissionCheck),
     MissionCreate(MissionCreate),
+    MissionHeartbeat(MissionHeartbeat),
     MissionSnapshot {
         mission_id: String,
+    },
+    MissionExecutions {
+        mission_id: String,
+    },
+    MissionRecoveryReview {
+        mission_id: String,
+    },
+    ExecutionObserve(ExecutionObservation),
+    ExecutionRecordLocalDrain(ExecutionLocalDrain),
+    PlanningBegin(PlanningBegin),
+    PlanningObserve(PlanningObservation),
+    PlanningInspect {
+        invocation_id: String,
     },
     TaskTransition(TaskTransition),
     /// A mission control event (`missionId` required).
@@ -200,7 +231,15 @@ pub enum ResponseResult {
         decision: Decision,
     },
     MissionCreate(MissionAck),
+    MissionHeartbeat(HeartbeatAck),
     MissionSnapshot(MissionSnapshot),
+    MissionExecutions(MissionExecutions),
+    MissionRecoveryReview(MissionRecoveryReview),
+    ExecutionObserve(ExecutionObservationAck),
+    ExecutionRecordLocalDrain(ExecutionLocalDrainAck),
+    PlanningBegin(PlanningAdmission),
+    PlanningObserve(PlanningObservationRecord),
+    PlanningInspect(PlanningInspection),
     TaskTransition(TransitionAck),
     EventCommit(EventAck),
     /// A skill registry result, validated field by field and kept as that JSON (only the
@@ -249,7 +288,15 @@ impl RequestParams {
             Self::Health => Op::Health,
             Self::PermissionCheck(_) => Op::PermissionCheck,
             Self::MissionCreate(_) => Op::MissionCreate,
+            Self::MissionHeartbeat(_) => Op::MissionHeartbeat,
             Self::MissionSnapshot { .. } => Op::MissionSnapshot,
+            Self::MissionExecutions { .. } => Op::MissionExecutions,
+            Self::MissionRecoveryReview { .. } => Op::MissionRecoveryReview,
+            Self::ExecutionObserve(_) => Op::ExecutionObserve,
+            Self::ExecutionRecordLocalDrain(_) => Op::ExecutionRecordLocalDrain,
+            Self::PlanningBegin(_) => Op::PlanningBegin,
+            Self::PlanningObserve(_) => Op::PlanningObserve,
+            Self::PlanningInspect { .. } => Op::PlanningInspect,
             Self::TaskTransition(_) => Op::TaskTransition,
             Self::EventCommit(_) => Op::EventCommit,
             Self::Skill(request) => request.op(),
@@ -266,7 +313,15 @@ impl ResponseResult {
             Self::Health { .. } => Op::Health,
             Self::PermissionCheck { .. } => Op::PermissionCheck,
             Self::MissionCreate(_) => Op::MissionCreate,
+            Self::MissionHeartbeat(_) => Op::MissionHeartbeat,
             Self::MissionSnapshot(_) => Op::MissionSnapshot,
+            Self::MissionExecutions(_) => Op::MissionExecutions,
+            Self::MissionRecoveryReview(_) => Op::MissionRecoveryReview,
+            Self::ExecutionObserve(_) => Op::ExecutionObserve,
+            Self::ExecutionRecordLocalDrain(_) => Op::ExecutionRecordLocalDrain,
+            Self::PlanningBegin(_) => Op::PlanningBegin,
+            Self::PlanningObserve(_) => Op::PlanningObserve,
+            Self::PlanningInspect(_) => Op::PlanningInspect,
             Self::TaskTransition(_) => Op::TaskTransition,
             Self::EventCommit(_) => Op::EventCommit,
             Self::Skill { op, .. } => *op,
@@ -338,8 +393,20 @@ impl Frame {
                         ),
                     ]),
                     RequestParams::MissionCreate(params) => params.to_value(),
+                    RequestParams::MissionHeartbeat(params) => params.to_value(),
                     RequestParams::MissionSnapshot { mission_id } => {
                         object([("missionId", mission_id.clone().into())])
+                    }
+                    RequestParams::MissionExecutions { mission_id }
+                    | RequestParams::MissionRecoveryReview { mission_id } => {
+                        object([("missionId", mission_id.clone().into())])
+                    }
+                    RequestParams::ExecutionObserve(observation) => observation.to_value(),
+                    RequestParams::ExecutionRecordLocalDrain(drain) => drain.to_value(),
+                    RequestParams::PlanningBegin(begin) => begin.to_value(),
+                    RequestParams::PlanningObserve(observation) => observation.to_value(),
+                    RequestParams::PlanningInspect { invocation_id } => {
+                        object([("invocationId", invocation_id.clone().into())])
                     }
                     RequestParams::TaskTransition(params) => params.to_value(),
                     RequestParams::EventCommit(event) => missions::event_commit_params(event),
@@ -371,7 +438,15 @@ impl Frame {
                         object([("decision", decision.as_str().into())])
                     }
                     ResponseResult::MissionCreate(ack) => missions::mission_ack_value(ack),
+                    ResponseResult::MissionHeartbeat(ack) => ack.to_value(),
                     ResponseResult::MissionSnapshot(snapshot) => snapshot.to_value(),
+                    ResponseResult::MissionExecutions(executions) => executions.to_value(),
+                    ResponseResult::MissionRecoveryReview(review) => review.to_value(),
+                    ResponseResult::ExecutionObserve(ack) => ack.to_value(),
+                    ResponseResult::ExecutionRecordLocalDrain(ack) => ack.to_value(),
+                    ResponseResult::PlanningBegin(admission) => admission.to_value(),
+                    ResponseResult::PlanningObserve(observation) => observation.to_value(),
+                    ResponseResult::PlanningInspect(inspection) => inspection.to_value(),
                     ResponseResult::TaskTransition(ack) => missions::transition_ack_value(ack),
                     ResponseResult::EventCommit(ack) => missions::event_ack_value(ack),
                     ResponseResult::Skill { result, .. } => result.clone(),
@@ -663,7 +738,15 @@ fn request(check: &mut Check, object: &Map<String, Value>, op: Op) -> Option<Fra
             .map(|_| RequestParams::Health),
         Op::PermissionCheck => permission_check(check, params).map(RequestParams::PermissionCheck),
         Op::MissionCreate => missions::mission_create(check, params),
+        Op::PlanningBegin | Op::PlanningObserve | Op::PlanningInspect => {
+            planning::request(check, op, params)
+        }
+        Op::MissionHeartbeat => missions::mission_heartbeat(check, params),
         Op::MissionSnapshot => missions::mission_snapshot(check, params),
+        Op::MissionExecutions => missions::mission_executions(check, params),
+        Op::MissionRecoveryReview => missions::mission_recovery_review(check, params),
+        Op::ExecutionObserve => missions::execution_observe(check, params),
+        Op::ExecutionRecordLocalDrain => missions::execution_record_local_drain(check, params),
         Op::TaskTransition => missions::task_transition(check, params),
         Op::EventCommit => missions::event_commit(check, params),
         Op::SkillImport
@@ -676,7 +759,9 @@ fn request(check: &mut Check, object: &Map<String, Value>, op: Op) -> Option<Fra
         | Op::SkillRollback
         | Op::SkillRevoke
         | Op::SkillRead
-        | Op::SkillScanner => skills::request(check, op, params),
+        | Op::SkillScanner
+        | Op::SkillPreflight
+        | Op::SkillRoutingPreview => skills::request(check, op, params),
         Op::KnowledgeStatus
         | Op::KnowledgeSync
         | Op::KnowledgeNode
@@ -761,7 +846,17 @@ fn response(check: &mut Check, object: &Map<String, Value>, op: Op) -> Option<Fr
             })
         }
         Op::MissionCreate => missions::mission_create_result(check, result),
+        Op::PlanningBegin | Op::PlanningObserve | Op::PlanningInspect => {
+            planning::response(check, op, result)
+        }
+        Op::MissionHeartbeat => missions::mission_heartbeat_result(check, result),
         Op::MissionSnapshot => missions::mission_snapshot_result(check, result),
+        Op::MissionExecutions => missions::mission_executions_result(check, result),
+        Op::MissionRecoveryReview => missions::mission_recovery_review_result(check, result),
+        Op::ExecutionObserve => missions::execution_observe_result(check, result),
+        Op::ExecutionRecordLocalDrain => {
+            missions::execution_record_local_drain_result(check, result)
+        }
         Op::TaskTransition => missions::task_transition_result(check, result),
         Op::EventCommit => missions::event_commit_result(check, result),
         Op::SkillImport
@@ -774,7 +869,9 @@ fn response(check: &mut Check, object: &Map<String, Value>, op: Op) -> Option<Fr
         | Op::SkillRollback
         | Op::SkillRevoke
         | Op::SkillRead
-        | Op::SkillScanner => skills::result(check, op, result),
+        | Op::SkillScanner
+        | Op::SkillPreflight
+        | Op::SkillRoutingPreview => skills::result(check, op, result),
         Op::KnowledgeStatus
         | Op::KnowledgeSync
         | Op::KnowledgeNode

@@ -1,3 +1,4 @@
+import type { SkillRoutingInput, SkillRoutingReport } from './daemonSkillRouting.js';
 /**
  * Secure skill registry operations of the daemon wire contract v1 (W3, ADRs 0023, 0025,
  * 0026; gap-map decision 10). Additive: new operations and two error codes within schema
@@ -175,7 +176,26 @@ export interface SkillScannerReport {
 }
 export interface SkillActivationResult { packageId: string; revisionId: string; approvalId: number; activatedAt: string; indexGeneration: number }
 
+/** Diagnostic projection only: no raw paths, scopes, parser errors or authority. */
+export const SKILL_PREFLIGHT_CODES = [
+  'bad_pin', 'missing_pin', 'dependency_unavailable', 'dependency_inactive', 'root_unavailable', 'range_mismatch',
+  'unsupported_range', 'compatibility_unknown', 'compatibility_mismatch', 'conflict', 'cycle', 'permission_outside_ceiling', 'bound_exceeded',
+] as const;
+export type SkillPreflightCode = typeof SKILL_PREFLIGHT_CODES[number];
+export interface SkillPreflightInput { rootRevisionId: string; pins: Record<string, string> }
+export interface SkillPreflightIssue { code: SkillPreflightCode; packageId?: string; relatedPackageId?: string }
+export interface SkillPreflightPackage { packageId: string; version: string; revisionId: string; treeSha256: string; permissionDigest: string }
+/** Empty facts/ceiling are daemon-owned defaults. Consistency never grants execution. */
+export type SkillPreflightReport = {
+  rootRevisionId: string; dispatchEligible: false;
+} & (
+  | { status: 'blocked'; issues: SkillPreflightIssue[]; truncated: boolean }
+  | { status: 'consistent'; issues: []; truncated: false; plan: SkillPreflightPackage[] }
+);
+
 export interface DaemonSkillOperations {
+  'skill.routingPreview': { params: SkillRoutingInput; result: SkillRoutingReport };
+  'skill.preflight': { params: SkillPreflightInput; result: SkillPreflightReport };
   /** Stage a package from the import inbox into quarantine and run the installed inspector. */
   'skill.import': {
     params: { origin: SkillImportOrigin; path: string; sourceRef?: string };
@@ -229,5 +249,5 @@ export interface DaemonSkillOperations {
 export type DaemonSkillOp = keyof DaemonSkillOperations;
 export const DAEMON_SKILL_OPS = [
   'skill.import', 'skill.list', 'skill.inspect', 'skill.review', 'skill.approve', 'skill.activate', 'skill.deactivate', 'skill.rollback',
-  'skill.revoke', 'skill.read', 'skill.scanner',
+  'skill.revoke', 'skill.read', 'skill.scanner', 'skill.preflight', 'skill.routingPreview',
 ] as const satisfies readonly DaemonSkillOp[];

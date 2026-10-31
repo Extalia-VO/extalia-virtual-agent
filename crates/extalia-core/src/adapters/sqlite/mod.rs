@@ -6,12 +6,28 @@
 //! A second opener of the same file, in this or another process, fails with
 //! [`StoreError::Locked`] before the database is read (`core.sqlite.lock`).
 
+#[cfg(test)]
+mod delegation_reservation_tests;
+mod delegation_reservations;
+mod execution_local_drains;
+mod execution_receipts;
 mod lock;
 mod migrate;
+mod mission_reaper;
+mod mission_recovery_review;
 mod mission_snapshot;
 #[cfg(test)]
 mod mission_tests;
 pub mod missions;
+#[cfg(test)]
+mod native_action_request_tests;
+mod native_action_requests;
+#[cfg(test)]
+mod planned_task_tests;
+mod planned_tasks;
+mod planning;
+#[cfg(test)]
+mod planning_tests;
 #[cfg(test)]
 mod tests;
 
@@ -24,7 +40,12 @@ use std::time::Duration;
 
 use rusqlite::{Connection, OpenFlags};
 
+pub use delegation_reservations::{
+    DelegationBranchBalance, DelegationLedgerError, DelegationPoolSnapshot,
+    DelegationReservationAck, DelegationReservationScope,
+};
 use migrate::{MIGRATIONS, Migration};
+pub use native_action_requests::{NativeActionIntentError, NativeActionIntentRecord};
 
 /// File name of the core store inside the profile's `state` directory.
 pub const FILE_NAME: &str = "core.sqlite";

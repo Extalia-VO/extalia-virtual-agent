@@ -14,8 +14,9 @@ use serde_json::{Map, Value};
 
 use super::event_body;
 use super::{
-    ASSIGNED_TASK_STATES, AgentEvent, Mission, MissionCreate, MissionState, Task, TaskGraph,
-    TaskState, TaskTransition, Verification,
+    ASSIGNED_TASK_STATES, AgentEvent, ExecutionAdmission, ExecutionLocalDrain,
+    ExecutionObservation, LeaseClaim, MAX_TASKS_PER_MISSION, Mission, MissionCreate,
+    MissionHeartbeat, MissionState, Task, TaskGraph, TaskState, TaskTransition, Verification,
 };
 use crate::time::parse_utc;
 
@@ -765,11 +766,12 @@ pub fn task_transition(
     path: &str,
     errors: &mut Vec<String>,
 ) -> Option<TaskTransition> {
+    let before = errors.len();
     let fields = object(
         value,
         path,
         &["missionId", "taskId", "eventId", "from", "to"],
-        &[],
+        &["supervisorId"],
         errors,
     )?;
     let mission_id = fields.field("missionId", errors, uuid);
@@ -777,12 +779,243 @@ pub fn task_transition(
     let event_id = fields.field("eventId", errors, uuid);
     let from = fields.field("from", errors, task_state);
     let to = fields.field("to", errors, task_state);
-    Some(TaskTransition {
+    let supervisor_id = fields.optional("supervisorId", errors, uuid)?;
+    let transition = TaskTransition {
         mission_id: mission_id?,
         task_id: task_id?,
         event_id: event_id?,
         from: from?,
         to: to?,
+        supervisor_id,
+    };
+    if transition.supervisor_id.is_some()
+        && !(transition.to == TaskState::Running
+            && matches!(transition.from, TaskState::Queued | TaskState::Assigned))
+    {
+        fail(
+            errors,
+            path,
+            "supervisorId is only allowed when admitting running work",
+        );
+    }
+    (errors.len() == before).then_some(transition)
+}
+
+fn digest(value: &Value, path: &str, errors: &mut Vec<String>) -> Option<String> {
+    match value.as_str() {
+        Some(value)
+            if value.len() == 64
+                && value
+                    .bytes()
+                    .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte)) =>
+        {
+            Some(value.into())
+        }
+        _ => {
+            fail(errors, path, "expected a lowercase SHA-256 digest");
+            None
+        }
+    }
+}
+
+pub fn execution_admission(
+    value: &Value,
+    path: &str,
+    errors: &mut Vec<String>,
+) -> Option<ExecutionAdmission> {
+    let before = errors.len();
+    let fields = object(
+        value,
+        path,
+        &[
+            "missionId",
+            "workspaceId",
+            "taskId",
+            "leaseId",
+            "holderAgentId",
+            "supervisorId",
+            "attempt",
+            "missionVersion",
+            "taskDigest",
+            "graphDigest",
+            "admissionDigest",
+            "admittedAt",
+        ],
+        &[],
+        errors,
+    )?;
+    let admission = ExecutionAdmission {
+        mission_id: fields.field("missionId", errors, uuid)?,
+        workspace_id: fields.field("workspaceId", errors, uuid)?,
+        task_id: fields.field("taskId", errors, uuid)?,
+        lease_id: fields.field("leaseId", errors, uuid)?,
+        holder_agent_id: fields.field("holderAgentId", errors, uuid)?,
+        supervisor_id: fields.field("supervisorId", errors, uuid)?,
+        attempt: fields.field("attempt", errors, |v, p, e| integer(v, p, 1, e))?,
+        mission_version: fields.field("missionVersion", errors, |v, p, e| integer(v, p, 1, e))?,
+        task_digest: fields.field("taskDigest", errors, digest)?,
+        graph_digest: fields.field("graphDigest", errors, digest)?,
+        admission_digest: fields.field("admissionDigest", errors, digest)?,
+        admitted_at: fields.field("admittedAt", errors, timestamp)?,
+    };
+    (errors.len() == before).then_some(admission)
+}
+
+pub fn execution_observation(
+    value: &Value,
+    path: &str,
+    errors: &mut Vec<String>,
+) -> Option<ExecutionObservation> {
+    let before = errors.len();
+    let fields = object(
+        value,
+        path,
+        &[
+            "missionId",
+            "taskId",
+            "leaseId",
+            "holderAgentId",
+            "supervisorId",
+            "attempt",
+            "admissionDigest",
+            "observationId",
+            "kind",
+        ],
+        &[],
+        errors,
+    )?;
+    let observation = ExecutionObservation {
+        mission_id: fields.field("missionId", errors, uuid)?,
+        task_id: fields.field("taskId", errors, uuid)?,
+        lease_id: fields.field("leaseId", errors, uuid)?,
+        holder_agent_id: fields.field("holderAgentId", errors, uuid)?,
+        supervisor_id: fields.field("supervisorId", errors, uuid)?,
+        attempt: fields.field("attempt", errors, |v, p, e| integer(v, p, 1, e))?,
+        admission_digest: fields.field("admissionDigest", errors, digest)?,
+        observation_id: fields.field("observationId", errors, uuid)?,
+        kind: fields.field("kind", errors, |v, p, e| {
+            enumeration(v, p, &["turn-promise-settled"], e)?;
+            v.as_str().map(str::to_owned)
+        })?,
+    };
+    (errors.len() == before).then_some(observation)
+}
+
+/// A bounded, scoped assertion; the store binds it to the captured admission.
+pub fn execution_local_drain(
+    value: &Value,
+    path: &str,
+    errors: &mut Vec<String>,
+) -> Option<ExecutionLocalDrain> {
+    let before = errors.len();
+    let fields = object(
+        value,
+        path,
+        &[
+            "missionId",
+            "taskId",
+            "leaseId",
+            "holderAgentId",
+            "supervisorId",
+            "attempt",
+            "admissionDigest",
+            "proofId",
+            "kind",
+            "coverage",
+            "providerOperations",
+            "toolOperations",
+        ],
+        &[],
+        errors,
+    )?;
+    let drain = ExecutionLocalDrain {
+        mission_id: fields.field("missionId", errors, uuid)?,
+        task_id: fields.field("taskId", errors, uuid)?,
+        lease_id: fields.field("leaseId", errors, uuid)?,
+        holder_agent_id: fields.field("holderAgentId", errors, uuid)?,
+        supervisor_id: fields.field("supervisorId", errors, uuid)?,
+        attempt: fields.field("attempt", errors, |v, p, e| integer(v, p, 1, e))?,
+        admission_digest: fields.field("admissionDigest", errors, digest)?,
+        proof_id: fields.field("proofId", errors, uuid)?,
+        kind: fields.field("kind", errors, |v, p, e| {
+            enumeration(v, p, &["local-operations-drained"], e)?;
+            v.as_str().map(str::to_owned)
+        })?,
+        coverage: fields.field("coverage", errors, |v, p, e| {
+            enumeration(v, p, &["extalia-native-local-v1"], e)?;
+            v.as_str().map(str::to_owned)
+        })?,
+        provider_operations: fields.field("providerOperations", errors, |v, p, e| {
+            bounded_operation_count(v, p, 20, e)
+        })?,
+        tool_operations: fields.field("toolOperations", errors, |v, p, e| {
+            bounded_operation_count(v, p, 80, e)
+        })?,
+    };
+    (errors.len() == before).then_some(drain)
+}
+fn bounded_operation_count(
+    value: &Value,
+    path: &str,
+    max: u64,
+    errors: &mut Vec<String>,
+) -> Option<u64> {
+    let count = integer(value, path, 0, errors)?;
+    if count > max {
+        fail(errors, path, "operation count exceeds coverage limit");
+        return None;
+    }
+    Some(count)
+}
+
+/// `mission.heartbeat` parameters: bounded, unique task lease ownership claims.
+pub fn mission_heartbeat(
+    value: &Value,
+    path: &str,
+    errors: &mut Vec<String>,
+) -> Option<MissionHeartbeat> {
+    let before = errors.len();
+    let fields = object(value, path, &["missionId", "leases"], &[], errors)?;
+    let mission_id = fields.field("missionId", errors, uuid);
+    let items = fields.get("leases")?.as_array();
+    let Some(items) = items.filter(|items| (1..=MAX_TASKS_PER_MISSION).contains(&items.len()))
+    else {
+        fail(
+            errors,
+            &format!("{path}.leases"),
+            "expected 1 to 64 lease claims",
+        );
+        return None;
+    };
+    let mut task_ids = HashSet::new();
+    let mut lease_ids = HashSet::new();
+    let mut leases = Vec::with_capacity(items.len());
+    for (index, item) in items.iter().enumerate() {
+        let item_path = format!("{path}.leases[{index}]");
+        let fields = object(
+            item,
+            &item_path,
+            &["taskId", "leaseId", "holderAgentId"],
+            &[],
+            errors,
+        )?;
+        let claim = LeaseClaim {
+            task_id: fields.field("taskId", errors, uuid)?,
+            lease_id: fields.field("leaseId", errors, uuid)?,
+            holder_agent_id: fields.field("holderAgentId", errors, uuid)?,
+        };
+        if !task_ids.insert(claim.task_id.clone()) || !lease_ids.insert(claim.lease_id.clone()) {
+            fail(
+                errors,
+                &item_path,
+                "lease claims require unique tasks and leases",
+            );
+        }
+        leases.push(claim);
+    }
+    (errors.len() == before).then_some(MissionHeartbeat {
+        mission_id: mission_id?,
+        leases,
     })
 }
 

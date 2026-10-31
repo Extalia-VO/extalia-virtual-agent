@@ -8,7 +8,7 @@
  *   node tooling/build-daemon.mjs --target linux-x64 --from <binary>   stage a prebuilt binary (release CI)
  *   … --out <dir>                                       also copy to <dir>/<platform>-<arch>/
  *
- * Builds `cargo build --release --locked -p extalia-daemon --target <triple>` with symbols
+ * Builds `cargo build --release --locked -p extalia-daemon --bin extalia-daemon --target <triple>` with symbols
  * stripped (an explicit --target keeps these builds out of the developers' target/release),
  * checks that the result is an executable of the requested OS/architecture, and copies it
  * to apps/desktop/build-resources/daemon/<os>-<arch>/ (git-ignored), from where
@@ -93,7 +93,7 @@ function ensureRustTarget(triple) {
 
 async function build(target) {
   if (target.triple !== hostTriple()) ensureRustTarget(target.triple);
-  run(exe('cargo'), ['build', '--release', '--locked', '-p', 'extalia-daemon', '--target', target.triple], { ...cargoEnv(), CARGO_PROFILE_RELEASE_STRIP: 'symbols' });
+  run(exe('cargo'), ['build', '--release', '--locked', '-p', 'extalia-daemon', '--bin', 'extalia-daemon', '--target', target.triple], { ...cargoEnv(), CARGO_PROFILE_RELEASE_STRIP: 'symbols' });
   return path.join(ROOT, 'target', target.triple, 'release', daemonBinaryName(target.platform));
 }
 

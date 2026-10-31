@@ -120,6 +120,7 @@ impl Env {
         to: TaskState,
     ) {
         let transition = TaskTransition {
+            supervisor_id: None,
             mission_id: mission.into(),
             task_id: task.into(),
             event_id: self.event_id(),
