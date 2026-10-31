@@ -20,7 +20,7 @@ const TOKEN = 'a'.repeat(64);
 async function legacyFixture(platform = 'darwin', env: Record<string, string> = {}) {
   const home = await temp('extalia-migrate-');
   const legacy = path.resolve(legacyDataDirectories({ platform, env, homeDirectory: home })[0]!);
-  const target = resolveDataDirectory({ platform, env: {}, homeDirectory: home });
+  const target = path.resolve(resolveDataDirectory({ platform, env: {}, homeDirectory: home }));
   const write = async (relative: string, text: string, mode = 0o600) => {
     const file = path.join(legacy, relative);
     await mkdir(path.dirname(file), { recursive: true, mode: 0o700 });

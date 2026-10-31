@@ -68,7 +68,7 @@ describe('pinned streaming Python archive staging', () => {
       if (process.platform !== 'win32') expect((await lstat(path)).mode & 0o7777).toBe(0o555);
       expect((await readFile(path)).toString()).toBe('binary\0bytes');
     }
-    expect((await lstat(source.destination)).mode & 0o777).toBe(0o700);
+    if (process.platform !== 'win32') expect((await lstat(source.destination)).mode & 0o777).toBe(0o700);
   });
 
   it.each([
