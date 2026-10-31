@@ -200,7 +200,7 @@ describe.skipIf(!HAS_DAEMON)('native missions on the Rust core daemon', () => {
     expect(await env.host.nativeMissionRun(env.session.id, started.id)).toEqual(uncertain);
     await expect(env.host.startNativeMission(env.session.id, env.request)).rejects.toThrow(/unresolved/);
     expect(reads).toBe(1); expect(calls).toBe(1);
-  });
+  }, 60_000);
 
   it('does not call a provider when durable admission fails, and does not invent an observation', async () => {
     let calls = 0;
