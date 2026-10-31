@@ -87,13 +87,14 @@ impl Drop for TempDir {
     }
 }
 
+#[cfg(unix)]
 fn private(path: &Path) {
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(path, fs::Permissions::from_mode(0o700)).unwrap();
-    }
+    use std::os::unix::fs::PermissionsExt;
+    fs::set_permissions(path, fs::Permissions::from_mode(0o700)).unwrap();
 }
+
+#[cfg(not(unix))]
+fn private(_path: &Path) {}
 
 fn start(dir: &TempDir, profile: &str) -> Session {
     start_with(Knowledge::new(&dir.data(), profile))
