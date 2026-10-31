@@ -1,12 +1,13 @@
 import type {
   AgentAppConnection, AgentAppConnectPlan, AgentAppConnectResult, AgentAppId, AgentAppTestResult, AgentHostApi, HookIngestStatus,
 } from '@extalia/platform';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { errorMessage } from '../host/remote';
 import type { Messages } from '../i18n';
 import { formatAgo, timeAgo } from '../office/overlay/activityBoard';
 import { Icon } from '../ui/Icon';
 import { AgentAppLogo } from '../ui/OriginMark';
+import { createConnectAppRefresh } from './connectAppRefresh';
 
 export function connectCommand(app: AgentAppId): string {
   return `npx -y extalia-vo@latest connect ${app}`;
@@ -22,10 +23,18 @@ export function formatLastEvent(
   ingest?: HookIngestStatus | null,
   nowMs = Date.now(),
 ): string | undefined {
-  const lastAt = ingest?.lastEvents[connection.app] ?? connection.lastEventAt;
+  const lastAt = lastConnectionEvent(connection, ingest);
   if (lastAt) return t.agentApps.lastEvent(formatAgo(t.officeOverlay.ago, timeAgo(lastAt, nowMs)));
   if (connection.connected) return t.agentApps.waitingFirstEvent;
   return undefined;
+}
+
+/** History from before the current configuration cannot prove that revision loaded. */
+export function lastConnectionEvent(connection: AgentAppConnection, ingest?: HookIngestStatus | null): string | undefined {
+  const revision = connection.configuredAt ? Date.parse(connection.configuredAt) : -Infinity;
+  return [ingest?.lastEvents[connection.app], connection.lastEventAt]
+    .filter((at): at is string => Boolean(at) && Number.isFinite(Date.parse(at!)) && Date.parse(at!) >= revision)
+    .sort((a, b) => Date.parse(b) - Date.parse(a))[0];
 }
 
 export interface AgentAppPrerequisiteState {
@@ -36,13 +45,14 @@ export interface AgentAppPrerequisiteState {
 }
 
 /** A restart and a Codex /hooks approval are separate prerequisites; neither implies the other. */
-export function agentAppPrerequisites(connection: Pick<AgentAppConnection, 'app' | 'trust'>, lastEventAt?: string): AgentAppPrerequisiteState {
+export function agentAppPrerequisites(connection: Pick<AgentAppConnection, 'app' | 'trust' | 'configuredAt'>, lastEventAt?: string): AgentAppPrerequisiteState {
   const { status } = connection.trust;
   const approval = connection.app !== 'codex' ? undefined
     : status === 'trusted' ? 'trusted'
       : status === 'untrusted' || status === 'modified' ? 'pending'
         : undefined;
-  return { eventsReceived: Boolean(lastEventAt), ...(approval ? { approval } : {}) };
+  const receivedAt = lastEventAt ? Date.parse(lastEventAt) : NaN;
+  return { eventsReceived: Number.isFinite(receivedAt) && (!connection.configuredAt || receivedAt >= Date.parse(connection.configuredAt)), ...(approval ? { approval } : {}) };
 }
 
 function AgentAppPrerequisites({ t, connection, lastEventAt }: { t: Messages; connection: AgentAppConnection; lastEventAt?: string }) {
@@ -112,37 +122,72 @@ export function ConnectAgentAppsCard({
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [error, setError] = useState<string>();
 
-  const load = async () => {
-    setError(undefined);
-    try {
-      const [nextConnections, nextIngest] = await Promise.all([agents.agentAppConnections(), agents.hookIngest()]);
-      setConnections(nextConnections);
-      setIngest(nextIngest);
-      setDashboardUrl(nextIngest.hermesDashboardUrl ?? '');
-    } catch (failure) {
-      setConnections(current => current ?? []);
-      setError(errorMessage(failure));
-    }
-  };
+  const dashboardDirty = useRef(false);
+  const busy = useRef(false);
+  const lifecycle = useRef<{ active: boolean; refresh?: ReturnType<typeof createConnectAppRefresh> }>({ active: true });
 
   useEffect(() => {
-    if (initialConnections !== undefined) return;
-    let active = true;
-    Promise.all([agents.agentAppConnections(), agents.hookIngest()]).then(
-      ([nextConnections, nextIngest]) => {
-        if (!active) return;
-        setConnections(nextConnections);
-        setIngest(nextIngest);
-        setDashboardUrl(nextIngest.hermesDashboardUrl ?? '');
+    const scope: typeof lifecycle.current = { active: true };
+    const refresh = createConnectAppRefresh({
+      agents,
+      connections: setConnections,
+      ingest: next => {
+        setIngest(next);
+        if (!dashboardDirty.current) setDashboardUrl(next.hermesDashboardUrl ?? '');
       },
-      failure => {
-        if (!active) return;
-        setConnections([]);
+      error: failure => {
+        setConnections(current => current ?? []);
         setError(errorMessage(failure));
       },
-    );
-    return () => { active = false; };
+    });
+    scope.refresh = refresh;
+    lifecycle.current = scope;
+    if (initialConnections === undefined) void refresh.refresh();
+    let focusTimer: ReturnType<typeof setTimeout> | undefined;
+    const visible = () => typeof document === 'undefined' || document.visibilityState !== 'hidden';
+    const scheduleFocusRefresh = () => {
+      if (focusTimer) clearTimeout(focusTimer);
+      if (visible()) focusTimer = setTimeout(() => { void refresh.refresh(); }, 200);
+    };
+    // Full connections include Codex trust RPCs. Only explicit refresh/focus runs those;
+    // cheap ingest reads keep all five apps' real event timestamps current while visible.
+    const timer = setInterval(() => { if (visible()) void refresh.refresh(false); }, 2000);
+    if (typeof window !== 'undefined') window.addEventListener('focus', scheduleFocusRefresh);
+    if (typeof document !== 'undefined') document.addEventListener('visibilitychange', scheduleFocusRefresh);
+    return () => {
+      scope.active = false;
+      refresh.dispose();
+      clearInterval(timer);
+      if (focusTimer) clearTimeout(focusTimer);
+      if (typeof window !== 'undefined') window.removeEventListener('focus', scheduleFocusRefresh);
+      if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', scheduleFocusRefresh);
+    };
   }, [agents, initialConnections]);
+
+  const load = async () => {
+    setError(undefined);
+    await lifecycle.current.refresh?.refresh();
+  };
+
+  const perform = async (key: string, changesStatus: boolean, action: (active: () => boolean) => Promise<void>) => {
+    const scope = lifecycle.current;
+    if (busy.current || !scope.active) return;
+    busy.current = true;
+    setBusyKey(key);
+    setError(undefined);
+    if (changesStatus) scope.refresh?.pause();
+    try {
+      await action(() => scope.active);
+    } catch (failure) {
+      if (scope.active) setError(errorMessage(failure));
+    } finally {
+      if (scope.active && changesStatus) await scope.refresh?.resume();
+      // An old host's reply is ignored, but its completed operation must release
+      // the shared action guard after a capability rebind. Unmounted UI stays untouched.
+      busy.current = false;
+      if (lifecycle.current.active) setBusyKey(null);
+    }
+  };
 
   useEffect(() => {
     if (!copiedKey) return;
@@ -151,101 +196,76 @@ export function ConnectAgentAppsCard({
   }, [copiedKey]);
 
   const copy = (key: string, text: string) => {
-    void writeClipboardText(text).then(() => setCopiedKey(key), () => setCopiedKey(null));
+    const scope = lifecycle.current;
+    void writeClipboardText(text).then(
+      () => { if (scope.active) setCopiedKey(key); },
+      () => { if (scope.active) setCopiedKey(null); },
+    );
   };
 
   const toggleLabelsOnly = async (enabled: boolean) => {
     if (!agents.setHookPrivacy) return;
-    setBusyKey('privacy:labels');
-    setError(undefined);
-    try {
+    await perform('privacy:labels', true, async active => {
       const nextIngest = await agents.setHookPrivacy({ labelsOnly: enabled });
-      setIngest(nextIngest);
-    } catch (failure) {
-      setError(errorMessage(failure));
-    } finally {
-      setBusyKey(null);
-    }
+      if (active()) setIngest(nextIngest);
+    });
   };
 
   const saveDashboardUrl = async () => {
     if (!agents.setHookPrivacy) return;
-    setBusyKey('privacy:dashboard');
-    setError(undefined);
-    setDashboardSaved(false);
-    try {
+    await perform('privacy:dashboard', true, async active => {
+      setDashboardSaved(false);
       const nextIngest = await agents.setHookPrivacy({ hermesDashboardUrl: dashboardUrl.trim() || null });
+      if (!active()) return;
       setIngest(nextIngest);
+      dashboardDirty.current = false;
       setDashboardUrl(nextIngest.hermesDashboardUrl ?? '');
       setDashboardSaved(true);
-    } catch (failure) {
-      setError(errorMessage(failure));
-    } finally {
-      setBusyKey(null);
-    }
+    });
   };
 
   const previewPlan = async (app: AgentAppId) => {
-    setBusyKey(`plan:${app}`);
-    setError(undefined);
-    setPlan(null);
-    setTrustCodex(false);
-    try {
-      setPlan(await agents.planAgentAppConnect(app));
-    } catch (failure) {
-      setError(errorMessage(failure));
-    } finally {
-      setBusyKey(null);
-    }
+    await perform(`plan:${app}`, false, async active => {
+      setPlan(null);
+      setTrustCodex(false);
+      const nextPlan = await agents.planAgentAppConnect(app);
+      if (active()) setPlan(nextPlan);
+    });
   };
 
   const applyPlan = async (app: AgentAppId) => {
-    if (plan?.app !== app) return;
-    setBusyKey(`apply:${app}`);
-    setError(undefined);
-    try {
-      const result = await agents.applyAgentAppConnect(app, app === 'codex' ? { trust: trustCodex } : undefined);
+    if (plan?.app !== app || plan.nodeStatus === 'missing') return;
+    await perform(`apply:${app}`, true, async active => {
+      const connectOptions = app === 'codex' || plan.previewDigest !== undefined ? {
+        ...(app === 'codex' ? { trust: trustCodex } : {}),
+        ...(plan.previewDigest !== undefined ? { expectedPreviewDigest: plan.previewDigest } : {}),
+      } : undefined;
+      const result = await agents.applyAgentAppConnect(app, connectOptions);
+      if (!active()) return;
       setApplied(previous => ({ ...previous, [app]: result }));
       setTests(previous => ({ ...previous, [app]: result.test }));
       setNotes(previous => ({ ...previous, [app]: undefined }));
       setPlan(null);
-      await load();
-    } catch (failure) {
-      setError(errorMessage(failure));
-    } finally {
-      setBusyKey(null);
-    }
+    });
   };
 
   const runTest = async (app: AgentAppId) => {
-    setBusyKey(`test:${app}`);
-    setError(undefined);
-    try {
+    await perform(`test:${app}`, true, async active => {
       const result = await agents.testAgentAppConnection(app);
-      setTests(previous => ({ ...previous, [app]: result }));
-      await load();
-    } catch (failure) {
-      setError(errorMessage(failure));
-    } finally {
-      setBusyKey(null);
-    }
+      if (active()) setTests(previous => ({ ...previous, [app]: result }));
+    });
   };
 
   const disconnect = async (app: AgentAppId) => {
-    setBusyKey(`disconnect:${app}`);
-    setError(undefined);
-    try {
+    await perform(`disconnect:${app}`, true, async active => {
       const result = await agents.disconnectAgentApp(app);
+      if (!active()) return;
       setApplied(previous => ({ ...previous, [app]: undefined }));
       setTests(previous => ({ ...previous, [app]: undefined }));
       setNotes(previous => ({ ...previous, [app]: t.agentApps.disconnectedNote(result.removed) }));
       if (plan?.app === app) setPlan(null);
-      await load();
-    } catch (failure) {
-      setError(errorMessage(failure));
-    } finally {
-      setBusyKey(null);
-    }
+      // Disconnect owns hooks only; separately enabled transcript observation keeps its setting.
+    });
   };
 
   return (
@@ -301,6 +321,7 @@ export function ConnectAgentAppsCard({
                   {eventSummary && <span className="muted small" role="status">{eventSummary}</span>}
                   {conn.configPath && <code className="entity-path">{conn.configPath}</code>}
                   {conn.supported && <code className="connect-app-command">{connectCommand(conn.app)}</code>}
+                  {conn.nodeStatus === 'missing' && <span className="muted small">{t.agentApps.nodeMissing}</span>}
                   {conn.warnings.map(warning => (
                     <span key={warning} className="muted small">{warning}</span>
                   ))}
@@ -319,7 +340,7 @@ export function ConnectAgentAppsCard({
                     <button
                       type="button"
                       className={`button small ${conn.connected ? '' : 'primary'}`}
-                      disabled={busyKey !== null}
+                      disabled={busyKey !== null || conn.nodeStatus === 'missing'}
                       onClick={() => { void previewPlan(conn.app); }}
                     >
                       {busyKey === `plan:${conn.app}` ? t.common.loading : t.agentApps.connect}
@@ -345,6 +366,7 @@ export function ConnectAgentAppsCard({
                     ) : (
                       <p className="muted small">{t.agentApps.noChanges}</p>
                     )}
+                    {plan.nodeStatus === 'missing' && <p className="warning">{t.agentApps.nodeMissing}</p>}
                     {plan.warnings.map(warning => (
                       <p key={warning} className="warning"><Icon name="alert" /><span>{warning}</span></p>
                     ))}
@@ -355,7 +377,7 @@ export function ConnectAgentAppsCard({
                       </label>
                     )}
                     <div className="row-actions">
-                      <button type="button" className="button small primary" disabled={busyKey !== null} onClick={() => { void applyPlan(conn.app); }}>
+                      <button type="button" className="button small primary" disabled={busyKey !== null || plan.nodeStatus === 'missing' || conn.nodeStatus === 'missing'} onClick={() => { void applyPlan(conn.app); }}>
                         {busyKey === `apply:${conn.app}` ? t.agentApps.applying : t.agentApps.apply}
                       </button>
                       <button type="button" className="button small" disabled={busyKey !== null} onClick={() => setPlan(null)}>
@@ -366,7 +388,7 @@ export function ConnectAgentAppsCard({
                 )}
 
                 {conn.supported && (conn.connected || appResult) && (
-                  <AgentAppPrerequisites t={t} connection={conn} lastEventAt={ingest?.lastEvents[conn.app] ?? conn.lastEventAt} />
+                  <AgentAppPrerequisites t={t} connection={conn} lastEventAt={lastConnectionEvent(conn, ingest)} />
                 )}
 
                 {appResult && (
@@ -410,7 +432,7 @@ export function ConnectAgentAppsCard({
                 value={dashboardUrl}
                 placeholder={t.agentApps.dashboardUrlPlaceholder}
                 disabled={busyKey !== null}
-                onChange={event => { setDashboardUrl(event.target.value); setDashboardSaved(false); }}
+                onChange={event => { dashboardDirty.current = true; setDashboardUrl(event.target.value); setDashboardSaved(false); }}
               />
             </label>
             <button type="button" className="button small" disabled={busyKey !== null} onClick={() => { void saveDashboardUrl(); }}>
@@ -421,6 +443,7 @@ export function ConnectAgentAppsCard({
         </div>
       )}
 
+      <p className="muted small">{t.agentApps.disconnectHint}</p>
       <p className="note small"><Icon name="terminal" /><span>{t.agentApps.restartHint}</span></p>
       {error && <p role="alert" className="form-error"><Icon name="alert" />{error}</p>}
     </section>

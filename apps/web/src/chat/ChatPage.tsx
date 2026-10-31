@@ -10,10 +10,14 @@ import { resolveChat, type ChatSelection } from './selection';
 import { SessionList } from './SessionList';
 import { projectActivity, projectTranscript } from './transcript';
 import { TranscriptView } from './TranscriptView';
+import { ConversationTabs } from './ChangedFilesView';
+import { projectChangedFiles } from './changedFiles';
+import { MessageFileProvider } from './MessageFilePreview';
 import { useSessionEvents } from './useSessionEvents';
 import { Select } from '../ui/Select';
 import { ProjectSkillsNotice } from '../skills/ProjectSkills';
 import { WorkspacesSection } from '../pages/settings/WorkspacesSection';
+import { createComposerSession } from './sessionHandoff';
 
 export function ChatPage({ t, language, agents, picker, state, onState, selection, onSelect, onOpenSettings, onReviewSkills }: {
   t: Messages;
@@ -33,6 +37,7 @@ export function ChatPage({ t, language, agents, picker, state, onState, selectio
   const sessionId = session?.id;
   const previewAttachment = useMemo(() => sessionId ? attachmentPreviewLoader(agents, sessionId) : undefined, [agents, sessionId]);
   const items = useMemo(() => projectTranscript(events), [events]);
+  const changedFiles = useMemo(() => projectChangedFiles(events, session?.observation?.projectPath ?? workspace?.projectLocation), [events, session, workspace]);
   const activity = useMemo(() => projectActivity(events), [events]);
   const [error, setError] = useState<string | null>(null);
   const [listOpen, setListOpen] = useState(false);
@@ -87,21 +92,19 @@ export function ChatPage({ t, language, agents, picker, state, onState, selectio
   }
 
   // v0.0.49: the session is created first (with the chosen model, effort and permission mode), then the files upload, then the prompt goes.
-  const send = ({ text, choice, attachments, patch }: ComposerSend) => guard(async () => {
+  const send = ({ text, choice, attachments, patch, learnSkill, bindSession }: ComposerSend) => guard(async () => {
     let id = session?.id;
     if (!id) {
-      const created = await agents.createSession(workspace.id, choice);
-      onState(await agents.getState());
-      onSelect({ workspaceId: workspace.id, sessionId: created.id });
-      id = created.id;
+      id = await createComposerSession({ agents, workspaceId: workspace.id, choice, bindSession, onState, onSelect, interrupted: t.chat.turnInterrupted });
     }
     const ids = await uploadAttachments(agents, id, attachments, patch);
-    await sendPromptWithAttachments(agents, id, text, ids);
+    await sendPromptWithAttachments(agents, id, text, ids, learnSkill);
   });
   const refreshState = () => { void agents.getState().then(onState).catch(() => undefined); };
 
   const decide = async (approvalId: string, decision: ApprovalDecisionInput) => {
-    if (session) await guard(() => agents.resolveApproval(session.id, approvalId, decision));
+    if (!session || readOnly) return false;
+    return guard(() => agents.resolveApproval(session.id, approvalId, decision));
   };
 
   const rename = async (id: string, title: string) => {
@@ -157,7 +160,11 @@ export function ChatPage({ t, language, agents, picker, state, onState, selectio
             <p className="muted">{t.chat.emptyLead(workspace.name)}</p>
           </div>
         ) : (
-          <TranscriptView t={t} items={items} language={language} onDecide={decide} previewAttachment={previewAttachment} />
+          <MessageFileProvider key={session?.id ?? 'new'} t={t} agents={agents} workspaces={state.workspaces} workspaceId={workspace.id} projectPath={session?.observation?.projectPath ?? workspace.projectLocation}>
+            <ConversationTabs t={t} language={language} files={changedFiles}>
+              <TranscriptView t={t} items={items} language={language} onDecide={decide} previewAttachment={previewAttachment} approvalsEnabled={!readOnly} />
+            </ConversationTabs>
+          </MessageFileProvider>
         )}
 
         <div className="chat-footer">

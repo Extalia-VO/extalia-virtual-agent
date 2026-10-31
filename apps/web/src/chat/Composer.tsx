@@ -1,6 +1,6 @@
 import type { Effort } from '@extalia/core';
 import type { AgentHostApi, ModelChoices, SessionSummary } from '@extalia/platform';
-import { useEffect, useId, useLayoutEffect, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent } from 'react';
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent } from 'react';
 import { errorMessage } from '../host/remote';
 import type { Messages } from '../i18n';
 import { contextLabel } from '../office/overlay/contextLabel';
@@ -21,11 +21,47 @@ export interface ComposerSend {
   attachments: PendingAttachment[];
   /** Updates an attachment chip while its file uploads. */
   patch: (key: string, change: Partial<PendingAttachment>) => void;
+  /** User-selected opt-in for this message only; never inferred from model content. */
+  learnSkill?: boolean;
+  /** Bind the first session this send creates before selecting it or uploading files. */
+  bindSession?: (sessionId: string) => boolean;
 }
 
 type ChoicePatch = { [K in keyof SessionChoice]?: SessionChoice[K] | undefined };
 
 let chipSequence = 0;
+
+interface ComposerContext {
+  agents: AgentHostApi;
+  workspaceId: string;
+  sessionId: string | undefined;
+  hermes: boolean;
+  readOnly: boolean;
+  permissionValue: string;
+}
+const sameComposerScope = (left: ComposerContext, right: ComposerContext): boolean => left.agents === right.agents
+  && left.workspaceId === right.workspaceId && left.hermes === right.hermes && left.readOnly === right.readOnly
+  && left.permissionValue === right.permissionValue;
+
+/** One send can follow its own newly created session, never navigation away and back. */
+class ComposerSubmission {
+  private accepted: ComposerContext;
+  private targetId: string | undefined;
+  private bound = false;
+  private valid = true;
+  constructor(readonly original: ComposerContext) { this.accepted = original; }
+  bind(sessionId: string, current: ComposerContext): boolean {
+    if (!this.owns(current) || this.original.sessionId !== undefined || this.bound || !sessionId.trim()) return false;
+    this.bound = true; this.targetId = sessionId; return true;
+  }
+  observe(next: ComposerContext) {
+    if (!this.valid || next === this.accepted) return;
+    if (this.targetId && this.accepted === this.original && next.sessionId === this.targetId && sameComposerScope(this.original, next)) {
+      this.accepted = next; this.targetId = undefined;
+    } else this.valid = false;
+  }
+  owns(context: ComposerContext): boolean { return this.valid && this.accepted === context; }
+}
 
 /**
  * The message box of the chat page and the session dialog (v0.0.49), styled like Claude Code desktop:
@@ -123,6 +159,23 @@ export function Composer({ t, agents, session, workspaceId, hermes, running, wai
   };
   const permissionOptions = permissionSelectOptions(hermes ? 'hermes' : 'extalia-native', modeLabels, { modes: choices?.permissionModes, current: shown.permissionMode });
   const permissionValue = hermes ? HERMES_CHOICE : (shown.permissionMode ?? 'workspace');
+  const learningContext = useMemo(() => ({ agents, workspaceId, sessionId, hermes, readOnly, permissionValue }), [agents, workspaceId, sessionId, hermes, readOnly, permissionValue]);
+  const [learning, setLearning] = useState(() => ({ context: learningContext, selected: false }));
+  const [sessionBinding, setSessionBinding] = useState<{ from: ComposerContext; sessionId: string }>();
+  // Reset on context replacement, including a switch away and back while a send is pending.
+  if (learning.context !== learningContext) {
+    const ownCreatedSession = sessionBinding?.from === learning.context && sessionBinding.sessionId === sessionId
+      && sameComposerScope(sessionBinding.from, learningContext);
+    setLearning({ context: learningContext, selected: Boolean(ownCreatedSession && learning.selected) });
+  }
+  const currentLearningContext = useRef(learningContext);
+  const submission = useRef<ComposerSubmission | undefined>(undefined);
+  useLayoutEffect(() => {
+    currentLearningContext.current = learningContext;
+    submission.current?.observe(learningContext);
+  }, [learningContext]);
+  const canLearn = !hermes && !readOnly && permissionValue !== 'plan';
+  const learnSkill = canLearn && learning.context === learningContext && learning.selected;
   const modelOptions: SelectOption[] = choices
     ? modelSelectOptions({ defaultModel: choices.defaultModel, models: choices.models, current: shown.model }, {
       defaultLabel: model => t.composer.defaultModel(model),
@@ -180,14 +233,36 @@ export function Composer({ t, agents, session, workspaceId, hermes, running, wai
     if (!canSend) return;
     const prompt = text.trim();
     const sent = chips;
+    const sentContext = learningContext;
+    const owner = new ComposerSubmission(sentContext);
+    submission.current = owner;
     setSending(true);
     setText('');
     setNotice(null);
     const choice = cleanChoice(hermes ? { ...draft, permissionMode: undefined } : draft);
-    const ok = await onSend({ text: prompt, choice, attachments: sent, patch: patchChip }).catch(() => false);
+    const ok = await onSend({ text: prompt, choice, attachments: sent,
+      patch: (key, change) => { if (owner.owns(currentLearningContext.current)) patchChip(key, change); },
+      bindSession: id => {
+        if (!owner.bind(id, currentLearningContext.current)) return false;
+        setSessionBinding({ from: sentContext, sessionId: id }); return true;
+      },
+      ...(learnSkill ? { learnSkill: true } : {}),
+    }).catch(() => false);
+    if (submission.current === owner) submission.current = undefined;
+    if (!owner.owns(currentLearningContext.current)) {
+      // A navigated-away send may consume its files; it cannot restore old input
+      // or learning choices over the new context, even if the user navigates back.
+      if (ok) {
+        const sentKeys = new Set(sent.map(chip => chip.key));
+        for (const chip of chipsRef.current) if (sentKeys.has(chip.key) && chip.previewUrl) URL.revokeObjectURL(chip.previewUrl);
+        setChips(current => current.filter(chip => !sentKeys.has(chip.key)));
+      }
+      setSending(false); return;
+    }
     if (ok) {
       for (const chip of chipsRef.current) if (chip.previewUrl) URL.revokeObjectURL(chip.previewUrl);
       setChips([]);
+      setLearning(current => owner.owns(current.context) ? { ...current, selected: false } : current);
     } else {
       // Keep what the user wrote when the host refused it; attachments stay so a retry reuses uploaded ones.
       setText(current => current || prompt);
@@ -261,6 +336,12 @@ export function Composer({ t, agents, session, workspaceId, hermes, running, wai
       <textarea id="composer-input" ref={area} rows={1} value={text} placeholder={placeholder} disabled={disabled} aria-describedby="composer-hint"
         title={t.chat.hint} onChange={event => setText(event.target.value)} onKeyDown={onKeyDown} onPaste={onPaste} />
       {dragging && <div className="composer-drop" aria-hidden="true">{t.composer.dropHint}</div>}
+      {canLearn && <label className="check-row small">
+        <input type="checkbox" checked={learnSkill} disabled={!pickersEnabled || waiting}
+          onChange={event => setLearning({ context: learningContext, selected: event.target.checked })} />
+        <span>{t.composer.learnSkill}</span>
+      </label>}
+      {learnSkill && <p className="note small" role="note">{t.composer.learnSkillHint}</p>}
       <div className="composer-toolbar">
         <div className="composer-tools">
           {attachmentsSupported && <>

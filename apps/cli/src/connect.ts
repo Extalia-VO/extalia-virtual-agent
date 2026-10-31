@@ -96,6 +96,10 @@ export async function runConnect(host: CliHost, args: readonly string[]): Promis
     host.out(`${LABELS[app]}${versionText}`);
     host.out(`Target: ${plan.configPath}`);
     for (const warning of plan.warnings) host.out(`Warning: ${warning}`);
+    if (plan.nodeStatus === 'missing') {
+      host.err(`${LABELS[app]} command hooks need an available Node.js runtime. Nothing was written; install Node.js and review the connection again.`);
+      return 1;
+    }
     if (plan.diff.trim()) host.out(plan.diff.trimEnd());
     else host.out('No configuration file changes needed.');
     if (plan.trustHint) host.out(plan.trustHint);
@@ -116,7 +120,10 @@ export async function runConnect(host: CliHost, args: readonly string[]): Promis
       }
     }
 
-    const result = await service.apply(app, options);
+    const result = await service.apply(app, {
+      ...options,
+      ...(plan.previewDigest !== undefined ? { expectedPreviewDigest: plan.previewDigest } : {}),
+    });
     host.out(`Updated: ${result.configPath}`);
     if (result.backupPath) host.out(`Backup: ${result.backupPath}`);
     if (result.app === 'codex') host.out(`Trust: ${result.trust.status} (${result.trust.trusted}/${result.trust.total})`);

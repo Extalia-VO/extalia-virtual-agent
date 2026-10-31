@@ -109,7 +109,7 @@ export function MissionMonitor({ t, language, agents, session, connections, init
     const generation = ++inspection.current.generation;
     inspection.current.pending = true;
     const current = () => inspection.current.active && generation === inspection.current.generation;
-    setRefreshing(true); setError(null);
+    setRefreshing(true); setError(null); setRecovery(null);
     try {
       const result = await agents.refreshNativeMissionRecovery(session.id, run.id);
       if (!current()) return;
@@ -188,6 +188,30 @@ export function MissionMonitor({ t, language, agents, session, connections, init
             {byTaskId.get(task.taskId)?.title ?? task.taskId}: <StateChip t={t} state={task.state} />
           </li>)}</ul>
         </>}
+        {recovery.reviewInspection && <section aria-label={r.recoveryReview}>
+          <h4>{r.recoveryReview}</h4>
+          {recovery.reviewInspection.status === 'available' ? <>
+            <p className="muted small">{r.recoveryReviewScope}</p>
+            {recovery.reviewInspection.review.missingAdmissionTaskIds.length ? <>
+              <p>{r.recoveryReviewMissing}</p>
+              <ul>{recovery.reviewInspection.review.missingAdmissionTaskIds.map(id => <li key={id}>{byTaskId.get(id)?.title ?? id}</li>)}</ul>
+            </> : <p className="muted small">{r.recoveryReviewComplete}</p>}
+            <details><summary>{r.recoveryReviewId}</summary><code style={{ overflowWrap: 'anywhere', whiteSpace: 'normal' }}>{recovery.reviewInspection.review.reviewDigest}</code></details>
+          </> : <p className="muted small">{recovery.reviewInspection.status === 'unsupported' ? r.recoveryReviewUnsupported : r.recoveryReviewUnavailable}</p>}
+        </section>}
+        {recovery.executionInspection && <section aria-label={r.executionObservations}>
+          <h4>{r.executionObservations}</h4>
+          <p className="muted small">{r.executionObservationLimit}</p>
+          {recovery.executionInspection.status === 'available'
+            ? recovery.executionInspection.executions.length
+              ? <ul>{recovery.executionInspection.executions.map(record => <li key={record.admission.leaseId}>
+                {byTaskId.get(record.admission.taskId)?.title ?? record.admission.taskId}: {record.observation ? r.executionTurnSettled : r.executionTurnPending}
+                <p className="muted small">{record.localDrain ? <>{r.executionLocalDrained} · {r.executionLocalCounts(record.localDrain.providerOperations, record.localDrain.toolOperations)}</> : r.executionLocalUnverified}</p>
+              </li>)}</ul>
+              : <p className="muted small">{r.executionNoAdmissions}</p>
+            : <p className="muted small">{recovery.executionInspection.status === 'unsupported' ? r.executionUnsupported : r.executionUnavailable}</p>}
+          {recovery.executionInspection.status === 'available' && recovery.executionInspection.executions.some(record => record.localDrain) && <p className="muted small">{r.executionLocalLimit}</p>}
+        </section>}
       </section>}
 
       {running && run.state !== 'recovering' && (
