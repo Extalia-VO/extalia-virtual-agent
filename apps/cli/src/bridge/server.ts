@@ -96,6 +96,35 @@ export function parseByteRange(header: string | undefined, size: number): { star
   return start < size && start <= end ? { start, end } : null;
 }
 
+/** Cheap strong validator from size, mtime and inode; the file is never hashed per request. */
+export function staticEtag(info: { size: number; mtimeMs: number; ino: number }): string {
+  return `"${info.size.toString(16)}-${Math.floor(info.mtimeMs).toString(16)}-${info.ino.toString(16)}"`;
+}
+
+const stripWeak = (tag: string) => tag.trim().replace(/^W\//, '');
+
+/** RFC 9110 If-None-Match (weak comparison) wins over If-Modified-Since; true means answer 304. */
+export function isNotModified(headers: IncomingMessage['headers'], etag: string, mtimeMs: number): boolean {
+  const noneMatch = headers['if-none-match'];
+  if (noneMatch !== undefined) {
+    const value = String(noneMatch).trim();
+    if (value === '*') return true;
+    const own = stripWeak(etag);
+    return value.split(',').some(tag => stripWeak(tag) === own);
+  }
+  const since = headers['if-modified-since'];
+  if (since === undefined) return false;
+  const time = Date.parse(since);
+  return !Number.isNaN(time) && Math.floor(mtimeMs / 1000) * 1000 <= time;
+}
+
+/** If-Range: a range is honoured only while the validator still matches (strong comparison). */
+export function ifRangeAllowsRange(headers: IncomingMessage['headers'], etag: string, lastModified: string): boolean {
+  const value = String(headers['if-range'] ?? '').trim();
+  if (!value) return true;
+  return value.startsWith('"') ? value === etag : value === lastModified;
+}
+
 /** Thrown by update handlers to refuse a request with a specific status (for example 409 while agents work). */
 export class BridgeRequestError extends Error {
   constructor(message: string, readonly status: number) {
@@ -283,15 +312,25 @@ export async function startBridgeServer(options: BridgeServerOptions): Promise<B
       send(response, 404, 'Not found', { 'Content-Type': 'text/plain; charset=utf-8' }, head);
       return;
     }
+    const etag = staticEtag(info);
+    const lastModified = info.mtime.toUTCString();
+    // Vite content-hashes everything under assets/; other files revalidate against ETag/Last-Modified.
+    const cacheControl = pathname.startsWith('/assets/') ? 'public, max-age=31536000, immutable' : 'no-cache';
+    if (isNotModified(request.headers, etag, info.mtimeMs)) {
+      response.writeHead(304, { ETag: etag, 'Last-Modified': lastModified, 'Cache-Control': cacheControl });
+      response.end();
+      return;
+    }
     const headers: OutgoingHttpHeaders = {
       'Content-Type': contentTypeFor(file),
       'Content-Length': info.size,
-      // Vite content-hashes everything under assets/; other files revalidate.
-      'Cache-Control': pathname.startsWith('/assets/') ? 'public, max-age=31536000, immutable' : 'no-cache',
+      'Cache-Control': cacheControl,
+      ETag: etag,
+      'Last-Modified': lastModified,
     };
     if (file.endsWith('.html')) headers['Content-Security-Policy'] = CONTENT_SECURITY_POLICY;
     headers['Accept-Ranges'] = 'bytes';
-    const range = parseByteRange(request.headers.range, info.size);
+    const range = ifRangeAllowsRange(request.headers, etag, lastModified) ? parseByteRange(request.headers.range, info.size) : undefined;
     if (range === null) {
       send(response, 416, 'Range not satisfiable', { 'Content-Type': 'text/plain; charset=utf-8', 'Content-Range': `bytes */${info.size}` }, head);
       return;

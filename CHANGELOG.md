@@ -16,6 +16,10 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- The `extalia` Bridge now sends `ETag` and `Last-Modified` for static files such as GLB models and answers conditional requests with `304 Not Modified`, so reopening the Web client no longer downloads every model again. `If-Range` only resumes a range while the file is unchanged; the token-bearing `index.html` stays `no-store`.
+
 ## [0.4.162] - 2026-11-04
 
 ### Changed
