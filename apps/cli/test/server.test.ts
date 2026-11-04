@@ -168,6 +168,65 @@ describe('Bridge server', () => {
     expect(post.headers.allow).toBe('GET, HEAD');
   });
 
+  it('validates static files with ETag and Last-Modified and answers conditional requests', async () => {
+    await writeFile(path.join(webRoot, 'model.glb'), '0123456789');
+    const first = await send(server.port, { path: '/model.glb' });
+    expect(first.status).toBe(200);
+    expect(first.headers['cache-control']).toBe('no-cache');
+    const etag = String(first.headers.etag);
+    const modified = String(first.headers['last-modified']);
+    expect(etag).toMatch(/^"[0-9a-f]+-[0-9a-f]+-[0-9a-f]+"$/);
+    expect(modified).toMatch(/GMT$/);
+    expect((await send(server.port, { path: '/assets/index.js' })).headers.etag).toBeTruthy();
+
+    const hit = await send(server.port, { path: '/model.glb', headers: { 'if-none-match': etag } });
+    expect(hit.status).toBe(304);
+    expect(hit.body).toBe('');
+    expect(hit.headers.etag).toBe(etag);
+    expect(hit.headers['last-modified']).toBe(modified);
+    expect(hit.headers['cache-control']).toBe('no-cache');
+    expect((await send(server.port, { path: '/model.glb', headers: { 'if-none-match': `"nope", W/${etag}` } })).status).toBe(304);
+    expect((await send(server.port, { path: '/model.glb', headers: { 'if-none-match': '*' } })).status).toBe(304);
+    const miss = await send(server.port, { path: '/model.glb', headers: { 'if-none-match': '"nope"' } });
+    expect(miss.status).toBe(200);
+    expect(miss.body).toBe('0123456789');
+
+    expect((await send(server.port, { path: '/model.glb', headers: { 'if-modified-since': modified } })).status).toBe(304);
+    expect((await send(server.port, { path: '/model.glb', headers: { 'if-modified-since': 'Thu, 01 Jan 1970 00:00:00 GMT' } })).status).toBe(200);
+    // If-None-Match takes precedence over If-Modified-Since.
+    expect((await send(server.port, { path: '/model.glb', headers: { 'if-none-match': '"nope"', 'if-modified-since': modified } })).status).toBe(200);
+    expect((await send(server.port, { path: '/model.glb', headers: { 'if-none-match': etag, 'if-modified-since': 'Thu, 01 Jan 1970 00:00:00 GMT' } })).status).toBe(304);
+
+    const headHit = await send(server.port, { method: 'HEAD', path: '/model.glb', headers: { 'if-none-match': etag } });
+    expect(headHit.status).toBe(304);
+    expect(headHit.body).toBe('');
+    expect((await send(server.port, { method: 'HEAD', path: '/model.glb', headers: { 'if-none-match': '"nope"' } })).status).toBe(200);
+
+    // If-Range: the range is served only while the validator matches.
+    const ranged = await send(server.port, { path: '/model.glb', headers: { range: 'bytes=2-5', 'if-range': etag } });
+    expect(ranged.status).toBe(206);
+    expect(ranged.body).toBe('2345');
+    expect((await send(server.port, { path: '/model.glb', headers: { range: 'bytes=2-5', 'if-range': modified } })).status).toBe(206);
+    const stale = await send(server.port, { path: '/model.glb', headers: { range: 'bytes=2-5', 'if-range': '"stale"' } });
+    expect(stale.status).toBe(200);
+    expect(stale.body).toBe('0123456789');
+  });
+
+  it('never answers 304 for the dynamic index page', async () => {
+    const first = await send(server.port, { path: '/' });
+    expect(first.status).toBe(200);
+    expect(first.headers['cache-control']).toBe('no-store');
+    expect(first.headers.etag).toBeUndefined();
+    const future = new Date(Date.now() + 86_400_000).toUTCString();
+    const probes: Record<string, string>[] = [{ 'if-none-match': '*' }, { 'if-modified-since': future }];
+    for (const headers of probes) {
+      const reply = await send(server.port, { path: '/', headers });
+      expect(reply.status).toBe(200);
+      expect(reply.headers['cache-control']).toBe('no-store');
+      expect(reply.body).toContain('Extalia');
+    }
+  });
+
   it('serves the Splash media with video/image types and byte ranges', async () => {
     await mkdir(path.join(webRoot, 'splash'), { recursive: true });
     await writeFile(path.join(webRoot, 'splash', 'office-loop.webm'), '0123456789');
