@@ -6,6 +6,7 @@ import type { Group } from 'three';
 import type { OfficeAgent } from '../../presence';
 import { avatarVisual, characterAppearance, characterRig, lookSeed, presentationPreset, type AvatarVisualConfig, type CharacterAppearance, type CharacterPresentation } from './appearance';
 import { gaitParameters, idlePose } from './gait';
+import { useLookVersion } from './useLookVersion';
 import { createWalkPose, writeWalkPose, type CharacterMotion, type WalkPose } from '../movement/walkCycle';
 import { createClipDriver, stepClipDriver, type ClipDriver } from './activityPose';
 import { createArmPoleSolution, solveArmPole } from './armPole';
@@ -312,7 +313,9 @@ export function CharacterBody({ id, appearance, presentation, seated, typing, se
   resourceId?: string | undefined; reducedMotion: boolean; motion?: CharacterMotion | undefined; desk?: DeskReach | undefined;
   expressionId?: string | undefined; expressionState?: CharacterExpressionState | undefined;
 }) {
-  const visual = useMemo(() => appearance ? avatarVisual(id, appearance) : characterAppearance(id, presentation), [id, appearance, presentation]);
+  // A generated look follows the allocation among the visible characters (re-resolved when it changes).
+  const looks = useLookVersion();
+  const visual = useMemo(() => appearance ? avatarVisual(id, appearance) : characterAppearance(id, presentation), [id, appearance, presentation, looks]); // eslint-disable-line react-hooks/exhaustive-deps
   const sourceUrls = useMemo(() => sourceAvatarUrls(visual, sourceHairAsset(visual)), [visual]);
   useEffect(() => {
     if (!sourceUrls) return;

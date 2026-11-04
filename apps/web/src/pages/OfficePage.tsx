@@ -10,6 +10,7 @@ import { officeHistoryIds } from '../office/historyIds';
 import { useNow, useStableValue } from '../office/useNow';
 import { useOfficeEvents } from '../office/useOfficeEvents';
 import { useCharacterAppearances } from '../office/useCharacterAppearances';
+import { useLookRoster } from '../office/useLookRoster';
 import { useSessionTeams } from '../office/useSessionTeams';
 import { OfficeLoading, type OfficeLoadStage } from '../office/OfficeLoading';
 import { useRecentActivity } from '../office/useRecentActivity';
@@ -171,6 +172,8 @@ export function OfficePage({ t, language, agents, hostDisconnected = false, stat
   const [positions] = useState(createCharacterPositionStore);
   const floorOf = (id: string) => positions.floor(id) ?? allocations.find(item => item.agentId === id)?.floor;
   const looks = useCharacterAppearances(agents);
+  // Generated looks are allocated among the visible characters (unique casual clothing); scene, portraits and editor share them.
+  useLookRoster(officeAgents, looks.saved);
   const selectAgent = (id: string) => { dispatch({ type: 'pick', characterId: id }); };
   const overlay = useOfficeOverlay({ t, presences, allocations, events, recent: recentActivity, state });
   // Inspecting a character preserves the user's camera; Locate and Follow move it explicitly.

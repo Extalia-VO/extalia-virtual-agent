@@ -16,6 +16,13 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.164] - 2026-11-04
+
+### Changed
+
+- Generated character looks in the Office no longer repeat casual clothing: every outfit and wardrobe piece has a dress code, casual items are unique among the characters present at the same time, while uniforms, suits and other formal wear may be shared. When casual clothing runs out, the next character wears formal clothing. Saved looks are never changed and their casual items count as taken.
+- Generated hair is chosen randomly from the detailed GLB styles of the character's group, kept distinct while possible, and changes on every page load; the appearance editor adds **Randomize hair** (Indonesian: **Acak rambut**). Generated looks and editor choices no longer use procedural clothing or hair, which remain only as the fallback when a model fails to load; saved looks with procedural hair render the nearest GLB style.
+
 ## [0.4.163] - 2026-11-04
 
 ### Changed

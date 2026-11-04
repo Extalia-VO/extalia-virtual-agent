@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useLookVersion } from '../../scene/avatars/useLookVersion';
 import { attachPortrait } from './renderer';
 import { portraitSubject, type PortraitSubject } from './model';
 
@@ -16,6 +17,7 @@ export function Portrait3D({ fallback, className, ...subject }: Portrait3DProps)
   const handle = useRef<ReturnType<typeof attachPortrait> | null>(null);
   const latest = useRef(subject);
   useEffect(() => { latest.current = subject; }, [subject]);
+  useLookVersion();
   const key = portraitSubject(subject).key;
   const [readyKey, setReadyKey] = useState<string | null>(null);
   useEffect(() => {

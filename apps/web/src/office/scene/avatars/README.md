@@ -27,9 +27,10 @@ Garments: shirt, blouse (fitted, scoop neck), knit and turtleneck tops;
 trousers, skirt and dress. Skirts and dresses have a waist yoke on the torso and
 a drape that follows the thighs, so the 45 cm seated pose lies over the lap;
 coats fold at the seat when seated. Accessories: glasses, watches, earrings,
-bags (carried standing, set beside the seat), tie, badge and headphones. Hair
-covers 13 styles, including bun and long cuts; clipper shading follows the hair
-color.
+bags (carried standing, set beside the seat), tie, badge and headphones. The
+procedural hair styles (13, including curly, afro, wavy and long) remain only in
+the load-failure fallback; saved looks that use them render the nearest detailed
+GLB style (`glbHairStyle`); clipper shading follows the hair color.
 
 `gait.ts` holds the walking style: `gaitParameters` (stride length, hip sway and
 roll, arm swing, cadence) and `idlePose`, which drives the standing weight shift
@@ -220,15 +221,29 @@ bones by name and shows it as the `ScanOutfitModel` slot; its `Office<Zone>_*` a
 `Skin_*` materials take the same tints as the scanned outfits. `Original*` materials preserve
 their source colours and maps on Auto and accept explicit colour tints on cloned materials.
 
-Without a saved look, a character wears a generated outfit picked from the
-reviewed pieces and its group's models by highest-random-weight hashing of its
-look seed (`seededOutfitChoice`): stable across reloads, varied across characters,
-and when the catalog gains an outfit only the characters it wins for change.
+Without a saved look, a character's outfit and hair come from
+`lookAllocation.ts` (`allocateGeneratedLooks`), shared by the scene, portraits,
+the appearance editor and facility staff through a small roster store
+(`useLookRoster` in `OfficePage`, `useLookVersion` in consumers). Every outfit
+model and wardrobe piece has a dress code in `DRESS_CODE` (`outfitCatalog.ts`):
+casual items are unique among the characters present at the same time (a whole
+casual outfit model, or the top and a non-`none` outer of a mix-and-match look;
+bottoms may repeat), formal items (uniforms, suits, prom suit) may repeat, and an
+unlisted id counts as casual. Characters are allocated in seed order by
+highest-random-weight preference; when a group's casual pool is exhausted the
+next character wears the least-worn formal outfit (the female group, which has no
+non-staff formal model, falls back to a staff uniform). Saved looks are never
+changed, and their casual items and hair count as taken. A character keeps its
+allocation while it stays present, so joins and leaves change nobody else.
+Generated looks never use procedural styles or procedural hair; hair is one of
+the five detailed GLB styles of the group (`hairCatalog.ts`), unique while
+possible and re-rolled every page load through a per-session random salt.
 Garment colours come from coordinated office or casual zone palettes
 (`OUTFIT_PALETTES`: top, bottom, jacket, accent). Nothing is stored on spawn; the
 look is saved only when the user saves an edit, as for every other appearance
-field. The appearance editor offers every outfit of the character's group,
-zone colours, **Randomize outfit** (re-rolls outfit and colours) and
+field. The appearance editor offers every outfit model of the character's group,
+zone colours, **Randomize outfit** (re-rolls outfit and colours), **Randomize
+hair** (another detailed GLB style) and
 **Default outfit** (back to the generated one).
 
 The receptionist and the bartender always wear their role uniform

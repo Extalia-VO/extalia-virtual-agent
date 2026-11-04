@@ -3,7 +3,8 @@ import {
   type CharacterOutfit, type CharacterOutfitParts, type CharacterPresentation, type CharacterTop,
 } from "@extalia/core";
 import { HUMANOID_HEAD_ELONGATION, createHumanoidRigProfile, humanoidInstanceSeed, type HumanoidRigProfile, type HumanoidStature } from "./rig";
-import { seededOutfitChoice, seededOutfitParts } from "./outfitCatalog";
+import { detailedHairStyles } from "./hairCatalog";
+import { generatedLookOf } from "./lookAllocation";
 
 export type { CharacterAppearance, CharacterPresentation } from "@extalia/core";
 
@@ -82,7 +83,7 @@ export function presentationPreset(value: AvatarPresentation | undefined): Chara
   return value === "feminine" || value === "female" ? "feminine" : "masculine";
 }
 
-/** Unconfigured avatars rotate through everyday outfits; signature looks are opt-in. */
+/** Legacy fallback of the procedural wardrobe for a visual without an outfit style; no generated look uses it. */
 export const SEEDED_OUTFITS: readonly CharacterOutfit[] = ["executive", "business-casual", "creative", "technical", "service", "casual"];
 
 /** The top each outfit was authored with, so generated looks keep their original necklines. */
@@ -114,14 +115,14 @@ export interface PresentationPresetDefinition {
 /** Presentation presets are style choices: each sets hair, cuts, accessories, frame and gait. */
 export const PRESENTATION_PRESETS: Readonly<Record<CharacterPresentation, PresentationPresetDefinition>> = {
   feminine: {
-    // Generated looks wear the detailed styles of their own presentation (see characterHair `detail`).
-    hair: ["high-ponytail", "bun"],
+    // Generated looks wear the detailed GLB styles of their own presentation (see characterHair `detail`).
+    hair: detailedHairStyles("feminine"),
     outfit: "business-casual", top: "blouse", bottom: "skirt",
     accessories: { watch: "classic", earrings: "studs", bag: "tote", tie: false },
     gait: "feminine",
   },
   masculine: {
-    hair: ["textured-crop", "slicked-back"],
+    hair: detailedHairStyles("masculine"),
     outfit: "executive", top: "shirt", bottom: "trousers",
     accessories: { watch: "classic", earrings: "none", bag: "briefcase", tie: true },
     gait: "masculine",
@@ -135,22 +136,24 @@ export const PRESENTATION_PRESETS: Readonly<Record<CharacterPresentation, Presen
  * a neutral masculine or feminine preset. Nothing is inferred from the text of
  * names, titles, models or providers.
  */
+export function presentationOf(id: string, presentation?: CharacterPresentation): CharacterPresentation {
+  return presentation ?? ((humanoidInstanceSeed(id) & 1) === 0 ? "masculine" : "feminine");
+}
+
 export function defaultCharacterAppearance(id: string, presentation?: CharacterPresentation): CharacterAppearance {
   const seed = humanoidInstanceSeed(id);
-  presentation ??= (seed & 1) === 0 ? "masculine" : "feminine";
-  const preset = PRESENTATION_PRESETS[presentation];
-  // First spawn: an everyday style or one of the gender group's fitted outfit models, picked from
-  // the catalog found at build time (stable per id; see `seededOutfitChoice`).
-  const choice = seededOutfitChoice(id, presentation);
-  const parts = seededOutfitParts(id, presentation);
-  const outfit = choice.kind === "style" ? choice.style : SEEDED_OUTFITS[seed % SEEDED_OUTFITS.length] ?? preset.outfit;
-  const hairStyle = preset.hair[(seed >>> 10) % preset.hair.length] ?? preset.hair[0]!;
-  const top = presentation === "feminine" && outfit === "business-casual" ? "blouse" : OUTFIT_TOPS[outfit];
-  const bottom = presentation === "feminine" && (seed >>> 6) % 2 === 0 ? "skirt" : "trousers";
+  presentation = presentationOf(id, presentation);
+  // First spawn: a GLB outfit model or GLB wardrobe pieces and GLB hair, allocated so that casual
+  // clothing is unique among the characters visible in the Office (see `lookAllocation.ts`).
+  // Never a procedural garment or hair style.
+  const generated = generatedLookOf(id, presentation);
+  const outfit: CharacterOutfit = generated.formal ? "executive" : "casual";
+  const top: CharacterTop = presentation === "feminine" ? "blouse" : OUTFIT_TOPS[outfit];
+  const bottom: CharacterBottom = presentation === "feminine" && (seed >>> 6) % 2 === 0 ? "skirt" : "trousers";
   return {
     presentation,
-    ...(choice.kind === "model" ? { outfitModel: choice.id } : parts ? { outfitParts: parts } : {}),
-    hairStyle,
+    ...(generated.outfitModel ? { outfitModel: generated.outfitModel } : generated.outfitParts ? { outfitParts: { ...generated.outfitParts } } : {}),
+    hairStyle: generated.hairStyle,
     hairColor: SEEDED_HAIR[(seed >>> 15) % SEEDED_HAIR.length] ?? "#292426",
     skinTone: SEEDED_SKINS[(seed >>> 12) % SEEDED_SKINS.length] ?? "#c79a82",
     outfit, top, bottom,
@@ -160,7 +163,7 @@ export function defaultCharacterAppearance(id: string, presentation?: CharacterP
       watch: seed % 3 === 0 ? "classic" : "none",
       earrings: presentation === "feminine" && (seed >>> 4) % 2 === 0 ? "studs" : "none",
       bag: "none",
-      tie: presentation === "masculine" && top === "shirt" ? OUTFIT_TIES[outfit] : false,
+      tie: presentation === "masculine" && generated.formal && top === "shirt" ? OUTFIT_TIES[outfit] : false,
       badge: true,
       headphones: false,
     },
