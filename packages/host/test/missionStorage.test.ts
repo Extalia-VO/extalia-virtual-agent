@@ -31,11 +31,24 @@ describe('native mission metadata byte retention', () => {
     const answer = '\u0001界\\"'.repeat(4000);
     expect(answer.length).toBe(16_000);
     const unresolved = record(0, answer, 'recovering');
-    await records.save(unresolved);
-    const terminalIds: string[] = [];
+    const history = Array.from({ length: 9 }, (_, n) => record(n + 1, answer));
+    const seed = [unresolved, ...history];
+    const serialize = (runs: HostMissionRun[]) => `${JSON.stringify({ schema: 'extalia.native-missions.v1', runs }, null, 2)}\n`;
+    // Start from valid retained history instead of performing seventeen large
+    // fsync/rename setup writes on Windows. Real saves below still cross the
+    // byte ceiling (not the sixteen-record ceiling) and must prune in order.
+    expect(Buffer.byteLength(serialize(seed), 'utf8')).toBeLessThanOrEqual(MAX_BYTES);
+    await writeFile(file, serialize(seed));
+    await records.initialize([session]);
+    expect(records.list(session.id)).toEqual(seed);
+    const terminalIds = history.map(run => run.id);
     let current!: HostMissionRun;
-    for (let n = 1; n <= 16; n++) {
-      current = record(n, answer); terminalIds.push(current.id); await records.save(current);
+    for (let n = 10; n <= 11; n++) {
+      current = record(n, answer); terminalIds.push(current.id);
+      const candidate = [...records.list(session.id), current];
+      expect(candidate.length).toBeLessThan(16);
+      expect(Buffer.byteLength(serialize(candidate), 'utf8')).toBeGreaterThan(MAX_BYTES);
+      await records.save(current);
       expect((await stat(file)).size).toBeLessThanOrEqual(MAX_BYTES);
     }
     const retained = records.list(session.id);

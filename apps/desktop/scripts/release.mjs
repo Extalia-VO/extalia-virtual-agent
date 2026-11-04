@@ -1,7 +1,7 @@
 /** Release-only packaging and upload gates. Local `pnpm dist` remains unsigned-capable. */
 import { execFile } from 'node:child_process';
 import { constants } from 'node:fs';
-import { lstat, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { access, lstat, mkdir, mkdtemp, open, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -9,6 +9,20 @@ import { fileURLToPath } from 'node:url';
 const DESKTOP = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SIGNING_ENV = ['CSC_LINK', 'CSC_KEY_PASSWORD', 'APPLE_ID', 'APPLE_APP_SPECIFIC_PASSWORD', 'APPLE_TEAM_ID'];
 const OPTIONAL_SIGNING_ENV = ['WIN_CSC_LINK', 'WIN_CSC_KEY_PASSWORD'];
+const ARCH_FAILURES = new Set(['tool-unavailable', 'input-unavailable', 'permission-denied', 'architecture-mismatch', 'invalid-object', 'invalid-arguments', 'tool-failure']);
+
+/** Fixed categories only; never retain or print arbitrary subprocess stderr. */
+function architectureFailure(error, stderr) {
+  if (error.code === 'ENOENT') return 'tool-unavailable';
+  if (error.code === 'EACCES' || error.code === 'EPERM') return 'permission-denied';
+  const text = typeof stderr === 'string' ? stderr.slice(0, 4_096).toLowerCase() : '';
+  if (/no such file|cannot open|can't open/.test(text)) return 'input-unavailable';
+  if (/permission denied|operation not permitted/.test(text)) return 'permission-denied';
+  if (/unknown argument|unknown option|unrecognized option|invalid argument|usage:/.test(text)) return 'invalid-arguments';
+  if (/does not contain|do not contain|missing architecture|architecture.*not found/.test(text)) return 'architecture-mismatch';
+  if (/not an object file|not a mach-o|can't figure out the architecture|invalid object/.test(text)) return 'invalid-object';
+  return 'tool-failure';
+}
 
 export function macReleaseMode(value = 'preview') {
   if (value !== 'preview' && value !== 'notarized') throw new Error('EXTALIA_MAC_RELEASE_MODE must be preview or notarized.');
@@ -19,7 +33,12 @@ export function macReleaseMode(value = 'preview') {
 export function runCommand(command, args, options = {}) {
   return new Promise((resolve, reject) => {
     execFile(command, args, { maxBuffer: 20 * 1024 * 1024, ...options }, (error, stdout, stderr) => {
-      if (error) reject(new Error(`${path.basename(command)} failed (${error.code ?? 'unknown exit'}).`));
+      if (error) {
+        const category = path.basename(command) === 'lipo' ? architectureFailure(error, stderr) : undefined;
+        const failure = new Error(`${path.basename(command)} failed (${error.code ?? 'unknown exit'}${category ? `; ${category}` : ''}).`);
+        if (category) failure.releaseArchitectureFailure = category;
+        reject(failure);
+      }
       else resolve({ stdout, stderr });
     });
   });
@@ -75,8 +94,23 @@ async function requireFile(file) {
 
 export async function verifyMacApp(app, arch, run = runCommand, mode = 'preview') {
   macReleaseMode(mode);
+  if (!['x64', 'arm64'].includes(arch)) throw new Error('Unsupported macOS release architecture.');
+  const expected = arch === 'x64' ? 'x86_64' : 'arm64';
+  const executable = path.join(app, 'Contents', 'MacOS', 'Extalia');
+  const actual = await macExecutableArchitectures(executable);
+  const observed = actual.join('+');
+  if (!actual.includes(expected)) throw new Error(`macOS executable architecture mismatch (expected ${expected}; observed ${observed}).`);
   // Check the actual distributed executable, not just its archive's name.
-  await run('lipo', ['-verify_arch', arch === 'x64' ? 'x86_64' : 'arm64', path.join(app, 'Contents', 'MacOS', 'Extalia')]);
+  let failureCategory;
+  try { await run('lipo', ['-verify_arch', expected, executable]); }
+  catch (error) {
+    // Only a fixed category crosses this diagnostic boundary, never the original error or its cause.
+    failureCategory = ARCH_FAILURES.has(error?.releaseArchitectureFailure) ? error.releaseArchitectureFailure : 'tool-failure';
+  }
+  if (failureCategory) {
+    const location = await lipoLocation();
+    throw new Error(`macOS lipo verification failed (expected ${expected}; observed ${observed}; tool ${location}; developer override ${process.env.DEVELOPER_DIR ? 'set' : 'unset'}; ${failureCategory}).`);
+  }
   const identity = await run('codesign', ['--display', '--verbose=4', app]);
   const details = `${identity.stdout}\n${identity.stderr}`;
   if (mode === 'preview' && !/^Signature=adhoc\s*$/m.test(details)) {
@@ -90,6 +124,62 @@ export async function verifyMacApp(app, arch, run = runCommand, mode = 'preview'
     await run('spctl', ['--assess', '--type', 'execute', '--verbose=4', app]);
     await run('xcrun', ['stapler', 'validate', app]);
   }
+}
+
+/** Pure bounded Mach-O header diagnostics supplement lipo; they never substitute for its success. */
+async function macExecutableArchitectures(file) {
+  let before;
+  try { before = await lstat(file); } catch { throw new Error('macOS archive executable is missing or inaccessible.'); }
+  if (!before.isFile() || before.size === 0) throw new Error('macOS archive executable is not a nonempty regular file.');
+  let handle;
+  try {
+    handle = await open(file, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
+    const opened = await handle.stat();
+    if (!opened.isFile() || opened.ino !== before.ino || opened.dev !== before.dev || opened.size !== before.size) throw new Error('changed');
+    const buffer = Buffer.alloc(4_096), { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
+    const bytes = buffer.subarray(0, bytesRead);
+    const labels = new Map([[0x01000007, 'x86_64'], [0x0100000c, 'arm64']]);
+    if (bytes.length < 8) throw new Error('header');
+    const magic = bytes.readUInt32BE(0);
+    if ([0xcffaedfe, 0xcefaedfe, 0xfeedfacf, 0xfeedface].includes(magic)) {
+      const little = magic === 0xcffaedfe || magic === 0xcefaedfe;
+      const width = magic === 0xcffaedfe || magic === 0xfeedfacf ? 32 : 28;
+      if (bytes.length < width) throw new Error('header');
+      return [labels.get(little ? bytes.readUInt32LE(4) : bytes.readUInt32BE(4)) ?? 'unsupported'];
+    }
+    if (![0xcafebabe, 0xcafebabf, 0xbebafeca, 0xbfbafeca].includes(magic)) throw new Error('header');
+    const little = magic === 0xbebafeca || magic === 0xbfbafeca, wide = magic === 0xcafebabf || magic === 0xbfbafeca;
+    const uint32 = offset => little ? bytes.readUInt32LE(offset) : bytes.readUInt32BE(offset);
+    const uint64 = offset => little ? bytes.readBigUInt64LE(offset) : bytes.readBigUInt64BE(offset);
+    const count = uint32(4), entryBytes = wide ? 32 : 20, tableEnd = 8 + count * entryBytes;
+    if (count < 1 || count > 32 || tableEnd > bytes.length) throw new Error('header');
+    const architectures = [];
+    for (let index = 0; index < count; index++) {
+      const offset = 8 + index * entryBytes, start = wide ? uint64(offset + 8) : BigInt(uint32(offset + 8));
+      const size = wide ? uint64(offset + 16) : BigInt(uint32(offset + 12));
+      if (start < BigInt(tableEnd) || size < 28n || start + size > BigInt(before.size)) throw new Error('header');
+      architectures.push(labels.get(uint32(offset)) ?? 'unsupported');
+    }
+    return [...new Set(architectures)].sort();
+  } catch { throw new Error('macOS archive executable is inaccessible, changed or not a valid Mach-O.'); }
+  finally { await handle?.close(); }
+}
+
+/** Describe the inherited executable selection without exposing PATH or developer-directory values. */
+async function lipoLocation() {
+  for (const directory of (process.env.PATH ?? '').split(path.delimiter)) {
+    const file = path.resolve(directory || '.', 'lipo');
+    try {
+      await access(file, constants.X_OK);
+      const resolved = await realpath(file);
+      if (resolved === '/usr/bin/lipo') return 'system-lipo';
+      if (resolved.startsWith('/Applications/') && resolved.includes('.app/Contents/Developer/')) return 'xcode-lipo';
+      if (resolved.startsWith('/Library/Developer/')) return 'developer-tools-lipo';
+      if (resolved.startsWith('/opt/homebrew/') || resolved.startsWith('/usr/local/Cellar/')) return 'homebrew-lipo';
+      return 'other-path-lipo';
+    } catch { /* Keep the same inherited PATH search order as execFile. */ }
+  }
+  return 'unresolved-path-lipo';
 }
 
 async function detachVolume(mount, run) {

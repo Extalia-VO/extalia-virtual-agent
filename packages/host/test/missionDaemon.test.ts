@@ -97,8 +97,38 @@ const countingReads = () => {
 
 function deferred<T = void>() {
   let resolve!: (value: T | PromiseLike<T>) => void;
-  const promise = new Promise<T>(done => { resolve = done; });
-  return { promise, resolve };
+  let resolved = false;
+  const promise = new Promise<T>(done => { resolve = value => { resolved = true; done(value); }; });
+  return { promise, resolve, get resolved() { return resolved; } };
+}
+
+/** Bound entry coordination without depending on a task deadline beating durable IO. */
+async function waitForEntry(entry: { readonly resolved: boolean }) {
+  await vi.waitFor(() => expect(entry.resolved).toBe(true), { interval: 5, timeout: 5000 });
+}
+
+/**
+ * Fire the real task-timeout callback only after the provider/tool under test enters.
+ * Its distinctive delay matches no IO, admission, heartbeat or abort-grace timer.
+ * Returning a real handle preserves the runtime's ordinary clearTimeout cleanup.
+ */
+function controlledTaskDeadline() {
+  const timeoutMs = 41_237;
+  const set = globalThis.setTimeout;
+  let fire: (() => void) | undefined;
+  let handle: ReturnType<typeof setTimeout> | undefined;
+  vi.spyOn(globalThis, 'setTimeout').mockImplementation((callback, delay, ...args) => {
+    if (delay !== timeoutMs) return set(callback, delay, ...args);
+    expect(fire).toBeUndefined();
+    handle = set(() => undefined, timeoutMs); handle.unref();
+    fire = () => { clearTimeout(handle); callback(...args); };
+    return handle;
+  });
+  closes.push(async () => { clearTimeout(handle); });
+  return { timeoutMs, expire: () => {
+    expect(fire).toBeTypeOf('function');
+    const callback = fire!; fire = undefined; callback();
+  } };
 }
 
 /** Only speed up host lease renewal; subprocess IO and every other timeout remain real. */
@@ -124,8 +154,9 @@ describe.skipIf(!HAS_DAEMON)('native missions on the Rust core daemon', () => {
     let calls = 0;
     const env = await fixture(async () => { calls++; entered.resolve(); return late.promise; }, { core: 'rust' });
     const reads = countingReads();
-    const started = await env.host.startNativeMission(env.session.id, { ...env.request, tasks: [{ ...env.task('late'), timeoutMs: 100 }] });
-    await entered.promise;
+    const deadline = controlledTaskDeadline();
+    const started = await env.host.startNativeMission(env.session.id, { ...env.request, tasks: [{ ...env.task('late'), timeoutMs: deadline.timeoutMs }] });
+    await waitForEntry(entered); deadline.expire();
     expect(queryCore(env.data, 'SELECT count(*) AS count FROM execution_admissions WHERE mission_id = ?', started.id)).toEqual([{ count: 1 }]);
     const uncertain = await settled(env.host, env.session.id, started.id); await idle(env.runtime);
     expect(uncertain.state).toBe('recovering');
@@ -182,8 +213,9 @@ describe.skipIf(!HAS_DAEMON)('native missions on the Rust core daemon', () => {
       },
     } as AnyTool)));
     const env = await fixture(async () => { calls++; return readCall(); }, { core: 'rust' });
-    const started = await env.host.startNativeMission(env.session.id, { ...env.request, tasks: [{ ...env.task('late-tool'), timeoutMs: 100 }] });
-    await toolEntered.promise;
+    const deadline = controlledTaskDeadline();
+    const started = await env.host.startNativeMission(env.session.id, { ...env.request, tasks: [{ ...env.task('late-tool'), timeoutMs: deadline.timeoutMs }] });
+    await waitForEntry(toolEntered); deadline.expire();
     const uncertain = await settled(env.host, env.session.id, started.id); await idle(env.runtime);
     expect(uncertain).toMatchObject({ state: 'recovering', tasks: [{ state: 'unknown', reason: 'execution-unknown' }] });
     expect(toolSignal?.aborted).toBe(true);
@@ -220,8 +252,9 @@ describe.skipIf(!HAS_DAEMON)('native missions on the Rust core daemon', () => {
   it('reports a failed late observation without clearing quarantine, retrying or reconnecting', async () => {
     const entered = deferred(), late = deferred<Response>();
     const env = await fixture(async () => { entered.resolve(); return late.promise; }, { core: 'rust' });
-    const started = await env.host.startNativeMission(env.session.id, { ...env.request, tasks: [{ ...env.task('late'), timeoutMs: 100 }] });
-    await entered.promise; await settled(env.host, env.session.id, started.id); await idle(env.runtime);
+    const deadline = controlledTaskDeadline();
+    const started = await env.host.startNativeMission(env.session.id, { ...env.request, tasks: [{ ...env.task('late'), timeoutMs: deadline.timeoutMs }] });
+    await waitForEntry(entered); deadline.expire(); await settled(env.host, env.session.id, started.id); await idle(env.runtime);
     const db = new DatabaseSync(coreFile(env.data));
     try { db.exec("CREATE TRIGGER fail_execution_observation BEFORE INSERT ON execution_observations BEGIN SELECT RAISE(ABORT, 'synthetic observation failure'); END;"); } finally { db.close(); }
     late.resolve(response('discarded'));
@@ -242,8 +275,9 @@ describe.skipIf(!HAS_DAEMON)('native missions on the Rust core daemon', () => {
     let calls = 0;
     const env = await fixture(async () => { calls++; entered.resolve(); return late.promise; }, { core: 'rust' });
     const reads = countingReads();
-    const started = await env.host.startNativeMission(env.session.id, { ...env.request, tasks: [{ ...env.task('late'), timeoutMs: 100 }] });
-    await entered.promise;
+    const deadline = controlledTaskDeadline();
+    const started = await env.host.startNativeMission(env.session.id, { ...env.request, tasks: [{ ...env.task('late'), timeoutMs: deadline.timeoutMs }] });
+    await waitForEntry(entered); deadline.expire();
     const uncertain = await settled(env.host, env.session.id, started.id); await idle(env.runtime);
     const before = queryCore(env.data, 'SELECT event_id FROM events WHERE mission_id = ? ORDER BY sequence', started.id);
     const db = new DatabaseSync(coreFile(env.data));
@@ -267,13 +301,14 @@ describe.skipIf(!HAS_DAEMON)('native missions on the Rust core daemon', () => {
     const entered = deferred(), late = deferred<Response>(), bodyRead = deferred();
     const env = await fixture(async () => { entered.resolve(); return late.promise; }, { core: 'rust' });
     const reads = countingReads();
-    const started = await env.host.startNativeMission(env.session.id, { ...env.request, tasks: [{ ...env.task('late'), timeoutMs: 100 }] });
-    await entered.promise; await settled(env.host, env.session.id, started.id); await idle(env.runtime);
+    const deadline = controlledTaskDeadline();
+    const started = await env.host.startNativeMission(env.session.id, { ...env.request, tasks: [{ ...env.task('late'), timeoutMs: deadline.timeoutMs }] });
+    await waitForEntry(entered); deadline.expire(); await settled(env.host, env.session.id, started.id); await idle(env.runtime);
     await env.close();
     const lateResponse = readCall(), readBody = lateResponse.json.bind(lateResponse);
     vi.spyOn(lateResponse, 'json').mockImplementation(async () => { const body = await readBody(); bodyRead.resolve(); return body; });
     late.resolve(lateResponse);
-    await bodyRead.promise;
+    await waitForEntry(bodyRead);
     await new Promise(resolve => setTimeout(resolve, 10));
     expect(queryCore(env.data, 'SELECT observation_id FROM execution_observations WHERE mission_id = ?', started.id)).toEqual([]);
     expect(localDrains(env.data, started.id)).toEqual([]);
