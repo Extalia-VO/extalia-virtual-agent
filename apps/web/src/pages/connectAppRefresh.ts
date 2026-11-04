@@ -1,10 +1,12 @@
-import type { AgentAppConnection, AgentHostApi, HookIngestStatus } from '@extalia/platform';
+import type { AgentAppConnection, AgentAppRecoveryReport, AgentHostApi, HookIngestStatus } from '@extalia/platform';
 
 /** Status reads are serialized; writes revoke older replies before they can reach the UI. */
-export function createConnectAppRefresh({ agents, connections, ingest, error }: {
-  agents: Pick<AgentHostApi, 'agentAppConnections' | 'hookIngest'>;
+export function createConnectAppRefresh({ agents, connections, ingest, recovery, error }: {
+  agents: Pick<AgentHostApi, 'agentAppConnections' | 'hookIngest' | 'recoverAgentAppConnection'>;
   connections: (value: AgentAppConnection[]) => void;
   ingest: (value: HookIngestStatus) => void;
+  /** Read-only preview of an interrupted connection change; a failed preview never hides the connections. */
+  recovery?: (value: AgentAppRecoveryReport) => void;
   error: (failure: unknown) => void;
 }) {
   let disposed = false;
@@ -30,8 +32,12 @@ export function createConnectAppRefresh({ agents, connections, ingest, error }: 
     running = (async () => {
       try {
         if (full) {
+          // The preview is read-only and starts together with the status reads, but never delays them.
+          const preview = recovery && agents.recoverAgentAppConnection ? agents.recoverAgentAppConnection('preview').catch(() => undefined) : undefined;
           const [nextConnections, nextIngest] = await Promise.all([agents.agentAppConnections(), agents.hookIngest()]);
           if (current()) { connections(nextConnections); ingest(nextIngest); }
+          const nextRecovery = await preview;
+          if (nextRecovery && current()) recovery?.(nextRecovery);
         } else {
           const nextIngest = await agents.hookIngest();
           if (current()) ingest(nextIngest);

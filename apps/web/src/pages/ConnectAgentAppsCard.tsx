@@ -1,5 +1,5 @@
 import type {
-  AgentAppConnection, AgentAppConnectPlan, AgentAppConnectResult, AgentAppId, AgentAppTestResult, AgentHostApi, HookIngestStatus,
+  AgentAppConnection, AgentAppConnectPlan, AgentAppConnectResult, AgentAppId, AgentAppRecoveryReport, AgentAppTestResult, AgentHostApi, HookIngestStatus,
 } from '@extalia/platform';
 import { useEffect, useRef, useState } from 'react';
 import { errorMessage } from '../host/remote';
@@ -120,6 +120,9 @@ export function ConnectAgentAppsCard({
   const [notes, setNotes] = useState<Record<string, string | undefined>>({});
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [busyKey, setBusyKey] = useState<string | null>(null);
+  const [recovery, setRecovery] = useState<AgentAppRecoveryReport | null>(null);
+  const [confirmRecovery, setConfirmRecovery] = useState<'rollback' | 'keep' | null>(null);
+  const [recoveryNote, setRecoveryNote] = useState<string>();
   const [error, setError] = useState<string>();
 
   const dashboardDirty = useRef(false);
@@ -135,6 +138,7 @@ export function ConnectAgentAppsCard({
         setIngest(next);
         if (!dashboardDirty.current) setDashboardUrl(next.hermesDashboardUrl ?? '');
       },
+      recovery: setRecovery,
       error: failure => {
         setConnections(current => current ?? []);
         setError(errorMessage(failure));
@@ -268,6 +272,22 @@ export function ConnectAgentAppsCard({
     });
   };
 
+  const interrupted = recovery?.operation;
+  const recoveryBlocked = interrupted !== undefined;
+  const rollbackBlocked = interrupted?.entries.some(entry => entry.state === 'changed') ?? false;
+
+  const recover = async (action: 'rollback' | 'keep') => {
+    if (!agents.recoverAgentAppConnection) return;
+    await perform(`recover:${action}`, true, async active => {
+      const result = await agents.recoverAgentAppConnection!(action);
+      if (!active()) return;
+      setConfirmRecovery(null);
+      setRecoveryNote(action === 'rollback' ? t.agentApps.recovery.restoredNote(result.restored.length) : t.agentApps.recovery.keptNote);
+      // Resume refreshes connections and the preview; until then hide the panel once the host says it is resolved.
+      if (result.resolved) setRecovery({ action: result.action, restored: result.restored, resolved: true });
+    });
+  };
+
   return (
     <section className={`card settings-section connect-apps-card ${compact ? 'compact' : ''}`} aria-labelledby="connect-agent-apps-heading">
       <div className="section-head">
@@ -287,6 +307,40 @@ export function ConnectAgentAppsCard({
         </div>
       </div>
       <p className="muted small">{t.agentApps.terminalHint}</p>
+
+      {recoveryNote && !interrupted && <p className="entity-note muted small" role="status">{recoveryNote}</p>}
+      {interrupted && (
+        <div className="connect-app-preview connect-app-recovery" role="region" aria-label={t.agentApps.recovery.title}>
+          <strong>{t.agentApps.recovery.title}</strong>
+          <p className="warning"><Icon name="alert" /><span>{t.agentApps.recovery.summary(interrupted.operation, connections?.find(item => item.app === interrupted.app)?.label ?? interrupted.app, new Date(interrupted.startedAt).toLocaleString())}</span></p>
+          <p className="muted small">{t.agentApps.recovery.filesTitle}</p>
+          <ul className="connect-app-recovery-files">
+            {interrupted.entries.map(entry => (
+              <li key={entry.target} className="small">
+                <code>{entry.target}</code>{' '}
+                <span className={`badge ${entry.state === 'changed' ? 'warn' : ''}`}>{t.agentApps.recovery.states[entry.state]}</span>
+              </li>
+            ))}
+          </ul>
+          {rollbackBlocked && <p className="muted small">{t.agentApps.recovery.changedHint}</p>}
+          {confirmRecovery ? (
+            <>
+              <p className="small">{confirmRecovery === 'rollback' ? t.agentApps.recovery.confirmRollback : t.agentApps.recovery.confirmKeep}</p>
+              <div className="row-actions">
+                <button type="button" className="button small primary" disabled={busyKey !== null} onClick={() => { void recover(confirmRecovery); }}>
+                  {busyKey === `recover:${confirmRecovery}` ? t.common.loading : t.agentApps.recovery.confirm}
+                </button>
+                <button type="button" className="button small" disabled={busyKey !== null} onClick={() => setConfirmRecovery(null)}>{t.common.cancel}</button>
+              </div>
+            </>
+          ) : (
+            <div className="row-actions">
+              <button type="button" className="button small" disabled={busyKey !== null || rollbackBlocked} onClick={() => setConfirmRecovery('rollback')}>{t.agentApps.recovery.rollback}</button>
+              <button type="button" className="button small" disabled={busyKey !== null} onClick={() => setConfirmRecovery('keep')}>{t.agentApps.recovery.keep}</button>
+            </div>
+          )}
+        </div>
+      )}
 
       {!connections ? (
         <p className="muted" role="status">{t.common.loading}</p>
@@ -340,7 +394,8 @@ export function ConnectAgentAppsCard({
                     <button
                       type="button"
                       className={`button small ${conn.connected ? '' : 'primary'}`}
-                      disabled={busyKey !== null || conn.nodeStatus === 'missing'}
+                      disabled={busyKey !== null || recoveryBlocked || conn.nodeStatus === 'missing'}
+                      title={recoveryBlocked ? t.agentApps.recovery.blockedHint : undefined}
                       onClick={() => { void previewPlan(conn.app); }}
                     >
                       {busyKey === `plan:${conn.app}` ? t.common.loading : t.agentApps.connect}
@@ -351,7 +406,7 @@ export function ConnectAgentAppsCard({
                       </button>
                     )}
                     {canDisconnect && (
-                      <button type="button" className="button small" disabled={busyKey !== null} onClick={() => { void disconnect(conn.app); }}>
+                      <button type="button" className="button small" disabled={busyKey !== null || recoveryBlocked} title={recoveryBlocked ? t.agentApps.recovery.blockedHint : undefined} onClick={() => { void disconnect(conn.app); }}>
                         {busyKey === `disconnect:${conn.app}` ? t.agentApps.disconnecting : t.agentApps.disconnect}
                       </button>
                     )}
@@ -377,7 +432,7 @@ export function ConnectAgentAppsCard({
                       </label>
                     )}
                     <div className="row-actions">
-                      <button type="button" className="button small primary" disabled={busyKey !== null || plan.nodeStatus === 'missing' || conn.nodeStatus === 'missing'} onClick={() => { void applyPlan(conn.app); }}>
+                      <button type="button" className="button small primary" disabled={busyKey !== null || recoveryBlocked || plan.nodeStatus === 'missing' || conn.nodeStatus === 'missing'} onClick={() => { void applyPlan(conn.app); }}>
                         {busyKey === `apply:${conn.app}` ? t.agentApps.applying : t.agentApps.apply}
                       </button>
                       <button type="button" className="button small" disabled={busyKey !== null} onClick={() => setPlan(null)}>

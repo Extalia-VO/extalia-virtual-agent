@@ -1,7 +1,7 @@
 import { applyTeamSpec, defaultOrchestration, generateFullName, initialSessionTeam, parseTeamSpec, withDistinctMemberNames, pickTeamModels, planModelOrder, planTeamHeuristic, presetById, type AgentTeam, type Workspace } from '@extalia/core';
 import type {
   AgentAppConnection, AgentAppConnectOptions, AgentAppConnectPlan, AgentAppConnectResult, AgentAppDisconnectResult,
-  AgentAppId, AgentAppTestResult, AgentHostApi, ApprovalDecisionInput, ConnectionInput, ConnectionView,
+  AgentAppId, AgentAppRecoveryReport, AgentAppTestResult, AgentHostApi, ApprovalDecisionInput, ConnectionInput, ConnectionView,
   HookIngestStatus, HostState, ModelChoices, Platform, ProfilePreferences, SessionSummary, UpdateCapability, UpdateStatus, UserProfile,
 } from '@extalia/platform';
 import { attachmentLimit, classifyAttachment, normalizeAgentTeam, normalizeIntegrationGate, normalizePromptLearnSkill, normalizeSessionOptions, normalizeTeamPlanRequest, sanitizeAttachmentName, type PromptAttachment } from '@extalia/platform';
@@ -1247,6 +1247,10 @@ function createMockAgents(options: MockOptions): AgentHostApi {
       lastHookEvents[app] = eventTime;
       entry.lastEventAt = eventTime;
       return { ok: true, status: 'delivered', message: 'Synthetic hook event delivered to the running host.' };
+    },
+    async recoverAgentAppConnection(action): Promise<AgentAppRecoveryReport> {
+      await latency();
+      return { action, restored: [], resolved: false };
     },
     async hookIngest(): Promise<HookIngestStatus> {
       await latency();

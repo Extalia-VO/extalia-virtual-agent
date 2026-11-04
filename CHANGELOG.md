@@ -16,6 +16,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.160] - 2026-11-04
+
+### Added
+
+- Connect agent apps in Web and Desktop shows an interrupted connector change with each file's state (not applied, applied, changed since) and offers Roll back or Keep current files, each behind an inline confirmation. Roll back is disabled when any file changed since; connect, disconnect and apply stay disabled until the record is resolved. English and Indonesian text; older hosts without the optional method keep the previous behavior.
+
 ## [0.4.159] - 2026-11-04
 
 ### Fixed

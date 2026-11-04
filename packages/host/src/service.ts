@@ -1992,6 +1992,10 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     },
     async disconnectAgentApp(app) { return (await agentApps()).disconnect(app); },
     async testAgentAppConnection(app) { return (await agentApps()).test(app); },
+    async recoverAgentAppConnection(action) {
+      if (action !== 'preview' && action !== 'rollback' && action !== 'keep') throw userError('Choose preview, roll back or keep for an interrupted connection change.');
+      return (await agentApps()).recover(action);
+    },
 
     async saveCharacterAppearance(characterId, appearance) {
       if (!isCharacterId(characterId)) throw userError('Choose a character in the Office.');

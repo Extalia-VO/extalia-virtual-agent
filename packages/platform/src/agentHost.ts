@@ -676,6 +676,26 @@ export interface AgentAppDisconnectResult {
   warnings: string[];
 }
 
+export type AgentAppRecoveryAction = 'preview' | 'rollback' | 'keep';
+/** `changed` means the file differs from both its original and its intended content, so a rollback would refuse. */
+export type AgentAppRecoveryEntryState = 'not-applied' | 'applied' | 'changed';
+
+/** A connect or disconnect that stopped before it finished. */
+export interface AgentAppInterruptedOperation {
+  operation: 'connect' | 'disconnect';
+  app: AgentAppId;
+  startedAt: string;
+  entries: { target: string; state: AgentAppRecoveryEntryState }[];
+}
+
+export interface AgentAppRecoveryReport {
+  operation?: AgentAppInterruptedOperation;
+  action: AgentAppRecoveryAction;
+  /** Files restored to their original bytes or removed again. */
+  restored: string[];
+  resolved: boolean;
+}
+
 export interface AgentAppTestResult {
   ok: boolean;
   /** `host-down` means no host is listening; `rejected` means the token or endpoint refused the event. */
@@ -855,6 +875,12 @@ export interface AgentHostApi {
   disconnectAgentApp(app: AgentAppId): Promise<AgentAppDisconnectResult>;
   /** Send a synthetic hook event to the host's endpoint to check the token and port. */
   testAgentAppConnection(app: AgentAppId): Promise<AgentAppTestResult>;
+  /**
+   * Review a connect/disconnect that was interrupted. `preview` writes nothing; `rollback` restores applied files
+   * and refuses when a file changed since; `keep` forgets the record without changing any file. Never automatic:
+   * only a user action calls it. Optional: an older host omits it and the card shows only the host warning.
+   */
+  recoverAgentAppConnection?(action: AgentAppRecoveryAction): Promise<AgentAppRecoveryReport>;
   /** Hook ingest endpoint status for "Connect agent apps" (port, token file, last event per app). */
   hookIngest(): Promise<HookIngestStatus>;
   /** Update outside-agent privacy ("labels only") and the optional local Hermes dashboard read URL. */
@@ -932,7 +958,7 @@ export const AGENT_HOST_METHODS = [
   'listFiles', 'readFile', 'gitStatus', 'gitDiff', 'workspaceSkills', 'allowWorkspaceSkills', 'revokeWorkspaceSkills',
   'skillRegistry', 'preflightSkill', 'previewSkillRouting', 'inspectSkill', 'importSkill', 'reviewSkill', 'approveSkill', 'activateSkill', 'deactivateSkill', 'rollbackSkill', 'revokeSkill', 'builtinSkills',
   'runtimes', 'hermesModels', 'characterAppearances', 'saveCharacterAppearance', 'hookIngest', 'setHookPrivacy',
-  'agentAppConnections', 'planAgentAppConnect', 'applyAgentAppConnect', 'disconnectAgentApp', 'testAgentAppConnection',
+  'agentAppConnections', 'planAgentAppConnect', 'applyAgentAppConnect', 'disconnectAgentApp', 'testAgentAppConnection', 'recoverAgentAppConnection',
   'listWorktrees', 'worktreeStatus', 'worktreeDiff', 'worktreeOrphans', 'removeWorktree', 'proposeIntegration', 'integrationProposals', 'applyIntegration',
   'knowledgeStatus', 'syncKnowledge', 'knowledgeNode', 'knowledgeLinks', 'knowledgeBacklinks', 'searchKnowledge', 'knowledgeGraph', 'knowledgeOverview',
   'knowledgeSettings', 'setKnowledgeVaultRoot',

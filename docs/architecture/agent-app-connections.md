@@ -40,7 +40,9 @@ automatically. Later connect/disconnect calls refuse, connection status shows a
 warning, and `extalia connections --recover` lists each file as not applied,
 applied or changed since. `--rollback` restores applied files and refuses when
 any file changed; `--keep` forgets the record without touching files. Both ask
-for confirmation unless `--yes` is passed.
+for confirmation unless `--yes` is passed. Web and Desktop show the same review in
+Connect agent apps through the optional `recoverAgentAppConnection` host method,
+with inline confirmation and Roll back disabled while any file changed since.
 
 This is still **not crash atomicity, OS-level locking or filesystem CAS**: the
 lock only coordinates Extalia processes, a crash between journal and write reads
