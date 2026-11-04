@@ -102,7 +102,9 @@ describe('published wearable geometry', () => {
       expect(document.images ?? []).toHaveLength(0);
       for (const material of document.materials) expect(material.name).toMatch(ZONE);
     }
-    const scene = (await new GLTFLoader().register(() => ({ name: 'geometry-only-image-fixture', loadTexture: async () => new Texture() })).parseAsync(new Uint8Array(bytes).buffer, '')).scene;
+    // Geometry-only fixture: replace the built-in EXT_texture_webp plugin (which needs a browser image loader)
+    // so WebP and PNG textures alike resolve to an empty texture in Node.
+    const scene = (await new GLTFLoader().register(() => ({ name: 'EXT_texture_webp', loadTexture: async () => new Texture() })).parseAsync(new Uint8Array(bytes).buffer, '')).scene;
     let triangles = 0, sourceUv = false;
     scene.traverse((node: InstanceType<typeof SkinnedMesh>) => {
       if (!(node instanceof SkinnedMesh)) return;
