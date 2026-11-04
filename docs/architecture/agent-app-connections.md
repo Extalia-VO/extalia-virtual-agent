@@ -28,11 +28,24 @@ match this operation's output; concurrent edits remain untouched and incomplete
 rollback is reported. A preexisting owned-hook configuration with no reliable
 original is removed surgically instead of restoring hooks from its own backup.
 
-This is **not crash atomicity or cross-process locking**. Process death and
-simultaneous connector processes still need a recovery journal/locking design.
-Disconnect likewise remains a sequence of individually backed-up removals, not
-an atomic multi-profile operation. Keep these limits explicit when certifying
-release evidence.
+Connect and disconnect run one at a time across Extalia processes (Desktop,
+Bridge and a standalone `extalia connect`) under an advisory lock,
+`connect/operation.lock`, that is replaced only when its process no longer runs.
+Before each file write, a write-ahead journal (`connect/journal.json` plus
+private snapshots of the original bytes) records the target, its original hash
+and the intended hash. A completed or fully rolled-back operation removes it.
+
+A journal left by a process that died is never replayed or rolled back
+automatically. Later connect/disconnect calls refuse, connection status shows a
+warning, and `extalia connections --recover` lists each file as not applied,
+applied or changed since. `--rollback` restores applied files and refuses when
+any file changed; `--keep` forgets the record without touching files. Both ask
+for confirmation unless `--yes` is passed.
+
+This is still **not crash atomicity, OS-level locking or filesystem CAS**: the
+lock only coordinates Extalia processes, a crash between journal and write reads
+as not applied, and disconnect remains a sequence of individually backed-up
+changes. Keep these limits explicit when certifying release evidence.
 
 Hermes includes default and named profiles in preview/apply/status/undo. Every
 enrolled profile can make the connection partial or stale. Edited profile removal
@@ -87,7 +100,7 @@ Disconnect removes hooks and leaves the independently stored transcript-watch
 setting unchanged, including watching that a connector previously enabled. The
 English/Indonesian UI tells users to disable it on Observe if desired. No observer
 preferences are silently removed. Complete lifecycle acceptance still requires
-the crash/cross-process recovery work above and real installed vendor versions,
+independent review of the journal/lock above and real installed vendor versions,
 with explicit consent for any external configuration change.
 
 ## Verification

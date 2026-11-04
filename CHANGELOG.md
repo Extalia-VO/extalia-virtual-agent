@@ -16,6 +16,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.159] - 2026-11-04
+
+### Fixed
+
+- Connect agent apps changes now run one at a time across Desktop, Bridge and the CLI, with a write-ahead journal of every configuration, token, forwarder and manifest write. An operation interrupted by process death is never replayed or rolled back automatically: later changes refuse, status shows a warning, and `extalia connections --recover` reviews it before an explicit, confirmed rollback or keep. Rollback refuses files changed since.
+
 ## [0.4.158] - 2026-10-31
 
 ### Fixed
