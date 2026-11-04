@@ -120,21 +120,120 @@ function imagePayload(document, binary, image) {
     || !positiveInteger(size) || start + size > binary.length) fail('invalid embedded source image range');
   return binary.subarray(start, start + size);
 }
+// Lossless re-encoding of embedded PNG textures (tooling/compress-public-models.py). Each converted
+// image carries `extras.extaliaImageConversion` naming its source payload; material receipts keep
+// hashing the recorded source image, so provenance stays verifiable without the source bytes.
+const IMAGE_CONVERSION = 'extaliaImageConversion';
+const CONVERSION_FIELDS = ['encoding', 'sourceMimeType', 'sourceSHA256', 'sourceBytes', 'sourceSize', 'sourcePixelSHA256', 'size', 'pixelSHA256', 'resizedFrom'];
+const DATA_TEXTURE_SLOTS = ['normalTexture', 'metallicRoughnessTexture', 'occlusionTexture'];
+const MAX_DATA_TEXTURE = 2048;
+const dimensions = value => Array.isArray(value) && value.length === 2 && value.every(side => positiveInteger(numeric(side)));
+function conversionRecord(image) {
+  const record = image.extras?.[IMAGE_CONVERSION];
+  if (record === undefined) return undefined;
+  const plain = Object.fromEntries(Object.entries(record).map(([key, value]) => [key, Array.isArray(value) ? value.map(numeric) : numeric(value)]));
+  keys(plain, CONVERSION_FIELDS, 'image conversion record');
+  const { sourceSize, size, resizedFrom } = plain;
+  if (plain.encoding !== 'webp-lossless' || plain.sourceMimeType !== 'image/png' || image.mimeType !== 'image/webp'
+    || !hashString(plain.sourceSHA256) || !hashString(plain.sourcePixelSHA256) || !hashString(plain.pixelSHA256)
+    || !positiveInteger(plain.sourceBytes) || !dimensions(sourceSize) || !dimensions(size)) fail('invalid image conversion record');
+  if (resizedFrom === undefined) {
+    // Colour and every other slot: only a pixel-identical re-encoding is accepted.
+    if (canonical(sourceSize) !== canonical(size) || plain.sourcePixelSHA256 !== plain.pixelSHA256) fail('lossless image conversion changed the pixels');
+  } else {
+    const longest = Math.max(...resizedFrom);
+    if (!dimensions(resizedFrom) || canonical(resizedFrom) !== canonical(sourceSize) || longest <= MAX_DATA_TEXTURE
+      || Math.max(...size) !== MAX_DATA_TEXTURE
+      || size.some((side, index) => Math.abs(side - Math.max(1, resizedFrom[index] * MAX_DATA_TEXTURE / longest)) > 1)) fail('invalid image downscale record');
+  }
+  return plain;
+}
+/** Width and height of a lossless WebP payload (VP8L, optionally inside a VP8X container). */
+function losslessWebPSize(bytes) {
+  if (bytes.length < 30 || bytes.toString('ascii', 0, 4) !== 'RIFF' || bytes.toString('ascii', 8, 12) !== 'WEBP'
+    || bytes.readUInt32LE(4) + 8 !== bytes.length) fail('converted image is not a WebP file');
+  for (let cursor = 12; cursor + 8 <= bytes.length;) {
+    const kind = bytes.toString('ascii', cursor, cursor + 4), length = bytes.readUInt32LE(cursor + 4);
+    if (kind === 'VP8L') {
+      if (length < 5 || bytes[cursor + 8] !== 0x2f) fail('converted image is not lossless WebP');
+      const bits = bytes.readUInt32LE(cursor + 9);
+      return [(bits & 0x3fff) + 1, ((bits >>> 14) & 0x3fff) + 1];
+    }
+    if (kind !== 'VP8X' && kind !== 'ICCP') fail('converted image is not lossless WebP');
+    cursor += 8 + length + (length & 1);
+  }
+  return fail('converted image is not lossless WebP');
+}
+function binaryChunk(bytes) {
+  for (let cursor = 12; cursor + 8 <= bytes.length;) {
+    const length = bytes.readUInt32LE(cursor);
+    if (bytes.readUInt32LE(cursor + 4) === BIN_CHUNK) return bytes.subarray(cursor + 8, cursor + 8 + length);
+    cursor += 8 + length;
+  }
+  return fail('GLB has no binary chunk');
+}
+/** Texture slots (by material key) using each image index, following core and EXT_texture_webp sources. */
+function imageSlots(document) {
+  const slots = new Map();
+  for (const material of document.materials ?? []) for (const [location, info] of textureInfos(material)) {
+    const texture = at(document.textures, info.index, 'material texture');
+    for (const source of [texture.source, texture.extensions?.EXT_texture_webp?.source]) {
+      if (source === undefined) continue;
+      const set = slots.get(numeric(source)) ?? new Set();
+      set.add(location.split('/').pop()); slots.set(numeric(source), set);
+    }
+  }
+  return slots;
+}
+/** Check every converted image: WebP lossless payload of the recorded size, resizes only for data maps. */
+function verifyConvertedImages(file, document) {
+  const converted = (document.images ?? []).map((image, index) => [index, image]).filter(([, image]) => image.extras?.[IMAGE_CONVERSION] !== undefined);
+  if (!converted.length) return;
+  const binary = binaryChunk(readFileSync(file)), slots = imageSlots(document);
+  if (!document.extensionsUsed?.includes('EXT_texture_webp') || !document.extensionsRequired?.includes('EXT_texture_webp')) fail('converted WebP textures need EXT_texture_webp');
+  for (const [index, image] of converted) {
+    const record = conversionRecord(image), webp = losslessWebPSize(imagePayload(document, binary, image));
+    if (webp[0] !== record.size[0] || webp[1] !== record.size[1]) fail('converted image size differs from its record');
+    if (record.resizedFrom !== undefined) {
+      const used = slots.get(index);
+      if (!used?.size || [...used].some(slot => !DATA_TEXTURE_SLOTS.includes(slot))) fail('only normal, metallic-roughness and occlusion maps may be downscaled');
+    }
+  }
+}
+/** Put a converted texture/image back into its recorded source form before hashing a material receipt. */
+function revertConversion(document, texture) {
+  const extension = texture.extensions?.EXT_texture_webp;
+  if (!object(extension) || extension.source === undefined) return;
+  const image = at(document.images, extension.source, 'texture image');
+  if (conversionRecord(image) === undefined) return;
+  texture.source = extension.source;
+  delete texture.extensions.EXT_texture_webp;
+  if (!Object.keys(texture.extensions).length) delete texture.extensions;
+}
+function sourceImageGraph(document, binary, image) {
+  const record = conversionRecord(image), graph = cloneReceipt(image), bytes = imagePayload(document, binary, image);
+  delete graph.bufferView; delete graph.uri;
+  if (record === undefined) return { graph, sha256: digest(bytes), bytes: bytes.length };
+  graph.mimeType = record.sourceMimeType;
+  delete graph.extras[IMAGE_CONVERSION];
+  if (!Object.keys(graph.extras).length) delete graph.extras;
+  graph.payloadSHA256 = record.sourceSHA256;
+  return { graph, sha256: record.sourceSHA256, bytes: record.sourceBytes };
+}
 function materialReceipt(document, binary, material) {
   const normalized = cloneReceipt(material), requiredImages = [], uvSets = new Set();
   delete normalized.name; delete normalized.extras;
   for (const [location, info] of textureInfos(normalized)) {
     const texture = cloneReceipt(at(document.textures, info.index, 'material texture'));
+    revertConversion(document, texture);
     if (texture.sampler !== undefined) texture.sampler = cloneReceipt(at(document.samplers, texture.sampler, 'sampler'));
     const sources = [...imageSources(texture)];
     if (!sources.length) fail('source material texture has no image');
     for (const [owner, key] of sources) {
-      const image = at(document.images, owner[key], 'texture image'), bytes = imagePayload(document, binary, image);
-      const graph = cloneReceipt(image), sha256 = digest(bytes);
-      delete graph.bufferView; delete graph.uri;
+      const { graph, sha256, bytes } = sourceImageGraph(document, binary, at(document.images, owner[key], 'texture image'));
       graph.payloadSHA256 = sha256;
       owner[key] = graph;
-      requiredImages.push({ textureInfo: location, sha256, bytes: bytes.length });
+      requiredImages.push({ textureInfo: location, sha256, bytes });
     }
     info.index = texture;
     const uv = numeric(info.extensions?.KHR_texture_transform?.texCoord ?? info.texCoord ?? 0);
@@ -428,6 +527,7 @@ export function verifyPublicModels(root = ROOT) {
     const bytes = readFileSync(file);
     if (bytes.length !== entry.bytes || digest(bytes) !== entry.sha256) fail(`source hash or size mismatch: ${entry.path}`);
     const document = readModelMetadata(file);
+    verifyConvertedImages(file, document);
     if (sourceGarment) verifySourceGarment(root, entry, file, document, byProfile.get(entry.path));
   }
   const source = path.join(root, PUBLIC_MODEL_DIRECTORY);

@@ -2,8 +2,9 @@
 
 The 2026-10-31 inventory snapshot contains **106 models**: 17 project-authored
 scene models, 12 retained body/hair exports, 32 fitted outfits/wardrobe pieces and
-45 simplified campus vehicles. Their registered GLB bytes total **691,568,420**
-(about 660 MiB before packaging compression); this is asset size, not measured
+45 simplified campus vehicles. Their registered GLB bytes total **417,978,116**
+(about 399 MiB before packaging compression; 38 garment, outfit and hair files had their
+PNG textures re-encoded losslessly, see "Texture encoding"); this is asset size, not measured
 startup cost or runtime memory. Web, Desktop and the npm Bridge share the inventory.
 Exact hashes, sizes, declared licenses and provenance are in [models.json](models.json).
 
@@ -14,6 +15,27 @@ source garments, generated additions and derived vehicles keep the component
 terms described in [AVATAR_SOURCE_LICENSE.md](AVATAR_SOURCE_LICENSE.md) and
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Inventory validation checks
 these recorded declarations and bytes; it is not an independent grant of rights.
+
+## Texture encoding
+
+`tooling/compress-public-models.py` (`--dry-run`, `--write`, `--verify`) shrinks GLBs
+without changing any motif:
+
+- PNG colour textures (base colour, emissive and any other slot) become **lossless WebP**;
+  the decoded RGBA pixels, including alpha, must be exactly equal or the PNG is kept.
+  JPEG textures are left as they are.
+- Normal, metallic-roughness and occlusion maps larger than 2048 px are downscaled to
+  2048 px (Lanczos, aspect kept) and stored as lossless WebP. An image that is also used by
+  any other slot is never resized.
+- Identical image payloads are stored once; geometry, skins, morph targets, UVs, materials
+  and samplers are untouched.
+- Textures use `EXT_texture_webp` (listed in `extensionsUsed` and `extensionsRequired`, like
+  the avatar bodies); three.js `GLTFLoader` decodes it natively. No Draco, Meshopt or KTX2:
+  the CSP `script-src 'self'` blocks WASM decoders.
+- Each converted image records `extras.extaliaImageConversion` (source SHA-256 and size,
+  pixel hashes, `resizedFrom` for a downscale). `tooling/public-models.mjs` hashes the
+  recorded source image for the per-garment material receipts, so `source-garments.json`
+  keeps the original image hashes as provenance, and rejects a resize of any colour map.
 
 ## Campus vehicles
 

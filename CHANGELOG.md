@@ -16,6 +16,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.162] - 2026-11-04
+
+### Changed
+
+- Public models: 38 garment, outfit and hair GLBs re-encode their PNG textures as lossless WebP (`EXT_texture_webp`) and store identical images once; normal, metallic-roughness and occlusion maps above 2048 px are downscaled to 2048 px. Colour pixels are identical and no motif changes; the registered GLB total drops from 691,568,420 to 417,978,116 bytes. `tooling/compress-public-models.py` repeats the conversion (`--dry-run`, `--write`, `--verify`), and the model validator accepts a conversion only when it is recorded against the original image hash.
+
 ## [0.4.161] - 2026-11-04
 
 ### Fixed
