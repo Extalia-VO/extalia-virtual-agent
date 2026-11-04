@@ -16,6 +16,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.164] - 2026-11-04
+
+### Changed
+
+- The Office loading screen follows real model loading instead of fixed stages: the bar grows smoothly and never jumps or moves backwards, the percentage counts through every number, a soft highlight sweeps left to right while loading continues, and the label names what is loading (for example "Loading clothing · Victorian bartender (12 of 48)" / "Memuat pakaian · … (12 dari 48)"). On slow devices the bar keeps creeping within the current stage instead of freezing. Reduced motion shows the value without easing or shimmer, and screen-reader updates are throttled.
+
 ## [0.4.163] - 2026-11-04
 
 ### Changed

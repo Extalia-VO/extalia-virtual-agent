@@ -32,6 +32,7 @@ export { MAX_ZOOM } from './CameraView';
 import type { OfficeActivity } from '../activityFeed';
 import { CharacterBubbles } from './CharacterBubbles';
 import { PopoverAnchor } from './PopoverAnchor';
+import { publishLoad } from '../loadFeed';
 
 export interface OfficeCanvasProps {
   agents: readonly OfficeAgent[];
@@ -78,6 +79,12 @@ function SceneReadiness({ onScene, onReady }: Pick<OfficeCanvasProps, 'onScene' 
   const frames = useRef(0);
   const notified = useRef(false);
   useEffect(() => { onScene?.(); }, [onScene]);
+  // Feed the DOM loading overlay (which cannot import three/drei) with the real loader progress.
+  useEffect(() => {
+    const push = () => { const { active, loaded, total, item } = useProgress.getState(); publishLoad({ active, loaded, total, item }); };
+    push();
+    return useProgress.subscribe(push);
+  }, []);
   useFrame(() => {
     const active = useProgress.getState().active;
     if (notified.current || active) { if (active) frames.current = 0; return; }

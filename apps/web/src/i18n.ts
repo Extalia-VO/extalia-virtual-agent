@@ -1,5 +1,6 @@
 import type { ActivityKind, AgentPhase, AgentState, FileChangeKind, RiskLevel, StopReason } from '@extalia/protocol';
 import type { UpdateStatus } from '@extalia/platform';
+import type { LoadCategory } from './office/loadProgress';
 
 /**
  * UI text catalog. English is the default; Bahasa Indonesia is the second
@@ -630,6 +631,8 @@ const en = {
   ],
   officeUx: {
     loadingLabel: 'Loading the office', loadingEngine: 'Loading the 3D engine…', loadingScene: 'Building floors, furniture and characters…', loadingReady: 'Ready',
+    loadingItem: (category: string, name: string, current: number, total: number) => `Loading ${category}${name ? ` · ${name}` : ''} (${current} of ${total})`,
+    loadingCategories: { characters: 'characters', hair: 'hair', clothing: 'clothing', building: 'architecture', furniture: 'furniture', landscape: 'landscape', vehicles: 'vehicles', textures: 'textures', other: 'assets' } as Record<LoadCategory, string>,
     collapse: 'Collapse the agents panel', expand: 'Expand the agents panel',
     toastRegion: 'Agent activity', dismiss: 'Dismiss',
     toast: {
@@ -2360,6 +2363,8 @@ const id: Messages = {
   ],
   officeUx: {
     loadingLabel: 'Memuat kantor', loadingEngine: 'Memuat mesin 3D…', loadingScene: 'Menyusun lantai, furnitur, dan karakter…', loadingReady: 'Siap',
+    loadingItem: (category: string, name: string, current: number, total: number) => `Memuat ${category}${name ? ` · ${name}` : ''} (${current} dari ${total})`,
+    loadingCategories: { characters: 'karakter', hair: 'rambut', clothing: 'pakaian', building: 'arsitektur', furniture: 'furnitur', landscape: 'lanskap', vehicles: 'kendaraan', textures: 'tekstur', other: 'aset' } as Record<LoadCategory, string>,
     collapse: 'Ciutkan panel agent', expand: 'Bentangkan panel agent',
     toastRegion: 'Aktivitas agent', dismiss: 'Tutup',
     toast: {

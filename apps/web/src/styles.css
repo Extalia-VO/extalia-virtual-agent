@@ -2037,8 +2037,15 @@ input[type='file']::file-selector-button {
 .office-loading.done { opacity: 0; pointer-events: none; }
 .office-loading-card { width: min(360px, 75%); }
 .office-loading-bar { height: 5px; background: var(--line); border-radius: 20px; overflow: hidden; margin-top: 24px; }
-.office-loading-bar span { display: block; height: 100%; background: linear-gradient(90deg,#13b8a6,#89d33f); transition: width 140ms linear; }
+.office-loading-fill { position: relative; display: block; height: 100%; overflow: hidden; border-radius: inherit; background: linear-gradient(90deg,#13b8a6,#89d33f); will-change: width; }
+/* A soft highlight sweeps left to right over the fill, with a gentle pulse, so a slow load never looks stuck. */
+.office-loading-fill.shimmer { animation: office-loading-pulse 1.6s ease-in-out infinite; }
+.office-loading-fill.shimmer::after { content: ''; position: absolute; inset: 0; width: 60%; background: linear-gradient(90deg, transparent, color-mix(in srgb, #fff 70%, transparent), transparent); animation: office-loading-sweep 1.6s ease-in-out infinite; }
+@keyframes office-loading-sweep { from { transform: translateX(-100%); } to { transform: translateX(260%); } }
+@keyframes office-loading-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .82; } }
 .office-loading-card p { display: flex; justify-content: space-between; gap: 12px; color: var(--muted); font-size: 12px; }
+.office-loading-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.office-loading-percent { font-variant-numeric: tabular-nums; }
 /* Centered in the scene area left of the agents panel; above the prompt dock while it is shown. */
 .office-toasts { position: absolute; bottom: 16px; left: 16px; right: calc(min(420px, 48%) + 32px); z-index: 26; display: grid; justify-items: center; gap: 8px; pointer-events: none; }
 .office-toast { width: min(360px, 100%); }
@@ -2061,7 +2068,8 @@ input[type='file']::file-selector-button {
   .office-toasts { bottom: 180px; left: 12px; right: 12px; width: auto; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .office-panel-body, .office-loading, .office-character-bubble, .office-loading-bar span { transition: none; }
+  .office-panel-body, .office-loading, .office-character-bubble { transition: none; }
+  .office-loading-fill, .office-loading-fill::after { animation: none; }
   .office-toast { animation: none; }
 }
 
