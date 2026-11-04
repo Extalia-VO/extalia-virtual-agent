@@ -1,0 +1,83 @@
+name: Diagnose retained Mac archives
+
+# Read-only diagnosis of already-built archives. This never publishes release files
+# or substitutes for the mandatory distribution checks in the Release workflow.
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: Release workflow run containing the retained archives
+        required: true
+        type: string
+      version:
+        description: Exact archive version, for example 0.4.157
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  verify:
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .node-version
+      - name: Validate archive coordinates
+        env:
+          ARCHIVE_RUN_ID: ${{ inputs.run_id }}
+          ARCHIVE_VERSION: ${{ inputs.version }}
+        run: |
+          node --input-type=module <<'JS'
+          if (!/^[1-9][0-9]{0,19}$/.test(process.env.ARCHIVE_RUN_ID ?? '')
+            || !/^\d+\.\d+\.\d+$/.test(process.env.ARCHIVE_VERSION ?? '')) {
+            throw new Error('Expected a numeric run ID and an exact release version.');
+          }
+          JS
+      - uses: actions/download-artifact@v4
+        with:
+          name: unverified-macos-v${{ inputs.version }}
+          path: retained-archives
+          run-id: ${{ inputs.run_id }}
+          github-token: ${{ github.token }}
+      - name: Verify all four retained archives with strict preview gates
+        env:
+          ARCHIVE_VERSION: ${{ inputs.version }}
+        run: |
+          node --input-type=module <<'JS'
+          import { readdir, writeFile } from 'node:fs/promises';
+          import path from 'node:path';
+          import { verifyMacArchive } from './apps/desktop/scripts/release.mjs';
+          const version = process.env.ARCHIVE_VERSION;
+          const expected = ['arm64', 'x64'].flatMap(arch => ['dmg', 'zip'].map(extension => ({
+            name: `Extalia-${version}-mac-${arch}.${extension}`, arch,
+          })));
+          const actual = (await readdir('retained-archives')).sort();
+          if (JSON.stringify(actual) !== JSON.stringify(expected.map(item => item.name).sort())) {
+            throw new Error('Expected exactly four version-matched Mac archives.');
+          }
+          const results = [];
+          for (const item of expected) {
+            try {
+              await verifyMacArchive(path.resolve('retained-archives', item.name), item.arch, { mode: 'preview' });
+              results.push({ ...item, ok: true });
+            } catch (error) {
+              results.push({ ...item, ok: false, error: error.message });
+            }
+          }
+          await writeFile('mac-archive-diagnostics.json', `${JSON.stringify({ version, results }, null, 2)}\n`);
+          console.log(JSON.stringify(results, null, 2));
+          if (results.some(item => !item.ok)) process.exitCode = 1;
+          JS
+      - name: Retain bounded diagnostic report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mac-archive-diagnostics-${{ github.run_id }}
+          path: mac-archive-diagnostics.json
+          if-no-files-found: ignore
+          retention-days: 3

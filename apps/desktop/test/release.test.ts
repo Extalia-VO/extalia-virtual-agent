@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { macReleaseMode, releaseArtifactNames, releaseBuildOptions, runCommand, uploadRelease, verifyMacArchive, type Runner } from '../scripts/release.mjs';
+import { macReleaseMode, releaseArtifactNames, releaseBuildOptions, runCommand, uploadRelease, verifyMacApp, verifyMacArchive, type Runner } from '../scripts/release.mjs';
 
 const version = '1.2.3';
 const tag = `v${version}`;
@@ -19,11 +19,18 @@ async function fixture(platform = 'darwin') {
   return root;
 }
 type Call = { command: string; args: string[] };
+async function executableFixture(app: string, architecture: 'arm64' | 'x64' = 'arm64') {
+  const directory = path.join(app, 'Contents', 'MacOS'); await mkdir(directory, { recursive: true });
+  const bytes = Buffer.alloc(64); bytes.writeUInt32LE(0xfeedfacf, 0); bytes.writeUInt32LE(architecture === 'x64' ? 0x01000007 : 0x0100000c, 4);
+  await writeFile(path.join(directory, 'Extalia'), bytes);
+}
 function runner(fail?: (command: string, args: string[], calls: Call[]) => boolean, identity = developerId) {
   const calls: Call[] = [];
   const run: Runner = async (command, args) => {
     calls.push({ command, args });
     if (fail?.(command, args, calls)) throw new Error('synthetic command failure');
+    if (command === 'hdiutil' && args[0] === 'attach') await executableFixture(path.join(args[args.indexOf('-mountpoint') + 1]!, 'Extalia.app'), args.at(-1)?.includes('-x64.') ? 'x64' : 'arm64');
+    if (command === 'ditto') await executableFixture(path.join(args.at(-1)!, 'Extalia.app'), args[2]?.includes('-x64.') ? 'x64' : 'arm64');
     if (command === 'codesign' && args[0] === '--display') return { stdout: '', stderr: identity };
     if (command === 'gh' && args[1] === 'view') return { stdout: JSON.stringify({ isDraft: true, tagName: tag }), stderr: '' };
     return { stdout: '', stderr: '' };
@@ -78,6 +85,70 @@ describe('release packaging preflight', () => {
 
   it('does not expose subprocess arguments, output or credentials in command failures', async () => {
     await expect(runCommand(process.execPath, ['-e', 'process.stderr.write(process.env.SYNTHETIC_SECRET); process.exit(2)'], { env: { SYNTHETIC_SECRET: 'do-not-log-this-value' } })).rejects.toThrow(/^node(?:\.exe)? failed \(2\)\.$/);
+  });
+});
+
+describe('bounded macOS executable diagnostics', () => {
+  it('refuses a missing executable without invoking lipo or exposing its filesystem path', async () => {
+    const directory = await fixture(); const { run, calls } = runner(undefined, adHoc);
+    const promise = verifyMacApp(path.join(directory, 'private-source-marker.app'), 'arm64', run, 'preview');
+    await expect(promise).rejects.toThrow('executable is missing or inaccessible');
+    await expect(promise).rejects.not.toThrow('private-source-marker'); expect(calls).toEqual([]);
+  });
+
+  it('refuses empty, non-Mach-O and symlinked executable entries before lipo', async () => {
+    const directory = await fixture(); const app = path.join(directory, 'Extalia.app'); await executableFixture(app);
+    const executable = path.join(app, 'Contents', 'MacOS', 'Extalia'); const { run, calls } = runner(undefined, adHoc);
+    await writeFile(executable, ''); await expect(verifyMacApp(app, 'arm64', run)).rejects.toThrow('nonempty regular file');
+    await writeFile(executable, 'Untrusted text rather than a Mach-O.'); await expect(verifyMacApp(app, 'arm64', run)).rejects.toThrow('not a valid Mach-O');
+    if (process.platform !== 'win32') {
+      await rm(executable); await symlink(path.join(directory, 'unavailable'), executable);
+      await expect(verifyMacApp(app, 'arm64', run)).rejects.toThrow('nonempty regular file');
+    }
+    expect(calls).toEqual([]);
+  });
+
+  it('reports fixed expected/observed architecture labels and refuses a mismatch before invoking the tool', async () => {
+    const directory = await fixture(); const app = path.join(directory, 'Extalia.app'); await executableFixture(app, 'x64');
+    const { run, calls } = runner(undefined, adHoc);
+    await expect(verifyMacApp(app, 'arm64', run)).rejects.toThrow('expected arm64; observed x86_64'); expect(calls).toEqual([]);
+  });
+
+  it('recognizes both bounded universal Mach-O slices while still requiring lipo for each requested architecture', async () => {
+    const directory = await fixture(); const app = path.join(directory, 'Extalia.app'); await executableFixture(app);
+    const bytes = Buffer.alloc(128); bytes.writeUInt32BE(0xcafebabe, 0); bytes.writeUInt32BE(2, 4);
+    for (const [index, cpu] of [0x0100000c, 0x01000007].entries()) {
+      const entry = 8 + index * 20; bytes.writeUInt32BE(cpu, entry); bytes.writeUInt32BE(64 + index * 32, entry + 8); bytes.writeUInt32BE(32, entry + 12);
+      bytes.writeUInt32LE(0xfeedfacf, 64 + index * 32); bytes.writeUInt32LE(cpu, 68 + index * 32);
+    }
+    await writeFile(path.join(app, 'Contents', 'MacOS', 'Extalia'), bytes);
+    const { run, calls } = runner(undefined, adHoc);
+    await verifyMacApp(app, 'arm64', run); await verifyMacApp(app, 'x64', run);
+    expect(calls.filter(call => call.command === 'lipo').map(call => call.args[1])).toEqual(['arm64', 'x86_64']);
+  });
+
+  it('still requires lipo success after a matching pure Mach-O header and never echoes arbitrary tool errors', async () => {
+    const directory = await fixture(); const app = path.join(directory, 'Extalia.app'); await executableFixture(app);
+    const calls: string[] = [];
+    const run: Runner = async command => { calls.push(command); throw new Error('private diagnostic payload'); };
+    const promise = verifyMacApp(app, 'arm64', run);
+    await expect(promise).rejects.toThrow(/lipo verification failed \(expected arm64; observed arm64; tool [a-z-]+; developer override (?:set|unset); tool-failure\)/);
+    await expect(promise).rejects.not.toThrow('private diagnostic payload'); expect(calls).toEqual(['lipo']);
+  });
+
+  it('keeps lipo followed by identity and deep strict signature checks on success', async () => {
+    const directory = await fixture(); const app = path.join(directory, 'Extalia.app'); await executableFixture(app);
+    const { run, calls } = runner(undefined, adHoc); await verifyMacApp(app, 'arm64', run);
+    expect(calls.map(call => call.command)).toEqual(['lipo', 'codesign', 'codesign']);
+    expect(calls[0]!.args).toEqual(['-verify_arch', 'arm64', path.join(app, 'Contents', 'MacOS', 'Extalia')]);
+    expect(calls[2]!.args).toEqual(['--verify', '--deep', '--strict', '--verbose=2', app]);
+  });
+
+  it.skipIf(process.platform === 'win32')('classifies lipo argument errors without leaking stderr or command arguments', async () => {
+    const directory = await fixture(); const executable = path.join(directory, 'lipo'); await symlink(process.execPath, executable);
+    const promise = runCommand(executable, ['-e', 'process.stderr.write("usage: private-release-marker"); process.exit(1)']);
+    await expect(promise).rejects.toThrow('lipo failed (1; invalid-arguments)');
+    await expect(promise).rejects.not.toThrow('private-release-marker');
   });
 });
 
@@ -181,7 +252,7 @@ describe('distributed macOS release checks', () => {
       if (command === 'hdiutil' && args.at(-1)?.endsWith('-x64.dmg')) x64Started = true;
       return x64Started && command === failingCommand && (command !== 'codesign' || args[0] === '--verify');
     });
-    await expect(uploadRelease({ platform: 'darwin', version, tag, directory, run, temporaryDirectory: directory, mode: 'notarized' })).rejects.toThrow('synthetic command failure');
+    await expect(uploadRelease({ platform: 'darwin', version, tag, directory, run, temporaryDirectory: directory, mode: 'notarized' })).rejects.toThrow(failingCommand === 'lipo' ? 'lipo verification failed' : 'synthetic command failure');
     expect(x64Started).toBe(true);
     expect(calls.filter(call => call.command === 'hdiutil' && call.args[0] === 'detach')).toHaveLength(2);
     expect(calls.some(call => call.command === 'gh')).toBe(false);

@@ -16,6 +16,13 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.158] - 2026-10-31
+
+### Fixed
+
+- Coordinate late-execution mission tests after the provider or tool actually enters, keeping real timeout callbacks and fail-closed assertions. Exercise byte-based history pruning through two durable saves instead of repeated large setup writes on Windows.
+- Report bounded Mac archive executable and architecture-tool failure diagnostics while preserving mandatory architecture and strict signature checks. Add a read-only hosted workflow to diagnose retained archives without publishing them or replacing release gates.
+
 ## [0.4.157] - 2026-10-31
 
 ### Added
