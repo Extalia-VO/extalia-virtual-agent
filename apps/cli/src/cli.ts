@@ -46,6 +46,10 @@ Commands:
     --trust             Approve Extalia hooks in Codex via codex app-server
   disconnect <app>    Remove Extalia hooks from an agent app
   connections         Show hook connection status for all agent apps
+    --recover           Review an interrupted connect or disconnect (preview only)
+    --rollback          With --recover: restore the files to their state before it
+    --keep              With --recover: keep the current files and forget the record
+    --yes, -y           With --recover --rollback|--keep: confirm without asking
   mcp                 Run the stdio MCP reporting server (report_intent, report_handoff)
   update              Install the latest version from npm
     --check             Only report whether a newer version exists

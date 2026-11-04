@@ -164,24 +164,93 @@ export async function runDisconnect(host: CliHost, args: readonly string[]): Pro
   }
 }
 
+export interface ParsedConnectionsArgs {
+  recover: boolean;
+  action?: 'rollback' | 'keep';
+  yes: boolean;
+}
+
+type RecoveryReport = Awaited<ReturnType<ConnectService['recover']>>;
+
+const CONNECTIONS_USAGE = 'connections: Usage: extalia connections [--recover [--rollback|--keep] [--yes]]';
+
+export function parseConnectionsArgs(args: readonly string[]): ParsedConnectionsArgs | undefined {
+  const flags = new Set<string>();
+  for (const arg of args) {
+    if (!['--recover', '--rollback', '--keep', '--yes', '-y'].includes(arg) || flags.has(arg)) return undefined;
+    flags.add(arg);
+  }
+  const recover = flags.has('--recover');
+  const rollback = flags.has('--rollback');
+  const keep = flags.has('--keep');
+  const yes = flags.has('--yes') || flags.has('-y');
+  if (!recover) return flags.size === 0 ? { recover: false, yes: false } : undefined;
+  if (rollback && keep) return undefined;
+  if (yes && !rollback && !keep) return undefined;
+  return { recover: true, ...(rollback ? { action: 'rollback' as const } : keep ? { action: 'keep' as const } : {}), yes };
+}
+
+async function showConnections(host: CliHost): Promise<number> {
+  const service = await resolveService(host);
+  const connections = await service.connections();
+  for (const item of connections) {
+    const version = item.version ? ` ${item.version}` : '';
+    const trust = item.app === 'codex' && item.trust.status !== 'not-applicable'
+      ? ` | trust: ${item.trust.status} (${item.trust.trusted}/${item.trust.total})`
+      : '';
+    const hostInfo = ` | host: ${item.hostRunning ? 'running' : 'down'} (port ${item.port})`;
+    const lastEvent = item.lastEventAt ? ` | last event: ${item.lastEventAt}` : '';
+    host.out(`${item.label}${version}: ${item.state}${trust}${hostInfo}${lastEvent}`);
+    host.out(`  Config: ${item.configPath}`);
+    for (const warning of item.warnings) host.out(`  Warning: ${warning}`);
+  }
+  return 0;
+}
+
+/** Print the interrupted operation; returns false when there is none. */
+function printInterrupted(host: CliHost, operation: RecoveryReport['operation']): boolean {
+  if (!operation) {
+    host.out('No interrupted connection change.');
+    return false;
+  }
+  const kind = operation.operation === 'connect' ? 'connection' : 'disconnection';
+  host.out(`Interrupted ${kind} of ${LABELS[operation.app]} started ${operation.startedAt}`);
+  for (const entry of operation.entries) host.out(`  ${entry.state}: ${entry.target}`);
+  host.out('Roll back with --recover --rollback, or keep the current files with --recover --keep.');
+  return true;
+}
+
 export async function runConnections(host: CliHost, args: readonly string[]): Promise<number> {
-  if (args.length > 0) {
-    host.err('connections: Usage: extalia connections');
+  const parsed = parseConnectionsArgs(args);
+  if (!parsed) {
+    host.err(CONNECTIONS_USAGE);
     return 2;
   }
   try {
+    if (!parsed.recover) return await showConnections(host);
+
     const service = await resolveService(host);
-    const connections = await service.connections();
-    for (const item of connections) {
-      const version = item.version ? ` ${item.version}` : '';
-      const trust = item.app === 'codex' && item.trust.status !== 'not-applicable'
-        ? ` | trust: ${item.trust.status} (${item.trust.trusted}/${item.trust.total})`
-        : '';
-      const hostInfo = ` | host: ${item.hostRunning ? 'running' : 'down'} (port ${item.port})`;
-      const lastEvent = item.lastEventAt ? ` | last event: ${item.lastEventAt}` : '';
-      host.out(`${item.label}${version}: ${item.state}${trust}${hostInfo}${lastEvent}`);
-      host.out(`  Config: ${item.configPath}`);
-      for (const warning of item.warnings) host.out(`  Warning: ${warning}`);
+    const preview = await service.recover('preview');
+    if (!printInterrupted(host, preview.operation)) return 0;
+    if (!parsed.action) return 0;
+
+    if (!parsed.yes) {
+      const question = parsed.action === 'rollback'
+        ? 'Roll back these changes? [y/N] '
+        : 'Keep the current files and forget this record? [y/N] ';
+      const confirmed = host.prompt ? await host.prompt(question) : false;
+      if (!confirmed) {
+        host.err('Cancelled. Nothing was changed (pass --yes to confirm non-interactively).');
+        return 1;
+      }
+    }
+
+    const report = await service.recover(parsed.action);
+    if (parsed.action === 'rollback') {
+      host.out(`Restored ${report.restored.length} file(s).`);
+      for (const file of report.restored) host.out(`  ${file}`);
+    } else {
+      host.out('Kept the current files.');
     }
     return 0;
   } catch (error) {

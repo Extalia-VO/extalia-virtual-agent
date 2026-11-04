@@ -3,7 +3,7 @@ import { request, type IncomingHttpHeaders } from 'node:http';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { Readable } from 'node:stream';
-import { createAgentHost, createConnectService, type AgentHostRuntime } from '@extalia/host';
+import { createAgentHost, createConnectService, type AgentHostRuntime, type ConnectService } from '@extalia/host';
 import type { AgentHostApi, UpdateStatus } from '@extalia/platform';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { startBridgeServer, type BridgeServer } from '../src/bridge/server';
@@ -98,6 +98,125 @@ describe('extalia connect / disconnect / connections CLI and Bridge hook route',
     };
     return { value, out, err };
   }
+
+  type RecoveryReport = Awaited<ReturnType<ConnectService['recover']>>;
+
+  /** A ConnectService whose recovery is scripted; every other method is a stub that fails if called. */
+  function fakeConnectService(recover: (action: 'preview' | 'rollback' | 'keep') => Promise<RecoveryReport>): ConnectService {
+    const unused = async (): Promise<never> => { throw new Error('not used by this test'); };
+    return {
+      connections: async () => [],
+      plan: unused,
+      apply: unused,
+      disconnect: unused,
+      test: unused,
+      recover,
+    };
+  }
+
+  it('reports when no connection change was interrupted', async () => {
+    const io = makeHost();
+    expect(await run(['connections', '--recover'], io.value)).toBe(0);
+    expect(io.out).toEqual(['No interrupted connection change.']);
+    expect(io.err).toEqual([]);
+  });
+
+  it.each([
+    ['--rollback'],
+    ['--keep'],
+    ['--yes'],
+    ['--recover', '--rollback', '--keep'],
+    ['--recover', '--yes'],
+    ['--recover', '--bogus'],
+    ['--recover', '--recover'],
+    ['extra'],
+  ])('rejects invalid connections arguments %j with a usage error', async (...args) => {
+    const io = makeHost();
+    expect(await run(['connections', ...args], io.value)).toBe(2);
+    expect(io.err.join('\n')).toContain('connections: Usage: extalia connections [--recover [--rollback|--keep] [--yes]]');
+    expect(io.out).toEqual([]);
+  });
+
+  it('previews an interrupted connection without changing anything', async () => {
+    const calls: string[] = [];
+    const io = makeHost({
+      connectService: async () => fakeConnectService(async action => {
+        calls.push(action);
+        return {
+          action,
+          restored: [],
+          resolved: false,
+          operation: {
+            operation: 'connect',
+            app: 'codex',
+            startedAt: '2026-11-04T10:00:00.000Z',
+            entries: [
+              { target: '/home/user/.codex/config.toml', state: 'applied' },
+              { target: '/home/user/.codex/hooks.json', state: 'not-applied' },
+            ],
+          },
+        };
+      }),
+    });
+    expect(await run(['connections', '--recover'], io.value)).toBe(0);
+    expect(calls).toEqual(['preview']);
+    expect(io.out).toEqual([
+      'Interrupted connection of Codex started 2026-11-04T10:00:00.000Z',
+      '  applied: /home/user/.codex/config.toml',
+      '  not-applied: /home/user/.codex/hooks.json',
+      'Roll back with --recover --rollback, or keep the current files with --recover --keep.',
+    ]);
+  });
+
+  it('rolls back an interrupted disconnection with --yes and lists the restored files', async () => {
+    const calls: string[] = [];
+    const prompt = vi.fn(async () => true);
+    const operation = {
+      operation: 'disconnect' as const,
+      app: 'claude' as const,
+      startedAt: '2026-11-04T11:00:00.000Z',
+      entries: [{ target: '/home/user/.claude/settings.json', state: 'applied' as const }],
+    };
+    const io = makeHost({
+      prompt,
+      connectService: async () => fakeConnectService(async action => {
+        calls.push(action);
+        if (action === 'rollback') return { action, restored: ['/home/user/.claude/settings.json'], resolved: true, operation };
+        return { action, restored: [], resolved: false, operation };
+      }),
+    });
+    expect(await run(['connections', '--recover', '--rollback', '--yes'], io.value)).toBe(0);
+    expect(calls).toEqual(['preview', 'rollback']);
+    expect(prompt).not.toHaveBeenCalled();
+    expect(io.out).toEqual([
+      'Interrupted disconnection of Claude Code started 2026-11-04T11:00:00.000Z',
+      '  applied: /home/user/.claude/settings.json',
+      'Roll back with --recover --rollback, or keep the current files with --recover --keep.',
+      'Restored 1 file(s).',
+      '  /home/user/.claude/settings.json',
+    ]);
+  });
+
+  it('cancels rollback when the prompt is declined and changes nothing', async () => {
+    const calls: string[] = [];
+    const prompt = vi.fn(async () => false);
+    const io = makeHost({
+      prompt,
+      connectService: async () => fakeConnectService(async action => {
+        calls.push(action);
+        return {
+          action,
+          restored: [],
+          resolved: false,
+          operation: { operation: 'connect', app: 'codex', startedAt: '2026-11-04T10:00:00.000Z', entries: [{ target: '/home/user/.codex/config.toml', state: 'changed' }] },
+        };
+      }),
+    });
+    expect(await run(['connections', '--recover', '--rollback'], io.value)).toBe(1);
+    expect(prompt).toHaveBeenCalledWith('Roll back these changes? [y/N] ');
+    expect(calls).toEqual(['preview']);
+    expect(io.err.join('\n')).toContain('Cancelled. Nothing was changed (pass --yes to confirm non-interactively).');
+  });
 
   it('runs extalia connect codex --dry-run without writing files', async () => {
     const io = makeHost();
