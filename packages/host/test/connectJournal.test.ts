@@ -4,7 +4,7 @@ import path from 'node:path';
 import type { AgentAppId } from '@extalia/platform';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { commitConfigWrites } from '../src/connect/configTransaction.js';
-import { withConnectOperation } from '../src/connect/operationJournal.js';
+import { inspectInterruptedOperation, withConnectOperation } from '../src/connect/operationJournal.js';
 import { createConnectService, type ConnectContext } from '../src/connect/service.js';
 import { writableTarget, writeConfigFile } from '../src/connect/util.js';
 
@@ -222,5 +222,32 @@ describe('commitConfigWrites with a journal', () => {
     for (const entry of entries) expect(await readFile(entry.file, 'utf8')).toBe(entry.before);
     expect(await exists(journalFile())).toBe(false);
     expect(await exists(path.join(connectDirectory(), 'journal'))).toBe(false);
+  });
+});
+
+describe('interrupted-operation liveness (independent review findings)', () => {
+  it('does not report an operation still running in this process as interrupted', async () => {
+    const file = await seed('codex'), target = await writableTarget(file);
+    let seenDuring: unknown = 'unset';
+    await withConnectOperation(connectDirectory(), { kind: 'connect', app: 'codex' }, options, async journal => {
+      await journal.record(target, original('codex'), 'model = "changed"\n');
+      seenDuring = await inspectInterruptedOperation(connectDirectory(), () => true);
+      await journal.complete();
+    });
+    expect(seenDuring).toBeUndefined();
+  });
+
+  it('reports a journal whose lock predates the last boot even when the pid is alive again', async () => {
+    const file = await seed('codex'), target = await writableTarget(file);
+    await mkdir(connectDirectory(), { recursive: true });
+    const pid = process.pid + 1;
+    await writeFile(journalFile(), JSON.stringify({
+      schema: 'extalia.connect-journal.v1', id: 'j', operation: 'connect', app: 'codex', pid, startedAt: '2001-01-01T00:00:00.000Z',
+      entries: [{ target, existed: false, afterSha256: null }],
+    }));
+    await writeFile(lockFile(), JSON.stringify({ schema: 'extalia.connect-lock.v1', id: 'l', pid, operation: 'connect:codex', startedAt: '2001-01-01T00:00:00.000Z' }));
+    const interrupted = await inspectInterruptedOperation(connectDirectory(), () => true);
+    expect(interrupted?.app).toBe('codex');
+    expect(await service({ alive: () => true }).recover('preview')).toMatchObject({ operation: { app: 'codex' } });
   });
 });
