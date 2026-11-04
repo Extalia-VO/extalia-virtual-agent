@@ -99,7 +99,7 @@ developer. Removing that warning requires a Developer ID signed and notarized bu
 ## Shared public scene assets
 
 The 2026-10-31 snapshot of `apps/web/public-assets/models.json` registers **106
-models**, totaling **691,568,420 GLB bytes** (about 660 MiB before packaging
+models**, totaling **417,978,116 GLB bytes** (about 399 MiB before packaging
 compression): 17 project-authored scene models, 12 retained body/hair exports,
 32 fitted outfits/wardrobe pieces and 45 campus vehicles. Declared-license counts
 are MIT 17, RenderHub Extended Use 23, CC-BY-4.0 57, CC-BY-NC-SA-4.0 4,

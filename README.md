@@ -114,7 +114,7 @@ Check downloaded files against [SHA256SUMS.txt](https://github.com/Extalia-VO/ex
 Web ZIP contains the client; running agents still requires the local Bridge or
 Desktop host. npm installs the Bridge, client and matching daemon together.
 
-The bundled GLB inventory is about **660 MiB before archive compression**, so
+The bundled GLB inventory is about **400 MiB before archive compression**, so
 downloads and first-time asset loading can take time. Source code is MIT;
 third-party scene assets have their own licenses, including five non-commercial
 vehicles. The commercial-assets switch changes runtime selection, not packaged

@@ -378,7 +378,16 @@ const canonicalJson = (value: unknown): string => {
   return JSON.stringify(value);
 };
 
-function sourceGarmentFixture(textured = false) {
+type ConversionCase = 'ok' | 'pixels' | 'resized' | 'size' | 'extension' | 'record';
+const sourcePixels = sha('source pixels');
+/** A VP8L header with the given size: enough for the validator's structural check. */
+function losslessWebP(width: number, height: number) {
+  const bytes = Buffer.alloc(32); bytes.write('RIFF'); bytes.writeUInt32LE(24, 4); bytes.write('WEBPVP8L', 8);
+  bytes.writeUInt32LE(12, 16); bytes[20] = 0x2f; bytes.writeUInt32LE((width - 1) | ((height - 1) << 14), 21);
+  return bytes;
+}
+
+function sourceGarmentFixture(textured = false, slot: 'baseColorTexture' | 'normalTexture' = 'baseColorTexture') {
   const test = avatarFixture();
   const bones = ['root', 'hips', 'spine', 'chest', 'neck', 'head', 'leftShoulder', 'leftUpperArm',
     'leftLowerArm', 'leftHand', 'rightShoulder', 'rightUpperArm', 'rightLowerArm', 'rightHand',
@@ -386,33 +395,43 @@ function sourceGarmentFixture(textured = false) {
   const image = Buffer.from('image123'), imageHash = sha(image);
   const material = { name: 'OriginalTop_Fabric', pbrMetallicRoughness: {
     baseColorFactor: [0.25, 0.5, 0.75, 1], roughnessFactor: 1,
-    ...(textured ? { baseColorTexture: { index: 0, texCoord: 0 } } : {}),
-  } };
+    ...(textured && slot === 'baseColorTexture' ? { baseColorTexture: { index: 0, texCoord: 0 } } : {}),
+  }, ...(textured && slot === 'normalTexture' ? { normalTexture: { index: 0, texCoord: 0 } } : {}) };
   const tokens = (text: string) => text.replace('"roughnessFactor":1', '"roughnessFactor":1.0');
-  function candidate(options: { missingUV?: boolean; roughness?: number; image?: Buffer } = {}) {
-    const binary = Buffer.alloc(68); (options.image ?? image).copy(binary, 60);
+  function candidate(options: { missingUV?: boolean; roughness?: number; image?: Buffer; converted?: ConversionCase } = {}) {
+    const converted = options.converted, big = converted === 'resized';
+    const payload = converted ? losslessWebP(big ? 2048 : converted === 'size' ? 16 : 8, big ? 2048 : converted === 'size' ? 16 : 8) : options.image ?? image;
+    const record = converted ? { encoding: 'webp-lossless', sourceMimeType: 'image/png', sourceSHA256: imageHash, sourceBytes: image.length,
+      sourceSize: big ? [4096, 4096] : [8, 8], sourcePixelSHA256: sourcePixels, size: big ? [2048, 2048] : [8, 8],
+      pixelSHA256: converted === 'pixels' ? sha('other pixels') : sourcePixels, ...(big ? { resizedFrom: [4096, 4096] } : {}),
+      ...(converted === 'record' ? { extra: true } : {}) } : undefined;
+    const binary = Buffer.alloc(60 + payload.length); payload.copy(binary, 60);
     return glb({ asset: { version: '2.0', copyright: 'Based on "Example shirt" by Example author; source garment: CC-BY-4.0. Reference avatar rig and context retain the RenderHub Extended Use License.' },
       nodes: bones.map(name => ({ name })), skins: [{ joints: bones.map((_name, index) => index) }],
       meshes: [{ primitives: [{ attributes: { POSITION: 0, ...(textured && !options.missingUV ? { TEXCOORD_0: 1 } : {}) }, material: 0 }] }],
       accessors: [{ bufferView: 0, componentType: 5126, count: 3, type: 'VEC3' }, { bufferView: 1, componentType: 5126, count: 3, type: 'VEC2' }],
-      bufferViews: [{ buffer: 0, byteOffset: 0, byteLength: 36 }, { buffer: 0, byteOffset: 36, byteLength: 24 }, { buffer: 0, byteOffset: 60, byteLength: 8 }],
+      bufferViews: [{ buffer: 0, byteOffset: 0, byteLength: 36 }, { buffer: 0, byteOffset: 36, byteLength: 24 }, { buffer: 0, byteOffset: 60, byteLength: payload.length }],
       materials: [{ ...material, pbrMetallicRoughness: { ...material.pbrMetallicRoughness, roughnessFactor: options.roughness ?? 1 } }],
-      ...(textured ? { images: [{ bufferView: 2, mimeType: 'image/png' }], textures: [{ sampler: 0, source: 0 }], samplers: [{ wrapS: 10497, wrapT: 10497 }] } : {}),
+      ...(textured && !converted ? { images: [{ bufferView: 2, mimeType: 'image/png' }], textures: [{ sampler: 0, source: 0 }], samplers: [{ wrapS: 10497, wrapT: 10497 }] } : {}),
+      ...(textured && converted ? { images: [{ bufferView: 2, mimeType: 'image/webp', extras: { extaliaImageConversion: record } }],
+        textures: [{ sampler: 0, extensions: { EXT_texture_webp: { source: 0 } } }], samplers: [{ wrapS: 10497, wrapT: 10497 }],
+        extensionsUsed: ['EXT_texture_webp'], ...(converted === 'extension' ? {} : { extensionsRequired: ['EXT_texture_webp'] }) } : {}),
     }, binary, tokens);
   }
   const entry = test.add('avatars/wardrobe/male/top/example-shirt.glb', candidate());
   entry.license = 'CC-BY-4.0'; entry.provenance = { kind: 'third-party-derived', exporter: sourceExporter };
   mkdirSync(path.join(test.root, 'tooling/blender'), { recursive: true });
   writeFileSync(path.join(test.root, sourceExporter), '# Synthetic source-preserving export fixture.\n');
+  const nativeTexture = { index: { sampler: { wrapS: 10497, wrapT: 10497 }, source: { mimeType: 'image/png', payloadSHA256: imageHash } }, texCoord: 0 };
   const graph = { pbrMetallicRoughness: { ...material.pbrMetallicRoughness,
-    ...(textured ? { baseColorTexture: { index: { sampler: { wrapS: 10497, wrapT: 10497 }, source: { mimeType: 'image/png', payloadSHA256: imageHash } }, texCoord: 0 } } : {}),
-  } };
+    ...(textured && slot === 'baseColorTexture' ? { baseColorTexture: nativeTexture } : {}),
+  }, ...(textured && slot === 'normalTexture' ? { normalTexture: nativeTexture } : {}) };
   const graphSHA256 = sha(tokens(canonicalJson(graph)));
   const profile: SourceGarmentProfile = {
     path: entry.path, id: 'example-shirt', group: 'male', mode: 'top', source: { path: 'male/example-shirt.glb', sha256: sha('source fixture') },
     fittedSHA256: sha('fitted fixture'), sha256: entry.sha256, triangles: 1, bytes: entry.bytes,
     budgets: { triangles: 2, bytes: entry.bytes + 100 }, fitChecks: { rest: true, walk: true, sit: true, reach: true, sourceAppearance: true },
-    materials: { OriginalTop_Fabric: { sourceMaterialIndex: 0, graphSHA256, requiredImages: textured ? [{ textureInfo: '/pbrMetallicRoughness/baseColorTexture', sha256: imageHash, bytes: image.length }] : [], requiredUVSets: textured ? [0] : [], overrides: {} } },
+    materials: { OriginalTop_Fabric: { sourceMaterialIndex: 0, graphSHA256, requiredImages: textured ? [{ textureInfo: slot === 'normalTexture' ? '/normalTexture' : '/pbrMetallicRoughness/baseColorTexture', sha256: imageHash, bytes: image.length }] : [], requiredUVSets: textured ? [0] : [], overrides: {} } },
     materialGraphSHA256: sha(canonicalJson({ OriginalTop_Fabric: graphSHA256 })), imageSHA256s: textured ? [imageHash] : [], license: 'CC-BY-4.0',
     attribution: { title: 'Example shirt', author: 'Example author', source: 'https://example.com/shirt', license: 'CC-BY-4.0' },
     componentLicenses: { sourceGarment: 'CC-BY-4.0', referenceAvatarRigAndContext: licensedAvatar },
@@ -442,6 +461,29 @@ describe('reviewed source garment publication', () => {
     expect(readSourceGarmentProfiles(test.root)).toEqual([test.profile]);
     expect(verifyModelBuild(test.dist, { root: test.root })).toHaveLength(4);
     expect(() => verifySourceGarmentMaterialReceipts(path.join(test.source, test.entry.path), test.profile.materials)).not.toThrow();
+  });
+
+  it('accepts a lossless WebP conversion of the recorded source image and a recorded data-map downscale', () => {
+    for (const [slot, converted] of [['baseColorTexture', 'ok'], ['normalTexture', 'ok'], ['normalTexture', 'resized']] as const) {
+      const test = sourceGarmentFixture(true, slot); test.profile.budgets.bytes = 10_000; test.replace(test.candidate({ converted }));
+      expect(verifyPublicModels(test.root)).toHaveLength(4);
+      expect(() => verifySourceGarmentMaterialReceipts(path.join(test.source, test.entry.path), test.profile.materials)).not.toThrow();
+    }
+  });
+
+  it('rejects converted images with changed pixels, a resized colour map, a wrong size, a bad record or a missing extension', () => {
+    const cases: Array<[ConversionCase, 'baseColorTexture' | 'normalTexture', RegExp]> = [
+      ['pixels', 'baseColorTexture', /changed the pixels/], ['resized', 'baseColorTexture', /only normal, metallic-roughness and occlusion/],
+      ['size', 'baseColorTexture', /differs from its record/], ['record', 'baseColorTexture', /invalid image conversion record fields/],
+      ['extension', 'baseColorTexture', /need EXT_texture_webp/]];
+    for (const [converted, slot, message] of cases) {
+      const test = sourceGarmentFixture(true, slot); test.profile.budgets.bytes = 10_000; test.replace(test.candidate({ converted }));
+      expect(() => verifyPublicModels(test.root)).toThrow(message);
+    }
+    const test = sourceGarmentFixture(true); test.profile.budgets.bytes = 10_000; test.replace(test.candidate({ converted: 'ok' }));
+    const bytes = Buffer.from(readFileSync(path.join(test.source, test.entry.path)));
+    bytes.write('VP8 ', bytes.indexOf('VP8L')); test.replace(bytes);
+    expect(() => verifyPublicModels(test.root)).toThrow(/not lossless WebP/);
   });
 
   it('requires matching approval hashes, fit checks, explicit budgets and public eligibility', () => {
