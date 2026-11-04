@@ -24,8 +24,8 @@
     },
     {
       "path": "avatars/bodies/female/female-casual.glb",
-      "sha256": "e0f55842115858af42680d41fe3ea5f2e3b91fdbcca636c81d481734ea369809",
-      "bytes": 3916232,
+      "sha256": "68e60116e359270ac3a6b321e81cb7418546c394fc05561cc771083141205733",
+      "bytes": 2592880,
       "license": "LicenseRef-RenderHub-Extended-Use",
       "provenance": {
         "kind": "licensed-avatar-export",
@@ -35,8 +35,8 @@
     },
     {
       "path": "avatars/bodies/male/office-classic.glb",
-      "sha256": "6072e527e5d8fd18fcbbe9e3cd2890a08e29bbabf5b800714780adaec171b89d",
-      "bytes": 4652964,
+      "sha256": "5158794edbfa971776f74f0e7ad49109f70736cdafbad38439b1911eb7646642",
+      "bytes": 3885812,
       "license": "LicenseRef-RenderHub-Extended-Use",
       "provenance": {
         "kind": "licensed-avatar-export",
@@ -46,8 +46,8 @@
     },
     {
       "path": "avatars/hair/female/bob-detail.glb",
-      "sha256": "beb332acd461d2e840b777403b9f20dc8538aeba0e48da6c2bf0e76c30dbc5b1",
-      "bytes": 1418784,
+      "sha256": "3877de5cf2dd593cbc1d9cd9848f168530fafd4cb740310b0772ae436e957498",
+      "bytes": 872124,
       "license": "LicenseRef-RenderHub-Extended-Use",
       "provenance": {
         "kind": "licensed-avatar-export",
@@ -57,8 +57,8 @@
     },
     {
       "path": "avatars/hair/female/bun-detail.glb",
-      "sha256": "93858a025f5906f68b5cc4d97d9b0b623b0567c5336cee53950427cd0672a360",
-      "bytes": 1357652,
+      "sha256": "0de8a29a29405c50a2ae82689c5f45669267e932d7421ffc2762ada5cefc68ef",
+      "bytes": 810988,
       "license": "LicenseRef-RenderHub-Extended-Use",
       "provenance": {
         "kind": "licensed-avatar-export",
@@ -68,8 +68,8 @@
     },
     {
       "path": "avatars/hair/female/high-ponytail-detail.glb",
-      "sha256": "19b8b84898a97b43e799e809fb9f58914252c79ff2288f8d1b0712a21bbbcfe8",
-      "bytes": 1043316,
+      "sha256": "cf4ac3464eef16bd50c3bff894c6e382e2c9824e15bd385316b0f622610e3fc9",
+      "bytes": 496656,
       "license": "LicenseRef-RenderHub-Extended-Use",
       "provenance": {
         "kind": "licensed-avatar-export",
@@ -79,8 +79,8 @@
     },
     {
       "path": "avatars/hair/female/medium-detail.glb",
-      "sha256": "824259198fccd27347f1d110e586a458f8ecc6cd06fd2131ec0aa276b19a6206",
-      "bytes": 1448992,
+      "sha256": "df6505dcc5c7a2a574e15909357280c6fd59f3a3afad0c3311bf713cb9731bf4",
+      "bytes": 902332,
       "license": "LicenseRef-RenderHub-Extended-Use",
       "provenance": {
         "kind": "licensed-avatar-export",
@@ -90,8 +90,8 @@
     },
     {
       "path": "avatars/hair/female/ponytail-detail.glb",
-      "sha256": "43d4a8be7d4259a61ea738a488ee599d56535d50bb85502d9443337c1ffd39b1",
-      "bytes": 1299460,
+      "sha256": "e7594972a73e7314a55c173a3a0196ec7fce21ba53f117d14888cb05b8bf2f7d",
+      "bytes": 752800,
       "license": "LicenseRef-RenderHub-Extended-Use",
       "provenance": {
         "kind": "licensed-avatar-export",
@@ -101,8 +101,8 @@
     },
     {
       "path": "avatars/hair/male/short-fade-detail.glb",
-      "sha256": "865b34407c2a3fd87599f22f40aa2e3e77188c1ba5c8810c0b32a7599ac08f93",
-      "bytes": 1420324,
+      "sha256": "bee92a0855057e4a9022f0ec2397d1b8d737c0ad1da5d8550495de0741e097ca",
+      "bytes": 1002612,
       "license": "LicenseRef-RenderHub-Extended-Use",
       "provenance": {
         "kind": "licensed-avatar-export",
@@ -112,8 +112,8 @@
     },
     {
       "path": "avatars/hair/male/side-part-detail.glb",
-      "sha256": "b7930072eb62a5d3d0717dd2827eea47b9d95d9beb5f7baa6d3851a3a17c8e82",
-      "bytes": 1761852,
+      "sha256": "5a044106e78196b02e010744fecb2079567629a2b8438bdb4c7e5704781b48bf",
+      "bytes": 1202192,
       "license": "LicenseRef-RenderHub-Extended-Use",
       "provenance": {
         "kind": "licensed-avatar-export",
@@ -123,8 +123,8 @@
     },
     {
       "path": "avatars/hair/male/slicked-back-detail.glb",
-      "sha256": "50d04f92ff2f7de9162adc3220b7da57b25efd1b99587c96ae96de0e454d7ac6",
-      "bytes": 1761864,
+      "sha256": "e86d958dba31aa33276eb858d6e4dcc8642516522f4175566a52e87b0a4c2df1",
+      "bytes": 1202204,
       "license": "LicenseRef-RenderHub-Extended-Use",
       "provenance": {
         "kind": "licensed-avatar-export",
@@ -134,8 +134,8 @@
     },
     {
       "path": "avatars/hair/male/textured-crop-detail.glb",
-      "sha256": "26654a303c2d995d271f349a7dbeb411d6ddbf6a2c75c88b6709867e855c2fbb",
-      "bytes": 1423860,
+      "sha256": "1331d0ac53951569bdb90f0f55f388d1cd3b4830c7e8593d5a3611a82c753479",
+      "bytes": 1006148,
       "license": "LicenseRef-RenderHub-Extended-Use",
       "provenance": {
         "kind": "licensed-avatar-export",
@@ -145,8 +145,8 @@
     },
     {
       "path": "avatars/hair/male/undercut-detail.glb",
-      "sha256": "1214b2caafa8af5cf8fa47851c529234f9f2ac0de9350172358df21f92a3c961",
-      "bytes": 1711880,
+      "sha256": "89dafe9fac98870a37e8d148499b46487c16259beefe34291c65937078d79ca8",
+      "bytes": 1152220,
       "license": "LicenseRef-RenderHub-Extended-Use",
       "provenance": {
         "kind": "licensed-avatar-export",
@@ -167,8 +167,8 @@
     },
     {
       "path": "avatars/outfits/female/outfit-original-dress.glb",
-      "sha256": "5c2c9d17f6bcadcea806dbc9334c44114303396fd5c9047d3436f13890ab9b47",
-      "bytes": 7775292,
+      "sha256": "3ea557bb6af6bd2a7aeed577213588b31b47f6950f689f2582aecbaeb04a6478",
+      "bytes": 2809820,
       "license": "CC-BY-4.0",
       "provenance": {
         "kind": "third-party-derived",
@@ -178,8 +178,8 @@
     },
     {
       "path": "avatars/outfits/female/outfit-source-denim-dress.glb",
-      "sha256": "65bb3b87dd121a0c8391b14a2413cf4e0882aa19984fc48843aa9b43d3e4efc4",
-      "bytes": 7089840,
+      "sha256": "6ce11414162b53408ce3a1c4b443c91438c58ff4f8def584e00cdd4dac4a991f",
+      "bytes": 2470324,
       "license": "CC-BY-4.0",
       "provenance": {
         "kind": "third-party-derived",
@@ -189,8 +189,8 @@
     },
     {
       "path": "avatars/outfits/female/outfit-source-jumper-skirt.glb",
-      "sha256": "15a348a123b01cad5e511c16d47f7697a30f89de60d9b1e4a5a2a86ea1d13b2d",
-      "bytes": 4667160,
+      "sha256": "dbb9d5af26cddb14c07c4ab6c70c1be0aeaa7ad0529d534dbfed52a2dba09a39",
+      "bytes": 1276644,
       "license": "CC-BY-4.0",
       "provenance": {
         "kind": "third-party-derived",
@@ -200,8 +200,8 @@
     },
     {
       "path": "avatars/outfits/female/reception-uniform.glb",
-      "sha256": "7b2ec00ca1f1930ecba0ec2b4e99431da018a5ecc8d0b216be9479a30270d784",
-      "bytes": 11212528,
+      "sha256": "f3ea2c5380767d88594455c2004d9205cdbd4ccd5b9140c271088f6f6e19043a",
+      "bytes": 5989700,
       "license": "CC-BY-4.0",
       "provenance": {
         "kind": "third-party-derived",
@@ -211,8 +211,8 @@
     },
     {
       "path": "avatars/outfits/male/bartender-uniform.glb",
-      "sha256": "61d4fff2c6990d44a7855e2fd23b1ea619860703e7ec34eb8aca2285a07702bb",
-      "bytes": 14970780,
+      "sha256": "ce65b1000b0f159bf7749fcf6c9a3977d4735e35701207be8bcdfc35b22611a5",
+      "bytes": 2687452,
       "license": "CC-BY-4.0",
       "provenance": {
         "kind": "third-party-derived",
@@ -222,8 +222,8 @@
     },
     {
       "path": "avatars/outfits/male/outfit-black-business-suit.glb",
-      "sha256": "38df9e531c1e430b4e0674227402a3aac1d151ab8b070d274225a229cdbfeec5",
-      "bytes": 25071892,
+      "sha256": "2c16c6bfeb9f5556895af3e571026890ad4cb7cffac8b6ebdd8af1c2be104d33",
+      "bytes": 22820632,
       "license": "CC-BY-4.0",
       "provenance": {
         "kind": "third-party-derived",
@@ -233,8 +233,8 @@
     },
     {
       "path": "avatars/outfits/male/outfit-mens-two-piece-suit.glb",
-      "sha256": "f3a3d797b09352b27775389d901465752878466646ed71ecd2acf9e501d7cbaa",
-      "bytes": 4825648,
+      "sha256": "d423bff3e16623556e8f28b915c265700a9f08fbd30b0c53c5b5df0f39a86aa0",
+      "bytes": 1089884,
       "license": "CC-BY-4.0",
       "provenance": {
         "kind": "third-party-derived",
@@ -244,8 +244,8 @@
     },
     {
       "path": "avatars/outfits/male/outfit-printed-hoodie-jeans.glb",
-      "sha256": "5d637d6d4b6d71fd27f9209551bb2146f25ed7f9dd5ca8360729f585a884551c",
-      "bytes": 7359928,
+      "sha256": "192d2201419ddf12d9d92cf9b3f2880c260e5c23cd82b7091e2d7d960efea497",
+      "bytes": 659348,
       "license": "CC-BY-4.0",
       "provenance": {
         "kind": "third-party-derived",
@@ -255,8 +255,8 @@
     },
     {
       "path": "avatars/outfits/male/outfit-prom-suit.glb",
-      "sha256": "38b84adb8653bf66012e3924106439203b7833d86cb7b86cc1a0f71c22d04f19",
-      "bytes": 2056956,
+      "sha256": "47c3f51038cc9ff06bc94e689c8cef215a2085716486af6b70bbcc5109d13e3d",
+      "bytes": 997380,
       "license": "CC-BY-4.0",
       "provenance": {
         "kind": "third-party-derived",
@@ -266,8 +266,8 @@
     },
     {
       "path": "avatars/outfits/male/outfit-sweatshirt-jacket-workwear.glb",
-      "sha256": "6af06c60faa63348ac8d6f7fc832aa800724f3b5ae09bf3c348301962e50c83e",
-      "bytes": 15171004,
+      "sha256": "14d08e0199f74ace67715669e84f0cf6cf4785159c327f2fc8f3886c856c36ff",
+      "bytes": 10912776,
       "license": "CC-BY-4.0",
       "provenance": {
         "kind": "third-party-derived",
@@ -277,8 +277,8 @@
     },
     {
       "path": "avatars/outfits/male/outfit-victorian-bartender.glb",
-      "sha256": "d0f797d7e2fa6049a7f9eb12ccf464c50b9d2b14b9df425006fdc644e64ba4aa",
-      "bytes": 19285136,
+      "sha256": "569169783d60a6b8e8bd0a23f5ffde4872118f5343da396196e143432021ba1d",
+      "bytes": 7741360,
       "license": "CC-BY-4.0",
       "provenance": {
         "kind": "third-party-derived",
@@ -299,8 +299,8 @@
     },
     {
       "path": "avatars/wardrobe/female/bottom/short-jeans.glb",
-      "sha256": "b83fbd29e7d899b1af6091d135fa4a76a4fe05cd6fb38776ba49738ec5ccf186",
-      "bytes": 15547580,
+      "sha256": "e3500fbee89a8de17f366c1b739d7e1e0e454f7826ce6bc0517a37465c21c7ca",
+      "bytes": 1657088,
       "license": "CC-BY-4.0",
       "provenance": {
         "kind": "third-party-derived",
@@ -332,8 +332,8 @@
     },
     {
       "path": "avatars/wardrobe/female/bottom/source-ray-trousers.glb",
-      "sha256": "8490d3ec54fd0c11b8aec1f062be89fd6cbc4290a6d9b3e34741fc5742f8fe95",
-      "bytes": 24261368,
+      "sha256": "bd268a0bbbce8d556c2b3d4dba39ea3566ca82f5ae4cfa335287c2f347b21bbf",
+      "bytes": 233580,
       "license": "CC-BY-4.0",
       "provenance": {
         "kind": "third-party-derived",
@@ -343,8 +343,8 @@
     },
     {
       "path": "avatars/wardrobe/female/outer/cloth-jacket.glb",
-      "sha256": "b163d717105cd8ee2b6e65138e9b225a1f3991ade27f3ace151ca118beee05f5",
-      "bytes": 9701556,
+      "sha256": "d4ccefab154129afc387b3bf13746837eb5d853b0480d585dc9e108c72c28f6d",
+      "bytes": 384048,
       "license": "CC-BY-4.0",
       "provenance": {
         "kind": "third-party-derived",
@@ -354,8 +354,8 @@
     },
     {
       "path": "avatars/wardrobe/female/outer/source-leather-cloak.glb",
-      "sha256": "2802afeb8cbe561289c75daf7e76d0b5d2f59e5756ad940a501b3a888f26a9ec",
-      "bytes": 17910760,
+      "sha256": "6c7946c9da5e9ca72b2749bfd1a05bc60f3da2d119f26a69c45dd8d7f4c94a0e",
+      "bytes": 457328,
       "license": "CC-BY-4.0",
       "provenance": {
         "kind": "third-party-derived",
@@ -365,8 +365,8 @@
     },
     {
       "path": "avatars/wardrobe/female/outer/source-overcoat.glb",
-      "sha256": "9673011a614119c03516a169043a372a1d6abd202cd30d6624d5ae11de4c6169",
-      "bytes": 13061756,
+      "sha256": "e24f032446ff7449228e813ebdf9d8a16a6ee8bc82172ba7059d366bcd4b6fa4",
+      "bytes": 858824,
       "license": "CC-BY-4.0",
       "provenance": {
         "kind": "third-party-derived",
@@ -376,8 +376,8 @@
     },
     {
       "path": "avatars/wardrobe/female/outer/source-ray-vest.glb",
-      "sha256": "f3527149ea944a0afac6ad374cfad3a8cde7aa435878e0a86f27939b11250db7",
-      "bytes": 24142692,
+      "sha256": "9f700c3dc8c39f23f4c4a9ccc05ef15ab555435ccb9e5981cd0bdf4b93bdb96b",
+      "bytes": 103528,
       "license": "CC-BY-4.0",
       "provenance": {
         "kind": "third-party-derived",
@@ -387,8 +387,8 @@
     },
     {
       "path": "avatars/wardrobe/female/outer/source-red-leather-jacket.glb",
-      "sha256": "11146b98b52db1df40211ca5e52a2933c28ba24b5ab2b163b247d23f2582091e",
-      "bytes": 10736224,
+      "sha256": "2d8b38feb83f165ac5a38a8027ed9531e85ba138a9e91378028d74faa3aaca1f",
+      "bytes": 1923988,
       "license": "CC-BY-4.0",
       "provenance": {
         "kind": "third-party-derived",
@@ -398,8 +398,8 @@
     },
     {
       "path": "avatars/wardrobe/female/top/source-belted-top.glb",
-      "sha256": "1faa212d491336cf01f32933622cd5a73f8a3f379a6cbb4df0bd03ff321c40e3",
-      "bytes": 10341172,
+      "sha256": "0f1a84df61a5ffceca551ecf179d9c473e9aff18c58459d1576a9a6b1bde64e0",
+      "bytes": 675764,
       "license": "CC-BY-4.0",
       "provenance": {
         "kind": "third-party-derived",
@@ -409,8 +409,8 @@
     },
     {
       "path": "avatars/wardrobe/female/top/source-female-cloth1.glb",
-      "sha256": "90f723bf55580178ef54b12317ef206a504eb96ab729a58b8be31d72dee97c73",
-      "bytes": 8868348,
+      "sha256": "a5df36096b88a34c3101dcd2445f6eaefb461187385c1861dccd56643c445449",
+      "bytes": 909968,
       "license": "CC-BY-4.0",
       "provenance": {
         "kind": "third-party-derived",
@@ -420,8 +420,8 @@
     },
     {
       "path": "avatars/wardrobe/female/top/source-flame-hoodie.glb",
-      "sha256": "81555dc342190c5c566bd59c2e1a583ec01cb4987480a7d481b6ee41ef509ff9",
-      "bytes": 12631100,
+      "sha256": "9dd188f896cad9009cb9268b9486ed4191826835e3d1d9272ccce973e6e08355",
+      "bytes": 10666684,
       "license": "CC-BY-4.0",
       "provenance": {
         "kind": "third-party-derived",
@@ -442,8 +442,8 @@
     },
     {
       "path": "avatars/wardrobe/female/top/source-oversize-shirt.glb",
-      "sha256": "d2bafca7bce0aac7e7f031277ba048f3fd8b86d793658ad6741f127140e609c0",
-      "bytes": 2096884,
+      "sha256": "f064fa17e7e8c56ea35be90611f96017c56997c7d08f342e69d7981a8dc3ea3b",
+      "bytes": 317176,
       "license": "CC-BY-4.0",
       "provenance": {
         "kind": "third-party-derived",
@@ -453,8 +453,8 @@
     },
     {
       "path": "avatars/wardrobe/female/top/source-pink-hoodie.glb",
-      "sha256": "0be6b32d851ab82ef3f720883aa421e7d952af2a87c9d1f671764a0579bc58c8",
-      "bytes": 7505028,
+      "sha256": "f894bf826e2b4c3fb7be98ecd490601f5d9440dae68ef9a056bbe6b08c4f4cbb",
+      "bytes": 4029856,
       "license": "CC-BY-4.0",
       "provenance": {
         "kind": "third-party-derived",
@@ -464,8 +464,8 @@
     },
     {
       "path": "avatars/wardrobe/female/top/source-ray-underlayer.glb",
-      "sha256": "b5d777bb25c590c06e352d80f7d036f1f7a2884d295c29d46febb0b3a01d9d9c",
-      "bytes": 24340744,
+      "sha256": "adf91f7adb3a6b4d65062a113f46a849c8f1a007c15b8429e6384c485526a1f3",
+      "bytes": 322332,
       "license": "CC-BY-4.0",
       "provenance": {
         "kind": "third-party-derived",
@@ -475,8 +475,8 @@
     },
     {
       "path": "avatars/wardrobe/male/bottom/jeans.glb",
-      "sha256": "5cb548db9112cf1d69a906ec6ce6283a758d89da81e5c1ce98f48752b056ae9f",
-      "bytes": 3701240,
+      "sha256": "b4aaa07243d3a8d5bf0cd597ad377394ba88ed1541dae08aa877c5c9f13b46c0",
+      "bytes": 302912,
       "license": "CC-BY-4.0",
       "provenance": {
         "kind": "third-party-derived",
@@ -486,8 +486,8 @@
     },
     {
       "path": "avatars/wardrobe/male/outer/denim-jacket.glb",
-      "sha256": "ffd7501f498e60afaec9d51198cdaa9309ca6a93e5f4394f7ff1beb8d80b7ca4",
-      "bytes": 14408792,
+      "sha256": "d040705363daf78a79853059a1c6dc1da1e4452fbd8b58bccff3f2f0eb58d939",
+      "bytes": 1506300,
       "license": "CC-BY-4.0",
       "provenance": {
         "kind": "third-party-derived",
@@ -497,8 +497,8 @@
     },
     {
       "path": "avatars/wardrobe/male/top/green-white-hoodie.glb",
-      "sha256": "6cc4a00e05d622a8ac70c2e2523921c046e7007cc31cc7b2aeea4d9dd5a461ce",
-      "bytes": 9092640,
+      "sha256": "f924e5a51266ed66e97f729efba8ab8bf30ca62b3ac7ad7f0a37afac67cb4351",
+      "bytes": 3968376,
       "license": "CC-BY-4.0",
       "provenance": {
         "kind": "third-party-derived",

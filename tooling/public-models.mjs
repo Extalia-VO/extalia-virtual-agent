@@ -124,7 +124,16 @@ function imagePayload(document, binary, image) {
 // image carries `extras.extaliaImageConversion` naming its source payload; material receipts keep
 // hashing the recorded source image, so provenance stays verifiable without the source bytes.
 const IMAGE_CONVERSION = 'extaliaImageConversion';
-const CONVERSION_FIELDS = ['encoding', 'sourceMimeType', 'sourceSHA256', 'sourceBytes', 'sourceSize', 'sourcePixelSHA256', 'size', 'pixelSHA256', 'resizedFrom'];
+const CONVERSION_FIELDS = ['encoding', 'sourceMimeType', 'sourceSHA256', 'sourceBytes', 'sourceSize', 'sourcePixelSHA256', 'size', 'pixelSHA256', 'resizedFrom',
+  'profile', 'payloadSHA256', 'psnr', 'ssim', 'angularMean', 'angularP99'];
+// Owner-approved "compact" size profile (2026-11): every texture is at most 512 px on its longest side. Colour maps are
+// lossy WebP, data maps (normal / metallic-roughness / occlusion) are 4:4:4 JPEG or lossless WebP, never lossy WebP.
+const COMPACT_PROFILE = 'compact';
+const COMPACT_MAX_SIDE = 512;
+const COMPACT_ENCODINGS = {
+  'webp-lossy-q90': 'webp-lossy', 'webp-lossy-q95': 'webp-lossy', 'jpeg-444-q92': 'jpeg', 'jpeg-444-q95': 'jpeg', 'webp-lossless': 'webp-lossless',
+};
+const COMPACT_MIN_PSNR = 38, COMPACT_MIN_SSIM = 0.95, COMPACT_MAX_ANGLE_MEAN = 2, COMPACT_MAX_ANGLE_P99 = 6;
 const DATA_TEXTURE_SLOTS = ['normalTexture', 'metallicRoughnessTexture', 'occlusionTexture'];
 const MAX_DATA_TEXTURE = 2048;
 const dimensions = value => Array.isArray(value) && value.length === 2 && value.every(side => positiveInteger(numeric(side)));
@@ -134,6 +143,7 @@ function conversionRecord(image) {
   const plain = Object.fromEntries(Object.entries(record).map(([key, value]) => [key, Array.isArray(value) ? value.map(numeric) : numeric(value)]));
   keys(plain, CONVERSION_FIELDS, 'image conversion record');
   const { sourceSize, size, resizedFrom } = plain;
+  if (plain.profile !== undefined) return compactRecord(image, plain);
   if (plain.encoding !== 'webp-lossless' || plain.sourceMimeType !== 'image/png' || image.mimeType !== 'image/webp'
     || !hashString(plain.sourceSHA256) || !hashString(plain.sourcePixelSHA256) || !hashString(plain.pixelSHA256)
     || !positiveInteger(plain.sourceBytes) || !dimensions(sourceSize) || !dimensions(size)) fail('invalid image conversion record');
@@ -147,6 +157,92 @@ function conversionRecord(image) {
       || size.some((side, index) => Math.abs(side - Math.max(1, resizedFrom[index] * MAX_DATA_TEXTURE / longest)) > 1)) fail('invalid image downscale record');
   }
   return plain;
+}
+function compactRecord(image, plain) {
+  const { sourceSize, size, resizedFrom } = plain, kind = COMPACT_ENCODINGS[plain.encoding];
+  if (plain.profile !== COMPACT_PROFILE || kind === undefined || plain.pixelSHA256 !== undefined
+    || !['image/png', 'image/jpeg', 'image/webp'].includes(plain.sourceMimeType)
+    || image.mimeType !== (kind === 'jpeg' ? 'image/jpeg' : 'image/webp')
+    || !hashString(plain.sourceSHA256) || !hashString(plain.sourcePixelSHA256) || !hashString(plain.payloadSHA256)
+    || !positiveInteger(plain.sourceBytes) || !dimensions(sourceSize) || !dimensions(size)
+    || !Number.isFinite(plain.psnr) || !Number.isFinite(plain.ssim)) fail('invalid compact image conversion record');
+  if (Math.max(...size) > COMPACT_MAX_SIDE) fail('compact image exceeds the 512 px limit');
+  if (resizedFrom === undefined) {
+    if (canonical(sourceSize) !== canonical(size)) fail('compact image changed size without a resize record');
+  } else {
+    const longest = Math.max(...resizedFrom);
+    if (!dimensions(resizedFrom) || canonical(resizedFrom) !== canonical(sourceSize) || longest <= COMPACT_MAX_SIDE
+      || Math.max(...size) !== COMPACT_MAX_SIDE
+      || size.some((side, index) => Math.abs(side - Math.max(1, resizedFrom[index] * COMPACT_MAX_SIDE / longest)) > 1)) fail('invalid compact image downscale record');
+  }
+  return plain;
+}
+/** Dimensions and coding of a WebP payload: 'lossy' (VP8), 'lossless' (VP8L), with optional VP8X canvas and ALPH. */
+function webPInfo(bytes) {
+  if (bytes.length < 20 || bytes.toString('ascii', 0, 4) !== 'RIFF' || bytes.toString('ascii', 8, 12) !== 'WEBP'
+    || bytes.readUInt32LE(4) + 8 !== bytes.length) fail('converted image is not a WebP file');
+  let canvas, coding, dimensionsOfCoding;
+  for (let cursor = 12; cursor + 8 <= bytes.length;) {
+    const kind = bytes.toString('ascii', cursor, cursor + 4), length = bytes.readUInt32LE(cursor + 4), body = cursor + 8;
+    if (body + length > bytes.length) fail('truncated WebP chunk');
+    if (kind === 'VP8X' && length >= 10) canvas = [bytes.readUIntLE(body + 4, 3) + 1, bytes.readUIntLE(body + 7, 3) + 1];
+    else if (kind === 'VP8 ' && length >= 10 && coding === undefined) {
+      if (bytes[body + 3] !== 0x9d || bytes[body + 4] !== 0x01 || bytes[body + 5] !== 0x2a) fail('invalid lossy WebP frame');
+      coding = 'lossy'; dimensionsOfCoding = [bytes.readUInt16LE(body + 6) & 0x3fff, bytes.readUInt16LE(body + 8) & 0x3fff];
+    } else if (kind === 'VP8L' && length >= 5 && coding === undefined) {
+      if (bytes[body] !== 0x2f) fail('invalid lossless WebP frame');
+      const bits = bytes.readUInt32LE(body + 1);
+      coding = 'lossless'; dimensionsOfCoding = [(bits & 0x3fff) + 1, ((bits >>> 14) & 0x3fff) + 1];
+    }
+    cursor += 8 + length + (length & 1);
+  }
+  if (coding === undefined || (canvas && canonical(canvas) !== canonical(dimensionsOfCoding))) fail('WebP canvas differs from its frame');
+  return { size: dimensionsOfCoding, coding };
+}
+/** Dimensions and chroma sampling of a baseline / progressive JPEG (all components 1x1 means 4:4:4). */
+function jpegInfo(bytes) {
+  if (bytes.length < 4 || bytes[0] !== 0xff || bytes[1] !== 0xd8) fail('converted image is not a JPEG file');
+  for (let cursor = 2; cursor + 4 <= bytes.length;) {
+    if (bytes[cursor] !== 0xff) fail('invalid JPEG marker');
+    const marker = bytes[cursor + 1];
+    if (marker === 0xff) { cursor++; continue; }
+    if (marker === 0x01 || (marker >= 0xd0 && marker <= 0xd8)) { cursor += 2; continue; }
+    const length = bytes.readUInt16BE(cursor + 2);
+    if ([0xc0, 0xc1, 0xc2].includes(marker)) {
+      const components = bytes[cursor + 9];
+      if (bytes[cursor + 4] !== 8 || cursor + 10 + 3 * components > bytes.length) fail('unsupported JPEG frame');
+      return { size: [bytes.readUInt16BE(cursor + 7), bytes.readUInt16BE(cursor + 5)],
+        sampling: Array.from({ length: components }, (_, index) => bytes[cursor + 11 + 3 * index]) };
+    }
+    if (marker === 0xda) break;
+    cursor += 2 + length;
+  }
+  return fail('JPEG has no frame header');
+}
+/** Role of an image by the material slots using it: colour unless every slot is a data map. */
+function imageRole(used) {
+  if (!used?.size || [...used].some(slot => !DATA_TEXTURE_SLOTS.includes(slot))) return 'color';
+  return used.has('normalTexture') ? 'normal' : 'data';
+}
+function verifyCompactImage(record, payload, role) {
+  const kind = COMPACT_ENCODINGS[record.encoding];
+  if (digest(payload) !== record.payloadSHA256) fail('compact image payload hash differs from its record');
+  if (kind === 'jpeg') {
+    if (role === 'color') fail('colour maps must not be stored as JPEG');
+    const info = jpegInfo(payload);
+    if (canonical(info.size) !== canonical(record.size)) fail('converted image size differs from its record');
+    if (info.sampling.length !== 3 || info.sampling.some(value => value !== 0x11)) fail('data map JPEG must use 4:4:4 chroma');
+  } else {
+    const info = webPInfo(payload);
+    if (canonical(info.size) !== canonical(record.size)) fail('converted image size differs from its record');
+    if ((kind === 'webp-lossless') !== (info.coding === 'lossless')) fail('compact WebP coding differs from its record');
+    if (kind === 'webp-lossy' && role !== 'color') fail('only colour maps may use lossy WebP');
+  }
+  if (kind === 'webp-lossless') return;
+  if (role === 'normal') {
+    if (!Number.isFinite(record.angularMean) || !Number.isFinite(record.angularP99)
+      || record.angularMean > COMPACT_MAX_ANGLE_MEAN || record.angularP99 > COMPACT_MAX_ANGLE_P99) fail('normal map angular error exceeds the compact thresholds');
+  } else if (record.psnr < COMPACT_MIN_PSNR || record.ssim < COMPACT_MIN_SSIM) fail('image quality is below the compact thresholds');
 }
 /** Width and height of a lossless WebP payload (VP8L, optionally inside a VP8X container). */
 function losslessWebPSize(bytes) {
@@ -190,9 +286,12 @@ function verifyConvertedImages(file, document) {
   const converted = (document.images ?? []).map((image, index) => [index, image]).filter(([, image]) => image.extras?.[IMAGE_CONVERSION] !== undefined);
   if (!converted.length) return;
   const binary = binaryChunk(readFileSync(file)), slots = imageSlots(document);
-  if (!document.extensionsUsed?.includes('EXT_texture_webp') || !document.extensionsRequired?.includes('EXT_texture_webp')) fail('converted WebP textures need EXT_texture_webp');
+  if (converted.some(([, image]) => image.mimeType === 'image/webp')
+    && (!document.extensionsUsed?.includes('EXT_texture_webp') || !document.extensionsRequired?.includes('EXT_texture_webp'))) fail('converted WebP textures need EXT_texture_webp');
   for (const [index, image] of converted) {
-    const record = conversionRecord(image), webp = losslessWebPSize(imagePayload(document, binary, image));
+    const record = conversionRecord(image);
+    if (record.profile !== undefined) { verifyCompactImage(record, imagePayload(document, binary, image), imageRole(slots.get(index))); continue; }
+    const webp = losslessWebPSize(imagePayload(document, binary, image));
     if (webp[0] !== record.size[0] || webp[1] !== record.size[1]) fail('converted image size differs from its record');
     if (record.resizedFrom !== undefined) {
       const used = slots.get(index);

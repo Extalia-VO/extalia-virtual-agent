@@ -2,9 +2,9 @@
 
 The 2026-10-31 inventory snapshot contains **106 models**: 17 project-authored
 scene models, 12 retained body/hair exports, 32 fitted outfits/wardrobe pieces and
-45 simplified campus vehicles. Their registered GLB bytes total **388,665,616**
-(about 371 MiB before packaging compression; 38 garment, outfit and hair files had their
-PNG textures re-encoded losslessly, see "Texture encoding"); this is asset size, not measured
+45 simplified campus vehicles. Their registered GLB bytes total **141,266,428**
+(about 135 MiB before packaging compression; 39 garment, outfit and hair files use the compact
+texture profile, see "Texture encoding"); this is asset size, not measured
 startup cost or runtime memory. Web, Desktop and the npm Bridge share the inventory.
 Exact hashes, sizes, declared licenses and provenance are in [models.json](models.json).
 
@@ -17,6 +17,28 @@ terms described in [AVATAR_SOURCE_LICENSE.md](AVATAR_SOURCE_LICENSE.md) and
 these recorded declarations and bytes; it is not an independent grant of rights.
 
 ## Texture encoding
+
+**Compact profile (current, owner-approved 2026-11).** `tooling/compress-public-models.py
+--profile compact` (`--dry-run`, `--write`; `--verify` re-checks the records) trades sharpness for size
+while keeping motifs, prints and stitching readable. Every texture is at most **512 px** on its longest
+side (Lanczos, never upscaled):
+
+- Colour maps (base colour, emissive, anything shared with a colour slot): lossy WebP q90 (method 6,
+  alpha kept losslessly); quality is raised to q95, then lossless, when PSNR < 38 dB or SSIM < 0.95
+  against the 512 px source. Worst measured: PSNR 38.55 dB, SSIM 0.962.
+- Data maps (normal, metallic-roughness, occlusion): JPEG q92 with 4:4:4 chroma (q95, then lossless
+  WebP, when a threshold fails; lossless WebP when alpha matters). Normal maps must stay within a mean
+  angular error of 2 degrees and p99 of 6 degrees (worst measured 1.94 and 5.98). Lossy WebP is never
+  used for data maps.
+- The smallest passing encoding wins; an image that is already small enough and not made smaller
+  is kept. Textures and images no material references are removed (the three Ray garments carried ten
+  each). `EXT_texture_webp` is declared only where WebP images remain; JPEG is core glTF.
+- Each changed image records `extras.extaliaImageConversion` with `profile: "compact"`, the encoding,
+  the original source SHA-256, size and bytes, `resizedFrom`, the measured metrics and the payload
+  SHA-256; `tooling/public-models.mjs` checks all of it and the material receipts still resolve to
+  the original source image.
+
+The earlier lossless rules below describe how the recorded source images were first produced.
 
 `tooling/compress-public-models.py` (`--dry-run`, `--write`, `--verify`) shrinks GLBs
 without changing any motif:

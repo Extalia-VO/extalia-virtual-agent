@@ -16,6 +16,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.164] - 2026-11-04
+
+### Changed
+
+- Public GLB textures use a compact profile approved by the owner: every texture is at most 512 px; colour and motif maps are lossy WebP (q90, higher or lossless when quality thresholds fail), normal, metallic-roughness and occlusion maps are JPEG 4:4:4 or lossless WebP, and textures no material references are removed. Motifs stay visible but softer at close range. Registered models drop from 388,665,616 to 141,266,428 bytes. Each image records its original source hash, encoding, resize and measured quality (colour PSNR ≥ 38 dB and SSIM ≥ 0.95; normal maps mean ≤ 2° and p99 ≤ 6°), and the model validator enforces these limits.
+
 ## [0.4.163] - 2026-11-04
 
 ### Changed
