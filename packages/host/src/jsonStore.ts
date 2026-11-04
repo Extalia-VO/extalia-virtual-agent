@@ -34,12 +34,12 @@ export interface WriteOptions {
 }
 
 /** Write a file by renaming a fully written temporary file over it, so readers never see a partial file. */
-export async function writeFileAtomic(file: string, data: string, { mode = PRIVATE_FILE_MODE }: WriteOptions = {}): Promise<void> {
+export async function writeFileAtomic(file: string, data: string | Uint8Array, { mode = PRIVATE_FILE_MODE }: WriteOptions = {}): Promise<void> {
   await mkdir(path.dirname(file), { recursive: true, mode: PRIVATE_DIRECTORY_MODE });
   const temporary = `${file}.${process.pid}.${randomBytes(4).toString('hex')}.tmp`;
   try {
     const handle = await open(temporary, 'wx', mode);
-    try { await handle.writeFile(data, 'utf8'); await handle.sync(); }
+    try { await handle.writeFile(data); await handle.sync(); }
     finally { await handle.close(); }
     await renameWithRetry(temporary, file);
   } catch (error) {

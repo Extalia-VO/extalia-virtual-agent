@@ -45,7 +45,7 @@ export async function writableTarget(file: string): Promise<string> {
 }
 
 /** Atomic write that keeps the mode of an existing file (new files get `fallbackMode`). */
-export async function writeConfigFile(file: string, content: string, fallbackMode = 0o600): Promise<void> {
+export async function writeConfigFile(file: string, content: string | Uint8Array, fallbackMode = 0o600): Promise<void> {
   let mode = fallbackMode;
   try { mode = (await stat(file)).mode & 0o777; } catch (error) { if (!isNotFound(error)) throw error; }
   await mkdir(path.dirname(file), { recursive: true });

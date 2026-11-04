@@ -27,6 +27,9 @@ import {
 import { unifiedDiff } from './diff.js';
 import { DEFAULT_HOOK_PORT, hookTargetsFile, readEndpoint, readHookTargets, readToken, tokenFile } from './endpoint.js';
 import { commitConfigWrites, type ConfigWrite } from './configTransaction.js';
+import {
+  inspectInterruptedOperation, recoverInterruptedOperation, withConnectOperation, type ConnectOperation, type RecoveryAction, type RecoveryReport,
+} from './operationJournal.js';
 import { FORWARDER_SOURCE, forwarderPath, forwarderStatus, installForwarder } from './forwarder.js';
 import {
   GEMINI_EVENTS, existingGeminiCommand, geminiCommand, inspectGeminiSettings, planGeminiSettings, removeGeminiEntries, type GeminiDesired,
@@ -86,6 +89,8 @@ export interface ConnectService {
   apply(app: AgentAppId, options?: AgentAppConnectOptions): Promise<AgentAppConnectResult>;
   disconnect(app: AgentAppId): Promise<AgentAppDisconnectResult>;
   test(app: AgentAppId): Promise<AgentAppTestResult>;
+  /** Review (`preview`), roll back or keep an interrupted connector operation. */
+  recover(action: RecoveryAction): Promise<RecoveryReport>;
 }
 
 interface ExtraProfileRecord {
@@ -217,11 +222,14 @@ export function createConnectService(ctx: ConnectContext): ConnectService {
   }
 
   const isSupported = (_app: AgentAppId) => true;
-  const undoCommand = (app: AgentAppId) => {
+  const cliPrefix = () => {
     const home = ctx.env.EXTALIA_HOME?.trim();
     const prefix = home ? `EXTALIA_HOME=${/^[\w./-]+$/.test(home) ? home : `'${home.replace(/'/g, `'\\''`)}'`} ` : '';
-    return `${prefix}${ctx.cliCommand ?? 'extalia'} disconnect ${app}`;
+    return `${prefix}${ctx.cliCommand ?? 'extalia'}`;
   };
+  const undoCommand = (app: AgentAppId) => `${cliPrefix()} disconnect ${app}`;
+  const recoverCommand = () => `${cliPrefix()} connections --recover`;
+  const journalOptions = () => ({ now, ...(ctx.alive ? { alive: ctx.alive } : {}), recoverCommand: recoverCommand() });
 
   async function readManifest(): Promise<Manifest> {
     const value = await readJson<Partial<Manifest> | undefined>(manifestFile, undefined);
@@ -350,6 +358,10 @@ export function createConnectService(ctx: ConnectContext): ConnectService {
     if (connectedRevision) base.configuredAt = connectedRevision;
     if (last && (!connectedRevision || Date.parse(last) >= Date.parse(connectedRevision))) base.lastEventAt = last;
     if (!isSupported(app)) { base.warnings.push(`${label} hooks arrive in a later release.`); return base; }
+    try {
+      const interrupted = await inspectInterruptedOperation(connectDirectory, ctx.alive);
+      if (interrupted?.app === app) base.warnings.push(`An earlier ${interrupted.operation === 'connect' ? 'connection' : 'disconnection'} did not finish. Review it with \`${recoverCommand()}\` before changing this connection.`);
+    } catch (error) { base.warnings.push(error instanceof Error ? error.message : 'The connection journal could not be read.'); }
 
     if (app !== 'hermes' && await lookup()) base.nodeStatus = 'ready';
     const detected = await detect(app);
@@ -713,6 +725,10 @@ export function createConnectService(ctx: ConnectContext): ConnectService {
 
   async function apply(app: AgentAppId, options: AgentAppConnectOptions = {}): Promise<AgentAppConnectResult> {
     if (!isSupported(app)) throw new ConnectError(`${LABELS[app]} hooks arrive in a later release.`);
+    return withConnectOperation(connectDirectory, { kind: 'connect', app }, journalOptions(), journal => applyLocked(app, options, journal));
+  }
+
+  async function applyLocked(app: AgentAppId, options: AgentAppConnectOptions, journal: ConnectOperation): Promise<AgentAppConnectResult> {
     const lookup = nodeLookup();
     const preview = await compute(app, options, undefined, lookup);
     if (preview.plan.nodeStatus === 'missing') throw new ConnectError(nodePrerequisite(app));
@@ -790,7 +806,7 @@ export function createConnectService(ctx: ConnectContext): ConnectService {
     if (changed && manifest.apps[app]) manifest.apps[app]!.updatedAt = now().toISOString();
     if (changed) await addOwnedWrite(manifestFile, `${JSON.stringify(manifest, null, 2)}\n`);
     if (await readTextSafe(manifestFile) !== manifestBefore) throw new ConnectError('The connection manifest changed. Review a new preview before applying.');
-    await commitConfigWrites(writes);
+    await commitConfigWrites(writes, undefined, journal, ` Review it with \`${recoverCommand()}\`.`);
 
     let trust: { status: AgentAppTrustStatus; trusted: number; total: number } = { status: 'not-applicable', trusted: 0, total: 0 };
     if (app === 'codex') {
@@ -869,6 +885,17 @@ export function createConnectService(ctx: ConnectContext): ConnectService {
 
   async function disconnect(app: AgentAppId): Promise<AgentAppDisconnectResult> {
     if (!isSupported(app)) throw new ConnectError(`${LABELS[app]} hooks arrive in a later release.`);
+    return withConnectOperation(connectDirectory, { kind: 'disconnect', app }, journalOptions(), async journal => {
+      const result = await disconnectLocked(app, journal);
+      await journal.complete();
+      return result;
+    });
+  }
+
+  async function disconnectLocked(app: AgentAppId, journal: ConnectOperation): Promise<AgentAppDisconnectResult> {
+    // Record each change in the journal before it is made.
+    const removeFile = async (target: string, before: Buffer) => { await journal.record(target, before, undefined); await rm(target, { force: true }); };
+    const replaceFile = async (target: string, before: Buffer, after: string | Buffer) => { await journal.record(target, before, after); await writeConfigFile(target, after); };
     const manifest = await readManifest();
     const record = manifest.apps[app];
     const candidates = [...new Set([configPath(app), ...(record ? [record.configPath] : [])])];
@@ -886,12 +913,12 @@ export function createConnectService(ctx: ConnectContext): ConnectService {
       // Untouched since Extalia wrote it: put the original bytes back.
       if (forThis && !forThis.surgicalOnly && sha256(current) === forThis.writtenSha256) {
         if (!forThis.original.existed) {
-          await rm(target, { force: true });
+          await removeFile(target, current);
           result = { app, changed: true, configPath: file, restoredExactly: true, removed: forThis.events.length, warnings };
         } else if (forThis.original.backupFile) {
           const original = await readFile(forThis.original.backupFile);
           if (sha256(original) === forThis.original.sha256) {
-            await writeConfigFile(target, original.toString('utf8'));
+            await replaceFile(target, current, original);
             result = { app, changed: true, configPath: file, restoredExactly: true, removed: forThis.events.length, warnings };
           }
         }
@@ -922,7 +949,7 @@ export function createConnectService(ctx: ConnectContext): ConnectService {
       const removed = out.removed;
       if (removed && after !== text) {
         await backupFile(app, file, current);
-        await writeConfigFile(target, after);
+        await replaceFile(target, current, after);
         result = { app, changed: true, configPath: file, restoredExactly: false, removed, warnings };
         break;
       }
@@ -949,14 +976,14 @@ export function createConnectService(ctx: ConnectContext): ConnectService {
         if (profileRecord && await targetChanged(profileRecord, extraFile, extraTarget)) throw new ConnectError('A connected profile link target changed. Restore the original link before disconnecting.');
         if (profileRecord && !profileRecord.surgicalOnly && sha256(extraCurrent) === profileRecord.writtenSha256) {
           if (!profileRecord.original.existed) {
-            await rm(extraTarget, { force: true });
+            await removeFile(extraTarget, extraCurrent);
             noteProfileChange(extraFile, HERMES_EVENTS.length, true);
             continue;
           }
           if (profileRecord.original.backupFile) {
             const orig = await readFile(profileRecord.original.backupFile);
             if (sha256(orig) === profileRecord.original.sha256) {
-              await writeConfigFile(extraTarget, orig.toString('utf8'));
+              await replaceFile(extraTarget, extraCurrent, orig);
               noteProfileChange(extraFile, HERMES_EVENTS.length, true);
               continue;
             }
@@ -966,20 +993,26 @@ export function createConnectService(ctx: ConnectContext): ConnectService {
         const removedExtra = removeHermesBlock(extraText, profileRecord?.inserted);
         if (removedExtra.removed && removedExtra.after !== extraText) {
           await backupFile(app, extraFile, extraCurrent);
-          await writeConfigFile(extraTarget, removedExtra.after);
+          await replaceFile(extraTarget, extraCurrent, removedExtra.after);
           noteProfileChange(extraFile, removedExtra.removed, false);
         }
       }
     }
 
+    const replaceOwned = async (file: string, after: string) => {
+      const target = await writableTarget(file);
+      const before = await readFile(target).catch((error: unknown) => { if (isNotFound(error)) return undefined; throw error; });
+      await journal.record(target, before, after);
+      await writeConfigFile(target, after);
+    };
     if (record) {
       delete manifest.apps[app];
-      await writeManifest(manifest);
+      await replaceOwned(manifestFile, `${JSON.stringify(manifest, null, 2)}\n`);
     }
     const targets = await readHookTargets(ctx.extaliaHome);
     if (targets[app] !== undefined) {
       delete targets[app];
-      await writeJsonAtomic(hookTargetsFile(ctx.extaliaHome), targets, { mode: 0o600 });
+      await replaceOwned(hookTargetsFile(ctx.extaliaHome), `${JSON.stringify(targets, null, 2)}\n`);
     }
     return result;
   }
@@ -998,6 +1031,7 @@ export function createConnectService(ctx: ConnectContext): ConnectService {
     apply,
     disconnect,
     test: sendTest,
+    recover: action => recoverInterruptedOperation(connectDirectory, action, { now, ...(ctx.alive ? { alive: ctx.alive } : {}) }),
   };
 }
 

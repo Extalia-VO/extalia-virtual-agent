@@ -1,6 +1,7 @@
 import { readFile, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { isNotFound } from '../jsonStore.js';
+import type { ConnectOperation } from './operationJournal.js';
 import { ConnectError, writableTarget, writeConfigFile } from './util.js';
 
 export interface ConfigWrite {
@@ -16,11 +17,15 @@ async function read(file: string): Promise<string | undefined> {
 }
 /**
  * Preflight all files and roll back caught failures without overwriting concurrent
- * edits. This is not cross-process locking, crash atomicity or filesystem CAS.
+ * edits. With a `journal` (held under the connector lock), every write is recorded
+ * first so a process that dies midway leaves a reviewable record. This is not
+ * crash atomicity or filesystem CAS.
  */
 export async function commitConfigWrites(
   writes: readonly ConfigWrite[],
   write = writeConfigFile,
+  journal?: ConnectOperation,
+  recoverHint = '',
 ): Promise<void> {
   const seen = new Set<string>();
   const check = async (entry: ConfigWrite) => {
@@ -34,6 +39,7 @@ export async function commitConfigWrites(
     seen.add(target);
     await check(entry);
   }
+  for (const entry of writes) await journal?.record(entry.target, entry.before, entry.after, entry.mode);
   const attempted: ConfigWrite[] = [];
   try {
     for (const entry of writes) {
@@ -52,8 +58,11 @@ export async function commitConfigWrites(
         else await writeConfigFile(entry.target, entry.before, entry.mode);
       } catch { conflict = true; }
     }
+    // A journal that cannot be removed only reads as "not applied" during review.
+    if (!conflict) await journal?.complete().catch(() => undefined);
     throw new ConnectError(conflict
-      ? 'Connection failed; concurrent changes were preserved and rollback is incomplete. Inspect the connect backups before retrying.'
+      ? `Connection failed; concurrent changes were preserved and rollback is incomplete. Inspect the connect backups before retrying.${recoverHint}`
       : `Connection failed and file changes were rolled back: ${error instanceof Error ? error.message : 'write failed'}`);
   }
+  await journal?.complete();
 }
