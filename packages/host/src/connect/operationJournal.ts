@@ -123,6 +123,36 @@ async function readJournal(file: string): Promise<Journal | undefined> {
   return journal;
 }
 
+/** The lock holder still runs: alive, not written before the last boot, and (for our own pid) inside this process's queue. */
+function holderRuns(holder: LockInfo, alive: (pid: number) => boolean, lockFile: string): boolean {
+  const started = Date.parse(holder.startedAt);
+  if (Number.isFinite(started) && started < Date.now() - uptime() * 1000 - RESTART_TOLERANCE_MS) return false;
+  // Our own pid holds a file lock only inside the in-process queue; otherwise it is left over from a reused pid.
+  if (holder.pid === process.pid) return inProcess.has(path.resolve(lockFile));
+  return alive(holder.pid);
+}
+
+/**
+ * Remove a stale lock while holding an exclusive breaker file, so two processes
+ * that both saw the same stale lock cannot each delete a fresh one.
+ */
+async function breakStaleLock(lockFile: string, existing: string): Promise<void> {
+  const breaker = `${lockFile}.break`;
+  try {
+    const handle = await open(breaker, 'wx', 0o600);
+    await handle.close();
+  } catch (error) {
+    if (errorCode(error) !== 'EEXIST') throw error;
+    // A breaker left by a process that died while breaking expires after a few seconds.
+    const old = await stat(breaker).then(entry => Date.now() - entry.mtimeMs > 5000, () => false);
+    if (old) await rm(breaker, { force: true });
+    await delay(50);
+    return;
+  }
+  try { if (await readText(lockFile) === existing) await rm(lockFile, { force: true }); }
+  finally { await rm(breaker, { force: true }); }
+}
+
 async function acquireFileLock(lockFile: string, operation: string, alive: (pid: number) => boolean, now: () => Date): Promise<() => Promise<void>> {
   const directory = path.dirname(lockFile);
   // Directories created only for the lock are removed again, so a refused operation leaves nothing behind.
@@ -141,7 +171,11 @@ async function acquireFileLock(lockFile: string, operation: string, alive: (pid:
       const handle = await open(lockFile, 'wx', 0o600);
       try { await handle.writeFile(content, 'utf8'); } finally { await handle.close(); }
       return async () => { if (await readText(lockFile) === content) { await rm(lockFile, { force: true }); await cleanup(); } };
-    } catch (error) { if (errorCode(error) !== 'EEXIST') throw error; }
+    } catch (error) {
+      // Another process removed the directory it created for a refused operation: create it again.
+      if (errorCode(error) === 'ENOENT') { await mkdir(directory, { recursive: true, mode: 0o700 }); continue; }
+      if (errorCode(error) !== 'EEXIST') throw error;
+    }
     const existing = await readText(lockFile);
     if (existing === undefined) continue;
     const holder = parseLock(existing);
@@ -149,16 +183,10 @@ async function acquireFileLock(lockFile: string, operation: string, alive: (pid:
       // Possibly still being written by its creator.
       const recent = await stat(lockFile).then(entry => Date.now() - entry.mtimeMs < 2000, () => false);
       if (recent) { await delay(100); continue; }
-    } else {
-      const started = Date.parse(holder.startedAt);
-      const beforeBoot = Number.isFinite(started) && started < Date.now() - uptime() * 1000 - RESTART_TOLERANCE_MS;
-      // Our own pid never holds a file lock outside the in-process queue, so it is left over from a reused pid.
-      if (holder.pid !== process.pid && alive(holder.pid) && !beforeBoot) {
-        throw new ConnectError('Another Extalia connection change is in progress. Wait for it to finish, then try again. Nothing was written.');
-      }
+    } else if (holderRuns(holder, alive, lockFile) && holder.pid !== process.pid) {
+      throw new ConnectError('Another Extalia connection change is in progress. Wait for it to finish, then try again. Nothing was written.');
     }
-    // Re-read right before removing so a lock another process just wrote is not deleted.
-    if (await readText(lockFile) === existing) await rm(lockFile, { force: true });
+    await breakStaleLock(lockFile, existing);
   }
   throw new ConnectError('Could not take the connection lock; another Extalia process keeps changing connections. Try again.');
 }
@@ -227,8 +255,9 @@ export async function withConnectOperation<T>(
         },
         async complete() {
           if (!journal) return;
-          await rm(paths.journal, { force: true });
-          await rm(paths.snapshots, { recursive: true, force: true });
+          // Retries cover files briefly held by indexers or antivirus on Windows.
+          await rm(paths.journal, { force: true, maxRetries: 5, retryDelay: 100 });
+          await rm(paths.snapshots, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
           journal = undefined;
         },
       };
@@ -257,13 +286,14 @@ async function describeJournal(journal: Journal): Promise<InterruptedConnectOper
 /** Read-only: an interrupted operation whose process no longer holds the lock. */
 export async function inspectInterruptedOperation(connectDirectory: string, alive: (pid: number) => boolean = defaultAlive): Promise<InterruptedConnectOperation | undefined> {
   const paths = files(connectDirectory);
+  // Read the lock first: a journal seen afterwards was written while that lock (if any) was held.
+  const lock = parseLock(await readText(paths.lock) ?? '');
   const text = await readText(paths.journal);
   if (text === undefined) return undefined;
   const journal = parseJournal(text);
   if (!journal) throw new ConnectError(`The connection journal ${paths.journal} cannot be read. Extalia left it and every configuration unchanged; inspect the connect backups, then remove the file.`);
-  const lock = parseLock(await readText(paths.lock) ?? '');
-  // Still running in another process: not interrupted.
-  if (lock && lock.pid === journal.pid && lock.pid !== process.pid && alive(lock.pid)) return undefined;
+  // Still running, in this or another process: not interrupted.
+  if (lock && lock.pid === journal.pid && holderRuns(lock, alive, paths.lock)) return undefined;
   return describeJournal(journal);
 }
 

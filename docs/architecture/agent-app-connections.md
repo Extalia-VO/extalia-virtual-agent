@@ -31,9 +31,17 @@ original is removed surgically instead of restoring hooks from its own backup.
 Connect and disconnect run one at a time across Extalia processes (Desktop,
 Bridge and a standalone `extalia connect`) under an advisory lock,
 `connect/operation.lock`, that is replaced only when its process no longer runs.
-Before each file write, a write-ahead journal (`connect/journal.json` plus
-private snapshots of the original bytes) records the target, its original hash
-and the intended hash. A completed or fully rolled-back operation removes it.
+Before each configuration, token, forwarder, port and manifest write, a
+write-ahead journal (`connect/journal.json` plus private snapshots of the
+original bytes) records the target, its original hash and the intended hash. A
+completed or fully rolled-back operation removes it. Follow-up steps after the
+journaled commit are not journaled: Codex `--trust` approval (written by the
+Codex app-server, then the manifest hash) and automatic transcript-watch
+registration. A stale lock is broken only while holding an exclusive
+`operation.lock.break` file, so two processes cannot both replace it. If a crashed
+process's id is reused by an unrelated process within the same boot, the lock
+reads as held until that process exits; remove `connect/operation.lock` by hand
+only after confirming no Extalia process is changing connections.
 
 A journal left by a process that died is never replayed or rolled back
 automatically. Later connect/disconnect calls refuse, connection status shows a

@@ -16,6 +16,13 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.161] - 2026-11-04
+
+### Fixed
+
+- Connector lock: replacing a stale `operation.lock` left by a crashed process now happens only under an exclusive breaker file. Before, several Extalia processes starting together could each replace it and run connect or recovery concurrently (reproduced in 26 of 40 six-process runs; 0 of 40 after the fix).
+- A connector change still running in the same Bridge or Desktop process is no longer shown to other tabs as interrupted, and a journal whose lock predates the last restart is reported for review instead of looking clean while connect stays refused. Journal removal retries briefly on Windows file locks, and a lock directory removed by a refused concurrent operation is recreated instead of failing.
+
 ## [0.4.160] - 2026-11-04
 
 ### Added
