@@ -2,8 +2,8 @@
 
 The 2026-10-31 inventory snapshot contains **106 models**: 17 project-authored
 scene models, 12 retained body/hair exports, 32 fitted outfits/wardrobe pieces and
-45 simplified campus vehicles. Their registered GLB bytes total **417,978,116**
-(about 399 MiB before packaging compression; 38 garment, outfit and hair files had their
+45 simplified campus vehicles. Their registered GLB bytes total **388,665,616**
+(about 371 MiB before packaging compression; 38 garment, outfit and hair files had their
 PNG textures re-encoded losslessly, see "Texture encoding"); this is asset size, not measured
 startup cost or runtime memory. Web, Desktop and the npm Bridge share the inventory.
 Exact hashes, sizes, declared licenses and provenance are in [models.json](models.json).
@@ -36,6 +36,22 @@ without changing any motif:
   pixel hashes, `resizedFrom` for a downscale). `tooling/public-models.mjs` hashes the
   recorded source image for the per-garment material receipts, so `source-garments.json`
   keeps the original image hashes as provenance, and rejects a resize of any colour map.
+
+## Vertex quantization
+
+`tooling/compress-public-models.py --quantize` (`--dry-run`, `--write`; `--verify` re-checks
+the records) quantizes only the vertex data of **skinned** primitives, with
+`KHR_mesh_quantization` (native in three.js `GLTFLoader`, no WASM):
+
+- `WEIGHTS_n` become normalized uint16, renormalized so every vertex sums to exactly 65535
+  (largest remainder; worst deviation from the original weights about 1.1e-5).
+- `TANGENT` becomes normalized int8 (int16 if the error would exceed 0.5 degrees; worst
+  measured 0.32 degrees); the `w` sign stays exact. Only files with a quantized tangent list
+  `KHR_mesh_quantization` in `extensionsUsed` and `extensionsRequired`.
+- `POSITION` and `NORMAL` stay float (a skinned mesh ignores its node transform, and the avatar
+  code recomputes normals in place); static scene and vehicle meshes are untouched because the
+  scene bakes and merges their geometry. UVs, joints, indices, morph targets, skins, materials
+  and textures are byte-identical. Each quantized accessor records `extras.extaliaQuantization`.
 
 ## Campus vehicles
 

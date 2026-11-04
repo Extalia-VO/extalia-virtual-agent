@@ -16,6 +16,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.163] - 2026-11-04
+
+### Changed
+
+- 44 avatar body, hair and garment GLBs store skin weights as normalized 16-bit and tangents as normalized 8-bit (`KHR_mesh_quantization`, decoded natively by three.js without WebAssembly), saving 29.3 MB. Positions, normals, UVs, joints, morph targets, skins, materials and textures are unchanged; measured maximum differences are 1.12e-5 for weights and 0.315° for tangent direction with exact handedness. `tooling/compress-public-models.py --quantize` repeats it and `--verify` checks every quantized accessor.
+
 ### Fixed
 
 - The `extalia` Bridge now sends `ETag` and `Last-Modified` for static files such as GLB models and answers conditional requests with `304 Not Modified`, so reopening the Web client no longer downloads every model again. `If-Range` only resumes a range while the file is unchanged; the token-bearing `index.html` stays `no-store`.
