@@ -16,17 +16,17 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.166] - 2026-11-05
+
+### Added
+
+- The Office loading screen follows real model loading instead of fixed stages: the bar grows smoothly and never jumps or moves backwards, the percentage counts through every number, a soft highlight sweeps left to right while loading continues, and the label names what is loading (for example "Loading clothing · Victorian bartender (12 of 48)" / "Memuat pakaian · … (12 dari 48)"). On slow devices the bar keeps creeping within the current stage instead of freezing. Reduced motion shows the value without easing or shimmer, and screen-reader updates are throttled.
+
 ## [0.4.165] - 2026-11-05
 
 ### Changed
 
 - Campus traffic now drives on one connected road network instead of six isolated straight lanes: the front road, the roads behind and beside the building and the surrounding ring are joined at junctions, cars turn left or right along multi-junction routes, wait their turn at junctions and keep their distance, and still stop at the front zebra crossing. Cars enter and leave only at road ends outside the visible district, including cars driving to and from the building's parking lots, so no car appears or disappears in view.
-
-## [0.4.164] - 2026-11-04
-
-### Changed
-
-- Public GLB textures use a compact profile approved by the owner: every texture is at most 512 px; colour and motif maps are lossy WebP (q90, higher or lossless when quality thresholds fail), normal, metallic-roughness and occlusion maps are JPEG 4:4:4 or lossless WebP, and textures no material references are removed. Motifs stay visible but softer at close range. Registered models drop from 388,665,616 to 141,266,428 bytes. Each image records its original source hash, encoding, resize and measured quality (colour PSNR ≥ 38 dB and SSIM ≥ 0.95; normal maps mean ≤ 2° and p99 ≤ 6°), and the model validator enforces these limits.
 
 ## [0.4.163] - 2026-11-04
 
