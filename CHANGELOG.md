@@ -16,6 +16,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.170] - 2026-11-05
+
+### Changed
+
+- Release notes for the Desktop and npm/Web beta v0.4.170 (`docs/release/v0.4.170.md`), which supersedes the unpublished v0.4.157; the README download table points at v0.4.170.
+
 ## [0.4.169] - 2026-11-05
 
 ### Fixed

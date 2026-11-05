@@ -8,7 +8,7 @@
 # Extalia
 
 <p align="center">
-  <a href="https://github.com/Extalia-VO/extalia-virtual-agent/issues/67"><img src="https://img.shields.io/badge/release-v0.4.157--pending-orange.svg?style=flat-square" alt="Release validation pending"></a>
+  <a href="https://github.com/Extalia-VO/extalia-virtual-agent/issues/67"><img src="https://img.shields.io/badge/release-v0.4.170--pending-orange.svg?style=flat-square" alt="Release validation pending"></a>
   <a href="https://github.com/Extalia-VO/extalia-virtual-agent/actions"><img src="https://github.com/Extalia-VO/extalia-virtual-agent/actions/workflows/ci.yml/badge.svg" alt="CI Status"></a>
   <a href="https://github.com/Extalia-VO/extalia-virtual-agent/stargazers"><img src="https://img.shields.io/github/stars/Extalia-VO/extalia-virtual-agent?style=flat-square&color=yellow" alt="Stars"></a>
   <a href="https://github.com/Extalia-VO/extalia-virtual-agent/network/members"><img src="https://img.shields.io/github/forks/Extalia-VO/extalia-virtual-agent?style=flat-square&color=blue" alt="Forks"></a>
@@ -21,7 +21,7 @@
 > **Next-gen spatial workspace & mission control for autonomous AI agents.**  
 > Extalia turns invisible autonomous AI agent workflows into a **living 3D virtual office** while giving engineers conventional views (Chat, Console, Tasks, Files, Git, Terminal, and Memory) for real development.
 
-> **Status: beta development.** The v0.4.157 Desktop/Web release is awaiting Mac archive verification and npm publication; follow [#67](https://github.com/Extalia-VO/extalia-virtual-agent/issues/67). Native Chat and subagent teams, agent-app observation, shared Desktop/Web UI, a furnished 3D campus, built-in skill guidance, progressive workspace memory and an Obsidian-compatible graph are implemented in this source tree. The opt-in Rust core adds durable planning and recovery evidence. Production SkillSpector/Python workers, complete effect-time ACLs and automatic learning activation remain unfinished; see the [PRD tracker](docs/product/prd-app-flow-and-live-agents.md#11-status-tracker).
+> **Status: beta development.** The v0.4.170 Desktop/Web release is awaiting Mac archive verification and npm publication; follow [#67](https://github.com/Extalia-VO/extalia-virtual-agent/issues/67). Native Chat and subagent teams, agent-app observation, shared Desktop/Web UI, a furnished 3D campus, built-in skill guidance, progressive workspace memory and an Obsidian-compatible graph are implemented in this source tree. The opt-in Rust core adds durable planning and recovery evidence. Production SkillSpector/Python workers, complete effect-time ACLs and automatic learning activation remain unfinished; see the [PRD tracker](docs/product/prd-app-flow-and-live-agents.md#11-status-tracker).
 
 ---
 
@@ -92,17 +92,17 @@ npm install -g extalia-vo@latest
 extalia
 ```
 
-The npm command installs the latest **published** package, which can precede the source changes described above. The following v0.4.157 download names are prepared for the release; their links become public only after every required release check passes and [#67](https://github.com/Extalia-VO/extalia-virtual-agent/issues/67) is complete:
+The npm command installs the latest **published** package, which can precede the source changes described above. The following v0.4.170 download names are prepared for the release; their links become public only after every required release check passes and [#67](https://github.com/Extalia-VO/extalia-virtual-agent/issues/67) is complete:
 
 | Platform | Package | Architecture | Direct Download |
 | :--- | :--- | :--- | :--- |
-| **macOS** | Disk Image (DMG) | Apple Silicon (arm64) | [Extalia-0.4.157-mac-arm64.dmg](https://github.com/Extalia-VO/extalia-virtual-agent/releases/download/v0.4.157/Extalia-0.4.157-mac-arm64.dmg) · [ZIP](https://github.com/Extalia-VO/extalia-virtual-agent/releases/download/v0.4.157/Extalia-0.4.157-mac-arm64.zip) |
-| **macOS** | Disk Image (DMG) | Intel (x64) | [Extalia-0.4.157-mac-x64.dmg](https://github.com/Extalia-VO/extalia-virtual-agent/releases/download/v0.4.157/Extalia-0.4.157-mac-x64.dmg) · [ZIP](https://github.com/Extalia-VO/extalia-virtual-agent/releases/download/v0.4.157/Extalia-0.4.157-mac-x64.zip) |
-| **Linux** | Universal AppImage | x64 | [Extalia-0.4.157-linux-x86_64.AppImage](https://github.com/Extalia-VO/extalia-virtual-agent/releases/download/v0.4.157/Extalia-0.4.157-linux-x86_64.AppImage) |
-| **Linux** | Debian / Ubuntu Package | x64 | [Extalia-0.4.157-linux-amd64.deb](https://github.com/Extalia-VO/extalia-virtual-agent/releases/download/v0.4.157/Extalia-0.4.157-linux-amd64.deb) |
-| **Windows** | Desktop installer | x64 | [Extalia-0.4.157-win-x64-setup.exe](https://github.com/Extalia-VO/extalia-virtual-agent/releases/download/v0.4.157/Extalia-0.4.157-win-x64-setup.exe) |
-| **Web** | Static Web Client | Universal | [Extalia-0.4.157-web.zip](https://github.com/Extalia-VO/extalia-virtual-agent/releases/download/v0.4.157/Extalia-0.4.157-web.zip) |
-| **CLI** | Local Web Bridge | Universal | [extalia-vo-0.4.157.tgz](https://github.com/Extalia-VO/extalia-virtual-agent/releases/download/v0.4.157/extalia-vo-0.4.157.tgz) |
+| **macOS** | Disk Image (DMG) | Apple Silicon (arm64) | [Extalia-0.4.170-mac-arm64.dmg](https://github.com/Extalia-VO/extalia-virtual-agent/releases/download/v0.4.170/Extalia-0.4.170-mac-arm64.dmg) · [ZIP](https://github.com/Extalia-VO/extalia-virtual-agent/releases/download/v0.4.170/Extalia-0.4.170-mac-arm64.zip) |
+| **macOS** | Disk Image (DMG) | Intel (x64) | [Extalia-0.4.170-mac-x64.dmg](https://github.com/Extalia-VO/extalia-virtual-agent/releases/download/v0.4.170/Extalia-0.4.170-mac-x64.dmg) · [ZIP](https://github.com/Extalia-VO/extalia-virtual-agent/releases/download/v0.4.170/Extalia-0.4.170-mac-x64.zip) |
+| **Linux** | Universal AppImage | x64 | [Extalia-0.4.170-linux-x86_64.AppImage](https://github.com/Extalia-VO/extalia-virtual-agent/releases/download/v0.4.170/Extalia-0.4.170-linux-x86_64.AppImage) |
+| **Linux** | Debian / Ubuntu Package | x64 | [Extalia-0.4.170-linux-amd64.deb](https://github.com/Extalia-VO/extalia-virtual-agent/releases/download/v0.4.170/Extalia-0.4.170-linux-amd64.deb) |
+| **Windows** | Desktop installer | x64 | [Extalia-0.4.170-win-x64-setup.exe](https://github.com/Extalia-VO/extalia-virtual-agent/releases/download/v0.4.170/Extalia-0.4.170-win-x64-setup.exe) |
+| **Web** | Static Web Client | Universal | [Extalia-0.4.170-web.zip](https://github.com/Extalia-VO/extalia-virtual-agent/releases/download/v0.4.170/Extalia-0.4.170-web.zip) |
+| **CLI** | Local Web Bridge | Universal | [extalia-vo-0.4.170.tgz](https://github.com/Extalia-VO/extalia-virtual-agent/releases/download/v0.4.170/extalia-vo-0.4.170.tgz) |
 
 Free macOS previews use verified ad-hoc signatures and are **not Apple-notarized**.
 They may show an unidentified-developer warning. If you trust the official
@@ -110,7 +110,7 @@ download, use **System Settings → Privacy & Security → Open Anyway** after t
 first launch attempt; previews update by manual download. See
 [macOS release modes](docs/release/packaging.md#macos-release-modes).
 
-Check downloaded files against [SHA256SUMS.txt](https://github.com/Extalia-VO/extalia-virtual-agent/releases/download/v0.4.157/SHA256SUMS.txt) on the release page. The static
+Check downloaded files against [SHA256SUMS.txt](https://github.com/Extalia-VO/extalia-virtual-agent/releases/download/v0.4.170/SHA256SUMS.txt) on the release page. The static
 Web ZIP contains the client; running agents still requires the local Bridge or
 Desktop host. npm installs the Bridge, client and matching daemon together.
 
