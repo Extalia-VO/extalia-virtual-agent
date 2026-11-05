@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { describe, expect, it } from 'vitest';
 import { bakeCampusMobilityModels, disposeMobilityLibrary, mobilitySources } from '../../apps/web/src/office/scene/CampusMobilityModels';
-import { TRAFFIC_SCHEDULE, VEHICLE_CATALOG, VEHICLE_MODELS, VEHICLE_SPECS, isMobilityVehicle, type MobilityModel } from '../../apps/web/src/office/scene/campusMobilityLayout';
+import { DAILY_CATALOG, TRAFFIC_LANES, VEHICLE_CATALOG, VEHICLE_MODELS, VEHICLE_SPECS, isMobilityVehicle, trafficPool, type MobilityModel } from '../../apps/web/src/office/scene/campusMobilityLayout';
 import { carPoint, headlightSpotAim, vehicleLampAnchors, type VehicleLampAnchors } from '../../apps/web/src/office/scene/campusVehicleLamps';
 
 const webRequire = createRequire(new URL('../../apps/web/package.json', import.meta.url));
@@ -53,7 +53,9 @@ describe('published campus car lamp anchors', () => {
 
   it('aims the real headlight spot from the traffic cars’ measured lamp height down their own lane', async () => {
     const published = await publishedLampAnchors();
-    for (const { lane, cars } of TRAFFIC_SCHEDULE) for (const model of new Set(cars.map(car => car.model))) {
+    // Every network lane with every vehicle that drives today (the connected network replaced per-lane schedules).
+    const pool = trafficPool(DAILY_CATALOG), driving = new Set([...pool.cars, ...pool.long].map(vehicle => vehicle.model));
+    for (const lane of TRAFFIC_LANES) for (const model of driving) {
       const lamps = published.get(model)!;
       const yaw = Math.atan2(lane.to[0] - lane.from[0], lane.to[1] - lane.from[1]);
       const pose = { x: (lane.from[0] + lane.to[0]) / 2, y: lane.top + .015, z: (lane.from[1] + lane.to[1]) / 2, yaw };

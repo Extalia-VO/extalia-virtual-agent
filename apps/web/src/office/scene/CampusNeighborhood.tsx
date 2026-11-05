@@ -6,13 +6,16 @@ import { CivicForecourtPark } from "./CivicForecourtPark";
 import { CampusParking } from "./CampusParking";
 import { CampusTraffic } from "./CampusTraffic";
 import { FRONT_APPROACH } from "./campusSiteLayout";
+import {
+  ARRIVAL_CROSSWALK, AVENUE_X, CROSS_LINES_X, CROSS_LINES_Z, CROSS_Z, CROSSWALK, CROSSWALK_JUNCTIONS, RING_X, ROAD_RUNS, ROAD_TOP, STREET,
+  type RoadRun,
+} from "./campusRoadNetwork";
 
 type Slab = { x: number; y: number; z: number; width: number; height: number; depth: number; tone: string };
 
 // Neighborhood ground sits just above the skyline ground (-0.8) and below the
 // campus lawn block (bottom -0.68). Roads lie flush on it.
 const PLANE_Y = -0.72;
-const ROAD_TOP = FRONT_APPROACH.roadTop;
 const ROAD_THICK = 0.03;
 const ROAD_TONE = "#3b4248";
 const DASH_TONE = "#e6e1d2";
@@ -23,32 +26,10 @@ const DASH_TONE = "#e6e1d2";
 const CAMPUS_ROAD_Z = 28.5;
 const CAMPUS_ROAD_WIDTH = 8;
 
-// City-grid streets (CampusSkyline: BLOCK 24, offset 12) that the neighborhood
-// connects into. Each line continues past the plane edge as a skyline street.
-const AVENUE_X = 60;
-const RING_X = 108;
-const RING_SOUTH_Z = FRONT_APPROACH.roadCenterZ;
-const RING_NORTH_Z = 108;
-const CROSS_Z = 84;
-const STREET = FRONT_APPROACH.roadWidth;
-
-type Run = { axis: "x" | "z"; at: number; from: number; to: number; width: number };
-
-/** Every street segment drawn on the neighborhood plane. */
-const RUNS: readonly Run[] = [
-  // Outer ring aligned with skyline streets; extends past the plane edge.
-  { axis: "z", at: -RING_X, from: RING_SOUTH_Z - STREET / 2, to: 126, width: STREET },
-  { axis: "z", at: RING_X, from: RING_SOUTH_Z - STREET / 2, to: 126, width: STREET },
-  { axis: "x", at: RING_SOUTH_Z, from: -112, to: 112, width: STREET },
-  { axis: "x", at: RING_NORTH_Z, from: -112, to: 112, width: STREET },
-  // Avenues flanking the campus, tying the campus roads to the ring.
-  { axis: "z", at: -AVENUE_X, from: RING_SOUTH_Z, to: RING_NORTH_Z, width: STREET },
-  { axis: "z", at: AVENUE_X, from: RING_SOUTH_Z, to: RING_NORTH_Z, width: STREET },
-  { axis: "x", at: CROSS_Z, from: -RING_X, to: RING_X, width: STREET },
-];
-
-const CROSS_LINES_X = [-RING_X, -AVENUE_X, AVENUE_X, RING_X];
-const CROSS_LINES_Z = [RING_SOUTH_Z, CROSS_Z, RING_NORTH_Z];
+// City-grid streets (CampusSkyline: BLOCK 24, offset 12) that the neighborhood connects into; the
+// street layout (ring, avenues, cross street) is shared with the traffic network (campusRoadNetwork).
+type Run = RoadRun;
+const RUNS = ROAD_RUNS;
 
 function roadSlab(run: Run): Slab {
   const length = run.to - run.from;
@@ -78,33 +59,27 @@ function buildCrosswalks(): Slab[] {
   const stripes: Slab[] = [];
   const y = ROAD_TOP + 0.005;
   const h = 0.009;
-  const stripeLen = 2.4;
+  const stripeLen = CROSSWALK.half * 2;
   const stripeW = 0.42;
 
   // 1. Main arrival crosswalk across the front ring road (x = 0, z = RING_SOUTH_Z)
-  for (let z = RING_SOUTH_Z - 2.6; z <= RING_SOUTH_Z + 2.6; z += 0.85) {
-    stripes.push({ x: 0, y, z, width: 3.4, height: h, depth: stripeW, tone: DASH_TONE });
+  for (let z = ARRIVAL_CROSSWALK.z - 2.6; z <= ARRIVAL_CROSSWALK.z + 2.6; z += 0.85) {
+    stripes.push({ x: ARRIVAL_CROSSWALK.x, y, z, width: 3.4, height: h, depth: stripeW, tone: DASH_TONE });
   }
   for (const dir of [-1, 1]) {
-    stripes.push({ x: dir * 3.2, y, z: RING_SOUTH_Z, width: 0.24, height: h, depth: STREET - 0.8, tone: DASH_TONE });
+    stripes.push({ x: ARRIVAL_CROSSWALK.x + dir * 3.2, y, z: ARRIVAL_CROSSWALK.z, width: 0.24, height: h, depth: STREET - 0.8, tone: DASH_TONE });
   }
 
   // 2. Avenue & cross-street intersection crosswalks
-  const junctions: [number, number][] = [
-    [-AVENUE_X, RING_SOUTH_Z],
-    [AVENUE_X, RING_SOUTH_Z],
-    [-AVENUE_X, CROSS_Z],
-    [AVENUE_X, CROSS_Z]
-  ];
-  for (const [jx, jz] of junctions) {
+  for (const [jx, jz] of CROSSWALK_JUNCTIONS) {
     for (const side of [-1, 1]) {
       // North/south crossings across the avenue
-      const cz = jz + side * (STREET / 2 + 1.8);
+      const cz = jz + side * CROSSWALK.offset;
       for (let dx = -2.4; dx <= 2.4; dx += 0.8) {
         stripes.push({ x: jx + dx, y, z: cz, width: stripeW, height: h, depth: stripeLen, tone: DASH_TONE });
       }
       // East/west crossings across the cross street
-      const cx = jx + side * (STREET / 2 + 1.8);
+      const cx = jx + side * CROSSWALK.offset;
       for (let dz = -2.4; dz <= 2.4; dz += 0.8) {
         stripes.push({ x: cx, y, z: jz + dz, width: stripeLen, height: h, depth: stripeW, tone: DASH_TONE });
       }
