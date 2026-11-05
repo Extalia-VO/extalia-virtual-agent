@@ -16,6 +16,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.169] - 2026-11-05
+
+### Fixed
+
+- The night Splash loop no longer flickers: re-rendered on a hardware GPU, the skyline's lit windows stay steady instead of blinking on every frame (a software-renderer artifact). `tooling/check-splash-flicker.mjs` measures blinking in the loops.
+
 ## [0.4.168] - 2026-11-05
 
 ### Changed

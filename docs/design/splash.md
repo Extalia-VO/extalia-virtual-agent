@@ -81,6 +81,13 @@ with ANGLE/Metal), and `FFMPEG`. Other options: `--seconds`, `--fps`, `--fade`
 and `--out`. A capture of both variants takes about 3 minutes on an Apple-silicon
 laptop.
 
+Render on a hardware GPU. A software renderer (SwiftShader, as in containers
+without a GPU) made the distant skyline's lit windows pop in and out on every
+frame of the night loop as the camera swayed; the November 2026 night loop had
+about 570 blinking pixels per frame at 320×180 until it was re-rendered with
+ANGLE/Metal (about 4, from moving traffic). `node tooling/check-splash-flicker.mjs`
+measures this for every loop and fails above 25.
+
 After re-rendering, check that each video is ≤ 2.5 MB and each poster is
 ≤ 150 KB, then look at a few frames. Run `node tooling/check-public-safety.mjs`;
 binary media are skipped by its text scan, and the tool writes no paths into
