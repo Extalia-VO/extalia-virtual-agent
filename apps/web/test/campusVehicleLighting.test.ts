@@ -8,9 +8,10 @@ import {
 } from '../src/office/scene/CampusTraffic';
 import { RENDER_BUDGET_LEVELS } from '../src/office/scene/environment/renderBudget';
 import {
-  EV_CHARGERS, PARKED_VEHICLES, PARKING, PARKING_BAYS, PARKING_LIGHTS, TRAFFIC_LANES, TRAFFIC_SCHEDULE, VEHICLE_MODELS, VEHICLE_SPECS,
-  createTrafficPose, isMobilityVehicle, updateTraffic, wheelSpin, type TrafficCarPose,
+  EV_CHARGERS, PARKED_VEHICLES, PARKING, PARKING_BAYS, PARKING_LIGHTS, VEHICLE_MODELS, VEHICLE_SPECS,
+  isMobilityVehicle, wheelSpin, type TrafficCarPose,
 } from '../src/office/scene/campusMobilityLayout';
+import { createTrafficNetwork, stepTrafficNetwork, hideTrafficNetwork } from '../src/office/scene/trafficNetwork';
 import {
   BEAM_LENGTH, BEAM_TUCK, BEAM_WIDTH, carPoint, HEAD_GLARE_SIZE, HEADLIGHT_SPOT, headlightPoolLevels, lampGlareLevels, REAR_POOL_LENGTH, REAR_POOL_TUCK, REAR_POOL_WIDTH,
   SPOT_REACH, vehicleLampAnchors, type VehicleLampAnchors,
@@ -81,24 +82,26 @@ describe('campus vehicle and parking night lighting', () => {
   it('spins wheels by distance over radius, holds them while waiting and keeps them still under reduced motion', () => {
     expect(wheelSpin(2 * Math.PI * .35, .35)).toBeCloseTo(2 * Math.PI);
     expect(wheelSpin(5, 0)).toBe(0);
-    // Every car's distance only grows and holds while it waits (at the crossing or queued); reduced motion empties the road.
-    const admitted = TRAFFIC_SCHEDULE.map(lane => new Uint8Array(lane.cars.length).fill(1));
-    const pool = Array.from({ length: 64 }, createTrafficPose);
-    const previous = new Map<number, { distance: number; stopped: boolean; t: number }>();
+    // Every car's odometer only grows and holds while it stands (at the crossing, a junction or in a queue); reduced motion empties the road.
+    const net = createTrafficNetwork(7), input = { density: 1, cap: 16, headroom: 4 }, dt = .05;
+    const previous = new Map<number, { distance: number; t: number }>();
     let waiting = 0;
-    for (let t = 0; t < 330; t += .05) {
-      const count = updateTraffic(TRAFFIC_SCHEDULE, admitted, t, 1, pool);
-      for (const pose of pool.slice(0, count)) {
+    for (let t = 0; t < 300; t += dt) {
+      stepTrafficNetwork(net, dt, input);
+      for (let i = 0; i < net.count; i++) {
+        const pose = net.poses[i]!, car = net.cars.find(entry => entry.active && entry.id === pose.id)!;
         const before = previous.get(pose.id);
-        if (before && t - before.t < .06) {
+        if (before) {
           expect(pose.distance).toBeGreaterThanOrEqual(before.distance - 1e-9);
-          if (pose.stopped && before.stopped) { expect(pose.distance).toBeCloseTo(before.distance, 6); waiting++; }
+          if (car.v < .05) { expect(pose.distance - before.distance).toBeLessThanOrEqual(.05 * dt + 1e-9); if (pose.stopped) waiting++; }
         }
-        previous.set(pose.id, { distance: pose.distance, stopped: pose.stopped, t });
+        previous.set(pose.id, { distance: pose.distance, t });
       }
     }
     expect(waiting).toBeGreaterThan(10);
-    expect(updateTraffic(TRAFFIC_SCHEDULE, admitted, 10, 1, pool, true)).toBe(0);
+    hideTrafficNetwork(net);
+    expect(net.count).toBe(0);
+    expect(net.poses.every(pose => !pose.visible)).toBe(true);
   });
 
   it('places the instanced wheel on its hub, faces the rim outwards and rolls both sides forwards', () => {
@@ -152,7 +155,6 @@ describe('campus vehicle and parking night lighting', () => {
   });
 
   it('aims bounded pooled headlights from measured lamp height onto the road in every lane direction', () => {
-    expect(TRAFFIC_LANES).toHaveLength(6);
     expect(SPOT_REACH).toBe(12);
     // A narrow, far-reaching cone that does not spill shadows or reach beyond the road.
     expect(HEADLIGHT_SPOT.angle).toBeLessThan(.5);
@@ -160,13 +162,17 @@ describe('campus vehicle and parking night lighting', () => {
     expect(HEADLIGHT_SPOT.distance).toBeLessThanOrEqual(30);
     const models = createMobilityFallbackModels();
     try {
-      const pool = Array.from({ length: 64 }, createTrafficPose), admitted = TRAFFIC_SCHEDULE.map(lane => new Uint8Array(lane.cars.length).fill(1));
-      const seen = new Set<number>();
-      for (let t = 0; t < 330 && seen.size < TRAFFIC_LANES.length; t += 1) {
-        const count = updateTraffic(TRAFFIC_SCHEDULE, admitted, t, 1, pool);
-        for (const pose of pool.slice(0, count).filter(candidate => !seen.has(candidate.lane))) {
-          seen.add(pose.lane);
-          const lane = TRAFFIC_LANES[pose.lane]!;
+      const net = createTrafficNetwork(7), input = { density: 1, cap: 16, headroom: 4 };
+      // Straight runs in all four directions and cars turning inside a junction.
+      const seen = new Set<string>();
+      for (let t = 0; t < 600 && seen.size < 5; t += .25) {
+        stepTrafficNetwork(net, .25, input);
+        for (let i = 0; i < net.count; i++) {
+          const pose = net.poses[i]!, lane = { top: pose.top };
+          const heading = Math.round(((pose.yaw / (Math.PI / 2)) % 4 + 4) % 4 * 4) / 4;
+          const key = heading % 1 === 0 ? String(heading) : 'turn';
+          if (seen.has(key)) continue;
+          seen.add(key);
           if (!isMobilityVehicle(pose.model)) throw new Error('Traffic lane requires a car');
           const lamps = vehicleLampAnchors(models.get(pose.model)!.lamp, VEHICLE_SPECS[pose.model]!);
           const beam = trafficHeadlightBeam(lane, pose, lamps, 1);
@@ -190,7 +196,7 @@ describe('campus vehicle and parking night lighting', () => {
           expect(trafficHeadlightBeam(lane, { ...pose, visible: false } satisfies TrafficCarPose, lamps, 1).intensity).toBe(0);
         }
       }
-      expect(seen.size).toBe(TRAFFIC_LANES.length);
+      expect(seen.size).toBe(5);
     } finally { disposeMobilityLibrary(models); }
   });
 

@@ -1,13 +1,16 @@
 import { PARKING_ACCESS, PARKING_LOTS, parkingSurfaceY, type ParkingLot } from './campusParkingLots';
 import {
   DAILY_CATALOG, PARKED_VEHICLES, TRAFFIC_LANES, TRAFFIC_TIMING, VEHICLE_SPECS,
-  carActive, createTrafficPose, isMobilityVehicle, laneLength, trafficDensity,
-  type CatalogVehicle, type LaneSchedule, type MobilityModel, type ParkedVehicle, type TrafficCarPose, type TrafficLane,
+  createTrafficPose, isMobilityVehicle, laneLength, trafficDensity, vehicleCategory,
+  type CatalogVehicle, type MobilityModel, type ParkedVehicle, type TrafficCarPose, type TrafficLane,
 } from './campusMobilityLayout';
 
 /**
  * Parking-lot manoeuvres: cars leave their bays and join the lot's traffic lane, and cars arrive from
- * that lane and park, on a deterministic per-lot schedule. Pure simulation (no Three.js): the
+ * that lane and park, on a deterministic per-lot schedule. With the district network attached
+ * (`TrafficContext.adopt`/`dispatch`), a departing car hands over to through traffic once it is aligned
+ * on the lane and an arriving car is a network car handed over as it reaches the lot's lane, so lot cars
+ * never appear or vanish on the road. Pure simulation (no Three.js): the
  * renderer reads `ManeuverPose`s and the lot occupancy; every array is allocated once per lot and
  * once per manoeuvre, never per frame.
  */
@@ -478,8 +481,10 @@ export interface ManeuverPose extends TrafficCarPose {
   lit: number; reverse: boolean; waiting: boolean; speed: number;
   /** Ground height under the car (decals) and the lane index while the car is on its lane, else -1. */
   top: number; onLane: number;
+  /** The lane whose carriageway the car's body takes up (on it, merging into or turning off it), else -1; `along` is its lane coordinate. */
+  occupies: number;
 }
-const createManeuverPose = (): ManeuverPose => ({ ...createTrafficPose(), lot: 0, bay: -1, kind: 'depart', phase: 'parked', lit: 0, reverse: false, waiting: false, speed: 0, top: 0, onLane: -1 });
+const createManeuverPose = (): ManeuverPose => ({ ...createTrafficPose(), lot: 0, bay: -1, kind: 'depart', phase: 'parked', lit: 0, reverse: false, waiting: false, speed: 0, top: 0, onLane: -1, occupies: -1 });
 
 export interface Maneuver {
   active: boolean; kind: ManeuverKind; bay: number; model: MobilityModel; tone: string; half: number; halfWidth: number;
@@ -494,6 +499,8 @@ export interface LotState {
   pending: { kind: ManeuverKind; pick: number; model: number; tone: number; interval: number } | null;
   models: (MobilityModel | null)[]; tones: string[]; reserved: Uint8Array;
   corridor: number; serial: number; maneuvers: Maneuver[];
+  /** Arrivals dispatched into the district network, still on their way to the lot. */
+  incoming: number;
 }
 export interface ParkingSim {
   seed: number; seconds: number; lots: LotState[];
@@ -535,7 +542,7 @@ export function createParkingSim(seed: number, lots: readonly LotInput[] = MANEU
     const first = between(LOT_TIMING.first, rng());
     return {
       lot, index, laneIndex, lane: lanes[Math.max(0, laneIndex)]!, rng, next: first, lastDecision: -Infinity, pending: null,
-      models, tones, reserved: new Uint8Array(lot.bays.length), corridor: -1, serial: 0,
+      models, tones, reserved: new Uint8Array(lot.bays.length), corridor: -1, serial: 0, incoming: 0,
       maneuvers: Array.from({ length: MAX_LOT_MANEUVERS }, () => ({
         active: false, kind: 'depart' as ManeuverKind, bay: -1, model: 'mobility-sedan' as MobilityModel, tone: '#ffffff', half: 2.3, halfWidth: 1,
         route: null, leg: 0, s: 0, v: 0, hold: -1, phase: 'parked' as ManeuverPhase, phaseTime: 0, pause: 0, braking: false, cleared: false, crossed: false, crossWait: 0,
@@ -546,15 +553,24 @@ export function createParkingSim(seed: number, lots: readonly LotInput[] = MANEU
   return { seed, seconds: 0, lots: states, version: 0, styles, capacity: lotModelCapacity(parked, styles), counts, log: [] };
 }
 
-/** Traffic seen by the lots: the live poses plus the schedule for cars about to enter a lane. */
+/**
+ * Traffic seen by the lots: the live network poses (lane, `along` and the next lane they `feed`) and,
+ * when the district network is attached, its hand-off hooks. Without hooks (standalone lots) arrivals
+ * start at the lane start and departures leave at the lane end.
+ */
 export interface TrafficContext {
-  poses: readonly TrafficCarPose[]; count: number;
-  schedules?: readonly LaneSchedule[]; admitted?: readonly Uint8Array[]; seconds: number; density: number;
+  poses: readonly TrafficCarPose[]; count: number; seconds: number; density: number;
+  /** Whether a departing car of `model` can join through traffic now (else it keeps waiting at the give-way line). */
+  canAdopt?: (model: MobilityModel) => boolean;
+  /** A departing car aligned on `lane` at `along` joins through traffic; false keeps it a lot car. */
+  adopt?: (lane: number, along: number, speed: number, car: Pick<ManeuverPose, 'id' | 'model' | 'tone' | 'distance'>) => boolean;
+  /** Sends a car of `model` from a network entry to lot `lot` (its lane `lane`, bay hint `bay`); false when the network is full. */
+  dispatch?: (lot: number, lane: number, model: MobilityModel, tone: string, bay: number, u: number) => boolean;
 }
 export interface ParkingStepOptions { minutes: number; density: number; cap: number; reducedMotion: boolean; traffic: TrafficContext }
 
 const occupiedCount = (state: LotState) => {
-  let count = 0;
+  let count = state.incoming;
   for (const model of state.models) if (model) count++;
   for (const m of state.maneuvers) if (m.active) count += m.kind === 'arrive' ? 1 : -1;
   return count;
@@ -583,27 +599,15 @@ export function laneGapClear(sim: ParkingSim, laneIndex: number, lane: TrafficLa
   const from = at - behind, to = at + ahead, frame = frameOf(lane);
   for (let i = 0; i < traffic.count; i++) {
     const pose = traffic.poses[i]!;
-    if (pose.visible && pose.lane === laneIndex && pose.distance > from && pose.distance < to) return false;
+    if (!pose.visible) continue;
+    // On the lane (or turning into it), or about to turn into it from the lane before.
+    if (pose.lane === laneIndex && pose.along > from && pose.along < to) return false;
+    if (pose.feed === laneIndex && pose.feedAt > from && pose.feedAt < to) return false;
   }
   for (const state of sim.lots) for (const m of state.maneuvers) {
-    if (!m.active || m.pose === self || m.pose.onLane !== laneIndex) continue;
+    if (!m.active || m.pose === self || (m.pose.onLane !== laneIndex && m.pose.occupies !== laneIndex)) continue;
     const along = laneAlong(frame, m.pose.x, m.pose.z);
     if (along > from && along < to) return false;
-  }
-  const schedule = traffic.schedules?.[laneIndex];
-  if (schedule) {
-    // Cars about to depart from the lane start sit at negative positions (their distance to go at lane speed).
-    const local = ((traffic.seconds + schedule.phase) % schedule.cycle + schedule.cycle) % schedule.cycle;
-    const horizon = (behind - at) / lane.speed;
-    const admitted = traffic.admitted?.[laneIndex];
-    if (horizon > 0) for (let i = 0; i < schedule.cars.length; i++) {
-      const car = schedule.cars[i]!;
-      if ((admitted && !admitted[i]) || !carActive(car, traffic.density)) continue;
-      for (let wrap = 0; wrap < 2; wrap++) {
-        const wait = car.depart + wrap * schedule.cycle - local, position = -wait * lane.speed;
-        if (wait > 0 && wait <= horizon && position > from && position < to) return false;
-      }
-    }
   }
   return true;
 }
@@ -621,7 +625,7 @@ function pickModel(sim: ParkingSim, ev: boolean, u: number): MobilityModel | nul
   return null;
 }
 
-function beginManeuver(sim: ParkingSim, state: LotState, kind: ManeuverKind, bay: number, model: MobilityModel, tone: string, route: ManeuverRoute): Maneuver | null {
+function beginManeuver(sim: ParkingSim, state: LotState, kind: ManeuverKind, bay: number, model: MobilityModel, tone: string, route: ManeuverRoute, counted = false): Maneuver | null {
   const slot = state.maneuvers.findIndex(m => !m.active);
   if (slot < 0) return null;
   const m = state.maneuvers[slot]!;
@@ -634,7 +638,7 @@ function beginManeuver(sim: ParkingSim, state: LotState, kind: ManeuverKind, bay
   if (kind === 'arrive') {
     m.v = state.lane.speed;
     state.corridor = slot;
-    sim.counts.set(model, (sim.counts.get(model) ?? 0) + 1);
+    if (!counted) sim.counts.set(model, (sim.counts.get(model) ?? 0) + 1);
   }
   state.reserved[bay] = 1;
   m.pose.onLane = -1; m.pose.distance = 0;
@@ -682,6 +686,44 @@ function tryArrive(sim: ParkingSim, state: LotState, pick: number, modelU: numbe
   return false;
 }
 
+/** A free bay and a style with instance room for the next arrival, as `tryArrive` would choose them (no route check). */
+function arrivalChoice(sim: ParkingSim, state: LotState, pick: number, modelU: number): { bay: number; model: MobilityModel } | null {
+  const free: number[] = [];
+  state.lot.bays.forEach((_, index) => { if (!state.models[index] && !state.reserved[index]) free.push(index); });
+  for (let k = 0; k < free.length; k++) {
+    const bay = free[(Math.floor(pick * free.length) + k) % free.length]!;
+    const model = pickModel(sim, state.lot.bays[bay]!.ev, modelU);
+    if (model) return { bay, model };
+  }
+  return null;
+}
+/**
+ * A network car dispatched to lot `lotIndex` reached the lot's lane (centre `s` metres along it at speed
+ * `v`): it becomes the arrival into its hinted bay or another free one that suits it. False (it drives
+ * on) when the aisle is busy or no bay can take it now.
+ */
+export function adoptArrival(sim: ParkingSim, lotIndex: number, car: { model: MobilityModel; tone: string; bay: number; s: number; v: number; distance: number }): boolean {
+  const state = sim.lots[lotIndex];
+  if (!state) return false;
+  state.incoming = Math.max(0, state.incoming - 1);
+  const ev = vehicleCategory(car.model) === 'ev';
+  const bays: number[] = [];
+  if (car.bay >= 0 && car.bay < state.lot.bays.length) bays.push(car.bay);
+  state.lot.bays.forEach((_, index) => { if (index !== car.bay) bays.push(index); });
+  if (state.corridor < 0) for (const bay of bays) {
+    if (state.models[bay] || state.reserved[bay] || (state.lot.bays[bay]!.ev && !ev)) continue;
+    const route = clearRoute(state, bay, 'arrive', car.model);
+    if (!route || car.s > route.leaveS - 2) continue;
+    const m = beginManeuver(sim, state, 'arrive', bay, car.model, car.tone, route, true);
+    if (!m) break;
+    m.s = car.s; m.v = car.v; m.pose.distance = car.distance;
+    writePose(state, m);
+    return true;
+  }
+  sim.counts.set(car.model, Math.max(0, (sim.counts.get(car.model) ?? 0) - 1));
+  return false;
+}
+
 /** Development and tests: start a departure or an arrival now (ignores the schedule and the cap, keeps the rules). */
 export function triggerManeuver(sim: ParkingSim, lotId: string, kind: ManeuverKind, bayId?: string, traffic?: TrafficContext): boolean {
   const state = sim.lots.find(lot => lot.lot.id === lotId) ?? sim.lots[0];
@@ -698,7 +740,7 @@ function finish(sim: ParkingSim, state: LotState, m: Maneuver) {
     state.models[m.bay] = null;
     sim.counts.set(m.model, Math.max(0, (sim.counts.get(m.model) ?? 0) - 1));
   } else { state.models[m.bay] = m.model; state.tones[m.bay] = m.tone; }
-  m.active = false; m.phase = 'parked'; m.route = null; m.pose.visible = false; m.pose.lit = 0; m.pose.onLane = -1;
+  m.active = false; m.phase = 'parked'; m.route = null; m.pose.visible = false; m.pose.lit = 0; m.pose.onLane = -1; m.pose.occupies = -1;
   sim.version++;
 }
 
@@ -744,7 +786,8 @@ function advance(sim: ParkingSim, state: LotState, m: Maneuver, dt: number, traf
   // Give way at the lot exit until the lane is clear behind and ahead of the junction.
   const lane = state.lane, frame = frameOf(lane);
   if (m.kind === 'depart' && last && m.hold >= 0 && !m.cleared && m.s >= m.hold - LOT_TIMING.holdLook) {
-    m.cleared = laneGapClear(sim, state.laneIndex, lane, route.mergeLane, LOT_TIMING.mergeBehind, LOT_TIMING.mergeAhead, traffic, m.pose);
+    m.cleared = laneGapClear(sim, state.laneIndex, lane, route.mergeLane, LOT_TIMING.mergeBehind, LOT_TIMING.mergeAhead, traffic, m.pose)
+      && (traffic.canAdopt?.(m.model) ?? true);
     if (!m.cleared) allowed = Math.min(allowed, Math.sqrt(2 * decel * Math.max(0, m.hold - m.s)));
   }
   // On the lane: follow the car ahead and stop at a zebra crossing like through traffic.
@@ -755,16 +798,16 @@ function advance(sim: ParkingSim, state: LotState, m: Maneuver, dt: number, traf
     let gap = Infinity;
     for (let i = 0; i < traffic.count; i++) {
       const pose = traffic.poses[i]!;
-      if (!pose.visible || pose.lane !== state.laneIndex || pose.distance <= mine) continue;
-      gap = Math.min(gap, pose.distance - mine - m.half - (footprintOf(pose.model).half) - TRAFFIC_TIMING.clearance);
+      if (!pose.visible || pose.lane !== state.laneIndex || pose.along <= mine) continue;
+      gap = Math.min(gap, pose.along - mine - m.half - (footprintOf(pose.model).half) - TRAFFIC_TIMING.clearance);
     }
     for (const other of sim.lots) for (const o of other.maneuvers) {
-      if (!o.active || o === m || o.pose.onLane !== state.laneIndex) continue;
+      if (!o.active || o === m || (o.pose.onLane !== state.laneIndex && o.pose.occupies !== state.laneIndex)) continue;
       const along = laneAlong(frame, o.pose.x, o.pose.z);
       if (along > mine) gap = Math.min(gap, along - mine - m.half - o.half - TRAFFIC_TIMING.clearance);
     }
     if (lane.crossing && !m.crossed) {
-      const stop = frame.length / 2 - TRAFFIC_TIMING.stopLine - m.half;
+      const stop = lane.crossAt - TRAFFIC_TIMING.stopLine - m.half;
       if (mine > stop + .5) m.crossed = true;
       else {
         gap = Math.min(gap, stop - mine);
@@ -781,6 +824,11 @@ function advance(sim: ParkingSim, state: LotState, m: Maneuver, dt: number, traf
   m.pose.distance += leg.gear * m.v * dt;
   if (m.kind === 'depart' && last) {
     m.phase = m.s >= m.hold - LOT_TIMING.holdLook && (m.s < route.joinS || m.v < lane.speed * .9) ? 'merging' : 'driving';
+    // Aligned on the lane: through traffic takes the car over (same pose, speed and odometer).
+    if (m.s >= route.joinS && traffic.adopt) {
+      legPose(leg, m.s, scratchPose);
+      if (traffic.adopt(state.laneIndex, laneAlong(frame, scratchPose.x, scratchPose.z), m.v, { id: m.pose.id, model: m.model, tone: m.tone, distance: m.pose.distance })) { finish(sim, state, m); return; }
+    }
   }
   if (leg.length - m.s < .02) {
     m.s = leg.length;
@@ -799,7 +847,7 @@ function advance(sim: ParkingSim, state: LotState, m: Maneuver, dt: number, traf
 
 function writePose(state: LotState, m: Maneuver) {
   const pose = m.pose, route = m.route;
-  if (!m.active || !route) { pose.visible = false; pose.lit = 0; return; }
+  if (!m.active || !route) { pose.visible = false; pose.lit = 0; pose.occupies = -1; return; }
   const leg = route.legs[Math.min(m.leg, route.legs.length - 1)]!;
   legPose(leg, m.s, scratchPose);
   pose.lane = state.laneIndex; pose.model = m.model; pose.tone = m.tone;
@@ -808,6 +856,12 @@ function writePose(state: LotState, m: Maneuver) {
   maneuverLamps(m.phase, m.phaseTime, m.braking || m.pause > 0, m.lamps);
   pose.lit = m.lamps.on ? 1 : 0; pose.stopped = m.lamps.brake; pose.reverse = m.lamps.reverse;
   pose.waiting = m.kind === 'depart' && !m.cleared && m.v < .05 && m.phase === 'merging';
+  // On the carriageway (or about to be, past a cleared give-way line): through traffic keeps behind it.
+  const frame = frameOf(state.lane), rx = pose.x - frame.ox, rz = pose.z - frame.oz;
+  const lateral = Math.abs(rx * frame.dz - rz * frame.dx);
+  const onRoad = pose.onLane >= 0 || lateral < LOT_TIMING.roadEdge + m.halfWidth + .5 || (m.kind === 'depart' && m.cleared && m.s >= m.hold - .5);
+  pose.occupies = m.active && onRoad ? state.laneIndex : -1;
+  pose.along = rx * frame.dx + rz * frame.dz;
   pose.visible = true;
 }
 
@@ -843,16 +897,23 @@ function decide(sim: ParkingSim, state: LotState, options: ParkingStepOptions) {
     state.pending = { kind, pick, model, tone, interval };
   }
   const pending = state.pending;
-  let started = false, blocked = false;
+  let started = false, blocked = false, dispatchedBay = -1, dispatchedModel: MobilityModel | null = null;
   if (activeCount(state) >= Math.min(MAX_LOT_MANEUVERS, options.cap)) blocked = true;
   else if (pending.kind === 'depart') started = tryDepart(sim, state, pending.pick);
-  else {
+  else if (options.traffic.dispatch) {
+    // Through the network: a car sets off from a hidden entry now and turns in when it reaches the lane.
+    const choice = arrivalChoice(sim, state, pending.pick, pending.model), tone = LOT_TONES[Math.floor(pending.tone * LOT_TONES.length)]!;
+    started = !!choice && state.incoming < MAX_LOT_MANEUVERS && options.traffic.dispatch(state.index, state.laneIndex, choice.model, tone, choice.bay, pending.pick);
+    if (started) { state.incoming++; sim.counts.set(choice!.model, (sim.counts.get(choice!.model) ?? 0) + 1); dispatchedBay = choice!.bay; dispatchedModel = choice!.model; }
+    blocked = !started && !!choice;
+  } else {
     started = tryArrive(sim, state, pending.pick, pending.model, LOT_TONES[Math.floor(pending.tone * LOT_TONES.length)]!, options.traffic);
     blocked = !started && (state.corridor >= 0 || !laneGapClear(sim, state.laneIndex, state.lane, 0, state.lane.speed * LOT_TIMING.arrivalLead, LOT_TIMING.arrivalAhead, options.traffic));
   }
   if (blocked && sim.seconds - state.next < 60) { state.next = sim.seconds + LOT_TIMING.retry; return; }
   const begun = started ? state.maneuvers.find(m => m.active && m.pose.id === 1_000_000 + state.index * 100_000 + state.serial) : undefined;
-  sim.log.push({ t: sim.seconds, lot: state.lot.id, kind: pending.kind, bay: begun ? state.lot.bays[begun.bay]!.id : '', model: begun?.model ?? 'mobility-sedan', started });
+  const bayId = begun ? state.lot.bays[begun.bay]!.id : dispatchedBay >= 0 ? state.lot.bays[dispatchedBay]!.id : '';
+  sim.log.push({ t: sim.seconds, lot: state.lot.id, kind: pending.kind, bay: bayId, model: begun?.model ?? dispatchedModel ?? 'mobility-sedan', started });
   if (sim.log.length > 256) sim.log.shift();
   state.lastDecision = sim.seconds;
   state.next = sim.seconds + maneuverInterval(options.density, pending.interval);
@@ -868,7 +929,7 @@ export function parkedAt(state: LotState, bay: number): MobilityModel | null {
 export function parkingDebug(sim: ParkingSim) {
   const round = (value: number) => Math.round(value * 100) / 100;
   return sim.lots.map(state => ({
-    lot: state.lot.id, lane: state.lane.id, next: round(state.next), corridor: state.corridor, occupancy: occupiedCount(state),
+    lot: state.lot.id, lane: state.lane.id, next: round(state.next), corridor: state.corridor, occupancy: occupiedCount(state), incoming: state.incoming,
     bounds: occupancyBounds(state.lot.bays.length),
     cars: state.lot.bays.map((bay, index) => {
       const m = state.maneuvers.find(x => x.active && x.bay === index);

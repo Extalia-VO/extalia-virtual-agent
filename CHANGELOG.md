@@ -16,6 +16,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.165] - 2026-11-05
+
+### Changed
+
+- Campus traffic now drives on one connected road network instead of six isolated straight lanes: the front road, the roads behind and beside the building and the surrounding ring are joined at junctions, cars turn left or right along multi-junction routes, wait their turn at junctions and keep their distance, and still stop at the front zebra crossing. Cars enter and leave only at road ends outside the visible district, including cars driving to and from the building's parking lots, so no car appears or disappears in view.
+
 ## [0.4.164] - 2026-11-04
 
 ### Changed

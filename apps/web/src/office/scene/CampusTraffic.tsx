@@ -10,13 +10,18 @@ import { sceneLocalMinutes, useSolarEnvironment, type LightOverride, type SceneS
 import { getRenderBudget, getRenderBudgetLevel, RENDER_BUDGET_LEVELS } from './environment/renderBudget';
 import { createMobilityFallbackModels, disposeMobilityLibrary, USED_MOBILITY_MODELS, useCampusMobilityModels, type MobilityGeometry, type MobilityWheels } from './CampusMobilityModels';
 import {
-  CYCLE_SHELTER, DAILY_CATALOG, EV_CHARGERS, FORCED_THEME_DENSITY, MOBILITY_MODELS, PARKED_VEHICLES, ROTATION_SEED, TRAFFIC_LANES, TRAFFIC_SCHEDULE, VEHICLE_SPECS,
-  admitTraffic, carActive, createTrafficPose, isMobilityVehicle, laneCaps, trafficDensity, trafficInstanceCounts, updateTraffic, wheelSpin,
+  CYCLE_SHELTER, DAILY_CATALOG, EV_CHARGERS, FORCED_THEME_DENSITY, MOBILITY_MODELS, PARKED_VEHICLES, ROTATION_SEED, TRAFFIC_LANES, VEHICLE_SPECS,
+  isMobilityVehicle, trafficDensity, wheelSpin,
   type MobilityModel, type ParkedVehicle, type TrafficCarPose, type TrafficLane,
 } from './campusMobilityLayout';
+import { ROAD_NETWORK, ROAD_TOP } from './campusRoadNetwork';
 import {
-  MANEUVER_LOTS, MAX_LOT_MANEUVERS, createParkingSim, lotManeuverCap, lotModelCapacity, parkedAt, parkingDebug, settleParking, stepParking, triggerManeuver, unmanagedParked,
-  type ManeuverKind, type ManeuverPose, type ParkingSim, type ParkingStepOptions, type TrafficContext,
+  TRAFFIC_STEP, TRAFFIC_WARMUP, adoptCar, advanceTrafficNetwork, canAdoptCar, createTrafficNetwork, dispatchCar, hideTrafficNetwork, networkDebug,
+  stepTrafficNetwork, trafficModelSlots, type TrafficNetwork, type TrafficStepInput,
+} from './trafficNetwork';
+import {
+  MANEUVER_LOTS, MAX_LOT_MANEUVERS, adoptArrival, createParkingSim, lotManeuverCap, lotModelCapacity, parkedAt, parkingDebug, settleParking, stepParking, triggerManeuver,
+  unmanagedParked, type ManeuverKind, type ManeuverPose, type ParkingSim, type ParkingStepOptions, type TrafficContext,
 } from './parkingManeuvers';
 import {
   BEAM_LENGTH, BEAM_TUCK, BEAM_WIDTH, DECAL_LIFT, HEAD_GLARE_SIZE, HEADLIGHT_SPOT, REAR_POOL_LENGTH, REAR_POOL_TUCK, REAR_POOL_WIDTH,
@@ -110,54 +115,75 @@ export const MAX_TRAFFIC_CARS = Math.max(...RENDER_BUDGET_LEVELS.map(level => le
 export function trafficCarCap(level: number): number {
   return RENDER_BUDGET_LEVELS[Math.max(0, Math.min(RENDER_BUDGET_LEVELS.length - 1, Math.round(level)))]!.trafficCars;
 }
-/** Moving instances per model: the most of that model the schedule can ever put on the roads at once. */
-export const TRAFFIC_INSTANCES: ReadonlyMap<MobilityModel, number> = trafficInstanceCounts(TRAFFIC_SCHEDULE, MAX_TRAFFIC_CARS);
+/** Lot cars that can manoeuvre at once (every lot at its top-tier cap): sized once for the road-light batches. */
+export const MAX_LOT_CARS = MANEUVER_LOTS.length * MAX_LOT_MANEUVERS;
+/** Cars leaving or heading for a lot may drive on the network above the tier cap, up to the lots' own manoeuvre budget. */
+export function trafficHeadroom(level: number): number { return MANEUVER_LOTS.length * lotManeuverCap(trafficCarCap(level)); }
+/** Network car pool: the top-tier cap plus the lot headroom. */
+export const TRAFFIC_POOL = MAX_TRAFFIC_CARS + MAX_LOT_CARS;
+/** Moving instances per model: its spawn cap on the network, plus the lot headroom for parkable styles. */
+export const TRAFFIC_INSTANCES: ReadonlyMap<MobilityModel, number> = trafficModelSlots(DAILY_CATALOG, MAX_TRAFFIC_CARS, MAX_LOT_CARS).slots;
 /** Density for the scene's sky: real local time when following the sun, a fixed level for forced themes. */
 export function trafficDensityFor(sky: SceneSky, minutes: number): number {
   return sky === 'day' ? FORCED_THEME_DENSITY.day : sky === 'night' ? FORCED_THEME_DENSITY.night : trafficDensity(minutes);
 }
-const admissions = new Map<number, Uint8Array[]>();
-function admittedFor(level: number): Uint8Array[] {
-  const cap = trafficCarCap(level);
-  let admitted = admissions.get(cap);
-  if (!admitted) admissions.set(cap, admitted = admitTraffic(TRAFFIC_SCHEDULE, cap));
-  return admitted;
-}
-
-/** Lot cars that can manoeuvre at once (every lot at its top-tier cap): sized once for the road-light batches. */
-export const MAX_LOT_CARS = MANEUVER_LOTS.length * MAX_LOT_MANEUVERS;
 /** Local time for the lots' arrival/departure mix: the forced themes show a calm afternoon and an early evening. */
 export function lotMinutesFor(sky: SceneSky, minutes: number): number {
   return sky === 'day' ? 14 * 60 : sky === 'night' ? 21 * 60 : minutes;
 }
+/** Simulated seconds run before the first frame (the roads start busy, not empty). */
+const WARMUP = Math.min(TRAFFIC_WARMUP, 90);
 
 /**
- * One traffic clock and pose pool, advanced once per rendered frame however many consumers read
- * it. Admission follows the render tier; density follows local time (refreshed every 2 s). The
- * parking lots advance on the same clock (pinning it freezes them too).
+ * One traffic clock, network and pose pool, advanced once per rendered frame however many consumers
+ * read it, in fixed-size substeps (at most `TRAFFIC_STEP`). The render tier sets the car cap; density
+ * follows local time (refreshed every 2 s). The parking lots advance on the same substeps right after
+ * the network (pinning the clock freezes both) and hand cars to and from it.
  */
 interface TrafficSim {
   seconds: number; stamp: number; pinned?: boolean;
   sky: SceneSky; density: number; densityOverride?: number; nextDensity: number; minutes: number;
-  level: number; admitted: Uint8Array[]; poses: TrafficCarPose[]; count: number;
+  level: number; net: TrafficNetwork; input: TrafficStepInput & { obstacles: ManeuverPose[] };
   parking: ParkingSim; parkingOptions: ParkingStepOptions & { traffic: TrafficContext };
   /** Every moving car that may carry lamps this frame: traffic poses, then the lit manoeuvring lot cars. */
   lights: TrafficCarPose[]; lightCount: number;
 }
+/** A fresh network warmed up for `seconds`, its lot hand-offs wired to `sim`. */
+function buildNetwork(sim: Pick<TrafficSim, 'parking' | 'input'>, seconds: number): TrafficNetwork {
+  const net = createTrafficNetwork(ROTATION_SEED, DAILY_CATALOG, TRAFFIC_POOL, { total: MAX_TRAFFIC_CARS, headroom: MAX_LOT_CARS });
+  net.arrive = car => adoptArrival(sim.parking, car.lot, { model: car.model, tone: car.tone, bay: car.bay, s: car.s, v: car.v, distance: car.odometer });
+  advanceTrafficNetwork(net, seconds, sim.input);
+  return net;
+}
 function createTrafficSim(): TrafficSim {
-  const poses = Array.from({ length: MAX_TRAFFIC_CARS }, createTrafficPose);
-  return {
-    seconds: 0, stamp: -1, sky: 'day', density: FORCED_THEME_DENSITY.day, nextDensity: 0, minutes: 14 * 60, level: -1, admitted: [], poses, count: 0,
-    parking: createParkingSim(ROTATION_SEED),
-    parkingOptions: { minutes: 14 * 60, density: FORCED_THEME_DENSITY.day, cap: 0, reducedMotion: false,
-      traffic: { poses, count: 0, schedules: TRAFFIC_SCHEDULE, admitted: [], seconds: 0, density: FORCED_THEME_DENSITY.day } },
-    lights: Array.from({ length: MAX_TRAFFIC_CARS + MAX_LOT_CARS }, () => poses[0]!), lightCount: 0,
+  const parking = createParkingSim(ROTATION_SEED), level = getRenderBudgetLevel();
+  const input = { density: FORCED_THEME_DENSITY.day, cap: trafficCarCap(level), headroom: trafficHeadroom(level),
+    obstacles: parking.lots.flatMap(lot => lot.maneuvers.map(maneuver => maneuver.pose)) };
+  const sim = { parking, input } as TrafficSim;
+  const net = buildNetwork(sim, WARMUP);
+  const traffic: TrafficContext = {
+    poses: net.poses, count: net.count, seconds: 0, density: input.density,
+    canAdopt: model => canAdoptCar(sim.net, model),
+    adopt: (lane, along, speed, car) => adoptCar(sim.net, lane, along, speed, car),
+    dispatch: (lot, lane, model, tone, bay, u) => dispatchCar(sim.net, lot, lane, model, tone, bay, u),
   };
+  return Object.assign(sim, {
+    seconds: 0, stamp: -1, sky: 'day' as SceneSky, density: input.density, nextDensity: 0, minutes: 14 * 60, level, net,
+    parkingOptions: { minutes: 14 * 60, density: input.density, cap: 0, reducedMotion: false, traffic },
+    lights: Array.from({ length: TRAFFIC_POOL + MAX_LOT_CARS }, () => net.poses[0]!), lightCount: 0,
+  });
+}
+/** Development: rebuild the network at `seconds` (warm-up included); cars bound for a lot release their reservations. */
+function resetNetwork(sim: TrafficSim, seconds: number) {
+  for (const car of sim.net.cars) if (car.active && car.lot >= 0) adoptArrival(sim.parking, car.lot, { model: car.model, tone: car.tone, bay: -1, s: Infinity, v: 0, distance: 0 });
+  for (const job of sim.net.dispatches) if (job.active) adoptArrival(sim.parking, job.lot, { model: job.model, tone: job.tone, bay: -1, s: Infinity, v: 0, distance: 0 });
+  sim.net = buildNetwork(sim, WARMUP + seconds);
+  sim.parkingOptions.traffic.poses = sim.net.poses;
 }
 const isLotPose = (pose: TrafficCarPose): pose is ManeuverPose => 'phase' in pose;
 function collectLights(sim: TrafficSim) {
   let count = 0;
-  for (let i = 0; i < sim.count; i++) sim.lights[count++] = sim.poses[i]!;
+  for (let i = 0; i < sim.net.count; i++) sim.lights[count++] = sim.net.poses[i]!;
   for (const lot of sim.parking.lots) for (const maneuver of lot.maneuvers) {
     if (maneuver.pose.visible && maneuver.pose.lit > 0 && count < sim.lights.length) sim.lights[count++] = maneuver.pose;
   }
@@ -167,7 +193,7 @@ function syncParkingOptions(sim: TrafficSim, reducedMotion: boolean) {
   const options = sim.parkingOptions, traffic = options.traffic;
   options.minutes = sim.minutes; options.density = sim.density; options.reducedMotion = reducedMotion;
   options.cap = lotManeuverCap(trafficCarCap(sim.level));
-  traffic.count = sim.count; traffic.admitted = sim.admitted; traffic.seconds = sim.seconds; traffic.density = sim.density;
+  traffic.count = sim.net.count; traffic.seconds = sim.seconds; traffic.density = sim.density;
   return options;
 }
 function stepTraffic(sim: TrafficSim, stamp: number, delta: number, hidden: boolean, reducedMotion: boolean) {
@@ -175,8 +201,6 @@ function stepTraffic(sim: TrafficSim, stamp: number, delta: number, hidden: bool
   sim.stamp = stamp;
   // Hidden (tab or view): the clock and every car stand still and nothing is recomputed.
   if (hidden) return;
-  const before = sim.seconds;
-  if (!reducedMotion && !sim.pinned) sim.seconds += Math.min(.1, Math.max(0, delta));
   if (stamp >= sim.nextDensity) {
     sim.nextDensity = stamp + 2;
     const minutes = sceneLocalMinutes();
@@ -184,10 +208,23 @@ function stepTraffic(sim: TrafficSim, stamp: number, delta: number, hidden: bool
     sim.minutes = lotMinutesFor(sim.sky, minutes);
   }
   const level = getRenderBudgetLevel();
-  if (level !== sim.level) { sim.level = level; sim.admitted = admittedFor(level); }
-  sim.count = updateTraffic(TRAFFIC_SCHEDULE, sim.admitted, sim.seconds, sim.density, sim.poses, reducedMotion);
-  // Lot manoeuvres share the clock: a pinned (or reduced-motion) clock holds them still.
-  stepParking(sim.parking, sim.seconds - before, syncParkingOptions(sim, reducedMotion));
+  if (level !== sim.level) sim.level = level;
+  const input = sim.input;
+  input.density = sim.density; input.cap = trafficCarCap(level); input.headroom = trafficHeadroom(level);
+  if (reducedMotion) {
+    // Reduced motion: empty roads (the network holds still) and settled lots.
+    hideTrafficNetwork(sim.net);
+    stepParking(sim.parking, 0, syncParkingOptions(sim, true));
+  } else {
+    const dt = sim.pinned ? 0 : Math.min(.1, Math.max(0, delta)), steps = Math.ceil(dt / TRAFFIC_STEP - 1e-9);
+    // Network first, then the lots (they see this substep's traffic and may hand cars over).
+    for (let i = 0; i < steps; i++) {
+      sim.seconds += dt / steps;
+      stepTrafficNetwork(sim.net, dt / steps, input);
+      stepParking(sim.parking, dt / steps, syncParkingOptions(sim, false));
+    }
+    if (!steps) stepParking(sim.parking, 0, syncParkingOptions(sim, false));
+  }
   collectLights(sim);
 }
 
@@ -296,9 +333,9 @@ function MobilityBatch({ model, geometry, sim }: { model: MobilityModel; geometr
       if (slots.ids[slot] !== pose.id) { slots.ids[slot] = pose.id; bodies.setColorAt(slot, toneColour(pose.tone)); recoloured = true; }
       slot++;
     }
-    const trafficStart = slot;
-    for (let i = 0; i < sim.count && slot < trafficStart + config.moving; i++) {
-      const pose = sim.poses[i]!;
+    // Traffic may also use lot slots left free (a departed lot car drives on as traffic).
+    for (let i = 0; i < sim.net.count && slot < count; i++) {
+      const pose = sim.net.poses[i]!;
       if (pose.model !== model) continue;
       place(slot, pose.x, pose.y, pose.z, pose.yaw);
       setWheels(slot, scratch.matrix, wheelSpin(pose.distance, radius));
@@ -484,15 +521,13 @@ function TrafficHeadlights({ sim, lamps }: { sim: TrafficSim; lamps: ReadonlyMap
     (window as TrafficQaWindow).__EXTALIA_TRAFFIC__ = () => {
       const round = (value: number) => Math.round(value * 100) / 100;
       return {
-        seconds: sim.seconds, density: round(sim.density), tier: sim.level, cap: trafficCarCap(sim.level), laneCaps: laneCaps(trafficCarCap(sim.level)),
-        maxCars: MAX_TRAFFIC_CARS, active: sim.count, instances: Object.fromEntries(TRAFFIC_INSTANCES),
+        seconds: sim.seconds, density: round(sim.density), tier: sim.level, cap: trafficCarCap(sim.level), headroom: trafficHeadroom(sim.level),
+        maxCars: MAX_TRAFFIC_CARS, pool: TRAFFIC_POOL, active: sim.net.count, instances: Object.fromEntries(TRAFFIC_INSTANCES),
         rotation: { seed: ROTATION_SEED, styles: DAILY_CATALOG.map(vehicle => vehicle.style), parked: PARKED_VEHICLES.map(vehicle => vehicle.model) },
-        schedule: TRAFFIC_SCHEDULE.map(({ lane, cycle, phase, window, cars }, index) => ({
-          lane: lane.id, crossing: lane.crossing, cycle, phase: round(phase), window: round(window), local: round(((sim.seconds + phase) % cycle + cycle) % cycle),
-          groups: (cars.at(-1)?.group ?? -1) + 1, cars: cars.length, admitted: sim.admitted[index]?.reduce((sum, value) => sum + value, 0) ?? cars.length,
-          departures: cars.map((car, i) => ({ id: car.id, depart: round(car.depart), group: car.group, model: car.model, active: carActive(car, sim.density), admitted: !!sim.admitted[index]?.[i] })),
-        })),
-        cars: sim.poses.slice(0, sim.count).map(pose => ({ id: pose.id, lane: TRAFFIC_LANES[pose.lane]!.id, model: pose.model, x: round(pose.x), z: round(pose.z), yaw: round(pose.yaw), stopped: pose.stopped, distance: round(pose.distance) })),
+        network: { lanes: TRAFFIC_LANES.length, junctions: ROAD_NETWORK.nodes.filter(node => !node.boundary).length, turns: ROAD_NETWORK.turns.length,
+          entries: ROAD_NETWORK.entries.map(lane => TRAFFIC_LANES[lane]!.id), held: sim.net.cars.filter(car => car.active && car.holds >= 0).map(car => ({ id: car.id, node: car.holds })) },
+        cars: sim.net.poses.slice(0, sim.net.count).map(pose => ({ id: pose.id, lane: TRAFFIC_LANES[pose.lane]!.id, along: round(pose.along), model: pose.model, x: round(pose.x), z: round(pose.z), yaw: round(pose.yaw), stopped: pose.stopped, distance: round(pose.distance) })),
+        routes: networkDebug(sim.net),
         spots: resources.spots.map((light, index) => ({ car: resources.assigned[index] ?? -1, intensity: round(light.intensity),
           position: light.position.toArray().map(round), aim: light.target.position.toArray().map(round) })),
         lamps: Object.fromEntries([...lamps].map(([model, anchors]) => [model, anchors])),
@@ -506,7 +541,7 @@ function TrafficHeadlights({ sim, lamps }: { sim: TrafficSim; lamps: ReadonlyMap
     (window as TrafficQaWindow).__EXTALIA_PARKING_PIN__ = (kind, options = {}) => {
       if (options.settle) settleParking(sim.parking);
       const started = kind === 'depart' || kind === 'arrive'
-        ? triggerManeuver(sim.parking, options.lot ?? MANEUVER_LOTS[0]!.id, kind, options.bay, sim.parkingOptions.traffic) : false;
+        ? triggerManeuver(sim.parking, options.lot ?? MANEUVER_LOTS[0]!.id, kind, options.bay, syncParkingOptions(sim, false).traffic) : false;
       const step = syncParkingOptions(sim, false), cap = step.cap;
       step.cap = 0;
       for (let i = Math.round(Math.max(0, options.advance ?? 0) * 30); i > 0; i--) stepParking(sim.parking, 1 / 30, step);
@@ -516,9 +551,17 @@ function TrafficHeadlights({ sim, lamps }: { sim: TrafficSim; lamps: ReadonlyMap
       return { started, lots: parkingDebug(sim.parking) };
     };
     // Development audit: pin the traffic clock (and optionally the density) for repeatable captures; no argument resumes it.
+    // The network is a simulation: pinning rebuilds it and runs it (warm-up included) to `seconds` at the fixed step.
     (window as TrafficQaWindow).__EXTALIA_TRAFFIC_PIN__ = (seconds, density) => {
-      sim.pinned = seconds !== undefined; if (seconds !== undefined) sim.seconds = seconds;
+      sim.pinned = seconds !== undefined;
       sim.densityOverride = density; sim.nextDensity = 0;
+      if (seconds !== undefined) {
+        sim.seconds = seconds;
+        if (density !== undefined) sim.density = sim.input.density = density;
+        resetNetwork(sim, Math.max(0, seconds));
+        syncParkingOptions(sim, false);
+        collectLights(sim);
+      }
     };
     return () => {
       delete (window as TrafficQaWindow).__EXTALIA_TRAFFIC__; delete (window as TrafficQaWindow).__EXTALIA_TRAFFIC_PIN__; delete (window as TrafficQaWindow).__EXTALIA_PARKING_PIN__;
@@ -554,7 +597,7 @@ function TrafficHeadlights({ sim, lamps }: { sim: TrafficSim; lamps: ReadonlyMap
       const anchors = lamps.get(pose.model), level = anchors ? power * (lot ? pose.lit : 1) : 0;
       const pool = headlightPoolLevels(level, pose.visible, pose.stopped || reversing, resources.poolLevels);
       const glare = lampGlareLevels(level, pose.visible, pose.stopped || reversing, resources.glareLevels);
-      const top = lot ? pose.top : TRAFFIC_LANES[pose.lane]!.top;
+      const top = pose.top;
       // Reverse lamp: the rear pool and tail glare turn white.
       const rearG = reversing ? .9 : .06, rearB = reversing ? .82 : .04, glareG = reversing ? .92 : .1, glareB = reversing ? .85 : .06;
       for (let side = 0; side < 2; side++) {
@@ -579,7 +622,7 @@ function TrafficHeadlights({ sim, lamps }: { sim: TrafficSim; lamps: ReadonlyMap
     }
     if (frame.clock.elapsedTime >= resources.nextAllocation) {
       resources.nextAllocation = frame.clock.elapsedTime + .2;
-      const focus = viewFocus(frame.camera.position, frame.camera.getWorldDirection(resources.direction), TRAFFIC_LANES[0]!.top);
+      const focus = viewFocus(frame.camera.position, frame.camera.getWorldDirection(resources.direction), ROAD_TOP);
       nearestTrafficCars(sim.lights, sim.lightCount, focus, headlightSpotCount(getRenderBudget().liveBeams, power), assigned);
     }
     spots.forEach((light, index) => {
@@ -588,7 +631,7 @@ function TrafficHeadlights({ sim, lamps }: { sim: TrafficSim; lamps: ReadonlyMap
       const anchors = pose && lamps.get(pose.model);
       if (!pose || !anchors) { light.intensity = 0; return; }
       const car = pose;
-      resources.road.top = isLotPose(car) ? car.top : TRAFFIC_LANES[car.lane]!.top;
+      resources.road.top = car.top;
       const beam = trafficHeadlightBeam(resources.road, car, anchors, power * (isLotPose(car) ? car.lit : 1));
       light.position.set(beam.position.x, beam.position.y, beam.position.z);
       light.target.position.set(beam.aim.x, beam.aim.y, beam.aim.z);
@@ -596,9 +639,9 @@ function TrafficHeadlights({ sim, lamps }: { sim: TrafficSim; lamps: ReadonlyMap
     });
   });
   return <group ref={group} name="campus-traffic-headlights" userData={{ officeDynamic: true }}>
-    <instancedMesh ref={beams} name="traffic-headlight-beams" args={[resources.beamPlane, resources.beam, (MAX_TRAFFIC_CARS + MAX_LOT_CARS) * 2]} frustumCulled={false} renderOrder={2} />
-    <instancedMesh ref={pools} name="traffic-tail-pools" args={[resources.rearPlane, resources.rear, (MAX_TRAFFIC_CARS + MAX_LOT_CARS) * 2]} frustumCulled={false} renderOrder={2} />
-    <instancedMesh ref={glares} name="traffic-lamp-glares" args={[resources.glarePlane, resources.glare, (MAX_TRAFFIC_CARS + MAX_LOT_CARS) * 4]} frustumCulled={false} renderOrder={3} />
+    <instancedMesh ref={beams} name="traffic-headlight-beams" args={[resources.beamPlane, resources.beam, (TRAFFIC_POOL + MAX_LOT_CARS) * 2]} frustumCulled={false} renderOrder={2} />
+    <instancedMesh ref={pools} name="traffic-tail-pools" args={[resources.rearPlane, resources.rear, (TRAFFIC_POOL + MAX_LOT_CARS) * 2]} frustumCulled={false} renderOrder={2} />
+    <instancedMesh ref={glares} name="traffic-lamp-glares" args={[resources.glarePlane, resources.glare, (TRAFFIC_POOL + MAX_LOT_CARS) * 4]} frustumCulled={false} renderOrder={3} />
     {resources.spots.map(light => <group key={light.name}><primitive object={light} /><primitive object={light.target} /></group>)}
   </group>;
 }

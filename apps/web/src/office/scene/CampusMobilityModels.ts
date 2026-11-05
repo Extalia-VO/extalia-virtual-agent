@@ -3,8 +3,8 @@ import { BoxGeometry, Color, CylinderGeometry, Float32BufferAttribute, Matrix4, 
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import {
-  CYCLE_SHELTER, EV_CHARGERS, GENERATED_MOBILITY_MODELS, MOBILITY_MODELS, PARKED_VEHICLES, TRAFFIC_SCHEDULE, VEHICLE_SPECS,
-  isMobilityVehicle, vehicleCategory, type MobilityModel,
+  CYCLE_SHELTER, DAILY_CATALOG, EV_CHARGERS, GENERATED_MOBILITY_MODELS, MOBILITY_MODELS, PARKED_VEHICLES, VEHICLE_SPECS,
+  isMobilityVehicle, trafficPool, vehicleCategory, type MobilityModel,
 } from './campusMobilityLayout';
 
 /** One wheel hub in model space; `side` is +1 on the car's left (+X), -1 on its right. */
@@ -250,9 +250,10 @@ function disposeImportedScene(scene: Object3D): void {
   textures.forEach(texture => texture.dispose());
 }
 
-/** Models that actually appear on campus today (the daily rotation); only their files are fetched. */
+/** Models that actually appear on campus today (the daily rotation's parked and driving styles); only their files are fetched. */
+const DRIVING_TODAY = (({ cars, long }) => [...cars, ...long].map(vehicle => vehicle.model))(trafficPool(DAILY_CATALOG));
 export const USED_MOBILITY_MODELS: readonly MobilityModel[] = MOBILITY_MODELS.filter(model =>
-  [...PARKED_VEHICLES, ...EV_CHARGERS, CYCLE_SHELTER].some(item => item.model === model) || TRAFFIC_SCHEDULE.some(({ cars }) => cars.some(car => car.model === model)));
+  [...PARKED_VEHICLES, ...EV_CHARGERS, CYCLE_SHELTER].some(item => item.model === model) || DRIVING_TODAY.includes(model));
 
 /** Public file and model names for every lazily loaded source. */
 export function mobilitySources(used: readonly MobilityModel[] = USED_MOBILITY_MODELS): { path: string; names: MobilityModel[] }[] {

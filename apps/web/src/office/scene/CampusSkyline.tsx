@@ -25,7 +25,7 @@ import {
 import { useSolarEnvironment } from "./Environment";
 import { useExteriorInstancedGeometries } from "./ExteriorPart";
 import { useDistrictBuildingModels } from "./districtBuildingModels";
-import { CITY_GROUND } from "./campusGroundBounds";
+import { CITY_GROUND, CITY_STREETS } from "./campusGroundBounds";
 
 /*
  * Metropolitan skyline backdrop for the campus overview.
@@ -39,8 +39,8 @@ import { CITY_GROUND } from "./campusGroundBounds";
  */
 
 const GROUND_Y = CITY_GROUND.y;
-const BLOCK = 24;
-const STREET_WIDTH = 7;
+const BLOCK = CITY_STREETS.block;
+const STREET_WIDTH = CITY_STREETS.width;
 const CITY_RADIUS = CITY_GROUND.radius;
 const TOWER_MIN_RADIUS = 100;
 const TOWER_MAX_RADIUS = CITY_RADIUS - 22;
@@ -445,53 +445,50 @@ function buildStreets(city: City) {
   // zone in front of the building from city grid streets. The southern boundary
   // extends to -144 so no asphalt grid lines cut through the park corridor that
   // stretches from the campus front down to the outer ring.
-  const PARK_MIN_X = -106;
-  const PARK_MAX_X = 106;
-  const PARK_MIN_Z = -144;
-  const PARK_MAX_Z = 126;
+  const { minX: PARK_MIN_X, maxX: PARK_MAX_X, minZ: PARK_MIN_Z, maxZ: PARK_MAX_Z } = CITY_STREETS.clear;
 
   for (let k = -11; k <= 10; k++) {
-    const offset = k * BLOCK + BLOCK / 2;
+    const offset = k * BLOCK + CITY_STREETS.offset;
     if (Math.abs(offset) >= CITY_RADIUS - 4) continue;
     const half = Math.sqrt(CITY_RADIUS * CITY_RADIUS - offset * offset) - 2;
 
     // North-South street (runs along Z at x = offset)
     if (offset < PARK_MIN_X || offset > PARK_MAX_X) {
       // Entire street is outside park bounds
-      city.solid.push({ x: offset, y: GROUND_Y + 0.02, z: 0, w: STREET_WIDTH, h: 0.03, d: half * 2, yaw: 0, tone: STREET_TONE, seed: 0 });
+      city.solid.push({ x: offset, y: CITY_STREETS.y, z: 0, w: STREET_WIDTH, h: CITY_STREETS.height, d: half * 2, yaw: 0, tone: STREET_TONE, seed: 0 });
     } else {
       // Split street so it stops before entering the park/plaza area
       const northStart = Math.max(PARK_MAX_Z, -half);
       const northEnd = half;
       if (northEnd > northStart) {
         const len = northEnd - northStart;
-        city.solid.push({ x: offset, y: GROUND_Y + 0.02, z: northStart + len / 2, w: STREET_WIDTH, h: 0.03, d: len, yaw: 0, tone: STREET_TONE, seed: 0 });
+        city.solid.push({ x: offset, y: CITY_STREETS.y, z: northStart + len / 2, w: STREET_WIDTH, h: CITY_STREETS.height, d: len, yaw: 0, tone: STREET_TONE, seed: 0 });
       }
       const southStart = -half;
       const southEnd = Math.min(PARK_MIN_Z, half);
       if (southEnd > southStart) {
         const len = southEnd - southStart;
-        city.solid.push({ x: offset, y: GROUND_Y + 0.02, z: southStart + len / 2, w: STREET_WIDTH, h: 0.03, d: len, yaw: 0, tone: STREET_TONE, seed: 0 });
+        city.solid.push({ x: offset, y: CITY_STREETS.y, z: southStart + len / 2, w: STREET_WIDTH, h: CITY_STREETS.height, d: len, yaw: 0, tone: STREET_TONE, seed: 0 });
       }
     }
 
     // East-West street (runs along X at z = offset)
     if (offset < PARK_MIN_Z || offset > PARK_MAX_Z) {
       // Entire street is outside park bounds
-      city.solid.push({ x: 0, y: GROUND_Y + 0.02, z: offset, w: half * 2, h: 0.03, d: STREET_WIDTH, yaw: 0, tone: STREET_TONE, seed: 0 });
+      city.solid.push({ x: 0, y: CITY_STREETS.y, z: offset, w: half * 2, h: CITY_STREETS.height, d: STREET_WIDTH, yaw: 0, tone: STREET_TONE, seed: 0 });
     } else {
       // Split street so it stops before entering the park/plaza area
       const eastStart = Math.max(PARK_MAX_X, -half);
       const eastEnd = half;
       if (eastEnd > eastStart) {
         const len = eastEnd - eastStart;
-        city.solid.push({ x: eastStart + len / 2, y: GROUND_Y + 0.02, z: offset, w: len, h: 0.03, d: STREET_WIDTH, yaw: 0, tone: STREET_TONE, seed: 0 });
+        city.solid.push({ x: eastStart + len / 2, y: CITY_STREETS.y, z: offset, w: len, h: CITY_STREETS.height, d: STREET_WIDTH, yaw: 0, tone: STREET_TONE, seed: 0 });
       }
       const westStart = -half;
       const westEnd = Math.min(PARK_MIN_X, half);
       if (westEnd > westStart) {
         const len = westEnd - westStart;
-        city.solid.push({ x: westStart + len / 2, y: GROUND_Y + 0.02, z: offset, w: len, h: 0.03, d: STREET_WIDTH, yaw: 0, tone: STREET_TONE, seed: 0 });
+        city.solid.push({ x: westStart + len / 2, y: CITY_STREETS.y, z: offset, w: len, h: CITY_STREETS.height, d: STREET_WIDTH, yaw: 0, tone: STREET_TONE, seed: 0 });
       }
     }
 
