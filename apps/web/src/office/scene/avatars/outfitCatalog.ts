@@ -22,8 +22,34 @@ export const STAFF_UNIFORMS: Readonly<Record<StaffRole, string>> = { receptionis
 const UNIFORM_STYLES: Readonly<Record<StaffRole, CharacterOutfit>> = { receptionist: 'executive', bartender: 'service' };
 const STAFF_BY_MODEL = new Map(Object.entries(STAFF_UNIFORMS).map(([role, id]) => [id, role as StaffRole]));
 
-/** Everyday styles a generated look may draw; signature looks (CEO, architect) stay opt-in. */
-export const EVERYDAY_STYLES: readonly CharacterOutfit[] = ['executive', 'business-casual', 'creative', 'technical', 'service', 'casual'];
+export type DressCode = 'formal' | 'casual';
+
+/**
+ * Dress code of every shipped outfit model and wardrobe piece, by file id. Formal clothing (staff
+ * uniforms, suits, evening wear) may be worn by several characters at once; casual clothing is
+ * unique among the characters visible in the Office (see `lookAllocation.ts`). An id that is not
+ * listed here (a future file) counts as casual, so a new casual file is never duplicated by
+ * accident; list it as formal here to let several characters share it.
+ */
+export const DRESS_CODE: Readonly<Record<string, DressCode>> = {
+  // Complete outfits, formal: staff uniforms, suits, prom suit, victorian bartender waistcoat set.
+  'reception-uniform': 'formal', 'bartender-uniform': 'formal', 'outfit-black-business-suit': 'formal',
+  'outfit-mens-two-piece-suit': 'formal', 'outfit-prom-suit': 'formal', 'outfit-victorian-bartender': 'formal',
+  // Complete outfits, casual.
+  'outfit-printed-hoodie-jeans': 'casual', 'outfit-sweatshirt-jacket-workwear': 'casual', 'outfit-original-dress': 'casual',
+  'outfit-source-denim-dress': 'casual', 'outfit-source-jumper-skirt': 'casual',
+  // Wardrobe pieces (tops, outers, bottoms): all casual.
+  'green-white-hoodie': 'casual', 'denim-jacket': 'casual', jeans: 'casual',
+  'source-female-cloth1': 'casual', 'source-pink-hoodie': 'casual', 'source-gothic-blouse': 'casual', 'source-belted-top': 'casual',
+  'source-oversize-shirt': 'casual', 'source-ray-underlayer': 'casual', 'source-flame-hoodie': 'casual',
+  'source-red-leather-jacket': 'casual', 'source-leather-cloak': 'casual', 'source-ray-vest': 'casual', 'source-overcoat': 'casual',
+  'cloth-jacket': 'casual', 'source-gothic-skirt': 'casual', 'source-ray-trousers': 'casual', 'source-gothic-trousers': 'casual',
+  'short-jeans': 'casual',
+};
+
+export function dressCode(id: string): DressCode {
+  return Object.hasOwn(DRESS_CODE, id) ? DRESS_CODE[id]! : 'casual';
+}
 
 export interface OutfitModel { id: string; group: OutfitGroup; url: string; staff?: StaffRole }
 export interface OutfitPieceModel { id: string; group: OutfitGroup; slot: CharacterOutfitSlot; url: string }
@@ -101,11 +127,14 @@ export function applyOutfitPiece(appearance: CharacterAppearance, slot: Characte
   return next;
 }
 
-/** Everything a character of this presentation may wear: every style, then the group's models (never a staff uniform). */
+/**
+ * Everything a character of this presentation may wear: the group's complete outfit models (never a
+ * staff uniform). Procedural styles are not offered; a saved style stays valid and is shown as the
+ * current value.
+ */
 export function outfitChoices(presentation: CharacterPresentation, urls: UrlMap = outfitUrls): OutfitChoice[] {
   const group = presentationGroup(presentation);
   return [
-    ...CHARACTER_OUTFITS.map(style => ({ kind: 'style' as const, style })),
     ...outfitModels(urls).filter(model => model.group === group && !model.staff).map(model => ({ kind: 'model' as const, id: model.id })),
   ];
 }
@@ -146,16 +175,6 @@ export function rendezvous<T>(seed: string, candidates: readonly T[], key: (item
   return best;
 }
 
-/** The generated (first-spawn) outfit: an everyday style or one of the group's everyday models. */
-export function seededOutfitChoice(seed: string, presentation: CharacterPresentation, urls: UrlMap = outfitUrls): OutfitChoice {
-  const group = presentationGroup(presentation);
-  const pool: OutfitChoice[] = [
-    ...EVERYDAY_STYLES.map(style => ({ kind: 'style' as const, style })),
-    ...outfitModels(urls).filter(model => model.group === group && !model.staff).map(model => ({ kind: 'model' as const, id: model.id })),
-  ];
-  return rendezvous(seed, pool, choiceValue) ?? { kind: 'style', style: 'business-casual' };
-}
-
 // ── Palettes ──
 
 export interface ZonePalette { top: string; bottom: string; outer: string; accent: string }
@@ -188,7 +207,7 @@ export const OUTFIT_PALETTES: Readonly<Record<'office' | 'casual', readonly Zone
 const CASUAL_STYLES: ReadonlySet<CharacterOutfit> = new Set(['casual', 'creative', 'technical']);
 
 export function paletteFamily(style: CharacterOutfit, model?: string): 'office' | 'casual' {
-  if (model) return model.endsWith('-uniform') ? 'office' : 'casual';
+  if (model) return dressCode(model) === 'formal' ? 'office' : 'casual';
   return CASUAL_STYLES.has(style) ? 'casual' : 'office';
 }
 
@@ -224,10 +243,11 @@ export function randomizeOutfit(appearance: CharacterAppearance, seed: string, r
     delete next.outfitModel;
     return next;
   }
-  const choices = outfitChoices(appearance.presentation, urls).filter(choice => choice.kind === 'model' || EVERYDAY_STYLES.includes(choice.style));
+  const choices = outfitChoices(appearance.presentation, urls);
   const current = appearanceChoice(appearance);
-  const choice = rendezvous(rollSeed, choices.filter(item => choiceValue(item) !== current), choiceValue) ?? choices[0]!;
-  const next = applyOutfitChoice(appearance, choiceValue(choice));
+  const choice = rendezvous(rollSeed, choices.filter(item => choiceValue(item) !== current), choiceValue) ?? choices[0];
+  // Without any complete outfit only the colours re-roll.
+  const next = choice ? applyOutfitChoice(appearance, choiceValue(choice)) : { ...appearance };
   const palette = seededPalette(rollSeed, next.outfit, next.outfitModel);
   return { ...next, topColor: palette.top, bottomColor: palette.bottom, outerColor: palette.outer, accentColor: palette.accent };
 }

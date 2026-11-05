@@ -1,9 +1,9 @@
-import { CHARACTER_OUTFITS, decodeCharacterAppearance, decodeCharacterAppearanceStore, type CharacterAppearance } from '@extalia/core';
+import { decodeCharacterAppearance, decodeCharacterAppearanceStore, type CharacterAppearance } from '@extalia/core';
 import { describe, expect, it } from 'vitest';
 import { avatarVisual, defaultCharacterAppearance } from '../src/office/scene/avatars/appearance';
 import {
-  appearanceChoice, applyOutfitChoice, applyOutfitPiece, choiceValue, defaultOutfit, EVERYDAY_STYLES, OUTFIT_PALETTES, outfitChoices, outfitModels, outfitModelUrl,
-  pieceChoices, pieceModels, randomizeOutfit, rendezvous, seededOutfitChoice, seededOutfitParts, seededPalette, STAFF_UNIFORMS, staffAppearance,
+  appearanceChoice, applyOutfitChoice, applyOutfitPiece, choiceValue, defaultOutfit, OUTFIT_PALETTES, outfitChoices, outfitModels, outfitModelUrl,
+  pieceChoices, pieceModels, randomizeOutfit, rendezvous, seededOutfitParts, seededPalette, STAFF_UNIFORMS, staffAppearance,
 } from '../src/office/scene/avatars/outfitCatalog';
 import { resolveWardrobe, SCAN_OUTFIT_MODEL, scanAccessorySlots, scanOutfitSlot } from '../src/office/scene/avatars/wardrobe';
 import { sourceAvatarUrls } from '../src/office/scene/avatars/sourceAssets';
@@ -95,11 +95,11 @@ describe('outfit catalog', () => {
     expect(outfitModelUrl('outfit-dress', 'female', both)).toBe('/assets/female-outfit-dress.glb');
   });
 
-  it('offers every style plus only the own group’s everyday models, never a uniform', () => {
+  it('offers only the own group’s outfit models (no procedural style), never a uniform', () => {
     const feminine = outfitChoices('feminine', CATALOG).map(choiceValue);
     const masculine = outfitChoices('masculine', CATALOG).map(choiceValue);
-    expect(feminine).toEqual([...CHARACTER_OUTFITS.map(style => `style:${style}`), 'model:outfit-dress', 'model:outfit-sport']);
-    expect(masculine).toEqual([...CHARACTER_OUTFITS.map(style => `style:${style}`), 'model:outfit-streetwear']);
+    expect(feminine).toEqual(['model:outfit-dress', 'model:outfit-sport']);
+    expect(masculine).toEqual(['model:outfit-streetwear']);
     // A new catalog file appears without code changes.
     const grown = Object.fromEntries([...Object.entries(CATALOG), file('female', 'outfit-cheongsam')]);
     expect(outfitChoices('feminine', grown).map(choiceValue)).toContain('model:outfit-cheongsam');
@@ -118,25 +118,6 @@ describe('outfit catalog', () => {
 });
 
 describe('random first outfit', () => {
-  it('is deterministic per id, varied across ids and gender-appropriate', () => {
-    const picks = ids.map(id => seededOutfitChoice(id, 'feminine', CATALOG));
-    expect(ids.map(id => seededOutfitChoice(id, 'feminine', CATALOG))).toEqual(picks);
-    const values = new Set(picks.map(choiceValue));
-    // Every everyday style and both female models occur; no signature look, male model or uniform.
-    expect(values).toEqual(new Set([...EVERYDAY_STYLES.map(style => `style:${style}`), 'model:outfit-dress', 'model:outfit-sport']));
-    const male = new Set(ids.map(id => choiceValue(seededOutfitChoice(id, 'masculine', CATALOG))));
-    expect(male.has('model:outfit-dress')).toBe(false);
-    expect(male.has('model:outfit-streetwear')).toBe(true);
-  });
-
-  it('keeps most looks when the catalog grows (only characters the new outfit wins for change)', () => {
-    const grown = Object.fromEntries([...Object.entries(CATALOG), file('female', 'outfit-cheongsam')]);
-    const changed = ids.filter(id => choiceValue(seededOutfitChoice(id, 'feminine', CATALOG)) !== choiceValue(seededOutfitChoice(id, 'feminine', grown)));
-    expect(changed.length).toBeGreaterThan(0);
-    expect(changed.length).toBeLessThan(ids.length * 0.25);
-    for (const id of changed) expect(choiceValue(seededOutfitChoice(id, 'feminine', grown))).toBe('model:outfit-cheongsam');
-  });
-
   it('generates a valid look without saving anything, with tasteful seeded zone palettes', () => {
     for (const id of ids.slice(0, 40)) {
       const look = defaultCharacterAppearance(id);
@@ -169,8 +150,9 @@ describe('randomize and default outfit', () => {
     expect(first.outfitModel === undefined || first.outfitModel === 'outfit-streetwear').toBe(true);
     for (const key of ['topColor', 'bottomColor', 'outerColor', 'accentColor'] as const) expect(PALETTE_COLORS.has(first[key]!)).toBe(true);
     expect(first).toMatchObject({ hairStyle: look.hairStyle, skinTone: look.skinTone, presentation: look.presentation, accessories: look.accessories });
-    const rolls = new Set(Array.from({ length: 12 }, (_, roll) => appearanceChoice(randomizeOutfit(look, ids[3]!, roll + 1, CATALOG, {}))));
-    expect(rolls.size).toBeGreaterThan(3);
+    const wide = Object.fromEntries([...Object.entries(CATALOG), file('male', 'outfit-a'), file('male', 'outfit-b'), file('male', 'outfit-c')]);
+    const rolls = new Set(Array.from({ length: 12 }, (_, roll) => appearanceChoice(randomizeOutfit(look, ids[3]!, roll + 1, wide, {}))));
+    expect(rolls.size).toBeGreaterThan(2);
     expect(decodeCharacterAppearance(first).ok).toBe(true);
   });
 

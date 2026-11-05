@@ -11,6 +11,8 @@ import { Icon } from '../ui/Icon';
 import { Segmented } from '../ui/Segmented';
 import { Select, type SelectOption } from '../ui/Select';
 import { localHairStyles } from './scene/avatars/sourceAssets';
+import { randomizeHair } from './scene/avatars/lookAllocation';
+import { useLookVersion } from './scene/avatars/useLookVersion';
 import {
   applyPresentationPreset, avatarVisual, characterHeightCm, defaultCharacterAppearance, HAIR_COLORS, lookSeed, SKIN_TONES, type LookIdentity,
 } from './scene/avatars/appearance';
@@ -108,16 +110,18 @@ export function AppearanceEditor({ t, characterId: presenceId, identity, saved, 
   const characterId = lookSeed(presenceId, identity);
   const presentation = identity?.presentation;
   // First spawn wears the generated (seeded) look; nothing is stored until the user saves.
+  const looks = useLookVersion();
   const generated = useMemo(() => {
     const look = defaults ?? defaultCharacterAppearance(characterId, presentation);
     return uniform ? staffAppearance(uniform, look) : look;
-  }, [defaults, characterId, presentation, uniform]);
+  }, [defaults, characterId, presentation, uniform, looks]); // eslint-disable-line react-hooks/exhaustive-deps
   const baseline = useMemo(() => uniform && saved ? staffAppearance(uniform, generated, saved) : saved ?? generated, [saved, generated, uniform]);
   const [draft, setDraft] = useState(baseline);
   // "Default outfit" follows the body currently being edited after a preset switch.
   const outfitDefaults = useMemo(() => uniform || generated.presentation === draft.presentation
     ? generated : defaultCharacterAppearance(characterId, draft.presentation), [uniform, generated, draft.presentation, characterId]);
   const [roll, setRoll] = useState(0);
+  const [hairRoll, setHairRoll] = useState(0);
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -165,10 +169,10 @@ export function AppearanceEditor({ t, characterId: presenceId, identity, saved, 
   const options = <T extends string>(values: readonly T[], label: (value: T) => string): SelectOption<T>[] => values.map(value => ({ value, label: label(value) }));
   const withNone = <T extends string>(values: readonly ('none' | T)[], labels: Record<T, string>) =>
     options(values, value => value === 'none' ? t.none : labels[value as T]);
-  // With local detailed models, only styles that have one are offered; the procedural character draws them all.
+  // Only styles with a detailed GLB hair model are offered (no procedural hair); a saved procedural style stays visible as the current value.
   const localStyles = localHairStyles();
   const hairOptions: SelectOption<CharacterHairStyle>[] = getCharacterHairOptions(draft.presentation)
-    .filter(option => !localStyles || localStyles.has(option.id)).map(option => ({
+    .filter(option => option.detail && (!localStyles || localStyles.has(option.id))).map(option => ({
     value: option.id,
     label: t.hairStyles[option.id],
   }));
@@ -208,6 +212,9 @@ export function AppearanceEditor({ t, characterId: presenceId, identity, saved, 
       <legend>{t.hair}</legend>
       <Field label={t.hairStyle} value={resolvedHair.aliasOf ?? draft.hairStyle} options={hairOptions} onChange={hairStyle => set({ hairStyle })} />
       {hairFallback && <p className="muted-note" role="status">{t.bunFallbackNotice}</p>}
+      <div className="appearance-outfit-actions">
+        <button type="button" className="button" disabled={saving} onClick={() => { const next = hairRoll + 1; setHairRoll(next); edit(randomizeHair(draft, characterId, next)); }}><Icon name="refresh" />{t.randomizeHair}</button>
+      </div>
       <Swatches legend={t.hairColor} value={draft.hairColor} colors={HAIR_COLORS} names={t.hairColors} custom={t.customColor} onChange={hairColor => hairColor && set({ hairColor })} />
       <Swatches legend={t.skinTone} value={draft.skinTone} colors={SKIN_TONES} names={t.skinTones} custom={t.customColor} onChange={skinTone => skinTone && set({ skinTone })} />
     </fieldset>

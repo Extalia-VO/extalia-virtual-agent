@@ -1,4 +1,5 @@
 import type { CharacterAppearance, CharacterHairStyle } from '@extalia/core';
+import { glbHairStyle } from '../scene/avatars/hairCatalog';
 import { avatarVisual, lookSeed, resolvedAppearance, type LookIdentity } from '../scene/avatars/appearance';
 import { resolveWardrobe, type ResolvedWardrobe } from '../scene/avatars/wardrobe';
 
@@ -27,8 +28,9 @@ const HAIR_SHAPES: Readonly<Record<CharacterHairStyle, PortraitHairShape>> = {
   'short-fade': 'short-fade', undercut: 'undercut', 'slicked-back': 'slicked-back',
 };
 
-export function portraitHairShape(style: CharacterHairStyle): PortraitHairShape {
-  return HAIR_SHAPES[style] ?? 'executive-medium';
+export function portraitHairShape(style: CharacterHairStyle, presentation: CharacterAppearance['presentation'] = 'feminine'): PortraitHairShape {
+  // The portrait follows the GLB hair the 3D character wears (curly, afro, wavy, long map to a detailed style).
+  return HAIR_SHAPES[glbHairStyle(style, presentation)] ?? 'executive-medium';
 }
 
 /** Hair drawn behind the shoulders and neck. */
@@ -61,7 +63,7 @@ export interface PortraitModel {
 export function portraitModel(id: string, appearance?: CharacterAppearance, identity?: LookIdentity): PortraitModel {
   const look = resolvedAppearance(id, appearance, identity);
   const wardrobe = resolveWardrobe(avatarVisual(lookSeed(id, identity), look), 0);
-  const hairShape = portraitHairShape(look.hairStyle);
+  const hairShape = portraitHairShape(look.hairStyle, look.presentation);
   return {
     presentation: look.presentation,
     skin: look.skinTone,
