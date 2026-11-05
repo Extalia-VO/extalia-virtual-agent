@@ -387,6 +387,22 @@ function losslessWebP(width: number, height: number) {
   return bytes;
 }
 
+type CompactCase = 'ok' | 'oversize' | 'bad-psnr' | 'bad-angle' | 'lossy-normal' | 'jpeg-color' | 'hash' | 'subsampled' | 'dim';
+/** A lossy WebP (VP8 chunk) with the given frame size: enough for the validator's structural check. */
+function lossyWebP(width: number, height: number) {
+  const bytes = Buffer.alloc(40); bytes.write('RIFF'); bytes.writeUInt32LE(32, 4); bytes.write('WEBPVP8 ', 8);
+  bytes.writeUInt32LE(20, 16); bytes[23] = 0x9d; bytes[24] = 0x01; bytes[25] = 0x2a; bytes.writeUInt16LE(width, 26); bytes.writeUInt16LE(height, 28);
+  return bytes;
+}
+/** A JPEG made of a frame header only (3 components, the given sampling byte for each): enough for the structural check. */
+function jpegFile(width: number, height: number, sampling: number) {
+  const bytes = Buffer.alloc(32); bytes[0] = 0xff; bytes[1] = 0xd8; bytes[2] = 0xff; bytes[3] = 0xc0; bytes.writeUInt16BE(17, 4); bytes[6] = 8;
+  bytes.writeUInt16BE(height, 7); bytes.writeUInt16BE(width, 9); bytes[11] = 3;
+  for (let component = 0; component < 3; component++) { bytes[12 + 3 * component] = component + 1; bytes[13 + 3 * component] = sampling; }
+  bytes[28] = 0xff; bytes[29] = 0xd9;
+  return bytes;
+}
+
 function sourceGarmentFixture(textured = false, slot: 'baseColorTexture' | 'normalTexture' = 'baseColorTexture') {
   const test = avatarFixture();
   const bones = ['root', 'hips', 'spine', 'chest', 'neck', 'head', 'leftShoulder', 'leftUpperArm',
@@ -405,6 +421,13 @@ function sourceGarmentFixture(textured = false, slot: 'baseColorTexture' | 'norm
       sourceSize: big ? [4096, 4096] : [8, 8], sourcePixelSHA256: sourcePixels, size: big ? [2048, 2048] : [8, 8],
       pixelSHA256: converted === 'pixels' ? sha('other pixels') : sourcePixels, ...(big ? { resizedFrom: [4096, 4096] } : {}),
       ...(converted === 'record' ? { extra: true } : {}) } : undefined;
+    const imageParts = textured && !converted ? { images: [{ bufferView: 2, mimeType: 'image/png' }], textures: [{ sampler: 0, source: 0 }], samplers: [{ wrapS: 10497, wrapT: 10497 }] }
+      : textured && converted ? { images: [{ bufferView: 2, mimeType: 'image/webp', extras: { extaliaImageConversion: record } }],
+        textures: [{ sampler: 0, extensions: { EXT_texture_webp: { source: 0 } } }], samplers: [{ wrapS: 10497, wrapT: 10497 }],
+        extensionsUsed: ['EXT_texture_webp'], ...(converted === 'extension' ? {} : { extensionsRequired: ['EXT_texture_webp'] }) } : {};
+    return assemble(payload, options, imageParts);
+  }
+  function assemble(payload: Buffer, options: { missingUV?: boolean; roughness?: number }, imageParts: Record<string, unknown>) {
     const binary = Buffer.alloc(60 + payload.length); payload.copy(binary, 60);
     return glb({ asset: { version: '2.0', copyright: 'Based on "Example shirt" by Example author; source garment: CC-BY-4.0. Reference avatar rig and context retain the RenderHub Extended Use License.' },
       nodes: bones.map(name => ({ name })), skins: [{ joints: bones.map((_name, index) => index) }],
@@ -412,11 +435,24 @@ function sourceGarmentFixture(textured = false, slot: 'baseColorTexture' | 'norm
       accessors: [{ bufferView: 0, componentType: 5126, count: 3, type: 'VEC3' }, { bufferView: 1, componentType: 5126, count: 3, type: 'VEC2' }],
       bufferViews: [{ buffer: 0, byteOffset: 0, byteLength: 36 }, { buffer: 0, byteOffset: 36, byteLength: 24 }, { buffer: 0, byteOffset: 60, byteLength: payload.length }],
       materials: [{ ...material, pbrMetallicRoughness: { ...material.pbrMetallicRoughness, roughnessFactor: options.roughness ?? 1 } }],
-      ...(textured && !converted ? { images: [{ bufferView: 2, mimeType: 'image/png' }], textures: [{ sampler: 0, source: 0 }], samplers: [{ wrapS: 10497, wrapT: 10497 }] } : {}),
-      ...(textured && converted ? { images: [{ bufferView: 2, mimeType: 'image/webp', extras: { extaliaImageConversion: record } }],
-        textures: [{ sampler: 0, extensions: { EXT_texture_webp: { source: 0 } } }], samplers: [{ wrapS: 10497, wrapT: 10497 }],
-        extensionsUsed: ['EXT_texture_webp'], ...(converted === 'extension' ? {} : { extensionsRequired: ['EXT_texture_webp'] }) } : {}),
+      ...imageParts,
     }, binary, tokens);
+  }
+  /** A compact-profile image (512 px cap) carrying a record that mirrors the Python tool's output. */
+  function compactCandidate(kind: CompactCase) {
+    const normal = slot === 'normalTexture', jpegPayload = normal && kind !== 'lossy-normal' || kind === 'jpeg-color';
+    const dims = kind === 'oversize' ? [1024, 1024] : kind === 'dim' ? [16, 16] : [512, 512];
+    const payload = jpegPayload ? jpegFile(dims[0]!, dims[1]!, kind === 'subsampled' ? 0x22 : 0x11) : lossyWebP(dims[0]!, dims[1]!);
+    const record: Record<string, unknown> = { profile: 'compact', encoding: jpegPayload ? 'jpeg-444-q92' : 'webp-lossy-q90', sourceMimeType: 'image/png',
+      sourceSHA256: imageHash, sourceBytes: image.length, sourceSize: [4096, 4096], sourcePixelSHA256: sourcePixels, size: [512, 512], resizedFrom: [4096, 4096],
+      payloadSHA256: kind === 'hash' ? sha('other payload') : sha(payload), psnr: kind === 'bad-psnr' ? 30 : 41.2, ssim: 0.97 };
+    if (normal) Object.assign(record, { angularMean: kind === 'bad-angle' ? 3.5 : 0.8, angularP99: 2.4 });
+    if (kind === 'oversize') Object.assign(record, { size: [1024, 1024], resizedFrom: [4096, 4096] });
+    const parts = jpegPayload
+      ? { images: [{ bufferView: 2, mimeType: 'image/jpeg', extras: { extaliaImageConversion: record } }], textures: [{ sampler: 0, source: 0 }], samplers: [{ wrapS: 10497, wrapT: 10497 }] }
+      : { images: [{ bufferView: 2, mimeType: 'image/webp', extras: { extaliaImageConversion: record } }], textures: [{ sampler: 0, extensions: { EXT_texture_webp: { source: 0 } } }],
+        samplers: [{ wrapS: 10497, wrapT: 10497 }], extensionsUsed: ['EXT_texture_webp'], extensionsRequired: ['EXT_texture_webp'] };
+    return assemble(payload, {}, parts);
   }
   const entry = test.add('avatars/wardrobe/male/top/example-shirt.glb', candidate());
   entry.license = 'CC-BY-4.0'; entry.provenance = { kind: 'third-party-derived', exporter: sourceExporter };
@@ -451,7 +487,7 @@ function sourceGarmentFixture(textured = false, slot: 'baseColorTexture' | 'norm
     profile.sha256 = entry.sha256 = sha(bytes); profile.bytes = entry.bytes = bytes.length; save();
   }
   save();
-  return { ...test, entry, profile, recipe, candidate, save, replace, notice };
+  return { ...test, entry, profile, recipe, candidate, compactCandidate, save, replace, notice };
 }
 
 describe('reviewed source garment publication', () => {
@@ -468,6 +504,26 @@ describe('reviewed source garment publication', () => {
       const test = sourceGarmentFixture(true, slot); test.profile.budgets.bytes = 10_000; test.replace(test.candidate({ converted }));
       expect(verifyPublicModels(test.root)).toHaveLength(4);
       expect(() => verifySourceGarmentMaterialReceipts(path.join(test.source, test.entry.path), test.profile.materials)).not.toThrow();
+    }
+  });
+
+  it('accepts compact-profile colour (lossy WebP) and normal (4:4:4 JPEG) images and still maps receipts to the source image', () => {
+    for (const slot of ['baseColorTexture', 'normalTexture'] as const) {
+      const test = sourceGarmentFixture(true, slot); test.profile.budgets.bytes = 10_000; test.replace(test.compactCandidate('ok'));
+      expect(verifyPublicModels(test.root)).toHaveLength(4);
+      expect(() => verifySourceGarmentMaterialReceipts(path.join(test.source, test.entry.path), test.profile.materials)).not.toThrow();
+    }
+  });
+
+  it('rejects compact images that are over-size, below the thresholds, in the wrong role, mis-hashed or mis-sampled', () => {
+    const cases: Array<[CompactCase, 'baseColorTexture' | 'normalTexture', RegExp]> = [
+      ['oversize', 'baseColorTexture', /exceeds the 512 px limit/], ['bad-psnr', 'baseColorTexture', /below the compact thresholds/],
+      ['bad-angle', 'normalTexture', /angular error exceeds/], ['lossy-normal', 'normalTexture', /only colour maps may use lossy WebP/],
+      ['jpeg-color', 'baseColorTexture', /colour maps must not be stored as JPEG/], ['hash', 'baseColorTexture', /payload hash differs/],
+      ['subsampled', 'normalTexture', /4:4:4/], ['dim', 'baseColorTexture', /differs from its record/]];
+    for (const [kind, slot, message] of cases) {
+      const test = sourceGarmentFixture(true, slot); test.profile.budgets.bytes = 10_000; test.replace(test.compactCandidate(kind));
+      expect(() => verifyPublicModels(test.root), kind).toThrow(message);
     }
   });
 

@@ -24,8 +24,20 @@ Rules (owner-approved, see apps/web/public-assets/README.md "Texture encoding"):
 
   python3 tooling/compress-public-models.py --dry-run [--report FILE] [--cache DIR]
   python3 tooling/compress-public-models.py --write   [--report FILE] [--cache DIR]
+  python3 tooling/compress-public-models.py --dry-run|--write --profile compact   (owner-approved compact profile, see below)
   python3 tooling/compress-public-models.py --verify   (re-decode converted WebP vs recorded pixel hash,
                                                         and re-check every recorded vertex quantization)
+
+Compact profile (`--profile compact`, owner-approved 2026-11, 512 px cap, supersedes the pixel-identical rule for size):
+
+* Colour maps (baseColor, emissive, anything shared with a colour slot): longest side <= 512 (Lanczos, never upscaled),
+  WebP lossy q90 (method 6, alpha_quality 100), raised to q95 then lossless when PSNR < 38 dB or SSIM < 0.95.
+* Data maps used only by normal / metallicRoughness / occlusion: longest side <= 512, JPEG q92 with 4:4:4 chroma
+  (q95, then lossless WebP when a threshold fails; lossless WebP when alpha matters). Normal maps: mean angular error
+  <= 2 degrees and p99 <= 6 degrees. Never lossy WebP for data maps.
+* The smallest passing encoding wins; an image that is already within limits and not made smaller is kept.
+* Textures and images no material references are removed; EXT_texture_webp is declared only where WebP remains.
+* Records (`extras.extaliaImageConversion`, profile "compact") keep the original source provenance.
 
 Vertex quantization (`--quantize` with --dry-run / --write), KHR_mesh_quantization, no WASM:
 
@@ -642,6 +654,386 @@ def render_quantize_report(rows, mode, seconds):
     return '\n'.join(lines) + '\n'
 
 
+# ---------------------------------------------------------------- compact profile
+# Owner-approved size profile (2026-11): all textures <= 512 px: colour maps as lossy WebP, data maps as
+# 4:4:4 JPEG (lossless WebP when alpha matters), unreferenced textures/images removed.
+COMPACT = 'compact'
+COMPACT_MAX_SIDE = 512
+MIN_PSNR, MIN_SSIM, MAX_ANGLE_MEAN, MAX_ANGLE_P99 = 38.0, 0.95, 2.0, 6.0
+COMPACT_CACHE_VERSION = 'c4'
+
+
+def floor_to(value, digits):
+    scale = 10 ** digits
+    return float(np.floor(value * scale + 1e-9) / scale)
+
+
+def ceil_to(value, digits):
+    scale = 10 ** digits
+    return float(np.ceil(value * scale - 1e-9) / scale)
+
+
+def compact_size(size):
+    longest = max(size)
+    if longest <= COMPACT_MAX_SIDE:
+        return tuple(size)
+    return tuple(COMPACT_MAX_SIDE if side == longest else max(1, round(side * COMPACT_MAX_SIDE / longest)) for side in size)
+
+
+def box_mean(plane, window):
+    integral = np.pad(plane, ((1, 0), (1, 0))).cumsum(0).cumsum(1)
+    total = integral[window:, window:] - integral[:-window, window:] - integral[window:, :-window] + integral[:-window, :-window]
+    return total / (window * window)
+
+
+def color_metrics(reference, test):
+    """PSNR (premultiplied RGB over visible pixels) and mean SSIM (luma over mid-grey) of two RGBA images."""
+    ref, out = np.asarray(reference, dtype=np.float64), np.asarray(test, dtype=np.float64)
+    alpha = ref[..., 3:4] / 255.0
+    visible = ref[..., 3] > 0
+    if not visible.any():
+        return 100.0, 1.0
+    ref_rgb, out_rgb = ref[..., :3] * alpha, out[..., :3] * alpha
+    mse = float(np.mean((ref_rgb[visible] - out_rgb[visible]) ** 2))
+    psnr = 100.0 if mse == 0 else min(100.0, 10 * np.log10(255.0 ** 2 / mse))
+    grey = 128.0 * (1 - alpha)
+    luma = np.array([0.299, 0.587, 0.114])
+    a, b = ((ref_rgb + grey) @ luma), ((out_rgb + grey) @ luma)
+    window = 7 if min(a.shape) >= 7 else 1
+    if window == 1:
+        return psnr, 1.0 if mse == 0 else 0.0
+    mu_a, mu_b = box_mean(a, window), box_mean(b, window)
+    var_a, var_b = box_mean(a * a, window) - mu_a ** 2, box_mean(b * b, window) - mu_b ** 2
+    covariance = box_mean(a * b, window) - mu_a * mu_b
+    c1, c2 = (0.01 * 255) ** 2, (0.03 * 255) ** 2
+    ssim = ((2 * mu_a * mu_b + c1) * (2 * covariance + c2)) / ((mu_a ** 2 + mu_b ** 2 + c1) * (var_a + var_b + c2))
+    half = window // 2
+    centre = visible[half:half + ssim.shape[0], half:half + ssim.shape[1]]
+    return psnr, float(ssim[centre].mean() if centre.any() else 1.0)
+
+
+def normal_angles(reference, test):
+    def vectors(rgba):
+        v = np.asarray(rgba, dtype=np.float64)[..., :3].reshape(-1, 3) / 255.0 * 2 - 1
+        length = np.linalg.norm(v, axis=1, keepdims=True)
+        return np.where(length > 1e-6, v / np.maximum(length, 1e-6), np.array([0.0, 0.0, 1.0]))
+    cosine = np.clip(np.einsum('ij,ij->i', vectors(reference), vectors(test)), -1, 1)
+    angle = np.degrees(np.arccos(cosine))
+    return float(angle.mean()), float(np.percentile(angle, 99))
+
+
+def meets_thresholds(role, metrics):
+    if role == 'normal':
+        return metrics['angularMean'] <= MAX_ANGLE_MEAN and metrics['angularP99'] <= MAX_ANGLE_P99
+    return metrics['psnr'] >= MIN_PSNR and metrics['ssim'] >= MIN_SSIM
+
+
+def encode_candidate(image, kind, quality):
+    buffer = io.BytesIO()
+    if kind == 'jpeg':
+        try:
+            image.convert('RGB').save(buffer, 'JPEG', quality=quality, subsampling=0, optimize=True)
+        except OSError:  # Pillow's optimised-Huffman pass can fail on some inputs; retry with the standard tables
+            buffer = io.BytesIO()
+            image.convert('RGB').save(buffer, 'JPEG', quality=quality, subsampling=0)
+    elif kind == 'webp-lossy':
+        image.save(buffer, 'WEBP', quality=quality, method=6, alpha_quality=100)
+    else:
+        image.save(buffer, 'WEBP', lossless=True, quality=100, method=6, exact=True)
+    return buffer.getvalue()
+
+
+def compact_convert(job):
+    """Worker: one image payload -> {'action': 'keep'} or a compact re-encoding with measured metrics."""
+    payload, role, prior, cache_dir = job
+    key = sha(payload) + role + COMPACT_CACHE_VERSION
+    if cache_dir:
+        meta_file, data_file = Path(cache_dir) / f'{key}.json', Path(cache_dir) / f'{key}.bin'
+        if meta_file.exists():
+            meta = json.loads(meta_file.read_text())
+            if meta['action'] == 'compact':
+                meta['payload'] = data_file.read_bytes()
+            return meta
+    source = Image.open(io.BytesIO(payload))
+    source.load()
+    current = source.convert('RGBA')
+    alpha_matters = current.getchannel('A').getextrema()[0] < 255
+    target_size = compact_size(current.size)
+    reference = current if target_size == current.size else current.resize(target_size, Image.LANCZOS)
+    if prior:
+        provenance = {k: prior[k] for k in ('sourceMimeType', 'sourceSHA256', 'sourceBytes', 'sourceSize', 'sourcePixelSHA256')}
+    else:
+        provenance = {'sourceMimeType': Image.MIME[source.format], 'sourceSHA256': sha(payload), 'sourceBytes': len(payload),
+                      'sourceSize': list(current.size), 'sourcePixelSHA256': pixel_hash(current)}
+    plan = []  # (encoding, kind, quality)
+    if role == 'color':
+        plan = [('webp-lossy-q90', 'webp-lossy', 90), ('webp-lossy-q95', 'webp-lossy', 95)]
+    elif not alpha_matters:
+        plan = [('jpeg-444-q92', 'jpeg', 92), ('jpeg-444-q95', 'jpeg', 95)]
+    plan.append(('webp-lossless', 'webp-lossless', 100))
+    stored = reference if alpha_matters else reference.convert('RGB')
+    best = None
+    lossy_done = False
+    for encoding, kind, quality in plan:
+        if encoding.endswith('q95') and lossy_done:
+            continue
+        data = encode_candidate(stored, kind, quality)
+        decoded = Image.open(io.BytesIO(data))
+        decoded.load()
+        decoded_rgba = decoded.convert('RGBA')
+        if decoded_rgba.size != reference.size:
+            raise AssertionError('decoded size differs')
+        if kind == 'webp-lossless':
+            if decoded_rgba.tobytes() != reference.tobytes():
+                raise AssertionError('lossless WebP is not exact')
+            metrics = {'psnr': 100.0, 'ssim': 1.0, 'angularMean': 0.0, 'angularP99': 0.0}
+        else:
+            if alpha_matters and decoded_rgba.getchannel('A').tobytes() != reference.getchannel('A').tobytes():
+                raise AssertionError('alpha changed')
+            psnr, ssim = color_metrics(reference, decoded_rgba)
+            mean, p99 = normal_angles(reference, decoded_rgba) if role == 'normal' else (0.0, 0.0)
+            metrics = {'psnr': floor_to(psnr, 2), 'ssim': floor_to(ssim, 4), 'angularMean': ceil_to(mean, 3), 'angularP99': ceil_to(p99, 3)}
+        if not meets_thresholds(role, metrics):
+            continue
+        lossy_done = lossy_done or kind != 'webp-lossless'
+        if best is None or len(data) < len(best[1]):
+            best = (encoding, data, metrics, kind)
+    encoding, data, metrics, kind = best
+    resized = target_size != tuple(current.size)
+    if not resized and len(data) >= len(payload):
+        result = {'action': 'keep', 'reason': 'no smaller allowed encoding'}
+    else:
+        record = {'profile': COMPACT, 'encoding': encoding, **provenance, 'size': list(target_size), 'payloadSHA256': sha(data),
+                  'psnr': metrics['psnr'], 'ssim': metrics['ssim']}
+        if role == 'normal':
+            record.update(angularMean=metrics['angularMean'], angularP99=metrics['angularP99'])
+        if list(target_size) != provenance['sourceSize']:
+            record['resizedFrom'] = provenance['sourceSize']
+        result = {'action': 'compact', 'mimeType': 'image/jpeg' if kind == 'jpeg' else 'image/webp', 'record': record,
+                  'payload': data, 'bytes': len(data)}
+    if cache_dir:
+        meta_file.parent.mkdir(parents=True, exist_ok=True)
+        if result['action'] == 'compact':
+            data_file.write_bytes(result['payload'])
+        meta_file.write_text(json.dumps({k: v for k, v in result.items() if k != 'payload'}))
+    return result
+
+
+def image_roles(slots):
+    if not slots:
+        return 'color'  # unreferenced images are removed; role is irrelevant
+    if slots <= DATA_SLOTS:
+        return 'normal' if 'normalTexture' in slots else 'data'
+    return 'color'
+
+
+def remap_texture_indices(value, mapping):
+    if isinstance(value, list):
+        return [remap_texture_indices(v, mapping) for v in value]
+    if isinstance(value, dict):
+        out = {}
+        for key, child in value.items():
+            if key == 'extras':
+                out[key] = child
+            elif key.lower().endswith('texture') and isinstance(child, dict) and 'index' in child:
+                out[key] = dict(remap_texture_indices(child, mapping), index=mapping[child['index']])
+            else:
+                out[key] = remap_texture_indices(child, mapping)
+        return out
+    return value
+
+
+def plan_compact(path, data, pool, cache_dir):
+    doc, binary = read_glb(data)
+    images = doc.get('images', [])
+    report = {'path': str(path.relative_to(ASSETS)), 'before': len(data), 'images': [], 'removed': 0}
+    if not images:
+        report['skip'] = 'no images'
+        return report, None
+    image_views = {image['bufferView'] for image in images}
+    if image_views & buffer_view_refs(doc):
+        report['skip'] = 'image bufferView shared with non-image data'
+        return report, None
+    for texture in doc.get('textures', []):
+        if 'source' in texture and 'EXT_texture_webp' in (texture.get('extensions') or {}):
+            report['skip'] = 'texture has a core source plus EXT_texture_webp (fallback layout)'
+            return report, None
+    slots = image_slots(doc)
+    old_textures = doc.get('textures', [])
+    used_textures = sorted({index for _, index in walk_texture_infos(doc.get('materials', []))})
+    texture_map = {old: new for new, old in enumerate(used_textures)}
+    used_images = sorted({container[name] for t in used_textures for container, name in texture_sources(old_textures[t])})
+    report['removed'] = len(images) - len(used_images)
+    report['removedTextures'] = len(old_textures) - len(used_textures)
+
+    payloads = {i: view_bytes(doc, binary, images[i]['bufferView']) for i in used_images}
+    groups = {}
+    for index in used_images:
+        groups.setdefault(sha(payloads[index]), []).append(index)
+    jobs = {}
+    for digest, members in groups.items():
+        first = members[0]
+        jobs[digest] = (payloads[first], image_roles(set().union(*(slots[i] for i in members))),
+                        (images[first].get('extras') or {}).get(RECORD), cache_dir)
+    results = dict(zip(jobs, pool.map(compact_convert, jobs.values())))
+
+    new_payloads, entries, entry_index, old_to_new = {}, [], {}, {}
+    for index in used_images:
+        digest = sha(payloads[index])
+        entry = copy.deepcopy(images[index])
+        result = results[digest]
+        if result['action'] == 'compact':
+            payload = result['payload']
+            entry['mimeType'] = result['mimeType']
+            entry.setdefault('extras', {})[RECORD] = result['record']
+        else:
+            payload = payloads[index]
+        key = sha(payload)
+        new_payloads.setdefault(key, payload)
+        entry['bufferView'] = key
+        signature = json.dumps(entry, sort_keys=True)
+        if signature not in entry_index:
+            entry_index[signature] = len(entries)
+            entries.append(entry)
+        old_to_new[index] = entry_index[signature]
+        record = result.get('record') or {}
+        report['images'].append({'index': index, 'slots': sorted(slots[index]), 'role': jobs[digest][1], 'mime': images[index].get('mimeType'),
+                                 'before': len(payloads[index]), 'after': len(payload), 'action': result['action'],
+                                 'encoding': record.get('encoding'), 'size': record.get('size'), 'psnr': record.get('psnr'),
+                                 'ssim': record.get('ssim'), 'angularMean': record.get('angularMean'), 'angularP99': record.get('angularP99')})
+
+    kept = [i for i in range(len(doc['bufferViews'])) if i not in image_views]
+    mapping = {old: new for new, old in enumerate(kept)}
+    new_binary, views, offsets = bytearray(), [], {}
+    for old in kept:
+        view = copy.deepcopy(doc['bufferViews'][old])
+        span = (view.get('byteOffset', 0), view['byteLength'])
+        if span not in offsets:
+            new_binary += b'\0' * (-len(new_binary) % 4)
+            offsets[span] = len(new_binary)
+            new_binary += binary[span[0]:span[0] + span[1]]
+        view['byteOffset'] = offsets[span]
+        views.append(view)
+    payload_view = {}
+    for key, payload in new_payloads.items():
+        new_binary += b'\0' * (-len(new_binary) % 4)
+        payload_view[key] = len(views)
+        views.append({'buffer': 0, 'byteOffset': len(new_binary), 'byteLength': len(payload)})
+        new_binary += payload
+    new_binary += b'\0' * (-len(new_binary) % 4)
+
+    skip = {'images', 'textures', 'materials'}
+    new_doc = remap_buffer_views({k: v for k, v in doc.items() if k not in skip}, mapping)
+    new_doc['materials'] = remap_texture_indices(doc.get('materials', []), texture_map) if 'materials' in doc else None
+    if new_doc['materials'] is None:
+        del new_doc['materials']
+    new_doc['bufferViews'] = views
+    new_doc['buffers'] = [dict(doc['buffers'][0], byteLength=len(new_binary))]
+    new_images = [dict(entry, bufferView=payload_view[entry['bufferView']]) for entry in entries]
+    new_textures = []
+    for old in used_textures:
+        texture = copy.deepcopy(old_textures[old])
+        (container, name), = list(texture_sources(texture))
+        target = old_to_new[container[name]]
+        extensions = texture.get('extensions') or {}
+        extensions.pop('EXT_texture_webp', None)
+        texture.pop('source', None)
+        if new_images[target]['mimeType'] == 'image/webp':
+            extensions['EXT_texture_webp'] = {'source': target}
+        else:
+            texture['source'] = target
+        if extensions:
+            texture['extensions'] = extensions
+        else:
+            texture.pop('extensions', None)
+        new_textures.append(texture)
+    if new_images:
+        new_doc['images'] = new_images
+    if new_textures:
+        new_doc['textures'] = new_textures
+    used_webp = any('EXT_texture_webp' in (t.get('extensions') or {}) for t in new_textures)
+    for field in ('extensionsUsed', 'extensionsRequired'):
+        values = [v for v in new_doc.get(field, []) if v != 'EXT_texture_webp']
+        if used_webp:
+            values.append('EXT_texture_webp')
+        if values:
+            new_doc[field] = values
+        else:
+            new_doc.pop(field, None)
+    check_compact_equivalence(doc, binary, new_doc, bytes(new_binary), mapping, texture_map)
+    new_data = write_glb(new_doc, bytes(new_binary))
+    read_glb(new_data)
+    report['after'] = len(new_data)
+    return report, new_data
+
+
+def check_compact_equivalence(old_doc, old_bin, new_doc, new_bin, mapping, texture_map):
+    skip = {'images', 'bufferViews', 'buffers', 'extensionsUsed', 'extensionsRequired', 'textures', 'materials'}
+    old_rest = remap_buffer_views({k: v for k, v in old_doc.items() if k not in skip}, mapping)
+    if json.dumps(old_rest, sort_keys=True) != json.dumps({k: v for k, v in new_doc.items() if k not in skip}, sort_keys=True):
+        raise AssertionError('non-image JSON changed')
+    if json.dumps(remap_texture_indices(old_doc.get('materials', []), texture_map), sort_keys=True) != json.dumps(new_doc.get('materials', []), sort_keys=True):
+        raise AssertionError('materials changed beyond texture index remapping')
+    for old, new in mapping.items():
+        if view_bytes(old_doc, old_bin, old) != view_bytes(new_doc, new_bin, new):
+            raise AssertionError('non-image bufferView bytes changed')
+        old_view, new_view = old_doc['bufferViews'][old], new_doc['bufferViews'][new]
+        if any(old_view.get(k) != new_view.get(k) for k in set(old_view) | set(new_view) if k != 'byteOffset'):
+            raise AssertionError('bufferView metadata changed')
+    for old, new in zip([old_doc['textures'][i] for i in sorted(texture_map)], new_doc.get('textures', [])):
+        if any(old.get(k) != new.get(k) for k in set(old) | set(new) if k not in ('source', 'extensions')):
+            raise AssertionError('texture metadata changed')
+    for texture in new_doc.get('textures', []):
+        (container, name), = list(texture_sources(texture))
+        if container[name] >= len(new_doc.get('images', [])):
+            raise AssertionError('texture image out of range')
+
+
+def verify_compact_record(image, record, payload, roles):
+    """Python-side re-check of one compact record against its payload bytes."""
+    decoded = Image.open(io.BytesIO(payload))
+    decoded.load()
+    encoding = record['encoding']
+    role = image_roles(roles)
+    ok = (record.get('profile') == COMPACT and sha(payload) == record['payloadSHA256'] and list(decoded.size) == record['size']
+          and max(decoded.size) <= COMPACT_MAX_SIDE)
+    if encoding.startswith('jpeg-444'):
+        from PIL import JpegImagePlugin
+        ok = ok and image.get('mimeType') == 'image/jpeg' and decoded.format == 'JPEG' and role != 'color' \
+            and JpegImagePlugin.get_sampling(decoded) == 0
+    else:
+        ok = ok and image.get('mimeType') == 'image/webp' and decoded.format == 'WEBP' \
+            and (encoding == 'webp-lossless' or role == 'color')
+    ok = ok and meets_thresholds(role, {'psnr': record.get('psnr', 0), 'ssim': record.get('ssim', 0),
+                                        'angularMean': record.get('angularMean', 99), 'angularP99': record.get('angularP99', 99)})
+    return ok
+
+
+def render_compact_report(rows, mode, seconds):
+    mib = lambda n: f'{n / 1048576:.2f}'  # noqa: E731
+    changed = [r for r in rows if 'after' in r]
+    lines = [f'# GLB compact profile report ({mode})', '',
+             f'Files changed: {len(changed)}; before {mib(sum(r["before"] for r in changed))} MiB, '
+             f'after {mib(sum(r["after"] for r in changed))} MiB; elapsed {seconds:.0f}s.', '',
+             '| file | before | after | images compacted / kept / removed |', '|---|---:|---:|---|']
+    for row in changed:
+        acts = [i['action'] for i in row['images']]
+        lines.append(f'| {row["path"]} | {row["before"]} | {row["after"]} | {acts.count("compact")} / {acts.count("keep")} / {row["removed"]} |')
+    lines += ['', '## Per image', '']
+    for row in rows:
+        if 'after' not in row:
+            lines.append(f'- {row["path"]}: skipped ({row.get("skip")})')
+            continue
+        lines.append(f'### {row["path"]} ({row["before"]} -> {row["after"]}, {row["removed"]} unreferenced images removed)')
+        for i in row['images']:
+            metric = '' if i['psnr'] is None else f' psnr={i["psnr"]} ssim={i["ssim"]}' + (
+                f' angle mean={i["angularMean"]} p99={i["angularP99"]}' if i['angularMean'] is not None else '')
+            lines.append(f'- image {i["index"]} [{", ".join(i["slots"])}] {i["role"]} {i["mime"]} {i["before"]} -> {i["after"]} '
+                         f'{i["action"]} {i["encoding"] or ""} {i["size"] or ""}{metric}')
+        lines.append('')
+    return '\n'.join(lines) + '\n'
+
+
 # ---------------------------------------------------------------- registry
 def update_registry(changes):
     """changes: {relative glb path: (sha256, bytes)} -> models.json and source-garments.json."""
@@ -663,11 +1055,17 @@ def verify_all():
     failures, count = 0, 0
     for path in sorted(ASSETS.rglob('*.glb')):
         doc, binary = read_glb(path.read_bytes())
+        slots = image_slots(doc)
         for index, image in enumerate(doc.get('images', [])):
             record = (image.get('extras') or {}).get(RECORD)
             if not record:
                 continue
             count += 1
+            if record.get('profile') == COMPACT:
+                if not verify_compact_record(image, record, view_bytes(doc, binary, image['bufferView']), slots[index]):
+                    failures += 1
+                    print(f'MISMATCH {path.relative_to(ASSETS)} image {index} (compact)')
+                continue
             decoded = Image.open(io.BytesIO(view_bytes(doc, binary, image['bufferView']))).convert('RGBA')
             ok = (image.get('mimeType') == 'image/webp' and pixel_hash(decoded) == record['pixelSHA256']
                   and list(decoded.size) == record['size']
@@ -719,6 +1117,7 @@ def main():
     mode.add_argument('--write', action='store_true')
     mode.add_argument('--verify', action='store_true')
     parser.add_argument('--quantize', action='store_true', help='with --dry-run/--write: quantize skinned WEIGHTS/TANGENT (KHR_mesh_quantization) instead of re-encoding textures')
+    parser.add_argument('--profile', choices=[COMPACT], help='with --dry-run/--write: owner-approved compact profile (all textures <= 512 px: colour lossy WebP, data maps JPEG 4:4:4, unreferenced images removed)')
     parser.add_argument('--report', help='write a Markdown report to this file')
     parser.add_argument('--cache', help='directory for converted WebP payloads (speeds up --write after --dry-run)')
     parser.add_argument('--min-bytes', type=int, default=None, help='only touch GLBs at least this large (default 1000000, 0 with --quantize)')
@@ -728,7 +1127,7 @@ def main():
     if args.verify:
         sys.exit(0 if verify_all() else 1)
     if args.min_bytes is None:
-        args.min_bytes = 0 if args.quantize else 1_000_000
+        args.min_bytes = 0 if (args.quantize or args.profile) else 1_000_000
     started, rows, changes = time.time(), [], {}
     with ProcessPoolExecutor(args.workers) as pool:
         for path in sorted(ASSETS.rglob('*.glb')):
@@ -737,7 +1136,7 @@ def main():
             if len(data) < args.min_bytes or (args.only and args.only not in relative):
                 continue
             try:
-                row, new_data = plan_quantize(path, data) if args.quantize else plan_file(path, data, pool, args.cache)
+                row, new_data = plan_quantize(path, data) if args.quantize else plan_compact(path, data, pool, args.cache) if args.profile else plan_file(path, data, pool, args.cache)
             except Exception as error:  # noqa: BLE001
                 rows.append({'path': relative, 'before': len(data), 'images': [], 'accessors': [], 'skip': f'{type(error).__name__}: {error}'})
                 print(f'FAIL {relative}: {error}', file=sys.stderr)
@@ -758,7 +1157,7 @@ def main():
                 changes[relative] = (sha(new_data), len(new_data))
     if args.write and changes:
         update_registry(changes)
-    render = render_quantize_report if args.quantize else render_report
+    render = render_quantize_report if args.quantize else render_compact_report if args.profile else render_report
     text = render(rows, 'write' if args.write else 'dry-run', time.time() - started)
     if args.report:
         Path(args.report).parent.mkdir(parents=True, exist_ok=True)
