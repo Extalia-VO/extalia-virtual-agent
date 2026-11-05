@@ -12,9 +12,9 @@ at least 700 ms only when boot is fast (`boot/bootState.ts`).
 | --- | --- | --- |
 | `office-loop.webm` | Night (lit windows), VP9, 1280×720, 30 fps, 10 s | ≈ 1.8 MB |
 | `office-loop.mp4` | Night, H.264 High fallback | ≈ 1.8 MB |
-| `office-poster.webp` | Night, first frame of the loop | ≈ 65 KB |
+| `office-poster.webp` | Night, first frame of the loop | ≈ 75 KB |
 | `office-loop-day.webm` / `.mp4` | Daylight versions | ≈ 1.8 MB each |
-| `office-poster-day.webp` | Daylight first frame | ≈ 90 KB |
+| `office-poster-day.webp` | Daylight first frame | ≈ 115 KB |
 
 The dark theme plays the night loop and the light theme plays the day loop. The
 Solar theme follows whichever of the two it resolved to at launch.
@@ -57,6 +57,10 @@ Solar theme follows whichever of the two it resolved to at launch.
    R3F frame loop to `never` and steps it with a fixed 1/30 s timestep. Each step
    puts the camera on a periodic sway, dolly and rise around the Campus, then
    reads the frame from the canvas.
+   The framing (target `[-2, 12, -3]`, about 76 world units of height) shows
+   the whole campus building with the parking areas, roads and moving traffic
+   added with the outdoor campus; the earlier, tighter framing cut off the
+   building base and most vehicles.
 4. The camera path has a period equal to the clip length, so the view meets
    itself at the loop point. ffmpeg cross-fades the last second into the first
    so that moving people also loop without a seam. It then downsamples to

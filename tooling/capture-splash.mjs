@@ -102,12 +102,12 @@ async function startDevServer() {
  */
 function poseAt(t, seconds) {
   const phase = (2 * Math.PI * t) / seconds;
-  const target = [2, 16.5, -3];
+  const target = [-2, 12, -3];
   const yaw = Math.atan2(-79, -34) + 0.075 * Math.sin(phase);
   const radius = 86;
   const height = 12.4 + 1.2 * Math.cos(phase);
   const position = [target[0] + radius * Math.cos(yaw), target[1] + height, target[2] + radius * Math.sin(yaw)];
-  const zoom = (RENDER_H / 56) * (1 + 0.03 * Math.cos(phase));
+  const zoom = (RENDER_H / 76) * (1 + 0.03 * Math.cos(phase));
   return { position, target, zoom };
 }
 
