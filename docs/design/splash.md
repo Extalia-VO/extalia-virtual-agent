@@ -12,9 +12,9 @@ at least 700 ms only when boot is fast (`boot/bootState.ts`).
 | --- | --- | --- |
 | `office-loop.webm` | Night (lit windows), VP9, 1280×720, 30 fps, 10 s | ≈ 1.8 MB |
 | `office-loop.mp4` | Night, H.264 High fallback | ≈ 1.8 MB |
-| `office-poster.webp` | Night, first frame of the loop | ≈ 65 KB |
+| `office-poster.webp` | Night, first frame of the loop | ≈ 75 KB |
 | `office-loop-day.webm` / `.mp4` | Daylight versions | ≈ 1.8 MB each |
-| `office-poster-day.webp` | Daylight first frame | ≈ 90 KB |
+| `office-poster-day.webp` | Daylight first frame | ≈ 115 KB |
 
 The dark theme plays the night loop and the light theme plays the day loop. The
 Solar theme follows whichever of the two it resolved to at launch.

@@ -16,6 +16,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.164] - 2026-11-05
+
+### Changed
+
+- The Splash background loops (day and night) and their posters are re-rendered from the current campus: the redesigned building facade, roof plant and exterior stair, the outdoor campus with parking areas, parked cars and moving traffic. The capture camera is reframed so the whole building and the vehicles are in view.
+
 ## [0.4.163] - 2026-11-04
 
 ### Changed
