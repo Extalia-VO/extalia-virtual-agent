@@ -16,6 +16,16 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.171] - 2026-11-05
+
+### Fixed
+
+- macOS release verification calls `lipo <executable> -verify_arch <arch>` with the input file first, so the hosted runner's lipo no longer reads the executable path as an architecture and rejects the DMG with a usage error (`invalid-arguments`).
+
+### Changed
+
+- The Desktop and npm/Web beta moves to v0.4.171 (`docs/release/v0.4.171.md`) because the v0.4.170 draft could not pass the macOS archive check; v0.4.170 stays unpublished.
+
 ## [0.4.170] - 2026-11-05
 
 ### Changed

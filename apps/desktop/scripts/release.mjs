@@ -102,7 +102,9 @@ export async function verifyMacApp(app, arch, run = runCommand, mode = 'preview'
   if (!actual.includes(expected)) throw new Error(`macOS executable architecture mismatch (expected ${expected}; observed ${observed}).`);
   // Check the actual distributed executable, not just its archive's name.
   let failureCategory;
-  try { await run('lipo', ['-verify_arch', expected, executable]); }
+  // Input file first (`lipo <input_file> -verify_arch <arch>`): some lipo builds read every argument after
+  // -verify_arch as an architecture and then fail with a usage error for the missing input file.
+  try { await run('lipo', [executable, '-verify_arch', expected]); }
   catch (error) {
     // Only a fixed category crosses this diagnostic boundary, never the original error or its cause.
     failureCategory = ARCH_FAILURES.has(error?.releaseArchitectureFailure) ? error.releaseArchitectureFailure : 'tool-failure';

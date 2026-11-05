@@ -124,7 +124,7 @@ describe('bounded macOS executable diagnostics', () => {
     await writeFile(path.join(app, 'Contents', 'MacOS', 'Extalia'), bytes);
     const { run, calls } = runner(undefined, adHoc);
     await verifyMacApp(app, 'arm64', run); await verifyMacApp(app, 'x64', run);
-    expect(calls.filter(call => call.command === 'lipo').map(call => call.args[1])).toEqual(['arm64', 'x86_64']);
+    expect(calls.filter(call => call.command === 'lipo').map(call => call.args[2])).toEqual(['arm64', 'x86_64']);
   });
 
   it('still requires lipo success after a matching pure Mach-O header and never echoes arbitrary tool errors', async () => {
@@ -140,7 +140,7 @@ describe('bounded macOS executable diagnostics', () => {
     const directory = await fixture(); const app = path.join(directory, 'Extalia.app'); await executableFixture(app);
     const { run, calls } = runner(undefined, adHoc); await verifyMacApp(app, 'arm64', run);
     expect(calls.map(call => call.command)).toEqual(['lipo', 'codesign', 'codesign']);
-    expect(calls[0]!.args).toEqual(['-verify_arch', 'arm64', path.join(app, 'Contents', 'MacOS', 'Extalia')]);
+    expect(calls[0]!.args).toEqual([path.join(app, 'Contents', 'MacOS', 'Extalia'), '-verify_arch', 'arm64']);
     expect(calls[2]!.args).toEqual(['--verify', '--deep', '--strict', '--verbose=2', app]);
   });
 
@@ -164,7 +164,7 @@ describe('free macOS preview distribution', () => {
     expect(files.map(file => path.basename(file))).toEqual([...payloads, `Extalia-${version}-mac-PREVIEW.txt`]);
     expect(await readFile(files.at(-1)!, 'utf8')).toContain('unidentified-developer warning');
     expect(calls.filter(call => call.command === 'codesign' && call.args[0] === '--verify')).toHaveLength(4);
-    expect(calls.filter(call => call.command === 'lipo').map(call => call.args[1])).toEqual(['arm64', 'arm64', 'x86_64', 'x86_64']);
+    expect(calls.filter(call => call.command === 'lipo').map(call => call.args[2])).toEqual(['arm64', 'arm64', 'x86_64', 'x86_64']);
     expect(calls.some(call => ['spctl', 'xcrun', 'xattr'].includes(call.command))).toBe(false);
     expect(calls.at(-1)?.args).toEqual(['release', 'upload', tag, ...files, '--clobber']);
   });
@@ -229,7 +229,7 @@ describe('distributed macOS release checks', () => {
     const attachments = calls.filter(call => call.command === 'hdiutil' && call.args[0] === 'attach');
     expect(attachments).toHaveLength(2);
     for (const call of attachments) expect(call.args).toEqual(expect.arrayContaining(['-readonly', '-nobrowse', '-noautoopen', '-mountpoint']));
-    expect(calls.filter(call => call.command === 'lipo').map(call => call.args[1])).toEqual(['arm64', 'arm64', 'x86_64', 'x86_64']);
+    expect(calls.filter(call => call.command === 'lipo').map(call => call.args[2])).toEqual(['arm64', 'arm64', 'x86_64', 'x86_64']);
     expect(calls.filter(call => call.command === 'codesign' && call.args[0] === '--verify')).toHaveLength(4);
     expect(calls.filter(call => call.command === 'spctl')).toHaveLength(4);
     expect(calls.filter(call => call.command === 'xcrun' && call.args[0] === 'stapler' && call.args[1] === 'validate')).toHaveLength(4);
