@@ -1,7 +1,9 @@
-import { mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises';
+import { execFile } from 'node:child_process';
+import { copyFile, mkdir, mkdtemp, readFile, readdir, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { promisify } from 'node:util';
 import { afterEach, describe, expect, it } from 'vitest';
 import { macReleaseMode, releaseArtifactNames, releaseBuildOptions, runCommand, uploadRelease, verifyMacApp, verifyMacArchive, type Runner } from '../scripts/release.mjs';
 import { buildLinuxInstaller } from '../scripts/linux-installer.mjs';
@@ -43,6 +45,34 @@ function runner(fail?: (command: string, args: string[], calls: Call[]) => boole
 }
 
 describe('release packaging preflight', () => {
+  it('runs the real preflight without installed build dependencies and still validates notarization credentials', async () => {
+    const root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'extalia-release-preinstall-')));
+    temporary.push(root);
+    const scripts = path.join(root, 'apps', 'desktop', 'scripts');
+    await mkdir(scripts, { recursive: true });
+    // Retain the entire former eager import chain, but provide no node_modules or esbuild.
+    for (const name of ['release.mjs', 'linux-installer.mjs', 'installer-copy.mjs']) {
+      await copyFile(new URL(`../scripts/${name}`, import.meta.url), path.join(scripts, name));
+    }
+    const script = path.join(scripts, 'release.mjs');
+    const execute = promisify(execFile);
+    const env = { HOME: root, USERPROFILE: root, NODE_PATH: '', EXTALIA_MAC_RELEASE_MODE: 'preview',
+      ...(process.env.SystemRoot ? { SystemRoot: process.env.SystemRoot } : {}) };
+    expect(await readdir(root)).not.toContain('node_modules');
+    await expect(execute(process.execPath, [script, 'preflight'], { cwd: root, env }))
+      .resolves.toMatchObject({ stdout: expect.stringContaining('release: preflight passed'), stderr: '' });
+
+    // Exercise the macOS credential gate on every CI OS, through the unchanged CLI entrypoint.
+    const macOS = `data:text/javascript;base64,${Buffer.from('Object.defineProperty(process, "platform", { value: "darwin" });').toString('base64')}`;
+    const args = ['--import', macOS, script, 'preflight'];
+    const notarized = { ...env, EXTALIA_MAC_RELEASE_MODE: 'notarized' };
+    await expect(execute(process.execPath, args, { cwd: root, env: notarized })).rejects.toMatchObject({
+      code: 1, stderr: expect.stringContaining(`macOS notarized release requires repository signing/notarization secrets: ${Object.keys(secrets).join(', ')}.`),
+    });
+    await expect(execute(process.execPath, args, { cwd: root, env: { ...notarized, ...secrets } }))
+      .resolves.toMatchObject({ stdout: expect.stringContaining('release: preflight passed'), stderr: '' });
+  });
+
   it('defaults to explicit ad-hoc preview packaging without importing credentials', () => {
     const { args, env } = releaseBuildOptions('darwin', { ...secrets });
     expect(macReleaseMode()).toBe('preview');
