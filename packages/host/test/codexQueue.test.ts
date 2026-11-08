@@ -1,19 +1,24 @@
 import * as childProcess from 'node:child_process';
-import { chmod, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CodexQueueError, queueCodexMessage } from '../src/codexQueue.js';
 
+const fixtureSources = vi.hoisted(() => new Map<string, string>());
 vi.mock('node:child_process', async importOriginal => {
   const actual = await importOriginal<typeof childProcess>();
-  return { ...actual, spawn: vi.fn(actual.spawn) };
+  return { ...actual, spawn: vi.fn((bin: string, args: string[], options: childProcess.SpawnOptions) => {
+    const source = fixtureSources.get(bin);
+    return source ? actual.spawn(process.execPath, [source, ...args], options) : actual.spawn(bin, args, options);
+  }) };
 });
 
 const roots: string[] = [];
 const threadId = '11111111-1111-4111-8111-111111111111';
 const messageId = '22222222-2222-4222-8222-222222222222';
 afterEach(async () => {
+  fixtureSources.clear();
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
 async function fixture(body = `process.stdout.write('Queued message ${messageId} for thread ${threadId}.\\n');`) {
@@ -22,9 +27,8 @@ async function fixture(body = `process.stdout.write('Queued message ${messageId}
   const source = path.join(root, 'fixture.mjs');
   const capture = path.join(root, 'capture.json');
   await writeFile(source, `import { writeFileSync } from 'node:fs';\nwriteFileSync(process.env.CAPTURE, JSON.stringify({ args:process.argv.slice(2), home:process.env.HOME, codexHome:process.env.CODEX_HOME, pid:process.pid }));\n${body}\n`);
-  const quote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`;
-  await writeFile(bin, `#!/bin/sh\nexec ${quote(process.execPath)} ${quote(source)} "$@"\n`);
-  await chmod(bin, 0o700);
+  // Run the actual Node child on every OS; only substitute the fixture launcher.
+  fixtureSources.set(bin, source);
   return { bin, capture, env: { HOME: root, CODEX_HOME: root, CAPTURE: capture }, threadId, text: 'hello' };
 }
 
@@ -33,6 +37,7 @@ describe('public Codex text queue', () => {
     const f = await fixture();
     const text = 'hello\n$(touch /tmp/should-not-run) `echo no` --resume "quoted"';
     expect(await queueCodexMessage({ ...f, text })).toEqual({ state: 'queued', messageId });
+    expect(childProcess.spawn).toHaveBeenLastCalledWith(f.bin, ['queue', '--thread', threadId, '--message', text], expect.objectContaining({ shell: false, env: f.env }));
     const captured = JSON.parse(await readFile(f.capture, 'utf8'));
     expect(captured).toMatchObject({ args: ['queue', '--thread', threadId, '--message', text], home: f.env.HOME, codexHome: f.env.CODEX_HOME });
   });
@@ -75,13 +80,16 @@ describe('public Codex text queue', () => {
     await expect(queueCodexMessage({ ...f, signal: controller.signal })).rejects.toThrow(/before submission/);
     await expect(readFile(f.capture)).rejects.toMatchObject({ code: 'ENOENT' });
   });
-  it('escalates cancellation of an unresponsive owned child and confirms its exit', async () => {
+  it('cancels an unresponsive owned child and confirms its exit', async () => {
     const f = await fixture(`process.on('SIGTERM',()=>{}); setInterval(()=>{},1000);`);
     const controller = new AbortController();
     const result = queueCodexMessage({ ...f, signal: controller.signal }).catch((error: unknown) => error);
     await vi.waitFor(async () => expect(JSON.parse(await readFile(f.capture, 'utf8')).pid).toBeGreaterThan(0));
+    const kill = vi.spyOn(vi.mocked(childProcess.spawn).mock.results.at(-1)!.value, 'kill');
     controller.abort();
     expect(await result).toMatchObject({ state: 'unknown', cleanupUnconfirmed: false });
+    expect(kill).toHaveBeenCalledWith('SIGTERM');
+    if (process.platform !== 'win32') expect(kill).toHaveBeenCalledWith('SIGKILL');
     const { pid } = JSON.parse(await readFile(f.capture, 'utf8'));
     expect(() => process.kill(pid, 0)).toThrow();
   });

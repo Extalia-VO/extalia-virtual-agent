@@ -185,6 +185,36 @@ describe.skipIf(process.platform === 'win32' || process.getuid?.() === 0)('Linux
     try { const result = f.run(); expect(result.status).toBe(1); expect(result.stderr).toContain('Close'); }
     finally { const exited = once(child, 'exit'); child.kill(); await exited; }
   });
+  it('silently tolerates a process environment that becomes unreadable after the readability check', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'extalia-linux-process-scan-'));
+    temporary.push(root);
+    const processRoot = path.join(root, 'proc'), environment = path.join(processRoot, '123', 'environ');
+    await mkdir(path.dirname(environment), { recursive: true });
+    await writeFile(environment, 'APPIMAGE=/projects/other/app.AppImage\0');
+    const template = await readFile(new URL('../installer/linux-install.sh', import.meta.url), 'utf8');
+    const scanner = template.match(/^check_running\(\) \{[\s\S]*?^\}/m)?.[0];
+    expect(scanner).toBeDefined();
+    // Exercise the actual scanner with a temporary process tree. The Bash test
+    // returns its real -r result, then moves environ before the following open.
+    const script = `set -eu
+old=1; prefix="$EXTALIA_TEST_PREFIX"; running='Close the app'; die() { printf '%s\\n' "$1" >&2; exit 1; }
+function [ {
+  if [[ "$#" -eq 3 && "$1" = -r ]]; then
+    builtin [ "$@" || return
+    command mv -- "$2" "$2.gone"
+    return 0
+  fi
+  builtin [ "$@"
+}
+${scanner!.replaceAll('/proc', '"$EXTALIA_TEST_PROC"')}
+check_running
+`;
+    const result = spawnSync('/bin/bash', ['-c', script], { encoding: 'utf8', env: { ...process.env, HOME: root, EXTALIA_TEST_PROC: processRoot, EXTALIA_TEST_PREFIX: path.join(root, 'installed') } });
+    expect(result.status).toBe(0);
+    expect(result.stderr).toBe('');
+    await absent(environment);
+    expect(await readFile(`${environment}.gone`, 'utf8')).toBe('APPIMAGE=/projects/other/app.AppImage\0');
+  });
   it('refuses existing unowned folders and launchers', async () => {
     const f = await fixture(); await mkdir(f.prefix, { recursive: true }); await writeFile(path.join(f.prefix, 'notes'), 'preserved');
     expect(f.run().status).toBe(1); expect(await readFile(path.join(f.prefix, 'notes'), 'utf8')).toBe('preserved');

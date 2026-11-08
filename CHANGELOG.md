@@ -21,6 +21,7 @@ All notable changes to this project are documented here. The format follows
 - Compact the observed Codex prompt box in Office, Observe and Chat: remove repeated target and keyboard/delivery hints, place the send icon beside the textarea, and show status text only when needed.
 - Display and copy the readable answers from structured user-question replies, including envelopes surrounded by blank lines, while preserving malformed data and literal examples.
 - Record owner confirmation of RenderHub Extended Use terms for 18 plant/tree models and eight detailed hairstyles; preserve source archives, historical provenance and geometry/textures, update notices, and retain strict model validation.
+- Suppress Linux installer procfs race diagnostics while preserving running-app checks, and make Codex subprocess/path test fixtures portable across supported operating systems with explicit Windows socket-control refusal coverage.
 
 ## [0.4.224] - 2026-11-08
 

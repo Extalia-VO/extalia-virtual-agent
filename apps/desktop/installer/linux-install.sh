@@ -155,7 +155,9 @@ check_running() {
   [ "$old" -eq 1 ] && [ -d /proc ] || return 0
   # AppImage's mounted executable can differ from its original file: check both.
   for process in /proc/[0-9]*; do
-    if [ -r "$process/environ" ] && tr '\0' '\n' < "$process/environ" 2>/dev/null | grep -Fxq "APPIMAGE=$prefix/app.AppImage"; then die "$running"; fi
+    # Redirect stderr before opening procfs: permissions and process lifetime
+    # can change between the readability check and the open itself.
+    if [ -r "$process/environ" ] && tr '\0' '\n' 2>/dev/null < "$process/environ" | grep -Fxq "APPIMAGE=$prefix/app.AppImage"; then die "$running"; fi
     if [ "$(readlink "$process/exe" 2>/dev/null || :)" = "$prefix/app.AppImage" ]; then die "$running"; fi
   done
 }

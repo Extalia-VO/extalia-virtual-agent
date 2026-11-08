@@ -1,3 +1,4 @@
+import * as childProcess from 'node:child_process';
 import { createServer, type Server } from 'node:net';
 import { chmod, mkdtemp, readFile, rm, symlink, unlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -8,11 +9,21 @@ import {
   type CodexObservedRpc, type CodexObservedRpcOptions,
 } from '../src/codexObservedControl.js';
 
+const fixtureSources = vi.hoisted(() => new Map<string, string>());
+vi.mock('node:child_process', async importOriginal => {
+  const actual = await importOriginal<typeof childProcess>();
+  return { ...actual, spawn: vi.fn((bin: string, args: string[], options: childProcess.SpawnOptions) => {
+    const source = fixtureSources.get(bin);
+    return source ? actual.spawn(process.execPath, [source, ...args], options) : actual.spawn(bin, args, options);
+  }) };
+});
+
 const roots: string[] = [];
 const servers: Server[] = [];
 const controls: CodexObservedControl[] = [];
 afterEach(async () => {
   vi.useRealTimers();
+  fixtureSources.clear();
   // Intentionally failed fake cleanup owners remain latched for their lifetime.
   await Promise.allSettled(controls.splice(0).map((control) => control.close()));
   await Promise.all(servers.splice(0).map((server) => new Promise<void>((resolve) => server.close(() => resolve()))));
@@ -69,7 +80,8 @@ function filePreview(changes: unknown = fileChanges, extra: Record<string, unkno
   return { method: 'item/started', params: { threadId: 'native-thread', turnId: 'turn-1', item: { id: 'approval-item', type: 'fileChange', changes }, ...extra } };
 }
 
-describe('same-server observed Codex control', () => {
+// Production socket validation explicitly refuses Windows: no named-pipe capability is claimed.
+describe.skipIf(process.platform === 'win32')('same-server observed Codex control', () => {
   it('initializes minimally, verifies the exact native thread and resumes without overrides', async () => {
     const f = await fixture(); const state = await f.connect();
     expect(state).toMatchObject({ sessionId: 'observed-session', state: 'connected', threadId: 'native-thread', activeTurnId: 'turn-1', canSend: true, canAnswer: false, requests: [] });
@@ -293,7 +305,7 @@ describe('same-server observed Codex control', () => {
   });
 });
 
-describe('native observed Codex approvals', () => {
+describe.skipIf(process.platform === 'win32')('native observed Codex approvals', () => {
   it.each(['accept', 'decline', 'cancel'] as const)('submits only the one-action native command decision %s', async (decision) => {
     const f = await fixture(); await f.connect();
     f.emit(approval(70, { reason: 'Run the exact action', commandActions: [{ type: 'unknown', command: 'printf hello' }], availableDecisions: ['acceptForSession', 'accept', 'decline', 'cancel', { acceptWithExecpolicyAmendment: { execpolicy_amendment: ['printf'] } }] }));
@@ -468,11 +480,19 @@ describe('native observed Codex approvals', () => {
   });
 });
 
+it.runIf(process.platform === 'win32')('refuses observed socket control on Windows before launching a proxy', async () => {
+  const factory = vi.fn();
+  const control = new CodexObservedControl({ sessionId: 'observed-session', threadId: 'native-thread', cwd: '/workspace', bin: 'codex', rpcFactory: factory });
+  controls.push(control);
+  expect(await control.connect(path.join(await root(), 'server.sock'))).toMatchObject({ state: 'unavailable', canSend: false, canAnswer: false });
+  expect(factory).not.toHaveBeenCalled();
+});
+
 async function executable(script: string): Promise<string> {
   const directory = await root(); const file = path.join(directory, 'fake-codex');
   const source = path.join(directory, 'fake.cjs'); await writeFile(source, script);
-  const quote = (value: string) => "'" + value.replaceAll("'", "'\\''") + "'";
-  await writeFile(file, `#!/bin/sh\nexec ${quote(process.execPath)} ${quote(source)} "$@"\n`, { mode: 0o700 }); return file;
+  // Keep framing and child-lifecycle coverage portable without a shell wrapper.
+  fixtureSources.set(file, source); return file;
 }
 // The real CLI is a raw byte proxy: fixtures require HTTP Upgrade and masked
 // RFC6455 client messages, rather than accepting a decoded JSONL stand-in.
@@ -609,8 +629,18 @@ describe('bounded observed Codex WebSocket proxy transport', () => {
     const frames = path.join(await root(), 'frames.jsonl'); const onClose = vi.fn();
     const bin = await webSocketProxy({ onMessage: "process.stdout.write(frame(8,Buffer.from([3,232])));" });
     const rpc = await createCodexObservedRpc(rpcOptions(bin, { onClose, env: { FRAMES: frames } }));
+    const child = vi.mocked(childProcess.spawn).mock.results.at(-1)!.value;
+    const writes = vi.spyOn(child.stdin!, 'write');
     await expect(rpc.request('initialize', {})).rejects.toThrow(/disconnected/); await rpc.close(); expect(onClose).toHaveBeenCalledOnce();
-    expect((await readFile(frames, 'utf8')).trim().split('\n').map((line) => JSON.parse(line).opcode)).toContain(8);
+    const acknowledgment = writes.mock.calls.map(([bytes]) => bytes as Buffer).find(bytes => bytes[0] === 0x88)!;
+    expect(acknowledgment).toBeDefined();
+    expect(acknowledgment.length).toBe(8);
+    expect(acknowledgment[1]).toBe(0x82);
+    expect([acknowledgment[6]! ^ acknowledgment[2]!, acknowledgment[7]! ^ acknowledgment[3]!]).toEqual([3, 232]);
+    // Windows terminates the child immediately. Its receipt cannot be observed
+    // after termination; POSIX lets this fixture flush its peer-side audit.
+    if (process.platform !== 'win32') expect((await readFile(frames, 'utf8')).trim().split('\n').map((line) => JSON.parse(line).opcode)).toContain(8);
+    expect(child.exitCode !== null || child.signalCode !== null).toBe(true);
   });
   it('bounds outbound payloads and queued writes', async () => {
     const bin = await webSocketProxy({ onMessage: "send({id:message.id,result:{ok:true}}); process.stdin.pause();" });

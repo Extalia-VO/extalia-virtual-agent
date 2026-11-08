@@ -6,7 +6,8 @@ import { useTempDirs } from './helpers.js';
 
 const temp = useTempDirs(), id = '11111111-1111-4111-8111-111111111111';
 async function fixture() {
-  const home = await temp('extalia-codex-binding-'), codexHome = path.join(home, '.codex'), sessions = path.join(codexHome, 'sessions');
+  // Resolve Windows short temporary paths before registering the profile.
+  const home = await realpath(await temp('extalia-codex-binding-')), codexHome = path.join(home, '.codex'), sessions = path.join(codexHome, 'sessions');
   await mkdir(sessions, { recursive: true });
   const file = path.join(sessions, `rollout-${id}.jsonl`);
   const header = `${JSON.stringify({ type: 'session_meta', payload: { id, cwd: '/projects/example' } })}\n`;

@@ -4,7 +4,8 @@ import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { pathToFileURL } from 'node:url';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CODEX_PERMISSION_FORWARDER_SOURCE, codexPermissionEndpointFile, codexPermissionForwarderPath, codexPermissionTokenFile } from '../src/connect/codexPermissionForwarder.js';
 
 const payload = { hook_event_name: 'PermissionRequest', session_id: '11111111-1111-4111-8111-111111111111', turn_id: 'native-turn', tool_name: 'Bash', tool_input: { command: 'echo example', description: 'Example action' } };
@@ -61,14 +62,19 @@ describe('standalone Codex permission forwarder', () => {
       }
       syncBuiltinESMExports();
     `);
-    const child = spawn(process.execPath, [...(auditPrivateReads ? ['--import', probe] : []), codexPermissionForwarderPath(home), ...args], { stdio: ['pipe', 'pipe', 'pipe'] });
+    const child = spawn(process.execPath, [...(auditPrivateReads ? ['--import', pathToFileURL(probe).href] : []), codexPermissionForwarderPath(home), ...args], { stdio: ['pipe', 'pipe', 'pipe'] });
     let stdout = '', stderr = '';
     child.stdout.on('data', chunk => { stdout += String(chunk); });
     child.stderr.on('data', chunk => { stderr += String(chunk); });
     const result = new Promise<{ code: number | null; stdout: string; stderr: string }>(resolve => child.on('close', code => resolve({ code, stdout, stderr })));
     child.stdin.on('error', () => undefined);
     if (closeInput) child.stdin.end(body); else child.stdin.write(body);
-    if (signal) setTimeout(() => child.kill(signal), 250);
+    if (signal) {
+      // Wait for the outstanding request, rather than racing process startup.
+      if (closeInput) await vi.waitFor(() => expect(received).toHaveLength(1));
+      if (!closeInput) await new Promise(resolve => setTimeout(resolve, 250));
+      child.kill(signal);
+    }
     return result;
   }
   const nativeDecision = (decision: string) => ({ hookSpecificOutput: { hookEventName: 'PermissionRequest', decision: { behavior: decision } } });
@@ -153,14 +159,18 @@ describe('standalone Codex permission forwarder', () => {
     expect(received).toHaveLength(0);
   });
 
+  // Windows force-terminates these signals; it cannot run the POSIX cleanup handler.
+  const cancelled = process.platform === 'win32'
+    ? { code: null, stdout: '', stderr: '' } : { code: 0, stdout: '{}\n', stderr: '' };
+
   it('aborts an outstanding host request on SIGTERM', async () => {
     response = () => undefined;
-    expect(await run(JSON.stringify(payload), 'SIGTERM')).toEqual({ code: 0, stdout: '{}\n', stderr: '' });
+    expect(await run(JSON.stringify(payload), 'SIGTERM')).toEqual(cancelled);
     expect(received).toHaveLength(1);
   });
 
   it('aborts bounded unfinished stdin without forwarding it', async () => {
-    expect(await run('{', 'SIGINT', false)).toEqual({ code: 0, stdout: '{}\n', stderr: '' });
+    expect(await run('{', 'SIGINT', false)).toEqual(cancelled);
     expect(received).toHaveLength(0);
   });
 });

@@ -81,7 +81,7 @@ describe('isolated installer window', () => {
     expect(mocks.options[0]).toMatchObject({ title: copy.macWizardTitle, width: 900, height: 620, minWidth: 650,
       webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false, webSecurity: true, partition: 'extalia-installer' } });
     const options = mocks.options[0]?.webPreferences as { preload: string };
-    expect(options.preload).toMatch(/installer\/preload\.cjs$/);
+    expect(options.preload).toMatch(/installer[\\/]preload\.cjs$/);
     expect(window.webContents.setWindowOpenHandler.mock.calls[0]?.[0]()).toEqual({ action: 'deny' });
     for (const name of ['will-navigate', 'will-redirect']) {
       const preventDefault = vi.fn(); window.webContents.emit(name, { preventDefault }, 'https://example.com');
