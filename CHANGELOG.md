@@ -16,6 +16,10 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.227] - 2026-11-08
+
+- Initialize the configured pnpm version before Node setup in checksum and retained-Mac-archive workflows, so package-manager cache detection can run on fresh hosted runners.
+
 ## [0.4.226] - 2026-11-08
 
 - Keep release preflight independent of build dependencies by loading Linux installer verification only when Linux artifacts are actually checked.
