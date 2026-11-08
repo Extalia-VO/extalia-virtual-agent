@@ -9,10 +9,12 @@ authoring scene is maintained separately. Other MIT exports come from checked-in
 geometry generators. Campus cars are simplified derivatives of third-party
 reference models (`prepare-campus-vehicles.py`); each keeps its own license and
 the credits in THIRD_PARTY_NOTICES.md. Existing avatar entries are retained
-unchanged; no third-party avatar or hair pack is processed here.
+unchanged; no third-party avatar or hair pack is processed here. Campus greenery
+(`prepare-greenery.py`) is published separately with `--greenery` and kept by the main run.
 """
 import hashlib
 import json
+import os
 from pathlib import Path
 import re
 import struct
@@ -29,6 +31,7 @@ GENERATORS = {
     "furniture/team-pod-desktop.glb": "create-team-pod-desktop.py",
     "furniture/workstation-set.glb": "create-workstation-set.py",
     "furniture/interior-library.glb": "create-interior-library.py",
+    "furniture/tablet.glb": "create-tablet-prop.py",
     "landscape/campus-mobility.glb": "create-campus-mobility.py",
     "landscape/campus-parking.glb": "create-campus-parking.py",
     "landscape/district-buildings.glb": "create-district-buildings.py",
@@ -206,6 +209,145 @@ def public_glb(source, copyright=MIT_COPYRIGHT, sanitize_original=False):
     return struct.pack("<IIIII", magic, version, total, len(encoded), kind) + encoded + tail
 
 
+GREENERY_CATALOG = ROOT / "tooling/blender/campus-greenery.json"
+GREENERY_MANIFEST = SOURCE / "greenery/greenery.manifest.json"
+GREENERY_RUNTIME = ROOT / "apps/web/src/office/scene/campusGreenery.json"
+GREENERY_EXPORTER = "tooling/blender/prepare-greenery.py"
+GREENERY_KINDS = ("plant", "garden", "tree")
+GREENERY_START, GREENERY_END = "<!-- campus-greenery:start -->", "<!-- campus-greenery:end -->"
+
+
+def greenery_notices(catalog):
+    """The generated "Campus greenery" section of THIRD_PARTY_NOTICES.md."""
+    lines = [GREENERY_START, "## Campus greenery", "",
+             "The potted plants, garden plants and trees in `greenery/` are simplified derivatives of",
+             "owner-provided downloads (`tooling/blender/prepare-greenery.py`): thinned foliage, decimated",
+             "stems and bark, textures reduced to 512 px WebP. They are not MIT-licensed.", ""]
+    if any(entry["license"] == UNVERIFIED for entry in catalog["greenery"]):
+        lines += ["Files marked LicenseRef-Owner-Provided-Unverified have no recorded author or licence yet;",
+                  "their credit reads \"pending owner confirmation\" until the owner confirms them.", ""]
+    for key, notice in catalog["notices"].items():
+        items = [entry for entry in catalog["greenery"] if entry["notice"] == key]
+        if not items:
+            continue
+        lines += [f"### {items[0]['license']} ({key})", "", notice["text"], ""]
+        for entry in items:
+            lines.append(f"- `greenery/{entry['id']}.glb` ({entry['license']}): {entry['title']}; "
+                         f"source archive: {os.path.basename(entry['archive'])}. {notice['item']}")
+        lines.append("")
+    return "\n".join(lines + [GREENERY_END]) + "\n"
+
+
+def publish_greenery():
+    """Publish every catalog plant/tree export to public-assets/greenery and its runtime catalog."""
+    catalog = json.loads(GREENERY_CATALOG.read_text(encoding="utf-8"))
+    for entry in catalog["greenery"]:
+        if not re.fullmatch(r"(?:plant|garden|tree)-[a-z0-9-]+", entry["id"]) or entry["kind"] not in GREENERY_KINDS \
+                or not entry["id"].startswith(entry["kind"] + "-") or entry["license"] not in VEHICLE_LICENSES \
+                or entry["notice"] not in catalog["notices"]:
+            raise ValueError(f"campus-greenery.json: invalid entry {entry.get('id')}")
+    manifest = json.loads(GREENERY_MANIFEST.read_text(encoding="utf-8"))
+    published = {entry["path"]: entry for entry in json.loads((DESTINATION / "models.json").read_text())["models"]}
+    records, runtime = [], []
+    for entry in catalog["greenery"]:
+        relative = f"greenery/{entry['id']}.glb"
+        local = SOURCE / relative
+        if not local.exists() or entry["id"] not in manifest:
+            raise FileNotFoundError(f"{relative}: run prepare-greenery.py for this catalog entry first")
+        if UNVERIFIED == entry["license"]:
+            copyright = (f"Simplified derivative of the {ascii_title(entry['title'])} reference model; author and licence "
+                         "pending owner confirmation. Not MIT-licensed. See THIRD_PARTY_NOTICES.md.")
+        else:
+            copyright = (f"Simplified derivative of \"{ascii_title(entry['title'])}\" ({entry['license']}). "
+                         "Not MIT-licensed. See THIRD_PARTY_NOTICES.md.")
+        data = public_glb(local, copyright)
+        stats = manifest[entry["id"]]
+        if len(data) > 1_048_576:
+            raise ValueError(f"{relative}: {len(data)} bytes exceeds the 1 MiB greenery budget")
+        target = DESTINATION / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(data)
+        records.append({"path": relative, "sha256": hashlib.sha256(data).hexdigest(), "bytes": len(data), "license": entry["license"],
+                        "provenance": {"kind": "third-party-derived", "exporter": GREENERY_EXPORTER,
+                                       "note": f"Simplified campus {entry['kind']} ({entry['id']}) derived from {ascii_title(entry['title'])}. "
+                                               "Source and credit are recorded in THIRD_PARTY_NOTICES.md."}})
+        flags = {"licenseUnverified": True} if entry["license"] == UNVERIFIED else {}
+        if entry["license"] in NON_COMMERCIAL:
+            flags["nonCommercial"] = True
+        runtime.append({"id": entry["id"], "kind": entry["kind"], **flags, "height": stats["size"][2],
+                        "width": round(max(stats["size"][0], stats["size"][1]), 2), "triangles": stats["triangles"]})
+    for stale in (DESTINATION / "greenery").glob("*.glb"):
+        if f"greenery/{stale.name}" not in {record["path"] for record in records}:
+            stale.unlink()
+    models_path = DESTINATION / "models.json"
+    models = json.loads(models_path.read_text())
+    models["models"] = sorted([entry for entry in models["models"] if not entry["path"].startswith("greenery/")] + records,
+                              key=lambda entry: entry["path"])
+    models_path.write_text(json.dumps(models, indent=2) + "\n")
+    text = NOTICES.read_text(encoding="utf-8")
+    section = greenery_notices(catalog)
+    if GREENERY_START in text:
+        head, rest = text.split(GREENERY_START, 1)
+        text = head + section + rest.split(GREENERY_END, 1)[1].lstrip("\n")
+    else:
+        text = text.rstrip("\n") + "\n\n" + section
+    NOTICES.write_text(text, encoding="utf-8")
+    GREENERY_RUNTIME.write_text(json.dumps({"$comment": "Generated by tooling/blender/prepare-public-models.py --greenery from campus-greenery.json; do not edit.",
+                                            "greenery": runtime}, indent=2) + "\n")
+    print(f"Published {len(records)} greenery models ({sum(record['bytes'] for record in records)} bytes)")
+    return records
+
+
+HAIR_PACKS = ROOT / "tooling/hair-packs.json"
+HAIR_EXPORTER = "tooling/convert-detailed-hair.py"
+HAIR_START, HAIR_END = "<!-- owner-hair:start -->", "<!-- owner-hair:end -->"
+
+
+def publish_hair():
+    """Publish the detailed hair converted from owner-provided packs (tooling/hair-packs.json)."""
+    catalog = json.loads(HAIR_PACKS.read_text(encoding="utf-8"))
+    records, lines = [], [HAIR_START, "## Owner-provided hair packs", "",
+                          "These detailed hair models are fitted to the reference heads, bound to the `head` bone and",
+                          "re-textured grey (tinted at runtime) by `tooling/convert-detailed-hair.py`. Not MIT-licensed.", ""]
+    for key, notice in catalog["notices"].items():
+        items = [entry for entry in catalog["hair"] if entry["notice"] == key]
+        lines += [f"### {items[0]['license']} ({key})", "", notice["text"], ""]
+        for entry in items:
+            relative = f"avatars/hair/{entry['group']}/{entry['id']}-detail.glb"
+            if not re.fullmatch(r"[a-z][a-z0-9-]*", entry["id"]) or entry["group"] not in ("male", "female") or entry["license"] not in VEHICLE_LICENSES:
+                raise ValueError(f"hair-packs.json: invalid entry {entry['id']}")
+            local = SOURCE / relative
+            if not local.exists():
+                raise FileNotFoundError(f"{relative}: convert this pack first")
+            if entry["license"] == UNVERIFIED:
+                copyright = (f"Detailed hair derived from the {ascii_title(entry['title'])} pack; author and licence pending owner "
+                             "confirmation. Not MIT-licensed. See THIRD_PARTY_NOTICES.md.")
+            else:
+                copyright = (f"Detailed hair derived from the {ascii_title(entry['title'])} pack ({entry['license']}). "
+                             "Not MIT-licensed. See THIRD_PARTY_NOTICES.md.")
+            data = public_glb(local, copyright)
+            (DESTINATION / relative).write_bytes(data)
+            records.append({"path": relative, "sha256": hashlib.sha256(data).hexdigest(), "bytes": len(data), "license": entry["license"],
+                            "provenance": {"kind": "third-party-derived", "exporter": HAIR_EXPORTER,
+                                           "note": f"Detailed hair ({entry['group']}/{entry['id']}) fitted from {ascii_title(entry['title'])}. "
+                                                   "Source and credit are recorded in THIRD_PARTY_NOTICES.md."}})
+            lines.append(f"- `{relative}` ({entry['license']}): {entry['title']}; source archive: {os.path.basename(entry['archive'])}. {notice['item']}")
+        lines.append("")
+    models_path = DESTINATION / "models.json"
+    models = json.loads(models_path.read_text())
+    paths = {record["path"] for record in records}
+    models["models"] = sorted([entry for entry in models["models"] if entry["path"] not in paths] + records, key=lambda entry: entry["path"])
+    models_path.write_text(json.dumps(models, indent=2) + "\n")
+    text, section = NOTICES.read_text(encoding="utf-8"), "\n".join(lines + [HAIR_END]) + "\n"
+    if HAIR_START in text:
+        head, rest = text.split(HAIR_START, 1)
+        text = head + section + rest.split(HAIR_END, 1)[1].lstrip("\n")
+    else:
+        text = text.rstrip("\n") + "\n\n" + section
+    NOTICES.write_text(text, encoding="utf-8")
+    print(f"Published {len(records)} owner-provided hair models")
+
+
 def publish_parking_layout():
     """The runtime parking data comes from the same Blender markers as campus-parking.glb."""
     layout = json.loads(PARKING_LAYOUT.read_text(encoding="utf-8"))
@@ -273,6 +415,23 @@ def publish_staff_uniforms(entries=None):
     return records
 
 
+def publish_only(relative):
+    """Publish one generated MIT export (a reviewed generator output) without touching the other entries."""
+    if relative not in GENERATORS:
+        raise SystemExit(f"--only expects one of: {', '.join(sorted(GENERATORS))}")
+    data = public_glb(SOURCE / relative)
+    target = DESTINATION / relative
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(data)
+    record = {"path": relative, "sha256": hashlib.sha256(data).hexdigest(), "bytes": len(data), "license": "MIT",
+              "provenance": {"kind": "project-generated", "generator": "tooling/blender/" + GENERATORS[relative]}}
+    manifest_path = DESTINATION / "models.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["models"] = sorted([entry for entry in manifest["models"] if entry["path"] != relative] + [record], key=lambda entry: entry["path"])
+    manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
+    print(f"Published {relative} ({len(data)} bytes)")
+
+
 def main():
     entries = []
     approved = {**{f"building/{name}.glb": None for name in BUILDING}, **GENERATORS}
@@ -314,6 +473,8 @@ def main():
     uniforms = publish_staff_uniforms(entries)
     entries += [entry for entry in existing if entry["path"].startswith("avatars/") and entry["path"] not in {u["path"] for u in uniforms}]
     entries += uniforms
+    # Campus greenery is published by --greenery; keep the reviewed files as they are.
+    entries += [entry for entry in existing if entry["path"].startswith("greenery/")]
     entries.sort(key=lambda entry: entry["path"])
     (DESTINATION / "models.json").write_text(json.dumps({"schemaVersion": 1, "license": "MIT", "models": entries}, indent=2) + "\n")
     print(f"Prepared {len(entries)} reviewed public models ({sum(entry['bytes'] for entry in entries)} bytes)")
@@ -321,6 +482,15 @@ def main():
 
 if __name__ == "__main__":
     import sys
+    if "--hair" in sys.argv:
+        publish_hair()
+        raise SystemExit(0)
+    if "--only" in sys.argv:
+        publish_only(sys.argv[sys.argv.index("--only") + 1])
+        raise SystemExit(0)
+    if "--greenery" in sys.argv:
+        publish_greenery()
+        raise SystemExit(0)
     if "--staff-uniforms" in sys.argv:
         publish_staff_uniforms()
         raise SystemExit(0)

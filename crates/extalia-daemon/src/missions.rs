@@ -10,7 +10,7 @@ use extalia_core::time::now_millis;
 use crate::wire::{ErrorCode, Op, RequestParams, ResponseResult};
 
 /// Operations served when a core store is open, advertised in the `hello` result.
-pub const CAPABILITIES: [Op; 12] = [
+pub const CAPABILITIES: [Op; 15] = [
     Op::MissionCreate,
     Op::MissionSnapshot,
     Op::MissionExecutions,
@@ -23,6 +23,9 @@ pub const CAPABILITIES: [Op; 12] = [
     Op::PlanningBegin,
     Op::PlanningObserve,
     Op::PlanningInspect,
+    Op::PreparationBegin,
+    Op::PreparationObserve,
+    Op::PreparationInspect,
 ];
 /// Profile of a daemon started without `--profile` (ADR 0024).
 pub const DEFAULT_PROFILE: &str = "default";
@@ -97,6 +100,7 @@ impl Missions {
                 params,
                 RequestParams::MissionSnapshot { .. }
                     | RequestParams::PlanningInspect { .. }
+                    | RequestParams::PreparationInspect { .. }
                     | RequestParams::MissionExecutions { .. }
                     | RequestParams::MissionRecoveryReview { .. }
             )
@@ -118,6 +122,18 @@ impl Missions {
                 .store
                 .inspect_planning(profile, invocation_id)
                 .map(ResponseResult::PlanningInspect),
+            RequestParams::PreparationBegin(begin) => self
+                .store
+                .begin_preparation(profile, begin, now)
+                .map(ResponseResult::PreparationBegin),
+            RequestParams::PreparationObserve(observation) => self
+                .store
+                .observe_preparation(profile, observation, now)
+                .map(ResponseResult::PreparationObserve),
+            RequestParams::PreparationInspect { invocation_id } => self
+                .store
+                .inspect_preparation(profile, invocation_id)
+                .map(ResponseResult::PreparationInspect),
             RequestParams::MissionCreate(create) => self
                 .store
                 .create_mission(profile, create, now)

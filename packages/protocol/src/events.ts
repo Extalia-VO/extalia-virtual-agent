@@ -115,7 +115,7 @@ export type EventBody =
   | { type: 'command.output'; commandId?: string; stream: 'stdout' | 'stderr'; text: string }
   | { type: 'command.completed'; commandId?: string; exitCode: number; durationMs?: number }
   | { type: 'file.read'; path: string }
-  | { type: 'file.written'; path: string; change: FileChangeKind }
+  | { type: 'file.written'; path: string; change: FileChangeKind; toolCallId?: string }
   // Tasks (envelope.taskId identifies the task)
   | { type: 'task.created'; title: string; parentTaskId?: string }
   | { type: 'task.assigned'; assigneeAgentId: string }

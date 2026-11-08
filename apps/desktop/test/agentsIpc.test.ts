@@ -7,8 +7,13 @@ const APP = 'extalia://app/index.html';
 
 describe('agent host IPC validation', () => {
   it('accepts every whitelisted method with array arguments', () => {
-    for (const method of AGENT_HOST_METHODS) expect(parseAgentCall(APP, undefined, method, [])).toEqual({ method, args: [] });
+    for (const method of AGENT_HOST_METHODS) {
+      const args = method === 'skillRegistryPage' ? [{ cursor: `example-skill/skr_${'a'.repeat(64)}` }] : [];
+      expect(parseAgentCall(APP, undefined, method, args)).toEqual({ method, args });
+    }
     expect(parseAgentCall(APP, undefined, 'refreshNativeMissionRecovery', ['session', 'mission'])).toEqual({ method: 'refreshNativeMissionRecovery', args: ['session', 'mission'] });
+    expect(parseAgentCall(APP, undefined, 'cancelNativeMission', ['session', 'mission'])).toEqual({ method: 'cancelNativeMission', args: ['session', 'mission'] });
+    expect(() => parseAgentCall('https://example.com/', undefined, 'cancelNativeMission', ['session', 'mission'])).toThrow('Untrusted sender.');
     expect(() => parseAgentCall('https://example.com/', undefined, 'refreshNativeMissionRecovery', ['session', 'mission'])).toThrow('Untrusted sender.');
     expect(parseAgentCall(APP, undefined, 'sendPrompt', ['session-1', 'hello'])).toEqual({ method: 'sendPrompt', args: ['session-1', 'hello'] });
   });

@@ -1,6 +1,6 @@
 import type { CharacterAppearances, Effort } from '@extalia/core';
 import type { AgentHostApi, HostState, SessionSummary } from '@extalia/platform';
-import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react';
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent, type RefObject } from 'react';
 import type { Messages } from '../i18n';
 import { errorMessage } from '../host/remote';
 import { ComboBox } from '../ui/ComboBox';
@@ -10,10 +10,13 @@ import { modelComboOptions, normalizeOptions, optionsChange, workspaceTargets, t
 import { sessionAgentName } from './presence';
 import { dockTeamStatus, teamDialogScope, teamForNewSession, teamSpecPreview, teamSupported, workspaceTeamSupported, type AgentTeam, type TeamSessionOptions, type TeamSpecPreview } from './team';
 import { TeamSetupDialog } from './TeamSetupDialog';
+import { modelChoicesKey, sessionRuntime } from '../chat/sessionRuntime';
+import { formatBytes, sendPromptWithAttachments, uploadAttachments, type PendingAttachment } from '../chat/attachments';
+import { LONG_PASTE_THRESHOLD, MESSAGE_TEXT_LIMIT, longTextFiles, pastedValue } from '../chat/longTextPaste';
 
 /** Hosts before v0.0.27 lack per-session model/effort; everything here is feature-detected so they keep working. */
 interface OptionsHost {
-  modelChoices?: (workspaceId: string) => Promise<PromptModelChoices>;
+  modelChoices?: (workspaceId: string, sessionId?: string) => Promise<PromptModelChoices>;
   setSessionOptions?: (sessionId: string, options: PromptOptions) => Promise<unknown>;
 }
 const optionsHost = (agents: AgentHostApi) => agents as unknown as OptionsHost;
@@ -25,20 +28,26 @@ const NEW_TARGET = 'new';
 const MAX_LINES = 6;
 /** v0.0.30: how long typing pauses before the prompt is checked for a team spec. */
 const SPEC_DEBOUNCE_MS = 250;
+interface DockAttachment extends PendingAttachment {
+  /** A complete imported group can still provide the prompt's team spec. */
+  promptText?: string;
+  promptKeys?: readonly string[];
+}
 
 /** What a workspace's runtime offers; `choices` is undefined while loading, on failure, or when the host cannot choose per session. */
-export function useModelChoices(agents: AgentHostApi, workspaceId: string | undefined) {
+export function useModelChoices(agents: AgentHostApi, workspaceId: string | undefined, sessionId?: string, scopeKey?: string) {
   const host = optionsHost(agents);
   const supported = typeof host.modelChoices === 'function';
+  const key = JSON.stringify([workspaceId, sessionId, scopeKey]);
   const [result, setResult] = useState<{ key: string; choices?: PromptModelChoices }>();
   useEffect(() => {
     const load = optionsHost(agents).modelChoices;
     if (!workspaceId || typeof load !== 'function') return;
     let live = true;
-    load.call(agents, workspaceId).then(choices => { if (live) setResult({ key: workspaceId, choices }); }, () => { if (live) setResult({ key: workspaceId }); });
+    load.call(agents, workspaceId, sessionId).then(choices => { if (live) setResult({ key, choices }); }, () => { if (live) setResult({ key }); });
     return () => { live = false; };
-  }, [agents, workspaceId]);
-  const current = result && result.key === workspaceId ? result : undefined;
+  }, [agents, workspaceId, sessionId, key]);
+  const current = result && result.key === key ? result : undefined;
   return { supported, choices: current?.choices };
 }
 
@@ -98,6 +107,12 @@ export function OfficePromptDock({ t, agents, state, workspaceId, compact = fals
   const root = useRef<HTMLElement>(null);
   const [chosen, setChosen] = useState(workspaceId ?? state.workspaces[0]?.id ?? '');
   const [text, setText] = useState('');
+  const [chips, setChips] = useState<DockAttachment[]>([]);
+  const chipsRef = useRef(chips);
+  useLayoutEffect(() => { chipsRef.current = chips; }, [chips]);
+  const [notice, setNotice] = useState<string>();
+  const draftText = [...chips.filter(chip => chip.promptKeys?.every(key => chips.some(item => item.key === key))).map(chip => chip.promptText ?? ''), text].filter(Boolean).join('\n\n');
+  const prompt = [chips.length ? t.composer.longTextPrompt(chips.map(chip => chip.name).join(', ')) : '', text.trim()].filter(Boolean).join('\n\n');
   const [model, setModel] = useState('');
   const [effort, setEffort] = useState<string>(DEFAULT_EFFORT);
   const [busy, setBusy] = useState(false);
@@ -110,10 +125,10 @@ export function OfficePromptDock({ t, agents, state, workspaceId, compact = fals
   const [spec, setSpec] = useState<{ text: string; preview?: TeamSpecPreview }>({ text: '' });
   useEffect(() => {
     // An empty prompt needs no check: a preview only shows for the exact text it was made from.
-    if (!text.trim()) return;
-    const timer = window.setTimeout(() => setSpec({ text, ...(teamSpecPreview(text) ? { preview: teamSpecPreview(text)! } : {}) }), SPEC_DEBOUNCE_MS);
+    if (!draftText.trim()) return;
+    const timer = window.setTimeout(() => setSpec({ text: draftText, ...(teamSpecPreview(draftText) ? { preview: teamSpecPreview(draftText)! } : {}) }), SPEC_DEBOUNCE_MS);
     return () => window.clearTimeout(timer);
-  }, [text]);
+  }, [draftText]);
   const area = useAutoGrow(text);
   useStageReserve(root);
   // Compact docks open while used: focus inside, or one of their menus (portalled) is open.
@@ -141,37 +156,81 @@ export function OfficePromptDock({ t, agents, state, workspaceId, compact = fals
   // v0.0.30: sessions are named by their lead's full name (the title stays as the task line).
   const titleOf = (session: SessionSummary) => sessionAgentName(session, c.untitled);
   const taskOf = (session: SessionSummary) => { const title = session.title.trim(); return title && title !== titleOf(session) ? title : undefined; };
-  const { supported, choices } = useModelChoices(agents, workspace?.id);
+  const modelScope = modelChoicesKey(state, workspace, target);
+  const { supported, choices } = useModelChoices(agents, workspace?.id, target?.id, modelScope);
+  // A send belongs to this exact context, even after switching away and back.
+  const contextKey = JSON.stringify([workspace?.id, workspaceId, targetSessionId, sessionRuntime(workspace, target),
+    target ? target.connectionId : workspace?.providerProfileId, target?.runtime?.profile ?? workspace?.runtimeProfileId]);
+  const [context, setContext] = useState(() => ({ agents, key: contextKey }));
+  if (context.key !== contextKey || context.agents !== agents) setContext({ agents, key: contextKey });
+  const currentContext = useRef(context);
+  const binding = useRef<{ context: typeof context; sessionId: string } | undefined>(undefined);
+  const sending = useRef(false);
+  useLayoutEffect(() => {
+    if (currentContext.current !== context) {
+      binding.current = undefined;
+      setChips(current => current.map(chip => ({ ...chip, attachmentId: undefined, error: undefined, status: 'ready' })));
+    }
+    currentContext.current = context;
+    return () => { if (currentContext.current === context) currentContext.current = { ...context }; };
+  }, [context]);
   const efforts = choices?.efforts ?? [];
   const modelOptions = useMemo(() => modelComboOptions(choices, {
     useDefault: c.modelDefault, defaultBadge: t.workspace.hermesModelScan.defaultBadge, otherGroup: t.workspace.hermesModelScan.otherGroup,
   }), [choices, c, t.workspace.hermesModelScan]);
 
   // The controls start from what the target uses: a continued session's own override, defaults for a new one.
-  const targetKey = target ? target.id : `new:${workspace?.id ?? ''}`;
+  const targetKey = target ? JSON.stringify([target.id, target.options?.model, target.options?.effort]) : `new:${modelScope}`;
   const [shownKey, setShownKey] = useState('');
   if (shownKey !== targetKey) {
     const current = normalizeOptions(target?.options);
     setShownKey(targetKey); setModel(current.model ?? ''); setEffort(current.effort ?? DEFAULT_EFFORT); setError(undefined);
   }
 
-  const wanted: PromptOptions = normalizeOptions({ model, ...(effort !== DEFAULT_EFFORT && efforts.includes(effort as Effort) ? { effort: effort as Effort } : {}) });
+  const wanted: PromptOptions = normalizeOptions({ model, ...(effort !== DEFAULT_EFFORT && (!choices || efforts.includes(effort as Effort)) ? { effort: effort as Effort } : {}) });
   const targetBusy = Boolean(target?.running);
   const teams = teamSupported(agents);
   const defaults = workspaceTeamSupported(agents);
   const workspaceTeam = defaults ? workspace?.team : undefined;
   // The team reviewed from this prompt's subagent block (new session only; cleared when the text changes or is sent).
-  const reviewedTeam = !target && reviewed && reviewed.text === text ? reviewed.team : undefined;
+  const reviewedTeam = !target && reviewed && reviewed.text === draftText ? reviewed.team : undefined;
   const teamStatus = dockTeamStatus({ target, workspace, workspaceDefaults: defaults });
   const dialogScope = teamDialogScope({ sessionId: target?.id, fromPrompt: teamOpen === 'spec', workspaceDefaults: defaults });
   // v0.0.32: a prompt's team applies to Hermes sessions too (Hermes delegates with its own tool, on one model).
-  const hermesTarget = target ? target.runtime?.id === 'hermes' : choices?.runtime === 'hermes';
-  const preview = spec.text === text ? spec.preview : undefined;
+  const hermesTarget = sessionRuntime(workspace, target) === 'hermes';
+  const preview = spec.text === draftText ? spec.preview : undefined;
   const reviewedNow = Boolean(preview && reviewedTeam);
 
+  function onPaste(event: ClipboardEvent<HTMLTextAreaElement>) {
+    if (busy || targetBusy || event.clipboardData.files.length) return;
+    const incoming = event.clipboardData.getData('text/plain');
+    const field = event.currentTarget;
+    const next = pastedValue(text, incoming, field.selectionStart, field.selectionEnd);
+    if (!incoming || next.length <= LONG_PASTE_THRESHOLD) return;
+    event.preventDefault();
+    const files = typeof agents.uploadAttachment === 'function' ? longTextFiles(next, chipsRef.current) : undefined;
+    if (!files) { setText(next); setNotice(t.composer.longTextFailed); return; }
+    const keys = files.map(file => file.name);
+    const added = files.map((file, index): DockAttachment => ({
+      key: file.name, file, name: file.name, mimeType: file.type, size: file.size, kind: 'text', status: 'ready',
+      ...(index === 0 ? { promptText: next, promptKeys: keys } : {}),
+    }));
+    setChips(current => [...current, ...added]);
+    setText(''); setNotice(t.composer.longTextAttached);
+  }
+
+  function removeChip(chip: DockAttachment) {
+    setChips(current => current.filter(item => item.key !== chip.key)); setNotice(undefined);
+    const sessionId = target?.id ?? (binding.current?.context === context ? binding.current.sessionId : undefined);
+    if (chip.attachmentId && sessionId && agents.removeAttachment) void agents.removeAttachment(sessionId, chip.attachmentId).catch(() => undefined);
+  }
+
   async function send() {
-    const prompt = text.trim();
-    if (!workspace || busy || !prompt || targetBusy) return;
+    if (!workspace || busy || sending.current || !prompt || prompt.length > MESSAGE_TEXT_LIMIT || targetBusy) return;
+    const sentContext = context;
+    const owns = () => currentContext.current === sentContext;
+    const sent = chipsRef.current;
+    sending.current = true;
     setBusy(true); setError(undefined);
     const host = optionsHost(agents);
     try {
@@ -180,33 +239,47 @@ export function OfficePromptDock({ t, agents, state, workspaceId, compact = fals
         sessionId = target.id;
         const change = supported ? optionsChange(target.options, wanted) : undefined;
         if (change && typeof host.setSessionOptions === 'function') await host.setSessionOptions.call(agents, sessionId, change);
+      } else if (binding.current?.context === sentContext) {
+        sessionId = binding.current.sessionId;
       } else {
         const chosen = supported && (wanted.model || wanted.effort) ? wanted : undefined;
         // v0.0.30: a team written into the prompt goes with the new session so its members show at once (a reviewed one as saved).
         // The host applies the prompt's spec too; members merge by name, so both agree.
-        const promptSpec = preview ?? (teams ? teamSpecPreview(prompt) : undefined);
+        const promptSpec = preview ?? (teams ? teamSpecPreview(draftText) : undefined);
         // Without a draft or a prompt team nothing is sent: the host copies the workspace's default team.
         const result = teamForNewSession({
-          draft: reviewedTeam, workspaceTeam, spec: teams ? promptSpec?.spec : undefined, reviewed: reviewedNow, taken: officeNames ?? [], seed: `${workspace.id}:${prompt.length}`,
+          draft: reviewedTeam, workspaceTeam, spec: teams ? promptSpec?.spec : undefined, reviewed: reviewedNow, taken: officeNames ?? [], seed: `${workspace.id}:${draftText.length}`,
         });
         if ('error' in result) { setError(t.teamSpec.invalid(result.error)); return; }
         const team = result.team;
         const options: TeamSessionOptions | undefined = team ? { ...chosen, team } : chosen;
         sessionId = (await (options ? agents.createSession(workspace.id, options) : agents.createSession(workspace.id))).id;
-        setReviewed(undefined);
+        if (!owns()) return;
+        binding.current = { context: sentContext, sessionId };
       }
-      await agents.sendPrompt(sessionId, prompt);
-      onState(await agents.getState());
-      setText('');
+      if (!owns()) return;
+      const ids = await uploadAttachments(agents, sessionId, sent, (key, change) => {
+        if (owns()) setChips(current => current.map(chip => chip.key === key ? { ...chip, ...change } : chip));
+      });
+      if (!owns()) return;
+      await sendPromptWithAttachments(agents, sessionId, prompt, ids);
+      const sentKeys = new Set(sent.map(chip => chip.key));
+      setChips(current => current.filter(chip => !sentKeys.has(chip.key)));
+      if (!owns()) return;
+      setText(''); setNotice(undefined); setReviewed(undefined);
+      const nextState = await agents.getState();
+      if (!owns()) return;
+      onState(nextState);
+      binding.current = undefined;
       // The next prompt continues the conversation that was just started; the chip says so and can be cleared.
       onTarget(sessionId);
       onStarted(sessionId);
-    } catch (failure) { setError(errorMessage(failure)); }
-    finally { setBusy(false); }
+    } catch (failure) { if (owns()) setError(errorMessage(failure)); }
+    finally { sending.current = false; setBusy(false); }
   }
   const specNames = preview ? preview.names.map(name => name || t.teamSpec.unnamed).join(', ') : '';
 
-  const open = !compact || engaged || Boolean(text) || Boolean(error);
+  const open = !compact || engaged || Boolean(text) || chips.length > 0 || Boolean(error);
   const hint = targetBusy ? c.busy : note ?? (target ? c.hintContinue(titleOf(target)) : teamStatus?.enabled ? `${c.hintNew} ${t.team.pending}` : c.hintNew);
   const teamLabel = target ? t.team.openLabel(titleOf(target)) : defaults && workspace ? t.team.openDefault(workspace.name) : t.team.openNew;
   const label = busy ? (target ? c.sending : t.officeUx.dockStarting) : target ? c.send : t.officeUx.dockSend;
@@ -231,12 +304,21 @@ export function OfficePromptDock({ t, agents, state, workspaceId, compact = fals
           <textarea ref={area} id={`${id}-prompt`} aria-label={target ? c.targetAgent(titleOf(target)) : t.officeUx.dockPlaceholder} aria-describedby={`${id}-hint`}
             placeholder={target ? c.cardPlaceholder(titleOf(target)) : t.officeUx.dockPlaceholder}
             value={text} disabled={busy} rows={1}
-            onChange={event => setText(event.target.value)}
+            onPaste={onPaste} onChange={event => setText(event.target.value)}
             onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void send(); } }} />
-          <button type="button" onClick={() => void send()} className="button primary office-prompt-send" disabled={busy || !text.trim() || targetBusy} aria-label={label} title={c.shortcut}>
+          <button type="button" onClick={() => void send()} className="button primary office-prompt-send" disabled={busy || !prompt || prompt.length > MESSAGE_TEXT_LIMIT || targetBusy} aria-label={label} title={c.shortcut}>
             <Icon name={busy ? 'refresh' : 'send'} className={busy ? 'spin' : ''} /><span>{label}</span>
           </button>
         </div>
+        {chips.length > 0 && <ul className="composer-chips">
+          {chips.map(chip => <li key={chip.key} className={`composer-chip kind-text status-${chip.status}`}>
+            <span className="composer-chip-icon" aria-hidden="true"><Icon name="file" /></span>
+            <span className="composer-chip-text"><span className="composer-chip-name" title={chip.name}>{chip.name}</span>
+              <span className="composer-chip-meta" title={chip.error}>{chip.status === 'uploading' ? t.composer.uploading : chip.status === 'failed' ? t.composer.uploadFailed : formatBytes(chip.size)}</span></span>
+            <button type="button" className="composer-chip-remove" disabled={busy} aria-label={`${t.composer.removeFile} ${chip.name}`} title={t.composer.removeFile} onClick={() => removeChip(chip)}><Icon name="close" /></button>
+          </li>)}
+        </ul>}
+        {(prompt.length > MESSAGE_TEXT_LIMIT || notice) && <p className="composer-notice" role="status">{prompt.length > MESSAGE_TEXT_LIMIT ? t.composer.longTextFailed : notice}</p>}
         <div className="office-prompt-fold is-bottom" inert={!open}><div className="office-prompt-fold-inner">
         <div className="office-prompt-options">
           <div className="office-prompt-target" title={target ? [titleOf(target), taskOf(target)].filter(Boolean).join('\n') : c.targetNew}>
@@ -280,12 +362,12 @@ export function OfficePromptDock({ t, agents, state, workspaceId, compact = fals
         {error && <p className="form-error" role="alert">{error}</p>}
         {teamOpen && <TeamSetupDialog key={`${teamOpen}:${target?.id ?? `new:${workspace.id}`}`} t={t} agents={agents} workspaceId={workspace.id} workspaceName={workspace.name}
           scope={dialogScope} sessionId={target?.id} leadName={target ? titleOf(target) : undefined}
-          initialGoal={text} pending={dialogScope === 'workspace' ? workspaceTeam : reviewedTeam ?? workspaceTeam} officeNames={officeNames} savedLooks={savedLooks}
+          initialGoal={draftText} pending={dialogScope === 'workspace' ? workspaceTeam : reviewedTeam ?? workspaceTeam} officeNames={officeNames} savedLooks={savedLooks}
           {...(teamOpen === 'spec' && preview ? { spec: preview.spec, discord: preview.discord } : {})}
           onClose={() => setTeamOpen(false)} onState={onState}
           onSaved={team => {
             // A reviewed prompt team stays for this prompt only; the workspace default was saved on the host (onState).
-            if (dialogScope === 'draft') { setReviewed(team ? { text, team } : undefined); return; }
+            if (dialogScope === 'draft') { setReviewed(team ? { text: draftText, team } : undefined); return; }
             if (target) void agents.getState().then(onState, () => undefined);
           }} />}
       </div>}

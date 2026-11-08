@@ -269,10 +269,12 @@ export interface TrafficCarPose {
   feed: number; feedAt: number;
   /** Road surface height under the car (lamp decals). */
   top: number;
+  /** Turn signal: 1 left (the car's +X side), -1 right, 0 off. */
+  signal: number;
   visible: boolean;
 }
 export const createTrafficPose = (): TrafficCarPose => ({
-  id: -1, lane: 0, model: 'mobility-sedan', tone: '#ffffff', x: 0, y: 0, z: 0, yaw: 0, stopped: false, distance: 0, along: 0, feed: -1, feedAt: 0, top: 0, visible: false,
+  id: -1, lane: 0, model: 'mobility-sedan', tone: '#ffffff', x: 0, y: 0, z: 0, yaw: 0, stopped: false, distance: 0, along: 0, feed: -1, feedAt: 0, top: 0, signal: 0, visible: false,
 });
 
 /** Rolling angle (radians about the axle) for a wheel of `radius` after `distance` metres. */

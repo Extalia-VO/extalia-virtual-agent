@@ -1,13 +1,15 @@
 import type { ExtaliaEvent } from '@extalia/protocol';
+import { existsSync } from 'node:fs';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createAgentHost, type AgentHostRuntime } from '../src/service.js';
+import { WORKSPACE_COMMAND_UNAVAILABLE } from '../src/tools/command.js';
 
-/** A scripted OpenAI-compatible endpoint: write hello.txt, run `cat`, then answer. */
-function scriptedFetch() {
-  const bodies: { messages: { role: string; tool_calls?: { function: { name: string } }[] }[] }[] = [];
+/** A scripted endpoint: edit a file, attempt a blocked command/delegation, then answer. */
+function scriptedFetch(attemptDelegation = false) {
+  const bodies: { model: string; messages: { role: string; content?: string; tool_calls?: { function: { name: string } }[] }[]; tools?: { function: { name: string } }[] }[] = [];
   const sse = (chunks: unknown[]) => new Response(chunks.map(chunk => `data: ${JSON.stringify(chunk)}\n\n`).join('') + 'data: [DONE]\n\n', { headers: { 'content-type': 'text/event-stream' } });
   const fetch = async (url: string, init?: RequestInit): Promise<Response> => {
     if (url.endsWith('/models')) return Response.json({ data: [{ id: 'mock-agent' }] });
@@ -18,7 +20,8 @@ function scriptedFetch() {
     const lastCall = [...messages].reverse().find(message => message.tool_calls?.length)?.tool_calls?.[0]?.function.name;
     const call = (name: string, args: unknown) => ({ choices: [{ delta: { tool_calls: [{ index: 0, id: `call_${name}_${bodies.length}`, function: { name, arguments: JSON.stringify(args) } }] }, finish_reason: 'tool_calls' }] });
     if (last?.role !== 'tool') return sse([{ choices: [{ delta: { content: 'Creating the file.' } }] }, call('write_file', { path: 'hello.txt', content: 'Hello\n' })]);
-    if (lastCall === 'write_file') return sse([call('run_command', { command: 'cat hello.txt' })]);
+    if (lastCall === 'write_file') return sse([call('run_command', { command: 'cat hello.txt > command-ran.txt' })]);
+    if (lastCall === 'run_command' && attemptDelegation) return sse([call('delegate_task', { tier: 'quick', task: 'Review hello.txt for correctness.' })]);
     return sse([{ choices: [{ delta: { content: 'Done: created hello.txt.' }, finish_reason: 'stop' }] }]);
   };
   return { fetch, bodies };
@@ -27,11 +30,11 @@ function scriptedFetch() {
 const cleanups: (() => Promise<void>)[] = [];
 afterEach(async () => { while (cleanups.length) await cleanups.pop()!(); });
 
-async function setup() {
+async function setup(attemptDelegation = false) {
   const root = await mkdtemp(path.join(tmpdir(), 'extalia-host-'));
   const project = path.join(root, 'project');
   await import('node:fs/promises').then(fs => fs.mkdir(project));
-  const scripted = scriptedFetch();
+  const scripted = scriptedFetch(attemptDelegation);
   const runtime = await createAgentHost({ kind: 'bridge', version: '0.0.0-test', dataDirectory: path.join(root, 'data'), homeDirectory: path.join(root, 'home'), importHome: path.join(root, 'home'), env: { EXTALIA_SECRET_STORE: 'memory', PATH: process.env.PATH, EXTALIA_HERMES_BIN: path.join(root, 'not-installed') }, fetch: scripted.fetch });
   cleanups.push(async () => { await runtime.close(); await rm(root, { recursive: true, force: true }); });
   const events: ExtaliaEvent[] = [];
@@ -72,8 +75,8 @@ describe('agent host service', () => {
     expect(await reopened.host.getState()).toMatchObject({ setupComplete: true, workflow: 'managed', workspaces: [], sessions: [] });
   });
 
-  it('runs an agent turn end to end with approvals and persists the session', async () => {
-    const { project, runtime, events, scripted } = await setup();
+  it('approves a file edit, refuses unavailable commands and solo delegation, and persists across restart', async () => {
+    const { root, project, runtime, events, scripted } = await setup(true);
     const { host } = runtime;
     expect((await host.getState()).setupComplete).toBe(false);
     await expect(host.completeSetup()).rejects.toThrow(/connection/);
@@ -81,36 +84,59 @@ describe('agent host service', () => {
     const test = await host.testConnection({ name: 'Mock', preset: 'custom', api: 'openai-chat', baseUrl: 'http://mock.test/v1', model: 'mock-agent', credential: { kind: 'none' }, features: { memory: 'extalia', skills: 'extalia' } });
     expect(test).toMatchObject({ ok: true, models: ['mock-agent'] });
 
-    const { state, workspace } = await configure(runtime, project);
+    const { state, workspace, connection } = await configure(runtime, project);
     expect(state.setupComplete).toBe(true);
+    await host.saveConnection({ ...connection, orchestration: { enabled: true, maxDelegations: 4, tiers: { quick: 'unused-worker-model' } } });
     const session = await host.createSession(workspace.id);
+    expect(await host.getSessionTeam(session.id)).toBeUndefined();
 
-    await host.sendPrompt(session.id, 'Create hello.txt');
+    const prompt = 'Create hello.txt and review it for correctness.';
+    await host.sendPrompt(session.id, prompt);
     expect(runtime.isBusy()).toBe(true);
     await expect(host.sendPrompt(session.id, 'again')).rejects.toThrow(/still working/);
 
     const first = await waitFor(events, event => event.body.type === 'approval.requested');
+    expect(first.body).toMatchObject({ action: expect.stringContaining('hello.txt') });
     expect((await host.getState()).sessions[0]?.pendingApprovalId).toBe((first.body as { approvalId: string }).approvalId);
     await host.resolveApproval(session.id, (first.body as { approvalId: string }).approvalId, 'once');
-    const second = await waitFor(events, event => event.body.type === 'approval.requested' && event.id !== first.id);
-    await host.resolveApproval(session.id, (second.body as { approvalId: string }).approvalId, 'once');
     await waitFor(events, event => event.body.type === 'turn.completed');
     await waitFor(events, event => event.body.type === 'agent.state' && (event.body as { state: string }).state === 'idle');
 
     expect(await readFile(path.join(project, 'hello.txt'), 'utf8')).toBe('Hello\n');
+    expect(existsSync(path.join(project, 'command-ran.txt'))).toBe(false);
+    expect(events.filter(event => event.body.type === 'approval.requested')).toHaveLength(1);
+    expect(events.some(event => event.body.type.startsWith('command.'))).toBe(false);
+    expect(events.find(event => event.body.type === 'tool.completed' && event.body.tool === 'run_command')?.body).toMatchObject({ ok: false, output: WORKSPACE_COMMAND_UNAVAILABLE });
     // The idle event is published before the session reservation is released; allow for a loaded runner.
     for (let i = 0; i < 300 && runtime.isBusy(); i++) await new Promise(resolve => setTimeout(resolve, 10));
     expect(runtime.isBusy()).toBe(false);
     const stored = await host.sessionEvents(session.id);
-    expect(stored.map(event => event.body.type)).toEqual(expect.arrayContaining(['session.started', 'prompt.submitted', 'tool.started', 'file.written', 'command.completed', 'turn.completed']));
+    expect(stored.map(event => event.body.type)).toEqual(expect.arrayContaining(['session.started', 'prompt.submitted', 'tool.started', 'file.written', 'turn.completed']));
+    expect(stored.find(event => event.body.type === 'tool.completed' && event.body.tool === 'run_command')?.body).toMatchObject({ ok: false, output: WORKSPACE_COMMAND_UNAVAILABLE });
+    expect(stored.some(event => event.body.type.startsWith('command.'))).toBe(false);
     expect(stored.every((event, index) => event.seq === index)).toBe(true);
     const after = await host.getState();
-    expect(after.sessions[0]).toMatchObject({ title: 'Create hello.txt', running: false });
+    expect(after.sessions[0]).toMatchObject({ title: prompt, running: false });
+    expect(events.some(event => event.body.type === 'subagent.spawned')).toBe(false);
+    expect(scripted.bodies).toHaveLength(4);
+    expect(scripted.bodies.every(body => body.model === 'mock-agent' && body.messages[0]?.content?.startsWith('You are the Extalia agent'))).toBe(true);
+    expect(scripted.bodies.every(body => !body.tools?.some(tool => tool.function.name === 'delegate_task'))).toBe(true);
+    expect(scripted.bodies.at(-1)!.messages.at(-1)).toMatchObject({ role: 'tool', content: expect.stringContaining('Unknown tool "delegate_task"') });
+    expect(stored.find(event => event.body.type === 'prompt.submitted')?.body).toMatchObject({ text: prompt });
+    expect(stored.some(event => event.body.type === 'subagent.spawned')).toBe(false);
 
     // Memory and skills are offered because the connection uses Extalia's.
     const system = (scripted.bodies[0] as unknown as { messages: { role: string; content: string }[] }).messages[0]!.content;
     expect(system).toContain('memory_write');
     expect(system).toContain('code-review');
+    expect(system).toContain('No active saved team');
+
+    await runtime.close();
+    const reopened = await createAgentHost({ kind: 'bridge', version: '0.0.0-test', dataDirectory: path.join(root, 'data'), homeDirectory: path.join(root, 'home'), importHome: path.join(root, 'home'), env: { EXTALIA_SECRET_STORE: 'memory', EXTALIA_HERMES_BIN: path.join(root, 'not-installed') } });
+    cleanups.push(() => reopened.close());
+    expect((await reopened.host.getState()).sessions.find(item => item.id === session.id)).toMatchObject({ title: prompt, running: false });
+    expect(await reopened.host.sessionEvents(session.id)).toEqual(stored);
+    expect(await reopened.host.getSessionTeam(session.id)).toBeUndefined();
   });
 
   it('continues a session with its history and can be cancelled while waiting for approval', async () => {

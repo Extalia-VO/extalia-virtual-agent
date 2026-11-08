@@ -74,7 +74,8 @@ describe('workspace form and Settings', () => {
   it('shows the gate with its explanation in Settings only', () => {
     const html = form(draftFromWorkspace({ ...workspace, integrationGate: { command: 'pnpm test', timeoutSeconds: 120 } }), true);
     expect(html).toContain(t.workspace.gate.heading);
-    expect(html).toContain('Runs in a throwaway copy before changes are merged; nothing is merged when it fails.');
+    expect(html).toContain(t.workspace.gate.lead);
+    expect(html).toContain(t.workspace.gate.detail);
     expect(html).toContain('value="pnpm test"');
     expect(html).toContain('value="120"');
     const wizard = form(ready, false);

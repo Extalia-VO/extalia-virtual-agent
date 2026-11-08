@@ -152,6 +152,7 @@ export function withTeamMembers(agents: readonly OfficeAgent[], teams: PresenceT
       const gender = member.gender === 'female' || member.gender === 'male' ? member.gender : undefined;
       extra.push({
         id, sessionId: lead.sessionId, agentId: member.id, displayName: member.name.trim(), control: lead.control,
+        ...(lead.control === 'managed' && lead.origin?.mark !== 'hermes' && member.model ? { model: member.model } : {}),
         status: 'offline', running: false, parentId: lead.id, look: lookIdentity(member.name, gender), ...(lead.earlier ? { earlier: true } : {}),
       });
     }

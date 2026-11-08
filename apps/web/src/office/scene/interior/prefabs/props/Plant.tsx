@@ -1,4 +1,7 @@
 import { InteriorPart } from '../../InteriorPart';
+import type { Group } from 'three';
+import { GREENERY_POOLS, GreeneryModel, gridYaw, pickGreenery, useWorldSeed } from '../../../greenery';
+import { floorPlanterScale, planterModelHeight } from '../../planterLayout';
 export function Plant({
   position = [0, 0, 0],
   scale = 1
@@ -15,8 +18,13 @@ export function Plant({
     { position: [0.03, 0.7, -0.12] as [number, number, number], rotation: [0.3, 0, 0.12] as [number, number, number], scale: [0.11, 0.24, 0.1] as [number, number, number], color: "#55765e" }
   ];
 
+  // A coordinated pot family per room, with each placement aligned to the building grid.
+  const [ref, seed] = useWorldSeed<Group>('room');
+  const id = seed ? pickGreenery(GREENERY_POOLS.indoorPlant, seed[0], seed[1]) : undefined;
+  const yaw = seed ? gridYaw(seed[0] + position[0], seed[1] + position[2]) : 0;
+  const height = planterModelHeight(id, 'floor', yaw);
   return (
-    <group position={position} scale={scale}><InteriorPart model="decor-plant" modelScale={[.85,.85,.85]}>
+    <group ref={ref} position={position} scale={floorPlanterScale(scale)}><GreeneryModel id={id} height={height} rotationY={yaw}><group scale={.79}><InteriorPart model="decor-plant" modelScale={[.85,.85,.85]}>
       <mesh position={[0, 0.035, 0]}>
         <cylinderGeometry args={[0.19, 0.16, 0.07, 20]} />
         <meshStandardMaterial color="#b9aa98" roughness={0.92} />
@@ -39,6 +47,6 @@ export function Plant({
           <meshStandardMaterial color={leaf.color} roughness={0.88} />
         </mesh>
       ))}
-    </InteriorPart></group>
+    </InteriorPart></group></GreeneryModel></group>
   );
 }

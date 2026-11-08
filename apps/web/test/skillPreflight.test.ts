@@ -2,6 +2,7 @@ import { createElement, isValidElement, type ReactElement, type ReactNode } from
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import type { AgentHostApi, SkillPreflightReport, SkillRegistryReport } from '@extalia/platform';
+import { Select } from '../src/ui/Select';
 import { SkillPreflightView } from '../src/skills/SkillPreflightPanel';
 import { createMockSkillRegistry } from '../src/host/mockSkillRegistry';
 import { skillPreflightContext } from '../src/skills/skillPreflightContext';
@@ -22,16 +23,20 @@ describe('skill dependency check presentation', () => {
   it('does not require the optional capability to keep the existing Skills center usable', () => {
     const html = renderToStaticMarkup(createElement(SkillPreflightView, { ...props(), available: false }));
     expect(html).toContain(MESSAGES.en.skillPreflight.unsupported);
-    expect(html).not.toContain('<select');
+    expect(html).not.toContain('role="combobox"');
   });
   it('starts with no automatic pins and sends exact dropdown choices', () => {
     const input = props(), tree = SkillPreflightView(input);
-    const selects = elements(tree).filter(item => item.type === 'select');
+    const selects = elements(tree).filter(item => item.type === Select);
     expect(selects).toHaveLength(2);
     expect(selects[1]!.props.value).toBe('');
-    (selects[1]!.props.onChange as (event: unknown) => void)({ target: { value: dependency } });
+    (selects[1]!.props.onChange as (value: string) => void)(dependency);
     expect(input.onPin).toHaveBeenCalledWith(dependency);
     expect(input.onRun).not.toHaveBeenCalled();
+    expect(selects[0]!.props.value).toBe(root);
+    (selects[0]!.props.onChange as (value: string) => void)('');
+    expect(input.onRoot).toHaveBeenCalledWith('');
+    expect(selects[1]!.props.options).toEqual([{ value: dependency, label: expect.stringContaining('dependency') }]);
     expect(renderToStaticMarkup(tree)).toContain(MESSAGES.en.skillPreflight.noPins);
   });
   it.each(['en', 'id'] as const)('labels blocked and consistent diagnostics without granting actions (%s)', language => {

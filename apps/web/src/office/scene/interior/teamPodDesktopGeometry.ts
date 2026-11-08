@@ -20,6 +20,11 @@ export function teamPodDesktopOutline(): readonly (readonly [number, number])[] 
   return outline;
 }
 
+/** The legs, frame and dividers also stay inside this horizontal structural outline. */
+export const TEAM_POD_STRUCTURE_FOOTPRINT = Object.freeze({
+  points: teamPodDesktopOutline(), minY: 0, maxY: TEAM_POD_DESKTOP.dividerTop,
+});
+
 /** Signed distance from the nearest straight edge or circular seat-bay boundary. */
 export function teamPodDesktopMargin(x: number, z: number): number {
   const { halfExtent: s, bayRadius: r } = TEAM_POD_DESKTOP;

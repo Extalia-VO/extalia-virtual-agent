@@ -1,4 +1,5 @@
 import { EXECUTIVE_STUDIO_BLUEPRINT, EXECUTIVE_OFFICE_BLUEPRINT, MEETING_BLUEPRINTS, meetingSeatLayout } from "./spatialBlueprints";
+import { EXECUTIVE_DESK_TOP } from "./deskLayout";
 
 export type ExecutiveRoomId = "executive" | "executive-studio";
 export type MeetingRoomId = "meeting-a" | "meeting-b";
@@ -7,17 +8,29 @@ export type MeetingRoomId = "meeting-a" | "meeting-b";
  * The entry stays on the existing shell; the centre aisle must remain unobstructed. */
 function executiveLayout(roomId: ExecutiveRoomId) {
   const blueprint = roomId === "executive" ? EXECUTIVE_OFFICE_BLUEPRINT : EXECUTIVE_STUDIO_BLUEPRINT;
+  const deskX = -4.4;
+  // AcousticPanel ribs project .0625 m inward from its centre. The cabinet's
+  // top cap reaches -.27 m in workstation Z; retain a 2 cm installation gap.
+  const westPanelX = -blueprint.roomSize[0] / 2 + .17;
+  const westPanelFront = westPanelX + .0625;
   return {
     roomCenter: blueprint.roomCenter,
     roomSize: blueprint.roomSize,
     desk: {
-      position: [-4.4, 0, 0] as const,
+      position: [deskX, 0, 0] as const,
       rotationY: blueprint.workstationRotationY,
       leaderSeat: blueprint.leaderSeat,
       guestSeats: blueprint.guestSeats,
       leaderStaging: [1.2, -0.6] as const,
       guestStaging: [-0.2, -1.2] as const,
-      rug: { position: [-4.7, 0.105, 0] as const, size: [6.6, 6.4] as const }
+      rug: { position: [-4.7, 0.105, 0] as const, size: [6.6, 6.4] as const },
+      cabinet: {
+        position: [.1, 0, westPanelFront + .02 + .27 - deskX] as const,
+        width: 5.2,
+        // Outer cap/back and pedestal: local Z [-.27, .24], with a small front margin.
+        footprintOffset: [0, -.01] as const,
+        footprintSize: [5.28, .52] as const
+      }
     },
     lounge: {
       position: [3.4, 0, 0] as const,
@@ -38,11 +51,14 @@ function executiveLayout(roomId: ExecutiveRoomId) {
     },
     credenza: { position: [6.4, 0, -3.9] as const, rotationY: 0, size: [3.6, 0.65] as const },
     storage: { position: [8.5, 0, 1] as const, rotationY: -Math.PI / 2, size: [3.7, 0.55] as const },
-    plants: [[-8.1, 0, -3.7], [7.8, 0, 3.6]] as const,
+    westPanel: { position: [westPanelX, 1.43, 0] as const, rotationY: Math.PI / 2, width: 6.5 },
+    // Flank the millwork and soften the lounge window without crowding the entry.
+    plants: [[-8.03, 0, -3.8], [-8.03, 0, 3.8], [7.9, 0, 3.8]] as const,
     fixtures: {
-      deskLamp: [-4.1, 0.74, 1.6] as const,
-      cornerLamp: [7.8, 0, -2.8] as const,
-      standLamp: [6.8, 0, 2.8] as const
+      deskLamp: [-4.1, EXECUTIVE_DESK_TOP, 1.85] as const,
+      standLamp: [6.7, 0, 3.0] as const,
+      wallSconces: [[westPanelFront - .015, 1.8, -2.99], [westPanelFront - .015, 1.8, 2.99]] as const,
+      wallSconceRotationY: Math.PI / 2
     },
     // The central arrival lane connects the unchanged doorway to both zones.
     entryAisle: { center: [-0.3, 0] as const, size: [2.8, blueprint.roomSize[1]] as const }
@@ -63,7 +79,7 @@ function meetingLayout(roomId: MeetingRoomId) {
     rug: { position: [0.55, 0.105, 0.25] as const, size: [blueprint.tableLength + 2.1, 5.5] as const },
     // Furniture below is room-local; presentation targets remain furniture-local.
     credenza: { position: [4.9, 0, 5.9] as const, rotationY: Math.PI, size: [3.6, 0.65] as const },
-    planters: [[7.05, 0, -5.9], [-6.9, 0, 5.85]] as const,
+    planters: [[6.95, 0, -5.8], [-6.95, 0, 5.8]] as const,
     fixtures: { standLamp: [7.0, 0, 4.8] as const },
     entryAisle: { center: [0, -4.9] as const, size: [3, 3.8] as const }
   };

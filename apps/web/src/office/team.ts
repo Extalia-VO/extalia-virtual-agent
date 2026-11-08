@@ -1,9 +1,9 @@
 import {
-  MAX_MEMBER_MODELS, MAX_MEMBER_PATHS, MAX_MEMBER_SOUL, MAX_TEAM_MEMBERS, MAX_TEAM_MODELS, applyTeamSpec, generateFullName, newTeamMemberId, normalizeMemberPath,
-  modelUsage, parseTeamSpec, planModelOrder, rotatedModels, suitedModels, type MemberAccess, type MemberGender, type TeamSpec,
+  MAX_HERMES_ONESHOT_TEAM_MEMBERS, MAX_MEMBER_MODELS, MAX_MEMBER_PATHS, MAX_MEMBER_SOUL, MAX_TEAM_CONNECTIONS, MAX_TEAM_MEMBERS, MAX_TEAM_MODELS, applyTeamSpec, generateFullName, newTeamMemberId, normalizeMemberPath,
+  modelUsage, parseTeamSpec, planModelOrder, rotatedModels, suitedModels, type MemberAccess, type MemberGender, type TeamSpec, type TeamConnection,
 } from '@extalia/core';
 import type { Workspace } from '@extalia/core';
-import type { AgentHostApi, AgentTeam, HostState, SessionOptions, SessionSummary, TeamMember, TeamPlan, TeamPlanRequest } from '@extalia/platform';
+import type { AgentHostApi, AgentTeam, HostState, HermesDelegationLimits, SessionOptions, SessionSummary, TeamMember, TeamPlan, TeamPlanRequest } from '@extalia/platform';
 import { isModelId } from '@extalia/platform';
 
 /*
@@ -12,9 +12,16 @@ import { isModelId } from '@extalia/platform';
  * feature-detected and the team controls stay hidden there.
  */
 
-export type { AgentTeam, TeamMember, TeamPlan, TeamPlanRequest };
+export type { AgentTeam, TeamMember, TeamPlan, TeamPlanRequest, TeamConnection };
+export const TEAM_MAX_CONNECTIONS = MAX_TEAM_CONNECTIONS;
 export { rotatedModels };
 export const TEAM_MAX_MEMBERS = MAX_TEAM_MEMBERS;
+export const TEAM_MAX_HERMES_MEMBERS = MAX_HERMES_ONESHOT_TEAM_MEMBERS;
+export const teamMemberLimit = (hermes = false, limits?: Pick<HermesDelegationLimits, 'maxTeamMembers'>): number => {
+  if (!hermes) return TEAM_MAX_MEMBERS;
+  return limits && Number.isSafeInteger(limits.maxTeamMembers) && limits.maxTeamMembers >= 1
+    ? Math.min(TEAM_MAX_MEMBERS, limits.maxTeamMembers) : TEAM_MAX_HERMES_MEMBERS;
+};
 export const TEAM_MIN_MEMBERS = 1;
 export const TEAM_MAX_ALLOWED_MODELS = MAX_TEAM_MODELS;
 export const TEAM_MAX_MEMBER_MODELS = MAX_MEMBER_MODELS;
@@ -41,8 +48,8 @@ export function teamApi(agents: AgentHostApi) {
     get: (sessionId: string) => typeof host.getSessionTeam === 'function' ? host.getSessionTeam.call(agents, sessionId) : Promise.resolve(undefined),
     save: (sessionId: string, team: AgentTeam | null) => typeof host.saveSessionTeam === 'function'
       ? host.saveSessionTeam.call(agents, sessionId, team) : Promise.reject(new Error('This host cannot save subagent teams.')),
-    plan: (workspaceId: string, request: TeamPlanRequest) => typeof host.planTeam === 'function'
-      ? host.planTeam.call(agents, workspaceId, request) : Promise.reject(new Error('This host cannot plan subagent teams.')),
+    plan: (workspaceId: string, request: TeamPlanRequest, sessionId?: string) => typeof host.planTeam === 'function'
+      ? (sessionId ? host.planTeam.call(agents, workspaceId, request, sessionId) : host.planTeam.call(agents, workspaceId, request)) : Promise.reject(new Error('This host cannot plan subagent teams.')),
   };
 }
 
@@ -105,7 +112,7 @@ export function moveItem<T>(list: readonly T[], from: number, to: number): T[] {
   return next;
 }
 
-/** Ticks or unticks a model in the ordered allowed list: new ones go last, at most 20. */
+/** Ticks or unticks a model in the ordered allowed list: new ones go last, up to the team limit. */
 export function toggleAllowedModel(allowed: readonly string[], model: string, on: boolean): string[] {
   const without = allowed.filter(item => item !== model);
   if (!on) return without;
@@ -131,6 +138,19 @@ export function customModel(allowed: readonly string[], raw: string): { model: s
 export function restrictModels(models: readonly string[], allowed: readonly string[], index = 0, role = ''): string[] {
   const kept = [...new Set(models)].filter(model => allowed.includes(model)).slice(0, TEAM_MAX_MEMBER_MODELS);
   return kept.length ? kept : suitedModels(role, rotatedModels(allowed, index));
+}
+
+/** Model access is scoped to the chosen connection, including missing references. */
+export function memberAllowedModels(member: Pick<TeamMember, 'connectionId'>, allowed: readonly string[], connections: readonly TeamConnection[] = []): readonly string[] {
+  return member.connectionId ? connections.find(connection => connection.connectionId === member.connectionId)?.allowedModels ?? [] : allowed;
+}
+
+/** An empty external chain means the approved connection order; never substitute lead models. */
+export function restrictMemberModels(member: Pick<TeamMember, 'connectionId' | 'models' | 'role'>, allowed: readonly string[], connections: readonly TeamConnection[] = [], index = 0): string[] {
+  const permitted = memberAllowedModels(member, allowed, connections);
+  return member.connectionId
+    ? [...new Set(member.models)].filter(model => permitted.includes(model)).slice(0, TEAM_MAX_MEMBER_MODELS)
+    : restrictModels(member.models, permitted, index, member.role);
 }
 
 /**
@@ -174,7 +194,7 @@ export function newMemberId(ids: readonly string[], create: () => string = newTe
 }
 
 /** Fields the user changed by hand; a re-plan keeps them. */
-export type EditedField = 'name' | 'role' | 'task' | 'models' | 'gender' | 'soul' | 'access' | 'scope' | 'forbidden';
+export type EditedField = 'name' | 'role' | 'task' | 'models' | 'connectionId' | 'gender' | 'soul' | 'access' | 'scope' | 'forbidden';
 export interface DraftMember extends TeamMember { edited?: EditedField[] }
 
 export function markEdited(member: DraftMember, field: EditedField): EditedField[] {
@@ -198,7 +218,7 @@ export function manualMember(members: readonly TeamMember[], allowed: readonly s
  * order, unless edited) come from the plan. Names stay unique and every
  * model order is limited to the allowed models.
  */
-export function mergePlan(current: readonly DraftMember[], planned: readonly TeamMember[], allowed: readonly string[], taken: Iterable<string> = []): DraftMember[] {
+export function mergePlan(current: readonly DraftMember[], planned: readonly TeamMember[], allowed: readonly string[], taken: Iterable<string> = [], connections: readonly TeamConnection[] = [], preserveModelSettings = false): DraftMember[] {
   const outside = [...taken];
   const byId = new Map(current.map(member => [member.id, member]));
   const claimed = new Set<string>();
@@ -215,7 +235,8 @@ export function mergePlan(current: readonly DraftMember[], planned: readonly Tea
     const edited = base?.edited ?? [];
     const keep = (field: EditedField) => Boolean(base && edited.includes(field));
     const task = keep('task') ? base!.task : plan.task;
-    const models = restrictModels(keep('models') ? base!.models : plan.models, allowed, index, keep('role') ? base!.role : plan.role);
+    const connectionId = base ? base.connectionId : preserveModelSettings ? undefined : plan.connectionId;
+    const models = preserveModelSettings ? [...(base?.models ?? [])] : restrictMemberModels({ connectionId, models: base?.connectionId || keep('connectionId') || keep('models') ? base!.models : plan.models, role: keep('role') ? base!.role : plan.role }, allowed, connections, index);
     const ids = result.map(member => member.id);
     let id = base?.id ?? plan.id;
     if (!id || ids.includes(id)) id = newMemberId(ids);
@@ -232,7 +253,7 @@ export function mergePlan(current: readonly DraftMember[], planned: readonly Tea
     const forbidden = keep('forbidden') ? base!.forbidden : plan.forbidden ?? base?.forbidden;
     result.push({
       id, name, ...(gender ? { gender } : {}), role: (keep('role') ? base!.role : plan.role).trim() || plan.role,
-      ...(task?.trim() ? { task: task.trim() } : {}), models,
+      ...(task?.trim() ? { task: task.trim() } : {}), models, ...(connectionId ? { connectionId } : {}),
       ...(soul?.trim() ? { soul: soul.trim() } : {}), ...(access ? { access } : {}),
       ...(scope?.length ? { scope: [...scope] } : {}), ...(forbidden?.length ? { forbidden: [...forbidden] } : {}),
       ...(edited.length ? { edited: [...edited] } : {}),
@@ -243,11 +264,12 @@ export function mergePlan(current: readonly DraftMember[], planned: readonly Tea
 
 /**
  * Why a team cannot be saved yet, or `undefined` when it can. `modelsOptional`
- * (Hermes Agent, which runs every subagent on one model) saves a team without ticked models.
+ * (Hermes Agent, whose children share the profile's delegation model or the lead's) saves a team without ticked models.
  */
-export function teamProblem(team: { enabled: boolean; allowedModels: readonly string[]; members: readonly TeamMember[] }, modelsOptional = false): 'models' | 'members' | 'names' | 'roles' | undefined {
+export function teamProblem(team: { enabled: boolean; allowedModels: readonly string[]; members: readonly TeamMember[]; connections?: readonly TeamConnection[] }, modelsOptional = false): 'models' | 'members' | 'names' | 'roles' | 'connections' | undefined {
   if (!team.enabled && !team.members.length) return undefined;
-  if (!team.allowedModels.length && !modelsOptional) return 'models';
+  if (team.connections?.some(connection => !connection.allowedModels.length) || team.members.some(member => member.connectionId && !team.connections?.some(connection => connection.connectionId === member.connectionId))) return 'connections';
+  if (!team.allowedModels.length && !modelsOptional && (!team.members.length || team.members.some(member => !member.connectionId))) return 'models';
   if (team.enabled && !team.members.length) return 'members';
   if (team.members.some(member => !member.name.trim())) return 'names';
   const names = team.members.map(member => member.name.trim().toLowerCase());
@@ -257,17 +279,19 @@ export function teamProblem(team: { enabled: boolean; allowedModels: readonly st
 }
 
 /** The team the host receives: trimmed, edit marks dropped, models limited to the allowed ones. */
-export function teamForSave(draft: { enabled: boolean; allowedModels: readonly string[]; members: readonly DraftMember[]; goal: string; rules?: readonly string[] | undefined }): AgentTeam {
+export function teamForSave(draft: { enabled: boolean; allowedModels: readonly string[]; members: readonly DraftMember[]; goal: string; goalDocument?: AgentTeam['goalDocument']; rules?: readonly string[] | undefined; connections?: readonly TeamConnection[] | undefined }, preserveModelSettings = false): AgentTeam {
   const allowedModels = [...new Set(draft.allowedModels)].slice(0, TEAM_MAX_ALLOWED_MODELS);
+  const connections = draft.connections?.slice(0, TEAM_MAX_CONNECTIONS).map(connection => ({ connectionId: connection.connectionId, allowedModels: [...new Set(connection.allowedModels)].slice(0, TEAM_MAX_ALLOWED_MODELS) }));
   const goal = draft.goal.trim();
   return {
-    enabled: draft.enabled, allowedModels,
+    enabled: draft.enabled, allowedModels, ...(connections ? { connections } : {}), ...(draft.goalDocument ? { goalDocument: draft.goalDocument } : {}),
     members: draft.members.slice(0, TEAM_MAX_MEMBERS).map((member, index) => {
       const write = member.access === 'write';
       return {
         id: member.id, name: member.name.trim(), ...(member.gender ? { gender: member.gender } : {}), role: member.role.trim(),
         ...(member.task?.trim() ? { task: member.task.trim() } : {}),
-        models: restrictModels(member.models, allowedModels, index, member.role),
+        models: preserveModelSettings ? [...member.models] : restrictMemberModels(member, allowedModels, connections, index),
+        ...(member.connectionId ? { connectionId: member.connectionId } : {}),
         ...(member.soul?.trim() ? { soul: member.soul.trim().slice(0, TEAM_MAX_SOUL) } : {}),
         ...(member.access ? { access: member.access } : {}),
         // A read member edits nothing, so its scope would mean nothing; forbidden paths always apply.
@@ -325,9 +349,9 @@ export function teamFromSpec(spec: TeamSpec, current: AgentTeam | undefined, tak
  * `allowedModels` it returned, else the order its members use them) become the
  * ticked list, in the plan's priority order.
  */
-export function applyPlan(current: readonly DraftMember[], allowed: readonly string[], plan: Pick<TeamPlan, 'members' | 'allowedModels'>, taken: Iterable<string> = []): { allowed: string[]; members: DraftMember[] } {
-  const next = allowed.length ? [...allowed] : [...new Set(plan.allowedModels?.length ? plan.allowedModels : planModelOrder(plan.members))].filter(isModelId).slice(0, TEAM_MAX_ALLOWED_MODELS);
-  return { allowed: next, members: mergePlan(current, plan.members, next, taken) };
+export function applyPlan(current: readonly DraftMember[], allowed: readonly string[], plan: Pick<TeamPlan, 'members' | 'allowedModels'>, taken: Iterable<string> = [], connections: readonly TeamConnection[] = [], preserveModelSettings = false): { allowed: string[]; members: DraftMember[] } {
+  const next = preserveModelSettings || allowed.length ? [...allowed] : [...new Set(plan.allowedModels?.length ? plan.allowedModels : planModelOrder(plan.members.filter(member => !member.connectionId)))].filter(isModelId).slice(0, TEAM_MAX_ALLOWED_MODELS);
+  return { allowed: next, members: mergePlan(current, plan.members, next, taken, connections, preserveModelSettings) };
 }
 
 /**
@@ -340,7 +364,7 @@ export function planReasons(plan: Pick<TeamPlan, 'members' | 'modelReasons'>, me
   plan.members.forEach((planned, index) => {
     const reason = plan.modelReasons?.[planned.id]?.trim();
     const member = merged[index];
-    if (reason && member && !member.edited?.includes('models')) reasons[member.id] = reason;
+    if (reason && member && !member.edited?.includes('models') && !member.edited?.includes('connectionId') && !member.connectionId) reasons[member.id] = reason;
   });
   return reasons;
 }
@@ -355,6 +379,6 @@ export function defaultAllowedModels(defaultModel: string | undefined, models: r
   return [...new Set([...(defaultModel ? [defaultModel] : []), ...models])].filter(isModelId).slice(0, 3);
 }
 
-export function clampCount(value: number): number {
-  return Number.isFinite(value) ? Math.max(TEAM_MIN_MEMBERS, Math.min(TEAM_MAX_MEMBERS, Math.round(value))) : TEAM_MIN_MEMBERS;
+export function clampCount(value: number, hermes = false, limits?: Pick<HermesDelegationLimits, 'maxTeamMembers'>): number {
+  return Number.isFinite(value) ? Math.max(TEAM_MIN_MEMBERS, Math.min(teamMemberLimit(hermes, limits), Math.round(value))) : TEAM_MIN_MEMBERS;
 }

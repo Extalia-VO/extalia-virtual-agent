@@ -1,10 +1,10 @@
-import { applyTeamSpec, defaultOrchestration, generateFullName, initialSessionTeam, parseTeamSpec, withDistinctMemberNames, pickTeamModels, planModelOrder, planTeamHeuristic, presetById, type AgentTeam, type Workspace } from '@extalia/core';
+import { modelPlanningBasis, applyTeamSpec, defaultOrchestration, generateFullName, initialSessionTeam, parseTeamSpec, withDistinctMemberNames, pickTeamModels, planModelOrder, planTeamHeuristic, presetById, type AgentTeam, type Workspace } from '@extalia/core';
 import type {
   AgentAppConnection, AgentAppConnectOptions, AgentAppConnectPlan, AgentAppConnectResult, AgentAppDisconnectResult,
   AgentAppId, AgentAppRecoveryReport, AgentAppTestResult, AgentHostApi, ApprovalDecisionInput, ConnectionInput, ConnectionView,
-  HookIngestStatus, HostState, ModelChoices, Platform, ProfilePreferences, SessionSummary, UpdateCapability, UpdateStatus, UserProfile,
+  HookIngestStatus, HostState, ModelChoices, ModelSelectionGuide, Platform, ProfilePreferences, SessionSummary, UpdateCapability, UpdateStatus, UserProfile,
 } from '@extalia/platform';
-import { attachmentLimit, classifyAttachment, normalizeAgentTeam, normalizeIntegrationGate, normalizePromptLearnSkill, normalizeSessionOptions, normalizeTeamPlanRequest, sanitizeAttachmentName, type PromptAttachment } from '@extalia/platform';
+import { normalizeModelSelectionGuideInput, attachmentLimit, classifyAttachment, normalizeAgentTeam, normalizeIntegrationGate, normalizePromptLearnSkill, normalizeSessionOptions, normalizeTeamPlanRequest, sanitizeAttachmentName, type PromptAttachment } from '@extalia/platform';
 import { createEvent, type EventBody, type ExtaliaEvent, type RiskLevel, type Usage } from '@extalia/protocol';
 import { createMockAppearances } from './mockAppearances';
 import { createMockLibrary } from './mockLibrary';
@@ -52,6 +52,8 @@ export interface MockOptions {
   host: 'desktop' | 'bridge';
   update?: UpdateStatus['state'];
   hermes?: boolean;
+  hermesChildren?: number;
+  hermesConcurrent?: number;
   /** Adds observed (outside-app) demo sessions that emit transcript-channel activity. */
   observed?: boolean;
   /** With `mock=ready`: an older configuration whose welcome setup must run once more (prefilled). */
@@ -99,6 +101,8 @@ export function mockOptionsFromSearch(search: string): MockOptions {
     host: params.get('host') === 'desktop' ? 'desktop' : 'bridge',
     ...(update && (states as string[]).includes(update) ? { update: update as UpdateStatus['state'] } : {}),
     ...(params.has('hermes') ? { hermes: true } : {}),
+    ...(/^\d{1,3}$/.test(params.get('hermesChildren') ?? '') ? { hermesChildren: Number(params.get('hermesChildren')) } : {}),
+    ...(/^[1-9]\d{0,2}$/.test(params.get('hermesConcurrent') ?? '') ? { hermesConcurrent: Number(params.get('hermesConcurrent')) } : {}),
     ...(params.has('observed') ? { observed: true } : {}),
     ...(params.has('migrated') ? { migrated: true } : {}),
     ...(params.has('otp') ? { otp: true } : {}),
@@ -222,8 +226,9 @@ function createMockAgents(options: MockOptions): AgentHostApi {
   }
   function setTeam(summary: SessionSummary, team: AgentTeam | null) {
     if (team) {
-      teams.set(summary.id, { ...team, updatedAt: iso() });
-      summary.team = { enabled: team.enabled, size: team.members.length };
+      const saved = { ...team, updatedAt: iso() };
+      teams.set(summary.id, saved);
+      summary.team = { enabled: saved.enabled, size: saved.members.length, updatedAt: saved.updatedAt };
     } else {
       teams.delete(summary.id);
       delete summary.team;
@@ -438,7 +443,11 @@ function createMockAgents(options: MockOptions): AgentHostApi {
   function modelChoicesFor(workspace: Workspace): ModelChoices {
     const efforts = ['low', 'medium', 'high'] as ModelChoices['efforts'];
     if (workspace.runtimeId === 'hermes') {
-      return { runtime: 'hermes', defaultModel: workspace.runtimeModel || MOCK_HERMES_DEFAULT_MODEL, models: [...MOCK_HERMES_MODELS], efforts, permissionModes: ['workspace'] };
+      const oneshotMaxChildren = options.hermesChildren ?? 2;
+      return { runtime: 'hermes', defaultModel: workspace.runtimeModel || MOCK_HERMES_DEFAULT_MODEL, models: [...MOCK_HERMES_MODELS], efforts, permissionModes: ['workspace'],
+        hermesDelegation: { profile: workspace.runtimeProfileId ?? 'default', maxTeamMembers: oneshotMaxChildren === 0 ? 32 : Math.min(32, Math.max(1, oneshotMaxChildren)),
+          oneshotMaxChildren, maxConcurrentChildren: options.hermesConcurrent ?? 10, workerModel: MOCK_HERMES_DEFAULT_MODEL, workerModelSource: 'delegation', modelRouting: 'shared', source: options.hermesChildren === undefined ? 'defaults' : 'profile' } };
+
     }
     const connection = state.connections.find(item => item.id === workspace.providerProfileId);
     const defaultModel = connection?.model || 'mock-agent';
@@ -717,6 +726,7 @@ function createMockAgents(options: MockOptions): AgentHostApi {
 
   const latency = () => sleep(140);
   /** v0.0.49 mock: uploaded attachments by id until a prompt takes them. */
+  let selectionGuide: ModelSelectionGuide | null = null;
   const mockAttachments = new Map<string, { sessionId: string; info: PromptAttachment }>();
   let hookPort = 4317;
   let hookLabelsOnly = false;
@@ -884,6 +894,8 @@ function createMockAgents(options: MockOptions): AgentHostApi {
       const existing = input.id ? state.workspaces.find(item => item.id === input.id) : undefined;
       const workspace = existing ?? addWorkspace(input.name, input.projectLocation, input.connectionId ?? '', input.permissions);
       Object.assign(workspace, { name: input.name, projectLocation: input.projectLocation, providerProfileId: input.connectionId ?? '', permissions: input.permissions, updatedAt: iso() });
+      if (input.crossWorkspaceAccess !== undefined) workspace.crossWorkspaceAccess = input.crossWorkspaceAccess;
+      if (input.additionalProjectLocations !== undefined) workspace.additionalProjectLocations = [...input.additionalProjectLocations];
       for (const key of ['runtimeId', 'runtimeProfileId', 'runtimeModel'] as const) delete workspace[key];
       if (input.runtimeId === 'hermes') Object.assign(workspace, { runtimeId: 'hermes', runtimeProfileId: input.runtimeProfileId || 'default', ...(input.runtimeModel ? { runtimeModel: input.runtimeModel } : {}) });
       if (input.missionConnectionIds !== undefined) workspace.missionConnectionIds = [...input.missionConnectionIds];
@@ -928,7 +940,8 @@ function createMockAgents(options: MockOptions): AgentHostApi {
       const { team, ...checked } = normalizeSessionOptions(sessionOptions);
       const summary = addSession(workspace);
       if (workspace.runtimeId === 'hermes') summary.runtime = { id: 'hermes', profile: workspace.runtimeProfileId || 'default' };
-      if (Object.keys(checked).length) summary.options = checked;
+      const savedOptions = { ...(workspace.runtimeId === 'hermes' && workspace.runtimeModel ? { model: workspace.runtimeModel } : {}), ...checked };
+      if (Object.keys(savedOptions).length) summary.options = savedOptions;
       // v0.0.47: as on a real host, a new session copies the workspace's default team unless given one (or `team: null`).
       const own = initialSessionTeam(workspace.team, team);
       if (own) setTeam(summary, withDistinctMemberNames(own, new Set(officeNames().map(name => name.toLowerCase())), summary.id));
@@ -943,11 +956,27 @@ function createMockAgents(options: MockOptions): AgentHostApi {
       return structuredClone(summary);
     },
     // Sample model lists (nothing is contacted); the effort control is offered for every mock workspace.
-    async modelChoices(workspaceId): Promise<ModelChoices> {
+    async modelChoices(workspaceId, sessionId): Promise<ModelChoices> {
       await latency();
       const workspace = state.workspaces.find(item => item.id === workspaceId);
       if (!workspace) throw new Error('This workspace no longer exists.');
-      return modelChoicesFor(workspace);
+      if (sessionId === undefined) return modelChoicesFor(workspace);
+      const selected = state.sessions.find(item => item.id === sessionId && item.workspaceId === workspaceId && item.control === 'managed');
+      if (!selected) throw new Error('Choose a managed session in this workspace.');
+      const { runtimeId: _runtimeId, runtimeProfileId: _runtimeProfileId, runtimeModel: _runtimeModel, providerProfileId: _providerProfileId, ...common } = workspace;
+      return modelChoicesFor(selected.runtime ? { ...common, runtimeId: 'hermes', runtimeProfileId: selected.runtime.profile,
+        ...(workspace.runtimeId === 'hermes' && (workspace.runtimeProfileId ?? 'default') === selected.runtime.profile && workspace.runtimeModel ? { runtimeModel: workspace.runtimeModel } : {}) }
+        : { ...common, providerProfileId: selected.connectionId });
+    },
+    async teamModelChoices(workspaceId, connectionId, sessionId): Promise<ModelChoices> {
+      await latency();
+      const workspace = state.workspaces.find(item => item.id === workspaceId);
+      if (!workspace) throw new Error('This workspace no longer exists.');
+      const selected = sessionId === undefined ? undefined : state.sessions.find(item => item.id === sessionId && item.workspaceId === workspaceId && item.control === 'managed');
+      if (sessionId !== undefined && !selected) throw new Error('Choose a managed session in this workspace.');
+      if (selected ? selected.runtime : workspace.runtimeId === 'hermes') throw new Error('Additional team connections require Extalia Native.');
+      if (!state.connections.some(item => item.id === connectionId)) throw new Error('That model connection no longer exists.');
+      return modelChoicesFor({ ...workspace, runtimeId: 'extalia-native', providerProfileId: connectionId });
     },
     async getSessionTeam(sessionId) {
       await latency();
@@ -974,21 +1003,32 @@ function createMockAgents(options: MockOptions): AgentHostApi {
     },
     // A deterministic split (nothing is contacted), like the real host's fallback when the model cannot plan.
     // As on a real host the goal and the models are optional: without models the plan picks from the workspace's.
-    async planTeam(workspaceId, request) {
+    async getModelSelectionGuide() { await latency(); return structuredClone(selectionGuide); },
+    async saveModelSelectionGuide(input) {
+      await latency(); const checked = normalizeModelSelectionGuideInput(input);
+      selectionGuide = checked ? { ...checked, updatedAt: new Date().toISOString() } : null;
+      return structuredClone(selectionGuide);
+    },
+    async planTeam(workspaceId, request, sessionId) {
       await latency();
       await sleep(400);
       const workspace = state.workspaces.find(item => item.id === workspaceId);
       if (!workspace) throw new Error('This workspace no longer exists.');
       const checked = normalizeTeamPlanRequest(request);
-      const choices = modelChoicesFor(workspace);
+      const selected = sessionId === undefined ? undefined : state.sessions.find(item => item.id === sessionId && item.workspaceId === workspaceId && item.control === 'managed');
+      if (sessionId !== undefined && !selected) throw new Error('Choose a managed session in this workspace.');
+      const target = selected ? { ...workspace, runtimeId: selected.runtime ? 'hermes' as const : 'extalia-native' as const, runtimeProfileId: selected.runtime?.profile } : workspace;
+      const choices = modelChoicesFor(target);
+      if (choices.hermesDelegation && (checked.count > choices.hermesDelegation.maxTeamMembers || (checked.members?.length ?? 0) > choices.hermesDelegation.maxTeamMembers)) throw new Error('This team exceeds the selected Hermes profile budget.');
+
       const recentTitles = state.sessions.filter(item => item.workspaceId === workspaceId && item.title).map(item => item.title).slice(0, 5);
       const planned = {
         ...checked, context: { workspace: workspace.name, recentTitles },
-        ...(checked.allowedModels.length ? {} : { candidateModels: pickTeamModels(choices.models, choices.defaultModel ? [choices.defaultModel] : []) }),
+        ...(choices.runtime === 'hermes' ? { allowedModels: [], candidateModels: [], connections: [], members: checked.members?.map(({ connectionId: _connectionId, ...member }) => ({ ...member, models: [] })) } : checked.allowedModels.length ? {} : { candidateModels: pickTeamModels(choices.models, choices.defaultModel ? [choices.defaultModel] : []) }),
       };
       const members = planTeamHeuristic(planned, () => nextId('member'), officeNames());
       const choosing = !checked.allowedModels.length && Boolean(planned.candidateModels?.length);
-      return { members, source: 'heuristic', note: 'A standard split was used: the mock host does not ask a model.', ...(choosing ? { allowedModels: planModelOrder(members) } : {}) };
+      return { members, source: 'heuristic', planningBasis: modelPlanningBasis(selectionGuide, 'heuristic'), note: 'A standard split was used: the mock host does not ask a model.', ...(choosing ? { allowedModels: planModelOrder(members) } : {}) };
     },
     async continueSession(source, workspaceId) {
       await latency();
@@ -1023,8 +1063,13 @@ function createMockAgents(options: MockOptions): AgentHostApi {
       return snapshot();
     },
     async sessionEvents(sessionId) { await latency(); return structuredClone(events.get(sessionId) ?? []); },
-    async planNativeMission(sessionId, request) { await latency(); await sleep(600); return missionHost.plan(sessionId, request); },
+    async planNativeMission(sessionId, request) { await latency(); await sleep(600); return { ...missionHost.plan(sessionId, request), planningBasis: modelPlanningBasis(selectionGuide, 'heuristic') }; },
     async startNativeMission(sessionId, request) { await latency(); return missionHost.start(sessionId, request); },
+    async cancelNativeMission(sessionId, missionId) {
+      await latency();
+      if (typeof sessionId !== 'string' || typeof missionId !== 'string') throw new Error('This native mission has changed or already finished. Refresh its status before cancelling.');
+      missionHost.cancel(sessionId, missionId);
+    },
     async nativeMissionRun(sessionId, missionId) { await latency(); return missionHost.run(sessionId, missionId); },
     async listNativeMissions(sessionId) { await latency(); return missionHost.list(sessionId); },
     async listWorktrees() { await latency(); return worktreeHost.list(); },

@@ -46,12 +46,13 @@ describe('v0.0.47 workspace default team (UI helpers)', () => {
     await expect(agents.saveWorkspaceTeam(workspace.id, { ...TEAM, members: [{ ...TEAM.members[0]!, models: ['nope'] }] })).rejects.toThrow(/allowed models/);
 
     const inherited = await agents.createSession(workspace.id);
-    expect(inherited.team).toEqual({ enabled: true, size: 2 });
+    expect(inherited.team).toEqual({ enabled: true, size: 2, updatedAt: (await agents.getSessionTeam(inherited.id))!.updatedAt });
     expect((await agents.createSession(workspace.id, { team: null })).team).toBeUndefined();
-    expect((await agents.createSession(workspace.id, { team: { ...TEAM, members: [TEAM.members[0]!] } })).team).toEqual({ enabled: true, size: 1 });
+    expect((await agents.createSession(workspace.id, { team: { ...TEAM, members: [TEAM.members[0]!] } })).team).toEqual({ enabled: true, size: 1, updatedAt: expect.any(String) });
 
     const copy = (await agents.getSessionTeam(inherited.id))!;
     await agents.saveSessionTeam(inherited.id, { ...copy, enabled: false });
+    expect((await agents.getState()).sessions.find(session => session.id === inherited.id)?.team?.updatedAt).toBe((await agents.getSessionTeam(inherited.id))?.updatedAt);
     expect((await agents.getState()).workspaces[0]!.team?.enabled).toBe(true);
     expect((await agents.saveWorkspaceTeam(workspace.id, null)).workspaces[0]!.team).toBeUndefined();
     expect((await agents.getSessionTeam(inherited.id))?.members).toHaveLength(2);

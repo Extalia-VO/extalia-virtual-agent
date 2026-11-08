@@ -4,6 +4,8 @@ import type { Messages } from '../i18n';
 import { changeBadge, diffStats, initialWorkspace, parseDiff } from '../inspect/format';
 import { useLoad, type Loaded } from '../inspect/useLoad';
 import { WorkspaceBar } from '../inspect/WorkspaceBar';
+import { GitRepositoryPicker } from '../inspect/GitRepositoryPicker';
+import { selectedGitRepository } from '../inspect/gitRepositories';
 import { Icon } from '../ui/Icon';
 
 /** The selection that shows every change at once. */
@@ -54,7 +56,7 @@ function DiffViewer({ t, title, change, diff, onClose }: { t: Messages; title: s
   );
 }
 
-/** Branch, changed files and diffs of a workspace's Git repository (read-only). */
+/** Branch, changed files and diffs of a selected workspace repository (read-only). */
 export function GitPage({ t, agents, state, workspaceId }: {
   t: Messages;
   agents: AgentHostApi;
@@ -63,25 +65,37 @@ export function GitPage({ t, agents, state, workspaceId }: {
   workspaceId?: string;
 }) {
   const [workspace, setWorkspace] = useState(() => initialWorkspace(state, workspaceId));
-  const [selected, setSelected] = useState<string | null>(null);
-  const [version, setVersion] = useState(0);
-  const status = useLoad(workspace ?? null, version, () => agents.gitStatus(workspace!));
-  const repo = status.value?.repository ? status.value : undefined;
-  const change = repo?.changes.find(item => item.path === selected);
-  const diffKey = workspace && selected !== null && !change?.credential ? `${workspace}\n${selected}` : null;
-  const diff = useLoad(diffKey, version, () => agents.gitDiff(workspace!, selected === ALL ? undefined : selected!));
+  const currentWorkspace = state.workspaces.some(item => item.id === workspace) ? workspace : initialWorkspace(state, workspaceId);
+  if (!currentWorkspace) return <div className="page"><header className="page-header"><h1>{t.git.title}</h1><p className="lead">{t.git.lead}</p></header><section className="card"><p className="muted">{t.inspect.noWorkspace}</p></section></div>;
+  const context = JSON.stringify([state.profile.id, currentWorkspace, state.workspaces.find(item => item.id === currentWorkspace)?.projectLocation]);
+  return <GitWorkspacePage key={context} t={t} agents={agents} state={state} workspace={currentWorkspace} context={context} onWorkspace={setWorkspace} />;
+}
 
-  const header = (
-    <header className="page-header">
-      <h1>{t.git.title}</h1>
-      <p className="lead">{t.git.lead}</p>
-    </header>
-  );
-  if (!workspace) return <div className="page">{header}<section className="card"><p className="muted">{t.inspect.noWorkspace}</p></section></div>;
+function GitWorkspacePage({ t, agents, state, workspace, context, onWorkspace }: {
+  t: Messages; agents: AgentHostApi; state: HostState; workspace: string; context: string; onWorkspace: (id: string) => void;
+}) {
+  const [repositoryChoice, setRepositoryChoice] = useState<string | null>(null);
+  const [selection, setSelection] = useState<{ repository: string; path: string } | null>(null);
+  const [version, setVersion] = useState(0);
+  const discovery = useLoad(context, version, () => agents.gitRepositories ? agents.gitRepositories(workspace) : Promise.resolve(undefined), agents);
+  const discovering = discovery.loading && !discovery.value && !discovery.error;
+  const repositoryPath = selectedGitRepository(discovery.value, repositoryChoice);
+  const scope = JSON.stringify([context, repositoryPath]);
+  const status = useLoad(discovering ? null : scope, version, () => repositoryPath ? agents.gitStatus(workspace, repositoryPath) : agents.gitStatus(workspace), agents);
+  const repo = status.value?.repository ? status.value : undefined;
+  const selected = selection?.repository === repositoryPath ? selection.path : null;
+  const chooseFile = (path: string) => setSelection({ repository: repositoryPath, path });
+  const change = repo?.changes.find(item => item.path === selected);
+  const diffKey = repo && selected !== null && (selected === ALL || change) && !change?.credential ? JSON.stringify([scope, selected]) : null;
+  const diff = useLoad(diffKey, version, () => repositoryPath
+    ? agents.gitDiff(workspace, selected === ALL ? undefined : selected!, repositoryPath)
+    : agents.gitDiff(workspace, selected === ALL ? undefined : selected!), agents);
+  const header = <header className="page-header"><h1>{t.git.title}</h1><p className="lead">{t.git.lead}</p></header>;
 
   const head = repo ? repo.branch ?? (repo.commit ? t.git.detached(repo.commit) : '') : '';
   let body;
-  if (status.error) body = <section className="card"><p className="form-error" role="alert"><Icon name="alert" />{status.error}</p></section>;
+  if (discovering) body = <section className="card"><p className="muted" role="status">{t.git.scanningRepositories}</p></section>;
+  else if (status.error) body = <section className="card"><p className="form-error" role="alert"><Icon name="alert" />{status.error}</p></section>;
   else if (!status.value) body = <section className="card"><p className="muted" role="status">{t.common.loading}</p></section>;
   else if (!repo) {
     body = (
@@ -100,7 +114,7 @@ export function GitPage({ t, agents, state, workspaceId }: {
           <p className="side-heading">{t.git.changes(repo.changes.length)}</p>
           <ul className="tree-list">
             <li>
-              <button type="button" className="tree-item" aria-current={selected === ALL ? 'true' : undefined} onClick={() => setSelected(ALL)}>
+              <button type="button" className="tree-item" aria-current={selected === ALL ? 'true' : undefined} onClick={() => chooseFile(ALL)}>
                 <Icon name="git" /><span className="tree-name">{t.git.allChanges}</span>
               </button>
             </li>
@@ -110,7 +124,7 @@ export function GitPage({ t, agents, state, workspaceId }: {
               const label = describeChange(t, item);
               return (
                 <li key={item.path}>
-                  <button type="button" className="tree-item change-item" aria-current={selected === item.path ? 'true' : undefined} title={`${item.path}\n${label}`} onClick={() => setSelected(item.path)}>
+                  <button type="button" className="tree-item change-item" aria-current={selected === item.path ? 'true' : undefined} title={`${item.path}\n${label}`} onClick={() => chooseFile(item.path)}>
                     <span className={`change-badge ${badge.tone}`} aria-label={label}>{badge.letter}</span>
                     <span className="change-path">
                       <span className="tree-name">{name}</span>
@@ -127,7 +141,7 @@ export function GitPage({ t, agents, state, workspaceId }: {
           {repo.truncated && <p className="muted small">{t.git.listTruncated}</p>}
         </section>
         {selected !== null
-          ? <DiffViewer t={t} title={selected === ALL ? t.git.allChanges : selected} {...(change ? { change } : {})} diff={diff} onClose={() => setSelected(null)} />
+          ? <DiffViewer t={t} title={selected === ALL ? t.git.allChanges : selected} {...(change ? { change } : {})} diff={diff} onClose={() => setSelection(null)} />
           : <section className="card history-viewer placeholder"><p className="muted">{t.git.select}</p></section>}
       </div>
     );
@@ -136,8 +150,9 @@ export function GitPage({ t, agents, state, workspaceId }: {
   return (
     <div className="page">
       {header}
-      <WorkspaceBar t={t} state={state} workspaceId={workspace} loading={status.loading || diff.loading}
-        onWorkspace={id => { setWorkspace(id); setSelected(null); }} onRefresh={() => setVersion(value => value + 1)}>
+      <WorkspaceBar t={t} state={state} workspaceId={workspace} loading={discovery.loading || status.loading || diff.loading}
+        onWorkspace={onWorkspace} onRefresh={() => setVersion(value => value + 1)}>
+        {discovery.value && <GitRepositoryPicker t={t} list={discovery.value} selected={repositoryPath} onSelect={path => { setRepositoryChoice(path); setSelection(null); }} />}
         {repo && (
           <p className="git-summary">
             <Icon name="git" />
@@ -152,6 +167,7 @@ export function GitPage({ t, agents, state, workspaceId }: {
           </p>
         )}
       </WorkspaceBar>
+      {discovery.error && <p className="note small" role="status">{t.git.repositoryScanUnavailable} {discovery.error}</p>}
       {body}
     </div>
   );

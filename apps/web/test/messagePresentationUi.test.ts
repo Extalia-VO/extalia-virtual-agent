@@ -38,19 +38,31 @@ describe('readable message presentation', () => {
     expect(JSON.stringify(item)).toBe(before);
   });
 
-  it.each(['en', 'id'] as const)('renders multiple answered questions with localized labels in %s', language => {
+  it.each(['en', 'id'] as const)('renders all answers as a normal user message with a localized copy action in %s', language => {
     const text = '<send_user_message_question_reply>' + JSON.stringify([
       { questionItemId: 'q1', question: 'Which workspace?', answer: 'Example' },
       { questionItemId: 'q2', question: 'Which option?', answer: 'Use **the second** option.' },
     ]) + '</send_user_message_question_reply>';
     const html = render([user(text)], language);
-    expect(html).toContain(MESSAGES[language].chat.question);
-    expect(html).toContain(MESSAGES[language].chat.yourAnswer);
-    expect(html).toContain('Which workspace?');
+    expect(html).toContain('class="msg user"');
+    expect(html).toContain('<p>Example</p>');
     expect(html).toContain('<strong>the second</strong>');
+    expect(html).toContain(MESSAGES[language].chat.copyMessage);
+    expect(html).toContain('class="copy-button ');
+    expect(html).not.toContain('Which workspace?');
+    expect(html).not.toContain('Which option?');
+    expect(html).not.toContain('class="question-label"');
     expect(html).not.toContain('questionItemId');
     expect(html).not.toContain('send_user_message_question_reply');
-    expect(html).not.toContain('<button');
+  });
+
+  it('keeps a question reply quoted in a code block as literal user code', () => {
+    const text = '<send_user_message_question_reply>[{"questionItemId":"q1","question":"Continue?","answer":"Yes"}]</send_user_message_question_reply>';
+    const html = render([user(`\`\`\`xml\n${text}\n\`\`\``)]);
+    expect(html).toContain('<code');
+    expect(html).toContain('&lt;send_user_message_question_reply&gt;');
+    expect(html).toContain('questionItemId');
+    expect(html).toContain('Continue?');
   });
 
   it('keeps malformed question wrappers readable without inventing an answered card', () => {

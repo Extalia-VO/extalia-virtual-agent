@@ -9,6 +9,8 @@ import type { ReactNode } from "react";
 import type { DeskAccessoryKind, DeskLayout, DeskSlot } from "../../deskLayout";
 import { WorkstationPart } from "../../WorkstationPart";
 import { useSolarEnvironment } from "../../../Environment";
+import { GREENERY_POOLS, GreeneryModel } from "../../../greenery";
+import { planterModelHeight } from "../../planterLayout";
 
 const PALETTES = [
   { body: "#d9d6cf", accent: "#5e8f8b", warm: "#c98a5b", paper: "#f3f0e8" },
@@ -103,6 +105,14 @@ function DeskPlant({ p }: { p: Palette }) {
       </mesh>;
     })}
   </group>;
+}
+
+/** One compact rear-corner pot, sized for both its foliage spread and its rotated desk slot. */
+function DeskGreenery({ seed, yaw, children }: { seed: number; yaw: number; children: ReactNode }) {
+  const pool = GREENERY_POOLS.indoorPlant;
+  const fraction = seed - Math.floor(seed);
+  const id = pool.length ? pool[Math.floor(fraction * pool.length) % pool.length] : undefined;
+  return <GreeneryModel id={id} height={planterModelHeight(id, 'desk', yaw)} rotationY={0}><group scale={.9}>{children}</group></GreeneryModel>;
 }
 
 /** Framed photo on an easel back. */
@@ -218,7 +228,9 @@ export function DeskAccessorySlots({ layout, slots, topY }: { layout: DeskLayout
       const slot = slots[index];
       if (!kind || !slot) return null;
       return <group key={index} position={[slot.position[0], topY, slot.position[1]]} rotation={[0, slot.yaw, 0]}>
-        <WorkstationPart asset={kind}>{accessory(kind, palette)}</WorkstationPart>
+        {kind === "plant"
+          ? <DeskGreenery seed={layout.tint + index * .37} yaw={slot.yaw}><WorkstationPart asset={kind}>{accessory(kind, palette)}</WorkstationPart></DeskGreenery>
+          : <WorkstationPart asset={kind}>{accessory(kind, palette)}</WorkstationPart>}
       </group>;
     })}
   </group>;

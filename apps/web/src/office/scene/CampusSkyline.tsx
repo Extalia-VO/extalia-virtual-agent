@@ -26,6 +26,7 @@ import { useSolarEnvironment } from "./Environment";
 import { useExteriorInstancedGeometries } from "./ExteriorPart";
 import { useDistrictBuildingModels } from "./districtBuildingModels";
 import { CITY_GROUND, CITY_STREETS } from "./campusGroundBounds";
+import { GREENERY_POOLS, GreeneryInstances, pickGreenery, useGreenery, type GreeneryPlacement } from "./greenery";
 
 /*
  * Metropolitan skyline backdrop for the campus overview.
@@ -118,7 +119,7 @@ type Band = { x: number; y: number; z: number; w: number; d: number; yaw: number
 type Beacon = { x: number; y: number; z: number; phase: number };
 type Pad = { x: number; y: number; z: number; r: number };
 type Footprint = { x: number; z: number; w: number; d: number; h: number };
-type Tree = { x: number; y: number; z: number; s: number; tone: string };
+type Tree = { x: number; y: number; z: number; s: number; tone: string; ground?: true };
 type Pool = { x: number; z: number; r: number; tone: string };
 type Tower = { x: number; z: number; yaw: number; seed: number };
 
@@ -404,7 +405,7 @@ function park(city: City, x: number, z: number, rand: () => number) {
   const count = 6 + Math.floor(rand() * 5);
   for (let i = 0; i < count; i++) {
     const s = 2.2 + rand() * 1.5;
-    city.trees.push({ x: x + (rand() - 0.5) * 13, y: GROUND_Y + s * 0.95, z: z + (rand() - 0.5) * 13, s, tone: pick(FOLIAGE_TONES, rand()) });
+    city.trees.push({ x: x + (rand() - 0.5) * 13, y: GROUND_Y + s * 0.95, z: z + (rand() - 0.5) * 13, s, tone: pick(FOLIAGE_TONES, rand()), ground: true });
   }
 }
 
@@ -758,6 +759,21 @@ function windowGlow(factors: { nightFactor: number; exteriorLightFactor: number;
 }
 
 /** Instanced, day/night reactive skyline. Mounted inside the passable neighborhood group. */
+/** Park trees this close to the campus centre (metres) become greenery models; farther ones stay low-poly. */
+export const SKYLINE_GREENERY_RADIUS = 130;
+const SKYLINE_TREE_POOL = [...GREENERY_POOLS.shadeTree, ...GREENERY_POOLS.columnarTree, ...GREENERY_POOLS.ornamentalTree];
+
+/** Greenery placements for the near park trees, keyed by their index in `trees`. */
+export function skylineGreenery(trees: readonly Tree[]): Map<number, GreeneryPlacement> {
+  const placements = new Map<number, GreeneryPlacement>();
+  trees.forEach((tree, index) => {
+    if (!tree.ground || Math.hypot(tree.x, tree.z) > SKYLINE_GREENERY_RADIUS) return;
+    const id = pickGreenery(SKYLINE_TREE_POOL, tree.x, tree.z, 5);
+    if (id) placements.set(index, { id, x: tree.x, y: GROUND_Y, z: tree.z, height: tree.s * 2.2 });
+  });
+  return placements;
+}
+
 export function CampusSkyline() {
   const { state, reducedMotion } = useSolarEnvironment();
   const solar = useRef(state);
@@ -836,7 +852,14 @@ export function CampusSkyline() {
     Object.values(materials).forEach((material) => material.dispose());
   }, [materials]);
 
+  const nearTrees = useMemo(() => skylineGreenery(city.trees), [city]);
+  const nearPlacements = useMemo(() => [...nearTrees.values()], [nearTrees]);
+  const nearIds = useMemo(() => [...new Set(nearPlacements.map(placement => placement.id))], [nearPlacements]);
+  const greeneryModels = useGreenery(nearIds);
+  const greeneryReady = nearIds.length > 0 && nearIds.every(id => greeneryModels.has(id));
+
   const sets = useMemo(() => {
+    const farTrees = greeneryReady ? city.trees.filter((_, index) => !nearTrees.has(index)) : city.trees;
     const boxes = (list: Box[]): InstanceSet => ({
       matrices: list.map((b) => composeMatrix(b.x, b.y, b.z, b.w, b.h, b.d, b.yaw)),
       colors: list.map((b) => new Color(b.tone))
@@ -856,8 +879,8 @@ export function CampusSkyline() {
       pads: { matrices: city.pads.map((p) => composeMatrix(p.x, p.y + 0.08, p.z, p.r, 1, p.r)) },
       rings: { matrices: city.pads.map((p) => composeMatrix(p.x, p.y + 0.17, p.z, p.r, 1, p.r)) },
       trees: {
-        matrices: city.trees.map((t) => composeMatrix(t.x, t.y, t.z, t.s, t.s * 0.9, t.s)),
-        colors: city.trees.map((t) => new Color(t.tone))
+        matrices: farTrees.map((t) => composeMatrix(t.x, t.y, t.z, t.s, t.s * 0.9, t.s)),
+        colors: farTrees.map((t) => new Color(t.tone))
       },
       pools: {
         matrices: city.pools.map((p) => composeMatrix(p.x, GROUND_Y + 0.06, p.z, p.r, 1, p.r)),
@@ -865,7 +888,7 @@ export function CampusSkyline() {
       },
       shadows: { matrices: city.footprints.map(() => composeMatrix(0, SHADOW_Y, 0, 0, 1, 0)) }
     };
-  }, [city]);
+  }, [city, greeneryReady, nearTrees]);
 
   const beaconRef = useRef<InstancedMesh>(null);
   const shadowRef = useRef<InstancedMesh>(null);
@@ -943,6 +966,7 @@ export function CampusSkyline() {
       <SkylineInstances name="skyline-helipad-lights" geometry={geometries.ring} material={materials.padRing} set={sets.rings} />
       <SkylineInstances name="skyline-beacons" geometry={geometries.beacon} material={materials.beacon} set={sets.beacons} meshRef={beaconRef} />
       <SkylineInstances name="skyline-park-trees" geometry={blenderGeometries?.canopy ?? geometries.tree} material={materials.foliage} set={sets.trees} />
+      {greeneryReady && <GreeneryInstances name="skyline-greenery-trees" placements={nearPlacements} />}
       {/* Instanced street glow pools removed per user directive (no circular light pools at night) */}
       <SkylineInstances name="skyline-ground-shadows" geometry={geometries.shadow} material={materials.shadow} set={sets.shadows} meshRef={shadowRef} frustumCulled={false} />
     </group>

@@ -1,0 +1,37 @@
+.topbar .icon-button.native-status-button { display: inline-flex; flex: none; }
+.native-status-scrim { position: fixed; inset: 0; z-index: 950; display: flex; justify-content: flex-end; padding: 16px; background: rgb(0 0 0 / 34%); backdrop-filter: blur(5px); }
+.native-status-panel { display: flex; flex-direction: column; width: min(640px, 100%); max-height: 100%; min-height: 0; border: 1px solid var(--glass-line, var(--line)); border-radius: var(--radius); background: var(--surface-solid); color: var(--text); box-shadow: var(--shadow); overflow: hidden; text-align: left; }
+.native-status-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; padding: 20px 20px 12px; }
+.native-status-head h2 { margin: 0 0 6px; font-size: 19px; }
+.native-status-head p { margin: 0; font-size: 13px; }
+.native-status-head > div { min-width: 0; }
+.native-status-head > button { flex: none; }
+.native-status-toolbar, .native-status-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.native-status-toolbar { padding: 0 20px 10px; }
+.native-status-toolbar button, .native-status-actions button { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; min-height: 34px; }
+.native-status-recheck-lead { padding: 0 20px 12px; margin: 0; }
+.native-status-body { min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 0 20px 20px; overflow-wrap: anywhere; }
+.native-status-notice { padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--sunken); }
+.native-status-notice:not(.loading):not(.refreshing), .native-status-warning { color: var(--warn); }
+.native-status-notice p { margin: 0; }
+.native-status-notice p + p { margin-top: 6px; font-size: 12px; }
+.native-status-sampled { font-size: 11px; }
+.native-status-facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 12px 0 20px; }
+.native-status-facts > div { padding: 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--sunken); }
+.native-status-facts dt { color: var(--muted); font-size: 11px; }
+.native-status-facts dd { margin: 4px 0 0; font-weight: 600; font-size: 13px; }
+.native-status-section { margin-top: 20px; }
+.native-status-section h3 { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 5px 12px; font-size: 14px; margin: 0 0 10px; }
+.native-status-section h3 > span { color: var(--muted); font-size: 11px; font-weight: 400; }
+.native-status-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }
+.native-status-list > li { padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+.native-status-row { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px 12px; font-size: 13px; }
+.native-status-row > span { color: var(--muted); font-size: 12px; }
+.native-status-list p { margin: 7px 0; font-size: 12px; }
+.native-status-evidence { color: var(--muted); font-size: 11px; }
+.native-status-actions { margin-top: 8px; }
+.native-status-tasks { list-style: none; padding: 0; margin: 8px 0; font-size: 12px; }
+.native-status-tasks > li { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px 10px; padding: 5px 0; border-bottom: 1px solid var(--line); }
+.native-status-tasks span { color: var(--muted); }
+@media (max-width: 500px) { .native-status-scrim { padding: 8px; } .native-status-head { padding: 16px 14px 10px; } .native-status-body { padding: 0 14px 16px; } .native-status-toolbar { padding-inline: 14px; } .native-status-recheck-lead { padding-inline: 14px; } .native-status-facts { grid-template-columns: 1fr; } .native-status-facts > div { display: flex; justify-content: space-between; gap: 8px; } .native-status-facts dd { margin: 0; } }
+@media (prefers-reduced-transparency: reduce) { .native-status-scrim { backdrop-filter: none; } .native-status-panel { background: var(--opaque, var(--surface-solid)); } }

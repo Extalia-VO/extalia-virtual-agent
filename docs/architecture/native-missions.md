@@ -218,3 +218,5 @@ Full gate 3.3 still needs physical-settlement reconciliation. Execution-time
 scoped approvals (3.4) and Rust-owned worktree
 fencing remain open. The Python worker and its embedded CPython distribution
 are not implemented; Python is not required for the current chat or mission loop.
+
+Saved Rust mission starts now acquire a separate [preparation receipt](../adr/0052-durable-mission-preparation-lifetime.md) before credential or worktree preparation. The write-ahead host scope guard survives ambiguous admission, restart and changes to the backend selected for new work. Preparation observes only its local completion after recorded handoff or definite pre-execution failure and cleanup; it cannot reconcile uncertain execution. Entered worktree writes drain before profile-lock release, even after the general shutdown deadline. Default TypeScript and history-off paths do not acquire these receipts.

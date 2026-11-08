@@ -11,6 +11,7 @@ const LAST_EVENTS_SAVE_MS = 5_000;
 export interface HookIngest {
   /** Shared `/api/hooks/<app>` handler (Bridge route and Desktop listener). */
   handle(request: IncomingMessage, response: ServerResponse, app: string): Promise<void>;
+  handlePermission?(request: IncomingMessage, response: ServerResponse): Promise<void>;
   /** Record the port serving hooks: written to `hooks/endpoint.json` for `extalia connect` and forwarders. */
   announce(port: number): Promise<void>;
   /** Desktop: start a loopback listener (preferred port, else a free one) and announce it. */
@@ -28,6 +29,7 @@ export interface HookIngestOptions {
   /** Drop prompt text, assistant reply text and tool output, keeping only activity labels. */
   labelsOnly?: boolean | (() => boolean);
   now?: () => number;
+  permissionHandler?(request: IncomingMessage, response: ServerResponse): Promise<void>;
 }
 
 export async function createHookIngest(options: HookIngestOptions): Promise<HookIngest> {
@@ -73,9 +75,10 @@ export async function createHookIngest(options: HookIngestOptions): Promise<Hook
 
   return {
     handle,
+    ...(options.permissionHandler ? { handlePermission: options.permissionHandler } : {}),
     announce,
     async listen(preferredPort) {
-      listener ??= await startHookListener({ ...(preferredPort ? { port: preferredPort } : {}), handle });
+      listener ??= await startHookListener({ ...(preferredPort ? { port: preferredPort } : {}), handle, ...(options.permissionHandler ? { permissionHandler: options.permissionHandler } : {}) });
       await announce(listener.port);
       return listener;
     },

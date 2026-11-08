@@ -1,14 +1,23 @@
-import { EFFORTS, MAX_TEAM_GOAL, MAX_TEAM_MEMBERS, MEMBER_GENDERS, SESSION_PERMISSION_MODES, decodeAgentTeam, type SessionPermissionMode } from '@extalia/core';
+import { MODEL_SELECTION_GUIDE_METHODS, type ModelSelectionGuide, type ModelSelectionGuideInput } from './modelGuide.js';
+import type { NativeStatus } from './nativeStatus.js';
+import type { ObservedCodexStatus, ObservedCodexMessageInput, ObservedCodexAnswerInput, ObservedCodexApprovalAnswerInput } from './observedCodex.js';
+import type { ObservedCodexQueueStatus, ObservedCodexQueueMessageInput } from './observedCodexQueue.js';
+import type { CodexPermissionHookStatus, CodexPermissionHookAnswer, CodexPermissionSetupPlan } from './codexPermissionHook.js';
+import type { PromptQueueStatus, PromptQueueChange } from './promptQueue.js';
+import type { ObservedReplyStatus, ObservedReplyAnswer } from './observedReply.js';
+import type { HermesObservedStatus, HermesObservedMessageInput, HermesObservedAnswerInput } from './observedHermes.js';
+import { NATIVE_MEMORY_METHODS, type NativeMemoryCatalog, type NativeMemoryReadOptions, type NativeMemoryReadResult, type NativeMemoryWriteInput, type NativeMemoryWriteResult, type NativeMemoryDeleteInput, type NativeMemoryDeleteResult } from './nativeMemory.js';
+import { EFFORTS, MAX_GOAL_DOCUMENT_BYTES, MAX_GOAL_DOCUMENT_CHARS, MAX_TEAM_GOAL, MAX_TEAM_MEMBERS, MEMBER_GENDERS, SESSION_PERMISSION_MODES, decodeAgentTeam, type GoalDocument, type SessionPermissionMode } from '@extalia/core';
 import type {
-  AgentTeam, MemberAccess, MemberGender, TeamMember, TeamPlan, TeamPlanRequest, TeamSpec,
+  AgentTeam, MemberAccess, MemberGender, TeamMember, TeamPlan, TeamPlanRequest, TeamSpec, HermesTeamLimits,
   CharacterAppearance, CharacterAppearances, Connection, CredentialSource, Effort, FeatureOwner, ImportMode, ImportPreview, LibrarySession, LocalState, Orchestration,
-  PortableSession, ProviderApi, ProviderPresetId, RuntimeId, Workspace, WorkspacePermissions,
+  PortableSession, ProviderApi, ProviderPresetId, RuntimeId, Workspace, WorkspacePermissions, WorkspaceCrossAccess,
 } from '@extalia/core';
 import type { ExtaliaEvent } from '@extalia/protocol';
 import type { HostMissionRequest, HostMissionRun, HostMissionRecoveryResult, MissionPlan, MissionPlanRequest } from './missions.js';
 import type { AttachmentPreview, PromptAttachment, PromptAttachmentInput } from './attachments.js';
 import type { BuiltinSkillInfo, SkillConsentInput, WorkspaceSkills } from './skills.js';
-import type { SkillActionResult, SkillApprovalInput, SkillImportSource, SkillRegistryReport, SkillReviewInput, SkillRevisionDetails, SkillPreflightInput, SkillPreflightReport, SkillRoutingInput, SkillRoutingReport } from './skillRegistry.js';
+import type { SkillActionResult, SkillApprovalInput, SkillImportSource, SkillRegistryReport, SkillRegistryPage, SkillRegistryPageInput, SkillReviewInput, SkillRevisionDetails, SkillPreflightInput, SkillPreflightReport, SkillRoutingInput, SkillRoutingReport } from './skillRegistry.js';
 import type {
   IntegrationApproval, IntegrationGateInput, IntegrationProposalView, IntegrationRequest, WorktreeDiffView, WorktreeDiscardConfirmation, WorktreeOrphanView, WorktreeStatusView, WorktreeView,
 } from './worktrees.js';
@@ -80,6 +89,17 @@ export function normalizeAgentIdentity(name: unknown, gender: unknown): { agentN
   return { agentName: clean, ...(isMemberGender(gender) ? { agentGender: gender } : {}) };
 }
 
+/** Selected-profile configuration; it does not attest to a resumed Hermes session's pinned backend. */
+export interface HermesDelegationLimits extends HermesTeamLimits {
+  profile: string;
+  /** Shared child model, when known. No per-member routing is implied. */
+  workerModel?: string;
+  workerModelSource: 'delegation' | 'lead';
+  /** Custom delegation backends may route each task independently and are unsupported for Extalia teams. */
+  modelRouting?: 'shared' | 'profile-custom';
+  source: 'profile' | 'defaults' | 'environment' | 'managed';
+}
+
 /** Models and efforts a workspace's runtime can use, for the prompt's model and effort pickers. */
 export interface ModelChoices {
   runtime: RuntimeId;
@@ -93,6 +113,8 @@ export interface ModelChoices {
   defaultEffort?: Effort;
   /** Permission modes the session may use (v0.0.49): all four for Extalia Native, `workspace` only for Hermes. Absent on hosts before v0.0.49. */
   permissionModes?: PermissionMode[];
+  /** Fresh selected-profile delegation limits. Absent on older hosts and Native. */
+  hermesDelegation?: HermesDelegationLimits;
 }
 
 /** Model ids: up to 200 characters, starting with a letter or digit (never an option such as `--x`). */
@@ -148,15 +170,28 @@ export function normalizeTeamPlanRequest(raw: unknown): TeamPlanRequest {
   if (value.goal !== undefined && value.goal !== null && typeof value.goal !== 'string') throw new Error('The goal must be text.');
   const goal = typeof value.goal === 'string' ? value.goal.trim() : '';
   if (goal.length > MAX_TEAM_GOAL) throw new Error(`The goal is longer than ${MAX_TEAM_GOAL} characters.`);
+  let goalDocument: GoalDocument | undefined;
+  if (value.goalDocument !== undefined) {
+    const rawDocument = value.goalDocument;
+    if (!rawDocument || typeof rawDocument !== 'object' || Array.isArray(rawDocument)) throw new Error('The goal attachment is invalid.');
+    const doc = rawDocument as Record<string, unknown>;
+    if (Object.keys(doc).some(key => key !== 'name' && key !== 'text') || typeof doc.name !== 'string' || !doc.name.trim() || doc.name.length > 120 || typeof doc.text !== 'string' || !doc.text.trim() || doc.text.length > MAX_GOAL_DOCUMENT_CHARS) throw new Error('The goal attachment is invalid or too large.');
+    let bytes = 0;
+    for (const character of doc.text) { const code = character.codePointAt(0)!; bytes += code < 0x80 ? 1 : code < 0x800 ? 2 : code < 0x10000 ? 3 : 4; }
+    if (bytes > MAX_GOAL_DOCUMENT_BYTES) throw new Error('The goal attachment is larger than 1 MiB.');
+    goalDocument = { name: doc.name.trim(), text: doc.text };
+  }
   const count = value.count;
   if (typeof count !== 'number' || !Number.isInteger(count) || count < 1 || count > MAX_TEAM_MEMBERS) throw new Error(`Choose from 1 to ${MAX_TEAM_MEMBERS} members.`);
-  // The team decoder checks the models and the current members' ids and names. A re-plan reassigns
-  // models, so current members may still name models that are no longer allowed: those are dropped.
+  // Legacy plans reassign lead models and drop stale selections. Explicit connection policies
+  // preserve current routing and chains; replanning cannot rewrite the user's provider choices.
   const members = Array.isArray(value.members)
-    ? value.members.map(member => (member && typeof member === 'object' && !Array.isArray(member) ? { ...member as Record<string, unknown>, models: [] } : member))
+    ? value.members.map(member => (member && typeof member === 'object' && !Array.isArray(member)
+      ? { ...member as Record<string, unknown>, models: value.connections !== undefined || (member as Record<string, unknown>).connectionId ? (member as Record<string, unknown>).models : [] } : member))
     : value.members ?? [];
-  const team = normalizeAgentTeam({ enabled: true, allowedModels: value.allowedModels ?? [], members })!;
-  return { goal, count, allowedModels: team.allowedModels, ...(team.members.length ? { members: team.members } : {}) };
+  const team = normalizeAgentTeam({ enabled: true, allowedModels: value.allowedModels ?? [], members,
+    ...(value.connections === undefined ? {} : { connections: value.connections }) })!;
+  return { goal, count, allowedModels: team.allowedModels, ...(goalDocument ? { goalDocument } : {}), ...(team.connections ? { connections: team.connections } : {}), ...(team.members.length ? { members: team.members } : {}) };
 }
 
 /**
@@ -193,7 +228,7 @@ export interface SessionSummary {
   /** The session's model and effort override, used by its next turns; absent fields use the defaults. */
   options?: SessionOptions;
   /** The session's subagent team, when it has one (`getSessionTeam` returns the full team). */
-  team?: { enabled: boolean; size: number };
+  team?: { enabled: boolean; size: number; updatedAt?: string };
   /**
    * The lead agent's full name, unique across the Office; assigned once when a managed session
    * is created (older sessions get one on first load) and kept. Avatars are generated from it.
@@ -364,7 +399,9 @@ export interface ConnectionInput {
   model: string;
   /** `stored` keeps the existing stored secret unless `secret` is provided. */
   credential: { kind: 'none' } | { kind: 'stored' } | Extract<CredentialSource, { kind: 'env' }>;
-  features: { memory: FeatureOwner; skills: FeatureOwner; history?: boolean };
+  features: { memory: FeatureOwner; skills: FeatureOwner; history?: boolean; promptCache?: boolean };
+  /** Explicit estimated Native request-token ceiling; absent means no user-set token ceiling. */
+  inputTokenLimit?: number;
   effort?: Effort;
   /** Defaults to orchestration on with the preset's tier models. */
   orchestration?: Orchestration;
@@ -382,11 +419,15 @@ export interface WorkspaceInput {
   id?: string;
   name: string;
   projectLocation: string;
+  /** Up to 15 additional own Native folders. Omission preserves an existing folder list. */
+  additionalProjectLocations?: string[];
   /** Required for Extalia Native; ignored for Hermes Agent. */
   connectionId?: string;
   /** Additional saved connections permitted for native missions. Omission preserves an existing policy. */
   missionConnectionIds?: string[];
   permissions: WorkspacePermissions;
+  /** Native only. Omission preserves an existing policy; new/legacy workspaces default to read-only. */
+  crossWorkspaceAccess?: WorkspaceCrossAccess;
   /** Defaults to Extalia Native. */
   runtimeId?: RuntimeId;
   /** Hermes profile; `default` when empty. */
@@ -488,7 +529,7 @@ export interface FileContent {
 export type GitChangeKind = 'unmodified' | 'modified' | 'type-changed' | 'added' | 'deleted' | 'renamed' | 'copied' | 'unmerged';
 
 export interface GitChange {
-  /** Relative to the project folder; untracked folders end with `/`. */
+  /** Relative to the selected repository folder (the project folder by default); untracked folders end with `/`. */
   path: string;
   /** The previous path of a rename or copy, when inside the project folder. */
   originalPath?: string;
@@ -524,6 +565,23 @@ export interface GitDiff {
   diff: string;
   /** The diff was longer than 1 MB. */
   truncated: boolean;
+}
+
+export interface GitRepositoryList {
+  /** Workspace-relative forward-slash paths. Empty means the workspace's own scoped Git view. */
+  repositories: { path: string }[];
+  /** Discovery reached a depth, directory, repository or time bound, or could not read part of the tree. */
+  truncated: boolean;
+}
+
+/** Repository selection stays relative to the workspace; never permit traversal or Git internals. */
+export function normalizeGitRepositoryPath(value: unknown): string {
+  if (value === undefined || value === '') return '';
+  if (typeof value !== 'string' || value.length > 4096 || value !== value.trim() || value.includes('\\') || /\p{Cc}/u.test(value)
+    || value.startsWith('/') || /^[A-Za-z]:/.test(value)) throw new Error('Choose a repository inside the workspace.');
+  const parts = value.split('/');
+  if (parts.some(part => !part || part === '.' || part === '..' || part.toLowerCase() === '.git')) throw new Error('Choose a repository inside the workspace.');
+  return value;
 }
 
 /** A conversation to continue in a new managed session. */
@@ -707,6 +765,10 @@ export interface AgentAppTestResult {
 export type ApprovalDecisionInput = 'once' | 'session' | 'reject';
 
 export interface AgentHostApi {
+  /** Current host/profile snapshot; never starts or contacts the daemon. */
+  nativeStatus?(): Promise<NativeStatus>;
+  /** Explicit bounded inspection of inactive saved ownership markers. */
+  refreshNativeStatus?(): Promise<NativeStatus>;
   getState(): Promise<HostState>;
   /** The shared user profile (display name and interface preferences). */
   getProfile(): Promise<UserProfile>;
@@ -726,6 +788,34 @@ export interface AgentHostApi {
   /** Selected native transcripts only; no credentials or agent configuration are read. */
   observeImports(scanId: string, candidateIds: string[]): Promise<HostState>;
   observationSession(id: string): Promise<PortableSession>;
+  /** Inspect an explicit same-server Codex attachment; never auto-connects or starts a server. */
+  observedCodexStatus?(sessionId: string): Promise<ObservedCodexStatus>;
+  observedCodexQueueStatus?(sessionId: string): Promise<ObservedCodexQueueStatus>;
+  promptQueueStatus?(sessionId: string): Promise<PromptQueueStatus>;
+  changePromptQueue?(sessionId: string, change: PromptQueueChange): Promise<PromptQueueStatus>;
+  observedCodexPermissionStatus?(sessionId: string): Promise<CodexPermissionHookStatus>;
+  previewObservedCodexPermissionHook?(sessionId: string, undo?: boolean): Promise<CodexPermissionSetupPlan>;
+  applyObservedCodexPermissionHook?(sessionId: string, revision: string, undo?: boolean): Promise<CodexPermissionHookStatus>;
+  answerObservedCodexPermission?(sessionId: string, input: CodexPermissionHookAnswer): Promise<CodexPermissionHookStatus>;
+  setObservedCodexQueue?(sessionId: string, enabled: boolean): Promise<ObservedCodexQueueStatus>;
+  queueObservedCodexMessage?(sessionId: string, input: ObservedCodexQueueMessageInput): Promise<ObservedCodexQueueStatus>;
+  observedReplyStatus?(sessionId: string): Promise<ObservedReplyStatus>;
+  createObservedReply?(sessionId: string): Promise<ObservedReplyStatus>;
+  /** Explicit manual pairing when the source app has no transcript observer. No session is created. */
+  createManualReply?(): Promise<ObservedReplyStatus>;
+  answerObservedReply?(sessionId: string, input: ObservedReplyAnswer): Promise<ObservedReplyStatus>;
+  closeObservedReply?(sessionId: string): Promise<ObservedReplyStatus>;
+  observedHermesStatus?(sessionId: string): Promise<HermesObservedStatus>;
+  connectObservedHermes?(sessionId: string, profile?: string): Promise<HermesObservedStatus>;
+  disconnectObservedHermes?(sessionId: string, connectionId: string): Promise<HermesObservedStatus>;
+  sendObservedHermesMessage?(sessionId: string, input: HermesObservedMessageInput): Promise<HermesObservedStatus>;
+  answerObservedHermesInput?(sessionId: string, input: HermesObservedAnswerInput): Promise<HermesObservedStatus>;
+  /** Opt in to controlling the original observed thread through an existing Unix socket. */
+  connectObservedCodex?(sessionId: string, socketPath: string): Promise<ObservedCodexStatus>;
+  disconnectObservedCodex?(sessionId: string, connectionId: string): Promise<ObservedCodexStatus>;
+  sendObservedCodexMessage?(sessionId: string, input: ObservedCodexMessageInput): Promise<ObservedCodexStatus>;
+  answerObservedCodexInput?(sessionId: string, input: ObservedCodexAnswerInput): Promise<ObservedCodexStatus>;
+  answerObservedCodexApproval?(sessionId: string, input: ObservedCodexApprovalAnswerInput): Promise<ObservedCodexStatus>;
   setObservation(id: string, watching: boolean): Promise<HostState>;
   /**
    * Opt a history location in or out of "watch new sessions automatically": the host
@@ -737,8 +827,10 @@ export interface AgentHostApi {
   createSession(workspaceId: string, options?: SessionOptions): Promise<SessionSummary>;
   /** Replace a managed session's model and effort override for its next turns; empty fields go back to the defaults. */
   setSessionOptions(sessionId: string, options: SessionOptions): Promise<SessionSummary>;
-  /** Models and efforts a workspace's runtime can use. Credentials are never returned. */
-  modelChoices(workspaceId: string): Promise<ModelChoices>;
+  /** Models and efforts for a new workspace session, or an existing managed session's saved runtime/connection. Credentials are never returned. */
+  modelChoices(workspaceId: string, sessionId?: string): Promise<ModelChoices>;
+  /** Inspect a saved Native connection's catalog for the team editor. This does not authorize delegation or return credentials. */
+  teamModelChoices(workspaceId: string, connectionId: string, sessionId?: string): Promise<ModelChoices>;
   /** A managed session's subagent team, if it has one. */
   getSessionTeam(sessionId: string): Promise<AgentTeam | undefined>;
   /**
@@ -758,7 +850,11 @@ export interface AgentHostApi {
    * runs on this computer), or a deterministic plan is used (`'heuristic'`, with a `note`).
    * Without allowed models the plan picks from the workspace's models and returns them as `allowedModels`.
    */
-  planTeam(workspaceId: string, request: TeamPlanRequest): Promise<TeamPlan>;
+  planTeam(workspaceId: string, request: TeamPlanRequest, sessionId?: string): Promise<TeamPlan>;
+  /** One shared profile-local planning reference. Optional for older hosts. */
+  getModelSelectionGuide?(): Promise<ModelSelectionGuide | null>;
+  /** Replace the guide, or clear it with null. The host assigns updatedAt. */
+  saveModelSelectionGuide?(input: ModelSelectionGuideInput | null): Promise<ModelSelectionGuide | null>;
   /**
    * Start a managed session that continues another conversation (for example a
    * Codex session that ran out of quota). The recent conversation is carried
@@ -776,7 +872,9 @@ export interface AgentHostApi {
   planNativeMission(sessionId: string, request: MissionPlanRequest): Promise<MissionPlan>;
   /** Start a fixed, read-only native task graph; returns before model execution finishes. */
   startNativeMission(sessionId: string, request: HostMissionRequest): Promise<HostMissionRun>;
-  /** Read mission status and bounded, unverified answers. Cancel through the session's `cancel` method. */
+  /** Cancel only this currently running mission; stale requests never cancel a later session invocation. */
+  cancelNativeMission?(sessionId: string, missionId: string): Promise<void>;
+  /** Read mission status and bounded, unverified answers. */
   nativeMissionRun(sessionId: string, missionId: string): Promise<HostMissionRun>;
   /** Retained mission summaries for this session, respecting its history policy. */
   listNativeMissions(sessionId: string): Promise<HostMissionRun[]>;
@@ -801,7 +899,8 @@ export interface AgentHostApi {
    */
   attachmentPreview(sessionId: string, ref: string): Promise<AttachmentPreview | undefined>;
   resolveApproval(sessionId: string, approvalId: string, decision: ApprovalDecisionInput): Promise<void>;
-  cancel(sessionId: string): Promise<void>;
+  /** A status-panel cancellation is bound to its exact Native invocation; legacy callers may omit the guard. */
+  cancel(sessionId: string, expectedNativeRunId?: string): Promise<void>;
   /** Native history locations Extalia knows how to look in. Nothing is read until a scan. */
   importLocations(): Promise<ImportLocation[]>;
   scanImports(locationIds?: string[]): Promise<ImportScan>;
@@ -816,9 +915,17 @@ export interface AgentHostApi {
   /** A text file of a workspace's project folder, up to 512 KB. Credential files are refused. */
   readFile(workspaceId: string, path: string): Promise<FileContent>;
   /** Branch, upstream and changed files of the workspace's Git repository. Never runs repository hooks or filters. */
-  gitStatus(workspaceId: string): Promise<GitStatus>;
+  gitStatus(workspaceId: string, repositoryPath?: string): Promise<GitStatus>;
   /** Unified diff against HEAD for one path or, without `path`, every change (credential files excluded). */
-  gitDiff(workspaceId: string, path?: string): Promise<GitDiff>;
+  gitDiff(workspaceId: string, path?: string, repositoryPath?: string): Promise<GitDiff>;
+  /** Bounded read-only discovery of repositories inside the workspace; older hosts omit it. */
+  gitRepositories?(workspaceId: string): Promise<GitRepositoryList>;
+  /** Human-facing Native memory controls, separate from model tools and Knowledge-vault copies. */
+  nativeMemoryList?(workspaceId: string, options?: { offset?: number; limit?: number }): Promise<NativeMemoryCatalog>;
+  nativeMemoryRead?(workspaceId: string, name: string, options?: NativeMemoryReadOptions): Promise<NativeMemoryReadResult>;
+  /** null creates only; an exact reviewed revision is required for replacement. */
+  nativeMemoryWrite?(workspaceId: string, input: NativeMemoryWriteInput): Promise<NativeMemoryWriteResult>;
+  nativeMemoryDelete?(workspaceId: string, input: NativeMemoryDeleteInput): Promise<NativeMemoryDeleteResult>;
   /**
    * A workspace's project skills (`.extalia/skills/<skill>/SKILL.md`): allowed ones, and pending ones that do not
    * reach the model until the user allows them (`not-allowed`, or `changed` since they were allowed).
@@ -833,6 +940,8 @@ export interface AgentHostApi {
    * (W0 consent decides); `status: 'unavailable'` when the daemon cannot answer. Feature-detected by clients.
    */
   skillRegistry(): Promise<SkillRegistryReport>;
+  /** Read-only bounded metadata continuation; older hosts omit it. No skill contents or permissions change. */
+  skillRegistryPage?(input: SkillRegistryPageInput): Promise<SkillRegistryPage>;
   /** Diagnostic only; older hosts omit this optional method. */
   preflightSkill?(input: SkillPreflightInput): Promise<SkillPreflightReport>;
   /** Read-only diagnostics; never invokes a skill or records approval. */
@@ -951,12 +1060,22 @@ export interface AgentHostApi {
 /** Methods a transport may forward. `subscribe` is carried separately (IPC push or SSE). */
 export const AGENT_HOST_METHODS = [
   'getState', 'getProfile', 'saveProfile', 'saveConnection', 'deleteConnection', 'testConnection', 'checkFolder', 'browseDirectories', 'saveWorkspace', 'deleteWorkspace',
-  'setWorkspaceMissionConnections', 'planNativeMission', 'startNativeMission', 'nativeMissionRun', 'listNativeMissions', 'refreshNativeMissionRecovery',
-  'completeSetup', 'createSession', 'setSessionOptions', 'modelChoices', 'getSessionTeam', 'saveSessionTeam', 'saveWorkspaceTeam', 'planTeam', 'continueSession', 'renameSession', 'deleteSession', 'sessionEvents', 'sendPrompt', 'uploadAttachment', 'removeAttachment', 'attachmentPreview', 'resolveApproval', 'cancel',
+  'nativeStatus', 'refreshNativeStatus', 'setWorkspaceMissionConnections', 'planNativeMission', 'startNativeMission', 'cancelNativeMission', 'nativeMissionRun', 'listNativeMissions', 'refreshNativeMissionRecovery',
+  'completeSetup', 'createSession', 'setSessionOptions', 'modelChoices', 'teamModelChoices', 'getSessionTeam', 'saveSessionTeam', 'saveWorkspaceTeam', 'planTeam', 'continueSession', 'renameSession', 'deleteSession', 'sessionEvents', 'sendPrompt', 'uploadAttachment', 'removeAttachment', 'attachmentPreview', 'resolveApproval', 'cancel',
   'setWorkflow', 'observeImports', 'observationSession', 'setObservation', 'setAutoWatch',
+  'observedCodexStatus', 'connectObservedCodex', 'disconnectObservedCodex', 'sendObservedCodexMessage', 'answerObservedCodexInput',
+  'answerObservedCodexApproval',
+  'observedCodexQueueStatus', 'setObservedCodexQueue', 'queueObservedCodexMessage',
+  'promptQueueStatus', 'changePromptQueue',
+  'observedCodexPermissionStatus', 'previewObservedCodexPermissionHook', 'applyObservedCodexPermissionHook', 'answerObservedCodexPermission',
+  'observedReplyStatus', 'createObservedReply', 'answerObservedReply', 'closeObservedReply',
+  'createManualReply',
+  'observedHermesStatus', 'connectObservedHermes', 'disconnectObservedHermes', 'sendObservedHermesMessage', 'answerObservedHermesInput',
   'importLocations', 'scanImports', 'previewImports', 'commitImports', 'importPortable', 'librarySession', 'organizeLibrarySession',
-  'listFiles', 'readFile', 'gitStatus', 'gitDiff', 'workspaceSkills', 'allowWorkspaceSkills', 'revokeWorkspaceSkills',
-  'skillRegistry', 'preflightSkill', 'previewSkillRouting', 'inspectSkill', 'importSkill', 'reviewSkill', 'approveSkill', 'activateSkill', 'deactivateSkill', 'rollbackSkill', 'revokeSkill', 'builtinSkills',
+  'listFiles', 'readFile', 'gitStatus', 'gitDiff', 'gitRepositories', 'workspaceSkills', 'allowWorkspaceSkills', 'revokeWorkspaceSkills',
+  ...NATIVE_MEMORY_METHODS,
+  ...MODEL_SELECTION_GUIDE_METHODS,
+  'skillRegistry', 'skillRegistryPage', 'preflightSkill', 'previewSkillRouting', 'inspectSkill', 'importSkill', 'reviewSkill', 'approveSkill', 'activateSkill', 'deactivateSkill', 'rollbackSkill', 'revokeSkill', 'builtinSkills',
   'runtimes', 'hermesModels', 'characterAppearances', 'saveCharacterAppearance', 'hookIngest', 'setHookPrivacy',
   'agentAppConnections', 'planAgentAppConnect', 'applyAgentAppConnect', 'disconnectAgentApp', 'testAgentAppConnection', 'recoverAgentAppConnection',
   'listWorktrees', 'worktreeStatus', 'worktreeDiff', 'worktreeOrphans', 'removeWorktree', 'proposeIntegration', 'integrationProposals', 'applyIntegration',

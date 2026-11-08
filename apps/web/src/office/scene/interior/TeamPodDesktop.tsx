@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useSyncExternalStore } from 'react';
 import type { Group, Mesh } from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { createTeamPodDesktopGeometry, createTeamPodDividerGeometry, TEAM_POD_DESKTOP as PROFILE } from './teamPodDesktopGeometry';
+import { createTeamPodDesktopGeometry, createTeamPodDividerGeometry, TEAM_POD_DESKTOP as PROFILE, TEAM_POD_STRUCTURE_FOOTPRINT } from './teamPodDesktopGeometry';
 
 const urls = import.meta.glob<string>('/public-assets/furniture/team-pod-desktop.glb', { eager: true, query: '?url', import: 'default' });
 const forceProcedural = typeof location !== 'undefined' && new URLSearchParams(location.search).get('desks') === 'procedural';
@@ -76,7 +76,7 @@ export function TeamPodDesktop() {
     return scene;
   }, [source]);
   // A floor-wide batch must never retain a baked copy of the temporary backup.
-  return <group name="team-pod-desktop" userData={{ officeDynamic: true, teamPodAuthored: !!clone }}>
+  return <group name="team-pod-desktop" userData={{ officeDynamic: true, teamPodAuthored: !!clone, officeCollisionFootprint: TEAM_POD_STRUCTURE_FOOTPRINT }}>
     {clone ? <primitive name="blender-team-pod-desktop" object={clone} dispose={null} /> : <ProceduralTeamPodDesktop />}
   </group>;
 }

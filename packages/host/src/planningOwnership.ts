@@ -39,6 +39,8 @@ export class PlanningOwnership {
   private readonly pending = new Map<string, DaemonPlanningBegin>();
   private writes: Promise<void> = Promise.resolve();
   private closed = false;
+  private closePromise?: Promise<void>;
+  private readonly inspections = new Set<Promise<unknown>>();
   private constructor(private readonly file: string) {}
 
   static async open(file: string, recover?: () => Promise<DaemonClient>): Promise<PlanningOwnership> {
@@ -46,6 +48,52 @@ export class PlanningOwnership {
     await ownership.load();
     if (ownership.pending.size && recover) await ownership.recover(recover);
     return ownership;
+  }
+
+  hasUnresolved(): boolean { return this.pending.size > 0; }
+
+  /** Detached metadata; callers must never use it as proof of settlement. */
+  copiedSnapshot(): DaemonPlanningBegin[] { return [...this.pending.values()].map(entry => ({ ...entry, connectionIds: [...entry.connectionIds] })); }
+
+  /** Inspect only the selected inactive entries; no observation, replay or force-clear. */
+  recheckInactive(invocationIds: readonly string[], connect: () => Promise<DaemonClient>, active: (sessionId: string) => boolean): Promise<{ inspected: number; retired: number; status: 'checked' | 'unsupported' | 'unavailable'; skippedActive: number }> {
+    const work = this.inspectInactive(invocationIds, connect, active);
+    this.inspections.add(work);
+    void work.then(() => this.inspections.delete(work), () => this.inspections.delete(work));
+    return work;
+  }
+
+  private async inspectInactive(invocationIds: readonly string[], connect: () => Promise<DaemonClient>, active: (sessionId: string) => boolean): Promise<{ inspected: number; retired: number; status: 'checked' | 'unsupported' | 'unavailable'; skippedActive: number }> {
+    let inspected = 0, retired = 0, skippedActive = 0;
+    let status: 'checked' | 'unsupported' | 'unavailable' = 'checked';
+    const summary = () => ({ inspected, retired, status, skippedActive });
+    // Capture entry identities before connecting; replacements are never retired by old evidence.
+    const entries = invocationIds.map(id => this.pending.get(id)).filter((entry): entry is DaemonPlanningBegin => !!entry);
+    const eligible = (entry: DaemonPlanningBegin) => !this.closed && this.pending.get(entry.invocationId) === entry && !active(entry.sessionId);
+    if (!entries.some(eligible)) { skippedActive = entries.filter(entry => active(entry.sessionId)).length; return summary(); }
+    let client: DaemonClient;
+    try { client = await connect(); } catch { status = 'unavailable'; return summary(); }
+    if (this.closed || !client.usable) { status = 'unavailable'; return summary(); }
+    if (!client.capabilities.includes('planning.inspect')) { status = 'unsupported'; return summary(); }
+    for (const entry of entries) {
+      if (!eligible(entry)) { if (active(entry.sessionId)) skippedActive++; continue; }
+      try {
+        checkClient(client);
+        inspected++;
+        const result: DaemonPlanningInspection = await client.request('planning.inspect', { invocationId: entry.invocationId });
+        if (!eligible(entry)) { if (active(entry.sessionId)) skippedActive++; continue; }
+        checkClient(client);
+        if (validate('response', 'planning.inspect', result) && sameScope(entry, result.admission) && result.observation
+          && result.observation.invocationId === entry.invocationId && result.observation.admissionDigest === result.admission.admissionDigest
+          && result.observation.kind === 'local-pipeline-settled' && Date.parse(result.observation.recordedAt) >= Date.parse(result.admission.admittedAt)) {
+          await this.persist(entry, () => eligible(entry));
+          if (!this.closed && !this.pending.has(entry.invocationId)) retired++;
+          else if (active(entry.sessionId)) skippedActive++;
+        }
+      } catch { status = 'unavailable'; /* Uncertain evidence retains the exact write-ahead guard. */ }
+      if (this.closed) break;
+    }
+    return summary();
   }
 
   assertClear(sessionId?: string, connectionIds: readonly string[] = [], exceptInvocationId?: string): void {
@@ -116,7 +164,7 @@ export class PlanningOwnership {
   /** Stop admission immediately and drain every queued write before releasing the profile lock. */
   close(): Promise<void> {
     this.closed = true;
-    return this.writes;
+    return this.closePromise ??= Promise.all([...this.inspections]).then(() => this.writes);
   }
 
   private checkOpen(): void {
@@ -155,24 +203,7 @@ export class PlanningOwnership {
   }
 
   private async recover(connect: () => Promise<DaemonClient>): Promise<void> {
-    let client: DaemonClient;
-    try { client = await connect(); } catch { return; }
-    if (this.closed) return;
-    if (!client.usable || !client.capabilities.includes('planning.inspect')) return;
-    for (const entry of this.pending.values()) {
-      try {
-        this.checkOpen();
-        checkClient(client);
-        const result: DaemonPlanningInspection = await client.request('planning.inspect', { invocationId: entry.invocationId });
-        this.checkOpen();
-        checkClient(client);
-        if (validate('response', 'planning.inspect', result) && sameScope(entry, result.admission) && result.observation) {
-          await this.remove(entry);
-          this.checkOpen();
-        }
-      } catch { /* Missing or uncertain evidence keeps the saved guard; never observe on restart. */ }
-      if (this.closed) return;
-    }
+    await this.recheckInactive([...this.pending.keys()], connect, () => false);
   }
 
   private serialize(work: () => Promise<void>): Promise<void> {
@@ -182,8 +213,9 @@ export class PlanningOwnership {
     return next;
   }
 
-  private persist(except?: DaemonPlanningBegin): Promise<void> {
+  private persist(except?: DaemonPlanningBegin, eligible?: () => boolean): Promise<void> {
     return this.serialize(async () => {
+      if (eligible && !eligible()) return;
       const pending = [...this.pending.values()].filter(entry => entry !== except);
       const envelope = { schema: SCHEMA, pending };
       if (pending.length > MAX_PENDING || Buffer.byteLength(`${JSON.stringify(envelope, null, 2)}\n`, 'utf8') > MAX_BYTES) throw metadataProblem();

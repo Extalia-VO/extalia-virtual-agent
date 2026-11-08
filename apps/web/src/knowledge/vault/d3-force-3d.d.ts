@@ -39,7 +39,7 @@ declare module 'd3-force-3d' {
   export function forceSimulation<N extends SimNode>(nodes?: N[], numDimensions?: number): Simulation<N>;
   export function forceLink<N extends SimNode>(links?: SimLink<N>[]): LinkForce<N>;
   export function forceManyBody<N extends SimNode>(): ManyBodyForce<N>;
-  export function forceX<N extends SimNode>(x?: number): PositionForce<N>;
-  export function forceY<N extends SimNode>(y?: number): PositionForce<N>;
-  export function forceZ<N extends SimNode>(z?: number): PositionForce<N>;
+  export function forceX<N extends SimNode>(x?: Accessor<N, number>): PositionForce<N>;
+  export function forceY<N extends SimNode>(y?: Accessor<N, number>): PositionForce<N>;
+  export function forceZ<N extends SimNode>(z?: Accessor<N, number>): PositionForce<N>;
 }

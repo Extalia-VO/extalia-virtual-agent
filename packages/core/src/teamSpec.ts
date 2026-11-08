@@ -258,7 +258,8 @@ export interface ApplyTeamSpecOptions {
  * Merge a spec into a session's team: members are matched by name
  * (case-insensitive) and updated, new ones are added with a new id (and a
  * generated full name when the spec gives none). The models the spec names are
- * added to the team's allowed models, and the team is enabled. Throws an error
+ * added to legacy teams' lead allowlist; explicit connection grants stay fixed.
+ * The team is enabled. Throws an error
  * whose message is safe to show when the result is not a valid team.
  */
 export function applyTeamSpec(current: AgentTeam | undefined, spec: TeamSpec, options: ApplyTeamSpecOptions = {}): AgentTeam {
@@ -268,7 +269,7 @@ export function applyTeamSpec(current: AgentTeam | undefined, spec: TeamSpec, op
   const used = new Set([...(options.taken ?? [])].map(name => name.toLowerCase()));
   for (const member of members) used.add(member.name.toLowerCase());
   spec.members.forEach((entry, index) => {
-    for (const model of entry.models) if (!allowedModels.includes(model)) allowedModels.push(model);
+    if (current?.connections === undefined) for (const model of entry.models) if (!allowedModels.includes(model)) allowedModels.push(model);
     const existing = entry.name ? members.find(member => member.name.toLowerCase() === entry.name.toLowerCase()) : undefined;
     if (existing) {
       if (entry.gender) existing.gender = entry.gender;
@@ -281,6 +282,7 @@ export function applyTeamSpec(current: AgentTeam | undefined, spec: TeamSpec, op
       if (entry.forbidden) existing.forbidden = [...entry.forbidden];
       return;
     }
+    if (entry.connectionId !== undefined) throw new Error('A prompt cannot select or grant an additional connection.');
     let { name } = entry;
     let gender = entry.gender;
     if (!name) {
@@ -293,7 +295,8 @@ export function applyTeamSpec(current: AgentTeam | undefined, spec: TeamSpec, op
   if (allowedModels.length > MAX_TEAM_MODELS) throw new Error(`The team in this prompt names more than ${MAX_TEAM_MODELS} models.`);
   const goal = spec.goal ?? current?.goal;
   const rules = spec.rules ?? current?.rules;
-  const decoded = decodeAgentTeam({ enabled: true, allowedModels, members, ...(goal ? { goal } : {}), ...(rules?.length ? { rules } : {}) });
+  const goalDocument = !spec.goal ? current?.goalDocument : undefined;
+  const decoded = decodeAgentTeam({ enabled: true, allowedModels, members, ...(current?.connections !== undefined ? { connections: current.connections } : {}), ...(goal ? { goal } : {}), ...(goalDocument ? { goalDocument } : {}), ...(rules?.length ? { rules } : {}) });
   if (!decoded.ok) throw new Error(`The team in this prompt cannot be used: ${decoded.errors.join(' ')}`);
   return decoded.value;
 }

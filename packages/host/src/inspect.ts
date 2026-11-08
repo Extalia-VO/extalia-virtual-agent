@@ -3,15 +3,15 @@ import { constants, type Dirent } from 'node:fs';
 import { lstat, open, readdir, readlink, realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { safeLabel } from '@extalia/core';
-import type { FileContent, FileEntry, FileListing, GitChange, GitChangeKind, GitDiff, GitStatus } from '@extalia/platform';
+import { normalizeGitRepositoryPath, type FileContent, type FileEntry, type FileListing, type GitChange, type GitChangeKind, type GitDiff, type GitRepositoryList, type GitStatus } from '@extalia/platform';
 import { errorCode } from './jsonStore.js';
 import { IGNORED_DIRECTORIES, isCredentialPath, isGitInternalPath, resolveInside, type ResolvedPath } from './workspaceFs.js';
 
 /**
  * Read-only views of a workspace for the Files and Git pages. Everything stays
  * inside the project folder, credential files are never read and Git runs
- * without a shell, with every repository setting that can start a program
- * (fsmonitor, hooks, external diff, textconv, filter drivers, pagers) switched off.
+ * without a shell, with selected program-launching settings disabled
+ * (fsmonitor, hooks, external diff, textconv, filter drivers, pagers).
  */
 
 export const LIST_LIMIT = 1000;
@@ -35,6 +35,10 @@ export interface GitOptions {
   /** The Git executable; tests use a missing one. */
   binary?: string;
   timeoutMs?: number;
+  /** Discovery-only absolute deadline, shared by its Git subprocesses. */
+  deadlineMs?: number;
+  /** Explicit nested selections cannot discover an ancestor if their marker disappears mid-read. */
+  ceilingDirectory?: string;
 }
 
 const label = (value: string) => safeLabel(value, 160);
@@ -155,6 +159,7 @@ export async function readWorkspaceFile(root: string, file: unknown): Promise<Fi
 export const GIT_SAFETY_CONFIG = [
   '-c', 'core.fsmonitor=false', '-c', 'core.hooksPath=/dev/null', '-c', 'diff.external=', '-c', 'core.pager=cat', '-c', 'credential.helper=',
   '-c', 'status.submoduleSummary=false', '-c', 'core.quotePath=false',
+  '-c', 'merge.verifySignatures=false',
 ];
 const DIFF_SAFETY = ['--no-ext-diff', '--no-textconv', '--no-color', '--ignore-submodules=dirty', '--submodule=short'];
 const INHERITED = ['PATH', 'HOME', 'XDG_CONFIG_HOME', 'SYSTEMROOT', 'USERPROFILE', 'HOMEDRIVE', 'HOMEPATH', 'TMPDIR', 'TEMP', 'TMP'];
@@ -166,7 +171,7 @@ export function gitEnvironment(source: Readonly<Record<string, string | undefine
     const value = source[name];
     if (value) env[name] = value;
   }
-  return { ...env, LC_ALL: 'C', GIT_OPTIONAL_LOCKS: '0', GIT_TERMINAL_PROMPT: '0', GIT_CONFIG_NOSYSTEM: '1' };
+  return { ...env, LC_ALL: 'C', GIT_OPTIONAL_LOCKS: '0', GIT_TERMINAL_PROMPT: '0', GIT_CONFIG_NOSYSTEM: '1', GIT_NO_LAZY_FETCH: '1' };
 }
 
 class GitCommandError extends Error {
@@ -180,15 +185,18 @@ interface GitResult { stdout: string; truncated: boolean }
 
 function runGit(root: string, args: readonly string[], options: GitOptions, limit: number, config: readonly string[] = []): Promise<GitResult> {
   return new Promise((resolve, reject) => {
+    const remaining = options.deadlineMs === undefined ? Infinity : options.deadlineMs - Date.now();
+    if (remaining <= 0) { reject(new InspectError('Repository discovery reached its time limit.')); return; }
+    const timeout = Math.max(1, Math.min(options.timeoutMs ?? GIT_TIMEOUT_MS, remaining));
     const child = execFile(options.binary ?? 'git', ['--no-pager', ...GIT_SAFETY_CONFIG, ...config, ...args], {
-      cwd: root, env: gitEnvironment(options.env), timeout: options.timeoutMs ?? GIT_TIMEOUT_MS, maxBuffer: limit, encoding: 'buffer', windowsHide: true,
+      cwd: root, env: { ...gitEnvironment(options.env), ...(options.ceilingDirectory ? { GIT_CEILING_DIRECTORIES: options.ceilingDirectory } : {}) }, timeout, maxBuffer: limit, encoding: 'buffer', windowsHide: true,
     }, (error, stdout, stderr) => {
       if (!error) { resolve({ stdout: stdout.toString('utf8'), truncated: false }); return; }
       const code = (error as { code?: unknown }).code;
       // Output over the limit: keep what fits, ending at a complete line.
       if (code === 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER') { resolve({ stdout: stdout.toString('utf8'), truncated: true }); return; }
       if (code === 'ENOENT') { reject(new InspectError('Git is not installed or not on the PATH. Install Git to see repository changes.')); return; }
-      if (error.killed) { reject(new InspectError(`Git did not answer within ${Math.round((options.timeoutMs ?? GIT_TIMEOUT_MS) / 1000)} seconds and was stopped.`)); return; }
+      if (error.killed) { reject(new InspectError(`Git did not answer within ${Math.max(1, Math.round(timeout / 1000))} seconds and was stopped.`)); return; }
       reject(new GitCommandError(typeof code === 'number' ? code : undefined, stderr.toString('utf8')));
     });
     child.stdin?.end();
@@ -198,7 +206,7 @@ function runGit(root: string, args: readonly string[], options: GitOptions, limi
 const literal = (value: string) => `:(literal)${value}`;
 const excluded = (value: string) => `:(exclude,literal)${value}`;
 
-interface Repository { prefix: string; config: string[] }
+interface Repository { prefix: string; topLevel: string; config: string[] }
 
 /** Filter drivers (`filter.<name>.clean`, `.smudge`, `.process`) run programs on file content; switch every configured one off. */
 async function filterOverrides(root: string, options: GitOptions): Promise<string[]> {
@@ -231,14 +239,119 @@ function gitFailure(error: unknown): Error {
 async function repository(root: string, options: GitOptions): Promise<Repository | undefined> {
   await resolveInside(root, '.', 'read');
   try {
-    const { stdout } = await runGit(root, ['rev-parse', '--is-inside-work-tree', '--show-prefix'], options, 64 * 1024);
-    const [inside, prefix = ''] = stdout.split('\n');
+    const { stdout } = await runGit(root, ['rev-parse', '--is-inside-work-tree', '--show-prefix', '--show-toplevel'], options, 64 * 1024);
+    const [inside, prefix = '', topLevel = ''] = stdout.split('\n');
     if (inside?.trim() !== 'true') return undefined;
-    return { prefix: prefix.trim(), config: await filterOverrides(root, options) };
+    return { prefix: prefix.trim(), topLevel, config: await filterOverrides(root, options) };
   } catch (error) {
     if (error instanceof GitCommandError && /not a git repository/i.test(error.stderr)) return undefined;
     throw gitFailure(error);
   }
+}
+
+/** Selected folders are revalidated for every status/diff request, never trusted because discovery listed them. */
+async function selectedRepositoryRoot(workspace: string, requested: unknown): Promise<{ root: string; nested: boolean }> {
+  let relative: string;
+  try { relative = normalizeGitRepositoryPath(requested); }
+  catch { throw new InspectError('Choose a repository inside the workspace.'); }
+  const resolved = await resolveReadable(workspace, relative || '.');
+  try {
+    if (!(await stat(resolved.absolute)).isDirectory()) throw new InspectError('The selected repository is not a folder.');
+    const marker = await lstat(path.join(resolved.absolute, '.git')).catch(error => {
+      if (errorCode(error) === 'ENOENT') return undefined;
+      throw error;
+    });
+    if (relative && !marker) throw new InspectError('The selected folder is no longer a Git repository. Refresh the repository list.');
+    if (marker?.isSymbolicLink()) throw new InspectError('The repository .git entry is a symbolic link and cannot be read safely.');
+    if (marker && !marker.isDirectory() && !marker.isFile()) throw new InspectError('The repository .git entry is not a regular file or folder.');
+  } catch (error) { throw fsError(error, relative || '.'); }
+  return { root: resolved.absolute, nested: relative !== '' };
+}
+
+/** A chosen nested repository must not silently become a view of an ancestor repository. */
+async function requireSelectedRepository(root: string, repo: Repository | undefined, nested: boolean): Promise<void> {
+  if (!nested) return;
+  let matches = false;
+  if (repo && repo.prefix === '' && repo.topLevel) {
+    try { matches = path.relative(await realpath(root), await realpath(repo.topLevel)) === ''; }
+    catch { /* Removed or replaced while probing: refuse the selection without exposing filesystem details. */ }
+  }
+  if (!matches) throw new InspectError('The selected folder is no longer a Git repository. Refresh the repository list.');
+}
+
+export const GIT_REPOSITORY_LIMITS = { depth: 6, directories: 2000, repositories: 100, timeMs: 5000 } as const;
+const REPOSITORY_IGNORED = new Set([...IGNORED_DIRECTORIES, 'vendor', '.hg', '.svn', '.idea', '.vscode', '.extalia', '.extalia-vo', '.codex', '.claude', '.hermes', '.gemini']);
+const comparePaths = (a: string, b: string) => a < b ? -1 : a > b ? 1 : 0;
+
+/**
+ * Discover regular repository markers without following directory symlinks. The empty path
+ * retains the workspace's existing scoped view even when its repository is an ancestor.
+ * Limits may be lowered by internal callers/tests, never raised above the public host bounds.
+ */
+export async function gitRepositories(workspace: string, options: GitOptions = {}, requestedLimits: Partial<Record<keyof typeof GIT_REPOSITORY_LIMITS, number>> = {}): Promise<GitRepositoryList> {
+  const bound = (key: keyof typeof GIT_REPOSITORY_LIMITS) => {
+    const value = requestedLimits[key], minimum = key === 'depth' ? 0 : 1;
+    return typeof value === 'number' && Number.isInteger(value) && value >= minimum ? Math.min(value, GIT_REPOSITORY_LIMITS[key]) : GIT_REPOSITORY_LIMITS[key];
+  };
+  const limits = { depth: bound('depth'), directories: bound('directories'), repositories: bound('repositories'), timeMs: bound('timeMs') };
+  const root = await realpath((await resolveReadable(workspace, '.')).absolute);
+  const deadline = Date.now() + limits.timeMs;
+  const probeOptions = { ...options, deadlineMs: Math.min(options.deadlineMs ?? Infinity, deadline) };
+  const result: GitRepositoryList = { repositories: [], truncated: false };
+  const queue = [{ relative: '', depth: 0 }];
+  let visited = 0;
+  for (let next = 0; next < queue.length; next++) {
+    if (visited >= limits.directories || Date.now() >= probeOptions.deadlineMs) { result.truncated = true; break; }
+    const folder = queue[next]!;
+    const absolute = path.join(root, folder.relative);
+    let entries: Dirent[];
+    try {
+      // Recheck stale dirents: a folder can be replaced by a symlink between visits.
+      const info = await lstat(absolute);
+      if (info.isSymbolicLink() || !info.isDirectory()) { result.truncated = true; continue; }
+      await resolveReadable(root, folder.relative || '.');
+      visited++;
+      entries = await readdir(absolute, { withFileTypes: true });
+    } catch (error) {
+      if (next === 0) throw fsError(error, '.');
+      result.truncated = true; continue;
+    }
+    let marker;
+    try { marker = await lstat(path.join(absolute, '.git')); }
+    catch (error) { if (errorCode(error) !== 'ENOENT') result.truncated = true; }
+    const validMarker = marker && !marker.isSymbolicLink() && (marker.isDirectory() || marker.isFile());
+    if (marker && !validMarker) result.truncated = true;
+    if ((next === 0 && !marker) || validMarker) {
+      try {
+        const repo = await repository(absolute, folder.relative ? { ...probeOptions, ceilingDirectory: path.dirname(absolute) } : probeOptions);
+        if (repo) {
+          await requireSelectedRepository(absolute, repo, folder.relative !== '');
+          result.repositories.push({ path: folder.relative });
+        }
+      } catch (error) {
+        if (Date.now() >= probeOptions.deadlineMs) { result.truncated = true; break; }
+        if (next === 0) throw error;
+        result.truncated = true;
+      }
+    }
+    const children = entries.filter(entry => entry.isDirectory() && !entry.isSymbolicLink()
+      && !REPOSITORY_IGNORED.has(entry.name.toLowerCase()) && !isCredentialPath(entry.name)).sort((a, b) => comparePaths(a.name, b.name));
+    if (result.repositories.length >= limits.repositories) {
+      result.truncated ||= next + 1 < queue.length || children.length > 0;
+      break;
+    }
+    for (const child of children) {
+      if (folder.depth >= limits.depth) { result.truncated = true; break; }
+      const relative = folder.relative ? `${folder.relative}/${child.name}` : child.name;
+      try { normalizeGitRepositoryPath(relative); }
+      catch { result.truncated = true; continue; }
+      // Keep the queue itself bounded, including directories waiting to be visited.
+      if (queue.length >= limits.directories) { result.truncated = true; break; }
+      queue.push({ relative, depth: folder.depth + 1 });
+    }
+  }
+  result.repositories.sort((a, b) => comparePaths(a.path, b.path));
+  return result;
 }
 
 const KINDS: Record<string, GitChangeKind> = { '.': 'unmodified', M: 'modified', T: 'type-changed', A: 'added', D: 'deleted', R: 'renamed', C: 'copied', U: 'unmerged' };
@@ -304,8 +417,12 @@ export function parseGitStatus(output: string, prefix = '', partial = false): Pa
 }
 
 /** Branch, upstream, ahead/behind and changed files; `{ repository: false }` outside a Git repository. */
-export async function gitStatus(root: string, options: GitOptions = {}): Promise<GitStatus> {
+export async function gitStatus(root: string, options: GitOptions = {}, repositoryPath?: unknown): Promise<GitStatus> {
+  const selected = await selectedRepositoryRoot(root, repositoryPath);
+  root = selected.root;
+  if (selected.nested) options = { ...options, ceilingDirectory: path.dirname(root) };
   const repo = await repository(root, options);
+  await requireSelectedRepository(root, repo, selected.nested);
   if (!repo) return { repository: false };
   let result: GitResult;
   try {
@@ -363,9 +480,13 @@ const cutAtLine = (text: string) => text.slice(0, text.lastIndexOf('\n') + 1);
  * path or everything, with untracked files as additions. Credential files are
  * never part of it; the result is bounded to `DIFF_LIMIT` bytes.
  */
-export async function gitDiff(root: string, requested?: unknown, options: GitOptions = {}): Promise<GitDiff> {
+export async function gitDiff(root: string, requested?: unknown, options: GitOptions = {}, repositoryPath?: unknown): Promise<GitDiff> {
+  const selected = await selectedRepositoryRoot(root, repositoryPath);
+  root = selected.root;
+  if (selected.nested) options = { ...options, ceilingDirectory: path.dirname(root) };
   const target = requested === undefined || requested === null || requested === '' ? undefined : (await resolveReadable(root, requestedPath(requested, '.'))).relative;
   const repo = await repository(root, options);
+  await requireSelectedRepository(root, repo, selected.nested);
   if (!repo) throw new InspectError('This project folder is not a Git repository.');
   try {
     const git = (args: string[], limit: number) => runGit(root, args, options, limit, repo.config);

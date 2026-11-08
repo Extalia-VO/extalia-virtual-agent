@@ -3,7 +3,8 @@
  * (stairs included), ride an elevator through its controller, sit down or
  * leave. Positions are mutated in place; free-space trajectories are planned per trip.
  */
-import { advanceNaturalWalk, createNaturalWalkState, naturalRoute, protectedHeadway, reconnectNaturalRoute, walkingSeed, type NaturalWalkState, type WalkableSegment, type WalkingNeighbor } from './naturalWalking';
+import { advanceNaturalWalk, createNaturalWalkState, naturalRoute, protectedHeadway, walkingSeed, type NaturalWalkState, type WalkableSegment, type WalkingNeighbor } from './naturalWalking';
+import { createMovementRecovery, DOOR_STALL_SECONDS, recoveryDetour, recoveryDue, recoveryGoal, recoverySegmentClear, WALK_STALL_SECONDS, STAIR_STALL_SECONDS, resetTransitWatch, transitRecoveryDue, type ElevatorProgress, type MovementRecoveryState } from './movementRecovery';
 import type { GaitParameters } from '../avatars/gait';
 import type { Point3 } from '../layout';
 import type { ElevatorId } from '../prefabs/architecture/elevatorController';
@@ -23,6 +24,8 @@ export type MoverGoal = { readonly kind: 'seat'; readonly seat: SeatApproach } |
 
 /** The subset of the elevator controller a rider uses; injected for tests. */
 export interface ElevatorAccess {
+  /** Optional rider-scoped controller evidence. Missing diagnostics never time out. */
+  progress?(riderId: string, elevatorId: ElevatorId): ElevatorProgress | null;
   request(riderId: string, from: OfficeFloor, to: OfficeFloor, elevatorId: ElevatorId): void;
   waitingSlot(riderId: string, elevatorId: ElevatorId): number | null;
   canBoard(riderId: string, elevatorId: ElevatorId): boolean;
@@ -155,6 +158,7 @@ export interface Mover {
   /** Stable per-trip lane and progress along the sampled free-space trajectory. */
   routeSequence: number;
   readonly natural: NaturalWalkState;
+  readonly recovery: MovementRecoveryState;
 }
 
 /** Turning speed in rad/s: a person turns a right-angle corner in about a quarter of a second. */
@@ -178,7 +182,7 @@ export function createMover(id: string, gait: GaitParameters, position: Point3, 
     id, position: [position[0], position[1], position[2]], yaw, motion: createCharacterMotion(seated), phase: seated ? 'seated' : 'walking', gait,
     goal: null, seat: null, steps: [], stepIndex: 0, lastNode: null, backing: false, timer: 0, from: [0, 0, 0], fromYaw: 0, fromSit: 0,
     trip: null, pending: null, target: null, floorLow: floor, floorHigh: floor, pace: 1, cadenceScale: 1, opacity: 1,
-    routeSequence: 0, natural: createNaturalWalkState(), chair: null, chairPull: 0, chairSide: 1, chairSequence: 0, staticSeat: null, door: null, cleared: null, prev: [position[0], position[1], position[2]],
+    routeSequence: 0, natural: createNaturalWalkState(), recovery: createMovementRecovery(position), chair: null, chairPull: 0, chairSide: 1, chairSequence: 0, staticSeat: null, door: null, cleared: null, prev: [position[0], position[1], position[2]],
   };
 }
 
@@ -239,6 +243,7 @@ const goalNode = (goal: MoverGoal) => goal.kind === 'seat' ? seatStageId(goal.se
  */
 export function sendMover(mover: Mover, goal: MoverGoal, env: MovementEnv): boolean {
   if (mover.phase === 'gone') return false;
+  recoveryGoal(mover.recovery, goalNode(goal));
   if (mover.phase === 'seatwork' && mover.staticSeat) {
     const act = mover.staticSeat;
     if (act.kind === 'sit' && goal.kind === 'seat' && goal.seat.seatId === act.seat.seatId) { mover.goal = goal; mover.pending = null; return true; }
@@ -304,17 +309,22 @@ export function sendMover(mover: Mover, goal: MoverGoal, env: MovementEnv): bool
 }
 
 /** Plan from waypoint `start`; with `walkToStart`, first walk to that waypoint from the current spot. */
-export function routeFrom(mover: Mover, start: string | null, goal: MoverGoal, env: MovementEnv, walkToStart: boolean): boolean {
+export function routeFrom(mover: Mover, start: string | null, goal: MoverGoal, env: MovementEnv, walkToStart: boolean, routeOrigin: Readonly<Point3> = mover.position): boolean {
   if (!start) return false;
-  const route = planRoute(start, goalNode(goal), env.navigation);
+  recoveryGoal(mover.recovery, goalNode(goal));
+  const navigation = recoveryNavigation(mover, env.navigation);
+  const route = planRoute(start, goalNode(goal), navigation);
   const point = env.navigation.waypoints.get(start)?.position;
   if (!route || !point) return false;
   mover.goal = goal;
-  const steps = withElevator(route.steps, preferredElevator(mover.id), env.navigation);
+  const preferred = preferredElevator(mover.id);
+  const elevatorId = mover.recovery.avoidedElevators.includes(preferred) ? preferred === 'A' ? 'B' : 'A' : preferred;
+  const steps = withElevator(route.steps, elevatorId, navigation);
   const routeSteps: RouteStep[] = walkToStart ? [{ kind: 'walk', node: start, to: [point[0], point[1], point[2]], stairs: Math.abs(point[1] - mover.position[1]) > 0.05 }, ...steps] : steps;
-  mover.steps = naturalRoute(mover.position, routeSteps, env.navigation, walkingSeed(mover.id, mover.routeSequence++), env.walkable);
+  mover.steps = naturalRoute(routeOrigin, routeSteps, env.navigation, walkingSeed(mover.id, mover.routeSequence++), env.walkable);
   mover.natural.index = -1; mover.natural.progress = 0; mover.natural.offset = 0; mover.natural.speed = 1; mover.natural.blockedTime = 0; mover.natural.lateralSpeed = 0;
   mover.stepIndex = 0;
+  mover.recovery.stairRetreat = [];
   mover.lastNode = walkToStart ? null : start;
   mover.backing = false;
   mover.phase = 'walking';
@@ -322,6 +332,18 @@ export function routeFrom(mover: Mover, start: string | null, goal: MoverGoal, e
   env.trackBody?.(mover.id, null);
   if (goal.kind === 'seat') mover.seat = goal.seat;
   return true;
+}
+
+/** Failed connectors stay excluded until a new destination is requested. */
+function recoveryNavigation(mover: Mover, navigation: OfficeNavigation): OfficeNavigation {
+  const { avoidedElevators, avoidedEdges } = mover.recovery;
+  if (!avoidedElevators.length && !avoidedEdges.length) return navigation;
+  const edges = new Map([...navigation.graph.edges].map(([from, edges]) => [from, edges.filter(edge => {
+    const key = `${from}|${edge.to}`;
+    const elevator = navigation.elevatorEdges.get(key);
+    return !avoidedEdges.includes(key) && (!elevator || !avoidedElevators.includes(elevator));
+  })]));
+  return { ...navigation, graph: { ...navigation.graph, edges } };
 }
 
 /** A waypoint this close to a floor's height is on that floor. */
@@ -496,6 +518,7 @@ export function stepMover(mover: Mover, seconds: number, env: MovementEnv): void
   }
   // Several short curve samples may be consumed in one frame; share one turn budget.
   if (walkingBefore) mover.yaw = turnToward(yawBefore, mover.yaw, TURN_RATE, dt);
+  recoverStalledMover(mover, dt, env);
   updateFloors(mover);
   if (walkingBefore && env.doors) env.doors.moved(mover.id, mover.prev, mover.position);
   const routeStep = mover.steps[mover.stepIndex];
@@ -525,6 +548,225 @@ function finishRoute(mover: Mover, env: MovementEnv) {
   releaseTrip(mover, env);
 }
 
+/** Never recover across a threshold, even if static clearance omits moving leaves. */
+function recoveryDoorClear(from: Readonly<Point3>, to: Readonly<Point3>, env: MovementEnv): boolean {
+  if (!env.doors) return true;
+  const count = Math.max(1, Math.ceil(Math.hypot(to[0] - from[0], to[2] - from[2]) / 0.4));
+  let previous = from;
+  for (let index = 1; index <= count; index++) {
+    const t = index / count;
+    const next: Point3 = [from[0] + (to[0] - from[0]) * t, from[1], from[2] + (to[2] - from[2]) * t];
+    if (env.doors.doorAhead(previous, next) || env.doors.doorAhead(next, previous)) return false;
+    previous = next;
+  }
+  return true;
+}
+
+function abandonRecoveryInteraction(mover: Mover, env: MovementEnv): void {
+  if (mover.door) env.doors?.release(mover.door.id, mover.id);
+  env.doors?.clearDuty(mover.id);
+  releaseTrip(mover, env);
+  mover.door = null; mover.cleared = null; mover.target = null;
+  mover.recovery.yielding = null;
+  mover.motion.reach[0].weight = 0; mover.motion.reach[1].weight = 0;
+  Object.assign(mover.natural, createNaturalWalkState());
+}
+
+/** A destination has three bounded chances: step aside, replan, then safe placement. */
+function recoverStalledMover(mover: Mover, dt: number, env: MovementEnv): void {
+  const goal = mover.pending ?? mover.goal;
+  if (goal) recoveryGoal(mover.recovery, goalNode(goal));
+  const step = mover.steps[mover.stepIndex];
+  if (mover.trip && ['waiting', 'boarding', 'riding', 'alighting'].includes(mover.phase)) {
+    recoverStalledTransit(mover, dt, env);
+    return;
+  }
+  resetTransitWatch(mover.recovery);
+  const stair = mover.phase === 'walking' && step?.kind === 'walk' && !mover.backing
+    && (step.stairs || env.navigation.connectors.some(connector => connector.kind === 'stairs' && connector.waypoints.includes(step.node)));
+  if (stair && step?.kind === 'walk') {
+    const retreatBlocked = mover.recovery.stairRetreat.includes(step.node) && env.nearbyWalkers
+      && protectedHeadway(mover.id, mover.position, step.to, walkSpeed(mover) * STAIR_SPEED_FACTOR, dt, env.nearbyWalkers(mover.id, mover.position)) < .05;
+    const remaining = Math.hypot(step.to[0] - mover.position[0], step.to[1] - mover.position[1], step.to[2] - mover.position[2]);
+    if (recoveryDue(mover.recovery, mover.position, retreatBlocked ? null : `stairs:${mover.stepIndex}`, 0, dt, STAIR_STALL_SECONDS, remaining)) recoverStalledStairs(mover, step, env);
+    return;
+  }
+  const door = mover.phase === 'doorwork' ? mover.door : null;
+  const walking = mover.phase === 'walking' && step?.kind === 'walk' && !step.stairs && !mover.backing && Math.abs(mover.position[1] - floorY(floorAt(mover.position[1]))) < LEVEL_EPSILON;
+  const queued = door && !door.door.sliding && door.kind === 'wait' && door.beat === 'reserve';
+  const yielding = mover.recovery.yielding && step?.node !== 'movement-recovery-yield';
+  const signature = queued || yielding ? null : door ? `door:${door.id}:${door.kind}:${door.beat}` : walking ? `walk:${mover.stepIndex}` : null;
+  const remaining = walking && step?.kind === 'walk' ? Math.hypot(step.to[0] - mover.position[0], step.to[2] - mover.position[2]) : Infinity;
+  if (!recoveryDue(mover.recovery, mover.position, signature, door ? env.doors?.amount(door.id) ?? 0 : 0, dt, door ? DOOR_STALL_SECONDS : WALK_STALL_SECONDS, remaining)) return;
+  // Static clearance is required for detours; placement also needs a body snapshot.
+  if (!env.walkable) return;
+  const neighbors = env.nearbyWalkers?.(mover.id, mover.position) ?? [];
+  const clear = (from: Readonly<Point3>, to: Readonly<Point3>) => recoverySegmentClear(mover.id, from, to, env.walkable!, neighbors) && recoveryDoorClear(from, to, env);
+  if (mover.recovery.attempts === 1 && walking && step?.kind === 'walk') {
+    // Join beyond virtual samples, but never skip an authored portal/contact.
+    let join = mover.stepIndex;
+    let target = step;
+    while (target.natural && join + 1 < mover.steps.length && Math.hypot(target.to[0] - mover.position[0], target.to[2] - mover.position[2]) < 3) {
+      const next = mover.steps[join + 1];
+      if (!next || next.kind !== 'walk' || next.stairs) break;
+      target = next; join++;
+    }
+    const middle = recoveryDetour(mover.position, target.to, (from, to) => recoverySegmentClear(mover.id, from, to, env.walkable!, neighbors));
+    if (middle && recoveryDoorClear(mover.position, middle, env)) {
+      // Discard obsolete curve progress, retaining every authored contact ahead.
+      mover.steps.splice(mover.stepIndex, join - mover.stepIndex + 1,
+        { kind: 'walk', node: 'movement-recovery-detour', to: middle, stairs: false },
+        { kind: 'walk', node: target.node, to: [...target.to], stairs: false });
+      Object.assign(mover.natural, createNaturalWalkState());
+      return;
+    }
+  }
+  if (mover.recovery.attempts <= 2 && step?.kind === 'walk' && (walking || door?.door.sliding)) {
+    const dx = step.to[0] - mover.position[0], dz = step.to[2] - mover.position[2], length = Math.hypot(dx, dz);
+    if (length > 0.01) {
+      const tx = dx / length, tz = dz / length;
+      // A stable winner continues; the other retreats to a clear same-side apron.
+      const blocker = neighbors.find(other => other.id < mover.id && Math.abs(other.position[1] - mover.position[1]) < .8
+        && (other.position[0] - mover.position[0]) * tx + (other.position[2] - mover.position[2]) * tz > 0
+        && Math.hypot(other.position[0] - mover.position[0], other.position[2] - mover.position[2]) < 2);
+      if (blocker) {
+        for (const back of [1.2, 2, .75]) {
+          for (const side of [.85, -.85, 1.3, -1.3]) {
+            const backPoint: Point3 = [mover.position[0] - tx * back, mover.position[1], mover.position[2] - tz * back];
+            const retreat: Point3 = [backPoint[0] + tz * side, mover.position[1], backPoint[2] - tx * side];
+            if (!clear(mover.position, backPoint) || !clear(backPoint, retreat)) continue;
+            const origin: Point3 = [...mover.position];
+            abandonRecoveryInteraction(mover, env);
+            mover.recovery.yielding = { neighbor: blocker.id, origin, direction: [tx, tz], waited: 0 };
+            mover.steps.splice(mover.stepIndex, 1,
+              { kind: 'walk', node: 'movement-recovery-yield', to: backPoint, stairs: false },
+              { kind: 'walk', node: 'movement-recovery-yield', to: retreat, stairs: false },
+              { kind: 'walk', node: step.node, to: [...step.to], stairs: false });
+            mover.phase = 'walking';
+            return;
+          }
+        }
+      }
+    }
+  }
+  if (mover.recovery.attempts === 1) {
+    if (door && step?.kind === 'walk') {
+      abandonRecoveryInteraction(mover, env);
+      mover.phase = 'walking';
+    }
+    return;
+  }
+  if (!goal || !env.nearbyWalkers) return;
+  const candidates = [...env.navigation.waypoints.values()]
+    .filter(node => node.kind !== 'door' && node.kind !== 'connector' && !node.id.startsWith('seat:') && Math.abs(node.position[1] - mover.position[1]) < LEVEL_EPSILON)
+    .map(node => ({ node, distance: Math.hypot(node.position[0] - mover.position[0], node.position[2] - mover.position[2]) }))
+    .filter(candidate => candidate.distance >= 0.75 && candidate.distance <= 6)
+    .sort((a, b) => a.distance - b.distance).slice(0, 16);
+  for (const { node } of candidates) {
+    if (!clear(mover.position, node.position) || !planRoute(node.id, goalNode(goal), env.navigation)) continue;
+    // Validate first. Failed recovery must not discard ownership or a pending goal.
+    abandonRecoveryInteraction(mover, env);
+    if (mover.recovery.attempts >= 3) {
+      env.trackWalker?.(mover.id, null); env.trackBody?.(mover.id, null);
+      copy(mover.position, node.position); copy(mover.prev, node.position);
+      mover.motion.walk = 0; mover.opacity = 0;
+    }
+    // The newest requested destination wins; pending is retained for normal handoff.
+    routeFrom(mover, node.id, goal, env, mover.recovery.attempts < 3);
+    return;
+  }
+}
+
+/** Only a validated supported floor landing can receive a stranded cab passenger. */
+function recoverStalledTransit(mover: Mover, dt: number, env: MovementEnv): void {
+  const trip = mover.trip!;
+  if (!env.elevators.progress) { resetTransitWatch(mover.recovery); return; }
+  const key = `${trip.id}:${trip.from}:${trip.to}:${mover.phase}:${trip.stage}`;
+  if (!transitRecoveryDue(mover.recovery, key, dt, () => {
+    const observation = env.elevators.progress!(mover.id, trip.id);
+    return observation && trip.exited ? { ...observation, ownership: 'exited' } : observation;
+  }, mover.position, mover.phase === 'waiting')) return;
+  if (!env.walkable || !env.nearbyWalkers || !(mover.pending ?? mover.goal)) return;
+  const goal = (mover.pending ?? mover.goal)!;
+  const avoided = mover.recovery.avoidedElevators;
+  if (!avoided.includes(trip.id)) avoided.push(trip.id);
+  const navigation = recoveryNavigation(mover, env.navigation);
+  // Waiting riders stay on their floor. A stranded onboard rider may fade to
+  // either known trip landing, never walk a segment across the shaft or floors.
+  const waiting = mover.phase === 'waiting';
+  const ownership = mover.recovery.transit.observation?.ownership;
+  const onboard = (mover.phase === 'riding' || mover.phase === 'alighting') && (ownership === 'boarded' || (mover.phase === 'alighting' && trip.exited));
+  const floors = onboard ? [trip.to, trip.from] : [trip.from];
+  for (const floor of floors) {
+    const landing = env.navigation.waypoints.get(`f${floor}.elevator-${trip.id}`);
+    if (!landing || Math.abs(landing.position[1] - floorY(floor)) > LEVEL_EPSILON) continue;
+    const neighbors = env.nearbyWalkers(mover.id, landing.position);
+    if (!recoverySegmentClear(mover.id, landing.position, landing.position, env.walkable, neighbors)
+      || !planRoute(landing.id, goalNode(goal), navigation)) continue;
+    const walking = waiting && Math.abs(mover.position[1] - landing.position[1]) < LEVEL_EPSILON
+      && recoverySegmentClear(mover.id, mover.position, landing.position, env.walkable, neighbors)
+      && recoveryDoorClear(mover.position, landing.position, env);
+    // Validate everything before releasing this rider's ownership.
+    abandonRecoveryInteraction(mover, env);
+    if (!walking) {
+      env.trackWalker?.(mover.id, null); env.trackBody?.(mover.id, null);
+      copy(mover.position, landing.position); copy(mover.prev, landing.position);
+      mover.motion.walk = 0; mover.opacity = 0;
+    }
+    mover.pending = null;
+    routeFrom(mover, landing.id, goal, env, walking);
+    resetTransitWatch(mover.recovery);
+    return;
+  }
+}
+
+/** Retreat only along the exact authored flight already occupied, never snap. */
+function recoverStalledStairs(mover: Mover, step: Extract<RouteStep, { kind: 'walk' }>, env: MovementEnv): void {
+  const goal = mover.pending ?? mover.goal;
+  const start = mover.lastNode && env.navigation.waypoints.get(mover.lastNode);
+  const end = env.navigation.waypoints.get(step.node);
+  if (!goal || !start || !end || !env.walkable || !env.nearbyWalkers) return;
+  if (!env.navigation.connectors.some(connector => connector.kind === 'stairs' && connector.waypoints.includes(start.id) && Math.abs(connector.waypoints.indexOf(start.id) - connector.waypoints.indexOf(end.id)) === 1)) return;
+  const a = start.position, b = end.position;
+  const length2 = b.reduce((sum, value, index) => sum + (value - a[index]!) ** 2, 0);
+  const t = length2 > 0 ? b.reduce((sum, value, index) => sum + (mover.position[index]! - a[index]!) * (value - a[index]!), 0) / length2 : 0;
+  if (t < -.001 || t > 1.001 || Math.hypot(...a.map((value, index) => mover.position[index]! - value - t * (b[index]! - value)) as [number, number, number]) > .05) return;
+  const key = `${start.id}|${step.node}`;
+  if (!mover.recovery.avoidedEdges.includes(key)) mover.recovery.avoidedEdges.push(key);
+  const connector = env.navigation.connectors.find(connector => connector.kind === 'stairs'
+    && connector.waypoints.includes(start.id) && connector.waypoints.includes(end.id))!;
+  const index = connector.waypoints.indexOf(start.id);
+  // Directed stair lanes can have no alternate exit at a flight endpoint.
+  // Retrace their authored corners to a supported landing with a viable route.
+  for (let landingIndex = index; landingIndex >= 0; landingIndex--) {
+    const landing = env.navigation.waypoints.get(connector.waypoints[landingIndex]!);
+    if (!landing || !recoverySegmentClear(mover.id, landing.position, landing.position, env.walkable, env.nearbyWalkers(mover.id, landing.position))
+      || !planRoute(landing.id, goalNode(goal), recoveryNavigation(mover, env.navigation))) continue;
+    const retreat = connector.waypoints.slice(landingIndex, index + 1).reverse().map(node => ({
+      kind: 'walk' as const, node, to: [...env.navigation.waypoints.get(node)!.position] as Point3, stairs: true,
+    }));
+    let previous: Readonly<Point3> = mover.position;
+    const clear = retreat.every(step => {
+      const length = Math.hypot(step.to[0] - previous[0], step.to[1] - previous[1], step.to[2] - previous[2]);
+      for (let sample = 0; sample <= Math.ceil(length / .3); sample++) {
+        const t = length > 0 ? Math.min(1, sample * .3 / length) : 0;
+        const at: Point3 = previous.map((value, axis) => value + (step.to[axis]! - value) * t) as Point3;
+        if (!recoverySegmentClear(mover.id, at, at, () => true, env.nearbyWalkers!(mover.id, at))) return false;
+      }
+      previous = step.to;
+      return true;
+    });
+    if (!clear) continue;
+    abandonRecoveryInteraction(mover, env);
+    mover.pending = null;
+    routeFrom(mover, landing.id, goal, env, false, landing.position);
+    mover.recovery.stairRetreat = retreat.map(step => step.node);
+    mover.steps.unshift(...retreat);
+    mover.lastNode = start.id;
+    return;
+  }
+}
+
 /** The next waypoint when the walker turns a corner on the same level (no stairs, cab or chair ahead). */
 function cornerAhead(mover: Mover, step: Extract<RouteStep, { kind: 'walk' }>): Readonly<Point3> | null {
   if (mover.backing || step.stairs) return null;
@@ -535,6 +777,19 @@ function cornerAhead(mover: Mover, step: Extract<RouteStep, { kind: 'walk' }>): 
 }
 
 function stepWalking(mover: Mover, dt: number, env: MovementEnv) {
+  const yielding = mover.recovery.yielding;
+  if (yielding && mover.steps[mover.stepIndex]?.node !== 'movement-recovery-yield') {
+    const other = env.nearbyWalkers?.(mover.id, mover.position).find(neighbor => neighbor.id === yielding.neighbor);
+    const passed = other && (other.position[0] - yielding.origin[0]) * yielding.direction[0] + (other.position[2] - yielding.origin[2]) * yielding.direction[1] < -.75;
+    yielding.waited += dt;
+    if (other && !passed && yielding.waited < 6) {
+      const step = mover.steps[mover.stepIndex];
+      mover.target = step?.kind === 'walk' ? step.to : null;
+      easeWalk(mover, 0, dt);
+      return;
+    }
+    mover.recovery.yielding = null;
+  }
   let budget = dt;
   const hit = env.doors?.duty(mover.id);
   if (hit && env.doors && beginClosing(mover, env.doors, hit, DOOR_CLOSE_MIN_M)) return;
@@ -577,22 +832,17 @@ function stepWalking(mover: Mover, dt: number, env: MovementEnv) {
       copy(mover.position, advanced.position);
       state.progress = advanced.progress; state.offset = advanced.offset; state.speed = advanced.speed; state.lateralSpeed = advanced.lateralSpeed;
       state.blockedTime = travelled < 1e-4 ? state.blockedTime + budget : 0;
-      if (state.blockedTime > 1.5) {
-        state.blockedTime = 0;
-        const reconnect = reconnectNaturalRoute(mover.position, mover.steps, mover.stepIndex, env.navigation, walkingSeed(mover.id, mover.routeSequence), env.walkable, neighbors);
-        if (reconnect) {
-          mover.steps.splice(mover.stepIndex, reconnect.count, ...reconnect.steps);
-          state.index = -1; state.progress = 0; state.offset = 0; state.speed = 0; state.lateralSpeed = 0;
-          easeWalk(mover, 0, budget);
-          return;
-        }
-      }
       left = advanced.arrived ? 0 : 1;
     } else {
-      if (env.walkable && env.nearbyWalkers && !step.stairs && !mover.backing) {
+      if (env.walkable && env.nearbyWalkers && (!step.stairs || mover.recovery.stairRetreat.includes(step.node)) && !mover.backing) {
         scale *= protectedHeadway(mover.id, mover.position, step.to, walkSpeed(mover) * scale, budget, env.nearbyWalkers(mover.id, mover.position));
       }
+      const beforePosition: Point3 = [...mover.position];
+      const beforePhase = mover.motion.phase;
       left = walkToward(mover, step.to, budget, scale, mover.backing, cornerAhead(mover, step));
+      if (env.walkable && env.nearbyWalkers && !step.stairs && !mover.backing && !env.walkable(beforePosition, mover.position, 0.29)) {
+        copy(mover.position, beforePosition); mover.motion.phase = beforePhase; left = 1;
+      }
     }
     easeWalk(mover, Math.hypot(mover.position[0] - mover.prev[0], mover.position[2] - mover.prev[2]) > 1e-5 ? 1 : 0, budget);
     if (left > 0) return;
@@ -600,6 +850,7 @@ function stepWalking(mover: Mover, dt: number, env: MovementEnv) {
     const speed = walkSpeed(mover) * scale * (step.natural ? mover.natural.speed : 1);
     budget = step.natural ? Math.max(0, budget - naturalSeconds) : speed > 0 ? Math.max(0, budget - before / speed) : 0;
     if (!step.natural?.transit) mover.lastNode = step.node;
+    if (mover.recovery.stairRetreat[0] === step.node) mover.recovery.stairRetreat.shift();
     mover.backing = false;
     mover.stepIndex++;
     if (mover.pending) {

@@ -2,8 +2,8 @@
  * Knowledge host service (W5; ADR 0024 and its 2026-10-23 amendment, ADR 0027): the calling
  * profile's vault index, served by the Rust core daemon.
  *
- * - Offered only with the native core flag on (`nativeCore: 'rust'`); with the TypeScript core the
- *   host leaves the knowledge methods out and the Knowledge page stays hidden.
+ * - Offered independently of the backend for new missions. The index uses the host's one lazy
+ *   Rust sidecar; an unavailable binary is reported explicitly, never emulated in TypeScript.
  * - Results are the daemon's (`daemonKnowledge.ts`) forwarded unchanged; the host adds only the
  *   skipped-file list of the latest sync it ran (memory only, empty after a restart).
  * - `knowledgeStatus` never throws: an unavailable daemon (or one that does not serve the index) is
@@ -100,7 +100,7 @@ export interface KnowledgeServiceOptions {
    * The vault folder setting (`knowledgeVault.ts`): `check()` throws `VaultUnavailableError` while the chosen
    * folder cannot be used; `label()` names the root for an unavailable status.
    */
-  vault?: { check(): void; label(): string };
+  vault?: { check(): void; label(): string; admit?(): void };
 }
 
 export class KnowledgeService {
@@ -119,6 +119,7 @@ export class KnowledgeService {
   private now(): number { return this.options.now?.() ?? Date.now(); }
 
   private async client(): Promise<DaemonClient> {
+    this.options.vault?.check();
     const client = await this.options.daemon.connect();
     if (!REQUIRED_KNOWLEDGE_OPS.every(op => client.capabilities.includes(op))) throw new NotServedError();
     this.editing = editingOf(client.capabilities);
@@ -169,6 +170,9 @@ export class KnowledgeService {
     return { ...current, skipped: current.lastSync ? structuredClone(this.skipped) : [], ...(this.editing ? { editing: { ...this.editing } } : {}) };
   }
 
+  /** Drain already queued writes/syncs before the host releases its profile lock. */
+  async drain(): Promise<void> { await this.syncing?.catch(() => undefined); }
+
   /** Note editing (`knowledgeEdit.ts`): a client for a read, after the queued syncs and writes. */
   async ready(): Promise<DaemonClient> {
     await this.syncing?.catch(() => undefined);
@@ -180,6 +184,7 @@ export class KnowledgeService {
    * a sync requested later waits for it (and reads the vault after the write). Failures reject as they are.
    */
   exclusive<T>(task: (client: DaemonClient) => Promise<T>): Promise<T> {
+    this.options.vault?.admit?.();
     const previous = this.syncing;
     const run = (async () => {
       await previous?.catch(() => undefined);

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:extalia:protocol:daemon-frame:v1",
   "title": "Daemon wire frame v1",
-  "description": "Generated from @extalia/protocol by tooling/generate-schemas.mjs; do not edit. The TypeScript validators remain the reference. Validator-only checks: mission.create graph belongs to the mission; mission.snapshot unique task/lease IDs, task/holder/state lease correspondence and lease time order; TaskGraph unique task IDs, known references, acyclic dependsOn/parentTaskId and completed dependencies for started work; planning connection IDs sorted by ASCII order, inspection observation identity/digest correspondence and observation time not before admission; planning receipts grant no execution or settlement authority; routing preview status/count/score/identity/pin/rationale correspondence, report-wide exact revision metadata consistency and 512 KiB result budget; the checks of each nested contract; string lengths in UTF-16 code units (maxLength here counts code points).",
+  "description": "Generated from @extalia/protocol by tooling/generate-schemas.mjs; do not edit. The TypeScript validators remain the reference. Validator-only checks: mission.create graph belongs to the mission; mission.snapshot unique task/lease IDs, task/holder/state lease correspondence and lease time order; TaskGraph unique task IDs, known references, acyclic dependsOn/parentTaskId and completed dependencies for started work; planning/preparation connection IDs sorted by ASCII order, inspection observation identity/digest correspondence and observation time not before admission; planning/preparation receipts grant no execution or settlement authority; routing preview status/count/score/identity/pin/rationale correspondence, report-wide exact revision metadata consistency and 512 KiB result budget; the checks of each nested contract; string lengths in UTF-16 code units (maxLength here counts code points).",
   "$ref": "#/$defs/DaemonFrame",
   "$defs": {
     "AgentEvent": {
@@ -1079,6 +1079,16 @@
                 "update",
                 "delete"
               ]
+            },
+            "toolCallId": {
+              "type": "string",
+              "maxLength": 200,
+              "pattern": "^[^\\n\\r]*$",
+              "allOf": [
+                {
+                  "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+                }
+              ]
             }
           }
         },
@@ -1771,7 +1781,7 @@
         "capabilities": {
           "type": "array",
           "minItems": 1,
-          "maxItems": 41,
+          "maxItems": 44,
           "uniqueItems": true,
           "items": {
             "$ref": "#/$defs/DaemonOp"
@@ -1801,7 +1811,7 @@
         "capabilities": {
           "type": "array",
           "minItems": 1,
-          "maxItems": 41,
+          "maxItems": 44,
           "uniqueItems": true,
           "items": {
             "$ref": "#/$defs/DaemonOp"
@@ -3350,6 +3360,9 @@
         "planning.begin",
         "planning.observe",
         "planning.inspect",
+        "preparation.begin",
+        "preparation.observe",
+        "preparation.inspect",
         "skill.import",
         "skill.list",
         "skill.inspect",
@@ -3831,6 +3844,465 @@
         },
         "kind": {
           "const": "local-pipeline-settled"
+        },
+        "recordedAt": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/UtcTimestamp"
+            }
+          ],
+          "not": {
+            "pattern": "[\\r\\n\\u2028\\u2029]"
+          }
+        }
+      }
+    },
+    "DaemonPreparationBeginParams": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "invocationId",
+        "missionId",
+        "supervisorId",
+        "canonicalWorkspaceId",
+        "sessionId",
+        "workspaceId",
+        "connectionIds"
+      ],
+      "properties": {
+        "invocationId": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/Uuid"
+            }
+          ],
+          "not": {
+            "pattern": "[\\r\\n\\u2028\\u2029]"
+          }
+        },
+        "missionId": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/Uuid"
+            }
+          ],
+          "not": {
+            "pattern": "[\\r\\n\\u2028\\u2029]"
+          }
+        },
+        "supervisorId": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/Uuid"
+            }
+          ],
+          "not": {
+            "pattern": "[\\r\\n\\u2028\\u2029]"
+          }
+        },
+        "canonicalWorkspaceId": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/Uuid"
+            }
+          ],
+          "not": {
+            "pattern": "[\\r\\n\\u2028\\u2029]"
+          }
+        },
+        "sessionId": {
+          "type": "string",
+          "maxLength": 200,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$",
+          "not": {
+            "pattern": "[^A-Za-z0-9._:-]"
+          }
+        },
+        "workspaceId": {
+          "type": "string",
+          "maxLength": 200,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$",
+          "not": {
+            "pattern": "[^A-Za-z0-9._:-]"
+          }
+        },
+        "connectionIds": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 16,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "maxLength": 200,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$",
+            "not": {
+              "pattern": "[^A-Za-z0-9._:-]"
+            }
+          }
+        }
+      }
+    },
+    "DaemonPreparationBeginResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "invocationId",
+        "missionId",
+        "supervisorId",
+        "canonicalWorkspaceId",
+        "sessionId",
+        "workspaceId",
+        "connectionIds",
+        "kind",
+        "admittedAt",
+        "admissionDigest"
+      ],
+      "properties": {
+        "invocationId": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/Uuid"
+            }
+          ],
+          "not": {
+            "pattern": "[\\r\\n\\u2028\\u2029]"
+          }
+        },
+        "missionId": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/Uuid"
+            }
+          ],
+          "not": {
+            "pattern": "[\\r\\n\\u2028\\u2029]"
+          }
+        },
+        "supervisorId": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/Uuid"
+            }
+          ],
+          "not": {
+            "pattern": "[\\r\\n\\u2028\\u2029]"
+          }
+        },
+        "canonicalWorkspaceId": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/Uuid"
+            }
+          ],
+          "not": {
+            "pattern": "[\\r\\n\\u2028\\u2029]"
+          }
+        },
+        "sessionId": {
+          "type": "string",
+          "maxLength": 200,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$",
+          "not": {
+            "pattern": "[^A-Za-z0-9._:-]"
+          }
+        },
+        "workspaceId": {
+          "type": "string",
+          "maxLength": 200,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$",
+          "not": {
+            "pattern": "[^A-Za-z0-9._:-]"
+          }
+        },
+        "connectionIds": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 16,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "maxLength": 200,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$",
+            "not": {
+              "pattern": "[^A-Za-z0-9._:-]"
+            }
+          }
+        },
+        "kind": {
+          "const": "native-mission-preparation"
+        },
+        "admittedAt": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/UtcTimestamp"
+            }
+          ],
+          "not": {
+            "pattern": "[\\r\\n\\u2028\\u2029]"
+          }
+        },
+        "admissionDigest": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/Sha256Digest"
+            }
+          ],
+          "not": {
+            "pattern": "[\\r\\n\\u2028\\u2029]"
+          }
+        }
+      }
+    },
+    "DaemonPreparationInspectParams": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "invocationId"
+      ],
+      "properties": {
+        "invocationId": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/Uuid"
+            }
+          ],
+          "not": {
+            "pattern": "[\\r\\n\\u2028\\u2029]"
+          }
+        }
+      }
+    },
+    "DaemonPreparationInspectResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "admission"
+      ],
+      "properties": {
+        "admission": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "invocationId",
+            "missionId",
+            "supervisorId",
+            "canonicalWorkspaceId",
+            "sessionId",
+            "workspaceId",
+            "connectionIds",
+            "kind",
+            "admittedAt",
+            "admissionDigest"
+          ],
+          "properties": {
+            "invocationId": {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/Uuid"
+                }
+              ],
+              "not": {
+                "pattern": "[\\r\\n\\u2028\\u2029]"
+              }
+            },
+            "missionId": {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/Uuid"
+                }
+              ],
+              "not": {
+                "pattern": "[\\r\\n\\u2028\\u2029]"
+              }
+            },
+            "supervisorId": {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/Uuid"
+                }
+              ],
+              "not": {
+                "pattern": "[\\r\\n\\u2028\\u2029]"
+              }
+            },
+            "canonicalWorkspaceId": {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/Uuid"
+                }
+              ],
+              "not": {
+                "pattern": "[\\r\\n\\u2028\\u2029]"
+              }
+            },
+            "sessionId": {
+              "type": "string",
+              "maxLength": 200,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$",
+              "not": {
+                "pattern": "[^A-Za-z0-9._:-]"
+              }
+            },
+            "workspaceId": {
+              "type": "string",
+              "maxLength": 200,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$",
+              "not": {
+                "pattern": "[^A-Za-z0-9._:-]"
+              }
+            },
+            "connectionIds": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 16,
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "maxLength": 200,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$",
+                "not": {
+                  "pattern": "[^A-Za-z0-9._:-]"
+                }
+              }
+            },
+            "kind": {
+              "const": "native-mission-preparation"
+            },
+            "admittedAt": {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/UtcTimestamp"
+                }
+              ],
+              "not": {
+                "pattern": "[\\r\\n\\u2028\\u2029]"
+              }
+            },
+            "admissionDigest": {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/Sha256Digest"
+                }
+              ],
+              "not": {
+                "pattern": "[\\r\\n\\u2028\\u2029]"
+              }
+            }
+          }
+        },
+        "observation": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "invocationId",
+            "admissionDigest",
+            "kind",
+            "recordedAt"
+          ],
+          "properties": {
+            "invocationId": {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/Uuid"
+                }
+              ],
+              "not": {
+                "pattern": "[\\r\\n\\u2028\\u2029]"
+              }
+            },
+            "admissionDigest": {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/Sha256Digest"
+                }
+              ],
+              "not": {
+                "pattern": "[\\r\\n\\u2028\\u2029]"
+              }
+            },
+            "kind": {
+              "const": "local-preparation-settled"
+            },
+            "recordedAt": {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/UtcTimestamp"
+                }
+              ],
+              "not": {
+                "pattern": "[\\r\\n\\u2028\\u2029]"
+              }
+            }
+          }
+        }
+      }
+    },
+    "DaemonPreparationObserveParams": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "invocationId",
+        "admissionDigest",
+        "kind"
+      ],
+      "properties": {
+        "invocationId": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/Uuid"
+            }
+          ],
+          "not": {
+            "pattern": "[\\r\\n\\u2028\\u2029]"
+          }
+        },
+        "admissionDigest": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/Sha256Digest"
+            }
+          ],
+          "not": {
+            "pattern": "[\\r\\n\\u2028\\u2029]"
+          }
+        },
+        "kind": {
+          "const": "local-preparation-settled"
+        }
+      }
+    },
+    "DaemonPreparationObserveResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "invocationId",
+        "admissionDigest",
+        "kind",
+        "recordedAt"
+      ],
+      "properties": {
+        "invocationId": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/Uuid"
+            }
+          ],
+          "not": {
+            "pattern": "[\\r\\n\\u2028\\u2029]"
+          }
+        },
+        "admissionDigest": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/Sha256Digest"
+            }
+          ],
+          "not": {
+            "pattern": "[\\r\\n\\u2028\\u2029]"
+          }
+        },
+        "kind": {
+          "const": "local-preparation-settled"
         },
         "recordedAt": {
           "allOf": [
@@ -4338,6 +4810,105 @@
             },
             "params": {
               "$ref": "#/$defs/DaemonPlanningInspectParams"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "kind",
+            "requestId",
+            "op",
+            "params"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "kind": {
+              "const": "request"
+            },
+            "requestId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "op": {
+              "const": "preparation.begin"
+            },
+            "deadlineMs": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 600000
+            },
+            "params": {
+              "$ref": "#/$defs/DaemonPreparationBeginParams"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "kind",
+            "requestId",
+            "op",
+            "params"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "kind": {
+              "const": "request"
+            },
+            "requestId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "op": {
+              "const": "preparation.observe"
+            },
+            "deadlineMs": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 600000
+            },
+            "params": {
+              "$ref": "#/$defs/DaemonPreparationObserveParams"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "kind",
+            "requestId",
+            "op",
+            "params"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "kind": {
+              "const": "request"
+            },
+            "requestId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "op": {
+              "const": "preparation.inspect"
+            },
+            "deadlineMs": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 600000
+            },
+            "params": {
+              "$ref": "#/$defs/DaemonPreparationInspectParams"
             }
           }
         },
@@ -5620,6 +6191,90 @@
             },
             "result": {
               "$ref": "#/$defs/DaemonPlanningInspectResult"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "kind",
+            "requestId",
+            "op",
+            "result"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "kind": {
+              "const": "response"
+            },
+            "requestId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "op": {
+              "const": "preparation.begin"
+            },
+            "result": {
+              "$ref": "#/$defs/DaemonPreparationBeginResult"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "kind",
+            "requestId",
+            "op",
+            "result"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "kind": {
+              "const": "response"
+            },
+            "requestId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "op": {
+              "const": "preparation.observe"
+            },
+            "result": {
+              "$ref": "#/$defs/DaemonPreparationObserveResult"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "kind",
+            "requestId",
+            "op",
+            "result"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "kind": {
+              "const": "response"
+            },
+            "requestId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "op": {
+              "const": "preparation.inspect"
+            },
+            "result": {
+              "$ref": "#/$defs/DaemonPreparationInspectResult"
             }
           }
         },

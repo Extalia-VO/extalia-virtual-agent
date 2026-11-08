@@ -3,7 +3,7 @@ import { QA_HOOKS } from './qaHooks';
 import { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import {
-  AdditiveBlending, CanvasTexture, Color, DynamicDrawUsage, Float32BufferAttribute, InstancedBufferAttribute, Matrix4, MeshBasicMaterial, MeshStandardMaterial, Object3D, PlaneGeometry,
+  AdditiveBlending, BoxGeometry, CanvasTexture, Color, DynamicDrawUsage, Float32BufferAttribute, InstancedBufferAttribute, Matrix4, MeshBasicMaterial, MeshStandardMaterial, Object3D, PlaneGeometry,
   ShaderMaterial, SpotLight, SRGBColorSpace, Vector3, type BufferGeometry, type Group, type InstancedMesh,
 } from 'three';
 import { sceneLocalMinutes, useSolarEnvironment, type LightOverride, type SceneSky } from './Environment';
@@ -25,8 +25,9 @@ import {
 } from './parkingManeuvers';
 import {
   BEAM_LENGTH, BEAM_TUCK, BEAM_WIDTH, DECAL_LIFT, HEAD_GLARE_SIZE, HEADLIGHT_SPOT, REAR_POOL_LENGTH, REAR_POOL_TUCK, REAR_POOL_WIDTH,
-  carPoint, headlightPoolLevels, headlightSpotAim, lampGlareLevels, vehicleLampAnchors, type VehicleLampAnchors,
+  carPoint, headlightPoolLevels, headlightSpotAim, indicatorLensMatrix, lampGlareLevels, signalLit, vehicleIndicatorAnchors, vehicleLampAnchors, type VehicleIndicatorAnchors, type VehicleLampAnchors,
 } from './campusVehicleLamps';
+export { SIGNAL_HZ, SIGNAL_DUTY, signalLit } from './campusVehicleLamps';
 
 /**
  * Lamp power. Site fixtures (charger, shelter) and moving cars follow the light control:
@@ -647,6 +648,44 @@ function TrafficHeadlights({ sim, lamps }: { sim: TrafficSim; lamps: ReadonlyMap
 }
 
 /**
+ * Compact amber strips on the front/rear lenses of the turn side. One body-fixed instance batch
+ * reads the traffic clock; night visibility comes from its unlit material, without floating glow.
+ */
+function TurnSignals({ sim, lamps }: { sim: TrafficSim; lamps: ReadonlyMap<MobilityModel, VehicleIndicatorAnchors> }) {
+  const { reducedMotion } = useSolarEnvironment();
+  const lens = useRef<InstancedMesh>(null);
+  const resources = useMemo(() => ({
+    strip: new BoxGeometry(1, 1, 1),
+    lens: new MeshBasicMaterial({ name: 'traffic-turn-signal', color: '#ffad1f', toneMapped: false }),
+    matrix: new Matrix4(),
+  }), []);
+  useEffect(() => () => { resources.strip.dispose(); resources.lens.dispose(); }, [resources]);
+  useLayoutEffect(() => { lens.current?.instanceMatrix.setUsage(DynamicDrawUsage); }, []);
+  useFrame(() => {
+    const lensMesh = lens.current;
+    if (!lensMesh) return;
+    let count = 0;
+    for (let index = 0; index < sim.lightCount && count < lensMesh.instanceMatrix.count - 1; index++) {
+      const pose = sim.lights[index]!, anchors = lamps.get(pose.model);
+      if (!pose.visible || !pose.signal || !anchors || !signalLit(sim.seconds, pose.id, reducedMotion)) continue;
+      const side = pose.signal > 0 ? 0 : 1;
+      for (let end = 0; end < 2; end++) {
+        const lamp = (end === 0 ? anchors.head : anchors.tail)[side];
+        lensMesh.setMatrixAt(count, indicatorLensMatrix(pose, lamp, resources.matrix));
+        count++;
+      }
+    }
+    lensMesh.count = count;
+    lensMesh.visible = count > 0;
+    if (count) lensMesh.instanceMatrix.needsUpdate = true;
+  });
+  const capacity = (TRAFFIC_POOL + MAX_LOT_CARS) * 2;
+  return <group name="campus-traffic-turn-signals" userData={{ officeDynamic: true }}>
+    <instancedMesh ref={lens} name="traffic-turn-signal-lenses" args={[resources.strip, resources.lens, capacity]} frustumCulled={false} />
+  </group>;
+}
+
+/**
  * Three geometry batches per vehicle model (body, lamps, instanced wheels; only parked, manoeuvring
  * and active moving instances draw), two per site fixture, two additive road-light batches, one
  * lamp-glare batch and a fixed two-spot headlight pool.
@@ -663,8 +702,13 @@ export function CampusTraffic() {
     return [model, vehicleLampAnchors(geometry.lamp, VEHICLE_SPECS[model]!)];
   })), [loaded, fallback]);
   const sim = useMemo(() => createTrafficSim(), []);
+  const indicators = useMemo(() => new Map([...lamps.keys()].map(model => {
+    const geometry = loaded?.get(model) ?? fallback.get(model)!;
+    return [model, vehicleIndicatorAnchors(geometry.lamp, VEHICLE_SPECS[model]!)];
+  })), [lamps, loaded, fallback]);
   return <group name="campus-mobility" userData={{ officeCollision: false }}>
     {USED_MOBILITY_MODELS.map(model => <MobilityBatch key={model} model={model} geometry={loaded?.get(model) ?? fallback.get(model)!} sim={sim} />)}
     <TrafficHeadlights sim={sim} lamps={lamps} />
+    <TurnSignals sim={sim} lamps={indicators} />
   </group>;
 }

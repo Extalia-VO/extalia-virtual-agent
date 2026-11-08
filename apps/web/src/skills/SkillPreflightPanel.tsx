@@ -1,3 +1,4 @@
+import { Select } from '../ui/Select';
 import { useEffect, useRef, useState } from 'react';
 import { normalizeSkillPreflightReport, type AgentHostApi, type SkillPreflightReport, type SkillRegistryReport } from '@extalia/platform';
 import type { Messages } from '../i18n';
@@ -57,14 +58,11 @@ export function SkillPreflightView({ t, report, available, root, pins, result, e
       <p className="note small">{s.limits}</p>
       {report.truncated && <p className="muted small">{s.incompleteCatalog}</p>}
       <div className="skill-preflight-fields">
-        <label>{s.root}<select value={root} onChange={event => onRoot(event.target.value)}>
-          <option value="">{s.chooseRoot}</option>
-          {report.revisions.map(item => <option key={item.revisionId} value={item.revisionId}>{label(item.revisionId)}</option>)}
-        </select></label>
-        <label>{s.pin}<select value="" disabled={!chosen || Object.keys(pins).length >= 128 || !candidates.length} onChange={event => onPin(event.target.value)}>
-          <option value="">{s.choosePin}</option>
-          {candidates.map(item => <option key={item.revisionId} value={item.revisionId}>{label(item.revisionId)}</option>)}
-        </select></label>
+        <div className="field"><span>{s.root}</span><Select aria-label={s.root} value={root} onChange={onRoot}
+          options={[{ value: '', label: s.chooseRoot }, ...report.revisions.map(item => ({ value: item.revisionId, label: label(item.revisionId) }))]} /></div>
+        <div className="field"><span>{s.pin}</span><Select aria-label={s.pin} value="" placeholder={s.choosePin}
+          disabled={!chosen || Object.keys(pins).length >= 128 || !candidates.length} onChange={onPin}
+          options={candidates.map(item => ({ value: item.revisionId, label: label(item.revisionId) }))} /></div>
       </div>
       {Object.keys(pins).length === 0 && <p className="muted small">{s.noPins}</p>}
       <ul className="skill-preflight-pins">{Object.entries(pins).map(([id, revision]) => <li key={id}>

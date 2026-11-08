@@ -164,13 +164,17 @@ export async function runSmokeTest(window: BrowserWindow, screenshotDir = proces
   if (officeOpened) {
     await open(window, 'office');
     await waitFor(window, officeReady, 30_000);
+    // The automatic tour can select another floor while this probe checks a
+    // manual floor choice. Use the same explicit camera control as a user.
+    await window.webContents.executeJavaScript(`document.querySelector('.topbar-camera button[aria-pressed="true"]')?.click()`);
+    const manualCamera = await waitFor(window, `document.querySelector('.topbar-camera button')?.getAttribute('aria-pressed') === 'false'`);
     for (const floor of [1, 2, 3]) {
       const chosen = await window.webContents.executeJavaScript(`(() => {
         const button = document.querySelector('.topbar-office button[data-view="${floor}"]');
         button?.click(); return Boolean(button);
       })()`) as boolean;
       await settle(window);
-      floorViews.push(chosen && await waitFor(window, `document.querySelector('.topbar-office button[data-view="${floor}"]')?.getAttribute('aria-pressed') === 'true'`));
+      floorViews.push(manualCamera && chosen && await waitFor(window, `document.querySelector('.topbar-office button[data-view="${floor}"]')?.getAttribute('aria-pressed') === 'true'`));
       if (screenshotDir && chosen) {
         const file = path.join(screenshotDir, `office-f${floor}-desktop.png`);
         await writeFile(file, (await window.webContents.capturePage()).toPNG());

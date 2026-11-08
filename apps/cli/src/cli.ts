@@ -2,7 +2,8 @@ import { PORTABLE_SESSION_FORMAT, previewImport } from '@extalia/core';
 import type { ConnectService } from '@extalia/host';
 import { DATA_DIRECTORY_OVERRIDE, legacyDataDirectories, resolveDataDirectory } from '@extalia/platform';
 import { PROTOCOL_VERSION, parseEvent, parseEventLines, type ParseResult } from '@extalia/protocol';
-import { runConnect, runConnections, runDisconnect, runMcp } from './connect';
+import { runConnect, runConnections, runDisconnect, runMcp, runReply } from './connect';
+import { runCodexPermissions } from './codexPermissions';
 import type { StartOptions } from './start';
 
 export type { StartOptions } from './start';
@@ -44,13 +45,19 @@ Commands:
     --port <number>     Hook endpoint port
     --rotate            Rotate the local hook ingest token
     --trust             Approve Extalia hooks in Codex via codex app-server
+  connect codex-permission --session <UUID> [--codex-home <absolute path>]
+    --dry-run           Review a synchronous permission hook (default; no writes)
+    --apply <revision>  Apply that exact reviewed configuration revision
+    --undo              Review removal; add --apply <revision> to confirm
   disconnect <app>    Remove Extalia hooks from an agent app
   connections         Show hook connection status for all agent apps
     --recover           Review an interrupted connect or disconnect (preview only)
     --rollback          With --recover: restore the files to their state before it
     --keep              With --recover: keep the current files and forget the record
     --yes, -y           With --recover --rollback|--keep: confirm without asking
-  mcp                 Run the stdio MCP reporting server (report_intent, report_handoff)
+  mcp                 Run the stdio MCP server (reports and cooperative await_reply)
+  reply               Wait for a reply through the original calling tool
+    --url <url> --token <secret> [--question <text>]
   update              Install the latest version from npm
     --check             Only report whether a newer version exists
   doctor              Show versions, platform and the user-data location
@@ -175,13 +182,15 @@ export async function run(args: readonly string[], host: CliHost): Promise<numbe
     case 'start':
       return start(host, rest);
     case 'connect':
-      return runConnect(host, rest);
+      return rest[0] === 'codex-permission' ? runCodexPermissions(host, rest.slice(1)) : runConnect(host, rest);
     case 'disconnect':
       return runDisconnect(host, rest);
     case 'connections':
       return runConnections(host, rest);
     case 'mcp':
       return runMcp(host, rest);
+    case 'reply':
+      return runReply(host, rest);
     case 'update':
       return update(host, rest);
     case 'help':

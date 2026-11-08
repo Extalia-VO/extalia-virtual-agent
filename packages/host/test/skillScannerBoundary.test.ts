@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { chmod, lstat, mkdir, readdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { BUILTIN_SKILLS } from '../src/builtinSkills.js';
-import { buildAgentSkillCatalog, createSkillTools, withBuiltinSkills, type AgentSkillCatalog, type Skill } from '../src/skills.js';
+import { buildAgentSkillCatalog, createSkillTools, referenceSkill, withBuiltinSkills, type AgentSkillCatalog, type Skill, type SkillReference } from '../src/skills.js';
 import { createAgentHost } from '../src/service.js';
 import { DAEMON_BINARY, HAS_DAEMON } from './daemonBackend.js';
 import { findTool, runTool, useTempDirs } from './helpers.js';
@@ -23,6 +23,45 @@ async function unlockFixture(directory: string): Promise<void> {
 }
 
 describe('mandatory scanner boundary for agent skill offerings', () => {
+  it('uses body-free opaque references without granting scanner authority to references or copied brands', async () => {
+    const skill = external();
+    const reference = referenceSkill(skill);
+    expect(Object.isFrozen(reference)).toBe(true);
+    expect(Object.keys(reference).sort()).toEqual(['description', 'name', 'revisionId', 'sha256', 'source']);
+    expect(JSON.stringify(reference)).not.toContain(skill.body);
+    const reload = vi.fn(async () => ({ ...skill }));
+    for (const forged of [{ ...reference }, JSON.parse(JSON.stringify(reference)), { ...reference, verified: true }] as SkillReference[]) {
+      expect((await buildAgentSkillCatalog([forged], { reload })).skills.some(item => item.name === skill.name)).toBe(false);
+      expect((await runTool(createSkillTools([forged]), 'skill_read', { name: skill.name })).ok).toBe(false);
+    }
+    expect(reload).not.toHaveBeenCalled();
+    const forgedContentReference = referenceSkill({ ...skill, body: 'Forged expected instructions' });
+    expect((await buildAgentSkillCatalog([forgedContentReference], { reload })).skills.some(item => item.name === skill.name)).toBe(false);
+    expect((await buildAgentSkillCatalog([reference])).skills.some(item => item.name === skill.name)).toBe(false);
+    const unavailable = await buildAgentSkillCatalog([reference], { reload: async () => { throw new Error('scanner unavailable'); } });
+    expect(unavailable.skills.some(item => item.name === skill.name)).toBe(false);
+    const catalog = await buildAgentSkillCatalog([reference], { reload });
+    expect(catalog.skills.find(item => item.name === skill.name)).toEqual(reference);
+    expect((await runTool(createSkillTools(catalog), 'skill_read', { name: skill.name })).output).toContain(skill.body);
+  });
+
+  it.each(['body', 'description'] as const)('detects same-identity %s drift using private reference digests and fresh source checks', async field => {
+    const skill = external();
+    const reference = referenceSkill(skill);
+    let changed = false;
+    const reload = async () => ({ ...skill, ...(changed ? { [field]: 'Changed after reference creation' } : {}) });
+    const catalog = await buildAgentSkillCatalog([reference], { reload });
+    const tools = createSkillTools(catalog);
+    changed = true;
+    const metadata = await runTool(tools, 'skill_search', { query: skill.name });
+    expect(metadata.ok).toBe(false);
+    expect(metadata.output).not.toContain(skill.description);
+    const read = await runTool(tools, 'skill_read', { name: skill.name });
+    expect(read.ok).toBe(false);
+    expect(read.output).not.toContain(skill.body);
+    expect((await buildAgentSkillCatalog([reference], { reload })).skills.some(item => item.name === skill.name)).toBe(false);
+  });
+
   it('keeps inventory arrays and unminted catalog objects outside external metadata and tools', async () => {
     const skill = external(), reload = vi.fn(async () => skill);
     const tools = createSkillTools([skill], { reload });
@@ -36,11 +75,12 @@ describe('mandatory scanner boundary for agent skill offerings', () => {
   });
 
   it('requires a fresh authoritative reload before metadata and again before every external read', async () => {
-    const skill = external(), reload = vi.fn(async (listed: Skill) => ({ ...listed }));
+    const skill = external(), reload = vi.fn(async () => ({ ...skill }));
     const catalog = await buildAgentSkillCatalog([skill], { reload });
     expect(reload).toHaveBeenCalledTimes(1); expect(Object.isFrozen(catalog)).toBe(true); expect(Object.isFrozen(catalog.skills)).toBe(true);
     const tools = createSkillTools(catalog);
-    expect(findTool(tools, 'skill_read').description).toContain(skill.description);
+    expect(catalog.skills.find(item => item.name === skill.name)?.description).toBe(skill.description);
+    expect(findTool(tools, 'skill_read').description).not.toContain(skill.description);
     const first = await runTool(tools, 'skill_read', { name: skill.name });
     expect(first).toMatchObject({ ok: true }); expect(first.output).toContain('untrusted'); expect(first.output).toContain('<skill-content>'); expect(first.output).toContain(skill.body);
     await runTool(tools, 'skill_read', { name: skill.name }); expect(reload).toHaveBeenCalledTimes(3);
@@ -60,11 +100,15 @@ describe('mandatory scanner boundary for agent skill offerings', () => {
   it('keeps canonical builtin contents despite forged flags, modified bodies and name collisions', async () => {
     const builtin = BUILTIN_SKILLS[0]!;
     const forged = [external({ name: builtin.name, body: 'Forged canonical override' }), external({ name: 'forged-builtin', source: 'builtin' }), { ...builtin, body: 'Modified shipped body' }];
-    const reload = vi.fn(async (skill: Skill) => skill);
+    const reload = vi.fn(async () => external());
     const catalog = await buildAgentSkillCatalog(forged, { reload }); const tools = createSkillTools(catalog);
     expect(reload).not.toHaveBeenCalled(); expect(catalog.skills.find(item => item.name === builtin.name)).toMatchObject({ description: builtin.description, body: builtin.body, source: 'builtin' });
     expect(findTool(tools, 'skill_read').description).not.toContain('forged-builtin');
-    const read = await runTool(tools, 'skill_read', { name: builtin.name }); expect(read.output).toContain(builtin.body); expect(read.output).not.toContain('override');
+    const read = await runTool(tools, 'skill_read', { name: builtin.name });
+    expect(read.output).toBe(`# Skill: ${builtin.name}\n${builtin.description}\n\n${builtin.body}`);
+    expect(read.output).not.toContain('Forged canonical override');
+    expect(read.output).not.toContain('Modified shipped body');
+    expect(withBuiltinSkills(forged)).toEqual([...BUILTIN_SKILLS].sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
     const plain = await runTool(createSkillTools(forged), 'skill_read', { name: builtin.name }); expect(plain.output).toBe(read.output);
   });
 
@@ -131,7 +175,8 @@ describe('unscanned skill inventory never enters lead or delegated provider requ
       for (const body of bodies) {
         const serialized = JSON.stringify(body); expect(serialized).not.toMatch(/UNSCANNED_|user-private|project-private/);
         const read = body.tools?.find(tool => tool.function.name === 'skill_read'); expect(read).toBeDefined();
-        expect(read!.function.description).toContain(`- code-review: ${BUILTIN_SKILLS.find(skill => skill.name === 'code-review')!.description}`);
+        expect(read!.function.description).toContain('skill_list');
+        expect(body.tools?.map(tool => tool.function.name)).toEqual(expect.arrayContaining(['skill_list', 'skill_search']));
       }
     } finally { await runtime.close(); await unlockFixture(path.join(data, 'profiles')); }
   });

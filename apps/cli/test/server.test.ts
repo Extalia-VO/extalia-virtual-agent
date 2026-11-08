@@ -5,7 +5,7 @@ import path from 'node:path';
 import type { AgentHostApi, UpdateStatus } from '@extalia/platform';
 import type { ExtaliaEvent } from '@extalia/protocol';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { ATTACHMENT_BODY_HEADER, MAX_ATTACHMENT_REQUEST_BYTES } from '@extalia/platform';
+import { ATTACHMENT_BODY_HEADER, GOAL_DOCUMENT_BODY_HEADER, MAX_ATTACHMENT_REQUEST_BYTES, MAX_GOAL_DOCUMENT_RPC_BODY_BYTES } from '@extalia/platform';
 import {
   BridgeRequestError, CONTENT_SECURITY_POLICY, MAX_BODY_BYTES, TOKEN_HEADER, createToken, injectBridgeToken, parseByteRange, resolveStaticFile,
   startBridgeServer, tokenMatches, type BridgeServer, type BridgeServerOptions,
@@ -70,12 +70,16 @@ class FakeHost {
     this.calls.push(['modelChoices', workspaceId]);
     return { runtime: 'extalia-native', defaultModel: 'mock-agent', models: ['mock-agent', 'mock-large'], efforts: [] };
   }
+  async teamModelChoices(workspaceId: string, connectionId: string, sessionId?: string) {
+    this.calls.push(['teamModelChoices', workspaceId, connectionId, sessionId]);
+    return { runtime: 'extalia-native', defaultModel: 'mock-worker', models: ['mock-worker'], efforts: [] };
+  }
   async setSessionOptions(sessionId: string, options: { model?: string }) {
     this.calls.push(['setSessionOptions', sessionId, options]);
     return { id: sessionId, options };
   }
-  async planTeam(workspaceId: string, request: { goal: string; count: number }) {
-    this.calls.push(['planTeam', workspaceId, request]);
+  async planTeam(workspaceId: string, request: { goal: string; count: number }, sessionId?: string) {
+    this.calls.push(['planTeam', workspaceId, request, ...(sessionId ? [sessionId] : [])]);
     if (request.count > 8) throw new Error('Choose from 1 to 8 members.');
     return { members: [{ id: 'm-1', name: 'Ava', role: 'Researcher', models: [] }], source: 'heuristic', note: 'A standard split was used.' };
   }
@@ -148,6 +152,21 @@ describe('Bridge server', () => {
     expect(reply.headers['x-content-type-options']).toBe('nosniff');
     expect(server.token).toMatch(/^[0-9a-f]{64}$/);
     expect((await send(server.port, { path: '/index.html' })).body).toContain(server.token);
+  });
+
+  it('routes permission callbacks through their dedicated authentication handler after Host validation', async () => {
+    let calls = 0;
+    const permissions = await start({ codexPermissions: async (incoming, response) => {
+      calls++;
+      if (incoming.headers.authorization !== 'Bearer synthetic-permission-token') { response.writeHead(401); response.end(); return; }
+      response.writeHead(200, { 'Content-Type': 'application/json' }); response.end('{"decision":"pass","confirmed":false}');
+    } });
+    expect((await send(permissions.port, { method: 'POST', path: '/api/permissions/codex', host: 'example.com' })).status).toBe(403);
+    expect(calls).toBe(0);
+    expect((await send(permissions.port, { method: 'POST', path: '/api/permissions/codex', headers: { [TOKEN_HEADER]: permissions.token } })).status).toBe(401);
+    const reply = await send(permissions.port, { method: 'POST', path: '/api/permissions/codex', headers: { Authorization: 'Bearer synthetic-permission-token' } });
+    expect(reply.status).toBe(200); expect(JSON.parse(reply.body)).toEqual({ decision: 'pass', confirmed: false });
+    expect(calls).toBe(2);
   });
 
   it('serves assets with content types and falls back to index.html for page routes', async () => {
@@ -355,6 +374,13 @@ describe('Bridge server', () => {
     expect(fake.calls.map(entry => entry[0])).toEqual(['planTeam', 'saveSessionTeam', 'saveSessionTeam', 'getSessionTeam', 'planTeam']);
   });
 
+  it('forwards a team connection catalog with its saved session target', async () => {
+    const result = await call({ method: 'teamModelChoices', args: ['w_1', 'c_worker', 's_1'] });
+    expect(result.status).toBe(200);
+    expect(JSON.parse(result.body).result).toEqual({ runtime: 'extalia-native', defaultModel: 'mock-worker', models: ['mock-worker'], efforts: [] });
+    expect(fake.calls).toEqual([['teamModelChoices', 'w_1', 'c_worker', 's_1']]);
+  });
+
   it('rejects bodies over the limit', async () => {
     const big = JSON.stringify({ method: 'renameSession', args: ['s', 'x'.repeat(MAX_BODY_BYTES)] });
     const declared = await send(server.port, { method: 'POST', path: '/api/call', body: big, headers: { 'content-type': 'application/json', [TOKEN_HEADER]: server.token, 'content-length': String(Buffer.byteLength(big)) } });
@@ -393,6 +419,29 @@ describe('Bridge server', () => {
     expect(fake.calls.filter(entry => entry[0] === 'sendPrompt')).toEqual([]);
   });
 
+  it('admits oversized goal documents only on validated planning and team persistence calls', async () => {
+    // JSON escaping expands control characters, so valid bounded document text can exceed the regular RPC cap.
+    const doc = { name: 'goal.txt', text: '\u0001'.repeat(180_000) };
+    const headers = { 'content-type': 'application/json', [TOKEN_HEADER]: server.token, [GOAL_DOCUMENT_BODY_HEADER]: 'goal-document' };
+    const planning = JSON.stringify({ method: 'planTeam', args: ['w_1', { goal: 'Full goal attached: goal.txt', goalDocument: doc, count: 1, allowedModels: [] }] });
+    expect(Buffer.byteLength(planning)).toBeGreaterThan(MAX_BODY_BYTES);
+    expect(Buffer.byteLength(planning)).toBeLessThan(MAX_GOAL_DOCUMENT_RPC_BODY_BYTES);
+    const admitted = await send(server.port, { method: 'POST', path: '/api/call', body: planning, headers });
+    expect(admitted.status).toBe(200);
+    expect(fake.calls.at(-1)).toMatchObject(['planTeam', 'w_1', { goalDocument: doc }]);
+    const targeted = JSON.stringify({ method: 'planTeam', args: ['w_1', { goal: 'Full goal attached: goal.txt', goalDocument: doc, count: 1, allowedModels: [] }, 'saved-session'] });
+    expect((await send(server.port, { method: 'POST', path: '/api/call', body: targeted, headers })).status).toBe(200);
+    expect(fake.calls.at(-1)).toMatchObject(['planTeam', 'w_1', { goalDocument: doc }, 'saved-session']);
+
+
+    const wrong = JSON.stringify({ method: 'sendPrompt', args: ['s_1', 'x', { goalDocument: doc }] });
+    const rejected = await send(server.port, { method: 'POST', path: '/api/call', body: wrong, headers });
+    expect(rejected.status).toBe(400);
+
+    const tooLarge = JSON.stringify({ method: 'planTeam', args: ['w_1', { goal: 'x', goalDocument: { name: 'goal.txt', text: 'x'.repeat(2_100_000) }, count: 1, allowedModels: [] }] });
+    expect(await refusedStatus(send(server.port, { method: 'POST', path: '/api/call', body: tooLarge, headers }))).toBe(413);
+  });
+
   it('maps host results and errors without leaking internals', async () => {
     const state = await call({ method: 'getState', args: [] });
     expect(state.status).toBe(200);
@@ -410,6 +459,20 @@ describe('Bridge server', () => {
     const unsupported = await call({ method: 'sendPrompt', args: ['s', 'hi'] });
     expect(unsupported.status).toBe(501);
     expect(JSON.parse(unsupported.body)).toEqual({ error: 'This host does not support this action.' });
+  });
+
+  it('admits exact mission cancellation and refuses an older host without session-wide fallback', async () => {
+    const args = ['session', 'mission'];
+    const unsupported = await call({ method: 'cancelNativeMission', args });
+    expect(unsupported.status).toBe(501);
+    expect(JSON.parse(unsupported.body)).toEqual({ error: 'This host does not support this action.' });
+    Object.assign(fake, { async cancelNativeMission(sessionId: string, missionId: string) {
+      fake.calls.push(['cancelNativeMission', sessionId, missionId]);
+    } });
+    const accepted = await call({ method: 'cancelNativeMission', args });
+    expect(accepted.status).toBe(200);
+    expect(JSON.parse(accepted.body)).toEqual({ result: null });
+    expect(fake.calls).toEqual([['cancelNativeMission', ...args]]);
   });
 
   it('reports unavailable agents but keeps serving the UI', async () => {

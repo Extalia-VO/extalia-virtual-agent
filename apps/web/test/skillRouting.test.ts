@@ -40,7 +40,10 @@ describe('read-only skill routing presentation', () => {
     expect(candidates).toHaveLength(2);
     for (const candidate of candidates) expect(candidate).not.toContain('checked');
     expect(html).toMatch(/<input[^>]*type="number"[^>]*min="1"[^>]*max="16"[^>]*value="8"/);
-    expect(html).toContain(`<option value="" selected="">${t.skillRouting.choosePin}</option>`);
+    expect(html.match(/role="combobox"/g)).toHaveLength(2);
+    expect(html).toContain(`aria-label="${t.skillRouting.pins}"`);
+    expect(html).toContain(`>${t.skillRouting.choosePin}</span>`);
+    expect(html).toContain(`>${t.skillRouting.noWorkspace}</span>`);
     expect(html).toMatch(new RegExp(`<button[^>]*disabled=""[^>]*>${t.skillRouting.run}</button>`));
     expect(agents.previewSkillRouting).not.toHaveBeenCalled();
     for (const method of [agents.inspectSkill, agents.approveSkill, agents.activateSkill, agents.revokeSkill]) expect(method).not.toHaveBeenCalled();
@@ -56,7 +59,7 @@ describe('read-only skill routing presentation', () => {
     ]) {
       const html = panel({ ...patch, t });
       expect(html).toContain(t.skillRouting.unsupported);
-      expect(html).not.toContain('<select');
+      expect(html).not.toContain('role="combobox"');
       expect(html).not.toContain('type="checkbox"');
       expect(html).not.toContain('<button');
     }

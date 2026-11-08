@@ -8,7 +8,7 @@
  * Otherwise the report says `mode: 'legacy'` and W0 project-skill consent keeps deciding.
  */
 import {
-  DAEMON_SKILL_APPROVAL_DEFAULT_TTL_MS, DAEMON_SKILL_LIMITS, SKILL_PACKAGE_ID_PATTERN, SKILL_REVIEW_DECISIONS, SKILL_REVISION_ID_PATTERN,
+  DAEMON_SKILL_APPROVAL_DEFAULT_TTL_MS, DAEMON_SKILL_LIMITS, SKILL_LIST_CURSOR_PATTERN, SKILL_PACKAGE_ID_PATTERN, SKILL_REVIEW_DECISIONS, SKILL_REVISION_ID_PATTERN,
   type SkillActivationResult, type SkillApprovalRecord, type SkillConsentInput as SkillConsentRecord, type SkillFileEntry, type SkillInspectionRecord,
   type SkillReviewDecision, type SkillRevisionState, type SkillRevisionSummary, type SkillScannerReport, type SkillScannerStatus, type SkillStateEvent,
 } from '@extalia/protocol';
@@ -68,7 +68,17 @@ export interface SkillRegistryReport {
   revisions: SkillRevisionSummary[];
   /** More revisions exist than one report carries. */
   truncated: boolean;
+  /** Opaque continuation into the same profile's registry metadata; absent on older hosts. Not a snapshot. */
+  nextCursor?: string;
   indexGeneration?: number;
+}
+
+export interface SkillRegistryPageInput { cursor: string }
+/** Read-only metadata continuation. Cursors are not snapshots: compare generation with the initial report before appending. */
+export interface SkillRegistryPage {
+  revisions: SkillRevisionSummary[];
+  nextCursor?: string;
+  indexGeneration: number;
 }
 
 export interface SkillRevisionDetails {
@@ -109,6 +119,14 @@ export interface SkillActionResult {
 }
 
 const record = (value: unknown): Record<string, unknown> => (typeof value === 'object' && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : {});
+
+/** Accept the daemon cursor format only; callers cannot select a profile or raise the page bound. */
+export function normalizeSkillRegistryPageInput(value: unknown): SkillRegistryPageInput {
+  const input = record(value);
+  if (Object.keys(input).length !== 1 || !Object.hasOwn(input, 'cursor') || typeof input.cursor !== 'string'
+    || SKILL_LIST_CURSOR_PATTERN.exec(input.cursor)?.[0] !== input.cursor) throw new Error('Invalid skill catalog cursor.');
+  return { cursor: input.cursor };
+}
 
 /** Exact user-selected pins only. Never fill from active/latest revisions. */
 export function normalizeSkillPreflight(value: unknown): SkillPreflightInput {

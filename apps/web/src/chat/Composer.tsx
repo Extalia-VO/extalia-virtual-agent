@@ -7,6 +7,7 @@ import { contextLabel } from '../office/overlay/contextLabel';
 import { useUnsavedDraft } from '../restart/unsavedDrafts';
 import { Icon } from '../ui/Icon';
 import { Select, type SelectOption } from '../ui/Select';
+import { LONG_PASTE_THRESHOLD, MESSAGE_TEXT_LIMIT, longTextFiles, pastedValue } from './longTextPaste';
 import { attachmentKind, formatBytes, planAttachments, type AttachmentHostApi, type PendingAttachment } from './attachments';
 import {
   CONTEXT_RING_RADIUS, HERMES_CHOICE, choiceFromOptions, choiceFromValue, choiceValue, cleanChoice, contextRing, effortSelectOptions,
@@ -69,7 +70,7 @@ class ComposerSubmission {
  * Right: permission mode, model and effort, the context ring and Send. Enter sends, Shift+Enter adds a line.
  * The choices apply to the session at once (`setSessionOptions`); before the first message they travel with it.
  */
-export function Composer({ t, agents, session, workspaceId, hermes, running, waiting, readOnly, stopping, onSend, onStop, onSessionChanged }: {
+export function Composer({ t, agents, session, workspaceId, hermes, modelScopeKey, running, waiting, readOnly, stopping, onSend, onStop, onSessionChanged, onOpenContext, contextPanelId }: {
   t: Messages;
   agents: AgentHostApi;
   /** The session the message goes to; absent on the Chat page before its first message. */
@@ -77,6 +78,7 @@ export function Composer({ t, agents, session, workspaceId, hermes, running, wai
   workspaceId: string;
   /** A Hermes workspace or session: Hermes manages the permissions, so the picker only says so. */
   hermes: boolean;
+  modelScopeKey?: string;
   running: boolean;
   /** An approval card needs an answer first. */
   waiting: boolean;
@@ -86,6 +88,9 @@ export function Composer({ t, agents, session, workspaceId, hermes, running, wai
   onStop: () => void;
   /** After a choice was saved, so the host state (and the session's options) reload. */
   onSessionChanged?: (() => void) | undefined;
+  /** Opens the nearby keyboard/touch-accessible context details when available. */
+  onOpenContext?: (() => void) | undefined;
+  contextPanelId?: string | undefined;
 }) {
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
@@ -97,9 +102,12 @@ export function Composer({ t, agents, session, workspaceId, hermes, running, wai
   // A pending choice belongs to the session it was made for; a new session state drops it.
   const [pending, setPending] = useState<{ base: SessionSummary | undefined; choice: SessionChoice }>();
   // The workspace's models and efforts, kept with the workspace they came for.
-  const [loaded, setLoaded] = useState<{ workspaceId: string; choices: ModelChoices }>();
+  const scopeKey = modelScopeKey ?? JSON.stringify([workspaceId, session?.id, session?.connectionId, session?.runtime, hermes]);
+  const [loaded, setLoaded] = useState<{ key: string; choices: ModelChoices }>();
+  const [draftScope, setDraftScope] = useState(scopeKey);
+  if (draftScope !== scopeKey) { setDraftScope(scopeKey); setDraft({}); }
   const optimistic = pending && pending.base === session ? pending.choice : undefined;
-  const choices = loaded && loaded.workspaceId === workspaceId ? loaded.choices : undefined;
+  const choices = loaded && loaded.key === scopeKey ? loaded.choices : undefined;
   const area = useRef<HTMLTextAreaElement>(null);
   const files = useRef<HTMLInputElement>(null);
   const chipsRef = useRef(chips);
@@ -113,8 +121,10 @@ export function Composer({ t, agents, session, workspaceId, hermes, running, wai
   const disabled = readOnly || waiting;
   const canAttach = attachmentsSupported && !disabled && !running && !sending && !readOnly;
   const pickersEnabled = !readOnly && !running && !sending;
+  const imported = chips.filter(chip => chip.key.startsWith('pasted-prompt-'));
+  const promptText = [imported.length ? t.composer.longTextPrompt(imported.map(chip => chip.name).join(', ')) : '', text.trim()].filter(Boolean).join('\n\n');
   const canSend = !disabled && !running && !sending && (text.trim().length > 0 || chips.length > 0)
-    && !chips.some(chip => chip.status === 'uploading');
+    && promptText.length <= MESSAGE_TEXT_LIMIT && !chips.some(chip => chip.status === 'uploading');
 
   useLayoutEffect(() => { chipsRef.current = chips; }, [chips]);
   useLayoutEffect(() => {
@@ -128,11 +138,11 @@ export function Composer({ t, agents, session, workspaceId, hermes, running, wai
 
   useEffect(() => {
     let current = true;
-    agents.modelChoices(workspaceId)
-      .then(next => { if (current) setLoaded({ workspaceId, choices: next }); })
+    agents.modelChoices(workspaceId, sessionId)
+      .then(next => { if (current) setLoaded({ key: scopeKey, choices: next }); })
       .catch(() => { if (current) setLoaded(undefined); });
     return () => { current = false; };
-  }, [agents, workspaceId]);
+  }, [agents, workspaceId, sessionId, scopeKey]);
 
   // The choices shown: the session's own, or the draft that the first message will create the session with.
   const shown: SessionChoice = optimistic ?? (session ? choiceFromOptions(session.options) : draft);
@@ -171,8 +181,14 @@ export function Composer({ t, agents, session, workspaceId, hermes, running, wai
   const currentLearningContext = useRef(learningContext);
   const submission = useRef<ComposerSubmission | undefined>(undefined);
   useLayoutEffect(() => {
+    const changed = currentLearningContext.current !== learningContext;
     currentLearningContext.current = learningContext;
     submission.current?.observe(learningContext);
+    if (changed && !submission.current?.owns(learningContext)) {
+      // Uploaded ids belong to the original session/host. Retain local files,
+      // but re-upload them if the user deliberately sends in the new scope.
+      setChips(current => current.map(chip => ({ ...chip, status: 'ready', attachmentId: undefined, error: undefined })));
+    }
   }, [learningContext]);
   const canLearn = !hermes && !readOnly && permissionValue !== 'plan';
   const learnSkill = canLearn && learning.context === learningContext && learning.selected;
@@ -195,12 +211,17 @@ export function Composer({ t, agents, session, workspaceId, hermes, running, wai
     const label = contextLabel(session.context, t);
     return `${t.composer.context(label.value)}${label.title ? `\n${label.title}` : ''}`;
   })() : undefined;
+  const ringGraphic = ring && <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false">
+    <circle className="composer-ring-track" cx="12" cy="12" r={CONTEXT_RING_RADIUS} fill="none" strokeWidth="2.6" />
+    <circle className="composer-ring-arc" cx="12" cy="12" r={CONTEXT_RING_RADIUS} fill="none" strokeWidth="2.6" strokeLinecap="round"
+      strokeDasharray={`${ring.dash} ${ring.circumference}`} transform="rotate(-90 12 12)" />
+  </svg>;
 
   function patchChip(key: string, change: Partial<PendingAttachment>) {
     setChips(current => current.map(chip => (chip.key === key ? { ...chip, ...change } : chip)));
   }
 
-  function addFiles(incoming: File[]) {
+  function addFiles(incoming: File[], pastedPrompt = false) {
     if (!canAttach || incoming.length === 0) return;
     const plan = planAttachments(chipsRef.current.length, incoming);
     const messages = new Set<string>();
@@ -214,7 +235,7 @@ export function Composer({ t, agents, session, workspaceId, hermes, running, wai
       const kind = attachmentKind(file.name, file.type);
       chipSequence += 1;
       return {
-        key: `chip-${chipSequence}`, file, name: file.name, mimeType: file.type, size: file.size, kind, status: 'ready',
+        key: `${pastedPrompt ? 'pasted-prompt' : 'chip'}-${chipSequence}`, file, name: file.name, mimeType: file.type, size: file.size, kind, status: 'ready',
         ...(kind === 'image' ? { previewUrl: URL.createObjectURL(file) } : {}),
       };
     });
@@ -231,8 +252,9 @@ export function Composer({ t, agents, session, workspaceId, hermes, running, wai
 
   async function send() {
     if (!canSend) return;
-    const prompt = text.trim();
     const sent = chips;
+    const prompt = promptText;
+    const originalText = text;
     const sentContext = learningContext;
     const owner = new ComposerSubmission(sentContext);
     submission.current = owner;
@@ -265,7 +287,7 @@ export function Composer({ t, agents, session, workspaceId, hermes, running, wai
       setLearning(current => owner.owns(current.context) ? { ...current, selected: false } : current);
     } else {
       // Keep what the user wrote when the host refused it; attachments stay so a retry reuses uploaded ones.
-      setText(current => current || prompt);
+      setText(current => current || originalText);
     }
     setSending(false);
     area.current?.focus();
@@ -279,10 +301,26 @@ export function Composer({ t, agents, session, workspaceId, hermes, running, wai
 
   function onPaste(event: ClipboardEvent<HTMLTextAreaElement>) {
     const pasted = Array.from(event.clipboardData?.files ?? []);
-    if (pasted.length === 0 || !canAttach) return;
-    // Files are attached; any text pasted alongside them stays out of the message.
+    if (pasted.length) {
+      if (!canAttach) return;
+      event.preventDefault();
+      addFiles(pasted);
+      return;
+    }
+    const incoming = event.clipboardData.getData('text/plain');
+    const field = event.currentTarget;
+    const next = pastedValue(text, incoming, field.selectionStart, field.selectionEnd);
+    if (!incoming || next.length <= LONG_PASTE_THRESHOLD || disabled || sending || running) return;
     event.preventDefault();
-    addFiles(pasted);
+    const converted = canAttach ? longTextFiles(next, chipsRef.current) : undefined;
+    if (!converted) {
+      setText(next);
+      setNotice(t.composer.longTextFailed);
+      return;
+    }
+    addFiles(converted, true);
+    setText('');
+    setNotice(t.composer.longTextAttached);
   }
 
   const carriesFiles = (event: DragEvent) => Array.from(event.dataTransfer.types).includes('Files');
@@ -305,7 +343,7 @@ export function Composer({ t, agents, session, workspaceId, hermes, running, wai
   }
 
   const placeholder = readOnly ? t.chat.placeholderObserved : waiting ? t.chat.placeholderWaiting : t.chat.placeholder;
-  const alertText = notice ?? pickerError;
+  const alertText = promptText.length > MESSAGE_TEXT_LIMIT ? t.composer.longTextFailed : notice ?? pickerError;
   return (
     <form className={`composer ${dragging ? 'dragging' : ''}`} data-dragging={dragging || undefined}
       onSubmit={event => { event.preventDefault(); void send(); }}
@@ -332,7 +370,7 @@ export function Composer({ t, agents, session, workspaceId, hermes, running, wai
           </li>
         ))}
       </ul>}
-      {alertText && <p className="composer-notice" role="alert"><Icon name="alert" />{alertText}</p>}
+      {alertText && <p className={alertText === t.composer.longTextAttached ? "note small" : "composer-notice"} role={alertText === t.composer.longTextAttached ? "status" : "alert"}><Icon name={alertText === t.composer.longTextAttached ? "file" : "alert"} />{alertText}</p>}
       <textarea id="composer-input" ref={area} rows={1} value={text} placeholder={placeholder} disabled={disabled} aria-describedby="composer-hint"
         title={t.chat.hint} onChange={event => setText(event.target.value)} onKeyDown={onKeyDown} onPaste={onPaste} />
       {dragging && <div className="composer-drop" aria-hidden="true">{t.composer.dropHint}</div>}
@@ -363,13 +401,10 @@ export function Composer({ t, agents, session, workspaceId, hermes, running, wai
           {!readOnly && choices && effortOptions.length > 0 && <Select className="composer-picker composer-effort" aria-label={t.composer.effort}
             value={choiceValue(shown.effort)} options={effortOptions} disabled={!pickersEnabled} placeholder={defaultEffortLabel}
             onChange={value => void changeChoice({ effort: choiceFromValue(value) as Effort | undefined })} />}
-          {ring && ringLabel && <span className={`composer-ring tone-${ring.tone}`} role="img" aria-label={ringLabel} title={ringLabel}>
-            <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false">
-              <circle className="composer-ring-track" cx="12" cy="12" r={CONTEXT_RING_RADIUS} fill="none" strokeWidth="2.6" />
-              <circle className="composer-ring-arc" cx="12" cy="12" r={CONTEXT_RING_RADIUS} fill="none" strokeWidth="2.6" strokeLinecap="round"
-                strokeDasharray={`${ring.dash} ${ring.circumference}`} transform="rotate(-90 12 12)" />
-            </svg>
-          </span>}
+          {ring && ringLabel && (onOpenContext
+            ? <button type="button" className={`composer-ring composer-ring-button tone-${ring.tone}`} aria-label={ringLabel} title={ringLabel}
+                aria-controls={contextPanelId} onClick={onOpenContext}>{ringGraphic}</button>
+            : <span className={`composer-ring tone-${ring.tone}`} role="img" aria-label={ringLabel} title={ringLabel}>{ringGraphic}</span>)}
           {running ? (
             <button type="button" className="send-button stop" disabled={stopping || readOnly} onClick={onStop} aria-label={t.chat.stop} title={t.chat.stop}>
               <Icon name="stop" />

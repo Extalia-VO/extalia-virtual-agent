@@ -5,6 +5,7 @@ of an existing record, number it sequentially and link it from the table.
 
 | ADR | Decision | Status |
 | --- | --- | --- |
+| [0058](0058-native-team-connection-authority.md) | Explicit Native team connection/model grants, per-member routing and bounded concurrent workers | Accepted |
 | [0001](0001-clean-public-repository.md) | Clean public repository with selective migration | Accepted |
 | [0002](0002-desktop-shell-electron.md) | Electron for the Desktop shell | Accepted (packaging decided in 0006) |
 | [0003](0003-source-first-workspace-packages.md) | Workspace packages export TypeScript source | Accepted |
@@ -82,9 +83,23 @@ of an existing record, number it sequentially and link it from the table.
 | [0048](0048-skill-routing-application-preview.md) | Exact-revision skill routing diagnostics through the daemon, host and Skills UI | Verified locally v0.4.154; no runtime selection, activation or permission grant |
 | [0049](0049-mandatory-external-skill-ingress.md) | Mandatory scanner-gated external catalogs and reads, canonical built-ins and review-only legacy input | Verified locally v0.4.155; production scanner remains unavailable and generic documents are not automatically scanned |
 | [0050](0050-explicit-prompt-skill-candidates.md) | Explicit per-message learning creates generated library candidates with mandatory inspection | Verified locally v0.4.156; no approval/activation or production scanner claim |
+| [0051](0051-knowledge-independent-of-mission-backend.md) | Knowledge and direct vault setup independent of mission routing, using one lazy sidecar | Accepted |
+| [0052](0052-durable-mission-preparation-lifetime.md) | Durable mission-start preparation before credentials/worktrees, local handoff and shutdown drain | Verified locally v0.4.183; no execution/closure authority |
+| [0053](0053-evidence-based-native-process-partition.md) | Resource-based Rust/TypeScript/Python ownership and bounded file pages with measured comparison | Verified locally v0.4.184; Rust turn-loop migration remains open |
+| [0054](0054-native-status-and-recovery-inspection.md) | Shared Native status, actual invocation evidence, run-bound cancellation and guarded receipt recheck | Implemented locally; full gate passed v0.4.186; no replay or force-clear |
+| [0055](0055-native-memory-integrity-and-context-budgets.md) | Inspectable revision-aware Native memory, cache accounting and explicit context budgets | Implemented; full gate and temporary-host UI verified v0.4.187 |
+| [0056](0056-native-write-drain-and-relevant-memory.md) | Sealed Native persistence, accepted-prompt checkpoints and relevant metadata recall | Implemented; independent review and full gate verified v0.4.188 |
+| [0057](0057-bounded-native-skill-discovery.md) | Turn-scoped bounded skill metadata, paged discovery and fresh registered reads | Implemented; independent review and full gate verified v0.4.188 |
+| [0059](0059-native-workspace-folder-authority.md) | Selected Native folders, two-sided cross-workspace authority, context admission and unconfined-command refusal | Implemented v0.4.200; full check passed v0.4.201 |
+| [0060](0060-observed-codex-same-server-control.md) | Explicit observed Codex attachment to the original server/thread and native question handles | Accepted; native endpoint and adapter validation required, no private Desktop IPC |
+
+[0061 — Observed reply channels](0061-observed-reply-channels.md) distinguishes
+manually paired cooperative tool returns from conditional native gateway control.
+
+[0062 — Codex queue and native permissions](0062-codex-queue-and-native-permissions.md)
+adds persistent queue setup and exact native approval controls without persistent grants.
 
 Open questions from PRD §44 (local database, Web ↔ Bridge transport and
 authentication, plugin sandboxing, skill format, registry trust, event sourcing,
 Obsidian write policy, license/trademark, DCO vs CLA) each get an ADR before
 implementation.
-

@@ -114,7 +114,7 @@ fn creates_a_fresh_store_with_durable_pragmas() {
     let dir = TempDir::new();
     let store = CoreStore::open(&dir.store()).unwrap();
     assert_eq!(store.schema_version().unwrap(), CoreStore::LATEST);
-    assert_eq!(CoreStore::LATEST, 12);
+    assert_eq!(CoreStore::LATEST, 13);
     let conn = &store.conn;
     let pragma = |name: &str| -> String {
         conn.pragma_query_value(None, name, |row| row.get::<_, rusqlite::types::Value>(0))
@@ -130,7 +130,7 @@ fn creates_a_fresh_store_with_durable_pragmas() {
     assert_eq!(pragma("foreign_keys"), "1");
     assert_eq!(pragma("busy_timeout"), "1000");
     let objects: Vec<(String, String)> = conn
-        .prepare("SELECT type, name FROM sqlite_schema WHERE name NOT LIKE 'sqlite%' AND name NOT LIKE 'skill%' AND name NOT LIKE 'learning%' AND name NOT LIKE 'execution%' AND name NOT LIKE 'delegation%' AND name NOT LIKE 'native_action%' AND name NOT LIKE 'mission_planned_tasks%' AND name NOT LIKE 'planning_%' ORDER BY type, name")
+        .prepare("SELECT type, name FROM sqlite_schema WHERE name NOT LIKE 'sqlite%' AND name NOT LIKE 'skill%' AND name NOT LIKE 'learning%' AND name NOT LIKE 'execution%' AND name NOT LIKE 'delegation%' AND name NOT LIKE 'native_action%' AND name NOT LIKE 'mission_planned_tasks%' AND name NOT LIKE 'planning_%' AND name NOT LIKE 'preparation_%' ORDER BY type, name")
         .unwrap()
         .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
         .unwrap()

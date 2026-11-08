@@ -1,5 +1,5 @@
 import type { AgentHostApi, FileSystemCapability, KnowledgeVaultSettings } from '@extalia/platform';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { errorMessage } from '../../host/remote';
 import type { Messages } from '../../i18n';
 import { isUnsupportedMessage } from '../../knowledge/knowledgeModel';
@@ -7,7 +7,7 @@ import { Icon } from '../../ui/Icon';
 
 type VaultApi = Required<Pick<AgentHostApi, 'knowledgeSettings' | 'setKnowledgeVaultRoot'>>;
 
-/** Whether the host offers the vault setting (native core only; Desktop and the Bridge forward the names either way). */
+/** Whether the host offers the vault setting (Desktop and the Bridge forward the names on older hosts too). */
 export function vaultSettingsPresent(agents: Partial<AgentHostApi> | undefined): agents is Partial<AgentHostApi> & VaultApi {
   return typeof agents?.knowledgeSettings === 'function' && typeof agents.setKnowledgeVaultRoot === 'function';
 }
@@ -65,8 +65,16 @@ export function KnowledgeVaultView({ t, settings, busy, error, notice, canPick, 
   );
 }
 
-/** Settings → Knowledge vault. Hidden when the host does not offer the setting (TypeScript core). */
-export function KnowledgeVaultSection({ t, agents, picker }: { t: Messages; agents: AgentHostApi; picker?: FileSystemCapability | undefined }) {
+/** Folder setup shared by Settings and Knowledge. Older hosts may lack this capability. */
+type SectionProps = { t: Messages; agents: AgentHostApi; picker?: FileSystemCapability | undefined; onChanged?: (() => void) | undefined; locked?: boolean | undefined };
+export function KnowledgeVaultSection(props: SectionProps) {
+  const [binding, setBinding] = useState({ agents: props.agents, key: 0 });
+  if (binding.agents !== props.agents) setBinding({ agents: props.agents, key: binding.key + 1 });
+  return <VaultSection key={binding.key} {...props} />;
+}
+function VaultSection({ t, agents, picker, onChanged, locked }: SectionProps) {
+  const live = useRef(true);
+  useEffect(() => { live.current = true; return () => { live.current = false; }; }, []);
   const [settings, setSettings] = useState<KnowledgeVaultSettings | null>(null);
   const [hidden, setHidden] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -92,21 +100,26 @@ export function KnowledgeVaultSection({ t, agents, picker }: { t: Messages; agen
   const api = agents as AgentHostApi & VaultApi;
 
   const apply = async (root: string | null) => {
+    if (busy || locked || !live.current) return;
     setBusy(true); setError(undefined); setNotice(undefined);
     try {
       const next = await api.setKnowledgeVaultRoot(root);
+      if (!live.current) return;
       setSettings(next); setPath(next.path ?? '');
-      setNotice(t.knowledgeVault.switched);
-    } catch (failure) { setError(errorMessage(failure)); } finally { setBusy(false); }
+      setNotice(t.knowledgeVault.switched); onChanged?.();
+    } catch (failure) { if (live.current) setError(errorMessage(failure)); } finally { if (live.current) setBusy(false); }
   };
   const choose = async () => {
+    if (busy || locked || !live.current) return;
+    setBusy(true);
     let selection;
-    try { selection = await picker?.selectDirectory(); } catch (failure) { setError(errorMessage(failure)); return; }
-    if (selection?.path) await apply(selection.path);
+    try { selection = await picker?.selectDirectory(); } catch (failure) { if (live.current) setError(errorMessage(failure)); return; }
+    finally { if (live.current) setBusy(false); }
+    if (live.current && selection?.path) await apply(selection.path);
   };
 
   return (
-    <KnowledgeVaultView t={t} settings={settings} busy={busy} error={error} notice={notice} canPick={Boolean(picker)} path={path} onPath={setPath}
+    <KnowledgeVaultView t={t} settings={settings} busy={busy || Boolean(locked)} error={error} notice={notice} canPick={Boolean(picker)} path={path} onPath={setPath}
       onDefault={() => void apply(null)} onChoose={() => void choose()} onApply={() => void apply(path.trim())} />
   );
 }

@@ -221,6 +221,18 @@ export class NativeImportService {
     return this.knownLocations().map(({ root: _root, kind: _kind, ...location }) => location);
   }
 
+  /** Exact registered Codex history binding for the public queue command; no renderer path is trusted. */
+  codexQueueSource(reference: NativeObservationRef): { codexHome: string; transcriptPath: string; sourceFingerprint: string } | undefined {
+    try {
+      if (reference.sourceId !== 'codex' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(reference.nativeSessionId)) return undefined;
+      const location = this.observationLocation(reference);
+      if (location.kind !== 'codex') return undefined;
+      const file = contained(location.path, reference.path), info = statSync(file), header = this.codexHeader(location, file);
+      if (!info.isFile() || header?.id !== reference.nativeSessionId) return undefined;
+      return { codexHome: realpathSync(location.root), transcriptPath: file, sourceFingerprint: digest(JSON.stringify([file, String(info.dev), String(info.ino), header.id])) };
+    } catch { return undefined; }
+  }
+
   private knownLocations(): Location[] {
     const { env, homeDirectory: home } = this.options;
     const locations: Location[] = [];

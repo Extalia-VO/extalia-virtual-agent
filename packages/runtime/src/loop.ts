@@ -1,10 +1,12 @@
-import { estimateTokens, type SessionPermissionMode, type WorkspacePermissions } from '@extalia/core';
+import type { SessionPermissionMode, WorkspacePermissions } from '@extalia/core';
 import type { EventBody, RiskLevel, Usage } from '@extalia/protocol';
 import { composeTurn, type TurnAttachment } from './attachments.js';
 import { ProviderError, type ModelMessage, type ModelProvider, type ToolCall, type ToolResultEntry } from './model.js';
 import { checkedVerdict, decide, offersAccess, POLICY_UNAVAILABLE, type PermissionRequest, type PermissionVerdict } from './policy.js';
 import { validateArguments, type AnyTool, type ToolAccess } from './tools.js';
 import type { LocalToolPipelines } from './localOperations.js';
+import { RequestBudgetError, checkRequestBudget, type RequestPressure } from './requestBudget.js';
+import { UsageAccumulator } from './usage.js';
 
 /**
  * One agent turn: send the conversation to the model, run the tools it asks
@@ -46,6 +48,8 @@ export interface TurnOptions {
   checkPermission?(request: PermissionRequest): Promise<PermissionVerdict>;
   signal: AbortSignal;
   maxSteps?: number;
+  /** Optional estimated input ceiling: a positive safe integer, never inferred from a model name. */
+  maxInputTokens?: number;
   newId?: () => string;
   /** Internal native-mission lifecycle gate; tracks complete tool pipelines, including preflight waits. */
   localOperations?: LocalToolPipelines;
@@ -69,6 +73,9 @@ export interface TurnResult {
   usage: Usage;
   error?: string;
   context?: TurnContext;
+  /** A rejected prospective request is separate from context/usage of requests actually sent. */
+  requestPressure?: RequestPressure;
+  reason?: 'context';
 }
 
 const RESULT_LIMIT = 30_000;
@@ -76,13 +83,6 @@ const EVENT_OUTPUT_LIMIT = 4_000;
 
 function clipText(text: string, limit: number): string {
   return text.length <= limit ? text : `${text.slice(0, limit)}\n[truncated ${text.length - limit} characters]`;
-}
-
-function addUsage(total: Usage, usage: Usage | undefined): void {
-  if (!usage) return;
-  for (const key of ['inputTokens', 'outputTokens', 'cachedInputTokens'] as const) {
-    if (usage[key] !== undefined) total[key] = (total[key] ?? 0) + usage[key]!;
-  }
 }
 
 function isAbort(error: unknown, signal: AbortSignal): boolean {
@@ -102,42 +102,52 @@ export async function runTurn(options: TurnOptions): Promise<TurnResult> {
   // Images are sent with this turn only; the stored history keeps the text (see `storedHistory`).
   const composed = composeTurn(options.prompt, options.attachments ?? [], { images: provider.images !== false });
   const history: ModelMessage[] = [...options.history, { role: 'user', text: composed.text, ...(composed.images.length ? { images: composed.images } : {}) }];
-  const usage: Usage = {};
+  const accumulated = new UsageAccumulator(), usage = accumulated.total;
   let context: TurnContext | undefined;
+  let requestPressure: RequestPressure | undefined;
   const maxSteps = options.maxSteps ?? 50;
   // Read per step: a tool may join the list during the turn (delegate_task once manage_team creates the first member).
   const offeredTools = () => options.tools.filter(tool => offersAccess(tool.access, mode));
   const specsNow = () => offeredTools().map(tool => ({ name: tool.name, description: tool.description, parameters: tool.parameters }));
   const storedHistory = (): ModelMessage[] => history.map(message => (message.role === 'user' && message.images ? { role: 'user', text: message.text } : message));
 
-  const finish = (outcome: TurnOutcome, error?: string): TurnResult => {
+  const finish = (outcome: TurnOutcome, error?: string, reason?: 'context'): TurnResult => {
     if (outcome === 'completed') emit({ type: 'turn.completed', ...(Object.keys(usage).length ? { usage } : {}) });
-    else emit({ type: 'turn.failed', error: error ?? outcome });
+    else emit({ type: 'turn.failed', error: error ?? outcome, ...(reason ? { reason } : {}) });
     emit({ type: 'agent.state', state: 'idle' });
-    return { outcome, history: storedHistory(), usage, ...(error ? { error } : {}), ...(context ? { context } : {}) };
+    return { outcome, history: storedHistory(), usage, ...(error ? { error } : {}), ...(context ? { context } : {}), ...(requestPressure ? { requestPressure } : {}), ...(reason ? { reason } : {}) };
   };
 
   for (let step = 0; step < maxSteps; step++) {
     if (signal.aborted) return finish('cancelled', 'Stopped by the user.');
+    const specs = specsNow();
+    const budget = checkRequestBudget({ system: options.system, messages: history, tools: specs }, options.maxInputTokens);
+    if (signal.aborted) return finish('cancelled', 'Stopped by the user.');
+    requestPressure = budget.pressure;
+    if (budget.reason || !budget.pressure) return finish('failed', 'native_context_limit', 'context');
     emit({ type: 'agent.state', state: 'thinking' });
+    if (signal.aborted) return finish('cancelled', 'Stopped by the user.');
 
     let result;
     try {
-      result = await provider.complete({ system: options.system, messages: history, tools: specsNow(), signal, onText: text => emit({ type: 'model.delta', text }) });
+      result = await provider.complete({ system: options.system, messages: history, tools: specs, signal, onText: text => { if (!signal.aborted) emit({ type: 'model.delta', text }); } });
     } catch (error) {
       if (isAbort(error, signal)) return finish('cancelled', 'Stopped by the user.');
+      if (error instanceof RequestBudgetError) {
+        requestPressure = error.pressure;
+        return finish('failed', error.code, 'context');
+      }
       const message = error instanceof ProviderError ? error.message : error instanceof Error ? `The model request failed: ${error.message}` : 'The model request failed.';
       return finish('failed', message);
     }
-    addUsage(usage, result.usage);
+    // An abort-ignoring provider may settle after the host has already shut down.
+    if (signal.aborted) return finish('cancelled', 'Stopped by the user.');
+    accumulated.add(result.usage);
     // The prompt of this request is the context in use; a provider that reports none is estimated from the text sent.
     if (result.promptTokens !== undefined) context = { usedTokens: result.promptTokens, estimated: false, ...(result.model ? { model: result.model } : {}) };
     else {
-      // Image bytes are not text: each image counts as roughly 1,500 tokens.
-      const imageChars = history.reduce((sum, message) => sum + (message.role === 'user' && message.images ? message.images.length * 6_000 : 0), 0);
-      const sent = options.system.length + JSON.stringify(storedHistory()).length + imageChars + JSON.stringify(specsNow()).length;
       const model = result.model ?? context?.model;
-      context = { usedTokens: estimateTokens(sent), estimated: true, ...(model ? { model } : {}) };
+      context = { usedTokens: budget.pressure.estimatedTokens, estimated: true, ...(model ? { model } : {}) };
     }
     if (result.text) emit({ type: 'model.completed', text: result.text, ...(result.model ? { model: result.model } : {}), ...(result.usage ? { usage: result.usage } : {}) });
 
@@ -253,7 +263,7 @@ async function runTool(call: ToolCall, options: TurnOptions, newId: () => string
   } catch (error) {
     outcome = { ok: false, output: error instanceof Error ? error.message : String(error) };
   }
-  for (const file of outcome.files ?? []) emit({ type: 'file.written', path: file.path, change: file.change });
+  for (const file of outcome.files ?? []) emit({ type: 'file.written', path: file.path, change: file.change, toolCallId: call.id });
   emit({
     type: 'tool.completed', toolCallId: call.id, tool: tool.name, kind: tool.kind, label: description.label, ok: outcome.ok,
     ...(description.target ? { target: description.target } : {}),

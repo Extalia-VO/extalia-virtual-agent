@@ -30,6 +30,20 @@ export interface WorkspacePermissions {
 
 export const DEFAULT_PERMISSIONS: WorkspacePermissions = { fileWrite: 'ask', commands: 'ask' };
 
+/** Native access between workspaces is constrained by both workspaces' policies. */
+export const WORKSPACE_CROSS_ACCESS = ['isolated', 'read-only', 'read-write'] as const;
+export type WorkspaceCrossAccess = (typeof WORKSPACE_CROSS_ACCESS)[number];
+export const DEFAULT_WORKSPACE_CROSS_ACCESS: WorkspaceCrossAccess = 'read-only';
+export const MAX_WORKSPACE_FOLDERS = 16;
+
+/** Missing legacy settings use read-only; malformed settings never grant access. */
+export function decodeWorkspaceCrossAccess(raw: unknown): WorkspaceCrossAccess {
+  return raw === undefined ? DEFAULT_WORKSPACE_CROSS_ACCESS : oneOf(raw, WORKSPACE_CROSS_ACCESS, 'crossWorkspaceAccess');
+}
+
+export const workspaceCrossAccess = (workspace: Pick<Workspace, 'crossWorkspaceAccess'>): WorkspaceCrossAccess =>
+  decodeWorkspaceCrossAccess(workspace.crossWorkspaceAccess);
+
 /**
  * A session's permission mode (v0.0.49), chosen in the prompt box. `workspace` follows the workspace
  * policy; `ask` asks before every edit and command; `accept-edits` allows edits inside the workspace
@@ -81,6 +95,8 @@ export interface Workspace {
   name: string;
   /** Host path or remote location chosen by the user; never inferred by scanning. */
   projectLocation?: string;
+  /** Additional own folders for Native. The primary projectLocation remains the command working directory. */
+  additionalProjectLocations?: string[];
   /** Absent means Extalia Native. */
   runtimeId?: RuntimeId;
   /** Runtime profile, for Hermes the profile name (`default` unless chosen). */
@@ -93,6 +109,8 @@ export interface Workspace {
   missionConnectionIds?: string[];
   defaultAgentId?: string;
   permissions?: WorkspacePermissions;
+  /** Native only. Either isolated side denies cross-access; writes require both sides read-write and normal approvals. Absent = read-only. */
+  crossWorkspaceAccess?: WorkspaceCrossAccess;
   /**
    * v0.0.47: default subagent team (Extalia Native and Hermes Agent). Every new
    * managed session in the workspace starts with its own copy unless it is given another.
@@ -148,6 +166,14 @@ export function decodeWorkspace(raw: unknown): DecodeResult<Workspace> {
       const field = optionalText(value[key], key, { singleLine: true, max: key === 'projectLocation' ? 4096 : 200 });
       if (field) workspace[key] = field;
     }
+    if (value.additionalProjectLocations !== undefined) {
+      if (!Array.isArray(value.additionalProjectLocations) || value.additionalProjectLocations.length >= MAX_WORKSPACE_FOLDERS) throw new Error('additionalProjectLocations: expected up to 15 additional folders.');
+      const locations = value.additionalProjectLocations.map(location => text(location, 'additionalProjectLocations', { singleLine: true, max: 4096 }).trim());
+      if (locations.some(location => location.includes('\0'))) throw new Error('additionalProjectLocations: invalid folder path.');
+      const all = [...(workspace.projectLocation ? [workspace.projectLocation] : []), ...locations].map(location => location.trim().replace(/[\\/]+$/, '') || location.trim());
+      if (new Set(all).size !== all.length) throw new Error('additionalProjectLocations: duplicate folders.');
+      workspace.additionalProjectLocations = locations;
+    }
     if (value.missionConnectionIds !== undefined) {
       if (!Array.isArray(value.missionConnectionIds) || value.missionConnectionIds.length > 8) throw new Error('missionConnectionIds: expected up to 8 connection ids.');
       const ids = value.missionConnectionIds.map(id => entityId(id, 'missionConnectionIds'));
@@ -167,6 +193,7 @@ export function decodeWorkspace(raw: unknown): DecodeResult<Workspace> {
         commands: oneOf(permissions.commands, ['ask', 'allow'] as const, 'permissions.commands'),
       };
     }
+    if (value.crossWorkspaceAccess !== undefined) workspace.crossWorkspaceAccess = decodeWorkspaceCrossAccess(value.crossWorkspaceAccess);
     // A damaged default team is dropped, never the whole workspace (hosts keep only valid workspaces).
     if (value.team !== undefined && value.team !== null) {
       const team = decodeAgentTeam(value.team);

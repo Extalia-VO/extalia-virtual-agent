@@ -202,8 +202,15 @@ function ApprovalCard({ t, item, onDecide, actionable }: { t: Messages; item: Ap
 function UsageLine({ t, item, language }: { t: Messages; item: UsageItem; language: string }) {
   const format = new Intl.NumberFormat(language);
   const parts: string[] = [];
-  if (item.usage && (item.usage.inputTokens !== undefined || item.usage.outputTokens !== undefined)) {
-    parts.push(t.chat.usage(format.format(item.usage.inputTokens ?? 0), format.format(item.usage.outputTokens ?? 0)));
+  const usage = item.usage;
+  if (usage && (usage.inputTokens !== undefined || usage.outputTokens !== undefined || usage.cachedInputTokens !== undefined)) {
+    parts.push(t.chat.usage(
+      usage.inputTokens === undefined ? undefined : format.format(usage.inputTokens),
+      usage.outputTokens === undefined ? undefined : format.format(usage.outputTokens),
+    ));
+    // Historical providers may count cache separately from input. Preserve reported
+    // fields without deriving a total, a hit rate, or treating missing usage as zero.
+    if (usage.cachedInputTokens !== undefined) parts.push(t.chat.cachedInput(format.format(usage.cachedInputTokens)));
   }
   if (item.costUsd !== undefined) parts.push(t.chat.cost(item.costUsd.toFixed(item.costUsd < 0.1 ? 4 : 2)));
   if (item.model) parts.push(item.model);
@@ -263,7 +270,7 @@ export function TranscriptView({ t, items, language, onDecide, previewAttachment
             return (
               <li key={item.id} className={`msg notice ${item.reason === 'cancelled' ? 'info' : 'error'}`}>
                 <Icon name={item.reason === 'cancelled' ? 'stop' : 'alert'} />
-                <span>{item.reason === 'cancelled' ? t.chat.stopped : `${item.reason === 'failed' ? t.chat.failed : t.chat.agentError} ${item.text ?? ''}`}</span>
+                <span>{item.reason === 'cancelled' ? t.chat.stopped : `${item.reason === 'failed' ? t.chat.failed : t.chat.agentError} ${item.text === 'native_context_limit' ? t.context.requestHeld : item.text ?? ''}`}</span>
               </li>
             );
           case 'usage': return <li key={item.id} className="msg"><UsageLine t={t} item={item} language={language} /></li>;

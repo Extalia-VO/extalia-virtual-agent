@@ -87,6 +87,7 @@ function pick<T>(seat: string, trait: string, items: readonly T[]): T {
 /** Slot kinds: large items fit the back corners, flat ones the front. */
 const BACK_LEFT: readonly (DeskAccessoryKind | null)[] = ['drawer-unit', 'letter-tray', 'file-holder', 'books', 'plant', 'desk-shelf'];
 const BACK_RIGHT: readonly (DeskAccessoryKind | null)[] = ['pen-cup', 'plant', 'flower-vase', 'headphones', 'books', 'ornament-lamp', 'photo'];
+const COMPLEMENTARY_RIGHT = BACK_RIGHT.filter(kind => kind !== 'plant' && kind !== 'flower-vase');
 
 const cache = new Map<string, DeskLayout>();
 
@@ -97,6 +98,8 @@ export function deskLayout(seatId: string | undefined): DeskLayout {
   const known = cache.get(seatId);
   if (known) return known;
   const mouseSide = 1;
+  const leftAccessory = pick(seatId, 'slot-a', BACK_LEFT);
+  const rightAccessory = pick(seatId, 'slot-b', leftAccessory === 'plant' ? COMPLEMENTARY_RIGHT : BACK_RIGHT);
   const layout: DeskLayout = Object.freeze({
     keyboardKind: !executive && sample(seatId, 'board', 0, 1) < 0.35 ? 'full' : 'compact',
     keyboardOffset: executive ? [0, 0] as const : [sample(seatId, 'kx', -0.02, 0.02), sample(seatId, 'kz', -0.008, 0.008)] as const,
@@ -108,8 +111,8 @@ export function deskLayout(seatId: string | undefined): DeskLayout {
     mouseOnPad: [-sample(seatId, 'pad-x', 0.066, 0.075), sample(seatId, 'pad-z', -0.015, 0.025)] as const,
     // The front corners are reserved for the pointer and cup; organizers stay behind them.
     accessories: executive ? [] : [
-      pick(seatId, 'slot-a', BACK_LEFT),
-      pick(seatId, 'slot-b', BACK_RIGHT),
+      leftAccessory,
+      rightAccessory,
       null, null,
     ],
     tint: sample(seatId, 'tint', 0, 1),

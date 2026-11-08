@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { commandHead, mergeSubagentSteps, parseAntigravity, parseClaude, parseCodex, parseGemini, parseHermes, toolHints, type ParseContext, type TranscriptStep } from '../src/index.js';
+import { commandHead, extractWrittenFiles, mergeSubagentSteps, parseAntigravity, parseClaude, parseCodex, parseGemini, parseHermes, statedSuccess, toolHints, type ParseContext, type TranscriptStep } from '../src/index.js';
 
 // Synthesized fixtures that follow each provider's shape; no real transcript is used.
 const T = '2026-10-08T00:00:00.000Z';
@@ -8,7 +8,7 @@ const T2 = '2026-10-08T00:00:02.000Z';
 const jsonl = (...values: unknown[]) => values.map(value => JSON.stringify(value)).join('\n');
 const context = (sourceId: ParseContext['sourceId']): ParseContext => ({ sourceId, exportedAt: T2 });
 const shape = (steps: TranscriptStep[] | undefined) => (steps ?? []).map(step => {
-  const { at: _at, text: _text, output: _output, ...rest } = step as TranscriptStep & { text?: string; output?: string };
+  const { at: _at, text: _text, output: _output, writesConfirmed: _writesConfirmed, ...rest } = step as TranscriptStep & { text?: string; output?: string; writesConfirmed?: boolean };
   return rest;
 });
 
@@ -36,7 +36,7 @@ describe('transcript steps', () => {
       { pos: 'L6', type: 'reply', model: 'example-model' },
       { pos: 'L7', type: 'tool.call', tool: 'exec_command', callId: 'c1', command: 'pnpm test --run', target: 'pnpm test --run' },
       { pos: 'L8', type: 'tool.result', callId: 'c1', ok: false },
-      { pos: 'L9', type: 'tool.call', tool: 'apply_patch', callId: 'c2', target: 'main.ts' },
+      { pos: 'L9', type: 'tool.call', tool: 'apply_patch', callId: 'c2', target: 'main.ts', files: [{ path: 'src/app/main.ts', change: 'update' }] },
       { pos: 'L10', type: 'tool.result', callId: 'c2', ok: true },
       { pos: 'L11', type: 'reply', final: true, model: 'example-model' },
       { pos: 'L12', type: 'turn.end', reason: 'completed' },
@@ -200,6 +200,56 @@ describe('transcript steps', () => {
     expect(toolHints('WebFetch', { url: 'https://user:pw@example.com/path?q=1' })).toEqual({ target: 'example.com' });
     expect(toolHints('apply_patch', '*** Begin Patch\n*** Add File: a/one.ts\n*** Delete File: b/two.ts\n*** End Patch')).toEqual({ target: 'one.ts +1' });
     expect(toolHints('custom', { anything: 'value' })).toEqual({});
+  });
+
+  it('extracts bounded explicit file candidates without confusing reads, prose or same-named files', () => {
+    expect(extractWrittenFiles('functions.apply_patch', '*** Begin Patch\n*** Update File: src/a/index.ts\n*** Move to: src/b/index.ts\n*** Add File: src/a/index.ts\n*** End Patch', undefined, '/projects/demo')).toEqual([
+      { path: 'src/a/index.ts', change: 'delete' }, { path: 'src/b/index.ts', change: 'add' }, { path: 'src/a/index.ts', change: 'add' },
+    ]);
+    expect(extractWrittenFiles('Edit', { file_path: '/projects/demo/src/a/index.ts' }, undefined, '/projects/demo')).toEqual([{ path: 'src/a/index.ts', change: 'update' }]);
+    expect(extractWrittenFiles('Write', { file_path: '/projects/demo/src/b/index.ts' }, undefined, '/projects/demo')).toEqual([{ path: 'src/b/index.ts', change: 'update' }]);
+    expect(extractWrittenFiles('MultiEdit', { edits: [{ file_path: 'one.ts' }] })).toEqual([{ path: 'one.ts', change: 'update' }]);
+    expect(extractWrittenFiles('replace_file_content', { TargetFile: '/outside/project/file.ts' }, undefined, '/projects/demo')).toEqual([{ path: '/outside/project/file.ts', change: 'update' }]);
+    expect(extractWrittenFiles('read_file', { path: 'src/read.ts' })).toEqual([]);
+    expect(extractWrittenFiles('write_file', { path: 'src/x.ts' }, { files_modified: ['src/y.ts'], output: 'changed src/z.ts' })).toEqual([
+      { path: 'src/x.ts', change: 'update' }, { path: 'src/y.ts', change: 'update' },
+    ]);
+    expect(extractWrittenFiles('write_file', { path: '../escape.ts' })).toEqual([]);
+    expect(extractWrittenFiles('write_file', { path: 'https://example.com/a.ts' })).toEqual([]);
+    expect(extractWrittenFiles('write_file', { path: 'src/a.ts' }, JSON.stringify({ result: JSON.stringify({ success: true, files_created: ['src/a.ts'] }) }))).toEqual([{ path: 'src/a.ts', change: 'add' }]);
+    expect(extractWrittenFiles('write_file', {}, { files_modified: Array.from({ length: 250 }, (_, index) => `src/${index}.ts`) })).toHaveLength(200);
+    expect(statedSuccess({ response: { error: 'write failed' } })).toBe(false);
+    expect(statedSuccess({ isError: true })).toBe(false);
+    expect(statedSuccess({ status: 'completed', exit_code: 1 })).toBe(false);
+    expect(statedSuccess({ exit_code: 0, result: { response: { success: false } } })).toBe(false);
+    const cyclic: Record<string, unknown> = {};
+    cyclic.result = cyclic;
+    expect(statedSuccess(cyclic)).toBeUndefined();
+  });
+
+  it('retains candidates for Claude/Gemini/Hermes edit tools and only structured Hermes result paths', () => {
+    const claude = parseClaude(jsonl(
+      { type: 'assistant', uuid: 'edit', sessionId: 'claude-files', cwd: '/projects/demo', timestamp: T, message: { role: 'assistant', content: [
+        { type: 'tool_use', id: 'w', name: 'Write', input: { file_path: '/projects/demo/src/new.ts' } },
+        { type: 'tool_use', id: 'e', name: 'Edit', input: { file_path: '/projects/demo/src/old.ts' } },
+        { type: 'tool_use', id: 'm', name: 'MultiEdit', input: { file_path: '/projects/demo/src/many.ts' } },
+      ] } },
+      { type: 'user', uuid: 'result', sessionId: 'claude-files', timestamp: T1, message: { role: 'user', content: [
+        { type: 'tool_result', tool_use_id: 'w', content: 'ok' }, { type: 'tool_result', tool_use_id: 'e', content: 'ok' }, { type: 'tool_result', tool_use_id: 'm', content: 'ok' },
+      ] } },
+    ), context('claude-code'));
+    expect(claude.steps?.filter(step => step.type === 'tool.call').map(step => step.type === 'tool.call' ? step.files : undefined)).toEqual([
+      [{ path: 'src/new.ts', change: 'update' }], [{ path: 'src/old.ts', change: 'update' }], [{ path: 'src/many.ts', change: 'update' }],
+    ]);
+    const gemini = parseGemini(JSON.stringify({ sessionId: 'gemini-files', projectHash: 'hash', messages: [{ id: 'm', type: 'gemini', content: '', toolCalls: [{ id: 'g', name: 'write_file', args: { file_path: 'src/g.ts' }, status: 'success', result: [{ functionResponse: { response: { files_modified: ['src/g.ts'] } } }] }] }] }), context('gemini-cli'));
+    expect(gemini.steps?.find(step => step.type === 'tool.call')).toMatchObject({ files: [{ path: 'src/g.ts', change: 'update' }] });
+    expect(gemini.steps?.find(step => step.type === 'tool.result')).toMatchObject({ files: [{ path: 'src/g.ts', change: 'update' }] });
+    const hermes = parseHermes({ id: 'hermes-files', cwd: '/projects/demo' }, [
+      { id: 1, role: 'assistant', tool_calls: [{ id: 'h', function: { name: 'write_file', arguments: '{"path":"src/h.ts"}' } }] },
+      { id: 2, role: 'tool', tool_call_id: 'h', tool_name: 'write_file', content: '\u0000json:{"success":true,"files_created":["src/h.ts"]}' },
+    ], context('hermes'));
+    expect(hermes.steps?.find(step => step.type === 'tool.call')).toMatchObject({ files: [{ path: 'src/h.ts', change: 'update' }] });
+    expect(hermes.steps?.find(step => step.type === 'tool.result')).toMatchObject({ files: [{ path: 'src/h.ts', change: 'add' }], ok: true });
   });
 });
 

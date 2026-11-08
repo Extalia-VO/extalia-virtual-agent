@@ -5,9 +5,10 @@ import { GIT_SAFETY_CONFIG, gitEnvironment } from '../inspect.js';
 /**
  * Git for write-capable mission workers (ADR 0028). Runs the `git` CLI without a
  * shell, with a timeout and an output limit, with only the few environment
- * variables Git needs (no credentials, no `GIT_*` overrides), and with every
- * repository setting that can start a program switched off (hooks, fsmonitor,
- * external diff, pager, credential helper; filter drivers per repository).
+ * variables Git needs (no credentials or inherited `GIT_*` overrides).
+ * Selected program-launching settings are disabled (hooks, fsmonitor, external
+ * diff, pager, credential helper; filter drivers per repository). Partial-clone
+ * configuration is refused before object operations; this is not an OS sandbox.
  */
 
 export type WorktreeErrorCode =
@@ -42,7 +43,21 @@ export class GitRunner {
   constructor(private readonly options: GitRunnerOptions = {}) {}
 
   /** Run Git in `cwd`. Exit codes outside `accept` throw `WorktreeError('git_failed')`. */
-  run(cwd: string, args: readonly string[], extra: { limit?: number; config?: readonly string[]; accept?: readonly number[]; timeoutMs?: number } = {}): Promise<GitOutput> {
+  async run(cwd: string, args: readonly string[], extra: { limit?: number; config?: readonly string[]; accept?: readonly number[]; timeoutMs?: number } = {}): Promise<GitOutput> {
+    // Recheck rather than cache: repository configuration can change after a worker starts.
+    if (args[0] !== 'config') await this.assertNoPartialClone(cwd);
+    return this.execute(cwd, args, extra);
+  }
+
+  /** A config-only query cannot lazy-fetch objects, including on Git versions without GIT_NO_LAZY_FETCH. */
+  async assertNoPartialClone(cwd: string): Promise<void> {
+    const configured = await this.execute(cwd, ['config', '--includes', '-z', '--name-only', '--get-regexp', '^(extensions\\.partialclone|remote\\..*\\.(promisor|partialclonefilter))$'], { limit: 256 * 1024, accept: [0, 1] });
+    if (configured.exitCode === 0 && configured.stdout.length) {
+      throw new WorktreeError('unsupported', 'This repository configures partial-clone or promisor objects, which write-capable workers do not support. Use a complete local repository.');
+    }
+  }
+
+  private execute(cwd: string, args: readonly string[], extra: { limit?: number; config?: readonly string[]; accept?: readonly number[]; timeoutMs?: number } = {}): Promise<GitOutput> {
     const limit = extra.limit ?? DEFAULT_LIMIT, timeoutMs = extra.timeoutMs ?? this.options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     const accept = extra.accept ?? [0];
     return new Promise((resolve, reject) => {

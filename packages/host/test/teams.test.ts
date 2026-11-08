@@ -41,7 +41,7 @@ async function setup(script: Script, root?: string) {
   const scripted = scriptedFetch(script);
   const runtime = await createAgentHost({
     kind: 'bridge', version: '0.0.0-test', dataDirectory: path.join(base, 'data'), importHome: path.join(base, 'home'),
-    env: { EXTALIA_SECRET_STORE: 'memory', PATH: process.env.PATH }, fetch: scripted.fetch,
+    env: { EXTALIA_SECRET_STORE: 'memory', PATH: process.env.PATH, HERMES_MANAGED_DIR: path.join(base, 'no-managed-scope') }, fetch: scripted.fetch,
   });
   runtimes.push(runtime);
   const events: ExtaliaEvent[] = [];
@@ -92,20 +92,34 @@ describe('subagent teams (Extalia Native)', () => {
 
     const saved = await first.host.saveSessionTeam(session.id, TEAM);
     expect(saved).toMatchObject({ ...TEAM, updatedAt: expect.any(String) });
-    expect((await first.host.getState()).sessions.find(item => item.id === session.id)?.team).toEqual({ enabled: true, size: 2 });
+    expect((await first.host.getState()).sessions.find(item => item.id === session.id)?.team).toEqual({ enabled: true, size: 2, updatedAt: saved!.updatedAt });
     await runtimes.pop()!.close();
 
     const second = await setup(done, first.root);
     expect(await second.host.getSessionTeam(session.id)).toEqual(saved);
-    expect((await second.host.getState()).sessions.find(item => item.id === session.id)?.team).toEqual({ enabled: true, size: 2 });
+    expect((await second.host.getState()).sessions.find(item => item.id === session.id)?.team).toEqual({ enabled: true, size: 2, updatedAt: saved!.updatedAt });
     // The model override never carries the team.
-    expect((await second.host.setSessionOptions(session.id, { model: 'mock-large', team: { ...TEAM, enabled: false } })).team).toEqual({ enabled: true, size: 2 });
+    expect((await second.host.setSessionOptions(session.id, { model: 'mock-large', team: { ...TEAM, enabled: false } })).team).toEqual({ enabled: true, size: 2, updatedAt: saved!.updatedAt });
     expect(await second.host.saveSessionTeam(session.id, null)).toBeUndefined();
     expect((await second.host.getState()).sessions.find(item => item.id === session.id)?.team).toBeUndefined();
 
     const withTeam = await second.host.createSession(workspace.id, { team: TEAM });
-    expect(withTeam.team).toEqual({ enabled: true, size: 2 });
+    expect(withTeam.team).toEqual({ enabled: true, size: 2, updatedAt: (await second.host.getSessionTeam(withTeam.id))!.updatedAt });
     expect((await second.host.getSessionTeam(withTeam.id))?.members.map(member => member.name)).toEqual(['Ava', 'Milo']);
+  });
+
+  it('projects the persisted revision when an edit keeps the team enabled and the same size', async () => {
+    const context = await setup(done);
+    const workspace = await nativeWorkspace(context.host, context.project);
+    const session = await context.host.createSession(workspace.id, { team: TEAM });
+    const initial = (await context.host.getSessionTeam(session.id))!;
+    expect(session.team).toEqual({ enabled: true, size: 2, updatedAt: initial.updatedAt });
+    await new Promise(resolve => setTimeout(resolve, 5));
+    const edited = (await context.host.saveSessionTeam(session.id, { ...initial, members: initial.members.map((member, index) => index === 0 ? { ...member, role: 'Architect' } : member) }))!;
+    expect(edited.updatedAt).toEqual(expect.any(String));
+    expect(edited.updatedAt).not.toBe(initial.updatedAt);
+    expect((await context.host.getState()).sessions.find(item => item.id === session.id)?.team).toEqual({ enabled: true, size: 2, updatedAt: edited.updatedAt });
+    expect((await context.host.getSessionTeam(session.id))!.updatedAt).toBe(edited.updatedAt);
   });
 
   it('keeps teams for Hermes Agent sessions (create, save, load)', async () => {
@@ -117,6 +131,13 @@ describe('subagent teams (Extalia Native)', () => {
     const session = await host.createSession(workspace.id);
     expect(await host.saveSessionTeam(session.id, TEAM)).toMatchObject({ enabled: true, members: [{ name: 'Ava' }, { name: 'Milo' }] });
     expect((await host.getSessionTeam(session.id))?.allowedModels).toEqual(TEAM.allowedModels);
+    const beforeRejectedPrompt = await host.getSessionTeam(session.id);
+    const oversizedPrompt = Array.from({ length: 3 }, (_, index) => `Subagent ${index + 1}:\nRole: R${index}`).join('\n');
+    await expect(host.sendPrompt(session.id, oversizedPrompt)).rejects.toThrow(/at most 2/);
+    expect(await host.getSessionTeam(session.id)).toEqual(beforeRejectedPrompt);
+    const oversized = { ...TEAM, members: [...TEAM.members, { ...TEAM.members[0]!, id: 'extra-member', name: 'Extra Member' }] };
+    await expect(host.saveSessionTeam(session.id, oversized)).rejects.toThrow(/at most 2/);
+    await expect(host.createSession(workspace.id, { team: oversized })).rejects.toThrow(/at most 2/);
     expect(await host.saveSessionTeam(session.id, null)).toBeUndefined();
   });
 
@@ -190,7 +211,7 @@ describe('subagent teams (Extalia Native)', () => {
     reply = Response.json({ error: { message: 'upstream down' } }, { status: 500 });
     expect(await context.host.planTeam(workspace.id, request)).toMatchObject({ source: 'heuristic', note: expect.stringContaining('could not be asked') });
 
-    await expect(context.host.planTeam(workspace.id, { ...request, count: 21 })).rejects.toThrow(/1 to 20/);
+    await expect(context.host.planTeam(workspace.id, { ...request, count: 33 })).rejects.toThrow(/1 to 32/);
     await expect(context.host.planTeam(workspace.id, { ...request, goal: 42 } as never)).rejects.toThrow(/goal/);
     await expect(context.host.planTeam(workspace.id, { ...request, allowedModels: ['--bad'] })).rejects.toThrow(/model id/);
   });
@@ -229,23 +250,23 @@ describe('planning a team for a Hermes Agent workspace', () => {
       }
       return reply(JSON.parse(String(init?.body)));
     };
-    const runtime = await createAgentHost({ kind: 'bridge', version: '0.0.0-test', dataDirectory: path.join(base, 'data'), importHome: home, env: { EXTALIA_SECRET_STORE: 'memory', PATH: process.env.PATH, ...key.env }, fetch });
+    const runtime = await createAgentHost({ kind: 'bridge', version: '0.0.0-test', dataDirectory: path.join(base, 'data'), importHome: home, env: { EXTALIA_SECRET_STORE: 'memory', PATH: process.env.PATH, HERMES_MANAGED_DIR: path.join(base, 'no-managed-scope'), ...key.env }, fetch });
     runtimes.push(runtime);
     const state = await runtime.host.saveWorkspace({ name: 'Lab', projectLocation: project, runtimeId: 'hermes', runtimeProfileId: 'lab', permissions: { fileWrite: 'ask', commands: 'ask' } });
     return { host: runtime.host, workspace: state.workspaces[0]!, requests };
   }
 
-  it('asks the profile\'s local router with its key (loopback only) and lets the plan choose the models', async () => {
+  it('asks the profile\'s local router with its key (loopback only) and plans roles without promising per-member model routing', async () => {
     const plan = '{"members":[{"role":"Architect","task":"Design it","soul":"Calm.","models":["ag/claude-opus-thinking","ag/gemini-flash"],"why":"Design needs depth."},{"role":"Scout","task":"Look things up","model":"ag/gemini-flash"}],"models":["ag/claude-opus-thinking","ag/gemini-flash"]}';
     const { host, workspace, requests } = await hermesSetup('http://127.0.0.1:20128/v1', () => Response.json({ choices: [{ message: { role: 'assistant', content: `<think>{draft}</think>\n${plan}` } }] }));
     const result = await host.planTeam(workspace.id, { goal: '', count: 2, allowedModels: [] });
     expect(result.source).toBe('model');
-    expect(result.allowedModels).toEqual(['ag/claude-opus-thinking', 'ag/gemini-flash']);
+    expect(result.allowedModels).toBeUndefined();
     expect(result.members.map(member => [member.role, member.models])).toEqual([
-      ['Architect', ['ag/claude-opus-thinking', 'ag/gemini-flash']], ['Scout', ['ag/gemini-flash']],
+      ['Architect', []], ['Scout', []],
     ]);
     expect(result.members[0]!.soul).toBe('Calm.');
-    expect(result.modelReasons).toEqual({ [result.members[0]!.id]: 'Design needs depth.' });
+    expect(result.modelReasons).toBeUndefined();
     expect(result.members.every(member => /^\S+ \S+$/.test(member.name))).toBe(true);
     const chat = requests.find(request => request.method === 'POST')!;
     expect(chat.url).toBe('http://127.0.0.1:20128/v1/chat/completions');
@@ -259,10 +280,13 @@ describe('planning a team for a Hermes Agent workspace', () => {
     expect(requests.every(request => new URL(request.url).hostname === '127.0.0.1')).toBe(true);
     expect(JSON.stringify(result)).not.toContain('sk-local-only');
 
-    // Ticked models are honoured as before.
+    // Legacy model picks do not become unsupported Hermes worker routes.
     const ticked = await host.planTeam(workspace.id, { goal: 'Ship it', count: 2, allowedModels: ['ag/claude-opus-thinking', 'ag/gemini-flash'] });
     expect(ticked).toMatchObject({ source: 'model' });
     expect(ticked.allowedModels).toBeUndefined();
+    expect(ticked.members.every(member => member.models.length === 0)).toBe(true);
+    expect(body.messages[1]!.content).toContain('shared delegation model');
+    await expect(host.planTeam(workspace.id, { goal: 'Too many', count: 3, allowedModels: [] })).rejects.toThrow(/at most 2/);
   });
 
   it('resolves a ${VAR} key from the profile\'s .env (then the environment), as Hermes does', async () => {
@@ -278,12 +302,13 @@ describe('planning a team for a Hermes Agent workspace', () => {
     expect(missing.requests.every(request => request.auth === undefined)).toBe(true);
   });
 
-  it('never calls a remote provider: a heuristic plan with a note, models chosen from the profile\'s default', async () => {
+  it('never calls a remote provider and does not invent Hermes member models', async () => {
     const { host, workspace, requests } = await hermesSetup('https://api.example.com/v1', () => Response.json({}));
-    const result = await host.planTeam(workspace.id, { goal: 'Refactor login', count: 8, allowedModels: [] });
+    const result = await host.planTeam(workspace.id, { goal: 'Refactor login', count: 2, allowedModels: [] });
     expect(result).toMatchObject({ source: 'heuristic', note: expect.stringContaining('not on this computer') });
-    expect(result.members).toHaveLength(8);
-    expect(result.allowedModels).toEqual(['ag/claude-sonnet']);
+    expect(result.members).toHaveLength(2);
+    expect(result.allowedModels).toBeUndefined();
+    expect(result.members.every(member => member.models.length === 0)).toBe(true);
     expect(requests).toEqual([]);
   });
 
@@ -292,12 +317,12 @@ describe('planning a team for a Hermes Agent workspace', () => {
     const { host, workspace } = await hermesSetup('http://localhost:20128/v1', () => status === 200
       ? Response.json({ choices: [{ message: { content: 'I would suggest a researcher.' } }] })
       : Response.json({ error: 'down' }, { status }));
-    const failed = await host.planTeam(workspace.id, { goal: 'x', count: 3, allowedModels: [] });
+    const failed = await host.planTeam(workspace.id, { goal: 'x', count: 2, allowedModels: [] });
     expect(failed).toMatchObject({ source: 'heuristic', note: expect.stringContaining('HTTP 500') });
-    expect(failed.members.map(member => member.models[0])).toEqual(expect.arrayContaining(['ag/claude-opus-thinking']));
-    expect(failed.allowedModels!.length).toBeGreaterThan(0);
+    expect(failed.members.every(member => member.models.length === 0)).toBe(true);
+    expect(failed.allowedModels).toBeUndefined();
     status = 200;
-    expect(await host.planTeam(workspace.id, { goal: 'x', count: 3, allowedModels: [] })).toMatchObject({ source: 'heuristic', note: expect.stringContaining('not a usable plan') });
+    expect(await host.planTeam(workspace.id, { goal: 'x', count: 2, allowedModels: [] })).toMatchObject({ source: 'heuristic', note: expect.stringContaining('not a usable plan') });
   });
 });
 
@@ -318,7 +343,7 @@ describe('v0.0.47 workspace default team', () => {
     const second = await setup(done, first.root);
     const reloaded = await second.host.getState();
     expect(reloaded.workspaces[0]!.team?.members.map(member => member.id)).toEqual(['m-ava', 'm-milo']);
-    expect(reloaded.sessions.find(item => item.id === session.id)?.team).toEqual({ enabled: true, size: 2 });
+    expect(reloaded.sessions.find(item => item.id === session.id)?.team).toEqual({ enabled: true, size: 2, updatedAt: (await second.host.getSessionTeam(session.id))!.updatedAt });
     expect((await second.host.saveWorkspaceTeam(workspace.id, null)).workspaces[0]!.team).toBeUndefined();
     // Removing the default leaves existing sessions' teams alone; new sessions start without one.
     expect(await second.host.getSessionTeam(session.id)).toMatchObject({ enabled: true });
@@ -331,12 +356,12 @@ describe('v0.0.47 workspace default team', () => {
     await context.host.saveWorkspaceTeam(workspace.id, TEAM);
 
     const inherited = await context.host.createSession(workspace.id);
-    expect(inherited.team).toEqual({ enabled: true, size: 2 });
+    expect(inherited.team).toEqual({ enabled: true, size: 2, updatedAt: (await context.host.getSessionTeam(inherited.id))!.updatedAt });
     const copy = (await context.host.getSessionTeam(inherited.id))!;
     expect(copy.members.map(member => member.name)).toEqual(['Ava', 'Milo']);
 
     const explicit = await context.host.createSession(workspace.id, { team: { ...TEAM, members: [{ ...TEAM.members[1]!, name: 'Rex' }] } });
-    expect(explicit.team).toEqual({ enabled: true, size: 1 });
+    expect(explicit.team).toEqual({ enabled: true, size: 1, updatedAt: (await context.host.getSessionTeam(explicit.id))!.updatedAt });
     const none = await context.host.createSession(workspace.id, { team: null });
     expect(none.team).toBeUndefined();
     expect(await context.host.getSessionTeam(none.id)).toBeUndefined();
@@ -380,7 +405,7 @@ describe('v0.0.47 workspace default team', () => {
     // A disabled default is copied disabled and not applied either.
     await context.host.saveWorkspaceTeam(workspace.id, { ...TEAM, enabled: false });
     const disabled = await context.host.createSession(workspace.id);
-    expect(disabled.team).toEqual({ enabled: false, size: 2 });
+    expect(disabled.team).toEqual({ enabled: false, size: 2, updatedAt: (await context.host.getSessionTeam(disabled.id))!.updatedAt });
     const mark = context.scripted.requests.length;
     await turn(context, disabled.id, 'Hello');
     expect(context.scripted.requests.slice(mark)[0]?.system).not.toContain('You lead a team of subagents');

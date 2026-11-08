@@ -11,6 +11,7 @@ import { ProviderLogo } from '../ui/ProviderLogo';
 import { hasWriteTasks, MissionChanges, missionChangesSupported } from './MissionChanges';
 import { MissionDag } from './MissionDag';
 import { isNeverStarted, isTerminalRun, missionBudgetView, missionGraphTasks, missionProgress, shortId, taskTone } from './missionModel';
+import { missionMethodUnavailable } from './missionSetup';
 
 const POLL_MS = 1500;
 const HIDDEN_POLL_MS = 6000;
@@ -26,10 +27,11 @@ function eventLine(t: Messages, event: ExtaliaEvent, titleOf: (taskId?: string, 
   const e = t.missions.run.eventText;
   const task = titleOf(event.taskId, event.agentId);
   const body = event.body;
+  const errorText = (value: string) => value === 'native_context_limit' ? t.context.requestHeld : value;
   switch (body.type) {
     case 'prompt.submitted': return e.started;
     case 'turn.completed': return event.taskId ? e.completed(task) : e.finished;
-    case 'turn.failed': return event.taskId ? e.stopped(task, body.error) : e.ended(body.error);
+    case 'turn.failed': return event.taskId ? e.stopped(task, errorText(body.error)) : e.ended(errorText(body.error));
     case 'task.created': return e.created(task);
     case 'subagent.spawned': return e.spawned(body.label ?? task);
     case 'task.completed': return body.ok ? e.completed(task) : e.stopped(task, body.summary ?? '');
@@ -98,9 +100,10 @@ export function MissionMonitor({ t, language, agents, session, connections, init
   }, [agents, session.id, initial.id, missionEvents.length]);
 
   const cancel = async () => {
+    if (typeof agents.cancelNativeMission !== 'function') return;
     setCancelling(true); setError(null);
-    try { await agents.cancel(session.id); setConfirming(false); }
-    catch (failure) { setError(errorMessage(failure)); }
+    try { await agents.cancelNativeMission(session.id, run.id); setConfirming(false); }
+    catch (failure) { const message = errorMessage(failure); setError(missionMethodUnavailable(message) ? r.cancelUnavailable : message); }
     finally { setCancelling(false); }
   };
 
@@ -222,7 +225,8 @@ export function MissionMonitor({ t, language, agents, session, connections, init
               <button type="button" className="danger" disabled={cancelling} onClick={() => void cancel()}>{cancelling ? r.cancelling : r.cancel}</button>
               <button type="button" disabled={cancelling} onClick={() => setConfirming(false)}>{t.common.cancel}</button>
             </>
-            : <button type="button" onClick={() => setConfirming(true)}><Icon name="stop" />{r.cancel}</button>}
+            : <button type="button" disabled={typeof agents.cancelNativeMission !== 'function'} onClick={() => setConfirming(true)}><Icon name="stop" />{r.cancel}</button>}
+          {typeof agents.cancelNativeMission !== 'function' && <p className="muted small">{r.cancelUnavailable}</p>}
         </div>
       )}
 

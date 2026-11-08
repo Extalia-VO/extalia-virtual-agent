@@ -16,7 +16,7 @@ export function detailedHairStyles(presentation: CharacterPresentation): Charact
 
 /** Nearest detailed model of styles that only had a light or procedural mesh. */
 export const LEGACY_HAIR_MAP: Readonly<Partial<Record<string, CharacterHairStyle>>> = {
-  curly: 'textured-crop', afro: 'textured-crop', wavy: 'medium', long: 'medium',
+  curly: 'afro', wavy: 'long-straight', long: 'long-straight',
 };
 
 /** The style a saved or generated hair value is drawn with: always one that has a detailed GLB. */

@@ -1,5 +1,11 @@
 # Getting started
 
+For page responsibilities and navigation, see
+[Settings, Observe and Import](settings-observe-import.md).
+
+For messages and answers in an already open outside-agent conversation, see
+[Observed reply channels and source capabilities](observed-replies.md).
+
 ## Use Extalia
 
 Agents need a host that can reach your files and run commands, so Extalia runs
@@ -27,7 +33,7 @@ in one of two ways:
 The macOS v0.4.109 DMG has an invalid ad-hoc app signature and no notarization
 ticket, so macOS can reject it as damaged or unverified. Use the npm Web command
 above until a replacement is available. Free macOS previews use a valid ad-hoc
-signature; they remain unnotarized and require manual opening approval and
+signature; they remain unnotarized and require manual opening approval (via **System Settings → Privacy & Security → Open Anyway** or running `xattr -dr com.apple.quarantine /Applications/Extalia.app` in Terminal) and
 manual updates. See [macOS release modes](../release/packaging.md#macos-release-modes).
 
 Desktop and the Web Bridge share one profile and only one may own it at a time.
@@ -60,9 +66,17 @@ walking style, with feminine, masculine and neutral presets; walking and
 navigation are still being developed.
 
 Open Chat and describe the task. The agent reads and searches the project,
-asks before it edits files or runs commands, and reports every step. When the
+asks before edits when required, and reports every step. Native terminal commands
+are currently unavailable until a workspace-isolated executor is verified. When the
 connection uses Extalia memory, [workspace recall](workspace-memory.md) starts
 with a small catalog and searches/reads selected notes on demand.
+
+[Native teams](native-teams.md) can run independent workers with different saved
+connections and ordered model fallbacks, then return their results to the lead.
+[Chat orchestration](chat-orchestration.md) adds persistent setup and active/inactive
+controls beside the composer, with relevant skill/memory previews before Native turns.
+An optional shared [Model selection guide](model-selection-guide.md) informs future
+team and automatic mission plans; without one, the lead uses its own knowledge.
 
 ### Projects, sessions and Diagnostics
 
@@ -70,6 +84,20 @@ Register a project through Setup or **Settings → Workspaces**. Desktop offers 
 folder picker; the web Bridge accepts a full path and checks it on the host. In Chat,
 select a workspace to see only that project's sessions. Saved sessions persist across
 host restarts; sessions marked **Not saved** are intentionally kept in memory only.
+
+Native workspaces support multiple selected folders and [workspace boundaries](workspace-boundaries.md):
+isolated, read-only sharing (default), or read/write sharing when both workspaces permit it.
+Native terminal commands and integration test gates remain unavailable until an isolated executor is verified.
+
+To change Hermes/Extalia Native or the model connection, edit the workspace in
+**Settings → Workspaces** and save it. This changes the default for new sessions.
+An existing conversation keeps its runtime, Hermes profile or Native connection
+and its history. Chat explains a differing default and offers **Start session
+with workspace default**; that action prepares a new conversation while keeping
+your typed prompt. Merely adding/editing a connection does not reassign other
+workspaces, and skipping the workspace step in setup leaves a saved workspace
+unchanged. Existing session model/permission controls follow that session's own
+target, including when opened from Office.
 
 The Diagnostics folder picker is a temporary access check and does not register a
 workspace. A browser picker returns a display name, not the full host path. Opening
@@ -79,6 +107,14 @@ Commands, Git inspection and credential management may be provided **Through age
 host** rather than through separate renderer APIs. Update checks also depend on the
 installation type and release configuration; development Desktop builds cannot install
 release updates.
+
+Git can inspect repositories inside a registered workspace. Open **Git**, choose
+the workspace, then choose a **Repository** when several are found. Paths in the
+changed-file list and diffs are relative to that repository. **Refresh** rescans
+for newly added repositories. Discovery searches at most six directory levels,
+2,000 folders or 100 repositories, with a five-second budget; generated folders
+and symbolic links are skipped. If discovery reaches a limit, register a folder
+closer to the repository as another workspace. Git inspection stays read-only.
 
 ### Is Python required?
 
@@ -139,3 +175,19 @@ pnpm test:desktop   # Electron smoke test (needs a display; use xvfb-run on Linu
 - [Runtimes, providers and observed agents](../architecture/runtime-adapters.md)
 - [Contributing](../../CONTRIBUTING.md)
 - [Roadmap](../wiki/Roadmap-and-Phases.md)
+
+## Files and folders
+
+Open **Files** to browse the selected workspace in a grid or list. A single click
+selects a file or folder and opens its information panel on the right. File
+contents and image thumbnails are never loaded by this page.
+
+Double-click a folder to enter it. You can also focus the folder and press Enter,
+or select it and use **Open folder** in the details panel on a touch screen.
+Breadcrumbs and the parent-folder button navigate back. Navigation clears the
+previous selection; Refresh reloads the directory metadata.
+
+Details include the name, type, workspace-relative location, regular-file size
+when available, and credential, generated-item or symbolic-link markers. Folder
+sizes are not calculated. Unavailable links remain inspectable but cannot be
+opened, and credential folders cannot be entered.

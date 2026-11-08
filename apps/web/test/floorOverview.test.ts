@@ -65,21 +65,14 @@ describe('floor overview framing', () => {
     expect(stackOverviewPose(1440, 900).zoom).toBeGreaterThan(Math.min(1440 / 78, 900 / 68));
   });
 
-  it('retains the Building default pose and zoom independently of floor calibration', () => {
-    expect(buildingOverviewPose(1440, 900)).toMatchInlineSnapshot(`
-      {
-        "position": [
-          -40.487794872627674,
-          31.075733887512328,
-          -80.69284651751546,
-        ],
-        "target": [
-          -7.187804116358011,
-          5.611035073894348,
-          -3.319338583830058,
-        ],
-        "zoom": 16.34153330653797,
-      }
-    `);
+  it('keeps the initial Building view gently elevated with foreground inside the rendered ground', () => {
+    const pose = buildingOverviewPose(1440, 900);
+    const offset = pose.position.map((value, axis) => value - pose.target[axis]!);
+    const elevation = Math.atan2(offset[1]!, Math.hypot(offset[0]!, offset[2]!)) * 180 / Math.PI;
+    expect(elevation).toBeGreaterThan(20);
+    expect(elevation).toBeLessThan(24);
+    expect(offset[0]).toBeLessThan(0);
+    expect(offset[2]).toBeLessThan(0);
+    expect(Math.hypot(...offset)).toBeCloseTo(88);
   });
 });

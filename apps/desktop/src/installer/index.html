@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; font-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Extalia</title>
+  <link rel="stylesheet" href="installer.css">
+  <script src="renderer.js" defer></script>
+</head>
+<body>
+  <main>
+    <section class="hero">
+      <div class="photos" aria-hidden="true">
+        <div class="photo photo-building active"></div>
+        <div class="photo photo-workspace"></div>
+        <div class="photo photo-collaboration"></div>
+      </div>
+      <div class="shade"></div>
+      <div class="hero-copy">
+        <div class="brand"><img class="brand-mark" src="brand.svg" alt=""><span data-copy="brand"></span></div>
+        <p class="eyebrow" data-copy="eyebrow"></p>
+        <h1><span data-copy="heroLineOne"></span><span data-copy="heroLineTwo"></span></h1>
+        <p class="description" data-copy="heroDescription"></p>
+        <ul class="features"><li data-copy="featureAgents"></li><li data-copy="featureKnowledge"></li><li data-copy="featureWorkspace"></li></ul>
+      </div>
+      <div class="carousel-controls" role="group">
+        <span class="photo-caption"></span>
+        <div class="dots"><button class="dot selected" type="button" aria-pressed="true"></button><button class="dot" type="button" aria-pressed="false"></button><button class="dot" type="button" aria-pressed="false"></button></div>
+        <button class="pause" type="button"></button>
+      </div>
+    </section>
+    <section class="installation" aria-labelledby="install-title">
+      <div class="install-copy"><h2 id="install-title" data-copy="macWizardHeading"></h2><p data-copy="macWizardDescription"></p></div>
+      <div class="actions"><button id="install" class="primary" type="button" data-copy="macWizardInstall"></button><button id="continue" class="secondary" type="button" data-copy="macWizardContinue"></button></div>
+      <p id="status" class="status" role="status" aria-live="polite" aria-atomic="true"></p>
+      <p class="footer" data-copy="macFooter"></p>
+    </section>
+  </main>
+</body>
+</html>

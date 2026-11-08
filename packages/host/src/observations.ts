@@ -3,7 +3,7 @@ import { claudeAnchor, isInjectedContext, type TranscriptStep } from '@extalia/i
 import { detectImageMimeType, normalizeAgentIdentity, type AttachmentPreview, type HookPrivacyOptions, type SessionContextUsage, type SessionSummary } from '@extalia/platform';
 import { createEvent, type EventBody, type ExtaliaEvent } from '@extalia/protocol';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { open, readFile, rm, stat, type FileHandle } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import path from 'node:path';
@@ -104,7 +104,8 @@ const sameSession = (a: NativeObservationRef, b: NativeObservationRef) => a.sour
 /** Identifies the same step reported by a hook and by the transcript. */
 function stepKey(event: ExtaliaEvent): string | undefined {
   const body = event.body;
-  if ((body.type === 'tool.started' || body.type === 'tool.completed') && body.toolCallId) return `${body.type}:${body.toolCallId}`;
+  if ((body.type === 'tool.started' || body.type === 'tool.completed') && body.toolCallId) return JSON.stringify([event.agentId ?? 'primary', body.type, body.toolCallId]);
+  if (body.type === 'file.written' && body.toolCallId) return JSON.stringify([event.agentId ?? 'primary', body.type, body.toolCallId, body.path, body.change]);
   if (body.type === 'prompt.submitted') return `prompt:${body.text.slice(0, 500)}`;
   if (body.type === 'model.completed') return `reply:${body.text.slice(0, 500)}`;
   return undefined;
@@ -266,6 +267,35 @@ export class Observations {
     if (entries.length > MAX_IGNORED) this.settings.ignored = Object.fromEntries(entries.sort((a, b) => b[1] - a[1]).slice(0, MAX_IGNORED));
   }
   has(id: string) { return this.records.some(record => record.id === id); }
+  /** Authoritative source association for an explicitly paired cooperative tool. */
+  replyTarget(id: string): { app: string; nativeSessionId: string; watching: boolean } | undefined {
+    const record = this.records.find(item => item.id === id);
+    return record ? { app: record.reference.sourceId, nativeSessionId: record.reference.nativeSessionId, watching: record.watching } : undefined;
+  }
+  /** Host-only source binding for explicit Codex control; display summaries are not authority. */
+  codexControlTarget(id: string): { threadId: string; cwd?: string; watching: boolean } | undefined {
+    const record = this.records.find(item => item.id === id);
+    if (!record || record.reference.sourceId !== 'codex') return undefined;
+    return { threadId: record.reference.nativeSessionId, watching: record.watching, ...(record.projectPath ? { cwd: record.projectPath } : {}) };
+  }
+  codexQueueTarget(id: string) {
+    const record = this.records.find(item => item.id === id);
+    if (!record || record.reference.sourceId !== 'codex') return undefined;
+    const source = this.source.codexQueueSource(record.reference);
+    return source ? { ...source, threadId: record.reference.nativeSessionId, watching: record.watching, ...(record.projectPath ? { cwd: record.projectPath } : {}) } : undefined;
+  }
+  /** Native permission callbacks must match one exact registered transcript. */
+  codexPermissionTarget(payload: Record<string, unknown>): string | undefined {
+    if (typeof payload.session_id !== 'string' || typeof payload.transcript_path !== 'string' || !path.isAbsolute(payload.transcript_path)) return undefined;
+    try {
+      const transcript = realpathSync(payload.transcript_path);
+      const matches = this.records.filter(record => {
+        if (!record.watching || record.reference.sourceId !== 'codex' || record.reference.nativeSessionId !== payload.session_id) return false;
+        return this.source.codexQueueSource(record.reference)?.transcriptPath === transcript;
+      });
+      return matches.length === 1 ? matches[0]!.id : undefined;
+    } catch { return undefined; }
+  }
   /** Give an observed lead a full name unique in the Office, generated from its session id. */
   private async name(record: ObservationRecord) {
     if (record.agentName && record.agentGender) return;

@@ -1,18 +1,20 @@
-import type { AgentHostApi, HostState } from '@extalia/platform';
+import type { AgentHostApi, AgentTeam, HostState } from '@extalia/platform';
 import type { ComposerSend } from './Composer';
 import type { ChatSelection } from './selection';
 
 /** Resolve async creation/state first; commit UI ownership only while the send still owns its context. */
-export async function createComposerSession({ agents, workspaceId, choice, bindSession, onState, onSelect, interrupted }: {
+export async function createComposerSession({ agents, workspaceId, choice, team, bindSession, onState, onSelect, interrupted }: {
   agents: Pick<AgentHostApi, 'createSession' | 'getState'>;
   workspaceId: string;
   choice: ComposerSend['choice'];
+  /** An explicit reviewed snapshot; undefined preserves the host's default inheritance. */
+  team?: AgentTeam | null;
   bindSession: ComposerSend['bindSession'];
   onState: (state: HostState) => void;
   onSelect: (selection: ChatSelection) => void;
   interrupted: string;
 }): Promise<string> {
-  const created = await agents.createSession(workspaceId, choice);
+  const created = await agents.createSession(workspaceId, team === undefined ? choice : { ...choice, team });
   const state = await agents.getState();
   if (bindSession && !bindSession(created.id)) throw new Error(interrupted);
   // No await may separate the ownership guard from these UI commits.

@@ -1,10 +1,13 @@
 import type { Workspace } from '@extalia/core';
 import type { AgentHostApi, ConnectionView, HostState, SessionSummary } from '@extalia/platform';
-import { useId, useMemo, useState } from 'react';
+import { useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { errorMessage } from '../host/remote';
 import type { Messages } from '../i18n';
 import { useLoad } from '../inspect/useLoad';
 import { Icon } from '../ui/Icon';
+import { ModelGuidePanel } from '../planning/ModelGuidePanel';
+import { extendGoalDocument, goalDocumentFromText, goalReference, useGoalDocumentUrl } from '../goals/goalDocument';
+import type { GoalDocument } from '@extalia/core';
 import { ProviderLogo } from '../ui/ProviderLogo';
 import {
   DEFAULT_PLAN_TASKS, MAX_GOAL, MAX_TASKS, allowedConnections, allowedPairs, blankPlan, connectionModels, draftFromPlan, missionPlanner,
@@ -72,15 +75,29 @@ export function MissionComposer({ t, agents, state, session, workspace, onState,
   const ids = { goal: useId(), goalHint: useId(), maxTasks: useId(), connections: useId(), models: useId() };
   const connections = useMemo(() => allowedConnections(state, workspace), [state, workspace]);
   const [goal, setGoal] = useState('');
+  const [goalDocument, setGoalDocument] = useState<GoalDocument>();
+  const [goalDocumentError, setGoalDocumentError] = useState(false);
   const [chosen, setChosen] = useState<string[]>(() => connections.map(connection => connection.id));
   const [excludedModels, setExcludedModels] = useState<string[]>([]);
   const [maxTasks, setMaxTasks] = useState(DEFAULT_PLAN_TASKS);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [planning, setPlanning] = useState<{
+    agents: AgentHostApi; sessionId: string; workspaceId: string; busy: boolean; error: string | null;
+  } | null>(null);
+  const currentPlanning = planning?.agents === agents && planning.sessionId === session.id && planning.workspaceId === workspace.id ? planning : null;
+  if (planning && !currentPlanning) setPlanning(null);
+  const busy = currentPlanning?.busy ?? false;
+  const error = currentPlanning?.error;
+  const ownership = useRef<{ active: boolean; pending: boolean } | null>(null);
+  useLayoutEffect(() => {
+    const owner = { active: true, pending: false };
+    ownership.current = owner;
+    return () => { owner.active = false; };
+  }, [agents, session.id, workspace.id]);
   const [manage, setManage] = useState(false);
+  const [guidePending, setGuidePending] = useState(false);
   const planner = missionPlanner(agents);
   // The primary connection may list more models (endpoint catalog); a session override counts too.
-  const choices = useLoad(workspace.id, 0, () => agents.modelChoices(workspace.id));
+  const choices = useLoad(workspace.id, 0, () => agents.modelChoices(workspace.id), agents);
   const primaryExtra = [...(choices.value?.models ?? []), ...(session.options?.model ? [session.options.model] : [])];
 
   // Newly allowed connections start selected; removed ones drop out (adjusted while rendering, not in an effect).
@@ -96,29 +113,41 @@ export function MissionComposer({ t, agents, state, session, workspace, onState,
   const modelsByConnection = selected.map(connection => ({ connection, models: connectionModels(connection, connection.id === workspace.providerProfileId ? primaryExtra : []) }));
   const allModels = [...new Set(modelsByConnection.flatMap(entry => entry.models))];
   const includedModels = allModels.filter(model => !excludedModels.includes(model));
-  const goalText = goal.trim();
-  const goalTooLong = goal.length > MAX_GOAL;
-  const ready = Boolean(goalText) && !goalTooLong && selected.length > 0 && includedModels.length > 0 && !busy;
+  const goalUrl = useGoalDocumentUrl(goalDocument);
+  const goalText = goal.trim() || (goalDocument ? goalReference(goalDocument.name) : '');
+  const goalTooLong = goal.length > MAX_GOAL && !goalDocument;
+  const ready = Boolean(goalText) && !goalTooLong && !goalDocumentError && selected.length > 0 && includedModels.length > 0 && !busy;
+
+  const importLongGoal = (incoming: string) => {
+    const text = extendGoalDocument(goalDocument, incoming);
+    const document = goalDocumentFromText(text);
+    if (!document) { setGoalDocument({ name: 'goal.txt', text }); setGoal(goalReference('goal.txt')); setGoalDocumentError(true); return; }
+    setGoalDocument(document); setGoal(goalReference(document.name)); setGoalDocumentError(false);
+  };
 
   const pairsFor = (planned: readonly MissionPlanTask[] = []) => allowedPairs(selected, {
     primaryId: workspace.providerProfileId, primaryExtra, models: excludedModels.length ? includedModels : undefined, planned,
   });
 
   const plan = async () => {
-    if (!planner || !ready) return;
-    setBusy(true); setError(null);
+    const owner = ownership.current;
+    if (!planner || !ready || guidePending || !owner?.active || owner.pending) return;
+    owner.pending = true;
+    const status = { agents, sessionId: session.id, workspaceId: workspace.id };
+    setPlanning({ ...status, busy: true, error: null });
     const request: MissionPlanRequest = {
-      goal: goalText, maxTasks,
+      goal: goalText, ...(goalDocument ? { goalDocument } : {}), maxTasks,
       ...(selected.length !== connections.length ? { connectionIds: selected.map(connection => connection.id) } : {}),
       ...(excludedModels.length ? { models: includedModels } : {}),
     };
     try {
       const result = await planner(session.id, request);
-      onPlanned(draftFromPlan(result), pairsFor(result.tasks));
+      if (owner.active) onPlanned(draftFromPlan(result), pairsFor(result.tasks));
     } catch (failure) {
-      setError(errorMessage(failure));
+      if (owner.active) setPlanning({ ...status, busy: true, error: errorMessage(failure) });
     } finally {
-      setBusy(false);
+      owner.pending = false;
+      if (owner.active) setPlanning(current => current && { ...current, busy: false });
     }
   };
 
@@ -128,9 +157,23 @@ export function MissionComposer({ t, agents, state, session, workspace, onState,
       <form className="form-stack" onSubmit={event => { event.preventDefault(); void plan(); }}>
         <div className="field">
           <label htmlFor={ids.goal}>{c.goal}</label>
-          <textarea id={ids.goal} rows={4} value={goal} maxLength={MAX_GOAL + 200} placeholder={c.goalPlaceholder} aria-describedby={ids.goalHint}
-            aria-invalid={goalTooLong || undefined} onChange={event => setGoal(event.target.value)} />
-          <span id={ids.goalHint} className={`muted small ${goalTooLong ? 'field-error' : ''}`}>{goalTooLong ? c.goalLong(MAX_GOAL) : c.goalHint}</span>
+          <textarea id={ids.goal} rows={4} value={goal} placeholder={c.goalPlaceholder} aria-describedby={ids.goalHint}
+            aria-invalid={goalTooLong || goalDocumentError || undefined} onPaste={event => {
+              const pasted = event.clipboardData.getData('text/plain');
+              const node = event.currentTarget;
+              const next = `${goal.slice(0, node.selectionStart)}${pasted}${goal.slice(node.selectionEnd)}`;
+              if (next.length > MAX_GOAL) { event.preventDefault(); importLongGoal(next); }
+            }} onChange={event => {
+              const value = event.target.value;
+              if (value.length > MAX_GOAL) importLongGoal(value);
+              else { setGoal(value); if (!goalDocument) setGoalDocumentError(false); }
+            }} />
+          <span id={ids.goalHint} className={`muted small ${goalTooLong || goalDocumentError ? 'field-error' : ''}`}>{goalDocumentError ? t.composer.longTextFailed : goalDocument ? t.composer.longGoalAutoOnly : goalTooLong ? c.goalLong(MAX_GOAL) : c.goalHint}</span>
+          {goalDocument && <div className="attachment-chip" role="group" aria-label={t.composer.longTextAttached}>
+            <Icon name="file" /><a href={goalUrl} download={goalDocument.name}>{goalDocument.name}</a><button type="button" aria-label={`${t.composer.removeFile} ${goalDocument.name}`} title={t.composer.removeFile}
+              onClick={() => { setGoalDocument(undefined); setGoalDocumentError(false); setGoal(''); }}><Icon name="close" /></button>
+            <span className="muted small">{t.composer.longTextAttached}</span>
+          </div>}
         </div>
 
         <fieldset className="mission-fieldset">
@@ -181,14 +224,17 @@ export function MissionComposer({ t, agents, state, session, workspace, onState,
             onChange={event => setMaxTasks(Math.min(MAX_TASKS, Math.max(1, Math.round(Number(event.target.value) || 1))))} />
         </div>
 
+        <ModelGuidePanel agents={agents} t={t} disabled={busy} onPendingChange={setGuidePending} />
         <p className="note"><Icon name="shield" />{t.missions.plan.readOnly}</p>
         {!planner && <p className="note" role="status"><Icon name="alert" />{c.planUnavailable}</p>}
         {error && <p className="form-error" role="alert"><Icon name="alert" />{error}</p>}
         <div className="actions">
-          {planner && <button type="submit" className="primary" disabled={!ready} aria-busy={busy || undefined}>
+          {planner && <button type="submit" className="primary" disabled={!ready || guidePending} aria-busy={busy || undefined}>
             {busy ? <><Icon name="refresh" className="spin" />{c.planning}</> : <><Icon name="spark" />{c.plan}</>}
           </button>}
-          <button type="button" className={planner ? '' : 'primary'} disabled={!ready} onClick={() => onPlanned(blankPlan(goalText, pairsFor()), pairsFor())}>
+          <button type="button" className={planner ? '' : 'primary'} disabled={!ready || Boolean(goalDocument)} onClick={() => {
+            if (ready && !goalDocument && ownership.current?.active && !ownership.current.pending) onPlanned(blankPlan(goalText, pairsFor()), pairsFor());
+          }}>
             <Icon name="edit" />{c.manual}
           </button>
         </div>

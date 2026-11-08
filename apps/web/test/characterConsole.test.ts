@@ -62,7 +62,7 @@ describe('character console timeline', () => {
 describe('changed files', () => {
   const at = (second: number) => new Date(Date.UTC(2026, 9, 9, 10, 0, second));
   let id = 0;
-  const change = (body: EventBody, second: number): ExtaliaEvent => createEvent({ id: `f${++id}`, sessionId: 's1', agentId: 'primary', source: { runtime: 'test', channel: 'stream' }, body }, () => at(second));
+  const change = (body: EventBody, second: number, agentId = 'primary'): ExtaliaEvent => createEvent({ id: `f${++id}`, sessionId: 's1', agentId, source: { runtime: 'test', channel: 'stream' }, body }, () => at(second));
 
   it('lists each file once, newest first, keeping that a new file stayed new', () => {
     const files = projectChangedFiles([
@@ -73,22 +73,70 @@ describe('changed files', () => {
     expect(files.map(file => [file.path, file.change, file.edits])).toEqual([['src/a.ts', 'add', 2], ['src/b.ts', 'update', 1]]);
   });
 
-  it('treats a bare file name and its full path as one file, unless the name is ambiguous', () => {
-    const edit = (target: string, second: number) => change({ type: 'tool.started', tool: 'Edit', kind: 'edit', label: 'Edit', target }, second);
-    expect(projectChangedFiles([edit('styles.css', 1), change({ type: 'file.written', path: 'src/styles.css', change: 'update' }, 2)]).map(file => file.path)).toEqual(['src/styles.css']);
-    expect(projectChangedFiles([edit('a.ts', 1), change({ type: 'file.written', path: 'x/a.ts', change: 'update' }, 2), change({ type: 'file.written', path: 'y/a.ts', change: 'update' }, 3)])).toHaveLength(3);
+  it('does not guess that unrelated bare names and full paths are the same file', () => {
+    expect(projectChangedFiles([
+      change({ type: 'file.written', path: 'styles.css', change: 'update' }, 1),
+      change({ type: 'file.written', path: 'src/styles.css', change: 'update' }, 2),
+    ]).map(file => file.path)).toEqual(['src/styles.css', 'styles.css']);
   });
 
-  it('counts edit calls from transcripts once, drops failed ones and shows paths from the project root', () => {
-    const edit = (toolCallId: string, target: string, second: number) => change({ type: 'tool.started', toolCallId, tool: 'Edit', kind: 'edit', label: 'Edit', target }, second);
+  it('requires an explicit write event even when an edit call completed successfully', () => {
     const files = projectChangedFiles([
-      edit('c1', '/projects/app/src/a.ts', 1),
-      change({ type: 'file.written', path: '/projects/app/src/a.ts', change: 'update' }, 2),
-      edit('c2', 'src/failed.ts', 3),
+      change({ type: 'tool.started', toolCallId: 'c1', tool: 'Edit', kind: 'edit', label: 'Edit', target: '/projects/app/src/a.ts' }, 1),
+      change({ type: 'tool.completed', toolCallId: 'c1', tool: 'Edit', kind: 'edit', label: 'Edit', target: '/projects/app/src/a.ts', ok: true }, 2),
+      change({ type: 'tool.started', toolCallId: 'c2', tool: 'Edit', kind: 'edit', label: 'Edit', target: 'src/failed.ts' }, 3),
       change({ type: 'tool.completed', toolCallId: 'c2', tool: 'Edit', kind: 'edit', label: 'Edit', ok: false }, 4),
-      edit('c3', 'run the migration', 5),
-      change({ type: 'tool.started', toolCallId: 'c4', tool: 'Read', kind: 'read', label: 'Read', target: 'src/read.ts' }, 6),
+      change({ type: 'tool.started', toolCallId: 'c3', tool: 'Edit', kind: 'edit', label: 'Edit', target: 'a.ts +2' }, 5),
+      change({ type: 'tool.completed', toolCallId: 'c3', tool: 'Edit', kind: 'edit', label: 'Edit', ok: true }, 6),
+      change({ type: 'tool.started', toolCallId: 'c4', tool: 'Read', kind: 'read', label: 'Read', target: 'src/read.ts' }, 7),
+      change({ type: 'file.written', path: '/projects/app/src/actual.ts', change: 'update' }, 8),
     ], '/projects/app/');
-    expect(files.map(file => [file.path, file.edits])).toEqual([['src/a.ts', 1]]);
+    expect(files.map(file => [file.path, file.edits])).toEqual([['src/actual.ts', 1]]);
+  });
+
+  it('counts correlated writes from two agents independently even when completions arrive first', () => {
+    const files = projectChangedFiles([
+      change({ type: 'tool.started', toolCallId: 'shared', tool: 'Edit', kind: 'edit', label: 'Edit', target: 'a.ts' }, 1),
+      change({ type: 'tool.completed', toolCallId: 'shared', tool: 'Edit', kind: 'edit', label: 'Edit', ok: true }, 2),
+      change({ type: 'file.written', toolCallId: 'shared', path: 'src/a.ts', change: 'update' }, 3),
+      change({ type: 'tool.started', toolCallId: 'shared', tool: 'Edit', kind: 'edit', label: 'Edit', target: 'b.ts' }, 4, 'worker-b'),
+      change({ type: 'tool.completed', toolCallId: 'shared', tool: 'Edit', kind: 'edit', label: 'Edit', ok: true }, 5, 'worker-b'),
+      change({ type: 'file.written', toolCallId: 'shared', path: 'src/b.ts', change: 'add' }, 6, 'worker-b'),
+    ]);
+    expect(files.map(file => [file.path, file.change, file.edits])).toEqual([['src/b.ts', 'add', 1], ['src/a.ts', 'update', 1]]);
+  });
+
+  it('deduplicates repeated event ids and repeated writes for the same call while applying the latest change', () => {
+    const write = change({ type: 'file.written', toolCallId: 'c1', path: 'src/a.ts', change: 'add' }, 1);
+    const duplicate = { ...write };
+    const files = projectChangedFiles([
+      write,
+      duplicate,
+      change({ type: 'file.written', toolCallId: 'c1', path: 'src/a.ts', change: 'delete' }, 2),
+    ]);
+    expect(files.map(file => [file.path, file.change, file.edits])).toEqual([['src/a.ts', 'delete', 1]]);
+  });
+
+  it('counts separate resumed prompts when an external runtime reuses a tool call ID', () => {
+    const files = projectChangedFiles([
+      change({ type: 'prompt.submitted', text: 'First edit', via: 'native' }, 1),
+      change({ type: 'file.written', toolCallId: 'call_1', path: 'a.ts', change: 'update' }, 2),
+      change({ type: 'prompt.submitted', text: 'Second edit', via: 'native' }, 3),
+      change({ type: 'file.written', toolCallId: 'call_1', path: 'a.ts', change: 'update' }, 4),
+    ]);
+    expect(files).toMatchObject([{ path: 'a.ts', edits: 2 }]);
+  });
+
+  it('keeps explicit extensionless and multi-file writes, and accepts file paths with spaces', () => {
+    const files = projectChangedFiles([
+      change({ type: 'file.written', path: 'README', change: 'add' }, 1),
+      change({ type: 'file.written', path: 'docs/Release Notes.md', change: 'update' }, 2),
+      change({ type: 'file.written', path: 'src/one.ts', change: 'update' }, 3),
+      change({ type: 'file.written', path: 'src/two.ts', change: 'add' }, 4),
+      change({ type: 'file.written', path: 'src/legacy.ts', change: 'update' }, 5),
+    ]);
+    expect(files.map(file => [file.path, file.change])).toEqual([
+      ['src/legacy.ts', 'update'], ['src/two.ts', 'add'], ['src/one.ts', 'update'], ['docs/Release Notes.md', 'update'], ['README', 'add'],
+    ]);
   });
 });

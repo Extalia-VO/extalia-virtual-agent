@@ -295,9 +295,9 @@ describe('vault graph page shell', () => {
     expect(whole).toContain('vault-graph-legend');
     expect(whole).toContain(t.knowledge.vaultGraph.root);
     expect(whole).toContain('role="combobox"');
-    expect(whole).toMatch(/aria-pressed="true"[^>]*>Return after drag</);
-    expect(whole).toContain(t.knowledge.vaultGraph.restoreLayout);
-    expect(whole).toContain(t.knowledge.vaultGraph.restoreHint);
+    expect(whole).toContain(t.knowledge.vaultGraph.controls);
+    expect(whole).toContain(t.knowledge.vaultGraph.expand);
+    expect(whole).toMatch(/aria-pressed="true"[^>]*>3D</);
   });
 
   it('shows loading, error and empty overview states, and the note panel for a selection', () => {

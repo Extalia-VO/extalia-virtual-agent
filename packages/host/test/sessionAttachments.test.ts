@@ -4,6 +4,7 @@ import { mkdir, readFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createAgentHost, type AgentHostRuntime } from '../src/service.js';
+import { WORKSPACE_COMMAND_UNAVAILABLE } from '../src/tools/command.js';
 import { useTempDirs } from './helpers.js';
 
 /** A scripted OpenAI-compatible endpoint: `reply(body, index)` answers each request with text or one tool call. */
@@ -171,10 +172,10 @@ describe('session permission modes (Extalia Native)', () => {
     expect(after?.options).toEqual({ permissionMode: 'plan' });
   });
 
-  it('accept-edits writes files without asking, and still asks before a command', async () => {
+  it('accept-edits writes files without asking and refuses unavailable commands before approval', async () => {
     const scripted = endpoint((_body, index) => [
       { call: 'write_file', args: { path: 'hello.txt', content: 'Hi\n' } },
-      { call: 'run_command', args: { command: 'cat hello.txt' } },
+      { call: 'run_command', args: { command: 'cat hello.txt > command-ran.txt' } },
       { text: 'Done.' },
     ][index] ?? { text: 'Done.' });
     const { host, runtime, project, events } = await setup(scripted);
@@ -182,12 +183,13 @@ describe('session permission modes (Extalia Native)', () => {
     const session = await host.createSession(workspace.id);
     await host.setSessionOptions(session.id, { permissionMode: 'accept-edits' });
     await host.sendPrompt(session.id, 'Create hello.txt');
-    const asked = await waitFor(events, event => event.body.type === 'approval.requested');
-    expect(asked.body).toMatchObject({ action: expect.stringContaining('cat hello.txt') });
-    expect(events.filter(event => event.body.type === 'approval.requested')).toHaveLength(1);
-    expect(await readFile(path.join(project, 'hello.txt'), 'utf8')).toBe('Hi\n');
-    await host.resolveApproval(session.id, (asked.body as { approvalId: string }).approvalId, 'reject');
     await turnDone(runtime, events, session.id);
+    expect(await readFile(path.join(project, 'hello.txt'), 'utf8')).toBe('Hi\n');
+    expect(events.some(event => event.body.type === 'approval.requested')).toBe(false);
+    expect(events.some(event => event.body.type.startsWith('command.'))).toBe(false);
+    expect(existsSync(path.join(project, 'command-ran.txt'))).toBe(false);
+    expect(events.find(event => event.body.type === 'tool.completed' && event.body.tool === 'run_command')?.body).toMatchObject({ ok: false, output: WORKSPACE_COMMAND_UNAVAILABLE });
+    expect((await host.getState()).sessions.find(item => item.id === session.id)?.options).toEqual({ permissionMode: 'accept-edits' });
   });
 
   it('ask mode asks before an edit even where the workspace allows edits, and the choice is saved with the session', async () => {

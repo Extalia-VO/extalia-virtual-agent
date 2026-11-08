@@ -1,7 +1,9 @@
-import { PerspectiveCamera, Scene, Vector3, type InstancedMesh, type LineSegments, type Points } from 'three';
+import { Color, CustomBlending, NormalBlending, PerspectiveCamera, Scene, Vector3, type ShaderMaterial, type InstancedMesh, type InterleavedBufferAttribute, type Points } from 'three';
+import type { LineSegments2 } from 'three/addons/lines/LineSegments2.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { VaultGraphRenderer, type GraphOptions, type OrbitLike } from '../src/knowledge/vault/vaultGraphRenderer';
 import { encodeFrame, type SimCommand } from '../src/knowledge/vault/simProtocol';
+import { GRAPH_PRESETS } from '../src/knowledge/vault/graphAppearance';
 import { prepareVaultGraph } from '../src/knowledge/vault/vaultGraphModel';
 import type { KnowledgeOverview, KnowledgeOverviewNode } from '@extalia/platform';
 
@@ -106,6 +108,140 @@ describe('vault graph renderer integration', () => {
     h.renderer.update({ ...changed, restoreRevision: 2 });
     expect(h.worker.commands.filter(command => command.type === 'restore')).toHaveLength(2);
     h.renderer.dispose();
+  });
+
+  it('applies real line width, visibility and glow controls without replacing the graph', () => {
+    const g = graph(['a', 'b']);
+    const h = harness(options(g, { showHalos: true }));
+    h.drawFrame([0, 0, 0, 10, 0, 0]);
+    const lines = h.scene.children.find(child => 'isLineSegments2' in child) as LineSegments2;
+    const halos = h.scene.children.find(child => 'isPoints' in child) as Points;
+    h.renderer.update({ ...h.initial, appearance: { ...GRAPH_PRESETS.nebula, linkWidth: 2, showLinks: false, glow: 0 } });
+    expect(lines.visible).toBe(false);
+    expect(lines.material.linewidth).toBe(2);
+    expect(Array.from(halos.geometry.attributes.aGlow!.array).every(value => value === 0)).toBe(true);
+    expect(FakeWorker.all).toHaveLength(1);
+    h.renderer.dispose();
+  });
+
+  it('switches projection on the same worker and applies explicit camera zoom', () => {
+    const h = harness(); h.drawFrame();
+    const distance = h.camera.position.distanceTo(h.orbit.target);
+    h.renderer.update({ ...h.initial, cameraAction: { kind: 'in', revision: 1 } });
+    expect(h.camera.position.distanceTo(h.orbit.target)).toBeCloseTo(distance * .75);
+    h.renderer.update({ ...h.initial, dimensions: 2 });
+    expect(h.worker.commands.at(-1)).toEqual({ type: 'dimensions', value: 2 });
+    expect(FakeWorker.all).toHaveLength(1);
+    h.renderer.dispose();
+  });
+
+  it('changes edge/halo compositing with the app theme on the same graph', () => {
+    const h = harness(options(graph(['a', 'b']), { showHalos: true })); h.drawFrame([0, 0, 0, 10, 0, 0]);
+    const lines = h.scene.children.find(child => 'isLineSegments2' in child) as LineSegments2;
+    const halos = h.scene.children.find(child => 'isPoints' in child) as Points;
+    h.renderer.update({ ...h.initial, theme: { light: true, background: '#eef2f7' } });
+    expect(lines.material.blending).toBe(NormalBlending);
+    expect(lines.material.fog).toBe(false);
+    expect((halos.material as ShaderMaterial).uniforms.uLight!.value).toBe(1);
+    h.renderer.update({ ...h.initial, theme: { light: false, background: '#24262a' } });
+    expect(lines.material.blending).toBe(NormalBlending);
+    expect((halos.material as ShaderMaterial).blending).toBe(CustomBlending);
+    expect(lines.material.fog).toBe(true);
+    expect((halos.material as ShaderMaterial).uniforms.uLight!.value).toBe(0);
+    expect(FakeWorker.all).toHaveLength(1);
+    h.renderer.dispose();
+  });
+
+  it('keeps star geometry bounded, follows CSS viewport size and hides masked cores', () => {
+    const h = harness(options(graph(['a', 'b']), { mask: Uint8Array.of(1, 0) }));
+    h.drawFrame([0, 0, 0, 10, 0, 0]);
+    const core = h.scene.children.find(child => 'isInstancedMesh' in child) as InstancedMesh;
+    expect(core.geometry.attributes.position!.count).toBe(4);
+    expect(core.geometry.index!.count).toBe(6);
+    expect((core.material as ShaderMaterial).depthWrite).toBe(true);
+    expect((core.material as ShaderMaterial).uniforms.uViewportHeight!.value).toBe(100);
+    expect(core.instanceMatrix.array[16]).toBe(0);
+    expect(h.scene.children).toHaveLength(3);
+    h.renderer.dispose();
+  });
+
+  it('initializes replacement graph materials in the current light theme', () => {
+    const h = harness(options(graph(), { theme: { light: true, background: '#eef2f7' }, showHalos: true }));
+    h.renderer.update({ ...h.initial, graph: graph(['new']), mask: Uint8Array.of(1) });
+    const core = h.scene.children.find(child => 'isInstancedMesh' in child) as InstancedMesh;
+    const halos = h.scene.children.find(child => 'isPoints' in child) as Points;
+    expect((core.material as ShaderMaterial).uniforms.uLight!.value).toBe(1);
+    expect((halos.material as ShaderMaterial).uniforms.uLight!.value).toBe(1);
+    expect((halos.material as ShaderMaterial).blending).toBe(NormalBlending);
+    h.renderer.dispose();
+  });
+
+  it('picks the front star when projected cores overlap and remains correct after orbiting', () => {
+    const select = vi.fn();
+    const h = harness(options(graph(['far', 'near']), { onSelect: select }));
+    h.drawFrame([0, 0, 0, 0, 0, 2]);
+    h.canvas.dispatchEvent(pointer('pointerdown')); h.canvas.dispatchEvent(pointer('pointerup'));
+    expect(select).toHaveBeenLastCalledWith(1);
+    h.camera.position.set(10, 0, 0); h.camera.lookAt(0, 0, 0); h.camera.updateMatrixWorld(true);
+    h.drawFrame([0, 0, 0, 2, 0, 0]);
+    h.canvas.dispatchEvent(pointer('pointerdown')); h.canvas.dispatchEvent(pointer('pointerup'));
+    expect(select).toHaveBeenLastCalledWith(1);
+    h.renderer.dispose();
+  });
+
+  it('provides the real WebGL fog uniforms for instanced star cores', () => {
+    const h = harness();
+    const core = h.scene.children.find(child => 'isInstancedMesh' in child) as InstancedMesh;
+    const material = core.material as ShaderMaterial;
+    expect(material.fog).toBe(true);
+    for (const name of ['fogColor', 'fogNear', 'fogFar']) expect(material.uniforms[name]?.value).toBeDefined();
+    h.renderer.update({ ...h.initial, theme: { light: true, background: '#eef2f7' } });
+    expect(material.uniforms.uLight!.value).toBe(1);
+    h.renderer.dispose();
+  });
+
+  for (const light of [false, true]) it(`keeps real edge colours readable and focus distinct in ${light ? 'light' : 'dark'} mode`, () => {
+    const nodes = ['a', 'b', 'c', 'd'].map(name => node(name));
+    const g = prepareVaultGraph({ generation: 1, totalNodes: 4, totalEdges: 2, truncated: false, nodes,
+      edges: [{ source: 'a', target: 'b', type: 'links_to' }, { source: 'c', target: 'd', type: 'links_to' }] });
+    const background = light ? '#eef2f7' : '#24262a';
+    const h = harness(options(g, { theme: { light, background } }));
+    h.drawFrame([0, 0, 0, 10, 0, 0, 20, 0, 0, 30, 0, 0]);
+    const lines = h.scene.children.find(child => 'isLineSegments2' in child) as LineSegments2;
+    const halos = h.scene.children.find(child => 'isPoints' in child) as Points;
+    const bg = new Color(background);
+    const luminance = (rgb: readonly number[]) => .2126 * rgb[0]! + .7152 * rgb[1]! + .0722 * rgb[2]!;
+    const contrast = (rgb: readonly number[]) => {
+      const a = luminance(rgb), b = luminance([bg.r, bg.g, bg.b]);
+      return (Math.max(a, b) + .05) / (Math.min(a, b) + .05);
+    };
+    const colours = () => Array.from((lines.geometry.attributes.instanceColorStart as InterleavedBufferAttribute).data.array as Float32Array);
+    const baseline = contrast(colours().slice(0, 3));
+    expect(baseline).toBeGreaterThan(light ? 1.9 : 2);
+    h.renderer.update({ ...h.initial, selected: 0 });
+    expect(contrast(colours().slice(0, 3))).toBeGreaterThan(baseline);
+    expect(contrast(colours().slice(6, 9))).toBeLessThan(baseline);
+    expect(Array.from(halos.geometry.attributes.aFocus!.array)).toEqual([1, 0, 0, 0]);
+    // The selection cue survives disabling decorative glow.
+    expect(Array.from(halos.geometry.attributes.aGlow!.array)).toEqual([0, 0, 0, 0]);
+    h.renderer.update({ ...h.initial, selected: 0, mask: Uint8Array.of(0, 1, 1, 1) });
+    expect(Array.from(halos.geometry.attributes.aFocus!.array)).toEqual([0, 0, 0, 0]);
+    expect(FakeWorker.all).toHaveLength(1);
+    h.renderer.dispose();
+  });
+
+  it('stops the actual pulse timer when idle and restarts it after interaction', () => {
+    vi.useFakeTimers();
+    const now = vi.spyOn(performance, 'now').mockReturnValue(0);
+    const h = harness(options(graph(), { showHalos: true }));
+    try {
+      expect(vi.getTimerCount()).toBe(1);
+      now.mockReturnValue(18_000); vi.advanceTimersByTime(34);
+      expect(vi.getTimerCount()).toBe(0);
+      h.canvas.dispatchEvent(new Event('wheel'));
+      expect(vi.getTimerCount()).toBe(1);
+      h.renderer.dispose(); expect(vi.getTimerCount()).toBe(0);
+    } finally { h.renderer.dispose(); now.mockRestore(); vi.useRealTimers(); }
   });
 
   it('selects a click but treats pointer movement as a drag', () => {
@@ -216,7 +352,7 @@ describe('vault graph renderer integration', () => {
     const targetBefore = h.orbit.target.clone();
     const clock = vi.spyOn(performance, 'now').mockReturnValue(1000);
 
-    h.renderer.update(options(g, { mask: new Uint8Array([0, 1]), selected: 0, activeResult: 0 }));
+    h.renderer.update(options(g, { showHalos: true, mask: new Uint8Array([0, 1]), selected: 0, activeResult: 0 }));
     clock.mockReturnValue(2000);
     h.renderer.frame({ width: 100, height: 100 }, 0.016, 1);
 
@@ -283,23 +419,135 @@ describe('vault graph renderer integration', () => {
       edges: [{ source: 'a', target: 'b', type: 'links_to' }],
     };
     const g = prepareVaultGraph(overview);
-    const h = harness(options(g));
+    const h = harness(options(g, { showHalos: true }));
     h.drawFrame([0, 0, 0, 10, 0, 0]);
-    const lines = h.scene.children.find(child => child instanceof Object && 'isLineSegments' in child) as LineSegments;
+    const lines = h.scene.children.find(child => child instanceof Object && 'isLineSegments2' in child) as LineSegments2;
     const halos = h.scene.children.find(child => 'isPoints' in child) as Points;
-    const linePositions = () => Array.from(lines.geometry.attributes.position!.array as Float32Array);
+    const linePositions = () => Array.from((lines.geometry.attributes.instanceStart as InterleavedBufferAttribute).data.array as Float32Array);
     const haloGlow = () => Array.from(halos.geometry.attributes.aGlow!.array as Float32Array);
     expect(linePositions()).toEqual([0, 0, 0, 10, 0, 0]);
 
-    h.renderer.update(options(g, { mask: Uint8Array.from([1, 0]) }));
+    h.renderer.update(options(g, { showHalos: true, mask: Uint8Array.from([1, 0]) }));
     h.renderer.frame({ width: 100, height: 100 }, 0.016, 0);
     expect(linePositions()).toEqual([0, 0, 0, 0, 0, 0]);
     expect(haloGlow()[1]).toBe(0);
 
-    h.renderer.update(options(g, { mask: new Uint8Array([1, 1]) }));
+    h.renderer.update(options(g, { showHalos: true, mask: new Uint8Array([1, 1]) }));
     h.renderer.frame({ width: 100, height: 100 }, 0.016, 0.016);
     expect(linePositions()).toEqual([0, 0, 0, 10, 0, 0]);
     expect(haloGlow()[1]).toBeGreaterThan(0);
+    h.renderer.dispose();
+  });
+});
+
+function exploreGraph() {
+  return prepareVaultGraph({ generation: 1, totalNodes: 3, totalEdges: 2, truncated: false,
+    nodes: ['a', 'b', 'c'].map(id => node(id)),
+    edges: [{ source: 'a', target: 'b', type: 'links_to' }, { source: 'b', target: 'c', type: 'links_to' }] });
+}
+
+describe('Explore camera and renderer lifecycle', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('freezes physics, ignores stale worker frames and stays paused across visibility changes until exit', () => {
+    const g = exploreGraph();
+    const h = harness(options(g, { reducedMotion: true }));
+    h.drawFrame([0, 0, 0, 20, 0, 0, 40, 0, 0]);
+    h.renderer.update({ ...h.initial, explore: { current: 0, revision: 1 } });
+    h.renderer.frame({ width: 100, height: 100 }, .016, 1);
+    const core = h.scene.children.find(child => 'isInstancedMesh' in child) as InstancedMesh;
+    const frozen = Array.from(core.instanceMatrix.array);
+    h.worker.frame([100, 0, 0, 120, 0, 0, 140, 0, 0], true);
+    h.renderer.frame({ width: 100, height: 100 }, .016, 2);
+    expect(Array.from(core.instanceMatrix.array)).toEqual(frozen);
+    h.documentTarget.hidden = true; h.documentTarget.dispatchEvent(new Event('visibilitychange'));
+    h.documentTarget.hidden = false; h.documentTarget.dispatchEvent(new Event('visibilitychange'));
+    expect(h.worker.commands.at(-1)).toEqual({ type: 'pause' });
+    h.renderer.update({ ...h.initial, explore: null });
+    expect(h.worker.commands.at(-1)).toEqual({ type: 'resume' });
+    h.renderer.dispose();
+  });
+
+  it('defers entry until positions arrive, then preserves hop distance despite note selection/search changes', () => {
+    const g = exploreGraph();
+    const initial = options(g, { reducedMotion: true, explore: { current: 0, revision: 1 } });
+    const h = harness(initial);
+    h.drawFrame([5, 2, 0, 25, 3, 4, 45, 0, 0]);
+    expect(h.orbit.target.toArray()).toEqual([5, 2, 0]);
+    const offset = h.camera.position.clone().sub(h.orbit.target);
+    h.renderer.update({ ...initial, explore: { current: 1, revision: 2 }, selected: 2, activeResult: 2 });
+    h.renderer.frame({ width: 100, height: 100 }, .016, 1);
+    expect(h.orbit.target.toArray()).toEqual([25, 3, 4]);
+    expect(h.camera.position.clone().sub(h.orbit.target).toArray()).toEqual(offset.toArray());
+    h.renderer.dispose();
+  });
+
+  it('cancels a flight on user takeover and filtered anchors without later delayed motion', () => {
+    const g = exploreGraph();
+    const h = harness(options(g)); h.drawFrame([0, 0, 0, 20, 0, 0, 40, 0, 0]);
+    const clock = vi.spyOn(performance, 'now').mockReturnValue(1000);
+    h.renderer.update({ ...h.initial, explore: { current: 1, revision: 1 } });
+    clock.mockReturnValue(1250); h.renderer.frame({ width: 100, height: 100 }, .016, 1);
+    h.renderer.userStart();
+    const position = h.camera.position.clone(), target = h.orbit.target.clone();
+    clock.mockReturnValue(2000); h.renderer.frame({ width: 100, height: 100 }, .016, 2);
+    expect(h.camera.position.toArray()).toEqual(position.toArray());
+    h.renderer.update({ ...h.initial, mask: Uint8Array.of(1, 0, 1), explore: { current: null, revision: 1 } });
+    h.renderer.frame({ width: 100, height: 100 }, .016, 3);
+    expect(h.camera.position.toArray()).toEqual(position.toArray());
+    expect(h.orbit.target.toArray()).toEqual(target.toArray());
+    h.renderer.dispose();
+  });
+
+  it('gives a frozen flat layout deterministic depth when entering 3D and supports Fit during a tour', () => {
+    const g = exploreGraph();
+    const h = harness(options(g, { dimensions: 2, reducedMotion: true }));
+    h.drawFrame([0, 0, 0, 50, 0, 0, 100, 0, 0]);
+    const exploring = { ...h.initial, dimensions: 3 as const, explore: { current: 0, revision: 1 } };
+    h.renderer.update(exploring); h.renderer.frame({ width: 100, height: 100 }, .016, 1);
+    const core = h.scene.children.find(child => 'isInstancedMesh' in child) as InstancedMesh;
+    expect([14, 30, 46].some(at => core.instanceMatrix.array[at] !== 0)).toBe(true);
+    h.camera.position.copy(h.orbit.target).add(new Vector3(0, 0, 6));
+    h.renderer.update({ ...exploring, cameraAction: { kind: 'fit', revision: 1 } });
+    h.renderer.frame({ width: 100, height: 100 }, .016, 2);
+    expect(h.camera.position.distanceTo(h.orbit.target)).toBeGreaterThan(100);
+    h.renderer.dispose();
+  });
+
+  it('releases an in-progress moved node before pausing, and blocks note dragging during Explore', () => {
+    const h = harness(options(exploreGraph(), { reducedMotion: true }));
+    h.drawFrame([0, 0, 0, 2, 0, 0, 4, 0, 0]);
+    h.canvas.dispatchEvent(pointer('pointerdown'));
+    h.canvas.dispatchEvent(pointer('pointermove', { x: 80 }));
+    expect(h.worker.commands.some(item => item.type === 'drag')).toBe(true);
+    h.renderer.update({ ...h.initial, explore: { current: 0, revision: 1 } });
+    const release = h.worker.commands.findIndex(item => item.type === 'release');
+    const pause = h.worker.commands.findIndex(item => item.type === 'pause');
+    expect(release).toBeGreaterThan(-1); expect(release).toBeLessThan(pause);
+    h.renderer.frame({ width: 100, height: 100 }, .016, 1);
+    const count = h.worker.commands.filter(item => item.type === 'drag').length;
+    h.canvas.dispatchEvent(pointer('pointerdown'));
+    h.canvas.dispatchEvent(pointer('pointermove', { x: 90 }));
+    h.canvas.dispatchEvent(pointer('pointerup', { x: 90 }));
+    expect(h.worker.commands.filter(item => item.type === 'drag')).toHaveLength(count);
+    h.renderer.dispose();
+  });
+
+  it('allows pointer travel only to actual neighbors while unrelated nodes remain a dim backdrop', () => {
+    const g = exploreGraph(); const select = vi.fn();
+    const h = harness(options(g, { reducedMotion: true, onSelect: select }));
+    h.drawFrame([-2, 0, 0, 0, 0, 0, 2, 0, 0]);
+    h.renderer.update({ ...h.initial, explore: { current: 0, revision: 1 } });
+    h.renderer.frame({ width: 100, height: 100 }, .016, 1);
+    h.camera.lookAt(h.orbit.target); h.camera.updateMatrixWorld(true);
+    const click = (x: number) => {
+      const p = new Vector3(x, 0, 0).project(h.camera);
+      const at = (p.x + 1) * 50;
+      h.canvas.dispatchEvent(pointer('pointerdown', { x: at }));
+      h.canvas.dispatchEvent(pointer('pointerup', { x: at }));
+    };
+    click(2); expect(select).not.toHaveBeenCalled();
+    click(0); expect(select).toHaveBeenCalledWith(1);
     h.renderer.dispose();
   });
 });

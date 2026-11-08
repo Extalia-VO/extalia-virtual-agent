@@ -1,3 +1,4 @@
+import { Select } from '../ui/Select';
 import { normalizeSkillRouting, normalizeSkillRoutingReport, type AgentHostApi, type SkillRegistryReport, type SkillRoutingInput, type SkillRoutingReport } from '@extalia/platform';
 import { useEffect, useId, useRef, useState } from 'react';
 import type { Messages } from '../i18n';
@@ -61,9 +62,8 @@ function SkillRoutingForm({ agents, report, workspaces, t }: Props) {
       <div className="skill-routing-fields">
         <label>{s.categories}<input value={categories} maxLength={4096} onChange={event => { invalidate(); setCategories(event.target.value); }} /></label>
         <label>{s.intents}<input value={intents} maxLength={4096} onChange={event => { invalidate(); setIntents(event.target.value); }} /></label>
-        <label>{s.workspace}<select value={workspaceId} onChange={event => { invalidate(); setWorkspace(event.target.value); }}>
-          <option value="">{s.noWorkspace}</option>{workspaces.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
-        </select></label>
+        <div className="field"><span>{s.workspace}</span><Select aria-label={s.workspace} value={workspaceId} onChange={value => { invalidate(); setWorkspace(value); }}
+          options={[{ value: '', label: s.noWorkspace }, ...workspaces.map(item => ({ value: item.id, label: item.name }))]} /></div>
         <label>{s.maxResults}<input type="number" min={1} max={16} value={limit} onChange={event => { invalidate(); setLimit(Number(event.target.value)); }} /></label>
       </div>
       <p className="muted small">{s.selectorsHint}</p>
@@ -74,11 +74,10 @@ function SkillRoutingForm({ agents, report, workspaces, t }: Props) {
           onChange={event => { invalidate(); setCandidates(current => event.target.checked ? [...current, item.revisionId] : current.filter(value => value !== item.revisionId)); }} />
           <span>{label(item.revisionId)}</span></label>)}
       </fieldset>
-      <label>{s.pins}<select value="" disabled={Object.keys(pins).length >= 128} onChange={event => {
-        const item = report.revisions.find(value => value.revisionId === event.target.value);
+      <div className="field"><span>{s.pins}</span><Select aria-label={s.pins} value="" placeholder={s.choosePin} disabled={Object.keys(pins).length >= 128} onChange={revisionId => {
+        const item = report.revisions.find(value => value.revisionId === revisionId);
         if (item) { invalidate(); setPins(current => ({ ...current, [item.packageId]: item.revisionId })); }
-      }}><option value="">{s.choosePin}</option>{report.revisions.filter(item => !Object.hasOwn(pins, item.packageId)).map(item =>
-        <option key={item.revisionId} value={item.revisionId}>{label(item.revisionId)}</option>)}</select></label>
+      }} options={report.revisions.filter(item => !Object.hasOwn(pins, item.packageId)).map(item => ({ value: item.revisionId, label: label(item.revisionId) }))} /></div>
       {!Object.keys(pins).length && <p className="muted small">{s.noPins}</p>}
       <ul className="skill-preflight-pins">{Object.entries(pins).map(([packageId, revision]) => <li key={packageId}><span>{label(revision)}</span>
         <button type="button" className="button small" aria-label={t.skillPreflight.removePin(packageId)} onClick={() => { invalidate(); setPins(({ [packageId]: _removed, ...rest }) => rest); }}>{t.skillPreflight.remove}</button></li>)}</ul>

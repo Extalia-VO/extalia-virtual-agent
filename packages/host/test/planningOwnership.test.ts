@@ -62,7 +62,9 @@ describe('native planning durable scope ownership', () => {
       expect(() => f.registry.assertClear(params().sessionId)).toThrow(/unresolved/);
       return held.promise.then(() => admission(request as DaemonPlanningBegin));
     };
+    expect(f.registry.hasUnresolved()).toBe(false);
     const beginning = f.registry.begin(f.client.client, params());
+    expect(f.registry.hasUnresolved()).toBe(true);
     expect(() => f.registry.assertClear(params().sessionId)).toThrow(/unresolved/);
     expect(() => f.registry.assertClear(undefined, params().connectionIds)).toThrow(/unresolved/);
     await expect(f.registry.begin(f.client.client, { ...params(2), sessionId: params().sessionId })).rejects.toThrow(/unresolved/);
@@ -79,6 +81,7 @@ describe('native planning durable scope ownership', () => {
     expect((await f.saved()).pending).toEqual([params(), params(2)]);
     await Promise.all(owners.map(owner => owner.settle()));
     expect((await f.saved()).pending).toEqual([]);
+    expect(f.registry.hasUnresolved()).toBe(false);
   });
 
   it('clones admission scope and settles once on the original client before removing its guard', async () => {

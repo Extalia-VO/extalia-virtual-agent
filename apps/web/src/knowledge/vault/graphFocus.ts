@@ -63,6 +63,22 @@ export function visibleLinkCount(graph: Pick<VaultGraph, 'nodes' | 'edges'>, mas
 export function visibleColourLegend(assignment: ColourAssignment, mask: Uint8Array): { legend: ColourGroup[]; other: number } {
   if (mask.length !== assignment.colours.length) return { legend: [], other: 0 };
   const counts = new Map<string, number>();
+  if (assignment.keys) {
+    if (assignment.keys.length !== mask.length) return { legend: [], other: 0 };
+    for (let index = 0; index < mask.length; index++) {
+      if (mask[index] !== 1) continue;
+      const key = assignment.keys[index]!;
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+    const listed = new Set(assignment.legend.map(group => group.key));
+    return {
+      legend: assignment.legend.flatMap(group => {
+        const count = counts.get(group.key) ?? 0;
+        return count ? [{ ...group, count }] : [];
+      }),
+      other: [...counts].reduce((sum, [key, count]) => sum + (listed.has(key) ? 0 : count), 0),
+    };
+  }
   for (let index = 0; index < mask.length; index++) {
     if (mask[index] !== 1) continue;
     const colour = assignment.colours[index]!;

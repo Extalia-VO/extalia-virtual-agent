@@ -49,7 +49,7 @@ function operations(before: string[], after: string[]): Op[] {
 }
 
 /** Unified diff of two texts; the empty string when they are equal. */
-export function unifiedDiff(before: string, after: string, labels: { from: string; to: string }): string {
+export function unifiedDiff(before: string, after: string, labels: { from: string; to: string; context?: number }): string {
   if (before === after) return '';
   const ops = operations(splitLines(before), splitLines(after));
   const changed = ops.map((op, index) => (op.kind === ' ' ? -1 : index)).filter(index => index >= 0);
@@ -57,8 +57,9 @@ export function unifiedDiff(before: string, after: string, labels: { from: strin
 
   // Group changes whose context windows touch.
   const hunks: Array<[number, number]> = [];
+  const context = labels.context ?? CONTEXT;
   for (const index of changed) {
-    const start = Math.max(0, index - CONTEXT), end = Math.min(ops.length, index + CONTEXT + 1);
+    const start = Math.max(0, index - context), end = Math.min(ops.length, index + context + 1);
     const last = hunks.at(-1);
     if (last && start <= last[1]) last[1] = Math.max(last[1], end);
     else hunks.push([start, end]);

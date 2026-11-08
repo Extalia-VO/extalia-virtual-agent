@@ -7,6 +7,8 @@ import type { ToolDefinition, ToolRunContext } from '@extalia/runtime';
 import { integer, text } from './shared.js';
 
 export interface CommandToolOptions {
+  /** Refuse commands until a verified workspace-isolated executor is available. */
+  filesystemBoundary?: 'required';
   /** Environment the command inherits before credentials are removed. Defaults to `process.env`. */
   env?: Readonly<Record<string, string | undefined>>;
   /** Time between SIGTERM and SIGKILL when a command is stopped. Defaults to 2000 ms. */
@@ -15,11 +17,14 @@ export interface CommandToolOptions {
   outputIntervalMs?: number;
 }
 
+type CommandSettings = Required<Omit<CommandToolOptions, 'filesystemBoundary'>>;
+
 type CommandInput = { command: string; timeout_seconds?: number };
 type Stream = 'stdout' | 'stderr';
 
 export const TIMEOUT_EXIT_CODE = 124;
 export const CANCELLED_EXIT_CODE = 130;
+export const WORKSPACE_COMMAND_UNAVAILABLE = 'Native commands are unavailable because no verified workspace-isolated command executor is available. Use file tools inside the allowed folders.';
 const HEAD_CHARACTERS = 5_000;
 const TAIL_CHARACTERS = 25_000;
 const EVENT_TEXT_LIMIT = 20_000;
@@ -140,7 +145,7 @@ function firstLine(command: string): string {
   return command.trim().includes('\n') ? `${line} …` : line;
 }
 
-async function runCommand(root: string, input: CommandInput, context: ToolRunContext, options: Required<CommandToolOptions>) {
+async function runCommand(root: string, input: CommandInput, context: ToolRunContext, options: CommandSettings) {
   const command = text(input.command);
   if (!command.trim()) return { ok: false, output: 'The command is empty.' };
   const timeoutSeconds = integer(input.timeout_seconds, 120, 1, 600);
@@ -236,12 +241,13 @@ async function runCommand(root: string, input: CommandInput, context: ToolRunCon
   return { ok: exitCode === 0, output: lines.join('\n') };
 }
 
-/** `run_command`: runs a shell command in the workspace root with credentials removed from its environment. */
+/** `run_command`: refuses when workspace isolation is required; otherwise retains the legacy shell executor. */
 export function createCommandTool(root: string, options: CommandToolOptions = {}): ToolDefinition<CommandInput> {
-  const settings: Required<CommandToolOptions> = { env: options.env ?? process.env, killGraceMs: options.killGraceMs ?? 2000, outputIntervalMs: options.outputIntervalMs ?? 200 };
+  const settings: CommandSettings = { env: options.env ?? process.env, killGraceMs: options.killGraceMs ?? 2000, outputIntervalMs: options.outputIntervalMs ?? 200 };
+  const boundaryRequired = options.filesystemBoundary === 'required';
   return {
     name: 'run_command',
-    description: 'Run a shell command in the workspace root and return its combined output and exit code. stdin is closed, so interactive programs fail; pass non-interactive flags. Credentials are not available in the environment.',
+    description: boundaryRequired ? WORKSPACE_COMMAND_UNAVAILABLE : 'Run a shell command in the workspace root and return its combined output and exit code. stdin is closed, so interactive programs fail; pass non-interactive flags. Credentials are not available in the environment.',
     parameters: {
       type: 'object',
       properties: {
@@ -253,10 +259,11 @@ export function createCommandTool(root: string, options: CommandToolOptions = {}
     },
     access: 'execute',
     kind: 'command',
+    precheck: boundaryRequired ? () => WORKSPACE_COMMAND_UNAVAILABLE : undefined,
     describe: input => {
       const command = text(input.command);
-      return { label: safeLabel(`Running ${firstLine(command)}`, 80), detail: safeText(command, 4000), risk: commandRisk(command) };
+      return { label: boundaryRequired ? 'Native commands unavailable' : safeLabel(`Running ${firstLine(command)}`, 80), detail: boundaryRequired ? WORKSPACE_COMMAND_UNAVAILABLE : safeText(command, 4000), risk: commandRisk(command) };
     },
-    run: (input, context) => runCommand(root, input, context, settings),
+    run: (input, context) => boundaryRequired ? Promise.resolve({ ok: false, output: WORKSPACE_COMMAND_UNAVAILABLE }) : runCommand(root, input, context, settings),
   };
 }

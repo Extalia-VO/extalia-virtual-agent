@@ -40,9 +40,10 @@ async function fixture(options: { core?: 'rust' | 'typescript'; binary?: string;
 }
 
 describe('Knowledge host methods', () => {
-  it('are absent with the TypeScript core, so the Knowledge page stays hidden', async () => {
+  it('remain available with TypeScript mission routing without starting the daemon', async () => {
     const { host } = await fixture({ core: 'typescript' });
-    for (const method of KNOWLEDGE_HOST_METHODS) expect(host[method]).toBeUndefined();
+    for (const method of KNOWLEDGE_HOST_METHODS) expect(typeof host[method]).toBe('function');
+    expect((await host.getState()).nativeCore).toBeUndefined();
   });
 
   it('report an unavailable daemon as a status and fail other calls with a user-safe message', async () => {
@@ -64,6 +65,15 @@ describe('Knowledge host methods', () => {
 });
 
 describe.skipIf(!HAS_DAEMON)('Knowledge over the Rust core daemon', () => {
+  it('indexes notes with default TypeScript mission routing', async () => {
+    const { host, note } = await fixture({ core: 'typescript' });
+    await note('Example.md', '# Example\nA connected knowledge library.');
+    await host.syncKnowledge();
+    expect((await host.searchKnowledge('connected')).hits).toHaveLength(1);
+    expect((await host.getState()).nativeCore).toBeUndefined();
+    expect((await host.skillRegistry()).mode).toBe('legacy');
+  });
+
   it('creates the vault on the first sync, then indexes, searches, links and graphs its notes', async () => {
     const { vault, note, host, root } = await fixture();
     const before = await host.knowledgeStatus();

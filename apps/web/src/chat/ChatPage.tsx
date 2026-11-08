@@ -1,10 +1,12 @@
 import { sourceLabel } from '@extalia/core';
 import type { AgentHostApi, ApprovalDecisionInput, FileSystemCapability, HostState } from '@extalia/platform';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { errorMessage } from '../host/remote';
 import type { Messages } from '../i18n';
 import { Icon } from '../ui/Icon';
 import { Composer, type ComposerSend } from './Composer';
+import { ObservedCodexPromptComposer } from '../observe/ObservedCodexPromptComposer';
+import { PromptQueueControls } from './PromptQueueControls';
 import { attachmentPreviewLoader, sendPromptWithAttachments, uploadAttachments } from './attachments';
 import { resolveChat, type ChatSelection } from './selection';
 import { SessionList } from './SessionList';
@@ -18,8 +20,13 @@ import { Select } from '../ui/Select';
 import { ProjectSkillsNotice } from '../skills/ProjectSkills';
 import { WorkspacesSection } from '../pages/settings/WorkspacesSection';
 import { createComposerSession } from './sessionHandoff';
+import { MemoryContextPanel, memoryContextScope } from './MemoryContextPanel';
+import { modelChoicesKey, sessionRuntime } from './sessionRuntime';
+import { WorkspaceRuntimeNotice } from './WorkspaceRuntimeNotice';
+import { ChatTeamControls } from './ChatTeamControls';
+import { useChatTeam } from './chatTeam';
 
-export function ChatPage({ t, language, agents, picker, state, onState, selection, onSelect, onOpenSettings, onReviewSkills }: {
+export function ChatPage({ t, language, agents, picker, state, onState, selection, onSelect, onOpenSettings, onReviewSkills, onOpenKnowledge }: {
   t: Messages;
   language: string;
   agents: AgentHostApi;
@@ -31,6 +38,7 @@ export function ChatPage({ t, language, agents, picker, state, onState, selectio
   onOpenSettings: () => void;
   /** Opens the Skills page; the notice has already asked it to focus the workspace. */
   onReviewSkills: (workspaceId: string) => void;
+  onOpenKnowledge?: () => void;
 }) {
   const { workspace, sessions, session } = useMemo(() => resolveChat(state, selection), [state, selection]);
   const { events, error: loadError, loading } = useSessionEvents(agents, session?.id);
@@ -42,6 +50,9 @@ export function ChatPage({ t, language, agents, picker, state, onState, selectio
   const [error, setError] = useState<string | null>(null);
   const [listOpen, setListOpen] = useState(false);
   const stick = useRef(true);
+  const memoryDetails = useRef<HTMLDetailsElement>(null);
+  const memoryDetailsId = useId();
+  const teamControl = useChatTeam({ agents, state, workspace, session, onState });
 
   useEffect(() => {
     const onScroll = () => {
@@ -76,7 +87,13 @@ export function ChatPage({ t, language, agents, picker, state, onState, selectio
   const running = loading ? Boolean(session?.running) : activity.running;
   const waiting = Boolean(activity.pendingApprovalId ?? (loading ? session?.pendingApprovalId : undefined));
   const readOnly = session?.control === 'observed';
-  const focusComposer = () => requestAnimationFrame(() => document.getElementById('composer-input')?.focus());
+  const memoryScope = memoryContextScope(state, workspace, session);
+  const openMemoryContext = () => {
+    if (!memoryDetails.current) return;
+    memoryDetails.current.open = true;
+    memoryDetails.current.querySelector('summary')?.focus();
+  };
+  const focusComposer = () => requestAnimationFrame(() => (document.querySelector<HTMLTextAreaElement>('.observed-codex-prompt textarea') ?? document.getElementById('composer-input'))?.focus());
 
   const statusText = activity.stopping ? t.chat.status.stopping
     : !running ? t.chat.status.idle
@@ -93,9 +110,11 @@ export function ChatPage({ t, language, agents, picker, state, onState, selectio
 
   // v0.0.49: the session is created first (with the chosen model, effort and permission mode), then the files upload, then the prompt goes.
   const send = ({ text, choice, attachments, patch, learnSkill, bindSession }: ComposerSend) => guard(async () => {
+    if (teamControl.isUpdating() || teamControl.open) throw new Error(t.chat.team.updating);
     let id = session?.id;
     if (!id) {
-      id = await createComposerSession({ agents, workspaceId: workspace.id, choice, bindSession, onState, onSelect, interrupted: t.chat.turnInterrupted });
+      id = await createComposerSession({ agents, workspaceId: workspace.id, choice,
+        ...(teamControl.supported ? { team: teamControl.team ?? null } : {}), bindSession, onState, onSelect, interrupted: t.chat.turnInterrupted });
     }
     const ids = await uploadAttachments(agents, id, attachments, patch);
     await sendPromptWithAttachments(agents, id, text, ids, learnSkill);
@@ -153,6 +172,9 @@ export function ChatPage({ t, language, agents, picker, state, onState, selectio
       <section className="chat-main" aria-labelledby="chat-title">
         <ProjectSkillsNotice t={t} agents={agents} workspace={workspace} onReview={onReviewSkills} />
         {loadError && <p className="form-error" role="alert"><Icon name="alert" />{t.chat.loadFailed} {loadError}</p>}
+        <WorkspaceRuntimeNotice t={t} state={state} workspace={workspace} session={session} onNewSession={() => {
+          onSelect({ workspaceId: workspace.id, sessionId: null }); setListOpen(false); focusComposer();
+        }} />
         {!loading && items.length === 0 ? (
           <div className="chat-empty">
             <Icon name="chat" className="empty-icon" />
@@ -174,9 +196,19 @@ export function ChatPage({ t, language, agents, picker, state, onState, selectio
             {statusText}
           </p>
           {error && <p className="form-error" role="alert"><Icon name="alert" />{error}</p>}
-          <Composer t={t} agents={agents} session={session} workspaceId={workspace.id} hermes={workspace.runtimeId === 'hermes' || session?.runtime?.id === 'hermes'}
+          {memoryScope && <MemoryContextPanel key={memoryScope.key} t={t} language={language} id={memoryDetailsId} detailsRef={memoryDetails}
+            agents={agents} workspaceId={workspace.id} ownerKey={memoryScope.key} draftKey={memoryScope.draftKey}
+            workspaceName={workspace.name} connection={memoryScope.connection} context={memoryScope.context}
+            onOpenSettings={onOpenSettings} onOpenSkills={() => onReviewSkills(workspace.id)} onOpenKnowledge={onOpenKnowledge} />}
+          <ChatTeamControls t={t} agents={agents} state={state} workspace={workspace} session={session} running={running} control={teamControl} />
+          {session?.control === 'observed' && session.observation?.sourceId === 'codex'
+            ? <ObservedCodexPromptComposer key={session.id} t={t} agents={agents} session={session} />
+            : <Composer t={t} agents={agents} session={session} workspaceId={workspace.id} hermes={sessionRuntime(workspace, session) === 'hermes'} modelScopeKey={modelChoicesKey(state, workspace, session)}
             running={running} waiting={waiting} readOnly={readOnly} stopping={activity.stopping}
-            onSend={send} onStop={() => { if (session) void guard(() => agents.cancel(session.id)); }} onSessionChanged={refreshState} />
+            onOpenContext={memoryScope ? openMemoryContext : undefined} contextPanelId={memoryScope ? memoryDetailsId : undefined}
+            onSend={send} onStop={() => { if (session) void guard(() => agents.cancel(session.id)); }} onSessionChanged={refreshState} />}
+          {session && (session.control === 'managed' || session.observation?.sourceId === 'codex') &&
+            <PromptQueueControls key={`queue:${session.id}`} t={t} agents={agents} session={session} />}
         </div>
       </section>
     </div>

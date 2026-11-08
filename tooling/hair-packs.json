@@ -1,0 +1,259 @@
+{
+ "$comment": "Detailed hair converted from owner-provided hair packs (assets-temp/hairs). Extract each archive and its listed inner archives into ${PACK}, then: Blender -b --factory-startup --python tooling/convert-detailed-hair.py -- '<convert JSON with ${PACK}, ${FEMALE_REF} (local-assets/avatars/bodies/female/business-woman.glb), ${MALE_REF} (local-assets/avatars/bodies/business-man.glb) and out = local-assets/avatars/hair/<group>/<id>-detail.glb>'. The afro first runs tooling/blender/prepare-afro-shell.py into ${WORK}. Publish: python3 tooling/blender/prepare-public-models.py --hair, then python3 tooling/compress-public-models.py --write --profile compact --only avatars/hair --min-bytes 0.",
+ "notices": {
+  "owner-provided-hair": {
+   "text": "Owner-provided hair-pack downloads; archive names are retained below. No licence file, author or product URL was recorded with the archives. Owner confirmed on 2026-11-08 that these assets use the RenderHub Extended Use License (https://www.renderhub.com/info/3d-content-licensing), the same profile as the existing licensed assets. This records owner confirmation, not independent licence verification. Not MIT-licensed.",
+   "item": "Owner-confirmed 2026-11-08: RenderHub Extended Use License. Not MIT-licensed."
+  }
+ },
+ "hair": [
+  {
+   "id": "bun-bangs",
+   "group": "female",
+   "title": "Next-gen female bun with bangs (real-time hair cards)",
+   "archive": "hairs/female/next-gen_3d_female_bun_bangs_hairstyle_pbr_real-time_ready.zip",
+   "extract": [
+    "blender file.zip",
+    "textures.zip"
+   ],
+   "license": "LicenseRef-RenderHub-Extended-Use",
+   "notice": "owner-provided-hair",
+   "convert": {
+    "fit_ref": true,
+    "budget": 18000,
+    "tex": 1024,
+    "planar": 15,
+    "alpha_gamma": 0.55,
+    "src": "${PACK}/blender file.blend",
+    "objects": [
+     "Hair_TUR",
+     "Scalp"
+    ],
+    "eyes": [
+     "Eye"
+    ],
+    "body": "Body",
+    "ref": "${FEMALE_REF}",
+    "texture_dir": "${PACK}/textures",
+    "mesh": "Hair_detail_bun_bangs"
+   }
+  },
+  {
+   "id": "sleek-ponytail",
+   "group": "female",
+   "title": "Game-ready realistic female ponytail",
+   "archive": "hairs/female/game_ready_3d_female_hair_realistic_ponytail_model.zip",
+   "extract": [
+    "blender file.zip",
+    "textures.zip"
+   ],
+   "license": "LicenseRef-RenderHub-Extended-Use",
+   "notice": "owner-provided-hair",
+   "convert": {
+    "fit_ref": true,
+    "budget": 18000,
+    "tex": 1024,
+    "planar": 15,
+    "alpha_gamma": 0.55,
+    "src": "${PACK}/blender file.blend",
+    "objects": [
+     "air_21",
+     "Scalp"
+    ],
+    "eyes": [
+     "Eye"
+    ],
+    "body": "Body",
+    "ref": "${FEMALE_REF}",
+    "texture_dir": "${PACK}/textures",
+    "mesh": "Hair_detail_sleek_ponytail"
+   }
+  },
+  {
+   "id": "long-straight",
+   "group": "female",
+   "title": "Female long straight hair",
+   "archive": "hairs/female/female_long_straight_hair_free.zip",
+   "extract": [
+    "blender file 7.rar",
+    "texture.rar"
+   ],
+   "license": "LicenseRef-RenderHub-Extended-Use",
+   "notice": "owner-provided-hair",
+   "convert": {
+    "fit_ref": true,
+    "budget": 18000,
+    "tex": 1024,
+    "planar": 15,
+    "alpha_gamma": 0.55,
+    "src": "${PACK}/blender file 7.blend",
+    "objects": [
+     "PSKMeshes",
+     "Scalp_Male"
+    ],
+    "eyes": [
+     "Eye"
+    ],
+    "body": "Body",
+    "ref": "${FEMALE_REF}",
+    "texture_dir": "${PACK}",
+    "mesh": "Hair_detail_long_straight"
+   }
+  },
+  {
+   "id": "long-bangs",
+   "group": "female",
+   "title": "Red hair woman: base with long bangs",
+   "archive": "hairs/female/red_hair_woman.zip",
+   "extract": [
+    "Blender.rar",
+    "texture.rar"
+   ],
+   "license": "LicenseRef-RenderHub-Extended-Use",
+   "notice": "owner-provided-hair",
+   "convert": {
+    "fit_ref": true,
+    "budget": 18000,
+    "tex": 1024,
+    "planar": 10,
+    "alpha_gamma": 0.5,
+    "dense_gain": 4,
+    "src": "${PACK}/Blender.blend",
+    "objects": [
+     "Hair_Base",
+     "Long_bangs"
+    ],
+    "eyes": [
+     "CC_Base_Eye"
+    ],
+    "body": "CC_Base_Body",
+    "ref": "${FEMALE_REF}",
+    "texture_dir": "${PACK}/texture",
+    "mesh": "Hair_detail_long_bangs"
+   }
+  },
+  {
+   "id": "straight-short",
+   "group": "female",
+   "title": "Red hair woman: straight short",
+   "archive": "hairs/female/red_hair_woman.zip",
+   "extract": [
+    "Blender.rar",
+    "texture.rar"
+   ],
+   "license": "LicenseRef-RenderHub-Extended-Use",
+   "notice": "owner-provided-hair",
+   "convert": {
+    "fit_ref": true,
+    "budget": 18000,
+    "tex": 1024,
+    "planar": 10,
+    "alpha_gamma": 0.5,
+    "dense_gain": 4,
+    "src": "${PACK}/Blender.blend",
+    "objects": [
+     "Hair_Base",
+     "Straight_short"
+    ],
+    "eyes": [
+     "CC_Base_Eye"
+    ],
+    "body": "CC_Base_Body",
+    "ref": "${FEMALE_REF}",
+    "texture_dir": "${PACK}/texture",
+    "mesh": "Hair_detail_straight_short"
+   }
+  },
+  {
+   "id": "dreads",
+   "group": "female",
+   "title": "Dreads hair (rasta)",
+   "archive": "hairs/female/dreads_hair_rasta.zip",
+   "extract": [
+    "Blender.rar",
+    "texture.rar"
+   ],
+   "license": "LicenseRef-RenderHub-Extended-Use",
+   "notice": "owner-provided-hair",
+   "convert": {
+    "fit_ref": true,
+    "budget": 18000,
+    "tex": 1024,
+    "planar": 15,
+    "alpha_gamma": 0.55,
+    "src": "${PACK}/Blender.blend",
+    "objects": [
+     "XTechDreadsV13_24059_Shape"
+    ],
+    "eyes": [
+     "CC_Base_Eye"
+    ],
+    "body": "CC_Base_Body",
+    "ref": "${FEMALE_REF}",
+    "texture_dir": "${PACK}",
+    "mesh": "Hair_detail_dreads"
+   }
+  },
+  {
+   "id": "dreadlocks",
+   "group": "male",
+   "title": "Dreads hair (rasta)",
+   "archive": "hairs/female/dreads_hair_rasta.zip",
+   "extract": [
+    "Blender.rar",
+    "texture.rar"
+   ],
+   "license": "LicenseRef-RenderHub-Extended-Use",
+   "notice": "owner-provided-hair",
+   "convert": {
+    "fit_ref": true,
+    "budget": 18000,
+    "tex": 1024,
+    "planar": 15,
+    "alpha_gamma": 0.55,
+    "src": "${PACK}/Blender.blend",
+    "objects": [
+     "XTechDreadsV13_24059_Shape"
+    ],
+    "eyes": [
+     "CC_Base_Eye"
+    ],
+    "body": "CC_Base_Body",
+    "ref": "${MALE_REF}",
+    "texture_dir": "${PACK}",
+    "mesh": "Hair_detail_dreads"
+   }
+  },
+  {
+   "id": "afro",
+   "group": "male",
+   "title": "Afro IV 3c hair (hair curves, shelled by prepare-afro-shell.py)",
+   "archive": "hairs/male/afro_vi_hairstyle.zip",
+   "extract": [
+    "Afro IV 3c hair.blend"
+   ],
+   "license": "LicenseRef-RenderHub-Extended-Use",
+   "notice": "owner-provided-hair",
+   "convert": {
+    "src": "${WORK}/afro-shell.blend",
+    "objects": [
+     "AfroShell"
+    ],
+    "skull_object": "scalp",
+    "ref": "${MALE_REF}",
+    "fit_ref": true,
+    "uniform": true,
+    "budget": 9000,
+    "tex": 512,
+    "inflate": 0.74,
+    "lift": 0.03,
+    "mesh": "Hair_detail_afro"
+   }
+  }
+ ],
+ "licenseConfirmation": {
+  "basis": "owner-confirmation",
+  "date": "2026-11-08",
+  "license": "LicenseRef-RenderHub-Extended-Use"
+ }
+}

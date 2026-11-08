@@ -177,22 +177,35 @@ export const TEAM_WORKSPACE_TOUCHDOWNS = Object.freeze([
   }
 ]);
 
-/** Shared geometry/interaction coordinates for the four pods on Floor 1. */
+/** Six four-seat pods; keep existing IDs stable when redistributing the work area. */
 export const TEAM_POD_LAYOUT = Object.freeze([
-  { id: "pod-a", position: [-5.1, -4.4] as XZ, rotationY: 0 },
-  { id: "pod-b", position: [5.1, -4.4] as XZ, rotationY: 0 },
-  { id: "pod-c", position: [-5.1, 4.4] as XZ, rotationY: 0 },
-  { id: "pod-d", position: [5.1, 4.4] as XZ, rotationY: 0 }
+  { id: "pod-a", position: [-8, -4.4] as XZ, rotationY: 0 },
+  { id: "pod-b", position: [8, -4.4] as XZ, rotationY: 0 },
+  { id: "pod-c", position: [-8, 4.4] as XZ, rotationY: 0 },
+  { id: "pod-d", position: [8, 4.4] as XZ, rotationY: 0 },
+  { id: "pod-e", position: [0, -4.4] as XZ, rotationY: 0 },
+  { id: "pod-f", position: [0, 4.4] as XZ, rotationY: 0 }
 ]);
 
 /** Breakout furniture stays at the perimeter, clear of the pod and doorway aisles. */
 export const TEAM_WORKSPACE_LOUNGES = Object.freeze({
-  westSofa: { position: [-13.0, 0, 4.5] as const, rotationY: Math.PI / 2 },
-  westChair: { position: [-10.6, 0, 2.5] as const, rotationY: -Math.PI / 2 },
+  westSofa: { position: [-14.25, 0, .8] as const, rotationY: Math.PI / 2 },
+  westChair: { position: [-11.7, 0, -1] as const, rotationY: -Math.PI / 2 },
   eastChairs: [
-    { id: "engineering.lounge-1", position: [10.6, 0, 5.7] as const, rotationY: Math.PI / 2 },
-    { id: "engineering.lounge-2", position: [13.4, 0, 5.7] as const, rotationY: -Math.PI / 2 }
+    { id: "engineering.lounge-1", position: [12, 0, 5.8] as const, rotationY: Math.PI / 2 },
+    { id: "engineering.lounge-2", position: [14.8, 0, 5.8] as const, rotationY: -Math.PI / 2 }
   ] as const
+});
+
+/** Perimeter accents leave the cross aisle and pod approach areas open. */
+export const TEAM_WORKSPACE_DECOR = Object.freeze({
+  westRug: { position: [-13, 0, .3] as const, width: 4.9, depth: 5.2 },
+  westCoffee: [-12.2, 0, 1.05] as const,
+  westLamp: [-15.05, 0, -1.15] as const,
+  eastRug: { position: [13.4, 0, 5.8] as const, width: 4.5, depth: 4.2 },
+  eastCoffee: [13.4, 0, 5.8] as const,
+  eastLamp: [14.6, 0, 3.15] as const,
+  plants: [[-15, 0, -8.5], [-15, 0, 8.5], [-15, 0, 2.8], [14.8, 0, 8.5], [14.9, 0, 2.25]] as const
 });
 
 /** Lounge furniture is authored relative to BARTENDER_BAR_BLUEPRINT.loungeOrigin. */

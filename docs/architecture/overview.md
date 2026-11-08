@@ -59,6 +59,8 @@ New visual improvements belong in this repository; see
 appearance is saved in the host and shared by Web and Desktop; avatar walking and
 navigation remain later scene milestones.
 
+Native process placement follows [ADR 0053](../adr/0053-evidence-based-native-process-partition.md): Rust owns the target control/harness lifecycle, TypeScript retains UI and transitional adapters, and verified Python workloads remain optional and on demand. Resource improvements require measured whole-process comparisons; current provider calls and tools are still in the TypeScript host.
+
 ## Dependency direction
 
 ```text
@@ -101,6 +103,7 @@ before credential/catalog/inference work. Write-ahead host markers retain
 unresolved session/connection guards across restart and backend changes; only
 actual local pipeline completion on the original connection records a weak
 observation. It does not establish later mission-root, child or writer ownership.
+Saved Rust mission starts also retain a [durable preparation lifetime](../adr/0052-durable-mission-preparation-lifetime.md) before credentials or worktree creation. It correlates the future mission and actual supervisor, drains entered preparation, and hands off only after canonical creation plus host/startup persistence. Uncertain preparation or cleanup remains blocked across backend changes and restart; it is not complete executor or writer ownership.
 Physical-settlement reconciliation and execution-time action approvals
 remain later gates. Production Python
 worker execution and embedded CPython installer packaging are planned, not yet implemented.
@@ -126,10 +129,21 @@ permits sixteen path components to retain measured upstream license paths.
 This is not installer integration or a scanner; other platforms remain untested
 and all production capability gates stay closed.
 
+The [shared Native status panel](../adr/0054-native-status-and-recovery-inspection.md) projects actual local operation/worker lifetimes and narrow recorded mission metadata. Explicit rechecks may retire only positively observed inactive scope markers; run-bound cancellation, stale-response guards and existing recovery inspection preserve uncertainty without replay.
+
+[Native persistence admission](../adr/0056-native-write-drain-and-relevant-memory.md) checkpoints accepted prompt text before inference and drains admitted local writes before profile unlock; it does not infer external process settlement. Initial workspace recall ranks bounded relevant metadata and uses a stat-validated metadata-only cache, while full content and revision checks remain fresh.
+
+The [Native memory and context controls](../adr/0055-native-memory-integrity-and-context-budgets.md) add revision-bound user/agent writes, scoped paged inspection, explicit provider caching and bounded request-pressure checks. Local refusals preserve history and do not imply a provider call, compaction or recovery authority.
+
 Native Chat and Teams use [progressive workspace memory](../adr/0045-progressive-workspace-memory.md):
 a bounded summary catalog, literal metadata search and optional paged reads.
 Workers receive read tools only. Built-in recall and opt-in concise-response
 instructions do not install upstream hooks or enable automatic learning.
+The [bounded Native skill inventory](../adr/0057-bounded-native-skill-discovery.md)
+retains external metadata/private digests and offers constant-size discovery
+schemas. Fresh registered reads remain mandatory; initial verification still
+performs linear I/O within an explicit raw-row bound.
+
 The [mandatory external-skill boundary](../adr/0049-mandatory-external-skill-ingress.md)
 keeps legacy inventory/consent out of agent offerings. Fresh scanner-gated
 registry reads are required for external catalog metadata and every skill read;
@@ -144,6 +158,8 @@ exposes exact-revision eligibility diagnostics through an optional daemon/host
 operation. It preserves ambiguity and explicit pins while granting no dispatch,
 activation or model access. Whole-vault graph facets filter the bounded loaded
 overview locally; they do not change the vault or widen agent access.
+
+Knowledge is [independent of the mission backend](../adr/0051-knowledge-independent-of-mission-backend.md): Desktop and Bridge expose its page and vault setup with either backend, using the same lazy sidecar as recorded Rust recovery.
 
 ## Further reading
 

@@ -10,6 +10,12 @@ const base = {
 };
 
 describe('parseEvent', () => {
+  it('accepts legacy and correlated file writes, and rejects invalid tool call ids', () => {
+    const legacy = { type: 'file.written', path: 'a.txt', change: 'add' };
+    expect(parseEvent({ ...base, body: legacy }).ok).toBe(true);
+    expect(parseEvent({ ...base, body: { ...legacy, toolCallId: 'call_1' } }).ok).toBe(true);
+    expect(parseEvent({ ...base, body: { ...legacy, toolCallId: '' } }).ok).toBe(false);
+  });
   it('accepts optional bounded approval choice metadata and legacy events', () => {
     const body = { type: 'approval.resolved', approvalId: 'a1', decision: 'granted', by: 'user' };
     expect(parseEvent({ ...base, body }).ok).toBe(true);

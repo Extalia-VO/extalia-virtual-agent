@@ -10,6 +10,7 @@ import { SettingsPage, SkillsMovedPointer } from '../src/pages/SettingsPage';
 import { DEFAULT_PREFERENCES } from '../src/preferences';
 import { ProjectSkills, ProjectSkillsNoticeView, ProjectSkillsPendingLinkView, takeProjectSkillsReveal } from '../src/skills/ProjectSkills';
 import { SkillSecurityCenter } from '../src/skills/SkillSecurityCenter';
+import { SkillManagementDisclosure } from '../src/skills/SkillManagementDisclosure';
 import { needsUserDecision } from '../src/skills/skillCenterModel';
 import { BuiltinSkillsSection, SkillsPageView } from '../src/skills/SkillsPage';
 import { loadBuiltinSkills, skillsWaitingCount } from '../src/skills/skillsModel';
@@ -38,20 +39,31 @@ function page(agents: AgentHostApi, state: HostState, patch: Partial<Parameters<
   return SkillsPageView({ t, agents, state, mode: 'legacy', filter: null, onFilter: () => undefined, builtin: null, builtinLoading: false, ...patch });
 }
 
+function management(tree: ReactNode) {
+  const disclosure = elements(tree).find(item => item.type === SkillManagementDisclosure);
+  if (!disclosure) throw new Error('Missing skill management disclosure');
+  return disclosure as ReactElement<Parameters<typeof SkillManagementDisclosure>[0]>;
+}
+
+function openManagement(tree: ReactNode): string {
+  return renderToStaticMarkup(createElement(SkillManagementDisclosure, { ...management(tree).props, defaultOpen: true }));
+}
+
 describe('Skills page navigation', () => {
-  it('lists Skills in the Extalia group next to Settings whenever an agent host exists', () => {
+  it('lists Grimoire beside Knowledge in Library whenever an agent host exists', () => {
     for (const workflow of ['managed', 'observe'] as const) {
       for (const canChat of [true, false]) {
         const groups = navigationGroups({ agents: true, workflow, canChat });
-        expect(groups.find(group => group.section === 'app')!.pages).toEqual(['skills', 'settings', 'diagnostics']);
+        expect(groups.find(group => group.section === 'library')!.pages).toEqual(['knowledge', 'skills']);
+        expect(groups.find(group => group.section === 'app')!.pages).toEqual(['settings', 'diagnostics']);
         expect(groups.find(group => group.section === 'work')!.pages).not.toContain('skills');
       }
     }
     // The static web build has no host to ask.
     expect(navigationGroups({ agents: false, workflow: 'managed', canChat: false }).flatMap(group => group.pages)).not.toContain('skills');
-    expect(t.nav.skills).toBe('Skills');
-    expect(MESSAGES.id.nav.skills).toBe('Skill');
-    expect(t.nav.skillsWaiting(2)).toBe('Skills, 2 waiting for review');
+    expect(t.nav.skills).toBe('Grimoire');
+    expect(MESSAGES.id.nav.skills).toBe('Grimoire');
+    expect(t.nav.skillsWaiting(2)).toBe('Grimoire, 2 skills waiting for review');
   });
 
   it('counts skills waiting for review or approval for the nav badge, in both modes', async () => {
@@ -77,30 +89,36 @@ describe('Skills page modes', () => {
     const tree = page(agents, state, { mode: 'registry' });
     expect(elements(tree).some(item => item.type === SkillSecurityCenter)).toBe(true);
     const html = renderToStaticMarkup(tree);
-    expect(html).toContain('<h1>Skills</h1>');
+    expect(html).toContain(`<h1>${t.skillsPage.title}</h1>`);
     expect(html).not.toContain('Project skills');
     expect(html).not.toContain('preview native core');
+    expect(management(tree).props.defaultOpen).toBe(false);
   });
 
   it('shows project skills for every workspace with a folder, with the registry note, in legacy mode', async () => {
     const { agents, state } = await mockHost('legacy');
     const tree = page(agents, state);
     expect(elements(tree).some(item => item.type === SkillSecurityCenter)).toBe(false);
-    const html = renderToStaticMarkup(tree);
+    const closed = renderToStaticMarkup(tree);
+    expect(closed).not.toContain('skills-projects-title');
+    const html = openManagement(tree);
     expect(html).toContain('Project skills');
     for (const workspace of state.workspaces.filter(item => item.projectLocation)) expect(html).toContain(`aria-label="${workspace.name}"`);
     expect(html).toContain(t.skillsPage.registryNote);
     expect(html).not.toContain('Show all workspaces');
 
-    const id = renderToStaticMarkup(SkillsPageView({ t: MESSAGES.id, agents, state, mode: 'legacy', filter: null, onFilter: () => undefined, builtin: null, builtinLoading: false }));
-    expect(id).toContain('<h1>Skill</h1>');
+    const idTree = SkillsPageView({ t: MESSAGES.id, agents, state, mode: 'legacy', filter: null, onFilter: () => undefined, builtin: null, builtinLoading: false });
+    const id = openManagement(idTree);
+    expect(renderToStaticMarkup(idTree)).toContain(`<h1>${MESSAGES.id.skillsPage.title}</h1>`);
     expect(id).toContain('Skill project');
     expect(id).toContain(MESSAGES.id.skillsPage.registryNote);
   });
 
   it('waits for the host before choosing a mode', async () => {
     const { agents, state } = await mockHost();
-    const html = renderToStaticMarkup(page(agents, state, { mode: null }));
+    const tree = page(agents, state, { mode: null });
+    expect(renderToStaticMarkup(management(tree))).not.toContain('Loading skills…');
+    const html = openManagement(tree);
     expect(html).toContain('Loading skills…');
     expect(html).not.toContain('Project skills');
   });
@@ -112,7 +130,10 @@ describe('Skills page modes', () => {
     // Two workspaces with folders, so narrowing is visible.
     const state: HostState = { ...base, workspaces: [base.workspaces[0]!, { ...base.workspaces[0]!, id: 'w_second000000000', name: 'second-project', projectLocation: '/projects/second' }] };
     const onFilter = vi.fn();
-    const html = renderToStaticMarkup(page(agents, state, { filter: 'w_second000000000', onFilter }));
+    const focused = page(agents, state, { filter: 'w_second000000000', onFilter });
+    expect(management(focused).props.defaultOpen).toBe(true);
+    const html = renderToStaticMarkup(focused);
+    expect(html).toContain('id="skill-management" class="skill-management" open=""');
     expect(html).toContain('aria-label="second-project"');
     expect(html).not.toContain(`aria-label="${base.workspaces[0]!.name}"`);
     expect(html).toContain('Showing second-project only.');
@@ -166,8 +187,46 @@ describe('built-in skills', () => {
   it('appears in both modes', async () => {
     const { agents, state } = await mockHost();
     for (const mode of ['registry', 'legacy'] as const) {
-      expect(renderToStaticMarkup(page(agents, state, { mode, builtin: [...MOCK_BUILTIN_SKILLS] }))).toContain('Built-in skills');
+      const tree = page(agents, state, { mode, builtin: [...MOCK_BUILTIN_SKILLS] });
+      expect(renderToStaticMarkup(tree)).not.toContain('id="skills-builtin-title"');
+      expect(openManagement(tree)).toContain('Built-in skills');
     }
+  });
+});
+
+describe('deferred skill management', () => {
+  it('does not mount heavy children in a closed disclosure and mounts them for an initially focused reveal', () => {
+    const mounted = vi.fn();
+    function HeavyManagement() {
+      mounted();
+      return createElement('div', null, Array.from({ length: 500 }, (_, index) => createElement('p', { key: index }, `revision-${index}`)));
+    }
+    const children = createElement(HeavyManagement);
+    const closed = renderToStaticMarkup(createElement(SkillManagementDisclosure, { summary: t.skillLibrary.management, children }));
+    expect(mounted).not.toHaveBeenCalled();
+    expect(closed).toContain(renderToStaticMarkup(createElement('summary', null, t.skillLibrary.management))); expect(closed).not.toContain('revision-');
+    const opened = renderToStaticMarkup(createElement(SkillManagementDisclosure, { summary: t.skillLibrary.management, defaultOpen: true, children }));
+    expect(mounted).toHaveBeenCalledOnce(); expect(opened).toContain('revision-499');
+  });
+
+  it('keeps the built-in link target and requests deferred reveal before native anchor scrolling', async () => {
+    const { agents, state } = await mockHost();
+    const tree = page(agents, state, { builtin: [...MOCK_BUILTIN_SKILLS] });
+    const anchor = elements(tree).find(item => item.type === 'a' && item.props.href === '#skills-builtin-title');
+    expect(anchor).toBeDefined();
+    const panel = { open: false, dataset: {} as Record<string, string> };
+    const getElementById = vi.fn().mockImplementation(id => id === 'skill-management' ? panel : null);
+    vi.stubGlobal('document', { getElementById });
+    try {
+      (anchor!.props.onClick as () => void)();
+      expect(getElementById).toHaveBeenCalledWith('skill-management');
+      expect(panel.open).toBe(true); expect(panel.dataset.revealTarget).toBe('skills-builtin-title');
+      expect(openManagement(tree)).toContain('id="skills-builtin-title"');
+      // Once mounted, normal anchor scrolling works and cannot leave a stale reveal request.
+      getElementById.mockImplementation(id => id === 'skill-management' ? panel : {});
+      (anchor!.props.onClick as () => void)();
+      expect(panel.dataset.revealTarget).toBeUndefined();
+    } finally { vi.unstubAllGlobals(); }
   });
 });
 
@@ -175,17 +234,17 @@ describe('links into the Skills page', () => {
   it('Settings keeps only a pointer to the Skills page', async () => {
     const onOpen = vi.fn();
     const pointer = SkillsMovedPointer({ t, onOpen });
-    expect(renderToStaticMarkup(pointer)).toContain('Skills moved to the Skills page.');
-    button(pointer, 'Open Skills').onClick();
+    expect(renderToStaticMarkup(pointer)).toContain(t.skillsPage.moved);
+    button(pointer, t.skillsPage.open).onClick();
     expect(onOpen).toHaveBeenCalledOnce();
-    expect(renderToStaticMarkup(SkillsMovedPointer({ t: MESSAGES.id, onOpen }))).toContain('Skill dipindahkan ke halaman Skill.');
+    expect(renderToStaticMarkup(SkillsMovedPointer({ t: MESSAGES.id, onOpen }))).toContain(MESSAGES.id.skillsPage.moved);
 
     const platform = createMockPlatform({ seed: 'ready', host: 'bridge' });
     const hostState = await platform.capabilities.agents!.getState();
     const html = renderToStaticMarkup(createElement(SettingsPage, {
-      t, platform, preferences: DEFAULT_PREFERENCES, onChange: () => undefined, hostState, onHostState: () => undefined, updateStatus: null, onOpenSkills: () => undefined,
+      t, platform, preferences: DEFAULT_PREFERENCES, onChange: () => undefined, hostState, onHostState: () => undefined, updateStatus: null, section: 'workspaces', onOpenSkills: () => undefined,
     }));
-    expect(html).toContain('Skills moved to the Skills page.');
+    expect(html).toContain(t.skillsPage.moved);
     expect(html).not.toContain('Skill Security Center');
     expect(html).not.toContain('Built-in skills');
   });

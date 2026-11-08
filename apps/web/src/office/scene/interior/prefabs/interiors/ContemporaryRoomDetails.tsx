@@ -1,4 +1,7 @@
 import { BoxGeometry, CylinderGeometry, IcosahedronGeometry, MeshStandardMaterial } from "three";
+import type { Group } from 'three';
+import { GREENERY_POOLS, GreeneryModel, gridYaw, pickGreenery, useWorldSeed } from '../../../greenery';
+import { planterModelHeight } from '../../planterLayout';
 
 type Vec3 = readonly [number, number, number];
 const unitBox = new BoxGeometry(1, 1, 1);
@@ -98,11 +101,16 @@ export function AbstractArtwork({ position, rotationY = 0, width = 2.15, cool = 
 }
 
 export function SculpturalPlanter({ position }: { position: Vec3 }) {
-  return <group position={[...position]} dispose={null}>
+  // Matched room pots stay modest beside the furniture and clear of the arrival aisle.
+  const [ref, seed] = useWorldSeed<Group>('room');
+  const id = seed ? pickGreenery(GREENERY_POOLS.indoorPlant, seed[0], seed[1]) : undefined;
+  const yaw = seed ? gridYaw(seed[0] + position[0], seed[1] + position[2]) : 0;
+  return <group ref={ref} position={[...position]} dispose={null}><GreeneryModel id={id} height={planterModelHeight(id, 'sculptural', yaw)}
+    rotationY={yaw}><group scale={.58}>
     <mesh geometry={planterShape} material={materials.stone} position={[0, 0.27, 0]} />
     <InteriorBox position={[0, 0.73, 0]} size={[0.035, 0.55, 0.035]} finish="walnut" />
     {[[-0.18, 1.02, 0.03], [0.18, 1.22, -0.02], [0, 1.43, 0.04]].map((p, i) =>
       <mesh key={i} position={p as [number, number, number]} scale={[0.29, 0.42, 0.25]}
         geometry={foliageShape} material={materials.leaf} />)}
-  </group>;
+  </group></GreeneryModel></group>;
 }

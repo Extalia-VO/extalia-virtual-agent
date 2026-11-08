@@ -57,4 +57,18 @@ describe('source original full-set declarations', () => {
     expect(resolvedOriginalSetFeatures(undefined, { top, outer }, { top: true, outer: true }).ownHands).toBe(false);
     expect(resolvedOriginalSetFeatures(undefined, { top, outer }, { top: false, outer: false }).ownHands).toBe(false);
   });
+
+  it('restores canonical neck backing only for successfully loaded refitted collars', () => {
+    const top = new Group(), outer = new Group();
+    top.userData.extaliaNativeNeckline = true;
+    outer.userData.extaliaOwnNeckline = true;
+    expect(resolvedOriginalSetFeatures(undefined, { top, outer }, { top: true, outer: true }))
+      .toMatchObject({ nativeNeckline: true, ownNeckline: false });
+    expect(resolvedOriginalSetFeatures(undefined, { top, outer }, { top: false, outer: true }))
+      .toMatchObject({ ownNeckline: true });
+    expect(resolvedOriginalSetFeatures(undefined, { top }, {}).nativeNeckline).toBeUndefined();
+    expect(resolvedOriginalSetFeatures(top, {}, {})).toMatchObject({ nativeNeckline: true, ownNeckline: false });
+    const malformed = new Group(); malformed.userData.extaliaNativeNeckline = 'true';
+    expect(originalSetFeatures(malformed).nativeNeckline).toBeUndefined();
+  });
 });

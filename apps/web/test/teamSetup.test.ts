@@ -3,7 +3,7 @@ import type { SessionSummary } from '@extalia/platform';
 import { describe, expect, it } from 'vitest';
 import {
   applyPlan, clampCount, customModel, defaultAllowedModels, filterModels, generateIdentity, generateName, manualMember, markEdited, mergePlan, moveItem, newMemberId, planReasons, plainMembers,
-  restrictModels, sessionTeamSummary, teamForSave, teamProblem, toggleAllowedModel, toggleMemberModel, type DraftMember,
+  memberAllowedModels, restrictMemberModels, restrictModels, sessionTeamSummary, teamForNewSession, teamForSave, teamMemberLimit, teamProblem, teamSpecPreview, toggleAllowedModel, toggleMemberModel, type DraftMember,
 } from '../src/office/team';
 
 const ALLOWED = ['opus', 'sonnet', 'haiku'];
@@ -19,12 +19,12 @@ describe('team setup: ordering', () => {
     expect(moveItem(list, 0, 0)).not.toBe(list);
   });
 
-  it('ticks models last, unticks them and caps the allowed list at 20', () => {
+  it('ticks models last, unticks them and caps the allowed list at 32', () => {
     expect(toggleAllowedModel(ALLOWED, 'gpt', true)).toEqual([...ALLOWED, 'gpt']);
     expect(toggleAllowedModel(ALLOWED, 'opus', true)).toEqual(ALLOWED);
     expect(toggleAllowedModel(ALLOWED, 'sonnet', false)).toEqual(['opus', 'haiku']);
-    const full = Array.from({ length: 20 }, (_, index) => `m${index}`);
-    expect(toggleAllowedModel(full, 'extra', true)).toHaveLength(20);
+    const full = Array.from({ length: 32 }, (_, index) => `m${index}`);
+    expect(toggleAllowedModel(full, 'extra', true)).toHaveLength(32);
   });
 
   it('validates a typed model id', () => {
@@ -32,7 +32,7 @@ describe('team setup: ordering', () => {
     expect(customModel(ALLOWED, '--rm')).toEqual({ error: 'invalid' });
     expect(customModel(ALLOWED, 'has space')).toEqual({ error: 'invalid' });
     expect(customModel(ALLOWED, 'opus')).toEqual({ error: 'duplicate' });
-    expect(customModel(Array.from({ length: 20 }, (_, index) => `m${index}`), 'x')).toEqual({ error: 'full' });
+    expect(customModel(Array.from({ length: 32 }, (_, index) => `m${index}`), 'x')).toEqual({ error: 'full' });
   });
 });
 
@@ -184,10 +184,20 @@ describe('team setup: save', () => {
     expect(plainMembers([{ id: 'a', name: 'N', role: 'R', models: ['opus'], edited: ['name'] }])).toEqual([{ id: 'a', name: 'N', role: 'R', models: ['opus'] }]);
   });
 
+  it('retains the full imported goal when saving a team', () => {
+    const goalDocument = { name: 'goal.txt', text: 'Full request details.' };
+    const saved = teamForSave({ enabled: true, allowedModels: ALLOWED, goal: 'Full goal attached: goal.txt', goalDocument, members: [] });
+    expect(saved.goalDocument).toEqual(goalDocument);
+    expect(decodeAgentTeam(saved)).toMatchObject({ ok: true, value: { goalDocument } });
+  });
+
   it('starts from the default model and two more, clamps the count and reads the session summary', () => {
     expect(defaultAllowedModels('sonnet', ['opus', 'sonnet', 'haiku', 'gpt'])).toEqual(['sonnet', 'opus', 'haiku']);
     expect(defaultAllowedModels(undefined, [])).toEqual([]);
-    expect([clampCount(0), clampCount(3.4), clampCount(12), clampCount(25), clampCount(Number.NaN)]).toEqual([1, 3, 12, 20, 1]);
+    expect([clampCount(0), clampCount(3.4), clampCount(12), clampCount(99), clampCount(Number.NaN)]).toEqual([1, 3, 12, 32, 1]);
+    expect(teamMemberLimit()).toBe(32);
+    expect(teamMemberLimit(true)).toBe(2);
+    expect([clampCount(0, true), clampCount(3, true), clampCount(32, true), clampCount(Number.NaN, true)]).toEqual([1, 2, 2, 1]);
     expect(sessionTeamSummary(undefined)).toBeUndefined();
     expect(sessionTeamSummary({ team: { enabled: true, size: 3 } } as SessionSummary)).toEqual({ enabled: true, size: 3 });
   });
@@ -220,5 +230,80 @@ describe('v0.0.32: plans without ticked models', () => {
     const team = { enabled: true, allowedModels: [], members: [{ id: 'a', name: 'Ava Stone', role: 'Researcher', models: [] }] };
     expect(teamProblem(team)).toBe('models');
     expect(teamProblem(team, true)).toBeUndefined();
+  });
+
+  it('preserves hidden Native model chains and grants while editing and replanning a Hermes team', () => {
+    const chains = Array.from({ length: 8 }, (_, index) => `remote/model-${index}`);
+    const members = [{ id: 'm-1', name: 'Ava Stone', role: 'Researcher', connectionId: 'saved-router', models: chains }];
+    const connections = [{ connectionId: 'saved-router', allowedModels: chains }];
+    const next = applyPlan(members, [], { members: [{ ...members[0]!, models: ['unsupported/model'] }], allowedModels: ['unsupported/model'] }, [], connections, true);
+    expect(next.allowed).toEqual([]);
+    expect(next.members[0]!.models).toEqual(chains);
+    const saved = teamForSave({ enabled: true, goal: '', allowedModels: next.allowed, connections, members: next.members }, true);
+    expect(saved.members[0]).toMatchObject({ connectionId: 'saved-router', models: chains });
+    expect(saved.connections).toEqual(connections);
+    expect(teamProblem({ ...saved, connections: [] }, true)).toBe('connections');
+  });
+});
+
+
+describe('Native team connection policy in the editor', () => {
+  const connections = [{ connectionId: 'router-b', allowedModels: ['remote/custom', 'shared', 'remote/fallback'] }];
+  const lead = ['lead/model', 'shared'];
+  const remote: DraftMember = { id: 'remote', name: 'Iris Vale', role: 'Reviewer', connectionId: 'router-b', models: ['remote/custom', 'shared'], edited: ['connectionId', 'models'] };
+
+  it('keeps identical model ids separated by the selected connection through save and plan requests', () => {
+    const team = teamForSave({ enabled: true, goal: '', allowedModels: lead, connections, members: [remote, { id: 'lead', name: 'Nova Vale', role: 'Assistant', models: ['shared'] }] });
+    expect(team.connections).toEqual(connections);
+    expect(team.members[0]).toMatchObject({ connectionId: 'router-b', models: ['remote/custom', 'shared'] });
+    expect(team.members[1]).not.toHaveProperty('connectionId');
+    expect(decodeAgentTeam(team).ok).toBe(true);
+    expect(plainMembers([remote])[0]).toMatchObject({ connectionId: 'router-b', models: ['remote/custom', 'shared'] });
+    expect(plainMembers([remote])[0]).not.toHaveProperty('edited');
+  });
+
+  it('preserves saved selected connections and custom ids when re-planning', () => {
+    const current = [{ ...remote, edited: undefined }];
+    const planned = [{ id: 'other', name: 'New Name', role: 'Architect', models: ['lead/model'] }];
+    const next = applyPlan(current, lead, { members: planned, allowedModels: lead }, [], connections);
+    expect(next.members[0]).toMatchObject({ id: 'remote', connectionId: 'router-b', models: remote.models, role: 'Architect' });
+    expect(filterModels(['remote/new', 'remote/custom'], connections[0]!.allowedModels, 'NEW')).toEqual(['remote/new']);
+    expect(teamForSave({ enabled: true, goal: '', allowedModels: lead, connections, members: next.members }).members[0]!.models).toEqual(remote.models);
+  });
+
+  it('retains grants and selections in reviewed drafts and prompt merges into a workspace default', () => {
+    const team = teamForSave({ enabled: true, goal: '', allowedModels: lead, connections, members: [remote] });
+    expect(teamForNewSession({ draft: team, reviewed: true, taken: [], seed: 'workspace' })).toEqual({ team });
+    const spec = teamSpecPreview('Subagent A:\n- Name: Iris Vale\n- Role: Reviewer\n- Tugas: Check changes')!.spec;
+    const merged = teamForNewSession({ workspaceTeam: team, spec, reviewed: false, taken: [], seed: 'workspace' });
+    expect('team' in merged && merged.team?.connections).toEqual(connections);
+    expect('team' in merged && merged.team?.members[0]).toMatchObject({ connectionId: 'router-b', models: remote.models });
+  });
+
+  it('never mixes the lead catalog into an external member or a plan-derived lead allowlist', () => {
+    expect(memberAllowedModels(remote, lead, connections)).toEqual(connections[0]!.allowedModels);
+    expect(restrictMemberModels({ ...remote, models: ['lead/model', 'remote/custom'] }, lead, connections)).toEqual(['remote/custom']);
+    const next = applyPlan([], [], { members: [remote, { id: 'lead', name: 'Nova Vale', role: 'Assistant', models: ['lead/model'] }] }, [], connections);
+    expect(next.allowed).toEqual(['lead/model']);
+  });
+
+  it('retains empty external chains so they use the full approved default order', () => {
+    const defaultMember = { ...remote, models: [] };
+    const team = teamForSave({ enabled: true, goal: '', allowedModels: [], connections, members: [defaultMember] });
+    expect(team.members[0]!.models).toEqual([]);
+    expect(team.connections![0]!.allowedModels).toEqual(connections[0]!.allowedModels);
+    expect(teamProblem(team)).toBeUndefined();
+    expect(decodeAgentTeam(team).ok).toBe(true);
+  });
+
+  it('filters only against its own reduced allowlist and keeps removed grants visibly unresolved', () => {
+    const reduced = [{ connectionId: 'router-b', allowedModels: ['remote/fallback'] }];
+    expect(restrictMemberModels(remote, lead, reduced)).toEqual([]);
+    expect(restrictMemberModels(remote, ['lead/changed'], connections)).toEqual(remote.models);
+    const withoutGrant = teamForSave({ enabled: true, goal: '', allowedModels: lead, connections: [], members: [remote] });
+    expect(withoutGrant.members[0]).toMatchObject({ connectionId: 'router-b', models: [] });
+    expect(memberAllowedModels(remote, lead, [])).toEqual([]);
+    expect(teamProblem(withoutGrant)).toBe('connections');
+    expect(teamProblem({ enabled: true, allowedModels: lead, connections: [{ connectionId: 'router-b', allowedModels: [] }], members: [remote] })).toBe('connections');
   });
 });

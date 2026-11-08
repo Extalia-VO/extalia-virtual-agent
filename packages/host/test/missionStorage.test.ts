@@ -4,13 +4,22 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { HostMissionRun } from '@extalia/platform';
-import { MissionRecords } from '../src/mission.js';
+import { MissionRecords, missionUsageFromTasks } from '../src/mission.js';
 import type { SessionRecord } from '../src/sessions.js';
 
 const directories: string[] = [];
 afterEach(async () => { for (const directory of directories.splice(0)) await rm(directory, { recursive: true, force: true }); });
 const session: SessionRecord = { id: 's_storage123', workspaceId: 'workspace', connectionId: 'connection', title: 'Storage', createdAt: '2026-01-01T00:00:00.000Z', lastActiveAt: '2026-01-01T00:00:00.000Z' };
 const MAX_BYTES = 8 * 1024 * 1024;
+
+it('keeps recovered mission usage aggregates safe and preserves reported zero and partial unknown tasks', () => {
+  const tasks = [
+    { usage: { inputTokens: Number.MAX_SAFE_INTEGER, outputTokens: 0 } },
+    { usage: { inputTokens: 2, outputTokens: 1, unknown: true } },
+    { usage: { inputTokens: 1, outputTokens: 0 } },
+  ] as HostMissionRun['tasks'];
+  expect(missionUsageFromTasks(tasks)).toEqual({ outputTokens: 1, unknownTasks: 1 });
+});
 function record(index: number, answer: string, state: HostMissionRun['state'] = 'completed'): HostMissionRun {
   const at = new Date(Date.parse(session.createdAt) + index * 1000).toISOString();
   return {
@@ -24,6 +33,18 @@ async function storage() {
 }
 
 describe('native mission metadata byte retention', () => {
+  it('reports global reservations and persisted unresolved missions for shared sidecar restart guards', async () => {
+    const { records, directory } = await storage();
+    expect(records.hasUnresolved()).toBe(false);
+    records.reserve(session.id, [session.connectionId]);
+    expect(records.hasUnresolved()).toBe(true);
+    records.release(session.id);
+    expect(records.hasUnresolved()).toBe(false);
+    await records.save(record(0, '', 'recovering'));
+    const reopened = new MissionRecords(directory); await reopened.initialize([session]);
+    expect(reopened.hasUnresolved()).toBe(true);
+  });
+
   it('retains current/unresolved records, prunes oldest terminal history and reopens UTF-8 escaped answers', async () => {
     const { records, directory, file } = await storage();
     // All answers respect the 16000-code-unit limit, but JSON escaping and UTF-8

@@ -56,6 +56,17 @@
       }
     },
     {
+      "path": "avatars/hair/female/bun-bangs-detail.glb",
+      "sha256": "d719d177242ce462bff0c42c070df162ef75d2dafc78a2fd92fcb0fa48369924",
+      "bytes": 1203448,
+      "license": "LicenseRef-RenderHub-Extended-Use",
+      "provenance": {
+        "kind": "third-party-derived",
+        "exporter": "tooling/convert-detailed-hair.py",
+        "note": "Detailed hair (female/bun-bangs) fitted from Next-gen female bun with bangs (real-time hair cards). Source and credit are recorded in THIRD_PARTY_NOTICES.md."
+      }
+    },
+    {
       "path": "avatars/hair/female/bun-detail.glb",
       "sha256": "0de8a29a29405c50a2ae82689c5f45669267e932d7421ffc2762ada5cefc68ef",
       "bytes": 810988,
@@ -67,6 +78,17 @@
       }
     },
     {
+      "path": "avatars/hair/female/dreads-detail.glb",
+      "sha256": "9a7adf7dfc050e1a7831e03e95d4319aeca8503d4d1e407d8aff48de606b0857",
+      "bytes": 676576,
+      "license": "LicenseRef-RenderHub-Extended-Use",
+      "provenance": {
+        "kind": "third-party-derived",
+        "exporter": "tooling/convert-detailed-hair.py",
+        "note": "Detailed hair (female/dreads) fitted from Dreads hair (rasta). Source and credit are recorded in THIRD_PARTY_NOTICES.md."
+      }
+    },
+    {
       "path": "avatars/hair/female/high-ponytail-detail.glb",
       "sha256": "cf4ac3464eef16bd50c3bff894c6e382e2c9824e15bd385316b0f622610e3fc9",
       "bytes": 496656,
@@ -75,6 +97,28 @@
         "kind": "licensed-avatar-export",
         "exporter": "tooling/prepare-licensed-avatars.py",
         "note": "Existing Blender-retargeted RenderHub avatar. Source and separate asset terms are recorded in THIRD_PARTY_NOTICES.md."
+      }
+    },
+    {
+      "path": "avatars/hair/female/long-bangs-detail.glb",
+      "sha256": "d1dbeff2c3eb625c47dc499579e1772ec5063a063ccd136ccbda350a10a75f0d",
+      "bytes": 830788,
+      "license": "LicenseRef-RenderHub-Extended-Use",
+      "provenance": {
+        "kind": "third-party-derived",
+        "exporter": "tooling/convert-detailed-hair.py",
+        "note": "Detailed hair (female/long-bangs) fitted from Red hair woman: base with long bangs. Source and credit are recorded in THIRD_PARTY_NOTICES.md."
+      }
+    },
+    {
+      "path": "avatars/hair/female/long-straight-detail.glb",
+      "sha256": "68f2a872d8341318ef3a77a0c7b296cca2a72bcc96807a2e4383fb7e59e0fd72",
+      "bytes": 323856,
+      "license": "LicenseRef-RenderHub-Extended-Use",
+      "provenance": {
+        "kind": "third-party-derived",
+        "exporter": "tooling/convert-detailed-hair.py",
+        "note": "Detailed hair (female/long-straight) fitted from Female long straight hair. Source and credit are recorded in THIRD_PARTY_NOTICES.md."
       }
     },
     {
@@ -97,6 +141,50 @@
         "kind": "licensed-avatar-export",
         "exporter": "tooling/prepare-licensed-avatars.py",
         "note": "Existing Blender-retargeted RenderHub avatar. Source and separate asset terms are recorded in THIRD_PARTY_NOTICES.md."
+      }
+    },
+    {
+      "path": "avatars/hair/female/sleek-ponytail-detail.glb",
+      "sha256": "856bd1fc34eb3eb5695a94335c5949ae55e74409e246a622c6ad16eaa2981915",
+      "bytes": 642312,
+      "license": "LicenseRef-RenderHub-Extended-Use",
+      "provenance": {
+        "kind": "third-party-derived",
+        "exporter": "tooling/convert-detailed-hair.py",
+        "note": "Detailed hair (female/sleek-ponytail) fitted from Game-ready realistic female ponytail. Source and credit are recorded in THIRD_PARTY_NOTICES.md."
+      }
+    },
+    {
+      "path": "avatars/hair/female/straight-short-detail.glb",
+      "sha256": "337864cf738a2c0458024fa388672d4c2a7df73bb32306b4ef2c4a16c3c55552",
+      "bytes": 1166416,
+      "license": "LicenseRef-RenderHub-Extended-Use",
+      "provenance": {
+        "kind": "third-party-derived",
+        "exporter": "tooling/convert-detailed-hair.py",
+        "note": "Detailed hair (female/straight-short) fitted from Red hair woman: straight short. Source and credit are recorded in THIRD_PARTY_NOTICES.md."
+      }
+    },
+    {
+      "path": "avatars/hair/male/afro-detail.glb",
+      "sha256": "0be499342e0681b4cd122893813ee92a492ff522531e8cc699c7318a5fe24868",
+      "bytes": 420404,
+      "license": "LicenseRef-RenderHub-Extended-Use",
+      "provenance": {
+        "kind": "third-party-derived",
+        "exporter": "tooling/convert-detailed-hair.py",
+        "note": "Detailed hair (male/afro) fitted from Afro IV 3c hair (hair curves, shelled by prepare-afro-shell.py). Source and credit are recorded in THIRD_PARTY_NOTICES.md."
+      }
+    },
+    {
+      "path": "avatars/hair/male/dreadlocks-detail.glb",
+      "sha256": "e33b532d7954c7af9cfe4f8e04aec5373a2e08b180e9533ea1a28ea971f528ec",
+      "bytes": 678220,
+      "license": "LicenseRef-RenderHub-Extended-Use",
+      "provenance": {
+        "kind": "third-party-derived",
+        "exporter": "tooling/convert-detailed-hair.py",
+        "note": "Detailed hair (male/dreadlocks) fitted from Dreads hair (rasta). Source and credit are recorded in THIRD_PARTY_NOTICES.md."
       }
     },
     {
@@ -156,7 +244,7 @@
     },
     {
       "path": "avatars/outfits/female/bartender-uniform.glb",
-      "sha256": "5ac1bf311d3e1cc78bec6df1d1e8235abe3c62ac3bce866e06a26ef5d0b5190d",
+      "sha256": "7faba4dd1b20b44291bd374ae8338a4ddc1827db558457e2b0cc8d8a3e93c44a",
       "bytes": 288928,
       "license": "LicenseRef-RenderHub-Extended-Use",
       "provenance": {
@@ -167,8 +255,8 @@
     },
     {
       "path": "avatars/outfits/female/outfit-original-dress.glb",
-      "sha256": "3ea557bb6af6bd2a7aeed577213588b31b47f6950f689f2582aecbaeb04a6478",
-      "bytes": 2809820,
+      "sha256": "48ecfb00f885509a6a3b7a9f6dbd9a512b2e98a8308be7b65a59fe5338baaa21",
+      "bytes": 2809808,
       "license": "CC-BY-4.0",
       "provenance": {
         "kind": "third-party-derived",
@@ -178,8 +266,8 @@
     },
     {
       "path": "avatars/outfits/female/outfit-source-denim-dress.glb",
-      "sha256": "6ce11414162b53408ce3a1c4b443c91438c58ff4f8def584e00cdd4dac4a991f",
-      "bytes": 2470324,
+      "sha256": "1d498106f44a5da818c2ed4d2db545d10b8a8981ef8fd0968f83138584b5b847",
+      "bytes": 2327152,
       "license": "CC-BY-4.0",
       "provenance": {
         "kind": "third-party-derived",
@@ -189,8 +277,8 @@
     },
     {
       "path": "avatars/outfits/female/outfit-source-jumper-skirt.glb",
-      "sha256": "dbb9d5af26cddb14c07c4ab6c70c1be0aeaa7ad0529d534dbfed52a2dba09a39",
-      "bytes": 1276644,
+      "sha256": "ffd0aef0ba29673be840a362bbf02291e202843299f5854ee7e1960dfc2d2b06",
+      "bytes": 1254336,
       "license": "CC-BY-4.0",
       "provenance": {
         "kind": "third-party-derived",
@@ -200,8 +288,8 @@
     },
     {
       "path": "avatars/outfits/female/reception-uniform.glb",
-      "sha256": "f3ea2c5380767d88594455c2004d9205cdbd4ccd5b9140c271088f6f6e19043a",
-      "bytes": 5989700,
+      "sha256": "0e69fcd01b057550ce46a592871717757b821f8e2bd8d6207a3e1ac1a3858c7d",
+      "bytes": 5989688,
       "license": "CC-BY-4.0",
       "provenance": {
         "kind": "third-party-derived",
@@ -211,8 +299,8 @@
     },
     {
       "path": "avatars/outfits/male/bartender-uniform.glb",
-      "sha256": "ce65b1000b0f159bf7749fcf6c9a3977d4735e35701207be8bcdfc35b22611a5",
-      "bytes": 2687452,
+      "sha256": "3f9aaa79230453f0ecaaf6d097699326dd32517a49e9e20ca01697c4c84dda77",
+      "bytes": 2633812,
       "license": "CC-BY-4.0",
       "provenance": {
         "kind": "third-party-derived",
@@ -222,8 +310,8 @@
     },
     {
       "path": "avatars/outfits/male/outfit-black-business-suit.glb",
-      "sha256": "2c16c6bfeb9f5556895af3e571026890ad4cb7cffac8b6ebdd8af1c2be104d33",
-      "bytes": 22820632,
+      "sha256": "57614dbb4fc1f966b40b1bd01af916e3a280110a7e5ab3343df3eff326e372cc",
+      "bytes": 20397732,
       "license": "CC-BY-4.0",
       "provenance": {
         "kind": "third-party-derived",
@@ -233,8 +321,8 @@
     },
     {
       "path": "avatars/outfits/male/outfit-mens-two-piece-suit.glb",
-      "sha256": "d423bff3e16623556e8f28b915c265700a9f08fbd30b0c53c5b5df0f39a86aa0",
-      "bytes": 1089884,
+      "sha256": "361157bc4675f948a1cec814fdf1129351518bccf11eb788548c1815bb49676a",
+      "bytes": 782832,
       "license": "CC-BY-4.0",
       "provenance": {
         "kind": "third-party-derived",
@@ -244,8 +332,8 @@
     },
     {
       "path": "avatars/outfits/male/outfit-printed-hoodie-jeans.glb",
-      "sha256": "192d2201419ddf12d9d92cf9b3f2880c260e5c23cd82b7091e2d7d960efea497",
-      "bytes": 659348,
+      "sha256": "88f0e458dabc6c0c6d824d0ca19de73da903b42ff8c7a56909d59e92496fe7eb",
+      "bytes": 607664,
       "license": "CC-BY-4.0",
       "provenance": {
         "kind": "third-party-derived",
@@ -255,8 +343,8 @@
     },
     {
       "path": "avatars/outfits/male/outfit-prom-suit.glb",
-      "sha256": "47c3f51038cc9ff06bc94e689c8cef215a2085716486af6b70bbcc5109d13e3d",
-      "bytes": 997380,
+      "sha256": "2892297b04557203a611ca1243f0d95bae5394426461bc6b2ee58b2f06452657",
+      "bytes": 878416,
       "license": "CC-BY-4.0",
       "provenance": {
         "kind": "third-party-derived",
@@ -266,8 +354,8 @@
     },
     {
       "path": "avatars/outfits/male/outfit-sweatshirt-jacket-workwear.glb",
-      "sha256": "14d08e0199f74ace67715669e84f0cf6cf4785159c327f2fc8f3886c856c36ff",
-      "bytes": 10912776,
+      "sha256": "e72a84b7aaf2c512222351950b804b33bfb9f9c45239ceab8b87da2821fff0d1",
+      "bytes": 10857156,
       "license": "CC-BY-4.0",
       "provenance": {
         "kind": "third-party-derived",
@@ -277,8 +365,8 @@
     },
     {
       "path": "avatars/outfits/male/outfit-victorian-bartender.glb",
-      "sha256": "569169783d60a6b8e8bd0a23f5ffde4872118f5343da396196e143432021ba1d",
-      "bytes": 7741360,
+      "sha256": "8e66dbe6de695b68a7f9de2e7204cbcc91caa7ebe746914b59f2ce64dc956ef9",
+      "bytes": 7741352,
       "license": "CC-BY-4.0",
       "provenance": {
         "kind": "third-party-derived",
@@ -288,8 +376,8 @@
     },
     {
       "path": "avatars/outfits/male/reception-uniform.glb",
-      "sha256": "8d0c83245f774992828bb010db00602b78e9071a7441d75132325979b21014ba",
-      "bytes": 297860,
+      "sha256": "0cd0dedf9c40e54d97e408bafe054860c588eb724142ff5cdaf6f7541bfba10d",
+      "bytes": 297864,
       "license": "LicenseRef-RenderHub-Extended-Use",
       "provenance": {
         "kind": "licensed-avatar-export",
@@ -310,8 +398,8 @@
     },
     {
       "path": "avatars/wardrobe/female/bottom/source-gothic-skirt.glb",
-      "sha256": "ecd09c6b97a8e1844cd5836d27246f59fbf0f8347344c3884a7b955f60012cb9",
-      "bytes": 2901120,
+      "sha256": "5038f2513e35a613125aa7f2569e903b0ce0d805f5564a92328af7a1a463a3ae",
+      "bytes": 2895648,
       "license": "CC-BY-4.0",
       "provenance": {
         "kind": "third-party-derived",
@@ -332,8 +420,8 @@
     },
     {
       "path": "avatars/wardrobe/female/bottom/source-ray-trousers.glb",
-      "sha256": "bd268a0bbbce8d556c2b3d4dba39ea3566ca82f5ae4cfa335287c2f347b21bbf",
-      "bytes": 233580,
+      "sha256": "17d1cb8a4d3f111202efd95e316bc785f876359b447269701d2e3160e949fc8e",
+      "bytes": 219188,
       "license": "CC-BY-4.0",
       "provenance": {
         "kind": "third-party-derived",
@@ -343,7 +431,7 @@
     },
     {
       "path": "avatars/wardrobe/female/outer/cloth-jacket.glb",
-      "sha256": "d4ccefab154129afc387b3bf13746837eb5d853b0480d585dc9e108c72c28f6d",
+      "sha256": "2da744810c1a614beeddffb72fe1ed1b3e44871c8f2cefd0c9d5f14cafeddd1d",
       "bytes": 384048,
       "license": "CC-BY-4.0",
       "provenance": {
@@ -376,8 +464,8 @@
     },
     {
       "path": "avatars/wardrobe/female/outer/source-ray-vest.glb",
-      "sha256": "9f700c3dc8c39f23f4c4a9ccc05ef15ab555435ccb9e5981cd0bdf4b93bdb96b",
-      "bytes": 103528,
+      "sha256": "5168d2e2a1fe24f93c41bd8a19dd4c2aa78f34ce3bdcdfdd2fef2372408cd1e2",
+      "bytes": 101488,
       "license": "CC-BY-4.0",
       "provenance": {
         "kind": "third-party-derived",
@@ -387,8 +475,8 @@
     },
     {
       "path": "avatars/wardrobe/female/outer/source-red-leather-jacket.glb",
-      "sha256": "2d8b38feb83f165ac5a38a8027ed9531e85ba138a9e91378028d74faa3aaca1f",
-      "bytes": 1923988,
+      "sha256": "201e72c1f7eb7a49e39b7f749f2f21b19c2319e234f68d7380082e5508854273",
+      "bytes": 1097752,
       "license": "CC-BY-4.0",
       "provenance": {
         "kind": "third-party-derived",
@@ -398,7 +486,7 @@
     },
     {
       "path": "avatars/wardrobe/female/top/source-belted-top.glb",
-      "sha256": "0f1a84df61a5ffceca551ecf179d9c473e9aff18c58459d1576a9a6b1bde64e0",
+      "sha256": "4ea7eddb0520f0a3cccdfd1de2f64794866d3a6f4ab9f1d321dbef882d51a7ba",
       "bytes": 675764,
       "license": "CC-BY-4.0",
       "provenance": {
@@ -409,8 +497,8 @@
     },
     {
       "path": "avatars/wardrobe/female/top/source-female-cloth1.glb",
-      "sha256": "a5df36096b88a34c3101dcd2445f6eaefb461187385c1861dccd56643c445449",
-      "bytes": 909968,
+      "sha256": "3dc157401a92af98fdf3b882af3232925c3791e346dcd3556662dd0f7726e8b7",
+      "bytes": 909992,
       "license": "CC-BY-4.0",
       "provenance": {
         "kind": "third-party-derived",
@@ -420,8 +508,8 @@
     },
     {
       "path": "avatars/wardrobe/female/top/source-flame-hoodie.glb",
-      "sha256": "9dd188f896cad9009cb9268b9486ed4191826835e3d1d9272ccce973e6e08355",
-      "bytes": 10666684,
+      "sha256": "2db9da3cc16b067eae3ab1d5ed17a7967647a67f1411152eb085783b7dbc42cd",
+      "bytes": 10013416,
       "license": "CC-BY-4.0",
       "provenance": {
         "kind": "third-party-derived",
@@ -431,8 +519,8 @@
     },
     {
       "path": "avatars/wardrobe/female/top/source-gothic-blouse.glb",
-      "sha256": "5b6696081ce4ce7ee3d8b18ee9c7665aa18adc3287dc5ad8311293e94b2634f7",
-      "bytes": 3152296,
+      "sha256": "506ca3716ea35a751159510d905d172ab3af7b13dc4515abbeda7b2fa6c13c6a",
+      "bytes": 3152328,
       "license": "CC-BY-4.0",
       "provenance": {
         "kind": "third-party-derived",
@@ -442,8 +530,8 @@
     },
     {
       "path": "avatars/wardrobe/female/top/source-oversize-shirt.glb",
-      "sha256": "f064fa17e7e8c56ea35be90611f96017c56997c7d08f342e69d7981a8dc3ea3b",
-      "bytes": 317176,
+      "sha256": "41049253758e9c381712b03ee9dd33aea81274b54150fbb6794680f5a9f89ae4",
+      "bytes": 317212,
       "license": "CC-BY-4.0",
       "provenance": {
         "kind": "third-party-derived",
@@ -453,8 +541,8 @@
     },
     {
       "path": "avatars/wardrobe/female/top/source-pink-hoodie.glb",
-      "sha256": "f894bf826e2b4c3fb7be98ecd490601f5d9440dae68ef9a056bbe6b08c4f4cbb",
-      "bytes": 4029856,
+      "sha256": "7f620a7df6178d789279c69976923a59b27dfdc76317a74cd171ca41948279de",
+      "bytes": 4029348,
       "license": "CC-BY-4.0",
       "provenance": {
         "kind": "third-party-derived",
@@ -464,8 +552,8 @@
     },
     {
       "path": "avatars/wardrobe/female/top/source-ray-underlayer.glb",
-      "sha256": "adf91f7adb3a6b4d65062a113f46a849c8f1a007c15b8429e6384c485526a1f3",
-      "bytes": 322332,
+      "sha256": "2b63d929cdd51ffceb5b37749cd4ebc05a1063ca8c5d0f0471be2e0436ef70c4",
+      "bytes": 298256,
       "license": "CC-BY-4.0",
       "provenance": {
         "kind": "third-party-derived",
@@ -475,8 +563,8 @@
     },
     {
       "path": "avatars/wardrobe/male/bottom/jeans.glb",
-      "sha256": "b4aaa07243d3a8d5bf0cd597ad377394ba88ed1541dae08aa877c5c9f13b46c0",
-      "bytes": 302912,
+      "sha256": "aa9bb9af9dc6ab97cffd7725cbd93d4da4c916304eefeff9e1399fc57980e6e7",
+      "bytes": 281064,
       "license": "CC-BY-4.0",
       "provenance": {
         "kind": "third-party-derived",
@@ -486,8 +574,8 @@
     },
     {
       "path": "avatars/wardrobe/male/outer/denim-jacket.glb",
-      "sha256": "d040705363daf78a79853059a1c6dc1da1e4452fbd8b58bccff3f2f0eb58d939",
-      "bytes": 1506300,
+      "sha256": "7681aa8721f512f496b6935a62386f691259072eeecf29552bb8c65347e723ca",
+      "bytes": 1506296,
       "license": "CC-BY-4.0",
       "provenance": {
         "kind": "third-party-derived",
@@ -497,8 +585,8 @@
     },
     {
       "path": "avatars/wardrobe/male/top/green-white-hoodie.glb",
-      "sha256": "f924e5a51266ed66e97f729efba8ab8bf30ca62b3ac7ad7f0a37afac67cb4351",
-      "bytes": 3968376,
+      "sha256": "35a6855e232ba83d255eb823f021f063153adabaa20e1314660794596ae42d37",
+      "bytes": 3968396,
       "license": "CC-BY-4.0",
       "provenance": {
         "kind": "third-party-derived",
@@ -602,6 +690,16 @@
       }
     },
     {
+      "path": "furniture/tablet.glb",
+      "sha256": "796f9618236bd157608060ca28b942446f801ea64c76e987747d3d2a490ee4c3",
+      "bytes": 28336,
+      "license": "MIT",
+      "provenance": {
+        "kind": "project-generated",
+        "generator": "tooling/blender/create-tablet-prop.py"
+      }
+    },
+    {
       "path": "furniture/team-pod-desktop.glb",
       "sha256": "5d6d1302477a5da46bace4dafc54b4586cfef14c999e5e6dd0c92d9ec0b6e8b1",
       "bytes": 246420,
@@ -619,6 +717,204 @@
       "provenance": {
         "kind": "project-generated",
         "generator": "tooling/blender/create-workstation-set.py"
+      }
+    },
+    {
+      "path": "greenery/garden-hakonechloa.glb",
+      "sha256": "8b03ad993d4c7539baf34eeb313c9ea0e0b01a186762807bbd10cc40e38f13fc",
+      "bytes": 138540,
+      "license": "LicenseRef-RenderHub-Extended-Use",
+      "provenance": {
+        "kind": "third-party-derived",
+        "exporter": "tooling/blender/prepare-greenery.py",
+        "note": "Simplified campus garden (garden-hakonechloa) derived from Japanese garden plants collection 02: Hakonechloa. Source and credit are recorded in THIRD_PARTY_NOTICES.md."
+      }
+    },
+    {
+      "path": "greenery/garden-iris.glb",
+      "sha256": "bfc31f2cdb8d63278f62bd893ff0817ca924fa753fa444f7d20447db21677fe1",
+      "bytes": 207048,
+      "license": "LicenseRef-RenderHub-Extended-Use",
+      "provenance": {
+        "kind": "third-party-derived",
+        "exporter": "tooling/blender/prepare-greenery.py",
+        "note": "Simplified campus garden (garden-iris) derived from Japanese garden plants collection 02: Japanese iris. Source and credit are recorded in THIRD_PARTY_NOTICES.md."
+      }
+    },
+    {
+      "path": "greenery/garden-pasque.glb",
+      "sha256": "74a6558d3d657a9bc1090a04995f1e4907d616eccffc42ba666c5a289725e927",
+      "bytes": 264868,
+      "license": "LicenseRef-RenderHub-Extended-Use",
+      "provenance": {
+        "kind": "third-party-derived",
+        "exporter": "tooling/blender/prepare-greenery.py",
+        "note": "Simplified campus garden (garden-pasque) derived from Pasque flowers (Pulsatilla vulgaris). Source and credit are recorded in THIRD_PARTY_NOTICES.md."
+      }
+    },
+    {
+      "path": "greenery/garden-rhododendron.glb",
+      "sha256": "3dca442351cb53b124d3c6c36c334f15489dff69eeb62494974a0a723d856f2d",
+      "bytes": 330956,
+      "license": "LicenseRef-RenderHub-Extended-Use",
+      "provenance": {
+        "kind": "third-party-derived",
+        "exporter": "tooling/blender/prepare-greenery.py",
+        "note": "Simplified campus garden (garden-rhododendron) derived from Japanese garden plants collection 02: Japanese rhododendron. Source and credit are recorded in THIRD_PARTY_NOTICES.md."
+      }
+    },
+    {
+      "path": "greenery/plant-aloe-double.glb",
+      "sha256": "17cdd5f401204a3c4f620b2aa812e3febf9d4862a559fb0e67c51122e6627d88",
+      "bytes": 155404,
+      "license": "LicenseRef-RenderHub-Extended-Use",
+      "provenance": {
+        "kind": "third-party-derived",
+        "exporter": "tooling/blender/prepare-greenery.py",
+        "note": "Simplified campus plant (plant-aloe-double) derived from Double aloe plant. Source and credit are recorded in THIRD_PARTY_NOTICES.md."
+      }
+    },
+    {
+      "path": "greenery/plant-marble-pot.glb",
+      "sha256": "6de7683abf36de9f8dbb9f26834fbee8ae34864d860a09132a41716724d94421",
+      "bytes": 541536,
+      "license": "LicenseRef-RenderHub-Extended-Use",
+      "provenance": {
+        "kind": "third-party-derived",
+        "exporter": "tooling/blender/prepare-greenery.py",
+        "note": "Simplified campus plant (plant-marble-pot) derived from Plant in a pot. Source and credit are recorded in THIRD_PARTY_NOTICES.md."
+      }
+    },
+    {
+      "path": "greenery/plant-round-pot.glb",
+      "sha256": "26fe282cef03c92f12dc0c57f42ca99db574a1e4628b358f3076ca67d1d95b62",
+      "bytes": 137424,
+      "license": "LicenseRef-RenderHub-Extended-Use",
+      "provenance": {
+        "kind": "third-party-derived",
+        "exporter": "tooling/blender/prepare-greenery.py",
+        "note": "Simplified campus plant (plant-round-pot) derived from Small plant in round pot. Source and credit are recorded in THIRD_PARTY_NOTICES.md."
+      }
+    },
+    {
+      "path": "greenery/tree-avocado.glb",
+      "sha256": "2acc07db039d5ea6e56460b16ac0c5a1fe307c96e099555e96ae24d14b917c01",
+      "bytes": 582212,
+      "license": "LicenseRef-RenderHub-Extended-Use",
+      "provenance": {
+        "kind": "third-party-derived",
+        "exporter": "tooling/blender/prepare-greenery.py",
+        "note": "Simplified campus tree (tree-avocado) derived from Avocado tree with fruits. Source and credit are recorded in THIRD_PARTY_NOTICES.md."
+      }
+    },
+    {
+      "path": "greenery/tree-butia-palm.glb",
+      "sha256": "c00b79b670efdfafe1d1eaf9a491ebd6119dcdca5be7faf63f82285b347c5ab3",
+      "bytes": 582708,
+      "license": "LicenseRef-RenderHub-Extended-Use",
+      "provenance": {
+        "kind": "third-party-derived",
+        "exporter": "tooling/blender/prepare-greenery.py",
+        "note": "Simplified campus tree (tree-butia-palm) derived from Butia yatay palm. Source and credit are recorded in THIRD_PARTY_NOTICES.md."
+      }
+    },
+    {
+      "path": "greenery/tree-japanese-maple.glb",
+      "sha256": "ad8c8be1bd02e0cf0976e2e85b5d0728ba9151a8c864dbc499122a9578055bde",
+      "bytes": 939016,
+      "license": "LicenseRef-RenderHub-Extended-Use",
+      "provenance": {
+        "kind": "third-party-derived",
+        "exporter": "tooling/blender/prepare-greenery.py",
+        "note": "Simplified campus tree (tree-japanese-maple) derived from Japanese maple. Source and credit are recorded in THIRD_PARTY_NOTICES.md."
+      }
+    },
+    {
+      "path": "greenery/tree-oak-tall.glb",
+      "sha256": "db2621a7842a16aefea809c92eda3011ad9717570cadb02ecde61812dfef1d14",
+      "bytes": 670432,
+      "license": "LicenseRef-RenderHub-Extended-Use",
+      "provenance": {
+        "kind": "third-party-derived",
+        "exporter": "tooling/blender/prepare-greenery.py",
+        "note": "Simplified campus tree (tree-oak-tall) derived from Broadleaf tree (CGAxis volume 54, model 42). Source and credit are recorded in THIRD_PARTY_NOTICES.md."
+      }
+    },
+    {
+      "path": "greenery/tree-oak-wide.glb",
+      "sha256": "d24734eb2342ba81ef9bc331f1d50e35bccd0145f35b7b2a758fcd62700c09cd",
+      "bytes": 725964,
+      "license": "LicenseRef-RenderHub-Extended-Use",
+      "provenance": {
+        "kind": "third-party-derived",
+        "exporter": "tooling/blender/prepare-greenery.py",
+        "note": "Simplified campus tree (tree-oak-wide) derived from Broadleaf tree (CGAxis volume 54, model 41). Source and credit are recorded in THIRD_PARTY_NOTICES.md."
+      }
+    },
+    {
+      "path": "greenery/tree-orange.glb",
+      "sha256": "e52c0ff4662ad01d65ed500341dfd085c17c66e0bd49bc4bd21859c488b2dbf6",
+      "bytes": 655260,
+      "license": "LicenseRef-RenderHub-Extended-Use",
+      "provenance": {
+        "kind": "third-party-derived",
+        "exporter": "tooling/blender/prepare-greenery.py",
+        "note": "Simplified campus tree (tree-orange) derived from Orange tree with fruits. Source and credit are recorded in THIRD_PARTY_NOTICES.md."
+      }
+    },
+    {
+      "path": "greenery/tree-pepper.glb",
+      "sha256": "a8f91538f294e49b2ce66eec423ab93e32c3666fad3bd25f331f7bcd837d3b12",
+      "bytes": 738824,
+      "license": "LicenseRef-RenderHub-Extended-Use",
+      "provenance": {
+        "kind": "third-party-derived",
+        "exporter": "tooling/blender/prepare-greenery.py",
+        "note": "Simplified campus tree (tree-pepper) derived from Brazilian pepper tree. Source and credit are recorded in THIRD_PARTY_NOTICES.md."
+      }
+    },
+    {
+      "path": "greenery/tree-river-birch.glb",
+      "sha256": "914385878c3dcd1e08389e6151719f6dbbfd1981645d3488ca3abc01681e4888",
+      "bytes": 682868,
+      "license": "LicenseRef-RenderHub-Extended-Use",
+      "provenance": {
+        "kind": "third-party-derived",
+        "exporter": "tooling/blender/prepare-greenery.py",
+        "note": "Simplified campus tree (tree-river-birch) derived from River birch. Source and credit are recorded in THIRD_PARTY_NOTICES.md."
+      }
+    },
+    {
+      "path": "greenery/tree-rowan.glb",
+      "sha256": "a89bf1ca41556af4c486dc8df74f5ad6c899cdc65edcb7109ff9372d9a8a3b6d",
+      "bytes": 951576,
+      "license": "LicenseRef-RenderHub-Extended-Use",
+      "provenance": {
+        "kind": "third-party-derived",
+        "exporter": "tooling/blender/prepare-greenery.py",
+        "note": "Simplified campus tree (tree-rowan) derived from European rowan (Sorbus aucuparia). Source and credit are recorded in THIRD_PARTY_NOTICES.md."
+      }
+    },
+    {
+      "path": "greenery/tree-small-palm.glb",
+      "sha256": "1661106bf83e75c4490011ee0a56be537242c828e58c48e85047824469cc9b60",
+      "bytes": 301228,
+      "license": "LicenseRef-RenderHub-Extended-Use",
+      "provenance": {
+        "kind": "third-party-derived",
+        "exporter": "tooling/blender/prepare-greenery.py",
+        "note": "Simplified campus tree (tree-small-palm) derived from Small palm tree. Source and credit are recorded in THIRD_PARTY_NOTICES.md."
+      }
+    },
+    {
+      "path": "greenery/tree-tulip.glb",
+      "sha256": "6321c979d6a0300325aa0d0e5f065ac0a3033eb92125d2fa5b63158913fd6cfd",
+      "bytes": 985400,
+      "license": "LicenseRef-RenderHub-Extended-Use",
+      "provenance": {
+        "kind": "third-party-derived",
+        "exporter": "tooling/blender/prepare-greenery.py",
+        "note": "Simplified campus tree (tree-tulip) derived from Tulip tree (Liriodendron). Source and credit are recorded in THIRD_PARTY_NOTICES.md."
       }
     },
     {

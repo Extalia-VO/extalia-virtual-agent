@@ -227,8 +227,11 @@ export function createMockMissions(deps: MockMissionDeps) {
     },
     list(sessionId: string): HostMissionRun[] { session(sessionId); return structuredClone(missions.get(sessionId) ?? []); },
     /** Cooperative cancel through the session's `cancel`; true when a mission was running. */
-    cancel(sessionId: string): boolean {
+    cancel(sessionId: string, missionId?: string): boolean {
       const mission = live.get(sessionId);
+      if (missionId !== undefined && (typeof missionId !== 'string' || !mission || mission.run.id !== missionId || mission.run.state !== 'running')) {
+        throw new Error('This native mission has changed or already finished. Refresh its status before cancelling.');
+      }
       if (!mission || mission.cancelled) return false;
       mission.cancelled = true;
       emit(sessionId, { type: 'user.intervention', action: 'cancel' }, { correlationId: mission.run.id });

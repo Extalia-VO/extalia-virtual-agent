@@ -1,5 +1,5 @@
 import * as RadixSelect from '@radix-ui/react-select';
-import type { ReactNode } from 'react';
+import { useId, useRef, useState, type ReactNode } from 'react';
 import { Icon, type IconName } from './Icon';
 import { FlagIcon } from './FlagIcon';
 
@@ -23,6 +23,8 @@ export interface SelectProps<T extends string = string> {
   readonly disabled?: boolean;
   readonly className?: string;
   readonly 'aria-label'?: string;
+  readonly 'aria-describedby'?: string;
+  readonly 'aria-invalid'?: boolean;
   /** Optional custom template renderer for option slots */
   readonly renderOption?: (option: SelectOption<T>) => ReactNode;
 }
@@ -40,18 +42,36 @@ export function Select<T extends string = string>({
   disabled = false,
   className = '',
   'aria-label': ariaLabel,
+  'aria-describedby': describedBy,
+  'aria-invalid': invalid,
   renderOption
 }: SelectProps<T>) {
+  const generatedId = useId();
+  const trigger = useRef<HTMLButtonElement>(null);
+  const [portalContainer, setPortalContainer] = useState<HTMLElement | null>(null);
+  const triggerId = id ?? generatedId;
   const selectedOption = options.find(opt => opt.value === value);
+  // Radix reserves an empty value for its placeholder. Encode every option,
+  // so a real empty choice (workspace root / All) cannot collide with an ID.
+  const itemValue = (optionValue: T) => `option:${optionValue}`;
 
   return (
     <div className={`radix-select-wrapper ${className}`}>
-      {label && <label htmlFor={id} className="glass-select-label">{label}</label>}
-      <RadixSelect.Root value={value} onValueChange={onChange} disabled={disabled}>
+      {label && <label htmlFor={triggerId} className="glass-select-label">{label}</label>}
+      <RadixSelect.Root value={selectedOption ? itemValue(value) : ''} onOpenChange={open => {
+        // Native modal dialogs make everything outside their top layer inert.
+        if (open) setPortalContainer(trigger.current?.closest('dialog') ?? null);
+      }} onValueChange={next => {
+        const option = options.find(candidate => itemValue(candidate.value) === next);
+        if (option && !option.disabled) onChange(option.value);
+      }} disabled={disabled}>
         <RadixSelect.Trigger
-          id={id}
+          ref={trigger}
+          id={triggerId}
           className="glass-select-trigger"
           aria-label={ariaLabel ?? label}
+          aria-describedby={describedBy}
+          aria-invalid={invalid || undefined}
         >
           <div className="glass-select-trigger-content">
             {selectedOption?.flag && (
@@ -76,7 +96,7 @@ export function Select<T extends string = string>({
           </RadixSelect.Icon>
         </RadixSelect.Trigger>
 
-        <RadixSelect.Portal>
+        <RadixSelect.Portal container={portalContainer}>
           <RadixSelect.Content className="glass-select-menu" position="popper" sideOffset={6}>
             <RadixSelect.ScrollUpButton className="glass-select-scroll">
               <Icon name="chevron" className="rotate-180" />
@@ -85,7 +105,8 @@ export function Select<T extends string = string>({
               {options.map(option => (
                 <RadixSelect.Item
                   key={option.value}
-                  value={option.value}
+                  value={itemValue(option.value)}
+                  textValue={option.label}
                   disabled={option.disabled}
                   className="glass-select-option"
                 >

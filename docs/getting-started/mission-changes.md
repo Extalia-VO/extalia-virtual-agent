@@ -1,21 +1,22 @@
 # Mission changes
 
-A task in a mission that can write files works in its own copy of your project,
-a Git worktree. It never edits your checkout. The **Changes** panel in
-**Missions** shows each of those copies, lets you propose merging its work into
-a branch after your test command runs, and applies the merge only after you
-confirm it.
+A task explicitly marked write-capable works in its own Git worktree under the
+Extalia data folder. It does not edit your checkout. The **Changes** panel in
+**Missions** can inspect the worktree and its diff, and can record an integration
+proposal. The integration test gate is currently not run by the production
+workflow: proposals remain blocked and **Apply** refuses them. Do not treat a
+proposal as tested or integrated.
 
 ## Where the work happens
 
 - Only a task marked as write-capable (`access: "write"`) can edit files. It
-  edits only inside its own worktree, under your Extalia data folder, on a
+  edits only inside its own worktree, under the Extalia data folder, on a
   branch named `extalia/worker/<id>`. The worktree starts at the commit that was
   current when the task was created.
 - Read-only tasks, and missions without write-capable tasks, read your checkout
   as before.
-- Workers cannot run commands. Agents cannot propose, apply or remove worktrees.
-  Only you can.
+- Workers cannot run commands. Only you can inspect or remove worktrees and
+  record a proposal.
 - When the task ends, Extalia commits what the worker wrote and marks the
   worktree as released. Until then the panel says
   **Task running: these changes are not final yet.**
@@ -35,41 +36,37 @@ one entry per write-capable task. Each entry shows:
 
 Click **Refresh changes** to reload the panel.
 
-## Propose an integration
+## Integration proposals are blocked
 
-When a task has ended and its changes are committed, its entry shows a form:
+When a task has ended and its changes are committed, its entry lets you select
+a target branch and a test gate command, then record a proposal. The gate
+command may be shown in the proposal, but the production integration workflow
+does not run it. Host coverage confirms the result is `gate_failed` with
+`basis: not_run`; this is not evidence that tests passed.
 
-1. **Target branch** is the branch to merge into. It starts as the worktree's
-   base branch.
-2. **Test gate command** is the command that tests the merge. It starts as
-   `npm test`. Change it to the command your project uses.
-3. Click **Propose integration**.
-
-Extalia merges the worker's branch onto the target's current tip in a disposable
-integration worktree, then runs your command there. The command runs without a
-shell and without credentials. A model cannot choose it. If the gate field is
-empty, only the merge is tested, and the proposal cannot be applied.
+The proposal can still report merge conflicts, changed files, or a missing
+gate. It does not prove the result builds or passes tests.
 
 Each proposal shows one of these results:
 
 | Result | What it means |
 | --- | --- |
-| Ready to apply | The merge was clean and the test gate passed. |
+| Ready to apply | Not currently produced by the production test-gate workflow. |
 | Conflict | The test merge stopped on the listed paths. Nothing was resolved automatically, and nothing changed. |
-| Test gate failed | The gate failed, so the proposal cannot be applied. The panel shows the exit code and a log excerpt. |
-| No test gate | No gate ran, so the proposal cannot be applied. Propose again with a gate command. |
+| Test gate failed | The gate did not run (`not_run`), so the proposal cannot be applied. |
+| No test gate | No gate was configured; the proposal cannot be applied. |
 | Nothing to integrate | The target already contains these changes. |
 | Applied | The changes are on the target branch. |
 | Stale | The target moved after the proposal, so nothing changed. Propose again. |
 
 ## Apply
 
-Only a proposal that is **Ready to apply** shows **Apply…**. The confirmation
-shows its diff digest. Click **Apply** to send exactly that digest. Extalia
-applies the proposal only while the changes still match it.
+The UI and host require a **Ready to apply** proposal and matching diff digest.
+Current production integration proposals do not pass the test gate, so applying
+them is refused. No changes are merged into your target branch.
 
-Applying moves the target branch to the tested merge commit. It is never forced,
-and it is never pushed.
+The implementation's apply checks remain in place for a future supported gate
+runner; do not infer that a displayed diff has been integrated.
 
 ## Remove a worktree
 

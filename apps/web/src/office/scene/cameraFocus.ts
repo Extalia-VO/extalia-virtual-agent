@@ -4,8 +4,8 @@ import { CITY_GROUND } from './campusGroundBounds';
 /** Floor views look at the building from this direction (south-east, above). */
 const FLOOR_VIEW_DIRECTION: Point3 = [33, 29.3, 38];
 const FOCUS_DISTANCE = 52;
-/** Orthographic zoom for a selected character: about 60 px for a standing person. */
-export const CHARACTER_FOCUS_ZOOM = 36;
+/** Contextual character focus: about 80 px for a standing person, with the desk and room still visible. */
+export const CHARACTER_FOCUS_ZOOM = 48;
 /** Seated characters are looked at around chest height. */
 const FOCUS_HEIGHT = 0.95;
 
@@ -134,11 +134,17 @@ export function stackOverviewPose(width: number, height: number, insets: StageIn
   return fitBoxPose({ ...FLOOR_PLATE, bottom: 0, top: FLOOR_HEIGHT * 2 + FLOOR_PLATE.height }, FLOOR_OVERVIEW_DIRECTION, FLOOR_OVERVIEW_DISTANCE, width, height, insets);
 }
 
+/** Allow a little breathing room beyond a fitted floor, without reducing it to a distant miniature. */
+export function floorMinimumZoom(overviewZoom: number): number {
+  // Do not force a character focus closer than requested on unusually large viewports.
+  return Math.max(2, Math.min(CHARACTER_FOCUS_ZOOM, overviewZoom * 0.85));
+}
+
 /**
  * The Building view (first view of the Office): the office building with its roof and the entrance
- * plaza, seen from the north-west at about 17° so the whole building fills the stage.
+ * plaza, seen from the north-west at about 22° with foreground below the entrance.
  */
-const BUILDING_VIEW_DIRECTION: Point3 = [-34, 26, -79];
+const BUILDING_VIEW_DIRECTION: Point3 = [-34, 34, -79];
 // Close enough that the skyline towers between the street and the campus stay behind the camera.
 const BUILDING_VIEW_DISTANCE = 88;
 /** The building (three floors and the roof plant) plus the front plaza and its sign. */
@@ -149,7 +155,8 @@ export function buildingOverviewPose(width: number, height: number, insets: Stag
 }
 
 /**
- * Smallest zoom whose viewport rays all meet the city's ground inside its rim.
+ * Smallest zoom whose viewport rays meet the city's ground inside its rim and
+ * in front of the camera's near plane (OfficeCanvas uses near = 0.1).
  * Include the current pan, elevation and orbit instead of assuming the default pose.
  * A 12 m inset also clears the straight edges between the ground disc's vertices.
  * Infinity means the central ray is outside the disc; freeze zoom until panned back.
@@ -165,7 +172,12 @@ export function buildingMinimumZoom(width: number, height: number, position: Poi
   const inside = radius * radius - center[0]! ** 2 - center[1]! ** 2;
   // A view aimed beyond the backdrop cannot be repaired by zooming out.
   if (inside <= 0) return Infinity;
-  let minimum = 2;
+  const nearClearance = position[1] - CITY_GROUND.y - vertical * 0.1;
+  if (nearClearance <= 0) return Infinity;
+  // An orthographic camera's lower rays can start below the ground even when
+  // their infinite lines cross inside the disc. Those intersections are behind
+  // the near plane and render as an empty strip across the bottom of the stage.
+  let minimum = Math.max(2, height * up[1] / (2 * nearClearance) * 1.01);
   for (const sx of [-width / 2, width / 2]) for (const sy of [-height / 2, height / 2]) {
     const x = right[0] * sx + (up[0] - back[0] * up[1] / vertical) * sy;
     const z = right[2] * sx + (up[2] - back[2] * up[1] / vertical) * sy;

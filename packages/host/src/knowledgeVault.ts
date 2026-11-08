@@ -111,6 +111,11 @@ export class KnowledgeVault {
 
   attach(parts: KnowledgeVaultParts): void { this.parts = parts; }
 
+  /** New daemon work must wait until a vault switch has finished. */
+  assertStable(): void {
+    if (this.switching) throw new KnowledgeError('The vault folder is being changed. Try again when it has finished.');
+  }
+
   /** The default vault folder of this profile. */
   defaultRoot(): string { return path.join(this.options.dataDirectory, 'vaults', this.options.profile); }
 
@@ -161,7 +166,6 @@ export class KnowledgeVault {
   async set(raw: unknown): Promise<KnowledgeVaultSettings> {
     let requested: string | null;
     try { requested = normalizeKnowledgeVaultRoot(raw); } catch (error) { throw new KnowledgeError(error instanceof Error ? error.message : 'Invalid folder.'); }
-    const next = requested === null ? undefined : (await validateVaultRoot(requested, this.options)).path ?? undefined;
     const parts = this.parts;
     if (!parts) throw new KnowledgeError('The knowledge index is not ready yet. Try again in a moment.');
     if (this.switching) throw new KnowledgeError('The vault folder is already being changed. Try again in a moment.');
@@ -170,22 +174,29 @@ export class KnowledgeVault {
     this.switching = true;
     parts.changed?.();
     try {
-      await parts.persist(next);
+      const next = requested === null ? undefined : (await validateVaultRoot(requested, this.options)).path ?? undefined;
+      let persisted = false;
       try {
         await parts.knowledge.switchVault(async () => {
+          // Earlier queued edits still use the previous root. Recheck lifetimes after they drain.
+          if (parts.busy()) throw new KnowledgeError('Agent work is running. Change the vault folder when it has finished, or stop it first.');
+          await parts.persist(next);
+          persisted = true;
           await parts.daemon.restart();
           try {
             await parts.daemon.connect();
           } catch (error) {
             if (!(error instanceof DaemonUnavailableError) || error.code !== 'invalid_arguments' || next === undefined) throw error;
             // The daemon refused the folder (or does not know `--vault-root`): restore the previous setting.
+            persisted = false;
             await parts.persist(previous);
+            persisted = true;
             await parts.daemon.restart();
             throw new KnowledgeError('The native core did not accept this folder, so the vault folder was not changed. Update Extalia, or choose another folder.');
           }
         });
       } catch (error) {
-        if (error instanceof KnowledgeError) throw error;
+        if (!persisted || error instanceof KnowledgeError) throw error;
         // The setting is saved; the index is rebuilt by the next sync.
         this.options.log?.('Knowledge: the vault folder changed, but the index could not be rebuilt yet.');
       }

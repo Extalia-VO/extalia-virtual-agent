@@ -7,8 +7,8 @@ describe('mock host subagent teams', () => {
     expect(typeof agents.planTeam).toBe('function');
     const state = await agents.getState();
     const lead = state.sessions.find(session => session.team)!;
-    expect(lead.team).toEqual({ enabled: true, size: 3 });
     const team = (await agents.getSessionTeam(lead.id))!;
+    expect(lead.team).toEqual({ enabled: true, size: 3, updatedAt: team.updatedAt });
     expect(team.members.map(member => member.role)).toEqual(['Researcher', 'Reviewer', 'Analyst']);
 
     let spawned: string[] = [];
@@ -26,22 +26,23 @@ describe('mock host subagent teams', () => {
 
   });
 
-  it('v0.0.32: plans and keeps teams on a Hermes workspace without a goal or ticked models', async () => {
-    const hermes = createMockPlatform({ seed: 'ready', host: 'bridge', hermes: true }).capabilities.agents!;
+  it('plans eight Hermes roles with the configured shared-model profile budget', async () => {
+    const hermes = createMockPlatform({ seed: 'ready', host: 'bridge', hermes: true, hermesChildren: 8, hermesConcurrent: 3 }).capabilities.agents!;
     const state = await hermes.getState();
     const workspace = state.workspaces.find(item => item.runtimeId === 'hermes')!;
     expect(workspace.name).toBe('agent-lab');
+    await expect(hermes.planTeam(workspace.id, { goal: '', count: 9, allowedModels: [] })).rejects.toThrow(/profile budget/);
     const plan = await hermes.planTeam(workspace.id, { goal: '', count: 8, allowedModels: [] });
     expect(plan.members).toHaveLength(8);
-    expect(plan.members.every(member => member.name && member.role && member.task && member.models.length)).toBe(true);
+    expect(plan.members.every(member => member.name && member.role && member.task && member.models.length === 0)).toBe(true);
     expect(plan.members[0]!.task).toContain('agent-lab');
-    expect(plan.allowedModels!.length).toBeGreaterThan(2);
-    expect(plan.allowedModels!.some(model => model.includes('embedding'))).toBe(false);
+    expect(plan.allowedModels ?? []).toEqual([]);
+    expect((await hermes.modelChoices(workspace.id)).hermesDelegation).toMatchObject({ maxTeamMembers: 8, oneshotMaxChildren: 8, maxConcurrentChildren: 3, modelRouting: 'shared' });
     const session = state.sessions.find(item => item.workspaceId === workspace.id)!;
     expect(session.runtime?.id).toBe('hermes');
-    const saved = await hermes.saveSessionTeam(session.id, { enabled: true, allowedModels: plan.allowedModels!, members: plan.members });
+    const saved = await hermes.saveSessionTeam(session.id, { enabled: true, allowedModels: plan.allowedModels ?? [], members: plan.members });
     expect(saved?.members).toHaveLength(8);
-    expect((await hermes.getState()).sessions.find(item => item.id === session.id)?.team).toEqual({ enabled: true, size: 8 });
+    expect((await hermes.getState()).sessions.find(item => item.id === session.id)?.team).toEqual({ enabled: true, size: 8, updatedAt: saved!.updatedAt });
     const created = await hermes.createSession(workspace.id, { team: saved! } as never);
     expect(created).toMatchObject({ runtime: { id: 'hermes' }, team: { enabled: true, size: 8 } });
   });

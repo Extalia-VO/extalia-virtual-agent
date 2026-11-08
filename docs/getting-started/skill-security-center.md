@@ -1,6 +1,6 @@
 # Skill Security Center (preview)
 
-The Skill Security Center is a section of the **Skills** page where you import
+The Skill Security Center is a section of the **Grimoire** page where you import
 skills, review them, and decide which ones reach agents. It is part of the preview Rust
 native core, so it appears only when that core is on. See
 [Native core (preview)](native-core.md) to turn it on.
@@ -11,7 +11,7 @@ agents. The Skill Security Center does not appear; old consent is not a scanner
 waiver.
 
 The native core also has a [read-only dependency check](../adr/0039-read-only-skill-dependency-preflight.md)
-in the Skills page. It cannot activate a skill. Packages declaring dependencies,
+in Grimoire. It cannot activate a skill. Packages declaring dependencies,
 conflicts or compatibility still wait for authoritative resolver integration;
 a consistent diagnostic plan does not pass scanner, approval or activation gates.
 
@@ -71,7 +71,7 @@ library before retrying: a saved candidate is not automatically rolled back.
 
 ### Import an existing package
 
-1. Open **Skills** in the sidebar and find **Skill Security Center**.
+1. Open **Grimoire** in the sidebar and find **Skill Security Center**.
 2. Click **Import from folder**, then type the path to a skill folder or click
    **Browse…** to choose one. The folder needs a `SKILL.md` at its top level.
    Or click **Import from project**, choose a workspace, and choose one of its

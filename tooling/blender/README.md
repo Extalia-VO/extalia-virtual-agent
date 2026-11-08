@@ -6,6 +6,63 @@ local exports land in the git-ignored `apps/web/local-assets/`, and
 `python3 tooling/blender/prepare-public-models.py` publishes the reviewed set to
 `apps/web/public-assets/` with hashes, licences and provenance in `models.json`.
 
+## Garment fit audit
+
+`garment-fit.py audit <body.glb> <garment.glb>...` measures, in the bind pose, each garment's clearance over
+its body's skin and scanned under-outfit by band (neck, chest, belly, hips: median and p95 in cm, front half)
+and the share of vertices inside that surface. `fix <body.glb> <garment.glb> '<json>'` draws a band's
+vertices farther than its limit in to it (`bands: {name: [z_min, z_max, max_clearance, front_only]}`,
+`falloff`, `smooth`), writing only POSITION accessors so every other part of the published file is kept.
+Re-record the file's hash in `public-assets/models.json` (and `source-garments.json` for source garments).
+For anatomical fit use the authored full-body reference `.blend` (`ReferenceBody`), rather than the
+runtime GLB's scanned outfit: that clothing can itself be loose. `neckline: {base, scale, half_width,
+fade}` lowers only central cloth above the specified height; declare `extaliaNativeNeckline: true`
+when the lower collar exposes the canonical neck backing. Reviewed recipes and their input/fitted/
+published hashes are in `garment-refit.json`; [review](../../docs/product/garment-fit-review.md).
+Pose-time overlaps are `garment-layers.py`'s: `audit <garment.glb>...` poses the garment's own rig (seated,
+walking, reaching, typing; drape morphs as the runtime blends them) and counts covered inner vertices
+(skin < bottom < top < outer) that end up outside the layer over them; `fix` conforms them to that layer
+(weights, drape deltas, position just beneath it; `min_y` keeps legs under skirts on their own weights);
+`drape` lifts an outer layer's seated drape morph over what still pokes through. Measure before and after
+every change and keep the better file: loose sleeves and some skirts fit better as they are.
+Never conform anatomical skin to clothing: a sleeve near the waist can otherwise turn torso skin into
+an arm. `repair-garment-skin.py --source original.glb --target fitted.glb --audit [--write]` restores only
+matching skin storage, including sparse morphs, while refusing shared cloth/image writes.
+
+After fitting and pose review, `python3 tooling/compact-garment-buffers.py --dry-run` reports exact
+storage savings across all clothing; `--write --report <ignored-report.json>` writes only smaller,
+semantically identical GLBs. Refresh both manifests afterwards. This repacks storage and zero morphs;
+it does not simplify primary cloth. Developer regression tests opt into Python with
+`EXTALIA_TEST_PYTHON=<interpreter>`; normal application use does not need it.
+
+## Campus greenery
+
+`prepare-greenery.py` turns the owner's plant and tree downloads (`assets-temp/plants`,
+`assets-temp/trees`; never committed) into compact GLBs listed in `campus-greenery.json`.
+Each entry names its archive and model (`source`, OBJ or GLB; `inner` / `nested` for archives
+inside the download), its `kind` (`plant`, `garden`, `tree`), real `height` in metres, a
+triangle `budget` and the licence/notice. CGAxis OBJ downloads without usable materials use
+`"by": "group"` with their texture `prefix` (group `_NN` -> `<prefix>_NN.jpg` and
+`_NN_opacity.jpg`). `parts` overrides a part by material name or group number: `role`
+(`leaf`, `solid`, `drop`), `base`/`opacity` texture file names, `color`, `share` of the budget.
+Leaves keep a seeded subset of their islands, enlarged to keep the crown's coverage
+(`leafShare`, `maxEnlarge`, `enlargePower`); trees drop twigs below `prune` x height before
+decimation. Reruns are deterministic.
+
+```sh
+Blender --background --factory-startup --python-exit-code 1 --python tooling/blender/prepare-greenery.py -- \
+  --source-dir <assets-temp> [--only tree-tulip,plant-round-pot]
+python3 tooling/blender/prepare-public-models.py --greenery
+```
+
+Review every export as rendered (crown coverage, no stray stems, pot textures) before publishing;
+the publisher rejects files over 1 MiB and writes `apps/web/src/office/scene/campusGreenery.json`.
+
+## Work tablet
+
+`create-tablet-prop.py` authors the tablet a busy character carries while walking
+(`furniture/tablet.glb`, MIT); publish it alone with `prepare-public-models.py --only furniture/tablet.glb`.
+
 ## Staff uniforms
 
 `create-staff-uniforms.py` builds fallback receptionist and bartender uniforms for both

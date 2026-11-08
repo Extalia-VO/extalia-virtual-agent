@@ -1,15 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { BUILTIN_SKILLS } from '../src/builtinSkills.js';
 import { createSkillTools, withBuiltinSkills } from '../src/skills.js';
-import { findTool, runTool } from './helpers.js';
+import { runTool } from './helpers.js';
 
 describe('compact built-in guidance', () => {
   it('offers and reads both skills on demand without runtime mode tools', async () => {
     const tools = createSkillTools(withBuiltinSkills());
-    expect(tools.map(tool => tool.name)).toEqual(['skill_read']);
+    expect(tools.map(tool => tool.name)).toEqual(['skill_read', 'skill_list', 'skill_search']);
     for (const [name, category] of [['caveman', 'documentation'], ['memory-recall', 'planning']]) {
       expect(BUILTIN_SKILLS.find(skill => skill.name === name)).toMatchObject({ category, source: 'builtin' });
-      expect(findTool(tools, 'skill_read').description).toContain(`- ${name}: `);
+      expect((await runTool(tools, 'skill_search', { query: name })).output).toContain(name);
       const read = await runTool(tools, 'skill_read', { name });
       expect(read.ok).toBe(true);
       expect(read.output).toMatch(new RegExp(`^# Skill: ${name}\\n`));

@@ -5,8 +5,9 @@ import { OrbitControls } from '@react-three/drei';
 import { OrthographicCamera, type Vector3 } from 'three';
 import type { FurnishedOfficeView } from './FurnishedFloors';
 import type { CharacterFloor, CharacterPositionSource } from './movement/positionStore';
-import { cameraProgress, buildingMinimumZoom, buildingOverviewPose, characterFocusPose, floorOverviewPose, stackOverviewPose, panelClearance, roomFocusZoom, type CameraPose, type FocusPoint } from './cameraFocus';
+import { cameraProgress, buildingMinimumZoom, buildingOverviewPose, characterFocusPose, floorMinimumZoom, floorOverviewPose, stackOverviewPose, panelClearance, roomFocusZoom, type CameraPose, type FocusPoint } from './cameraFocus';
 import type { Point3 } from './layout';
+import type { CameraDirectorCommand } from '../cameraDirector';
 
 /** Closest zoom (pixels per metre): a standing character fills about 440 px. */
 export const MAX_ZOOM = 260;
@@ -18,7 +19,8 @@ const lerp3 = (from: Point3, to: Point3, t: number): Point3 => [0, 1, 2].map(axi
  * then keeps a walking character in frame until the user drags the view;
  * `focusPoint` frames a point such as a room.
  */
-export function CameraView({ view, viewRequest = 0, focus, focusId, live, focusRequest = 0, reducedMotion, following = false, focusPoint, onFollowEnd, onFollowFloor }: {
+export function CameraView({ automaticShot, automaticSeat, view, viewRequest = 0, focus, focusId, live, focusRequest = 0, reducedMotion, following = false, focusPoint, onFollowEnd, onFollowFloor }: {
+  automaticShot?: CameraDirectorCommand | null; automaticSeat?: Point3;
   view: FurnishedOfficeView; focus?: Point3; focusId?: string | null; live?: CharacterPositionSource; focusRequest?: number; reducedMotion: boolean;
   viewRequest?: number;
   following?: boolean; focusPoint?: FocusPoint | undefined; onFollowEnd?: (() => void) | undefined;
@@ -28,6 +30,7 @@ export function CameraView({ view, viewRequest = 0, focus, focusId, live, focusR
   const size = useThree(s => s.size);
   const controls = useThree(s => s.controls) as unknown as { target: Vector3; minZoom: number; update(): void } | null;
   const move = useRef<{ elapsed: number; from: CameraPose; to: CameraPose } | null>(null);
+  const automated = useRef<CameraDirectorCommand | null>(null);
   const follow = useRef<{ id: string; last: Point3; waiting: boolean } | null>(null);
   const followMode = useRef({ following, focusId });
   useLayoutEffect(() => { followMode.current = { following, focusId }; });
@@ -36,13 +39,15 @@ export function CameraView({ view, viewRequest = 0, focus, focusId, live, focusR
   useLayoutEffect(() => { followEnd.current = onFollowEnd; });
   const level = typeof view === 'number' ? (view - 1) * 6.4 : view === 'campus' ? 9.2 : 6.4;
   const floorPose = useMemo(() => typeof view === 'number' ? floorOverviewPose(level, size.width, size.height) : view === 'campus' ? buildingOverviewPose(size.width, size.height) : stackOverviewPose(size.width, size.height), [view, level, size.width, size.height]);
-  const buildingZoomFloor = view === 'campus' ? buildingMinimumZoom(size.width, size.height, floorPose.position, floorPose.target) : 2;
+  const minimumZoom = view === 'campus' ? buildingMinimumZoom(size.width, size.height, floorPose.position, floorPose.target) : floorMinimumZoom(floorPose.zoom);
   const target = floorPose.target;
   useLayoutEffect(() => {
     if (!(camera instanceof OrthographicCamera)) return;
     const previous = lastOverview.current;
     const explicitView = previous !== null && previous.request !== viewRequest;
     lastOverview.current = { camera, controls, view, request: viewRequest };
+    // The director owns floor transitions; changing visible geometry must not snap its tween.
+    if (automaticShot && !explicitView) return;
     // Resizing the stage (including opening detail panels) changes its projection,
     // but must preserve the user's orbit, pan and zoom. Fit only on mount/view requests.
     if (previous && previous.camera === camera && previous.controls === controls && previous.view === view && !explicitView) return;
@@ -59,7 +64,7 @@ export function CameraView({ view, viewRequest = 0, focus, focusId, live, focusR
     if (controls) { controls.target.set(...target); controls.update(); }
     move.current = null;
     follow.current = null;
-  }, [camera, controls, view, viewRequest, level, target, floorPose, size.width, size.height]);
+  }, [camera, controls, view, viewRequest, level, target, floorPose, size.width, size.height, automaticShot]);
   const focusKey = focus?.join(',');
   const lastFocusRequest = useRef(focusRequest);
   const lastFollowing = useRef<{ following: boolean; id?: string | null }>({ following: false });
@@ -93,6 +98,36 @@ export function CameraView({ view, viewRequest = 0, focus, focusId, live, focusR
     // The request object identifies the move; the pose is read once when it changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusPoint, camera, controls]);
+  useLayoutEffect(() => {
+    const previous = automated.current;
+    automated.current = automaticShot ?? null;
+    if (!automaticShot) {
+      if (previous) { move.current = null; follow.current = null; }
+      return;
+    }
+    if (!(camera instanceof OrthographicCamera)) return;
+    // Read live coordinates on each shot, never retain the movement store's mutable tuple.
+    const at = live?.position(automaticShot.targetId) ?? automaticSeat;
+    const from: CameraPose = { position: camera.position.toArray() as Point3, target: controls ? controls.target.toArray() as Point3 : target, zoom: camera.zoom };
+    const targetFloor = live?.floor(automaticShot.targetId) ?? (at ? Math.max(1, Math.min(3, Math.round(at[1] / 6.4) + 1)) as CharacterFloor : undefined);
+    let to: CameraPose;
+    if (automaticShot.phase === 'overview') {
+      const overviewFloor = (automaticShot.fromId ? live?.floor(automaticShot.fromId) : undefined) ?? (typeof view === 'number' ? view : targetFloor);
+      to = overviewFloor ? floorOverviewPose((overviewFloor - 1) * 6.4, size.width, size.height) : floorPose;
+      if (overviewFloor && view !== overviewFloor) onFollowFloor?.(overviewFloor);
+    } else if (automaticShot.phase === 'travel' && targetFloor) {
+      to = floorOverviewPose((targetFloor - 1) * 6.4, size.width, size.height);
+      if (view !== targetFloor) onFollowFloor?.(targetFloor);
+    } else if (at && automaticShot.phase === 'focus') {
+      to = characterFocusPose([at[0], at[1], at[2]], undefined, panelClearance(size.width, size.height));
+      if (targetFloor && view !== targetFloor) onFollowFloor?.(targetFloor);
+    } else return;
+    move.current = { elapsed: 0, from, to };
+    follow.current = automaticShot.phase === 'focus' && at
+      ? { id: automaticShot.targetId, last: [at[0], at[1], at[2]], waiting: !live?.position(automaticShot.targetId) } : null;
+    // A shot is an explicit request; floor/selection/viewport changes must not restart it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [automaticShot, camera, controls]);
   useEffect(() => {
     // Dragging hands the camera back to the user and ends following; zooming alone keeps a followed character in frame.
     const events = controls as unknown as { addEventListener?(type: string, listener: () => void): void; removeEventListener?(type: string, listener: () => void): void } | null;
@@ -112,12 +147,12 @@ export function CameraView({ view, viewRequest = 0, focus, focusId, live, focusR
   }, [controls]);
   useFrame((_, delta) => {
     if (controls && camera instanceof OrthographicCamera) {
-      const groundMinimum = view === 'campus' ? buildingMinimumZoom(size.width, size.height, camera.position.toArray() as Point3, controls.target.toArray() as Point3) : 2;
+      const groundMinimum = view === 'campus' ? buildingMinimumZoom(size.width, size.height, camera.position.toArray() as Point3, controls.target.toArray() as Point3) : minimumZoom;
       // Panning beyond the disc cannot be repaired by zoom. Freeze outward zoom
       // at the current level until the user pans back, without snapping inward.
       controls.minZoom = Number.isFinite(groundMinimum) ? groundMinimum : camera.zoom;
       // Zoom-to-cursor also pans, so recheck the final view after each controls update.
-      if (view === 'campus' && camera.zoom < controls.minZoom) {
+      if (camera.zoom < controls.minZoom) {
         camera.zoom = controls.minZoom;
         camera.updateProjectionMatrix();
       }
@@ -125,7 +160,8 @@ export function CameraView({ view, viewRequest = 0, focus, focusId, live, focusR
     const tracked = follow.current;
     const point = tracked && live ? live.position(tracked.id) : undefined;
     // Position subscriptions do not fire at every stair/elevator midpoint. Read the current floor each frame.
-    if (following && tracked && point) {
+    const tracking = following || automated.current?.phase === 'focus';
+    if (tracking && tracked && point) {
       const floor = live?.floor(tracked.id);
       if (floor && view !== floor) onFollowFloor?.(floor);
     }
@@ -141,7 +177,7 @@ export function CameraView({ view, viewRequest = 0, focus, focusId, live, focusR
       const dx = point[0] - tracked.last[0], dy = point[1] - tracked.last[1], dz = point[2] - tracked.last[2];
       tracked.last[0] = point[0]; tracked.last[1] = point[1]; tracked.last[2] = point[2];
       // Follow keeps the same framing through horizontal and vertical travel; Locate still frames only once.
-      if (following && (dx || dy || dz)) {
+      if (tracking && (dx || dy || dz)) {
         const pending = move.current?.to;
         if (pending) {
           pending.position[0] += dx; pending.position[1] += dy; pending.position[2] += dz;
@@ -163,6 +199,6 @@ export function CameraView({ view, viewRequest = 0, focus, focusId, live, focusR
     if (t >= 1) move.current = null;
   });
   // Zoom follows the cursor and goes in close enough to see a character's hands on the keyboard (1 m ≈ 260 px).
-  return <OrbitControls makeDefault enableDamping={false} zoomToCursor minZoom={buildingZoomFloor} maxZoom={MAX_ZOOM} minPolarAngle={0.25} maxPolarAngle={Math.PI * 0.48} />;
+  return <OrbitControls makeDefault enableDamping={false} zoomToCursor minZoom={minimumZoom} maxZoom={MAX_ZOOM} minPolarAngle={0.25} maxPolarAngle={Math.PI * 0.48} />;
 }
 

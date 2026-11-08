@@ -1,0 +1,253 @@
+{
+  "schemaVersion": 1,
+  "reference": "full anatomical ReferenceBody, excluding scanned clothing",
+  "recipes": [
+    {
+      "path": "avatars/wardrobe/female/top/source-female-cloth1.glb",
+      "group": "female",
+      "inputSHA256": "41da96afa405c02c0c9bdc94d2c19f1d1414d18c5bce3745f17c0ef37ed1f5f2",
+      "fittedSHA256": "f99a7c2acb485320623850c529d0253b70fba1099a1d0e05fbb6720341902e28",
+      "options": {
+        "bands": {
+          "torso": [
+            1.02,
+            1.5,
+            0.035,
+            false
+          ]
+        },
+        "smooth": 10,
+        "neckline": {
+          "base": 1.53,
+          "scale": 0.35,
+          "half_width": 0.4,
+          "fade": 0.08
+        }
+      },
+      "nativeNeckline": true,
+      "publishedSHA256": "3dc157401a92af98fdf3b882af3232925c3791e346dcd3556662dd0f7726e8b7"
+    },
+    {
+      "path": "avatars/wardrobe/female/top/source-gothic-blouse.glb",
+      "group": "female",
+      "inputSHA256": "ed017962480ceb1ee7c539d1103da9d5fd333df9140bf37b24a777ef29ddba79",
+      "fittedSHA256": "8c9e870b65232e23216b8d79d75ae9383363e97dcde6a80c8b98c0310014c699",
+      "options": {
+        "bands": {
+          "torso": [
+            1.02,
+            1.5,
+            0.035,
+            false
+          ]
+        },
+        "smooth": 10,
+        "neckline": {
+          "base": 1.51,
+          "scale": 0.5,
+          "half_width": 0.26,
+          "fade": 0.08
+        }
+      },
+      "nativeNeckline": true,
+      "publishedSHA256": "506ca3716ea35a751159510d905d172ab3af7b13dc4515abbeda7b2fa6c13c6a"
+    },
+    {
+      "path": "avatars/wardrobe/female/top/source-oversize-shirt.glb",
+      "group": "female",
+      "inputSHA256": "d318539144fb070d566dfb1ea89d9cf6dd5ddb8a245eed288aeb7753a9999e0b",
+      "fittedSHA256": "7b4ea43f01068ed08acea9bc3f7e7a3ba17e429af7c3d1c4cb7393509f20708a",
+      "options": {
+        "bands": {
+          "torso": [
+            1.02,
+            1.5,
+            0.04,
+            false
+          ]
+        },
+        "smooth": 10,
+        "neckline": {
+          "base": 1.53,
+          "scale": 0.65,
+          "half_width": 0.4,
+          "fade": 0.08
+        }
+      },
+      "nativeNeckline": true,
+      "publishedSHA256": "41049253758e9c381712b03ee9dd33aea81274b54150fbb6794680f5a9f89ae4"
+    },
+    {
+      "path": "avatars/wardrobe/female/top/source-pink-hoodie.glb",
+      "group": "female",
+      "inputSHA256": "195c5c38afc2db10f1bad9e9ec7c0201b0b89046b70838f41cc41139b6b62ed9",
+      "fittedSHA256": "6bc3a3794be6d0f14a52ca7049e380b63859b8a6cbd9f091c2a32f14abc4da0f",
+      "options": {
+        "bands": {
+          "torso": [
+            1.02,
+            1.5,
+            0.035,
+            false
+          ]
+        },
+        "smooth": 10,
+        "neckline": {
+          "base": 1.53,
+          "scale": 0.4,
+          "half_width": 0.4,
+          "fade": 0.08
+        }
+      },
+      "nativeNeckline": true,
+      "publishedSHA256": "7f620a7df6178d789279c69976923a59b27dfdc76317a74cd171ca41948279de"
+    },
+    {
+      "path": "avatars/wardrobe/female/top/source-flame-hoodie.glb",
+      "group": "female",
+      "inputSHA256": "e0c5ed4a7fa0d824995ef8f54bf65ba96c3b95b5ec56588075c7debaf8c78e84",
+      "fittedSHA256": "48fc67fa3cf5fa6d60cc4851846932938654e9aa439f1ca0f0d90b042cc5b53e",
+      "options": {
+        "bands": {
+          "torso": [
+            1.02,
+            1.5,
+            0.035,
+            false
+          ]
+        },
+        "smooth": 10,
+        "neckline": {
+          "base": 1.53,
+          "scale": 0.4,
+          "half_width": 0.4,
+          "fade": 0.08
+        }
+      },
+      "nativeNeckline": true,
+      "publishedSHA256": "2db9da3cc16b067eae3ab1d5ed17a7967647a67f1411152eb085783b7dbc42cd"
+    },
+    {
+      "path": "avatars/wardrobe/female/top/source-belted-top.glb",
+      "group": "female",
+      "inputSHA256": "77130e766589732881bc34cf8ed120b60d4e8b47f69c35e0171f1b84db04c992",
+      "fittedSHA256": "6b8514cea4073c019488a21b9ffb12ad9996c3c4201ce5a6f4c0c372712da135",
+      "options": {
+        "bands": {
+          "torso": [
+            1.02,
+            1.5,
+            0.032,
+            false
+          ]
+        },
+        "smooth": 10
+      },
+      "publishedSHA256": "4ea7eddb0520f0a3cccdfd1de2f64794866d3a6f4ab9f1d321dbef882d51a7ba"
+    },
+    {
+      "path": "avatars/wardrobe/female/top/source-ray-underlayer.glb",
+      "group": "female",
+      "inputSHA256": "d9bac9ceab51b7c09159ddfe0d7a128a7efeaf5aef7f6dc0a10ee354a0eacadc",
+      "fittedSHA256": "ea4dbf46d49620bef0e41c72b228e336d15aff7167d9d91b4c66fc730aa82c96",
+      "options": {
+        "bands": {
+          "torso": [
+            1.02,
+            1.5,
+            0.032,
+            false
+          ]
+        },
+        "smooth": 10
+      },
+      "publishedSHA256": "2b63d929cdd51ffceb5b37749cd4ebc05a1063ca8c5d0f0471be2e0436ef70c4"
+    },
+    {
+      "path": "avatars/wardrobe/female/outer/cloth-jacket.glb",
+      "group": "female",
+      "inputSHA256": "d6bb64aad6f9330590d2fe4e16460cb8b8cdbc1dc7eabc0461a89c112d2efc51",
+      "fittedSHA256": "2da744810c1a614beeddffb72fe1ed1b3e44871c8f2cefd0c9d5f14cafeddd1d",
+      "options": {
+        "bands": {
+          "torso": [
+            1.02,
+            1.5,
+            0.055,
+            false
+          ]
+        },
+        "smooth": 10
+      },
+      "publishedSHA256": "2da744810c1a614beeddffb72fe1ed1b3e44871c8f2cefd0c9d5f14cafeddd1d"
+    },
+    {
+      "path": "avatars/wardrobe/female/outer/source-red-leather-jacket.glb",
+      "group": "female",
+      "inputSHA256": "2d8b38feb83f165ac5a38a8027ed9531e85ba138a9e91378028d74faa3aaca1f",
+      "fittedSHA256": "35bf980baea6541c67c12d15b4c00b9f7a3d916af02b3bf155f194a5a656e12a",
+      "options": {
+        "bands": {
+          "torso": [
+            1.02,
+            1.5,
+            0.055,
+            false
+          ]
+        },
+        "smooth": 10
+      },
+      "publishedSHA256": "201e72c1f7eb7a49e39b7f749f2f21b19c2319e234f68d7380082e5508854273"
+    },
+    {
+      "path": "avatars/wardrobe/male/top/green-white-hoodie.glb",
+      "group": "male",
+      "inputSHA256": "15e87ef13e3d64ef9f3695c6ef7dffbacb6d6a1cb5d8b3aac10f8e67d74b438c",
+      "fittedSHA256": "4764b97eb7af33e94e692d8a746353ad3d86339c819fc59989463f3908bacf01",
+      "options": {
+        "bands": {
+          "torso": [
+            1.02,
+            1.5,
+            0.035,
+            false
+          ]
+        },
+        "smooth": 10,
+        "neckline": {
+          "base": 1.54,
+          "scale": 0.45,
+          "half_width": 0.4,
+          "fade": 0.08
+        }
+      },
+      "nativeNeckline": true,
+      "publishedSHA256": "35a6855e232ba83d255eb823f021f063153adabaa20e1314660794596ae42d37"
+    },
+    {
+      "path": "avatars/outfits/male/outfit-printed-hoodie-jeans.glb",
+      "group": "male",
+      "inputSHA256": "f9af22250e2c79fdfd389068368dceaf0b0e1a77491ed3c8438d75a6906b17bf",
+      "fittedSHA256": "97651af000e74d171c553997aed82b4987d7bbc1aeaa894177d7c04c2e0f2f13",
+      "options": {
+        "bands": {
+          "torso": [
+            1.02,
+            1.5,
+            0.045,
+            false
+          ]
+        },
+        "smooth": 10,
+        "neckline": {
+          "base": 1.53,
+          "scale": 0.5,
+          "half_width": 0.4,
+          "fade": 0.08
+        }
+      },
+      "nativeNeckline": true,
+      "publishedSHA256": "88f0e458dabc6c0c6d824d0ca19de73da903b42ff8c7a56909d59e92496fe7eb"
+    }
+  ]
+}

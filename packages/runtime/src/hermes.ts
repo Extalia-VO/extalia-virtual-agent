@@ -1,5 +1,6 @@
-import { EFFORTS, RUNTIME_PROFILE_PATTERN, safeLabel, safeText, type AgentTeam, type Effort, type TeamMember } from '@extalia/core';
+import { EFFORTS, MAX_HERMES_ONESHOT_TEAM_MEMBERS, MAX_HERMES_TEAM_MEMBERS, RUNTIME_PROFILE_PATTERN, safeLabel, safeText, type AgentTeam, type Effort, type TeamMember, type HermesTeamLimits } from '@extalia/core';
 import { classifyTool, type ActivityKind, type EventBody, type FileChangeKind, type Usage } from '@extalia/protocol';
+import { normalizeUsage } from './usage.js';
 
 /**
  * Hermes Agent as a managed runtime: command line and stream-json mapping.
@@ -117,12 +118,16 @@ const clip = (value: string, limit: number) => {
 /**
  * The team brief put before a Hermes prompt when the session's team is enabled.
  * v0.0.39: the lead delegates only the parts that concern a member's role.
- * Hermes cannot run a member on its own model (its children all use
- * `delegation.model` or the lead's), so the brief asks the lead to hand each
+ * The current adapter uses standard `delegate_task`, whose children share
+ * `delegation.model` or the lead's model. It does not route per-member models
+ * through plugins, so the brief asks the lead to hand each
  * member's part to `delegate_task` with the member's name, persona, task and
  * scope written into the task; the member models are not mentioned.
  */
-export function hermesTeamBrief(team: Pick<AgentTeam, 'members' | 'rules' | 'goal'>, options: { fromPrompt?: boolean } = {}): string {
+export function hermesTeamBrief(team: Pick<AgentTeam, 'members' | 'rules' | 'goal' | 'goalDocument'>, options: { fromPrompt?: boolean; limits?: HermesTeamLimits } = {}): string {
+  const limits = options.limits ?? { maxTeamMembers: MAX_HERMES_ONESHOT_TEAM_MEMBERS, oneshotMaxChildren: MAX_HERMES_ONESHOT_TEAM_MEMBERS, maxConcurrentChildren: 10 };
+  const total = Math.min(MAX_HERMES_TEAM_MEMBERS, limits.maxTeamMembers, limits.oneshotMaxChildren || MAX_HERMES_TEAM_MEMBERS);
+  const batch = Math.min(total, limits.maxConcurrentChildren);
   const members = team.members.map((member, index) => {
     const write = member.access === 'write';
     const parts = [
@@ -138,12 +143,17 @@ export function hermesTeamBrief(team: Pick<AgentTeam, 'members' | 'rules' | 'goa
     '<extalia-team>',
     `You lead a subagent team set up in Extalia${options.fromPrompt ? ' from this prompt' : ''}. Delegate only when this request actually concerns a member's role, task or scope`,
     '(or the user asks for a member or the team); the user does not need to name them. Handle small, quick or unrelated requests (questions, chat, tiny edits,',
-    'anything no member\'s role covers) yourself, without delegating. When parts of the request do match members, pick every member whose role the work spans and',
+    'anything no member\'s role covers) yourself, without delegating. When parts of the request do match members, choose the relevant members within the budget below and',
     `hand each one its part with your ${HERMES_DELEGATE_TOOL} tool (one \`tasks\` entry per chosen member; independent read-only parts in one batch).`,
+    `Extalia launches Hermes with --oneshot: ${options.limits ? `the active profile's total child budget is ${limits.oneshotMaxChildren || 'unlimited (Extalia limits this turn to 32)'}` : `the default total child budget is ${total}`} for the entire run, shared across all delegate_task calls and batches. Never delegate more than ${total} children in total; a later call does not reset the budget.`,
+    `Use at most ${batch} tasks in a concurrent batch (the profile's max_concurrent_children is ${limits.maxConcurrentChildren}); this batch limit is separate from the total child budget.`,
+    'The active Hermes profile configuration remains authoritative: obey any lower child, batch or other delegation limits. A roster does not guarantee that every member can run; handle any remaining work yourself.',
+    'Standard delegate_task children share the profile\'s delegation.model, or inherit the lead\'s model when unset. Per-member model and fallback chains are not routed by this adapter; do not request different models for individual members.',
     'Start every task\'s goal with "[<member name> · <role>]", then a specific, self-contained goal; put the member\'s persona, task, scope, forbidden paths and the rules below in its context.',
     'Members that edit files run one at a time (separate calls), never in the same batch as another editing member. Read-only members must not change files.',
     'Combine their results, check them, and give the final answer yourself. If delegation is unavailable, do the members\' parts yourself in this order.',
     ...(team.goal ? [`Team goal: ${clip(team.goal, 300)}`] : []),
+    ...(team.goalDocument ? [`The saved team goal document ${team.goalDocument.name} is authoritative for this team:\n\n${team.goalDocument.text}`] : []),
     'Members:',
     ...members,
     ...(rules.length ? ['Rules for every member:', ...rules] : []),
@@ -182,17 +192,10 @@ const defaultId = () => {
   return crypto?.randomUUID?.() ?? `hermes-${Date.now().toString(36)}-${(fallbackCounter++).toString(36)}`;
 };
 
-const count = (value: unknown): number | undefined => typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : undefined;
-
 function usageOf(tokens: unknown): Usage | undefined {
   if (!tokens || typeof tokens !== 'object') return undefined;
   const raw = tokens as Record<string, unknown>;
-  const usage: Usage = {};
-  const input = count(raw.input), output = count(raw.output), cached = count(raw.cache_read);
-  if (input) usage.inputTokens = input;
-  if (output) usage.outputTokens = output;
-  if (cached) usage.cachedInputTokens = cached;
-  return Object.keys(usage).length ? usage : undefined;
+  return normalizeUsage({ inputTokens: raw.input, outputTokens: raw.output, cachedInputTokens: raw.cache_read });
 }
 
 /** Label and target for a tool call, from the arguments Hermes reports. */
@@ -297,7 +300,7 @@ export class HermesAdapter {
           if (!open.get(key)?.length) open.delete(key);
           const result = parseHermesToolOutput(data.output, data.is_error === true);
           if (!result.ok) for (const member of call.members ?? []) { active.delete(member); events.push({ type: 'subagent.state', subagentId: member, state: 'blocked', summary: 'Could not start' }); }
-          for (const file of result.files) events.push({ type: 'file.written', path: safeLabel(file.path, 1000), change: file.change });
+          for (const file of result.files) events.push({ type: 'file.written', path: safeLabel(file.path, 1000), change: file.change, toolCallId: call.id });
           events.push({
             type: 'tool.completed', toolCallId: call.id, tool: name, kind: call.kind, label: call.label, ok: result.ok,
             ...(call.target ? { target: call.target } : {}),

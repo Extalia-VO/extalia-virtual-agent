@@ -1,5 +1,8 @@
 # Benchmarks
 
+- [Native file-page reads, 2026-11-08](native-file-read-2026-11-08.md): frozen baseline comparison, bounded streaming reads, peak RSS, p50/p95 and observed event-loop delay.
+- [Native skill catalog contract, 2026-11-08](native-skill-catalog-2026-11-08.md): synthetic registry operation counts, bounded prompt/schema sizes and metadata-only retention, including the explicit inventory-bound miss.
+
 Measured results that gate decisions. Each results file states its hardware, OS, toolchain
 versions, git revision and daemon build, and contains only values a script measured on that
 machine. No value is estimated or carried over from another machine.
@@ -70,3 +73,5 @@ workspace dependencies (`pnpm install`; esbuild comes from `apps/cli`). It is no
 - State the hardware as model, core counts and RAM only: no host names, user names, paths or
   serial numbers (`pnpm lint` checks the public-safety rules).
 - Publish the script's own output. A rerun replaces numbers; it never adjusts them.
+
+- [Native memory metadata recall](native-memory-recall-2026-11-08.md): bounded lexical selection and stat-validated metadata cache; synthetic relevance, latency, resource limits and explicit misses.

@@ -18,6 +18,8 @@ files:
   - '!dist/**/*.map'
   - package.json
 beforeBuild: ./scripts/skip-node-modules.mjs
+beforePack: ./scripts/installer-assets.mjs
+afterAllArtifactBuild: ./scripts/create-linux-installer.mjs
 extraMetadata:
   # Packaged name used for the updater cache and Linux package names, and the display name at runtime.
   name: extalia-desktop
@@ -49,12 +51,49 @@ mac:
     - target: zip
       arch: [arm64, x64]
 
+dmg:
+  title: ${productName} Installer
+  background: build/installer/dmg-background.png
+  iconSize: 104
+  iconTextSize: 13
+  window:
+    width: 900
+    height: 620
+  contents:
+    - x: 224
+      y: 502
+      type: file
+    - x: 571
+      y: 502
+      type: link
+      path: /Applications
+    - x: 790
+      y: 502
+      type: file
+      path: build-resources/installer/Installation Guide.txt
+
 win:
   target:
     - target: nsis
       arch: [x64]
 nsis:
   artifactName: ${productName}-${version}-${os}-${arch}-setup.${ext}
+  oneClick: false
+  perMachine: false
+  allowElevation: true
+  allowToChangeInstallationDirectory: true
+  installerLanguages: [en_US]
+  multiLanguageInstaller: false
+  displayLanguageSelector: false
+  language: '1033'
+  installerSidebar: build/installer/windows-sidebar.bmp
+  uninstallerSidebar: build/installer/windows-sidebar.bmp
+  installerHeader: build/installer/windows-header.bmp
+  include: build-resources/installer/windows-installer.nsh
+  createDesktopShortcut: always
+  createStartMenuShortcut: true
+  runAfterFinish: true
+  deleteAppDataOnUninstall: false
 
 linux:
   category: Development

@@ -5,10 +5,11 @@ import type { AnyTool } from './tools.js';
  * Where a write-capable team member may edit. `scope` lists workspace-relative
  * directories, files or globs (`*` within a segment, `**` across segments);
  * an empty scope is the whole workspace. `forbidden` always wins over scope.
- * Paths are checked as written, before the file tools resolve them: absolute
- * paths, `~` and `..` are refused for members, so a member cannot reach a
- * forbidden file through another spelling. The file tools still enforce the
- * workspace boundary, symbolic links and credential files.
+ * This guard checks paths as written: absolute paths, `~` and `..` are refused.
+ * The host must also apply `memberEditRefusal` to each resolved canonical path
+ * relative to the run root through member-specific write tools. A lexical
+ * scope alone does not prevent a symbolic-link alias into a forbidden path.
+ * File tools additionally enforce workspace policy and credential restrictions.
  */
 
 function escapeRegExp(value: string): string {

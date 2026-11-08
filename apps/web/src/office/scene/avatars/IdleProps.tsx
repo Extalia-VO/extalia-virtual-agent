@@ -5,7 +5,9 @@
  * Parents place and scale them (the body is scaled, so they undo that scale);
  * they stay hidden except in their clip, and are never shown with reduced motion.
  */
-import type { RefObject } from 'react';
+import { useEffect, useSyncExternalStore, type RefObject } from 'react';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import type { Object3D } from 'three';
 import { InteriorPart } from '../interior/InteriorPart';
 import type { Group } from 'three';
 import { BoxGeometry, CylinderGeometry, MeshStandardMaterial, PlaneGeometry, TorusGeometry } from 'three';
@@ -54,4 +56,36 @@ export function DumbbellProp({ groupRef }: { groupRef?: RefObject<Group | null> 
     <mesh rotation={[0, 0, Math.PI / 2]}><cylinderGeometry args={[.017, .017, .24, 12]} /><meshStandardMaterial color="#939ba3" metalness={.7} roughness={.25} /></mesh>
     {[-.1, .1].map(x => <mesh key={x} position={[x, 0, 0]} rotation={[0, 0, Math.PI / 2]}><cylinderGeometry args={[.065, .065, .05, 12]} /><meshStandardMaterial color="#343a43" /></mesh>)}
   </InteriorPart></group>;
+}
+
+const tabletUrls = import.meta.glob<string>('/public-assets/furniture/tablet.glb', { eager: true, query: '?url', import: 'default' });
+let tabletModel: Object3D | null = null, tabletRequested = false;
+const tabletListeners = new Set<() => void>();
+const subscribeTablet = (listener: () => void) => { tabletListeners.add(listener); return () => { tabletListeners.delete(listener); }; };
+async function loadTablet() {
+  const url = tabletUrls['/public-assets/furniture/tablet.glb'];
+  if (!url || tabletRequested) return;
+  tabletRequested = true;
+  try { tabletModel = (await new GLTFLoader().loadAsync(url)).scene; } catch { /* The procedural slab stays. */ }
+  tabletListeners.forEach(listener => listener());
+}
+const TABLET_BODY = new BoxGeometry(0.247, 0.007, 0.178);
+const TABLET_GLASS = new PlaneGeometry(0.225, 0.156);
+const TABLET_SHELL = new MeshStandardMaterial({ color: '#a8adb2', roughness: 0.35, metalness: 0.8 });
+const TABLET_SCREEN = new MeshStandardMaterial({ color: '#16222b', emissive: '#3a7f86', emissiveIntensity: 0.45, roughness: 0.15 });
+
+/**
+ * The work tablet (Blender `create-tablet-prop.py`) a busy character carries while it walks: origin at its
+ * centre, screen up; the parent tilts it toward the face. A procedural slab until the model loads.
+ */
+export function TabletProp({ groupRef }: { groupRef?: RefObject<Group | null> | undefined }) {
+  const model = useSyncExternalStore(subscribeTablet, () => tabletModel, () => null);
+  useEffect(() => { void loadTablet(); }, []);
+  return <group ref={groupRef} visible={false}>
+    {/* The model's camera edge points away from the carrier. */}
+    {model ? <primitive object={model.clone()} rotation={[0, Math.PI, 0]} dispose={null} /> : <>
+      <mesh geometry={TABLET_BODY} material={TABLET_SHELL} />
+      <mesh geometry={TABLET_GLASS} material={TABLET_SCREEN} position={[0, 0.0036, 0]} rotation={[-Math.PI / 2, 0, 0]} />
+    </>}
+  </group>;
 }

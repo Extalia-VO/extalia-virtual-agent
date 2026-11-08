@@ -189,7 +189,7 @@ describe('natural routes after door choreography', () => {
     });
   }
 
-  it('rejoins each completed door interaction on all 592 actual office leisure routes', () => {
+  it('rejoins each completed door interaction on all 658 actual office leisure routes', () => {
     let routes = 0, joins = 0, curvedRoutes = 0;
     // Conservative wall planes reject optional chords outside the authored
     // apertures; exact graph contacts remain available as the fallback.
@@ -231,7 +231,7 @@ describe('natural routes after door choreography', () => {
         expect(mover.phase, `${source.seatId} → ${destination.seatId}`).toBe('seated');
       }
     }
-    expect(routes).toBe(592);
+    expect(routes).toBe(658);
     expect(joins).toBeGreaterThan(200);
     expect(curvedRoutes).toBeGreaterThan(0);
   });

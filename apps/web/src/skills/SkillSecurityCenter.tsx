@@ -1,3 +1,4 @@
+import { Select } from '../ui/Select';
 import type {
   AgentHostApi, FileSystemCapability, HostState, SkillImportSource, SkillRegistryReport, SkillReviewDecision, SkillRevisionDetails, SkillRevisionSummary, WorkspaceSkills,
 } from '@extalia/platform';
@@ -429,18 +430,16 @@ function SkillImportPanel({ t, kind, busy, picker, agents, workspaces, onImport,
         </label>
       ) : !workspaces.length ? <p className="small muted">{s.noProjects}</p> : (
         <div className="skill-import-row">
-          <label className="field">
+          <div className="field">
             <span>{s.workspaceLabel}</span>
-            <select value={workspaceId} onChange={event => setWorkspaceId(event.target.value)}>
-              {workspaces.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
-            </select>
-          </label>
-          <label className="field">
+            <Select aria-label={s.workspaceLabel} value={workspaceId} onChange={setWorkspaceId}
+              options={workspaces.map(item => ({ value: item.id, label: item.name }))} />
+          </div>
+          <div className="field">
             <span>{s.projectSkillLabel}</span>
-            <select value={chosen} disabled={!names.length} onChange={event => setName(event.target.value)}>
-              {names.map(item => <option key={item} value={item}>{item}</option>)}
-            </select>
-          </label>
+            <Select aria-label={s.projectSkillLabel} value={chosen} disabled={!names.length} onChange={setName}
+              options={names.map(item => ({ value: item, label: item }))} />
+          </div>
         </div>
       )}
       {kind === 'project' && skills?.workspaceId === workspaceId && !names.length && <p className="small muted">{s.noProjectSkills}</p>}

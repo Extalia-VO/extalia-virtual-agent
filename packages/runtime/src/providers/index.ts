@@ -1,13 +1,14 @@
-import { providerHeaders, type Connection } from '@extalia/core';
+import { providerHeaders, supportsPromptCache, type Connection } from '@extalia/core';
 import type { FetchLike, ModelProvider } from '../model.js';
 import { createAnthropicProvider } from './anthropic.js';
 import { createOpenAIChatProvider } from './openai.js';
+import { guardProviderRequests } from '../requestBudget.js';
 
 export { createAnthropicProvider, replayableContent, toAnthropicMessages } from './anthropic.js';
 export { createOpenAIChatProvider, toChatMessages } from './openai.js';
 export { readSse } from './sse.js';
 
-type ProviderConnection = Pick<Connection, 'preset' | 'api' | 'baseUrl' | 'model' | 'features' | 'effort'>;
+type ProviderConnection = Pick<Connection, 'preset' | 'api' | 'baseUrl' | 'model' | 'features' | 'effort' | 'inputTokenLimit'>;
 
 function isAnthropicCloud(baseUrl: string): boolean {
   try { return new URL(baseUrl).hostname === 'api.anthropic.com'; } catch { return false; }
@@ -18,11 +19,12 @@ export function createProvider(connection: ProviderConnection, secret: string | 
   const headers = providerHeaders(connection);
   const common = { baseUrl: connection.baseUrl, model: connection.model, ...(secret ? { apiKey: secret } : {}), ...(Object.keys(headers).length ? { headers } : {}), ...(fetchImpl ? { fetch: fetchImpl } : {}) };
   if (connection.api === 'anthropic-messages') {
-    return createAnthropicProvider({
+    return guardProviderRequests(createAnthropicProvider({
       ...common,
       direct: connection.preset === 'anthropic' && isAnthropicCloud(connection.baseUrl),
+      ...(connection.features.promptCache === true && supportsPromptCache(connection) ? { promptCache: true } : {}),
       ...(connection.effort ? { effort: connection.effort } : {}),
-    });
+    }), connection.inputTokenLimit);
   }
-  return createOpenAIChatProvider(common);
+  return guardProviderRequests(createOpenAIChatProvider(common), connection.inputTokenLimit);
 }

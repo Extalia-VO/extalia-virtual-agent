@@ -385,3 +385,60 @@ The reference avatar rig and any added skin/context retain the separate RenderHu
 Detail LOD for `avatars/wardrobe/female/top/source-flame-hoodie.glb`: modeled stitch meshes use an explicit reviewed reduction; primary fabric geometry and UV corners remain unchanged.
 
 <!-- source-garments:end -->
+
+<!-- campus-greenery:start -->
+## Campus greenery
+
+The potted plants, garden plants and trees in `greenery/` are simplified derivatives of
+owner-provided downloads (`tooling/blender/prepare-greenery.py`): thinned foliage, decimated
+stems and bark, textures reduced to 512 px WebP. They are not MIT-licensed.
+
+### LicenseRef-RenderHub-Extended-Use (cgaxis)
+
+Original download record: CGAxis (https://cgaxis.com/). The source archives carry no licence file; this historical source record is retained. Owner confirmed on 2026-11-08 that these assets use the RenderHub Extended Use License (https://www.renderhub.com/info/3d-content-licensing), the same profile as the existing licensed assets. This records owner confirmation, not independent licence verification. Not MIT-licensed.
+
+- `greenery/plant-aloe-double.glb` (LicenseRef-RenderHub-Extended-Use): Double aloe plant; source archive: double_aloe_plant.zip. Owner-confirmed 2026-11-08: RenderHub Extended Use License. Not MIT-licensed.
+- `greenery/plant-round-pot.glb` (LicenseRef-RenderHub-Extended-Use): Small plant in round pot; source archive: small_plant_in_round_pot.zip. Owner-confirmed 2026-11-08: RenderHub Extended Use License. Not MIT-licensed.
+- `greenery/garden-pasque.glb` (LicenseRef-RenderHub-Extended-Use): Pasque flowers (Pulsatilla vulgaris); source archive: pasque_flowers_pulsatilla_vulgaris.zip. Owner-confirmed 2026-11-08: RenderHub Extended Use License. Not MIT-licensed.
+- `greenery/tree-avocado.glb` (LicenseRef-RenderHub-Extended-Use): Avocado tree with fruits; source archive: avocado_tree_with_fruits_29m.zip. Owner-confirmed 2026-11-08: RenderHub Extended Use License. Not MIT-licensed.
+- `greenery/tree-butia-palm.glb` (LicenseRef-RenderHub-Extended-Use): Butia yatay palm; source archive: butia_yatay_palm.zip. Owner-confirmed 2026-11-08: RenderHub Extended Use License. Not MIT-licensed.
+- `greenery/tree-japanese-maple.glb` (LicenseRef-RenderHub-Extended-Use): Japanese maple; source archive: japanese_maple_6m.zip. Owner-confirmed 2026-11-08: RenderHub Extended Use License. Not MIT-licensed.
+- `greenery/tree-oak-tall.glb` (LicenseRef-RenderHub-Extended-Use): Broadleaf tree (CGAxis volume 54, model 42); source archive: tree-2.zip. Owner-confirmed 2026-11-08: RenderHub Extended Use License. Not MIT-licensed.
+- `greenery/tree-oak-wide.glb` (LicenseRef-RenderHub-Extended-Use): Broadleaf tree (CGAxis volume 54, model 41); source archive: tree-1.zip. Owner-confirmed 2026-11-08: RenderHub Extended Use License. Not MIT-licensed.
+- `greenery/tree-orange.glb` (LicenseRef-RenderHub-Extended-Use): Orange tree with fruits; source archive: orange_tree_with_fruits_6m.zip. Owner-confirmed 2026-11-08: RenderHub Extended Use License. Not MIT-licensed.
+- `greenery/tree-river-birch.glb` (LicenseRef-RenderHub-Extended-Use): River birch; source archive: river_birch_49m.zip. Owner-confirmed 2026-11-08: RenderHub Extended Use License. Not MIT-licensed.
+- `greenery/tree-rowan.glb` (LicenseRef-RenderHub-Extended-Use): European rowan (Sorbus aucuparia); source archive: european_rowan_sorbus_aucuparia_41m.zip. Owner-confirmed 2026-11-08: RenderHub Extended Use License. Not MIT-licensed.
+- `greenery/tree-small-palm.glb` (LicenseRef-RenderHub-Extended-Use): Small palm tree; source archive: small_palm_tree.zip. Owner-confirmed 2026-11-08: RenderHub Extended Use License. Not MIT-licensed.
+- `greenery/tree-tulip.glb` (LicenseRef-RenderHub-Extended-Use): Tulip tree (Liriodendron); source archive: tulip_tree_liriodendron_12m.zip. Owner-confirmed 2026-11-08: RenderHub Extended Use License. Not MIT-licensed.
+
+### LicenseRef-RenderHub-Extended-Use (owner-provided)
+
+Owner-provided downloads; archive names are retained below. No licence file, author or product URL was recorded with the archives. Owner confirmed on 2026-11-08 that these assets use the RenderHub Extended Use License (https://www.renderhub.com/info/3d-content-licensing), the same profile as the existing licensed assets. This records owner confirmation, not independent licence verification. Not MIT-licensed.
+
+- `greenery/plant-marble-pot.glb` (LicenseRef-RenderHub-Extended-Use): Plant in a pot; source archive: plant_in_a_pot.zip. Owner-confirmed 2026-11-08: RenderHub Extended Use License. Not MIT-licensed.
+- `greenery/garden-hakonechloa.glb` (LicenseRef-RenderHub-Extended-Use): Japanese garden plants collection 02: Hakonechloa; source archive: japanese_garden_plants_collection_02.zip. Owner-confirmed 2026-11-08: RenderHub Extended Use License. Not MIT-licensed.
+- `greenery/garden-iris.glb` (LicenseRef-RenderHub-Extended-Use): Japanese garden plants collection 02: Japanese iris; source archive: japanese_garden_plants_collection_02.zip. Owner-confirmed 2026-11-08: RenderHub Extended Use License. Not MIT-licensed.
+- `greenery/garden-rhododendron.glb` (LicenseRef-RenderHub-Extended-Use): Japanese garden plants collection 02: Japanese rhododendron; source archive: japanese_garden_plants_collection_02.zip. Owner-confirmed 2026-11-08: RenderHub Extended Use License. Not MIT-licensed.
+- `greenery/tree-pepper.glb` (LicenseRef-RenderHub-Extended-Use): Brazilian pepper tree; source archive: tree_3d_model_free.zip. Owner-confirmed 2026-11-08: RenderHub Extended Use License. Not MIT-licensed.
+
+<!-- campus-greenery:end -->
+<!-- owner-hair:start -->
+## Owner-provided hair packs
+
+These detailed hair models are fitted to the reference heads, bound to the `head` bone and
+re-textured grey (tinted at runtime) by `tooling/convert-detailed-hair.py`. Not MIT-licensed.
+
+### LicenseRef-RenderHub-Extended-Use (owner-provided-hair)
+
+Owner-provided hair-pack downloads; archive names are retained below. No licence file, author or product URL was recorded with the archives. Owner confirmed on 2026-11-08 that these assets use the RenderHub Extended Use License (https://www.renderhub.com/info/3d-content-licensing), the same profile as the existing licensed assets. This records owner confirmation, not independent licence verification. Not MIT-licensed.
+
+- `avatars/hair/female/bun-bangs-detail.glb` (LicenseRef-RenderHub-Extended-Use): Next-gen female bun with bangs (real-time hair cards); source archive: next-gen_3d_female_bun_bangs_hairstyle_pbr_real-time_ready.zip. Owner-confirmed 2026-11-08: RenderHub Extended Use License. Not MIT-licensed.
+- `avatars/hair/female/sleek-ponytail-detail.glb` (LicenseRef-RenderHub-Extended-Use): Game-ready realistic female ponytail; source archive: game_ready_3d_female_hair_realistic_ponytail_model.zip. Owner-confirmed 2026-11-08: RenderHub Extended Use License. Not MIT-licensed.
+- `avatars/hair/female/long-straight-detail.glb` (LicenseRef-RenderHub-Extended-Use): Female long straight hair; source archive: female_long_straight_hair_free.zip. Owner-confirmed 2026-11-08: RenderHub Extended Use License. Not MIT-licensed.
+- `avatars/hair/female/long-bangs-detail.glb` (LicenseRef-RenderHub-Extended-Use): Red hair woman: base with long bangs; source archive: red_hair_woman.zip. Owner-confirmed 2026-11-08: RenderHub Extended Use License. Not MIT-licensed.
+- `avatars/hair/female/straight-short-detail.glb` (LicenseRef-RenderHub-Extended-Use): Red hair woman: straight short; source archive: red_hair_woman.zip. Owner-confirmed 2026-11-08: RenderHub Extended Use License. Not MIT-licensed.
+- `avatars/hair/female/dreads-detail.glb` (LicenseRef-RenderHub-Extended-Use): Dreads hair (rasta); source archive: dreads_hair_rasta.zip. Owner-confirmed 2026-11-08: RenderHub Extended Use License. Not MIT-licensed.
+- `avatars/hair/male/dreadlocks-detail.glb` (LicenseRef-RenderHub-Extended-Use): Dreads hair (rasta); source archive: dreads_hair_rasta.zip. Owner-confirmed 2026-11-08: RenderHub Extended Use License. Not MIT-licensed.
+- `avatars/hair/male/afro-detail.glb` (LicenseRef-RenderHub-Extended-Use): Afro IV 3c hair (hair curves, shelled by prepare-afro-shell.py); source archive: afro_vi_hairstyle.zip. Owner-confirmed 2026-11-08: RenderHub Extended Use License. Not MIT-licensed.
+
+<!-- owner-hair:end -->

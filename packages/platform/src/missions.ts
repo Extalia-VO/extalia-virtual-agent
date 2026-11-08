@@ -1,4 +1,6 @@
+import type { ModelPlanningBasis } from './modelGuide.js';
 import type { DaemonMissionExecutions, DaemonMissionRecoveryReview, DaemonMissionSnapshot, TaskState } from '@extalia/protocol';
+import type { GoalDocument } from '@extalia/core';
 import { isModelId } from './agentHost.js';
 
 export interface HostMissionTaskInput {
@@ -299,6 +301,8 @@ export function normalizeHostMissionRequest(raw: unknown): HostMissionRequest {
  */
 export interface MissionPlanRequest {
   goal: string;
+  /** Full imported goal, separate from the short goal label. */
+  goalDocument?: GoalDocument;
   /** 1–16, default 6. */
   maxTasks?: number;
   /** A subset of the workspace-allowed mission connections; default all allowed. */
@@ -319,6 +323,7 @@ export interface MissionPlanTask extends HostMissionTaskInput {
  * workspace allowed when it was planned. Planning starts nothing.
  */
 export interface MissionPlan {
+  planningBasis?: ModelPlanningBasis;
   title: string;
   tasks: MissionPlanTask[];
   maxConcurrency: number;

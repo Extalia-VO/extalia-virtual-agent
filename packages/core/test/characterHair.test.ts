@@ -13,18 +13,18 @@ describe('source hair catalog', () => {
     expect(options.map(option => option.id).sort()).toEqual(CHARACTER_HAIR_STYLES.filter(style => style !== 'long').sort());
     expect(options.every(option => !option.fallback)).toBe(true);
     expect(options.map(option => option.mesh)).not.toContain('');
-    expect(options.filter(option => option.group === 'male')).toHaveLength(7);
-    expect(options.filter(option => option.group === 'female')).toHaveLength(6);
+    expect(options.filter(option => option.group === 'male')).toHaveLength(8);
+    expect(options.filter(option => option.group === 'female')).toHaveLength(12);
   });
 
   it('offers only the presentation\'s own hair, detailed styles first', () => {
     const male = getCharacterHairOptions('masculine'), female = getCharacterHairOptions('feminine');
     expect(male.every(option => option.group === 'male')).toBe(true);
     expect(female.every(option => option.group === 'female')).toBe(true);
-    expect(male.slice(0, 5).map(option => option.id).sort()).toEqual(['short-fade', 'side-part', 'slicked-back', 'textured-crop', 'undercut']);
-    expect(female.slice(0, 5).map(option => option.id).sort()).toEqual(['bob', 'bun', 'high-ponytail', 'medium', 'ponytail']);
+    expect(male.slice(0, 7).map(option => option.id).sort()).toEqual(['afro', 'dreadlocks', 'short-fade', 'side-part', 'slicked-back', 'textured-crop', 'undercut']);
+    expect(female.slice(0, 11).map(option => option.id).sort()).toEqual(['bob', 'bun', 'bun-bangs', 'dreads', 'high-ponytail', 'long-bangs', 'long-straight', 'medium', 'ponytail', 'sleek-ponytail', 'straight-short']);
     // Styles without a detailed model come after every detailed one.
-    expect(male.slice(5).every(option => !option.detail) && female.slice(5).every(option => !option.detail)).toBe(true);
+    expect(male.slice(7).every(option => !option.detail) && female.slice(11).every(option => !option.detail)).toBe(true);
     expect([...male, ...female].filter(option => option.detail).every(option => option.detail!.mesh.startsWith('Hair_detail_'))).toBe(true);
   });
 

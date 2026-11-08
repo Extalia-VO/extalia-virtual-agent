@@ -4,6 +4,7 @@ import { BoxGeometry, CircleGeometry, Color, CylinderGeometry, IcosahedronGeomet
 import { useSolarEnvironment } from "./Environment";
 import { useExteriorInstancedGeometries } from "./ExteriorPart";
 import { FRONT_APPROACH } from "./campusSiteLayout";
+import { GREENERY_POOLS, GreeneryInstances, pickGreenery, placementSize, useGreenery, type GreeneryPlacement } from "./greenery";
 
 // Dimensions & coordinates for the Civic Forecourt Park
 const PARK_Y = -0.71;
@@ -28,7 +29,12 @@ type ParkItem = {
   sz: number;
   ry?: number;
   color?: string;
+  /** Tree trunk/crown or bed shrub that a greenery model replaces once loaded. */
+  green?: "tree" | "shrub";
 };
+
+/** A park planting that a greenery model can replace: allée cypress, grove tree or bed shrub. */
+type ParkPlanting = { role: "cypress" | "shade" | "flowering" | "shrub" | "flower"; x: number; y: number; z: number; scale: number };
 
 type TreeSpec = {
   trunkRadius: number;
@@ -87,6 +93,7 @@ function buildCivicPark() {
   const benches: ParkItem[] = [];
   const lamps: ParkItem[] = [];
   const pools: ParkItem[] = [];
+  const plantings: ParkPlanting[] = [];
 
   // 1. Main Central Green Expanses (Flanking the grand axial approach)
   // Green sectors at x 8..56 either side, from the road's far kerb to the southern walk.
@@ -126,14 +133,16 @@ function buildCivicPark() {
       hardscape.push({ x: side * 14.5, y: PARK_Y + 0.05, z: zBand, sx: 9.6, sy: 0.14, sz: 3.4, color: "#bcb7ac" });
       lawns.push({ x: side * 14.5, y: PARK_Y + 0.11, z: zBand, sx: 9.0, sy: 0.06, sz: 2.8, color: "#486b43" });
       for (const dx of [-3.2, 0, 3.2]) {
-        canopies.push({ x: side * 14.5 + dx, y: PARK_Y + 0.32, z: zBand, sx: 0.65, sy: 0.42, sz: 0.65, color: dx === 0 ? "#b896d8" : "#628658" });
+        canopies.push({ x: side * 14.5 + dx, y: PARK_Y + 0.32, z: zBand, sx: 0.65, sy: 0.42, sz: 0.65, color: dx === 0 ? "#b896d8" : "#628658", green: "shrub" });
+        plantings.push({ role: dx === 0 ? "flower" : "shrub", x: side * 14.5 + dx, y: PARK_Y + 0.14, z: zBand, scale: 1 });
       }
     }
     // Pocket plaza nodes at the transverse walk intersections (x = ±32, z = PARK_CROSS_Z)
     hardscape.push({ x: side * 32, y: WALK_Y + 0.008, z: PARK_CROSS_Z, sx: 8.4, sy: 0.035, sz: 8.4, color: "#d8d3c8" });
     hardscape.push({ x: side * 32, y: WALK_Y + 0.08, z: PARK_CROSS_Z, sx: 3.2, sy: 0.16, sz: 3.2, color: "#b8b3a8" });
     lawns.push({ x: side * 32, y: WALK_Y + 0.15, z: PARK_CROSS_Z, sx: 2.6, sy: 0.06, sz: 2.6, color: "#4e7348" });
-    canopies.push({ x: side * 32, y: WALK_Y + 0.48, z: PARK_CROSS_Z, sx: 0.95, sy: 0.58, sz: 0.95, color: "#f3c4d0" });
+    canopies.push({ x: side * 32, y: WALK_Y + 0.48, z: PARK_CROSS_Z, sx: 0.95, sy: 0.58, sz: 0.95, color: "#f3c4d0", green: "shrub" });
+    plantings.push({ role: "shrub", x: side * 32, y: WALK_Y + 0.18, z: PARK_CROSS_Z, scale: 1.3 });
   }
 
   // 4. Formal Tree Allées & Shaded Groves
@@ -141,8 +150,9 @@ function buildCivicPark() {
   for (let z = PARK_SOUTH_Z + 1; z <= PARK_NORTH_Z - 1.5; z += 5) {
     [-7.2, 7.2].forEach((x) => {
       const spec = TREE_STYLES.cypress!;
-      trunks.push({ x, y: PARK_Y + 0.05, z, sx: spec.trunkRadius, sy: spec.trunkHeight, sz: spec.trunkRadius, color: spec.bark });
-      canopies.push({ x, y: PARK_Y + 0.05 + spec.trunkHeight * 0.9, z, sx: spec.crownRadius, sy: spec.crownRadius * spec.crownStretch, sz: spec.crownRadius, color: spec.leaves[0]! });
+      trunks.push({ x, y: PARK_Y + 0.05, z, sx: spec.trunkRadius, sy: spec.trunkHeight, sz: spec.trunkRadius, color: spec.bark, green: "tree" });
+      canopies.push({ x, y: PARK_Y + 0.05 + spec.trunkHeight * 0.9, z, sx: spec.crownRadius, sy: spec.crownRadius * spec.crownStretch, sz: spec.crownRadius, color: spec.leaves[0]!, green: "tree" });
+      plantings.push({ role: "cypress", x, y: PARK_Y + 0.05, z, scale: 1 });
 
       // Stone tree surround
       hardscape.push({ x, y: PLAZA_Y + 0.01, z, sx: 1.6, sy: 0.02, sz: 1.6, color: "#7a6e63" });
@@ -160,15 +170,18 @@ function buildCivicPark() {
       const scale = 0.9 + rand() * 0.2;
       const leafColor = spec.leaves[Math.floor(rand() * spec.leaves.length)]!;
 
+      const tx = x + (rand() - 0.5) * 1.5, tz = z + (rand() - 0.5) * 1.5;
       trunks.push({
-        x: x + (rand() - 0.5) * 1.5,
+        x: tx,
         y: PARK_Y + 0.05,
-        z: z + (rand() - 0.5) * 1.5,
+        z: tz,
         sx: spec.trunkRadius * scale,
         sy: spec.trunkHeight * scale,
         sz: spec.trunkRadius * scale,
-        color: spec.bark
+        color: spec.bark,
+        green: "tree"
       });
+      plantings.push({ role: styleKey as "shade" | "flowering", x: tx, y: PARK_Y + 0.05, z: tz, scale });
 
       canopies.push({
         x: x + (rand() - 0.5) * 1.5,
@@ -177,7 +190,8 @@ function buildCivicPark() {
         sx: spec.crownRadius * scale,
         sy: spec.crownRadius * spec.crownStretch * scale,
         sz: spec.crownRadius * scale,
-        color: leafColor
+        color: leafColor,
+        green: "tree"
       });
     });
   });
@@ -238,8 +252,9 @@ function buildCivicPark() {
   for (let z = -95; z >= -125; z -= 5.5) {
     [-6.2, 6.2].forEach((x) => {
       const spec = TREE_STYLES.cypress!;
-      trunks.push({ x, y: PARK_Y + 0.05, z, sx: spec.trunkRadius, sy: spec.trunkHeight, sz: spec.trunkRadius, color: spec.bark });
-      canopies.push({ x, y: PARK_Y + 0.05 + spec.trunkHeight * 0.9, z, sx: spec.crownRadius, sy: spec.crownRadius * spec.crownStretch, sz: spec.crownRadius, color: spec.leaves[0]! });
+      trunks.push({ x, y: PARK_Y + 0.05, z, sx: spec.trunkRadius, sy: spec.trunkHeight, sz: spec.trunkRadius, color: spec.bark, green: "tree" });
+      canopies.push({ x, y: PARK_Y + 0.05 + spec.trunkHeight * 0.9, z, sx: spec.crownRadius, sy: spec.crownRadius * spec.crownStretch, sz: spec.crownRadius, color: spec.leaves[0]!, green: "tree" });
+      plantings.push({ role: "cypress", x, y: PARK_Y + 0.05, z, scale: 1 });
       hardscape.push({ x, y: PLAZA_Y + 0.01, z, sx: 1.4, sy: 0.02, sz: 1.4, color: "#7a6e63" });
     });
   }
@@ -252,15 +267,18 @@ function buildCivicPark() {
       const scale = 0.85 + rand() * 0.25;
       const leafColor = spec.leaves[Math.floor(rand() * spec.leaves.length)]!;
 
+      const tx = x + (rand() - 0.5) * 2, tz = z + (rand() - 0.5) * 2;
       trunks.push({
-        x: x + (rand() - 0.5) * 2,
+        x: tx,
         y: PARK_Y + 0.05,
-        z: z + (rand() - 0.5) * 2,
+        z: tz,
         sx: spec.trunkRadius * scale,
         sy: spec.trunkHeight * scale,
         sz: spec.trunkRadius * scale,
-        color: spec.bark
+        color: spec.bark,
+        green: "tree"
       });
+      plantings.push({ role: styleKey as "shade" | "flowering", x: tx, y: PARK_Y + 0.05, z: tz, scale });
 
       canopies.push({
         x: x + (rand() - 0.5) * 2,
@@ -269,7 +287,8 @@ function buildCivicPark() {
         sx: spec.crownRadius * scale,
         sy: spec.crownRadius * spec.crownStretch * scale,
         sz: spec.crownRadius * scale,
-        color: leafColor
+        color: leafColor,
+        green: "tree"
       });
     });
   });
@@ -290,7 +309,7 @@ function buildCivicPark() {
     });
   }
 
-  return { lawns, hardscape, trunks, canopies, benches, lamps, pools };
+  return { lawns, hardscape, trunks, canopies, benches, lamps, pools, plantings };
 }
 
 function InstancedBatch({
@@ -339,11 +358,38 @@ function InstancedBatch({
   );
 }
 
+/** Greenery variants and target heights for the park's plantings. */
+const PARK_GREENERY: Record<ParkPlanting["role"], { pool: readonly string[]; height: number }> = {
+  cypress: { pool: GREENERY_POOLS.columnarTree, height: 6.2 },
+  shade: { pool: GREENERY_POOLS.shadeTree, height: 6.6 },
+  flowering: { pool: GREENERY_POOLS.ornamentalTree, height: 4.4 },
+  shrub: { pool: GREENERY_POOLS.gardenShrub, height: 0.95 },
+  flower: { pool: GREENERY_POOLS.gardenFlower, height: 0.7 }
+};
+
+/** Greenery placements for the park; empty when a role has no licensed variant (keeps the procedural park). */
+export function parkGreenery(plantings: readonly ParkPlanting[]): GreeneryPlacement[] {
+  const placements: GreeneryPlacement[] = [];
+  for (const planting of plantings) {
+    const { pool, height } = PARK_GREENERY[planting.role];
+    const id = pickGreenery(pool, planting.x, planting.z, 3);
+    if (!id) return [];
+    placements.push({ id, x: planting.x, y: planting.y, z: planting.z, height: height * planting.scale * placementSize(planting.x, planting.z) });
+  }
+  return placements;
+}
+
 export function CivicForecourtPark() {
   const { state } = useSolarEnvironment();
   const nightFactor = state.factors.exteriorLightFactor;
   const data = useMemo(() => buildCivicPark(), []);
   const blenderGeometries = useExteriorInstancedGeometries();
+  const greenery = useMemo(() => parkGreenery(data.plantings), [data]);
+  const greeneryIds = useMemo(() => [...new Set(greenery.map(placement => placement.id))], [greenery]);
+  const loaded = useGreenery(greeneryIds);
+  const greeneryReady = greeneryIds.length > 0 && greeneryIds.every(id => loaded.has(id));
+  const trunks = useMemo(() => greeneryReady ? data.trunks.filter(item => !item.green) : data.trunks, [data, greeneryReady]);
+  const canopies = useMemo(() => greeneryReady ? data.canopies.filter(item => !item.green) : data.canopies, [data, greeneryReady]);
 
   const geometries = useMemo(() => {
     const box = new BoxGeometry(1, 1, 1);
@@ -394,8 +440,9 @@ export function CivicForecourtPark() {
       <InstancedBatch geometry={geometries.disc} material={materials.waterMat} items={data.pools.filter(p => p.color === "#5c92ad")} />
 
       {/* 4. Trees: Trunks & Polyhedral Canopies */}
-      <InstancedBatch geometry={blenderGeometries?.trunk ?? geometries.trunkCyl} material={materials.barkMat} items={data.trunks} castShadow />
-      <InstancedBatch geometry={blenderGeometries?.canopy ?? geometries.canopyIco} material={materials.leavesMat} items={data.canopies} castShadow />
+      <InstancedBatch geometry={blenderGeometries?.trunk ?? geometries.trunkCyl} material={materials.barkMat} items={trunks} castShadow />
+      <InstancedBatch geometry={blenderGeometries?.canopy ?? geometries.canopyIco} material={materials.leavesMat} items={canopies} castShadow />
+      {greeneryReady && <GreeneryInstances name="civic-park-greenery" placements={greenery} />}
 
       {/* 5. Park Benches & Street Lamps */}
       <InstancedBatch geometry={blenderGeometries?.bench ?? geometries.box} material={materials.woodMat} items={data.benches} castShadow />

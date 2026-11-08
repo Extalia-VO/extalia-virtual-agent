@@ -11,6 +11,7 @@ import { OFFICE_RESOURCES, type SeatStyle, type SpatialResource } from '../inter
 import type { NaturalLeg } from './naturalWalking';
 import { ENTERTAINMENT_LAYOUT, entertainmentPoint } from '../interior/entertainmentBlueprint';
 import { relocateRoomPoint } from '../interior/roomRelocation';
+import { TEAM_WORKSPACE_ORIGIN } from '../interior/spatialBlueprints';
 import { FACILITY_NAV_RESOURCE_IDS } from './facilityNpcs';
 import { CHAT_SPOT_PAIRS, chatSpotIds, LEISURE_RESOURCE_IDS } from './leisureSpots';
 
@@ -62,6 +63,11 @@ const review = backAisleRoom('review', -3.75, 10.6, 1, 17.1, -3.75, -7.4, 0);
 const entertainmentArcade = entertainmentPoint(ENTERTAINMENT_LAYOUT.arcades[0], 0);
 const entertainmentGameX = relocateRoomPoint('entertainment', [entertainmentArcade[0], 0, entertainmentArcade[1]])[0];
 const research = backAisleRoom('research', 5, -9.5, 1, -1.85, 5, 2.4, 7.6);
+/** Team aisles share the furnished room transform; the ±4 lanes run between pod columns. */
+function engineeringSpot(id: string, x: number, z: number): Spot {
+  const point = relocateRoomPoint('engineering', [TEAM_WORKSPACE_ORIGIN[0] + x, 0, TEAM_WORKSPACE_ORIGIN[1] + z]);
+  return [id, point[0], point[2]];
+}
 
 const FLOOR_PLANS: Readonly<Record<OfficeFloor, FloorPlan>> = {
   1: {
@@ -73,9 +79,10 @@ const FLOOR_PLANS: Readonly<Record<OfficeFloor, FloorPlan>> = {
       ['stair-hall-west', 10.5, -17.2], ['stair-hall', 14.6, -17.5], ...stairHubs,
       ['east-hall', 14.6, -5], ['lounge-east', 19.2, -3.6], ...elevatorSpots(),
       ['engineering-east-outside', 11.9, -1.2, 'door'], ['engineering-east-door', 11, -1.2, 'door'], ['engineering-east-inside', 10.2, -1.2, 'door'],
-      ['eng-n-w', -12.9, -8.35], ['eng-n-c', -5, -8.35], ['eng-n-e', 2.8, -8.35], ['eng-n-far', 7.8, -8.35],
-      ['eng-m-w', -12.9, -1.2], ['eng-m-c', -5, -1.2], ['eng-m-e', 2.8, -1.2],
-      ['eng-s-w', -12.9, 6.05], ['eng-s-c', -5, 6.05], ['eng-s-e', 2.8, 6.05], ['eng-s-far', 7.8, 6.05],
+      engineeringSpot('eng-n-w', -10.6, -7.15), engineeringSpot('eng-n-west-gap', -4, -7.15), engineeringSpot('eng-n-c', 0, -7.15), engineeringSpot('eng-n-e', 4, -7.15), engineeringSpot('eng-n-far', 10.8, -7.15),
+      engineeringSpot('eng-m-w', -10.6, 0), engineeringSpot('eng-m-west-gap', -4, 0), engineeringSpot('eng-m-c', 0, 0), engineeringSpot('eng-m-e', 4, 0), engineeringSpot('eng-m-far', 10.8, 0),
+      engineeringSpot('eng-s-w', -10.6, 7.25), engineeringSpot('eng-s-west-gap', -4, 7.25), engineeringSpot('eng-s-c', 0, 7.25), engineeringSpot('eng-s-e', 4, 7.25), engineeringSpot('eng-s-far', 10.8, 7.25),
+      engineeringSpot('eng-s-breakout', 15.1, 7.25),
       ['engineering-south-inside', -5, 7.85, 'door'], ['engineering-south-door', -5, 8.6, 'door'],
       ['corridor-library', -16.6, 10], ['corridor-operations', -8.1, 10], ['corridor-center', -5, 10], ['corridor-source', 0.1, 10], ['corridor-qa', 8.3, 10],
       ['library-door', -16.6, 11.4, 'door'], ['library-inside', -16.6, 12.2, 'door'], ['library-aisle-north', -15.6, 13], ['library-aisle-south', -15.6, 16.2, 'approach'],
@@ -117,10 +124,10 @@ const FLOOR_PLANS: Readonly<Record<OfficeFloor, FloorPlan>> = {
     aisles: {
       lobby: [['lobby-east', 'reception-aisle']],
       engineering: [
-        ['engineering-north-inside', 'eng-n-c'], ['eng-n-w', 'eng-n-c'], ['eng-n-c', 'eng-n-e'], ['eng-n-e', 'eng-n-far'],
-        ['eng-m-w', 'eng-m-c'], ['eng-m-c', 'eng-m-e'], ['eng-m-e', 'engineering-east-inside'],
-        ['eng-s-w', 'eng-s-c'], ['eng-s-c', 'eng-s-e'], ['eng-s-e', 'eng-s-far'],
-        ['eng-n-w', 'eng-m-w'], ['eng-m-w', 'eng-s-w'], ['eng-n-c', 'eng-m-c'], ['eng-m-c', 'eng-s-c'], ['eng-n-e', 'eng-m-e'], ['eng-m-e', 'eng-s-e'],
+        ['engineering-north-inside', 'eng-n-c'], ['eng-n-w', 'eng-n-west-gap'], ['eng-n-west-gap', 'eng-n-c'], ['eng-n-c', 'eng-n-e'], ['eng-n-e', 'eng-n-far'],
+        ['eng-m-w', 'eng-m-west-gap'], ['eng-m-west-gap', 'eng-m-c'], ['eng-m-c', 'eng-m-e'], ['eng-m-e', 'eng-m-far'], ['eng-m-far', 'engineering-east-inside'],
+        ['eng-s-w', 'eng-s-west-gap'], ['eng-s-west-gap', 'eng-s-c'], ['eng-s-c', 'eng-s-e'], ['eng-s-e', 'eng-s-far'], ['eng-s-far', 'eng-s-breakout'],
+        ['eng-n-w', 'eng-m-w'], ['eng-m-w', 'eng-s-w'], ['eng-n-west-gap', 'eng-m-west-gap'], ['eng-m-west-gap', 'eng-s-west-gap'], ['eng-n-e', 'eng-m-e'], ['eng-m-e', 'eng-s-e'], ['eng-n-far', 'eng-m-far'], ['eng-m-far', 'eng-s-far'],
         ['eng-s-c', 'engineering-south-inside'],
       ],
       library: [['library-inside', 'library-aisle-north'], ['library-aisle-north', 'library-aisle-south']],
@@ -437,13 +444,17 @@ export type RouteStep =
 export function planRoute(fromId: string, toId: string, navigation = officeNavigation()): { steps: RouteStep[]; nodeIds: readonly string[]; cost: number } | null {
   const route = findRoute(navigation.graph, fromId, toId);
   if (!route) return null;
+  // Flat turns at the half-height landing still belong to the authored stair
+  // corridor; ordinary floor clearance cannot validate these protected legs.
+  const stairEdges = new Set(navigation.connectors.filter(connector => connector.kind === 'stairs')
+    .flatMap(connector => connector.waypoints.slice(1).map((to, index) => `${connector.waypoints[index]}|${to}`)));
   const steps: RouteStep[] = [];
   for (let i = 1; i < route.nodeIds.length; i++) {
     const from = route.nodeIds[i - 1]!, to = route.nodeIds[i]!;
     const a = navigation.waypoints.get(from)!.position as Point3, b = navigation.waypoints.get(to)!.position as Point3;
     const elevatorId = navigation.elevatorEdges.get(`${from}|${to}`);
     if (elevatorId) steps.push({ kind: 'elevator', node: to, elevatorId, from: floorAt(a[1]), to: floorAt(b[1]), exit: [b[0], b[1], b[2]] });
-    else steps.push({ kind: 'walk', node: to, to: [b[0], b[1], b[2]], stairs: Math.abs(a[1] - b[1]) > 1e-6 });
+    else steps.push({ kind: 'walk', node: to, to: [b[0], b[1], b[2]], stairs: stairEdges.has(`${from}|${to}`) || Math.abs(a[1] - b[1]) > 1e-6 });
   }
   return { steps, nodeIds: route.nodeIds, cost: route.cost };
 }

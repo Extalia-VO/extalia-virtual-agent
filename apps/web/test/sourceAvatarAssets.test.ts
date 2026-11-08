@@ -33,8 +33,8 @@ describe('Blender avatar asset resolution', () => {
   });
 
   it('resolves every saved catalog look to Blender bodies and detailed hair using same-group fallbacks', () => {
-    expect(hairOptions).toHaveLength(13);
-    expect(Object.keys(publicHairs)).toHaveLength(10);
+    expect(hairOptions).toHaveLength(20);
+    expect(Object.keys(publicHairs)).toHaveLength(18);
     for (const variant of ['office-classic', 'business-man', 'business-woman', 'female-casual'] as const) {
       for (const hair of hairOptions) {
         const urls = sourceAvatarUrls({ presentation: variant === 'business-woman' || variant === 'female-casual' ? 'feminine' : 'masculine', modelVariant: variant }, hair, publicBodies, publicHairs);
@@ -45,9 +45,9 @@ describe('Blender avatar asset resolution', () => {
       }
     }
     expect([...localHairStyles(publicHairs)!].sort()).toEqual(hairOptions.filter(option => option.detail).map(option => option.id).sort());
-    for (const style of ['curly', 'afro'] as const) {
-      expect(sourceAvatarUrls({ presentation: 'masculine' }, resolveCharacterHair(style), publicBodies, publicHairs)?.hair).toBe('public-short-fade-detail.glb');
-    }
+    // A style without a detailed model falls back within its group (curly to the afro, which now has its own).
+    expect(sourceAvatarUrls({ presentation: 'masculine' }, resolveCharacterHair('curly'), publicBodies, publicHairs)?.hair).toBe('public-afro-detail.glb');
+    expect(sourceAvatarUrls({ presentation: 'masculine' }, resolveCharacterHair('afro'), publicBodies, publicHairs)?.hair).toBe('public-afro-detail.glb');
     for (const style of ['wavy', 'long'] as const) {
       expect(sourceAvatarUrls({ presentation: 'feminine' }, resolveCharacterHair(style), publicBodies, publicHairs)?.hair).toBe('public-bob-detail.glb');
     }

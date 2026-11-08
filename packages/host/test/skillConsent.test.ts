@@ -79,7 +79,7 @@ describe('workspace skill consent (W0)', () => {
     const tools = createSkillTools(loaded.skills);
     const description = findTool(tools, 'skill_read').description;
     expect(description).not.toContain('team-rules');
-    expect(description).toContain(`- ${BUILTIN_SKILLS[0]!.name}: ${BUILTIN_SKILLS[0]!.description}`);
+    expect((await runTool(tools, 'skill_search', { query: BUILTIN_SKILLS[0]!.name })).output).toContain(BUILTIN_SKILLS[0]!.name);
     const builtinRead = await runTool(tools, 'skill_read', { name: BUILTIN_SKILLS[0]!.name });
     expect(builtinRead.output).toBe(`# Skill: ${BUILTIN_SKILLS[0]!.name}\n${BUILTIN_SKILLS[0]!.description}\n\n${BUILTIN_SKILLS[0]!.body}`);
     expect((await runTool(tools, 'skill_read', { name: 'team-rules' })).ok).toBe(false);
@@ -197,8 +197,8 @@ describe('workspace skill consent through the host API', () => {
     try {
       const listed = await runtime.host.builtinSkills!();
       const expected = [...BUILTIN_SKILLS].sort((a, b) => (a.name < b.name ? -1 : 1)).map(({ name, description, category, body }) => ({ name, description, category, body }));
-      expect(listed).toHaveLength(11);
-      expect(listed.map(skill => skill.name)).toEqual(['caveman', 'code-review', 'commit-changes', 'debug-issue', 'explain-codebase', 'memory-recall', 'plan-feature', 'refactor-safely', 'security-review', 'update-docs', 'write-tests']);
+      expect(listed).toHaveLength(BUILTIN_SKILLS.length);
+      expect(listed.map(skill => skill.name)).toEqual(['caveman', 'code-review', 'commit-changes', 'debug-issue', 'explain-codebase', 'memory-recall', 'orchestrator', 'plan-feature', 'refactor-safely', 'security-review', 'update-docs', 'write-tests']);
       expect(listed).toEqual(expected);
       expect(listed.every(skill => skill.category && skill.body)).toBe(true);
       expect(listed.every(skill => Object.keys(skill).sort().join(',') === 'body,category,description,name')).toBe(true);

@@ -1,5 +1,6 @@
-import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
-import { createPortal } from 'react-dom';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { autoUpdate, flip, FloatingPortal, offset, shift, size, useFloating } from '@floating-ui/react';
+import { useCombobox } from 'downshift';
 import { Icon } from './Icon';
 
 export interface ComboOption {
@@ -41,80 +42,80 @@ export function ComboBox({ id, label, value, options, onChange, onBlur, placehol
   describedBy?: string;
   maxLength?: number;
 }) {
-  const listId = useId();
-  const input = useRef<HTMLInputElement>(null);
-  const list = useRef<HTMLDivElement>(null);
-  const [open, setOpen] = useState(false);
   const [query, setQuery] = useState<string>();
-  const [active, setActive] = useState(0);
-  const [rect, setRect] = useState<{ left: number; top: number; width: number; maxHeight: number }>();
 
-  // While typing, filter by the text; when just opened, show everything with the current value highlighted.
+  // Opening shows the catalog; typing filters it without restricting the saved value.
   const { options: shown, custom } = useMemo(() => comboMatches(options, query ?? ''), [options, query]);
   const entries = useMemo(() => [...shown.map(option => ({ value: option.value, option })), ...(custom ? [{ value: custom, option: undefined }] : [])], [shown, custom]);
-
-  const place = () => {
-    // Align with the whole glass trigger, not just the text inside it.
-    const box = input.current?.parentElement?.getBoundingClientRect();
-    if (!box) return;
-    const below = window.innerHeight - box.bottom - 12;
-    const above = box.top - 12;
-    const up = below < 220 && above > below;
-    const maxHeight = Math.max(160, Math.min(340, up ? above : below));
-    setRect({ left: box.left, width: box.width, top: up ? box.top - 6 - maxHeight : box.bottom + 6, maxHeight });
-  };
-  useLayoutEffect(() => {
-    if (!open) return;
-    place();
-    window.addEventListener('resize', place);
-    window.addEventListener('scroll', place, true);
-    return () => { window.removeEventListener('resize', place); window.removeEventListener('scroll', place, true); };
-  }, [open]);
+  const selectedItem = useMemo(() => {
+    const option = options.find(option => option.value === value);
+    return option ? { value, option } : null;
+  }, [options, value]);
+  const {
+    isOpen, highlightedIndex, getLabelProps, getInputProps, getToggleButtonProps,
+    getMenuProps, getItemProps, openMenu, closeMenu, setHighlightedIndex,
+  } = useCombobox({
+    id,
+    inputId: id,
+    items: entries,
+    selectedItem,
+    inputValue: value,
+    itemToString: item => item?.value ?? '',
+    itemToKey: item => item?.value,
+    defaultHighlightedIndex: entries.length ? Math.max(0, entries.findIndex(entry => entry.value === value)) : -1,
+    stateReducer(state, { type, changes }) {
+      switch (type) {
+        // Free text is already saved while typing. Blur must never pick the highlighted suggestion,
+        // and a second Escape must not clear an arbitrary model ID.
+        case useCombobox.stateChangeTypes.InputBlur:
+        case useCombobox.stateChangeTypes.InputKeyDownEscape:
+          return { ...changes, inputValue: state.inputValue, selectedItem: state.selectedItem };
+        case useCombobox.stateChangeTypes.InputChange:
+          return { ...changes, highlightedIndex: 0 };
+        case useCombobox.stateChangeTypes.InputClick:
+          return state.isOpen ? state : { ...changes, isOpen: true };
+        default:
+          return changes;
+      }
+    },
+    onIsOpenChange({ isOpen, type }) {
+      if (!isOpen || type !== useCombobox.stateChangeTypes.InputChange) setQuery(undefined);
+    },
+    onSelectedItemChange({ selectedItem: item }) {
+      if (item) onChange(item.value);
+    },
+  });
+  // Async catalog refreshes can remove the active option without a keyboard action.
+  // Reconcile through Downshift so its next Enter/arrow action uses a valid index.
   useEffect(() => {
-    if (!open) return;
-    const close = (event: PointerEvent) => {
-      const target = event.target as Node;
-      if (!input.current?.parentElement?.contains(target) && !list.current?.contains(target)) setOpen(false);
-    };
-    document.addEventListener('pointerdown', close);
-    return () => document.removeEventListener('pointerdown', close);
-  }, [open]);
-  useEffect(() => {
-    list.current?.querySelector(`[data-index="${active}"]`)?.scrollIntoView({ block: 'nearest' });
-  }, [active, open]);
-
-  const show = () => {
-    setQuery(undefined);
-    const current = shown.findIndex(option => option.value === value);
-    setActive(Math.max(0, current));
-    setOpen(true);
-  };
-  const pick = (next: string) => {
-    onChange(next);
-    setQuery(undefined);
-    setOpen(false);
-    input.current?.focus();
-  };
-  const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
-    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-      event.preventDefault();
-      if (!open) { show(); return; }
-      const step = event.key === 'ArrowDown' ? 1 : -1;
-      setActive(index => (index + step + entries.length) % Math.max(1, entries.length));
-    } else if (event.key === 'Enter' && open && entries[active]) {
-      event.preventDefault();
-      pick(entries[active]!.value);
-    } else if (event.key === 'Escape' && open) {
-      event.preventDefault();
-      event.stopPropagation();
-      setOpen(false);
-    } else if (event.key === 'Tab') setOpen(false);
-  };
+    if (highlightedIndex >= entries.length) setHighlightedIndex(entries.length - 1);
+  }, [entries.length, highlightedIndex, setHighlightedIndex]);
+  const { refs: { setReference, setFloating }, floatingStyles } = useFloating({
+    open: isOpen,
+    placement: 'bottom-start',
+    strategy: 'fixed',
+    whileElementsMounted: autoUpdate,
+    middleware: [
+      offset(6),
+      flip({ padding: 12 }),
+      shift({ padding: 12 }),
+      size({
+        padding: 12,
+        apply({ rects, availableWidth, availableHeight, elements }) {
+          Object.assign(elements.floating.style, {
+            width: `${Math.max(0, Math.min(rects.reference.width, availableWidth))}px`,
+            maxHeight: `${Math.max(0, Math.min(340, availableHeight))}px`,
+          });
+        },
+      }),
+    ],
+  });
+  // Downshift supports an unmounted menu; Floating UI mounts it in a clipping-safe portal.
+  const menuProps = getMenuProps({ ref: setFloating, 'aria-label': label }, { suppressRefError: true });
 
   let lastGroup: string | undefined;
-  const menu = open && rect && createPortal(
-    <div ref={list} id={listId} role="listbox" aria-label={label} className="glass-select-menu combo-menu"
-      style={{ position: 'fixed', left: rect.left, top: rect.top, width: rect.width, maxHeight: rect.maxHeight }}>
+  const menu = isOpen && <FloatingPortal preserveTabOrder={false}>
+    <div {...menuProps} className="glass-select-menu combo-menu" style={floatingStyles}>
       {entries.length === 0 && <div className="combo-empty">{emptyLabel}</div>}
       {entries.map((entry, index) => {
         const group = entry.option?.group;
@@ -123,9 +124,8 @@ export function ComboBox({ id, label, value, options, onChange, onBlur, placehol
         const selected = entry.option ? entry.value === value : false;
         return <div key={`${entry.option ? 'o' : 'c'}:${entry.value}`} role="presentation">
           {heading && <div className="combo-group" role="presentation">{heading}</div>}
-          <div id={`${listId}-${index}`} role="option" aria-selected={selected} data-index={index}
-            className="glass-select-option combo-option" data-highlighted={index === active ? '' : undefined} data-state={selected ? 'checked' : undefined}
-            onPointerMove={() => setActive(index)} onPointerDown={event => event.preventDefault()} onClick={() => pick(entry.value)}>
+          <div {...getItemProps({ item: entry, index, onClick: () => document.getElementById(id)?.focus() })} data-index={index}
+            className="glass-select-option combo-option" data-highlighted={index === highlightedIndex ? '' : undefined} data-state={selected ? 'checked' : undefined}>
             <div className="glass-select-option-template">
               <span className="glass-select-option-icon" aria-hidden="true"><Icon name={entry.option ? 'spark' : 'edit'} /></span>
               <div className="glass-select-option-text">
@@ -140,24 +140,28 @@ export function ComboBox({ id, label, value, options, onChange, onBlur, placehol
           </div>
         </div>;
       })}
-    </div>,
-    document.body,
-  );
+    </div>
+  </FloatingPortal>;
 
   return (
     <div className="radix-select-wrapper combo">
-      <label htmlFor={id} className="glass-select-label">{label}</label>
+      <label {...getLabelProps()} className="glass-select-label">{label}</label>
       <div className="combo-row">
-        <div className="glass-select-trigger combo-trigger" data-state={open ? 'open' : 'closed'}>
-          <input ref={input} id={id} type="text" role="combobox" aria-expanded={open} aria-controls={listId} aria-autocomplete="list"
-            aria-activedescendant={open && entries[active] ? `${listId}-${active}` : undefined}
-            aria-invalid={invalid || undefined} aria-describedby={describedBy}
-            value={query ?? value} placeholder={placeholder} maxLength={maxLength} spellCheck={false} autoComplete="off"
-            onChange={event => { setQuery(event.target.value); onChange(event.target.value); setActive(0); if (!open) setOpen(true); }}
-            onFocus={() => { if (!open) show(); }} onClick={() => { if (!open) show(); }}
-            onBlur={() => { setQuery(undefined); onBlur?.(); }} onKeyDown={onKeyDown} />
-          <button type="button" className="combo-toggle" tabIndex={-1} aria-hidden="true"
-            onPointerDown={event => event.preventDefault()} onClick={() => { if (open) setOpen(false); else { show(); input.current?.focus(); } }}>
+        <div ref={setReference} className="glass-select-trigger combo-trigger" data-state={isOpen ? 'open' : 'closed'}>
+          <input {...getInputProps({
+            // Avoid a dangling ARIA reference in the render before reconciliation runs.
+            ...(!entries[highlightedIndex] ? { 'aria-activedescendant': undefined } : {}),
+            onChange: event => { setQuery(event.target.value); onChange(event.target.value); },
+            onFocus: () => { setQuery(undefined); openMenu(); },
+            onBlur: () => onBlur?.(),
+            onKeyDown: event => {
+              if (event.key === 'Tab') closeMenu();
+              if (event.key === 'Escape' && isOpen) event.stopPropagation();
+            },
+          })} type="text" aria-invalid={invalid || undefined} aria-describedby={describedBy}
+            placeholder={placeholder} maxLength={maxLength} spellCheck={false} />
+          <button {...getToggleButtonProps({ onPointerDown: event => event.preventDefault() })}
+            type="button" className="combo-toggle" aria-hidden="true">
             <Icon name="chevron" className="glass-select-chevron" />
           </button>
         </div>

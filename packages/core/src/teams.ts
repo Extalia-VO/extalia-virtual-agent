@@ -1,3 +1,4 @@
+import { modelSelectionGuidePrompt, type ModelSelectionGuide, type ModelPlanningBasis } from './modelGuide.js';
 import { generateFullName, MEMBER_GENDERS, type MemberGender } from './names.js';
 import { assertNoCredentialFields } from './privacy.js';
 import { decode, object, oneOf, optionalText, text, timestamp, type DecodeResult } from './validation.js';
@@ -19,8 +20,10 @@ export interface TeamMember {
   gender?: MemberGender;
   role: string;
   task?: string;
-  /** Preferred model first, then fallbacks; a subset of the team's `allowedModels`. Empty: the lead's model chain. */
+  /** Preferred model first, then fallbacks; a subset of the selected connection's approved models. Empty: that connection's default chain. */
   models: string[];
+  /** Saved additional connection approved by the user; absent: the lead connection. */
+  connectionId?: string;
   /** Persona and working principles, up to 1000 characters. */
   soul?: string;
   /** `write` members may edit files inside `scope` (and run commands as the workspace allows); default `read`. */
@@ -34,23 +37,55 @@ export interface TeamMember {
 export type MemberAccess = 'read' | 'write';
 export const MEMBER_ACCESS: readonly MemberAccess[] = ['read', 'write'];
 
+/** User-approved model access on an additional saved connection. */
+export interface TeamConnection {
+  connectionId: string;
+  allowedModels: string[];
+}
+
 export interface AgentTeam {
   enabled: boolean;
-  /** Models the team may use, ordered by priority (also the lead's fallback order). */
+  /** Models approved on the lead connection, ordered by priority (also the lead's fallback order). */
   allowedModels: string[];
   members: TeamMember[];
+  /** Additional saved connections approved by the user. Absent: legacy lead-only policy. */
+  connections?: TeamConnection[];
   /** What the team was planned for. */
   goal?: string;
+  /** Full imported goal retained alongside its short editor reference. */
+  goalDocument?: GoalDocument;
   /** Execution rules every member follows (for example from a prompt's team spec). */
   rules?: string[];
   updatedAt?: string;
 }
 
-/** v0.0.39: up to 20 members (was 8). */
-export const MAX_TEAM_MEMBERS = 20;
-export const MAX_TEAM_MODELS = 20;
+/** Saved roster size; active Native workers have a separate concurrency bound. */
+export const MAX_TEAM_MEMBERS = 32;
+export const MAX_TEAM_MODELS = 32;
+export const MAX_NATIVE_TEAM_CONCURRENT = 8;
+export const MAX_TEAM_CONNECTIONS = 8;
 export const MAX_MEMBER_MODELS = 8;
 export const MAX_TEAM_GOAL = 4000;
+export const MAX_GOAL_DOCUMENT_CHARS = 200_000;
+export const MAX_GOAL_DOCUMENT_BYTES = 1024 * 1024;
+export interface GoalDocument { name: string; text: string }
+
+function utf8Bytes(value: string): number {
+  let bytes = 0;
+  for (const character of value) {
+    const code = character.codePointAt(0)!;
+    bytes += code < 0x80 ? 1 : code < 0x800 ? 2 : code < 0x10000 ? 3 : 4;
+  }
+  return bytes;
+}
+
+function decodeGoalDocument(raw: unknown): GoalDocument {
+  const value = object(raw, 'goalDocument');
+  const name = text(value.name, 'goalDocument.name', { singleLine: true, max: 120 }).trim();
+  const documentText = text(value.text, 'goalDocument.text', { max: MAX_GOAL_DOCUMENT_CHARS });
+  if (utf8Bytes(documentText) > MAX_GOAL_DOCUMENT_BYTES) throw new Error('goalDocument.text: larger than 1 MiB.');
+  return { name, text: documentText };
+}
 export const MAX_MEMBER_TASK = 1000;
 export const MAX_MEMBER_NAME = 40;
 export const MAX_MEMBER_ROLE = 60;
@@ -107,7 +142,25 @@ function pathList(raw: unknown, field: string): string[] | undefined {
   return paths;
 }
 
-function decodeMember(raw: unknown, index: number, allowed: ReadonlySet<string>): TeamMember {
+function connectionList(raw: unknown): TeamConnection[] | undefined {
+  if (raw === undefined) return undefined;
+  if (!Array.isArray(raw)) throw new Error('connections: expected a list.');
+  if (raw.length > MAX_TEAM_CONNECTIONS) throw new Error(`connections: at most ${MAX_TEAM_CONNECTIONS} connections.`);
+  const seen = new Set<string>();
+  return raw.map((entry, index) => {
+    const field = `connections[${index}]`;
+    const value = object(entry, field);
+    const connectionId = text(value.connectionId, `${field}.connectionId`, { singleLine: true, max: 64 });
+    if (!TEAM_MEMBER_ID_PATTERN.test(connectionId)) throw new Error(`${field}.connectionId: use letters, digits, - and _.`);
+    if (seen.has(connectionId)) throw new Error('connections: duplicate connection id.');
+    seen.add(connectionId);
+    const allowedModels = modelList(value.allowedModels, `${field}.allowedModels`, MAX_TEAM_MODELS);
+    if (!allowedModels.length) throw new Error(`${field}.allowedModels: select at least one model.`);
+    return { connectionId, allowedModels };
+  });
+}
+
+function decodeMember(raw: unknown, index: number, allowed: ReadonlySet<string>, connections: readonly TeamConnection[]): TeamMember {
   const field = `members[${index}]`;
   const value = object(raw, field);
   const id = text(value.id, `${field}.id`, { singleLine: true, max: 64 });
@@ -115,15 +168,19 @@ function decodeMember(raw: unknown, index: number, allowed: ReadonlySet<string>)
   const name = text(value.name, `${field}.name`, { singleLine: true, max: MAX_MEMBER_NAME }).trim();
   const role = text(value.role, `${field}.role`, { singleLine: true, max: MAX_MEMBER_ROLE }).trim();
   const task = optionalText(value.task, `${field}.task`, { max: MAX_MEMBER_TASK, allowEmpty: true })?.trim();
+  const connectionId = value.connectionId === undefined ? undefined : text(value.connectionId, `${field}.connectionId`, { singleLine: true, max: 64 });
+  const grant = connectionId === undefined ? undefined : connections.find(connection => connection.connectionId === connectionId);
+  if (connectionId !== undefined && !grant) throw new Error(`${field}.connectionId: not an approved team connection.`);
+  const memberAllowed = grant ? new Set(grant.allowedModels) : allowed;
   const models = modelList(value.models, `${field}.models`, MAX_MEMBER_MODELS);
-  for (const model of models) if (!allowed.has(model)) throw new Error(`${field}.models: "${model}" is not one of the team's allowed models.`);
+  for (const model of models) if (!memberAllowed.has(model)) throw new Error(`${field}.models: "${model}" is not one of the team's allowed models.`);
   const gender = value.gender === undefined ? undefined : oneOf(value.gender, MEMBER_GENDERS, `${field}.gender`);
   const soul = optionalText(value.soul, `${field}.soul`, { max: MAX_MEMBER_SOUL, allowEmpty: true })?.trim();
   const access = value.access === undefined ? undefined : oneOf(value.access, MEMBER_ACCESS, `${field}.access`);
   const scope = pathList(value.scope, `${field}.scope`);
   const forbidden = pathList(value.forbidden, `${field}.forbidden`);
   return {
-    id, name, ...(gender ? { gender } : {}), role, ...(task ? { task } : {}), models,
+    id, name, ...(gender ? { gender } : {}), role, ...(task ? { task } : {}), models, ...(connectionId ? { connectionId } : {}),
     ...(soul ? { soul } : {}), ...(access ? { access } : {}), ...(scope?.length ? { scope } : {}), ...(forbidden?.length ? { forbidden } : {}),
   };
 }
@@ -138,7 +195,8 @@ export function decodeAgentTeam(raw: unknown): DecodeResult<AgentTeam> {
     if (!Array.isArray(value.members)) throw new Error('members: expected a list.');
     if (value.members.length > MAX_TEAM_MEMBERS) throw new Error(`members: at most ${MAX_TEAM_MEMBERS} members.`);
     const allowed = new Set(allowedModels);
-    const members = value.members.map((item, index) => decodeMember(item, index, allowed));
+    const connections = connectionList(value.connections);
+    const members = value.members.map((item, index) => decodeMember(item, index, allowed, connections ?? []));
     const ids = new Set<string>(), names = new Set<string>();
     for (const member of members) {
       if (ids.has(member.id)) throw new Error(`members: the id "${member.id}" is used twice.`);
@@ -146,9 +204,10 @@ export function decodeAgentTeam(raw: unknown): DecodeResult<AgentTeam> {
       if (names.has(key)) throw new Error(`members: the name "${member.name}" is used twice.`);
       ids.add(member.id); names.add(key);
     }
-    const team: AgentTeam = { enabled: value.enabled, allowedModels, members };
+    const team: AgentTeam = { enabled: value.enabled, allowedModels, members, ...(connections ? { connections } : {}) };
     const goal = optionalText(value.goal, 'goal', { max: MAX_TEAM_GOAL, allowEmpty: true })?.trim();
     if (goal) team.goal = goal;
+    if (value.goalDocument !== undefined) team.goalDocument = decodeGoalDocument(value.goalDocument);
     if (value.rules !== undefined) {
       if (!Array.isArray(value.rules)) throw new Error('rules: expected a list.');
       if (value.rules.length > MAX_TEAM_RULES) throw new Error(`rules: at most ${MAX_TEAM_RULES} rules.`);
@@ -245,11 +304,15 @@ export function rotatedModels(models: readonly string[], index: number): string[
 export interface TeamPlanRequest {
   /** What the team is for; empty: a general-purpose team for the workspace (see `context`). */
   goal: string;
+  /** Full imported goal; the short goal remains an editor label. */
+  goalDocument?: GoalDocument;
   count: number;
   /** Models the user ticked, by priority. Empty: the plan picks from `candidateModels`. */
   allowedModels: string[];
   /** Current members: kept (id, name, role, task) for the first `count` places when re-planning. */
   members?: TeamMember[];
+  /** User-approved grants; planning may preserve these, never create or expand them. */
+  connections?: TeamConnection[];
   /**
    * Set by the host, never by a client: the workspace's models the plan may choose from
    * when no model is ticked (see `pickTeamModels`).
@@ -260,6 +323,8 @@ export interface TeamPlanRequest {
 }
 
 export interface TeamPlanContext {
+  /** Fresh host-owned profile guidance, never accepted from the client request. */
+  modelSelectionGuide?: ModelSelectionGuide | null;
   workspace?: string;
   /** Titles of the workspace's recent sessions, newest first. */
   recentTitles?: string[];
@@ -268,6 +333,7 @@ export interface TeamPlanContext {
 export interface TeamPlan {
   members: TeamMember[];
   source: 'model' | 'heuristic';
+  planningBasis?: ModelPlanningBasis;
   note?: string;
   /**
    * When the request ticked no model: the models the plan used, in priority order
@@ -290,7 +356,7 @@ interface RoleTemplate {
   soul: readonly [string, string, string, string];
 }
 
-/** v0.0.39: twenty roles, so a team of up to `MAX_TEAM_MEMBERS` gets distinct ones. */
+/** Base specializations; larger heuristic teams reuse templates with distinct numbered roles. */
 const HEURISTIC_ROLES: readonly RoleTemplate[] = [
   { role: 'Researcher', strength: 'standard', task: goal => `Find the files, APIs and constraints relevant to: ${goal}`,
     soul: ['reads the code and docs before forming an opinion and cites where each fact comes from', 'the system is a map of sources, owners and constraints', 'accuracy and complete context first, speed second', 'guesses, unverified claims and summaries without sources'] },
@@ -521,7 +587,7 @@ export function planTeamHeuristic(request: TeamPlanRequest, newId: () => string 
   const identities = generateMemberIdentities(count - kept.length, [...taken, ...kept.map(member => member.name)], goal);
   const members: TeamMember[] = kept.map(member => ({
     ...keptFields(member), role: member.role, ...(member.task ? { task: member.task } : {}),
-    models: [...new Set(member.models)].filter(model => pool.includes(model)).slice(0, MAX_MEMBER_MODELS),
+    models: request.connections !== undefined || member.connectionId ? [...member.models] : [...new Set(member.models)].filter(model => pool.includes(model)).slice(0, MAX_MEMBER_MODELS),
     soul: member.soul?.trim() || roleSoul(member.role, goal),
   }));
   for (let index = kept.length; index < count; index++) {
@@ -534,7 +600,7 @@ export function planTeamHeuristic(request: TeamPlanRequest, newId: () => string 
     });
   }
   const usage = modelUsage(members);
-  return members.map(member => member.models.length ? member : { ...member, models: suitedModels(member.role, pool, usage) });
+  return members.map((member, index) => member.models.length || (index < kept.length && (request.connections !== undefined || member.connectionId)) ? member : { ...member, models: suitedModels(member.role, pool, usage) });
 }
 
 /** The short JSON-only prompt for a model that splits a goal into members, their souls and their models. */
@@ -543,8 +609,8 @@ export function teamPlanPrompt(request: TeamPlanRequest): { system: string; user
   const pool = modelPool(request);
   const listed = pool.models.map((model, index) => `${index + 1}. ${model} (${modelStrength(model)})`).join('\n');
   const models = pool.choosing
-    ? `No model was chosen by the user. The team may use these models of the workspace (strength in brackets):\n${listed}`
-    : `Allowed models in the user's priority order (strength in brackets):\n${listed || '(none: every member uses the lead model)'}`;
+    ? `No model was chosen by the user. The team may use these models of the workspace (brackets are rough name heuristics only):\n${listed}`
+    : `Allowed models in the user's priority order (brackets are rough name heuristics only):\n${listed || '(none: every member uses the lead model)'}`;
   const kept = (request.members ?? []).slice(0, count).map((member, index) => `${index + 1}. ${member.role}${member.task ? `: ${member.task.replace(/\s+/g, ' ').slice(0, 200)}` : ''}`);
   const goal = shortGoal(request.goal);
   const recent = (request.context?.recentTitles ?? []).map(title => title.replace(/\s+/g, ' ').trim().slice(0, 80)).filter(Boolean).slice(0, 5);
@@ -559,8 +625,11 @@ export function teamPlanPrompt(request: TeamPlanRequest): { system: string; user
     system: 'You split software work into a team of helper agents and give each one a persona. Reply with one compact JSON object only, no prose and no code fences.',
     user: [
       ...(goal ? [`Goal: ${goal}`] : context),
+      ...(request.goalDocument ? [`The user attached the complete goal in ${request.goalDocument.name}. Treat its full contents below as the authoritative current request; also apply any additional instructions in the Goal line.\n\n${request.goalDocument.text}`] : []),
       `Team size: exactly ${count} members.`,
       models,
+      modelSelectionGuidePrompt(request.context?.modelSelectionGuide),
+      ...(request.connections !== undefined ? ['Connection access is fixed by the user. Never create, expand or select connection grants. Existing members keep their connection and ordered models exactly; only refine their role, task and soul.'] : []),
       ...(kept.length ? [`Current roles to keep or refine, in order:\n${kept.join('\n')}`] : []),
       `Per member: a distinct role (one or two words), a one-sentence task, and a soul: ${brief ? 'one or two short sentences' : 'two or three sentences'} on the member's working principles, mental model, priorities and what it dislikes, derived from the goal and its role.`,
       ...(pool.models.length ? [
@@ -617,14 +686,16 @@ export function parseTeamPlanResult(reply: string, request: TeamPlanRequest, new
     const soul = typeof entry.soul === 'string' && entry.soul.trim() ? clip(entry.soul, MAX_MEMBER_SOUL) : roleSoul(role, goal);
     const why = typeof entry.why === 'string' && entry.why.trim() ? clip(entry.why, MAX_MODEL_REASON) : undefined;
     const listed = Array.isArray(entry.models) ? entry.models : typeof entry.model === 'string' ? [entry.model] : [];
-    const models = [...new Set(listed.filter((model): model is string => typeof model === 'string').map(model => model.trim()))]
+    const previous = kept[index];
+    const preserved = previous && (request.connections !== undefined || previous.connectionId);
+    const models = preserved ? [...previous.models] : [...new Set(listed.filter((model): model is string => typeof model === 'string').map(model => model.trim()))]
       .filter(model => pool.models.includes(model)).slice(0, MAX_MEMBER_MODELS);
-    if (pool.models.length && !models.length) throw new Error(`${field}.models: no allowed model.`);
+    if (!preserved && pool.models.length && !models.length) throw new Error(`${field}.models: no allowed model.`);
     return { role, task, soul, why, models };
   });
   let allowed = request.allowedModels;
   if (pool.choosing) {
-    const used = planModelOrder(entries);
+    const used = planModelOrder(entries.filter((_, index) => !kept[index]?.connectionId));
     // The model's own priority order when it lists exactly the models it used; else the order of first use.
     const listed = Array.isArray(value.models) ? [...new Set(value.models.filter((model): model is string => typeof model === 'string').map(model => model.trim()))] : [];
     allowed = listed.length === used.length && used.every(model => listed.includes(model)) ? listed : used;
@@ -639,7 +710,7 @@ export function parseTeamPlanResult(reply: string, request: TeamPlanRequest, new
     if (why) reasons[member.id] = why;
     return member;
   });
-  const checked = decodeAgentTeam({ enabled: true, allowedModels: allowed, members });
+  const checked = decodeAgentTeam({ enabled: true, allowedModels: allowed, members, ...(request.connections !== undefined ? { connections: request.connections } : {}) });
   if (!checked.ok) throw new Error(checked.errors.join(' '));
   return {
     members: checked.value.members, ...(pool.choosing ? { allowedModels: [...allowed] } : {}),

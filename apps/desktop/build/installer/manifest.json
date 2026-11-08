@@ -1,0 +1,38 @@
+{
+  "schema": "extalia.installer-art.v1",
+  "language": "en",
+  "copySha256": "312833f6bfbf200db7924881fde3fcd7746e24f24799796fb81b6b166784c37f",
+  "brandSha256": "e5e1d8412088ca464090e4d48c6285bf1ba36e4185c9f886343248a21a8490bb",
+  "photosSha256": "f32485d61307eeb35998450e14edcb8b5605d8d964ae56b66a3fc41269202718",
+  "sourceSha256": "17c9a6bb39868b3eca9f4b28b676f9da5daa9ff5fd7525e18e005283dc91ba6e",
+  "assets": [
+    {
+      "name": "dmg-background.png",
+      "width": 900,
+      "height": 620,
+      "sha256": "f3d7ffdd9c793977b9706f0aa635a3f22205e2e8e906df664d987e615bd1eb78",
+      "svgSha256": "3c6d3d7df1109a2d699f736fd2b0817b1d525a7b057414f04801292d571b6c40"
+    },
+    {
+      "name": "dmg-background@2x.png",
+      "width": 1800,
+      "height": 1240,
+      "sha256": "4fdf22e08372c5611178725c8ff2f228be6ed36a8aa58a83e629fc8b039ba7bc",
+      "svgSha256": "c01840a90feae017d042600cf2ca843e9f9d1ee0b55b8b7dfe828d1c64139511"
+    },
+    {
+      "name": "windows-sidebar.bmp",
+      "width": 164,
+      "height": 314,
+      "sha256": "d8c82f8f52dca8dec874d03db289f5f1e7eee8029da59375b59cd262f1921f0a",
+      "svgSha256": "0c78e74005a3eabbcaaf15554b92f35b98b45ff09799a812fe09b947cfe54837"
+    },
+    {
+      "name": "windows-header.bmp",
+      "width": 150,
+      "height": 57,
+      "sha256": "024683ce176bd4ad199d06c5bd72547a14a389c3a2db4ce34a3dab2c4f248a48",
+      "svgSha256": "08160cf61cad76b55b1aa9285568aed192b61cc3f6a17359b44b74a5790e8918"
+    }
+  ]
+}

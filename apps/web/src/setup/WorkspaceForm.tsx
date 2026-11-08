@@ -1,4 +1,4 @@
-import { RUNTIME_IDS, type PermissionMode } from '@extalia/core';
+import { MAX_WORKSPACE_FOLDERS, RUNTIME_IDS, WORKSPACE_CROSS_ACCESS, type PermissionMode } from '@extalia/core';
 import type { AgentHostApi, ConnectionView, FileSystemCapability, HermesModelCatalog, RuntimeInfo } from '@extalia/platform';
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { errorMessage } from '../host/remote';
@@ -12,7 +12,7 @@ import { groupedModelOptions } from './modelOptions';
 import { bypassesHermesApprovals, hermesPermissions } from './permissions';
 import { availableHermes } from './useRuntimes';
 import { useGateSuggestion } from './gateSuggestion';
-import { validateWorkspace, type WorkspaceDraft, type WorkspaceField } from './validation';
+import { validWorkspaceFolders, validateWorkspace, type WorkspaceDraft, type WorkspaceField } from './validation';
 import { DirectoryBrowser } from './DirectoryBrowser';
 import { createWorkspaceFolderRequests } from './workspaceFolderRequest';
 
@@ -45,12 +45,33 @@ export function WorkspaceForm({ t, agents, picker, draft, onChange, connections,
   const [touched, setTouched] = useState<ReadonlySet<WorkspaceField>>(new Set());
   const [checkingFolder, setCheckingFolder] = useState<{ path: string; workspaceId?: string } | null>(null);
   const [folderFailure, setFolderFailure] = useState<{ path: string; workspaceId?: string; message: string } | null>(null);
-  const [browsing, setBrowsing] = useState(false);
+  const folderContext = `${draft.id ?? ''}:${draft.runtimeId}`;
+  const [browserState, setBrowserState] = useState<{ context: string; kind: 'primary' | 'additional' } | null>(null);
+  const browsing = browserState?.context === folderContext ? browserState.kind : null;
+  const setBrowsing = (kind: 'primary' | 'additional' | null) => setBrowserState(kind ? { context: folderContext, kind } : null);
+  const emptyAdditional = { context: folderContext, input: '', checking: false, error: null as string | null };
+  const [additionalState, setAdditionalState] = useState(emptyAdditional);
+  if (additionalState.context !== folderContext) {
+    setAdditionalState(emptyAdditional);
+    setBrowserState(null);
+  }
+  const additional = additionalState.context === folderContext ? additionalState : emptyAdditional;
+  const { input: additionalFolderInput, checking: checkingAdditional, error: additionalFolderError } = additional;
+  const updateAdditional = (patch: Partial<typeof emptyAdditional>) => setAdditionalState(previous => ({ ...(previous.context === folderContext ? previous : emptyAdditional), ...patch }));
+  const setAdditionalFolderInput = (input: string) => updateAdditional({ input });
+  const setCheckingAdditional = (checking: boolean) => updateAdditional({ checking });
+  const setAdditionalFolderError = (error: string | null) => updateAdditional({ error });
+  const additionalRequest = useRef(0);
   const [folderRequests] = useState(() => createWorkspaceFolderRequests(draft));
   useLayoutEffect(() => {
     folderRequests.sync(draft);
   }, [draft, folderRequests]);
   useLayoutEffect(() => () => folderRequests.invalidate(), [folderRequests]);
+  useLayoutEffect(() => {
+    const invalidateAdditional = () => { additionalRequest.current++; };
+    invalidateAdditional();
+    return invalidateAdditional;
+  }, [draft.id, draft.runtimeId]);
   const checking = Boolean(checkingFolder && checkingFolder.workspaceId === draft.id && checkingFolder.path === draft.folderInput && !draft.folder);
   const folderError = folderFailure && folderFailure.workspaceId === draft.id && folderFailure.path === draft.folderInput ? folderFailure.message : null;
   const setChecking = (value: boolean) => {
@@ -103,14 +124,53 @@ export function WorkspaceForm({ t, agents, picker, draft, onChange, connections,
   async function choose() {
     invalidateFolder();
     const request = folderRequests.begin();
-    if (!picker) { setBrowsing(true); return; }
+    if (!picker) { setBrowsing('primary'); return; }
     try {
       const selection = await picker.selectDirectory();
       if (!folderRequests.current(request)) return;
       if (selection?.path) await check(selection.path);
-      else if (selection) setBrowsing(true);
+      else if (selection) setBrowsing('primary');
     } catch (error) {
       if (folderRequests.current(request)) setFolderError(errorMessage(error));
+    }
+  }
+
+  async function checkAdditional(path: string, request = ++additionalRequest.current) {
+    setCheckingAdditional(true);
+    setAdditionalFolderError(null);
+    try {
+      const result = await agents.checkFolder(path.trim());
+      if (request !== additionalRequest.current) return;
+      const current = folderRequests.draft();
+      if (!result.ok || !result.path) { setAdditionalFolderError(result.error ?? t.workspace.errors.folderRequired); return; }
+      const locations = [...current.additionalProjectLocations, result.path];
+      if (!validWorkspaceFolders(current.folder?.path ?? current.folderInput, locations)) {
+        setAdditionalFolderError(t.workspace.errors.additionalFoldersInvalid);
+        return;
+      }
+      update({ additionalProjectLocations: locations });
+      setAdditionalFolderInput('');
+    } catch (error) {
+      if (request === additionalRequest.current) setAdditionalFolderError(errorMessage(error));
+    } finally {
+      if (request === additionalRequest.current) setCheckingAdditional(false);
+    }
+  }
+
+  async function chooseAdditional() {
+    const request = ++additionalRequest.current;
+    setAdditionalFolderError(null);
+    if (!picker) { setBrowsing('additional'); return; }
+    setCheckingAdditional(true);
+    try {
+      const selection = await picker.selectDirectory();
+      if (request !== additionalRequest.current) return;
+      if (selection?.path) await checkAdditional(selection.path, request);
+      else if (selection) setBrowsing('additional');
+    } catch (error) {
+      if (request === additionalRequest.current) setAdditionalFolderError(errorMessage(error));
+    } finally {
+      if (request === additionalRequest.current) setCheckingAdditional(false);
     }
   }
 
@@ -195,7 +255,29 @@ export function WorkspaceForm({ t, agents, picker, draft, onChange, connections,
         </small>
       </div>
       {browsing && <DirectoryBrowser t={t} agents={agents} {...(draft.folder ? { startPath: draft.folder.path } : {})}
-        onClose={() => { invalidateFolder(); setBrowsing(false); }} onSelect={selected => { setBrowsing(false); void check(selected); }} />}
+        onClose={() => { invalidateFolder(); additionalRequest.current++; setBrowsing(null); }}
+        onSelect={selected => { const additional = browsing === 'additional'; setBrowsing(null); if (additional) void checkAdditional(selected); else void check(selected); }} />}
+
+      {!isHermes && <div className="form-stack tight" role="group" aria-labelledby={`${id}-additional-heading`}>
+        <h3 className="form-heading" id={`${id}-additional-heading`}>{t.workspace.additionalFolders.heading}</h3>
+        <p className="muted small">{t.workspace.additionalFolders.lead}</p>
+        {draft.additionalProjectLocations.map(path => <div className="input-row" key={path}>
+          <code className="folder-path">{path}</code>
+          <button type="button" className="button small" aria-label={t.workspace.additionalFolders.remove(path)} onClick={() => update({ additionalProjectLocations: draft.additionalProjectLocations.filter(item => item !== path) })}><Icon name="trash" />{t.common.delete}</button>
+        </div>)}
+        <button type="button" className="button" disabled={checkingAdditional || draft.additionalProjectLocations.length >= MAX_WORKSPACE_FOLDERS - 1} onClick={() => void chooseAdditional()}><Icon name="folder" />{t.workspace.additionalFolders.add}</button>
+        {!picker && <div className="field">
+          <label htmlFor={`${id}-additional-path`}>{t.workspace.additionalFolders.path}</label>
+          <div className="input-row">
+            <input id={`${id}-additional-path`} type="text" value={additionalFolderInput} spellCheck={false} autoComplete="off" aria-describedby={`${id}-additional-status`}
+              onChange={event => { additionalRequest.current++; setCheckingAdditional(false); setAdditionalFolderError(null); setAdditionalFolderInput(event.target.value); }}
+              onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); if (!checkingAdditional && additionalFolderInput.trim() && draft.additionalProjectLocations.length < MAX_WORKSPACE_FOLDERS - 1) void checkAdditional(additionalFolderInput); } }} />
+            <button type="button" className="button" disabled={checkingAdditional || !additionalFolderInput.trim() || draft.additionalProjectLocations.length >= MAX_WORKSPACE_FOLDERS - 1}
+              onClick={() => void checkAdditional(additionalFolderInput)}>{checkingAdditional ? t.workspace.checking : t.workspace.additionalFolders.check}</button>
+          </div>
+        </div>}
+        <small id={`${id}-additional-status`} role="status" className="field-error">{additionalFolderError ?? errorFor('additionalFolders')}</small>
+      </div>}
 
       <div className="form-grid">
         <div className="field">
@@ -226,6 +308,7 @@ export function WorkspaceForm({ t, agents, picker, draft, onChange, connections,
           runtimesReady={runtimesReady} rechecking={rechecking} onRecheck={onRecheckRuntimes ? recheckRuntimes : undefined}
           onChange={runtimeId => update({ runtimeId, ...(runtimeId === 'hermes' ? { permissions: hermesPermissions(bypassesHermesApprovals(draft.permissions)) } : {}) })} />
       )}
+      {draft.id && <p className="note small">{t.workspace.runtimeChangeHint}</p>}
       {isHermes && (
         <div className="form-stack tight">
           <div className="form-grid">
@@ -275,6 +358,14 @@ export function WorkspaceForm({ t, agents, picker, draft, onChange, connections,
             <div className="form-grid">
               {permission('fileWrite')}
               {permission('commands')}
+            </div>
+            <div className="field">
+              <Select id={`${id}-cross-access`} label={t.workspace.crossAccess.heading} value={draft.crossWorkspaceAccess}
+                options={WORKSPACE_CROSS_ACCESS.map(value => ({ value, label: t.workspace.crossAccess.modes[value], description: t.workspace.crossAccess.descriptions[value] }))}
+                onChange={crossWorkspaceAccess => update({ crossWorkspaceAccess })} />
+              <p className="muted small">{t.workspace.crossAccess.lead}</p>
+              <p className="note small" aria-live="polite">{t.workspace.crossAccess.descriptions[draft.crossWorkspaceAccess]}</p>
+              <p className="note small">{t.workspace.crossAccess.detail}</p>
             </div>
           </>
         )}

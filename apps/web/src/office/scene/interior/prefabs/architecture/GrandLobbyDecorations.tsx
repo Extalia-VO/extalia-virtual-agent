@@ -4,6 +4,7 @@ import { useSolarEnvironment } from "../../../Environment";
 import { FixtureSpotLight } from "./FixtureSpotLight";
 import { UNDER_STAIR_SOFFIT_Y, ceilingPendantDrop } from "./ceilingMounting";
 import { useStructuralCeiling } from "./StructuralCeilingContext";
+import { GREENERY_POOLS, GreeneryModel } from "../../../greenery";
 
 /**
  * Grand Monumental Halo Chandelier (Lampu Gantung Cincin Arsitektural Megah).
@@ -364,8 +365,11 @@ export function MonumentalPlanter({
   scale?: number;
   potColor?: string;
 }) {
+  // The Kentia palm in a black pot from the greenery set; the procedural planter until it loads.
+  const palm = GREENERY_POOLS.indoorPlant.includes("plant-marble-pot") ? "plant-marble-pot" : undefined;
   return (
     <group position={position} scale={scale}>
+      <GreeneryModel id={palm} height={2.05} rotationY={0}>
       {/* Heavy fluted cylindrical pot */}
       <mesh castShadow position={[0, 0.5, 0]}>
         <cylinderGeometry args={[0.42, 0.35, 1.0, 24]} />
@@ -412,6 +416,7 @@ export function MonumentalPlanter({
           </group>
         );
       })}
+      </GreeneryModel>
     </group>
   );
 }

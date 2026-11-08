@@ -1,4 +1,5 @@
 import { ProviderError, type ModelProvider, type ModelRequest, type ModelResult } from './model.js';
+import { RequestBudgetError } from './requestBudget.js';
 
 /**
  * Model fallback chains: a subagent team member (or the lead of a team) lists
@@ -55,11 +56,16 @@ export function createFallbackProvider(chain: readonly ModelChainEntry[], option
     get current() { return chain[index]!.model; },
     listModels: signal => providerAt(0).listModels(signal),
     async complete(request: ModelRequest): Promise<ModelResult> {
+      let priorRequestMayHaveRun = false;
       for (;;) {
         try {
           return await providerAt(index).complete(request);
         } catch (error) {
+          if (error instanceof RequestBudgetError && priorRequestMayHaveRun && !error.priorRequestMayHaveRun) {
+            throw new RequestBudgetError(error.reason, error.pressure, true);
+          }
           if (request.signal?.aborted || !isFallbackError(error)) throw error;
+          priorRequestMayHaveRun = true;
           if (index >= chain.length - 1) {
             if (chain.length === 1) throw error;
             throw new ProviderError(`${error.message} Every model in the order was tried (${chain.map(entry => entry.model).join(', ')}).`, error.status, error.retryable);

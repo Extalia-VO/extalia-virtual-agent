@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { PROVIDER_PRESETS, checkEndpoint, decodeConnection, defaultOrchestration, keepsHistory, presetById, providerHeaders, resolveFeatures, tierModel } from '../src/index.js';
+import { PROVIDER_PRESETS, checkEndpoint, decodeConnection, defaultOrchestration, keepsHistory, presetById, providerHeaders, resolveFeatures, supportsPromptCache, tierModel } from '../src/index.js';
 
 const T0 = '2026-01-31T10:00:00.000Z';
 const base = {
@@ -39,6 +39,42 @@ describe('connections', () => {
     expect(resolveFeatures({ preset: 'omniroute', features: { memory: 'extalia', skills: 'provider' } })).toEqual({ extaliaMemory: true, extaliaSkills: false, suppressProviderMemory: true });
     expect(providerHeaders({ preset: 'omniroute', features: { memory: 'extalia', skills: 'provider' } })).toEqual({ 'x-omniroute-no-memory': 'true' });
     expect(providerHeaders({ preset: 'omniroute', features: { memory: 'provider', skills: 'provider' } })).toEqual({});
+  });
+
+  it('keeps prompt caching off for legacy connections and validates explicit opt-in', () => {
+    const direct = { ...base, preset: 'anthropic', api: 'anthropic-messages', baseUrl: 'https://api.anthropic.com' };
+    for (const value of [undefined, false, true]) {
+      const result = decodeConnection({ ...direct, features: { ...base.features, promptCache: value } });
+      expect(result.ok && result.value.features).toEqual({ ...base.features, ...(value === true ? { promptCache: true } : {}) });
+    }
+    for (const value of ['true', 1, null, {}]) expect(decodeConnection({ ...direct, features: { ...base.features, promptCache: value } }).ok).toBe(false);
+    const unsupported = decodeConnection({ ...base, features: { ...base.features, promptCache: true } });
+    expect(unsupported.ok && unsupported.value.features).toEqual(base.features);
+  });
+
+  it('limits prompt caching to the official Anthropic preset, API and secure endpoint', () => {
+    const direct = { preset: 'anthropic' as const, api: 'anthropic-messages' as const, baseUrl: 'https://api.anthropic.com' };
+    for (const baseUrl of ['https://api.anthropic.com', 'https://api.anthropic.com/', 'https://api.anthropic.com/v1/', 'https://api.anthropic.com:443']) {
+      expect(supportsPromptCache({ ...direct, baseUrl })).toBe(true);
+    }
+    for (const baseUrl of ['not a URL', 'http://api.anthropic.com', 'https://api.anthropic.com.example.com', 'https://api.example.com', 'https://api.anthropic.com:444', 'https://api.anthropic.com/proxy', 'https://api.anthropic.com?x=1', 'https://api.anthropic.com/#x']) {
+      expect(supportsPromptCache({ ...direct, baseUrl })).toBe(false);
+    }
+    const withUser = ['https://example', 'api.anthropic.com'].join('@');
+    expect(supportsPromptCache({ ...direct, baseUrl: withUser })).toBe(false);
+    expect(supportsPromptCache({ ...direct, preset: 'custom' })).toBe(false);
+    expect(supportsPromptCache({ ...direct, api: 'openai-chat' })).toBe(false);
+  });
+
+  it('preserves only a valid explicit estimated input ceiling and leaves old connections unset', () => {
+    const legacy = decodeConnection(base);
+    expect(legacy.ok && legacy.value).not.toHaveProperty('inputTokenLimit');
+    for (const inputTokenLimit of [1_024, 10_000, 2_000_000]) {
+      expect(decodeConnection({ ...base, inputTokenLimit })).toMatchObject({ ok: true, value: { inputTokenLimit } });
+    }
+    for (const inputTokenLimit of [null, '1024', true, 0, -1, 1_023, 2_000_001, 2_000.5, NaN, Infinity]) {
+      expect(decodeConnection({ ...base, inputTokenLimit })).toMatchObject({ ok: false });
+    }
   });
 
   it('ships presets with valid defaults', () => {

@@ -40,10 +40,16 @@ describe('Blender-authored campus parking (east lot and both access connectors)'
     expect(triangles).toBe(PARKING_GLB_TRIANGLES);
     expect(triangles).toBeLessThanOrEqual(TRIANGLE_BUDGET);
     for (const name of PARKING_GLB_ROOTS) expect(scene.getObjectByName(name), name).toBeTruthy();
-    const merged = bakeParkingGeometry(scene)!;
+    const merged = bakeParkingGeometry(scene).geometry!;
     expect(merged.getAttribute('position').count / 3).toBe(triangles);
     expect(merged.getAttribute('color').count).toBe(merged.getAttribute('position').count);
     merged.dispose();
+    // With greenery, the authored planter trees and hedges leave the batch and become plantings.
+    const replaced = bakeParkingGeometry(scene, true);
+    expect(replaced.plantings.filter(planting => planting.kind === 'tree')).toHaveLength(3);
+    expect(replaced.plantings.filter(planting => planting.kind === 'hedge')).toHaveLength(3);
+    expect(replaced.geometry!.getAttribute('position').count / 3).toBeLessThan(triangles);
+    replaced.geometry!.dispose();
     expect(Object.keys(runtime.glb.groups).sort()).toEqual([...PARKING_GLB_ROOTS].sort());
   });
 

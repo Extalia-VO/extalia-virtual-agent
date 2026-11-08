@@ -208,7 +208,7 @@ describe('agent portrait', () => {
     expect(portraitModel('s1:primary')).toMatchObject({ skin: generated.skinTone, hair: generated.hairColor });
     const saved = { ...generated, skinTone: '#112233', hairColor: '#445566', hairStyle: 'afro' as const, topColor: '#778899', accessories: { ...generated.accessories, glasses: 'round' as const } };
     const model = portraitModel('s1:primary', saved);
-    expect(model).toMatchObject({ skin: '#112233', hair: '#445566', hairShape: 'textured-crop', glasses: 'round' });
+    expect(model).toMatchObject({ skin: '#112233', hair: '#445566', hairShape: 'afro', glasses: 'round' });
     const html = renderToStaticMarkup(createElement(AgentPortrait, { characterId: 's1:primary', appearance: saved }));
     expect(html).toContain('#112233');
     expect(html).toContain('<circle cx="18.5" cy="20.8" r="2.5"');

@@ -5,7 +5,7 @@ import { EXECUTIVE_ROOM_LAYOUTS, type ExecutiveRoomId } from "../../roomRedesign
 import { ExecutiveWorkstation } from "../workstations/ExecutiveWorkstation";
 import { ArmChair } from "../furniture/Sofa";
 import { ExecutiveSuiteLighting } from "../architecture/ExecutiveSuiteLighting";
-import { CornerLampFixture, DeskLampFixture, StandLampFixture } from "../architecture/LightFixtureGeometries";
+import { DeskLampFixture, StandLampFixture, WallSconceFixture } from "../architecture/LightFixtureGeometries";
 import { AbstractArtwork, AcousticPanel, InteriorBox, ModernCredenza, ModernStorageWall, SculpturalPlanter, ZonedRug } from "./ContemporaryRoomDetails";
 
 const sofaCushion = new RoundedBoxGeometry(0.75, 0.16, 0.82, 2, 0.06);
@@ -45,6 +45,7 @@ export function ExecutiveRoomInterior({ roomId, screens }: {
     <ZonedRug {...layout.desk.rug} />
     <ExecutiveWorkstation position={layout.desk.position} rotationY={layout.desk.rotationY}
       leaderSeat={layout.desk.leaderSeat} guestSeats={layout.desk.guestSeats}
+      cabinetPosition={layout.desk.cabinet.position} cabinetWidth={layout.desk.cabinet.width}
       screens={screens} includeCabinet plant={false} leaderResourceId={roomId === "executive" ? "executive.leader" : "executive-studio.ceo"} />
 
     <group position={[...lounge.position]} userData={{ officeSeatStation: true }}>
@@ -67,13 +68,14 @@ export function ExecutiveRoomInterior({ roomId, screens }: {
     {layout.plants.map((position, i) => <SculpturalPlanter key={i} position={position} />)}
 
     {/* Both walls frame the zones; the central doorway/arrival lane remains open. */}
-    <AcousticPanel position={[-width / 2 + 0.17, 1.43, 0]} rotationY={Math.PI / 2} width={6.5} />
+    <AcousticPanel {...layout.westPanel} />
     <AcousticPanel position={[width / 2 - 0.15, 1.43, -2.6]} rotationY={-Math.PI / 2} width={2.7} />
     <AbstractArtwork position={[width / 2 - 0.24, 1.84, -2.6]} rotationY={-Math.PI / 2} width={2.05} cool={cool} />
     <AbstractArtwork position={[layout.credenza.position[0], 1.78, -depth / 2 + 0.14]} width={2.45} cool={cool} />
 
     <DeskLampFixture position={[...layout.fixtures.deskLamp]} />
-    <CornerLampFixture position={[...layout.fixtures.cornerLamp]} />
+    {layout.fixtures.wallSconces.map((position, index) => <WallSconceFixture key={index}
+      position={[...position]} rotation={[0, layout.fixtures.wallSconceRotationY, 0]} />)}
     <StandLampFixture position={[...layout.fixtures.standLamp]} />
     <ExecutiveSuiteLighting size={layout.roomSize} deskLocal={layout.desk.position} loungeLocal={lounge.position} />
   </group>;

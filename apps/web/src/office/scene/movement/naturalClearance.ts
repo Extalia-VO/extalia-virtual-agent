@@ -1,9 +1,13 @@
-import { Box3, type Mesh, type Object3D } from 'three';
+import { Box3, Vector3, type Mesh, type Object3D } from 'three';
 import { FLOOR_HEIGHT, type Point3 } from '../layout';
 import { buildingFootprintPolygon } from '../interior/buildingFootprintGeometry';
 import type { SeatApproach } from './navGraph';
+import type { DoorInfo } from '../interior/doorTraffic';
+import { getDoorPortalsSnapshot } from '../interior/occupants/movingOccupants';
 
-interface Bounds { minX: number; maxX: number; minZ: number; maxZ: number; minY: number; maxY: number; seatOwner?: Object3D }
+type XZ = readonly [number, number];
+interface Bounds { minX: number; maxX: number; minZ: number; maxZ: number; minY: number; maxY: number; seatOwner?: Object3D; footprint?: readonly XZ[] }
+type DoorAperture = Pick<DoorInfo, 'center' | 'yaw' | 'clearWidth'>;
 const CELL = 2;
 const bounds = (box: Box3): Bounds => ({ minX: box.min.x, maxX: box.max.x, minZ: box.min.z, maxZ: box.max.z, minY: box.min.y, maxY: box.max.y });
 const key = (x: number, z: number) => `${x}:${z}`;
@@ -24,6 +28,51 @@ function intersects(a: Readonly<Point3>, b: Readonly<Point3>, box: Bounds, radiu
   }
   return true;
 }
+
+function pointDistanceSquared(p: XZ, a: XZ, b: XZ): number {
+  const dx = b[0] - a[0], dz = b[1] - a[1], length2 = dx * dx + dz * dz;
+  const t = length2 ? Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dz) / length2)) : 0;
+  return (p[0] - a[0] - t * dx) ** 2 + (p[1] - a[1] - t * dz) ** 2;
+}
+function insidePolygon(p: XZ, polygon: readonly XZ[]): boolean {
+  let inside = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const a = polygon[i]!, b = polygon[j]!;
+    if ((a[1] > p[1]) !== (b[1] > p[1]) && p[0] < (b[0] - a[0]) * (p[1] - a[1]) / (b[1] - a[1]) + a[0]) inside = !inside;
+  }
+  return inside;
+}
+/** Exact horizontal capsule against a possibly concave authored footprint. */
+function footprintIntersects(from: Readonly<Point3>, to: Readonly<Point3>, polygon: readonly XZ[], radius: number): boolean {
+  const a: XZ = [from[0], from[2]], b: XZ = [to[0], to[2]];
+  if (insidePolygon(a, polygon) || insidePolygon(b, polygon)) return true;
+  const cross = (p: XZ, q: XZ, r: XZ) => (q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0]);
+  for (let i = 0; i < polygon.length; i++) {
+    const c = polygon[i]!, d = polygon[(i + 1) % polygon.length]!;
+    if (Math.max(Math.min(a[0], b[0]), Math.min(c[0], d[0])) <= Math.min(Math.max(a[0], b[0]), Math.max(c[0], d[0]))
+      && Math.max(Math.min(a[1], b[1]), Math.min(c[1], d[1])) <= Math.min(Math.max(a[1], b[1]), Math.max(c[1], d[1]))
+      && cross(a, b, c) * cross(a, b, d) <= 0 && cross(c, d, a) * cross(c, d, b) <= 0) return true;
+    if (Math.min(pointDistanceSquared(a, c, d), pointDistanceSquared(b, c, d), pointDistanceSquared(c, a, b), pointDistanceSquared(d, a, b)) <= radius * radius) return true;
+  }
+  return false;
+}
+
+/** Optional renderer-owned horizontal outline replaces only its owning subtree's bounds. */
+function authoredFootprint(node: Object3D): Bounds | null {
+  const shape = node.userData.officeCollisionFootprint;
+  if (!shape || !Array.isArray(shape.points) || shape.points.length < 3 || !Number.isFinite(shape.minY) || !Number.isFinite(shape.maxY) || shape.minY > shape.maxY
+    || !shape.points.every((p: unknown) => Array.isArray(p) && p.length === 2 && p.every(Number.isFinite))) return null;
+  // A horizontal footprint cannot describe a tilted object; keep mesh bounds in that case.
+  const m = node.matrixWorld.elements;
+  if ([m[1], m[4], m[6], m[9]].some(value => Math.abs(value!) > 1e-8)) return null;
+  const box = new Box3(), point = new Vector3(), polygon: XZ[] = [];
+  for (const [x, z] of shape.points as XZ[]) {
+    point.set(x, shape.minY, z).applyMatrix4(node.matrixWorld); box.expandByPoint(point); polygon.push([point.x, point.z]);
+    point.set(x, shape.maxY, z).applyMatrix4(node.matrixWorld); box.expandByPoint(point);
+  }
+  if (![box.min.x, box.min.y, box.min.z, box.max.x, box.max.y, box.max.z].every(Number.isFinite)) return null;
+  return { ...bounds(box), footprint: polygon };
+}
 /** Conservative render-derived occupancy. It approves optional path changes, never replaces exact contacts. */
 export class WalkingClearance {
   private readonly solids = new Map<string, Bounds[]>();
@@ -32,6 +81,7 @@ export class WalkingClearance {
   private ready = false;
   revision = 0;
   colliderCount = 0;
+  constructor(private readonly portals: () => readonly DoorAperture[] = () => []) {}
   clear(): void { this.solids.clear(); this.supports.clear(); this.seats.clear(); this.ready = false; this.colliderCount = 0; this.revision++; }
   rebuild(roots: readonly Object3D[]): void {
     this.clear();
@@ -42,6 +92,12 @@ export class WalkingClearance {
       // Batched originals are invisible only as a rendering optimization. Hidden templates are not colliders.
       const invisible = !node.visible && data.officeBatchSource !== true;
       if (invisible) return;
+      const footprint = authoredFootprint(node);
+      if (footprint) {
+        cells(footprint, cell => { const bucket = this.solids.get(cell) ?? []; bucket.push(footprint); this.solids.set(cell, bucket); });
+        this.colliderCount++;
+        return;
+      }
       const seatOwner = data.officeSeat === true ? node : owner;
       if (data.officeSeat === true) this.seats.set(node, bounds(new Box3().setFromObject(node)));
       const mesh = node as Mesh;
@@ -82,6 +138,15 @@ export class WalkingClearance {
     return (this.supports.get(key(Math.floor(x / CELL), Math.floor(z / CELL))) ?? []).some(box =>
       box.maxY >= y - .15 && box.maxY <= y + .24 && x >= box.minX && x <= box.maxX && z >= box.minZ && z <= box.maxZ);
   }
+  /** The ground entrance joins the forecourt: its body radius may straddle the slab outline. */
+  private groundDoorAperture(x: number, y: number, z: number, radius: number, portals: readonly DoorAperture[]): boolean {
+    if (y >= .5) return false;
+    return portals.some(door => {
+      if (Math.abs(door.center[1] - y) > .05) return false;
+      const dx = x - door.center[0], dz = z - door.center[2], sin = Math.sin(door.yaw), cos = Math.cos(door.yaw);
+      return Math.abs(sin * dx + cos * dz) <= radius + .15 && Math.abs(cos * dx - sin * dz) <= door.clearWidth / 2 - radius;
+    });
+  }
   segmentClear = (from: Readonly<Point3>, to: Readonly<Point3>, radius = .28): boolean => {
     return this.segmentClearExcept(from, to, radius);
   };
@@ -110,14 +175,16 @@ export class WalkingClearance {
     const seen = new Set<Bounds>();
     cells(query, cell => { if (hit) return; for (const box of this.solids.get(cell) ?? []) {
       if (seen.has(box) || (ignore && box.seatOwner === ignore)) continue; seen.add(box);
-      if (box.maxY > query.minY && box.minY < query.maxY && intersects(from, to, box, radius)) { hit = true; break; }
+      if (box.maxY > query.minY && box.minY < query.maxY && intersects(from, to, box, radius)
+        && (!box.footprint || footprintIntersects(from, to, box.footprint, radius))) { hit = true; break; }
     } });
     if (hit) return false;
     const keepBuilding = from[1] > .5 || (this.inside(from[0], from[2]) && this.inside(to[0], to[2]));
+    let portals: readonly DoorAperture[] | undefined;
     const count = Math.max(1, Math.ceil(Math.hypot(to[0] - from[0], to[2] - from[2]) / .25));
     for (let i = 0; i <= count; i++) {
       const t = i / count, x = from[0] + (to[0] - from[0]) * t, z = from[2] + (to[2] - from[2]) * t;
-      if (keepBuilding && !this.inside(x, z, radius)) return false;
+      if (keepBuilding && !this.inside(x, z, radius) && (from[1] >= .5 || !this.groundDoorAperture(x, from[1], z, radius, portals ??= this.portals()))) return false;
       for (const [dx, dz] of [[0, 0], [radius, 0], [-radius, 0], [0, radius], [0, -radius],
         [radius, radius], [-radius, radius], [radius, -radius], [-radius, -radius]])
         if (!this.supported(x + dx!, from[1], z + dz!)) return false;
@@ -127,5 +194,5 @@ export class WalkingClearance {
 }
 const fields = new WeakMap<object, WalkingClearance>();
 export function walkingClearanceFor(owner: object): WalkingClearance {
-  let field = fields.get(owner); if (!field) { field = new WalkingClearance(); fields.set(owner, field); } return field;
+  let field = fields.get(owner); if (!field) { field = new WalkingClearance(getDoorPortalsSnapshot); fields.set(owner, field); } return field;
 }

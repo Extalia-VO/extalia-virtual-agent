@@ -28,6 +28,9 @@ mod planned_tasks;
 mod planning;
 #[cfg(test)]
 mod planning_tests;
+mod preparation;
+#[cfg(test)]
+mod preparation_tests;
 #[cfg(test)]
 mod tests;
 

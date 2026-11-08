@@ -1,8 +1,9 @@
+import type { NativeStatusMissionMetadata } from './nativeStatus.js';
 /** Native mission plan construction, retained result metadata and v0 projection. */
 import type { Connection } from '@extalia/core';
 import { isHostMissionRecoveryMetadata, isHostMissionTaskUsage, isHostMissionUsage, normalizeHostMissionBudget, type HostMissionRequest, type HostMissionRun, type HostMissionTask, type HostMissionUsage } from '@extalia/platform';
 import { isUtcTimestamp, parseOrchestration, type AgentEvent, type EventBody, type OrchestrationPlan, type TaskState } from '@extalia/protocol';
-import { runNativeMission, type ModelProvider, type NativeMissionOptions, type NativeMissionResult } from '@extalia/runtime';
+import { UsageAccumulator, runNativeMission, type ModelProvider, type NativeMissionOptions, type NativeMissionResult } from '@extalia/runtime';
 import { createHash, randomUUID } from 'node:crypto';
 import { readFile, rm, stat } from 'node:fs/promises';
 import path from 'node:path';
@@ -10,6 +11,7 @@ import { isNotFound, writeJsonAtomic } from './jsonStore.js';
 import { MissionCheckpointStore, validateMissionJournalEvent } from './missionCheckpoints.js';
 import { checkSessionId, type SessionRecord } from './sessions.js';
 import { createFileTools } from './tools/files.js';
+import type { WorkspaceAccess } from './workspaceAccess.js';
 
 const MAX_RECORDS = 16;
 const METADATA_SCHEMA = 'extalia.native-missions.v1';
@@ -64,13 +66,13 @@ function validRun(raw: unknown, session: SessionRecord): raw is HostMissionRun {
 
 /** Sum retained per-task usage; a task with an unreported call counts as unknown (ADR 0015). */
 export function missionUsageFromTasks(tasks: readonly HostMissionTask[]): HostMissionUsage {
-  let inputTokens: number | undefined, outputTokens: number | undefined, unknownTasks = 0;
+  const sum = new UsageAccumulator();
+  let unknownTasks = 0;
   for (const task of tasks) {
-    if (task.usage?.inputTokens !== undefined) inputTokens = (inputTokens ?? 0) + task.usage.inputTokens;
-    if (task.usage?.outputTokens !== undefined) outputTokens = (outputTokens ?? 0) + task.usage.outputTokens;
+    sum.add(task.usage);
     if (task.usage?.unknown) unknownTasks++;
   }
-  return { ...(inputTokens !== undefined ? { inputTokens } : {}), ...(outputTokens !== undefined ? { outputTokens } : {}), unknownTasks };
+  return { ...sum.total, unknownTasks };
 }
 
 /** Work that may have started: the contract's assigned task states, as the Rust store's `TaskState::in_flight`. */
@@ -156,6 +158,9 @@ export class MissionRecords {
     this.assertConnectionsClear(connectionIds);
     this.reservations.set(sessionId, [...new Set(connectionIds)]);
   }
+  hasUnresolved(): boolean {
+    return this.reservations.size > 0 || [...this.records.values()].some(runs => runs.some(unresolved));
+  }
   isReserved(sessionId: string): boolean { return this.reservations.has(sessionId); }
   release(sessionId: string): void { this.reservations.delete(sessionId); }
   assertSessionClear(sessionId: string): void {
@@ -166,6 +171,20 @@ export class MissionRecords {
     for (const runs of this.records.values()) for (const run of runs) if (unresolved(run) && run.tasks.some(task => connectionIds.includes(task.connectionId))) throw new Error('A selected connection has active or unresolved native mission execution.');
   }
   assertRemovable(sessionId: string): void { this.assertSessionClear(sessionId); }
+  /** Lazy, detached status metadata. Terminal history and answer text are never copied. Consume synchronously. */
+  *nativeStatusMetadata(): IterableIterator<NativeStatusMissionMetadata> {
+    for (const runs of this.records.values()) for (const run of runs) {
+      if (run.state !== 'running' && run.state !== 'recovering') continue;
+      yield {
+        id: run.id, sessionId: run.sessionId, workspaceId: run.workspaceId, title: run.title, state: run.state,
+        backend: run.authority?.backend ?? 'unknown', taskCount: run.tasks.length,
+        recoveryReason: !run.authority ? 'authority-unknown' : run.recovery?.source ?? 'execution-uncertain',
+        tasks: (function* () {
+          for (const task of run.tasks) yield { id: task.id, taskId: task.taskId, title: task.title, state: task.state };
+        })(),
+      };
+    }
+  }
   list(sessionId: string): HostMissionRun[] { return copy(this.records.get(sessionId) ?? []); }
   get(sessionId: string, missionId: string): HostMissionRun {
     const record = this.records.get(sessionId)?.find(run => run.id === missionId);
@@ -274,8 +293,12 @@ export class MissionRecords {
 export interface PreparedMission { run: HostMissionRun; options: NativeMissionOptions; leadId: string }
 export async function prepareMission(input: {
   request: HostMissionRequest; session: SessionRecord; transient: boolean; root: string;
+  fileAuthority?(ownedRoots?: readonly string[]): Promise<WorkspaceAccess>;
   connections: ReadonlyMap<string, Connection>;
   providerFor(connection: Connection): Promise<ModelProvider>;
+  /** Admit the allocated mission identity before credentials or worktree effects. */
+  beforeEffects?(identity: { missionId: string; canonicalWorkspaceId: string }): Promise<void>;
+  checkPreparation?(): void;
   /** Trusted composition provenance, never copied from a mission/model request. */
   localSettlementCoverage?: 'extalia-native-local-v1';
   /**
@@ -309,15 +332,32 @@ export async function prepareMission(input: {
     models: [...profiles.values()].map(profile => ({ ...version, id: profile.id, providerId: providerIds.get(profile.connection.id)!, model: profile.model, toolCalling: true, streaming: true, vision: false })),
     graph: { ...version, missionId, tasks: tasks.map((task, index) => ({ ...version, id: task.taskId, missionId, assignedAgentId: task.agentId, state: 'queued', attempt: 0, dependsOn: request.tasks[index]!.dependsOn.map(alias => tasks.find(task => task.id === alias)!.taskId), requirements: [task.title], evidenceIds: [], ...(task.access === 'write' ? { access: 'write' as const } : {}) })) },
   };
-  const bindings = await Promise.all([...profiles.values()].map(async profile => ({ modelProfileId: profile.id, providerId: providerIds.get(profile.connection.id)!, model: profile.model, provider: await input.providerFor({ ...profile.connection, model: profile.model }), ...(input.localSettlementCoverage ? { localSettlementCoverage: input.localSettlementCoverage } : {}) })));
-  const tools = createFileTools(input.root).filter(tool => tool.access === 'read');
+  await input.beforeEffects?.({ missionId, canonicalWorkspaceId: workspaceId });
+  input.checkPreparation?.();
+  // Drain every entered credential preparation before reporting failure. An early
+  // rejection must not release the session while another preparation still runs.
+  const bindingResults = await Promise.allSettled([...profiles.values()].map(async profile => {
+    input.checkPreparation?.();
+    const provider = await input.providerFor({ ...profile.connection, model: profile.model });
+    input.checkPreparation?.();
+    return { modelProfileId: profile.id, providerId: providerIds.get(profile.connection.id)!, model: profile.model, provider, ...(input.localSettlementCoverage ? { localSettlementCoverage: input.localSettlementCoverage } : {}) };
+  }));
+  const failed = bindingResults.find(result => result.status === 'rejected');
+  if (failed?.status === 'rejected') throw failed.reason;
+  input.checkPreparation?.();
+  const bindings = bindingResults.map(result => { if (result.status !== 'fulfilled') throw new Error('Native preparation did not settle.'); return result.value; });
+  const authority = await input.fileAuthority?.();
+  const tools = createFileTools(input.root, { ...(authority ? { authority } : {}) }).filter(tool => tool.access === 'read');
   // Write-capable tasks get every file tool, rooted in their own worktree; nothing is bound to the project folder.
   const writeTools = new Map<string, ReturnType<typeof createFileTools>>();
   for (const [index, task] of tasks.entries()) {
     if (request.tasks[index]!.access !== 'write') continue;
+    input.checkPreparation?.();
     if (!input.worktreeFor) throw new Error('Write-capable tasks need an isolated worktree.');
     const root = await input.worktreeFor({ alias: task.id, missionId, taskId: task.taskId, agentId: task.agentId });
-    writeTools.set(task.taskId, createFileTools(root));
+    input.checkPreparation?.();
+    const ownedAuthority = await input.fileAuthority?.([root]);
+    writeTools.set(task.taskId, createFileTools(root, { ...(ownedAuthority ? { authority: ownedAuthority } : {}) }));
   }
   return {
     run: { id: missionId, sessionId: session.id, workspaceId: session.workspaceId, title: request.title, state: 'running', createdAt: now, updatedAt: now, transient: input.transient, tasks, budget, usage: { unknownTasks: 0 } },

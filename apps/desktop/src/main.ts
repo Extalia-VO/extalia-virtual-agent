@@ -8,6 +8,8 @@ import { Readable } from 'node:stream';
 import { pathToFileURL } from 'node:url';
 import { startAgents } from './agentsIpc';
 import { IPC } from './ipc';
+import { shouldShowInstaller } from './installer/policy';
+import { createInstallerWindow } from './installer/window';
 import { registerNotifications } from './notificationIpc';
 import { registerRestart } from './restartIpc';
 import { APP_HOST, APP_ORIGIN, APP_SCHEME, CONTENT_SECURITY_POLICY, MEDIA_TYPES, isAllowedAppUrl, isTrustedSender, parseByteRange, parseDevServerUrl, resolveAppFile } from './security';
@@ -15,9 +17,21 @@ import { runSmokeTest } from './smoke';
 import { checkAfterLaunch, startUpdater } from './updater';
 
 const smokeTest = process.argv.includes('--smoke-test');
+const installerPreview = process.argv.includes('--installer-preview');
+const installerBoot = shouldShowInstaller({
+  preview: installerPreview, smokeTest, skip: process.argv.includes('--skip-installer'), platform: process.platform, packaged: app.isPackaged,
+  inApplications: process.platform === 'darwin' && app.isInApplicationsFolder(),
+});
+// Installer launches use a separate Chromium profile and single-instance lock. They
+// must not focus an installed copy or open the user's application profile on launch.
+if (installerBoot && !smokeTest && !installerPreview) {
+  const installerProfile = mkdtempSync(path.join(tmpdir(), 'extalia-installer-'));
+  app.setPath('userData', installerProfile);
+  app.setPath('sessionData', installerProfile);
+}
 let smokeDataDirectory: string | undefined;
 let smokeHomeDirectory: string | undefined;
-if (smokeTest) {
+if (smokeTest || installerPreview) {
   if (process.platform === 'darwin') {
     // Hosted Macs can blocklist WebGL; use native ANGLE because this Electron
     // distribution lacks the Vulkan loader required for macOS SwiftShader.
@@ -30,8 +44,9 @@ if (smokeTest) {
     app.commandLine.appendSwitch('enable-unsafe-swiftshader');
   }
   // Smoke tests use a throwaway profile and agent data directory so they never touch the user's data.
-  const profile = mkdtempSync(path.join(tmpdir(), 'extalia-smoke-'));
+  const profile = mkdtempSync(path.join(tmpdir(), installerPreview ? 'extalia-installer-preview-' : 'extalia-smoke-'));
   app.setPath('userData', profile);
+  app.setPath('sessionData', profile);
   smokeHomeDirectory = path.join(profile, 'home');
   mkdirSync(smokeHomeDirectory);
   smokeDataDirectory = path.join(profile, 'extalia-home');
@@ -54,7 +69,7 @@ if (smokeTest) {
   process.env.HERMES_HOME = path.join(smokeHomeDirectory, '.hermes');
   process.env.EXTALIA_HOME = smokeDataDirectory;
   process.env.EXTALIA_SECRET_STORE = 'memory';
-} else if (app.isPackaged) {
+} else if (app.isPackaged && !installerBoot) {
   // Chromium's own profile (caches, local storage) stays in the system's application-data folder.
   // Extalia's data lives in ~/.extalia-vo (EXTALIA_HOME overrides it), shared with the Web Bridge;
   // the agent host copies data from the pre-0.0.21 folder <appData>/Extalia there once.
@@ -171,7 +186,10 @@ if (!app.requestSingleInstanceLock()) {
     const [window] = BrowserWindow.getAllWindows();
     if (window) { if (window.isMinimized()) window.restore(); window.focus(); }
   });
-  app.whenReady().then(() => {
+  let regularBootStarted = false;
+  const bootApplication = () => {
+    if (regularBootStarted) return;
+    regularBootStarted = true;
     serveWebBuild();
     registerIpc();
     const agents = startAgents({ devServer, dataDirectory: smokeDataDirectory, smokeTest, homeDirectory: smokeHomeDirectory });
@@ -185,7 +203,28 @@ if (!app.requestSingleInstanceLock()) {
       return;
     }
     checkAfterLaunch(updates, window);
-    app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
+  };
+  app.on('activate', () => {
+    const [window] = BrowserWindow.getAllWindows();
+    if (window) { window.show(); window.focus(); }
+    else if (regularBootStarted && !smokeTest) createWindow();
+  });
+  app.whenReady().then(() => {
+    if (installerBoot) {
+      createInstallerWindow({
+        preview: installerPreview,
+        onContinue: () => {
+          if (!installerPreview) {
+            // A fresh process restores the regular Chromium profile and its lock.
+            app.relaunch({ args: [...process.argv.slice(1).filter(argument => argument !== '--skip-installer'), '--skip-installer'] });
+          }
+          app.quit();
+        },
+        onClose: () => app.quit(),
+      });
+      return;
+    }
+    bootApplication();
   }, error => {
     console.error('Extalia Desktop failed to start.', error);
     app.exit(1);

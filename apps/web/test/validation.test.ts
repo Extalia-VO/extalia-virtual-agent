@@ -1,7 +1,7 @@
 import type { ConnectionView } from '@extalia/platform';
 import { describe, expect, it } from 'vitest';
 import {
-  checkBaseUrl, draftFromConnection, draftFromPreset, draftFromWorkspace, emptyWorkspaceDraft, suggestedTiers, toConnectionInput, toWorkspaceInput, validateConnection, validateWorkspace,
+  checkBaseUrl, draftFromConnection, draftFromPreset, draftFromWorkspace, emptyWorkspaceDraft, suggestedTiers, toConnectionInput, toConnectionTestInput, toWorkspaceInput, validateConnection, validateWorkspace,
 } from '../src/setup/validation';
 
 describe('connection drafts', () => {
@@ -60,12 +60,68 @@ describe('connection drafts', () => {
     expect(limit('1.5')).toBe('maxDelegationsInvalid');
   });
 
+  it('keeps prompt caching opt-in across presets, endpoint edits, saves and credential tests', () => {
+    const initial = draftFromPreset('anthropic');
+    expect(initial.promptCache).toBe(false);
+    expect(toConnectionInput(initial).input.features).not.toHaveProperty('promptCache');
+    const optedIn = { ...initial, promptCache: true, apiKey: 'test-key', model: '' };
+    expect(toConnectionInput(optedIn).input.features.promptCache).toBe(true);
+    const probe = toConnectionTestInput(optedIn);
+    expect(probe.input.features.promptCache).toBe(true);
+    expect(probe.input.credential).toEqual({ kind: 'stored' });
+    expect(probe.secret).toBe('test-key');
+    for (const preset of ['openai', 'custom', '9router', 'anthropic'] as const) {
+      const switched = draftFromPreset(preset, optedIn);
+      expect(switched.promptCache).toBe(false);
+      expect(toConnectionInput(switched).input.features).not.toHaveProperty('promptCache');
+    }
+    expect(toConnectionInput({ ...optedIn, baseUrl: 'https://api.example.com' }).input.features).not.toHaveProperty('promptCache');
+    expect(toConnectionInput({ ...draftFromPreset('openai'), promptCache: true }).input.features).not.toHaveProperty('promptCache');
+    const view: ConnectionView = {
+      ...toConnectionInput({ ...optedIn, model: 'model' }).input,
+      id: 'c1', credential: { kind: 'stored', ref: 'ref-1' }, credentialStatus: 'ok',
+      orchestration: { enabled: false, maxDelegations: 3, tiers: {} },
+      createdAt: '2026-01-31T10:00:00.000Z', updatedAt: '2026-01-31T10:00:00.000Z',
+    };
+    expect(draftFromConnection(view).promptCache).toBe(true);
+    expect(toConnectionInput(draftFromConnection(view)).input.features.promptCache).toBe(true);
+    expect(draftFromConnection({ ...view, features: { memory: 'extalia', skills: 'extalia' } }).promptCache).toBe(false);
+    expect(draftFromConnection({ ...view, baseUrl: 'https://api.example.com' }).promptCache).toBe(false);
+  });
+
   it('offers tier suggestions only for presets that have them and resets them with the preset', () => {
     expect(suggestedTiers('anthropic')).toEqual({ complex: 'claude-opus-5-5', standard: 'claude-sonnet-5-5', quick: 'claude-haiku-4-5' });
     expect(suggestedTiers('ollama')).toBeUndefined();
     const switched = draftFromPreset('ollama', { ...draftFromPreset('anthropic'), name: 'Mine', orchestration: { enabled: false, maxDelegations: '7', tiers: { complex: 'x', standard: '', quick: '' } } });
     expect(switched).toMatchObject({ name: 'Mine', orchestration: { enabled: false, maxDelegations: '7', tiers: { complex: '', standard: '', quick: '' } } });
     expect(draftFromPreset('ollama', draftFromPreset('anthropic')).name).toBe('Ollama');
+  });
+
+  it('validates and preserves an optional estimated input ceiling independently of presets and credentials', () => {
+    const initial = { ...draftFromPreset('anthropic'), apiKey: 'test-key' };
+    expect(initial.inputTokenLimit).toBe('');
+    expect(toConnectionInput(initial).input).not.toHaveProperty('inputTokenLimit');
+    for (const inputTokenLimit of ['1024', ' 50000 ', '2000000']) {
+      const draft = { ...initial, inputTokenLimit };
+      expect(validateConnection(draft)).not.toHaveProperty('inputTokenLimit');
+      expect(toConnectionInput(draft).input.inputTokenLimit).toBe(Number(inputTokenLimit));
+      expect(toConnectionTestInput(draft).input.inputTokenLimit).toBe(Number(inputTokenLimit));
+      expect(draftFromPreset('openai', draft).inputTokenLimit).toBe(inputTokenLimit);
+    }
+    for (const inputTokenLimit of ['0', '-1', '1023', '2000001', '1024.5', '1e4', 'no', 'NaN', 'Infinity']) {
+      expect(validateConnection({ ...initial, inputTokenLimit }).inputTokenLimit).toBe('inputTokenLimitInvalid');
+    }
+    expect(validateConnection({ ...initial, inputTokenLimit: '   ' })).not.toHaveProperty('inputTokenLimit');
+    const view: ConnectionView = {
+      ...toConnectionInput({ ...initial, inputTokenLimit: '50000' }).input,
+      id: 'c1', credential: { kind: 'stored', ref: 'ref-1' }, credentialStatus: 'ok',
+      orchestration: { enabled: true, maxDelegations: 3, tiers: {} },
+      createdAt: '2026-01-31T10:00:00.000Z', updatedAt: '2026-01-31T10:00:00.000Z',
+    };
+    expect(draftFromConnection(view).inputTokenLimit).toBe('50000');
+    expect(toConnectionInput(draftFromConnection(view)).input.inputTokenLimit).toBe(50_000);
+    expect(draftFromConnection({ ...view, inputTokenLimit: undefined }).inputTokenLimit).toBe('');
+    expect(toConnectionInput({ ...draftFromConnection(view), inputTokenLimit: '' }).input).not.toHaveProperty('inputTokenLimit');
   });
 });
 
@@ -76,14 +132,14 @@ describe('workspace drafts', () => {
     expect(validateWorkspace({ ...empty, folderInput: '/projects/app' }).folder).toBe('folderUnchecked');
     const ready = { ...emptyWorkspaceDraft('c1'), name: ' App ', folderInput: '/projects/app/', folder: { path: '/projects/app', name: 'app' } };
     expect(validateWorkspace(ready)).toEqual({});
-    expect(toWorkspaceInput(ready)).toEqual({ name: 'App', projectLocation: '/projects/app', connectionId: 'c1', permissions: { fileWrite: 'ask', commands: 'ask' } });
+    expect(toWorkspaceInput(ready)).toEqual({ name: 'App', projectLocation: '/projects/app', connectionId: 'c1', permissions: { fileWrite: 'ask', commands: 'ask' }, additionalProjectLocations: [], crossWorkspaceAccess: 'read-only' });
   });
 
   it('needs a Hermes profile instead of a connection for Hermes Agent', () => {
     const folder = { folderInput: '/projects/app', folder: { path: '/projects/app', name: 'app' } };
     const hermes = { ...emptyWorkspaceDraft('', 'hermes'), name: 'App', ...folder };
     expect(validateWorkspace(hermes)).toEqual({});
-    expect(toWorkspaceInput(hermes)).toEqual({ name: 'App', projectLocation: '/projects/app', runtimeId: 'hermes', runtimeProfileId: 'default', permissions: { fileWrite: 'ask', commands: 'ask' } });
+    expect(toWorkspaceInput(hermes)).toEqual({ name: 'App', projectLocation: '/projects/app', runtimeId: 'hermes', runtimeProfileId: 'default', permissions: { fileWrite: 'ask', commands: 'ask' }, additionalProjectLocations: [], crossWorkspaceAccess: 'read-only' });
     expect(validateWorkspace({ ...hermes, hermesProfile: 'Work Bot', hermesModel: '-m x' })).toEqual({ profile: 'profileInvalid', model: 'modelInvalid' });
     expect(toWorkspaceInput({ ...hermes, hermesProfile: 'work', hermesModel: ' provider/model ' })).toMatchObject({ runtimeProfileId: 'work', runtimeModel: 'provider/model' });
     const saved = draftFromWorkspace({ id: 'w1', profileId: 'p', name: 'App', projectLocation: '/projects/app', runtimeId: 'hermes', runtimeProfileId: 'work', createdAt: 'x', updatedAt: 'x' });

@@ -53,7 +53,7 @@ describe('four-person desktop inward seating bays', () => {
 
   it('supports keyboards and randomized right-hand pads for every authored seat and 500 other arrangements', () => {
     const authored = OFFICE_RESOURCES.filter(r => r.id.startsWith('engineering.pod-')).map(r => r.id);
-    expect(authored).toHaveLength(16);
+    expect(authored).toHaveLength(24);
     for (const id of [...authored, ...Array.from({ length: 500 }, (_, i) => `pod-layout-${i}`)]) {
       const placement = deskInputPlacement(TEAM_POD_SEAT.keyboardPosition, Math.PI / 4, TEAM_POD_DESKTOP.top, deskLayout(id));
       const keyboard = KEYBOARD_DIMENSIONS[placement.keyboardKind];

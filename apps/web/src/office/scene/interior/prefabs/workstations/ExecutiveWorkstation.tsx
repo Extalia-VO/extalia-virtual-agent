@@ -58,7 +58,7 @@ function ExecutiveLuxuryCabinet({
   const halfW = width / 2;
 
   return (
-    <group position={position}>
+    <group name="executive-rear-cabinet" position={position}>
       {/* 1. Sasis Belakang & Panel Dinding Akustik Kayu Walnut Gelap */}
       <mesh position={[0, 1.32, -0.22]} castShadow receiveShadow>
         <boxGeometry args={[width, 2.64, 0.06]} />
@@ -443,6 +443,7 @@ export function ExecutiveWorkstation({
   guestSeats = EXECUTIVE_OFFICE_BLUEPRINT.guestSeats,
   includeCabinet = true,
   cabinetWidth = 5.2,
+  cabinetPosition = [0.1, 0, -3.15],
   plant = true,
   leaderResourceId
 }: {
@@ -453,6 +454,8 @@ export function ExecutiveWorkstation({
   guestSeats?: readonly { id: string; position: readonly [number, number, number] | [number, number, number]; rotationY: number }[];
   includeCabinet?: boolean;
   cabinetWidth?: number;
+  /** Workstation-local anchor supplied by the room's wall-aligned layout. */
+  cabinetPosition?: readonly [number, number, number];
   plant?: boolean;
   /** Workstation resource of the leader's chair, so it slides out with its agent. */
   leaderResourceId?: string;
@@ -465,7 +468,7 @@ export function ExecutiveWorkstation({
   return (
     <group position={[...position]} rotation={[0, rotationY, 0]} userData={{ officeSeatStation: true }}>
       {/* Rear modern luxury millwork cabinet: behind the CEO */}
-      {includeCabinet && <ExecutiveLuxuryCabinet position={[0.1, 0, -3.15]} width={cabinetWidth} />}
+      {includeCabinet && <ExecutiveLuxuryCabinet position={[...cabinetPosition]} width={cabinetWidth} />}
 
       <ExecutiveDesk />
 

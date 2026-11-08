@@ -1,0 +1,578 @@
+{
+  "benchmark": "native-memory-recall",
+  "sourceSha256": "b9e3dc92a401d9cddc9ffa1ab8ba2d977ad62071ac0813d1fce2d81cbd9e956e",
+  "sourceFiles": [
+    "packages/host/src/memory.ts",
+    "packages/runtime/src/prompt.ts"
+  ],
+  "environment": {
+    "node": "v26.12.1",
+    "platform": "darwin",
+    "arch": "arm64",
+    "cpuModel": "Apple M3 Max"
+  },
+  "iterations": 20,
+  "warmup": 2,
+  "measurement": "Repeated local reads; OS cache not reset; fixture creation excluded. No provider calls or measured token/cost savings.",
+  "scope": "Metadata hit at8, not semantic retrieval or model answer quality. Named matches beyond128 are eligible; summary-only matches beyond128 can remain absent and must be reported incomplete.",
+  "scenarios": [
+    {
+      "notes": 16,
+      "case": "filename-en",
+      "expected": "z-cache-policy",
+      "alphabetical": {
+        "p50Ms": 1.631666999999993,
+        "p95Ms": 2.2983330000000137,
+        "hitAt8": false,
+        "promptCharacters": 484,
+        "promptBytes": 484,
+        "omitted": 8,
+        "incomplete": true
+      },
+      "recall": {
+        "p50Ms": 0.6675840000000051,
+        "p95Ms": 0.9065830000000119,
+        "hitAt8": true,
+        "promptCharacters": 499,
+        "promptBytes": 499,
+        "omitted": 8,
+        "incomplete": true,
+        "diagnostics": {
+          "knownNames": 16,
+          "candidateCount": 16,
+          "loadedCount": 16,
+          "bytesRead": 0,
+          "termCount": 5,
+          "cacheHits": 16
+        }
+      }
+    },
+    {
+      "notes": 16,
+      "case": "filename-id",
+      "expected": "z-cache-policy",
+      "alphabetical": {
+        "p50Ms": 1.5458750000000236,
+        "p95Ms": 1.9011670000000152,
+        "hitAt8": false,
+        "promptCharacters": 484,
+        "promptBytes": 484,
+        "omitted": 8,
+        "incomplete": true
+      },
+      "recall": {
+        "p50Ms": 0.6445420000000013,
+        "p95Ms": 0.7347080000000119,
+        "hitAt8": true,
+        "promptCharacters": 499,
+        "promptBytes": 499,
+        "omitted": 8,
+        "incomplete": true,
+        "diagnostics": {
+          "knownNames": 16,
+          "candidateCount": 16,
+          "loadedCount": 16,
+          "bytesRead": 0,
+          "termCount": 4,
+          "cacheHits": 16
+        }
+      }
+    },
+    {
+      "notes": 16,
+      "case": "summary-en",
+      "expected": "z-decision",
+      "alphabetical": {
+        "p50Ms": 1.4200420000000236,
+        "p95Ms": 2.1347500000000537,
+        "hitAt8": false,
+        "promptCharacters": 484,
+        "promptBytes": 484,
+        "omitted": 8,
+        "incomplete": true
+      },
+      "recall": {
+        "p50Ms": 0.5651670000000308,
+        "p95Ms": 0.6487909999999886,
+        "hitAt8": true,
+        "promptCharacters": 508,
+        "promptBytes": 508,
+        "omitted": 8,
+        "incomplete": true,
+        "diagnostics": {
+          "knownNames": 16,
+          "candidateCount": 16,
+          "loadedCount": 16,
+          "bytesRead": 0,
+          "termCount": 3,
+          "cacheHits": 16
+        }
+      }
+    },
+    {
+      "notes": 16,
+      "case": "summary-id",
+      "expected": "z-decision",
+      "alphabetical": {
+        "p50Ms": 1.349125000000015,
+        "p95Ms": 1.648540999999966,
+        "hitAt8": false,
+        "promptCharacters": 484,
+        "promptBytes": 484,
+        "omitted": 8,
+        "incomplete": true
+      },
+      "recall": {
+        "p50Ms": 0.5659580000000233,
+        "p95Ms": 0.707540999999992,
+        "hitAt8": true,
+        "promptCharacters": 508,
+        "promptBytes": 508,
+        "omitted": 8,
+        "incomplete": true,
+        "diagnostics": {
+          "knownNames": 16,
+          "candidateCount": 16,
+          "loadedCount": 16,
+          "bytesRead": 0,
+          "termCount": 3,
+          "cacheHits": 16
+        }
+      }
+    },
+    {
+      "notes": 16,
+      "case": "no-match",
+      "expected": null,
+      "alphabetical": {
+        "p50Ms": 1.40625,
+        "p95Ms": 2.075540999999987,
+        "hitAt8": null,
+        "promptCharacters": 484,
+        "promptBytes": 484,
+        "omitted": 8,
+        "incomplete": true
+      },
+      "recall": {
+        "p50Ms": 0.6123749999999859,
+        "p95Ms": 0.7661249999999882,
+        "hitAt8": null,
+        "promptCharacters": 484,
+        "promptBytes": 484,
+        "omitted": 8,
+        "incomplete": true,
+        "diagnostics": {
+          "knownNames": 16,
+          "candidateCount": 16,
+          "loadedCount": 16,
+          "bytesRead": 0,
+          "termCount": 4,
+          "cacheHits": 16
+        }
+      }
+    },
+    {
+      "notes": 16,
+      "case": "greeting",
+      "expected": null,
+      "alphabetical": {
+        "p50Ms": 1.3651250000000346,
+        "p95Ms": 1.5059170000000108,
+        "hitAt8": null,
+        "promptCharacters": 484,
+        "promptBytes": 484,
+        "omitted": 8,
+        "incomplete": true
+      },
+      "recall": {
+        "p50Ms": 0.378832999999986,
+        "p95Ms": 0.46958399999999756,
+        "hitAt8": null,
+        "promptCharacters": 484,
+        "promptBytes": 484,
+        "omitted": 8,
+        "incomplete": true,
+        "diagnostics": {
+          "knownNames": 16,
+          "candidateCount": 8,
+          "loadedCount": 8,
+          "bytesRead": 0,
+          "termCount": 0,
+          "cacheHits": 8
+        }
+      }
+    },
+    {
+      "notes": 128,
+      "case": "filename-en",
+      "expected": "z-cache-policy",
+      "alphabetical": {
+        "p50Ms": 1.538332999999966,
+        "p95Ms": 1.6471250000000168,
+        "hitAt8": false,
+        "promptCharacters": 486,
+        "promptBytes": 486,
+        "omitted": 120,
+        "incomplete": true
+      },
+      "recall": {
+        "p50Ms": 3.1617499999999836,
+        "p95Ms": 3.4072499999999764,
+        "hitAt8": true,
+        "promptCharacters": 501,
+        "promptBytes": 501,
+        "omitted": 120,
+        "incomplete": true,
+        "diagnostics": {
+          "knownNames": 128,
+          "candidateCount": 128,
+          "loadedCount": 128,
+          "bytesRead": 0,
+          "termCount": 5,
+          "cacheHits": 128
+        }
+      }
+    },
+    {
+      "notes": 128,
+      "case": "filename-id",
+      "expected": "z-cache-policy",
+      "alphabetical": {
+        "p50Ms": 1.5349160000000666,
+        "p95Ms": 1.855707999999936,
+        "hitAt8": false,
+        "promptCharacters": 486,
+        "promptBytes": 486,
+        "omitted": 120,
+        "incomplete": true
+      },
+      "recall": {
+        "p50Ms": 3.12762500000008,
+        "p95Ms": 3.273166999999944,
+        "hitAt8": true,
+        "promptCharacters": 501,
+        "promptBytes": 501,
+        "omitted": 120,
+        "incomplete": true,
+        "diagnostics": {
+          "knownNames": 128,
+          "candidateCount": 128,
+          "loadedCount": 128,
+          "bytesRead": 0,
+          "termCount": 4,
+          "cacheHits": 128
+        }
+      }
+    },
+    {
+      "notes": 128,
+      "case": "summary-en",
+      "expected": "z-decision",
+      "alphabetical": {
+        "p50Ms": 1.4732500000000073,
+        "p95Ms": 1.8809999999999718,
+        "hitAt8": false,
+        "promptCharacters": 486,
+        "promptBytes": 486,
+        "omitted": 120,
+        "incomplete": true
+      },
+      "recall": {
+        "p50Ms": 2.990208999999936,
+        "p95Ms": 3.173375000000078,
+        "hitAt8": true,
+        "promptCharacters": 510,
+        "promptBytes": 510,
+        "omitted": 120,
+        "incomplete": true,
+        "diagnostics": {
+          "knownNames": 128,
+          "candidateCount": 128,
+          "loadedCount": 128,
+          "bytesRead": 0,
+          "termCount": 3,
+          "cacheHits": 128
+        }
+      }
+    },
+    {
+      "notes": 128,
+      "case": "summary-id",
+      "expected": "z-decision",
+      "alphabetical": {
+        "p50Ms": 1.4857920000000604,
+        "p95Ms": 1.7156249999999318,
+        "hitAt8": false,
+        "promptCharacters": 486,
+        "promptBytes": 486,
+        "omitted": 120,
+        "incomplete": true
+      },
+      "recall": {
+        "p50Ms": 2.9663750000000846,
+        "p95Ms": 3.314834000000019,
+        "hitAt8": true,
+        "promptCharacters": 510,
+        "promptBytes": 510,
+        "omitted": 120,
+        "incomplete": true,
+        "diagnostics": {
+          "knownNames": 128,
+          "candidateCount": 128,
+          "loadedCount": 128,
+          "bytesRead": 0,
+          "termCount": 3,
+          "cacheHits": 128
+        }
+      }
+    },
+    {
+      "notes": 128,
+      "case": "no-match",
+      "expected": null,
+      "alphabetical": {
+        "p50Ms": 1.480374999999981,
+        "p95Ms": 1.8197920000000067,
+        "hitAt8": null,
+        "promptCharacters": 486,
+        "promptBytes": 486,
+        "omitted": 120,
+        "incomplete": true
+      },
+      "recall": {
+        "p50Ms": 3.01237500000002,
+        "p95Ms": 3.244709000000057,
+        "hitAt8": null,
+        "promptCharacters": 486,
+        "promptBytes": 486,
+        "omitted": 120,
+        "incomplete": true,
+        "diagnostics": {
+          "knownNames": 128,
+          "candidateCount": 128,
+          "loadedCount": 128,
+          "bytesRead": 0,
+          "termCount": 4,
+          "cacheHits": 128
+        }
+      }
+    },
+    {
+      "notes": 128,
+      "case": "greeting",
+      "expected": null,
+      "alphabetical": {
+        "p50Ms": 1.4630829999999833,
+        "p95Ms": 1.6912500000000819,
+        "hitAt8": null,
+        "promptCharacters": 486,
+        "promptBytes": 486,
+        "omitted": 120,
+        "incomplete": true
+      },
+      "recall": {
+        "p50Ms": 0.6318749999999227,
+        "p95Ms": 0.8080420000000004,
+        "hitAt8": null,
+        "promptCharacters": 486,
+        "promptBytes": 486,
+        "omitted": 120,
+        "incomplete": true,
+        "diagnostics": {
+          "knownNames": 128,
+          "candidateCount": 8,
+          "loadedCount": 8,
+          "bytesRead": 0,
+          "termCount": 0,
+          "cacheHits": 8
+        }
+      }
+    },
+    {
+      "notes": 1000,
+      "case": "filename-en",
+      "expected": "z-cache-policy",
+      "alphabetical": {
+        "p50Ms": 2.092249999999922,
+        "p95Ms": 2.308416999999963,
+        "hitAt8": false,
+        "promptCharacters": 486,
+        "promptBytes": 486,
+        "omitted": 992,
+        "incomplete": true
+      },
+      "recall": {
+        "p50Ms": 4.932333000000199,
+        "p95Ms": 5.413749999999936,
+        "hitAt8": true,
+        "promptCharacters": 501,
+        "promptBytes": 501,
+        "omitted": 992,
+        "incomplete": true,
+        "diagnostics": {
+          "knownNames": 1000,
+          "candidateCount": 128,
+          "loadedCount": 128,
+          "bytesRead": 0,
+          "termCount": 5,
+          "cacheHits": 128
+        }
+      }
+    },
+    {
+      "notes": 1000,
+      "case": "filename-id",
+      "expected": "z-cache-policy",
+      "alphabetical": {
+        "p50Ms": 2.4855409999997846,
+        "p95Ms": 2.688000000000102,
+        "hitAt8": false,
+        "promptCharacters": 486,
+        "promptBytes": 486,
+        "omitted": 992,
+        "incomplete": true
+      },
+      "recall": {
+        "p50Ms": 4.9314999999999145,
+        "p95Ms": 5.289541999999983,
+        "hitAt8": true,
+        "promptCharacters": 501,
+        "promptBytes": 501,
+        "omitted": 992,
+        "incomplete": true,
+        "diagnostics": {
+          "knownNames": 1000,
+          "candidateCount": 128,
+          "loadedCount": 128,
+          "bytesRead": 0,
+          "termCount": 4,
+          "cacheHits": 128
+        }
+      }
+    },
+    {
+      "notes": 1000,
+      "case": "summary-en",
+      "expected": "z-decision",
+      "alphabetical": {
+        "p50Ms": 2.4605830000000424,
+        "p95Ms": 2.802249999999958,
+        "hitAt8": false,
+        "promptCharacters": 486,
+        "promptBytes": 486,
+        "omitted": 992,
+        "incomplete": true
+      },
+      "recall": {
+        "p50Ms": 4.886541000000079,
+        "p95Ms": 5.186750000000075,
+        "hitAt8": false,
+        "promptCharacters": 486,
+        "promptBytes": 486,
+        "omitted": 992,
+        "incomplete": true,
+        "diagnostics": {
+          "knownNames": 1000,
+          "candidateCount": 128,
+          "loadedCount": 128,
+          "bytesRead": 0,
+          "termCount": 3,
+          "cacheHits": 128
+        }
+      }
+    },
+    {
+      "notes": 1000,
+      "case": "summary-id",
+      "expected": "z-decision",
+      "alphabetical": {
+        "p50Ms": 2.3964999999998327,
+        "p95Ms": 2.5699999999999363,
+        "hitAt8": false,
+        "promptCharacters": 486,
+        "promptBytes": 486,
+        "omitted": 992,
+        "incomplete": true
+      },
+      "recall": {
+        "p50Ms": 4.871791999999914,
+        "p95Ms": 5.058958000000075,
+        "hitAt8": false,
+        "promptCharacters": 486,
+        "promptBytes": 486,
+        "omitted": 992,
+        "incomplete": true,
+        "diagnostics": {
+          "knownNames": 1000,
+          "candidateCount": 128,
+          "loadedCount": 128,
+          "bytesRead": 0,
+          "termCount": 3,
+          "cacheHits": 128
+        }
+      }
+    },
+    {
+      "notes": 1000,
+      "case": "no-match",
+      "expected": null,
+      "alphabetical": {
+        "p50Ms": 2.457499999999982,
+        "p95Ms": 2.7781250000000455,
+        "hitAt8": null,
+        "promptCharacters": 486,
+        "promptBytes": 486,
+        "omitted": 992,
+        "incomplete": true
+      },
+      "recall": {
+        "p50Ms": 4.8217500000000655,
+        "p95Ms": 4.972166999999899,
+        "hitAt8": null,
+        "promptCharacters": 486,
+        "promptBytes": 486,
+        "omitted": 992,
+        "incomplete": true,
+        "diagnostics": {
+          "knownNames": 1000,
+          "candidateCount": 128,
+          "loadedCount": 128,
+          "bytesRead": 0,
+          "termCount": 4,
+          "cacheHits": 128
+        }
+      }
+    },
+    {
+      "notes": 1000,
+      "case": "greeting",
+      "expected": null,
+      "alphabetical": {
+        "p50Ms": 2.3805829999998878,
+        "p95Ms": 2.9196249999999964,
+        "hitAt8": null,
+        "promptCharacters": 486,
+        "promptBytes": 486,
+        "omitted": 992,
+        "incomplete": true
+      },
+      "recall": {
+        "p50Ms": 2.3520829999999933,
+        "p95Ms": 2.497250000000122,
+        "hitAt8": null,
+        "promptCharacters": 486,
+        "promptBytes": 486,
+        "omitted": 992,
+        "incomplete": true,
+        "diagnostics": {
+          "knownNames": 1000,
+          "candidateCount": 8,
+          "loadedCount": 8,
+          "bytesRead": 0,
+          "termCount": 0,
+          "cacheHits": 8
+        }
+      }
+    }
+  ]
+}

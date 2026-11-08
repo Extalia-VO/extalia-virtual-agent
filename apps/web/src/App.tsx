@@ -1,3 +1,4 @@
+import './navigation.css';
 import type { Platform } from '@extalia/platform';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { loadLandingMemory, navigationGroups, resolveLandingPage, resolveLandingWorkspace, saveLandingMemory } from './appMode';
@@ -6,6 +7,7 @@ import { Splash } from './boot/Splash';
 import { useBoot } from './boot/useBoot';
 import { isDaytime } from './environment/solarTime';
 import { ChatPage } from './chat/ChatPage';
+import { useWorkspaceMemoryDraftWarning } from './chat/useWorkspaceMemoryDraftWarning';
 import { ApprovalProvider } from './approvals/ApprovalProvider';
 import { ApprovalInboxButton } from './approvals/ApprovalInbox';
 import { resolveChat, type ChatSelection } from './chat/selection';
@@ -15,19 +17,21 @@ import { showsOfficeControls } from './office/officeControls';
 import { OfficeTopbarControls } from './office/OfficeTopbarControls';
 import { MESSAGES, type PageId } from './i18n';
 import { HistoryPage } from './library/HistoryPage';
-import { KnowledgePage, useKnowledgeSupport } from './knowledge/KnowledgePage';
+import { KnowledgePage } from './knowledge/KnowledgePage';
 import { ImportPage } from './library/ImportPage';
 import { DiagnosticsPage } from './pages/DiagnosticsPage';
 import { EventLogPage } from './pages/EventLogPage';
 import { FilesPage } from './pages/FilesPage';
 import { GitPage } from './pages/GitPage';
 import { SettingsPage } from './pages/SettingsPage';
+import type { SettingsSection } from './pages/settings/settingsSections';
 import { SkillsPage } from './skills/SkillsPage';
 import { useSkillsWaiting } from './skills/skillsModel';
 import { StartPage } from './pages/StartPage';
 import { ObserverPage } from './pages/ObserverPage';
 import { OfficePage } from './pages/OfficePage';
 import { MissionsPage } from './missions/MissionsPage';
+import { NativeStatusButton } from './native/NativeStatusButton';
 import { loadPreferences, savePreferences, type Preferences } from './preferences';
 import { useProfileSync } from './profileSync';
 import { SetupWizard } from './setup/SetupWizard';
@@ -92,9 +96,11 @@ function useColorScheme(theme: Preferences['theme']): void {
 
 export function App({ platform }: { platform: Platform }) {
   const { agents, updater } = platform.capabilities;
+  useWorkspaceMemoryDraftWarning(agents);
   const [preferences, setPreferences] = useState(loadPreferences);
   const host = useHostState(agents);
   const hostState = host.state;
+  const sourceContext = hostState ? JSON.stringify([hostState.profile.id, hostState.dataDirectory ?? hostState.storage.dataDirectory]) : undefined;
   // Splash → setup gate → shell; see boot/bootState.ts.
   const { boot, splash, retry: retryBoot } = useBoot(Boolean(agents), host);
   // The workspace last used on this device; the page itself is never remembered.
@@ -104,10 +110,16 @@ export function App({ platform }: { platform: Platform }) {
   const defaultPage: PageId = resolveLandingPage({ agents: Boolean(agents) });
   const [chosenPage, setChosenPage] = useState<PageId | null>(null);
   const page: PageId = chosenPage ?? defaultPage;
-  const setPage = (next: PageId) => setChosenPage(next);
+  const [missionFocus, setMissionFocus] = useState<{ id?: string; token: number } | null>(null);
+  const setPage = (next: PageId) => {
+    if (next !== 'missions') setMissionFocus(null);
+    setChosenPage(next);
+  };
   const [selection, setSelectionState] = useState<ChatSelection>({});
   // ADR 0028: a mission's Changes panel opens Settings at a workspace's integration test gate.
   const [gateFocus, setGateFocus] = useState<string>();
+  const [settingsSection, setSettingsSection] = useState<SettingsSection>('general');
+  const openSettings = (section: SettingsSection = 'general') => { setSettingsSection(section); setPage('settings'); };
   // Settings → Workspaces "Review" opens Skills on one workspace (used once by the page).
   const [skillsFocus, setSkillsFocus] = useState<string>();
   const [skillsRefresh, setSkillsRefresh] = useState(0);
@@ -127,9 +139,7 @@ export function App({ platform }: { platform: Platform }) {
   const rememberedWorkspace = hostState ? resolveLandingWorkspace(hostState.workspaces, stored.workspaceId) : undefined;
   const chatSelection: ChatSelection = selection.workspaceId || !rememberedWorkspace ? selection : { ...selection, workspaceId: rememberedWorkspace };
 
-  // W5: listed only when the host answers the knowledge methods (hosts without them answer "not supported").
-  const knowledge = useKnowledgeSupport(agents);
-  const groups = navigationGroups({ agents: Boolean(agents), workflow, canChat: Boolean(hostState?.workspaces.length), knowledge });
+  const groups = navigationGroups({ agents: Boolean(agents), workflow, canChat: Boolean(hostState?.workspaces.length) });
   const activePage = groups.some(group => group.pages.includes(page)) ? page : defaultPage;
   // Nav badge: skills waiting for review or approval; reloaded after Skills actions and when entering or leaving the page.
   const skillsWaiting = useSkillsWaiting(agents, hostState?.workspaces, skillsRefresh, activePage === 'skills');
@@ -161,7 +171,7 @@ export function App({ platform }: { platform: Platform }) {
       setSelection({ workspaceId, sessionId });
       setPage('chat');
     },
-    onOpenSettings: () => setPage('settings'),
+    onOpenSettings: () => openSettings(hostState?.connections.length ? 'workspaces' : 'connections'),
   };
   const banner = <><UpdateBanner t={t} updater={updater} status={updateStatus} />
     <HostConnectionBanner t={t} error={host.error} desktop={platform.info.kind === 'desktop'} onRetry={host.retry} /></>;
@@ -183,7 +193,7 @@ export function App({ platform }: { platform: Platform }) {
             <Brand compact={compact && activePage !== 'office'} />
           </div>
           {groups.map(group => (
-            <div key={group.section} className="nav-group">
+            <div key={group.section} className="nav-group" data-nav-section={group.section}>
               <p className="nav-section">{t.nav[group.section]}</p>
               <ul className="nav-list">
                 {group.pages.map(id => {
@@ -211,41 +221,51 @@ export function App({ platform }: { platform: Platform }) {
             <span className="topbar-title">{t.nav[activePage]}</span>
             {showsOfficeControls(activePage) && <OfficeTopbarControls t={t} />}
             <ApprovalInboxButton t={t} />
+            {agents && hostState && <NativeStatusButton t={t} agents={agents} state={hostState} onState={host.apply}
+              onOpenSession={(sessionId, workspaceId) => { setSelection({ sessionId, workspaceId }); setPage('chat'); }}
+              onOpenMissions={(sessionId, workspaceId, missionId) => {
+                setSelection({ sessionId, workspaceId });
+                setMissionFocus(current => ({ id: missionId, token: (current?.token ?? 0) + 1 }));
+                setPage('missions');
+              }} />}
             <span className="topbar-meta">{hostLabel} · v{platform.info.appVersion}</span>
           </header>
-          <main className={`content ${activePage === 'chat' ? 'content-chat' : activePage === 'office' ? 'content-office' : ''}`} key={activePage}>
+          <main className={`content ${activePage === 'chat' ? 'content-chat' : activePage === 'office' ? 'content-office' : activePage === 'knowledge' ? 'content-knowledge' : ''}`} key={activePage}>
             {activePage === 'office' && <OfficePage t={t} language={preferences.language} agents={agents} hostDisconnected={Boolean(host.error)} state={hostState} onState={host.apply} workspaceId={chatWorkspaceId}
               onWorkspace={workspaceId => setSelection({ workspaceId })}
               onOpenSession={session => { setSelection({ workspaceId: session.workspaceId, sessionId: session.id }); setPage(session.control === 'observed' ? 'observe' : 'chat'); }}
               onOpenMissions={hostState?.workspaces.length ? session => { if (session) setSelection({ workspaceId: session.workspaceId, sessionId: session.id }); setPage('missions'); } : undefined}
               onStartChat={() => setPage(!agents ? 'start' : 'chat')}
-              onOpenSettings={() => setPage('settings')} />}
+              onOpenAgentSettings={() => openSettings('agent-apps')} onOpenSettings={() => openSettings(hostState?.connections.length ? 'workspaces' : 'connections')} />}
             {activePage === 'missions' && agents && hostState && (
-              <MissionsPage t={t} language={preferences.language} agents={agents} state={hostState} onState={host.apply} sessionId={selection.sessionId ?? undefined}
-                onSelectSession={(sessionId, workspaceId) => setSelection({ workspaceId, sessionId })} onOpenChat={() => setPage('chat')}
-                onEditGate={workspaceId => { setGateFocus(workspaceId); setPage('settings'); }} />
+              <MissionsPage key={missionFocus?.token ?? 0} t={t} language={preferences.language} agents={agents} state={hostState} onState={host.apply} workspaceId={chatWorkspaceId} sessionId={selection.sessionId ?? undefined} missionId={missionFocus?.id}
+                onSelectWorkspace={workspaceId => { setMissionFocus(null); setSelection({ workspaceId }); }}
+                onSelectSession={(sessionId, workspaceId) => { setMissionFocus(null); setSelection({ workspaceId, sessionId }); }} onOpenChat={() => setPage('chat')} onOpenSettings={() => openSettings(hostState?.connections.length ? 'workspaces' : 'connections')}
+                onEditGate={workspaceId => { setGateFocus(workspaceId); openSettings('workspaces'); }} />
             )}
             {activePage === 'chat' && agents && hostState && (
               <ChatPage t={t} language={preferences.language} agents={agents} picker={hostState.host.kind === 'desktop' ? platform.capabilities.filesystem : undefined} state={hostState} onState={host.apply}
-                selection={chatSelection} onSelect={setSelection} onOpenSettings={() => setPage('settings')} onReviewSkills={() => openSkills()} />
+                selection={chatSelection} onSelect={setSelection} onOpenSettings={() => openSettings(hostState?.connections.length ? 'workspaces' : 'connections')} onReviewSkills={() => openSkills()} onOpenKnowledge={() => setPage('knowledge')} />
             )}
             {activePage === 'history' && agents && hostState && (
               <HistoryPage t={t} language={preferences.language} agents={agents} state={hostState} onState={host.apply} onOpenImport={() => setPage('import')} {...continued} />
             )}
             {activePage === 'files' && agents && hostState && <FilesPage t={t} language={preferences.language} agents={agents} state={hostState} {...(chatWorkspaceId ? { workspaceId: chatWorkspaceId } : {})} />}
-            {activePage === 'knowledge' && agents && knowledge && <KnowledgePage t={t} language={preferences.language} agents={agents} />}
+            {activePage === 'knowledge' && agents && <KnowledgePage t={t} language={preferences.language} agents={agents} picker={hostState?.host.kind === 'desktop' ? platform.capabilities.filesystem : undefined} />}
             {activePage === 'git' && agents && hostState && <GitPage t={t} agents={agents} state={hostState} {...(chatWorkspaceId ? { workspaceId: chatWorkspaceId } : {})} />}
-            {activePage === 'observe' && agents && hostState && <ObserverPage t={t} language={preferences.language} agents={agents} state={hostState} initialSessionId={selection.sessionId ?? undefined} onState={host.apply} onAdd={() => setPage('import')} {...continued} />}
+            {activePage === 'observe' && agents && hostState && <ObserverPage key={sourceContext} t={t} language={preferences.language} agents={agents} state={hostState} initialSessionId={selection.sessionId ?? undefined} onState={host.apply}
+              onOpenAgentSettings={() => openSettings('agent-apps')} onOpenImport={() => setPage('import')} {...continued} />}
             {activePage === 'import' && agents && (
-              <ImportPage t={t} language={preferences.language} agents={agents} onState={host.apply}
-                onObserved={() => setPage('observe')}
+              <ImportPage key={sourceContext} t={t} language={preferences.language} agents={agents} onState={host.apply}
+                onOpenObserve={() => setPage('observe')} onOpenAgentSettings={() => openSettings('agent-apps')}
                 onImported={text => { setToast({ id: Date.now(), text }); setPage('history'); }} />
             )}
             {activePage === 'start' && <StartPage t={t} />}
             {activePage === 'logs' && <EventLogPage t={t} {...(agents && currentSession ? { loadCurrent: () => agents.sessionEvents(currentSession.id) } : {})} />}
-            {activePage === 'diagnostics' && <DiagnosticsPage t={t} platform={platform} hostState={hostState} updateStatus={updateStatus} onOpenWorkspaces={() => setPage('settings')} />}
+            {activePage === 'diagnostics' && <DiagnosticsPage t={t} platform={platform} hostState={hostState} updateStatus={updateStatus} onOpenWorkspaces={() => openSettings('workspaces')} />}
             {activePage === 'settings' && (
               <SettingsPage t={t} platform={platform} preferences={preferences} onChange={update} hostState={hostState} onHostState={host.apply} updateStatus={updateStatus}
+                section={settingsSection} onSectionChange={setSettingsSection} onOpenObserve={() => setPage('observe')} onOpenImport={() => setPage('import')}
                 editGateFor={gateFocus} onEditGateHandled={() => setGateFocus(undefined)} onOpenSkills={openSkills} />
             )}
             {activePage === 'skills' && agents && hostState && (

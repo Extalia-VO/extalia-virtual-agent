@@ -14,6 +14,33 @@ the data folder of each profile.
 
 Model calls and tools still run in the TypeScript host.
 
+## Native status panel
+
+Open **Native status** in the top bar from Office, Chat, Missions or another
+application page. The panel separates the backend selected for new saved
+missions, the provider/tool loop, and the shared Rust daemon. A ready daemon does
+not mean the provider loop has migrated to Rust.
+
+Active operations show planning, preparation, chat or mission work, pending
+approval and cancellation requests. A delegated worker appears only after its
+local invocation starts and remains visible until that invocation settles.
+Recorded mission task states have a separate evidence label; they do not prove
+a process is alive. Rows identify their workspace and current session.
+
+**Open approvals** uses the normal approval inbox. **Open mission** targets that
+specific retained mission. **Inspect recovery** uses the existing recovery
+inspection and may repair an already settled saved checkpoint; uncertain
+execution stays quarantined. **Recheck saved blockers** inspects at most 32
+inactive planning/preparation receipts per request and can retire only a matching
+positively settled host marker. It never starts work or invents settlement.
+Active, missing, mismatched or unavailable evidence remains blocked. Repeat a
+partial recheck to inspect the next bounded batch.
+
+Status polling runs only while the panel is open. Missing host support, failed
+reads and stale snapshots are shown explicitly and disable actions. Cancellation
+is bound to the displayed invocation, so an old row cannot stop a replacement
+run. The panel exposes no replay, resume or force-clear operation.
+
 ## Turn it on
 
 Set `nativeCore` in `config/extalia.json`, inside your Extalia data folder
@@ -38,14 +65,15 @@ setting when the host starts, so restart it after you change the file.
 ## What changes
 
 - New saved native missions, the ones with history on, run on the daemon.
+- Saved Rust mission starts record a durable preparation scope before credentials or isolated worktrees are prepared. An uncertain start remains blocked after restart, including when the backend selected for new work changes. This receipt does not automatically reconcile execution or approve changes.
 - Missions that already exist, and missions with history off, stay on the
   TypeScript path.
-- The Knowledge page (your profile's note vault, indexed by the daemon) appears only with the native core on; with the TypeScript core it stays hidden.
+- Knowledge is independent of this preference. Both backends expose the Knowledge page and use one shared lazy daemon for its index and recorded Rust recovery; switching mission routing is unnecessary.
 
 ## Knowledge vault
 
 The Knowledge page indexes a folder of Markdown notes. By default this is
-`vaults/default` inside your data folder. In **Settings → Knowledge vault** you
+`vaults/default` inside your data folder. On **Knowledge → Knowledge vault** (also in Settings) you
 can choose another folder instead, for example an existing Obsidian vault
 (Desktop opens a folder picker; the web app takes the full path). The folder
 must already exist and cannot be a symbolic link, the whole disk, your home
@@ -53,7 +81,7 @@ folder, or a folder inside (or around) the Extalia data folder. Changing it
 restarts the native core and rebuilds the index; it is refused while agent work
 is running. Extalia never deletes or rewrites your notes: it edits automatically
 only notes marked `managed_by: extalia`, and it leaves `.obsidian` and other
-hidden folders untouched. While the native core runs, edits made outside
+hidden folders untouched. After Knowledge is first opened, edits made outside
 Extalia are indexed automatically after a short pause (native file watching on
 macOS and Windows, a light polling scan elsewhere). If the chosen folder goes
 missing, the vault shows as unavailable until you choose it again or switch

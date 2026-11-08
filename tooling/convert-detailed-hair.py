@@ -13,6 +13,9 @@ JSON config:
   src          .blend or .fbx pack
   objects      hair mesh object names to keep (hair cards, scalp cap)
   eyes, body   the pack's eye mesh names and body mesh name (fit reference)
+  skull_object a scalp/cap mesh whose bounds stand for the skull above the eyes, for packs without a head
+  uniform      one scale on all axes (from the skull width) with the crown aligned to the skull's top,
+               for volumes such as an afro whose scalp reaches below the skull-above-the-eyes measure
   ref          a local body GLB (apps/web/local-assets/avatars/bodies/...): its skeleton is the one the
                hair binds to
   fit_ref      fit to the ref body's own skull (its `Body` and eye meshes) instead of the original
@@ -21,6 +24,9 @@ JSON config:
   budget       triangle budget; whole cards are thinned deterministically above it
   tex          texture size (default 1024)
   opacity_file, shade_file   optional texture files when the pack does not link them
+  texture_dir  folder searched (by file name) for textures whose linked path is missing
+  planar       degrees: first dissolve near-flat segments inside each card (keeps every card, its outline
+               and UVs), so dense packs reach the budget by simplifying cards rather than dropping them
   alpha_gamma, cutoff, dense, dense_gain   optional alpha shaping
 Then register the outputs: node tooling/register-detailed-hair.mjs
 """
@@ -47,11 +53,16 @@ def world_verts(obj):
     return pts
 
 # 2. Source head frame: eye centre and the skull above the eye line.
-eyes = np.vstack([world_verts(bpy.data.objects[n]) for n in cfg['eyes']])
-eye_c = (eyes.min(0) + eyes.max(0)) / 2
-body = world_verts(bpy.data.objects[cfg['body']])
-skull = body[(body[:, 2] > eye_c[2]) & (np.abs(body[:, 0] - eye_c[0]) < 0.14) & (np.abs(body[:, 1] - eye_c[1]) < 0.22)]
-s_min, s_max = skull.min(0), skull.max(0)
+if cfg.get('skull_object'):
+    skull = world_verts(bpy.data.objects[cfg['skull_object']])
+    s_min, s_max = skull.min(0), skull.max(0)
+    eye_c = np.array([(s_min[0] + s_max[0]) / 2, s_min[1], s_min[2]])
+else:
+    eyes = np.vstack([world_verts(bpy.data.objects[n]) for n in cfg['eyes']])
+    eye_c = (eyes.min(0) + eyes.max(0)) / 2
+    body = world_verts(bpy.data.objects[cfg['body']])
+    skull = body[(body[:, 2] > eye_c[2]) & (np.abs(body[:, 0] - eye_c[0]) < 0.14) & (np.abs(body[:, 1] - eye_c[1]) < 0.22)]
+    s_min, s_max = skull.min(0), skull.max(0)
 print('SRC eye', eye_c.round(4).tolist(), 'skull', s_min.round(4).tolist(), s_max.round(4).tolist(), flush=True)
 
 # Target (Blender frame of the glTF canonical head: x, y = -glTF z, z = glTF y).
@@ -76,9 +87,11 @@ inflate = cfg.get('inflate', 1.03)
 scale = (T_MAX - T_MIN) / (s_max - s_min)
 # Keep the hair's own proportions: one horizontal scale, height from the skull above the eyes.
 h = (scale[0] + scale[1]) / 2
-scale = np.array([h, h, scale[2]]) * inflate
+scale = np.array([h, h, h if cfg.get('uniform') else scale[2]]) * inflate
 s_c = (s_min + s_max) / 2
 t_c = (T_MIN + T_MAX) / 2
+if cfg.get('uniform'):
+    t_c[2] = T_MAX[2] - (s_max[2] - s_c[2]) * scale[2]
 print('SCALE', scale.round(4).tolist(), flush=True)
 
 def fit(p):
@@ -103,6 +116,12 @@ for name in cfg['objects']:
     bpy.data.meshes.remove(tmp)
 for v in bm_all.verts:
     v.co = Vector(fit(np.array(v.co)))
+if cfg.get('planar'):
+    before = sum(len(f.verts) - 2 for f in bm_all.faces)
+    bmesh.ops.dissolve_limit(bm_all, angle_limit=math.radians(cfg['planar']), use_dissolve_boundaries=False,
+                             verts=bm_all.verts[:], edges=bm_all.edges[:], delimit={'MATERIAL', 'UV', 'SEAM'})
+    bmesh.ops.triangulate(bm_all, faces=bm_all.faces[:])
+    print('PLANAR', before, '->', sum(len(f.verts) - 2 for f in bm_all.faces), flush=True)
 
 # 4. Thin the hair cards to the triangle budget: keep whole cards (connected pieces), deterministically.
 tris = sum(len(f.verts) - 2 for f in bm_all.faces)
@@ -138,7 +157,16 @@ def find_image(material, *keys):
     return None
 
 size = cfg.get('tex', 1024)
+texture_index = {}
+if cfg.get('texture_dir'):
+    import os
+    for root, _, files in os.walk(cfg['texture_dir']):
+        for name in files: texture_index.setdefault(name.lower(), os.path.join(root, name))
 def loaded(img):
+    import os
+    if texture_index and not os.path.exists(bpy.path.abspath(img.filepath)):
+        found = texture_index.get(os.path.basename(bpy.path.abspath(img.filepath)).lower())
+        if found: img.filepath = found; img.reload()
     try:
         return len(img.pixels) > 0
     except Exception as error:
