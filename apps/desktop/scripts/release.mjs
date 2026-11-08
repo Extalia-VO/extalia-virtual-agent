@@ -5,7 +5,6 @@ import { access, lstat, mkdir, mkdtemp, open, readFile, realpath, rm, writeFile 
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { verifyLinuxInstaller } from './linux-installer.mjs';
 
 const DESKTOP = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SIGNING_ENV = ['CSC_LINK', 'CSC_KEY_PASSWORD', 'APPLE_ID', 'APPLE_APP_SPECIFIC_PASSWORD', 'APPLE_TEAM_ID'];
@@ -253,6 +252,8 @@ export async function uploadRelease({ platform, version, tag, directory, run = r
     }
   }
   if (platform === 'linux') {
+    // Preflight runs before pnpm install; only Linux upload needs the installer build dependencies.
+    const { verifyLinuxInstaller } = await import('./linux-installer.mjs');
     await verifyLinuxInstaller({ installer: path.join(directory, `Extalia-${version}-linux-x64-setup.run`),
       appImage: path.join(directory, `Extalia-${version}-linux-x86_64.AppImage`), icon: path.join(DESKTOP, 'build/icon.png'), version });
   }

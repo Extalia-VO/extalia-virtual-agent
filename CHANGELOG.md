@@ -16,6 +16,10 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.226] - 2026-11-08
+
+- Keep release preflight independent of build dependencies by loading Linux installer verification only when Linux artifacts are actually checked.
+
 ## [0.4.225] - 2026-11-08
 
 - Compact the observed Codex prompt box in Office, Observe and Chat: remove repeated target and keyboard/delivery hints, place the send icon beside the textarea, and show status text only when needed.
