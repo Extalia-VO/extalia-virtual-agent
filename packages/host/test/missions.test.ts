@@ -4,7 +4,7 @@ import { existsSync } from 'node:fs';
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { parseEvent, type ExtaliaEvent } from '@extalia/protocol';
 import type { HostMissionRequest, HostMissionRun } from '@extalia/platform';
 import { MissionCheckpointStore } from '../src/missionCheckpoints.js';
@@ -259,13 +259,21 @@ describe.each(backends())('native missions through the managed host (%s core)', 
   });
 
   it('quarantines ignored aborts across sessions and restart without replay or unsafe deletion', async () => {
-    const entered = deferred(), release = deferred<Response>();
+    const release = deferred<Response>();
     let calls = 0;
-    const env = await setup(async () => { calls++; entered.resolve(); return release.promise; });
+    let providerSignal: AbortSignal | null | undefined;
+    const env = await setup(async (_url, init) => { calls++; providerSignal = init?.signal; return release.promise; });
     const { workspace, session, request } = await configure(env.host, env.project);
-    request.tasks = [{ ...request.tasks[0]!, timeoutMs: 50 }];
+    request.tasks = [request.tasks[0]!];
     const started = await env.host.startNativeMission(session.id, request);
-    await entered.promise;
+    // Abort only after provider entry: a short task deadline can expire while
+    // the Rust daemon is still acknowledging admission, before fetch runs.
+    await vi.waitFor(async () => {
+      const run = await env.host.nativeMissionRun(session.id, started.id);
+      expect(calls, `Provider entry not observed; mission=${run.state}, task=${run.tasks[0]?.state}`).toBe(1);
+    }, { timeout: 10_000, interval: 25 });
+    await env.host.cancelNativeMission!(session.id, started.id);
+    expect(providerSignal?.aborted).toBe(true);
     const final = await completed(env.host, session.id, started.id); await idle(env.runtime);
     expect(final.state).toBe('recovering'); expect(final.tasks[0]?.state).toBe('unknown');
     const workerStates = (await env.host.sessionEvents(session.id)).filter(event => event.agentId === final.tasks[0]!.agentId && event.body.type === 'agent.state');
