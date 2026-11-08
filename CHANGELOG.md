@@ -19,6 +19,7 @@ All notable changes to this project are documented here. The format follows
 ## [0.4.227] - 2026-11-08
 
 - Initialize the configured pnpm version before Node setup in checksum and retained-Mac-archive workflows, so package-manager cache detection can run on fresh hosted runners.
+- Make the ignored-abort quarantine fixture cancel only after confirmed provider entry, preserving its lifecycle assertions without a 50 ms persistence/startup race on Windows.
 
 ## [0.4.226] - 2026-11-08
 
