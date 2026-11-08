@@ -231,6 +231,9 @@ impl Session {
                     | RequestParams::PlanningBegin(_)
                     | RequestParams::PlanningObserve(_)
                     | RequestParams::PlanningInspect { .. }
+                    | RequestParams::PreparationBegin(_)
+                    | RequestParams::PreparationObserve(_)
+                    | RequestParams::PreparationInspect { .. }
                     | RequestParams::MissionSnapshot { .. }
                     | RequestParams::MissionHeartbeat(_)
                     | RequestParams::MissionExecutions { .. }

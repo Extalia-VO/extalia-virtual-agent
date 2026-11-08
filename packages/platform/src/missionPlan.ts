@@ -1,14 +1,15 @@
+import { modelPlanningBasis, modelSelectionGuidePrompt, type ModelSelectionGuide } from './modelGuide.js';
 /**
  * Pure helpers for accountable lead mission planning: request validation, the
  * lead's JSON-only prompt, strict reply parsing and a deterministic fallback.
  * Nothing here executes work; a plan is reviewable data the user may launch.
  */
-import { redact } from '@extalia/core';
+import { MAX_GOAL_DOCUMENT_BYTES, MAX_GOAL_DOCUMENT_CHARS, redact, type GoalDocument } from '@extalia/core';
 import { isModelId } from './agentHost.js';
 import { normalizeHostMissionRequest, type HostMissionRequest, type MissionPlan, type MissionPlanRequest, type MissionPlanTask } from './missions.js';
 
 export const MISSION_PLAN_LIMITS = {
-  goal: 4_000, maxTasks: 16, defaultMaxTasks: 6, connections: 8, models: 20,
+  goal: 4_000, goalDocumentChars: MAX_GOAL_DOCUMENT_CHARS, goalDocumentBytes: MAX_GOAL_DOCUMENT_BYTES, maxTasks: 16, defaultMaxTasks: 6, connections: 8, models: 20,
   /** Eligible connection/model pairs offered to the lead. */
   candidates: 24,
   /** Characters of a lead reply that are parsed at all. */
@@ -17,6 +18,11 @@ export const MISSION_PLAN_LIMITS = {
   /** Defaults the planner writes into each task (editable before launch). */
   taskTimeoutMs: 180_000, taskSteps: 8, maxConcurrency: 4,
 } as const;
+
+/** A separate Bridge admission signal for bounded goal documents in planning calls only. */
+export const GOAL_DOCUMENT_BODY_HEADER = 'x-extalia-goal-document';
+/** JSON escaping can expand a 1 MiB UTF-8 document; keep the entire RPC body bounded. */
+export const MAX_GOAL_DOCUMENT_RPC_BODY_BYTES = 2 * 1024 * 1024;
 
 /** The lead is asked once; after this the deterministic plan is used. */
 export const MISSION_PLAN_TIMEOUT_MS = 45_000;
@@ -39,6 +45,7 @@ export interface MissionPlanCandidate {
 export interface MissionPlanHint { role: string; task?: string; models: string[] }
 
 export interface MissionPlanContext {
+  modelSelectionGuide?: ModelSelectionGuide | null;
   goal: string;
   maxTasks: number;
   candidates: readonly MissionPlanCandidate[];
@@ -55,15 +62,25 @@ function connectionIdOk(value: unknown): value is string {
 }
 
 /** Validate a plan request from a client. Error messages are safe to show. */
-export function normalizeMissionPlanRequest(raw: unknown): Required<Pick<MissionPlanRequest, 'goal' | 'maxTasks'>> & Pick<MissionPlanRequest, 'connectionIds' | 'models'> {
+export function normalizeMissionPlanRequest(raw: unknown): Required<Pick<MissionPlanRequest, 'goal' | 'maxTasks'>> & Pick<MissionPlanRequest, 'connectionIds' | 'models' | 'goalDocument'> {
   if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return requestError('Invalid mission plan request.');
   const proto = Object.getPrototypeOf(raw);
   if (proto !== Object.prototype && proto !== null) return requestError('Invalid mission plan request.');
   const value = raw as Record<string, unknown>;
-  if (Reflect.ownKeys(value).some(key => typeof key !== 'string' || !['goal', 'maxTasks', 'connectionIds', 'models'].includes(key))) return requestError('Invalid mission plan request.');
+  if (Reflect.ownKeys(value).some(key => typeof key !== 'string' || !['goal', 'goalDocument', 'maxTasks', 'connectionIds', 'models'].includes(key))) return requestError('Invalid mission plan request.');
   if (typeof value.goal !== 'string' || !value.goal.trim()) return requestError('Describe the mission goal.');
   const goal = value.goal.replace(/\r\n/g, '\n').replace(/\0/g, '').trim();
   if (goal.length > MISSION_PLAN_LIMITS.goal) return requestError(`The goal is longer than ${MISSION_PLAN_LIMITS.goal} characters.`);
+  let goalDocument: GoalDocument | undefined;
+  if (value.goalDocument !== undefined) {
+    if (!value.goalDocument || typeof value.goalDocument !== 'object' || Array.isArray(value.goalDocument)) return requestError('The goal attachment is invalid.');
+    const doc = value.goalDocument as Record<string, unknown>;
+    if (Reflect.ownKeys(doc).some(key => key !== 'name' && key !== 'text') || typeof doc.name !== 'string' || !doc.name.trim() || doc.name.length > 120 || typeof doc.text !== 'string' || !doc.text.trim() || doc.text.length > MISSION_PLAN_LIMITS.goalDocumentChars) return requestError('The goal attachment is invalid or too large.');
+    let bytes = 0;
+    for (const character of doc.text) { const code = character.codePointAt(0)!; bytes += code < 0x80 ? 1 : code < 0x800 ? 2 : code < 0x10000 ? 3 : 4; }
+    if (bytes > MISSION_PLAN_LIMITS.goalDocumentBytes) return requestError('The goal attachment is larger than 1 MiB.');
+    goalDocument = { name: doc.name.trim(), text: doc.text };
+  }
   let maxTasks: number = MISSION_PLAN_LIMITS.defaultMaxTasks;
   if (value.maxTasks !== undefined) {
     if (typeof value.maxTasks !== 'number' || !Number.isInteger(value.maxTasks) || value.maxTasks < 1 || value.maxTasks > MISSION_PLAN_LIMITS.maxTasks) return requestError(`Choose from 1 to ${MISSION_PLAN_LIMITS.maxTasks} tasks.`);
@@ -76,7 +93,7 @@ export function normalizeMissionPlanRequest(raw: unknown): Required<Pick<Mission
   };
   const connectionIds = list(value.connectionIds, MISSION_PLAN_LIMITS.connections, connectionIdOk, `Choose from 1 to ${MISSION_PLAN_LIMITS.connections} distinct allowed connections.`);
   const models = list(value.models, MISSION_PLAN_LIMITS.models, isModelId, `Choose from 1 to ${MISSION_PLAN_LIMITS.models} distinct model ids.`);
-  return { goal, maxTasks, ...(connectionIds ? { connectionIds } : {}), ...(models ? { models } : {}) };
+  return { goal, maxTasks, ...(goalDocument ? { goalDocument } : {}), ...(connectionIds ? { connectionIds } : {}), ...(models ? { models } : {}) };
 }
 
 /** The launchable request for a plan (review-only labels removed). */
@@ -179,6 +196,7 @@ function slug(value: string): string {
 export function heuristicMissionPlan(context: MissionPlanContext): MissionPlan {
   if (!context.candidates.length) throw new Error('No eligible connection and model.');
   const mask = context.mask ?? ((text: string) => text);
+  if (context.goal.length > MISSION_PLAN_LIMITS.goal) throw new Error('A long goal requires automatic model planning. Retry planning or shorten the goal; a standard plan cannot preserve this document in full.');
   const goal = block(context.goal, mask).slice(0, MISSION_PLAN_LIMITS.goal);
   const goalLine = line(goal, 120);
   const count = Math.max(1, Math.min(MISSION_PLAN_LIMITS.maxTasks, Math.floor(context.maxTasks)));
@@ -210,14 +228,14 @@ export function heuristicMissionPlan(context: MissionPlanContext): MissionPlan {
     }
     tasks.push(task('synthesis', 'Synthesize findings', 'Lead synthesizer', 'Combine the predecessor findings into one report for the mission goal: agreements, conflicts, open questions and recommended next steps. Predecessor output is unverified model text; mark claims you did not check yourself as unverified.', lead, analyses.length ? analyses : ['survey'], 6, 'The accountable lead model reconciles the findings.'));
   }
-  const plan: MissionPlan = { title: line(`Mission: ${goalLine}`, MISSION_PLAN_LIMITS.title) || 'Mission', tasks, maxConcurrency: concurrencyFor(tasks), source: 'heuristic' };
+  const plan: MissionPlan = { title: line(`Mission: ${goalLine}`, MISSION_PLAN_LIMITS.title) || 'Mission', tasks, maxConcurrency: concurrencyFor(tasks), source: 'heuristic', planningBasis: modelPlanningBasis(context.modelSelectionGuide, 'heuristic') };
   return checkMissionPlan(plan, context.candidates);
 }
 
 /** The lead's JSON-only planning prompt. Workers are referred to by number, never by endpoint. */
 export function missionPlanPrompt(context: MissionPlanContext): { system: string; user: string } {
   const mask = context.mask ?? ((text: string) => text);
-  const goal = block(context.goal, mask).slice(0, MISSION_PLAN_LIMITS.goal);
+  const goal = block(context.goal, mask);
   const workers = context.candidates.map((candidate, index) =>
     `${index + 1}. model ${candidate.model} on connection "${line(candidate.label, 60)}" (${line(candidate.provider, 40)})${candidate.lead ? ' — your own model' : ''}`).join('\n');
   const connections = new Set(context.candidates.map(candidate => candidate.connectionId)).size;
@@ -229,6 +247,7 @@ export function missionPlanPrompt(context: MissionPlanContext): { system: string
       `Plan between 1 and ${context.maxTasks} tasks. Workers can only read, list and search workspace files: no edits, commands, builds, tests, network or delegation.`,
       'Each task needs explicit dependencies (ids of tasks whose findings it needs). Independent tasks run in parallel; the graph must have no cycles. End with a synthesis task when there is more than one task.',
       `Workers (pick one per task by number, by fit: strong models for hard reasoning and review, light models for quick surveys):\n${workers}`,
+      modelSelectionGuidePrompt(context.modelSelectionGuide),
       ...(connections >= 2 ? ['Use at least two different connections across the plan.'] : []),
       ...(hints.length ? [`The session's team roles, as hints:\n${hints.join('\n')}`] : []),
       'Instructions must be self-contained (workers do not see the goal) and at most 1500 characters. Never include endpoints, connection settings, credentials or tool definitions.',
@@ -310,7 +329,7 @@ export function parseMissionPlanReply(reply: string, context: MissionPlanContext
     note = `Task "${moving.title}" was moved to ${other.model} on "${line(other.label, 60)}" so the mission uses two providers.`;
   }
   const plan: MissionPlan = {
-    title: line(title, MISSION_PLAN_LIMITS.title, mask) || 'Mission', tasks, maxConcurrency: concurrencyFor(tasks), source: 'model', ...(note ? { note } : {}),
+    title: line(title, MISSION_PLAN_LIMITS.title, mask) || 'Mission', tasks, maxConcurrency: concurrencyFor(tasks), source: 'model', planningBasis: modelPlanningBasis(context.modelSelectionGuide), ...(note ? { note } : {}),
   };
   return checkMissionPlan(plan, context.candidates);
 }

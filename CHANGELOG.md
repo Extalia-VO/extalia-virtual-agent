@@ -16,6 +16,449 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.225] - 2026-11-08
+
+- Compact the observed Codex prompt box in Office, Observe and Chat: remove repeated target and keyboard/delivery hints, place the send icon beside the textarea, and show status text only when needed.
+- Display and copy the readable answers from structured user-question replies, including envelopes surrounded by blank lines, while preserving malformed data and literal examples.
+- Record owner confirmation of RenderHub Extended Use terms for 18 plant/tree models and eight detailed hairstyles; preserve source archives, historical provenance and geometry/textures, update notices, and retain strict model validation.
+
+## [0.4.224] - 2026-11-08
+
+- Center the character message dialog within the 3D Office area, excluding the application sidebar and top bar, regardless of board expansion. Use a frosted translucent surface so the Virtual Office remains visible behind it. Preserve the tools sidebar and manual board state; reduced-transparency preferences retain an opaque surface.
+
+## [0.4.223] - 2026-11-08
+
+- Give character message dialogs a wider conversation column and independently scrolling tools sidebar for queues, connection settings and permission controls. Narrow screens use a drawer; closing it preserves drafts and restores focus. The compact footer leaves more room for messages, and opening a dialog no longer collapses the Agents & sessions board.
+
+## [0.4.222] - 2026-11-08
+
+- Add a private, per-session pending prompt queue for managed Native/Hermes sessions and observed Codex. Prepare, edit, reorder, delete, start and pause queued text; dispatch reuses original-session admission. Sending and handed-off items are read-only receipts, unknown outcomes pause without retry, restart stays paused, and history-off queues remain in memory.
+
+- Use an icon-only Send button in the observed Codex prompt box, with localized accessible names, tooltips and a pending spinner.
+
+## [0.4.221] - 2026-11-08
+
+- Show a normal Codex prompt box directly in Observe, the observed Office lead dialog and selected observed Chat. Enter/Send forwards to the original native conversation; the first explicit send saves its message connection. Connection details stay under advanced settings, failed or uncertain sends retain drafts, and no source session or permission grant is created.
+
+## [0.4.220] - 2026-11-08
+
+- Add explicitly reviewed, conversation-scoped Codex permission hooks to Observe and Office. Pending shell decisions return to the original native caller through a separate authenticated broker; complete request previews, expiry, source revocation, backups and revision-bound undo are included. Hook trust, permission modes and real Desktop activation remain user-controlled; other native permission tools may still require Codex.
+
+## [0.4.219] - 2026-11-08
+
+### Changed
+
+- Organize Settings into six responsive sections with lazy loading and retained drafts. Give agent-app connections, automatic observation and ignored folders a single home in Settings; Office and Observe link directly to it.
+- Separate Observe's live-session selection and tool pairing from Import's historical preview and commit flow. Require source-read consent, retain native conversation controls, guard duplicate/stale operations and explain Linked imports in English and Indonesian.
+
+## [0.4.218] - 2026-11-08
+
+### Added
+
+- Complete the supported Missions project-review workflow with project selection, explicit blank Native session creation, setup guidance and English/Indonesian steps. Explain read-only scope, Hermes routing, retained results and unavailable older hosts in the Missions guide.
+- Add exact mission cancellation across host, Bridge, Desktop and mock transports. A stale mission view cannot stop another mission, planning operation or chat turn in the same session.
+
+### Fixed
+
+- Preserve goal choices and task edits when moving between mission composition and review. Prevent duplicate planning, launch and session-creation requests, and ignore late UI results after changing host, session or project.
+- Keep mission history scoped to its project/session, refresh it on session lifecycle events and wait for initial history before choosing the default view. Clarify that write-proposal integration remains blocked when its test gate has not run.
+
+## [0.4.217] - 2026-11-08
+
+### Added
+
+- Enable messages once for an observed Codex conversation and submit future messages through Codex's public native queue, without pasting instructions or starting another agent session. Save exact source/profile binding and receipt metadata, preserve uncertain submissions across restarts, and show that queued messages wait for the current turn.
+- Answer newly received native Codex command, file-change and permission requests over a verified original-server connection. Show exact action details, escaped terminal input, file previews and permission scopes; require an explicit offered decision and exclude persistent grants.
+
+### Fixed
+
+- Keep broader file-root grants in Codex for authorization, while allowing explicit decline/cancel from Extalia. Do not treat queued messages as native permission responses.
+
+## [0.4.216] - 2026-11-08
+
+### Fixed
+
+- Keep avatars moving after leaving team pods by testing the actual concave desktop footprint, preserving open chair bays and solid table structure instead of blocking the bays with a square bounding box.
+- Connect every registered team pod to its screen and movable chair resource, including pods E and F, so all 24 workstations show their occupant and animate their chair correctly.
+
+## [0.4.215] - 2026-11-08
+
+### Added
+
+- Add an English macOS guided installer with automatically crossfading Office photographs, pause/slide controls, native Applications installation and a safe isolated preview. Keep a branded Standard/Retina drag-to-Applications DMG and installation guide.
+- Add an English Windows assisted setup and an offline per-user Linux graphical/terminal installer, with verified payloads, guarded replacement and updater-compatible integrity receipts.
+
+### Changed
+
+- Focus installer Office photographs on the center right, with opacity and fading edges blending into the title background. Generate and verify installation artwork from the shared English catalog and Extalia identity before packaging. Preserve signing, notarization, architecture and release gates.
+
+### Fixed
+
+- Disable the automatic Office camera through its normal control before checking manual floor selections in packaged smoke tests, preventing the active tour from overriding the probe.
+
+## [0.4.214] - 2026-11-08
+
+### Added
+
+- Return messages and answers from Observe and Office to an explicitly paired tool in the existing source conversation, using one-use loopback reply channels through the CLI or MCP. Keep tokens and replies transient, expire waiting tools, and revoke channels on source changes or observation pause.
+- Add conditional native control for an already-running Hermes gateway through its public discover-only attachment command, with exact session/owner/generation checks and explicit native question responses. Unsupported installed versions remain unavailable; no agent or gateway is started.
+
+### Documentation
+
+- Document separate native and cooperative capabilities for Codex Desktop, Claude Chat, Claude Code/Desktop Code, Hermes, Antigravity and Gemini CLI, including required setup and current verification limits.
+
+## [0.4.213] - 2026-11-08
+
+### Changed
+
+- Expand application pages to their available width with balanced side padding in Standard, Liquid Glass and Liquid Glass Pro, including full-width empty-state cards. Keep transcript and form reading widths responsive.
+- Replace the remaining 18 native dropdowns across Files/Git setup, Knowledge and Skill Books controls with the shared Radix Select. Move editable model suggestions to Downshift and Floating UI while preserving custom IDs, grouped options, keyboard navigation and dismissal.
+
+### Fixed
+
+- Preserve empty workspace/root and unrestricted filter choices, repeated picker actions, disabled options, and valid keyboard focus after a model catalog refresh. Keep folder-picker dropdowns inside native modal dialogs so their options remain visible and interactive.
+- Embed canonical installer copy at build time instead of importing Web source into the Desktop runtime; refresh its catalog fingerprint after verifying the existing artwork is unchanged.
+
+## [0.4.212] - 2026-11-08
+
+### Added
+
+- Expand the Large Team Workspace to six four-seat pods with 24 allocatable pod workstations, preserving existing seat identities and adding matching suspended lighting.
+
+### Changed
+
+- Arrange team pods in three columns and two rows, route circulation between columns, and relocate perimeter breakout seating, rugs, lamps and plants. Align the ceiling grid with the aisles and derive the English/Indonesian capacity label from the actual layout.
+
+### Fixed
+
+- Recognize the generated macOS Retina background filename in its installer manifest without exempting other email tokens from the public-repository safety scan.
+
+## [0.4.211] - 2026-11-08
+
+### Added
+
+- Add explicit same-server control for observed Codex conversations through an existing local App Server Unix socket. The host verifies the loaded native thread and folder, subscribes without overrides, sends same-thread messages/steering and answers newly received native input requests. It never starts another engine, forks a conversation, installs hooks or changes source-app configuration.
+- Add localized, optional original-conversation controls in Observe and observed-lead Office panels, with explicit answer choices, masked secret fields, stale-session guards and neutral submission/resolution states. Late pending questions and Desktop sessions without a supported public endpoint remain in Codex; no approval automation or automatic retry is introduced.
+
+## [0.4.210] - 2026-11-08
+
+### Fixed
+
+- Align the F2 executive and F3 CEO rear cabinets to their feature walls and keep navigation footprints synchronized. Arrange paired wall sconces, a lounge reading lamp and modest corner planters; support the desk lamp on the actual desktop instead of sinking it into the surface.
+
+## [0.4.209] - 2026-11-08
+
+### Changed
+
+- Expand the Skill Books page and its responsive shelf canvas to the available content width with balanced side padding, including Liquid Glass Pro. Share the wide-page layout with Files and Git.
+
+## [0.4.208] - 2026-11-08
+
+### Fixed
+
+- Give the initial Building camera a gently elevated view of the office and entrance plaza. Bound outward zoom against both the city rim and the camera near plane so the lower viewport keeps rendered surroundings instead of an empty background strip.
+
+## [0.4.207] - 2026-11-08
+
+### Fixed
+
+- Extend shared avatar/NPC recovery to authored stairs and verified lift stalls while preserving genuine queues, moving cabs and healthy door service. Use 3D stair progress, protected mid-landings and collision-checked retreat; sample rider-scoped controller progress before releasing only a stalled rider and replanning around a failed cab. Validate supported landings, preserve pending goals, and apply recovery fades to facility NPCs.
+
+## [0.4.206] - 2026-11-08
+
+### Changed
+
+- Organize Observe into Sessions, Agent apps and Settings tabs, opening Sessions first so connection and observation settings no longer push conversations down the page. Keep session selection and form drafts when switching, with keyboard navigation and responsive English/Indonesian labels.
+
+## [0.4.205] - 2026-11-08
+
+### Fixed
+
+- Recover Office avatars that stop making progress at doorways or along walking routes, using bounded collision-checked detours, replanning and safe local placement while preserving the character and session. Respect real waits and reject unsafe recovery positions. Allow body clearance across authored ground-floor entrance apertures without removing wall, furniture or upper-floor support checks.
+
+## [0.4.204] - 2026-11-08
+
+### Added
+
+- Add graph Explore Mode with animated 3D travel along visible indexed links, neighbour controls, a bounded back trail, explicit note opening and temporary layout freezing. Preserve filters, keyboard editing and the previous 2D/3D preference; respect reduced motion.
+
+### Changed
+
+- Adopt the Advanced Graph View galaxy palette, compact star cores and layered halos under its MIT license while retaining Extalia's Three.js renderer. Tint paths from each endpoint with smooth gradients between different node colours, density-aware dimming and stronger local focus; ship the pinned upstream license notice.
+
+## [0.4.203] - 2026-11-08
+
+### Fixed
+
+- Preserve directory-qualified changed-file evidence across Codex, Claude Code, Gemini CLI, Antigravity and observed Hermes hooks/transcripts. Confirm completed edits before reporting writes, retain patch add/delete/move paths, and support Hermes structured file outcomes. Managed Native and Hermes writes now carry their tool-call identity.
+- Show only reported writes in conversation and Office Files tabs, deduplicate hook/transcript evidence by agent and call, and attach late file reports to the correct tool card. Clarify empty-list wording and document source-format limits; arbitrary shell or wrapper-tool edits are not guessed.
+
+## [0.4.202] - 2026-11-08
+
+### Added
+
+- Add persistent Chat orchestrator controls for setup, active/inactive status and reviewed team toggles. New chats edit workspace defaults; existing sessions keep their own teams. Disabling preserves members, model chains and grants, with next-turn behavior and explicit Hermes/observed-runtime limits.
+- Add a first-party orchestrator skill and bounded per-prompt relevance guidance. Native starts with relevant skill metadata and up to four matching memory summaries, retains on-demand discovery, and preserves complete prompt/history text. Paused, absent or empty teams run solo; active delegation requires a configured member. Atomic team updates preserve newer user settings against running model edits; Caveman remains explicit concise-style guidance.
+
+## [0.4.201] - 2026-11-08
+
+### Changed
+
+- Let Files and Git use the available content width with equal left/right padding in every surface style, including Liquid Glass Pro. Expand Git empty/status cards to the same content edges while preserving readable description widths and mobile spacing.
+
+## [0.4.200] - 2026-11-08
+
+### Added
+
+- Add Native workspace folder boundaries with one primary and up to fifteen additional selected folders. Choose isolated, cross-workspace read-only (default), or read-write access; both workspaces must permit a cross-workspace operation. Apply the boundary to file traversal, lead/worker tools and mission worktrees, with credential, nested-folder and protected-profile checks.
+- Reserve workspace changes against Native admission, require fresh chat history after boundary changes, keep isolated memory separate and require workspace-specific external-skill grants. Refuse unconfined Native terminal commands and integration test gates until a verified isolated executor is available; show this limitation in English and Indonesian.
+
+## [0.4.199] - 2026-11-08
+
+### Changed
+
+- Move the automatic camera toggle beside the Office light switch in the top bar, sharing its state with the scene and retaining the choice during page navigation. Remove the redundant Open chat button from the Office toolbar; use a compact camera icon on narrow screens.
+
+## [0.4.198] - 2026-11-08
+
+### Changed
+
+- Make the Files page a metadata-only project browser: select files or folders for a right-hand details panel, double-click folders to navigate, and switch between grid and list layouts without reading file contents. Keep keyboard and touch folder navigation, credential markers and unavailable-link boundaries.
+
+## [0.4.197] - 2026-11-08
+
+### Changed
+
+- Bring contextual character focus one-third closer while keeping the desk and surrounding room visible. Bound manual floor and All floors zoom out near their viewport-fitted overview instead of allowing distant miniature floors; retain cross-floor following and Building backdrop coverage.
+
+## [0.4.196] - 2026-11-08
+
+### Added
+
+- Add an automatic Office camera with a varying 1–2 minute inactivity delay, animated floor overview/travel/focus, live cross-floor character following and a manual mode switch. Working characters receive 9–17 second stops; idle characters and facility staff receive 4–7 seconds. Newly working or delegated characters receive priority without treating initial history hydration as a spawn.
+- Prioritize explicit input/approval waits with a per-character queue, retain multiple outstanding requests through busy sibling activity, and hold the current character until its requests finish. Manual interaction, editing, dialogs and hidden tabs pause automation; reduced motion keeps direct input attention only. Document existing Codex, Claude Code, Gemini, Antigravity, Hermes and MCP hook capabilities and the external reply limitations.
+
+## [0.4.195] - 2026-11-08
+
+### Changed
+
+- Read Hermes team budgets from the selected profile instead of fixing every team at two roles. Show the shared configured worker model, distinguish total one-shot and parallel batch limits, and revalidate before saving, planning or dispatching without editing Hermes configuration.
+- Keep saved-session planning on its own Hermes profile, reject unsupported custom backend teams and serialize workspace profile/team changes. Verify eight simultaneous Native workers can use eight distinct models and document queued, dormant and completed Office presence.
+
+## [0.4.194] - 2026-11-08
+
+### Changed
+
+- Expand Native rosters and each approved connection model pool to 32, retaining up to eight models per member chain. Bound active workers to eight per lead turn with cancellable FIFO admission and existing writer/member serialization.
+- Align Hermes controls with the standard shared-model, one-shot adapter: up to two configured roles, no per-member model/fallback selectors, and capacity validation before team persistence or inference. Respect profile limits without editing Hermes configuration; distinguish the adapter policy from upstream concurrency and custom routing capabilities.
+
+## [0.4.193] - 2026-11-08
+
+### Added
+
+- Add one optional, editable Model Selection Guide per Extalia profile for team and automatic mission planning. Import Markdown/plain text, track title/revision/update time, and replan against fresh guide contents without rewriting existing teams.
+- Explain whether a plan used the saved guide, the lead model's own knowledge or a deterministic fallback. Keep actual model/connection grants authoritative; include a guide template without fabricated benchmark rankings.
+
+## [0.4.192] - 2026-11-08
+
+### Added
+
+- Import long pasted messages as UTF-8 `.txt` attachments in Chat, session dialogs and the Office prompt dock; shorter text stays inline. Preserve selection order, complete Unicode content, attachment limits and retry ownership.
+- Import goals longer than the goal field into a bounded text document for team and automatic mission planning. Retain saved team goal documents for subsequent Native/Hermes turns; manual mission planning requires a shorter goal.
+
+## [0.4.191] - 2026-11-08
+
+### Changed
+
+- Refine Knowledge Graph toward the Advanced Graph View visual reference: compact camera-facing star cores, softer procedural halos, a cool cluster palette and finer paths that fade with depth in dark mode. Preserve sparse-graph visibility and stronger light-theme path contrast without adding links or decorative nodes.
+- Tint the graph backdrop from the active app theme/material and keep graph controls readable on glass surfaces. Keep per-core geometry at two triangles and respect the shared lower-resolution render budget. Preserve selected-node rings without glow, screen-space picking after orbit, front-node depth ordering and current-theme materials after graph refresh.
+
+## [0.4.190] - 2026-11-08
+
+### Added
+
+- Native teams can explicitly approve up to eight additional saved provider connections and route each of up to 20 members through its own connection and ordered model fallbacks. Workers run bounded tool loops and return their findings to the lead; independent readers run concurrently.
+- Team setup exposes connection-specific model catalogs, custom model ids and member selection in English and Indonesian. Office cards show configured worker models and actual runtime/fallback metadata, refreshing after same-size team edits.
+
+### Fixed
+
+- Keep credentials, feature ownership, request limits and fallback chains scoped to the selected connection. Freeze turn admission and connection mutation guards through actual cancellation settlement; prompt imports and model-driven roster edits cannot expand connection grants or mission authority.
+- Queue overlapping invocations of the same named member and preserve shared-workspace writer serialization. Re-planning retains approved routing, disabled teams do not unlock unused connections, and missing active references fail closed.
+
+## [0.4.189] - 2026-11-08
+
+### Fixed
+
+- Keep Chat and Office model/permission controls bound to the saved session runtime and connection after workspace defaults change. Refresh same-workspace model catalogs, preserve permission mode and effort during dock updates, and retain explicit Hermes models for newly created sessions.
+- Explain when an open conversation still uses the previous workspace target and offer a new session using the current default. Clarify that skipping workspace setup leaves the saved runtime unchanged.
+
+## [0.4.188] - 2026-11-08
+
+### Fixed
+
+- Checkpoint accepted Native prompt text before credentials or inference, discard cancelled late replies, and seal/drain admitted local writes before releasing the profile lock. Track skill staging/cleanup, worktree and connector mutations and credential writes without claiming external process settlement or replay safety.
+- Keep memory conflict feedback visible while reading or editing within the disclosure, and prevent transcript text from showing through the expanded memory surface in glass themes.
+- Keep expanded memory controls reachable beside a long draft in short viewports, with a bounded scrolling body and an independently scrollable composer.
+- Give the chat composer an opaque backing beneath its themed surface so transcript text cannot obscure a draft in glass templates.
+- Remove inherited Anthropic cache-control markers when replaying native response blocks, preserving signed thinking and nested tool data so opt-out and unsupported connections cannot accidentally inherit caching.
+- Reject contradictory reported cache subsets and unsafe aggregate token counts. Preserve reported zeroes, keep overflowed fields unknown, and make Native token budgets fail closed on arithmetic overflow.
+
+### Changed
+
+- Rank the initial workspace memory preview by bounded literal relevance, with descriptive filename matches eligible beyond the first alphabetical page. Reuse a bounded stat-validated metadata-only cache; full bodies, search and revision guards remain fresh. Add a reproducible synthetic recall/latency benchmark with explicit misses and no provider-token savings claim.
+- Keep Native skill prompts and discovery pages bounded as Grimoire grows beyond 1,000 skills. Add constant-size list/search/read schemas, separate agent inventory from the UI report cap, share fresh index scans for selected reads, and retain external metadata with private digests instead of all instruction bodies. Scanner and active-revision checks still apply before every external offering or read.
+
+## [0.4.187] - 2026-11-08
+
+### Added
+
+- Native Memory & context controls show effective workspace/connection ownership and separate latest-request context from turn usage. Browse redacted metadata/pages, create and edit complete revisions, and explicitly delete read revisions; preserve bounded drafts across navigation with restart protection.
+- Opt-in ephemeral prompt caching for supported official Anthropic connections and an explicit estimated Native input ceiling. Guard complete request growth before provider entry without truncating history or fabricating usage; local limits cannot trigger model fallback.
+
+### Fixed
+
+- Normalize new Anthropic input usage to include cache reads and cache creation exactly once for mission budgets. Show reported cache counts and genuine zeroes while keeping missing usage unknown and historical figures unchanged.
+- Require revision guards on new model-facing memory writes, serialize competing writes/deletes, and reject stale note continuations. Drain human memory operations and reserved workspace deletion before releasing the host profile lock; unsupported or malformed peers cannot silently enable edits.
+
+## [0.4.186] - 2026-11-08
+
+### Fixed
+
+- Keep Knowledge graph paths visible in dark and light themes with contrasting tinted edges, adaptive density and clearer default widths. Focused connections stand out while filtered links remain absent.
+
+### Changed
+
+- Refine graph nodes with lightweight shaded pearl cores, clearer sizing, softer halos and a selection ring that remains available when decorative glow is off, without adding draw calls or textures.
+
+## [0.4.185] - 2026-11-08
+
+### Added
+
+- Shared Native status panel in the Office/Chat/Missions top bar, including phones. Show actual local operations and delegated invocations, recorded task evidence, workspace context, backend selection, shared daemon state and retained blocker reasons. Link approvals and exact mission recovery through existing controls; stale/unsupported/unavailable snapshots disable actions.
+
+### Fixed
+
+- Bind status-panel cancellation to the displayed invocation so an outdated row cannot stop a replacement run in the same session. Recheck only positively settled inactive planning/preparation receipts with activity/identity/close guards; uncertain execution remains quarantined without replay or force-clear.
+- Project bounded Native status metadata lazily without copying mission answers or terminal history. Counts/truncation stay explicit; configured/queued team members do not count as running workers, and cancelled invocations remain visible until local settlement.
+
+## [0.4.184] - 2026-11-08
+
+### Changed
+
+- Native `read_file` scans pages with a fixed input buffer and bounded retained lines instead of loading, decoding and splitting the whole file. Validate the opened handle and actual 5 MiB read ceiling, preserve Unicode/pagination/binary output, and await closure on cancellation and errors.
+- Document resource-based Rust/TypeScript/Python process ownership and add a reproducible frozen-baseline file-read benchmark with output parity, p50/p95, OS peak RSS and observed event-loop delay. Local synthetic scenarios reduce reader-process peak RSS with documented latency tradeoffs; the Native LLM loop remains in TypeScript pending its Rust migration gates.
+
+## [0.4.183] - 2026-11-08
+
+### Fixed
+
+- Saved Rust Native missions durably record their preparation scope before credentials or isolated worktrees are prepared. Session and connection guards survive uncertain acknowledgements, restart and backend changes; planning cannot overlap unresolved mission preparation. Successful starts retain the preallocated mission/supervisor identity through recorded handoff.
+- Drain entered credential preparations after an early sibling failure, retain recovering ownership when cancellation or fresh-worktree cleanup is uncertain, and wait for entered worktree registry writes before releasing the profile lock during shutdown. Preparation observations remain local evidence and do not authorize execution recovery or writer fencing.
+
+## [0.4.182] - 2026-11-07
+
+### Fixed
+
+- Git discovers repositories inside workspace subfolders, including when the workspace folder has no repository of its own. A repository selector scopes branches, changed files and diffs to the chosen folder; switching repositories clears the selected diff and rejects stale responses. Discovery is bounded and skips generated, credential and symbolic-link directories; credential-file protection and read-only Git hardening remain in place.
+
+## [0.4.181] - 2026-11-07
+
+### Added
+
+- Grimoire contents, literal in-book search and page-number navigation turn the current book in place. Heading extraction excludes code fences and preserves source page positions and Unicode text.
+- Incremental read-only skill-registry metadata pages continue beyond the initial 500-row report. Each user load reads at most five 99-row pages; loaded counts, generation checks, cursor-cycle guards and refresh controls prevent mixed or stale catalog batches. Existing scanner, consent and activation requirements remain unchanged.
+
+### Changed
+
+- Reorganize the sidebar into Workspace, Library, Activity and System modules with workflow-aware priorities and existing feature gates. Knowledge uses the available main-column width with responsive gutters, including glass templates.
+- Book and List modes are exclusive. Book renders at most eighteen volumes with a keyboard picker; List renders twelve, twenty-four or forty-eight items per catalog page. Precomputed metadata search and direct catalog-page jumps support growing catalogs without rendering every entry. Closed skill management defers mounting its heavy forms and rows until first opened.
+- Knowledge exposes immediate selected-note focus and close actions, plus an independent depth/clear trail that remains available when appearance controls or the note panel are closed. Filtered or missing anchors show generic recovery guidance without hidden note titles.
+
+### Fixed
+
+- Initial registry reports stop at exactly 500 raw rows and reject mixed generations instead of overshooting the bound. Loading more metadata keeps an open book and its visible shelf stable, including a partially filled final shelf; appended covers appear after the book closes.
+
+## [0.4.180] - 2026-11-07
+
+### Changed
+
+- Rename the Skills collection to Grimoire, with matching English/Indonesian navigation, headings and Settings links. Skill categories, instructions and security management retain their familiar terms.
+- Refine in-place skill books with illustrated cloth covers, foil, binding, layered paper edges, ribbon bookmarks and editorial page typography. Keep animated cover/page turns, literal content, a fixed reading viewpoint and same-area copyable text. Background and reader tools follow the app theme.
+
+### Fixed
+
+- Keep expanded Knowledge graph camera controls within the phone viewport below the app navigation, including glass surface styles.
+
+## [0.4.179] - 2026-11-07
+
+### Changed
+
+- Knowledge opens a canvas-first graph explorer with compact overlay controls, structural communities, 2D/3D layouts, real line-width/opacity controls, zoom, fit and an expanded view. Colors, background, controls and labels follow the app theme and material template in both light and dark modes. Sparse vaults receive stronger individual-link contrast; light mode uses appropriate compositing instead of additive light on a pale background.
+- Graph communities and their view-only layout derive from actual loaded links. Palette reuse keeps large graphs colorful while legends count exact community membership. Keyboard search, scoped filters, note inspection and list fallback remain available; idle pulse timers now stop completely and small dots retain usable pointer targets.
+
+## [0.4.178] - 2026-11-06
+
+### Changed
+
+- Skill books now animate in the shelf itself: the selected volume moves forward, opens its cover, displays actual text on its page surfaces, turns a curved leaf and closes back into its original shelf position. Remove the separate scrolling inspector; keep copyable text, keyboard controls and unavailable-3D fallback in the same scene area. Compact layouts show a readable single page, and reduced motion settles directly at the requested view.
+
+## [0.4.177] - 2026-11-06
+
+### Added
+
+- Skills opens an interactive 3D bookshelf of real bundled, project and exact registry-revision entries, with source/category search, bounded shelves, an accessible list and paged literal instruction reading. Procedural local covers use the existing Three.js version; selection never changes skill permissions or lifecycle state.
+
+### Fixed
+
+- Knowledge stays visible on Desktop and Bridge hosts with the default TypeScript mission backend. Knowledge and recorded Rust recovery share one lazy index sidecar; mission routing and scanner-gated skill policy remain unchanged. Direct vault/Obsidian folder setup is available on Knowledge as well as Settings, with honest unavailable/restart guidance and folder-save feedback.
+- Vault switching drains earlier note writes before saving the new root, blocks new writes/admission during the switch, and refuses restarts while global planning, mission/recovery or registry work remains unresolved. Replaced hosts and vaults clear stale page reads and editor state.
+
+## [0.4.176] - 2026-11-06
+
+### Fixed
+
+- Avatar clothing: restore anatomical skin binding damaged by layer conformance, refit eleven loose garments against the full body, lower head-adjacent hoods/collars and restore neck backing. Conservative opaque-trouser coverage and a separate lining under the alpha-cut trousers keep covered pelvis/thigh skin behind clothing. All 32 garments are reviewed in standing, walking and seated poses; see `docs/product/garment-fit-review.md`.
+- Vehicle indicators use compact amber strips mounted on the actual lamp surfaces instead of floating spheres and halos. Their orientation stays fixed to the body through turns, blinking follows simulation time, and signals stay on while waiting and through the complete turn before cancelling.
+- Decorative pots have coordinated corner/terrace placements and sizes bounded by actual foliage height and radial spread. Desktop arrangements keep at most one small botanical accent in the rear slots, clear of keyboard/mouse and device areas; procedural fallbacks follow the same scale limits.
+- Rust bundle filesystem tests use distinct per-process fixture sequences so parallel tests cannot collide when the system clock returns the same timestamp.
+
+### Changed
+
+- Lossless garment buffer compaction reduces the 32 clothing GLBs from 94.74 to 90.02 MB; sixteen meet the 1 MB target. Sparse zero morphs and exact storage deduplication retain decoded geometry, influences, textures and source UVs without a new runtime decoder. The largest detailed garments remain above target.
+
+## [0.4.175] - 2026-11-06
+
+### Fixed
+
+- Garments in motion: `tooling/blender/garment-layers.py` poses each published garment's own rig (seated, walking, reaching, typing, with the runtime's seated and walk drape morphs) and finds inner layers that leave the one over them: legs and skin through skirts and trousers, a skirt's waistband or a trouser seat through a top's hem. Covered inner vertices are conformed to the layer over them (its skin weights and drape deltas, just beneath its surface), so they bend with it; skirts conform above the hips only and the jumper skirt's seated drape is lifted over the thighs (`drape`). Over the 24 affected outfits and pieces, vertices poking through while seated, walking or reaching fall from 7,431 to 1,267 (the original dress, both bartender uniforms, the female tops and the ray underlayer to none or almost none). The denim dress, gothic skirt and ray trousers keep their own fit, which measured better. Manifests and source-garment receipts carry the new hashes.
+
+## [0.4.174] - 2026-11-05
+
+### Added
+
+- Eight new detailed hairstyles from the owner's hair packs (`tooling/hair-packs.json`): bun with bangs, sleek ponytail, long straight, long bangs, straight short and dreads for women; dreadlocks and an afro for men. Each is fitted in Blender to the reference head's skull and bound to the `head` bone (`tooling/convert-detailed-hair.py`, now with `texture_dir`, `planar` card simplification, `skull_object` and `uniform` fitting), re-textured grey for the runtime hair colour, compact-encoded and quantized: 0.32-0.83 MB each, the two densest 1.17-1.20 MB. The afro's hair curves become a coiled volume shell first (`tooling/blender/prepare-afro-shell.py`). Generated looks draw from 11 women's and 7 men's detailed styles; saved curly/afro looks wear the afro and wavy/long looks the long straight hair. Licences are pending owner confirmation (`LicenseRef-Owner-Provided-Unverified`, "Owner-provided hair packs" notice section); `prepare-public-models.py --hair` publishes them.
+- Work on the move: a busy character that walks (to its desk, to the library laptop for a skill task, through the lifts) carries a work tablet in both hands at the chest and glances down at it; the walk's arm swing gives way. The tablet is a Blender model (`tooling/blender/create-tablet-prop.py`, `furniture/tablet.glb`, 28 kB, MIT; `prepare-public-models.py --only <path>` publishes one generated export). A desk computer shows its owner's work only while the owner sits at it (`movement/deskPresence.ts`): one walking away leaves a locked screen. Seated busy characters already stay at the desk until the work is done.
+
+### Fixed
+
+- Garment fit: `tooling/blender/garment-fit.py` audits every published garment against its body's skin and scanned under-outfit (belly, chest, hip and neck clearance) and draws loose panels in by moving vertex positions only, so materials, compact texture records, skin weights and seated-drape morphs stay intact. The jumper skirt no longer reads as pregnant (belly clearance p95 15.7 to 5.2 cm); the oversized female top, gothic blouse, denim dress and printed hoodie sit closer at the chest and belly; the pink and flame hoodies, oversize shirt, reception uniform and cloth jacket hug the neck so it no longer looks short. Manifests and source-garment receipts carry the new hashes.
+
+## [0.4.173] - 2026-11-05
+
+### Added
+
+- Turn signals: a car about to turn (20 m before the junction) and turning blinks amber lamps at the front and rear corners of the turn side, 1.5 Hz with its own phase. The lens reads by day; after dusk an additive halo grows and brightens. With reduced motion the signal stays lit instead of flashing.
+
+## [0.4.172] - 2026-11-05
+
+### Added
+
+- Campus greenery: 18 plants and trees (3 potted plants, 4 garden plants, 11 trees) simplified in Blender from the owner's downloads (`tooling/blender/prepare-greenery.py`, `campus-greenery.json`), each under 1 MiB (9.6 MB in all, from 3.6 GB of sources). They replace the procedural indoor pots and desk plants, campus, civic-park and parking trees and shrubs, and the city-park trees near the campus once loaded, with deterministic per-placement variants, yaw, size and foliage tint. Indoor pots (including the lobby's monumental palms, the meeting and executive rooms' sculptural planters and desk plants) use one plant per room, square to the walls and at one size, so paired pots match. Licences are pending owner confirmation (`LicenseRef-Owner-Provided-Unverified`, left out by `EXTALIA_COMMERCIAL_ASSETS_ONLY=1`); `?greenery=procedural` keeps the fallbacks.
+
+### Fixed
+
+- The traffic queue test adopts a car from its own network's rotation instead of today's date-seeded catalog, so it no longer fails on days whose first car is not in that rotation.
+
 ## [0.4.171] - 2026-11-05
 
 ### Fixed

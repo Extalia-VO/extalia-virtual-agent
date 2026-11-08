@@ -29,12 +29,12 @@ describe('furnished office geometry and real session projection', () => {
     expect(roomById('executive-studio')?.size).toEqual([18, 9.3]);
     const seats = getOfficeSeats();
     expect(new Set(seats.map(seat => seat.floor))).toEqual(new Set([1, 2, 3]));
-    // The reception desk belongs to the facility receptionist, so F1 offers 24 agent seats.
-    expect([1, 2, 3].map(floor => seats.filter(seat => seat.floor === floor).length)).toEqual([24, 9, 18]);
+    // The reception desk belongs to the facility receptionist, so F1 offers 32 agent seats.
+    expect([1, 2, 3].map(floor => seats.filter(seat => seat.floor === floor).length)).toEqual([32, 9, 18]);
     expect(seats.some(seat => seat.id === 'lobby.receptionist')).toBe(false);
     expect(OFFICE_RESOURCES.filter(resource => resource.roomId === "meeting-a" && resource.kind === "meeting-seat")).toHaveLength(10);
     expect(OFFICE_RESOURCES.filter(resource => resource.roomId === "meeting-b" && resource.kind === "meeting-seat")).toHaveLength(14);
-    expect(seats.filter(seat => seat.id.startsWith('engineering.pod-'))).toHaveLength(16);
+    expect(seats.filter(seat => seat.id.startsWith('engineering.pod-'))).toHaveLength(24);
     expect(new Set(seats.map(seat => seat.id)).size).toBe(seats.length);
     for (const seat of seats) {
       const resource = OFFICE_RESOURCES.find(resource => resource.id === seat.id)!;

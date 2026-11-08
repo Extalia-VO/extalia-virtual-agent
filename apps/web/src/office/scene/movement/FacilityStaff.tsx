@@ -12,6 +12,7 @@ import { getNearbyMovingOccupantsSnapshot, trackMovingOccupant, trackStationaryO
 import { doorTraffic } from '../interior/doorTrafficRegistry';
 import { visibleOnFloor, type MovementDirector } from './director';
 import { liveElevatorAccess } from './elevatorAccess';
+import { applyCharacterOpacity } from './fade';
 import { FacilityNpcDirector, type FacilityNpc } from './facilityDirector';
 import { barServicePhase, facilityAppearance, type FacilityCharacterState } from './facilityNpcs';
 import type { CharacterAppearance, CharacterAppearances } from '@extalia/core';
@@ -60,7 +61,8 @@ export function FacilityNpcs({ director, view, reducedMotion, language, selected
       if (!group) continue;
       group.position.set(mover.position[0], mover.position[1], mover.position[2]);
       group.rotation.y = mover.yaw;
-      group.visible = view === 'campus' || view === 'stack' || visibleOnFloor(mover, view);
+      group.visible = mover.opacity > 0 && (view === 'campus' || view === 'stack' || visibleOnFloor(mover, view));
+      applyCharacterOpacity(group, mover.opacity);
     }
   }, -1);
   const register = useCallback((id: string, group: Group | null) => {

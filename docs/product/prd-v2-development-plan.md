@@ -4,6 +4,8 @@ Tanggal: 2026-10-29. Baseline: v0.4.122 lokal. Status: **rencana rekomendasi unt
 adopsi bertahap**, belum persetujuan migrasi stack/repository atau pernyataan
 fitur sudah selesai. Dasar: [audit kode dan PRD v2](prd-v2-audit.md).
 
+Pembaruan implementasi 2026-11-08: [audit harness Native](native-harness-development-review.md) memisahkan kemampuan memory/cache/UI yang sudah berjalan dari gerbang executor, writer fencing, reconciliation dan acceptance yang masih terbuka. Status kontrak atau tampilan UI tidak menyelesaikan gerbang eksekusi T2/T3.
+
 ## 1. Arah pengembangan
 
 Perluas Extalia yang ada, dengan perubahan kecil yang dapat diuji dan di-rollback.

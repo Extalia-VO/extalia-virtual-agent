@@ -4,6 +4,7 @@ import { safeLabel } from '@extalia/core';
 import { AGENT_APP_IDS, type AgentAppId } from '@extalia/platform';
 import type { ActivityKind, AgentState, EventBody } from '@extalia/protocol';
 import { DEFAULT_HOOK_PORT, readEndpoint, readToken } from '../connect/endpoint.js';
+import { awaitObservedReply, isObservedReplyRequest } from '../observedReplyClient.js';
 
 /**
  * Optional MCP reporting tools (`report_intent`, `report_handoff`) that outside
@@ -13,7 +14,7 @@ import { DEFAULT_HOOK_PORT, readEndpoint, readToken } from '../connect/endpoint.
  */
 
 export interface McpToolDefinition {
-  name: 'report_intent' | 'report_handoff';
+  name: 'report_intent' | 'report_handoff' | 'await_reply';
   description: string;
   inputSchema: Record<string, unknown>;
 }
@@ -22,6 +23,20 @@ export const EXTALIA_MCP_INSTRUCTION =
   'When Extalia MCP tools are available, call `report_intent` briefly when starting a distinct phase of work and `report_handoff` when delegating to or finishing a subagent.';
 
 export const EXTALIA_MCP_TOOLS: readonly McpToolDefinition[] = [
+  {
+    name: 'await_reply',
+    description: 'Wait for a cooperative Extalia reply and return it as a tool result in this calling chat. Use the URL and token explicitly paired by the user. Replies work only while this call waits; this does not answer native questions or system approvals.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        url: { type: 'string', description: 'User-paired loopback reply URL.' },
+        token: { type: 'string', description: 'Secret token from the same pairing; never include it in reports.' },
+        question: { type: 'string', maxLength: 2000, description: 'Optional question shown in Extalia.' },
+      },
+      required: ['url', 'token'],
+      additionalProperties: false,
+    },
+  },
   {
     name: 'report_intent',
     description: 'Report what the agent is currently doing or about to do for the Extalia Virtual Office.',
@@ -148,6 +163,8 @@ export interface McpServerOptions {
   fetch?: typeof fetch;
   /** Custom liveness check for unit testing. */
   alive?: (pid: number) => boolean;
+  /** Aborts a cooperative wait when its caller cancels or disconnects. */
+  signal?: AbortSignal;
 }
 
 /**
@@ -242,6 +259,16 @@ export async function handleMcpJsonRpc(
   if (method === 'tools/call') {
     const params = isObject(rawMessage.params) ? rawMessage.params : {};
     const name = typeof params.name === 'string' ? params.name.trim() : '';
+    if (name === 'await_reply') {
+      if (!isObservedReplyRequest(params.arguments)) {
+        return { jsonrpc: '2.0', id, result: { content: [{ type: 'text', text: 'Invalid arguments for await_reply.' }], isError: true } };
+      }
+      const result = await awaitObservedReply(params.arguments, { fetch: options.fetch, signal: options.signal });
+      return {
+        jsonrpc: '2.0', id,
+        result: { content: [{ type: 'text', text: JSON.stringify(result) }], isError: result.status === 'unavailable' },
+      };
+    }
     if (name !== 'report_intent' && name !== 'report_handoff') {
       return {
         jsonrpc: '2.0',
@@ -288,18 +315,53 @@ export async function runMcpStdioServer(
   const input = options.input ?? process.stdin;
   const write = options.output ?? ((line: string) => { process.stdout.write(`${line}\n`); });
   const rl = createInterface({ input, crlfDelay: Infinity });
-  for await (const rawLine of rl) {
-    const trimmed = rawLine.trim();
-    if (!trimmed) continue;
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(trimmed);
-    } catch {
-      write(JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32700, message: 'Parse error' } }));
-      continue;
+  const active = new Map<unknown, AbortController>();
+  const pending = new Set<Promise<void>>();
+  let closed = false;
+  const abortAll = () => { for (const controller of active.values()) controller.abort(); };
+  const onClose = () => { closed = true; abortAll(); };
+  rl.on('close', onClose);
+  options.signal?.addEventListener('abort', abortAll);
+  try {
+    for await (const rawLine of rl) {
+      const trimmed = rawLine.trim();
+      if (!trimmed) continue;
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(trimmed);
+      } catch {
+        write(JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32700, message: 'Parse error' } }));
+        continue;
+      }
+      if (isObject(parsed) && parsed.method === 'notifications/cancelled') {
+        const params = isObject(parsed.params) ? parsed.params : {};
+        active.get(params.requestId)?.abort();
+        continue;
+      }
+      const id = isObject(parsed) ? parsed.id : undefined;
+      if (id !== undefined && (active.has(id) || active.size >= 32)) {
+        write(JSON.stringify({ jsonrpc: '2.0', id, error: { code: -32600, message: 'Duplicate or excess active request.' } }));
+        continue;
+      }
+      const controller = new AbortController();
+      if (id !== undefined) active.set(id, controller);
+      if (closed || options.signal?.aborted) controller.abort();
+      const task = handleMcpJsonRpc(parsed, { ...options, signal: controller.signal }).then(response => {
+        if (response !== undefined) write(JSON.stringify(response));
+      }).catch(() => {
+        write(JSON.stringify({ jsonrpc: '2.0', id: id ?? null, error: { code: -32603, message: 'Internal error' } }));
+      }).finally(() => {
+        if (id !== undefined) active.delete(id);
+        pending.delete(task);
+      });
+      pending.add(task);
     }
-    const response = await handleMcpJsonRpc(parsed, options);
-    if (response !== undefined) write(JSON.stringify(response));
+  } finally {
+    abortAll();
+    options.signal?.removeEventListener('abort', abortAll);
+    rl.removeListener('close', onClose);
+    rl.close();
+    await Promise.all(pending);
   }
   return 0;
 }

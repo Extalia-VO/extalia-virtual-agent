@@ -1,4 +1,4 @@
-import { ATTACHMENT_BODY_HEADER, type AgentHostApi, type UpdateCapability, type UpdateStatus } from '@extalia/platform';
+import { ATTACHMENT_BODY_HEADER, GOAL_DOCUMENT_BODY_HEADER, MAX_GOAL_DOCUMENT_RPC_BODY_BYTES, type AgentHostApi, type UpdateCapability, type UpdateStatus } from '@extalia/platform';
 import type { ExtaliaEvent } from '@extalia/protocol';
 import { createRemoteHost, listenerSet } from './remote';
 
@@ -69,9 +69,20 @@ export function bridgeAgentHost(token: string, deps: BridgeDeps = defaultDeps())
   );
   return createRemoteHost(
     // A file upload may be larger than an ordinary call; the Bridge admits that size only with this header.
-    async (method, args) => (await request(deps, token, '/api/call', {
-      method: 'POST', body: { method, args }, ...(method === 'uploadAttachment' ? { headers: { [ATTACHMENT_BODY_HEADER]: 'attachment' } } : {}),
-    }))?.result,
+    async (method, args) => {
+      const owner = method === 'createSession' && args[1] && typeof args[1] === 'object' ? (args[1] as { team?: unknown }).team
+        : ['planTeam', 'planNativeMission', 'saveSessionTeam', 'saveWorkspaceTeam'].includes(method) ? args[1] : undefined;
+      const hasGoalDocument = Boolean(owner && typeof owner === 'object' && 'goalDocument' in owner);
+      const payload = { method, args };
+      if (hasGoalDocument && new TextEncoder().encode(JSON.stringify(payload)).byteLength > MAX_GOAL_DOCUMENT_RPC_BODY_BYTES) {
+        throw new Error('The goal attachment request is too large to send. Remove it or shorten the text, then try again.');
+      }
+      return (await request(deps, token, '/api/call', {
+        method: 'POST', body: payload,
+        ...(method === 'uploadAttachment' ? { headers: { [ATTACHMENT_BODY_HEADER]: 'attachment' } }
+          : hasGoalDocument ? { headers: { [GOAL_DOCUMENT_BODY_HEADER]: 'goal-document' } } : {}),
+      }))?.result;
+    },
     listener => events.add(listener),
   );
 }

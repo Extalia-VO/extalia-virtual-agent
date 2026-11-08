@@ -2,7 +2,7 @@
  * Pure navigation, file-serving and IPC rules for the Desktop shell, kept free of
  * Electron imports so they can be unit tested.
  */
-import { isAgentHostMethod, MAX_ATTACHMENT_BASE64_CHARS, type AgentHostMethod } from '@extalia/platform';
+import { isAgentHostMethod, MAX_ATTACHMENT_BASE64_CHARS, normalizeSkillRegistryPageInput, type AgentHostMethod } from '@extalia/platform';
 import path from 'node:path';
 
 export const APP_SCHEME = 'extalia';
@@ -58,6 +58,10 @@ export function parseAgentCall(senderUrl: string | undefined, devServer: URL | u
   // The whitelist keeps `subscribe` and inherited properties such as `constructor` out of reach.
   if (!isAgentHostMethod(method)) throw new Error('Unknown agent host method.');
   if (!Array.isArray(args)) throw new Error('Agent host arguments must be an array.');
+  if (method === 'skillRegistryPage') {
+    if (args.length !== 1) throw new Error('Invalid skill catalog arguments.');
+    return { method, args: [normalizeSkillRegistryPageInput(args[0])] };
+  }
   // A file upload is the only call with a large payload; its base64 data is bounded before it reaches the host.
   if (method === 'uploadAttachment') {
     const file = args[1];

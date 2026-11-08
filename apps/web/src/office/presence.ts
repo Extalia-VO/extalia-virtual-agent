@@ -61,7 +61,7 @@ export interface OfficeAgent {
   look?: LookIdentity;
   /** v0.0.37: the outside app and channel (observed) or the runtime (managed) the agent comes from. */
   origin?: AgentOrigin;
-  /** v0.0.37 observed only: the model the agent reported last (lead: session model; subagent: its own events or spawn model). v0.0.47: a mission worker's exact model. */
+  /** Last reported model; Native team members use their configured first model until a runtime event reports one. Mission workers carry their exact model. */
   model?: string;
   /** v0.0.48: the lead's context in use (tokens, window, compactions); absent for subagents and when no usage is known. */
   context?: SessionContextUsage;
@@ -76,7 +76,7 @@ export interface OfficeAgent {
 export const isAdmitted = (agent: Partial<Pick<OfficeAgent, 'mission'>>): boolean => !agent.mission || agent.mission.admitted;
 
 /** v0.0.30: what the Office knows about a team member (`getSessionTeam`), keyed by session id. */
-export interface PresenceMember { id: string; name: string; gender?: unknown }
+export interface PresenceMember { id: string; name: string; gender?: unknown; model?: string }
 export type PresenceTeams = ReadonlyMap<string, readonly PresenceMember[]>;
 
 /** v0.0.30: the lead's stable full name and explicit gender, from hosts that assign them (feature-detected). */
@@ -447,10 +447,12 @@ export function projectOfficePresence(
     // v0.0.37: observed agents carry their source, channel and model; their subagents get person names.
     const origin = sessionOrigin(session);
     const observed = session.control === 'observed';
-    const models = observed ? latestAgentModels(sessionEvents) : undefined;
+    const models = latestAgentModels(sessionEvents);
     // The newest model the events report wins; the session summary's lead model only fills in when no event states one.
-    const modelOf = (agent: AgentRecord): string | undefined => !models ? undefined
-      : agent.agentId === 'primary' ? models.get('primary') ?? sessionLeadModel(session) : models.get(agent.agentId) ?? agent.model;
+    const modelOf = (agent: AgentRecord): string | undefined => observed
+      ? agent.agentId === 'primary' ? models.get('primary') ?? sessionLeadModel(session) : models.get(agent.agentId) ?? agent.model
+      : agent.agentId === 'primary' ? undefined : models.get(agent.agentId)
+        ?? (session.runtime?.id !== 'hermes' ? members.find(member => member.id === agent.agentId)?.model : undefined);
     const taken = new Set<string>(primary.displayName ? [primary.displayName] : []);
     const observedLook = new Map<string, { look: LookIdentity | undefined; task?: string }>();
     if (observed) for (const agent of agents.values()) {

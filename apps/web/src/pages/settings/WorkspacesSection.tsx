@@ -1,4 +1,5 @@
 import type { AgentHostApi, FileSystemCapability, HostState } from '@extalia/platform';
+import { workspaceCrossAccess } from '@extalia/core';
 import { useEffect, useState } from 'react';
 import { errorMessage } from '../../host/remote';
 import type { Messages } from '../../i18n';
@@ -88,10 +89,12 @@ export function WorkspacesSection({ t, agents, picker, state, onState, editGateF
                 <div className="entity-main">
                   <strong>{workspace.name}</strong>
                   <code className="entity-path">{workspace.projectLocation ?? '—'}</code>
+                  {workspace.runtimeId !== 'hermes' && workspace.additionalProjectLocations?.map(path => <code className="entity-path" key={path}>{path}</code>)}
                   <span className="muted small">
                     {workspace.runtimeId === 'hermes' ? t.workspace.usesHermes(workspace.runtimeProfileId ?? 'default')
                       : connection ? t.settings.usesConnection(connection.name) : t.settings.missingConnection}
                     {' · '}{permissionsLabel(t, workspace.runtimeId, workspace.permissions)}
+                    {workspace.runtimeId !== 'hermes' && <> · {t.workspace.crossAccess.heading}: {t.workspace.crossAccess.modes[workspaceCrossAccess(workspace)]}</>}
                   </span>
                   {workspace.integrationGate && <span className="muted small workspace-gate-summary"><Icon name="shield" />{t.workspace.gate.heading}: <code>{workspace.integrationGate.command}</code></span>}
                   {teams && <span className="muted small workspace-team-summary" data-on={workspace.team?.enabled || undefined}>

@@ -1,5 +1,5 @@
 import { STOP_REASON_TEXT, safeLabel, type StopReason } from '@extalia/core';
-import type { TranscriptStep } from '@extalia/importers';
+import { normalizeWrittenFilePath, type TranscriptFileChangeCandidate, type TranscriptStep } from '@extalia/importers';
 import { classifyTool, createEvent, mcpToolName, type ActivityKind, type AgentPhase, type AgentState, type EventBody, type ExtaliaEvent } from '@extalia/protocol';
 import { createHash } from 'node:crypto';
 
@@ -42,7 +42,7 @@ export interface ToolCallDescription {
   /** v0.0.38: the call writes a plan or to-do list (`planning`) or asks the user a question (`input`). */
   phase?: 'planning' | 'input';
 }
-type Call = ToolCallDescription;
+type Call = ToolCallDescription & { files?: readonly TranscriptFileChangeCandidate[] };
 
 /** Plan and to-do tools of Claude Code, Codex, Gemini CLI and Hermes. */
 const PLAN_TOOL = /^(?:todowrite|todo_write|write_todos|update_plan|todo|exitplanmode|enterplanmode)$/;
@@ -93,6 +93,7 @@ export function transcriptEvents(input: ObservedTranscript): ExtaliaEvent[] {
   add({ type: 'session.started', control: 'observed', title: input.title || 'Observed session', ...(input.cwd ? { cwd: input.cwd } : {}) }, input.createdAt, ['session.started'], undefined, false);
 
   const calls = new Map<string, Call>();
+  const callKey = (agentId: string, callId: string) => JSON.stringify([agentId, callId]);
   const open = new Map<string, { model?: string; lastStep?: 'prompt' | 'reply' | 'tool.call' | 'tool.result' | 'status'; lastPos?: string; lastAt?: string }>();
   // A closed turn leaves its agent idle; `phase` tells an interrupted or failed turn from a finished one,
   // and v0.0.43 `reason` why a failed one stopped (out of quota, rate limited, signed out, …) when the source says.
@@ -169,7 +170,7 @@ export function transcriptEvents(input: ObservedTranscript): ExtaliaEvent[] {
       }
       case 'tool.call': {
         const call = describe(step);
-        if (step.callId) calls.set(step.callId, call);
+        if (step.callId) calls.set(callKey(agentId, step.callId), { ...call, ...(step.files ? { files: step.files } : {}) });
         const turn = open.get(agentId) ?? {};
         turn.lastStep = 'tool.call';
         turn.lastPos = step.pos;
@@ -180,7 +181,7 @@ export function transcriptEvents(input: ObservedTranscript): ExtaliaEvent[] {
         break;
       }
       case 'tool.result': {
-        const call: Call = (step.callId ? calls.get(step.callId) : undefined) ?? (() => { const tool = step.tool || 'tool'; const classified = classifyTool(tool); return { tool, kind: classified.kind, label: classified.label }; })();
+        const call: Call = (step.callId ? calls.get(callKey(agentId, step.callId)) : undefined) ?? (() => { const tool = step.tool || 'tool'; const classified = classifyTool(tool); return { tool, kind: classified.kind, label: classified.label }; })();
         const output = !input.labelsOnly && step.output ? step.output.slice(0, OUTPUT_LIMIT) : undefined;
         const turn = open.get(agentId);
         if (turn) { turn.lastStep = 'tool.result'; turn.lastPos = step.pos; turn.lastAt = at; }
@@ -188,6 +189,17 @@ export function transcriptEvents(input: ObservedTranscript): ExtaliaEvent[] {
           type: 'tool.completed', ...(step.callId ? { toolCallId: step.callId } : {}), tool: call.tool, kind: call.kind, label: call.label, ok: step.ok,
           ...(call.target ? { target: call.target } : {}), ...(output ? { output } : {}),
         }, at, [step.pos, 'tool.completed'], agentId);
+        // Calls alone are proposals. Only their successful result confirms candidate writes.
+        if (step.ok && step.writesConfirmed !== false) {
+          const files = new Map<string, TranscriptFileChangeCandidate>();
+          for (const file of [...(call.files ?? []), ...(step.files ?? [])]) {
+            const path = normalizeWrittenFilePath(file.path, input.cwd);
+            if (path) files.set(path, { path, change: file.change });
+          }
+          for (const file of files.values()) add({ type: 'file.written', ...file, ...(step.callId ? { toolCallId: step.callId } : {}) },
+            at, [step.pos, 'file.written', file.path], agentId);
+        }
+        if (step.callId) calls.delete(callKey(agentId, step.callId));
         break;
       }
       case 'turn.end':

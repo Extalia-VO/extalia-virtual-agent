@@ -466,7 +466,9 @@ export function presentUserMessage(raw: string): UserMessagePresentation {
   if (/^# AGENTS\.md instructions\b/.test(content) && content.trimEnd().endsWith('</INSTRUCTIONS>')) {
     return { text: '', attachments: [], notice: { kind: 'system', summary: '', raw } };
   }
-  const reply = questionReply(raw);
+  // App-generated replies may be surrounded by blank lines. Keep indentation,
+  // quoted examples and ordinary prose literal, just as for other wrappers.
+  const reply = questionReply(content.trimEnd());
   if (reply) return reply;
   const envelope = fileEnvelope(raw, lines);
   if (envelope) return envelope;

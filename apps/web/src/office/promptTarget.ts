@@ -34,7 +34,7 @@ export function normalizeOptions(options: PromptOptions | undefined): PromptOpti
 export function optionsChange(current: PromptOptions | undefined, wanted: PromptOptions): PromptOptions | undefined {
   const a = normalizeOptions(current);
   const b = normalizeOptions(wanted);
-  return a.model === b.model && a.effort === b.effort ? undefined : b;
+  return a.model === b.model && a.effort === b.effort ? undefined : { ...b, ...(current?.permissionMode ? { permissionMode: current.permissionMode } : {}) };
 }
 
 /** Whether a prompt can go into this session now; managed sessions refuse a second prompt while a turn runs. */
@@ -79,6 +79,9 @@ export function promptTargetFor(agent: Pick<OfficeAgent, 'sessionId' | 'control'
 export function sessionModel(state: Pick<HostState, 'workspaces' | 'connections'>, session: SessionSummary | undefined): string | undefined {
   if (!session || session.control !== 'managed') return undefined;
   if (session.options?.model) return session.options.model;
-  if (session.runtime?.id === 'hermes') return state.workspaces.find(item => item.id === session.workspaceId)?.runtimeModel || undefined;
+  if (session.runtime?.id === 'hermes') {
+    const workspace = state.workspaces.find(item => item.id === session.workspaceId);
+    return workspace?.runtimeId === 'hermes' && (workspace.runtimeProfileId ?? 'default') === session.runtime.profile ? workspace.runtimeModel || undefined : undefined;
+  }
   return state.connections.find(item => item.id === session.connectionId)?.model || undefined;
 }

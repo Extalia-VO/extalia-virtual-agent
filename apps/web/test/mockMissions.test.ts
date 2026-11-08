@@ -52,6 +52,33 @@ describe('mock host native missions (v0.0.43)', () => {
     expect(events.filter(event => event.body.type === 'task.completed').every(event => event.taskId)).toBe(true);
   }, 30_000);
 
+  it('binds cancellation to the exact live mission and leaves later prompt or mission work intact', async () => {
+    const agents = createMockPlatform({ seed: 'ready', host: 'bridge' }).capabilities.agents!;
+    const session = await idleNativeSession(agents);
+    const plan = await agents.planNativeMission(session.id, { goal: 'Review.', maxTasks: 1 });
+    const request = missionPlanToRequest(plan);
+    const first = await agents.startNativeMission(session.id, request);
+    expect((await settle(agents, session.id, first.id)).state).toBe('completed');
+    await expect(agents.cancelNativeMission!(session.id, first.id)).rejects.toThrow(/already finished/);
+
+    await agents.sendPrompt(session.id, 'Explain the project.');
+    await expect(agents.cancelNativeMission!(session.id, first.id)).rejects.toThrow(/already finished/);
+    expect((await agents.getState()).sessions.find(item => item.id === session.id)?.running).toBe(true);
+    expect((await agents.sessionEvents(session.id)).some(event => event.body.type === 'user.intervention')).toBe(false);
+    await agents.cancel(session.id);
+    for (let i = 0; i < 200 && (await agents.getState()).sessions.find(item => item.id === session.id)?.running; i++) {
+      await new Promise(resolve => setTimeout(resolve, 20));
+    }
+
+    const second = await agents.startNativeMission(session.id, request);
+    const other = await agents.createSession(session.workspaceId);
+    await expect(agents.cancelNativeMission!(session.id, first.id)).rejects.toThrow(/already finished/);
+    await expect(agents.cancelNativeMission!(other.id, second.id)).rejects.toThrow(/already finished/);
+    expect((await agents.nativeMissionRun(session.id, second.id)).state).toBe('running');
+    await agents.cancelNativeMission!(session.id, second.id);
+    expect((await settle(agents, session.id, second.id)).state).toBe('cancelled');
+  }, 30_000);
+
   it('rejects unallowed connections, cancels through the session, and seeds a failed branch as blocked', async () => {
     const agents = createMockPlatform({ seed: 'ready', host: 'bridge', missions: true }).capabilities.agents!;
     const session = await idleNativeSession(agents);

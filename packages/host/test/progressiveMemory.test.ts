@@ -76,7 +76,8 @@ describe('progressive workspace memory', () => {
 
   it('keeps hits dropped by the JSON budget reachable within the same scanned source page', async () => {
     const { directory, tools } = await fixture();
-    const names = Array.from({ length: 12 }, (_, i) => `note-${String(i).padStart(2, '0')}-${'a'.repeat(56)}`);
+    // Short names leave more of each hit's character budget for JSON-escaped quotes.
+    const names = Array.from({ length: 12 }, (_, i) => `note-${String(i).padStart(2, '0')}`);
     await Promise.all(names.map(name => external(directory, name, '# Target ' + '"'.repeat(113))));
     const found: string[] = [];
     let hitOffset = 0;

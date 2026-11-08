@@ -4,7 +4,7 @@ import { FORWARDED_SIGNALS, relaunchPlan, supervise, type SignalSource, type Sup
 import { installBlocker, type Updater } from './update';
 
 type RuntimeWithHooks = AgentHostRuntime & {
-  hooks?: Pick<HookIngest, 'handle' | 'announce'>;
+  hooks?: Pick<HookIngest, 'handle' | 'announce' | 'handlePermission'>;
 };
 
 export interface StartOptions {
@@ -60,6 +60,11 @@ export async function startBridge(options: StartOptions, deps: StartDeps): Promi
       webRoot: deps.webRoot,
       ...(deps.token ? { token: deps.token } : {}),
       agents: () => runtimeReady.then(ready => ready.host),
+      codexPermissions: async (request, response) => {
+        const ready = await runtimeReady.catch(() => undefined);
+        if (!ready?.hooks?.handlePermission) { response.writeHead(503); response.end(); return; }
+        await ready.hooks.handlePermission(request, response);
+      },
       hooks: async (request, response, app) => {
         const ready = await runtimeReady.catch(() => undefined);
         if (!ready?.hooks) { response.writeHead(204); response.end(); return; }

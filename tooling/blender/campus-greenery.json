@@ -1,0 +1,275 @@
+{
+ "$comment": "Campus greenery derived by tooling/blender/prepare-greenery.py from owner-provided downloads (assets-temp/plants, assets-temp/trees). See tooling/blender/README.md.",
+ "notices": {
+  "cgaxis": {
+   "text": "Original download record: CGAxis (https://cgaxis.com/). The source archives carry no licence file; this historical source record is retained. Owner confirmed on 2026-11-08 that these assets use the RenderHub Extended Use License (https://www.renderhub.com/info/3d-content-licensing), the same profile as the existing licensed assets. This records owner confirmation, not independent licence verification. Not MIT-licensed.",
+   "item": "Owner-confirmed 2026-11-08: RenderHub Extended Use License. Not MIT-licensed."
+  },
+  "owner-provided": {
+   "text": "Owner-provided downloads; archive names are retained below. No licence file, author or product URL was recorded with the archives. Owner confirmed on 2026-11-08 that these assets use the RenderHub Extended Use License (https://www.renderhub.com/info/3d-content-licensing), the same profile as the existing licensed assets. This records owner confirmation, not independent licence verification. Not MIT-licensed.",
+   "item": "Owner-confirmed 2026-11-08: RenderHub Extended Use License. Not MIT-licensed."
+  }
+ },
+ "greenery": [
+  {
+   "id": "plant-aloe-double",
+   "kind": "plant",
+   "title": "Double aloe plant",
+   "archive": "plants/double_aloe_plant.zip",
+   "source": "cgaxis_models_21_20/cgaxis_models_21_20.obj",
+   "license": "LicenseRef-RenderHub-Extended-Use",
+   "notice": "cgaxis",
+   "by": "group",
+   "prefix": "cgaxis_models_21_20",
+   "height": 0.62,
+   "budget": 5000
+  },
+  {
+   "id": "plant-marble-pot",
+   "kind": "plant",
+   "title": "Plant in a pot",
+   "archive": "plants/plant_in_a_pot.zip",
+   "source": "plant in a pot/plant in a pot.obj",
+   "license": "LicenseRef-RenderHub-Extended-Use",
+   "notice": "owner-provided",
+   "nested": [
+    "plant in a pot/textures.rar"
+   ],
+   "height": 0.65,
+   "budget": 6000,
+   "parts": {
+    "Material_2097640568": {
+     "base": "Map14Bitmap_CALACATTA BORGHINI 005R GLOSSY DONE WEB_baked.jpg"
+    },
+    "mat_01_-_Default_001": {
+     "base": "mat_01 - Defaultdd_diffuse.jpg",
+     "share": 3
+    },
+    "Material_2097640107sd": {
+     "color": [
+      0.035,
+      0.035,
+      0.035
+     ],
+     "roughness": 0.5
+    }
+   }
+  },
+  {
+   "id": "plant-round-pot",
+   "kind": "plant",
+   "title": "Small plant in round pot",
+   "archive": "plants/small_plant_in_round_pot.zip",
+   "source": "CGAxis_Models_Volume_50_FREE/cgaxis_models_50_31.obj",
+   "license": "LicenseRef-RenderHub-Extended-Use",
+   "notice": "cgaxis",
+   "height": 0.58,
+   "budget": 5000
+  },
+  {
+   "id": "garden-hakonechloa",
+   "kind": "garden",
+   "title": "Japanese garden plants collection 02: Hakonechloa",
+   "archive": "trees/japanese_garden_plants_collection_02.zip",
+   "source": "glb.glb",
+   "license": "LicenseRef-RenderHub-Extended-Use",
+   "notice": "owner-provided",
+   "inner": "glb.rar",
+   "objects": [
+    "^leaf1$"
+   ],
+   "height": 0.55,
+   "budget": 4000
+  },
+  {
+   "id": "garden-iris",
+   "kind": "garden",
+   "title": "Japanese garden plants collection 02: Japanese iris",
+   "archive": "trees/japanese_garden_plants_collection_02.zip",
+   "source": "glb.glb",
+   "license": "LicenseRef-RenderHub-Extended-Use",
+   "notice": "owner-provided",
+   "inner": "glb.rar",
+   "objects": [
+    "^(flower2|leaf2|stem2)$"
+   ],
+   "height": 0.75,
+   "budget": 4000,
+   "parts": {
+    "stem2_Mat": {
+     "role": "solid"
+    }
+   }
+  },
+  {
+   "id": "garden-pasque",
+   "kind": "garden",
+   "title": "Pasque flowers (Pulsatilla vulgaris)",
+   "archive": "trees/pasque_flowers_pulsatilla_vulgaris.zip",
+   "source": "cgaxis_models_66_31_free/cgaxis_models_66_31_obj.obj",
+   "license": "LicenseRef-RenderHub-Extended-Use",
+   "notice": "cgaxis",
+   "height": 0.32,
+   "budget": 4000,
+   "parts": {
+    "cgaxis_models_66_31_05": {
+     "role": "drop"
+    }
+   }
+  },
+  {
+   "id": "garden-rhododendron",
+   "kind": "garden",
+   "title": "Japanese garden plants collection 02: Japanese rhododendron",
+   "archive": "trees/japanese_garden_plants_collection_02.zip",
+   "source": "glb.glb",
+   "license": "LicenseRef-RenderHub-Extended-Use",
+   "notice": "owner-provided",
+   "inner": "glb.rar",
+   "objects": [
+    "^(flower3|leaf23|leaf3|stem3)$"
+   ],
+   "height": 1.1,
+   "budget": 6000,
+   "parts": {
+    "stem3_Mat": {
+     "role": "solid"
+    }
+   }
+  },
+  {
+   "id": "tree-avocado",
+   "kind": "tree",
+   "title": "Avocado tree with fruits",
+   "archive": "trees/avocado_tree_with_fruits_29m.zip",
+   "source": "cgaxis_models_105_04/cgaxis_models_105_04_obj.obj",
+   "license": "LicenseRef-RenderHub-Extended-Use",
+   "notice": "cgaxis",
+   "height": 6.0,
+   "budget": 12000
+  },
+  {
+   "id": "tree-butia-palm",
+   "kind": "tree",
+   "title": "Butia yatay palm",
+   "archive": "trees/butia_yatay_palm.zip",
+   "source": "cgaxis_models_15_free.obj",
+   "license": "LicenseRef-RenderHub-Extended-Use",
+   "notice": "cgaxis",
+   "by": "group",
+   "prefix": "cgaxis_models_15_free",
+   "height": 5.2,
+   "budget": 9000
+  },
+  {
+   "id": "tree-japanese-maple",
+   "kind": "tree",
+   "title": "Japanese maple",
+   "archive": "trees/japanese_maple_6m.zip",
+   "source": "cgaxis_models_109_40/cgaxis_models_109_40_japanese_maple_obj.obj",
+   "license": "LicenseRef-RenderHub-Extended-Use",
+   "notice": "cgaxis",
+   "height": 4.6,
+   "budget": 12000
+  },
+  {
+   "id": "tree-oak-tall",
+   "kind": "tree",
+   "title": "Broadleaf tree (CGAxis volume 54, model 42)",
+   "archive": "trees/tree-2.zip",
+   "source": "CGAxis_Models_Volume_54_FREE2/cgaxis_models_54_42.obj",
+   "license": "LicenseRef-RenderHub-Extended-Use",
+   "notice": "cgaxis",
+   "height": 9.0,
+   "budget": 13000
+  },
+  {
+   "id": "tree-oak-wide",
+   "kind": "tree",
+   "title": "Broadleaf tree (CGAxis volume 54, model 41)",
+   "archive": "trees/tree-1.zip",
+   "source": "CGAxis_Models_Volume_54_FREE1/cgaxis_models_54_41.obj",
+   "license": "LicenseRef-RenderHub-Extended-Use",
+   "notice": "cgaxis",
+   "height": 9.5,
+   "budget": 13000
+  },
+  {
+   "id": "tree-orange",
+   "kind": "tree",
+   "title": "Orange tree with fruits",
+   "archive": "trees/orange_tree_with_fruits_6m.zip",
+   "source": "cgaxis_models_95_78/cgaxis_models_95_78_obj.obj",
+   "license": "LicenseRef-RenderHub-Extended-Use",
+   "notice": "cgaxis",
+   "by": "group",
+   "prefix": "cgaxis_models_95_78",
+   "height": 4.2,
+   "budget": 12000
+  },
+  {
+   "id": "tree-pepper",
+   "kind": "tree",
+   "title": "Brazilian pepper tree",
+   "archive": "trees/tree_3d_model_free.zip",
+   "source": "Tree .obj",
+   "license": "LicenseRef-RenderHub-Extended-Use",
+   "notice": "owner-provided",
+   "height": 6.0,
+   "budget": 12000
+  },
+  {
+   "id": "tree-river-birch",
+   "kind": "tree",
+   "title": "River birch",
+   "archive": "trees/river_birch_49m.zip",
+   "source": "cgaxis_models_100_53_free/cgaxis_models_100_53_obj.obj",
+   "license": "LicenseRef-RenderHub-Extended-Use",
+   "notice": "cgaxis",
+   "height": 9.0,
+   "budget": 12000
+  },
+  {
+   "id": "tree-rowan",
+   "kind": "tree",
+   "title": "European rowan (Sorbus aucuparia)",
+   "archive": "trees/european_rowan_sorbus_aucuparia_41m.zip",
+   "source": "cgaxis_models_67_51/cgaxis_models_67_51_obj.obj",
+   "license": "LicenseRef-RenderHub-Extended-Use",
+   "notice": "cgaxis",
+   "height": 7.0,
+   "budget": 12000
+  },
+  {
+   "id": "tree-small-palm",
+   "kind": "tree",
+   "title": "Small palm tree",
+   "archive": "trees/small_palm_tree.zip",
+   "source": "cgaxis_models_85_22/cgaxis_models_85_22_obj.obj",
+   "license": "LicenseRef-RenderHub-Extended-Use",
+   "notice": "cgaxis",
+   "height": 2.8,
+   "budget": 6000
+  },
+  {
+   "id": "tree-tulip",
+   "kind": "tree",
+   "title": "Tulip tree (Liriodendron)",
+   "archive": "trees/tulip_tree_liriodendron_12m.zip",
+   "source": "cgaxis_models_76_32_free/cgaxis_models_76_32_obj.obj",
+   "license": "LicenseRef-RenderHub-Extended-Use",
+   "notice": "cgaxis",
+   "height": 11.0,
+   "budget": 12500,
+   "leafShare": 0.75,
+   "maxEnlarge": 4.5,
+   "quality": 78,
+   "enlargePower": 0.45
+  }
+ ],
+ "licenseConfirmation": {
+  "basis": "owner-confirmation",
+  "date": "2026-11-08",
+  "license": "LicenseRef-RenderHub-Extended-Use"
+ }
+}

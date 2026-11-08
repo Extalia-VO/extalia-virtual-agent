@@ -127,15 +127,15 @@ async function fakeHost(options: { refuseVaultRoot?: boolean; config?: Record<st
 }
 
 describe('knowledge vault setting on the host', () => {
-  it('is absent with the TypeScript core', async () => {
+  it('offers folder setup with the TypeScript core without starting a daemon', async () => {
     const root = await tempRoot();
     const runtime = await createAgentHost({
       kind: 'bridge', version: 'test', dataDirectory: path.join(root, 'data'), homeDirectory: root, importHome: root, observationIntervalMs: 60_000,
       env: { EXTALIA_SECRET_STORE: 'memory', HOME: root, PATH: '', EXTALIA_NATIVE_CORE: 'typescript' },
     });
     closes.push(() => runtime.close());
-    expect(runtime.host.knowledgeSettings).toBeUndefined();
-    expect(runtime.host.setKnowledgeVaultRoot).toBeUndefined();
+    expect(await runtime.host.knowledgeSettings!()).toMatchObject({ kind: 'default', available: true });
+    expect(typeof runtime.host.setKnowledgeVaultRoot).toBe('function');
   });
 
   it('persists a chosen folder, restarts the daemon with --vault-root, rebuilds, and goes back to the default', async () => {

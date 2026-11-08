@@ -23,22 +23,34 @@ export interface NavigationInput {
   workflow: Workflow;
   /** At least one workspace exists, so Chat, Missions, Files and Git have something to show. */
   canChat: boolean;
-  /** The host serves the knowledge methods (W5); otherwise the Knowledge page is not listed. */
+  /** Legacy capability hint; Knowledge remains visible on agent hosts. */
   knowledge?: boolean;
 }
 
-/**
- * Only pages that work in this host appear; nothing is shown as a placeholder. Skills sits in the Extalia group next
- * to Settings: it governs which instructions reach agents across the profile and every workspace (a review and
- * approval task like the settings it moved out of), not work inside one project.
- */
-export function navigationGroups({ agents, workflow, canChat, knowledge = false }: NavigationInput): { section: 'work' | 'app'; pages: PageId[] }[] {
-  // Knowledge belongs to the profile, not to a workspace, so it needs no workspace.
-  const known: PageId[] = knowledge ? ['knowledge'] : [];
-  return agents
-    // Files and Git read a workspace's project folder, so they need one.
-    ? [{ section: 'work', pages: workflow === 'observe' && !canChat ? ['office', 'observe', ...known, 'history', 'import', 'logs'] : ['office', 'chat', ...(canChat ? ['missions'] as const : []), 'observe', ...(canChat ? ['files', 'git'] as const : []), ...known, 'history', 'import', 'logs'] }, { section: 'app', pages: ['skills', 'settings', 'diagnostics'] }]
-    : [{ section: 'app', pages: ['office', 'start', 'logs', 'diagnostics', 'settings'] }];
+export type NavigationSection = 'work' | 'library' | 'activity' | 'app';
+export interface NavigationGroup { section: NavigationSection; pages: PageId[] }
+
+/** Group by purpose and prioritize the current workflow without widening feature availability. */
+export function navigationGroups({ agents, workflow, canChat }: NavigationInput): NavigationGroup[] {
+  if (!agents) return [
+    { section: 'work', pages: ['office', 'start'] },
+    { section: 'activity', pages: ['logs'] },
+    { section: 'app', pages: ['settings', 'diagnostics'] },
+  ];
+  const work: PageId[] = ['office'];
+  if (workflow === 'observe') work.push('observe');
+  if (chatAvailable({ agents, workflow, hasWorkspaces: canChat })) work.push('chat');
+  if (canChat) work.push('missions');
+  if (workflow === 'managed') work.push('observe');
+  // Files and Git read a workspace's project folder, so they need one.
+  if (canChat) work.push('files', 'git');
+  return [
+    { section: 'work', pages: work },
+    // These collections belong to the profile and need no workspace.
+    { section: 'library', pages: ['knowledge', 'skills'] },
+    { section: 'activity', pages: ['history', 'import', 'logs'] },
+    { section: 'app', pages: ['settings', 'diagnostics'] },
+  ];
 }
 
 export interface LandingInput {

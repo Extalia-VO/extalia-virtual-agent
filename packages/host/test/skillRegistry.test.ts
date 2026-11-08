@@ -73,8 +73,8 @@ async function hostFixture(env: Record<string, string>) {
   await host.saveWorkspace({ name: 'Repo', projectLocation: project, connectionId: saved.connections[0]!.id, permissions: { fileWrite: 'ask', commands: 'ask' } });
   const workspace = (await host.completeSetup()).workspaces[0]!;
   const session = await host.createSession(workspace.id);
-  const catalog = () => recorded.bodies.at(-1)!.tools!.find(tool => tool.function.name === 'skill_read')!.function.description;
-  const turn = async () => { await host.sendPrompt(session.id, 'Write the notes'); await untilIdle(runtime); };
+  const catalog = () => String(recorded.bodies.at(-1)!.messages[0]!.content).match(/<skill-catalog>\n([\s\S]*?)\n<\/skill-catalog>/)![1]!;
+  const turn = async () => { await host.sendPrompt(session.id, 'Review the current code'); await untilIdle(runtime); };
   const close = async () => { await runtime.close(); await unlockStore(path.join(data, 'profiles')); };
   return { dir, data, project, runtime, host, workspace, catalog, turn, log, recorded, close };
 }
@@ -90,7 +90,12 @@ describe('skill registry with the native core flag off (legacy)', () => {
       await fixture.turn();
       expect(fixture.catalog()).not.toContain('deploy');
       expect(fixture.catalog()).not.toContain('team-rules');
-      for (const skill of BUILTIN_SKILLS) expect(fixture.catalog()).toContain(`- ${skill.name}: `);
+      const preview = JSON.parse(fixture.catalog()) as { skills: { name: string; description: string }[]; omitted: number };
+      const review = BUILTIN_SKILLS.find(skill => skill.name === 'code-review')!;
+      expect(preview.skills).toContainEqual({ name: review.name, description: review.description });
+      expect(preview.skills.length).toBeLessThanOrEqual(4);
+      expect(preview.skills.every(skill => BUILTIN_SKILLS.some(builtin => builtin.name === skill.name))).toBe(true);
+      expect(preview.omitted).toBe(BUILTIN_SKILLS.length - preview.skills.length);
     } finally { await fixture.close(); }
   });
 });
@@ -108,7 +113,12 @@ describe('skill registry with the flag on but the daemon unavailable', () => {
       await host.allowWorkspaceSkills(workspace.id, (await host.workspaceSkills(workspace.id)).pending);
       await fixture.turn();
       const catalog = fixture.catalog();
-      for (const skill of BUILTIN_SKILLS) expect(catalog).toContain(`- ${skill.name}: `);
+      const preview = JSON.parse(catalog) as { skills: { name: string; description: string }[]; omitted: number };
+      const review = BUILTIN_SKILLS.find(skill => skill.name === 'code-review')!;
+      expect(preview.skills).toContainEqual({ name: review.name, description: review.description });
+      expect(preview.skills.length).toBeLessThanOrEqual(4);
+      expect(preview.skills.every(skill => BUILTIN_SKILLS.some(builtin => builtin.name === skill.name))).toBe(true);
+      expect(preview.omitted).toBe(BUILTIN_SKILLS.length - preview.skills.length);
       expect(catalog).not.toContain('deploy');
       expect(catalog).not.toContain('team-rules');
       expect(catalog).not.toContain('untrusted');
@@ -310,7 +320,7 @@ describe('model catalog from active registry revisions', () => {
     const current = await registry.activeSkills();
     const catalog = await buildAgentSkillCatalog(current, { reload: skill => registry.reload(skill) });
     const tools = createSkillTools(catalog);
-    expect(findTool(tools, 'skill_read').description).toContain('Current attested fixture metadata');
+    expect(catalog.skills.find(skill => skill.name === active.packageId)?.description).toBe('Current attested fixture metadata');
     expect((await runTool(tools, 'skill_read', { name: active.packageId })).ok).toBe(true);
     if (cause === 'hash') files['release-notes'] += '\nChanged after inspection.';
     else if (cause === 'deactivation') active.active = false;
@@ -335,10 +345,11 @@ describe('model catalog from active registry revisions', () => {
     await registry.activeSkills();
     expect(daemon.calls.filter(call => call.op === 'skill.read')).toHaveLength(2);
 
-    const tools = createSkillTools(await buildAgentSkillCatalog(skills, { reload: skill => registry.reload(skill) }));
+    const agentCatalog = await buildAgentSkillCatalog(skills, { reload: skill => registry.reload(skill) });
+    const tools = createSkillTools(agentCatalog);
     const tool = findTool(tools, 'skill_read');
-    expect(tool.description).toContain('- release-notes (imported, untrusted): Draft release notes');
-    for (const skill of BUILTIN_SKILLS) expect(tool.description).toContain(`- ${skill.name}: `);
+    expect(agentCatalog.skills.find(skill => skill.name === 'release-notes')).toMatchObject({ source: 'imported', description: 'Draft release notes' });
+    for (const skill of BUILTIN_SKILLS) expect(agentCatalog.skills.some(item => item.name === skill.name && item.body === skill.body)).toBe(true);
     expect(tool.description).not.toContain('changelog');
     expect(tool.description).not.toContain('deploy');
     const read = await runTool(tools, 'skill_read', { name: 'release-notes' });

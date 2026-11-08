@@ -33,8 +33,10 @@ import type { OfficeActivity } from '../activityFeed';
 import { CharacterBubbles } from './CharacterBubbles';
 import { PopoverAnchor } from './PopoverAnchor';
 import { publishLoad } from '../loadFeed';
+import type { CameraDirectorCommand } from '../cameraDirector';
 
 export interface OfficeCanvasProps {
+  automaticShot?: CameraDirectorCommand | null;
   agents: readonly OfficeAgent[];
   selectedId: string | null;
   onSelect: (id: string) => void;
@@ -96,7 +98,7 @@ function SceneReadiness({ onScene, onReady }: Pick<OfficeCanvasProps, 'onScene' 
 }
 const initialCamera = { position: [-32, 22, -82] as [number, number, number], zoom: 9, near: 0.1, far: 600 };
 /** Shared Web/Desktop renderer: furnished geometry and characters consume the same host state. */
-export default function OfficeCanvas({ view, viewRequest, language, dark, reducedMotion, agents, selectedId, onSelect, appearances, activities = [], onScene, onReady, focusRequest, follow, onFollowEnd, onFollowFloor, focusPoint, allocations: givenAllocations, positions, lightOverride, followSun, popoverId = null, onMiss }: OfficeCanvasProps) {
+export default function OfficeCanvas({ automaticShot, view, viewRequest, language, dark, reducedMotion, agents, selectedId, onSelect, appearances, activities = [], onScene, onReady, focusRequest, follow, onFollowEnd, onFollowFloor, focusPoint, allocations: givenAllocations, positions, lightOverride, followSun, popoverId = null, onMiss }: OfficeCanvasProps) {
   const ownAllocations = useOfficeAllocations(agents);
   const allocations = givenAllocations ?? ownAllocations;
   const director = useMovementDirector();
@@ -120,7 +122,7 @@ export default function OfficeCanvas({ view, viewRequest, language, dark, reduce
       <AdaptiveRenderBudget />
       {QA_HOOKS && <SceneBenchProbe />}
       <OverviewDetail campus={view === 'campus'} />
-      <CameraView view={view} viewRequest={viewRequest} focus={focus} focusId={selectedId} live={live} focusRequest={focusRequest} reducedMotion={reducedMotion} following={follow} focusPoint={focusPoint} onFollowEnd={onFollowEnd} onFollowFloor={onFollowFloor} />
+      <CameraView automaticShot={automaticShot} automaticSeat={allocations.find(seat => seat.agentId === automaticShot?.targetId)?.position} view={view} viewRequest={viewRequest} focus={focus} focusId={selectedId} live={live} focusRequest={focusRequest} reducedMotion={reducedMotion} following={follow} focusPoint={focusPoint} onFollowEnd={onFollowEnd} onFollowFloor={onFollowFloor} />
       <group visible={view === 'campus'} name="campus-site">
         <CampusNeighborhood /><CampusRoofSignage />
         <StaticCampusBatch><CampusExterior /></StaticCampusBatch>

@@ -20,6 +20,7 @@ import { FRONT_APPROACH } from "./campusSiteLayout";
 import { insideParkingFootprint } from "./campusParkingLots";
 import { useSolarEnvironment } from "./Environment";
 import { ExteriorPart, useExteriorDisplayGeometries, useExteriorInstancedGeometries } from "./ExteriorPart";
+import { GREENERY_POOLS, GreeneryInstances, pickGreenery, placementSize, useGreenery, type GreeneryPlacement } from "./greenery";
 
 /*
  * Instanced campus landscape: boulevard + grove trees, street/path lighting,
@@ -110,7 +111,10 @@ const TREE_SPECS: Record<TreeKind, TreeSpec> = {
   }
 };
 
+type TreePlacement = { kind: TreeKind; x: number; z: number; scale: number; ry: number };
+
 type Landscape = {
+  trees: TreePlacement[];
   trunks: Item[];
   canopies: Item[];
   pools: Item[];
@@ -152,6 +156,7 @@ function addTree(out: Landscape, kind: TreeKind, x: number, z: number, scale: nu
   const yaw = rand() * Math.PI * 2;
   const c = Math.cos(yaw);
   const s = Math.sin(yaw);
+  out.trees.push({ kind, x, z, scale, ry: yaw });
   out.trunks.push({
     x, y: BASE_Y, z,
     sx: spec.trunkRadius * scale, sy: spec.trunkHeight * scale, sz: spec.trunkRadius * scale,
@@ -182,9 +187,38 @@ function pool(out: Landscape, x: number, z: number, radius: number, color = "#ff
 }
 const TREE_PIT = "#4e4237";
 
+/** Greenery tree variants and target heights (metres at scale 1) for each procedural tree kind. */
+const TREE_GREENERY: Record<TreeKind, { pool: readonly string[]; height: number }> = {
+  shade: { pool: GREENERY_POOLS.shadeTree, height: 6.8 },
+  columnar: { pool: GREENERY_POOLS.columnarTree, height: 6.4 },
+  ornamental: { pool: GREENERY_POOLS.ornamentalTree, height: 4.0 },
+  copper: { pool: GREENERY_POOLS.ornamentalTree, height: 4.0 },
+  blossom: { pool: GREENERY_POOLS.ornamentalTree, height: 4.2 },
+  blossomWhite: { pool: GREENERY_POOLS.ornamentalTree, height: 4.2 }
+};
+
+/** Greenery placements for procedural trees; empty when any kind has no licensed variant. */
+export function greeneryTrees(trees: readonly TreePlacement[], y = BASE_Y): GreeneryPlacement[] {
+  const placements: GreeneryPlacement[] = [];
+  for (const tree of trees) {
+    const { pool, height } = TREE_GREENERY[tree.kind];
+    const id = pickGreenery(pool, tree.x, tree.z);
+    if (!id) return [];
+    placements.push({ id, x: tree.x, y, z: tree.z, height: height * tree.scale * placementSize(tree.x, tree.z), rotationY: tree.ry });
+  }
+  return placements;
+}
+
+/** True once every placement's model has loaded, so a grove swaps from procedural trees in one step. */
+function useGreeneryReady(placements: readonly GreeneryPlacement[]): boolean {
+  const ids = useMemo(() => [...new Set(placements.map(placement => placement.id))], [placements]);
+  const loaded = useGreenery(ids);
+  return ids.length > 0 && ids.every(id => loaded.has(id));
+}
+
 function buildLandscape(fullSpecimens = false): Landscape {
   const out: Landscape = {
-    trunks: [], canopies: [], pools: [], hardscape: [], markings: []
+    trees: [], trunks: [], canopies: [], pools: [], hardscape: [], markings: []
   };
   const rand = mulberry(0x5eed7a11);
 
@@ -341,15 +375,22 @@ function ForegroundBotanics() {
   useEffect(() => () => { fallback.dispose(); material.dispose(); fallbackMaterial.dispose(); }, [fallback, material, fallbackMaterial]);
   const flowers = display?.get("exterior-flower-bed"), tropical = display?.get("exterior-tropical-cluster");
   const blossom = display?.get("exterior-blossom-tree"), columnar = display?.get("exterior-columnar-tree");
+  const specimens = useMemo(() => greeneryTrees([
+    ...items.blossom.map(item => ({ kind: "blossom" as const, x: item.x, z: item.z, scale: 1.1, ry: item.ry })),
+    ...items.columnar.map(item => ({ kind: "columnar" as const, x: item.x, z: item.z, scale: 1, ry: item.ry }))
+  ]), [items]);
+  const specimensReady = useGreeneryReady(specimens);
   return <group name="campus-foreground-botanical-gardens">
     <Instances name="foreground-botanical-flower-parterres" geometry={flowers ?? fallback}
       material={flowers ? material : fallbackMaterial} items={items.flowers} receiveShadow />
     <Instances name="foreground-sculpted-ferns-and-agaves" geometry={tropical ?? fallback}
       material={tropical ? material : fallbackMaterial} items={items.tropical} receiveShadow />
-    {blossom && <Instances name="foreground-branching-cherry-specimens" geometry={blossom}
-      material={material} items={items.blossom} castShadow receiveShadow />}
-    {columnar && <Instances name="foreground-sculpted-cypress-specimens" geometry={columnar}
-      material={material} items={items.columnar} castShadow receiveShadow />}
+    {specimensReady ? <GreeneryInstances name="foreground-greenery-specimens" placements={specimens} /> : <>
+      {blossom && <Instances name="foreground-branching-cherry-specimens" geometry={blossom}
+        material={material} items={items.blossom} castShadow receiveShadow />}
+      {columnar && <Instances name="foreground-sculpted-cypress-specimens" geometry={columnar}
+        material={material} items={items.columnar} castShadow receiveShadow />}
+    </>}
     <ExteriorPart model="exterior-garden-pond" position={FOREGROUND_BOTANICAL_PLACEMENTS.pond}>
       <mesh position={[0, .06, 0]}><cylinderGeometry args={[2.3, 2.3, .08, 24]} /><meshStandardMaterial color="#357f94" roughness={.2} /></mesh>
     </ExteriorPart>
@@ -368,6 +409,8 @@ export function CampusLandscape() {
   const display = useExteriorDisplayGeometries();
   const data = useMemo(() => buildLandscape(Boolean(display?.has("exterior-blossom-tree") && display?.has("exterior-columnar-tree"))), [display]);
   const blenderGeometries = useExteriorInstancedGeometries();
+  const trees = useMemo(() => greeneryTrees(data.trees), [data]);
+  const treesReady = useGreeneryReady(trees);
 
   const geometries = useMemo(() => {
     const trunk = new CylinderGeometry(0.62, 1, 1, 7);
@@ -401,8 +444,10 @@ export function CampusLandscape() {
       <ForegroundBotanics />
       <Instances name="landscape-hardscape" geometry={geometries.box} material={materials.hardscape} items={data.hardscape} receiveShadow />
       <Instances name="landscape-markings" geometry={geometries.box} material={materials.marking} items={data.markings} receiveShadow />
-      <Instances name="landscape-tree-trunks" geometry={blenderGeometries?.trunk ?? geometries.trunk} material={materials.bark} items={data.trunks} castShadow />
-      <Instances name="landscape-tree-canopies" geometry={blenderGeometries?.canopy ?? geometries.canopy} material={materials.canopy} items={data.canopies} castShadow receiveShadow dynamic />
+      {treesReady ? <GreeneryInstances name="landscape-greenery-trees" placements={trees} /> : <>
+        <Instances name="landscape-tree-trunks" geometry={blenderGeometries?.trunk ?? geometries.trunk} material={materials.bark} items={data.trunks} castShadow />
+        <Instances name="landscape-tree-canopies" geometry={blenderGeometries?.canopy ?? geometries.canopy} material={materials.canopy} items={data.canopies} castShadow receiveShadow dynamic />
+      </>}
       {/* Instanced night light pools removed per user directive */}
     </group>
   );

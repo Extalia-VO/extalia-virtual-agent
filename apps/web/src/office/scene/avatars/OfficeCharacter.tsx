@@ -15,8 +15,8 @@ import { createSeatedLegPose, floorSeatedKnee, seatedLegPose, supportedThigh } f
 import { deskReachForSeat, type DeskReach } from './deskReach';
 import { createHandOrientationScratch, handPronationAngle, writeHandOrientation } from './handOrientation';
 import { mixReachGoal } from './reachPose';
-import { blendHandGoals, createHandGoals, PHONE_CENTRE, resolveDeskHandClip, writeHandGoals, type HandGoals } from './handGoals';
-import { DumbbellProp, MugProp, PhoneProp } from './IdleProps';
+import { blendHandGoals, createHandGoals, PHONE_CENTRE, resolveDeskHandClip, TABLET_CENTRE, TABLET_TILT, writeHandGoals, type HandGoals } from './handGoals';
+import { DumbbellProp, MugProp, PhoneProp, TabletProp } from './IdleProps';
 import { bikeFootGoal, createFitnessLegSolution, fitnessHandGoal, fitnessMechanism, solveFitnessLeg } from "../interior/fitnessMechanics";
 import { FITNESS_BLUEPRINT } from "../interior/spatialBlueprints";
 import { HospitalityProps } from './HospitalityProps';
@@ -102,6 +102,7 @@ function CharacterMesh({ visual, seated, typing, reducedMotion, motion, desk, re
   const mugLeft = useRef<Group>(null), mugRight = useRef<Group>(null);
   const weightLeft = useRef<Group>(null), weightRight = useRef<Group>(null);
   const phone = useRef<Group>(null);
+  const tablet = useRef<Group>(null);
   const reach = desk ?? deskReachForSeat(undefined);
   const invScale = [1 / rig.scale[0], 1 / rig.scale[1], 1 / rig.scale[2]] as [number, number, number];
   // Level of detail: the same body, posed less often and without shadows when small on screen.
@@ -141,7 +142,7 @@ function CharacterMesh({ visual, seated, typing, reducedMotion, motion, desk, re
     const keys = typing && clip === 'none' && !reducedMotion;
     // Hand goals at the desk (wrist targets and IK strength), glided between clips.
     const goals = handGoals.current ??= { shown: createHandGoals(), target: createHandGoals() };
-    writeHandGoals(goals.target, clip, time, 0, reach, rig.motion.gestureAmount, sit, walk, seatHeight);
+    writeHandGoals(goals.target, clip, time, 0, reach, rig.motion.gestureAmount, sit, walk, seatHeight, motion?.carry ?? 0);
     if (atFitness && sit > 0.95 && (clip === "cycle" || resourceId === FITNESS_BLUEPRINT.cableRow.id)) {
       for (const index of [0, 1] as const) {
         const goal = fitnessHandGoal(resourceId, index ? 1 : -1, equipment);
@@ -165,7 +166,7 @@ function CharacterMesh({ visual, seated, typing, reducedMotion, motion, desk, re
     const toTorso = torso.current ? torsoInverse.copy(torso.current.matrix).invert() : null;
     if (head.current) {
       writeFacialPose(facialPose, rig.seed, expressionTimeSeconds(), resolveCharacterExpression(expressionId, expressionState, motion), reducedMotion);
-      head.current.rotation.x = act.headPitch + facialPose.headPitch;
+      head.current.rotation.x = act.headPitch + facialPose.headPitch + 0.24 * goals.shown.tablet;
       head.current.rotation.y = facialPose.headYaw - stride.torsoTwist + act.headYaw;
       head.current.rotation.z = -pose.torsoRoll * sway * 0.5 * idle;
     }
@@ -178,6 +179,7 @@ function CharacterMesh({ visual, seated, typing, reducedMotion, motion, desk, re
     if (mugLeft.current) mugLeft.current.visible = mugOn && mugHand === 0;
     if (mugRight.current) mugRight.current.visible = mugOn && mugHand === 1;
     if (phone.current) phone.current.visible = !reducedMotion && goals.shown.phone > 0.5;
+    if (tablet.current) tablet.current.visible = goals.shown.tablet > 0.5;
     for (let limb = 0; limb < 2; limb++) {
       const index = limb as 0 | 1, left = index === 0, side = left ? -1 : 1, phase = left ? 0 : Math.PI;
       const upper = left ? leftArm : rightArm, lower = left ? leftElbow : rightElbow, hand = left ? leftHand : rightHand;
@@ -292,6 +294,9 @@ function CharacterMesh({ visual, seated, typing, reducedMotion, motion, desk, re
     {/* The phone, held at chest height between both hands (metres, undoing the body's scale). */}
     <group position={[PHONE_CENTRE[0] / rig.scale[0], PHONE_CENTRE[1] / rig.scale[1], PHONE_CENTRE[2] / rig.scale[2]]} scale={invScale}>
       <PhoneProp groupRef={phone} />
+    </group>
+    <group position={[TABLET_CENTRE[0] / rig.scale[0], TABLET_CENTRE[1] / rig.scale[1], TABLET_CENTRE[2] / rig.scale[2]]} scale={invScale} rotation={[TABLET_TILT, 0, 0]}>
+      <TabletProp groupRef={tablet} />
     </group>
     {([-1, 1] as const).map(side => <Limb key={side} pivot={[side * p.hipWidth / 2, p.standingHipHeight, 0]} upperLength={p.thighLength} lowerLength={p.shinLength} radius={HUMANOID_LEG_RADIUS}
       upperColor={skirt ? skin : wardrobe.bottom} lowerColor={skirt ? skin : wardrobe.bottom} fabric={!skirt}

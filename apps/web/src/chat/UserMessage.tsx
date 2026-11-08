@@ -87,6 +87,7 @@ function FoldedText({ t, text }: { t: Messages; text: string }) {
 
 export function UserMessage({ t, item, previewAttachment, language }: { t: Messages; item: UserItem; previewAttachment?: AttachmentPreviewLoader | undefined; language?: string | undefined }) {
   const message = presentUserMessage(item.text);
+  const text = message.questionReply?.map(reply => reply.answer).join('\n\n') ?? message.text;
   // Prefer the host's attachment reference/size. A textual local path never becomes an image URL.
   const files: (AttachmentMetadata & { path?: string })[] = [...(item.attachments ?? [])];
   const matched = new Set<number>();
@@ -97,23 +98,20 @@ export function UserMessage({ t, item, previewAttachment, language }: { t: Messa
   }
   if (message.notice) return <SourceNotice t={t} notice={message.notice} language={language} />;
   // Only app metadata (e.g. an image note whose picture is listed with its prompt) has nothing to show.
-  if (!message.text.trim() && !files.length && !message.questionReply) return null;
+  if (!text.trim() && !files.length) return null;
   const time = Date.parse(item.at);
   return <li className="msg user"><span className="visually-hidden">{t.chat.you}: </span>
-    {!message.questionReply && message.text.trim() && <div className="message-actions">
+    {text.trim() && <div className="message-actions">
       {Number.isFinite(time) && <time dateTime={item.at}>{new Intl.DateTimeFormat(language, { timeStyle: 'short' }).format(time)}</time>}
-      <CopyButton text={message.text} label={t.chat.copyMessage} />
+      <CopyButton text={text} label={t.chat.copyMessage} />
     </div>}
-    <div className={`bubble${message.questionReply ? ' question-reply' : ''}`}>
+    <div className="bubble">
     {files.length > 0 && <ul className="bubble-files" aria-label={t.composer.sentAttachments}>{files.map((file, index) => (
       file.kind === 'image' && file.ref && previewAttachment
         ? <AttachmentThumb key={index} t={t} file={file} ref_={file.ref} load={previewAttachment} />
         : <AttachmentRow key={index} file={file} />
     ))}</ul>}
-    {message.questionReply ? <div className="question-answers">{message.questionReply.map((reply, index) => <div className="question-answer" key={index}>
-      <div className="question-prompt"><span className="question-label">{t.chat.question}</span><Markdown text={reply.question} /></div>
-      <div className="question-response"><span className="question-label"><Icon name="check" />{t.chat.yourAnswer}</span><Markdown text={reply.answer} /></div>
-    </div>)}</div> : message.text && <FoldedText t={t} text={message.text} />}
+    {text && <FoldedText t={t} text={text} />}
   </div></li>;
 }
 

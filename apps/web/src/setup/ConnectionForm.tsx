@@ -1,4 +1,4 @@
-import { EFFORTS, PROVIDER_PRESETS, TASK_TIERS, presetById, type Effort, type FeatureOwner } from '@extalia/core';
+import { EFFORTS, INPUT_TOKEN_LIMITS, PROVIDER_PRESETS, TASK_TIERS, presetById, supportsPromptCache, type Effort, type FeatureOwner } from '@extalia/core';
 import type { AgentHostApi, ConnectionTestResult } from '@extalia/platform';
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
 import { errorMessage } from '../host/remote';
@@ -40,7 +40,11 @@ export function ConnectionForm({ t, agents, draft, onChange, onTestReady, showAl
   const errors = validateConnection(draft);
   const errorFor = (field: ConnectionField) => (showAllErrors || touched.has(field)) && errors[field] ? t.connection.errors[errors[field]] : undefined;
   const touch = (field: ConnectionField) => () => setTouched(previous => new Set(previous).add(field));
-  const update = (patch: Partial<ConnectionDraft>) => onChange({ ...draft, ...patch });
+  const update = (patch: Partial<ConnectionDraft>) => {
+    const next = { ...draft, ...patch };
+    if (!supportsPromptCache({ preset: next.preset, api: presetById(next.preset).api, baseUrl: next.baseUrl })) next.promptCache = false;
+    onChange(next);
+  };
   const orchestration = draft.orchestration;
   const updateOrchestration = (patch: Partial<OrchestrationDraft>) => update({ orchestration: { ...orchestration, ...patch } });
   const suggested = suggestedTiers(draft.preset);
@@ -197,6 +201,21 @@ export function ConnectionForm({ t, agents, draft, onChange, onTestReady, showAl
           <span>{t.connection.history}</span>
         </label>
         <p className="muted small" id={`${id}-history-hint`}>{draft.history ? t.connection.historyOn : t.connection.historyOff}</p>
+        {field('inputTokenLimit', t.connection.inputTokenLimit,
+          <input id={`${id}-inputTokenLimit`} type="number" inputMode="numeric" min={INPUT_TOKEN_LIMITS.min} max={INPUT_TOKEN_LIMITS.max} step={1}
+            value={draft.inputTokenLimit} aria-invalid={Boolean(errorFor('inputTokenLimit'))} aria-describedby={describedBy('inputTokenLimit')}
+            onChange={event => update({ inputTokenLimit: event.target.value })} onBlur={touch('inputTokenLimit')} />,
+          t.connection.inputTokenLimitHint)}
+        {supportsPromptCache({ preset: draft.preset, api: preset.api, baseUrl: draft.baseUrl }) && (
+          <>
+            <label className="switch">
+              <input type="checkbox" role="switch" checked={draft.promptCache} aria-describedby={`${id}-prompt-cache-hint`} onChange={event => update({ promptCache: event.target.checked })} />
+              <span className="switch-track" aria-hidden="true" />
+              <span>{t.connection.promptCache}</span>
+            </label>
+            <p className="muted small" id={`${id}-prompt-cache-hint`}>{t.connection.promptCacheHint}</p>
+          </>
+        )}
       </div>
 
       <div className="form-stack tight">

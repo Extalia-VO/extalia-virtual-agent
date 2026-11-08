@@ -28,6 +28,9 @@ export interface StepAttachment {
   data?: string;
 }
 
+export type TranscriptFileChange = 'add' | 'update' | 'delete';
+export interface TranscriptFileChangeCandidate { path: string; change: TranscriptFileChange }
+
 /** Embedded images larger than this are listed by name only. */
 export const MAX_INLINE_IMAGE_BYTES = 5 * 1024 * 1024;
 /** At most this many attachments are read from one prompt. */
@@ -37,8 +40,8 @@ export type TranscriptStep = StepBase & (
   | { type: 'prompt'; text: string; attachments?: StepAttachment[] }
   /** `final` is set only when the source marks the reply as the end of the turn. */
   | { type: 'reply'; text: string; final?: boolean; model?: string }
-  | { type: 'tool.call'; tool: string; callId?: string; target?: string; command?: string }
-  | { type: 'tool.result'; callId?: string; tool?: string; ok: boolean; output?: string }
+  | { type: 'tool.call'; tool: string; callId?: string; target?: string; command?: string; files?: TranscriptFileChangeCandidate[] }
+  | { type: 'tool.result'; callId?: string; tool?: string; ok: boolean; output?: string; files?: TranscriptFileChangeCandidate[]; writesConfirmed?: boolean }
   | { type: 'turn.end'; reason?: 'completed' | 'interrupted' }
   /**
    * v0.0.38: a state the source states without a tool call or message: the model
@@ -110,6 +113,117 @@ function patchFiles(patch: string): string[] {
   return [...patch.matchAll(/^\*\*\* (?:Add|Update|Delete) File: (.+)$/gm)].map(match => match[1]!.trim()).filter(Boolean);
 }
 
+const MAX_FILE_CANDIDATES = 200;
+const EDIT_TOOL = /^(?:apply_patch|patch|edit|write|multiedit|write_file|edit_file|replace|write_to_file|notebookedit|str_replace_editor|writefile|editfile|replace_file_content|multi_replace_file_content)$/i;
+
+export function normalizeWrittenFilePath(value: unknown, cwd?: string): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  let file = value.trim().replace(/^"(.*)"$/, '$1').replace(/\\/g, '/');
+  if (!file || file.length > 2000 || file.startsWith('//') || [...file].some(char => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127) || /^[a-z][a-z0-9+.-]*:\/\//i.test(file)) return undefined;
+  const absolute = file.startsWith('/') || /^[A-Za-z]:\//.test(file);
+  const prefix = /^[A-Za-z]:\//.test(file) ? file.slice(0, 3) : file.startsWith('/') ? '/' : '';
+  const parts: string[] = [];
+  for (const part of file.slice(prefix.length).split('/')) {
+    if (!part || part === '.') continue;
+    if (part === '..') { if (!parts.length) return undefined; parts.pop(); }
+    else parts.push(part);
+  }
+  file = prefix + parts.join('/');
+  if (!absolute) return file ? safeLabel(file, 2000) || undefined : undefined;
+  if (cwd) {
+    const root = cwd.replace(/\\/g, '/').replace(/\/$/, '');
+    if (file === root) return undefined;
+    if (file.startsWith(`${root}/`)) return safeLabel(file.slice(root.length + 1), 2000) || undefined;
+  }
+  return safeLabel(file, 2000) === file ? file : safeLabel(file, 2000) || undefined;
+}
+
+/** Extract explicit file-change claims from a known edit tool's arguments or structured response. */
+export function extractWrittenFiles(tool: string, input: unknown, response?: unknown, cwd?: string): TranscriptFileChangeCandidate[] {
+  const name = tool.trim().split('__').at(-1)!.replace(/^.*[/:.]/, '');
+  if (!EDIT_TOOL.test(name)) return [];
+  const found: TranscriptFileChangeCandidate[] = [];
+  const add = (path: unknown, change: unknown = 'update') => {
+    const clean = normalizeWrittenFilePath(path, cwd);
+    if (!clean || found.length >= MAX_FILE_CANDIDATES) return;
+    const kind: TranscriptFileChange = change === 'add' || change === 'delete' ? change : 'update';
+    if (!found.some(item => item.path === clean && item.change === kind)) found.push({ path: clean, change: kind });
+  };
+  let args: unknown = input;
+  if (typeof args === 'string') { try { args = JSON.parse(args); } catch { /* patch text */ } }
+  const record = obj(args);
+  const patch = typeof args === 'string' ? args : str(record.input) || str(record.patch) || str(record.diff);
+  if (patch) {
+    let previous: TranscriptFileChangeCandidate | undefined;
+    for (const line of patch.split(/\r?\n/)) {
+      const header = /^\*\*\* (Add|Update|Delete) File: (.+)$/.exec(line);
+      if (header) { add(header[2]!.trim(), header[1]!.toLowerCase()); previous = found.at(-1); continue; }
+      const move = /^\*\*\* Move to: (.+)$/.exec(line);
+      if (move && previous) { previous.change = 'delete'; add(move[1]!.trim(), 'add'); previous = found.at(-1); }
+    }
+  }
+  if (!found.length) {
+    const path = [record.file_path, record.filePath, record.absolute_path, record.AbsolutePath, record.TargetFile, record.notebook_path, record.path].find(value => typeof value === 'string' && value.trim());
+    const collectNested = (value: unknown, depth = 0): void => {
+      if (depth > 5 || found.length >= MAX_FILE_CANDIDATES) return;
+      if (Array.isArray(value)) { for (const item of value.slice(0, MAX_FILE_CANDIDATES)) collectNested(item, depth + 1); return; }
+      const item = obj(value);
+      const nestedPath = [item.file_path, item.filePath, item.absolute_path, item.AbsolutePath, item.TargetFile, item.notebook_path, item.path]
+        .find(candidate => typeof candidate === 'string' && candidate.trim());
+      if (nestedPath) add(nestedPath);
+      for (const [key, child] of Object.entries(item)) if (['edits', 'changes', 'operations'].includes(key)) collectNested(child, depth + 1);
+    };
+    if (path) add(path, name.toLowerCase() === 'write_to_file' && record.Overwrite !== true && record.Overwrite !== 'true' ? 'add' : 'update');
+    else collectNested(args);
+  }
+  // Some adapters return structured changed-file lists. Never parse prose or command output for paths.
+  let decodedResponse = response;
+  if (typeof decodedResponse === 'string') {
+    const trimmed = decodedResponse.trim();
+    if (trimmed.startsWith('{')) { try { decodedResponse = JSON.parse(trimmed); } catch { /* prose is not file evidence */ } }
+  }
+  let structured = decodedResponse;
+  const seen = new Set<object>();
+  for (let depth = 0; depth < 5; depth++) {
+    if (typeof structured === 'string') {
+      const trimmed = structured.trim();
+      if (trimmed.startsWith('{')) { try { structured = JSON.parse(trimmed); } catch { break; } }
+    }
+    const record = obj(structured);
+    if (!Object.keys(record).length || seen.has(record)) break;
+    seen.add(record);
+    const nested = record.response ?? record.result ?? obj(record.functionResponse).response;
+    if (!nested || nested === structured) break;
+    structured = nested;
+  }
+  const result = obj(structured);
+  if (result.type === 'create' && found.length === 1) found[0]!.change = 'add';
+  if (result.success === true && typeof result.resolved_path === 'string') add(result.resolved_path, 'update');
+  for (const key of ['files_created', 'filesCreated', 'files_modified', 'filesModified', 'changed_files', 'changedFiles', 'files_deleted', 'filesDeleted']) {
+    const entries = result[key];
+    if (!Array.isArray(entries)) continue;
+    const implied: TranscriptFileChange = /deleted/i.test(key) ? 'delete' : /created/i.test(key) ? 'add' : 'update';
+    for (const entry of entries.slice(0, MAX_FILE_CANDIDATES)) {
+      if (typeof entry === 'string') {
+        const normalized = normalizeWrittenFilePath(entry, cwd);
+        if (normalized) {
+          for (let index = found.length - 1; index >= 0; index--) if (found[index]!.path === normalized) found.splice(index, 1);
+          add(normalized, implied);
+        }
+      }
+      else {
+        const item = obj(entry);
+        const path = item.path ?? item.file_path ?? item.filePath, normalized = normalizeWrittenFilePath(path, cwd);
+        if (normalized) {
+          for (let index = found.length - 1; index >= 0; index--) if (found[index]!.path === normalized) found.splice(index, 1);
+          add(normalized, item.change ?? item.status ?? implied);
+        }
+      }
+    }
+  }
+  return found.slice(0, MAX_FILE_CANDIDATES);
+}
+
 const unquote = (value: unknown): unknown => {
   if (typeof value !== 'string') return value;
   const trimmed = value.trim();
@@ -153,23 +267,36 @@ export function stepOutput(value: unknown): string | undefined {
 }
 
 /** Exit status a tool output states explicitly; `undefined` when it states none. */
-export function statedSuccess(output: unknown): boolean | undefined {
+export function statedSuccess(output: unknown, depth = 0, seen = new Set<object>()): boolean | undefined {
+  if (depth > 5) return undefined;
   let value = output;
   if (typeof value === 'string') {
     const trimmed = value.trim();
     if (trimmed.startsWith('{')) { try { value = JSON.parse(trimmed); } catch { /* text */ } }
   }
   if (value && typeof value === 'object' && !Array.isArray(value)) {
+    if (seen.has(value)) return undefined;
+    seen.add(value);
     const record = obj(value), metadata = obj(record.metadata);
-    if (record.success === false || record.is_error === true) return false;
+    if (record.success === false || record.is_error === true || record.isError === true || (record.error !== undefined && record.error !== null && record.error !== false && record.error !== '') || Boolean(obj(record.response).error)) return false;
+    if (['error', 'failed', 'failure', 'cancelled', 'canceled'].includes(str(record.status).toLowerCase())) return false;
+    const nested = record.response ?? obj(record.functionResponse).response ?? record.result;
+    const nestedStatus = nested && nested !== value ? statedSuccess(nested, depth + 1, seen) : undefined;
+    if (nestedStatus === false) return false;
     const code = record.exit_code ?? record.exitCode ?? metadata.exit_code;
     if (typeof code === 'number') return code === 0;
-    if (record.success === true) return true;
-    return undefined;
+    if (record.success === true || ['success', 'succeeded', 'completed'].includes(str(record.status).toLowerCase())) return true;
+    return nestedStatus;
   }
   if (typeof value !== 'string') return undefined;
   const match = /(?:^|\n)(?:Exit code:|Process exited with code)\s*(-?\d+)/.exec(value);
   return match ? Number(match[1]) === 0 : undefined;
+}
+
+/** Conservative failure marker for plain result text; it never extracts paths or asserts success. */
+export function explicitToolFailure(output: unknown): boolean {
+  const text = typeof output === 'string' ? output : '';
+  return /^\s*(?:error\s*:|failed(?:\s+to|\s*:)|permission denied\b|(?:file|path) not found\b)/i.test(text);
 }
 
 /** Visible text of a tool output (`{ output }` envelopes are unwrapped). */

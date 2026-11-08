@@ -23,6 +23,20 @@ describe('normalizeMissionPlanRequest', () => {
       { goal: 'g', connectionIds: [] }, { goal: 'g', connectionIds: ['a', 'a'] }, { goal: 'g', connectionIds: ['../x'] }, { goal: 'g', models: ['--flag'] },
       { goal: 'g', baseUrl: 'https://example.com' }, { goal: 'g', tools: [] }]) expect(() => normalizeMissionPlanRequest(bad)).toThrow();
   });
+
+  it('accepts a bounded goal document and rejects malformed or oversized documents', () => {
+    const goalDocument = { name: 'goal.txt', text: 'Exact complete requirements. '.repeat(5_000) };
+    expect(normalizeMissionPlanRequest({ goal: 'Full goal attached: goal.txt', goalDocument }).goalDocument).toEqual(goalDocument);
+    expect(() => normalizeMissionPlanRequest({ goal: 'g', goalDocument: { name: 'goal.txt', text: 'x'.repeat(200_001) } })).toThrow(/invalid or too large/);
+    expect(normalizeMissionPlanRequest({ goal: 'g', goalDocument: { name: 'goal.txt', text: 'é'.repeat(150_000) } }).goalDocument?.text).toHaveLength(150_000);
+  });
+
+  it('places every character of a long goal in the lead planning prompt', () => {
+    const full = 'Complete requirements. '.repeat(5_000);
+    const prompt = missionPlanPrompt({ goal: full, maxTasks: 6, candidates }).user;
+    expect(prompt).toContain(full.trim());
+    expect(prompt).toContain('Complete requirements. Complete requirements.');
+  });
 });
 
 describe('heuristicMissionPlan', () => {
@@ -128,4 +142,16 @@ describe('missionTaskLevels', () => {
     expect(missionTaskLevels([{ id: 'a', dependsOn: ['x'] }])).toBeUndefined();
     expect(missionTaskLevels([{ id: 'a', dependsOn: [] }, { id: 'b', dependsOn: ['a'] }, { id: 'c', dependsOn: [] }])).toEqual([['a', 'c'], ['b']]);
   });
+});
+
+it('supplies the entire imported goal to model planning, including final constraints', () => {
+  const full = 'goal\n'.repeat(3000) + 'FINAL CONSTRAINT: retain this tail';
+  const normalized = normalizeMissionPlanRequest({ goal: 'Full goal attached: goal.txt', goalDocument: { name: 'goal.txt', text: full } });
+  const prompt = missionPlanPrompt({ ...context, goal: normalized.goalDocument!.text });
+  expect(prompt.user).toContain(full);
+  expect(prompt.user).toContain('FINAL CONSTRAINT: retain this tail');
+});
+
+it('refuses an unfaithful standard fallback for a long imported goal instead of truncating it into tasks', () => {
+  expect(() => heuristicMissionPlan({ ...context, goal: 'x'.repeat(4001) })).toThrow('requires automatic model planning');
 });

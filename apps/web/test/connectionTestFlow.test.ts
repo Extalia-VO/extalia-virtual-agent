@@ -7,6 +7,39 @@ import { connectionTestTarget, currentConnectionTest, finishConnectionTest, type
 import { TEST_MODEL_PLACEHOLDER, draftFromPreset, toConnectionTestInput } from '../src/setup/validation';
 
 describe('test-first connection setup', () => {
+  it.each(['en', 'id'] as const)('offers an accessible, default-off cache switch only for the official Anthropic endpoint (%s)', language => {
+    const t = MESSAGES[language];
+    const render = (draft: ReturnType<typeof draftFromPreset>) => renderToStaticMarkup(createElement(ConnectionForm, {
+      t, draft, agents: {} as never, onChange: () => undefined,
+    }));
+    const draft = draftFromPreset('anthropic');
+    const html = render(draft);
+    expect(html).toContain(t.connection.promptCache);
+    expect(html).toContain(t.connection.promptCacheHint);
+    const cacheSwitch = html.match(/<input[^>]*aria-describedby="[^"]*-prompt-cache-hint"[^>]*>/)?.[0];
+    expect(cacheSwitch).toBeDefined();
+    expect(cacheSwitch).toContain('role="switch"');
+    expect(cacheSwitch).not.toContain('checked=');
+    expect(render({ ...draft, promptCache: true })).toMatch(/<input[^>]*aria-describedby="[^"]*-prompt-cache-hint"[^>]*checked=""/);
+    expect(render({ ...draft, baseUrl: 'https://api.example.com' })).not.toContain(t.connection.promptCache);
+    expect(render(draftFromPreset('openai'))).not.toContain(t.connection.promptCache);
+    expect(render(draftFromPreset('custom'))).not.toContain(t.connection.promptCache);
+  });
+
+  it.each(['en', 'id'] as const)('renders the optional estimated input ceiling and localized validation (%s)', language => {
+    const t = MESSAGES[language];
+    const render = (inputTokenLimit = '') => renderToStaticMarkup(createElement(ConnectionForm, {
+      t, draft: { ...draftFromPreset('openai'), inputTokenLimit }, agents: {} as never, onChange: () => undefined, showAllErrors: true,
+    }));
+    const initial = render();
+    expect(initial).toContain(t.connection.inputTokenLimit);
+    expect(initial).toContain(t.connection.inputTokenLimitHint);
+    expect(initial).toMatch(/<input[^>]*type="number"[^>]*min="1024"[^>]*max="2000000"[^>]*step="1"[^>]*value=""/);
+    expect(render('50000')).toMatch(/<input[^>]*type="number"[^>]*value="50000"/);
+    expect(render('1')).toContain(t.connection.errors.inputTokenLimitInvalid);
+    expect(render('1')).toMatch(/<input[^>]*type="number"[^>]*aria-invalid="true"/);
+  });
+
   it('can discover models before a main model is selected', () => {
     const draft = { ...draftFromPreset('9router'), model: '' };
     expect(toConnectionTestInput(draft).input.model).toBe(TEST_MODEL_PLACEHOLDER);

@@ -1,14 +1,15 @@
 import {
-  KNOWLEDGE_UI_LIMITS, isKnowledgeIndexEvent, type AgentHostApi, type KnowledgeGraph, type KnowledgeLink, type KnowledgeLinkPage, type KnowledgeNode, type KnowledgeNodeRef,
+  KNOWLEDGE_UI_LIMITS, isKnowledgeIndexEvent, type FileSystemCapability, type AgentHostApi, type KnowledgeGraph, type KnowledgeLink, type KnowledgeLinkPage, type KnowledgeNode, type KnowledgeNodeRef,
   type KnowledgeNoteResult, type KnowledgeOverview, type KnowledgeSearchResult, type KnowledgeStatus,
 } from '@extalia/platform';
-import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, type ReactNode, type KeyboardEvent } from 'react';
 import { Markdown, type WikilinkNode } from '../chat/Markdown';
 import { errorMessage } from '../host/remote';
 import type { Messages } from '../i18n';
 import { useLoad, type Loaded } from '../inspect/useLoad';
 import { Icon } from '../ui/Icon';
-import { isUnsupportedMessage, knowledgeMethodsPresent, layoutGraph, linkKey, linksByTarget, nodeLabel, overviewMethodPresent, pageNodes, shortLabel, type KnowledgeApi } from './knowledgeModel';
+import { isUnsupportedMessage, layoutGraph, linkKey, linksByTarget, nodeLabel, overviewMethodPresent, pageNodes, shortLabel, type KnowledgeApi } from './knowledgeModel';
+import { KnowledgeVaultSection } from '../pages/settings/KnowledgeVaultSection';
 import { VaultGraphView } from './vault/VaultGraphView';
 import { useKnowledgeEditing, type KnowledgeEditSlots } from './KnowledgeEdit';
 
@@ -19,23 +20,6 @@ import { useKnowledgeEditing, type KnowledgeEditSlots } from './KnowledgeEdit';
  * content is untrusted: the body goes through the safe chat Markdown renderer (no raw HTML), and
  * front matter verification is shown as declared only.
  */
-
-/** Whether the host serves the knowledge methods. Desktop and the Bridge forward every method name, so one probe decides. */
-export function useKnowledgeSupport(agents: Partial<AgentHostApi> | undefined): boolean {
-  const present = knowledgeMethodsPresent(agents);
-  const [probe, setProbe] = useState<{ agents: unknown; supported: boolean } | null>(null);
-  useEffect(() => {
-    if (!knowledgeMethodsPresent(agents)) return;
-    let active = true;
-    agents.knowledgeStatus().then(
-      () => { if (active) setProbe({ agents, supported: true }); },
-      // Any other failure (daemon down, network) still shows the page, which explains the error.
-      failure => { if (active) setProbe({ agents, supported: !isUnsupportedMessage(errorMessage(failure)) }); },
-    );
-    return () => { active = false; };
-  }, [agents]);
-  return present && probe?.agents === agents && probe.supported;
-}
 
 const SEARCH_DELAY_MS = 220;
 
@@ -262,6 +246,8 @@ export function GraphView({ t, graph, title, onOpen }: { t: Messages; graph: Kno
 export interface KnowledgeViewProps {
   t: Messages;
   language: string;
+  setup?: ReactNode;
+  onRefresh?: () => void;
   status: Loaded<KnowledgeStatus>;
   query: string;
   onQuery: (query: string) => void;
@@ -356,17 +342,24 @@ function NotePanel(props: KnowledgeViewProps) {
 export function KnowledgeView(props: KnowledgeViewProps) {
   const { t, language, status, query, onQuery, results, selectedId, onOpen, syncing, syncError, onSync } = props;
   const k = t.knowledge;
-  const header = <header className="page-header"><h1>{k.title}</h1><p className="lead">{k.lead}</p></header>;
-  if (status.error && !status.value) return <div className="page knowledge">{header}<section className="card"><p className="form-error" role="alert"><Icon name="alert" />{status.error}</p></section></div>;
+  const graphMode = props.onScope && props.scope === 'vault';
+  const header = <><header className="page-header">
+    <div className="knowledge-title-row"><h1>{k.title}</h1>{props.onRefresh && <button type="button" className="button small" onClick={props.onRefresh}>{k.refresh}</button>}</div>
+    {graphMode ? <details className="knowledge-about"><summary>{k.about}</summary><p className="lead">{k.lead}</p></details> : <p className="lead">{k.lead}</p>}
+  </header>{props.setup && <details className="knowledge-vault-setup" open={status.value?.counts?.notes === 0 ? true : undefined}><summary>{t.knowledgeVault.title}</summary>{props.setup}</details>}</>;
+  if (status.error && !status.value) return <div className="page knowledge">{header}<section className="card"><p className="form-error" role="alert"><Icon name="alert" />{status.error}</p><p className="muted">{k.hostHelp}</p></section></div>;
   if (!status.value) return <div className="page knowledge">{header}<section className="card"><p className="muted" role="status">{t.common.loading}</p></section></div>;
   const current = status.value;
-  const bar = <><KnowledgeStatusBar t={t} language={language} status={current} syncing={syncing} syncError={syncError} onSync={onSync} />{props.editing?.toolbar}</>;
+  const vaultTools = <><KnowledgeStatusBar t={t} language={language} status={current} syncing={syncing} syncError={syncError} onSync={onSync} />{props.editing?.toolbar}</>;
+  const bar = graphMode && current.state !== 'unavailable' && Boolean(current.counts?.notes)
+    ? <details className="knowledge-index-tools"><summary>{k.vault} · {k.notes(current.counts!.notes)} · {k.syncAndNotes}</summary>{vaultTools}</details>
+    : vaultTools;
   const editor = props.editing?.editor;
   if (current.state === 'unavailable') {
     return (
       <div className="page knowledge">{header}{bar}
         <section className="card empty-state" data-state="unavailable">
-          <p className="note"><Icon name="alert" />{k.unavailable}</p>
+          <p className="note"><Icon name="alert" />{k.unavailable}</p><p className="muted">{k.hostHelp}</p>
           {current.reason && <p className="muted small">{k.unavailableReason(current.reason)}</p>}
         </section>
       </div>
@@ -436,7 +429,16 @@ export function KnowledgeView(props: KnowledgeViewProps) {
 }
 
 /** The Knowledge page with its state. Mounted only when the host serves the knowledge methods. */
-export function KnowledgePage({ t, language, agents }: { t: Messages; language: string; agents: AgentHostApi }) {
+type PageProps = { t: Messages; language: string; agents: AgentHostApi; picker?: FileSystemCapability | undefined };
+export function KnowledgePage(props: PageProps) {
+  const [binding, setBinding] = useState({ agents: props.agents, key: 0 });
+  if (binding.agents !== props.agents) setBinding({ agents: props.agents, key: binding.key + 1 });
+  return <KnowledgeSession key={binding.key} {...props} onVaultChanged={() => setBinding(current => ({ ...current, key: current.key + 1 }))} />;
+}
+function KnowledgeSession({ t, language, agents, picker, onVaultChanged }: PageProps & { onVaultChanged: () => void }) {
+  const live = useRef(true);
+  useEffect(() => { live.current = true; return () => { live.current = false; }; }, []);
+  const [refresh, setRefresh] = useState(0);
   const api = agents as AgentHostApi & KnowledgeApi;
   const [status, setStatus] = useState<Loaded<KnowledgeStatus>>({ loading: true });
   const [syncing, setSyncing] = useState(false);
@@ -446,16 +448,16 @@ export function KnowledgePage({ t, language, agents }: { t: Messages; language: 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [graphOpen, setGraphOpen] = useState(false);
   const [depth, setDepth] = useState<1 | 2>(1);
-  const [scope, setScope] = useState<KnowledgeScope>('local');
+  const [scope, setScope] = useState<KnowledgeScope>('vault');
 
   useEffect(() => {
     let active = true;
-    const load = () => api.knowledgeStatus().then(value => { if (active) setStatus({ value, loading: false }); }, failure => { if (active) setStatus({ error: errorMessage(failure), loading: false }); });
+    const load = () => Promise.resolve().then(() => api.knowledgeStatus()).then(value => { if (active) setStatus({ value, loading: false }); }, failure => { if (active) setStatus({ error: errorMessage(failure), loading: false }); });
     void load();
     // The vault watcher indexed an outside edit (or the vault folder changed): a new generation refreshes what is shown.
     const stop = api.subscribe(event => { if (active && isKnowledgeIndexEvent(event)) void load(); });
     return () => { active = false; stop(); };
-  }, [api]);
+  }, [api, refresh]);
   useEffect(() => {
     const timer = setTimeout(() => setDebounced(query.trim()), SEARCH_DELAY_MS);
     return () => clearTimeout(timer);
@@ -477,9 +479,9 @@ export function KnowledgePage({ t, language, agents }: { t: Messages; language: 
 
   const sync = async () => {
     setSyncing(true); setSyncError(undefined);
-    try { setStatus({ value: (await api.syncKnowledge('incremental')).status, loading: false }); }
-    catch (failure) { setSyncError(errorMessage(failure)); }
-    finally { setSyncing(false); }
+    try { const value = (await api.syncKnowledge('incremental')).status; if (live.current) setStatus({ value, loading: false }); }
+    catch (failure) { if (live.current) setSyncError(errorMessage(failure)); }
+    finally { if (live.current) setSyncing(false); }
   };
   // A note opened from a link or the graph shows from its top once it has loaded.
   const pendingScroll = useRef(false);
@@ -494,7 +496,7 @@ export function KnowledgePage({ t, language, agents }: { t: Messages; language: 
   const editing = useKnowledgeEditing({ t, language, agents, status, onStatus: value => setStatus({ value, loading: false }), note, open, close: () => setSelectedId(null) });
 
   return (
-    <KnowledgeView t={t} language={language} status={status} query={query} onQuery={setQuery}
+    <KnowledgeView t={t} language={language} setup={<KnowledgeVaultSection t={t} agents={agents} picker={picker} onChanged={onVaultChanged} locked={Boolean(editing.editor) || syncing} />} onRefresh={() => setRefresh(value => value + 1)} status={status} query={query} onQuery={setQuery}
       results={debounced ? searched : null} selectedId={selectedId} onOpen={editing.onOpen} onClose={editing.onClose} editing={editing}
       note={note} links={links} backlinks={backlinks} graphOpen={graphOpen} onGraphOpen={setGraphOpen} depth={depth} onDepth={setDepth} graph={graph}
       syncing={syncing} syncError={syncError} onSync={() => void sync()}

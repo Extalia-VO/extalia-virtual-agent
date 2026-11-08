@@ -2,7 +2,7 @@ import {
   PORTABLE_SESSION_FORMAT, decodePortableSession, safeLabel, safeText, stopReasonOf,
   type ImportMode, type MessageRole, type PortableSession,
 } from '@extalia/core';
-import { MAX_STEP_ATTACHMENTS, StepList, codexEventAttachments, imageAttachment, outputText, promptAttachments, statedSuccess, stepOutput, stepTime, toolHints, type StepAttachment, type TranscriptContext, type TranscriptStatus, type TranscriptStep } from './steps.js';
+import { MAX_STEP_ATTACHMENTS, StepList, codexEventAttachments, explicitToolFailure, extractWrittenFiles, imageAttachment, outputText, promptAttachments, statedSuccess, stepOutput, stepTime, toolHints, type StepAttachment, type TranscriptContext, type TranscriptStatus, type TranscriptStep } from './steps.js';
 
 /**
  * Parsers for native agent histories. Input is untrusted data: parsers have no
@@ -302,7 +302,8 @@ export function parseCodex(text: string, context: ParseContext): NativeParseResu
         const input = payload.type === 'local_shell_call' ? obj(payload.action) : payload.type === 'web_search_call' ? { query: obj(payload.action).query } : payload.arguments ?? payload.input;
         drafts.push({ role: 'tool', content: `Tool call ${safeLabel(tool, 120)}${payload.call_id ? ` (${safeLabel(payload.call_id, 120)})` : ''}\n${jsonData(input)}`, at: row.timestamp });
         const callId = str(payload.call_id) || str(payload.id) || undefined;
-        steps.push({ ...base, type: 'tool.call', tool, ...(callId ? { callId } : {}), ...toolHints(tool, input) });
+        const candidateFiles = extractWrittenFiles(tool, input, undefined, str(meta.cwd) || context.projectPath);
+        steps.push({ ...base, type: 'tool.call', tool, ...(callId ? { callId } : {}), ...toolHints(tool, input), ...(candidateFiles.length ? { files: candidateFiles } : {}) });
         // Built-in calls without a separate output record report their status inline.
         if (payload.type === 'web_search_call' && ['completed', 'failed'].includes(str(payload.status))) steps.push({ ...base, pos: `${pos}.result`, type: 'tool.result', tool, ...(callId ? { callId } : {}), ok: payload.status === 'completed' });
       } else if (payload.type === 'reasoning') {
@@ -310,8 +311,9 @@ export function parseCodex(text: string, context: ParseContext): NativeParseResu
         steps.push({ ...base, type: 'status', status: 'thinking' });
       } else if (['function_call_output', 'custom_tool_call_output'].includes(str(payload.type))) {
         drafts.push({ role: 'tool', content: `Tool result${payload.call_id ? ` (${safeLabel(payload.call_id, 120)})` : ''}\n${jsonData(payload.output)}`, at: row.timestamp });
-        const output = stepOutput(outputText(payload.output));
-        steps.push({ ...base, type: 'tool.result', ...(str(payload.call_id) ? { callId: str(payload.call_id) } : {}), ok: statedSuccess(payload.output) ?? true, ...(output ? { output } : {}) });
+        const visibleOutput = outputText(payload.output), output = stepOutput(visibleOutput), status = statedSuccess(payload.output), failed = status === false || explicitToolFailure(visibleOutput);
+        const writesConfirmed = !failed && (status === true || /^\s*Success\. (?:Updated|Added|Deleted)/i.test(typeof visibleOutput === 'string' ? visibleOutput : ''));
+        steps.push({ ...base, type: 'tool.result', ...(str(payload.call_id) ? { callId: str(payload.call_id) } : {}), ok: failed ? false : status ?? true, writesConfirmed, ...(output ? { output } : {}) });
       }
     } else if (row.type === 'event_msg' && ['user_message', 'agent_message'].includes(str(payload.type)) && !matched.has(index)) {
       if (payload.type === 'user_message' && CODEX_INJECTED.test(str(payload.message))) continue;
@@ -412,12 +414,15 @@ export function parseClaude(text: string, context: ParseContext): NativeParseRes
       else if (role === 'assistant' && (block.type === 'thinking' || block.type === 'redacted_thinking')) steps.push({ ...base, pos: `${pos}.${k}`, type: 'status', status: 'thinking' });
       else if (block.type === 'tool_use') {
         drafts.push({ role: 'tool', content: `Tool call ${safeLabel(block.name, 120)} (${safeLabel(block.id, 120)})\n${jsonData(block.input)}`, at: row.timestamp });
-        steps.push({ ...base, pos: `${pos}.${k}`, type: 'tool.call', tool: str(block.name) || 'tool', ...(str(block.id) ? { callId: str(block.id) } : {}), ...toolHints(str(block.name), block.input) });
+        const tool = str(block.name) || 'tool';
+        const files = extractWrittenFiles(tool, block.input, undefined, str(row.cwd) || context.projectPath);
+        steps.push({ ...base, pos: `${pos}.${k}`, type: 'tool.call', tool, ...(str(block.id) ? { callId: str(block.id) } : {}), ...toolHints(tool, block.input), ...(files.length ? { files } : {}) });
       } else if (block.type === 'tool_result') {
         const content = typeof block.content === 'string' ? block.content : partsText(block.content);
         drafts.push({ role: 'tool', content: `Tool result (${safeLabel(block.tool_use_id, 120)})\n${content}`, at: row.timestamp });
         const output = stepOutput(content);
-        steps.push({ ...base, pos: `${pos}.${k}`, type: 'tool.result', ...(str(block.tool_use_id) ? { callId: str(block.tool_use_id) } : {}), ok: block.is_error !== true, ...(output ? { output } : {}) });
+        const status = statedSuccess(block.content), failed = block.is_error === true || status === false || explicitToolFailure(content);
+        steps.push({ ...base, pos: `${pos}.${k}`, type: 'tool.result', ...(str(block.tool_use_id) ? { callId: str(block.tool_use_id) } : {}), ok: status ?? !failed, writesConfirmed: !failed, ...(output ? { output } : {}) });
       }
     }
     // Images and documents the user attached are blocks of the same row: they belong to its prompt.
@@ -508,12 +513,18 @@ export function parseGemini(text: string, context: ParseContext): NativeParseRes
     for (const [k, call] of calls.entries()) {
       const callAt = stepTime(call.timestamp) ?? at, base = { ...(callAt ? { at: callAt } : {}), ...(str(call.id) ? { callId: str(call.id) } : {}) };
       drafts.push({ role: 'tool', content: `Tool call ${safeLabel(call.name, 120)} (${safeLabel(call.id, 120)})\n${jsonData(call.args)}`, at: call.timestamp ?? message.timestamp });
-      steps.push({ ...base, pos: `${pos}:c${k}`, type: 'tool.call', tool: str(call.name), ...toolHints(str(call.name), call.args) });
+      const tool = str(call.name), candidateFiles = extractWrittenFiles(tool, call.args, undefined, context.projectPath);
+      steps.push({ ...base, pos: `${pos}:c${k}`, type: 'tool.call', tool, ...toolHints(tool, call.args), ...(candidateFiles.length ? { files: candidateFiles } : {}) });
       if (call.result !== undefined && call.result !== null) {
         drafts.push({ role: 'tool', content: `Tool result (${safeLabel(call.id, 120)})\n${jsonData(call.result)}`, at: call.timestamp ?? message.timestamp });
         const response = obj(obj(obj(list(call.result)[0]).functionResponse).response);
         const output = stepOutput(str(call.resultDisplay) || response.output || response.error);
-        steps.push({ ...base, pos: `${pos}:r${k}`, type: 'tool.result', tool: str(call.name), ok: !['error', 'cancelled'].includes(str(call.status)) && response.error === undefined, ...(output ? { output } : {}) });
+        const files = extractWrittenFiles(tool, call.args, obj(list(call.result)[0]).functionResponse, context.projectPath);
+        const resultStatus = statedSuccess(call.result) ?? statedSuccess(obj(list(call.result)[0]).functionResponse);
+        const knownStatus = ['success', 'succeeded', 'completed'].includes(str(call.status).toLowerCase());
+        const failed = resultStatus === false || ['error', 'cancelled', 'failed', 'failure'].includes(str(call.status).toLowerCase());
+        const resultOk = failed ? false : resultStatus ?? true;
+        steps.push({ ...base, pos: `${pos}:r${k}`, type: 'tool.result', tool, ok: resultOk, writesConfirmed: !failed && (resultStatus === true || knownStatus), ...(output ? { output } : {}), ...(files.length ? { files } : {}) });
       }
     }
   }
@@ -523,6 +534,7 @@ export function parseGemini(text: string, context: ParseContext): NativeParseRes
 /** Hermes Agent state.db rows (sessions + messages), read by the host with a read-only connection. */
 export function parseHermes(sessionRow: unknown, messages: unknown[], context: ParseContext): NativeParseResult {
   const diagnostics: string[] = [], session = obj(sessionRow), drafts: Draft[] = [], steps = new StepList();
+  const toolsByCall = new Map<string, string>();
   const sessionId = session.id ?? session.session_id;
   if (!str(sessionId) || !Array.isArray(messages)) return { diagnostics: ['Unsupported Hermes conversation.'] };
   if (messages.length > MAX_MESSAGES) return { diagnostics: ['The Hermes conversation exceeds the import message limit.'] };
@@ -545,12 +557,17 @@ export function parseHermes(sessionRow: unknown, messages: unknown[], context: P
     else if (message.role === 'assistant') steps.push({ ...base, pos, type: 'reply', text, ...(named.length ? {} : { final: true }) });
     else {
       const output = stepOutput(text);
-      steps.push({ ...base, pos, type: 'tool.result', ...(str(message.tool_call_id) ? { callId: str(message.tool_call_id) } : {}), ...(str(message.tool_name) ? { tool: str(message.tool_name) } : {}), ok: statedSuccess(text) ?? true, ...(output ? { output } : {}) });
+      const callId = str(message.tool_call_id), tool = str(message.tool_name) || toolsByCall.get(callId) || '';
+      const files = extractWrittenFiles(tool, undefined, content, str(session.cwd ?? session.git_repo_root ?? session.project_path) || context.projectPath);
+      const status = statedSuccess(content), failed = status === false || explicitToolFailure(text), ok = failed ? false : status ?? true;
+      steps.push({ ...base, pos, type: 'tool.result', ...(callId ? { callId } : {}), ...(tool ? { tool } : {}), ok, writesConfirmed: !failed && (status === true || files.length > 0), ...(output ? { output } : {}), ...(files.length ? { files } : {}) });
     }
     if (message.role === 'assistant') for (const [k, call] of named.entries()) {
       const fn = obj(call.function), name = str(fn.name || call.name);
+      if (str(call.id)) toolsByCall.set(str(call.id), name);
       drafts.push({ role: 'tool', content: `Tool call ${safeLabel(name, 120)} (${safeLabel(call.id, 120)})\n${jsonData(fn.arguments ?? call.arguments)}`, at: message.timestamp });
-      steps.push({ ...base, pos: `${pos}:c${k}`, type: 'tool.call', tool: name, ...(str(call.id) ? { callId: str(call.id) } : {}), ...toolHints(name, fn.arguments ?? call.arguments) });
+      const input = fn.arguments ?? call.arguments, candidateFiles = extractWrittenFiles(name, input, undefined, str(session.git_repo_root ?? session.cwd ?? session.project_path) || context.projectPath);
+      steps.push({ ...base, pos: `${pos}:c${k}`, type: 'tool.call', tool: name, ...(str(call.id) ? { callId: str(call.id) } : {}), ...toolHints(name, input), ...(candidateFiles.length ? { files: candidateFiles } : {}) });
     }
   }
   return finish(context, sessionId, drafts, diagnostics, { path: session.git_repo_root || session.cwd || session.project_path, title: session.title, start: session.started_at ?? session.created_at, parser: 'hermes-sqlite' }, steps);
@@ -656,7 +673,8 @@ export function parseAntigravity(text: string, context: ParseContext): NativePar
           }
         }
         drafts.push({ role: 'tool', content: `Tool call ${safeLabel(rawTool, 120)} (${safeLabel(callId, 120)})\n${jsonData(args)}`, at: row.created_at ?? row.timestamp });
-        steps.push({ ...base, pos: `${pos}:c${k}`, type: 'tool.call', tool: rawTool, callId, ...toolHints(rawTool, args) });
+        const candidateFiles = extractWrittenFiles(rawTool, args, undefined, projectPath || context.projectPath);
+        steps.push({ ...base, pos: `${pos}:c${k}`, type: 'tool.call', tool: rawTool, callId, ...toolHints(rawTool, args), ...(candidateFiles.length ? { files: candidateFiles } : {}) });
         pendingCalls.push({ callId, tool: rawTool });
       }
       if (row.status === 'ERROR') {
@@ -668,10 +686,10 @@ export function parseAntigravity(text: string, context: ParseContext): NativePar
       for (const [rIdx, itemText] of items.entries()) {
         const call = pendingCalls.shift();
         if (!call) break;
-        const ok = row.status !== 'ERROR' && (statedSuccess(itemText) ?? true);
+        const status = statedSuccess(itemText), failed = row.status === 'ERROR' || status === false || explicitToolFailure(itemText), ok = failed ? false : status ?? true;
         drafts.push({ role: 'tool', content: `Tool result (${safeLabel(call.callId, 120)})\n${itemText}`, at: row.created_at ?? row.timestamp });
         const output = stepOutput(outputText(itemText));
-        steps.push({ ...base, pos: `${pos}:r${rIdx}`, type: 'tool.result', callId: call.callId, tool: call.tool, ok, ...(output ? { output } : {}) });
+        steps.push({ ...base, pos: `${pos}:r${rIdx}`, type: 'tool.result', callId: call.callId, tool: call.tool, ok, writesConfirmed: !failed, ...(output ? { output } : {}) });
       }
     }
   }

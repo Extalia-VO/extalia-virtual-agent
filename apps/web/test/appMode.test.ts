@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  chatAvailable, LANDING_STORAGE_KEY, LEGACY_MODE_STORAGE_KEY, loadLandingMemory, parseLandingMemory, resolveLandingPage, resolveLandingWorkspace, saveLandingMemory
+  chatAvailable, LANDING_STORAGE_KEY, LEGACY_MODE_STORAGE_KEY, loadLandingMemory, navigationGroups, parseLandingMemory, resolveLandingPage, resolveLandingWorkspace, saveLandingMemory
 } from '../src/appMode.js';
 
 function memoryStorage(initial: Record<string, string> = {}) {
@@ -30,6 +30,52 @@ describe('chat availability', () => {
     expect(chatAvailable({ agents: true, workflow: 'observe', hasWorkspaces: true })).toBe(true);
     expect(chatAvailable({ agents: true, workflow: 'managed', hasWorkspaces: false })).toBe(true);
     expect(chatAvailable({ agents: false, workflow: 'managed', hasWorkspaces: true })).toBe(false);
+  });
+});
+
+describe('navigation by purpose', () => {
+  it('keeps primary managed work before collections, activity and system tools', () => {
+    expect(navigationGroups({ agents: true, workflow: 'managed', canChat: true })).toEqual([
+      { section: 'work', pages: ['office', 'chat', 'missions', 'observe', 'files', 'git'] },
+      { section: 'library', pages: ['knowledge', 'skills'] },
+      { section: 'activity', pages: ['history', 'import', 'logs'] },
+      { section: 'app', pages: ['settings', 'diagnostics'] },
+    ]);
+  });
+
+  it('prioritizes observation when observing, while retaining workspace tools that exist', () => {
+    expect(navigationGroups({ agents: true, workflow: 'observe', canChat: true })[0]).toEqual({
+      section: 'work', pages: ['office', 'observe', 'chat', 'missions', 'files', 'git'],
+    });
+    expect(navigationGroups({ agents: true, workflow: 'observe', canChat: false })[0]).toEqual({
+      section: 'work', pages: ['office', 'observe'],
+    });
+    expect(navigationGroups({ agents: true, workflow: 'managed', canChat: false })[0]).toEqual({
+      section: 'work', pages: ['office', 'chat', 'observe'],
+    });
+  });
+
+  it('keeps only valid static-host pages without an empty library section', () => {
+    expect(navigationGroups({ agents: false, workflow: 'managed', canChat: false })).toEqual([
+      { section: 'work', pages: ['office', 'start'] },
+      { section: 'activity', pages: ['logs'] },
+      { section: 'app', pages: ['settings', 'diagnostics'] },
+    ]);
+  });
+
+  it('never duplicates pages or emits empty groups across capability combinations', () => {
+    for (const agents of [true, false]) for (const workflow of ['managed', 'observe'] as const) for (const canChat of [true, false]) {
+      const groups = navigationGroups({ agents, workflow, canChat });
+      const pages = groups.flatMap(group => group.pages);
+      expect(groups.every(group => group.pages.length > 0)).toBe(true);
+      expect(new Set(pages).size).toBe(pages.length);
+      expect(pages).toContain(resolveLandingPage({ agents }));
+      if (agents) {
+        expect(pages).toContain('knowledge'); expect(pages).toContain('skills');
+        expect(pages).not.toContain('start');
+      } else expect(pages.sort()).toEqual(['diagnostics', 'logs', 'office', 'settings', 'start']);
+      for (const page of ['missions', 'files', 'git'] as const) expect(pages.includes(page)).toBe(agents && canChat);
+    }
   });
 });
 

@@ -1,4 +1,4 @@
-import { TASK_TIERS, type TaskTier, type TeamMember, type WorkspacePermissions } from '@extalia/core';
+import { MAX_NATIVE_TEAM_CONCURRENT, TASK_TIERS, type TaskTier, type TeamMember, type WorkspacePermissions } from '@extalia/core';
 import type { EventBody } from '@extalia/protocol';
 import { createFallbackProvider, modelChain } from './fallback.js';
 import type { SessionPermissionMode } from '@extalia/core';
@@ -19,7 +19,7 @@ import { EXTERNAL_SKILL_GUIDANCE } from './prompt.js';
  * paths, and the command tool; their edits and commands follow the workspace
  * permissions and ask the user through the session's approval flow under the
  * member's own agent id. Write delegations run one at a time, so two writers
- * never edit concurrently; read members still run in parallel.
+ * never edit concurrently; at most eight workers run in parallel per lead turn.
  */
 export interface DelegationTeam {
   /** Read on every call: the team can change during a turn (`manage_team`). */
@@ -27,11 +27,17 @@ export interface DelegationTeam {
   /** Execution rules every member follows. */
   readonly rules?: readonly string[];
   /** Provider for one model of a member's order. */
-  providerForModel(model: string): ModelProvider;
+  providerForModel(model: string, member?: TeamMember): ModelProvider;
+  /** Default chain on the member's selected connection (empty member models). */
+  modelsForMember?(member: TeamMember): readonly string[];
+  /** Read tools permitted by the selected connection's capabilities. */
+  workerToolsForMember?(member: TeamMember): readonly AnyTool[];
   /** Models a member with an empty model list uses (the lead's chain). */
   leadModels: readonly string[];
   /** Edit and command tools for write members (guarded per member before use). */
   writeTools?: readonly AnyTool[];
+  /** Host-scoped write tools; overrides shared tools and must also enforce canonical member paths. */
+  writeToolsForMember?(member: TeamMember): readonly AnyTool[];
 }
 
 export interface DelegationOptions {
@@ -40,10 +46,15 @@ export interface DelegationOptions {
   /** Read-only tools available to workers (must not include delegation itself). */
   workerTools: readonly AnyTool[];
   maxDelegations: number;
+  /** Managed Chat can require an explicitly configured member, preventing anonymous tier fallback. */
+  requireMember?: boolean;
   workspace: { name: string; root: string };
   /** Events about workers are attributed to the worker's own agent id. */
   emit(body: EventBody, agentId?: string): void;
   newId?: () => string;
+  /** Host-local invocation observers; roster/spawn events are not evidence of entry. */
+  onWorkerStarted?(invocationId: string, memberLabel?: string, member?: TeamMember): void;
+  onWorkerSettled?(invocationId: string): void;
   maxWorkerSteps?: number;
   /** The session's subagent team, when it is enabled. */
   team?: DelegationTeam;
@@ -111,6 +122,39 @@ export function createDelegationTool(options: DelegationOptions): ToolDefinition
   /** Write delegations wait for the previous writer to finish. */
   let writers: Promise<void> = Promise.resolve();
   let queuedWriters = 0;
+  const memberQueues = new Map<string, Promise<void>>();
+  let activeWorkers = 0;
+  const workerWaiters: Array<{ admit(): void }> = [];
+  // Take capacity only after member/writer predecessors settle. Queued jobs never
+  // occupy active slots; aborting active work retains its slot until actual settlement.
+  function acquireWorkerSlot(signal: AbortSignal): Promise<boolean> {
+    if (signal.aborted) return Promise.resolve(false);
+    if (activeWorkers < MAX_NATIVE_TEAM_CONCURRENT) { activeWorkers++; return Promise.resolve(true); }
+    return new Promise(resolve => {
+      const onAbort = () => {
+        const index = workerWaiters.indexOf(waiter);
+        if (index !== -1) workerWaiters.splice(index, 1);
+        signal.removeEventListener('abort', onAbort);
+        resolve(false);
+      };
+      const waiter = { admit: () => { signal.removeEventListener('abort', onAbort); activeWorkers++; resolve(true); } };
+      workerWaiters.push(waiter);
+      signal.addEventListener('abort', onAbort, { once: true });
+    });
+  }
+  function releaseWorkerSlot(): void {
+    activeWorkers--;
+    const next = workerWaiters.shift();
+    if (next) next.admit();
+  }
+  // Abort a queued caller promptly, while retaining its queue slot until its predecessor settles.
+  async function waitForSlot(previous: Promise<void>, signal: AbortSignal): Promise<boolean> {
+    if (signal.aborted) return false;
+    let onAbort!: () => void;
+    const aborted = new Promise<boolean>(resolve => { onAbort = () => resolve(false); signal.addEventListener('abort', onAbort, { once: true }); });
+    try { return await Promise.race([previous.then(() => true), aborted]); }
+    finally { signal.removeEventListener('abort', onAbort); }
+  }
   return {
     name: 'delegate_task',
     get description() {
@@ -120,7 +164,7 @@ export function createDelegationTool(options: DelegationOptions): ToolDefinition
         (options.team ? (team.length
           ? `Name a team member to give the task to them (they use their own models): ${roster()}. Members that can edit change files only inside their scope, one at a time. `
           : 'Name a team member (created with manage_team) to give the task to them. ') : '') +
-        `At most ${limit()} delegations per turn.`;
+        `At most ${limit()} delegations per turn, with at most ${MAX_NATIVE_TEAM_CONCURRENT} active workers at once.`;
     },
     get parameters() {
       const names = members().map(member => member.name).join(', ');
@@ -132,7 +176,7 @@ export function createDelegationTool(options: DelegationOptions): ToolDefinition
           context: { type: 'string' as const, description: 'Facts the worker needs that it cannot find in the project.' },
           ...(options.team ? { member: { type: 'string' as const, description: names ? `Team member name or id: ${names}.` : 'Team member name or id.' } } : {}),
         },
-        required: ['task'] as const,
+        required: options.requireMember ? ['task', 'member'] : ['task'],
       };
     },
     access: 'meta',
@@ -144,6 +188,7 @@ export function createDelegationTool(options: DelegationOptions): ToolDefinition
       return { label: `Delegating${member ? ` to ${member.name}` : ''}: ${task.length > 60 ? `${task.slice(0, 59)}…` : task}`, target: member?.name ?? input.tier ?? 'standard' };
     },
     async run(input, context) {
+      if (options.requireMember && !input.member?.trim()) return { ok: false, output: 'Choose a configured team member for delegation. Anonymous workers are unavailable in this session.' };
       const member = input.member?.trim() ? findTeamMember(members(), input.member) : undefined;
       if (input.member?.trim() && !member) {
         return { ok: false, output: members().length ? `There is no team member "${input.member}". Members: ${roster()}.` : 'This session has no subagent team; leave out member.' };
@@ -156,21 +201,43 @@ export function createDelegationTool(options: DelegationOptions): ToolDefinition
       // Team members keep their id, so the Office shows the same subagent under the lead every time.
       const subagentId = member?.id ?? newId();
       const label = member ? member.name : input.task.replace(/\s+/g, ' ').trim().slice(0, 120);
-      const writer = member?.access === 'write' && Boolean(options.team?.writeTools?.length);
-      options.emit({ type: 'subagent.spawned', subagentId, role: member?.role ?? tier, label });
-      let release: () => void = () => undefined;
-      if (writer) {
-        const previous = writers;
-        writers = new Promise<void>(resolve => { release = resolve; });
-        if (queuedWriters++ > 0) options.emit({ type: 'subagent.state', subagentId, state: 'waiting', summary: 'Waiting for another member to finish editing' });
-        await previous;
-      }
+      const writer = member?.access === 'write' && Boolean(options.team?.writeToolsForMember || options.team?.writeTools?.length);
+      const previousMember = member ? memberQueues.get(member.id) : undefined;
+      const previousWriter = writer ? writers : undefined;
+      const previous = Promise.all([previousMember, previousWriter]).then(() => undefined);
+      let release!: () => void;
+      const slot = new Promise<void>(resolve => { release = resolve; });
+      const tail = previous.then(() => slot);
+      if (member) memberQueues.set(member.id, tail);
+      if (writer) { writers = tail; queuedWriters++; }
+      let acquiredWorkerSlot = false;
       try {
-        if (context.signal.aborted) return { ok: false, output: 'Not run: the user stopped the turn.' };
-        return await runWorker(input, member, writer, subagentId, tier, context.signal);
+        // A repeated member's stable Office id continues representing its active invocation.
+        if (!previousMember && !context.signal.aborted) {
+          options.emit({ type: 'subagent.spawned', subagentId, role: member?.role ?? tier, label });
+          if (writer && queuedWriters > 1) options.emit({ type: 'subagent.state', subagentId, state: 'waiting', summary: 'Waiting for another member to finish editing' });
+        }
+        if (!await waitForSlot(previous, context.signal) || context.signal.aborted) {
+          if (!previousMember) options.emit({ type: 'subagent.state', subagentId, state: 'idle', summary: 'Not run: the user stopped the turn' });
+          return { ok: false, output: 'Not run: the user stopped the turn.' };
+        }
+        if (!previousMember && activeWorkers >= MAX_NATIVE_TEAM_CONCURRENT) options.emit({ type: 'subagent.state', subagentId, state: 'waiting', summary: 'Waiting for Native worker capacity' });
+        acquiredWorkerSlot = await acquireWorkerSlot(context.signal);
+        if (!acquiredWorkerSlot || context.signal.aborted) {
+          if (!previousMember) options.emit({ type: 'subagent.state', subagentId, state: 'idle', summary: 'Not run: the user stopped the turn' });
+          return { ok: false, output: 'Not run: the user stopped the turn.' };
+        }
+        if (previousMember) options.emit({ type: 'subagent.spawned', subagentId, role: member!.role, label });
+        const invocationId = defaultId();
+        try { options.onWorkerStarted?.(invocationId, member?.name, member); } catch { /* Inspection observers never control worker execution. */ }
+        try { return await runWorker(input, member, writer, subagentId, tier, context.signal); }
+        finally { try { options.onWorkerSettled?.(invocationId); } catch { /* Preserve the worker result. */ } }
       } finally {
+        if (acquiredWorkerSlot) releaseWorkerSlot();
         if (writer) queuedWriters--;
         release();
+        // An aborted waiter retains ordering until every earlier physical invocation settles.
+        void tail.then(() => { if (member && memberQueues.get(member.id) === tail) memberQueues.delete(member.id); });
       }
     },
   };
@@ -182,16 +249,20 @@ export function createDelegationTool(options: DelegationOptions): ToolDefinition
     try {
       if (member && options.team) {
         const team = options.team;
-        const models = member.models.length ? member.models : team.leadModels;
-        provider = createFallbackProvider(modelChain(models, model => team.providerForModel(model)), {
-          onSwitch: change => options.emit({ type: 'subagent.state', subagentId, state: 'working', summary: `Switched to ${change.to} (${change.from} hit a limit)` }),
+        const models = member.models.length ? member.models : team.modelsForMember?.(member) ?? team.leadModels;
+        provider = createFallbackProvider(modelChain(models, model => team.providerForModel(model, member)), {
+          onSwitch: change => {
+            options.emit({ type: 'subagent.spawned', subagentId, role: member.role, label: member.name, model: change.to });
+            options.emit({ type: 'subagent.state', subagentId, state: 'working', summary: `Switched to ${change.to} (${change.from} hit a limit)` });
+          },
         });
+        options.emit({ type: 'subagent.spawned', subagentId, role: member.role, label: member.name, model: models[0] });
       } else provider = options.providerFor(tier);
     } catch (error) {
       options.emit({ type: 'subagent.state', subagentId, state: 'blocked', summary: 'Could not start' });
       return { ok: false, output: `The ${member ? member.name : tier} worker could not start: ${error instanceof Error ? error.message : String(error)}` };
     }
-    const writeTools = writer && member ? guardMemberTools(options.team!.writeTools!, member) : [];
+    const writeTools = writer && member ? guardMemberTools(options.team?.writeToolsForMember?.(member) ?? options.team?.writeTools ?? [], member) : [];
     const commands = writeTools.some(tool => tool.access === 'execute');
     // Worker activity is summarized as subagent state; its own deltas would clutter the primary transcript.
     const result = await runTurn({
@@ -199,7 +270,7 @@ export function createDelegationTool(options: DelegationOptions): ToolDefinition
       system: workerSystemPrompt(options.workspace, member, member ? options.team?.rules ?? [] : [], { commands }),
       history: [],
       prompt,
-      tools: [...options.workerTools, ...writeTools],
+      tools: [...(member ? options.team?.workerToolsForMember?.(member) ?? options.workerTools : options.workerTools), ...writeTools],
       permissions: options.permissions ?? { fileWrite: 'ask', commands: 'ask' },
       sessionGrants: writer ? options.sessionGrants ?? new Set() : new Set(),
       permissionMode: options.permissionMode,

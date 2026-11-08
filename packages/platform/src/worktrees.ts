@@ -70,7 +70,7 @@ export interface IntegrationGateResult {
   log: string;
   logDigest: string;
   observedAt: string;
-  basis: 'verified_by_extalia';
+  basis: 'verified_by_extalia' | 'not_run';
 }
 
 export type IntegrationStatus = 'ready' | 'conflict' | 'gate_failed' | 'gate_missing' | 'empty' | 'applied' | 'stale';

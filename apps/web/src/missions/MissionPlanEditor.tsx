@@ -1,9 +1,10 @@
 import type { AgentHostApi, ConnectionView, HostMissionRun, SessionSummary } from '@extalia/platform';
-import { useId, useState } from 'react';
+import { useId, useLayoutEffect, useRef, useState } from 'react';
 import { errorMessage } from '../host/remote';
 import type { Messages } from '../i18n';
 import { ComboBox } from '../ui/ComboBox';
 import { Icon } from '../ui/Icon';
+import { PlanningBasisNote } from '../planning/PlanningBasisNote';
 import { Select } from '../ui/Select';
 import { MissionDag } from './MissionDag';
 import {
@@ -129,24 +130,40 @@ export function MissionPlanEditor({ t, agents, session, connections, pairs, init
   const ids = { heading: useId(), title: useId(), concurrency: useId(), budget: useId() };
   const [plan, setPlan] = useState(initial);
   const [selectedKey, setSelectedKey] = useState(initial.tasks[0]?.key);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [launchState, setLaunchState] = useState<{
+    agents: AgentHostApi; sessionId: string; workspaceId: string; busy: boolean; error: string | null;
+  } | null>(null);
+  const currentLaunch = launchState?.agents === agents && launchState.sessionId === session.id && launchState.workspaceId === session.workspaceId ? launchState : null;
+  // Returning to an earlier context must not revive its abandoned busy/error state.
+  if (launchState && !currentLaunch) setLaunchState(null);
+  const busy = currentLaunch?.busy ?? false;
+  const error = currentLaunch?.error;
+  const ownership = useRef<{ active: boolean; pending: boolean } | null>(null);
+  useLayoutEffect(() => {
+    const owner = { active: true, pending: false };
+    ownership.current = owner;
+    return () => { owner.active = false; };
+  }, [agents, session.id, session.workspaceId]);
   const issues = validatePlan(plan, pairs);
   const selected = plan.tasks.find(task => task.key === selectedKey) ?? plan.tasks[0];
   const nameOf = (connectionId: string) => connections.find(item => item.id === connectionId)?.name ?? connectionId;
   const updateTask = (key: string, change: (task: DraftTask) => DraftTask) => setPlan(current => ({ ...current, tasks: current.tasks.map(task => task.key === key ? change(task) : task) }));
   const planIssues = issues.filter(issue => !issue.taskKey);
   const launch = async () => {
-    if (issues.length || busy) return;
-    setBusy(true); setError(null);
-    const request = requestFromDraft(plan);
+    const owner = ownership.current;
+    if (issues.length || busy || !owner?.active || owner.pending) return;
+    owner.pending = true;
+    const status = { agents, sessionId: session.id, workspaceId: session.workspaceId };
+    setLaunchState({ ...status, busy: true, error: null });
     try {
+      const request = requestFromDraft(plan);
       const run = await agents.startNativeMission(session.id, request);
+      if (!owner.active) return;
       rememberSubmitted(run.id, request);
       onLaunched(run);
     } catch (failure) {
-      setError(errorMessage(failure));
-      setBusy(false);
+      owner.pending = false;
+      if (owner.active) setLaunchState({ ...status, busy: false, error: errorMessage(failure) });
     }
   };
   const fieldIssue = (code: PlanIssue['code'][]) => planIssues.filter(issue => code.includes(issue.code)).map(issue => p.errors[issue.code]).join(' ');
@@ -171,6 +188,7 @@ export function MissionPlanEditor({ t, agents, session, connections, pairs, init
         <span className="badge" data-source={plan.source}><Icon name={plan.source === 'manual' ? 'edit' : 'spark'} />{p.source[plan.source]}</span>
         {plan.leadModel && <span className="badge"><code>{p.leadModel(plan.leadModel)}</code></span>}
       </header>
+      <PlanningBasisNote basis={plan.planningBasis} t={t} />
       {plan.note && <p className="note"><Icon name="alert" />{plan.note}</p>}
       <div className="form-grid">
         <div className="field">

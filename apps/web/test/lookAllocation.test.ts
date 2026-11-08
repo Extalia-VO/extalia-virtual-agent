@@ -129,9 +129,9 @@ describe('casual clothing is unique, formal clothing is shared', () => {
 describe('generated hair', () => {
   const store = (presentation: CharacterPresentation) => detailedHairStyles(presentation);
 
-  it('uses the five detailed GLB styles of the group, each with an existing model file', () => {
-    expect(store('feminine').sort()).toEqual(['bob', 'bun', 'high-ponytail', 'medium', 'ponytail']);
-    expect(store('masculine').sort()).toEqual(['short-fade', 'side-part', 'slicked-back', 'textured-crop', 'undercut']);
+  it('uses the detailed GLB styles of the group, each with an existing model file', () => {
+    expect(store('feminine').sort()).toEqual(['bob', 'bun', 'bun-bangs', 'dreads', 'high-ponytail', 'long-bangs', 'long-straight', 'medium', 'ponytail', 'sleek-ponytail', 'straight-short']);
+    expect(store('masculine').sort()).toEqual(['afro', 'dreadlocks', 'short-fade', 'side-part', 'slicked-back', 'textured-crop', 'undercut']);
     for (const presentation of ['feminine', 'masculine'] as const) {
       for (const look of allocateGeneratedLooks(entries(30, presentation), 's').values()) {
         expect(store(presentation)).toContain(look.hairStyle);
@@ -145,7 +145,7 @@ describe('generated hair', () => {
       const five = [...allocateGeneratedLooks(entries(5, presentation), 'x').values()].map(look => look.hairStyle);
       expect(new Set(five).size).toBe(5);
       const ten = [...allocateGeneratedLooks(entries(10, presentation), 'x').values()].map(look => look.hairStyle);
-      expect(new Set(ten).size).toBe(5);
+      expect(new Set(ten).size).toBe(Math.min(10, store(presentation).length));
     }
   });
 
@@ -178,7 +178,7 @@ describe('generated hair', () => {
       seen.add(next.hairStyle);
     }
     expect(seen.size).toBeGreaterThan(1);
-    expect(randomizeHair({ ...look, hairStyle: 'afro' }, 'editor:primary', 1).hairStyle).not.toBe('textured-crop');
+    expect(randomizeHair({ ...look, hairStyle: 'afro' }, 'editor:primary', 1).hairStyle).not.toBe('afro');
   });
 });
 
@@ -197,17 +197,17 @@ describe('no procedural clothing or hair in generated looks', () => {
   });
 
   it('maps saved procedural hair to the nearest detailed GLB style without rewriting the saved value', () => {
-    expect(glbHairStyle('curly', 'masculine')).toBe('textured-crop');
-    expect(glbHairStyle('afro', 'masculine')).toBe('textured-crop');
-    expect(glbHairStyle('wavy', 'feminine')).toBe('medium');
-    expect(glbHairStyle('long', 'feminine')).toBe('medium');
+    expect(glbHairStyle('curly', 'masculine')).toBe('afro');
+    expect(glbHairStyle('afro', 'masculine')).toBe('afro');
+    expect(glbHairStyle('wavy', 'feminine')).toBe('long-straight');
+    expect(glbHairStyle('long', 'feminine')).toBe('long-straight');
     expect(glbHairStyle('bun', 'feminine')).toBe('bun');
     expect(glbHairStyle('not-a-style', 'masculine')).toBe('side-part');
     const saved: CharacterAppearance = { ...defaultCharacterAppearance('old:primary', 'masculine'), hairStyle: 'curly' };
     const visual = avatarVisual('old:primary', saved);
-    expect(sourceHairAsset(visual).id).toBe('textured-crop');
+    expect(sourceHairAsset(visual).id).toBe('afro');
     expect(saved.hairStyle).toBe('curly');
-    expect(sourceHairAsset({ ...visual, hairVariant: 'long', presentation: 'feminine' }).id).toBe('medium');
+    expect(sourceHairAsset({ ...visual, hairVariant: 'long', presentation: 'feminine' }).id).toBe('long-straight');
   });
 });
 
@@ -224,6 +224,6 @@ describe('shared store', () => {
       const items = casualItems({ presentation: 'masculine', formal: false, hairStyle: look.hairStyle, ...(look.outfitModel ? { outfitModel: look.outfitModel } : {}), ...(look.outfitParts ? { outfitParts: look.outfitParts } : {}) });
       for (const item of items) { expect(held.has(item)).toBe(false); held.add(item); }
     }
-    expect(new Set(looks.map(look => look.hairStyle)).size).toBe(5);
+    expect(new Set(looks.map(look => look.hairStyle)).size).toBe(6);
   });
 });

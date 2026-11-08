@@ -1,20 +1,34 @@
 import {
-  AddEquation, BufferAttribute, BufferGeometry, CanvasTexture, Color, DynamicDrawUsage, IcosahedronGeometry, InstancedBufferAttribute, InstancedMesh,
-  LineBasicMaterial, CustomBlending, LineSegments, MeshMatcapMaterial, OneFactor, Plane, Points, Raycaster, ShaderMaterial, SRGBColorSpace, Vector2, Vector3, ZeroFactor,
-  type Fog, type PerspectiveCamera, type Scene, type WebGLRenderer,
+  AddEquation, BufferAttribute, BufferGeometry, Color, DynamicDrawUsage, PlaneGeometry, InstancedBufferAttribute, InstancedMesh,
+  CustomBlending, NormalBlending, OneFactor, Plane, Points, Raycaster, ShaderMaterial, Vector2, Vector3, ZeroFactor,
+  type Fog, type InterleavedBufferAttribute, type PerspectiveCamera, type Scene, type WebGLRenderer,
 } from 'three';
-import { decodeFrame, encodeInit, encodeMask, type Encoded, type SimCommand } from './simProtocol';
-import { edgeEndColour, labelCandidates, neighbourSet, nodeLook, QUALITY_TIERS, updateQuality, type NodeLook, type QualityState, type VaultGraph } from './vaultGraphModel';
+import { LineSegments2 } from 'three/addons/lines/LineSegments2.js';
+import { LineSegmentsGeometry } from 'three/addons/lines/LineSegmentsGeometry.js';
+import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
+import type { GraphTheme } from './graphTheme';
+import { graphAppearance, type GraphAppearance } from './graphAppearance';
+import { graphEdgeColour } from './graphVisualStyle';
+import { createGraphNodeMaterial } from './graphNodeMaterial';
+import { GRAPH_STAR_HALO_GLSL } from './graphReferenceStyle';
+import { decodeFrame, encodeInit, encodeMask, graphDepthSeed, type Encoded, type SimCommand } from './simProtocol';
+import { graphClusters, labelCandidates, neighbourSet, nodeLook, QUALITY_TIERS, updateQuality, type NodeLook, type QualityState, type VaultGraph } from './vaultGraphModel';
 
 /**
  * The imperative half of the whole-vault 3D graph. Three draw calls whatever the vault size: one
- * InstancedMesh of matcap-shaded cores, one additive Points cloud of procedural halos and one
- * LineSegments of vertex-coloured edges. Positions come from the force simulation (a worker) at
+ * InstancedMesh of camera-facing star cores, one additive Points cloud of procedural halos and one
+ * LineSegments2 of vertex-coloured edges. Positions come from the force simulation (a worker) at
  * up to 30 Hz; frames ease between them. The canvas renders on demand: while the layout moves,
  * the camera moves, or hubs pulse for a while after the last interaction.
  */
 export interface GraphOptions {
+  /** Present only during Explore; null current means an explicit starting-note choice. */
+  explore?: { current: number | null; revision: number } | null;
   graph: VaultGraph;
+  appearance?: GraphAppearance;
+  theme?: GraphTheme;
+  dimensions?: 2 | 3;
+  cameraAction?: { kind: 'fit' | 'in' | 'out'; revision: number };
   /** Palette colour per node (hex, sRGB). */
   colours: readonly string[];
   /** 1 for notes the time filter keeps. */
@@ -65,49 +79,54 @@ attribute vec3 aColor;
 attribute float aSize;
 attribute float aGlow;
 attribute float aPulse;
+attribute float aFocus;
+attribute float aCoreSize;
 uniform float uScale;
+uniform float uPixelRatio;
 uniform float uMaxSize;
+uniform float uFocusSize;
 uniform float uTime;
 uniform float uPulse;
 uniform float uFogNear;
 uniform float uFogFar;
 varying vec3 vColor;
+varying float vGlow;
+varying float vFocus;
 void main() {
   vec4 mv = modelViewMatrix * vec4(position, 1.0);
   gl_Position = projectionMatrix * mv;
   float wave = aPulse > 0.0 ? sin(uTime * 1.7 + aPulse * 6.2831) * uPulse : 0.0;
   float depth = max(-mv.z, 0.001);
-  gl_PointSize = aSize > 0.0 ? min(uMaxSize, aSize * (1.0 + 0.16 * wave) * uScale / depth) : 0.0;
-  float fog = clamp((uFogFar - depth) / max(uFogFar - uFogNear, 0.001), 0.12, 1.0);
-  vColor = aColor * aGlow * 1.35 * fog * (1.0 + 0.3 * wave);
+  float size = aSize * (1.0 + 0.16 * wave) * uScale / depth;
+  // The core is clamped in CSS pixels; its halo must use the same screen scale.
+  // The reference star texture's core occupies 40% of its diameter.
+  float coreRadius = clamp(aCoreSize * uScale / depth, 1.2 * uPixelRatio, 6.0 * uPixelRatio);
+  size = max(size, coreRadius * 5.0);
+  if (aFocus > 0.0) size = clamp(size, uFocusSize, uFocusSize * 3.0);
+  gl_PointSize = aSize > 0.0 ? min(uMaxSize, size) : 0.0;
+  float fog = clamp((uFogFar - depth) / max(uFogFar - uFogNear, 0.001), 0.08, 1.0);
+  vFocus = aFocus;
+  vGlow = aSize > 0.0 ? aGlow : 0.0;
+  vColor = aColor * aGlow * 1.2 * fog * (1.0 + 0.2 * wave);
 }`;
 const HALO_FRAGMENT = /* glsl */ `
+uniform float uLight;
+varying float vGlow;
+varying float vFocus;
+${GRAPH_STAR_HALO_GLSL}
 varying vec3 vColor;
 void main() {
   vec2 p = gl_PointCoord * 2.0 - 1.0;
   float d = dot(p, p);
   if (d > 1.0) discard;
-  float falloff = (exp(-4.5 * d) - 0.011) * (1.0 - d);
-  gl_FragColor = vec4(vColor * falloff, 0.0);
+  float radius = sqrt(d);
+  float falloff = graphStarHaloAlpha(radius, max(fwidth(radius), 0.001));
+  float ring = (1.0 - smoothstep(0.018, 0.05, abs(sqrt(d) - 0.52))) * vFocus;
+  vec3 ringColour = mix(vec3(0.55, 0.72, 0.95), vec3(0.08, 0.18, 0.35), uLight);
+  gl_FragColor = uLight > 0.5
+    ? vec4(mix(vColor, ringColour, ring), max(falloff * min(vGlow, 1.0) * 0.3, ring * 0.85))
+    : vec4(vColor * falloff + ringColour * ring * 0.7, 0.0);
 }`;
-
-/** A soft studio matcap drawn at runtime (no binary asset): cores read as small glossy spheres without lights. */
-function matcapTexture(): CanvasTexture {
-  const size = 128;
-  const canvas = document.createElement('canvas');
-  canvas.width = canvas.height = size;
-  const ctx = canvas.getContext('2d')!;
-  const base = ctx.createRadialGradient(size * 0.4, size * 0.36, size * 0.04, size / 2, size / 2, size / 2);
-  base.addColorStop(0, '#ffffff');
-  base.addColorStop(0.28, '#e9edf5');
-  base.addColorStop(0.7, '#9aa3b5');
-  base.addColorStop(1, '#3a4152');
-  ctx.fillStyle = base;
-  ctx.fillRect(0, 0, size, size);
-  const texture = new CanvasTexture(canvas);
-  texture.colorSpace = SRGBColorSpace;
-  return texture;
-}
 
 interface Buffers {
   graph: VaultGraph;
@@ -121,10 +140,13 @@ interface Buffers {
   core: InstancedMesh;
   halos: Points;
   haloMaterial: ShaderMaterial;
-  lines: LineSegments;
+  lines: LineSegments2;
+  lineMaterial: LineMaterial;
+  edgePositions: Float32Array;
   haloSize: Float32Array;
   haloGlow: Float32Array;
   haloColour: Float32Array;
+  haloFocus: Float32Array;
   edgeColour: Float32Array;
   dispose: () => void;
 }
@@ -133,12 +155,12 @@ function createBuffers(graph: VaultGraph): Buffers {
   const count = graph.nodes.length;
   const edgeCount = graph.edges.length / 2;
   const display = new Float32Array(count * 3);
-  const geometry = new IcosahedronGeometry(1, count > 1200 ? 1 : 2);
-  const matcap = matcapTexture();
-  const coreMaterial = new MeshMatcapMaterial({ matcap, fog: true });
+  const geometry = new PlaneGeometry(2, 2);
+  const coreMaterial = createGraphNodeMaterial();
   const core = new InstancedMesh(geometry, coreMaterial, Math.max(1, count));
   core.count = count;
   core.frustumCulled = false;
+  core.renderOrder = 2;
   core.instanceMatrix.setUsage(DynamicDrawUsage);
   const matrices = core.instanceMatrix.array as Float32Array;
   matrices.fill(0);
@@ -147,7 +169,11 @@ function createBuffers(graph: VaultGraph): Buffers {
 
   const haloGeometry = new BufferGeometry();
   const haloColour = new Float32Array(count * 3), haloSize = new Float32Array(count), haloGlow = new Float32Array(count), haloPulse = new Float32Array(count);
+  const scales = new Float32Array(count);
   graph.hubs.slice(0, PULSE_HUBS).forEach((index, rank) => { haloPulse[index] = 0.17 * (rank + 1); });
+  const haloFocus = new Float32Array(count);
+  haloGeometry.setAttribute('aFocus', new BufferAttribute(haloFocus, 1));
+  haloGeometry.setAttribute('aCoreSize', new BufferAttribute(scales, 1));
   haloGeometry.setAttribute('position', new BufferAttribute(display, 3).setUsage(DynamicDrawUsage));
   haloGeometry.setAttribute('aColor', new BufferAttribute(haloColour, 3));
   haloGeometry.setAttribute('aSize', new BufferAttribute(haloSize, 1));
@@ -155,27 +181,28 @@ function createBuffers(graph: VaultGraph): Buffers {
   haloGeometry.setAttribute('aPulse', new BufferAttribute(haloPulse, 1));
   const haloMaterial = new ShaderMaterial({
     vertexShader: HALO_VERTEX, fragmentShader: HALO_FRAGMENT, transparent: true, depthWrite: false, ...ADDITIVE_LIGHT,
-    uniforms: { uScale: { value: 400 }, uMaxSize: { value: 256 }, uTime: { value: 0 }, uPulse: { value: 0 }, uFogNear: { value: 200 }, uFogFar: { value: 900 } },
+    uniforms: { uLight: { value: 0 }, uScale: { value: 400 }, uPixelRatio: { value: 1 }, uMaxSize: { value: 256 }, uFocusSize: { value: 24 }, uTime: { value: 0 }, uPulse: { value: 0 }, uFogNear: { value: 200 }, uFogFar: { value: 900 } },
   });
   const halos = new Points(haloGeometry, haloMaterial);
   halos.frustumCulled = false;
-  halos.renderOrder = 2;
+  halos.renderOrder = 3;
 
-  const lineGeometry = new BufferGeometry();
-  const edgeColour = new Float32Array(edgeCount * 6);
-  lineGeometry.setAttribute('position', new BufferAttribute(new Float32Array(edgeCount * 6), 3).setUsage(DynamicDrawUsage));
-  lineGeometry.setAttribute('color', new BufferAttribute(edgeColour, 3));
-  const lineMaterial = new LineBasicMaterial({ vertexColors: true, transparent: true, depthWrite: false, fog: true, ...ADDITIVE_LIGHT });
-  const lines = new LineSegments(lineGeometry, lineMaterial);
+  const lineGeometry = new LineSegmentsGeometry();
+  lineGeometry.setPositions(new Float32Array(edgeCount * 6));
+  lineGeometry.setColors(new Float32Array(edgeCount * 6));
+  const edgePositions = (lineGeometry.attributes.instanceStart as InterleavedBufferAttribute).data.array as Float32Array;
+  const edgeColour = (lineGeometry.attributes.instanceColorStart as InterleavedBufferAttribute).data.array as Float32Array;
+  const lineMaterial = new LineMaterial({ vertexColors: true, transparent: true, alphaToCoverage: true, depthWrite: false, fog: true, toneMapped: false, linewidth: .85, blending: NormalBlending });
+  const lines = new LineSegments2(lineGeometry, lineMaterial);
   lines.frustumCulled = false;
   lines.renderOrder = 1;
 
   return {
     graph, count, edgeCount, looks: Array.from(graph.degree, degree => nodeLook(degree, graph.maxDegree)),
-    target: new Float32Array(count * 3), display, scales: new Float32Array(count), base: new Float32Array(count * 3),
-    core, halos, haloMaterial, lines, haloSize, haloGlow, haloColour, edgeColour,
+    target: new Float32Array(count * 3), display, scales, base: new Float32Array(count * 3),
+    core, halos, haloMaterial, lines, lineMaterial, edgePositions, haloSize, haloGlow, haloColour, haloFocus, edgeColour,
     dispose: () => {
-      geometry.dispose(); coreMaterial.dispose(); matcap.dispose(); core.dispose();
+      geometry.dispose(); coreMaterial.dispose(); core.dispose();
       haloGeometry.dispose(); haloMaterial.dispose(); lineGeometry.dispose(); lineMaterial.dispose();
     },
   };
@@ -222,6 +249,9 @@ export class VaultGraphRenderer {
   private readonly centre = new Vector3();
   private drag: null | { index: number; pointer: number; plane: Plane; x: number; y: number; moved: boolean } = null;
   private fly: null | { from: Vector3; to: Vector3; fromTarget: Vector3; toTarget: Vector3; start: number; duration: number } = null;
+  private exploreFlightPending = false;
+  private exploreKeepDistance = false;
+  private exploreFit = false;
   private labelIndices: number[] = [];
   private labelFocus = new Set<number>();
   private lastActivity = performance.now();
@@ -252,7 +282,7 @@ export class VaultGraphRenderer {
         const drag = this.clearDrag();
         if (drag?.moved) this.sim?.send(command({ type: 'release', index: drag.index }));
       }
-      this.sim?.send(command({ type: document.hidden ? 'pause' : 'resume' }));
+      this.sim?.send(command({ type: document.hidden || this.options?.explore ? 'pause' : 'resume' }));
     };
     document.addEventListener('visibilitychange', visibility);
     this.cleanups.push(() => document.removeEventListener('visibilitychange', visibility));
@@ -266,11 +296,15 @@ export class VaultGraphRenderer {
   setControls(controls: OrbitLike | null) { this.controls = controls; }
 
   /** Called by the orbit controls when the user starts moving the camera. */
-  userStart() { this.userMoved = true; this.fly = null; this.touch(); }
+  userStart() { this.userMoved = true; this.fly = null; this.exploreFlightPending = false; this.touch(); }
 
   update(next: GraphOptions) {
     const before = this.options;
     this.options = next;
+    if (next.explore && !before?.explore) {
+      const drag = this.clearDrag();
+      if (drag?.moved) this.sim?.send(command({ type: 'release', index: drag.index }));
+    }
     if (!before || before.graph !== next.graph) this.setGraph(next.graph);
     const buffers = this.buffers!;
     if (!before || before.graph !== next.graph || before.colours !== next.colours) {
@@ -287,14 +321,79 @@ export class VaultGraphRenderer {
     if (before?.graph === next.graph && (before.returnToLayout !== next.returnToLayout || before.reducedMotion !== next.reducedMotion)) {
       this.sim?.send(command({ type: 'interaction', returnToLayout: next.returnToLayout, reducedMotion: next.reducedMotion }));
     }
+    if (before?.graph === next.graph && before.dimensions !== next.dimensions) {
+      this.userStart(); this.clearDrag(); this.userMoved = false;
+      this.sim?.send(command({ type: 'dimensions', value: next.dimensions ?? 3 }));
+      if (next.explore && this.hasFrame) {
+        const groups = graphClusters(next.graph);
+        // Match the worker's structural projection before freezing its physics;
+        // late worker frames must still be ignored during the tour.
+        for (let index = 0; index < buffers.count; index++) {
+          const z = next.dimensions === 2 ? 0 : graphDepthSeed(index, groups[index] ?? 0);
+          buffers.display[index * 3 + 2] = z;
+          buffers.target[index * 3 + 2] = z;
+        }
+        this.geometryDirty = true;
+        this.measureExtent();
+      }
+      if (this.controls && next.dimensions === 2) {
+        const distance = this.ctx.camera.position.distanceTo(this.controls.target);
+        this.ctx.camera.position.copy(this.controls.target).add(new Vector3(0, 0, distance));
+        this.ctx.camera.up.set(0, 1, 0); this.ctx.camera.lookAt(this.controls.target); this.controls.update();
+      }
+    }
+    if (next.cameraAction && before?.cameraAction !== next.cameraAction) {
+      if (next.cameraAction.kind === 'fit') { this.userStart(); this.userMoved = false; }
+      else if (this.controls) {
+        this.userStart();
+        const direction = this.ctx.camera.position.clone().sub(this.controls.target);
+        const distance = Math.max(6, Math.min(5000, direction.length() * (next.cameraAction.kind === 'in' ? .75 : 1.33)));
+        this.ctx.camera.position.copy(this.controls.target).add(direction.normalize().multiplyScalar(distance));
+        this.controls.update();
+      }
+    }
     if (before?.graph === next.graph && before.restoreRevision !== next.restoreRevision) {
       this.clearDrag();
       this.sim?.send(command({ type: 'restore' }));
     }
     if (!before || before.showHalos !== next.showHalos || before.reducedMotion !== next.reducedMotion) this.syncPulse();
+    const light = next.theme?.light ?? false;
+    if (!before || before.graph !== next.graph || before.theme?.light !== next.theme?.light) {
+      buffers.haloMaterial.blending = light ? NormalBlending : CustomBlending;
+      // A pale background already conveys depth; avoid fog erasing its finest paths.
+      buffers.lineMaterial.fog = !light;
+      (buffers.core.material as ShaderMaterial).uniforms.uLight!.value = light ? 1 : 0;
+      buffers.haloMaterial.uniforms.uLight!.value = light ? 1 : 0;
+      buffers.haloMaterial.needsUpdate = buffers.lineMaterial.needsUpdate = true;
+    }
+    const fog = this.ctx.scene.fog as Fog | null;
+    if (fog?.color && next.theme?.background) fog.color.set(next.theme.background);
     this.restyle();
-    if (before?.graph === next.graph && before.selected !== next.selected) this.flyTo(next.selected);
-    if (before?.graph === next.graph && before.activeResult !== next.activeResult) this.flyTo(next.activeResult);
+    if (!next.explore) {
+      if (before?.explore) {
+        this.fly = null; this.exploreFlightPending = false;
+        if (!document.hidden) this.sim?.send(command({ type: 'resume' }));
+      }
+      if (before?.graph === next.graph && before.selected !== next.selected) this.flyTo(next.selected);
+      if (before?.graph === next.graph && before.activeResult !== next.activeResult) this.flyTo(next.activeResult);
+    } else {
+      this.clearDrag();
+      const fitRequested = next.cameraAction?.kind === 'fit' && before?.cameraAction !== next.cameraAction;
+      if (!before?.explore || next.explore.current !== null) this.userMoved = true;
+      if (next.explore.current === null && fitRequested) this.userMoved = false;
+      if (!before?.explore || before.graph !== next.graph || before.mask !== next.mask || before.dimensions !== next.dimensions || before.restoreRevision !== next.restoreRevision) {
+        this.sim?.send(command({ type: 'pause' }));
+      }
+      this.simRunning = false; this.moving = false;
+      if (this.hasFrame) buffers.target.set(buffers.display);
+      if (!before?.explore || before.graph !== next.graph || before.explore.current !== next.explore.current || before.explore.revision !== next.explore.revision || fitRequested) {
+        this.fly = null;
+        this.exploreFlightPending = next.explore.current !== null;
+        this.exploreKeepDistance = before?.explore?.current !== null && before?.explore?.current !== undefined && before.graph === next.graph;
+        this.exploreFit = fitRequested;
+        this.flyExplore();
+      }
+    }
   }
 
   dispose() {
@@ -328,7 +427,7 @@ export class VaultGraphRenderer {
     this.buffers = buffers;
     this.hasFrame = false; this.simRunning = true; this.hovered = null; this.drag = null;
     const sim = startSimulation(data => this.onFrame(buffers, data));
-    sim.send(encodeInit(graph.nodes.length, graph.edges, graph.degree, seed));
+    sim.send(encodeInit(graph.nodes.length, graph.edges, graph.degree, seed, this.options?.dimensions ?? 3, graphClusters(graph)));
     sim.send(command({ type: 'interaction', returnToLayout: this.options!.returnToLayout, reducedMotion: this.options!.reducedMotion }));
     if (this.options && !this.options.mask.every(Boolean)) sim.send(encodeMask(this.options.mask));
     if (document.hidden) sim.send(command({ type: 'pause' }));
@@ -337,6 +436,8 @@ export class VaultGraphRenderer {
 
   private onFrame(buffers: Buffers, data: unknown) {
     if (buffers !== this.buffers) return;
+    // A worker message already in flight cannot move an exploration layout.
+    if (this.options?.explore && this.hasFrame) return;
     const frame = decodeFrame(data, buffers.count);
     if (!frame) return;
     buffers.target.set(frame.positions);
@@ -346,6 +447,12 @@ export class VaultGraphRenderer {
     this.simRunning = frame.running;
     this.moving = true;
     this.measureExtent();
+    if (this.options?.explore) {
+      buffers.target.set(buffers.display);
+      this.moving = false; this.simRunning = false;
+      this.sim?.send(command({ type: 'pause' }));
+      this.flyExplore();
+    }
     this.ctx.invalidate();
   }
 
@@ -355,42 +462,62 @@ export class VaultGraphRenderer {
     if (!buffers || !options) return;
     const { graph, mask, selected, highlight, activeResult, showHalos, showLabels } = options;
     const hovered = this.hovered;
-    const { scales, base, haloSize, haloGlow, haloColour, edgeColour, looks } = buffers;
+    const { scales, base, haloSize, haloGlow, haloColour, haloFocus, edgeColour, looks } = buffers;
     const coreColour = buffers.core.instanceColor!.array as Float32Array;
-    const centre = hovered ?? (highlight ? null : selected);
-    const focus = centre !== null ? neighbourSet(graph, centre) : highlight ? new Set(highlight) : null;
+    const exploring = Boolean(options.explore);
+    const exploreCurrent = options.explore?.current;
+    const anchor = exploreCurrent !== null && exploreCurrent !== undefined && mask[exploreCurrent] === 1 ? exploreCurrent : null;
+    const centre = exploring ? anchor : hovered ?? (highlight ? null : selected);
+    const focus = centre !== null ? neighbourSet(graph, centre) : !exploring && highlight ? new Set(highlight) : null;
     const tier = QUALITY_TIERS[this.quality.tier]!;
+    const appearance = graphAppearance(options.appearance);
+    const light = options.theme?.light ?? false;
+    const background = new Color(options.theme?.background ?? '#05070d');
+    const backgroundChannels = [background.r, background.g, background.b];
+    let visibleEdges = 0;
+    for (let e = 0; e < buffers.edgeCount; e++) if (mask[graph.edges[e * 2]!] && mask[graph.edges[e * 2 + 1]!]) visibleEdges++;
+    const density = buffers.count > 300 ? .62 : buffers.count > 80 ? .76 : .92;
+    buffers.lines.visible = appearance.showLinks;
+    buffers.lineMaterial.linewidth = appearance.linkWidth;
     for (let i = 0; i < buffers.count; i++) {
       const look = looks[i]!;
       const visible = mask[i] === 1;
       const lit = !focus || focus.has(i);
-      const special = i === hovered || i === selected || i === activeResult;
-      scales[i] = visible ? look.radius * (special ? 1.35 : 1) : 0;
+      const special = i === hovered || (exploring ? i === anchor : i === selected || i === activeResult);
+      scales[i] = visible ? look.radius * appearance.nodeSize * density * .72 * (special ? 1.4 : 1) : 0;
       const dim = lit ? 1 : 0.16;
       for (let c = 0; c < 3; c++) {
         const value = base[i * 3 + c]!;
-        coreColour[i * 3 + c] = (value * (1 - look.lift) + look.lift) * dim;
+        const coreValue = (value * (1 - look.lift) + look.lift) * (light ? .65 : 1);
+        coreColour[i * 3 + c] = light ? coreValue + (backgroundChannels[c]! - coreValue) * (lit ? 0 : .85) : coreValue * dim;
         haloColour[i * 3 + c] = value;
       }
-      haloSize[i] = visible && showHalos ? look.halo * tier.haloScale * (special ? 1.5 : 1) : 0;
-      haloGlow[i] = !visible ? 0 : lit ? (focus && focus.size < 200 ? Math.max(look.glow, 0.32) : look.glow) * (special ? 1.4 : 1) : look.glow * 0.05;
+      haloFocus[i] = visible && special ? 1 : 0;
+      haloSize[i] = !visible ? 0 : special ? scales[i]! * 6 : showHalos ? look.halo * appearance.nodeSize * tier.haloScale * .72 : 0;
+      haloGlow[i] = (!visible || !showHalos ? 0 : lit ? (focus && focus.size < 200 ? Math.max(look.glow, 0.32) : look.glow) * (special ? 1.4 : 1) : look.glow * 0.05) * appearance.glow;
     }
     const a3 = [0, 0, 0], b3 = [0, 0, 0];
     for (let e = 0; e < buffers.edgeCount; e++) {
       const a = graph.edges[e * 2]!, b = graph.edges[e * 2 + 1]!;
       const visible = mask[a] === 1 && mask[b] === 1;
       const incident = centre !== null ? a === centre || b === centre : focus ? focus.has(a) && focus.has(b) : true;
-      const intensity = !visible ? 0 : focus ? (incident ? 0.8 : 0.02) : 0.14;
+      const emphasis = focus ? incident ? 'focus' : 'muted' : 'normal';
       for (let c = 0; c < 3; c++) { a3[c] = base[a * 3 + c]!; b3[c] = base[b * 3 + c]!; }
-      edgeColour.set(edgeEndColour(a3, b3, intensity), e * 6);
-      edgeColour.set(edgeEndColour(b3, a3, intensity), e * 6 + 3);
+      const aimed = exploring && incident && hovered !== null && (a === hovered || b === hovered);
+      const opacity = visible ? appearance.linkOpacity * (aimed ? 1.8 : 1) : 0;
+      const start = graphEdgeColour(a3, b3, backgroundChannels, light, opacity, visibleEdges, emphasis);
+      const end = graphEdgeColour(b3, a3, backgroundChannels, light, opacity, visibleEdges, emphasis);
+      edgeColour.set(start, e * 6); edgeColour.set(end, e * 6 + 3);
     }
     buffers.core.instanceColor!.needsUpdate = true;
     const halo = buffers.halos.geometry.attributes;
-    halo.aSize!.needsUpdate = true; halo.aGlow!.needsUpdate = true; halo.aColor!.needsUpdate = true;
-    buffers.lines.geometry.attributes.color!.needsUpdate = true;
-    this.labelIndices = labelCandidates(graph, mask, [hovered, selected, activeResult], showLabels ? tier.hubLabels : 0).slice(0, LABEL_POOL);
-    this.labelFocus = new Set([hovered, selected, activeResult].filter((item): item is number => item !== null));
+    halo.aFocus!.needsUpdate = true; halo.aSize!.needsUpdate = true; halo.aCoreSize!.needsUpdate = true; halo.aGlow!.needsUpdate = true; halo.aColor!.needsUpdate = true;
+    (buffers.lines.geometry.attributes.instanceColorStart as InterleavedBufferAttribute).data.needsUpdate = true;
+    const labelTargets = exploring ? [anchor, hovered] : [hovered, selected, activeResult];
+    this.labelIndices = anchor !== null && focus
+      ? [...new Set([anchor, hovered, ...(showLabels ? [...focus] : [])])].filter((index): index is number => index !== null && mask[index] === 1).slice(0, LABEL_POOL)
+      : labelCandidates(graph, mask, labelTargets, showLabels ? tier.hubLabels : 0).slice(0, LABEL_POOL);
+    this.labelFocus = new Set(labelTargets.filter((item): item is number => item !== null));
     this.geometryDirty = true;
     this.ctx.invalidate();
   }
@@ -414,28 +541,74 @@ export class VaultGraphRenderer {
     this.ctx.invalidate();
   }
 
+  /** Explore pans along actual indexed neighbours without resetting the user's hop scale. */
+  private flyExplore() {
+    const index = this.options?.explore?.current;
+    const orbit = this.controls, buffers = this.buffers;
+    if (!this.exploreFlightPending || index === null || index === undefined || !orbit || !buffers || !this.hasFrame || this.options?.mask[index] !== 1) return;
+    const camera = this.ctx.camera;
+    const at = new Vector3().fromArray(buffers.display, index * 3);
+    const offset = camera.position.clone().sub(orbit.target);
+    if (offset.lengthSq() < 0.001) offset.set(0, 0, 140);
+    if (!this.exploreKeepDistance || this.exploreFit) {
+      const element = this.ctx.gl.domElement;
+      const aspect = Math.max(0.5, Math.min(1, element.clientWidth / Math.max(1, element.clientHeight)));
+      let distance = Math.min(offset.length(), Math.max(90, Math.min(350, this.radius * .55 / aspect)));
+      if (this.exploreFit) {
+        let radius = 0;
+        for (const neighbour of neighbourSet(buffers.graph, index)) if (this.options.mask[neighbour] === 1) {
+          radius = Math.max(radius, new Vector3().fromArray(buffers.display, neighbour * 3).distanceTo(at));
+        }
+        distance = Math.min(5000, Math.max(60, radius / Math.sin(camera.fov * Math.PI / 360) / aspect * 1.12));
+      }
+      offset.normalize().multiplyScalar(distance);
+    }
+    this.fly = { from: camera.position.clone(), to: at.clone().add(offset), fromTarget: orbit.target.clone(), toTarget: at,
+      start: performance.now(), duration: this.options.reducedMotion ? 0 : 600 };
+    this.exploreFlightPending = false;
+    this.ctx.invalidate();
+  }
+
   /** Hubs pulse gently while someone is around; then the canvas goes fully idle. */
   private syncPulse() {
     const on = Boolean(this.options?.showHalos && !this.options.reducedMotion);
     if (on && !this.pulseTimer) {
       this.pulseTimer = setInterval(() => {
-        if (!document.hidden && performance.now() - this.lastActivity < PULSE_IDLE_MS + 2_000) this.ctx.invalidate();
+        if (document.hidden || performance.now() - this.lastActivity >= PULSE_IDLE_MS + 2_000) {
+          if (this.pulseTimer) clearInterval(this.pulseTimer); this.pulseTimer = null; return;
+        }
+        this.ctx.invalidate();
       }, 1000 / 30);
     } else if (!on && this.pulseTimer) { clearInterval(this.pulseTimer); this.pulseTimer = null; }
   }
 
-  private touch() { this.lastActivity = performance.now(); }
+  private touch() { this.lastActivity = performance.now(); this.syncPulse(); }
 
   private pick(event: PointerEvent): number | null {
     const buffers = this.buffers, options = this.options;
     if (!buffers || !options || !this.hasFrame) return null;
     const rect = this.ctx.gl.domElement.getBoundingClientRect();
+    if (!rect.width || !rect.height) return null;
     this.ndc.set(((event.clientX - rect.left) / rect.width) * 2 - 1, -((event.clientY - rect.top) / rect.height) * 2 + 1);
     this.raycaster.setFromCamera(this.ndc, this.ctx.camera);
-    for (const hit of this.raycaster.intersectObject(buffers.core, false)) {
-      if (hit.instanceId !== undefined && options.mask[hit.instanceId] === 1) return hit.instanceId;
+    // Shader billboards face the camera, unlike their CPU-side base quads. Project their centres
+    // for picking in every orientation; keep a six-CSS-pixel target even for tiny distant stars.
+    let nearest: number | null = null, distance = 36, depth = Infinity;
+    const current = options.explore?.current;
+    const reachable = current !== undefined && current !== null ? neighbourSet(options.graph, current) : null;
+    for (let i = 0; i < buffers.count; i++) {
+      if (!options.mask[i]) continue;
+      if (reachable && !reachable.has(i)) continue;
+      const point = this.projected.fromArray(buffers.display, i * 3).project(this.ctx.camera);
+      if (point.z < -1 || point.z > 1) continue;
+      const x = (point.x + 1) * rect.width / 2 + rect.left - event.clientX;
+      const y = (1 - point.y) * rect.height / 2 + rect.top - event.clientY;
+      const squared = x * x + y * y;
+      if (squared < distance || (nearest !== null && Math.abs(squared - distance) < 1e-6 && point.z < depth)) {
+        distance = squared; depth = point.z; nearest = i;
+      }
     }
-    return null;
+    return nearest;
   }
 
   private setHovered(index: number | null) {
@@ -464,6 +637,7 @@ export class VaultGraphRenderer {
     if (drag && buffers && event.pointerId === drag.pointer) {
       if (!drag.moved && Math.hypot(event.clientX - drag.x, event.clientY - drag.y) < 4) return;
       drag.moved = true;
+      if (this.options?.explore) return;
       const rect = this.ctx.gl.domElement.getBoundingClientRect();
       this.ndc.set(((event.clientX - rect.left) / rect.width) * 2 - 1, -((event.clientY - rect.top) / rect.height) * 2 + 1);
       this.raycaster.setFromCamera(this.ndc, this.ctx.camera);
@@ -529,17 +703,16 @@ export class VaultGraphRenderer {
     // Raycasting recomputes the bounds lazily from the moved instances.
     core.boundingSphere = null;
     halos.geometry.attributes.position!.needsUpdate = true;
-    const positions = lines.geometry.attributes.position!.array as Float32Array;
+    const positions = buffers.edgePositions;
     const edges = buffers.graph.edges;
     for (let e = 0; e < edges.length; e += 2) {
-      // Black vertex colours alone still receive fog under additive blending.
-      // Collapse hidden segments so they cannot reappear as faint ghost links.
+      // Collapse filtered segments; background-coloured hidden edges must never paint over visible links.
       const a = edges[e]!, b = edges[e + 1]!;
       if (this.options?.mask[a] !== 1 || this.options.mask[b] !== 1) { positions.fill(0, e * 3, e * 3 + 6); continue; }
       positions.set(display.subarray(a * 3, a * 3 + 3), e * 3);
       positions.set(display.subarray(b * 3, b * 3 + 3), e * 3 + 3);
     }
-    lines.geometry.attributes.position!.needsUpdate = true;
+    (lines.geometry.attributes.instanceStart as InterleavedBufferAttribute).data.needsUpdate = true;
   }
 
   /** One rendered frame (before three renders it). */
@@ -547,6 +720,8 @@ export class VaultGraphRenderer {
     const buffers = this.buffers, options = this.options;
     if (!buffers || !options) return;
     const { camera, invalidate, gl, scene } = this.ctx;
+    buffers.lineMaterial.resolution.set(size.width, size.height);
+    (buffers.core.material as ShaderMaterial).uniforms.uViewportHeight!.value = size.height;
     const dt = Math.min(delta, 0.1);
     if (this.hasFrame && this.moving) {
       const k = 1 - Math.exp(-dt * 11);
@@ -596,8 +771,10 @@ export class VaultGraphRenderer {
     const tier = QUALITY_TIERS[this.quality.tier]!;
     const uniforms = buffers.haloMaterial.uniforms;
     const pixelRatio = gl.getPixelRatio();
+    uniforms.uPixelRatio!.value = pixelRatio;
     uniforms.uScale!.value = (size.height * pixelRatio * 0.5) / Math.tan(fovRad / 2);
     uniforms.uMaxSize!.value = 220 * pixelRatio * tier.haloScale;
+    uniforms.uFocusSize!.value = 24 * pixelRatio;
     uniforms.uFogNear!.value = fogNear; uniforms.uFogFar!.value = fogFar;
     uniforms.uTime!.value = time;
     const idle = performance.now() - this.lastActivity;
@@ -612,6 +789,7 @@ export class VaultGraphRenderer {
     const root = this.ctx.labels;
     if (!root) return;
     const spans = root.children;
+    const placed: { x: number; y: number; width: number }[] = [];
     for (let slot = 0; slot < spans.length; slot++) {
       const span = spans[slot] as HTMLElement;
       const index = this.labelIndices[slot];
@@ -622,8 +800,11 @@ export class VaultGraphRenderer {
       if (span.textContent !== title) span.textContent = title;
       const focus = this.labelFocus.has(index) ? 'true' : 'false';
       if (span.dataset.focus !== focus) span.dataset.focus = focus;
-      span.hidden = false;
-      span.style.transform = `translate(${((p.x + 1) / 2) * size.width}px, ${((1 - p.y) / 2) * size.height}px) translate(-50%, 10px)`;
+      const x = ((p.x + 1) / 2) * size.width, y = ((1 - p.y) / 2) * size.height;
+      const width = Math.min(220, title.length * 6.2);
+      if (focus === 'false' && placed.some(box => Math.abs(y - box.y) < 24 && Math.abs(x - box.x) < (width + box.width) / 2 + 8)) { span.hidden = true; continue; }
+      placed.push({ x, y, width }); span.hidden = false;
+      span.style.transform = `translate(${x}px, ${y}px) translate(-50%, 10px)`;
     }
   }
 

@@ -1,8 +1,7 @@
 /**
  * Office interaction state: the character picked in the scene (with its quick
- * card) and the session dialog are separate. Picking an avatar never touches
- * the agents board; opening the dialog collapses the board and closing it puts
- * the board back the way it was.
+ * card), session dialog and agents board are independent. Only a manual board
+ * toggle changes whether the board is collapsed.
  */
 export type SessionDialogTab = 'messages' | 'activity' | 'files';
 
@@ -12,8 +11,6 @@ export interface SessionDialogState {
   tab: SessionDialogTab;
   /** `data-focus-key` of the control that opened the dialog; focus returns there on close. */
   returnFocus: string | null;
-  /** Board state before the dialog opened. */
-  boardCollapsedBefore: boolean;
 }
 
 export interface OfficeSelectionState {
@@ -50,25 +47,22 @@ export function officeSelectionReducer(state: OfficeSelectionState, action: Offi
       return state.popoverOpen ? { ...state, popoverOpen: false } : state;
     case 'openDialog': {
       const current = state.dialog;
-      // Never a second dialog: retarget the open one and keep what to restore on close.
+      // Never a second dialog: retarget the open one and retain its original focus target.
       if (current) {
         if (current.sessionId === action.sessionId && current.characterId === action.characterId && current.tab === action.tab) return state;
         return { ...state, dialog: { ...current, sessionId: action.sessionId, characterId: action.characterId, tab: action.tab } };
       }
       return {
-        ...state, boardCollapsed: true,
-        dialog: { sessionId: action.sessionId, characterId: action.characterId, tab: action.tab, returnFocus: action.returnFocus, boardCollapsedBefore: state.boardCollapsed },
+        ...state,
+        dialog: { sessionId: action.sessionId, characterId: action.characterId, tab: action.tab, returnFocus: action.returnFocus },
       };
     }
     case 'setTab':
       return state.dialog && state.dialog.tab !== action.tab ? { ...state, dialog: { ...state.dialog, tab: action.tab } } : state;
     case 'closeDialog':
-      return state.dialog ? { ...state, boardCollapsed: state.dialog.boardCollapsedBefore, dialog: null } : state;
+      return state.dialog ? { ...state, dialog: null } : state;
     case 'toggleBoard':
-      // While the dialog is open the board stays collapsed; the user's choice applies after it closes.
-      return state.dialog
-        ? { ...state, dialog: { ...state.dialog, boardCollapsedBefore: !state.dialog.boardCollapsedBefore } }
-        : { ...state, boardCollapsed: !state.boardCollapsed };
+      return { ...state, boardCollapsed: !state.boardCollapsed };
     case 'prune':
       return state.characterId && !action.present.has(state.characterId) ? { ...state, characterId: null, popoverOpen: false } : state;
   }

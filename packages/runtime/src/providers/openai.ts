@@ -3,6 +3,7 @@ import {
   ProviderError, isQuotaMessage, isRetryableStatus, type FetchLike, type ModelMessage, type ModelProvider, type ModelRequest, type ModelResult, type StopReason, type ToolCall,
 } from '../model.js';
 import { readSse } from './sse.js';
+import { normalizeUsage, tokenCount } from '../usage.js';
 
 /**
  * OpenAI-compatible Chat Completions with streaming tool calls. Covers OpenAI,
@@ -99,19 +100,26 @@ interface StreamChunk {
   error?: { message?: string };
 }
 
-const count = (value: unknown): number | undefined => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : undefined;
+const count = tokenCount;
+/** `null` invalidates an explicitly reported counter; absent fields leave prior reports intact. */
+type UsageUpdate = Partial<Record<keyof Usage, number | null>>;
 
 /**
  * Reads token counts in the shapes compatible servers send (`prompt_tokens` or
  * `input_tokens`, `completion_tokens` or `output_tokens`). Missing or malformed
- * counts stay absent, never zero.
+ * counts stay unknown, never zero. Invalid explicit fields must invalidate a
+ * provisional report instead of disappearing before the stream merge.
  */
-function toUsage(raw: unknown): Usage | undefined {
+function toUsage(raw: unknown): UsageUpdate | undefined {
   if (!raw || typeof raw !== 'object') return undefined;
-  const usage = raw as { prompt_tokens?: unknown; completion_tokens?: unknown; input_tokens?: unknown; output_tokens?: unknown; prompt_tokens_details?: { cached_tokens?: unknown } | null };
-  const inputTokens = count(usage.prompt_tokens) ?? count(usage.input_tokens);
-  const outputTokens = count(usage.completion_tokens) ?? count(usage.output_tokens);
-  const cachedInputTokens = count(usage.prompt_tokens_details?.cached_tokens);
+  const usage = raw as Record<string, unknown>;
+  const reported = (primary: string, alternate: string): number | null | undefined => Object.hasOwn(usage, primary)
+    ? count(usage[primary]) ?? null : Object.hasOwn(usage, alternate) ? count(usage[alternate]) ?? null : undefined;
+  const inputTokens = reported('prompt_tokens', 'input_tokens');
+  const outputTokens = reported('completion_tokens', 'output_tokens');
+  const details = usage.prompt_tokens_details;
+  const cachedInputTokens = details && typeof details === 'object' && Object.hasOwn(details, 'cached_tokens')
+    ? count((details as Record<string, unknown>).cached_tokens) ?? null : undefined;
   if (inputTokens === undefined && outputTokens === undefined && cachedInputTokens === undefined) return undefined;
   return {
     ...(inputTokens !== undefined ? { inputTokens } : {}),
@@ -121,7 +129,7 @@ function toUsage(raw: unknown): Usage | undefined {
 }
 
 /** Later reports refine earlier ones field by field; a chunk without usage keeps what was reported. */
-function mergeUsage(previous: Usage | undefined, next: Usage | undefined): Usage | undefined {
+function mergeUsage(previous: UsageUpdate | undefined, next: UsageUpdate | undefined): UsageUpdate | undefined {
   return next ? { ...previous, ...next } : previous;
 }
 
@@ -178,7 +186,7 @@ export function createOpenAIChatProvider(options: OpenAIChatOptions): ModelProvi
 
       let text = '';
       let finish: string | undefined;
-      let usage: Usage | undefined;
+      let usage: UsageUpdate | undefined;
       let model: string | undefined;
       const calls = new Map<number, { id: string; name: string; args: string }>();
       const absorb = (chunk: StreamChunk) => {
@@ -220,14 +228,16 @@ export function createOpenAIChatProvider(options: OpenAIChatOptions): ModelProvi
         const parsed = parseArguments(call.args);
         return { id: call.id || `call_${index}`, name: call.name, ...parsed };
       });
+      // Validate cross-field relationships after all partial reports have been merged.
+      const finalUsage = normalizeUsage(usage);
       return {
         text,
         toolCalls,
         stop: stopReason(finish, toolCalls.length > 0),
         ...(model ? { model } : {}),
-        ...(usage ? { usage } : {}),
+        ...(finalUsage ? { usage: finalUsage } : {}),
         // `prompt_tokens` already includes cached tokens (OpenAI-compatible servers).
-        ...(usage?.inputTokens !== undefined ? { promptTokens: usage.inputTokens } : {}),
+        ...(finalUsage?.inputTokens !== undefined ? { promptTokens: finalUsage.inputTokens } : {}),
         ...(finish === 'content_filter' ? { refusal: 'The provider filtered this response.' } : {}),
       };
     },

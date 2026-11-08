@@ -9,6 +9,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { useSolarEnvironment, type LightOverride } from './Environment';
 import { useExteriorInstancedGeometries } from './ExteriorPart';
 import { FixtureSpotLight } from './prefabs/architecture/FixtureSpotLight';
+import { GREENERY_POOLS, GreeneryInstances, pickGreenery, placementSize, useGreenery, type GreeneryPlacement } from './greenery';
 import { ALL_PARKING_BAYS, ALL_PARKING_LIGHTS, PARKING, PARKING_BAYS, PARKING_LIGHT_HEIGHT } from './campusMobilityLayout';
 
 type Slab = { x: number; z: number; w: number; d: number; y: number; h: number; color: string };
@@ -83,14 +84,37 @@ function ParkingLights() {
 const urls = import.meta.glob<string>('/public-assets/landscape/campus-parking.glb', { eager: true, query: '?url', import: 'default' });
 /** Roots of the Blender-authored parking GLB: the east lot and both access connectors. */
 export const PARKING_GLB_ROOTS = ['parking-east-lot', 'parking-access-west', 'parking-access-east'] as const;
-let parkingGeometry: BufferGeometry | null = null, requested = false;
+/** Authored planting materials that greenery models replace (trees and the hedges between them). */
+const PARKING_GREENERY = /^Parking (tree bark|tree canopy|tree canopy light|hedge)$/;
+export interface ParkingPlanting { kind: 'tree' | 'hedge'; x: number; y: number; z: number }
+interface ParkingModel { geometry: BufferGeometry | null; plantings: ParkingPlanting[] }
+let parkingGeometry: ParkingModel | null = null, requested = false;
 const listeners = new Set<() => void>();
 const subscribe = (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; };
 
-/** Merge every authored part into one vertex-coloured geometry (material colours become vertex colours): one draw. */
-export function bakeParkingGeometry(scene: Object3D): BufferGeometry | null {
+/** Centres of the separate clumps in a planting mesh (clustered along X), resting at their lowest point. */
+export function plantingClumps(geometry: BufferGeometry, kind: ParkingPlanting['kind'], gap = 1): ParkingPlanting[] {
+  const position = geometry.getAttribute('position'), points: [number, number, number][] = [];
+  for (let i = 0; i < position.count; i++) points.push([position.getX(i), position.getY(i), position.getZ(i)]);
+  points.sort((a, b) => a[0] - b[0]);
+  const clumps: [number, number, number][][] = [];
+  for (const point of points) {
+    const last = clumps.at(-1);
+    if (last && point[0] - last.at(-1)![0] <= gap) last.push(point); else clumps.push([point]);
+  }
+  return clumps.map(clump => ({ kind,
+    x: clump.reduce((sum, p) => sum + p[0], 0) / clump.length,
+    y: Math.min(...clump.map(p => p[1])),
+    z: clump.reduce((sum, p) => sum + p[2], 0) / clump.length }));
+}
+
+/**
+ * Merge every authored part into one vertex-coloured geometry (material colours become vertex colours): one draw.
+ * With `replaceGreenery`, trees and hedges are left out and returned as plantings for greenery models.
+ */
+export function bakeParkingGeometry(scene: Object3D, replaceGreenery = false): ParkingModel {
   scene.updateWorldMatrix(true, true);
-  const shapes: BufferGeometry[] = [], color = new Color();
+  const shapes: BufferGeometry[] = [], color = new Color(), plantings: ParkingPlanting[] = [];
   scene.traverse(node => {
     const mesh = node as Mesh;
     if (!mesh.isMesh) return;
@@ -98,6 +122,13 @@ export function bakeParkingGeometry(scene: Object3D): BufferGeometry | null {
     const raw = mesh.geometry.clone(), shape = raw.index ? raw.toNonIndexed() : raw;
     if (shape !== raw) raw.dispose();
     shape.applyMatrix4(mesh.matrixWorld);
+    const planting = replaceGreenery ? PARKING_GREENERY.exec(material?.name ?? '')?.[1] : undefined;
+    if (planting) {
+      if (planting === 'tree bark') plantings.push(...plantingClumps(shape, 'tree'));
+      if (planting === 'hedge') plantings.push(...plantingClumps(shape, 'hedge'));
+      shape.dispose();
+      return;
+    }
     for (const key of Object.keys(shape.attributes)) if (key !== 'position' && key !== 'normal') shape.deleteAttribute(key);
     const count = shape.getAttribute('position').count, colors = new Float32Array(count * 3);
     color.copy(material?.color ?? new Color('#ffffff'));
@@ -105,21 +136,22 @@ export function bakeParkingGeometry(scene: Object3D): BufferGeometry | null {
     shape.setAttribute('color', new Float32BufferAttribute(colors, 3));
     shapes.push(shape);
   });
-  if (!shapes.length) return null;
+  if (!shapes.length) return { geometry: null, plantings };
   const merged = mergeGeometries(shapes, false);
   shapes.forEach(shape => shape.dispose());
   merged?.computeBoundingBox(); merged?.computeBoundingSphere();
-  return merged ?? null;
+  return { geometry: merged ?? null, plantings };
 }
 async function loadParking() {
   const url = urls['/public-assets/landscape/campus-parking.glb'];
   if (!url || requested) return;
   requested = true;
-  try { parkingGeometry = bakeParkingGeometry((await new GLTFLoader().loadAsync(url)).scene); }
+  const greenery = GREENERY_POOLS.shadeTree.length > 0 && GREENERY_POOLS.gardenShrub.length > 0;
+  try { parkingGeometry = bakeParkingGeometry((await new GLTFLoader().loadAsync(url)).scene, greenery); }
   catch { /* Without the published GLB only the west lot's instanced slabs remain. */ }
   listeners.forEach(listener => listener());
 }
-function useParkingGeometry(): BufferGeometry | null {
+function useParkingGeometry(): ParkingModel | null {
   const geometry = useSyncExternalStore(subscribe, () => parkingGeometry, () => null);
   useEffect(() => { void loadParking(); }, []);
   return geometry;
@@ -127,11 +159,20 @@ function useParkingGeometry(): BufferGeometry | null {
 
 /** East lot and both access connectors (ramps, kerb returns, footway crossings) from Blender, in one draw. */
 function AuthoredParking() {
-  const geometry = useParkingGeometry();
+  const model = useParkingGeometry();
   const material = useMemo(() => new MeshStandardMaterial({ vertexColors: true, roughness: .92, metalness: 0, side: DoubleSide }), []);
   useEffect(() => () => material.dispose(), [material]);
-  if (!geometry) return null;
-  return <mesh name="parking-blender-lot-and-access" geometry={geometry} material={material} receiveShadow castShadow />;
+  const plantings = useMemo<GreeneryPlacement[]>(() => (model?.plantings ?? []).flatMap(planting => {
+    const tree = planting.kind === 'tree';
+    const id = pickGreenery(tree ? GREENERY_POOLS.shadeTree : GREENERY_POOLS.gardenShrub, planting.x, planting.z, 2);
+    return id ? [{ id, x: planting.x, y: planting.y, z: planting.z, height: (tree ? 5.6 : .9) * placementSize(planting.x, planting.z) }] : [];
+  }), [model]);
+  useGreenery(useMemo(() => [...new Set(plantings.map(planting => planting.id))], [plantings]));
+  if (!model?.geometry) return null;
+  return <>
+    <mesh name="parking-blender-lot-and-access" geometry={model.geometry} material={material} receiveShadow castShadow />
+    {plantings.length > 0 && <GreeneryInstances name="parking-greenery" placements={plantings} />}
+  </>;
 }
 
 /** Instanced hardscape, separated access and EV wayfinding; vehicle geometry is shared with traffic. */

@@ -35,6 +35,31 @@ const button = (tree: ReactNode, label: string) => elements(tree).find(element =
 beforeEach(() => { hooks.index = 0; hooks.state = []; hooks.effects = []; });
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
 
+describe('exact mission stop controls', () => {
+  it.each(['en', 'id'] as const)('stops only the displayed mission and never uses session-wide cancellation (%s)', async language => {
+    const t = MESSAGES[language], cancel = vi.fn(), cancelNativeMission = vi.fn(async () => undefined);
+    const agents = { cancel, cancelNativeMission } as unknown as AgentHostApi;
+    const render = () => { hooks.index = 0; return MissionMonitor({ t, language, agents, initial: { ...run, state: 'running' }, session: { id: run.sessionId } as SessionSummary, connections: [], onBack: vi.fn(), onChanged: vi.fn() }); };
+    (button(render(), t.missions.run.cancel)!.props.onClick as () => void)();
+    (button(render(), t.missions.run.cancel)!.props.onClick as () => void)();
+    await vi.waitFor(() => expect(cancelNativeMission).toHaveBeenCalledExactlyOnceWith(run.sessionId, run.id));
+    expect(cancel).not.toHaveBeenCalled();
+  });
+
+  it('keeps older hosts unsupported and does not fall back when an exact target is stale', async () => {
+    const t = MESSAGES.en, cancel = vi.fn();
+    let agents = { cancel } as unknown as AgentHostApi;
+    const render = () => { hooks.index = 0; return MissionMonitor({ t, language: 'en', agents, initial: { ...run, state: 'running' }, session: { id: run.sessionId } as SessionSummary, connections: [], onBack: vi.fn(), onChanged: vi.fn() }); };
+    expect(button(render(), t.missions.run.cancel)!.props.disabled).toBe(true);
+    expect(text(render())).toContain(t.missions.run.cancelUnavailable);
+    agents = { cancel, cancelNativeMission: vi.fn(async () => { throw new Error('The selected mission is no longer running.'); }) } as unknown as AgentHostApi;
+    (button(render(), t.missions.run.cancel)!.props.onClick as () => void)();
+    (button(render(), t.missions.run.cancel)!.props.onClick as () => void)();
+    await vi.waitFor(() => expect(text(render())).toContain('The selected mission is no longer running.'));
+    expect(cancel).not.toHaveBeenCalled();
+  });
+});
+
 describe('mission recovery UI', () => {
   it.each(['en', 'id'] as const)('shows narrow observation evidence without offering quarantine release (%s)', async language => {
     const t = MESSAGES[language], onChanged = vi.fn();

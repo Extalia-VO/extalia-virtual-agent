@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto';
-import { readdir, realpath, stat } from 'node:fs/promises';
+import { lstat, readdir, realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { isNotFound, readJson, writeJsonAtomic } from '../jsonStore.js';
 import { ensurePrivateDirectory } from '../paths.js';
@@ -197,8 +197,9 @@ export class WorktreeManager {
    * Create a worktree for one worker. `base` is `HEAD` (default), a local branch or a commit id; it is
    * resolved to a commit once and pinned. Refuses non-Git folders, bare repositories, repositories with
    * submodules, Git LFS or other filter/merge drivers, and any layout that would put the worktree inside the repository.
+   * `requireExactRoot` also refuses redirected checkout/common directories and known alternate object stores.
    */
-  create(input: { workspaceRoot: string; owner: WorktreeOwner; base?: string }): Promise<WorktreeHandle> {
+  create(input: { workspaceRoot: string; owner: WorktreeOwner; base?: string; requireExactRoot?: boolean }): Promise<WorktreeHandle> {
     return this.serial(async () => {
       if (!UUID.test(input.owner?.missionId ?? '') || !UUID.test(input.owner?.taskId ?? '') || (input.owner.agentId !== undefined && !UUID.test(input.owner.agentId))) throw new WorktreeError('invalid', 'A worktree needs a mission task as owner.');
       if (this.records.length >= MAX_RECORDS) throw new WorktreeError('in_use', 'Too many worker worktrees exist. Integrate or remove some first.');
@@ -207,6 +208,7 @@ export class WorktreeManager {
       await ensurePrivateDirectory(this.directory);
       const directory = await realpath(this.directory);
       if (isWithin(directory, workspace)) throw new WorktreeError('location', 'This folder is already an Extalia worktree; workers cannot create worktrees from it.');
+      await this.git.assertNoPartialClone(workspace);
       let info: string[];
       try {
         info = (await this.git.text(workspace, ['rev-parse', '--is-bare-repository', '--is-inside-work-tree', '--show-toplevel', '--git-common-dir', '--show-prefix'])).split('\n');
@@ -218,6 +220,19 @@ export class WorktreeManager {
       const repository = await realpath(info[2]!.trim());
       const commonDir = await realpath(path.resolve(workspace, info[3]!.trim()));
       const prefix = (info[4] ?? '').trim().replace(/\/+$/, '');
+      if (input.requireExactRoot) {
+        const localGit = path.join(workspace, '.git');
+        const metadata = await lstat(localGit).catch(() => undefined);
+        if (repository !== workspace || !metadata?.isDirectory() || metadata.isSymbolicLink() || commonDir !== await realpath(localGit)) {
+          throw new WorktreeError('location', 'Managed Native workers require the selected folder to be the exact repository root with its own local .git directory.');
+        }
+        const objectsPath = path.join(localGit, 'objects');
+        const objects = await lstat(objectsPath).catch(() => undefined);
+        const alternates = await Promise.all(['alternates', 'http-alternates'].map(name => lstat(path.join(objectsPath, 'info', name)).catch(error => { if (isNotFound(error)) return undefined; throw error; })));
+        if (!objects?.isDirectory() || objects.isSymbolicLink() || alternates.some(Boolean)) {
+          throw new WorktreeError('unsupported', 'Managed Native workers require a local object directory without alternate object stores.');
+        }
+      }
       if (isWithin(repository, directory) || isWithin(commonDir, directory)) {
         throw new WorktreeError('location', 'The Extalia data folder is inside this repository, so worker worktrees would land in the project. Move the data folder (EXTALIA_HOME) outside the repository.');
       }

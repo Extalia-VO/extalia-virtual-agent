@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type * as ReactTypes from 'react';
 import { OrthographicCamera, Vector3 } from 'three';
 import { CameraView } from '../src/office/scene/CameraView';
-import { buildingMinimumZoom, buildingOverviewPose, characterFocusPose, floorOverviewPose, stackOverviewPose } from '../src/office/scene/cameraFocus';
+import { CHARACTER_FOCUS_ZOOM, buildingMinimumZoom, buildingOverviewPose, characterFocusPose, floorMinimumZoom, floorOverviewPose, stackOverviewPose } from '../src/office/scene/cameraFocus';
 import type { CharacterPositionSource } from '../src/office/scene/movement/positionStore';
 
 type Effect = () => void | (() => void);
@@ -63,10 +63,10 @@ describe('Office camera requests', () => {
     const live = { position: () => position, floor: () => 1 } as unknown as CharacterPositionSource;
     const h = harness({ focusId: 'agent', focus: [0, 0, 0], live }); h.manual();
     h.render({ focusRequest: 1 }); h.frame();
-    expect(h.pose()).toEqual(expect.objectContaining({ zoom: 36, target: characterFocusPose(position, undefined, [210, 0]).target.map(value => expect.closeTo(value, 8)), position: characterFocusPose(position, undefined, [210, 0]).position.map(value => expect.closeTo(value, 8)) }));
+    expect(h.pose()).toEqual(expect.objectContaining({ zoom: CHARACTER_FOCUS_ZOOM, target: characterFocusPose(position, undefined, [210, 0]).target.map(value => expect.closeTo(value, 8)), position: characterFocusPose(position, undefined, [210, 0]).position.map(value => expect.closeTo(value, 8)) }));
     const located = h.pose(); position[0] += 4; h.render({ focus: [1, 0, 0] }); h.frame(); expect(h.pose()).toEqual(located);
     const manual = h.manual(); h.render(); h.frame(); expect(h.pose()).toEqual(manual);
-    h.render({ focusRequest: 2 }); h.frame(); expect(h.pose()).toEqual(expect.objectContaining({ zoom: 36, target: characterFocusPose(position, undefined, [210, 0]).target.map(value => expect.closeTo(value, 8)), position: characterFocusPose(position, undefined, [210, 0]).position.map(value => expect.closeTo(value, 8)) }));
+    h.render({ focusRequest: 2 }); h.frame(); expect(h.pose()).toEqual(expect.objectContaining({ zoom: CHARACTER_FOCUS_ZOOM, target: characterFocusPose(position, undefined, [210, 0]).target.map(value => expect.closeTo(value, 8)), position: characterFocusPose(position, undefined, [210, 0]).position.map(value => expect.closeTo(value, 8)) }));
   });
 
   it('fits each explicit floor/All floors request at the latest canvas size, including same-view reset', () => {
@@ -89,12 +89,22 @@ describe('Office camera requests', () => {
     const h = harness({ view: 'campus' }); h.frame(); expect(h.pose()).toEqual(buildingOverviewPose(1440, 900));
   });
 
-  it('clamps outward zoom only in Building mode and retains close-up zoom', () => {
+  it('clamps outward zoom to the fitted view and retains close-up zoom', () => {
     const h = harness({ view: 'campus' }); const pose = h.pose();
     h.camera.zoom = 2; h.frame();
     expect(h.camera.zoom).toBeCloseTo(buildingMinimumZoom(1440, 900, pose.position as [number, number, number], pose.target as [number, number, number]), 8);
     h.camera.zoom = 260; h.frame(); expect(h.camera.zoom).toBe(260);
-    h.render({ view: 1, viewRequest: 1 }); h.camera.zoom = 2; h.frame(); expect(h.camera.zoom).toBe(2); expect(h.controls.minZoom).toBe(2);
+    for (const view of [1, 2, 3, 'stack'] as const) {
+      h.render({ view, viewRequest: view === 'stack' ? 4 : view });
+      const overview = h.pose();
+      const minimum = floorMinimumZoom(overview.zoom);
+      h.camera.zoom = 2; h.frame();
+      expect(h.camera.zoom).toBeCloseTo(minimum, 8);
+      expect(h.controls.minZoom).toBeCloseTo(minimum, 8);
+      expect(h.pose().position).toEqual(overview.position);
+      expect(h.pose().target).toEqual(overview.target);
+      h.camera.zoom = 83; h.frame(); expect(h.camera.zoom).toBe(83);
+    }
   });
 
   it('keeps the tall-phone Building pose but raises zoom only enough to cover the finite backdrop', () => {
@@ -103,6 +113,16 @@ describe('Office camera requests', () => {
     h.frame(); expect(h.pose().position).toEqual(preset.position); expect(h.pose().target).toEqual(preset.target);
     expect(h.camera.zoom).toBeCloseTo(buildingMinimumZoom(390, 844, preset.position, preset.target), 8);
     const initial = h.pose(); h.camera.zoom = 2; h.frame(); expect(h.pose()).toEqual(initial);
+  });
+
+  it.each([[390, 844], [1920, 1080], [3840, 2160]])('scales the floor zoom-out boundary to a %i×%i viewport without blocking character focus', (width, height) => {
+    const h = harness({}, { width, height });
+    const minimum = Math.min(CHARACTER_FOCUS_ZOOM, floorOverviewPose(0, width, height).zoom * 0.85);
+    h.camera.zoom = 2; h.frame();
+    expect(h.camera.zoom).toBeCloseTo(minimum, 8);
+    expect(minimum).toBeLessThanOrEqual(CHARACTER_FOCUS_ZOOM);
+    h.render({ focusId: 'agent', focus: [2, 0, 4], focusRequest: 1 }); h.frame(); h.frame();
+    expect(h.camera.zoom).toBe(CHARACTER_FOCUS_ZOOM);
   });
 
   it('freezes outward zoom after panning beyond the ground without snapping inward, and releases it when panned back', () => {

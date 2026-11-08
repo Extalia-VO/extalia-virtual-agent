@@ -147,7 +147,8 @@ describe('team instructions in the system prompt', () => {
     expect(prompt).toContain('without waiting for the user to name them');
     expect(prompt).toContain('pick several members when the work spans their roles');
     expect(prompt).toContain('Do not delegate on every request: handle small, quick or unrelated requests');
-    expect(prompt).not.toContain('For every request');
+    expect(prompt.slice(prompt.indexOf('You lead a team'))).not.toContain('For every request');
+    expect(prompt).toContain('For every request, use a compact internal brief');
     expect(prompt).toContain('- Ava (Researcher): Find call sites');
     expect(buildSystemPrompt({ workspace: { name: 'Site', root: '/' }, platform: { os: 'macOS', shell: 'zsh' } })).not.toContain('team of subagents');
   });

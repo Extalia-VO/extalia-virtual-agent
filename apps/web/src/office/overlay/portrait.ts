@@ -26,6 +26,8 @@ const HAIR_SHAPES: Readonly<Record<CharacterHairStyle, PortraitHairShape>> = {
   bun: 'shoulder-bob', bob: 'shoulder-bob', medium: 'executive-medium',
   curly: 'curly', afro: 'afro', 'textured-crop': 'textured-crop', 'side-part': 'side-part',
   'short-fade': 'short-fade', undercut: 'undercut', 'slicked-back': 'slicked-back',
+  'bun-bangs': 'shoulder-bob', 'sleek-ponytail': 'ponytail', 'long-straight': 'wavy', 'long-bangs': 'shoulder-bob',
+  'straight-short': 'shoulder-bob', dreads: 'wavy', dreadlocks: 'curly',
 };
 
 export function portraitHairShape(style: CharacterHairStyle, presentation: CharacterAppearance['presentation'] = 'feminine'): PortraitHairShape {

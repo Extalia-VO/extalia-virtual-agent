@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  MAX_TEAM_MEMBERS, decodeAgentTeam, generateMemberNames, modelStrength, modelUsage, parseTeamPlan, parseTeamPlanResult, pickTeamModels, planGoal, planModelOrder, planTeamHeuristic,
+  MAX_TEAM_MEMBERS, MAX_TEAM_MODELS, decodeAgentTeam, generateMemberNames, modelStrength, modelUsage, parseTeamPlan, parseTeamPlanResult, pickTeamModels, planGoal, planModelOrder, planTeamHeuristic,
   roleSoul, roleStrength, rotatedModels, suitedModels, teamPlanPrompt, type TeamMember,
 } from '../src/index.js';
 
@@ -16,13 +16,21 @@ describe('decodeAgentTeam', () => {
     } });
   });
 
+  it('retains bounded goal documents and rejects malformed or oversized saved documents', () => {
+    const goalDocument = { name: 'goal.txt', text: 'Full request. '.repeat(10_000) };
+    const decoded = decodeAgentTeam(team({ goal: 'Full goal attached: goal.txt', goalDocument }));
+    expect(decoded.ok && decoded.value.goalDocument).toEqual(goalDocument);
+    expect(decodeAgentTeam(team({ goalDocument: { name: 'goal.txt', text: 'x'.repeat(200_001) } })).ok).toBe(false);
+    expect(decodeAgentTeam(team({ goalDocument: { text: 'x' } })).ok).toBe(false);
+  });
+
   it.each([
     ['enabled missing', { enabled: undefined }, /enabled/],
     ['member model not allowed', { members: [member('m-1', 'Ava', ['other'])] }, /not one of the team's allowed models/],
     ['duplicate allowed model', { allowedModels: ['model-a', 'model-a'] }, /twice/],
     ['option-like model id', { allowedModels: ['--yolo'] }, /model id/],
-    ['too many allowed models', { allowedModels: Array.from({ length: 21 }, (_, index) => `m${index}`), members: [] }, /at most 20/],
-    ['too many members', { members: Array.from({ length: MAX_TEAM_MEMBERS + 1 }, (_, index) => member(`m-${index}`, `N${index}`)) }, /at most 20/],
+    ['too many allowed models', { allowedModels: Array.from({ length: 33 }, (_, index) => `m${index}`), members: [] }, /at most 32/],
+    ['too many members', { members: Array.from({ length: MAX_TEAM_MEMBERS + 1 }, (_, index) => member(`m-${index}`, `N${index}`)) }, /at most 32/],
     ['too many member models', { allowedModels: Array.from({ length: 9 }, (_, index) => `m${index}`), members: [member('m-1', 'Ava', Array.from({ length: 9 }, (_, index) => `m${index}`))] }, /at most 8/],
     ['duplicate id', { members: [member('m-1', 'Ava'), member('m-1', 'Milo')] }, /id "m-1" is used twice/],
     ['duplicate name (case-insensitive)', { members: [member('m-1', 'Ava'), member('m-2', 'ava')] }, /name "ava" is used twice/],
@@ -167,7 +175,7 @@ describe('plans without a goal or ticked models', () => {
 
   it('picks a capped, diverse set of chat models with the preferred one first', () => {
     const picked = pickTeamModels(catalog, ['ag/claude-sonnet']);
-    expect(picked).toHaveLength(20);
+    expect(picked).toHaveLength(MAX_TEAM_MODELS);
     expect(picked[0]).toBe('ag/claude-sonnet');
     expect(picked.some(model => /embedding|tts|whisper/.test(model))).toBe(false);
     // Strong, standard and light models take turns, so all three are in the first few.
@@ -212,7 +220,7 @@ describe('plans without a goal or ticked models', () => {
   });
 });
 
-describe('v0.0.39: per-member model subsets, souls and teams of up to 20', () => {
+describe('per-member model subsets, souls and bounded teams', () => {
   const allowed = [
     'ag/claude-opus-thinking', 'ag/claude-sonnet', 'ag/gemini-flash', 'cx/gpt-pro', 'cx/gpt-mini', 'or/qwen3-coder', 'or/llama-70b', 'ds/deepseek-reasoner', 'ds/deepseek-chat', 'gg/gemini-pro',
   ];
@@ -259,16 +267,17 @@ describe('v0.0.39: per-member model subsets, souls and teams of up to 20', () =>
     expect(decodeAgentTeam({ enabled: true, allowedModels: allowed, members }).ok).toBe(true);
   });
 
-  it('allows up to 20 members with distinct roles', () => {
+  it('accepts the 32nd member, rejects the 33rd and plans distinct identities and roles', () => {
     let n = 0;
-    const members = planTeamHeuristic({ goal: 'x', count: 20, allowedModels: ['a/model'] }, () => `m-${++n}`);
-    expect(MAX_TEAM_MEMBERS).toBe(20);
-    expect(members).toHaveLength(20);
-    expect(new Set(members.map(member => member.role.toLowerCase())).size).toBe(20);
+    const members = planTeamHeuristic({ goal: 'x', count: 32, allowedModels: ['a/model'] }, () => `m-${++n}`);
+    expect(MAX_TEAM_MEMBERS).toBe(32);
+    expect(members).toHaveLength(32);
+    expect(new Set(members.map(member => member.role.toLowerCase())).size).toBe(32);
+    expect(new Set(members.map(member => member.name.toLowerCase())).size).toBe(32);
     expect(members.every(member => member.models.length === 1 && member.soul)).toBe(true);
     expect(decodeAgentTeam({ enabled: true, allowedModels: ['a/model'], members }).ok).toBe(true);
-    expect(decodeAgentTeam({ enabled: true, allowedModels: ['a/model'], members: [...members, { ...members[0]!, id: 'm-21', name: 'Extra Person' }] }).ok).toBe(false);
-    expect(planTeamHeuristic({ goal: 'x', count: 25, allowedModels: [] })).toHaveLength(20);
+    expect(decodeAgentTeam({ enabled: true, allowedModels: ['a/model'], members: [...members, { ...members[0]!, id: 'm-33', name: 'Extra Person' }] }).ok).toBe(false);
+    expect(planTeamHeuristic({ goal: 'x', count: 99, allowedModels: [] })).toHaveLength(32);
   });
 
   it('asks the planner for per-member model subsets with reasons and a soul', () => {
@@ -280,6 +289,13 @@ describe('v0.0.39: per-member model subsets, souls and teams of up to 20', () =>
     expect(prompt).toContain('"models":["<best fit>","<fallback>"],"why":"…"');
     expect(prompt).toContain('exactly 12 members');
     expect(teamPlanPrompt({ goal: 'x', count: 2, allowedModels: [] }).user).not.toContain('"why"');
+  });
+
+  it('includes complete imported goal content in the planner context', () => {
+    const full = 'Complete details. '.repeat(5_000);
+    const prompt = teamPlanPrompt({ goal: 'Full goal attached: goal.txt', goalDocument: { name: 'goal.txt', text: full }, count: 2, allowedModels: [] }).user;
+    expect(prompt).toContain(full);
+    expect(prompt).toContain('authoritative current request');
   });
 
   it('reads per-member subsets, souls and reasons, dropping models outside the allowed list', () => {

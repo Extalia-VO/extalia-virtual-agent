@@ -258,3 +258,115 @@ gate is at[-20.72,12.8,14.1], rooftop gate[-21.35,19.33,6.2]; its five fixtures
 remount when the selected layout changes so their irradiance follows the new
 flight. Floors1/2 unmount these gates/fixtures. Missing/failed local assets and
 `?building=threejs` retain the procedural fallback.
+
+## Initial Building camera and ground coverage
+
+The Building preset now looks down from the north-west at approximately 22
+degrees, framing the roof, entrance plaza and foreground in the usable canvas.
+A Building zoom-out boundary must satisfy two conditions: viewport corner rays
+meet the ground inside the finite city disc, and those intersections lie in
+front of the orthographic near plane. Checking only the disc can accept a view
+whose lower rays start below ground, leaving a flat background strip.
+
+The boundary derives from the current camera position, target and stage size,
+so manual orbit, pan and zoom retain their controls. Floor framing and character
+follow retain their existing behavior. A regression uses the former shallow
+zoomed-out pose, checks its clipped lower rays, and verifies that the new bound
+puts every ground intersection inside both the city and the camera frustum.
+
+Local visual verification mounted the real OfficeCanvas with no agent sessions,
+at 1440×960 and 390×844. The stage and canvas bounds matched, and all four
+viewport-corner ground intersections projected inside the near/far clip planes
+and city rim after fresh load. Light and dark scene captures retained rendered
+foreground to the bottom. Thirty-two focused camera/framing tests passed; the
+temporary browser entry point was removed before the repository gate.
+
+Final v0.4.208 validation: `VITEST_MAX_WORKERS=2 pnpm check` passed with
+6,632 TypeScript tests (23 optional skipped), 474 Rust tests, lint, typechecks,
+all builds, version consistency and hair-asset checks. The first full run hit
+two Hermes event-wait deadlines during concurrent checks; all 14 Hermes tests
+passed separately, followed by the complete bounded gate without changing
+those tests. No real profile/configuration edits, commit or publication.
+
+## Executive room cabinetry and decor
+
+F2 Executive and F3 CEO Studio now derive the rear cabinet anchor from the west
+feature panel rather than a fixed distance behind the desk. The cabinet's rear
+cap sits 20 mm in front of the panel ribs, providing an installation/shadow gap
+without a freestanding strip of floor behind it. The renderer and navigation
+footprint consume the same cabinet position, rotated envelope and offset.
+
+Two wall sconces occupy the exposed panel ends. One reading lamp serves the
+lounge, while three modest planters flank the cabinet and lounge window clear
+of the central arrival lane. The task lamp uses the shared executive desktop
+height. Seat transforms and chair approaches remain unchanged.
+
+An isolated preview mounted the real RoomShell/ExecutiveRoomInterior and app
+structural floor plate for each room. The support plate stayed on a hidden
+render layer to isolate the room visually while retaining its actual collision
+geometry. Precise rendered cabinet bounds measured a 20 mm rear gap on both
+floors; WalkingClearance approved all 16 seat staging capsules and both 7 m
+central aisle segments. Light/dark and 390 px captures were checked. Eight new
+layout/wiring checks plus 20 planter/workstation/clearance cases passed; a
+bounded independent read-only review found no substantive issue.
+
+Final v0.4.210 validation: `VITEST_MAX_WORKERS=2 pnpm check` passed with
+6,716 TypeScript tests (23 optional skipped), 474 Rust tests, lint, typechecks,
+all builds, version consistency and asset checks. The first full run hit an
+unrelated Codex proxy disconnect case; its isolated rerun and the complete
+retry passed without changing transport code. No real profile/configuration
+edits, commit or publication.
+
+## Six-pod Large Team Workspace
+
+The 32×19.6 m F1 engineering workspace now contains six four-seat pods in three
+columns and two rows. Existing pod-a through pod-d resource IDs are retained;
+pod-e and pod-f add eight allocatable workstations. Pod capacity is 24 seats,
+and total F1 agent seating is 32. Both language labels derive from the current
+pod/station data instead of a fixed capacity string.
+
+The central east–west aisle stays open. North–south routes turn through the
+spaces between columns rather than through the middle pods. All pods share
+row-based staging rules, and relocated east breakout chairs have an in-room
+approach via the south perimeter lane. Six suspended halos follow the pod
+centres; sixteen ceiling troffers occupy aisle/perimeter columns. Relocated
+perimeter lounges, rugs, reading lamps and modest plant accents balance the
+room without occupying its work or doorway lanes.
+
+Focused validation passed 60 tests covering real seat allocation/identity,
+desktop/input contact, circulation, furniture-derived bounds and all 658
+sampled leisure routes through door choreography. The actual
+Floor1 component in an isolated browser preview produced 2,434 walking
+colliders: all 24 pod staging capsules and every in-room lobby-to-pod route
+leg were clear at a 0.28 m body radius; exactly six halos were present. English
+and Indonesian 6/24 labels, light/dark captures and 390 px page bounds were
+checked. Independent implementation/review found no blocking issue. No real
+profile or external application configuration was changed. Workspace lint,
+typechecks, daemon build, Rust checks, production builds and version/hair
+consistency checks also passed; the PRD tracker records the remaining unrelated
+installer-artwork and Memory-import failures from the full test gate.
+
+### Pod departure clearance
+
+Team pod structures publish the same concave outline used to author their
+tabletop, transformed into world space for capsule clearance. A square mesh
+bounding box filled the empty corner bays: all 24 rendered pod departures
+could stop at the chair grip point and exhaust the recovery budget. The
+footprint uses an AABB broad phase followed by segment/interior and boundary
+distance checks. It conservatively covers the legs, frames and dividers;
+separate devices and neighboring furniture retain their own collisions.
+
+Screen-location mapping now validates every pod against the resource registry.
+The former A–D pattern left E/F screens unmapped and rendered their chairs as
+static objects. All 24 chairs now use the shared movable-chair registry.
+Regression checks exercise arrivals and departures for every seat, occupied
+screen/resource mapping, transformed upper-floor outlines and nearby blockers.
+All 78 focused tests passed. In the actual rendered scene all 24 departures
+complete with both authored and procedural structures; 24 concurrent occupants
+changing desks all finish seated after 53.64 simulated seconds. All 24 pod
+chairs are registered as movable. Independent read-only review found no
+blocking issue. The temporary preview and its browser/server were removed.
+Full `VITEST_MAX_WORKERS=2 pnpm check` passed at v0.4.218: 7,059 TypeScript
+tests, 25 optional tests skipped, 474 Rust tests, all builds and version/asset
+checks. The initial installer-artwork and Memory-import blockers recorded
+above are resolved in this integrated validation.

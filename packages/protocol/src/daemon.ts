@@ -14,6 +14,7 @@
 import { DAEMON_KNOWLEDGE_OPS, type DaemonKnowledgeOperations } from './daemonKnowledge.js';
 import { DAEMON_SKILL_OPS, type DaemonSkillOperations } from './daemonSkills.js';
 import { DAEMON_EXECUTION_OPS, type DaemonExecutionAdmission, type DaemonExecutionOperations } from './daemonExecutions.js';
+import { DAEMON_PREPARATION_OPS, type DaemonPreparationOperations } from './daemonPreparation.js';
 import { DAEMON_PLANNING_OPS, type DaemonPlanningOperations } from './daemonPlanning.js';
 import type { AgentEvent, Mission, Permission, TaskGraph, TaskState, MissionState } from './orchestration.js';
 
@@ -29,7 +30,7 @@ export const DAEMON_MAX_DEADLINE_MS = 10 * 60_000;
  * Contract v1 operations; the skill registry operations (`daemonSkills.ts`) and the knowledge
  * index operations (`daemonKnowledge.ts`) were added later, additively.
  */
-export const DAEMON_OPS = ['hello', 'mission.create', 'mission.snapshot', 'mission.heartbeat', 'task.transition', 'event.commit', 'permission.check', 'health', ...DAEMON_EXECUTION_OPS, ...DAEMON_PLANNING_OPS, ...DAEMON_SKILL_OPS, ...DAEMON_KNOWLEDGE_OPS] as const;
+export const DAEMON_OPS = ['hello', 'mission.create', 'mission.snapshot', 'mission.heartbeat', 'task.transition', 'event.commit', 'permission.check', 'health', ...DAEMON_EXECUTION_OPS, ...DAEMON_PLANNING_OPS, ...DAEMON_PREPARATION_OPS, ...DAEMON_SKILL_OPS, ...DAEMON_KNOWLEDGE_OPS] as const;
 export type DaemonOp = (typeof DAEMON_OPS)[number];
 
 /**
@@ -95,7 +96,7 @@ export interface DaemonMissionSnapshot {
   leases: { leaseId: string; taskId: string; holderAgentId: string; acquiredAt: string; expiresAt: string }[];
 }
 
-export interface DaemonOperations extends DaemonSkillOperations, DaemonKnowledgeOperations, DaemonExecutionOperations, DaemonPlanningOperations {
+export interface DaemonOperations extends DaemonSkillOperations, DaemonKnowledgeOperations, DaemonExecutionOperations, DaemonPlanningOperations, DaemonPreparationOperations {
   /** Capabilities list operations, never authorization to invoke them. */
   hello: {
     params: { clientVersion: string; capabilities: DaemonOp[] };

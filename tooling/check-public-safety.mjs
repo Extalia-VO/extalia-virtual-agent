@@ -25,6 +25,11 @@ import { PUBLIC_MODEL_DIRECTORY, readModelMetadata, verifyPublicModels } from '.
 const PLACEHOLDER_USERS = new Set(['someone', 'user', 'username', 'runner', 'me', 'you', 'example', 'name', 'shared', 'public', 'default', 'admin', 'jane', 'john', 'alice', 'bob']);
 const ALLOWED_EMAIL_DOMAINS = [/(^|\.)example\.(com|org|net)$/i, /(^|\.)users\.noreply\.github\.com$/i, /^noreply\.github\.com$/i, /^github\.com$/i];
 const THIRD_PARTY_TEXTS = new Set(['apps/web/public/fonts/Righteous-OFL.txt']);
+// The macOS Retina filename convention resembles an email address. Exempt only
+// this generated asset name in its installer manifest; all other tokens still scan.
+const NON_EMAIL_ASSETS = new Map([
+  ['apps/desktop/build/installer/manifest.json', new Set([['dmg-background', '2x.png'].join('@')])],
+]);
 const MODEL_FILE = /\.(glb|gltf|fbx)$/i;
 const SKIP = [/^pnpm-lock\.yaml$/, /\.(png|jpe?g|gif|webp|ico|glb|gltf|woff2?|ttf|otf|zip)$/i];
 
@@ -95,6 +100,7 @@ for (const file of files) {
     }
     if (!thirdParty) {
       for (const match of line.matchAll(EMAIL)) {
+        if (NON_EMAIL_ASSETS.get(file)?.has(match[0])) continue;
         if (!ALLOWED_EMAIL_DOMAINS.some(domain => domain.test(match[1]))) findings.push(`${at}: e-mail address "${match[0]}".`);
       }
     }

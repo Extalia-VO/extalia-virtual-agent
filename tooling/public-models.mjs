@@ -36,6 +36,14 @@ const VEHICLE_LICENSE_TERMS = {
 const DERIVED_VEHICLE_LICENSES = Object.keys(VEHICLE_LICENSE_TERMS);
 const DERIVED_VEHICLE_EXPORTER = 'tooling/blender/prepare-campus-vehicles.py';
 const DERIVED_VEHICLE_PATH = /^vehicles\/[a-z0-9-]+\.glb$/;
+// Campus plants and trees simplified from owner-provided downloads (`prepare-greenery.py`): the same
+// licences as the cars, each credited on its own line of the "Campus greenery" notice section.
+const DERIVED_GREENERY_EXPORTER = 'tooling/blender/prepare-greenery.py';
+const DERIVED_GREENERY_PATH = /^greenery\/(?:plant|garden|tree)-[a-z0-9-]+\.glb$/;
+// Detailed hair converted from owner-provided hair packs (`tooling/hair-packs.json`), credited on its own line
+// of the "Owner-provided hair packs" notice section.
+const DERIVED_HAIR_EXPORTER = 'tooling/convert-detailed-hair.py';
+const DERIVED_HAIR_PATH = /^avatars\/hair\/(?:male|female)\/[a-z0-9-]+-detail\.glb$/;
 // Wearable outfits refitted from third-party garments (`prepare-avatar-outfits.py`): the same
 // licences as the cars, each credited on its own line of the "Avatar outfits" notice section.
 const DERIVED_OUTFIT_EXPORTER = 'tooling/blender/prepare-avatar-outfits.py';
@@ -576,7 +584,7 @@ export function verifyPublicModels(root = ROOT) {
   if (license !== readFileSync(regular(root, 'LICENSE'), 'utf8') || !license.includes('MIT License')
     || !license.includes('Permission is hereby granted, free of charge') || !license.includes('THE SOFTWARE IS PROVIDED "AS IS"')) fail('missing or modified MIT license text');
   const profiles = readSourceGarmentProfiles(root), byProfile = new Map(profiles.map(profile => [profile.path, profile]));
-  const seen = new Set(), hashes = new Set(), derived = [], outfits = [], originals = [], sourceGarments = [];
+  const seen = new Set(), hashes = new Set(), derived = [], greenery = [], hairs = [], outfits = [], originals = [], sourceGarments = [];
   for (const entry of manifest.models) {
     keys(entry, ['path', 'sha256', 'bytes', 'license', 'provenance'], 'model');
     relative(entry.path, 'model path');
@@ -588,8 +596,13 @@ export function verifyPublicModels(root = ROOT) {
     const derivedOutfit = DERIVED_VEHICLE_LICENSES.includes(entry.license) && DERIVED_OUTFIT_PATH.test(entry.path)
       && entry.provenance?.exporter === DERIVED_OUTFIT_EXPORTER;
     const derivedVehicle = DERIVED_VEHICLE_LICENSES.includes(entry.license) && DERIVED_VEHICLE_PATH.test(entry.path);
-    const licensedAvatar = entry.license === LICENSED_AVATAR_LICENSE && !derivedVehicle && !derivedOutfit && !originalGarment && !sourceGarment;
-    if ((!licensedAvatar && !derivedVehicle && !derivedOutfit && !originalGarment && !sourceGarment && entry.license !== 'MIT') || (licensedAvatar && !entry.path.startsWith('avatars/'))
+    const derivedGreenery = DERIVED_VEHICLE_LICENSES.includes(entry.license) && DERIVED_GREENERY_PATH.test(entry.path)
+      && entry.provenance?.exporter === DERIVED_GREENERY_EXPORTER;
+    const derivedHair = DERIVED_VEHICLE_LICENSES.includes(entry.license)
+      && DERIVED_HAIR_PATH.test(entry.path) && entry.provenance?.exporter === DERIVED_HAIR_EXPORTER;
+    const licensedAvatar = entry.license === LICENSED_AVATAR_LICENSE && !derivedVehicle && !derivedOutfit
+      && !derivedGreenery && !derivedHair && !originalGarment && !sourceGarment;
+    if ((!licensedAvatar && !derivedVehicle && !derivedGreenery && !derivedHair && !derivedOutfit && !originalGarment && !sourceGarment && entry.license !== 'MIT') || (licensedAvatar && !entry.path.startsWith('avatars/'))
       || typeof entry.sha256 !== 'string' || !/^[a-f0-9]{64}$/.test(entry.sha256)
       || !Number.isSafeInteger(entry.bytes) || entry.bytes <= 0) fail(`invalid model declaration: ${entry.path}`);
     if (hashes.has(entry.sha256)) fail(`duplicate model content: ${entry.path}`);
@@ -613,6 +626,13 @@ export function verifyPublicModels(root = ROOT) {
       if (provenance.kind !== 'third-party-derived' || provenance.exporter !== DERIVED_VEHICLE_EXPORTER
         || provenance.generator !== undefined) fail(`invalid third-party vehicle provenance: ${entry.path}`);
       derived.push(entry);
+    } else if (derivedHair) {
+      if (provenance.kind !== 'third-party-derived' || provenance.generator !== undefined) fail(`invalid third-party hair provenance: ${entry.path}`);
+      hairs.push(entry);
+    } else if (derivedGreenery) {
+      if (provenance.kind !== 'third-party-derived' || provenance.exporter !== DERIVED_GREENERY_EXPORTER
+        || provenance.generator !== undefined) fail(`invalid third-party greenery provenance: ${entry.path}`);
+      greenery.push(entry);
     } else if (!['project-authored-export', 'project-generated'].includes(provenance.kind)
       || (provenance.kind === 'project-generated' ? !provenance.generator : !provenance.exporter)) fail(`missing project provenance: ${entry.path}`);
     for (const key of ['generator', 'exporter']) if (provenance[key] !== undefined) {
@@ -666,6 +686,28 @@ export function verifyPublicModels(root = ROOT) {
       const line = section.split('\n').find(text => text.includes(`\`${entry.path}\``)) ?? '';
       if (!line.includes(entry.license) || terms.section.some(pattern => !pattern.test(section))
         || (terms.line && !terms.line.test(line))) fail(`missing third-party outfit notice: ${entry.path}`);
+    }
+  }
+  if (hairs.length) {
+    const notices = readFileSync(regular(root, `${PUBLIC_MODEL_DIRECTORY}/${VEHICLE_NOTICE}`), 'utf8');
+    const section = notices.split(/^## Owner-provided hair packs\s*$/m)[1]?.split(/^## /m)[0];
+    if (!section) fail('third-party hair needs an "Owner-provided hair packs" notice section');
+    for (const entry of hairs) {
+      const terms = VEHICLE_LICENSE_TERMS[entry.license];
+      const line = section.split('\n').find(text => text.includes(`\`${entry.path}\``)) ?? '';
+      if (!line.includes(entry.license) || terms.section.some(pattern => !pattern.test(section))
+        || (terms.line && !terms.line.test(line))) fail(`missing third-party hair notice: ${entry.path}`);
+    }
+  }
+  if (greenery.length) {
+    const notices = readFileSync(regular(root, `${PUBLIC_MODEL_DIRECTORY}/${VEHICLE_NOTICE}`), 'utf8');
+    const section = notices.split(/^## Campus greenery\s*$/m)[1]?.split(/^## /m)[0];
+    if (!section) fail('third-party greenery needs a "Campus greenery" notice section');
+    for (const entry of greenery) {
+      const terms = VEHICLE_LICENSE_TERMS[entry.license];
+      const line = section.split('\n').find(text => text.includes(`\`${entry.path}\``)) ?? '';
+      if (!line.includes(entry.license) || terms.section.some(pattern => !pattern.test(section))
+        || (terms.line && !terms.line.test(line))) fail(`missing third-party greenery notice: ${entry.path}`);
     }
   }
   if (derived.length) {

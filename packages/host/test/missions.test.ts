@@ -202,6 +202,62 @@ describe.each(backends())('native missions through the managed host (%s core)', 
     await expect(readFile(path.join(env.data, 'sessions', `${session.id}.missions.json`))).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
+  it('cancels only the exact current mission through the existing cooperative lifecycle', async () => {
+    const entered = deferred();
+    const env = await setup(async (_url, init) => {
+      entered.resolve();
+      return new Promise((_resolve, reject) => init?.signal?.addEventListener('abort', () => reject(new Error('cancelled')), { once: true }));
+    });
+    const { session, request } = await configure(env.host, env.project);
+    request.tasks = [request.tasks[0]!];
+    const started = await env.host.startNativeMission(session.id, request);
+    await entered.promise;
+    await env.host.cancelNativeMission!(session.id, started.id);
+    expect((await completed(env.host, session.id, started.id)).state).toBe('cancelled');
+    await idle(env.runtime);
+    await expect(env.host.cancelNativeMission!(session.id, started.id)).rejects.toThrow(/already finished/);
+    expect(env.events.filter(event => event.body.type === 'user.intervention')).toHaveLength(1);
+  });
+
+  it.each(['prompt', 'mission', 'planning'] as const)('refuses stale mission cancellation while a later %s owns the same session', async later => {
+    const entered = deferred();
+    let blocking = false;
+    let currentSignal: AbortSignal | null | undefined;
+    const env = await setup(async (_url, init) => {
+      if (!blocking) return answer('model-a');
+      currentSignal = init?.signal;
+      entered.resolve();
+      return new Promise((_resolve, reject) => init?.signal?.addEventListener('abort', () => reject(new Error('cancelled')), { once: true }));
+    });
+    const { workspace, session, request } = await configure(env.host, env.project);
+    request.tasks = [request.tasks[0]!];
+    const first = await env.host.startNativeMission(session.id, request);
+    expect((await completed(env.host, session.id, first.id)).state).toBe('completed');
+    await idle(env.runtime);
+    const other = await env.host.createSession(workspace.id);
+    blocking = true;
+    let second: HostMissionRun | undefined;
+    const planning = later === 'planning' ? env.host.planNativeMission(session.id, { goal: 'Review again.' }) : undefined;
+    if (later === 'prompt') await env.host.sendPrompt(session.id, 'Review again.');
+    if (later === 'mission') second = await env.host.startNativeMission(session.id, request);
+    await entered.promise;
+    const eventCount = env.events.length;
+    for (const [targetSession, targetMission] of [[session.id, first.id], [other.id, second?.id ?? first.id], [session.id, 'unknown-mission']]) {
+      await expect(env.host.cancelNativeMission!(targetSession!, targetMission!)).rejects.toThrow(/changed or already finished/);
+    }
+    expect(currentSignal?.aborted).toBe(false);
+    expect(env.runtime.isBusy()).toBe(true);
+    expect(env.events.slice(eventCount).some(event => event.body.type === 'user.intervention')).toBe(false);
+    expect((await env.host.nativeMissionRun(session.id, first.id)).state).toBe('completed');
+    if (second) {
+      expect((await env.host.nativeMissionRun(session.id, second.id)).state).toBe('running');
+      await env.host.cancelNativeMission!(session.id, second.id);
+      expect((await completed(env.host, session.id, second.id)).state).toBe('cancelled');
+    } else await env.host.cancel(session.id);
+    await planning;
+    await idle(env.runtime);
+  });
+
   it('quarantines ignored aborts across sessions and restart without replay or unsafe deletion', async () => {
     const entered = deferred(), release = deferred<Response>();
     let calls = 0;

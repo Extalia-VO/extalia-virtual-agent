@@ -1,3 +1,4 @@
+import { Select } from '../ui/Select';
 import type { AgentHostApi, DirectoryListing } from '@extalia/platform';
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -51,10 +52,9 @@ export function DirectoryBrowser({ t, agents, startPath, onSelect, onClose }: {
       <div className="row-actions">
         <button type="button" className="button small" disabled={loading} onClick={() => { void load(); }}><Icon name="folder" />{t.workspace.browser.home}</button>
         <button type="button" className="button small" disabled={loading || !listing?.parentPath} onClick={() => { void load(listing?.parentPath); }}>{t.workspace.browser.up}</button>
-        {listing && <select aria-label={t.workspace.browser.roots} value="" disabled={loading} onChange={event => { void load(event.target.value); }}>
-          <option value="" disabled>{t.workspace.browser.roots}</option>
-          {listing.roots.map(root => <option key={root.path} value={root.path}>{root.name}</option>)}
-        </select>}
+        {listing && <Select aria-label={t.workspace.browser.roots} value="" disabled={loading}
+          placeholder={t.workspace.browser.roots} onChange={path => { void load(path); }}
+          options={listing.roots.map(root => ({ value: root.path, label: root.name }))} />}
       </div>
       <code className="folder-browser-path">{listing?.path}</code>
       <div className="folder-browser-list" aria-busy={loading}>

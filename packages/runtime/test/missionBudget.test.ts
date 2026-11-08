@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { AgentEvent, OrchestrationPlan } from '@extalia/protocol';
-import { runNativeMission, type AnyTool, type NativeMissionAccounting, type NativeMissionOptions } from '../src/index.js';
+import { ProviderError, createFallbackProvider, guardProviderRequests, runNativeMission, type AnyTool, type NativeMissionAccounting, type NativeMissionOptions } from '../src/index.js';
 import type { ModelProvider, ModelRequest, ModelResult } from '../src/model.js';
 import { createProvider } from '../src/index.js';
 import { expectAuditedTransitions } from './transitionAudit.js';
@@ -54,6 +54,112 @@ function journal(options: NativeMissionOptions) {
 }
 
 describe('native mission budgets and usage ownership (ADR 0015)', () => {
+  it.each(['prompt_tokens', 'completion_tokens'] as const)('blocks queued work when an unsafe final %s invalidates a provisional stream counter', async field => {
+    let calls = 0;
+    const provider = createProvider({ preset: 'custom', api: 'openai-chat', baseUrl: 'https://api.example.com/v1', model: 'model', features: { memory: 'off', skills: 'off' } }, undefined, async () => {
+      calls++;
+      return new Response([
+        { choices: [], usage: { prompt_tokens: 1, completion_tokens: 0 } },
+        { choices: [{ delta: { content: 'done' }, finish_reason: 'stop' }], usage: { [field]: Number.MAX_SAFE_INTEGER + 1 } },
+      ].map(chunk => `data: ${JSON.stringify(chunk)}\n\n`).join('') + 'data: [DONE]\n\n', { headers: { 'content-type': 'text/event-stream' } });
+    });
+    const options = fixture(2, request => provider.complete(request));
+    options.maxConcurrency = 1;
+    options.budget = { maxTokens: 100 };
+    const result = await runNativeMission(options);
+    expect(calls).toBe(1);
+    expect(result.tasks[0]!.usage).toEqual({ ...(field === 'prompt_tokens' ? { outputTokens: 0 } : { inputTokens: 1 }), unknown: true });
+    expect(result.tasks[1]).toMatchObject({ state: 'blocked', reason: 'usage-unknown' });
+    expect(result.budgetExhausted).toBe('usage-unknown');
+  });
+
+  it('omits unsafe task totals permanently while retaining partial usage and unknown attribution', async () => {
+    let calls = 0;
+    const options = fixture(1, async () => ++calls < 3 ? toolReply({ inputTokens: calls === 1 ? Number.MAX_SAFE_INTEGER : 2, outputTokens: 0 }) : answer('done', { inputTokens: 1, outputTokens: 2 }));
+    options.tasks[0]!.tools = [readTool];
+    const result = await runNativeMission(options);
+    expect(result.tasks[0]!.usage).toEqual({ outputTokens: 2, unknown: true });
+    expect(result.usage).toEqual({ outputTokens: 2, unknownTasks: 1 });
+  });
+
+  it('keeps aggregate totals safe when independent known task counts cannot be represented together', async () => {
+    const options = fixture(2, async () => answer('done', { inputTokens: Number.MAX_SAFE_INTEGER, outputTokens: 0 }));
+    const result = await runNativeMission(options);
+    expect(result.usage.inputTokens).toBeUndefined();
+    expect(result.usage.outputTokens).toBe(0);
+    expect(result.tasks.every(task => Number.isSafeInteger(task.usage?.inputTokens))).toBe(true);
+  });
+
+  it('fails budget eligibility closed when the sum of individually safe input and output overflows', async () => {
+    const options = fixture(1, async () => toolReply({ inputTokens: Number.MAX_SAFE_INTEGER, outputTokens: Number.MAX_SAFE_INTEGER }));
+    options.tasks[0]!.tools = [readTool];
+    options.budget = { maxTaskTokens: 100 };
+    const result = await runNativeMission(options);
+    expect(result.tasks[0]).toMatchObject({ state: 'cancelled', reason: 'usage-unknown', usage: { unknown: true } });
+  });
+
+  it('does not invent unknown usage when a connection input ceiling prevents provider entry', async () => {
+    const fetch = vi.fn(async () => Response.json({}));
+    const options = fixture(1, async () => { throw new Error('Unused fixture provider.'); });
+    options.tasks[0]!.instructions = 'Inspect task-0\n' + 'x'.repeat(10_000);
+    options.budget = { maxTokens: 1_000_000 };
+    options.bindings[0]!.provider = createProvider({
+      preset: 'custom', api: 'openai-chat', baseUrl: 'https://api.example.com/v1', model: 'model',
+      features: { memory: 'extalia', skills: 'extalia' }, inputTokenLimit: 1_024,
+    }, undefined, fetch);
+    const result = await runNativeMission(options);
+    expect(result.state).toBe('failed');
+    expect(result.tasks[0]).toMatchObject({ state: 'failed', reason: 'provider-failed' });
+    expect(result.tasks[0]).not.toHaveProperty('usage');
+    expect(result.usage).toEqual({ unknownTasks: 0 });
+    expect(result.budgetExhausted).toBeUndefined();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('retains known earlier usage when tool growth triggers a later local preflight refusal', async () => {
+    const entered = vi.fn(async () => toolReply({ inputTokens: 123, outputTokens: 4 }));
+    const options = fixture(1, entered);
+    options.budget = { maxTokens: 1_000_000 };
+    options.tasks[0]!.tools = [{ ...readTool, run: async () => ({ ok: true, output: 'x'.repeat(20_000) }) }];
+    options.bindings[0]!.provider = guardProviderRequests(options.bindings[0]!.provider, 1_024);
+    const result = await runNativeMission(options);
+    expect(entered).toHaveBeenCalledTimes(1);
+    expect(result.tasks[0]).toMatchObject({ state: 'failed', usage: { inputTokens: 123, outputTokens: 4 } });
+    expect(result.usage).toEqual({ inputTokens: 123, outputTokens: 4, unknownTasks: 0 });
+    expect(result.budgetExhausted).toBeUndefined();
+  });
+
+  it('keeps failed calls that actually entered a provider unknown', async () => {
+    const entered = vi.fn(async () => { throw new Error('Provider connection failed.'); });
+    const options = fixture(1, entered);
+    options.budget = { maxTokens: 1_000_000 };
+    const result = await runNativeMission(options);
+    expect(entered).toHaveBeenCalledTimes(1);
+    expect(result.tasks[0]).toMatchObject({ state: 'failed', usage: { unknown: true } });
+    expect(result.usage).toEqual({ unknownTasks: 1 });
+    expect(result.budgetExhausted).toBe('usage-unknown');
+  });
+
+  it('keeps usage unknown after a real failed attempt followed by a locally refused fallback', async () => {
+    const entered = vi.fn(async () => { throw new ProviderError('Rate limit reached.', 429, true); });
+    const fetch = vi.fn(async () => Response.json({}));
+    const options = fixture(1, entered);
+    options.tasks[0]!.instructions = 'Inspect task-0\n' + 'x'.repeat(10_000);
+    options.budget = { maxTokens: 1_000_000 };
+    const first = options.bindings[0]!.provider;
+    const fallback = createProvider({
+      preset: 'custom', api: 'openai-chat', baseUrl: 'https://api.example.com/v1', model: 'model',
+      features: { memory: 'extalia', skills: 'extalia' }, inputTokenLimit: 1_024,
+    }, undefined, fetch);
+    options.bindings[0]!.provider = createFallbackProvider([{ model: 'first', provider: () => first }, { model: 'second', provider: () => fallback }]);
+    const result = await runNativeMission(options);
+    expect(entered).toHaveBeenCalledTimes(1);
+    expect(fetch).not.toHaveBeenCalled();
+    expect(result.tasks[0]).toMatchObject({ state: 'failed', usage: { unknown: true } });
+    expect(result.usage).toEqual({ unknownTasks: 1 });
+    expect(result.budgetExhausted).toBe('usage-unknown');
+  });
+
   it('sums only provider-reported usage per task and mission, commits it with events and keeps unreported usage unknown', async () => {
     const options = fixture(2, async (_request, index) => index === 0 ? answer('a', { inputTokens: 10, outputTokens: 5 }) : answer('b'));
     const committed = journal(options);
@@ -223,5 +329,53 @@ describe('native mission budgets and usage ownership (ADR 0015)', () => {
     expect(unknown.tasks[0]!.usage).toEqual({ unknown: true });
     expect(unknown).toMatchObject({ budgetExhausted: 'usage-unknown', usage: { unknownTasks: 1 } });
     expect(unknown.usage.inputTokens).toBeUndefined();
+  });
+
+  it.each([
+    { name: 'cache reads', raw: { input_tokens: 2, cache_read_input_tokens: 100, output_tokens: 5 }, inputTokens: 102, outputTokens: 5, exhausted: 'tokens' },
+    { name: 'cache creation', raw: { input_tokens: 2, cache_creation_input_tokens: 100, output_tokens: 5 }, inputTokens: 102, outputTokens: 5, exhausted: 'tokens' },
+    { name: 'mixed cache reads and creation', raw: { input_tokens: 2, cache_read_input_tokens: 60, cache_creation_input_tokens: 40, output_tokens: 5 }, inputTokens: 102, outputTokens: 5, exhausted: 'tokens' },
+    { name: 'missing optional cache metrics', raw: { input_tokens: 2, output_tokens: 5 }, inputTokens: 2, outputTokens: 5 },
+    { name: 'explicit zero metrics', raw: { input_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, output_tokens: 0 }, inputTokens: 0, outputTokens: 0 },
+    { name: 'missing uncached input', raw: { cache_read_input_tokens: 100, output_tokens: 5 }, outputTokens: 5, exhausted: 'usage-unknown' },
+  ])('accounts for Anthropic $name before admitting queued work', async ({ raw, inputTokens, outputTokens, exhausted }) => {
+    let calls = 0;
+    const provider = createProvider(
+      { preset: 'custom', api: 'anthropic-messages', baseUrl: 'http://127.0.0.1:9303', model: 'model', features: { memory: 'extalia', skills: 'extalia' } },
+      undefined,
+      async () => {
+        calls++;
+        const events = [
+          { type: 'message_start', message: { id: 'msg_1', type: 'message', role: 'assistant', model: 'model', content: [], stop_reason: null, stop_sequence: null, usage: raw } },
+          { type: 'content_block_start', index: 0, content_block: { type: 'text', text: 'done' } },
+          { type: 'content_block_stop', index: 0 },
+          { type: 'message_delta', delta: { stop_reason: 'end_turn', stop_sequence: null }, usage: { output_tokens: outputTokens } },
+          { type: 'message_stop' },
+        ];
+        return new Response(events.map(event => `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`).join(''), { headers: { 'content-type': 'text/event-stream' } });
+      },
+    );
+    const options = fixture(2, request => provider.complete(request));
+    options.maxConcurrency = 1;
+    options.budget = { maxTokens: 100 };
+    const committed = journal(options);
+    const result = await runNativeMission(options);
+    const reported = { ...(inputTokens !== undefined ? { inputTokens } : {}), outputTokens };
+    expect(result.tasks[0]).toMatchObject({ state: 'completed', answer: 'done' });
+    expect(result.tasks[0]!.usage).toEqual({ ...reported, ...(inputTokens === undefined ? { unknown: true } : {}) });
+    // Mission summaries spend the normalized total once; cache reads are a subset of it.
+    expect(committed.find(item => item.event.taskId === id(20) && item.event.body.type === 'turn.completed')!.event.body).toEqual({
+      type: 'turn.completed', usage: reported,
+    });
+    expect(result.budgetExhausted).toBe(exhausted);
+    expect(calls).toBe(exhausted ? 1 : 2);
+    if (exhausted) {
+      expect(result.tasks[1]).toMatchObject({ state: 'blocked', reason: exhausted === 'tokens' ? 'budget-exhausted' : 'usage-unknown' });
+      expect(result.usage).toEqual({ ...reported, unknownTasks: inputTokens === undefined ? 1 : 0 });
+      expect(committed.some(item => item.event.taskId === id(21) && item.event.body.type === 'task.assigned')).toBe(false);
+    } else {
+      expect(result.state).toBe('completed');
+      expect(result.usage).toEqual({ inputTokens: inputTokens! * 2, outputTokens: outputTokens * 2, unknownTasks: 0 });
+    }
   });
 });

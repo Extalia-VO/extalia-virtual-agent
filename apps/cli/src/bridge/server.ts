@@ -4,7 +4,8 @@ import { readFile, stat } from 'node:fs/promises';
 import { createServer, type IncomingMessage, type OutgoingHttpHeaders, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import path from 'node:path';
-import { ATTACHMENT_BODY_HEADER, isAgentHostMethod, MAX_ATTACHMENT_REQUEST_BYTES, type AgentHostApi, type UpdateStatus } from '@extalia/platform';
+import { decodeAgentTeam } from '@extalia/core';
+import { ATTACHMENT_BODY_HEADER, GOAL_DOCUMENT_BODY_HEADER, isAgentHostMethod, MAX_ATTACHMENT_REQUEST_BYTES, MAX_GOAL_DOCUMENT_RPC_BODY_BYTES, normalizeMissionPlanRequest, normalizeSessionOptions, normalizeSkillRegistryPageInput, normalizeTeamPlanRequest, type AgentHostApi, type UpdateStatus } from '@extalia/platform';
 
 /**
  * The local Extalia Bridge: serves the web UI and exposes the agent host over
@@ -151,6 +152,7 @@ export interface BridgeServerOptions {
   agents(): Promise<AgentHostApi>;
   updates: BridgeUpdates;
   hooks?(request: IncomingMessage, response: ServerResponse, app: string): Promise<void>;
+  codexPermissions?(request: IncomingMessage, response: ServerResponse): Promise<void>;
   pingIntervalMs?: number;
   maxBodyBytes?: number;
 }
@@ -355,12 +357,15 @@ export async function startBridgeServer(options: BridgeServerOptions): Promise<B
     if (!isJsonContentType(request.headers['content-type'])) { sendError(response, 415, 'Content-Type must be application/json.'); return; }
     // Uploads may be larger than ordinary calls, but never beyond the bounded attachment size.
     const uploading = request.headers[ATTACHMENT_BODY_HEADER] === 'attachment';
+    const goalDocumentCall = request.headers[GOAL_DOCUMENT_BODY_HEADER] === 'goal-document';
+    if (uploading && goalDocumentCall) { sendError(response, 400, 'Choose one bounded request type.'); return; }
     let body: Buffer;
-    try { body = await readBody(request, uploading ? MAX_ATTACHMENT_REQUEST_BYTES : maxBody); }
+    const bodyLimit = uploading ? MAX_ATTACHMENT_REQUEST_BYTES : goalDocumentCall ? MAX_GOAL_DOCUMENT_RPC_BODY_BYTES : maxBody;
+    try { body = await readBody(request, bodyLimit); }
     catch (error) {
       if (error instanceof BodyTooLargeError) {
         await error.drained;
-        sendError(response, 413, `Request body is larger than ${uploading ? MAX_ATTACHMENT_REQUEST_BYTES : maxBody} bytes.`, { Connection: 'close' });
+        sendError(response, 413, `Request body is larger than ${bodyLimit} bytes.`, { Connection: 'close' });
       }
       else sendError(response, 400, 'Could not read the request body.');
       return;
@@ -371,8 +376,24 @@ export async function startBridgeServer(options: BridgeServerOptions): Promise<B
     const { method, args } = payload as { method?: unknown; args?: unknown };
     if (!isAgentHostMethod(method)) { sendError(response, 400, 'Unknown method.'); return; }
     if (uploading && method !== 'uploadAttachment') { sendError(response, 400, 'Only file uploads may use the attachment body size.'); return; }
-    if (body.length > maxBody && method !== 'uploadAttachment') { sendError(response, 413, `Request body is larger than ${maxBody} bytes.`, { Connection: 'close' }); return; }
     if (!Array.isArray(args)) { sendError(response, 400, 'args must be an array.'); return; }
+    if (goalDocumentCall) {
+      try {
+        let present = false;
+        if (method === 'planTeam' && (args.length === 2 || args.length === 3 && typeof args[2] === 'string')) present = Boolean(normalizeTeamPlanRequest(args[1]).goalDocument);
+        else if (method === 'planNativeMission' && args.length === 2) present = Boolean(normalizeMissionPlanRequest(args[1]).goalDocument);
+        else if ((method === 'saveSessionTeam' || method === 'saveWorkspaceTeam') && args.length === 2 && args[1] && typeof args[1] === 'object') {
+          const team = decodeAgentTeam(args[1]); present = team.ok && Boolean(team.value.goalDocument);
+        } else if (method === 'createSession' && args.length === 2) present = Boolean(normalizeSessionOptions(args[1]).team?.goalDocument);
+        if (!present) throw new Error('This bounded request does not contain a valid goal document for a supported operation.');
+      } catch (error) { sendError(response, 400, errorMessage(error)); return; }
+    } else if (body.length > maxBody && method !== 'uploadAttachment') {
+      sendError(response, 413, `Request body is larger than ${maxBody} bytes.`, { Connection: 'close' }); return;
+    }
+    if (method === 'skillRegistryPage') {
+      try { if (args.length !== 1) throw new Error('Invalid skill catalog arguments.'); args[0] = normalizeSkillRegistryPageInput(args[0]); }
+      catch (error) { sendError(response, 400, errorMessage(error)); return; }
+    }
     const host = await agentsOrError(response);
     if (!host) return;
     try {
@@ -447,6 +468,13 @@ export async function startBridgeServer(options: BridgeServerOptions): Promise<B
     let url: URL;
     try { url = new URL(request.url ?? '/', `http://${BRIDGE_HOST}:${port}`); }
     catch { send(response, 400, 'Bad request', { 'Content-Type': 'text/plain; charset=utf-8' }); return; }
+    if (url.pathname === '/api/permissions/codex' && options.codexPermissions) {
+      void options.codexPermissions(request, response).catch(() => {
+        if (!response.headersSent) sendError(response, 503, 'Permission forwarding is unavailable.');
+        else response.destroy();
+      });
+      return;
+    }
     const hookMatch = /^\/api\/hooks\/([^/]+)$/.exec(url.pathname);
     if (hookMatch) {
       if (!options.hooks) { sendError(response, 404, 'Not found.'); return; }

@@ -8,8 +8,10 @@ Security boundaries come before autonomous capabilities (PRD §25).
 | --- | --- | --- |
 | Filesystem | Read inside the workspace | Allow |
 | | Write inside the workspace | Ask or allow (policy) |
-| | Anything outside the workspace | Deny |
-| Terminal | Run a command | Ask |
+| | Other registered workspace folders | Read only unless either side is isolated |
+| | Other registered workspace edits | Both sides must allow read/write; approvals still apply |
+| | Unregistered folders | Deny |
+| Terminal | Native command without verified isolated executor | Unavailable |
 | Git | Commit | Allow |
 | | Push | Ask |
 | Network | External requests | Ask |
@@ -19,12 +21,14 @@ Security policy overrides user, project and agent instructions.
 
 ## Extalia Native agent
 
-- Tools resolve every path inside the workspace root (symlinks included) and
-  refuse credential files (`.env`, keys, `.ssh/`, `.npmrc`, …) and writes into
+- Native file tools use the selected primary/additional folders and two-sided
+  [workspace boundaries](../getting-started/workspace-boundaries.md), including
+  canonical symlink targets and nested registered roots. They refuse credential files (`.env`, keys, `.ssh/`, `.npmrc`, …) and writes into
   `.git/`.
-- Commands run in the project root, in their own process group with a time
-  limit, without environment variables that look like credentials; output is
-  masked before it reaches the model or the screen.
+- Production Native commands and integration gates fail before launch without
+  a verified workspace-isolated executor. Lower-level command utilities retain
+  explicit caller control, process groups, environment filtering and redacted
+  output; these mechanisms alone do not establish filesystem isolation.
 - File edits and commands ask for approval unless the workspace allows them;
   approvals can cover one action or the rest of the session.
 - A session's permission mode narrows or widens that policy for the session:
@@ -87,12 +91,49 @@ deterministic generic-content sandbox or complete workspace/agent ACL enforcemen
 
 ## Connecting agent apps
 
-`extalia connect <app>` (planned) edits another application's configuration,
+`extalia connect <app>` edits another application's configuration,
 so it always shows a dry run first, needs the user's approval, backs up the
 files it changes, preserves existing settings and can be undone with
-`extalia disconnect <app>`. Hooks forward events only; they never block,
+`extalia disconnect <app>`. Notification hooks forward events only; they never block,
 steer or inject text into the agent. See
 [runtime-adapters.md](runtime-adapters.md).
+
+The opt-in [observed Codex control](../adr/0060-observed-codex-same-server-control.md)
+uses a separate existing-server connection, not hook responses. The host binds
+socket/thread/turn/request identity and does not expose arbitrary RPC to the UI.
+Pause/delete/disconnect revoke the connection before persistence waits. Secret
+answers remain memory-only in Extalia, and uncertain delivery is not retried. A transcript
+waiting state, private Desktop IPC socket or saved thread on another server
+never establishes answer authority. Generic approvals stay in their source app.
+
+[ADR 0062](../adr/0062-codex-queue-and-native-permissions.md) permits exact newly
+received native command/file/permission decisions on that connection, with full
+preview and explicit offered choices. Persistent policy/session grants are
+excluded; broader file-root grants can only be declined/cancelled here. Separate
+saved queue setup executes only the official queue command against a registered
+source profile and exact UUID. Durable intent/receipt metadata contains no text,
+and does not confer steering or permission authority.
+
+[ADR 0063](../adr/0063-codex-synchronous-permission-hooks.md) adds a separate,
+explicitly reviewed synchronous permission hook. It uses its own private token,
+exact native-session filter before forwarding, registered transcript/profile
+binding, original HTTP callback, full payload digest and one-use explicit choices.
+Notification and cooperative-reply tokens cannot authorize it. Timeout,
+disconnect, source change and pause defer to Codex. Setup does not write hook
+trust or change source permission modes. Only the verified native Bash payload
+admits allow; missing permission details remain visible as a review limitation.
+Built-in permission-grant tools still need the source app or original-server RPC.
+
+[Observed reply channels](../adr/0061-observed-reply-channels.md) use a separate
+ephemeral loopback rendezvous with one-use bearer tokens, strict Host/no-Origin
+checks and bounded messages. They return only through the tool that explicitly
+waits for a reply. Possession of its token is not proof of native app or chat
+identity; the user manually pairs the intended source conversation. Tokens and
+answers are not persisted by Extalia. Source apps can retain their own tool
+history. Pause/removal seals admission synchronously before observation writes.
+The conditional Hermes adapter separately verifies the public attach ticket's
+owner/profile, live session and execution generation; it cannot start or recover
+a gateway or persist permanent source-app authorization.
 
 ## Repository safety
 

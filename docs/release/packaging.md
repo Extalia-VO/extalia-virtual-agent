@@ -56,6 +56,51 @@ and all five `@extalia/daemon-*` packages were first published at v0.4.109. User
 is run inside the checkout. An isolated global-prefix install of the public v0.4.109
 package passes on Node 26.12.0 with npm 12.2.1, including CLI, daemon and Web startup.
 
+## English installer experience
+
+Installer copy is centralized in `INSTALLER_COPY` in `apps/web/src/i18n.ts` and
+stays English independently of the app language.
+
+- **macOS:** the DMG has branded Standard/Retina artwork, an Applications link and
+  an Installation Guide. Users can drag the app to Applications or open it for
+  guided installation. A packaged app launched outside Applications shows a
+  dedicated installer window with three Office photographs, automatic five-second
+  crossfades, pause and slide controls, keyboard navigation and reduced-motion
+  support. Images focus on the Office at the center right and fade into the title
+  background on every edge. Installing uses Electron's native move/copy operation;
+  replacing an existing app requires confirmation and a running copy is refused.
+  Successful installation relaunches the installed app. Opening without installing
+  restarts normal app boot, with no temporary installer profile carried over.
+- **Windows:** an English assisted NSIS wizard includes a welcome page, destination
+  selection, desktop/Start menu shortcuts and an explicit finish/launch choice.
+  Existing profile preservation and updater behavior remain in place.
+- **Linux x64:** the release also contains `Extalia-VERSION-linux-x64-setup.run`,
+  an offline per-user wizard using Zenity, KDialog or terminal prompts. Run it with
+  `bash Extalia-VERSION-linux-x64-setup.run`; `--cli` forces terminal mode and
+  `--yes` installs without prompting or launching. It installs the bundled
+  AppImage, icon and application-menu entry without sudo, rejects unsafe/overlapping
+  destinations and running copies, verifies payload integrity and replaces only
+  files owned by its installation manifest. Existing AppImage/deb downloads remain.
+  AppImage runtime dependencies still apply. Downloaded updater payloads need a
+  private, verified handoff receipt before the managed AppImage can be replaced;
+  manual setup accepts verified updater replacements and preserves profile data.
+
+`pnpm --filter @extalia/desktop build` copies the local photographs and bundles
+installer-only code. `pnpm --filter @extalia/desktop installer:art` regenerates the
+committed PNG/BMP/SVG artwork in an isolated Electron profile. The `beforePack`
+hook verifies the artwork/copy/identity/photo hashes and generates English NSIS
+and guide files. The Linux post-build hook creates the self-contained `.run` from
+its matching AppImage; release validation verifies that relationship before upload.
+
+For visual review, build Desktop, then run
+`pnpm --filter @extalia/desktop exec electron . --installer-preview`. This mode uses
+throwaway application, Chromium and home directories, does not start agents, and
+cannot install or replace an app. The preview install button only displays a
+preview status. Native installation is tested with substituted operations and
+temporary directories; native Windows/Linux desktop validation belongs on their
+respective release runners. These features do not change signing, notarization,
+architecture checks or release publication gates.
+
 ## macOS release modes
 
 `mac.hardenedRuntime: true`. electron-builder's signer walks the whole bundle, including
@@ -76,7 +121,9 @@ signed macOS update feed. Preview apps update by manually downloading a new buil
 
 A user who trusts the official download may need to approve opening it through
 **System Settings → Privacy & Security → Open Anyway** after the first launch
-attempt. See [Apple's instructions](https://support.apple.com/en-gb/102445).
+attempt, or remove the quarantine attribute in Terminal:
+`xattr -dr com.apple.quarantine /Applications/Extalia.app`.
+See [Apple's instructions](https://support.apple.com/en-gb/102445).
 No build or installer changes Gatekeeper settings or removes quarantine metadata.
 
 **Notarized:** requires `MAC_CSC_LINK` (a Developer ID Application

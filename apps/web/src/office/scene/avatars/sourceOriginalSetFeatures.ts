@@ -1,6 +1,6 @@
 import type { Group } from 'three';
 
-export interface OriginalSetFeatures { nativeFootwear: boolean; ownNeckline: boolean; ownHands: boolean; ownEyewear?: true }
+export interface OriginalSetFeatures { nativeFootwear: boolean; ownNeckline: boolean; ownHands: boolean; ownEyewear?: true; nativeNeckline?: true }
 const cache = new WeakMap<Group, OriginalSetFeatures>();
 
 /** Original garments explicitly declare which native backing they replace. */
@@ -14,6 +14,7 @@ export function originalSetFeatures(scene: Group): OriginalSetFeatures {
     if (node.userData.extaliaOwnNeckline === true) features.ownNeckline = true;
     if (node.userData.extaliaOwnHands === true) features.ownHands = true;
     if (node.userData.extaliaOwnEyewear === true) features.ownEyewear = true;
+    if (node.userData.extaliaNativeNeckline === true) features.nativeNeckline = true;
   });
   cache.set(scene, features);
   return features;
@@ -26,13 +27,17 @@ export function resolvedOriginalSetFeatures(
   loaded: Readonly<Partial<Record<'top' | 'outer', boolean>>>,
 ): OriginalSetFeatures {
   const full = fullSet ? originalSetFeatures(fullSet) : undefined;
+  const nativeNeckline = full?.nativeNeckline === true
+    || loaded.top === true && pieces.top !== undefined && originalSetFeatures(pieces.top).nativeNeckline === true
+    || loaded.outer === true && pieces.outer !== undefined && originalSetFeatures(pieces.outer).nativeNeckline === true;
   return {
     nativeFootwear: full?.nativeFootwear === true,
     // Gloves replace native hands only as part of a successfully bound complete set.
     ownHands: full?.ownHands === true,
     ...(full?.ownEyewear === true ? { ownEyewear: true as const } : {}),
-    ownNeckline: full?.ownNeckline === true
+    ...(nativeNeckline ? { nativeNeckline: true as const } : {}),
+    ownNeckline: !nativeNeckline && (full?.ownNeckline === true
       || loaded.top === true && pieces.top !== undefined && originalSetFeatures(pieces.top).ownNeckline
-      || loaded.outer === true && pieces.outer !== undefined && originalSetFeatures(pieces.outer).ownNeckline,
+      || loaded.outer === true && pieces.outer !== undefined && originalSetFeatures(pieces.outer).ownNeckline),
   };
 }

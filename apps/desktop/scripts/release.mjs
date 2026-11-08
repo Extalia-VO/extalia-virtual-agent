@@ -5,6 +5,7 @@ import { access, lstat, mkdir, mkdtemp, open, readFile, realpath, rm, writeFile 
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { verifyLinuxInstaller } from './linux-installer.mjs';
 
 const DESKTOP = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SIGNING_ENV = ['CSC_LINK', 'CSC_KEY_PASSWORD', 'APPLE_ID', 'APPLE_APP_SPECIFIC_PASSWORD', 'APPLE_TEAM_ID'];
@@ -82,7 +83,7 @@ export function releaseArtifactNames(platform, version) {
     case 'darwin': return { payloads: ['arm64', 'x64'].flatMap(arch => [`${base}-mac-${arch}.dmg`, `${base}-mac-${arch}.zip`]), metadata: `${channel}-mac.yml` };
     case 'win32': return { payloads: [`${base}-win-x64-setup.exe`], metadata: `${channel}.yml` };
     // electron-builder's getArtifactArchName maps x64 by target extension.
-    case 'linux': return { payloads: [`${base}-linux-x86_64.AppImage`, `${base}-linux-amd64.deb`], metadata: `${channel}-linux.yml` };
+    case 'linux': return { payloads: [`${base}-linux-x86_64.AppImage`, `${base}-linux-amd64.deb`, `${base}-linux-x64-setup.run`], metadata: `${channel}-linux.yml` };
     default: throw new Error('Unsupported release platform.');
   }
 }
@@ -250,6 +251,10 @@ export async function uploadRelease({ platform, version, tag, directory, run = r
       const arch = name.includes('-arm64.') ? 'arm64' : 'x64';
       await verifyMacArchive(path.join(directory, name), arch, { run, temporaryDirectory, mode });
     }
+  }
+  if (platform === 'linux') {
+    await verifyLinuxInstaller({ installer: path.join(directory, `Extalia-${version}-linux-x64-setup.run`),
+      appImage: path.join(directory, `Extalia-${version}-linux-x86_64.AppImage`), icon: path.join(DESKTOP, 'build/icon.png'), version });
   }
   const release = await run('gh', ['release', 'view', tag, '--json', 'isDraft,tagName,assets']);
   const info = JSON.parse(release.stdout);

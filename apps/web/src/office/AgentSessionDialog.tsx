@@ -14,7 +14,7 @@ import type { OfficeAgent } from './presence';
 import { sessionTeamSummary, teamSupported } from './team';
 import { TeamSetupDialog } from './TeamSetupDialog';
 
-const FOCUSABLE = 'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
+const FOCUSABLE = 'a[href], button:not([disabled]), summary, textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 /**
  * Makes everything outside `keep` inert while the dialog is open (the R3F canvas
@@ -38,7 +38,7 @@ function useInertOutside(keep: HTMLElement | null) {
  * while shown stays readable with an explanation. The page renders at most one,
  * keyed by character, from a single dialog slot (`officeSelection`).
  */
-export function AgentSessionDialog({ t, language, agents, state, onState, session, agent, role, workspace, look, appearance, tab, onTab, onClose, onLocate, onOpenInChat, onOpenMissions, onSelectCharacter, officeNames, savedLooks }: {
+export function AgentSessionDialog({ t, language, agents, state, onState, session, agent, role, workspace, look, appearance, tab, onTab, onClose, onLocate, onOpenInChat, onOpenMissions, onSelectCharacter, officeNames, savedLooks, viewport }: {
   t: Messages;
   language: string;
   agents: AgentHostApi;
@@ -64,6 +64,8 @@ export function AgentSessionDialog({ t, language, agents, state, onState, sessio
   officeNames?: ReadonlySet<string> | undefined;
   /** v0.0.30: saved looks by character id, for the team dialog's portraits. */
   savedLooks?: CharacterAppearances | undefined;
+  /** The 3D Office area, excluding the application sidebar and top bar. */
+  viewport?: HTMLElement | null;
 }) {
   const d = t.sessionDialog;
   const titleId = useId();
@@ -87,21 +89,47 @@ export function AgentSessionDialog({ t, language, agents, state, onState, sessio
   }, [host]);
   useInertOutside(host);
 
+  useLayoutEffect(() => {
+    if (!viewport) return;
+    const measure = () => {
+      const bounds = viewport.getBoundingClientRect();
+      host.style.setProperty('--session-center-x', `${bounds.left + bounds.width / 2}px`);
+      host.style.setProperty('--session-center-y', `${bounds.top + bounds.height / 2}px`);
+      host.style.setProperty('--session-viewport-width', `${bounds.width}px`);
+      host.style.setProperty('--session-viewport-height', `${bounds.height}px`);
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(viewport);
+    window.addEventListener('resize', measure);
+    window.addEventListener('scroll', measure, true);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', measure);
+      window.removeEventListener('scroll', measure, true);
+      for (const key of ['--session-center-x', '--session-center-y', '--session-viewport-width', '--session-viewport-height']) host.style.removeProperty(key);
+    };
+  }, [host, viewport]);
+
   useEffect(() => {
     // Start in the composer when there is one, otherwise on the dialog itself.
     const frame = requestAnimationFrame(() => {
-      const composer = dialog.current?.querySelector<HTMLTextAreaElement>('#composer-input:not([disabled])');
+      const composer = dialog.current?.querySelector<HTMLTextAreaElement>('#composer-input:not([disabled]), .observed-codex-prompt textarea:not([disabled])');
       (composer ?? dialog.current)?.focus({ preventScroll: true });
     });
     // Capture: Escape closes this dialog before anything behind it (the character card, select lists) sees it.
     const onKey = (event: KeyboardEvent) => {
+      if (host.hasAttribute('inert')) return;
       if (document.querySelector('[data-message-file-preview], .attachment-viewer')) return;
       if (event.key === 'Escape') {
         if (document.querySelector('[role="listbox"]')) return;
+        const drawer = dialog.current?.querySelector<HTMLElement>('[data-conversation-drawer="true"]:not([hidden])');
+        const drawerClose = drawer?.querySelector<HTMLButtonElement>('[data-conversation-tools-close]');
+        if (drawerClose) { event.preventDefault(); event.stopPropagation(); drawerClose.click(); return; }
         event.preventDefault(); event.stopPropagation(); close.current(); return;
       }
       if (event.key !== 'Tab' || !dialog.current) return;
-      const focusable = [...dialog.current.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(element => !element.closest('[hidden]'));
+      const focusable = [...dialog.current.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(element => !element.closest('[hidden], [inert]') && element.getClientRects().length > 0);
       const first = focusable[0], last = focusable.at(-1);
       if (!first || !last) { event.preventDefault(); return; }
       if (!dialog.current.contains(document.activeElement)) { event.preventDefault(); first.focus(); }
@@ -110,7 +138,7 @@ export function AgentSessionDialog({ t, language, agents, state, onState, sessio
     };
     document.addEventListener('keydown', onKey, true);
     return () => { cancelAnimationFrame(frame); document.removeEventListener('keydown', onKey, true); };
-  }, []);
+  }, [host]);
 
   if (!shownAgent) return null;
   const ended = !session ? d.removed

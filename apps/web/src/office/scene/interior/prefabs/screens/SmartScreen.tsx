@@ -15,6 +15,7 @@ import { screenTextures, type ScreenConsumer, type ScreenSurface } from './scree
 import { shouldAnimateScreen } from './screenView';
 import { WorkstationPart } from '../../WorkstationPart';
 import WORKSTATION_PROFILE from '../../workstationAssetProfile.json';
+import { useSeatedAt } from '../../../movement/deskPresence';
 
 export type { ScreenVariant } from './screenContent';
 
@@ -62,7 +63,9 @@ export function SmartScreen({
 
   const allocation = seatId ? state.allocations.find(entry => entry.resourceId === seatId) : undefined;
   const agent = allocation ? state.agents.find(entry => entry.id === allocation.agentId) : undefined;
-  const occupant = useMemo(() => occupantFromAgent(agent), [agent]);
+  // The owner's work shows only while the owner sits here; walking away (tablet in hand) locks the screen.
+  const present = useSeatedAt(agent?.id, seatId);
+  const occupant = useMemo(() => present ? occupantFromAgent(agent) : undefined, [agent, present]);
   const resolved = resolveScreenContent({
     device: resolvedDevice, variant, slot, slots, occupant, idleContent, powered,
     lightsOn: env.lightsOn, night: isNight(effectiveNight), reducedMotion: env.reducedMotion,

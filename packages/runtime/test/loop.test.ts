@@ -47,11 +47,55 @@ function harness(steps: Parameters<typeof scripted>[0], approval: ApprovalOutcom
 }
 
 describe('runTurn', () => {
+  it.each(['inputTokens', 'outputTokens', 'cachedInputTokens'] as const)('keeps an overflowed aggregate %s unknown through later reports', async key => {
+    const h = harness([
+      { ...toolCallStep(), usage: { [key]: Number.MAX_SAFE_INTEGER } },
+      { ...toolCallStep(), usage: { [key]: 2 } },
+      { ...finalStep, usage: { [key]: 1 } },
+    ]);
+    const result = await h.run();
+    expect(result.outcome).toBe('completed');
+    expect(result.usage).not.toHaveProperty(key);
+    const completed = h.events.find(event => event.type === 'turn.completed');
+    expect(completed).not.toHaveProperty(`usage.${key}`);
+  });
+
+  it('preserves safe reported fields and zero when another aggregate overflows', async () => {
+    const h = harness([
+      { ...toolCallStep(), usage: { inputTokens: Number.MAX_SAFE_INTEGER, outputTokens: 0, cachedInputTokens: 0 } },
+      { ...finalStep, usage: { inputTokens: 1, outputTokens: 2, cachedInputTokens: 0 } },
+    ]);
+    const result = await h.run();
+    expect(result.usage).toEqual({ outputTokens: 2, cachedInputTokens: 0 });
+  });
+
+  it('discards a late abort-ignoring provider answer before replay, usage or tool effects', async () => {
+    let entered!: () => void, release!: () => void;
+    const ready = new Promise<void>(resolve => { entered = resolve; });
+    const reply = new Promise<void>(resolve => { release = resolve; });
+    const h = harness([async request => {
+      entered();
+      await reply;
+      request.onText?.('Late streamed text.');
+      return { ...toolCallStep(), usage: { inputTokens: 50, outputTokens: 4 } };
+    }]);
+    const running = h.run('Keep this prompt.');
+    await ready;
+    h.controller.abort();
+    release();
+    const result = await running;
+    expect(result).toMatchObject({ outcome: 'cancelled', history: [{ role: 'user', text: 'Keep this prompt.' }], usage: {} });
+    expect(result.context).toBeUndefined();
+    expect(h.written).toEqual([]);
+    expect(h.events.some(event => ['model.delta', 'model.completed', 'tool.started'].includes(event.type))).toBe(false);
+  });
+
   it('runs tools after approval and returns the full history', async () => {
     const h = harness([toolCallStep(), finalStep]);
     const result = await h.run();
     expect(result.outcome).toBe('completed');
     expect(h.written).toEqual(['a.txt']);
+    expect(h.events.find(event => event.type === 'file.written')).toMatchObject({ type: 'file.written', path: 'a.txt', toolCallId: 'c1' });
     expect(h.events.map(event => event.type)).toEqual([
       'agent.state', 'model.delta', 'model.completed', 'agent.state', 'approval.requested', 'approval.resolved', 'agent.state', 'tool.started',
       'file.written', 'tool.completed', 'agent.state', 'model.delta', 'model.completed', 'turn.completed', 'agent.state',
@@ -168,7 +212,9 @@ describe('policy, validation and prompt', () => {
     expect(plain).not.toContain('skill_read');
     const full = buildSystemPrompt({ ...base, memory: [{ name: 'stack', summary: 'Vue + Laravel' }], skills: [{ name: 'code-review', description: 'Review changes' }], projectInstructions: [{ file: 'AGENTS.md', text: 'Use pnpm.' }] });
     expect(full).toContain('"name":"stack","summary":"Vue + Laravel"');
-    expect(full).toContain('code-review: Review changes');
+    expect(JSON.parse(full.match(/<skill-catalog>\n([\s\S]*?)\n<\/skill-catalog>/)![1]!)).toEqual({
+      skills: [{ name: 'code-review', description: 'Review changes' }], omitted: 0, incomplete: false,
+    });
     expect(full).toContain('Use pnpm.');
   });
 

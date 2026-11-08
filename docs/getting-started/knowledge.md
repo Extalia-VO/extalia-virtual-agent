@@ -2,16 +2,13 @@
 
 The Knowledge page shows the Markdown notes in your profile's vault. You can
 search them, read them with their links and backlinks, and explore them in a
-local graph or a 3D graph of the whole vault. It is part of the preview Rust
-native core, so it appears only when that core is on. See
-[Native core (preview)](native-core.md) to turn it on. With the TypeScript core
-the page stays hidden.
+local graph or an interactive 2D/3D graph of the whole vault. Knowledge is available on both Desktop and the Bridge, independently of the backend selected for missions. Its local index uses the bundled Rust sidecar, started on demand when Knowledge is opened. A missing or incompatible binary is reported on the page; update Extalia and restart the host to recover.
 
-The page is read-only. Notes are untrusted text. Nothing in a note is run, and
+The page can create and edit managed notes when the host advertises editing support. Existing unmanaged notes require the explicit adoption flow. Notes are untrusted text. Nothing in a note is run, and
 anything a note declares, such as `verified` in its front matter, is shown as
 declared, never as checked.
 
-Open **Knowledge** under **Work** in the sidebar.
+Open **Knowledge** under **Library** in the sidebar. **Knowledge vault** on that page lets you select an existing Obsidian or Markdown folder (Desktop folder picker; full path on the web). The same controls remain in Settings. Changing folders clears the open note, searches, graphs and editor state. Finish an open draft before changing folders. A saved folder is separate from a successful index sync; check the status and choose **Sync now** when needed.
 
 ## Where the vault lives
 
@@ -151,23 +148,25 @@ graph shows the profile's notes and the links between them. It shows at most
 2,000 notes and 8,000 links. When the vault is larger, it shows the most
 connected notes and says how many of the total it shows.
 
-Notes are coloured by folder, kind or tag. The most connected notes are larger,
-and they glow and pulse gently. These controls are available:
+Notes are coloured by structural cluster by default; folder, kind and tag colors are also available. Clusters and their layout derive from the loaded links without inventing edges. The most connected notes are larger. Background, panels and labels follow your app theme and surface style in light and dark modes. Open **Controls** for appearance and filters; **Knowledge vault** and **Sync & note tools** keep setup and editing available above the graph. These controls are available:
 
 | What | How |
 | --- | --- |
-| Rotate | Drag |
+| 2D / 3D | Switch between a planar layout and depth. Drag to pan in 2D or rotate in 3D. |
+| Fit and expand | **Fit graph** resets framing; **Expand graph** fills the available app area. |
+| Appearance | Choose Nebula or Minimal; adjust node size, glow, link opacity and screen-space width, or hide links. |
 | Zoom | Scroll |
 | Move a note | Drag the note. Its neighbours react and the links follow. |
 | Return after dragging | **Return after drag** is on by default. On release, all notes return to their positions before the gesture. Turn it off to let the graph settle freely. |
 | Restore positions | **Restore layout** restores the positions before the last drag without changing your camera. Filtering or refreshing the vault starts a new layout and clears the previous restore point. |
-| Focus linked notes | Select a note, then **Focus selected note**. Choose 1, 2 or 3 hops through links in the loaded graph. The time filter still applies, including to intermediate notes. |
+| Focus linked notes | Select a note, then choose **Focus selected note** directly in its panel. The focus trail keeps depth and clear controls visible even with appearance controls closed. Choose 1, 2 or 3 hops through links in the loaded graph. The time filter still applies, including to intermediate notes. |
+| Close the note | **Close selected note** closes its panel and retains the focus trail. |
 | Leave focus | **Clear focus** keeps your time filter, search and camera. Reading another note or closing its panel does not move the focus anchor. |
 | Highlight a note and its neighbours | Hover over the note |
 | Read a note | Click the note. It opens beside the graph, or as a bottom sheet on phones. |
 | Search | Press `/` and type. Use ↑ and ↓ to move through matches, Enter to open one, and Esc to close the note. |
 | Time filter | Modified in the last 1D, 1W, 1M, 1Y or All. Notes outside the window are not shown, and the page says how many. |
-| Colour by | Folder, Kind or Tag |
+| Colour by | Cluster, Folder, Kind or Tag |
 | Labels and glow | Toggle note labels and the glow |
 | List view | The same notes as an accessible list |
 

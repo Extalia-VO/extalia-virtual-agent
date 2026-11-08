@@ -1,10 +1,20 @@
+import { modelPlanningBasis } from '@extalia/platform';
+import { ModelGuideStore } from './modelGuideStore.js';
+import { ObservedCodexService } from './observedCodexService.js';
+import { ObservedCodexQueueService } from './observedCodexQueueService.js';
+import { ObservedCodexPermissionService } from './observedCodexPermissionService.js';
+import { PromptQueues } from './promptQueue.js';
+import { ObservedReplyChannels } from './observedReplyChannel.js';
+import { ObservedHermesService } from './observedHermesService.js';
+import type { HermesObservedRpcFactory } from './hermesObservedControl.js';
+import type { CodexObservedRpcFactory } from './codexObservedControl.js';
 import {
-  DEFAULT_PERMISSIONS, applyImport, decodeConnection, decodeLibrary, decodeWorkspace, defaultOrchestration, deleteSession as deleteLibrarySession,
+  assertHermesTeamCapacity, DEFAULT_PERMISSIONS, applyImport, decodeConnection, decodeLibrary, decodeWorkspace, defaultOrchestration, deleteSession as deleteLibrarySession,
   displayTitle, emptyLibrary, keepsHistory, presetById, previewImport, renameSession as renameLibrarySession, resolveFeatures, safeLabel, safeText, setSessionState,
-  sourceLabel, tierModel, EFFORTS, RUNTIME_IDS, workspaceRuntime, type Effort,
+  sourceLabel, tierModel, EFFORTS, RUNTIME_IDS, workspaceRuntime, workspaceCrossAccess, MAX_WORKSPACE_FOLDERS, type Effort,
   characterSessionId, decodeCharacterAppearance, decodeCharacterAppearanceStore, emptyCharacterAppearanceStore, isCharacterId, MAX_CHARACTER_APPEARANCES,
   type CharacterAppearanceStore, type CharacterAppearances, type Connection, type PortableSession, type SessionLibrary, type TaskTier, type Workspace,
-  decodeAgentTeam, parseTeamPlanResult, pickTeamModels, planModelOrder, planTeamHeuristic, teamPlanPrompt, type AgentTeam, type TeamPlan, type TeamPlanRequest,
+  decodeAgentTeam, parseTeamPlanResult, pickTeamModels, planModelOrder, planTeamHeuristic, teamPlanPrompt, type AgentTeam, type TeamMember, type TeamPlan, type TeamPlanRequest,
   applyTeamSpec, generateFullName, initialSessionTeam, isContextUsage, parseTeamSpec, withDistinctMemberNames,
 } from '@extalia/core';
 import {
@@ -15,11 +25,11 @@ import {
   HERMES_PERMISSION_MODES, PERMISSION_MODES, normalizeAttachmentUpload, normalizePromptAttachmentIds, normalizePromptLearnSkill, type PermissionMode, type PromptAttachment, type PromptAttachmentInput,
   normalizeBuiltinSkills, normalizeSkillConsent, normalizeSkillNames, type SkillConsentInput, type WorkspaceSkills,
   normalizeIntegrationGate,
-  KNOWLEDGE_EVENT_SESSION_ID, normalizeKnowledgeVaultRoot,
+  KNOWLEDGE_EVENT_SESSION_ID, normalizeKnowledgeVaultRoot, type NativeActiveRun, type NativeStatus, type NativeStatusRecheck, type NativeStatusWorker,
 } from '@extalia/platform';
 import { createEvent, type AgentEvent, type EventBody, type EventSource, type ExtaliaEvent } from '@extalia/protocol';
 import {
-  ProviderError, buildSystemPrompt, createDelegationTool, createFallbackProvider, createManageTeamTool, createProvider, hermesTeamBrief, modelChain, runTurn,
+  ProviderError, buildSystemPrompt, composeTurn, memberEditRefusal, createDelegationTool, createFallbackProvider, createManageTeamTool, createProvider, hermesTeamBrief, modelChain, runTurn,
   type AnyTool, type ApprovalOutcome, type ModelMessage, type ModelProvider, type NativeMissionAccounting, type NativeMissionTaskResult, type ToolAccess, type TurnAttachment,
 } from '@extalia/runtime';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
@@ -31,16 +41,21 @@ import { browseDirectories } from './directories.js';
 import { BUILTIN_SKILLS } from './builtinSkills.js';
 import { buildContinuation } from './continuation.js';
 import { HermesEndpointError, continuationPrompt, discoverRuntimes, findHermes, hermesComplete, hermesModelCatalog, hermesSupportsReasoning, runHermesTurn } from './hermes.js';
-import { InspectError, gitDiff, gitStatus, listFiles, readWorkspaceFile } from './inspect.js';
+import { hermesDelegationLimits } from './hermesDelegation.js';
+import { InspectError, gitDiff, gitRepositories, gitStatus, listFiles, readWorkspaceFile } from './inspect.js';
 import { readJson, writeJsonAtomic } from './jsonStore.js';
 import { acquireHostLock } from './lock.js';
+import { HostPersistenceGate } from './hostPersistenceGate.js';
 import { migrateLegacyDataDirectory } from './migration.js';
 import { createProfileStore } from './profile.js';
 import { createConnectService, resolveNodePath, type ConnectService } from './connect/index.js';
-import { DaemonSidecar, DaemonUnavailableError, createDaemonMission, resolveDaemonBinary, type DaemonBinaryOptions, type DaemonFailureCode, type DaemonMission, type SpawnDaemon } from './daemon/index.js';
+import { DaemonSidecar, DaemonUnavailableError, createDaemonMission, resolveDaemonBinary, type DaemonBinaryOptions, type DaemonClient, type DaemonFailureCode, type DaemonMission, type SpawnDaemon } from './daemon/index.js';
 import { createHookIngest, type HookIngest } from './hooks/ingest.js';
 import { MissionRecovery } from './missionRecovery.js';
+import { nativeStatusSnapshot } from './nativeStatus.js';
+import { NativeMemoryService } from './nativeMemory.js';
 import { PlanningOwnership, type OwnedPlanning } from './planningOwnership.js';
+import { PreparationOwnership, type OwnedPreparation } from './preparationOwnership.js';
 import { MissionRecords, prepareMission, projectMissionEvent, finishMission, runNativeMission } from './mission.js';
 import { MemoryStore, createMemoryTools } from './memory.js';
 import { NativeImportService } from './nativeImport.js';
@@ -61,11 +76,16 @@ import { createCommandTool } from './tools/command.js';
 import { createFileTools } from './tools/files.js';
 import { worktreeHostMethods } from './worktrees/hostMethods.js';
 import { IntegrationQueue, WorktreeError, WorktreeManager, type DiffSummary, type IntegrationGate, type IntegrationProposal, type WorktreeOrphan, type WorktreeRecord, type WorktreeStatus } from './worktrees/index.js';
-import { WorkspacePathError } from './workspaceFs.js';
+import { resolveInside, WorkspacePathError } from './workspaceFs.js';
+import { createWorkspaceAccess, type WorkspaceAccess } from './workspaceAccess.js';
+import { assertWorkspaceWorktreeAccess, workspaceBoundaryKey, workspaceFoldersTool, workspaceMemoryDirectory } from './workspaceBoundary.js';
 
 export interface AgentHostOptions {
   /** Test harness only; normal hosts poll observed transcripts every two seconds. */
   observationIntervalMs?: number;
+  /** Isolated test transport; normal hosts connect only through Codex's existing-server proxy. */
+  observedCodexRpc?: CodexObservedRpcFactory;
+  observedHermesRpc?: HermesObservedRpcFactory;
   kind: 'desktop' | 'bridge';
   version: string;
   /** Defaults to the platform data directory (EXTALIA_HOME overrides). */
@@ -91,7 +111,7 @@ export interface AgentHostOptions {
   nativeCore?: NativeCore;
   /** Where the Rust core daemon is found and how it is started (Desktop, CLI and tests). */
   daemon?: { binary?: Omit<DaemonBinaryOptions, 'env'>; spawn?: SpawnDaemon; log?(line: string): void };
-  /** Knowledge index refresh on status (W5, native core only); tests turn it off with `Infinity`. */
+  /** Knowledge index refresh on status (W5); tests turn it off with `Infinity`. */
   knowledge?: Pick<KnowledgeServiceOptions, 'autoSyncAfterMs' | 'autoSyncWaitMs'> & {
     /** The vault watcher (native core only): timings and mode for tests; `false` turns it off. */
     watcher?: false | Pick<VaultWatcherOptions, 'mode' | 'quietMs' | 'maxWaitMs' | 'pollMs' | 'tickMs' | 'retryBaseMs' | 'retryMaxMs'>;
@@ -150,6 +170,10 @@ interface HostConfig {
 }
 
 interface Run {
+  /** The prompt event and (for Native) text-only history prefix are durable. */
+  accepted?: boolean;
+  /** Captured from this invocation, never inferred from a current workspace selection. */
+  native?: Pick<NativeActiveRun, 'id' | 'sessionId' | 'workspaceId' | 'kind' | 'missionId'>;
   planning?: true;
   connectionIds?: string[];
   controller: AbortController;
@@ -239,7 +263,7 @@ function storedTeam(record: Pick<SessionRecord, 'team'>): AgentTeam | undefined 
 const OBSERVED_TEAM_MESSAGE = 'Observed sessions run in their own app; a subagent team needs a managed session.';
 /**
  * Planning a team falls back to the deterministic plan after this; reasoning models planning 8 members took ~18 s
- * on a local router and 12 members with souls ~31 s, so larger teams (up to 20, one compact JSON reply) get longer.
+ * on a local router and 12 members with souls ~31 s, so larger teams (up to 32, one compact JSON reply) get longer.
  */
 const TEAM_PLAN_TIMEOUT_MS = 45_000;
 const teamPlanTimeout = (count: number) => TEAM_PLAN_TIMEOUT_MS + Math.max(0, count - 8) * 2_500;
@@ -330,7 +354,9 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
   const layout = dataLayout(dataDirectory);
   await ensureLayout(layout);
   const lock = await acquireHostLock(layout.state, options.kind);
+  const persistence = new HostPersistenceGate();
   const configFile = path.join(layout.config, 'extalia.json');
+  const modelGuide = new ModelGuideStore(layout.config);
   let config = decodeConfig(await readJson<Partial<HostConfig> | undefined>(configFile, undefined));
   const secrets: SecretStore = await createSecretStore({ stateDirectory: layout.state, platform: process.platform, env });
   const savedSessions = new SessionStore(layout.sessions);
@@ -341,25 +367,21 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
   // Feature flag (audit PR 8): only new saved missions route to the Rust core; existing ones stay where they are.
   const coreOverride = env.EXTALIA_NATIVE_CORE?.trim();
   const nativeCore: NativeCore = coreOverride === 'rust' || coreOverride === 'typescript' ? coreOverride : options.nativeCore ?? config.nativeCore ?? 'typescript';
-  // A sidecar child of this lock holder; it starts with the first daemon-routed mission (ADR 0020).
-  // W5: the vault folder setting is read at every start (`--vault-root` for a user-chosen folder).
-  const knowledgeVault = nativeCore !== 'rust' ? undefined : new KnowledgeVault({
+  // Knowledge and recovery use one lazy sidecar independently of the backend for new missions.
+  // The vault folder setting is read at every start (`--vault-root` for a user-chosen folder).
+  const knowledgeVault = new KnowledgeVault({
     dataDirectory: layout.root, homeDirectory, profile: 'default', configured: () => config.knowledge?.vaultRoot, log: options.daemon?.log ?? (line => console.warn(line)),
   });
-  const daemon = nativeCore !== 'rust' ? undefined : new DaemonSidecar({
+  const recoveryDaemon = new DaemonSidecar({
     binary: () => resolveDaemonBinary({ ...options.daemon?.binary, env })?.path,
     dataDirectory: layout.root, profile: 'default', clientVersion: options.version.slice(0, 64), env,
-    vaultRoot: () => knowledgeVault?.startArgument(),
+    vaultRoot: () => knowledgeVault.startArgument(),
     ...(options.daemon?.spawn ? { spawn: options.daemon.spawn } : {}),
     log: options.daemon?.log ?? (line => console.warn(line)),
   });
-  // Recovery follows persisted authority even when the preference for new missions changed.
-  const recoveryDaemon = daemon ?? new DaemonSidecar({
-    binary: () => resolveDaemonBinary({ ...options.daemon?.binary, env })?.path,
-    dataDirectory: layout.root, profile: 'default', clientVersion: options.version.slice(0, 64), env,
-    ...(options.daemon?.spawn ? { spawn: options.daemon.spawn } : {}),
-    log: options.daemon?.log ?? (line => console.warn(line)),
-  });
+  // Only new saved missions and the skill registry follow the native-core preference.
+  // Recovery still follows recorded authority; Knowledge shares this exact process and lock.
+  const daemon = nativeCore === 'rust' ? recoveryDaemon : undefined;
   // W3 Skill Security Center: the daemon's skill registry; legacy (W0 consent) while the flag is off.
   const skillRegistry = new SkillRegistry({
     daemon, dataDirectory: layout.root, profile: 'default', log: options.daemon?.log ?? (line => console.warn(line)),
@@ -379,42 +401,140 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
   // Opening marks worktrees a previous process left active as orphans; a broken registry only
   // disables write-capable workers and the worktree API, never the host.
   const activeWriteMissions = new Set<string>();
-  const worktreeStore = (async () => {
+  // Entered worktree operations may persist after Git awaits; drain them before
+  // releasing the profile lock even when the general run shutdown times out.
+  const preparationWrites = new Set<Promise<unknown>>();
+  const trackPreparationWrite = <T>(work: () => Promise<T>): Promise<T> => {
+    const pending = persistence.run(work);
+    preparationWrites.add(pending);
+    void pending.then(() => preparationWrites.delete(pending), () => preparationWrites.delete(pending));
+    return pending;
+  };
+  const worktreeStore = persistence.run(async () => {
     const manager = await WorktreeManager.open({
       directory: path.join(layout.root, 'worktrees'), registryFile: path.join(layout.state, 'worktrees.json'), git: { env },
       isOwnerActive: owner => activeWriteMissions.has(owner.missionId),
     });
-    return { manager, queue: await IntegrationQueue.open(manager, { registryFile: path.join(layout.state, 'integrations.json'), env }) };
-  })();
+    return { manager, queue: await IntegrationQueue.open(manager, { registryFile: path.join(layout.state, 'integrations.json'), env, requireWorkspaceBoundary: true }) };
+  });
   worktreeStore.catch(() => undefined);
   const worktreeFailure = (error: unknown): Error => userError(error instanceof WorktreeError ? error.message : 'The isolated worktree for a write-capable task could not be prepared.');
   try {
   await missions.initialize(await savedSessions.list());
   // Write-ahead planning blockers follow recorded Rust ownership across backend changes.
   const planningOwnership = await PlanningOwnership.open(path.join(layout.state, 'native-planning.json'), () => recoveryDaemon.connect());
+  const preparationOwnership = await PreparationOwnership.open(path.join(layout.state, 'native-preparation.json'), () => recoveryDaemon.connect());
+  const nativeOwnership = {
+    assertClear(sessionId?: string, connectionIds: readonly string[] = []) {
+      planningOwnership.assertClear(sessionId, connectionIds);
+      preparationOwnership.assertClear(sessionId, connectionIds);
+    },
+    assertWorkspaceClear(workspaceId: string) {
+      planningOwnership.assertWorkspaceClear(workspaceId);
+      preparationOwnership.assertWorkspaceClear(workspaceId);
+    },
+    hasUnresolved: () => planningOwnership.hasUnresolved() || preparationOwnership.hasUnresolved(),
+  };
   let closing = false;
   const storeOf = (id: string): SessionStorage => (unsavedSessions.has(id) ? unsavedSessions : savedSessions);
   /** Saved sessions live on disk; sessions of connections with history off only in memory. */
   const sessions: Omit<SessionStorage, 'create'> = {
     list: async () => [...(await savedSessions.list()), ...(await unsavedSessions.list())],
     get: id => storeOf(id).get(id),
-    update: (id, patch) => storeOf(id).update(id, patch),
-    remove: id => storeOf(id).remove(id),
-    appendEvent: (id, event) => storeOf(id).appendEvent(id, event),
+    update: (id, patch, updateOptions) => persistence.run(() => updateOptions === undefined ? storeOf(id).update(id, patch) : storeOf(id).update(id, patch, updateOptions)),
+    remove: id => persistence.run(() => storeOf(id).remove(id)),
+    appendEvent: (id, event) => persistence.run(() => storeOf(id).appendEvent(id, event)),
     readEvents: id => storeOf(id).readEvents(id),
     readMessages: id => storeOf(id).readMessages(id),
-    writeMessages: (id, messages) => storeOf(id).writeMessages(id, messages),
+    writeMessages: (id, messages) => persistence.run(() => storeOf(id).writeMessages(id, messages)),
   };
   const nativeImport = await NativeImportService.create({ homeDirectory: options.importHome ?? homedir(), env });
   const libraryFile = path.join(layout.state, 'library.json');
   let library = await loadLibrary(libraryFile);
-  const saveLibrary = async () => writeJsonAtomic(libraryFile, library, { mode: 0o600 });
+  const saveLibrary = () => persistence.run(() => writeJsonAtomic(libraryFile, library, { mode: 0o600 }));
   const appearancesFile = path.join(layout.state, 'character-appearances.json');
   let appearances = await loadCharacterAppearances(appearancesFile);
-  const saveAppearances = async () => writeJsonAtomic(appearancesFile, appearances, { mode: 0o600 });
+  const saveAppearances = () => persistence.run(() => writeJsonAtomic(appearancesFile, appearances, { mode: 0o600 }));
   const listeners = new Set<(event: ExtaliaEvent) => void>();
   const idleListeners = new Set<() => void>();
   const runs = new Map<string, Run>();
+  let promptQueues: PromptQueues | undefined = undefined;
+  const nativeWorkers = new Map<string, NativeStatusWorker>();
+  let nativeStatusRefresh: Promise<NativeStatus> | undefined;
+  let workspaceBoundaryMutations = 0;
+  let workspaceContextReaders = 0;
+  const assertNativeBoundaryAvailable = () => { if (workspaceBoundaryMutations) throw userError('Workspace settings are changing. Wait for them to finish before starting Native work.'); };
+  const nativeMemory = new NativeMemoryService({
+    store: workspaceId => {
+      return new MemoryStore(workspaceMemoryDirectory(layout.workspaces, findWorkspace(workspaceId)));
+    },
+    checkOpen: () => { if (closing) throw userError('The host is shutting down.'); },
+    checkAdmission: assertNativeBoundaryAvailable,
+    onIdle: () => {
+      if (!closing && !persistence.isBusy && !runs.size && !nativeStatusRefresh && !nativeMemory.isBusy() && !promptQueues?.isBusy) for (const listener of idleListeners) { try { listener(); } catch { /* disconnected observer */ } }
+    },
+  });
+  persistence.onIdle(() => {
+    if (!closing && !runs.size && !nativeStatusRefresh && !nativeMemory.isBusy() && !promptQueues?.isBusy) for (const listener of idleListeners) { try { listener(); } catch { /* disconnected observer */ } }
+  });
+  let nativeStatusCursor = 0;
+  let lastNativeRecheck: NativeStatusRecheck | undefined;
+  const sampleNativeStatus = (): NativeStatus => {
+    const active = [...runs.values()].flatMap(run => run.native ? [{
+      ...run.native, cancellationRequested: run.controller.signal.aborted,
+      ...(run.pending ? { approvalId: run.pending.approvalId } : {}),
+    }] : []);
+    const blockers = [
+      ...planningOwnership.copiedSnapshot().map(entry => ({
+        id: `planning:${entry.invocationId}`, kind: 'planning' as const, sessionId: entry.sessionId,
+        workspaceId: entry.workspaceId, invocationId: entry.invocationId,
+        localActive: runs.has(entry.sessionId), reason: runs.has(entry.sessionId) ? 'local-active' as const : 'inspection-required' as const,
+      })),
+      ...preparationOwnership.copiedSnapshot().map(entry => ({
+        id: `preparation:${entry.invocationId}`, kind: 'preparation' as const, sessionId: entry.sessionId,
+        workspaceId: entry.workspaceId, invocationId: entry.invocationId, missionId: entry.missionId,
+        localActive: runs.has(entry.sessionId), reason: runs.has(entry.sessionId) ? 'local-active' as const : 'inspection-required' as const,
+      })),
+    ];
+    return nativeStatusSnapshot({ backend: nativeCore, daemon: recoveryDaemon.status(), active,
+      workers: [...nativeWorkers.values()], missions: missions.nativeStatusMetadata(), blockers, recheck: lastNativeRecheck });
+  };
+  const refreshNativeStatus = (): Promise<NativeStatus> => {
+    if (nativeStatusRefresh) return nativeStatusRefresh.then(value => structuredClone(value));
+    if (closing) return Promise.reject(userError('The host is shutting down.'));
+    knowledgeVault.assertStable();
+    const work = Promise.resolve().then(async () => {
+      const all = [
+        ...planningOwnership.copiedSnapshot().map(entry => ({ kind: 'planning' as const, ...entry })),
+        ...preparationOwnership.copiedSnapshot().map(entry => ({ kind: 'preparation' as const, ...entry })),
+      ];
+      const candidates = all.filter(entry => !runs.has(entry.sessionId));
+      const start = candidates.length ? nativeStatusCursor % candidates.length : 0;
+      const selected = Array.from({ length: Math.min(32, candidates.length) }, (_, index) => candidates[(start + index) % candidates.length]!);
+      nativeStatusCursor = candidates.length ? (start + selected.length) % candidates.length : 0;
+      let client: Promise<DaemonClient> | undefined;
+      const connect = () => client ??= recoveryDaemon.connect();
+      const active = (sessionId: string) => closing || runs.has(sessionId);
+      const summaries = await Promise.all((['planning', 'preparation'] as const).flatMap(kind => {
+        const ids = selected.filter(entry => entry.kind === kind).map(entry => entry.invocationId);
+        return ids.length ? [(kind === 'planning' ? planningOwnership : preparationOwnership).recheckInactive(ids, connect, active)] : [];
+      }));
+      const inspected = summaries.reduce((sum, value) => sum + value.inspected, 0);
+      const retired = summaries.reduce((sum, value) => sum + value.retired, 0);
+      const skippedActive = all.length - candidates.length + summaries.reduce((sum, value) => sum + value.skippedActive, 0);
+      const remaining = planningOwnership.copiedSnapshot().length + preparationOwnership.copiedSnapshot().length;
+      const states = new Set(summaries.map(value => value.status));
+      const status = states.size > 1 ? 'partial' : states.has('unavailable') ? 'unavailable' : states.has('unsupported') ? 'unsupported'
+        : candidates.length > selected.length || skippedActive > 0 ? 'partial' : 'checked';
+      lastNativeRecheck = { status, skippedActive, inspected, retired, retained: inspected - retired, remaining };
+      return sampleNativeStatus();
+    }).finally(() => {
+      if (nativeStatusRefresh === work) nativeStatusRefresh = undefined;
+      if (!closing && !persistence.isBusy && !runs.size && !nativeStatusRefresh && !nativeMemory.isBusy() && !promptQueues?.isBusy) for (const listener of idleListeners) { try { listener(); } catch { /* ignore */ } }
+    });
+    nativeStatusRefresh = work;
+    return work.then(value => structuredClone(value));
+  };
   const missionRecovery = new MissionRecovery({
     records: missions, profileId: 'default', active: sessionId => closing || runs.has(sessionId),
     review: async missionId => {
@@ -434,10 +554,36 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     },
   });
 
+  let registryWork = 0;
+  const assertHostOpen = () => { if (closing || persistence.isSealed) throw userError('The host is shutting down.'); };
+  // Profile/default-team checks and their config commits share one ordered mutation lane.
+  // A concurrent profile switch cannot invalidate the roster snapshot being admitted.
+  let workspaceChanges: Promise<void> = Promise.resolve();
+  function withWorkspaceChange<T>(change: () => Promise<T>): Promise<T> {
+    workspaceBoundaryMutations++;
+    const next = workspaceChanges.then(() => { assertHostOpen(); return change(); }).finally(() => { workspaceBoundaryMutations--; });
+    workspaceChanges = next.then(() => undefined, () => undefined);
+    return next;
+  }
+  const mutateOwnedProfile = <T>(work: () => Promise<T>): Promise<T> => {
+    if (closing || persistence.isSealed) return Promise.reject(userError('The host is shutting down.'));
+    return persistence.run(work);
+  };
+  const withRegistry = async <T>(work: () => Promise<T>): Promise<T> => {
+    if (closing || persistence.isSealed) throw userError('The host is shutting down.');
+    knowledgeVault.assertStable();
+    // One admission owns the full registry operation, including staging, RPC waits
+    // and finally cleanup. Its internal writes do not acquire nested authority.
+    return persistence.run(async () => {
+      registryWork++;
+      try { return await work(); } finally { registryWork--; }
+    });
+  };
   const grants = new Map<string, Set<ToolAccess>>();
   const sequence = new Map<string, number>();
   const credentialStatus = new Map<string, ConnectionView['credentialStatus']>();
   const observations = await Observations.create(layout.state, nativeImport, event => {
+    if (closing || persistence.isSealed) return;
     for (const listener of listeners) { try { listener(event); } catch { /* disconnected UI */ } }
   }, options.observationIntervalMs, {
     // Sessions that fall out of the automatic-discovery LRU are kept in History as linked conversations.
@@ -453,12 +599,67 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     homeDirectory: options.importHome ?? homedir(),
     // Observed leads get names no managed lead or team member uses.
     takenNames: () => managedNames(),
-  }).catch(async error => { missions.close(); await lock.release(); throw error; });
+  }).catch(error => { missions.close(); throw error; });
+  const observedCodex = new ObservedCodexService({ target: id => observations.codexControlTarget(id), env, ...(options.observedCodexRpc ? { rpcFactory: options.observedCodexRpc } : {}) });
+  const observedCodexQueue = await ObservedCodexQueueService.create({ dataDirectory, env, target: id => observations.codexQueueTarget(id) })
+    .catch(async error => { await observations.close(); await observedCodex.close(); throw error; });
+  const observedCodexPermissions = await ObservedCodexPermissionService.create({ dataDirectory, env,
+    target: id => observations.codexQueueTarget(id), resolve: payload => observations.codexPermissionTarget(payload),
+  }).catch(async error => { await observedCodexQueue.close(); await observations.close(); await observedCodex.close(); throw error; });
+  const blockedReplyIds = new Set<string>();
+  const manualReplyIds = new Set<string>();
+  const pendingManualReplies = new Set<string>();
+  const observedReplies = new ObservedReplyChannels({ target: id => blockedReplyIds.has(id) ? undefined
+    : manualReplyIds.has(id) ? { app: 'manual-tool', nativeSessionId: id, watching: true } : observations.replyTarget(id) });
+  const observedHermes = new ObservedHermesService({ target: id => observations.replyTarget(id), env, ...(options.observedHermesRpc ? { rpcFactory: options.observedHermesRpc } : {}) });
   const ingest = await createHookIngest({
     dataDirectory, kind: options.kind, labelsOnly: () => observations.labelsOnly(), sink: hook => { void observations.receiveHook(hook); },
-  }).catch(async error => { await observations.close(); missions.close(); await lock.release(); throw error; });
+    permissionHandler: (request, response) => observedCodexPermissions.handle(request, response),
+  }).catch(async error => { await observations.close(); missions.close(); throw error; });
 
-  const save = async () => writeJsonAtomic(configFile, config, { mode: 0o600 });
+  promptQueues = await PromptQueues.create({
+    dataDirectory,
+    persist: write => persistence.run(write),
+    onIdle() {
+      if (!closing && !persistence.isBusy && !runs.size && !nativeStatusRefresh && !nativeMemory.isBusy() && !promptQueues?.isBusy) {
+        for (const listener of idleListeners) { try { listener(); } catch { /* disconnected observer */ } }
+      }
+    },
+    async target(id) {
+      if (closing) return undefined;
+      if (observations.has(id)) {
+        const source = observations.codexQueueTarget(id);
+        if (!source) return undefined;
+        const current = observations.summaries().find(item => item.id === id);
+        return { identity: createHash('sha256').update(JSON.stringify(['codex', source.threadId, source.codexHome, source.sourceFingerprint, source.cwd])).digest('hex'),
+          available: true, ready: source.watching && current?.observation?.status === 'watching' && !current.running,
+          maxTextLength: 16_000, persist: !observations.labelsOnly() };
+      }
+      const record = await sessions.get(id).catch(() => undefined);
+      if (!record || !config.workspaces.some(item => item.id === record.workspaceId)) return undefined;
+      let ready = !runs.has(id);
+      try { nativeOwnership.assertClear(id); missions.assertSessionClear(id); assertNativeBoundaryAvailable(); } catch { ready = false; }
+      return { identity: createHash('sha256').update(JSON.stringify(['managed', record.id, record.workspaceId, record.createdAt, record.connectionId, record.runtime?.id, record.runtime?.profile, workspaceBoundaryKey(config.workspaces)])).digest('hex'),
+        available: true, ready, maxTextLength: 100_000, persist: !unsavedSessions.has(id) };
+    },
+    async dispatch(id, text) {
+      if (closing) return 'unknown';
+      if (observations.has(id)) {
+        const source = observations.codexQueueTarget(id);
+        if (!source?.watching) return 'unknown';
+        let status = await observedCodexQueue.status(id);
+        if (status.delivery === 'unknown') return 'unknown';
+        if (!status.enabled) status = await observedCodexQueue.setEnabled(id, true);
+        if (!status.canQueue || closing) return 'unknown';
+        const result = await observedCodexQueue.send(id, { text });
+        return result.delivery === 'queued' ? 'sent' : 'unknown';
+      }
+      await host.sendPrompt(id, text);
+      return 'sent';
+    },
+  }).catch(async error => { await ingest.close(); await observedCodexPermissions.close(); await observedCodexQueue.close(); await observations.close(); throw error; });
+
+  const save = () => persistence.run(() => writeJsonAtomic(configFile, config, { mode: 0o600 }));
   const profiles = createProfileStore(layout.config);
 
   async function secretFor(connection: Connection): Promise<string | undefined> {
@@ -484,12 +685,13 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
   const writeChains = new Map<string, Promise<void>>();
   function publish(sessionId: string, body: EventBody, agentId = 'primary', source: EventSource = { ...ADAPTER, adapterVersion: options.version }, extra: { taskId?: string; correlationId?: string; strict?: boolean } = {}): Promise<void> {
     const previous = writeChains.get(sessionId) ?? Promise.resolve();
-    const next = previous.then(async () => {
+    const next = persistence.run(() => previous.then(async () => {
       const seq = await nextSeq(sessionId);
       const event = createEvent({ sessionId, seq, agentId, source, body, ...(extra.taskId ? { taskId: extra.taskId } : {}), ...(extra.correlationId ? { correlationId: extra.correlationId } : {}) });
-      await sessions.appendEvent(sessionId, event);
-      for (const listener of listeners) { try { listener(event); } catch { /* a failing listener must not stop the run */ } }
-    });
+      // The event owns admission before entering the chain; do not request nested admission after sealing.
+      await storeOf(sessionId).appendEvent(sessionId, event);
+      if (!closing && !persistence.isSealed) for (const listener of listeners) { try { listener(event); } catch { /* a failing listener must not stop the run */ } }
+    }));
     const safe = next.catch(() => undefined);
     writeChains.set(sessionId, safe);
     return extra.strict ? next : safe;
@@ -504,7 +706,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       ...rest, control: 'managed', running: Boolean(run),
       ...normalizeAgentIdentity(record.agentName, record.agentGender),
       ...(Object.keys(sessionOptions).length ? { options: sessionOptions } : {}),
-      ...(team ? { team: { enabled: team.enabled, size: team.members.length } } : {}),
+      ...(team ? { team: { enabled: team.enabled, size: team.members.length, ...(team.updatedAt ? { updatedAt: team.updatedAt } : {}) } } : {}),
       ...(isContextUsage(storedContext) ? { context: storedContext } : {}),
       ...(unsavedSessions.has(record.id) ? { transient: true } : {}),
       ...(run?.pending ? { pendingApprovalId: run.pending.approvalId } : {}),
@@ -566,6 +768,10 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     const hermes = workspaceRuntime(workspace) === 'hermes';
     if (!hermes && !workspace.providerProfileId) throw userError('Choose a model connection for this workspace in Settings.');
     const connection = hermes ? undefined : findConnection(workspace.providerProfileId!);
+    validateTeamConnections(team, workspace);
+    await validateHermesTeam(team, workspace, true);
+    // A workspace model is a default for new sessions; keep an explicitly configured Hermes model when the workspace changes later.
+    if (hermes && !sessionOptions.model && workspace.runtimeModel) sessionOptions = { ...sessionOptions, model: workspace.runtimeModel };
     await ensureAgentNames();
     const record = await withNaming(async () => {
       const stamp = now();
@@ -578,19 +784,21 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       const created: SessionRecord = {
         id, workspaceId: workspace.id, connectionId: connection?.id ?? '', title, createdAt: stamp, lastActiveAt: stamp,
         agentName: lead.name, agentGender: lead.gender,
+        ...(!hermes ? { workspaceBoundary: workspaceBoundaryKey(config.workspaces) } : {}),
         ...(continuedFrom ? { continuedFrom } : {}),
         ...(hermes ? { runtime: { id: 'hermes' as const, profile: workspace.runtimeProfileId ?? 'default' } } : {}),
         ...(Object.keys(sessionOptions).length ? { options: sessionOptions } : {}),
         ...(ownTeam ? { team: { ...ownTeam, updatedAt: stamp } } : {}),
       };
-      await (!connection || keepsHistory(connection) ? savedSessions : unsavedSessions).create(created);
+      await persistence.run(() => (!connection || keepsHistory(connection) ? savedSessions : unsavedSessions).create(created));
       return created;
     });
     const model = sessionOptions.model ?? (hermes ? workspace.runtimeModel : undefined);
-    publish(record.id, {
+    // A created session is ready only after its initial event is durable.
+    await publish(record.id, {
       type: 'session.started', control: 'managed', title: record.title, cwd: workspace.projectLocation ?? '',
       ...(model ? { model } : {}),
-    }, 'primary', hermes ? { ...HERMES_ADAPTER, adapterVersion: options.version } : undefined);
+    }, 'primary', hermes ? { ...HERMES_ADAPTER, adapterVersion: options.version } : undefined, { strict: true });
     return record;
   }
 
@@ -598,12 +806,15 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
   async function startHermesTurn(record: SessionRecord, runtime: NonNullable<SessionRecord['runtime']>, workspace: Workspace, root: string, prompt: string, files: TakenAttachment[] = []): Promise<void> {
     // Reserved first, so a second prompt sent meanwhile is refused instead of starting another process.
     const controller = new AbortController();
-    const run: Run = { controller, done: Promise.resolve() };
+    let settleRun!: () => void;
+    const run: Run = { controller, done: new Promise<void>(resolve => { settleRun = resolve; }) };
+    knowledgeVault.assertStable();
     runs.set(record.id, run);
     let executable: string | undefined, text: string, reasoning: Effort | undefined;
     const sessionOptions = storedOptions(record);
-    const model = sessionOptions.model ?? workspace.runtimeModel;
+    const model = sessionOptions.model ?? sessionWorkspace(workspace, record).runtimeModel;
     let team = storedTeam(record), spec: ReturnType<typeof parseTeamSpec>;
+    let delegationLimits: Awaited<ReturnType<typeof hermesDelegationLimits>>;
     let attachmentDirectory: string | undefined;
     try {
       // A team written into the prompt (subagent blocks) becomes the session's team, as on Extalia Native.
@@ -611,8 +822,13 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       if (spec) {
         try { team = applyTeamSpec(team, spec, { taken: await takenNames(record.id), seed: record.id }); }
         catch (error) { throw userError(error instanceof Error ? error.message : 'The team in this prompt cannot be used.'); }
-        team = storedTeam(await sessions.update(record.id, { team: { ...team, updatedAt: now() } }));
       }
+      validateTeamConnections(team, sessionWorkspace(workspace, record));
+      delegationLimits = await readHermesLimits(sessionWorkspace(workspace, record), model);
+      if (team?.enabled) assertSharedHermesRouting(delegationLimits);
+      try { assertHermesTeamCapacity(team, delegationLimits); } catch (error) { throw userError(error instanceof Error ? error.message : 'This Hermes team is too large.'); }
+      // One fresh selected-profile snapshot admits the prompt roster before it can be persisted.
+      if (spec && team) team = storedTeam(await sessions.update(record.id, { team: { ...team, updatedAt: now() } }, { expectedTeam: record.team }));
       executable = await findHermes(env, options.importHome ?? homedir());
       if (!executable) throw userError('Hermes Agent was not found. Install it, or set EXTALIA_HERMES_BIN to the full path of the hermes command.');
       // `--reasoning` is passed only to Hermes versions that list it; older ones would refuse the whole command.
@@ -620,7 +836,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       // v0.0.49: the turn's files are referenced by their paths in a private folder (removed when the turn ends).
       let withFiles = prompt;
       if (files.length) {
-        attachmentDirectory = await writeHermesAttachments(layout.cache, files);
+        attachmentDirectory = await persistence.run(() => writeHermesAttachments(layout.cache, files));
         withFiles = `${prompt}\n\n${hermesAttachmentBlock(files, attachmentDirectory)}`;
       }
       // A continued conversation reaches Hermes as context in its first prompt.
@@ -629,19 +845,25 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
         : withFiles;
       if (record.title === NEW_SESSION_TITLE) await sessions.update(record.id, { title: (prompt || files.map(file => file.name).join(', ')).replace(/\s+/g, ' ').slice(0, 60) });
     } catch (error) {
-      if (attachmentDirectory) await rm(attachmentDirectory, { recursive: true, force: true }).catch(() => undefined);
+      if (attachmentDirectory) await persistence.run(() => rm(attachmentDirectory!, { recursive: true, force: true })).catch(() => undefined);
       finishRun(record.id);
+      settleRun();
       throw error;
     }
     // Hermes delegates with its own `delegate_task` (all children on one model); the brief asks it to use the team unprompted.
     const activeTeam = team?.enabled && team.members.length ? team : undefined;
-    if (activeTeam) text = `${hermesTeamBrief(activeTeam, { fromPrompt: Boolean(spec) })}\n\n${text}`;
+    if (activeTeam) text = `${hermesTeamBrief(activeTeam, { fromPrompt: Boolean(spec), limits: delegationLimits })}\n\n${text}`;
+    else text = `<extalia-team-state>\nThe current Extalia team is ${team?.enabled === false ? 'disabled' : 'not configured with active members'}. This supersedes earlier Extalia team briefs in this conversation. Handle this request yourself without delegating for an earlier Extalia roster. Only a new explicit user team setup enables that roster again. This is current team guidance; Hermes retains control of its runtime tools.\n</extalia-team-state>\n\n${text}`;
     const source: EventSource = { ...HERMES_ADAPTER, adapterVersion: options.version };
     const emit = (body: EventBody) => publish(record.id, body, 'primary', source);
-    emit({ type: 'prompt.submitted', text: prompt, via: 'extalia', ...(files.length ? { attachments: promptAttachments(files) } : {}) });
+    try {
+      await publish(record.id, { type: 'prompt.submitted', text: prompt, via: 'extalia', ...(files.length ? { attachments: promptAttachments(files) } : {}) }, 'primary', source, { strict: true });
+      run.accepted = true;
+      if (closing || controller.signal.aborted) throw userError('The host is shutting down.');
+    } catch (error) { finishRun(record.id); settleRun(); throw error; }
     if (spec && activeTeam) for (const member of activeTeam.members) emit({ type: 'subagent.spawned', subagentId: member.id, role: member.role, label: member.name });
     const permissions = workspace.permissions ?? DEFAULT_PERMISSIONS;
-    run.done = (async () => {
+    void (async () => {
       try {
         const result = await runHermesTurn({
           executable, cwd: root, prompt: text, profile: runtime.profile, env, signal: controller.signal, emit,
@@ -657,9 +879,10 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
         emit({ type: 'turn.failed', error: error instanceof Error ? error.message : 'The turn failed.' });
         emit({ type: 'agent.state', state: 'idle' });
       } finally {
-        if (attachmentDirectory) await rm(attachmentDirectory, { recursive: true, force: true }).catch(() => undefined);
+        if (attachmentDirectory) await persistence.run(() => rm(attachmentDirectory!, { recursive: true, force: true })).catch(() => undefined);
         await sessions.update(record.id, { lastActiveAt: now() }).catch(() => undefined);
         finishRun(record.id);
+        settleRun();
       }
     })();
   }
@@ -694,6 +917,49 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     const connection = config.connections.find(item => item.id === id);
     if (!connection) throw userError('That connection no longer exists.');
     return connection;
+  }
+
+  /** Team grants are user-approved saved connection references, separate from mission policy. */
+  function validateTeamConnections(team: AgentTeam | null | undefined, workspace: Workspace): void {
+    if (!team) return;
+    const explicit = Boolean(team.connections?.length || team.members.some(member => member.connectionId));
+    if (explicit && workspaceRuntime(workspace) !== 'extalia-native') throw userError('Cross-connection teams require Extalia Native. Hermes manages its own worker connections.');
+    for (const grant of team.connections ?? []) findConnection(grant.connectionId);
+    for (const member of team.members) {
+      if (!member.connectionId) continue;
+      const grant = team.connections?.find(item => item.connectionId === member.connectionId);
+      if (!grant || member.models.some(model => !grant.allowedModels.includes(model))) throw userError('A team member needs an approved connection and model.');
+    }
+  }
+
+  async function readHermesLimits(workspace: Workspace, leadModel?: string) {
+    try { return await hermesDelegationLimits(env, options.importHome ?? homedir(), workspace.runtimeProfileId ?? 'default', leadModel ?? workspace.runtimeModel); }
+    catch (error) { throw userError(error instanceof Error ? error.message : 'The Hermes profile delegation limits cannot be read.'); }
+  }
+
+  async function validateHermesTeam(team: AgentTeam | null | undefined, workspace: Workspace, requireProfile = false): Promise<void> {
+    if (workspaceRuntime(workspace) !== 'hermes' || (!team?.enabled && !requireProfile)) return;
+    const limits = await readHermesLimits(workspace);
+    if (team?.enabled) assertSharedHermesRouting(limits);
+    try { assertHermesTeamCapacity(team, limits); } catch (error) { throw userError(error instanceof Error ? error.message : 'This Hermes team is too large.'); }
+  }
+
+  function assertSharedHermesRouting(limits: Awaited<ReturnType<typeof hermesDelegationLimits>>): void {
+    if (limits.modelRouting === 'profile-custom') throw userError('Extalia teams require the standard Hermes shared worker model. The selected profile uses a custom delegation.backend that may route tasks independently; configure teams in Hermes for that backend.');
+  }
+
+  /** Agent-authored changes may narrow, but cannot mint or expand the turn's user grants. */
+  function assertTeamGrantCeiling(team: AgentTeam | null | undefined, approved: AgentTeam | undefined): void {
+    if (approved?.connections !== undefined && team?.allowedModels.some(model => !approved.allowedModels.includes(model))) throw userError('Only the user can approve additional team models.');
+    for (const grant of team?.connections ?? []) {
+      const ceiling = approved?.connections?.find(item => item.connectionId === grant.connectionId);
+      if (!ceiling || grant.allowedModels.some(model => !ceiling.allowedModels.includes(model))) throw userError('Only the user can approve additional team connections or models.');
+    }
+    for (const member of team?.members ?? []) {
+      if (!member.connectionId) continue;
+      const ceiling = approved?.connections?.find(item => item.connectionId === member.connectionId);
+      if (!ceiling || member.models.some(model => !ceiling.allowedModels.includes(model))) throw userError('Only the user can approve additional team connections or models.');
+    }
   }
 
   function findWorkspace(id: string): Workspace {
@@ -738,6 +1004,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     const result = decodeConnection({
       id, name: input.name, preset: input.preset, api: input.api, baseUrl: input.baseUrl, model: input.model,
       credential, features: input.features, ...(input.effort ? { effort: input.effort } : {}),
+      ...(input.inputTokenLimit === undefined ? {} : { inputTokenLimit: input.inputTokenLimit }),
       orchestration: input.orchestration ?? existing?.orchestration ?? defaultOrchestration(input.preset),
       createdAt: existing?.createdAt ?? stamp, updatedAt: stamp,
     });
@@ -764,19 +1031,29 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
 
   /** Models the connection's endpoint lists (short timeout, cached); empty when it cannot list them. */
   function connectionModels(connection: Connection): Promise<string[]> {
-    planningOwnership.assertClear(undefined, [connection.id]);
+    nativeOwnership.assertClear(undefined, [connection.id]);
     const cached = modelLists.get(connection.id);
     if (cached && cached.key === modelListKey(connection) && cached.expires > Date.now()) return cached.models;
     return rememberModels(connection, (async () => {
       try {
         const { provider } = await providerFor(connection);
-        planningOwnership.assertClear(undefined, [connection.id]);
+        nativeOwnership.assertClear(undefined, [connection.id]);
         return cleanModels(await provider.listModels(AbortSignal.timeout(MODEL_LIST_TIMEOUT_MS)));
       } catch { return []; }
     })());
   }
 
-  /** Efforts the workspace's runtime honours: Anthropic Messages endpoints, and Hermes versions with `--reasoning`. */
+  /** Existing sessions keep their runtime/profile or Native connection when workspace defaults change. */
+  function sessionWorkspace(workspace: Workspace, record: SessionRecord): Workspace {
+    const { runtimeId: _runtimeId, runtimeProfileId: _runtimeProfileId, runtimeModel: _runtimeModel, providerProfileId: _providerProfileId, ...common } = workspace;
+    return record.runtime
+      ? { ...common, runtimeId: record.runtime.id, runtimeProfileId: record.runtime.profile,
+        ...(workspaceRuntime(workspace) === 'hermes' && (workspace.runtimeProfileId ?? 'default') === record.runtime.profile && workspace.runtimeModel
+          ? { runtimeModel: workspace.runtimeModel } : {}) }
+      : { ...common, providerProfileId: record.connectionId };
+  }
+
+  /** Efforts the selected runtime honours: Anthropic Messages endpoints, and Hermes versions with `--reasoning`. */
   async function effortsFor(workspace: Workspace): Promise<Effort[]> {
     if (workspaceRuntime(workspace) === 'hermes') {
       const executable = await findHermes(env, options.importHome ?? homedir());
@@ -816,10 +1093,14 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     }
   }
 
-  async function projectInstructions(root: string): Promise<{ file: string; text: string }[]> {
+  async function projectInstructions(root: string, access: WorkspaceAccess): Promise<{ file: string; text: string }[]> {
     const found: { file: string; text: string }[] = [];
     for (const file of INSTRUCTION_FILES) {
-      try { found.push({ file, text: await readFile(path.join(root, file), 'utf8') }); } catch { /* optional */ }
+      try {
+        const own = await resolveInside(root, file, 'read');
+        const resolved = await access.resolve(own.absolute, 'read');
+        found.push({ file, text: await readFile(resolved.absolute, 'utf8') });
+      } catch { /* optional; denied instruction paths never become prompt context */ }
     }
     return found;
   }
@@ -842,7 +1123,21 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
 
   function finishRun(sessionId: string): void {
     runs.delete(sessionId);
-    if (!runs.size) for (const listener of idleListeners) { try { listener(); } catch { /* ignore */ } }
+    if (!closing) promptQueues?.wake(sessionId);
+    if (!closing && !persistence.isBusy && !runs.size && !nativeStatusRefresh && !nativeMemory.isBusy() && !promptQueues?.isBusy) for (const listener of idleListeners) { try { listener(); } catch { /* ignore */ } }
+  }
+
+  /** Track direct local writers, never a delegation pipeline that can wait on a remote provider. */
+  function localWriteTool(tool: AnyTool): AnyTool {
+    if (tool.access !== 'write' && tool.name !== 'memory_write') return tool;
+    const execute = tool.run.bind(tool);
+    return { ...tool, run: (input, context) => {
+      if (closing || context.signal.aborted) return Promise.reject(userError('The host is shutting down.'));
+      return persistence.run(() => {
+        context.signal.throwIfAborted();
+        return execute(input, context);
+      });
+    } };
   }
 
   function missionConnections(raw: unknown): string[] {
@@ -856,11 +1151,24 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     return JSON.stringify({ runtime, connections });
   }
   function assertMissionPolicyEditable(workspaceId: string, records: SessionRecord[]): void {
-    planningOwnership.assertWorkspaceClear(workspaceId);
+    nativeOwnership.assertWorkspaceClear(workspaceId);
     if (records.filter(record => record.workspaceId === workspaceId).some(record => runs.has(record.id) || missions.list(record.id).some(run => run.state === 'running' || run.state === 'recovering'))) throw userError('Stop or reconcile native missions before changing their workspace connection policy.');
   }
+  async function assertWorkspaceBoundaryEditable(): Promise<void> {
+    const records = await sessions.list();
+    try { for (const workspace of config.workspaces) assertMissionPolicyEditable(workspace.id, records); }
+    catch { throw userError('Stop running Native work or reconcile unresolved missions before changing workspace folders or cross-workspace access.'); }
+    if (workspaceContextReaders || nativeMemory.isBusy() || [...runs.values()].some(run => run.native)) throw userError('Stop Native work and wait for memory operations before changing workspace folders or cross-workspace access.');
+  }
+  const connectionChanges = new Set<string>();
+  async function withConnectionChange<T>(id: string, change: () => Promise<T>): Promise<T> {
+    clearMissionResources([id]);
+    connectionChanges.add(id);
+    try { return await change(); } finally { connectionChanges.delete(id); }
+  }
   function clearMissionResources(connectionIds: string[], exceptSession?: string): void {
-    planningOwnership.assertClear(undefined, connectionIds);
+    if (connectionIds.some(id => connectionChanges.has(id))) throw userError('A selected connection is being updated. Try again when it finishes.');
+    nativeOwnership.assertClear(undefined, connectionIds);
     missions.assertConnectionsClear(connectionIds, exceptSession);
     for (const [sessionId, run] of runs) if (sessionId !== exceptSession && run.connectionIds?.some(id => connectionIds.includes(id))) throw userError('A selected connection is still working in another session.');
   }
@@ -885,46 +1193,61 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
   }));
 
   const host: AgentHostApi = {
+    nativeStatus: async () => sampleNativeStatus(),
+    refreshNativeStatus,
     getState: state,
-    getProfile: () => profiles.get(),
-    saveProfile: patch => profiles.save(patch),
+    getModelSelectionGuide: async () => { assertHostOpen(); return modelGuide.get(); },
+    saveModelSelectionGuide: input => { assertHostOpen(); return persistence.run(() => modelGuide.save(input)); },
+    getProfile: () => persistence.run(() => profiles.get()),
+    saveProfile: patch => mutateOwnedProfile(() => profiles.save(patch)),
 
     async saveConnection(input, secret) {
+      assertHostOpen();
       const existing = input.id ? config.connections.find(item => item.id === input.id) : undefined;
-      if (existing) planningOwnership.assertClear(undefined, [existing.id]);
       const connection = draftConnection(input, existing);
-      const trimmed = secret?.trim();
-      if (connection.credential.kind === 'stored') {
-        if (trimmed) await secrets.set(connection.credential.ref, trimmed);
-        else if (!(await secrets.get(connection.credential.ref)) && presetById(connection.preset).apiKey === 'required') throw userError('Enter the API key for this connection.');
-      }
-      if (existing?.credential.kind === 'stored' && connection.credential.kind !== 'stored') await secrets.delete(existing.credential.ref).catch(() => undefined);
-      config = { ...config, connections: existing ? config.connections.map(item => item.id === connection.id ? connection : item) : [...config.connections, connection] };
-      await save();
-      await refreshCredentialStatus(connection);
-      return state();
+      return withConnectionChange(connection.id, async () => {
+        const trimmed = secret?.trim();
+        if (connection.credential.kind === 'stored') {
+          const ref = connection.credential.ref;
+          if (trimmed) await persistence.run(() => secrets.set(ref, trimmed));
+          else if (!(await secrets.get(connection.credential.ref)) && presetById(connection.preset).apiKey === 'required') throw userError('Enter the API key for this connection.');
+        }
+        if (existing?.credential.kind === 'stored' && connection.credential.kind !== 'stored') {
+          const ref = existing.credential.ref;
+          await persistence.run(() => secrets.delete(ref)).catch(() => undefined);
+        }
+        config = { ...config, connections: existing ? config.connections.map(item => item.id === connection.id ? connection : item) : [...config.connections, connection] };
+        await save();
+        await refreshCredentialStatus(connection);
+        return state();
+      });
     },
 
     async deleteConnection(id) {
+      assertHostOpen();
       const connection = findConnection(id);
-      clearMissionResources([id]);
-      const user = config.workspaces.find(workspace => workspace.providerProfileId === id || workspace.missionConnectionIds?.includes(id));
-      if (user) throw userError(`The workspace "${user.name}" uses this connection. Choose another connection for it first.`);
-      if (connection.credential.kind === 'stored') await secrets.delete(connection.credential.ref).catch(() => undefined);
-      config = { ...config, connections: config.connections.filter(item => item.id !== id) };
-      credentialStatus.delete(id);
-      await save();
-      return state();
+      return withConnectionChange(id, async () => {
+        const user = config.workspaces.find(workspace => workspace.providerProfileId === id || workspace.missionConnectionIds?.includes(id));
+        if (user) throw userError(`The workspace "${user.name}" uses this connection. Choose another connection for it first.`);
+        if (connection.credential.kind === 'stored') {
+          const ref = connection.credential.ref;
+          await persistence.run(() => secrets.delete(ref)).catch(() => undefined);
+        }
+        config = { ...config, connections: config.connections.filter(item => item.id !== id) };
+        credentialStatus.delete(id);
+        await save();
+        return state();
+      });
     },
 
     async testConnection(input, secret): Promise<ConnectionTestResult> {
       const existing = input.id ? config.connections.find(item => item.id === input.id) : undefined;
       const started = Date.now();
       try {
-        if (existing) planningOwnership.assertClear(undefined, [existing.id]);
+        if (existing) nativeOwnership.assertClear(undefined, [existing.id]);
         const connection = draftConnection(input, existing);
         const { provider } = await providerFor(connection, secret);
-        if (existing) planningOwnership.assertClear(undefined, [existing.id]);
+        if (existing) nativeOwnership.assertClear(undefined, [existing.id]);
         try {
           const models = await provider.listModels(AbortSignal.timeout(15_000));
           // A test of a saved connection, unchanged where it matters, refreshes the prompt's model list.
@@ -936,7 +1259,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
         } catch (error) {
           // Some endpoints cannot list models; a one-word request proves the connection instead.
           if (!(error instanceof ProviderError) || ![404, 405, 501].includes(error.status ?? 0)) throw error;
-          if (existing) planningOwnership.assertClear(undefined, [existing.id]);
+          if (existing) nativeOwnership.assertClear(undefined, [existing.id]);
           await provider.complete({ system: 'Reply with OK.', messages: [{ role: 'user', text: 'OK?' }], tools: [], signal: AbortSignal.timeout(30_000) });
           return { ok: true, latencyMs: Date.now() - started };
         }
@@ -949,83 +1272,116 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     browseDirectories: requested => browseDirectories(requested, { homeDirectory: options.importHome ?? homeDirectory }),
 
     async saveWorkspace(input: WorkspaceInput) {
-      const folder = await checkFolder(input.projectLocation);
-      if (!folder.ok || !folder.path) throw userError(folder.error ?? 'Choose a project folder.');
-      if (input.runtimeId !== undefined && !RUNTIME_IDS.includes(input.runtimeId)) throw userError('Choose Extalia Native or Hermes Agent.');
-      const hermes = input.runtimeId === 'hermes';
-      if (!hermes && !input.connectionId) throw userError('Choose a model connection for this workspace.');
-      if (!hermes) findConnection(input.connectionId!);
-      const model = input.runtimeModel?.trim();
-      const runtime = hermes
-        ? { runtimeId: 'hermes', runtimeProfileId: input.runtimeProfileId?.trim() || 'default', ...(model ? { runtimeModel: model } : {}) }
-        : { providerProfileId: input.connectionId };
-      const existing = input.id ? config.workspaces.find(item => item.id === input.id) : undefined;
-      const allowed = input.missionConnectionIds !== undefined ? missionConnections(input.missionConnectionIds) : existing?.missionConnectionIds;
-      // ADR 0028: omission keeps the stored integration gate; `null` removes it.
-      let integrationGate = existing?.integrationGate;
-      if (input.integrationGate === null) integrationGate = undefined;
-      else if (input.integrationGate !== undefined) {
-        try { integrationGate = normalizeIntegrationGate(input.integrationGate); } catch (error) { throw userError(error instanceof Error ? error.message : 'Invalid test gate.'); }
-      }
-      const stamp = now();
-      const result = decodeWorkspace({
-        id: existing?.id ?? newId('w'), profileId: config.profile.id, name: input.name, projectLocation: folder.path,
-        ...runtime, ...(allowed !== undefined ? { missionConnectionIds: allowed } : {}), permissions: input.permissions ?? DEFAULT_PERMISSIONS,
-        // The default team is edited with `saveWorkspaceTeam`; editing the workspace keeps it.
-        ...(existing?.team ? { team: existing.team } : {}),
-        ...(integrationGate ? { integrationGate } : {}),
-        createdAt: existing?.createdAt ?? stamp, updatedAt: stamp,
+      assertHostOpen();
+      return withWorkspaceChange(async () => {
+        const folder = await checkFolder(input.projectLocation);
+        if (!folder.ok || !folder.path) throw userError(folder.error ?? 'Choose a project folder.');
+        if (input.runtimeId !== undefined && !RUNTIME_IDS.includes(input.runtimeId)) throw userError('Choose Extalia Native or Hermes Agent.');
+        const hermes = input.runtimeId === 'hermes';
+        if (!hermes && !input.connectionId) throw userError('Choose a model connection for this workspace.');
+        if (!hermes) findConnection(input.connectionId!);
+        const model = input.runtimeModel?.trim();
+        const runtime = hermes
+          ? { runtimeId: 'hermes', runtimeProfileId: input.runtimeProfileId?.trim() || 'default', ...(model ? { runtimeModel: model } : {}) }
+          : { providerProfileId: input.connectionId };
+        const existing = input.id ? config.workspaces.find(item => item.id === input.id) : undefined;
+        const rawFolders = input.additionalProjectLocations ?? existing?.additionalProjectLocations ?? [];
+        if (!Array.isArray(rawFolders) || rawFolders.length >= MAX_WORKSPACE_FOLDERS || rawFolders.some(value => typeof value !== 'string' || !value.trim())) throw userError('Choose up to 16 project folders in total.');
+        const additionalProjectLocations: string[] = [];
+        const folderSet = new Set([folder.path]);
+        for (const requested of rawFolders) {
+          const selected = await checkFolder(requested);
+          if (!selected.ok || !selected.path) throw userError(selected.error ?? 'Choose an available project folder.');
+          if (folderSet.has(selected.path)) throw userError('Choose distinct project folders; two selections refer to the same folder.');
+          folderSet.add(selected.path); additionalProjectLocations.push(selected.path);
+        }
+        const allowed = input.missionConnectionIds !== undefined ? missionConnections(input.missionConnectionIds) : existing?.missionConnectionIds;
+        // ADR 0028: omission keeps the stored integration gate; `null` removes it.
+        let integrationGate = existing?.integrationGate;
+        if (input.integrationGate === null) integrationGate = undefined;
+        else if (input.integrationGate !== undefined) {
+          try { integrationGate = normalizeIntegrationGate(input.integrationGate); } catch (error) { throw userError(error instanceof Error ? error.message : 'Invalid test gate.'); }
+        }
+        const stamp = now();
+        const result = decodeWorkspace({
+          id: existing?.id ?? newId('w'), profileId: config.profile.id, name: input.name, projectLocation: folder.path,
+          ...runtime, ...(allowed !== undefined ? { missionConnectionIds: allowed } : {}), permissions: input.permissions ?? DEFAULT_PERMISSIONS,
+          additionalProjectLocations, crossWorkspaceAccess: input.crossWorkspaceAccess ?? existing?.crossWorkspaceAccess ?? 'read-only',
+          // The default team is edited with `saveWorkspaceTeam`; editing the workspace keeps it.
+          ...(existing?.team ? { team: existing.team } : {}),
+          ...(integrationGate ? { integrationGate } : {}),
+          createdAt: existing?.createdAt ?? stamp, updatedAt: stamp,
+        });
+        if (!result.ok) throw userError(result.errors.join(' '));
+        validateTeamConnections(result.value.team, result.value);
+        await validateHermesTeam(result.value.team, result.value);
+        if (existing && effectiveMissionPolicy(existing) !== effectiveMissionPolicy(result.value)) assertMissionPolicyEditable(existing.id, await sessions.list());
+        const nextWorkspaces = existing ? config.workspaces.map(item => item.id === result.value.id ? result.value : item) : [...config.workspaces, result.value];
+        if (workspaceBoundaryKey(config.workspaces) !== workspaceBoundaryKey(nextWorkspaces)) await assertWorkspaceBoundaryEditable();
+        config = { ...config, workspaces: nextWorkspaces };
+        await save();
+        return state();
       });
-      if (!result.ok) throw userError(result.errors.join(' '));
-      if (existing && effectiveMissionPolicy(existing) !== effectiveMissionPolicy(result.value)) assertMissionPolicyEditable(existing.id, await sessions.list());
-      config = { ...config, workspaces: existing ? config.workspaces.map(item => item.id === result.value.id ? result.value : item) : [...config.workspaces, result.value] };
-      await save();
-      return state();
     },
 
     async setWorkspaceMissionConnections(workspaceId, connectionIds) {
-      const workspace = findWorkspace(workspaceId);
-      if (workspaceRuntime(workspace) !== 'extalia-native') throw userError('Native missions need an Extalia Native workspace.');
-      const allowed = missionConnections(connectionIds);
-      if (JSON.stringify([...allowed].sort()) !== JSON.stringify([...(workspace.missionConnectionIds ?? [])].sort())) assertMissionPolicyEditable(workspaceId, await sessions.list());
-      config = { ...config, workspaces: config.workspaces.map(item => item.id === workspaceId ? { ...item, missionConnectionIds: allowed, updatedAt: now() } : item) };
-      await save();
-      return state();
+      assertHostOpen();
+      return withWorkspaceChange(async () => {
+        const workspace = findWorkspace(workspaceId);
+        if (workspaceRuntime(workspace) !== 'extalia-native') throw userError('Native missions need an Extalia Native workspace.');
+        const allowed = missionConnections(connectionIds);
+        if (JSON.stringify([...allowed].sort()) !== JSON.stringify([...(workspace.missionConnectionIds ?? [])].sort())) assertMissionPolicyEditable(workspaceId, await sessions.list());
+        config = { ...config, workspaces: config.workspaces.map(item => item.id === workspaceId ? { ...item, missionConnectionIds: allowed, updatedAt: now() } : item) };
+        await save();
+        return state();
+      });
     },
 
     async saveWorkspaceTeam(workspaceId, raw) {
-      if (typeof workspaceId !== 'string') throw userError('Choose a workspace.');
-      findWorkspace(workspaceId);
-      let team: AgentTeam | null;
-      try { team = normalizeAgentTeam(raw); } catch (error) { throw userError(error instanceof Error ? error.message : 'This team cannot be saved.'); }
-      const stamp = now();
-      // Only new sessions copy it; existing sessions keep their own team.
-      config = {
-        ...config,
-        workspaces: config.workspaces.map(item => {
-          if (item.id !== workspaceId) return item;
-          const { team: _previous, ...rest } = item;
-          return { ...rest, ...(team ? { team: { ...team, updatedAt: stamp } } : {}), updatedAt: stamp };
-        }),
-      };
-      await save();
-      return state();
+      assertHostOpen();
+      return withWorkspaceChange(async () => {
+        if (typeof workspaceId !== 'string') throw userError('Choose a workspace.');
+        const workspace = findWorkspace(workspaceId);
+        let team: AgentTeam | null;
+        try { team = normalizeAgentTeam(raw); } catch (error) { throw userError(error instanceof Error ? error.message : 'This team cannot be saved.'); }
+        validateTeamConnections(team, workspace);
+        await validateHermesTeam(team, workspace);
+        const stamp = now();
+        // Only new sessions copy it; existing sessions keep their own team.
+        config = {
+          ...config,
+          workspaces: config.workspaces.map(item => {
+            if (item.id !== workspaceId) return item;
+            const { team: _previous, ...rest } = item;
+            return { ...rest, ...(team ? { team: { ...team, updatedAt: stamp } } : {}), updatedAt: stamp };
+          }),
+        };
+        await save();
+        return state();
+      });
     },
 
     async deleteWorkspace(id) {
-      findWorkspace(id);
-      planningOwnership.assertWorkspaceClear(id);
-      const owned = (await sessions.list()).filter(record => record.workspaceId === id);
-      if (owned.some(record => runs.has(record.id))) throw userError('Stop the running session in this workspace first.');
-      for (const record of owned) missions.assertRemovable(record.id);
-      for (const record of owned) { await missions.remove(record.id); await sessions.remove(record.id); await attachments.drop(record.id); }
-      await rm(path.join(layout.workspaces, id), { recursive: true, force: true });
-      config = { ...config, workspaces: config.workspaces.filter(item => item.id !== id) };
-      await save();
-      return state();
+      assertHostOpen();
+      return withWorkspaceChange(async () => {
+        findWorkspace(id);
+        await assertWorkspaceBoundaryEditable();
+        return nativeMemory.withWorkspaceDeletion(id, async () => {
+          nativeOwnership.assertWorkspaceClear(id);
+          const owned = (await sessions.list()).filter(record => record.workspaceId === id);
+          if (owned.some(record => runs.has(record.id))) throw userError('Stop the running session in this workspace first.');
+          for (const record of owned) missions.assertRemovable(record.id);
+          for (const record of owned) { await persistence.run(() => missions.remove(record.id)); await sessions.remove(record.id); await persistence.run(() => attachments.drop(record.id)); }
+          await rm(path.join(layout.workspaces, id), { recursive: true, force: true });
+          config = { ...config, workspaces: config.workspaces.filter(item => item.id !== id) };
+          await save();
+          return state();
+        });
+      });
     },
 
     async completeSetup(mode = 'managed') {
+      assertHostOpen();
       if (mode !== 'managed' && mode !== 'observe') throw userError('Invalid workflow mode.');
       // A model connection is only needed for Extalia Native workspaces; Hermes Agent brings its own models.
       const native = config.workspaces.some(item => workspaceRuntime(item) === 'extalia-native');
@@ -1040,6 +1396,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     },
 
     async setWorkflow(mode) {
+      assertHostOpen();
       if (mode !== 'managed' && mode !== 'observe') throw userError('Invalid workflow mode.');
       if (runs.size) throw userError('Stop the running managed sessions before switching workflows.');
       // Switching workflows never sends the user back through setup; Chat and Settings guide them to add a connection or workspace.
@@ -1047,15 +1404,72 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       config = { ...config, workflow: mode, setupComplete: config.setupComplete || observe, ...(observe ? { setupVersion: SETUP_VERSION } : {}) };
       await save(); return state();
     },
-    async observeImports(scanId, candidateIds) { await observations.observe(scanId, candidateIds); return state(); },
+    async observeImports(scanId, candidateIds) { assertHostOpen(); await observations.observe(scanId, candidateIds); return state(); },
     async observationSession(id) { return observations.snapshot(id); },
-    async setObservation(id, watching) { await observations.setWatching(id, watching); return state(); },
+    async setObservation(id, watching) {
+      assertHostOpen();
+      if (!watching) {
+        blockedReplyIds.add(id);
+        observedReplies.drop(id);
+        // Seal authority synchronously, then settle both cleanup and the user's observation preference.
+        const stopping = observedCodex.drop(id);
+        const stoppingHermes = observedHermes.drop(id);
+        const stoppingQueue = observedCodexQueue.drop(id);
+        const stoppingPrompts = promptQueues?.suspend(id);
+        observedCodexPermissions.drop(id);
+        const results = await Promise.allSettled([stopping, stoppingHermes, stoppingQueue, stoppingPrompts, observations.setWatching(id, false)]);
+        const failed = results.find((result): result is PromiseRejectedResult => result.status === 'rejected');
+        if (failed) throw failed.reason;
+      } else { await observations.setWatching(id, true); blockedReplyIds.delete(id); observedCodex.resume(id); observedHermes.resume(id); observedCodexQueue.resume(id); observedCodexPermissions.resume(id); }
+      return state();
+    },
+    async observedCodexStatus(id) { assertHostOpen(); return observedCodex.status(id); },
+    async observedCodexQueueStatus(id) { assertHostOpen(); return observedCodexQueue.status(id); },
+    async promptQueueStatus(id) { assertHostOpen(); return promptQueues!.status(id); },
+    async changePromptQueue(id, change) { assertHostOpen(); return promptQueues!.change(id, change); },
+    async observedCodexPermissionStatus(id) { assertHostOpen(); return observedCodexPermissions.status(id); },
+    async previewObservedCodexPermissionHook(id, undo) { assertHostOpen(); return observedCodexPermissions.preview(id, undo); },
+    async applyObservedCodexPermissionHook(id, revision, undo) { assertHostOpen(); return observedCodexPermissions.apply(id, revision, undo); },
+    async answerObservedCodexPermission(id, input) { assertHostOpen(); return observedCodexPermissions.answer(id, input); },
+    async setObservedCodexQueue(id, enabled) { assertHostOpen(); return observedCodexQueue.setEnabled(id, enabled); },
+    async queueObservedCodexMessage(id, input) { assertHostOpen(); return observedCodexQueue.send(id, input); },
+    async observedReplyStatus(id) { assertHostOpen(); return observedReplies.status(id); },
+    async observedHermesStatus(id) { assertHostOpen(); return observedHermes.status(id); },
+    async connectObservedHermes(id, profile) { assertHostOpen(); return observedHermes.connect(id, profile); },
+    async disconnectObservedHermes(id, connectionId) { assertHostOpen(); return observedHermes.disconnect(id, connectionId); },
+    async sendObservedHermesMessage(id, input) { assertHostOpen(); return observedHermes.send(id, input); },
+    async answerObservedHermesInput(id, input) { assertHostOpen(); return observedHermes.answer(id, input); },
+    async createObservedReply(id) { assertHostOpen(); return observedReplies.create(id); },
+    async createManualReply() {
+      assertHostOpen();
+      for (const id of manualReplyIds) {
+        if (!pendingManualReplies.has(id) && !['waitingForAgent', 'waitingForReply'].includes(observedReplies.status(id).state)) { observedReplies.drop(id); manualReplyIds.delete(id); }
+      }
+      if (manualReplyIds.size >= 32) throw userError('Close an existing reply channel before creating another.');
+      const id = `reply-${randomUUID()}`;
+      manualReplyIds.add(id);
+      pendingManualReplies.add(id);
+      try {
+        const status = await observedReplies.create(id);
+        if (status.state !== 'waitingForAgent') manualReplyIds.delete(id);
+        return status;
+      } finally { pendingManualReplies.delete(id); }
+    },
+    async answerObservedReply(id, input) { assertHostOpen(); return observedReplies.answer(id, input); },
+    async closeObservedReply(id) { assertHostOpen(); observedReplies.drop(id); return observedReplies.status(id); },
+    async connectObservedCodex(id, socketPath) { assertHostOpen(); return observedCodex.connect(id, socketPath); },
+    async disconnectObservedCodex(id, connectionId) { assertHostOpen(); return observedCodex.disconnect(id, connectionId); },
+    async sendObservedCodexMessage(id, input) { assertHostOpen(); return observedCodex.send(id, input); },
+    async answerObservedCodexInput(id, input) { assertHostOpen(); return observedCodex.answer(id, input); },
+    async answerObservedCodexApproval(id, input) { assertHostOpen(); return observedCodex.answerApproval(id, input); },
     async setAutoWatch(locationId, enabled) {
+      assertHostOpen();
       try { await observations.setAutoWatch(locationId, enabled); } catch (error) { throw userError(error instanceof Error ? error.message : 'Invalid location.'); }
       return host.importLocations();
     },
 
     async createSession(workspaceId, sessionOptions) {
+      assertHostOpen();
       const workspace = findWorkspace(workspaceId);
       const { team, ...checked } = await checkSessionOptions(workspace, sessionOptions);
       // Without an explicit team (or `team: null`) the session copies the workspace's default team.
@@ -1063,24 +1477,36 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     },
 
     async setSessionOptions(sessionId, sessionOptions) {
+      assertHostOpen();
       if (typeof sessionId !== 'string') throw userError('That session no longer exists.');
       if (observations.has(sessionId)) throw userError('Observed sessions run in their own app; choose the model there.');
       const record = await sessions.get(sessionId).catch(() => undefined);
       if (!record) throw userError('That session no longer exists.');
       // The team is saved with `saveSessionTeam`, never as part of the model override.
-      const { team: _team, ...checked } = await checkSessionOptions(findWorkspace(record.workspaceId), sessionOptions);
+      const { team: _team, ...checked } = await checkSessionOptions(sessionWorkspace(findWorkspace(record.workspaceId), record), sessionOptions);
       // Applies from the next turn; a running turn keeps the model it started with.
       return summary(await sessions.update(sessionId, { options: Object.keys(checked).length ? checked : undefined }));
     },
 
-    async modelChoices(workspaceId): Promise<ModelChoices> {
+    async modelChoices(workspaceId, sessionId): Promise<ModelChoices> {
       if (typeof workspaceId !== 'string') throw userError('Choose a workspace.');
-      const workspace = findWorkspace(workspaceId);
+      let workspace = findWorkspace(workspaceId);
+      let sessionModel: string | undefined;
+      if (sessionId !== undefined) {
+        if (typeof sessionId !== 'string') throw userError('Choose a managed session.');
+        if (observations.has(sessionId)) throw userError('Observed sessions run in their own app; choose the model there.');
+        const record = await sessions.get(sessionId).catch(() => undefined);
+        if (!record) throw userError('That session no longer exists.');
+        if (record.workspaceId !== workspaceId) throw userError('That session belongs to another workspace.');
+        workspace = sessionWorkspace(workspace, record);
+        sessionModel = storedOptions(record).model;
+      }
       const efforts = await effortsFor(workspace);
       if (workspaceRuntime(workspace) === 'hermes') {
+        const hermesDelegation = await readHermesLimits(workspace, sessionModel);
         const catalog = await hermesModelCatalog(env, options.importHome ?? homedir(), workspace.runtimeProfileId ?? 'default', options.fetch as typeof fetch | undefined);
         const defaultModel = workspace.runtimeModel || catalog.defaultModel;
-        return { runtime: 'hermes', ...(defaultModel ? { defaultModel } : {}), models: cleanModels(catalog.models), efforts, permissionModes: [...HERMES_PERMISSION_MODES] };
+        return { runtime: 'hermes', ...(defaultModel ? { defaultModel } : {}), models: cleanModels(catalog.models), efforts, permissionModes: [...HERMES_PERMISSION_MODES], hermesDelegation };
       }
       if (!workspace.providerProfileId) throw userError('Choose a model connection for this workspace in Settings.');
       const connection = findConnection(workspace.providerProfileId);
@@ -1088,6 +1514,23 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
         runtime: 'extalia-native', ...(connection.model ? { defaultModel: connection.model } : {}), models: await connectionModels(connection), efforts,
         ...(connection.effort && efforts.length ? { defaultEffort: connection.effort } : {}), permissionModes: [...PERMISSION_MODES],
       };
+    },
+
+    async teamModelChoices(workspaceId, connectionId, sessionId): Promise<ModelChoices> {
+      if (typeof workspaceId !== 'string' || typeof connectionId !== 'string') throw userError('Choose a workspace and saved model connection.');
+      let workspace = findWorkspace(workspaceId);
+      if (sessionId !== undefined) {
+        if (typeof sessionId !== 'string' || observations.has(sessionId)) throw userError('Choose a managed Extalia Native session.');
+        const record = await sessions.get(sessionId).catch(() => undefined);
+        if (!record) throw userError('That session no longer exists.');
+        if (record.workspaceId !== workspaceId) throw userError('That session belongs to another workspace.');
+        workspace = sessionWorkspace(workspace, record);
+      }
+      if (workspaceRuntime(workspace) !== 'extalia-native') throw userError('Cross-connection teams require Extalia Native.');
+      const connection = findConnection(connectionId);
+      const efforts: Effort[] = connection.api === 'anthropic-messages' ? [...EFFORTS] : [];
+      return { runtime: 'extalia-native', ...(isModelId(connection.model) ? { defaultModel: connection.model } : {}),
+        models: await connectionModels(connection), efforts, ...(connection.effort && efforts.length ? { defaultEffort: connection.effort } : {}), permissionModes: [...PERMISSION_MODES] };
     },
 
     async getSessionTeam(sessionId) {
@@ -1098,36 +1541,57 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     },
 
     async saveSessionTeam(sessionId, raw) {
+      assertHostOpen();
       if (typeof sessionId !== 'string') throw userError('That session no longer exists.');
       if (observations.has(sessionId)) throw userError(OBSERVED_TEAM_MESSAGE);
       const record = await sessions.get(sessionId).catch(() => undefined);
       if (!record) throw userError('That session no longer exists.');
       let team: AgentTeam | null;
       try { team = normalizeAgentTeam(raw); } catch (error) { throw userError(error instanceof Error ? error.message : 'This team cannot be saved.'); }
+      validateTeamConnections(team, sessionWorkspace(findWorkspace(record.workspaceId), record));
+      await validateHermesTeam(team, sessionWorkspace(findWorkspace(record.workspaceId), record));
       // Applies from the next turn; a running turn keeps the team it started with.
       const updated = await sessions.update(sessionId, { team: team ? { ...team, updatedAt: now() } : undefined });
       return storedTeam(updated);
     },
 
-    async planTeam(workspaceId, raw): Promise<TeamPlan> {
+    async planTeam(workspaceId, raw, sessionId): Promise<TeamPlan> {
+      assertHostOpen();
+      assertNativeBoundaryAvailable();
+      workspaceContextReaders++;
+      try {
       if (typeof workspaceId !== 'string') throw userError('Choose a workspace.');
-      const workspace = findWorkspace(workspaceId);
+      let workspace = findWorkspace(workspaceId);
+      let sessionModel: string | undefined;
+      if (sessionId !== undefined) {
+        if (typeof sessionId !== 'string' || observations.has(sessionId)) throw userError('Choose a managed session.');
+        const record = await sessions.get(sessionId).catch(() => undefined);
+        if (!record) throw userError('That session no longer exists.');
+        if (record.workspaceId !== workspaceId) throw userError('That session belongs to another workspace.');
+        workspace = sessionWorkspace(workspace, record);
+        sessionModel = storedOptions(record).model;
+      }
       let request: TeamPlanRequest;
       try { request = normalizeTeamPlanRequest(raw); } catch (error) { throw userError(error instanceof Error ? error.message : 'Invalid team request.'); }
       const hermes = workspaceRuntime(workspace) === 'hermes';
-      if (!hermes && workspace.providerProfileId) planningOwnership.assertClear(undefined, [workspace.providerProfileId]);
+      const hermesLimits = hermes ? await readHermesLimits(workspace, sessionModel) : undefined;
+      if (hermesLimits) assertSharedHermesRouting(hermesLimits);
+      if (hermesLimits && (request.count > hermesLimits.maxTeamMembers || (request.members?.length ?? 0) > hermesLimits.maxTeamMembers)) throw userError(`The active Hermes profile supports at most ${hermesLimits.maxTeamMembers} team members per one-shot turn in Extalia.`);
+      if (!hermes && workspace.providerProfileId) nativeOwnership.assertClear(undefined, [workspace.providerProfileId]);
       const home = options.importHome ?? homedir();
       // Without a goal the plan is a general team for the workspace, based on its name and recent sessions.
       const records = await sessions.list();
-      const recentTitles = records.filter(record => record.workspaceId === workspace.id && record.title !== NEW_SESSION_TITLE)
+      const recentTitles = (workspaceCrossAccess(workspace) === 'isolated' ? [] : records).filter(record => record.workspaceId === workspace.id && record.title !== NEW_SESSION_TITLE && record.workspaceBoundary === workspaceBoundaryKey(config.workspaces))
         .sort((a, b) => b.lastActiveAt.localeCompare(a.lastActiveAt)).slice(0, 5).map(record => safeLabel(record.title, 80)).filter(Boolean);
-      request = { ...request, context: { workspace: safeLabel(workspace.name, 80), ...(recentTitles.length ? { recentTitles } : {}) } };
-      // Nothing ticked: the plan chooses from the workspace's models (a diverse set of at most 20).
+      request = { ...request, context: { modelSelectionGuide: workspaceCrossAccess(workspace) === 'isolated' ? null : await modelGuide.get(), workspace: safeLabel(workspace.name, 80), ...(recentTitles.length ? { recentTitles } : {}) } };
+      // Native can choose a bounded model pool; Hermes worker routing stays with its profile.
       let planningModel: string | undefined;
       if (hermes) {
         const catalog = await hermesModelCatalog(env, home, workspace.runtimeProfileId ?? 'default', options.fetch as typeof fetch | undefined).catch(() => undefined);
-        planningModel = workspace.runtimeModel || catalog?.defaultModel;
-        if (!request.allowedModels.length) request.candidateModels = pickTeamModels(cleanModels(catalog?.models ?? []), planningModel ? [planningModel] : []);
+        planningModel = sessionModel || workspace.runtimeModel || catalog?.defaultModel;
+        // These are planning inputs only. Per-member model chains are not a supported Hermes route.
+        request = { ...request, allowedModels: [], candidateModels: [], connections: [],
+          ...(request.members ? { members: request.members.map(({ connectionId: _connectionId, ...member }) => ({ ...member, models: [] })) } : {}) };
       } else if (workspace.providerProfileId) {
         const saved = findConnection(workspace.providerProfileId);
         planningModel = saved.model;
@@ -1140,14 +1604,14 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       const choosing = !request.allowedModels.length && Boolean(request.candidateModels?.length);
       const heuristic = (reason: string): TeamPlan => {
         const members = planTeamHeuristic(request, undefined, taken);
-        return { members, source: 'heuristic', note: `A standard split was used: ${reason}`, ...(choosing ? { allowedModels: planModelOrder(members) } : {}) };
+        return { members, source: 'heuristic', planningBasis: modelPlanningBasis(request.context?.modelSelectionGuide, 'heuristic'), note: `A standard split was used: ${reason}`, ...(choosing ? { allowedModels: planModelOrder(members.filter(member => !member.connectionId)) } : {}) };
       };
       const fromReply = (reply: string): TeamPlan => {
         try {
           const parsed = parseTeamPlanResult(reply, request, undefined, taken);
           return {
-            members: parsed.members, source: 'model', ...(parsed.allowedModels ? { allowedModels: parsed.allowedModels } : {}),
-            ...(parsed.modelReasons ? { modelReasons: parsed.modelReasons } : {}),
+            members: hermes ? parsed.members.map(member => ({ ...member, models: [] })) : parsed.members, source: 'model', planningBasis: modelPlanningBasis(request.context?.modelSelectionGuide), ...(!hermes && parsed.allowedModels ? { allowedModels: parsed.allowedModels } : {}),
+            ...(!hermes && parsed.modelReasons ? { modelReasons: parsed.modelReasons } : {}),
           };
         } catch { return heuristic('the model’s answer was not a usable plan.'); }
       };
@@ -1158,6 +1622,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       };
       const prompt = teamPlanPrompt(request);
       if (hermes) {
+        prompt.user = `Runtime constraint: this Hermes adapter uses a shared delegation model (profile delegation.model or the lead model), not per-member models or fallback chains. Plan at most ${hermesLimits!.maxTeamMembers} roles with tasks and soul only; return empty model lists. The active concurrent batch limit is ${hermesLimits!.maxConcurrentChildren}; the total one-shot child budget is ${hermesLimits!.oneshotMaxChildren || 'unlimited (Extalia roster ceiling 32)'}.\n\n${prompt.user}`;
         if (!planningModel) return heuristic('the Hermes profile names no model for planning.');
         try {
           return fromReply(await hermesComplete(env, home, {
@@ -1171,19 +1636,25 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       if (!workspace.providerProfileId) return heuristic('the workspace has no model connection.');
       if (!planningModel) return heuristic('no model is set for planning.');
       try {
-        planningOwnership.assertClear(undefined, [workspace.providerProfileId]);
+        nativeOwnership.assertClear(undefined, [workspace.providerProfileId]);
         const { provider } = await providerFor({ ...findConnection(workspace.providerProfileId), model: planningModel });
-        planningOwnership.assertClear(undefined, [workspace.providerProfileId]);
+        nativeOwnership.assertClear(undefined, [workspace.providerProfileId]);
         const result = await provider.complete({ system: prompt.system, messages: [{ role: 'user', text: prompt.user }], tools: [], signal: AbortSignal.timeout(teamPlanTimeout(request.count)) });
         return fromReply(result.text);
       } catch (error) { return failed(error); }
+      } finally {
+        workspaceContextReaders--;
+        if (!closing && !workspaceContextReaders && !persistence.isBusy && !runs.size && !nativeStatusRefresh && !nativeMemory.isBusy() && !promptQueues?.isBusy) for (const listener of idleListeners) { try { listener(); } catch { /* detached observer */ } }
+      }
     },
 
     async continueSession(source, workspaceId) {
+      assertHostOpen();
       if (!source || typeof source !== 'object' || (source.kind !== 'library' && source.kind !== 'observed') || typeof source.id !== 'string') {
         throw userError('Choose a conversation to continue.');
       }
       const workspace = findWorkspace(workspaceId);
+      if (workspaceRuntime(workspace) === 'extalia-native' && workspaceCrossAccess(workspace) === 'isolated') throw userError('An isolated workspace needs a fresh session without imported conversation context.');
       let conversation: Pick<PortableSession, 'messages' | 'provenance' | 'title'>, title: string;
       if (source.kind === 'library') {
         const entry = library.sessions.find(item => item.id === source.id);
@@ -1208,6 +1679,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     },
 
     async renameSession(sessionId, title) {
+      assertHostOpen();
       if (observations.has(sessionId)) { await observations.rename(sessionId, title); return state(); }
       const clean = title.replace(/\s+/g, ' ').trim().slice(0, 200);
       if (!clean) throw userError('Enter a title.');
@@ -1216,15 +1688,19 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     },
 
     async deleteSession(sessionId) {
-      if (observations.has(sessionId)) { await observations.remove(sessionId); return state(); }
+      assertHostOpen();
+      if (observations.has(sessionId)) { blockedReplyIds.add(sessionId); observedReplies.drop(sessionId); observedCodexPermissions.drop(sessionId); await Promise.all([observedCodex.drop(sessionId), observedHermes.drop(sessionId), observedCodexQueue.drop(sessionId), promptQueues?.drop(sessionId)]); await observations.remove(sessionId); return state(); }
+      const stoppingPrompts = promptQueues?.suspend(sessionId);
       const run = runs.get(sessionId);
       if (run) { run.controller.abort(); run.pending?.resolve('reject'); await run.done; }
+      await stoppingPrompts;
       await writeChains.get(sessionId);
-      planningOwnership.assertClear(sessionId);
+      nativeOwnership.assertClear(sessionId);
       missions.assertRemovable(sessionId);
-      await missions.remove(sessionId);
+      await promptQueues?.drop(sessionId);
+      await persistence.run(() => missions.remove(sessionId));
       await sessions.remove(sessionId);
-      await attachments.drop(sessionId);
+      await persistence.run(() => attachments.drop(sessionId));
       grants.delete(sessionId);
       sequence.delete(sessionId);
       return state();
@@ -1237,17 +1713,21 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     },
 
     async planNativeMission(sessionId, raw): Promise<MissionPlan> {
+      assertNativeBoundaryAvailable();
       if (closing) throw userError('The host is shutting down.');
+      knowledgeVault.assertStable();
       if (typeof sessionId !== 'string' || observations.has(sessionId)) throw userError('Mission planning needs a managed Extalia Native session. Observed sessions run in their own app.');
       let request: ReturnType<typeof normalizeMissionPlanRequest>;
       try { request = normalizeMissionPlanRequest(raw); } catch (error) { throw userError(error instanceof Error ? error.message : 'Invalid mission plan request.'); }
       // Reserve the session before the first await; provider capacity is added when its lead is known.
       if (runs.has(sessionId)) throw userError('This session is still working. Wait for it or stop it first.');
-      planningOwnership.assertClear(sessionId);
+      nativeOwnership.assertClear(sessionId);
       missions.assertSessionClear(sessionId);
       const controller = new AbortController();
       let releaseRun!: () => void;
       const run: Run = { planning: true, controller, done: new Promise<void>(resolve => { releaseRun = resolve; }) };
+      knowledgeVault.assertStable();
+      if (run.native) assertNativeBoundaryAvailable();
       runs.set(sessionId, run);
       let outstanding: Promise<unknown> | undefined;
       let physicallySettled = false;
@@ -1273,6 +1753,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
         if (record.runtime) throw userError('Hermes Agent sessions cannot run native missions. Start an Extalia Native session.');
         const workspace = findWorkspace(record.workspaceId);
         if (workspaceRuntime(workspace) !== 'extalia-native' || !workspace.projectLocation) throw userError('Native missions need an Extalia Native workspace with a project folder.');
+        run.native = { id: newId('native-run'), sessionId, workspaceId: record.workspaceId, kind: 'planning' };
         const allowed = [...new Set([workspace.providerProfileId, ...(workspace.missionConnectionIds ?? [])].filter((id): id is string => Boolean(id)))];
         if (request.connectionIds?.some(id => !allowed.includes(id))) throw userError('A selected connection is not allowed for this workspace’s missions. Allow it in the workspace settings first.');
         const selected = request.connectionIds ? allowed.filter(id => request.connectionIds!.includes(id)) : allowed;
@@ -1328,7 +1809,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
           if (!transient && !keepsHistory(connection)) { notes.push(`"${name}" keeps no history, so saved sessions cannot use it in missions.`); continue; }
           if (credentialStatus.get(id) === 'missing') { notes.push(`"${name}" needs its credential before it can run tasks.`); continue; }
           const isLead = id === record.connectionId;
-          let models = [connection.model, ...(isLead ? [leadModel, ...(team?.allowedModels ?? []), ...(team?.members.flatMap(member => member.models) ?? [])] : [])];
+          let models = [connection.model, ...(isLead ? [leadModel, ...(team?.allowedModels ?? []), ...(team?.members.filter(member => !member.connectionId).flatMap(member => member.models) ?? [])] : [])];
           if (request.models) {
             const listed = leadBusy && isLead ? [] : await planningModels(connection);
             if (controller.signal.aborted || closing) throw userError('Mission planning was cancelled before preparation finished.');
@@ -1339,8 +1820,9 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
         }
         if (!candidates.length) throw userError('No allowed connection and model can run this mission. Check the chosen models, credentials and the workspace’s mission connections.');
         const context: MissionPlanContext = {
-          goal: request.goal, maxTasks: request.maxTasks, candidates: candidates.slice(0, MISSION_PLAN_LIMITS.candidates),
-          ...(team?.members.length ? { hints: team.members.map(member => ({ role: member.role, ...(member.task ? { task: member.task } : {}), models: [...member.models] })) } : {}),
+          modelSelectionGuide: workspaceCrossAccess(workspace) === 'isolated' ? null : await modelGuide.get(),
+          goal: request.goalDocument ? `${request.goalDocument.text}\n\n${request.goal}` : request.goal, maxTasks: request.maxTasks, candidates: candidates.slice(0, MISSION_PLAN_LIMITS.candidates),
+          ...(team?.members.length ? { hints: team.members.map(member => ({ role: member.role, ...(member.task ? { task: member.task } : {}), models: member.connectionId ? [] : [...member.models] })) } : {}),
         };
         const withNotes = (plan: MissionPlan, extra?: string): MissionPlan => {
           const note = [plan.note, extra, ...notes].filter(Boolean).join(' ');
@@ -1399,11 +1881,13 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     },
 
     async startNativeMission(sessionId, rawRequest) {
+      assertNativeBoundaryAvailable();
       if (closing) throw userError('The host is shutting down.');
+      knowledgeVault.assertStable();
       if (typeof sessionId !== 'string' || observations.has(sessionId)) throw userError('Native missions need an existing managed Extalia Native session.');
       const request = normalizeHostMissionRequest(rawRequest);
       if (runs.has(sessionId)) throw userError('This session is still working. Wait for it or stop it first.');
-      planningOwnership.assertClear(sessionId);
+      nativeOwnership.assertClear(sessionId);
       missions.assertSessionClear(sessionId);
       const connectionIds = [...new Set(request.tasks.map(task => task.connectionId))];
       clearMissionResources(connectionIds);
@@ -1411,9 +1895,19 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       const controller = new AbortController();
       let releaseRun!: () => void;
       const run: Run = { controller, connectionIds, done: new Promise<void>(resolve => { releaseRun = resolve; }) };
+      knowledgeVault.assertStable();
+      if (run.native) assertNativeBoundaryAvailable();
       runs.set(sessionId, run);
       let metadata: HostMissionRun | undefined;
       let core: DaemonMission | undefined, missionSession = '';
+      let preparation: OwnedPreparation | undefined;
+      let preparationClient: DaemonClient | undefined;
+      const preparationSupervisorId = randomUUID();
+      let coreCreationStarted = false, preparationHandedOff = false, unverifiedWorktreePreparation = false;
+      const checkPreparation = () => {
+        if (closing || controller.signal.aborted) throw userError('The native mission was cancelled before execution.');
+        preparation?.check();
+      };
       // Worktrees of write-capable tasks (ADR 0028), owned by this mission while it runs.
       const worktreesCreated: { id: string; alias: string; taskId: string }[] = [];
       let writeMission: string | undefined;
@@ -1422,18 +1916,37 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
         if (!record || record.runtime) throw userError('Native missions need an existing Extalia Native session.');
         const workspace = structuredClone(findWorkspace(record.workspaceId));
         if (workspaceRuntime(workspace) !== 'extalia-native' || !workspace.projectLocation) throw userError('Native missions need an Extalia Native workspace with a project folder.');
+        run.native = { id: newId('native-run'), sessionId, workspaceId: record.workspaceId, kind: 'preparing' };
         const allowed = new Set([workspace.providerProfileId, ...(workspace.missionConnectionIds ?? [])]);
         if (connectionIds.some(id => !allowed.has(id))) throw userError('A selected connection is not authorized for this workspace.');
         const connections = new Map(connectionIds.map(id => [id, structuredClone(findConnection(id))]));
         const transient = unsavedSessions.has(sessionId);
         if (!transient && [...connections.values()].some(connection => !keepsHistory(connection))) throw userError('History-off connections require an unsaved session for native missions.');
         if (transient && request.tasks.some(task => task.access === 'write')) throw userError('Write-capable workers keep their changes in a worktree on disk, so they need a session that keeps history.');
+        if (request.tasks.some(task => task.access === 'write')) await assertWorkspaceWorktreeAccess(workspace, config.workspaces, layout.root);
         const resolvedSecrets: string[] = [];
         const mask = (value: string) => resolvedSecrets.reduce((text, secret) => text.split(secret).join('[redacted]'), value);
         const sanitize = (value: HostMissionRun): HostMissionRun => ({ ...value, title: safeLabel(mask(value.title), 200), tasks: value.tasks.map(task => ({ ...task, title: safeLabel(mask(task.title), 200), ...(task.answer !== undefined ? { answer: safeText(mask(task.answer), 16_000) } : {}) })) });
         const prepared = await prepareMission({ request, session: record, transient, root: workspace.projectLocation, connections, localSettlementCoverage: 'extalia-native-local-v1',
+          fileAuthority: ownedRoots => createWorkspaceAccess({ workspaceId: workspace.id, workspaces: structuredClone(config.workspaces), protectedRoots: [layout.root], ...(ownedRoots ? { ownedRoots } : {}) }),
+          checkPreparation,
+          beforeEffects: async identity => {
+            checkPreparation();
+            if (run.native) run.native.missionId = identity.missionId;
+            if (daemon && !transient) {
+              preparationClient = await daemon.connect();
+              checkPreparation();
+              preparation = await preparationOwnership.begin(preparationClient, {
+                invocationId: randomUUID(), supervisorId: preparationSupervisorId, ...identity,
+                sessionId, workspaceId: workspace.id, connectionIds: [...connectionIds].sort(),
+              });
+              checkPreparation();
+            }
+          },
           providerFor: async connection => {
+            checkPreparation();
             const { provider, secret } = await providerFor(connection).catch(() => { throw userError('A selected connection needs valid credentials before this native mission can start.'); });
+            checkPreparation();
             if (secret) { resolvedSecrets.push(secret); resolvedSecrets.sort((a, b) => b.length - a.length); }
             return { ...provider, complete: async modelRequest => {
               const response = await provider.complete(modelRequest);
@@ -1445,12 +1958,17 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
             writeMission = task.missionId; activeWriteMissions.add(task.missionId);
             try {
               const { manager } = await worktreeStore;
-              const handle = await manager.create({ workspaceRoot: workspace.projectLocation!, owner: { missionId: task.missionId, taskId: task.taskId, agentId: task.agentId } });
+              checkPreparation();
+              unverifiedWorktreePreparation = true;
+              const handle = await trackPreparationWrite(() => manager.create({ workspaceRoot: workspace.projectLocation!, requireExactRoot: true, owner: { missionId: task.missionId, taskId: task.taskId, agentId: task.agentId } }));
               worktreesCreated.push({ id: handle.id, alias: task.alias, taskId: task.taskId });
+              unverifiedWorktreePreparation = false;
+              checkPreparation();
               return handle.root;
             } catch (error) { throw worktreeFailure(error); }
           },
         });
+        for (const task of prepared.options.tasks) if (task.tools) task.tools = task.tools.map(localWriteTool);
         const current = findWorkspace(record.workspaceId);
         const currentAllowed = new Set([current.providerProfileId, ...(current.missionConnectionIds ?? [])]);
         if (controller.signal.aborted || closing || workspaceRuntime(current) !== 'extalia-native' || connectionIds.some(id => !currentAllowed.has(id))) throw userError('The native mission was cancelled before execution.');
@@ -1460,7 +1978,9 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
           const { plan } = prepared.options;
           missionSession = prepared.options.sessionId;
           const graph = { ...plan.graph, tasks: plan.graph.tasks.map(task => ({ ...task, requirements: task.requirements.map(text => safeLabel(mask(text), 200)) })) };
-          try { core = await createDaemonMission(await daemon.connect(), { mission: plan.mission, graph }); } catch (error) {
+          checkPreparation();
+          coreCreationStarted = true;
+          try { core = await createDaemonMission(preparationClient!, { mission: plan.mission, graph }, preparationSupervisorId); } catch (error) {
             throw userError(error instanceof DaemonUnavailableError ? nativeCoreUnavailable(error.code) : 'The Rust native core refused this mission, so it did not start. Nothing ran.');
           }
           if (controller.signal.aborted || closing) throw userError('The native mission was cancelled before execution.');
@@ -1468,7 +1988,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
         metadata = sanitize({ ...prepared.run, authority: core
           ? { backend: 'rust', profileId: 'default', workspaceId: prepared.options.plan.mission.workspaceId, supervisorId: core.supervisorId }
           : { backend: 'typescript' } });
-        await missions.save(metadata);
+        await persistence.run(() => missions.save(metadata!));
         const missionId = metadata.id;
         const writes: Promise<void>[] = [];
         let persistenceFailed = false;
@@ -1484,6 +2004,14 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
         }
         await Promise.all(writes);
         if (persistenceFailed) throw userError('The native mission could not record its start.');
+        checkPreparation();
+        // Canonical creation and the host's durable scope now cover execution.
+        // Retiring this preparation receipt grants no task/worker authority.
+        preparationHandedOff = true;
+        await preparation?.settle();
+        preparation = undefined;
+        checkPreparation();
+        if (run.native) { run.native.kind = 'mission'; run.native.missionId = missionId; }
         // The session reservation remains held through all event and metadata writes.
         void (async () => {
           const observationWrites = new Set<Promise<void>>();
@@ -1553,11 +2081,11 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
             strictPublish(metadata.state === 'recovering' ? { type: 'agent.state', state: 'blocked', summary: 'Native mission execution or persistence needs reconciliation.' } : { type: 'agent.state', state: 'idle' });
             await Promise.all(writes);
             if (persistenceFailed && metadata.state !== 'recovering') metadata = { ...metadata, state: 'recovering', recovery: metadata.recovery ?? { source: 'execution-uncertain', at: now() } };
-            await missions.save(metadata);
+            await persistence.run(() => missions.save(metadata!));
           } catch {
             metadata = { ...metadata!, state: 'recovering', updatedAt: now(), recovery: metadata.recovery ?? { source: 'execution-uncertain', at: now() } };
             missions.updateMemory(metadata);
-            await missions.save(metadata).catch(() => undefined);
+            await persistence.run(() => missions.save(metadata!)).catch(() => undefined);
           } finally {
             core?.dispose();
             // Commit what each write-capable worker wrote and release its worktree. A task whose
@@ -1566,7 +2094,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
               const { manager } = await worktreeStore;
               for (const created of worktreesCreated) {
                 if (metadata?.tasks.find(task => task.taskId === created.taskId)?.state === 'unknown') continue;
-                await manager.release(created.id, `Extalia worker: ${created.alias}`).catch(() => undefined);
+                await trackPreparationWrite(() => manager.release(created.id, `Extalia worker: ${created.alias}`)).catch(() => undefined);
               }
             }
             if (writeMission) activeWriteMissions.delete(writeMission);
@@ -1577,20 +2105,54 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
         })();
         return structuredClone(metadata);
       } catch (error) {
-        if (metadata) {
-          metadata = { ...metadata, state: 'failed', updatedAt: now(), tasks: metadata.tasks.map(task => ({ ...task, state: 'cancelled' })) };
-          await missions.save(metadata).catch(() => undefined);
+        let cleanupSucceeded = true;
+        try {
+          // A closed host cannot admit cleanup or checkpoint writes. The marker
+          // and running checkpoint retain uncertainty for the next host.
+          if (!closing) {
+            await core?.cancelUnstarted(missionSession).catch(() => { cleanupSucceeded = false; });
+            if (writeMission) activeWriteMissions.delete(writeMission);
+            if (worktreesCreated.length && !closing) {
+              try {
+                const { manager } = await worktreeStore;
+                for (const created of worktreesCreated) {
+                  if (closing) break;
+                  await trackPreparationWrite(() => manager.remove(created.id)).catch(() => { cleanupSucceeded = false; });
+                }
+              } catch { cleanupSucceeded = false; }
+            }
+            if (metadata && !closing) {
+              const uncertain = !cleanupSucceeded || unverifiedWorktreePreparation;
+              metadata = { ...metadata, state: uncertain ? 'recovering' : 'failed', updatedAt: now(),
+                ...(uncertain ? { recovery: { source: 'execution-uncertain', at: now() } } : {}),
+                tasks: uncertain ? metadata.tasks : metadata.tasks.map(task => ({ ...task, state: 'cancelled' })),
+              };
+              await trackPreparationWrite(() => missions.save(metadata!)).catch(() => { cleanupSucceeded = false; });
+            }
+            // Ambiguous creation, failed cleanup and unknown worktree outcomes
+            // retain their write-ahead blocker. This is local preparation only.
+            if (preparation && !preparationHandedOff && !coreCreationStarted && cleanupSucceeded && !unverifiedWorktreePreparation && !closing) {
+              await preparation.settle().catch(() => undefined);
+            }
+          }
+        } finally {
+          missions.release(sessionId); finishRun(sessionId); releaseRun();
         }
-        await core?.cancelUnstarted(missionSession).catch(() => undefined);
-        // Nothing ran: the fresh worktrees are unchanged, so removing them discards nothing.
-        if (writeMission) activeWriteMissions.delete(writeMission);
-        if (worktreesCreated.length) {
-          const { manager } = await worktreeStore;
-          for (const created of worktreesCreated) await manager.remove(created.id).catch(() => undefined);
-        }
-        missions.release(sessionId); finishRun(sessionId); releaseRun();
-        throw userError(error instanceof Error && error.name === 'UserError' ? error.message : 'The native mission could not be prepared. Check its saved connections and credentials.');
+        throw userError(error instanceof DaemonUnavailableError ? nativeCoreUnavailable(error.code)
+          : error instanceof WorkspacePathError || error instanceof Error && error.name === 'UserError' ? error.message : 'The native mission could not be prepared. Check Diagnostics and its saved connections.');
       }
+    },
+
+    async cancelNativeMission(sessionId, missionId) {
+      assertHostOpen();
+      const run = runs.get(sessionId);
+      // No await between matching the mission and the invocation-guarded cancel.
+      // A stale monitor must never stop another mission, prompt or planning call.
+      if (typeof sessionId !== 'string' || typeof missionId !== 'string' || run?.native?.kind !== 'mission'
+        || run.native.missionId !== missionId || missions.get(sessionId, missionId).state !== 'running') {
+        throw userError('This native mission has changed or already finished. Refresh its status before cancelling.');
+      }
+      return host.cancel(sessionId, run.native.id);
     },
 
     async nativeMissionRun(sessionId, missionId) {
@@ -1600,6 +2162,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
 
     async refreshNativeMissionRecovery(sessionId, missionId) {
       if (typeof sessionId !== 'string' || typeof missionId !== 'string' || observations.has(sessionId) || !await sessions.get(sessionId)) throw userError('That managed session no longer exists.');
+      knowledgeVault.assertStable();
       return missionRecovery.refresh(sessionId, missionId);
     },
 
@@ -1610,17 +2173,19 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
 
     async uploadAttachment(sessionId, file: PromptAttachmentInput) {
       if (closing) throw userError('The host is shutting down.');
+      knowledgeVault.assertStable();
       if (typeof sessionId !== 'string') throw userError('That session no longer exists.');
       if (observations.has(sessionId)) throw userError('Observed sessions are read-only. Attach files in the agent’s own app.');
       if (!await sessions.get(sessionId).catch(() => undefined)) throw userError('That session no longer exists.');
       let input: PromptAttachmentInput;
       try { input = normalizeAttachmentUpload(file); } catch (error) { throw userError(error instanceof Error ? error.message : 'Invalid file.'); }
-      return attachments.upload(sessionId, input);
+      return persistence.run(() => attachments.upload(sessionId, input));
     },
 
     async removeAttachment(sessionId, attachmentId) {
+      assertHostOpen();
       if (typeof sessionId !== 'string' || typeof attachmentId !== 'string') throw userError('That file is no longer attached.');
-      await attachments.remove(sessionId, attachmentId);
+      await persistence.run(() => attachments.remove(sessionId, attachmentId));
     },
 
     async attachmentPreview(sessionId, ref) {
@@ -1631,7 +2196,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
 
     async sendPrompt(sessionId, text, promptOptions) {
       if (closing) throw userError('The host is shutting down.');
-      planningOwnership.assertClear(sessionId);
+      nativeOwnership.assertClear(sessionId);
       missions.assertSessionClear(sessionId);
       if (observations.has(sessionId)) throw userError('Observed sessions are read-only. Prompt in the agent’s own app.');
       const prompt = text.trim();
@@ -1650,21 +2215,40 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       if (!record) throw userError('That session no longer exists.');
       const workspace = findWorkspace(record.workspaceId);
       if (learnSkill) {
-        if (record.runtime || workspace.runtimeId === 'hermes') throw userError('Learning a skill here requires an Extalia Native session.');
+        if (record.runtime) throw userError('Learning a skill here requires an Extalia Native session.');
         if (storedOptions(record).permissionMode === 'plan') throw userError('Skill learning writes a library candidate and is unavailable in read-only plan mode.');
         if (!skillRegistry.enabled || !resolveFeatures(findConnection(record.connectionId)).extaliaSkills) throw userError('Skill learning requires Extalia skills and the Rust skill registry. Nothing was saved.');
         if (/^\/learn-skill\s*$/u.test(prompt) && !attachmentIds.length) throw userError('Add source text, a link or an attachment after /learn-skill.');
       }
       // Refused (unknown, foreign or consumed ids) before anything starts; the files are removed only once the turn has started.
-      const files = await attachments.take(sessionId, attachmentIds);
       if (record.runtime) {
+        const files = await attachments.take(sessionId, attachmentIds);
         if (!workspace.projectLocation) throw userError('This workspace has no project folder.');
         await startHermesTurn(record, record.runtime, workspace, workspace.projectLocation, prompt, files);
-        await attachments.consume(sessionId, attachmentIds);
+        await persistence.run(() => attachments.consume(sessionId, attachmentIds));
         return;
       }
-      clearMissionResources([record.connectionId]);
-      const saved = findConnection(record.connectionId);
+      // Capture the saved roster and every approved connection synchronously before credential/catalog I/O.
+      let team: AgentTeam | undefined;
+      if (record.team !== undefined) {
+        const decoded = decodeAgentTeam(record.team);
+        if (!decoded.ok) throw userError('This saved team is invalid. Review its connections and models before starting.');
+        team = structuredClone(decoded.value);
+      }
+      let expectedPersistedTeam = structuredClone(record.team);
+      const approvedTeam = structuredClone(team);
+      const admittedTeam = team?.enabled ? structuredClone(team) : undefined;
+      validateTeamConnections(admittedTeam, sessionWorkspace(workspace, record));
+      // Enabling an inactive saved grant during preparation would require fresh admission and credentials.
+      const assertTeamAdmitted = (next: AgentTeam | null | undefined): void => {
+        if (next?.enabled && next.connections?.some(grant => !admittedTeam?.connections?.some(admitted => admitted.connectionId === grant.connectionId))) {
+          throw userError('Enable additional team connections in team settings before starting a new turn.');
+        }
+      };
+      const connectionIds = [...new Set([record.connectionId, ...(admittedTeam?.connections ?? []).map(grant => grant.connectionId)])];
+      clearMissionResources(connectionIds);
+      const snapshots = new Map(connectionIds.map(id => [id, structuredClone(findConnection(id))]));
+      const saved = snapshots.get(record.connectionId)!;
       // The session's override replaces the lead model and the effort; workers keep explicit tier models.
       const sessionOptions = storedOptions(record);
       const connection: Connection = {
@@ -1672,190 +2256,304 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       };
       const root = workspace.projectLocation;
       if (!root) throw userError('This workspace has no project folder.');
-      const { provider: leadProvider, secret } = await providerFor(connection);
-      const features = resolveFeatures(connection);
-      let team = storedTeam(record);
-      // A team written into the prompt (subagent blocks) becomes the session's team before the turn runs.
-      const spec = parseTeamSpec(prompt);
-      if (spec) {
-        try { team = applyTeamSpec(team, spec, { taken: await takenNames(sessionId), seed: sessionId }); }
-        catch (error) { throw userError(error instanceof Error ? error.message : 'The team in this prompt cannot be used.'); }
-        team = storedTeam(await sessions.update(sessionId, { team: { ...team, updatedAt: now() } }));
-      }
-      const activeTeam = team?.enabled && team.members.length ? team : undefined;
-      /** The team as it changes during the turn (manage_team). */
-      let liveTeam = team;
-      const modelProviders = new Map<string, ModelProvider>();
-      const providerForModel = (model: string): ModelProvider => {
-        if (model === connection.model) return leadProvider;
-        if (!modelProviders.has(model)) modelProviders.set(model, createProvider({ ...connection, model }, secret, options.fetch));
-        return modelProviders.get(model)!;
-      };
-      // With a team, the lead falls back through the team's allowed models when its own model runs out.
-      const leadModels = [...new Set([connection.model, ...(activeTeam?.allowedModels ?? [])].filter(Boolean))];
-      const provider = activeTeam && leadModels.length > 1
-        ? createFallbackProvider(modelChain(leadModels, providerForModel), {
-          onSwitch: change => publish(sessionId, { type: 'agent.state', state: 'thinking', summary: `Switched to ${change.to} (${change.from} hit a limit)` }),
-        })
-        : leadProvider;
-
-      const fileTools = createFileTools(root);
-      const readOnly = fileTools.filter(tool => tool.access === 'read');
-      const commandTool = createCommandTool(root);
-      const tools: AnyTool[] = [...fileTools, commandTool];
-      let memoryNotes: { name: string; summary: string }[] | undefined;
-      let memoryCatalog: { omitted: number; incomplete: boolean } | undefined;
-      if (features.extaliaMemory) {
-        const memory = new MemoryStore(path.join(layout.workspaces, workspace.id, 'memory'));
-        const catalog = await memory.catalog({ limit: 8 });
-        memoryNotes = catalog.notes.map(note => ({ name: note.name, summary: note.summary }));
-        memoryCatalog = { omitted: catalog.omitted, incomplete: catalog.incomplete };
-        const memoryTools = createMemoryTools(memory);
-        tools.push(...memoryTools);
-        readOnly.push(...memoryTools.filter(tool => tool.name !== 'memory_write'));
-      }
-      let skills: { name: string; description: string }[] | undefined;
-      if (features.extaliaSkills) {
-        let inventory: Awaited<ReturnType<SkillRegistry['activeSkills']>> = [];
-        if (skillRegistry.enabled) {
-          // W3 (flag on): user and project skills come only from the Rust core's active, verified revisions. When the
-          // daemon cannot answer they are not offered at all (fail closed); built-in skills stay available.
-          inventory = await skillRegistry.activeSkills().catch(() => {
-            (options.daemon?.log ?? (line => console.warn(line)))('Skill registry unavailable: only built-in skills are offered.');
-            return [];
-          });
-        }
-        // Legacy inventory/consent is review information, never scanner authority.
-        const catalog = await buildAgentSkillCatalog(inventory, skillRegistry.enabled ? { reload: skill => skillRegistry.reload(skill) } : {});
-        const offered = catalog.skills;
-        skills = offered.map(skill => ({ name: skill.name, description: `${skillOrigin(skill).trim()} ${skill.description}`.trim() }));
-        const skillTools = createSkillTools(catalog);
-        tools.push(...skillTools);
-        readOnly.push(...skillTools);
-      }
-      const orchestration = connection.orchestration.enabled && connection.orchestration.maxDelegations > 0 ? connection.orchestration : undefined;
-      // An enabled team always gets the delegation tool, with room to reach every member at least once per turn.
-      const maxDelegations = Math.max(orchestration?.maxDelegations ?? 0, activeTeam?.members.length ?? 0);
-      const permissions = workspace.permissions ?? DEFAULT_PERMISSIONS;
-      // v0.0.49: the session's permission mode. Plan mode offers no edit or command tools (to the lead or to workers).
-      const permissionMode: PermissionMode = sessionOptions.permissionMode ?? 'workspace';
-      if (learnSkill) tools.push(createSkillProposalTool({
-        provenance: { sessionId, workspaceId: workspace.id, promptSha256: createHash('sha256').update(prompt).digest('hex') },
-        propose: (input, provenance, signal) => skillRegistry.propose(input, provenance, signal),
-      }));
-      const sessionGrants = grants.get(sessionId) ?? new Set<ToolAccess>();
-      grants.set(sessionId, sessionGrants);
-      /** Approvals of the lead and of write members share the session's one pending slot (writers run one at a time). */
-      const askUser = (request: { approvalId: string }) => new Promise<ApprovalOutcome>(resolve => {
-        const current = runs.get(sessionId);
-        if (!current) { resolve('reject'); return; }
-        current.pending = { approvalId: request.approvalId, resolve: outcome => { delete current.pending; resolve(outcome); } };
-      });
-      const providers = new Map<TaskTier, ModelProvider>();
-      const delegation = createDelegationTool({
-        providerFor: tier => {
-          if (!providers.has(tier)) providers.set(tier, createProvider({ ...connection, model: tierModel(connection, tier) }, secret, options.fetch));
-          return providers.get(tier)!;
-        },
-        workerTools: readOnly,
-        maxDelegations: orchestration?.maxDelegations ?? 0,
-        workspace: { name: workspace.name, root },
-        emit: (body, agentId) => publish(sessionId, body, agentId),
-        // Read members only research; write members edit inside their scope (one at a time) and ask approvals under their own id.
-        team: {
-          get members() { return liveTeam?.enabled ? liveTeam.members : []; },
-          get rules() { return liveTeam?.rules ?? []; },
-          providerForModel, leadModels, writeTools: permissionMode === 'plan' ? [] : [...fileTools.filter(tool => tool.access === 'write'), commandTool],
-        },
-        permissions, permissionMode, sessionGrants,
-        requestApproval: request => askUser(request),
-      });
-      if (maxDelegations > 0) tools.push(delegation);
-      tools.push(createManageTeamTool({
-        getTeam: () => liveTeam,
-        seed: sessionId,
-        takenNames: () => liveTaken,
-        emit: body => publish(sessionId, body),
-        saveTeam: async next => {
-          let checked: AgentTeam | null;
-          try { checked = normalizeAgentTeam(next); } catch (error) { throw new Error(error instanceof Error ? error.message : 'Invalid team.', { cause: error }); }
-          const updated = storedTeam(await sessions.update(sessionId, { team: { ...checked!, updatedAt: now() } }))!;
-          liveTeam = updated;
-          // The first member makes delegation available within the same turn.
-          if (updated.enabled && updated.members.length && !tools.includes(delegation)) tools.push(delegation);
-          return updated;
-        },
-      }));
-      const liveTaken = await takenNames(sessionId);
-      const system = buildSystemPrompt({
-        workspace: { name: workspace.name, root },
-        platform: { os: process.platform === 'darwin' ? 'macOS' : process.platform === 'win32' ? 'Windows' : 'Linux', shell: process.platform === 'win32' ? 'cmd.exe' : path.basename(env.SHELL || '/bin/sh') },
-        projectInstructions: await projectInstructions(root),
-        ...(memoryNotes ? { memory: memoryNotes, memoryCatalog } : {}),
-        ...(skills ? { skills } : {}),
-        ...(learnSkill ? { skillLearning: true } : {}),
-        ...(maxDelegations > 0 ? { orchestration: { maxDelegations } } : {}),
-        ...(activeTeam ? { team: { members: activeTeam.members, ...(activeTeam.rules ? { rules: activeTeam.rules } : {}), ...(spec ? { fromPrompt: true } : {}) } } : {}),
-        manageTeam: true,
-        ...(permissionMode !== 'workspace' ? { permissionMode } : {}),
-        ...(record.agentName ? { agentName: record.agentName } : {}),
-        ...(record.continuedFrom ? { continuation: { source: sourceLabel(record.continuedFrom.sourceId), title: record.continuedFrom.title } } : {}),
-      });
-      const history = toModelHistory(await sessions.readMessages(sessionId));
-      if (record.title === NEW_SESSION_TITLE) await sessions.update(sessionId, { title: (prompt || files.map(file => file.name).join(', ')).replace(/\s+/g, ' ').slice(0, 60) });
-
       const controller = new AbortController();
+      assertNativeBoundaryAvailable();
       if (closing || runs.has(sessionId)) throw userError('This session is still working or the host is shutting down.');
-      planningOwnership.assertClear(sessionId);
-      missions.assertSessionClear(sessionId);
-      clearMissionResources([record.connectionId]);
-      const run: Run = { controller, connectionIds: [record.connectionId], done: Promise.resolve() };
+      let settleRun!: () => void;
+      const run: Run = { controller, connectionIds, done: new Promise<void>(resolve => { settleRun = resolve; }),
+        native: { id: newId('native-run'), sessionId, workspaceId: record.workspaceId, kind: 'chat' } };
+      knowledgeVault.assertStable();
+      if (run.native) assertNativeBoundaryAvailable();
       runs.set(sessionId, run);
-      publish(sessionId, { type: 'prompt.submitted', text: prompt, via: 'extalia', ...(files.length ? { attachments: promptAttachments(files) } : {}) });
-      // Members set by the prompt appear in the Office at once.
-      if (spec && activeTeam) for (const member of activeTeam.members) publish(sessionId, { type: 'subagent.spawned', subagentId: member.id, role: member.role, label: member.name });
-
-      // Past this point the turn runs: its files are removed from the waiting list.
-      await attachments.consume(sessionId, attachmentIds);
-      run.done = (async () => {
-        try {
-          const result = await runTurn({
-            provider, system, history, prompt, tools, permissions, sessionGrants, permissionMode,
-            attachments: turnAttachments(files),
-            emit: body => publish(sessionId, body),
-            requestApproval: request => askUser(request),
-            signal: controller.signal,
-          });
-          await sessions.writeMessages(sessionId, result.history);
-          // v0.0.48: the prompt size of the turn's last request is the context in use (no compaction happens here).
-          if (result.context) {
-            const previous = isContextUsage(record.context) ? record.context : undefined;
-            await sessions.update(sessionId, { context: sessionContext({ ...result.context, compactions: previous?.compactions ?? 0, at: now(), ...(previous ? { previous } : {}) }) }).catch(() => undefined);
-          }
-        } catch (error) {
-          publish(sessionId, { type: 'turn.failed', error: error instanceof Error ? error.message : 'The turn failed.' });
-          publish(sessionId, { type: 'agent.state', state: 'idle' });
-        } finally {
-          await sessions.update(sessionId, { lastActiveAt: now() }).catch(() => undefined);
-          finishRun(sessionId);
+      try {
+        const boundary = workspaceBoundaryKey(config.workspaces);
+        const access = await createWorkspaceAccess({ workspaceId: workspace.id, workspaces: structuredClone(config.workspaces), protectedRoots: [layout.root] });
+        const history = toModelHistory(await sessions.readMessages(sessionId));
+        if (record.workspaceBoundary !== boundary && history.length) throw userError('Workspace folders or access boundaries changed. Start a new Native session so earlier context is not replayed under the new boundaries.');
+        if (workspaceCrossAccess(workspace) === 'isolated' && record.continuedFrom) throw userError('An isolated workspace needs a fresh session without imported conversation context.');
+        if (record.workspaceBoundary !== boundary) await sessions.update(sessionId, { workspaceBoundary: boundary });
+        const files = await attachments.take(sessionId, attachmentIds);
+        if (closing || controller.signal.aborted) throw userError('The host is shutting down.');
+        // Both built-in Native provider APIs accept typed images. Persist exactly the composed text,
+        // including attachment notices, while retaining no image bytes in saved model history.
+        const acceptedText = composeTurn(prompt, turnAttachments(files), { images: true }).text;
+        await sessions.writeMessages(sessionId, [...history, { role: 'user', text: acceptedText }]);
+        await publish(sessionId, { type: 'prompt.submitted', text: prompt, via: 'extalia', ...(files.length ? { attachments: promptAttachments(files) } : {}) }, 'primary', undefined, { strict: true });
+        run.accepted = true;
+        // Resolve all credentials under the admitted connection guards; later team edits affect only the next turn.
+        const frozenProviders = new Map(await Promise.all([...snapshots].map(async ([id, savedConnection]) => {
+          const selected = id === record.connectionId ? connection : savedConnection;
+          return [id, { connection: selected, ...await providerFor(selected) }] as const;
+        })));
+        const { provider: leadProvider, secret } = frozenProviders.get(record.connectionId)!;
+        if (closing || controller.signal.aborted) throw userError('The host is shutting down.');
+        const features = resolveFeatures(connection);
+        // A team written into the prompt (subagent blocks) becomes the session's team before the turn runs.
+        const spec = parseTeamSpec(prompt);
+        if (spec) {
+          try { team = applyTeamSpec(team, spec, { taken: await takenNames(sessionId), seed: sessionId }); }
+          catch (error) { throw userError(error instanceof Error ? error.message : 'The team in this prompt cannot be used.'); }
+          assertTeamGrantCeiling(team, approvedTeam);
+          assertTeamAdmitted(team);
+          validateTeamConnections(team, sessionWorkspace(workspace, record));
+          const updatedTeamRecord = await sessions.update(sessionId, { team: { ...team, updatedAt: now() } }, { expectedTeam: expectedPersistedTeam });
+          team = storedTeam(updatedTeamRecord);
+          expectedPersistedTeam = structuredClone(updatedTeamRecord.team);
         }
-      })();
+        const activeTeam = team?.enabled && team.members.length ? team : undefined;
+        /** The team as it changes during the turn (manage_team). */
+        let liveTeam = team;
+        const modelProviders = new Map<string, ModelProvider>();
+        const providerForModel = (model: string, member?: TeamMember): ModelProvider => {
+          const id = member?.connectionId ?? record.connectionId;
+          const frozen = frozenProviders.get(id);
+          if (!frozen) throw userError('That team connection was not approved for this turn.');
+          if (member?.connectionId) {
+            const grant = approvedTeam?.connections?.find(item => item.connectionId === id);
+            if (!grant?.allowedModels.includes(model)) throw userError('That model was not approved for this team connection.');
+          }
+          if (member && !member.connectionId && approvedTeam?.connections !== undefined && !leadModels.includes(model)) throw userError('That model was not approved for the lead connection.');
+          if (model === frozen.connection.model) return frozen.provider;
+          const key = JSON.stringify([id, model]);
+          if (!modelProviders.has(key)) modelProviders.set(key, createProvider({ ...frozen.connection, model }, frozen.secret, options.fetch));
+          return modelProviders.get(key)!;
+        };
+        // The saved lead policy also covers the first member added during this turn, even when the roster starts empty.
+        const leadModels = [...new Set([connection.model, ...(team?.allowedModels ?? [])].filter(Boolean))];
+        const provider = activeTeam && leadModels.length > 1
+          ? createFallbackProvider(modelChain(leadModels, providerForModel), {
+            onSwitch: change => publish(sessionId, { type: 'agent.state', state: 'thinking', summary: `Switched to ${change.to} (${change.from} hit a limit)` }),
+          })
+          : leadProvider;
+
+        const fileTools = createFileTools(root, { authority: access }).map(localWriteTool);
+        const foldersTool = workspaceFoldersTool(access);
+        const readOnly = [...fileTools.filter(tool => tool.access === 'read'), foldersTool];
+        const commandTool = createCommandTool(root, { filesystemBoundary: 'required' });
+        const tools: AnyTool[] = [...fileTools, foldersTool, commandTool];
+        let memoryNotes: { name: string; summary: string }[] | undefined;
+        let memoryCatalog: { omitted: number; incomplete: boolean } | undefined;
+        const selectedFeatures = [...frozenProviders.values()].map(selected => resolveFeatures(selected.connection));
+        if (selectedFeatures.some(selected => selected.extaliaMemory)) {
+          const memory = new MemoryStore(workspaceMemoryDirectory(layout.workspaces, workspace));
+          const catalog = await memory.recallCatalog(acceptedText, { limit: 4, relevantOnly: true });
+          if (features.extaliaMemory) {
+            memoryNotes = catalog.notes.map(note => ({ name: note.name, summary: note.summary }));
+            memoryCatalog = { omitted: catalog.omitted, incomplete: catalog.incomplete };
+          }
+          const memoryTools = createMemoryTools(memory).map(localWriteTool);
+          if (features.extaliaMemory) tools.push(...memoryTools);
+          readOnly.push(...memoryTools.filter(tool => tool.name !== 'memory_write'));
+        }
+        let skills: { name: string; description: string }[] | undefined;
+        let skillCatalog: { omitted: number; incomplete: boolean } | undefined;
+        let skillCategories: Parameters<typeof buildSystemPrompt>[0]['skillCategories'];
+        if (selectedFeatures.some(selected => selected.extaliaSkills)) {
+          let inventory: Awaited<ReturnType<SkillRegistry['activeCatalog']>>['skills'] = [];
+          let incomplete = false;
+          if (skillRegistry.enabled) {
+            // W3 (flag on): user and project skills come only from the Rust core's active, verified revisions. When the
+            // daemon cannot answer they are not offered at all (fail closed); built-in skills stay available.
+            const active = await withRegistry(() => skillRegistry.activeCatalog(workspace.id)).catch(() => {
+              (options.daemon?.log ?? (line => console.warn(line)))('Skill registry unavailable: only built-in skills are offered.');
+              return { skills: [], incomplete: true };
+            });
+            inventory = active.skills;
+            incomplete = active.incomplete;
+          }
+          // Legacy inventory/consent is review information, never scanner authority.
+          const catalog = await buildAgentSkillCatalog(inventory, { incomplete, prompt: acceptedText, relevantOnly: true, ...(skillRegistry.enabled ? {
+            reload: skill => withRegistry(() => skillRegistry.reload(skill, workspace.id)),
+            reloadMany: selected => withRegistry(() => skillRegistry.reloadMany(selected, workspace.id)),
+          } : {}) });
+          const offered = catalog.skills;
+          if (features.extaliaSkills) {
+            skillCatalog = { omitted: catalog.omitted ?? 0, incomplete: catalog.incomplete === true };
+            skillCategories = catalog.categories;
+            skills = offered.map(skill => ({ name: skill.name, description: `${skillOrigin(skill).trim()} ${skill.description}`.trim() }));
+          }
+          const skillTools = createSkillTools(catalog);
+          if (features.extaliaSkills) tools.push(...skillTools);
+          readOnly.push(...skillTools);
+        }
+        const orchestration = activeTeam && connection.orchestration.enabled && connection.orchestration.maxDelegations > 0 ? connection.orchestration : undefined;
+        // An enabled team always gets the delegation tool, with room to reach every member at least once per turn.
+        const maxDelegations = Math.max(orchestration?.maxDelegations ?? 0, activeTeam?.members.length ?? 0);
+        const permissions = workspace.permissions ?? DEFAULT_PERMISSIONS;
+        // v0.0.49: the session's permission mode. Plan mode offers no edit or command tools (to the lead or to workers).
+        const permissionMode: PermissionMode = sessionOptions.permissionMode ?? 'workspace';
+        if (learnSkill) tools.push(createSkillProposalTool({
+          provenance: { sessionId, workspaceId: workspace.id, promptSha256: createHash('sha256').update(prompt).digest('hex') },
+          propose: (input, provenance, signal) => withRegistry(() => skillRegistry.propose(input, provenance, signal)),
+        }));
+        const sessionGrants = grants.get(sessionId) ?? new Set<ToolAccess>();
+        grants.set(sessionId, sessionGrants);
+        /** Approvals of the lead and of write members share the session's one pending slot (writers run one at a time). */
+        const askUser = (request: { approvalId: string }) => new Promise<ApprovalOutcome>(resolve => {
+          const current = runs.get(sessionId);
+          if (!current) { resolve('reject'); return; }
+          current.pending = { approvalId: request.approvalId, resolve: outcome => { delete current.pending; resolve(outcome); } };
+        });
+        const workerToolsForConnection = (id: string): AnyTool[] => {
+          const selected = frozenProviders.get(id);
+          if (!selected) throw userError('That team connection was not approved for this turn.');
+          const workerFeatures = resolveFeatures(selected.connection);
+          return readOnly.filter(tool => (!tool.name.startsWith('memory_') || workerFeatures.extaliaMemory)
+            && (!tool.name.startsWith('skill_') || workerFeatures.extaliaSkills));
+        };
+        const providers = new Map<TaskTier, ModelProvider>();
+        const delegation = createDelegationTool({
+          providerFor: tier => {
+            if (!providers.has(tier)) providers.set(tier, createProvider({ ...connection, model: tierModel(connection, tier) }, secret, options.fetch));
+            return providers.get(tier)!;
+          },
+          onWorkerStarted: (id, label, member) => {
+            const selected = frozenProviders.get(member?.connectionId ?? record.connectionId);
+            const preferredModel = member?.models[0] ?? (member?.connectionId ? approvedTeam?.connections?.find(grant => grant.connectionId === member.connectionId)?.allowedModels[0] : undefined);
+            const routeLabel = selected && member ? `${label ?? member.name} · ${safeLabel(selected.connection.name, 80)}${preferredModel ? ` · ${preferredModel}` : ''}` : label;
+            nativeWorkers.set(id, { id, sessionId, workspaceId: record.workspaceId, kind: 'delegated',
+              state: 'running', active: true, evidence: 'local-invocation', ...(routeLabel ? { label: routeLabel } : {}) });
+          },
+          onWorkerSettled: id => { nativeWorkers.delete(id); },
+          workerTools: workerToolsForConnection(record.connectionId),
+          maxDelegations: orchestration?.maxDelegations ?? 0,
+          requireMember: true,
+          workspace: { name: workspace.name, root },
+          emit: (body, agentId) => publish(sessionId, body, agentId),
+          // Read members only research; write members edit inside their scope (one at a time) and ask approvals under their own id.
+          team: {
+            get members() { return liveTeam?.enabled ? liveTeam.members : []; },
+            get rules() { return liveTeam?.rules ?? []; },
+            providerForModel, leadModels,
+            modelsForMember: member => member.connectionId
+              ? approvedTeam?.connections?.find(grant => grant.connectionId === member.connectionId)?.allowedModels ?? []
+              : leadModels,
+            workerToolsForMember: member => workerToolsForConnection(member.connectionId ?? record.connectionId),
+            writeTools: permissionMode === 'plan' ? [] : [...fileTools.filter(tool => tool.access === 'write'), commandTool],
+            writeToolsForMember: member => permissionMode === 'plan' ? [] : [
+              ...createFileTools(root, { authority: {
+                canRead: access.canRead,
+                resolve: async (requested, purpose) => {
+                  const resolved = await access.resolve(requested, purpose);
+                  if (purpose === 'write') {
+                    const refusal = memberEditRefusal(member, resolved.relative);
+                    if (refusal) throw new WorkspacePathError(refusal);
+                  }
+                  return resolved;
+                },
+              } }).filter(tool => tool.access === 'write').map(localWriteTool),
+              commandTool,
+            ],
+          },
+          permissions, permissionMode, sessionGrants,
+          requestApproval: request => askUser(request),
+        });
+        if (maxDelegations > 0) tools.push(delegation);
+        if (activeTeam) tools.push(createManageTeamTool({
+          getTeam: () => liveTeam,
+          seed: sessionId,
+          takenNames: () => liveTaken,
+          emit: body => publish(sessionId, body),
+          saveTeam: async next => {
+            let checked: AgentTeam | null;
+            try { checked = normalizeAgentTeam(next); } catch (error) { throw new Error(error instanceof Error ? error.message : 'Invalid team.', { cause: error }); }
+            assertTeamGrantCeiling(checked, approvedTeam);
+            assertTeamAdmitted(checked);
+            validateTeamConnections(checked, sessionWorkspace(workspace, record));
+            if (checked?.enabled !== expectedPersistedTeam?.enabled || !checked?.members.length) throw new Error('Only the user can pause or clear the configured team. Keep its setup for later prompts.');
+            const updatedRecord = await sessions.update(sessionId, { team: { ...checked, updatedAt: now() } }, { expectedTeam: expectedPersistedTeam });
+            expectedPersistedTeam = structuredClone(updatedRecord.team);
+            const updated = storedTeam(updatedRecord)!;
+            liveTeam = updated;
+            // The first member makes delegation available within the same turn.
+            if (updated.enabled && updated.members.length && !tools.includes(delegation)) tools.push(delegation);
+            return updated;
+          },
+        }));
+        const liveTaken = await takenNames(sessionId);
+        const system = buildSystemPrompt({
+          workspace: { name: workspace.name, root },
+          platform: { os: process.platform === 'darwin' ? 'macOS' : process.platform === 'win32' ? 'Windows' : 'Linux', shell: process.platform === 'win32' ? 'cmd.exe' : path.basename(env.SHELL || '/bin/sh') },
+          projectInstructions: await projectInstructions(root, access),
+          workspaceFolders: access.folders(),
+          ...(memoryNotes ? { memory: memoryNotes, memoryCatalog } : {}),
+          ...(skills ? { skills, skillCatalog, skillCategories } : {}),
+          ...(learnSkill ? { skillLearning: true } : {}),
+          ...(maxDelegations > 0 ? { orchestration: { maxDelegations } } : {}),
+          ...(activeTeam ? { team: { members: activeTeam.members, ...(activeTeam.rules ? { rules: activeTeam.rules } : {}), ...(activeTeam.goal ? { goal: activeTeam.goal } : {}), ...(activeTeam.goalDocument ? { goalDocument: activeTeam.goalDocument } : {}), ...(spec ? { fromPrompt: true } : {}) } } : {}),
+          manageTeam: Boolean(activeTeam),
+          teamState: team?.enabled === false ? 'disabled' : activeTeam ? 'active' : 'none',
+          ...(permissionMode !== 'workspace' ? { permissionMode } : {}),
+          ...(record.agentName ? { agentName: record.agentName } : {}),
+          ...(record.continuedFrom ? { continuation: { source: sourceLabel(record.continuedFrom.sourceId), title: record.continuedFrom.title } } : {}),
+        });
+        if (record.title === NEW_SESSION_TITLE) await sessions.update(sessionId, { title: (prompt || files.map(file => file.name).join(', ')).replace(/\s+/g, ' ').slice(0, 60) });
+
+        if (closing || controller.signal.aborted) throw userError('The host is shutting down.');
+        nativeOwnership.assertClear(sessionId);
+        missions.assertSessionClear(sessionId);
+        clearMissionResources(connectionIds, sessionId);
+        knowledgeVault.assertStable();
+        // Members set by the prompt appear in the Office at once.
+        if (spec && activeTeam) for (const member of activeTeam.members) publish(sessionId, { type: 'subagent.spawned', subagentId: member.id, role: member.role, label: member.name });
+
+        // Past this point the turn runs: its files are removed from the waiting list.
+        await persistence.run(() => attachments.consume(sessionId, attachmentIds));
+        void (async () => {
+          try {
+            const result = await runTurn({
+              provider, system, history, prompt, tools, permissions, sessionGrants, permissionMode,
+              attachments: turnAttachments(files),
+              emit: body => publish(sessionId, body),
+              requestApproval: request => askUser(request),
+              signal: controller.signal,
+            });
+            await sessions.writeMessages(sessionId, result.history);
+            // v0.0.48: the prompt size of the turn's last request is the context in use (no compaction happens here).
+            if (result.context) {
+              const previous = isContextUsage(record.context) ? record.context : undefined;
+              await sessions.update(sessionId, { context: sessionContext({ ...result.context, compactions: previous?.compactions ?? 0, at: now(), ...(previous ? { previous } : {}) }) }).catch(() => undefined);
+            }
+          } catch (error) {
+            publish(sessionId, { type: 'turn.failed', error: error instanceof Error ? error.message : 'The turn failed.' });
+            publish(sessionId, { type: 'agent.state', state: 'idle' });
+          } finally {
+            await sessions.update(sessionId, { lastActiveAt: now() }).catch(() => undefined);
+            finishRun(sessionId);
+            settleRun();
+          }
+        })();
+      } catch (error) {
+        if (run.accepted) await publish(sessionId, { type: 'turn.failed', error: controller.signal.aborted ? 'Stopped by the user.' : error instanceof Error ? error.message : 'The turn could not start.' });
+        finishRun(sessionId);
+        settleRun();
+        throw error;
+      }
     },
 
     async resolveApproval(sessionId, approvalId, decision: ApprovalDecisionInput) {
+      assertHostOpen();
       if (observations.has(sessionId)) throw userError('Observed sessions cannot approve native agent actions.');
       const pending = runs.get(sessionId)?.pending;
       if (!pending || pending.approvalId !== approvalId) throw userError('This request is no longer waiting for approval.');
       pending.resolve(decision);
     },
 
-    async cancel(sessionId) {
-      if (observations.has(sessionId)) throw userError('Extalia cannot cancel an observed agent. Pause observation instead.');
+    async cancel(sessionId, expectedNativeRunId) {
+      assertHostOpen();
       const run = runs.get(sessionId);
-      if (!run) return;
+      // Validate before publishing, aborting or resolving approvals. A later turn in
+      // the same session must never inherit authority from an older status row.
+      if (expectedNativeRunId !== undefined && (typeof expectedNativeRunId !== 'string' || !run?.native || run.native.id !== expectedNativeRunId)) {
+        throw userError('This Native invocation has changed or already finished. Refresh its status before cancelling.');
+      }
+      if (observations.has(sessionId)) throw userError('Extalia cannot cancel an observed agent. Pause observation instead.');
+      const pausedPrompts = promptQueues.suspend(sessionId);
+      if (!run) { await pausedPrompts; return; }
       if (!run.planning) publish(sessionId, { type: 'user.intervention', action: 'cancel' });
       run.controller.abort();
       run.pending?.resolve('reject');
+      await pausedPrompts;
     },
 
     async importLocations() {
@@ -1879,6 +2577,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     },
 
     async commitImports(scanId, candidateIds, mode = 'imported') {
+      assertHostOpen();
       const preview = nativeImport.preview(scanId, candidateIds, mode);
       if (!preview.sessions.length) throw userError(preview.diagnostics[0]?.message ?? 'Nothing could be imported from the selection.');
       const applied = applyImport(JSON.stringify(preview.sessions.map(entry => entry.session)), library);
@@ -1889,6 +2588,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     },
 
     async importPortable(json) {
+      assertHostOpen();
       const applied = applyImport(json, library);
       if (!applied.preview.rejectionReason) {
         library = applied.library;
@@ -1904,6 +2604,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     },
 
     async organizeLibrarySession(id, action, title) {
+      assertHostOpen();
       if (!library.sessions.some(item => item.id === id)) throw userError('That conversation is no longer in the library.');
       if (action === 'rename') {
         const clean = (title ?? '').replace(/\s+/g, ' ').trim();
@@ -1917,12 +2618,14 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
 
     listFiles: (workspaceId, dir) => inspectWorkspace(workspaceId, root => listFiles(root, dir)),
     readFile: (workspaceId, file) => inspectWorkspace(workspaceId, root => readWorkspaceFile(root, file)),
-    gitStatus: workspaceId => inspectWorkspace(workspaceId, root => gitStatus(root, { env })),
-    gitDiff: (workspaceId, file) => inspectWorkspace(workspaceId, root => gitDiff(root, file, { env })),
+    gitRepositories: workspaceId => inspectWorkspace(workspaceId, root => gitRepositories(root, { env })),
+    gitStatus: (workspaceId, repositoryPath) => inspectWorkspace(workspaceId, root => gitStatus(root, { env }, repositoryPath)),
+    gitDiff: (workspaceId, file, repositoryPath) => inspectWorkspace(workspaceId, root => gitDiff(root, file, { env }, repositoryPath)),
 
     workspaceSkills: workspaceId => workspaceSkillReport(workspaceId),
 
     async allowWorkspaceSkills(workspaceId, raw) {
+      assertHostOpen();
       let requested: SkillConsentInput[];
       try { requested = normalizeSkillConsent(raw); } catch (error) { throw userError(error instanceof Error ? error.message : 'Invalid skills.'); }
       const report = await workspaceSkillReport(workspaceId);
@@ -1933,30 +2636,32 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
         if (!sha256) throw userError(`The skill "${skill.name}" is no longer in this project.`);
         if (sha256 !== skill.sha256) throw userError(`The skill "${skill.name}" changed after it was shown. Review it again before allowing it.`);
       }
-      await skillConsent(report.workspaceId).allow(findWorkspace(report.workspaceId).projectLocation!, requested, now());
+      await persistence.run(() => skillConsent(report.workspaceId).allow(findWorkspace(report.workspaceId).projectLocation!, requested, now()));
       return workspaceSkillReport(workspaceId);
     },
 
     async revokeWorkspaceSkills(workspaceId, raw) {
+      assertHostOpen();
       let names: string[] | undefined;
       try { names = normalizeSkillNames(raw); } catch (error) { throw userError(error instanceof Error ? error.message : 'Invalid skills.'); }
       const report = await workspaceSkillReport(workspaceId);
-      await skillConsent(report.workspaceId).revoke(findWorkspace(report.workspaceId).projectLocation!, names);
+      await persistence.run(() => skillConsent(report.workspaceId).revoke(findWorkspace(report.workspaceId).projectLocation!, names));
       return workspaceSkillReport(workspaceId);
     },
 
     // W3 Skill Security Center (inputs validated by `@extalia/platform` inside the registry service).
-    skillRegistry: () => skillRegistry.report(),
-    preflightSkill: input => skillRegistry.preflight(input),
-    previewSkillRouting: input => skillRegistry.routingPreview(input),
-    inspectSkill: revisionId => skillRegistry.inspect(revisionId),
-    importSkill: source => skillRegistry.import(source),
-    reviewSkill: input => skillRegistry.review(input),
-    approveSkill: input => skillRegistry.approve(input),
-    activateSkill: (revisionId, approvalId) => skillRegistry.activate(revisionId, approvalId),
-    deactivateSkill: packageId => skillRegistry.deactivate(packageId),
-    rollbackSkill: (packageId, revisionId) => skillRegistry.rollback(packageId, revisionId),
-    revokeSkill: revisionId => skillRegistry.revoke(revisionId),
+    skillRegistry: () => withRegistry(() => skillRegistry.report()),
+    skillRegistryPage: input => withRegistry(() => skillRegistry.page(input)),
+    preflightSkill: input => withRegistry(() => skillRegistry.preflight(input)),
+    previewSkillRouting: input => withRegistry(() => skillRegistry.routingPreview(input)),
+    inspectSkill: revisionId => withRegistry(() => skillRegistry.inspect(revisionId)),
+    importSkill: source => withRegistry(() => skillRegistry.import(source)),
+    reviewSkill: input => withRegistry(() => skillRegistry.review(input)),
+    approveSkill: input => withRegistry(() => skillRegistry.approve(input)),
+    activateSkill: (revisionId, approvalId) => withRegistry(() => skillRegistry.activate(revisionId, approvalId)),
+    deactivateSkill: packageId => withRegistry(() => skillRegistry.deactivate(packageId)),
+    rollbackSkill: (packageId, revisionId) => withRegistry(() => skillRegistry.rollback(packageId, revisionId)),
+    revokeSkill: revisionId => withRegistry(() => skillRegistry.revoke(revisionId)),
     // Read-only catalog for the Skills page, including bundled instruction text for inspection.
     builtinSkills: async () => normalizeBuiltinSkills(BUILTIN_SKILLS.map(({ name, description, category, body }) => ({ name, description, category, body }))),
 
@@ -1978,6 +2683,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     },
 
     async setHookPrivacy(privacyOptions) {
+      assertHostOpen();
       try { await observations.setPrivacy(privacyOptions); }
       catch (error) { throw userError(error instanceof Error ? error.message : 'Invalid privacy or dashboard setting.'); }
       return host.hookIngest();
@@ -1985,19 +2691,21 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
 
     async agentAppConnections() { return (await agentApps()).connections(); },
     async planAgentAppConnect(app, connectOptions) { return (await agentApps()).plan(app, connectOptions); },
-    async applyAgentAppConnect(app, connectOptions) {
+    applyAgentAppConnect: (app, connectOptions) => mutateOwnedProfile(async () => {
       const result = await (await agentApps()).apply(app, connectOptions);
       await observations.enableAutoWatchForApp(app).catch(() => undefined);
       return result;
-    },
-    async disconnectAgentApp(app) { return (await agentApps()).disconnect(app); },
+    }),
+    disconnectAgentApp: app => mutateOwnedProfile(async () => (await agentApps()).disconnect(app)),
     async testAgentAppConnection(app) { return (await agentApps()).test(app); },
     async recoverAgentAppConnection(action) {
       if (action !== 'preview' && action !== 'rollback' && action !== 'keep') throw userError('Choose preview, roll back or keep for an interrupted connection change.');
-      return (await agentApps()).recover(action);
+      if (action === 'preview') return (await agentApps()).recover(action);
+      return mutateOwnedProfile(async () => (await agentApps()).recover(action));
     },
 
     async saveCharacterAppearance(characterId, appearance) {
+      assertHostOpen();
       if (!isCharacterId(characterId)) throw userError('Choose a character in the Office.');
       if (!(await liveSessionIds()).has(characterSessionId(characterId))) throw userError('That character’s session no longer exists.');
       const characters = { ...appearances.characters };
@@ -2016,6 +2724,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     },
 
     subscribe(listener) {
+      if (closing || persistence.isSealed) return () => undefined;
       listeners.add(listener);
       return () => { listeners.delete(listener); };
     },
@@ -2035,24 +2744,26 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     status: async id => (await worktreeStore).manager.status(id),
     diff: async id => (await worktreeStore).manager.diff(id),
     orphans: async () => (await worktreeStore).manager.orphans(),
-    remove: async (id, confirm) => (await worktreeStore).manager.remove(id, confirm),
-    propose: async (worktreeId, request = {}) => {
+    remove: (id, confirm) => mutateOwnedProfile(async () => (await worktreeStore).manager.remove(id, confirm)),
+    propose: (worktreeId, request = {}) => mutateOwnedProfile(async () => {
       const { manager, queue } = await worktreeStore;
       if (request.gate) return queue.propose(worktreeId, { ...request, gateSource: 'request' });
       // ADR 0028: without a gate in the request, the gate configured on the mission's workspace runs.
       // Without either the proposal is `gate_missing`; there is no ungated integration.
       const gate = await workspaceGate(manager.get(worktreeId).owner.missionId);
       return queue.propose(worktreeId, { ...request, ...(gate ? { gate, gateSource: 'workspace' as const } : {}) });
-    },
+    }),
     proposals: async () => (await worktreeStore).queue.list(),
-    apply: async (proposalId, approval) => (await worktreeStore).queue.apply(proposalId, approval),
+    apply: (proposalId, approval) => mutateOwnedProfile(async () => (await worktreeStore).queue.apply(proposalId, approval)),
   };
   // The renderer's worktree methods (Desktop IPC and the Bridge forward them through AGENT_HOST_METHODS).
-  Object.assign(host, worktreeHostMethods(worktreeApi, userError));
-  // W5 Knowledge: the profile's vault index lives in the Rust core, so the methods exist only with the
-  // native core flag on. With the TypeScript core they stay absent and the Knowledge page stays hidden.
+  Object.assign(host, worktreeHostMethods(worktreeApi, userError), nativeMemory.methods);
+  // Knowledge uses the shared lazy sidecar independently of mission routing.
   let vaultWatcher: VaultWatcher | undefined;
-  if (daemon && knowledgeVault) {
+  let drainKnowledge: (() => Promise<void>) | undefined;
+  {
+    const daemon = recoveryDaemon;
+    let activated = false;
     const vault = knowledgeVault;
     const log = options.daemon?.log ?? (line => console.warn(line));
     const { watcher: watcherOptions, ...knowledgeOptions } = options.knowledge ?? {};
@@ -2062,10 +2773,19 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       try {
         event = createEvent({ sessionId: KNOWLEDGE_EVENT_SESSION_ID, source: { runtime: 'extalia-native', channel: 'system', adapter: 'knowledge' }, body: { type: 'session.updated', revision, messageCount: notes } });
       } catch { return; }
-      for (const listener of listeners) { try { listener(event); } catch { /* disconnected UI */ } }
+      if (!closing && !persistence.isSealed) for (const listener of listeners) { try { listener(event); } catch { /* disconnected UI */ } }
     };
     // The service asks the vault setting before every request; the setting switches inside the service's sync queue.
-    const knowledge = new KnowledgeService({ daemon, ...knowledgeOptions, log, vault: { check: () => vault.check(), label: () => vault.label() } });
+    const checkKnowledgeOpen = () => { if (closing) throw userError('The host is shutting down.'); };
+    const knowledge = new KnowledgeService({
+      daemon, ...knowledgeOptions, log,
+      vault: {
+        check: () => { checkKnowledgeOpen(); vault.check(); },
+        label: () => vault.label(),
+        admit: () => { checkKnowledgeOpen(); vault.assertStable(); },
+      },
+    });
+    drainKnowledge = () => knowledge.drain();
     vault.attach({
       daemon, knowledge,
       persist: async root => {
@@ -2073,7 +2793,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
         config = root ? { ...rest, knowledge: { vaultRoot: root } } : rest;
         await save();
       },
-      busy: () => runs.size > 0,
+      busy: () => closing || persistence.isBusy || runs.size > 0 || nativeOwnership.hasUnresolved() || missions.hasUnresolved() || missionRecovery.isInspecting() || nativeStatusRefresh !== undefined || registryWork > 0,
       watch: () => vaultWatcher?.state() ?? 'off',
       changed: () => { void vaultWatcher?.refresh(); knowledgeChanged('knowledge-vault', 0); },
     });
@@ -2082,52 +2802,82 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       vaultWatcher = new VaultWatcher({
         ...watcherOptions, log,
         root: () => vault.watchRoot(),
-        active: () => daemon.status().state === 'ready',
+        active: () => activated && daemon.status().state === 'ready',
         sync: () => knowledge.syncChanges(),
         onIndexed: report => knowledgeChanged(`knowledge-${report.generation}`, report.notes),
       });
       vaultWatcher.start();
       // The daemon starts lazily: follow it as soon as the page has used it.
       const status = methods.knowledgeStatus, sync = methods.syncKnowledge;
-      methods.knowledgeStatus = () => status().finally(() => { void vaultWatcher?.refresh(); });
-      methods.syncKnowledge = mode => sync(mode).finally(() => { void vaultWatcher?.refresh(); });
+      methods.knowledgeStatus = () => { activated = true; return status().finally(() => { void vaultWatcher?.refresh(); }); };
+      methods.syncKnowledge = mode => { activated = true; return sync(mode).finally(() => { void vaultWatcher?.refresh(); }); };
     }
     Object.assign(host, methods, {
       knowledgeSettings: () => vault.settings(),
-      setKnowledgeVaultRoot: (root: string | null) => vault.set(root),
+      setKnowledgeVaultRoot: (root: string | null) => { activated = true; return vault.set(root); },
     } satisfies Pick<Required<AgentHostApi>, 'knowledgeSettings' | 'setKnowledgeVaultRoot'>);
     // Note editing (W5 slice 2b): writes run in the knowledge sync queue; a memory import names a workspace of this host.
     Object.assign(host, knowledgeEditHostMethods(new KnowledgeEditService(knowledge, { workspaces: () => config.workspaces.map(item => item.id) })));
   }
 
+  let closePromise: Promise<void> | undefined;
   return {
     host,
     worktrees: worktreeApi,
     hooks: ingest,
-    isBusy: () => runs.size > 0,
+    isBusy: () => persistence.isBusy || runs.size > 0 || workspaceContextReaders > 0 || nativeStatusRefresh !== undefined || nativeMemory.isBusy() || !!promptQueues?.isBusy,
     onIdle(listener) {
+      if (closing) return () => undefined;
       idleListeners.add(listener);
       return () => { idleListeners.delete(listener); };
     },
-    async close() {
+    close() { return closePromise ??= (async () => {
       closing = true;
-      // Never release the profile lock while an old registry can still rename markers.
-      const planningClosed = planningOwnership.close();
-      vaultWatcher?.stop();
-      await ingest.close();
-      await observations.close();
       for (const run of runs.values()) { run.controller.abort(); run.pending?.resolve('reject'); }
-      await Promise.race([Promise.all([...runs.values()].map(run => run.done)), new Promise(resolve => setTimeout(resolve, 5_000))]);
+      await promptQueues?.close();
+      const memoryClosed = nativeMemory.close();
+      // Never release the profile lock while an old registry can still rename markers.
+      const ownershipClosed = Promise.all([planningOwnership.close(), preparationOwnership.close()]);
+      vaultWatcher?.stop();
+      await observedCodexPermissions.close();
+      await ingest.close();
+      let codexCloseError: unknown;
+      try { await observedCodexQueue.close(); } catch (error) { codexCloseError = error; }
+      try { await observedReplies.close(); } catch (error) { codexCloseError = error; }
+      try { await observedHermes.close(); } catch (error) { codexCloseError ??= error; }
+      try { await observedCodex.close(); } catch (error) { codexCloseError = error; }
+      await observations.close();
+      let graceTimer: ReturnType<typeof setTimeout> | undefined;
+      try {
+        await Promise.race([Promise.all([...runs.values()].map(run => run.done)), new Promise(resolve => { graceTimer = setTimeout(resolve, 5_000); })]);
+      } finally { if (graceTimer) clearTimeout(graceTimer); }
+      // Capture unresolved accepted work before sealing. These appends own admission
+      // before any queue await; late provider continuations receive no new write authority.
+      const interrupted = [...runs.entries()].filter(([, run]) => run.accepted && !run.planning).map(([sessionId]) =>
+        publish(sessionId, { type: 'turn.failed', error: 'The host closed before this turn settled. Provider execution may still be in progress.' }, 'primary', undefined, { strict: true }));
+      persistence.seal();
+      const interruptions = await Promise.allSettled(interrupted);
+      await persistence.drain();
+      await Promise.allSettled([...preparationWrites]);
       await Promise.all(writeChains.values());
+      await drainKnowledge?.();
       listeners.clear();
+      idleListeners.clear();
       // After the runs: their final commits reach the daemon before its stdin closes.
       await recoveryDaemon.stop().catch(() => undefined);
-      await planningClosed;
+      await ownershipClosed;
+      await nativeStatusRefresh?.catch(() => undefined);
+      await memoryClosed;
       try { missions.close(); } finally { await lock.release(); }
-    },
+      const failed = interruptions.find((result): result is PromiseRejectedResult => result.status === 'rejected');
+      if (failed) throw failed.reason;
+      if (codexCloseError) throw codexCloseError;
+    })(); },
   };
   } catch (error) {
     await recoveryDaemon.stop().catch(() => undefined);
+    persistence.seal();
+    await persistence.drain();
     try { missions.close(); } finally { await lock.release(); }
     throw error;
   }

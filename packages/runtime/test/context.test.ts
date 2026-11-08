@@ -100,6 +100,6 @@ describe('provider prompt sizes', () => {
     const result = await createProvider({ preset: 'anthropic', api: 'anthropic-messages', baseUrl: 'https://api.anthropic.com', model: 'claude-sonnet-4-5', features: { memory: 'extalia', skills: 'extalia' } }, 'test-key', fetch)
       .complete({ system: '', messages: [{ role: 'user', text: 'hi' }], tools: [] });
     expect(result.promptTokens).toBe(1320);
-    expect(result.usage?.inputTokens).toBe(20);
+    expect(result.usage?.inputTokens).toBe(1320);
   });
 });

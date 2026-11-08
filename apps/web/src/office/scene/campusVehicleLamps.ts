@@ -1,4 +1,4 @@
-import type { BufferGeometry } from 'three';
+import { Matrix4, Quaternion, Triangle, Vector3, type BufferGeometry } from 'three';
 import type { VehicleSpec } from './campusMobilityLayout';
 
 /**
@@ -67,6 +67,78 @@ export function vehicleLampAnchors(lamp: BufferGeometry, spec: LampSpec): Vehicl
     return [left ?? fallback, right ?? { ...fallback, x: -fallback.x }];
   };
   return { head: pair(false), tail: pair(true) };
+}
+
+export interface IndicatorAnchor extends LampAnchor { normal: readonly [number, number, number] }
+export interface VehicleIndicatorAnchors {
+  head: readonly [IndicatorAnchor, IndicatorAnchor]; tail: readonly [IndicatorAnchor, IndicatorAnchor];
+}
+
+/**
+ * Mount each indicator on an actual lens triangle, not its bounding-box corner.
+ * The beam anchor can lie ahead of a curved headlamp; the indicator must touch its surface.
+ */
+export function vehicleIndicatorAnchors(lamp: BufferGeometry, spec: LampSpec): VehicleIndicatorAnchors {
+  const anchors = vehicleLampAnchors(lamp, spec), position = lamp.getAttribute('position');
+  const tail = lamp.getAttribute('mobilityTail'), index = lamp.index;
+  const count = index?.count ?? position.count;
+  const triangle = new Triangle(), normal = new Vector3(), desired = new Vector3(), nearest = new Vector3();
+  const corner = (offset: number, target: Vector3) => target.fromBufferAttribute(position, index ? index.getX(offset) : offset);
+  const mount = (rear: boolean, side: 0 | 1): IndicatorAnchor => {
+    const anchor = (rear ? anchors.tail : anchors.head)[side], facing = rear ? -1 : 1;
+    desired.set(anchor.x, anchor.y, anchor.z);
+    let distance = Infinity, fallbackDistance = Infinity;
+    let result: IndicatorAnchor = { ...anchor, normal: [0, 0, facing] };
+    let surfaceFallback = result;
+    for (let offset = 0; offset + 2 < count; offset += 3) {
+      const vertex = index ? index.getX(offset) : offset;
+      if ((tail ? tail.getX(vertex) > .5 : false) !== rear) continue;
+      corner(offset, triangle.a); corner(offset + 1, triangle.b); corner(offset + 2, triangle.c);
+      if ((triangle.a.x + triangle.b.x + triangle.c.x) * (side === 0 ? 1 : -1) <= 0) continue;
+      triangle.closestPointToPoint(desired, nearest);
+      const candidate = nearest.distanceToSquared(desired);
+      if (candidate < fallbackDistance) {
+        fallbackDistance = candidate;
+        surfaceFallback = { x: nearest.x, y: nearest.y, z: nearest.z, normal: [0, 0, facing] };
+      }
+      triangle.getNormal(normal);
+      // Avoid mounting a front/rear strip on a horizontal lid or a side marker.
+      if (Math.abs(normal.z) < .35) continue;
+      if (normal.z * facing < 0) normal.negate();
+      if (candidate >= distance) continue;
+      distance = candidate;
+      result = { x: nearest.x, y: nearest.y, z: nearest.z, normal: [normal.x, normal.y, normal.z] };
+    }
+    // Some reduced models retain only the edges of a very thin lamp bar. Keep the
+    // mount on that bar and face it along the car, rather than inventing a floating anchor.
+    return Number.isFinite(distance) ? result : surfaceFallback;
+  };
+  return { head: [mount(false, 0), mount(false, 1)], tail: [mount(true, 0), mount(true, 1)] };
+}
+
+/** A compact amber strip in metres, mounted 3 mm above the source lens; no halo geometry. */
+export const SIGNAL_LENS_WIDTH = .13, SIGNAL_LENS_HEIGHT = .05, SIGNAL_LENS_DEPTH = .008, SIGNAL_MOUNT = .003;
+/** Turn signals blink at 1.5 Hz, lit for 55% of a cycle, with deterministic per-car phase. */
+export const SIGNAL_HZ = 1.5, SIGNAL_DUTY = .55;
+/** `seconds` is traffic simulation time, so pausing or pinning traffic also holds its blink. */
+export function signalLit(seconds: number, id: number, reducedMotion = false): boolean {
+  return reducedMotion || (Math.max(0, seconds) * SIGNAL_HZ + (id % 11) * .091) % 1 < SIGNAL_DUTY;
+}
+
+const signalPosition = new Vector3(), signalNormal = new Vector3(), signalRotation = new Quaternion(), signalYaw = new Quaternion();
+const SIGNAL_FORWARD = new Vector3(0, 0, 1), SIGNAL_UP = new Vector3(0, 1, 0), SIGNAL_SIZE = new Vector3(SIGNAL_LENS_WIDTH, SIGNAL_LENS_HEIGHT, SIGNAL_LENS_DEPTH);
+/** Body-fixed lens transform: all front/rear and left/right anchors follow the same vehicle yaw. */
+export function indicatorLensMatrix(pose: CarPose, anchor: IndicatorAnchor, out = new Matrix4()): Matrix4 {
+  const sin = Math.sin(pose.yaw), cos = Math.cos(pose.yaw);
+  const [nx, ny, nz] = anchor.normal;
+  const x = anchor.x + nx * SIGNAL_MOUNT, z = anchor.z + nz * SIGNAL_MOUNT;
+  signalPosition.set(pose.x + x * cos + z * sin, pose.y + anchor.y + ny * SIGNAL_MOUNT, pose.z - x * sin + z * cos);
+  signalNormal.set(nx, ny, nz).normalize();
+  signalRotation.setFromUnitVectors(SIGNAL_FORWARD, signalNormal);
+  // Compose the complete local lens frame with the car yaw. Aligning +Z to an
+  // already rotated normal would lose the body-fixed tangent/up twist on slopes.
+  signalYaw.setFromAxisAngle(SIGNAL_UP, pose.yaw).multiply(signalRotation);
+  return out.compose(signalPosition, signalYaw, SIGNAL_SIZE);
 }
 
 export interface CarPose { x: number; y: number; z: number; yaw: number }

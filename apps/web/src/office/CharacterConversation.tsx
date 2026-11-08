@@ -1,9 +1,16 @@
+import { ObservedCodexControls } from '../observe/ObservedCodexControls';
+import { ObservedCodexQueueControls } from '../observe/ObservedCodexQueueControls';
+import { ObservedCodexPromptComposer } from '../observe/ObservedCodexPromptComposer';
+import { ObservedCodexPermissionControls } from '../observe/ObservedCodexPermissionControls';
+import { ObservedReplyControls } from '../observe/ObservedReplyControls';
+import { ObservedHermesControls } from '../observe/ObservedHermesControls';
 import type { CharacterAppearance } from '@extalia/core';
 import type { AgentHostApi, ApprovalDecisionInput, HostState, SessionSummary } from '@extalia/platform';
-import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { errorMessage } from '../host/remote';
 import type { Messages } from '../i18n';
 import { Composer, type ComposerSend } from '../chat/Composer';
+import { PromptQueueControls } from '../chat/PromptQueueControls';
 import { attachmentPreviewLoader, sendPromptWithAttachments, uploadAttachments } from '../chat/attachments';
 import { projectActivity } from '../chat/transcript';
 import { characterTranscript } from './characterHistory';
@@ -19,6 +26,17 @@ import type { StaffRole } from './scene/avatars/outfitCatalog';
 import type { LookIdentity } from './scene/avatars/appearance';
 import { ActivityTimeline } from './console/ActivityTimeline';
 import { characterEvents, characterTimeline, shortcutFor, teamRoster } from './console/timeline';
+import { modelChoicesKey, sessionRuntime } from '../chat/sessionRuntime';
+import { WorkspaceRuntimeNotice } from '../chat/WorkspaceRuntimeNotice';
+import './characterConversationLayout.css';
+
+const TOOLS_MEDIA = '(min-width: 1100px)';
+const wideToolsSnapshot = () => typeof window !== 'undefined' && window.matchMedia(TOOLS_MEDIA).matches;
+const subscribeToolsMedia = (listener: () => void) => {
+  const media = window.matchMedia(TOOLS_MEDIA);
+  media.addEventListener('change', listener);
+  return () => media.removeEventListener('change', listener);
+};
 
 const isTyping = (target: EventTarget | null) => target instanceof HTMLElement
   && (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName));
@@ -41,7 +59,7 @@ export type ConversationTab = 'messages' | 'activity' | 'files';
 /**
  * Conversation controls for a character's native Extalia session, shown in the
  * session dialog (which owns identity, status header and close). Workers and
- * observed sessions stay observational. Both tabs stay mounted, so switching
+ * observed execution stays in its source app; Codex has a separate text sender. Tabs stay mounted, so switching
  * keeps the scroll position; the composer stays mounted, so it keeps the draft.
  */
 export function CharacterConversation({ t, language, agents, state, session, agent, onState, appearance, tab: controlledTab, onTab, readOnlyReason, onLocate, following = false, onToggleFollow, onSelectCharacter }: {
@@ -78,6 +96,17 @@ export function CharacterConversation({ t, language, agents, state, session, age
   const { events, error: loadError, loading } = useSessionEvents(agents, session.id);
   const previewAttachment = useMemo(() => attachmentPreviewLoader(agents, session.id), [agents, session.id]);
   const isWorker = agent.agentId !== 'primary';
+  const wide = useSyncExternalStore(subscribeToolsMedia, wideToolsSnapshot, () => true);
+  const [toolsChoice, setToolsChoice] = useState<{ wide: boolean; open: boolean }>();
+  const hasTools = !isWorker && !readOnlyReason;
+  const toolsOpen = hasTools && (toolsChoice?.wide === wide ? toolsChoice.open : wide);
+  const toolsToggle = useRef<HTMLButtonElement>(null);
+  const toolsClose = useRef<HTMLButtonElement>(null);
+  const closeTools = () => {
+    setToolsChoice({ wide, open: false });
+    requestAnimationFrame(() => toolsToggle.current?.focus({ preventScroll: true }));
+  };
+  useLayoutEffect(() => { if (toolsOpen && !wide) toolsClose.current?.focus({ preventScroll: true }); }, [toolsOpen, wide]);
   const readOnly = session.control === 'observed' || isWorker || Boolean(readOnlyReason);
   const items = useMemo(() => characterTranscript(events, agent), [events, agent]);
   const activity = useMemo(() => projectActivity(events), [events]);
@@ -106,7 +135,7 @@ export function CharacterConversation({ t, language, agents, state, session, age
       if (action === 'message') {
         setOwnTab('messages'); tabRef.current?.('messages'); setEditing(false);
         // The composer may only be enabled after the tab switch renders, so try now and on the next two frames.
-        const focus = () => document.getElementById('composer-input')?.focus();
+        const focus = () => (document.querySelector<HTMLTextAreaElement>('.observed-codex-prompt textarea') ?? document.getElementById('composer-input'))?.focus();
         focus(); requestAnimationFrame(() => { focus(); requestAnimationFrame(focus); });
       }
       else if (action === 'activity') { setOwnTab('activity'); tabRef.current?.('activity'); setEditing(false); }
@@ -162,12 +191,16 @@ export function CharacterConversation({ t, language, agents, state, session, age
 
   const panelId = (id: ConversationTab) => `${ids}-${id}`;
   return (
-    <section className="chat-main character-conversation" aria-label={agent.displayName}>
+    <section className="chat-main character-conversation character-conversation-layout" aria-label={agent.displayName} data-tools-open={toolsOpen || undefined}>
+      <div className="character-conversation-main" inert={toolsOpen && !wide || undefined}>
       <div className="character-actions" title={c.shortcuts}>
         <div className="character-tabs" role="tablist" aria-label={agent.displayName}>
           {(['messages', 'activity', 'files'] as const).map(id => <button key={id} id={`${panelId(id)}-tab`} type="button" role="tab" aria-selected={tab === id && !editing} aria-controls={panelId(id)}
             onClick={() => { setTab(id); setEditing(false); }}>{c[id]}{id === 'activity' && team.length > 0 && <span className="badge">{team.length}</span>}{id === 'files' && files.length > 0 && <span className="badge">{files.length}</span>}</button>)}
         </div>
+        {hasTools && <button ref={toolsToggle} type="button" className="button small character-tools-toggle" aria-expanded={toolsOpen} aria-controls={`${ids}-tools`}
+          aria-label={toolsOpen ? c.hideTools : c.showTools} title={toolsOpen ? c.hideTools : c.showTools}
+          onClick={() => { if (toolsOpen) closeTools(); else setToolsChoice({ wide, open: true }); }}><Icon name="settings" />{c.tools}</button>}
         {onLocate && <button type="button" className="icon-button small" aria-label={c.locate} title={`${c.locate} (L)`} onClick={onLocate}><Icon name="search" /></button>}
         {onToggleFollow && <button type="button" className={`icon-button small follow-toggle ${following ? 'active' : ''}`} aria-pressed={following} aria-label={following ? t.officeOverlay.follow.stop : t.officeOverlay.follow.start}
           title={`${following ? t.officeOverlay.follow.stop : t.officeOverlay.follow.hint} (F)`} onClick={onToggleFollow}><Icon name="crosshair" /></button>}
@@ -179,7 +212,7 @@ export function CharacterConversation({ t, language, agents, state, session, age
         onPreview={appearance.onPreview} onSave={appearance.onSave} onClose={() => setEditing(false)} />}
       {readOnlyReason && <p className="muted-note character-ended-note" role="status"><Icon name="alert" />{readOnlyReason}</p>}
       {!readOnlyReason && isWorker && <p className="muted-note">{t.office.workerNote}</p>}
-      {!readOnlyReason && session.control === 'observed' && <p className="muted-note">{t.office.observedNote}</p>}
+      {!readOnlyReason && session.control === 'observed' && <p className="muted-note">{session.observation?.sourceId === 'codex' ? t.observedCodex.officeNote : t.office.observedNote}</p>}
       {loadError && <p className="form-error" role="alert"><Icon name="alert" />{t.chat.loadFailed} {loadError}</p>}
       <div ref={scroller} id={panelId('messages')} className="character-tab-panel" role="tabpanel" aria-labelledby={`${panelId('messages')}-tab`} hidden={editing || tab !== 'messages'}
         onScroll={event => { const element = event.currentTarget; stick.current = element.scrollHeight - element.scrollTop - element.clientHeight < 80; }}>
@@ -202,10 +235,45 @@ export function CharacterConversation({ t, language, agents, state, session, age
           {running && !waiting && <span className="pulse" aria-hidden="true" />}{waiting && <Icon name="shield" />}{status}
         </p>
         {error && <p className="form-error" role="alert"><Icon name="alert" />{error}</p>}
+        {!isWorker && !readOnlyReason && session.control === 'observed' && session.observation?.sourceId === 'codex' &&
+          <ObservedCodexPromptComposer key={session.id} t={t} agents={agents} session={session} />}
         {!readOnly && <Composer t={t} agents={agents} session={session} workspaceId={session.workspaceId}
-          hermes={workspace?.runtimeId === 'hermes' || session.runtime?.id === 'hermes'} running={running} waiting={waiting} readOnly={false} stopping={activity.stopping}
+          hermes={sessionRuntime(workspace, session) === 'hermes'} modelScopeKey={modelChoicesKey(state, workspace, session)} running={running} waiting={waiting} readOnly={false} stopping={activity.stopping}
           onSend={send} onStop={() => { void guard(async () => { await agents.cancel(session.id); refreshState(); }); }} onSessionChanged={refreshState} />}
+
       </footer>
+      </div>
+      {hasTools && <aside id={`${ids}-tools`} className="character-conversation-tools" hidden={!toolsOpen} aria-labelledby={`${ids}-tools-title`}
+        data-conversation-drawer={!wide && toolsOpen ? 'true' : undefined}>
+        <header className="character-tools-head"><h3 id={`${ids}-tools-title`}>{c.tools}</h3>
+          <button ref={toolsClose} type="button" className="icon-button small" data-conversation-tools-close aria-label={c.hideTools} title={c.hideTools} onClick={closeTools}><Icon name="close" /></button>
+        </header>
+        <div className="character-tools-content">
+        {!isWorker && !readOnlyReason && (session.control === 'managed' || session.observation?.sourceId === 'codex') &&
+          <PromptQueueControls key={`queue:${session.id}`} t={t} agents={agents} session={session} />}
+        {!isWorker && !readOnlyReason && session.control === 'observed' && session.observation?.sourceId === 'codex' &&
+          <details className="observed-codex-office"><summary>{t.observedCodexPrompt.settings}</summary>
+            <ObservedCodexQueueControls key={session.id} t={t} agents={agents} session={session} settingsOnly />
+          </details>}
+        {!isWorker && !readOnlyReason && session.control === 'observed' && session.observation?.sourceId === 'codex' &&
+          <details className="observed-codex-office"><summary>{t.observedCodexPermission.title}</summary>
+            <ObservedCodexPermissionControls key={session.id} t={t} agents={agents} session={session} />
+          </details>}
+        {!isWorker && !readOnlyReason && session.control === 'observed' && session.observation?.sourceId === 'codex' &&
+          <details className="observed-codex-office"><summary>{t.observedCodex.title}</summary>
+            <ObservedCodexControls key={session.id} t={t} agents={agents} session={session} />
+          </details>}
+        {!isWorker && !readOnlyReason && session.control === 'observed' &&
+          session.observation?.sourceId === 'hermes' && <details className="observed-codex-office"><summary>{t.observedHermes.title}</summary>
+            <ObservedHermesControls key={session.id} t={t} agents={agents} session={session} />
+          </details>}
+        {!isWorker && !readOnlyReason && session.control === 'observed' &&
+          <details className="observed-codex-office"><summary>{t.observedReply.title}</summary>
+            <ObservedReplyControls key={session.id} t={t} agents={agents} session={session} />
+          </details>}
+        {workspace && !readOnly && <WorkspaceRuntimeNotice t={t} state={state} workspace={workspace} session={session} />}
+        </div>
+      </aside>}
     </section>
   );
 }

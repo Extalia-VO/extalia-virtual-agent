@@ -56,6 +56,8 @@ describe('session option diffing', () => {
     expect(optionsChange({ model: 'a' }, { model: 'b' })).toEqual({ model: 'b' });
     expect(optionsChange({ model: 'a', effort: 'high' }, {})).toEqual({});
     expect(optionsChange(undefined, { effort: 'low' })).toEqual({ effort: 'low' });
+    expect(optionsChange({ model: 'a', permissionMode: 'plan' }, { model: 'b' })).toEqual({ model: 'b', permissionMode: 'plan' });
+    expect(optionsChange({ effort: 'high', permissionMode: 'ask' }, {})).toEqual({ permissionMode: 'ask' });
   });
 });
 
@@ -73,10 +75,11 @@ describe('model options', () => {
   });
 
   it('names the model a session uses next', () => {
-    const state = { workspaces: [{ id: 'w1', runtimeModel: 'ag/hermes-model' }], connections: [{ id: 'c1', model: 'claude-x' }] } as never;
+    const state = { workspaces: [{ id: 'w1', runtimeId: 'hermes', runtimeModel: 'ag/hermes-model' }], connections: [{ id: 'c1', model: 'claude-x' }] } as never;
     expect(sessionModel(state, session('a'))).toBe('claude-x');
     expect(sessionModel(state, session('a', { options: { model: 'override' } }))).toBe('override');
     expect(sessionModel(state, session('a', { runtime: { id: 'hermes', profile: 'default' } }))).toBe('ag/hermes-model');
     expect(sessionModel(state, session('a', { control: 'observed' }))).toBeUndefined();
+    expect(sessionModel({ workspaces: [{ id: 'w1', runtimeId: 'hermes', runtimeProfileId: 'another', runtimeModel: 'other-model' }], connections: [] } as never, session('a', { runtime: { id: 'hermes', profile: 'default' } }))).toBeUndefined();
   });
 });

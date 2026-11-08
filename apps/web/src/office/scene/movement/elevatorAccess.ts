@@ -1,5 +1,5 @@
 import {
-  canBoardElevator, canExitElevator, confirmElevatorBoarded, confirmElevatorExited, getElevatorGeometry,
+  elevatorSnapshot, canBoardElevator, canExitElevator, confirmElevatorBoarded, confirmElevatorExited, getElevatorGeometry,
   getElevatorStandingPosition, getElevatorWaitingSlot, releaseElevator, requestElevator,
 } from '../prefabs/architecture/elevatorController';
 import type { ElevatorAccess } from './mover';
@@ -20,4 +20,12 @@ export const liveElevatorAccess: ElevatorAccess = {
   confirmExited: (riderId, elevatorId) => confirmElevatorExited(riderId, elevatorId),
   release: (riderId, elevatorId) => { releaseElevator(riderId, elevatorId); },
   door: elevatorId => doors[elevatorId],
+  progress: (riderId, elevatorId) => {
+    const snapshot = elevatorSnapshot(elevatorId);
+    const passenger = snapshot.passengers.find(person => person.riderId === riderId);
+    const index = snapshot.queue.findIndex(person => person.riderId === riderId);
+    return { y: snapshot.y, doors: snapshot.doors, phase: snapshot.phase, serviceRevision: snapshot.serviceRevision,
+      ownership: passenger ? passenger.boarded ? 'boarded' : 'reserved' : index >= 0 ? 'queued' : 'missing',
+      queueAhead: index >= 0 ? index : null, doorway: snapshot.doorwayRiderId === riderId };
+  },
 };

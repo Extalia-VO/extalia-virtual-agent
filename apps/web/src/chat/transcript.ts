@@ -264,7 +264,7 @@ export function projectTranscript(events: readonly ExtaliaEvent[]): TranscriptIt
       case 'file.written': {
         const change = { path: body.path, change: body.change };
         const active = currentTurn();
-        const tool = runningTool();
+        const tool = body.toolCallId ? toolsByCall.get(body.toolCallId) : runningTool();
         if (tool) { addFile(tool.files, change); break; }
         if (!active.files) {
           settleStream();

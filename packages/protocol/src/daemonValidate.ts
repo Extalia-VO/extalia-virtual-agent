@@ -6,6 +6,7 @@ import {
 } from './daemon.js';
 import { KNOWLEDGE_PARAMS, KNOWLEDGE_RESULTS, knowledgeJsonSchemaDefs } from './daemonKnowledgeRules.js';
 import { EXECUTION_PARAMS, EXECUTION_RESULTS, executionAdmission, executions, executionRecords } from './daemonExecutionRules.js';
+import { PREPARATION_PARAMS, PREPARATION_RESULTS } from './daemonPreparationRules.js';
 import { PLANNING_PARAMS, PLANNING_RESULTS } from './daemonPlanningRules.js';
 import { SKILL_PARAMS, SKILL_RESULTS, skillJsonSchemaDefs, skillReason } from './daemonSkillRules.js';
 import { schemaRef, type JsonSchema } from './jsonSchema.js';
@@ -145,6 +146,7 @@ const PARAMS: Record<DaemonOp, Rule> = {
   health: object({}),
   ...EXECUTION_PARAMS,
   ...PLANNING_PARAMS,
+  ...PREPARATION_PARAMS,
   ...SKILL_PARAMS,
   ...KNOWLEDGE_PARAMS,
 };
@@ -160,6 +162,7 @@ const RESULTS: Record<DaemonOp, Rule> = {
   health: object({ status: enumeration(['ok', 'degraded']), uptimeMs: count }),
   ...EXECUTION_RESULTS,
   ...PLANNING_RESULTS,
+  ...PREPARATION_RESULTS,
   ...SKILL_RESULTS,
   ...KNOWLEDGE_RESULTS,
 };

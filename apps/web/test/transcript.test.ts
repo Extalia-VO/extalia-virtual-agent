@@ -1,6 +1,10 @@
 import { createEvent, type EventBody, type ExtaliaEvent } from '@extalia/protocol';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { mergeEvents, projectActivity, projectTranscript, type ToolItem, type WorkerItem } from '../src/chat/transcript';
+import { mergeEvents, projectActivity, projectTranscript, type ToolItem, type UsageItem, type WorkerItem } from '../src/chat/transcript';
+import { TranscriptView } from '../src/chat/TranscriptView';
+import { MESSAGES, type Language } from '../src/i18n';
 
 function session() {
   let n = 0;
@@ -8,6 +12,78 @@ function session() {
     createEvent({ id: `e${++n}`, sessionId: 's1', agentId, source: { runtime: 'test', channel: 'stream' }, body }, () => new Date(Date.UTC(2026, 0, 31, 9, 0, n)));
   return event;
 }
+
+describe('rendered turn usage', () => {
+  for (const language of ['en', 'id'] as const) it(`explains a local context refusal in ${language} without exposing the internal code`, () => {
+    const html = renderToStaticMarkup(createElement(TranscriptView, {
+      t: MESSAGES[language], language, items: [{ kind: 'notice', id: 'held', reason: 'failed', text: 'native_context_limit' }], onDecide: async () => undefined,
+    }));
+    expect(html).toContain(MESSAGES[language].context.requestHeld);
+    expect(html).not.toContain('native_context_limit');
+  });
+  const renderUsage = (item: Omit<UsageItem, 'kind' | 'id'>, language: Language = 'en') => renderToStaticMarkup(createElement(TranscriptView, {
+    t: MESSAGES[language], language, items: [{ kind: 'usage', id: 'usage', ...item }], onDecide: async () => undefined,
+  }));
+
+  it('shows reported cache counts, including zero, without changing input or deriving a percentage', () => {
+    for (const cachedInputTokens of [0, 800]) {
+      const html = renderUsage({ usage: { inputTokens: 100, outputTokens: 20, cachedInputTokens } });
+      expect(html).toContain(`100 in · 20 out · ${cachedInputTokens} cached input (reported)`);
+      expect(html).not.toContain('%');
+      expect(html).not.toContain('900 in');
+    }
+  });
+
+  it('keeps genuinely reported input and output zeros', () => {
+    expect(renderUsage({ usage: { inputTokens: 0, outputTokens: 0 } })).toContain('0 in · 0 out');
+  });
+
+  it('marks missing input or output explicitly instead of fabricating zero', () => {
+    const inputOnly = renderUsage({ usage: { inputTokens: 50 } });
+    expect(inputOnly).toContain('50 in · Output not reported');
+    expect(inputOnly).not.toContain('0 out');
+    const outputOnly = renderUsage({ usage: { outputTokens: 25 } });
+    expect(outputOnly).toContain('Input not reported · 25 out');
+    expect(outputOnly).not.toContain('0 in');
+    const cacheOnly = renderUsage({ usage: { cachedInputTokens: 0 } });
+    expect(cacheOnly).toContain('Input not reported · Output not reported · 0 cached input (reported)');
+  });
+
+  it('keeps cache-less historical records unchanged and leaves unreported cache absent', () => {
+    const html = renderUsage({ usage: { inputTokens: 100, outputTokens: 20 }, model: 'example-model', costUsd: 0.02 });
+    expect(html).toContain('100 in · 20 out · $0.0200 · example-model');
+    expect(html).not.toContain('cache');
+  });
+
+  it('does not add unknown-token clutter when all usage is absent', () => {
+    for (const usage of [undefined, {}]) {
+      const html = renderUsage({ usage, model: 'example-model' });
+      expect(html).toContain('>example-model</p>');
+      expect(html).not.toContain('not reported');
+      expect(html).not.toContain('0 in');
+      expect(html).not.toContain('cache');
+    }
+  });
+
+  it('renders partial and cached reports in Indonesian with locale formatting', () => {
+    const html = renderUsage({ usage: { outputTokens: 2000, cachedInputTokens: 1000 } }, 'id');
+    expect(html).toContain('Input tidak dilaporkan · 2.000 keluar · 1.000 input cache (dilaporkan)');
+    expect(html).not.toContain('0 masuk');
+  });
+
+  it('renders historical provider totals exactly as stored through the event projection', () => {
+    const event = session();
+    const items = projectTranscript([
+      event({ type: 'prompt.submitted', text: 'Hello', via: 'extalia' }),
+      event({ type: 'model.completed', text: 'Done', usage: { inputTokens: 10, outputTokens: 2, cachedInputTokens: 100 } }),
+      event({ type: 'turn.completed' }),
+    ]);
+    const html = renderToStaticMarkup(createElement(TranscriptView, { t: MESSAGES.en, language: 'en', items, onDecide: async () => undefined }));
+    expect(html).toContain('10 in · 2 out · 100 cached input (reported)');
+    expect(html).not.toContain('110 in');
+    expect(html).not.toContain('%');
+  });
+});
 
 describe('projectTranscript', () => {
   it('marks a conversation carried over from another agent and does not treat it as running', () => {
@@ -53,6 +129,18 @@ describe('projectTranscript', () => {
     const before = JSON.stringify(events);
     expect(projectTranscript(events).map(item => item.kind)).toEqual(['user']);
     expect(JSON.stringify(events)).toBe(before);
+  });
+
+  it('attaches a late file report to its completed tool instead of another running tool', () => {
+    const event = session();
+    const result = projectTranscript([
+      event({ type: 'tool.started', toolCallId: 'edit-1', tool: 'Edit', kind: 'edit', label: 'Edit a.ts' }),
+      event({ type: 'tool.completed', toolCallId: 'edit-1', tool: 'Edit', kind: 'edit', label: 'Edit a.ts', ok: true }),
+      event({ type: 'tool.started', toolCallId: 'edit-2', tool: 'Edit', kind: 'edit', label: 'Edit b.ts' }),
+      event({ type: 'file.written', path: 'src/a.ts', change: 'update', toolCallId: 'edit-1' }),
+    ]).filter((item): item is ToolItem => item.kind === 'tool');
+    expect(result[0]?.files).toEqual([{ path: 'src/a.ts', change: 'update' }]);
+    expect(result[1]?.files).toEqual([]);
   });
 
   it('builds tool cards with live command output and changed files', () => {

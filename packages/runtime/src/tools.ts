@@ -2,9 +2,10 @@ import type { ActivityKind, EventBody, FileChangeKind, RiskLevel } from '@extali
 
 /** JSON Schema subset used for tool parameters. Kept small so every provider accepts it. */
 export interface JsonSchemaProperty {
-  type: 'string' | 'number' | 'integer' | 'boolean' | 'array' | 'object';
+  type: 'string' | 'number' | 'integer' | 'boolean' | 'array' | 'object' | readonly ['string', 'null'];
   description?: string;
   enum?: readonly string[];
+  pattern?: string;
   items?: JsonSchemaProperty;
   minimum?: number;
   maximum?: number;
@@ -85,10 +86,16 @@ export function validateArguments(schema: JsonSchemaObject, input: unknown): str
 }
 
 function checkValue(property: JsonSchemaProperty, value: unknown): string | undefined {
+  if (typeof property.type !== 'string') {
+    if (value === null) return undefined;
+    if (typeof value !== 'string') return 'must be a string or null.';
+    return checkValue({ ...property, type: 'string' }, value);
+  }
   switch (property.type) {
     case 'string':
       if (typeof value !== 'string') return 'must be a string.';
       if (property.enum && !property.enum.includes(value)) return `must be one of ${property.enum.join(', ')}.`;
+      if (property.pattern !== undefined && !new RegExp(property.pattern).test(value)) return 'must match the required format.';
       return undefined;
     case 'number':
     case 'integer':

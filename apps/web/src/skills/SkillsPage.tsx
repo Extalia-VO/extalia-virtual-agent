@@ -6,7 +6,9 @@ import { ProjectSkills, projectSkillsSupported } from './ProjectSkills';
 import { SkillSecurityCenter } from './SkillSecurityCenter';
 import { useSkillRegistryMode } from './skillCenterModel';
 import { useBuiltinSkills } from './skillsModel';
+import { SkillLibrary } from './SkillLibrary';
 import { BuiltinSkillsCatalog } from './BuiltinSkillsCatalog';
+import { revealSkillManagement, SkillManagementDisclosure } from './SkillManagementDisclosure';
 
 /**
  * Skills: everything that decides which skills reach agents, in one page (moved out of Settings).
@@ -31,12 +33,14 @@ export function SkillsPage({ t, agents, state, picker, focusWorkspaceId, onFocus
   const [filter, setFilter] = useState<string | null>(focusWorkspaceId ?? null);
   useEffect(() => { if (focusWorkspaceId) onFocusHandled?.(); }, [focusWorkspaceId, onFocusHandled]);
   const builtin = useBuiltinSkills(agents);
+  const [refresh, setRefresh] = useState(0);
+  const changed = () => { setRefresh(value => value + 1); onChanged?.(); };
   return <SkillsPageView t={t} agents={agents} state={state} picker={picker} mode={mode} filter={filter} onFilter={setFilter}
-    builtin={builtin.skills} builtinLoading={builtin.loading} onChanged={onChanged} />;
+    builtin={builtin.skills} builtinLoading={builtin.loading} refresh={refresh} onChanged={changed} />;
 }
 
 /** Hook-free shell so tests can render each mode; the sections it mounts load their own data. */
-export function SkillsPageView({ t, agents, state, picker, mode, filter, onFilter, builtin, builtinLoading, onChanged }: {
+export function SkillsPageView({ t, agents, state, picker, mode, filter, onFilter, builtin, builtinLoading, refresh = 0, onChanged }: {
   t: Messages;
   agents: AgentHostApi;
   state: HostState;
@@ -47,6 +51,7 @@ export function SkillsPageView({ t, agents, state, picker, mode, filter, onFilte
   onFilter: (workspaceId: string | null) => void;
   builtin: BuiltinSkillInfo[] | null;
   builtinLoading: boolean;
+  refresh?: number;
   onChanged?: (() => void) | undefined;
 }) {
   const p = t.skillsPage;
@@ -55,9 +60,11 @@ export function SkillsPageView({ t, agents, state, picker, mode, filter, onFilte
       <header className="page-header">
         <h1>{p.title}</h1>
         <p className="lead">{p.lead}</p>
-        {builtin && builtin.length > 0 && <a className="button small" href="#skills-builtin-title">{p.browseBuiltins}</a>}
+        {builtin && builtin.length > 0 && <a className="button small" href="#skills-builtin-title" onClick={() => revealSkillManagement('skills-builtin-title')}>{p.browseBuiltins}</a>}
       </header>
+      <SkillLibrary t={t} agents={agents} state={state} builtin={builtin ?? []} refresh={refresh} />
       <p className="note small" role="note">{p.scannerRequired}</p>
+      <SkillManagementDisclosure summary={t.skillLibrary.management} defaultOpen={Boolean(filter)}>
       <p className="muted small">{p.promptLearning}</p>
       {mode === null && <p className="muted" role="status">{p.loading}</p>}
       {mode === 'registry' && <SkillSecurityCenter t={t} agents={agents} picker={picker} state={state} onChanged={onChanged} />}
@@ -65,6 +72,7 @@ export function SkillsPageView({ t, agents, state, picker, mode, filter, onFilte
         <ProjectSkillsSection t={t} agents={agents} workspaces={state.workspaces} filter={filter} onFilter={onFilter} onChanged={onChanged} />
       )}
       <BuiltinSkillsSection t={t} skills={builtin} loading={builtinLoading} />
+      </SkillManagementDisclosure>
     </div>
   );
 }

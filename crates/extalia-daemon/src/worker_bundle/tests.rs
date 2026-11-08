@@ -83,7 +83,9 @@ fn raw_json_duplicates_unknown_fields_and_numeric_forms_are_strict() {
 mod filesystem {
     use super::*;
     use std::path::PathBuf;
+    use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::{SystemTime, UNIX_EPOCH};
+    static NEXT_TREE: AtomicU64 = AtomicU64::new(0);
     struct Tree(PathBuf);
     impl Tree {
         fn new() -> Self {
@@ -92,7 +94,11 @@ mod filesystem {
                 .unwrap()
                 .as_nanos();
             // Keep Unix-domain socket test paths below the OS pathname limit.
-            let path = std::env::temp_dir().join(format!("eb-{stamp:x}"));
+            // Wall-clock resolution can be shared by parallel tests on macOS.
+            // Process + sequence keeps fixture ownership distinct even then.
+            let sequence = NEXT_TREE.fetch_add(1, Ordering::Relaxed);
+            let process = std::process::id();
+            let path = std::env::temp_dir().join(format!("eb-{process:x}-{stamp:x}-{sequence:x}"));
             std::fs::create_dir(&path).unwrap();
             std::fs::create_dir_all(path.join("python/bin")).unwrap();
             std::fs::create_dir(path.join("worker")).unwrap();

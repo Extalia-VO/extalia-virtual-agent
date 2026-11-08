@@ -20,15 +20,17 @@ function viewLabel(t: Messages, view: FurnishedOfficeView): { text: string; labe
   return { text: `F${view}`, label: t.office[`f${view}`] };
 }
 
-/** Floor tabs and light switch in the App top bar, shown only while the 3D Office is open. */
+/** Floor tabs, lights and automatic camera in the App top bar, shown only in the 3D Office. */
 export function OfficeTopbarControls({ t }: { t: Messages }) {
   const view = useOfficeControls(state => state.view);
   const setView = useOfficeControls(state => state.setView);
   const lightOverride = useOfficeControls(state => state.lightOverride);
   const setLightOverride = useOfficeControls(state => state.setLightOverride);
+  const autoCamera = useOfficeControls(state => state.autoCamera);
+  const setAutoCamera = useOfficeControls(state => state.setAutoCamera);
   return (
     <div className="topbar-office" role="toolbar" aria-label={t.nav.officeControls}>
-      <div className="topbar-segment" role="group" aria-label={t.office.view} onKeyDown={moveFocus}>
+      <div className="topbar-segment topbar-views" role="group" aria-label={t.office.view} onKeyDown={moveFocus}>
         {OFFICE_VIEWS.map(option => {
           const { text, label } = viewLabel(t, option);
           return <button key={option} type="button" data-view={option} aria-pressed={view === option} aria-label={label} title={label ?? text} onClick={() => setView(option)}>{text}</button>;
@@ -37,6 +39,11 @@ export function OfficeTopbarControls({ t }: { t: Messages }) {
       <div className="topbar-segment topbar-lights" role="group" aria-label={t.office.lights} title={t.office.lightHints[lightOverride]} onKeyDown={moveFocus}>
         <Icon name="bulb" />
         {LIGHT_OVERRIDES.map(mode => <button key={mode} type="button" aria-pressed={lightOverride === mode} title={t.office.lightHints[mode]} onClick={() => setLightOverride(mode)}>{t.office.lightModes[mode]}</button>)}
+      </div>
+      <div className="topbar-segment topbar-camera">
+        <button type="button" aria-label={t.office.autoCamera} aria-pressed={autoCamera} title={t.office.autoCameraHint} onClick={() => setAutoCamera(!autoCamera)}>
+          <Icon name="monitor" /><span>{t.office.autoCamera}</span>
+        </button>
       </div>
     </div>
   );

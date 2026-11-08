@@ -1,3 +1,4 @@
+import { Select } from '../ui/Select';
 import type {
   AgentHostApi, KnowledgeHistory, KnowledgeHistoryEntry, KnowledgeMemoryImport, KnowledgeNoteFile, KnowledgeNoteResult, KnowledgeStatus, KnowledgeWriteResult,
 } from '@extalia/platform';
@@ -381,9 +382,8 @@ export function MemoryImportView({ t, workspaces, workspaceId, onWorkspace, prev
             : (
               <div className="knowledge-import-pick">
                 <label htmlFor={selectId}>{e.workspace}</label>
-                <select id={selectId} value={workspaceId} disabled={busy !== null} onChange={event => onWorkspace(event.target.value)}>
-                  {list.map(workspace => <option key={workspace.id} value={workspace.id}>{workspace.name}</option>)}
-                </select>
+                <Select id={selectId} aria-label={e.workspace} value={workspaceId} disabled={busy !== null} onChange={onWorkspace}
+                  options={list.map(workspace => ({ value: workspace.id, label: workspace.name }))} />
                 <button type="button" className="button small" disabled={busy !== null || !workspaceId} onClick={onPreview}><Icon name="eye" />{busy === 'preview' ? e.previewing : e.previewImport}</button>
               </div>
             )}

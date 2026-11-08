@@ -1,0 +1,44 @@
+:root { color-scheme: light; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #132b36; background: #10232d; font-synthesis: none; }
+* { box-sizing: border-box; }
+body { margin: 0; }
+button { font: inherit; cursor: pointer; }
+button:focus-visible { outline: 3px solid #52bba5; outline-offset: 4px; }
+button:disabled { opacity: .62; cursor: wait; }
+main { min-height: 100vh; display: flex; flex-direction: column; }
+.hero { position: relative; flex: 1 0 370px; overflow: hidden; color: #f6faf9; background: #10232d; }
+.photos { position: absolute; inset: 25px -10px 36px 35%; mask-image: radial-gradient(ellipse 59% 61% at 53% 50%, #000 30%, #000d 51%, transparent 86%); }
+.photo { position: absolute; inset: 0; opacity: 0; background-size: cover; background-position: center; transition: opacity 800ms ease-in-out; }
+.photo.active { opacity: .75; }
+.photo-building { background-image: url('./office-building.jpg'); background-size: 125% auto; background-position: 35% 50%; }
+.photo-workspace { background-image: url('./office-workspace.jpg'); background-position: 56% 52%; }
+.photo-collaboration { background-image: url('./office-collaboration.jpg'); background-position: 55% 50%; }
+.shade { position: absolute; inset: 0; background: linear-gradient(90deg, #10232d 0%, #10232d 27%, rgba(16,35,45,.92) 38%, rgba(16,35,45,.28) 56%, rgba(16,35,45,0) 74%); }
+.hero-copy { position: relative; padding: 27px 38px 42px; }
+.brand { display: flex; align-items: center; gap: 10px; font-size: 22px; font-weight: 650; letter-spacing: -.6px; }
+.brand-mark { display: block; width: 36px; height: 29px; object-fit: contain; }
+.eyebrow { margin: 33px 0 14px; font-size: 10px; letter-spacing: 2.4px; font-weight: 650; color: #abd8cc; }
+h1 { margin: 0; font-size: clamp(35px, 4.8vw, 45px); line-height: 1.08; letter-spacing: -1.7px; font-weight: 620; }
+h1 span { display: block; }
+h1 span + span { color: #a4dfca; }
+.description { max-width: 320px; margin: 18px 0; font-size: 13px; line-height: 1.65; color: #d0dcdd; }
+.features { padding: 0; margin: 19px 0 0; list-style: none; display: flex; flex-wrap: wrap; gap: 8px 15px; max-width: 390px; font-size: 10px; color: #bacecf; }
+.features li::before { content: '✓'; color: #a4dfca; margin-right: 5px; }
+.carousel-controls { position: absolute; bottom: 19px; right: 29px; display: flex; align-items: center; gap: 12px; }
+.photo-caption { font-size: 10px; color: #e1eeeb; text-shadow: 0 1px 5px #10232d; }
+.dots { display: flex; gap: 8px; }
+.dot { position: relative; padding: 0; border: 0; width: 8px; height: 8px; border-radius: 50%; background: #ffffff66; }
+.dot::before { content: ''; position: absolute; inset: -7px; }
+.dot.selected { background: #bbefdb; }
+.pause { display: grid; place-items: center; padding: 0; width: 26px; height: 26px; color: white; background: #10232d70; border: 1px solid #ffffff40; border-radius: 50%; font-size: 10px; }
+.installation { flex: 0 0 auto; display: grid; grid-template-columns: 1fr auto; gap: 0 24px; padding: 26px 38px 20px; background: #f5f7f4; border-top: 1px solid #ffffff; }
+h2 { font-size: 20px; font-weight: 650; letter-spacing: -.5px; margin: 0 0 8px; }
+.install-copy > p { max-width: 430px; margin: 0; color: #61717a; font-size: 12px; line-height: 1.6; }
+.actions { display: flex; flex-direction: column; gap: 8px; min-width: 205px; }
+.primary { padding: 12px 18px; border: 1px solid #143b39; border-radius: 7px; background: #153f3b; color: #fff; font-size: 12px; font-weight: 600; box-shadow: 0 2px 4px #142d2315; }
+.primary:hover { background: #1e524a; }
+.secondary { padding: 4px 0; background: none; border: 0; color: #52686d; font-size: 11px; }
+.status { grid-column: 1 / -1; margin: 12px 0 0; min-height: 16px; font-size: 11px; color: #46625b; }
+.status[data-state="error"], .status[data-state="blocked"] { color: #934333; }
+.footer { grid-column: 1 / -1; margin: 6px 0 0; font-size: 10px; color: #7a878b; }
+@media (max-width: 730px) { .hero-copy { padding-left: 27px; } .installation { padding: 23px 27px 18px; gap: 0 15px; } .actions { min-width: 177px; } .description { max-width: 285px; } .photo-caption { display: none; } }
+@media (prefers-reduced-motion: reduce) { .photo { transition: none; } }

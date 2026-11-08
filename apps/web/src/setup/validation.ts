@@ -1,7 +1,7 @@
 import {
-  DEFAULT_MAX_DELEGATIONS, DEFAULT_PERMISSIONS, ENV_VARIABLE_PATTERN, INTEGRATION_GATE_LIMITS, RUNTIME_MODEL_PATTERN, RUNTIME_PROFILE_PATTERN, TASK_TIERS, defaultOrchestration, presetById,
-  workspaceRuntime,
-  type Effort, type FeatureOwner, type Orchestration, type ProviderPresetId, type RuntimeId, type TaskTier, type Workspace, type WorkspacePermissions,
+  DEFAULT_MAX_DELEGATIONS, DEFAULT_PERMISSIONS, DEFAULT_WORKSPACE_CROSS_ACCESS, ENV_VARIABLE_PATTERN, INTEGRATION_GATE_LIMITS, MAX_WORKSPACE_FOLDERS, RUNTIME_MODEL_PATTERN, RUNTIME_PROFILE_PATTERN, TASK_TIERS, defaultOrchestration, presetById,
+  isInputTokenLimit, supportsPromptCache, workspaceCrossAccess, workspaceRuntime,
+  type Effort, type FeatureOwner, type Orchestration, type ProviderPresetId, type RuntimeId, type TaskTier, type Workspace, type WorkspacePermissions, type WorkspaceCrossAccess,
 } from '@extalia/core';
 import type { ConnectionInput, ConnectionView, WorkspaceInput } from '@extalia/platform';
 import type { ConnectionErrorKey, WorkspaceErrorKey } from '../i18n';
@@ -29,6 +29,10 @@ export interface ConnectionDraft {
   skills: FeatureOwner;
   /** Save this connection's sessions on disk. */
   history: boolean;
+  /** Provider prompt caching is off unless explicitly enabled. */
+  promptCache: boolean;
+  /** Explicit estimated input ceiling as typed; empty leaves it unset. */
+  inputTokenLimit: string;
   effort: Effort;
   orchestration: OrchestrationDraft;
 }
@@ -67,6 +71,8 @@ export function draftFromPreset(id: ProviderPresetId, previous?: ConnectionDraft
     memory: preset.defaults.memory,
     skills: preset.defaults.skills,
     history: previous?.history ?? true,
+    promptCache: false,
+    inputTokenLimit: previous?.inputTokenLimit ?? '',
     effort: preset.defaults.effort ?? 'high',
     // Tier models follow the provider; the on/off choice and limit are the user's.
     orchestration: {
@@ -91,6 +97,8 @@ export function draftFromConnection(view: ConnectionView): ConnectionDraft {
     memory: view.features.memory,
     skills: view.features.skills,
     history: view.features.history !== false,
+    promptCache: view.features.promptCache === true && supportsPromptCache(view),
+    inputTokenLimit: view.inputTokenLimit === undefined ? '' : String(view.inputTokenLimit),
     effort: view.effort ?? preset.defaults.effort ?? 'high',
     orchestration: orchestrationDraft(view.orchestration),
   };
@@ -106,9 +114,10 @@ export function checkBaseUrl(value: string): ConnectionErrorKey | undefined {
   return undefined;
 }
 
-export type ConnectionField = 'name' | 'baseUrl' | 'apiKey' | 'envVariable' | 'model' | 'maxDelegations';
+export type ConnectionField = 'name' | 'baseUrl' | 'apiKey' | 'envVariable' | 'model' | 'maxDelegations' | 'inputTokenLimit';
 
 const parseLimit = (value: string): number | undefined => /^\s*\d{1,2}\s*$/.test(value) && Number(value) <= 20 ? Number(value) : undefined;
+const parseInputTokenLimit = (value: string): number | undefined => /^\s*\d{1,7}\s*$/.test(value) && isInputTokenLimit(Number(value)) ? Number(value) : undefined;
 
 export function validateConnection(draft: ConnectionDraft): Partial<Record<ConnectionField, ConnectionErrorKey>> {
   const preset = presetById(draft.preset);
@@ -125,6 +134,7 @@ export function validateConnection(draft: ConnectionDraft): Partial<Record<Conne
   }
   if (!draft.model.trim()) errors.model = 'modelRequired';
   if (draft.orchestration.enabled && parseLimit(draft.orchestration.maxDelegations) === undefined) errors.maxDelegations = 'maxDelegationsInvalid';
+  if (draft.inputTokenLimit.trim() && parseInputTokenLimit(draft.inputTokenLimit) === undefined) errors.inputTokenLimit = 'inputTokenLimitInvalid';
   return errors;
 }
 
@@ -137,6 +147,7 @@ export function toConnectionInput(draft: ConnectionDraft): { input: ConnectionIn
     else if (key || draft.hasStoredKey) credential = { kind: 'stored' };
   }
   const owner = (value: FeatureOwner, native: boolean): FeatureOwner => value === 'provider' && !native ? 'extalia' : value;
+  const inputTokenLimit = parseInputTokenLimit(draft.inputTokenLimit);
   const input: ConnectionInput = {
     ...(draft.id ? { id: draft.id } : {}),
     name: draft.name.trim(),
@@ -145,8 +156,13 @@ export function toConnectionInput(draft: ConnectionDraft): { input: ConnectionIn
     baseUrl: draft.baseUrl.trim().replace(/\/+$/, ''),
     model: draft.model.trim(),
     credential,
-    features: { memory: owner(draft.memory, preset.nativeMemory), skills: owner(draft.skills, preset.nativeSkills), ...(draft.history ? {} : { history: false }) },
+    features: {
+      memory: owner(draft.memory, preset.nativeMemory), skills: owner(draft.skills, preset.nativeSkills),
+      ...(draft.history ? {} : { history: false }),
+      ...(draft.promptCache === true && supportsPromptCache({ preset: preset.id, api: preset.api, baseUrl: draft.baseUrl }) ? { promptCache: true } : {}),
+    },
     ...(preset.api === 'anthropic-messages' ? { effort: draft.effort } : {}),
+    ...(inputTokenLimit !== undefined ? { inputTokenLimit } : {}),
     orchestration: {
       enabled: draft.orchestration.enabled,
       maxDelegations: parseLimit(draft.orchestration.maxDelegations) ?? DEFAULT_MAX_DELEGATIONS,
@@ -173,8 +189,11 @@ export interface WorkspaceDraft {
   folderInput: string;
   /** The host confirmed this folder; cleared whenever the input changes. */
   folder?: { path: string; name: string };
+  additionalProjectLocations: string[];
   connectionId: string;
   permissions: WorkspacePermissions;
+  /** Retained while Hermes is selected; enforced by Extalia Native only. */
+  crossWorkspaceAccess: WorkspaceCrossAccess;
   /** Extalia Native needs a connection; Hermes Agent a profile (and optionally a model). */
   runtimeId: RuntimeId;
   hermesProfile: string;
@@ -189,7 +208,7 @@ export interface WorkspaceDraft {
 }
 
 export function emptyWorkspaceDraft(connectionId = '', runtimeId: RuntimeId = 'extalia-native'): WorkspaceDraft {
-  return { name: '', folderInput: '', connectionId, permissions: { ...DEFAULT_PERMISSIONS }, runtimeId, hermesProfile: 'default', hermesModel: '' };
+  return { name: '', folderInput: '', additionalProjectLocations: [], connectionId, permissions: { ...DEFAULT_PERMISSIONS }, crossWorkspaceAccess: DEFAULT_WORKSPACE_CROSS_ACCESS, runtimeId, hermesProfile: 'default', hermesModel: '' };
 }
 
 export function draftFromWorkspace(workspace: Workspace): WorkspaceDraft {
@@ -198,9 +217,11 @@ export function draftFromWorkspace(workspace: Workspace): WorkspaceDraft {
     id: workspace.id,
     name: workspace.name,
     folderInput: path,
+    additionalProjectLocations: [...(workspace.additionalProjectLocations ?? [])],
     ...(path ? { folder: { path, name: path.split(/[\\/]/).pop() || path } } : {}),
     connectionId: workspace.providerProfileId ?? '',
     permissions: { ...DEFAULT_PERMISSIONS, ...workspace.permissions },
+    crossWorkspaceAccess: workspaceCrossAccess(workspace),
     runtimeId: workspaceRuntime(workspace),
     hermesProfile: workspace.runtimeProfileId ?? 'default',
     hermesModel: workspace.runtimeModel ?? '',
@@ -209,7 +230,15 @@ export function draftFromWorkspace(workspace: Workspace): WorkspaceDraft {
   };
 }
 
-export type WorkspaceField = 'name' | 'folder' | 'connection' | 'profile' | 'model' | 'gate' | 'gateTimeout';
+export type WorkspaceField = 'name' | 'folder' | 'additionalFolders' | 'connection' | 'profile' | 'model' | 'gate' | 'gateTimeout';
+
+/** Lexical check only. The host validates directories and canonical overlap before saving. */
+export function validWorkspaceFolders(primary: string, additional: readonly string[]): boolean {
+  if (additional.length >= MAX_WORKSPACE_FOLDERS) return false;
+  if (additional.some(path => !path.trim() || path.length > 4096 || /[\r\n\0]/.test(path))) return false;
+  const paths = [primary, ...additional].map(path => path.trim().replace(/[\\/]+$/, '') || path.trim());
+  return new Set(paths).size === paths.length;
+}
 
 const parseGateTimeout = (value: string): number | undefined => {
   const { minTimeoutSeconds, maxTimeoutSeconds } = INTEGRATION_GATE_LIMITS;
@@ -221,6 +250,7 @@ export function validateWorkspace(draft: WorkspaceDraft): Partial<Record<Workspa
   const errors: Partial<Record<WorkspaceField, WorkspaceErrorKey>> = {};
   if (!draft.name.trim()) errors.name = 'nameRequired';
   if (!draft.folder) errors.folder = draft.folderInput.trim() ? 'folderUnchecked' : 'folderRequired';
+  if (!validWorkspaceFolders(draft.folder?.path ?? draft.folderInput, draft.additionalProjectLocations)) errors.additionalFolders = 'additionalFoldersInvalid';
   if (draft.runtimeId === 'hermes') {
     if (!RUNTIME_PROFILE_PATTERN.test(draft.hermesProfile.trim() || 'default')) errors.profile = 'profileInvalid';
     if (draft.hermesModel.trim() && !RUNTIME_MODEL_PATTERN.test(draft.hermesModel.trim())) errors.model = 'modelInvalid';
@@ -238,6 +268,8 @@ export function toWorkspaceInput(draft: WorkspaceDraft): WorkspaceInput {
     ...(draft.id ? { id: draft.id } : {}),
     name: draft.name.trim(),
     projectLocation: draft.folder?.path ?? draft.folderInput.trim(),
+    additionalProjectLocations: [...draft.additionalProjectLocations],
+    crossWorkspaceAccess: draft.crossWorkspaceAccess,
   };
   const gate = toIntegrationGate(draft);
   if (draft.runtimeId !== 'hermes') return { ...common, connectionId: draft.connectionId, permissions: { ...draft.permissions }, ...gate };

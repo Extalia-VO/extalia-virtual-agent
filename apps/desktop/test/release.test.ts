@@ -1,8 +1,10 @@
 import { mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import { macReleaseMode, releaseArtifactNames, releaseBuildOptions, runCommand, uploadRelease, verifyMacApp, verifyMacArchive, type Runner } from '../scripts/release.mjs';
+import { buildLinuxInstaller } from '../scripts/linux-installer.mjs';
 
 const version = '1.2.3';
 const tag = `v${version}`;
@@ -16,6 +18,8 @@ async function fixture(platform = 'darwin') {
   temporary.push(root);
   const artifacts = releaseArtifactNames(platform, version);
   for (const file of [...artifacts.payloads, artifacts.metadata]) await writeFile(path.join(root, file), 'synthetic artifact');
+  if (platform === 'linux') await buildLinuxInstaller({ appImage: path.join(root, `Extalia-${version}-linux-x86_64.AppImage`),
+    output: path.join(root, `Extalia-${version}-linux-x64-setup.run`), icon: fileURLToPath(new URL('../build/icon.png', import.meta.url)), version });
   return root;
 }
 type Call = { command: string; args: string[] };
@@ -286,7 +290,7 @@ describe('distributed macOS release checks', () => {
 describe('release artifact selection and draft upload', () => {
   it('matches electron-builder Linux target architecture names', () => {
     expect(releaseArtifactNames('linux', version)).toEqual({
-      payloads: ['Extalia-1.2.3-linux-x86_64.AppImage', 'Extalia-1.2.3-linux-amd64.deb'],
+      payloads: ['Extalia-1.2.3-linux-x86_64.AppImage', 'Extalia-1.2.3-linux-amd64.deb', 'Extalia-1.2.3-linux-x64-setup.run'],
       metadata: 'latest-linux.yml',
     });
   });
@@ -320,6 +324,14 @@ describe('release artifact selection and draft upload', () => {
     const run: Runner = async (_command, args) => { calls.push(args); return { stdout: JSON.stringify({ isDraft: false, tagName: tag }), stderr: '' }; };
     await expect(uploadRelease({ platform: 'linux', version, tag, directory, run })).rejects.toThrow('matching draft');
     expect(calls).toHaveLength(1);
+  });
+
+  it('refuses a tampered interactive Linux installer before any draft lookup or upload', async () => {
+    const directory = await fixture('linux');
+    await writeFile(path.join(directory, `Extalia-${version}-linux-x64-setup.run`), 'unverified installer');
+    const { run, calls } = runner();
+    await expect(uploadRelease({ platform: 'linux', version, tag, directory, run })).rejects.toThrow(/Linux installer/);
+    expect(calls).toHaveLength(0);
   });
 
   it('rejects tag/version mismatches and unsafe versions', async () => {

@@ -224,8 +224,8 @@ const pods = TEAM_POD_LAYOUT.flatMap(({ id: podId, position: [cx, cz], rotationY
     [TEAM_WORKSPACE_ORIGIN[0] + cx, TEAM_WORKSPACE_ORIGIN[1] + cz],
     rotationY + station.rotationY, TEAM_POD_SEAT.chairPosition, TEAM_POD_SEAT.chairRotationY, "office", TEAM_POD_SEAT.seatForward);
   const stage = ([x, z]: XZ) => withStagingOffset(seat, [x, z - TEAM_POD_SEAT.stagingSetback]);
-  if ((podId === "pod-a" || podId === "pod-b") && station.id === "seat-ne") return stage([0.9, -0.9]);
-  return (podId === "pod-c" || podId === "pod-d") && station.id === "seat-sw"
+  if (cz < 0 && station.id === "seat-ne") return stage([0.9, -0.9]);
+  return cz > 0 && station.id === "seat-sw"
     ? stage([0.32, -1.24]) : stage([-0.9, -0.9]);
 }));
 
@@ -325,7 +325,8 @@ const redesignedFootprints: SpatialFootprint[] = [
     return [
       deskFootprint("desk-top", [0.03, 0.03], [4.54, 1.2]),
       deskFootprint("desk-return", [-1.715, -1.46], [1.05, 2.03]),
-      deskFootprint("desk-cabinet", [0.1, -3.15], [5.2, 0.5]),
+      deskFootprint("desk-cabinet", [layout.desk.cabinet.position[0] + layout.desk.cabinet.footprintOffset[0],
+        layout.desk.cabinet.position[2] + layout.desk.cabinet.footprintOffset[1]], layout.desk.cabinet.footprintSize),
       footprint("credenza-body", layout.credenza.position, layout.credenza.size, layout.credenza.rotationY),
       footprint("storage-body", layout.storage.position, layout.storage.size, layout.storage.rotationY),
       footprint("coffee-table", [layout.lounge.position[0] + layout.lounge.coffeeTable.position[0], 0,
@@ -364,7 +365,7 @@ const loungeSofa = sofaResources("lounge.sofa", "lounge", 1,
 const engineeringBreakoutChairs = TEAM_WORKSPACE_LOUNGES.eastChairs.map((chair, index) => {
   const [x, z] = worldXZ(TEAM_WORKSPACE_ORIGIN, 0, [chair.position[0], chair.position[2]]);
   return withStagingOffset(armchairResource(chair.id, "engineering", 1, x, z, chair.rotationY),
-    [0, index === 0 ? -1.25 : -1.4]);
+    index === 0 ? [0, -1.25] : [0.9, -0.45]);
 });
 const engineeringWestChairPosition = worldXZ(TEAM_WORKSPACE_ORIGIN, 0,
   [TEAM_WORKSPACE_LOUNGES.westChair.position[0], TEAM_WORKSPACE_LOUNGES.westChair.position[2]]);

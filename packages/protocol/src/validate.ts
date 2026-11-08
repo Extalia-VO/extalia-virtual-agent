@@ -67,7 +67,7 @@ export const EVENT_SPECS: Readonly<Record<EventType, BodySpec>> = {
   'command.output': { fields: { commandId: optId, stream: { kind: 'enum', values: ['stdout', 'stderr'] }, text } },
   'command.completed': { fields: { commandId: optId, exitCode: { kind: 'number', integer: true }, durationMs: optCount } },
   'file.read': { fields: { path: label } },
-  'file.written': { fields: { path: label, change: { kind: 'enum', values: ['add', 'update', 'delete'] } } },
+  'file.written': { fields: { path: label, change: { kind: 'enum', values: ['add', 'update', 'delete'] }, toolCallId: optId } },
   'task.created': { fields: { title: label, parentTaskId: optId }, requires: ['taskId'] },
   'task.assigned': { fields: { assigneeAgentId: id }, requires: ['taskId'] },
   'task.progress': { fields: { progress: ratio, summary: optLabel }, requires: ['taskId'] },

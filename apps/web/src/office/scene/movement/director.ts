@@ -19,6 +19,7 @@ import { deskChairMotion, isDeskChair, type DeskChairMotion } from '../interior/
 import { CHAT_SPOT_PAIRS, chatSpotIds, LEISURE_SPOTS, type LeisureKind, type LeisureSpotDefinition } from './leisureSpots';
 import { chatSpeaker, chooseLeisureKind, chooseSpot, createRoutine, lifeRandom, pickChatPartner, pickChatPlace, stepRoutine, TRAVEL_LIMIT_MS, visitMs, type Routine } from './idleRoutine';
 import { deskClip, deskMode, isBusy } from './workClip';
+import { forgetSeated, setSeatedAt } from './deskPresence';
 import { CONSOLE_SEATS, hospitalityState, stoolTargetAngle, type HospitalityState } from './hospitality';
 import { outdoorKioskState, type OutdoorKioskState } from './outdoorKiosk';
 
@@ -96,6 +97,9 @@ export interface RosterEntry {
   readonly mover: Mover;
   readonly agent: OfficeAgent;
 }
+
+/** Phases in which a busy character carries its tablet (hands free for doors, chairs and sitting down). */
+const CARRY_PHASES: ReadonlySet<Mover['phase']> = new Set(['walking', 'waiting', 'boarding', 'riding', 'alighting', 'standing']);
 
 export class MovementDirector implements CharacterPositionSource {
   private readonly movers = new Map<string, Mover>();
@@ -266,6 +270,7 @@ export class MovementDirector implements CharacterPositionSource {
   private remove(id: string) {
     const mover = this.movers.get(id);
     if (!mover) return;
+    forgetSeated(id);
     if (mover.trip) this.env.elevators.release(id, mover.trip.id);
     if (mover.door) this.env.doors?.release(mover.door.id, mover.id);
     this.env.doors?.clearDuty(mover.id);
@@ -394,8 +399,12 @@ export class MovementDirector implements CharacterPositionSource {
       const low = mover.floorLow, high = mover.floorHigh;
       stepMover(mover, seconds, this.env);
       if (mover.phase === 'gone') { this.remove(mover.id); changed = true; continue; }
+      // Work in progress away from the desk travels on a tablet, never on the desk computer.
+      const carrier = this.agents.get(mover.id);
+      mover.motion.carry = carrier && isBusy(carrier) && CARRY_PHASES.has(mover.phase) ? 1 : 0;
       const seated = MovementDirector.seatedPose(mover);
       if (this.seatedFlags.get(mover.id) !== seated) { this.seatedFlags.set(mover.id, seated); changed = true; }
+      setSeatedAt(mover.id, mover.phase === 'seated' ? mover.seat?.seatId ?? null : null);
       if (low !== mover.floorLow || high !== mover.floorHigh) changed = true;
       // A desk chair slides only while its person holds it (the movement's own chair beats set the pull).
       if (this.chairs && mover.seat && isDeskChair(mover.seat.seatId)) this.chairs.setTarget(mover.seat.seatId, mover.chairPull, mover.chairSide);
@@ -648,6 +657,7 @@ export class MovementDirector implements CharacterPositionSource {
     this.hospitality.clear();
     this.kiosk.clear();
     for (const mover of this.list) {
+      forgetSeated(mover.id);
       if (mover.trip) this.env.elevators.release(mover.id, mover.trip.id);
       if (mover.door) this.env.doors?.release(mover.door.id, mover.id);
       this.env.doors?.clearDuty(mover.id);

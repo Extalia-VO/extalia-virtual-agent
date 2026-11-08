@@ -21,6 +21,8 @@ export class MissionRecovery {
     executions?(missionId: string): Promise<DaemonMissionExecutions | undefined>;
   }) {}
 
+  isInspecting(): boolean { return this.pending.size > 0; }
+
   refresh(sessionId: string, missionId: string): Promise<HostMissionRecoveryResult> {
     const key = JSON.stringify([sessionId, missionId]);
     const previous = this.pending.get(key);

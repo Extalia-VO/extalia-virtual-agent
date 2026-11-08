@@ -27,6 +27,8 @@ export interface ElevatorRide { riderId: string; from: ElevatorFloor; to: Elevat
 export interface ElevatorPassenger extends ElevatorRide { slot: number; boarded: boolean; }
 export interface ElevatorSnapshot {
   elevatorId: ElevatorId;
+  /** Completed boarding/exiting work; requests and ticks do not advance it. */
+  serviceRevision: number;
   phase: ElevatorPhase;
   y: number;
   doors: number;
@@ -44,6 +46,7 @@ function rideDirection(ride: ElevatorRide): -1 | 1 { return ride.to > ride.from 
 function validRide(ride: ElevatorRide) { return !!ride.riderId && [1, 2, 3].includes(ride.from) && [1, 2, 3].includes(ride.to) && ride.from !== ride.to; }
 
 class ElevatorController {
+  private serviceRevision = 0;
   private listeners = new Set<() => void>();
   private phase: ElevatorPhase = "idle";
   private y = 0;
@@ -75,7 +78,7 @@ class ElevatorController {
   snapshot(): ElevatorSnapshot {
     const rider = this.currentRide();
     return {
-      elevatorId: this.id, phase: this.phase, y: this.y, doors: this.doors,
+      elevatorId: this.id, serviceRevision: this.serviceRevision, phase: this.phase, y: this.y, doors: this.doors,
       openFloor: this.doors > 0 ? this.atFloor() : null, rider,
       boarded: rider ? this.passengers.some(p => p.riderId === rider.riderId && p.boarded) : false,
       passengers: this.passengers.map(p => ({ ...p })), queue: this.queue.map(r => ({ ...r })),
@@ -201,6 +204,7 @@ class ElevatorController {
   confirmBoarded(riderId: string) {
     if (!this.canBoard(riderId)) return false;
     this.passengers.find(p => p.riderId === riderId)!.boarded = true;
+    this.serviceRevision++;
     this.waitingSlots.delete(riderId);
     if (!this.entering().length) this.beginClosing();
     this.emit(); return true;
@@ -210,6 +214,7 @@ class ElevatorController {
     if (!this.canExit(riderId)) return false;
     const index = this.passengers.findIndex(p => p.riderId === riderId);
     this.lastRider = this.passengers.splice(index, 1)[0]!;
+    this.serviceRevision++;
     this.serviceStop(); this.emit(); return true;
   }
   private remove(riderId: string, force: boolean) {

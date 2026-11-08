@@ -29,14 +29,13 @@ export interface DaemonMission {
   /** Weak observation on the original connection; never restores execution authority. */
   observeTurnSettlement(observation: NativeTurnSettlement): Promise<void>;
   recordLocalDrain(proof: NativeLocalOperationsDrained): Promise<void>;
-  /** Best effort for a mission that never started: record it as cancelled by its lead. */
+  /** Record cancellation for a mission that never started; acknowledgement failures propagate. */
   cancelUnstarted(sessionId: string): Promise<void>;
 }
 
-export async function createDaemonMission(client: DaemonClient, plan: Pick<OrchestrationPlan, 'mission' | 'graph'>): Promise<DaemonMission> {
+export async function createDaemonMission(client: DaemonClient, plan: Pick<OrchestrationPlan, 'mission' | 'graph'>, supervisorId = randomUUID()): Promise<DaemonMission> {
   if (!['mission.heartbeat', 'execution.observe', 'execution.recordLocalDrain', 'mission.executions'].every(op => client.capabilities.some(capability => capability === op))) throw new DaemonUnavailableError('missing_capability');
   const missionId = plan.mission.id;
-  const supervisorId = randomUUID();
   const created = await client.request('mission.create', { mission: plan.mission, graph: plan.graph });
   if (created.missionId !== missionId) throw new Error('The native core acknowledged another mission.');
   const states = new Map<string, TaskState>(plan.graph.tasks.map(task => [task.id, task.state]));
@@ -180,7 +179,8 @@ export async function createDaemonMission(client: DaemonClient, plan: Pick<Orche
         schemaVersion: ORCHESTRATION_SCHEMA_VERSION, id: randomUUID(), workspaceId: plan.mission.workspaceId, sessionId, missionId, agentId: plan.mission.leadAgentId,
         source: { runtime: 'extalia-native', channel: 'system' }, observedAt: new Date().toISOString(), sequence: 0, confidence: 'reported', body: { type: 'mission.state', state: 'cancelled' },
       };
-      await client.request('event.commit', { event }).catch(() => undefined);
+      const ack = await client.request('event.commit', { event });
+      if (ack.eventId !== event.id || ack.missionId !== missionId) throw new Error('Mismatched native cancellation acknowledgement.');
     },
   };
 }

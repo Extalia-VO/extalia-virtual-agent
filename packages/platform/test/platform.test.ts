@@ -55,10 +55,10 @@ describe('subagent team normalizers', () => {
     expect(() => normalizeAgentTeam({ enabled: true, allowedModels: ['a'], members: [member] })).toThrow(/This team cannot be saved: .*allowed models/);
     expect(normalizeSessionOptions({ team: { enabled: true, allowedModels: ['a'], members: [] } })).toEqual({ team: { enabled: true, allowedModels: ['a'], members: [] } });
     expect(normalizeTeamPlanRequest({ goal: ' Ship ', count: 2, allowedModels: ['a'], members: [member] })).toEqual({ goal: 'Ship', count: 2, allowedModels: ['a'], members: [{ ...member, models: [] }] });
-    expect(() => normalizeTeamPlanRequest({ goal: 'x', count: 0, allowedModels: [] })).toThrow(/1 to 20/);
-    expect(() => normalizeTeamPlanRequest({ goal: 'x', count: 21, allowedModels: [] })).toThrow(/1 to 20/);
-    expect(normalizeTeamPlanRequest({ goal: 'x', count: 20, allowedModels: [] }).count).toBe(20);
-    expect(() => normalizeTeamPlanRequest({ goal: 'x', count: 1.5, allowedModels: [] })).toThrow(/1 to 20/);
+    expect(() => normalizeTeamPlanRequest({ goal: 'x', count: 0, allowedModels: [] })).toThrow(/1 to 32/);
+    expect(() => normalizeTeamPlanRequest({ goal: 'x', count: 33, allowedModels: [] })).toThrow(/1 to 32/);
+    expect(normalizeTeamPlanRequest({ goal: 'x', count: 32, allowedModels: [] }).count).toBe(32);
+    expect(() => normalizeTeamPlanRequest({ goal: 'x', count: 1.5, allowedModels: [] })).toThrow(/1 to 32/);
     // v0.0.32: the goal and the models are optional; host-only fields from a client are dropped.
     expect(normalizeTeamPlanRequest({ goal: '', count: 1, allowedModels: [], candidateModels: ['x'], context: { workspace: 'w' } })).toEqual({ goal: '', count: 1, allowedModels: [] });
     expect(normalizeTeamPlanRequest({ count: 3 })).toEqual({ goal: '', count: 3, allowedModels: [] });
@@ -87,6 +87,19 @@ describe('subagent team normalizers', () => {
 });
 
 describe('normalizeSessionOptions', () => {
+  it('preserves explicit team connection grants and external member chains through planning and transports', () => {
+    const connections = [{ connectionId: 'worker-connection', allowedModels: ['worker-model', 'backup-model'] }];
+    const member = { id: 'worker', name: 'Worker Example', role: 'Reviewer', connectionId: 'worker-connection', models: ['worker-model'] };
+    const team = { enabled: true, allowedModels: ['lead-model'], connections, members: [member] };
+    expect(normalizeSessionOptions({ team }).team).toEqual(team);
+    expect(normalizeTeamPlanRequest({ goal: 'Review', count: 1, allowedModels: ['lead-model'], connections, members: [member], candidateModels: ['unapproved'] }))
+      .toEqual({ goal: 'Review', count: 1, allowedModels: ['lead-model'], connections, members: [member] });
+    expect(() => normalizeAgentTeam({ ...team, connections: [] })).toThrow();
+    const leadMember = { ...member, connectionId: undefined, models: ['lead-model'] };
+    expect(normalizeTeamPlanRequest({ goal: 'Review', count: 1, allowedModels: ['lead-model'], connections, members: [leadMember] }).members?.[0]?.models).toEqual(['lead-model']);
+    expect(() => normalizeAgentTeam({ ...team, members: [{ ...member, models: ['lead-model'] }] })).toThrow();
+    expect(isAgentHostMethod('teamModelChoices')).toBe(true);
+  });
   it('keeps valid model ids and efforts, clears empty fields and refuses the rest', () => {
     expect(normalizeSessionOptions(undefined)).toEqual({});
     expect(normalizeSessionOptions({ model: ' vendor/model-1:free ', effort: 'xhigh' })).toEqual({ model: 'vendor/model-1:free', effort: 'xhigh' });

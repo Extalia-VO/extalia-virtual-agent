@@ -436,6 +436,11 @@ export function stepTrafficNetwork(net: TrafficNetwork, dt: number, input: Traff
   writeNetworkPoses(net);
 }
 
+/** A car signals from this far before a junction (metres), through the complete turn arc. */
+export const SIGNAL_LEAD = 20;
+/** Turn-signal side for a junction movement: 1 left (+X of the car), -1 right, 0 straight. */
+export const turnSignal = (kind: 'straight' | 'left' | 'right') => kind === 'left' ? 1 : kind === 'right' ? -1 : 0;
+
 const scratchPose = { x: 0, z: 0, yaw: 0 };
 function writePose(net: TrafficNetwork, car: NetworkCar, pose: TrafficCarPose) {
   const { lanes, turns } = net.network, L = lanes.length, segment = car.route[car.k]!;
@@ -448,12 +453,15 @@ function writePose(net: TrafficNetwork, car: NetworkCar, pose: TrafficCarPose) {
     const nextLane = car.k + 2 < car.length ? car.route[car.k + 2]! : -1;
     pose.feed = nextLane;
     pose.feedAt = nextLane >= 0 ? -(lane.length - car.s + turns[car.route[car.k + 1]! - L]!.length) : 0;
+    const next = car.k + 1 < car.length ? car.route[car.k + 1]! : -1;
+    pose.signal = next >= L && lane.length - car.s < SIGNAL_LEAD ? turnSignal(turns[next - L]!.kind) : 0;
   } else {
     const turn = turns[segment - L]!;
     turnPose(turn, car.s, scratchPose);
     pose.x = scratchPose.x; pose.z = scratchPose.z; pose.yaw = scratchPose.yaw;
     top = turnTop(net.network, turn, car.s);
     pose.lane = turn.to; pose.along = car.s - turn.length; pose.feed = -1; pose.feedAt = 0;
+    pose.signal = turnSignal(turn.kind);
   }
   pose.id = car.id; pose.model = car.model; pose.tone = car.tone;
   pose.y = top + .015; pose.top = top; pose.stopped = car.braking; pose.distance = car.odometer; pose.visible = true;

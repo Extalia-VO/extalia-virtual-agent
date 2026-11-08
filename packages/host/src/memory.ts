@@ -1,5 +1,6 @@
 import { constants, type Stats } from 'node:fs';
-import { lstat, mkdir, open, opendir, rm, type FileHandle } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { lstat, mkdir, open, opendir, realpath, rm, type FileHandle } from 'node:fs/promises';
 import path from 'node:path';
 import { countSecrets, redact, safeLabel } from '@extalia/core';
 import type { AnyTool, ToolDefinition } from '@extalia/runtime';
@@ -12,11 +13,74 @@ const FILE_BYTES = 80_000;
 const SCAN_BYTES = 2 * 1024 * 1024;
 const DIRECTORY_ENTRIES = 4096;
 const SEARCH_CANDIDATES = 128;
+const SEARCH_HIT_CHARACTERS = 240;
+const SEARCH_EXCERPT_RESERVE = 40;
+const RECALL_PROMPT_WINDOW = 2048;
+const RECALL_TERMS = 12;
+const RECALL_STOPWORDS = new Set('a an and are as at be been but by can could do for from had has have help hi how i if in into is it its me my of on or our please should that the their them there these they this those to use was we were what when where which will with would you your ada adalah agar akan aku anda apa apakah atau bagi bahwa bantu belum bisa buat cara dan dari dengan di dia dalam hai halo ini itu juga kami kamu karena ke kita kok lagi lebih mau masih melalui memang menjadi menggunakan mohon pada para perlu per sudah saya sebagai secara semua seperti serta sih suatu supaya telah tentang terhadap terima tidak tolong untuk ya yang redacted'.split(' '));
+const RECALL_CACHE_ENTRIES = 512;
+// Metadata only: no contents, prompt text, derived terms, or store references.
+const recallMetadataCache = new Map<string, { note: MemoryNote; signature: string }>();
 const READ_FLAGS = constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0) | (constants.O_NOCTTY ?? 0);
 const UNAVAILABLE = 'Memory note is unavailable or unsafe to read.';
+const mutations = new Map<string, Promise<void>>();
+
+export class MemoryConflictError extends Error {
+  readonly code = 'MEMORY_CONFLICT';
+  constructor() {
+    super('Memory note changed or was deleted. Read the current note and retry with its revision; no changes were saved.');
+    this.name = 'MemoryConflictError';
+  }
+}
+
+export interface MemoryReadNote { content: string; revision: string; updatedAt: string }
+export interface MemoryPage {
+  name: string;
+  revision: string;
+  offset: number;
+  nextOffset?: number;
+  totalCharacters: number;
+  text: string;
+  truncated: boolean;
+  offsetUnit: 'unicode-code-points';
+}
+
+function checkRevision(value: unknown, allowNull = false): void {
+  if (value !== undefined && !(allowNull && value === null) && (typeof value !== 'string' || !/^[a-f0-9]{64}$/.test(value))) throw new Error('Invalid memory revision. Read the current note before retrying.');
+}
+
+/** Canonicalize trusted ancestor aliases even before the memory directory exists. */
+async function directoryKey(directory: string): Promise<string> {
+  let current = path.resolve(directory);
+  const suffix: string[] = [];
+  for (;;) {
+    try { return path.join(await realpath(current), ...suffix); }
+    catch (error) {
+      // eslint-disable-next-line preserve-caught-error -- Keep filesystem paths out of memory errors.
+      if (!isNotFound(error) || path.dirname(current) === current) throw new Error(UNAVAILABLE);
+      suffix.unshift(path.basename(current));
+      current = path.dirname(current);
+    }
+  }
+}
+
+async function serialize<T>(directory: string, operation: () => Promise<T>): Promise<T> {
+  const key = await directoryKey(directory);
+  const previous = mutations.get(key) ?? Promise.resolve();
+  let release!: () => void;
+  const pending = new Promise<void>(resolve => { release = resolve; });
+  mutations.set(key, pending);
+  await previous;
+  try { return await operation(); }
+  finally {
+    release();
+    if (mutations.get(key) === pending) mutations.delete(key);
+  }
+}
 
 export interface MemoryNote {
   name: string;
+  revision: string;
   /** First non-empty line, without Markdown heading marks, at most 120 code points. */
   summary: string;
   updatedAt: string;
@@ -30,6 +94,12 @@ export interface MemoryCatalog {
   nextOffset?: number;
 }
 
+export interface MemoryRecallCatalog extends MemoryCatalog {
+  /** Bounded local work counts only; prompt text and derived terms never leave recall. */
+  diagnostics: { knownNames: number; candidateCount: number; loadedCount: number; bytesRead: number; termCount: number; cacheHits: number };
+}
+
+interface LoadedMemoryNote extends MemoryReadNote { signature: string }
 interface LoadedNote { note: MemoryNote; content: string; sourceOffset: number }
 interface Scan { notes: LoadedNote[]; omitted: number; incomplete: boolean; nextOffset?: number }
 interface SearchHit extends MemoryNote { excerpt: string }
@@ -65,12 +135,36 @@ function summarize(content: string): string {
   return slice(line.replace(/[\p{Cc}\p{Cf}\s]+/gu, ' '), 0, 120);
 }
 
+function recallTerms(prompt: string): string[] {
+  if (typeof prompt !== 'string') throw new Error('Memory recall needs prompt text.');
+  // Process only bounded head/tail windows. Alternate them so a long preamble
+  // cannot consume every term before the user's final question is considered.
+  const tokenize = (window: string) => [...safeContent(window).normalize('NFC').toLowerCase().matchAll(/[\p{L}\p{N}]+/gu)]
+    .map(match => match[0]).filter(term => { const length = Array.from(term).length; return length >= 2 && length <= 64 && !RECALL_STOPWORDS.has(term); });
+  const head = tokenize(prompt.slice(0, RECALL_PROMPT_WINDOW));
+  const tail = prompt.length > RECALL_PROMPT_WINDOW ? tokenize(prompt.slice(-RECALL_PROMPT_WINDOW)).reverse() : [];
+  const terms = new Set<string>();
+  for (let i = 0; i < Math.max(head.length, tail.length) && terms.size < RECALL_TERMS; i++) {
+    for (const term of [head[i], tail[i]]) {
+      if (term !== undefined) terms.add(term);
+      if (terms.size === RECALL_TERMS) break;
+    }
+  }
+  return [...terms];
+}
+
 function regular(info: Stats): boolean { return info.isFile() && info.nlink === 1 && info.size <= FILE_BYTES; }
 function same(a: Stats, b: Stats): boolean {
   return a.dev === b.dev && a.ino === b.ino && a.mode === b.mode && a.nlink === b.nlink && a.size === b.size && a.mtimeMs === b.mtimeMs && a.ctimeMs === b.ctimeMs;
 }
 
-/** Workspace Markdown notes only. Root/ancestors must be trusted and quiescent; these checks are not an adversarial atomic-filesystem guarantee. */
+function fileSignature(info: Stats): string {
+  return JSON.stringify([info.dev, info.ino, info.mode, info.nlink, info.size, info.birthtimeMs, info.mtimeMs, info.ctimeMs]);
+}
+
+/** Workspace Markdown notes only. Mutations serialize across stores in this process.
+ * Root/ancestors must be trusted and quiescent; revision guards are not atomic
+ * filesystem compare-and-swap against external editors or adversarial changes. */
 export class MemoryStore {
   constructor(readonly directory: string) {}
 
@@ -104,7 +198,7 @@ export class MemoryStore {
     } catch { throw new Error(UNAVAILABLE); }
   }
 
-  private async load(name: string, budget: { remaining: number }): Promise<{ content: string; updatedAt: string } | 'missing' | 'unsafe' | 'budget'> {
+  private async load(name: string, budget: { remaining: number }): Promise<LoadedMemoryNote | 'missing' | 'unsafe' | 'budget'> {
     const file = this.file(name);
     let handle: FileHandle | undefined;
     try {
@@ -125,7 +219,10 @@ export class MemoryStore {
       const [after, current] = await Promise.all([handle.stat(), lstat(file)]);
       if (!same(opened, after) || !same(after, current) || !regular(current)) return 'unsafe';
       const content = new TextDecoder('utf-8', { fatal: true }).decode(buffer);
-      return { content: safeContent(content), updatedAt: after.mtime.toISOString() };
+      // Hash verified bytes and file identity: redacted-equivalent edits and a
+      // deletion/recreation must still invalidate a previously observed revision.
+      const revision = createHash('sha256').update(JSON.stringify([after.dev, after.ino, after.mode, after.size, after.birthtimeMs, after.mtimeMs, after.ctimeMs])).update('\0').update(buffer).digest('hex');
+      return { content: safeContent(content), revision, updatedAt: after.mtime.toISOString(), signature: fileSignature(after) };
     } catch (error) {
       return isNotFound(error) ? 'missing' : 'unsafe';
     } finally { await handle?.close().catch(() => undefined); }
@@ -144,7 +241,7 @@ export class MemoryStore {
       const loaded = await this.load(name, budget);
       if (loaded === 'budget') { incomplete = true; break; }
       if (typeof loaded === 'string') incomplete = true;
-      else notes.push({ note: { name, summary: summarize(loaded.content), updatedAt: loaded.updatedAt }, content: loaded.content, sourceOffset: cursor });
+      else notes.push({ note: { name, revision: loaded.revision, summary: summarize(loaded.content), updatedAt: loaded.updatedAt }, content: loaded.content, sourceOffset: cursor });
       cursor++;
     }
     if (cursor < directory.names.length) incomplete = true;
@@ -154,6 +251,84 @@ export class MemoryStore {
   async catalog(options: { offset?: number; limit?: number } = {}): Promise<MemoryCatalog> {
     const result = await this.scan(integer(options.offset, 0, 0, DIRECTORY_ENTRIES), integer(options.limit, 8, 1, 128));
     return { ...result, notes: result.notes.map(item => item.note) };
+  }
+
+  private async recallMetadata(name: string, canonicalDirectory: string, budget: { remaining: number }): Promise<{ note: MemoryNote; cacheHit: boolean } | 'missing' | 'unsafe' | 'budget'> {
+    const key = path.join(canonicalDirectory, `${name}.md`);
+    if (!await this.root()) { recallMetadataCache.delete(key); return 'missing'; }
+    const cached = recallMetadataCache.get(key);
+    if (cached) {
+      try {
+        const info = await lstat(this.file(name));
+        if (regular(info) && fileSignature(info) === cached.signature) {
+          recallMetadataCache.delete(key);
+          recallMetadataCache.set(key, cached);
+          return { note: { ...cached.note }, cacheHit: true };
+        }
+        recallMetadataCache.delete(key);
+        if (!regular(info)) return 'unsafe';
+      } catch (error) {
+        recallMetadataCache.delete(key);
+        return isNotFound(error) ? 'missing' : 'unsafe';
+      }
+    }
+    const loaded = await this.load(name, budget);
+    if (typeof loaded === 'string') return loaded;
+    const note: MemoryNote = { name, revision: loaded.revision, summary: summarize(loaded.content), updatedAt: loaded.updatedAt };
+    recallMetadataCache.set(key, { note: { ...note }, signature: loaded.signature });
+    while (recallMetadataCache.size > RECALL_CACHE_ENTRIES) recallMetadataCache.delete(recallMetadataCache.keys().next().value!);
+    return { note, cacheHit: false };
+  }
+
+  /** Literal metadata recall, not semantic or whole-vault search. Filename hits
+   * may enter from anywhere in bounded discovery; title-only relevance outside
+   * the 128 candidates is unknown. Only safe metadata is cached, with fresh root
+   * and file-stat checks per hit; content reads and revision guards stay fresh. */
+  async recallCatalog(prompt: string, options: { limit?: number; relevantOnly?: boolean } = {}): Promise<MemoryRecallCatalog> {
+    const limit = integer(options.limit, 8, 1, 8);
+    const terms = recallTerms(prompt);
+    const directory = await this.names();
+    const canonicalDirectory = await directoryKey(this.directory);
+    if (options.relevantOnly && !terms.length) return {
+      notes: [], omitted: directory.names.length, incomplete: directory.incomplete || directory.names.length > 0,
+      diagnostics: { knownNames: directory.names.length, candidateCount: 0, loadedCount: 0, bytesRead: 0, termCount: 0, cacheHits: 0 },
+    };
+    if (!directory.incomplete) {
+      const retained = new Set(directory.names.map(name => path.join(canonicalDirectory, `${name}.md`)));
+      for (const key of recallMetadataCache.keys()) {
+        if (path.dirname(key) === canonicalDirectory && !retained.has(key)) recallMetadataCache.delete(key);
+      }
+    }
+    const matches = (value: string) => {
+      const normalized = value.normalize('NFC').toLowerCase();
+      return terms.reduce((score, term) => score + (normalized.includes(term) ? 1 : 0), 0);
+    };
+    // Sort only the bounded discovered names. Unsafe names remain omissions and
+    // never enter a path lookup or the returned metadata.
+    const candidates = directory.names.filter(name => redact(name) === name)
+      .map(name => ({ name, score: matches(name) }))
+      .sort((a, b) => b.score - a.score || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
+      .slice(0, terms.length ? SEARCH_CANDIDATES : limit);
+    const budget = { remaining: SCAN_BYTES };
+    const ranked: { note: MemoryNote; score: number }[] = [];
+    let incomplete = directory.incomplete || candidates.length < directory.names.length;
+    let scanned = 0;
+    let cacheHits = 0;
+    for (const candidate of candidates) {
+      const loaded = await this.recallMetadata(candidate.name, canonicalDirectory, budget);
+      scanned++;
+      if (loaded === 'budget') { incomplete = true; break; }
+      if (typeof loaded === 'string') { incomplete = true; continue; }
+      if (loaded.cacheHit) cacheHits++;
+      const note = loaded.note;
+      ranked.push({ note, score: candidate.score * (RECALL_TERMS + 1) + matches(note.summary) });
+    }
+    ranked.sort((a, b) => b.score - a.score || (a.note.name < b.note.name ? -1 : a.note.name > b.note.name ? 1 : 0));
+    const notes = (options.relevantOnly ? ranked.filter(item => item.score > 0) : ranked).slice(0, limit).map(item => item.note);
+    return {
+      notes, omitted: directory.names.length - notes.length, incomplete: incomplete || ranked.length > notes.length,
+      diagnostics: { knownNames: directory.names.length, candidateCount: scanned, loadedCount: ranked.length, bytesRead: SCAN_BYTES - budget.remaining, termCount: terms.length, cacheHits },
+    };
   }
 
   async list(): Promise<MemoryNote[]> { return (await this.catalog({ limit: 128 })).notes; }
@@ -184,10 +359,14 @@ export class MemoryStore {
       if (!terms.every(term => name.includes(term) || summary.includes(term) || body.includes(term))) continue;
       const score = terms.reduce((sum, term) => sum + (name.includes(term) ? 10_000 : summary.includes(term) ? 100 : 1), 0);
       const match = Math.min(...terms.map(term => body.indexOf(term)).filter(index => index >= 0));
-      const start = Number.isFinite(match) ? Math.max(0, Array.from(body.slice(0, match)).length - 40) : 0;
-      const available = Math.max(0, 240 - Array.from(note.name + note.summary + note.updatedAt).length);
+      const fixedCharacters = Array.from(note.name + note.updatedAt + note.revision).length;
+      // Keep identity intact and reserve excerpt space by shortening only the
+      // search summary. Catalog summaries retain their independent 120-point cap.
+      const hitSummary = slice(note.summary, 0, Math.max(0, SEARCH_HIT_CHARACTERS - fixedCharacters - SEARCH_EXCERPT_RESERVE));
+      const available = Math.max(0, SEARCH_HIT_CHARACTERS - fixedCharacters - Array.from(hitSummary).length);
+      const start = Number.isFinite(match) ? Math.max(0, Array.from(body.slice(0, match)).length - Math.min(40, Math.floor(available / 3))) : 0;
       // Match positions refer to this normalized lowercase representation, not the original text.
-      ranked.push({ hit: { ...note, excerpt: slice(body, start, available) }, score });
+      ranked.push({ hit: { ...note, summary: hitSummary, excerpt: slice(body, start, available) }, score });
     }
     ranked.sort((a, b) => b.score - a.score || (a.hit.name < b.hit.name ? -1 : a.hit.name > b.hit.name ? 1 : 0));
     const hits = ranked.slice(hitOffset, hitOffset + limit).map(item => item.hit);
@@ -200,41 +379,72 @@ export class MemoryStore {
     return page();
   }
 
-  async read(name: string): Promise<string | undefined> {
+  async readNote(name: string): Promise<MemoryReadNote | undefined> {
     checkName(name);
     if (!await this.root()) return undefined;
     const result = await this.load(name, { remaining: FILE_BYTES });
     if (result === 'missing') return undefined;
     if (typeof result === 'string') throw new Error(UNAVAILABLE);
-    return result.content;
+    return { content: result.content, revision: result.revision, updatedAt: result.updatedAt };
+  }
+
+  async read(name: string): Promise<string | undefined> { return (await this.readNote(name))?.content; }
+
+  async readPage(name: string, options: { offset?: number; limit?: number; expectedRevision?: string } = {}): Promise<MemoryPage | undefined> {
+    const offset = integer(options.offset, 0, 0, FILE_BYTES);
+    const limit = integer(options.limit, 2000, 1, 8000);
+    checkRevision(options.expectedRevision);
+    const note = await this.readNote(name);
+    if (options.expectedRevision !== undefined && note?.revision !== options.expectedRevision) throw new MemoryConflictError();
+    if (!note) return undefined;
+    const points = Array.from(note.content);
+    const end = Math.min(points.length, offset + limit);
+    return { name, revision: note.revision, offset, ...(end < points.length ? { nextOffset: end } : {}), totalCharacters: points.length, text: points.slice(offset, end).join(''), truncated: offset > 0 || end < points.length, offsetUnit: 'unicode-code-points' };
   }
 
   /** Save a note. Returns how many likely credentials were masked. */
-  async write(name: string, content: string): Promise<{ masked: number }> {
+  async write(name: string, content: string, options: { expectedRevision?: string | null } = {}): Promise<{ masked: number; revision: string }> {
     const file = this.file(name);
+    checkRevision(options.expectedRevision, true);
     if (typeof content !== 'string' || !content.trim()) throw new Error('A memory note needs content.');
     if (content.length > MEMORY_CONTENT_LIMIT) throw new Error(`A memory note is limited to ${MEMORY_CONTENT_LIMIT} characters; this one has ${content.length}. Keep notes short and specific.`);
     const stored = safeContent(content);
     if (stored.length > MEMORY_CONTENT_LIMIT) throw new Error(`A sanitized memory note is limited to ${MEMORY_CONTENT_LIMIT} characters. Keep the note shorter.`);
-    try {
+    try { return await serialize(this.directory, async () => {
       await this.root();
       await mkdir(this.directory, { recursive: true, mode: 0o700 });
       await this.root();
       try { if (!regular(await lstat(file))) throw new Error(UNAVAILABLE); }
       catch (error) { if (!isNotFound(error)) throw error; }
+      if (options.expectedRevision !== undefined) {
+        const current = await this.readNote(name);
+        if (options.expectedRevision === null ? current !== undefined : current?.revision !== options.expectedRevision) throw new MemoryConflictError();
+      }
       const masked = countSecrets(content);
       await writeFileAtomic(file, stored);
-      return { masked };
-    } catch { throw new Error('Memory note could not be saved safely.'); }
+      const saved = await this.readNote(name);
+      if (!saved) throw new Error(UNAVAILABLE);
+      return { masked, revision: saved.revision };
+    }); } catch (error) {
+      if (error instanceof MemoryConflictError) throw error;
+      // eslint-disable-next-line preserve-caught-error -- Do not expose filesystem paths through memory errors.
+      throw new Error('Memory note could not be saved safely.');
+    }
   }
 
-  async delete(name: string): Promise<void> {
+  async delete(name: string, options: { expectedRevision?: string } = {}): Promise<void> {
     const file = this.file(name);
-    if (!await this.root()) return;
-    try {
+    checkRevision(options.expectedRevision);
+    try { await serialize(this.directory, async () => {
+      if (options.expectedRevision !== undefined) {
+        if ((await this.readNote(name))?.revision !== options.expectedRevision) throw new MemoryConflictError();
+      } else if (!await this.root()) return;
       if (!regular(await lstat(file))) throw new Error(UNAVAILABLE);
       await rm(file);
+    });
     } catch (error) {
+      if (error instanceof MemoryConflictError) throw error;
+      if (isNotFound(error) && options.expectedRevision !== undefined) throw new MemoryConflictError();
       if (!isNotFound(error)) {
         // eslint-disable-next-line preserve-caught-error -- Do not expose filesystem paths through memory errors.
         throw new Error('Memory note could not be deleted safely.');
@@ -244,8 +454,8 @@ export class MemoryStore {
 }
 
 type PageInput = { offset?: number; limit?: number };
-type NameInput = PageInput & { name: string };
-type WriteInput = { name: string; content: string };
+type NameInput = PageInput & { name: string; expected_revision?: string };
+type WriteInput = { name: string; content: string; expected_revision?: string | null };
 
 /** Progressive memory lookup; memory_write remains the only model-facing writer. */
 export function createMemoryTools(store: MemoryStore): AnyTool[] {
@@ -275,36 +485,37 @@ export function createMemoryTools(store: MemoryStore): AnyTool[] {
   };
   const read: ToolDefinition<NameInput> = {
     name: 'memory_read',
-    description: 'Read a workspace note. Supply offset or limit for a bounded JSON page in Unicode code points after redaction (default 2000, maximum 8000); without either, read the full normal note.',
-    parameters: { type: 'object', properties: { name: nameProperty, offset: { type: 'integer', minimum: 0, maximum: FILE_BYTES }, limit: { type: 'integer', minimum: 1, maximum: 8000 } }, required: ['name'], additionalProperties: false },
+    description: 'Read a workspace note. Supply offset, limit or expected_revision for a bounded JSON page with a revision in Unicode code points after redaction (default 2000, maximum 8000). Reuse expected_revision for later pages to detect edits. Without these options, read the full normal note.',
+    parameters: { type: 'object', properties: { name: nameProperty, offset: { type: 'integer', minimum: 0, maximum: FILE_BYTES }, limit: { type: 'integer', minimum: 1, maximum: 8000 }, expected_revision: { type: 'string', pattern: '^[a-f0-9]{64}$', description: 'Revision from an earlier page; fail if the note changed.' } }, required: ['name'], additionalProperties: false },
     access: 'memory', kind: 'knowledge',
     describe: input => ({ label: `Reading memory ${safeLabel(input.name, 64)}`, target: safeLabel(input.name, 64) }),
     run: async input => {
       try {
         const name = checkName(input.name);
-        const start = integer(input.offset, 0, 0, FILE_BYTES);
-        const limit = integer(input.limit, 2000, 1, 8000);
-        const content = await store.read(name);
-        if (content === undefined) return failure('Memory note was not found. Use memory_search to find relevant note names.');
-        if (input.offset === undefined && input.limit === undefined) {
+        if (input.offset === undefined && input.limit === undefined && input.expected_revision === undefined) {
+          const content = await store.read(name);
+          if (content === undefined) return failure('Memory note was not found. Use memory_search to find relevant note names.');
           if (content.length > MEMORY_CONTENT_LIMIT) return failure('This external memory note needs a bounded page. Supply offset and limit to memory_read.');
           return { ok: true, output: content };
         }
-        const points = Array.from(content);
-        const end = Math.min(points.length, start + limit);
-        return { ok: true, output: JSON.stringify({ name, offset: start, ...(end < points.length ? { nextOffset: end } : {}), totalCharacters: points.length, text: points.slice(start, end).join(''), truncated: start > 0 || end < points.length, offsetUnit: 'unicode-code-points' }) };
-      } catch { return failure('Memory note is unavailable, unsafe, or its name/pagination is invalid. Use memory_search for available metadata.'); }
+        const page = await store.readPage(name, { offset: input.offset, limit: input.limit, expectedRevision: input.expected_revision });
+        if (!page) return failure('Memory note was not found. Use memory_search to find relevant note names.');
+        return { ok: true, output: JSON.stringify(page) };
+      } catch (error) {
+        if (error instanceof MemoryConflictError) return failure(error.message);
+        return failure('Memory note is unavailable, unsafe, or its name/pagination/revision is invalid. Use memory_search for available metadata.');
+      }
     },
   };
   const write: ToolDefinition<WriteInput> = {
     name: 'memory_write',
-    description: `Create or replace a workspace memory note (Markdown, up to ${MEMORY_CONTENT_LIMIT} characters). Save only durable, explicitly confirmed facts. Never capture transcripts automatically or save credentials; credentials are masked.`,
-    parameters: { type: 'object', properties: { name: nameProperty, content: { type: 'string', description: 'Full note content. The first line is used as its summary.' } }, required: ['name', 'content'], additionalProperties: false },
+    description: `Create or replace a workspace memory note (Markdown, up to ${MEMORY_CONTENT_LIMIT} characters). Required expected_revision is null to create only, or the revision from a paged memory_read to replace exactly. Read the note before updating it; on conflict, read again and reconsider the edit. Save only durable, explicitly confirmed facts. Never capture transcripts automatically or save credentials; credentials are masked.`,
+    parameters: { type: 'object', properties: { name: nameProperty, content: { type: 'string', description: 'Full note content. The first line is used as its summary.' }, expected_revision: { type: ['string', 'null'], pattern: '^[a-f0-9]{64}$', description: 'Required: revision from a paged memory_read to replace exactly, or null to create only.' } }, required: ['name', 'content', 'expected_revision'], additionalProperties: false },
     access: 'memory', kind: 'knowledge',
     describe: input => ({ label: `Saving memory ${safeLabel(input.name, 64)}`, target: safeLabel(input.name, 64) }),
     run: async input => {
       try {
-        const { masked } = await store.write(text(input.name), text(input.content));
+        const { masked } = await store.write(text(input.name), text(input.content), { expectedRevision: input.expected_revision });
         return { ok: true, output: `Saved memory note "${safeLabel(input.name, 64)}".${masked ? ` ${masked} likely credential(s) were masked.` : ''}` };
       } catch (error) { return failure(error instanceof Error ? error.message : 'Memory note could not be saved safely.'); }
     },

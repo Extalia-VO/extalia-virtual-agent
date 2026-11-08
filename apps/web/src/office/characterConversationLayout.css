@@ -1,0 +1,42 @@
+/* The transcript and tools own separate scroll areas; closing tools keeps their state mounted. */
+.session-dialog .character-conversation.character-conversation-layout,
+.character-conversation.character-conversation-layout {
+  position: relative; display: flex; flex-direction: row; align-items: stretch; gap: 16px;
+  flex: 1; min-height: 0; min-width: 0; overflow: hidden;
+}
+.character-conversation-layout .character-conversation-main {
+  display: flex; flex: 1; flex-direction: column; gap: 8px; min-height: 0; min-width: 0;
+}
+.character-conversation-layout .character-actions { flex: none; flex-wrap: wrap; }
+.character-conversation-layout .character-tabs { min-width: 0; }
+.character-conversation-layout .character-tools-toggle { margin-left: auto; }
+.character-conversation-layout .character-tab-panel { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; }
+.character-conversation-layout .character-tab-panel[hidden] { display: none; }
+.character-conversation-layout .character-tab-panel .transcript { max-height: none; overflow: visible; }
+.character-conversation-layout .character-conversation-main > .muted-note { flex: none; margin: 0; }
+.character-conversation-layout .character-conversation-main > .chat-footer {
+  flex: none; min-width: 0; max-width: none; margin: 0; padding: 0; gap: 4px;
+}
+.character-conversation-layout .chat-status { margin: 0; font-size: 12px; }
+.character-conversation-layout .character-conversation-tools {
+  display: flex; flex-direction: column; flex: 0 0 330px; width: 330px; min-width: 0; min-height: 0;
+  border-left: 1px solid var(--line); padding-left: 16px; background: var(--surface-solid);
+}
+.character-conversation-layout .character-conversation-tools[hidden] { display: none; }
+.character-conversation-layout .character-tools-head { display: flex; flex: none; align-items: center; justify-content: space-between; gap: 8px; padding-bottom: 10px; }
+.character-conversation-layout .character-tools-head h3 { margin: 0; font-size: 13px; }
+.character-conversation-layout .character-tools-content { display: flex; flex-direction: column; gap: 12px; min-height: 0; overflow: auto; overscroll-behavior: contain; padding-right: 4px; scrollbar-gutter: stable; }
+.character-conversation-layout .character-tools-content > * { flex-shrink: 0; min-width: 0; }
+.character-conversation-layout .character-tools-content summary { cursor: pointer; font-size: 12px; overflow-wrap: anywhere; }
+.character-conversation-layout .character-tools-content .prompt-queue-body { max-height: none; overflow: visible; }
+.character-conversation-layout .character-tools-content .observed-codex-office { margin: 0; }
+@media (max-width: 1099px) {
+  .character-conversation-layout .character-conversation-tools {
+    position: absolute; z-index: 4; inset: 0 0 0 auto; width: min(380px, 100%); max-width: 100%;
+    box-sizing: border-box; padding: 12px; border: 1px solid var(--line); border-radius: 12px;
+    box-shadow: -18px 0 40px rgb(0 0 0 / 15%);
+  }
+  .character-conversation-layout[data-tools-open] .character-conversation-main { opacity: .45; }
+  .character-conversation-layout .character-tools-toggle { font-size: 12px; }
+}
+.character-conversation-layout .character-conversation-main > .chat-footer .composer textarea { max-height: 160px; overflow-y: auto; }

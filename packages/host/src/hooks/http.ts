@@ -149,7 +149,7 @@ export interface HookListener { port: number; close(): Promise<void> }
  * A loopback HTTP listener serving only `/api/hooks/<app>` (Desktop). It binds
  * 127.0.0.1, prefers `port` and falls back to a free port when it is taken.
  */
-export async function startHookListener(options: { port?: number; handle(request: IncomingMessage, response: ServerResponse, app: string): Promise<void> }): Promise<HookListener> {
+export async function startHookListener(options: { port?: number; handle(request: IncomingMessage, response: ServerResponse, app: string): Promise<void>; permissionHandler?(request: IncomingMessage, response: ServerResponse): Promise<void> }): Promise<HookListener> {
   let allowed = new Set<string>();
   const server = createServer((request, response) => {
     response.setHeader('X-Content-Type-Options', 'nosniff');
@@ -157,6 +157,10 @@ export async function startHookListener(options: { port?: number; handle(request
     if (!allowed.has(request.headers.host?.toLowerCase() ?? '')) { request.resume(); reply(response, 403, { Connection: 'close' }); return; }
     let pathname: string;
     try { pathname = new URL(request.url ?? '/', 'http://127.0.0.1').pathname; } catch { request.resume(); reply(response, 400); return; }
+    if (pathname === '/api/permissions/codex' && options.permissionHandler) {
+      void options.permissionHandler(request, response).catch(() => { if (!response.headersSent) reply(response, 503); else response.destroy(); });
+      return;
+    }
     const match = HOOK_PATH.exec(pathname);
     if (!match) { request.resume(); reply(response, 404); return; }
     options.handle(request, response, match[1]!).catch(() => reply(response, 204));

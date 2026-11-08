@@ -12,6 +12,7 @@ export * from './workerProtocol.js';
 export * from './workerBundle.js';
 export * from './daemonExecutions.js';
 export * from './daemonPlanning.js';
+export * from './daemonPreparation.js';
 export * from './daemonSkills.js';
 export * from './daemonSkillRouting.js';
 export * from './daemonKnowledge.js';

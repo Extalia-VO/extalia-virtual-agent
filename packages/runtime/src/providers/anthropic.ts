@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
-import type { Effort } from '@extalia/core';
+import { supportsPromptCache, type Effort } from '@extalia/core';
 import type { Usage } from '@extalia/protocol';
+import { normalizeUsage, tokenCount } from '../usage.js';
 import {
   ProviderError, isRetryableStatus, type FetchLike, type ModelMessage, type ModelProvider, type ModelRequest, type ModelResult, type StopReason, type ToolCall,
 } from '../model.js';
@@ -22,6 +23,8 @@ export interface AnthropicOptions {
    * refusal fallbacks and eager tool-input streaming, which proxies may reject.
    */
   direct: boolean;
+  /** Explicit opt-in to automatic caching on the official Anthropic endpoint. */
+  promptCache?: boolean;
   maxTokens?: number;
   fetch?: FetchLike;
 }
@@ -37,7 +40,12 @@ const HIDDEN_BEFORE_FALLBACK = new Set(['thinking', 'redacted_thinking', 'tool_u
  */
 export function replayableContent(content: readonly Block[]): BlockParam[] {
   const boundary = content.map(block => block.type).lastIndexOf('fallback');
-  return content.filter((block, index) => index > boundary || !HIDDEN_BEFORE_FALLBACK.has(block.type)) as unknown as BlockParam[];
+  return content.filter((block, index) => index > boundary || !HIDDEN_BEFORE_FALLBACK.has(block.type)).map(block => {
+    // Native response blocks are replay data, never authorization for provider caching.
+    // Keep nested tool input intact; only remove the content-block control envelope.
+    const { cache_control: _cacheControl, ...replay } = block as Block & { cache_control?: unknown };
+    return replay as unknown as BlockParam;
+  });
 }
 
 export function toAnthropicMessages(messages: readonly ModelMessage[]): Anthropic.Beta.BetaMessageParam[] {
@@ -89,6 +97,25 @@ function toProviderError(error: unknown): unknown {
   return error;
 }
 
+const count = tokenCount;
+
+function toUsage(raw: Anthropic.Beta.BetaUsage): Usage | undefined {
+  const uncached = count(raw.input_tokens);
+  const cachedInputTokens = count(raw.cache_read_input_tokens);
+  const written = count(raw.cache_creation_input_tokens);
+  const outputTokens = count(raw.output_tokens);
+  // Anthropic splits the prompt into uncached input, cache reads and cache writes.
+  // Optional cache fields may be absent, but malformed reports cannot prove a total.
+  const prompt = uncached !== undefined && (raw.cache_read_input_tokens == null || cachedInputTokens !== undefined) && (raw.cache_creation_input_tokens == null || written !== undefined)
+    ? count(uncached + (cachedInputTokens ?? 0) + (written ?? 0)) : undefined;
+  if (prompt === undefined && outputTokens === undefined && cachedInputTokens === undefined) return undefined;
+  return normalizeUsage({
+    ...(prompt !== undefined ? { inputTokens: prompt } : {}),
+    ...(outputTokens !== undefined ? { outputTokens } : {}),
+    ...(cachedInputTokens !== undefined ? { cachedInputTokens } : {}),
+  });
+}
+
 export function createAnthropicProvider(options: AnthropicOptions): ModelProvider {
   const client = new Anthropic({
     // Always pass the key explicitly so the SDK never falls back to the user's
@@ -128,6 +155,8 @@ export function createAnthropicProvider(options: AnthropicOptions): ModelProvide
         max_tokens: options.maxTokens ?? 64_000,
         system: request.system,
         messages: toAnthropicMessages(request.messages),
+        ...(options.promptCache === true && options.direct && supportsPromptCache({ preset: 'anthropic', api: 'anthropic-messages', baseUrl: options.baseUrl })
+          ? { cache_control: { type: 'ephemeral' as const } } : {}),
         ...(tools.length ? { tools } : {}),
         ...(options.effort ? { output_config: { effort: options.effort } } : {}),
       };
@@ -167,23 +196,16 @@ export function createAnthropicProvider(options: AnthropicOptions): ModelProvide
           toolCalls.push({ id: block.id, name: block.name, input: valid ? input as Record<string, unknown> : {}, ...(valid ? {} : { inputError: 'Tool arguments must be a JSON object.' }) });
         }
       });
-      const usage: Usage = {
-        inputTokens: message.usage.input_tokens,
-        outputTokens: message.usage.output_tokens,
-        ...(message.usage.cache_read_input_tokens ? { cachedInputTokens: message.usage.cache_read_input_tokens } : {}),
-      };
+      const usage = toUsage(message.usage);
       const stop = stopReason(message.stop_reason);
       const details = (message as { stop_details?: { category?: string | null; explanation?: string | null } | null }).stop_details;
-      // Anthropic reports the uncached input apart from cache reads and cache writes; the prompt is all three.
-      const cached = message.usage.cache_read_input_tokens ?? 0, written = message.usage.cache_creation_input_tokens ?? 0;
-      const promptTokens = Number.isSafeInteger(message.usage.input_tokens) ? message.usage.input_tokens + cached + written : undefined;
       return {
         text,
         toolCalls,
         stop,
         model: message.model,
-        usage,
-        ...(promptTokens !== undefined ? { promptTokens } : {}),
+        ...(usage ? { usage } : {}),
+        ...(usage?.inputTokens !== undefined ? { promptTokens: usage.inputTokens } : {}),
         native: { api: 'anthropic-messages', content },
         ...(stop === 'refusal' ? { refusal: details?.explanation || `The model declined this request${details?.category ? ` (${details.category})` : ''}.` } : {}),
       };

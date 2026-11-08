@@ -23,8 +23,8 @@ type Full = Required<AgentHostApi>;
 function elements(node: ReactNode): ReactElement<Record<string, unknown>>[] {
   if (Array.isArray(node)) return node.flatMap(elements);
   if (!isValidElement<Record<string, unknown>>(node)) return [];
-  const own = typeof node.type === 'function' ? elements((node.type as (props: unknown) => ReactNode)(node.props)) : [];
-  return [node, ...own, ...elements(node.props.children as ReactNode)];
+  // Inspect the view's actions without invoking stateful child components outside React.
+  return [node, ...elements(node.props.children as ReactNode)];
 }
 const byText = (node: ReactNode, label: string) => elements(node).find(element => element.type === 'button' && renderToStaticMarkup(element).includes(label));
 const click = (node: ReactNode, label: string) => (byText(node, label)!.props.onClick as () => void)();

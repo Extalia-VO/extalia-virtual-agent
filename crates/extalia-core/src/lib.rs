@@ -7,6 +7,7 @@ pub mod knowledge;
 pub mod learning;
 pub mod mission;
 pub mod planning;
+pub mod preparation;
 pub mod security;
 mod sha256;
 pub mod skills;

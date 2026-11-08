@@ -70,6 +70,10 @@ pub(super) const MIGRATIONS: &[Migration] = &[
         version: 12,
         sql: include_str!("../../../migrations/0012_planning_lifetime_receipts.sql"),
     },
+    Migration {
+        version: 13,
+        sql: include_str!("../../../migrations/0013_preparation_lifetime_receipts.sql"),
+    },
 ];
 
 pub(super) fn user_version(conn: &Connection) -> rusqlite::Result<i64> {

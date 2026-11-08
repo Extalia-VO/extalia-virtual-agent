@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { useGLTF } from '@react-three/drei';
 import type { Group, Material, Mesh, Object3D } from 'three';
-import { Bone, Color, Euler, Matrix4, MeshStandardMaterial, Quaternion, Skeleton, SkinnedMesh, Vector3 } from 'three';
+import { Bone, Color, DoubleSide, Euler, Matrix4, MeshStandardMaterial, Quaternion, Skeleton, SkinnedMesh, Vector3 } from 'three';
 import { clone } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { resolveWardrobe, officeGarmentVisibility, OFFICE_WARDROBE_MESHES, SOURCE_WARDROBE_MESHES } from './AvatarWardrobe';
 import { SCAN_OUTFIT_MODEL, scanAccessorySlots, scanOutfitSlot } from './wardrobe';
@@ -25,8 +25,8 @@ import { applyWalkDrape, walkDrapeBindings } from './sourceWalkDrape';
 import { fitSourceFootGeometry } from './sourceFootGeometry';
 import { isCanonicalSourceHandAsset, attachSourceHandCurl, sourceHandCurlInfluence, sourceHandCurlLengths } from './sourceHandCurl';
 import { mixReachGoal } from './reachPose';
-import { blendHandGoals, createHandGoals, PHONE_CENTRE, resolveDeskHandClip, writeHandGoals, type HandGoals } from './handGoals';
-import { DumbbellProp, MugProp, PhoneProp } from './IdleProps';
+import { blendHandGoals, createHandGoals, PHONE_CENTRE, resolveDeskHandClip, TABLET_CENTRE, TABLET_TILT, writeHandGoals, type HandGoals } from './handGoals';
+import { DumbbellProp, MugProp, PhoneProp, TabletProp } from './IdleProps';
 import { bikeFootGoal, createFitnessLegSolution, fitnessHandGoal, fitnessMechanism, solveFitnessLeg } from "../interior/fitnessMechanics";
 import { FITNESS_BLUEPRINT } from "../interior/spatialBlueprints";
 import { HospitalityProps } from './HospitalityProps';
@@ -42,6 +42,9 @@ import { nativeBodyWithoutHands } from './sourceOwnHandsGeometry';
 import { sourceUnderlayerFit } from './sourceUnderlayerFit';
 import { applyShoulderCorrectives, shoulderCorrectiveBindings } from './sourceShoulderCorrective';
 import { sourceWaistBacking } from './sourceWaistBacking';
+import { sourceCoveredSkin } from './sourceCoveredSkin';
+import { sourceTrouserLining } from './sourceTrouserLining';
+import { sourceNativeNeckline } from './sourceNativeNeckline';
 import { createLodState, lodStep, lodTier, screenHeightPixels, setCastShadows, widenSkinnedBounds } from './avatarLod';
 import { createFacialPose, expressionTimeSeconds, resolveCharacterExpression, writeFacialPose, type CharacterExpressionState } from './facialExpression';
 import { attachSourceFaceExpressions, writeSourceFaceExpressions, type SourceFaceBinding } from './sourceFaceExpressions';
@@ -178,6 +181,18 @@ export function SourceHumanoid({ visual, urls, pieces, seated, typing, reducedMo
       ...(bottomPiece ? { bottom: bottomPiece } : {}),
       ...(outerPiece ? { outer: outerPiece } : {}),
     }, (slot, piece) => attachOutfitModel(scene, piece, `WardrobePiece${slot[0]!.toUpperCase()}${slot.slice(1)}`) > 0);
+    if (loadedParts.bottom && visual.clothing?.parts?.bottom === 'source-ray-trousers') {
+      const shells: SkinnedMesh[] = [];
+      scene.traverse(child => { if ((child as SkinnedMesh).isSkinnedMesh && child.name === 'WardrobePieceBottom') shells.push(child as SkinnedMesh); });
+      for (const shell of shells) {
+        const geometry = sourceTrouserLining(shell);
+        if (!geometry || !shell.parent) continue;
+        const lining = new SkinnedMesh(geometry, new MeshStandardMaterial({ name: 'OriginalBottom_OpaqueLining', color: '#23262b', roughness: .9, side: DoubleSide }));
+        lining.name = 'WardrobePieceBottom'; copyFittedMorphTargets(shell, lining);
+        lining.bind(shell.skeleton, shell.bindMatrix.clone()); lining.castShadow = lining.receiveShadow = true;
+        shell.parent.add(lining);
+      }
+    }
     const originalFeatures = resolvedOriginalSetFeatures(fittedOutfit ? outfitGltf.scene : undefined, {
       ...(topPiece ? { top: topPiece } : {}), ...(outerPiece ? { outer: outerPiece } : {}),
     }, loadedParts);
@@ -193,6 +208,10 @@ export function SourceHumanoid({ visual, urls, pieces, seated, typing, reducedMo
     const handCurls: { mesh: SkinnedMesh; targets: readonly [number, number] }[] = [];
     const curlMeshes: SkinnedMesh[] = [];
     scene.traverse(child => { if ((child as SkinnedMesh).isSkinnedMesh) curlMeshes.push(child as SkinnedMesh); });
+    if (originalFeatures.nativeNeckline) {
+      const nativeNecks = curlMeshes.filter(mesh => mesh.name.replace(/_\d+$/, '') === 'BodyNeckline');
+      for (const mesh of curlMeshes) mesh.geometry = sourceNativeNeckline(mesh, nativeNecks);
+    }
     // Resolve isolated garment parts before the pure upper/lower hinge cleanup:
     // inner sleeve cloth can carry misplaced torso weights near the waist.
     // Raw assets and unrelated skin stay shared.
@@ -202,7 +221,7 @@ export function SourceHumanoid({ visual, urls, pieces, seated, typing, reducedMo
       // Original sets include separately exported skin/context primitives too.
       // Keep their shared, reviewed binding rather than repairing each primitive.
       const corrected = sourceLimbWeights(mesh,
-        fittedOutfit && originalFeatures.ownNeckline && mesh.name === SCAN_OUTFIT_MODEL);
+        fittedOutfit && mesh.name === SCAN_OUTFIT_MODEL);
       if (corrected) mesh.geometry = corrected;
     }
     const feet = isCanonicalSourceHandAsset(urls.body) ? fitSourceFootGeometry(curlMeshes) : undefined;
@@ -253,6 +272,15 @@ export function SourceHumanoid({ visual, urls, pieces, seated, typing, reducedMo
       for (const mesh of curlMeshes) mesh.geometry = sourceWaistBacking(mesh, bottomLayer);
       widenSkinnedBounds(scene);
     }
+    // Only inspected trouser/short assets may occlude skin. OriginalBottom is
+    // also used by skirts, whose exposed legs must remain visible.
+    const bottomId = visual.clothing?.parts?.bottom ?? 'trousers';
+    const trouserPart = ['jeans', 'trousers', 'short-jeans', 'source-gothic-trousers', 'source-ray-trousers'].includes(bottomId);
+    const trouserSet = !female && ['outfit-black-business-suit', 'outfit-mens-two-piece-suit', 'outfit-printed-hoodie-jeans',
+      'outfit-prom-suit', 'outfit-sweatshirt-jacket-workwear', 'bartender-uniform', 'reception-uniform'].includes(visual.clothing?.model ?? '');
+    const trousers = curlMeshes.filter(mesh => loadedParts.bottom && trouserPart && mesh.name === 'WardrobePieceBottom'
+      || fittedOutfit && trouserSet && mesh.name === SCAN_OUTFIT_MODEL);
+    if (trousers.length) for (const mesh of curlMeshes) mesh.geometry = sourceCoveredSkin(mesh, trousers);
     const { profiles: footSoles, slot: footwearSlot } = sourceFootwearProfiles(feet?.soleByOutfit, curlMeshes, {
       fullOutfit: fittedOutfit && !originalFeatures.nativeFootwear,
       bottom: loadedParts.bottom === true && replacements.footwear === true,
@@ -267,7 +295,7 @@ export function SourceHumanoid({ visual, urls, pieces, seated, typing, reducedMo
     }
     return { scene, bones, handCurls, faces, seatedDrapes: seatedDrapeBindings(curlMeshes), walkDrapes: walkDrapeBindings(curlMeshes), shoulderCorrectives: shoulderCorrectiveBindings(curlMeshes, bones), standingHip: bones.get('hips')?.bone.position.y ?? 1.0064, footSoles, footwearSlot, nativeFootwear, ownNeckline: originalFeatures?.ownNeckline === true, ownEyewear: originalFeatures.ownEyewear === true,
       slots: new Set(curlMeshes.map(mesh => mesh.name.replace(/_\d+$/, ''))) };
-  }, [gltf.scene, urls.body, urls.outfit, outfitGltf.scene, topPiece, bottomPiece, outerPiece, mixing, selectedOuter]);
+  }, [gltf.scene, urls.body, urls.outfit, outfitGltf.scene, topPiece, bottomPiece, outerPiece, mixing, selectedOuter, female, visual.clothing?.parts?.bottom, visual.clothing?.model]);
   useEffect(() => () => model.scene.traverse(child => {
     const mesh = child as Mesh;
     if (mesh.isMesh) for (const material of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) material.dispose();
@@ -365,6 +393,7 @@ export function SourceHumanoid({ visual, urls, pieces, seated, typing, reducedMo
   const mugLeft = useRef<Group>(null), mugRight = useRef<Group>(null);
   const weightLeft = useRef<Group>(null), weightRight = useRef<Group>(null);
   const phoneRef = useRef<Group>(null);
+  const tabletRef = useRef<Group>(null);
   const rotation = useMemo(() => ({ euler: new Euler(), delta: new Quaternion(), local: new Quaternion() }), []);
   const armRotations = useMemo(() => createSourceArmRotations(), []);
   const handOrientationScratch = useMemo(() => createHandOrientationScratch(), []);
@@ -453,12 +482,12 @@ export function SourceHumanoid({ visual, urls, pieces, seated, typing, reducedMo
     rotate('spine', 0.05 * sit + 0.02 * walk + act.torsoPitch * 0.6, act.torsoYaw * 0.5, idle.torsoRoll * 0.4 * still + stride.pelvisRoll);
     rotate('chest', 0.06 * sit + act.torsoPitch * 0.4, stride.torsoTwist + act.torsoYaw * 0.5, idle.torsoRoll * 0.6 * still);
     rotate('neck', act.headPitch * 0.4, Math.sin(time * 0.5) * 0.025 + act.headYaw * 0.4);
-    rotate('head', act.headPitch * 0.6 + facePose.headPitch, Math.sin(time * 0.5) * 0.035 - stride.torsoTwist + act.headYaw * 0.6 + facePose.headYaw);
+    rotate('head', act.headPitch * 0.6 + facePose.headPitch + 0.24 * (goalsRef.current?.shown.tablet ?? 0), Math.sin(time * 0.5) * 0.035 - stride.torsoTwist + act.headYaw * 0.6 + facePose.headYaw);
     const hands = typing && clip === 'none' && !reducedMotion ? Math.sin(time * 6) * 0.045 : 0;
     // Hand goals at the desk, glided between clips; the arms follow the same solve as the procedural character.
     const actTime = time * rig.motion.tempo + rig.motion.phaseOffset;
     const goals = goalsRef.current ??= { shown: createHandGoals(), target: createHandGoals() };
-    writeHandGoals(goals.target, clip, actTime, 0, reach, rig.motion.gestureAmount, sit, walk, seatHeight);
+    writeHandGoals(goals.target, clip, actTime, 0, reach, rig.motion.gestureAmount, sit, walk, seatHeight, motion?.carry ?? 0);
     if (atFitness && sit > 0.95 && (clip === "cycle" || resourceId === FITNESS_BLUEPRINT.cableRow.id)) {
       for (const index of [0, 1] as const) {
         const goal = fitnessHandGoal(resourceId, index ? 1 : -1, equipment);
@@ -573,6 +602,7 @@ export function SourceHumanoid({ visual, urls, pieces, seated, typing, reducedMo
       }
     }
     if (phoneRef.current) phoneRef.current.visible = !reducedMotion && goals.shown.phone > 0.5;
+    if (tabletRef.current) tabletRef.current.visible = goals.shown.tablet > 0.5;
     // Separate assets retain the canonical skeleton. Copy the body's pose so
     // hair follows the head, seated posture and typing movement without drift.
     for (const [name, bone] of hairModel.bones) {
@@ -587,6 +617,9 @@ export function SourceHumanoid({ visual, urls, pieces, seated, typing, reducedMo
     <group scale={invScale}><DumbbellProp groupRef={weightLeft} /><DumbbellProp groupRef={weightRight} /><MugProp groupRef={mugLeft} /><MugProp groupRef={mugRight} /><HospitalityProps motion={motion} goals={goalsRef} reducedMotion={reducedMotion} /></group>
     <group position={[PHONE_CENTRE[0] / gScale[0], PHONE_CENTRE[1] / gScale[1], PHONE_CENTRE[2] / gScale[2]]} scale={invScale}>
       <PhoneProp groupRef={phoneRef} />
+    </group>
+    <group position={[TABLET_CENTRE[0] / gScale[0], TABLET_CENTRE[1] / gScale[1], TABLET_CENTRE[2] / gScale[2]]} scale={invScale} rotation={[TABLET_TILT, 0, 0]}>
+      <TabletProp groupRef={tabletRef} />
     </group>
   </group>;
 }

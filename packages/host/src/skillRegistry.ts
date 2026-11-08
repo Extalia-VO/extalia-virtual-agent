@@ -23,6 +23,7 @@ import {
   normalizeSkillReview, normalizeSkillRevisionId, type SkillActionResult, type SkillImportSource, type SkillRegistryReport, type SkillRevisionDetails,
   normalizeSkillPreflight, normalizeSkillPreflightReport, type SkillPreflightInput, type SkillPreflightReport,
   normalizeSkillRouting, normalizeSkillRoutingReport, type SkillRoutingInput, type SkillRoutingReport,
+  normalizeSkillRegistryPageInput, type SkillRegistryPage, type SkillRegistryPageInput,
 } from '@extalia/platform';
 import { createHash, randomBytes } from 'node:crypto';
 import { constants } from 'node:fs';
@@ -30,7 +31,7 @@ import { lstat, mkdir, open, readdir, realpath, rm, writeFile } from 'node:fs/pr
 import path from 'node:path';
 import { DaemonRequestError, DaemonUnavailableError, type DaemonClient, type DaemonSidecar } from './daemon/index.js';
 import { ensurePrivateDirectory } from './paths.js';
-import { parseSkill, type Skill, type SkillSource } from './skills.js';
+import { parseSkill, referenceSkill, type Skill, type SkillIdentity, type SkillReference, type SkillSource } from './skills.js';
 import { normalizeSkillProposal, normalizeSkillProposalProvenance, skillProposalFiles, type SkillProposalProvenance, type SkillProposalResult } from './skillLearning.js';
 
 /**
@@ -44,6 +45,8 @@ export const SKILL_REGISTRY_OPS = [
 export const SKILL_IMPORT_INBOX = 'skill-imports';
 /** Revisions one report carries. */
 export const MAX_REPORT_REVISIONS = 500;
+/** Agent inventory is separate from the smaller Security Center report page. */
+export const MAX_AGENT_REVISIONS = 2048;
 /**
  * Page size of `skill.list`. One below `DAEMON_SKILL_LIST_MAX_LIMIT`: the daemon of W3 slice 2 asks its store for
  * one more row than the page to detect a next page, and its store refuses more than the maximum (`limit_invalid`).
@@ -178,16 +181,24 @@ export class SkillRegistry {
     }
   }
 
-  private async listAll(client: DaemonClient): Promise<{ revisions: SkillRevisionSummary[]; truncated: boolean; indexGeneration: number }> {
+  private async listAll(client: DaemonClient, maximum = MAX_REPORT_REVISIONS): Promise<{ revisions: SkillRevisionSummary[]; truncated: boolean; indexGeneration: number; nextCursor?: string }> {
     const revisions: SkillRevisionSummary[] = [];
     let cursor: string | undefined;
+    let generation: number | undefined;
+    const seen = new Set<string>();
     for (;;) {
-      const page = await client.request('skill.list', { limit: LIST_PAGE, ...(cursor ? { cursor } : {}) });
+      const limit = Math.min(LIST_PAGE, maximum - revisions.length);
+      const page = await client.request('skill.list', { limit, ...(cursor ? { cursor } : {}) });
+      if (page.revisions.length > limit) throw new SkillRegistryError('The skill catalog exceeded its requested page bound.');
       const indexGeneration = page.indexGeneration;
+      if (generation !== undefined && generation !== indexGeneration) throw new SkillRegistryError('The skill catalog changed while loading. Reload it.');
+      generation = indexGeneration;
       revisions.push(...page.revisions);
       cursor = page.nextCursor;
       if (!cursor) return { revisions, truncated: false, indexGeneration };
-      if (revisions.length >= MAX_REPORT_REVISIONS) return { revisions, truncated: true, indexGeneration };
+      if (!page.revisions.length || seen.has(cursor)) throw new SkillRegistryError('The skill catalog could not continue. Reload it.');
+      seen.add(cursor);
+      if (revisions.length >= maximum) return { revisions, truncated: true, indexGeneration, nextCursor: cursor };
     }
   }
 
@@ -203,6 +214,7 @@ export class SkillRegistry {
       const inspector = await this.scannerReport(client);
       return {
         mode: 'registry', status: 'ready', ...base, revisions, truncated: listed.truncated, indexGeneration: listed.indexGeneration,
+        ...(listed.nextCursor ? { nextCursor: listed.nextCursor } : {}),
         scanner: inspector?.status === 'ready' && inspector.pinned ? 'pinned' : 'unpinned', ...(inspector ? { inspector } : {}),
         review: client.capabilities.includes('skill.review'),
         preflight: client.capabilities.includes('skill.preflight'),
@@ -212,6 +224,14 @@ export class SkillRegistry {
       const reason = error instanceof DaemonUnavailableError ? error.code : error instanceof DaemonRequestError ? error.code : 'not-served';
       return { mode: 'registry', status: 'unavailable', unavailableReason: reason, ...base };
     }
+  }
+
+  /** Continue the current profile's metadata only; never inspect, read, activate or scan a skill. */
+  async page(value: SkillRegistryPageInput): Promise<SkillRegistryPage> {
+    let input: SkillRegistryPageInput;
+    try { input = normalizeSkillRegistryPageInput(value); } catch (error) { throw failed(error); }
+    const result = await this.call('skill.list', { cursor: input.cursor, limit: LIST_PAGE });
+    return { ...result, revisions: result.revisions.filter(revision => revision.origin !== 'builtin') };
   }
 
   /** Routing observes the registry only; inspect() would record consent review input. */
@@ -418,31 +438,73 @@ export class SkillRegistry {
    * skills only (fail closed). Revisions whose SKILL.md cannot be parsed are left out.
    */
   async activeSkills(): Promise<Skill[]> {
+    return (await this.activeInventory(skill => skill)).skills;
+  }
+
+  async activeCatalog(workspaceId?: string): Promise<{ skills: SkillReference[]; incomplete: boolean }> {
+    return this.activeInventory(referenceSkill, workspaceId);
+  }
+
+  private async activeInventory<T>(select: (skill: Skill) => T, workspaceId?: string): Promise<{ skills: T[]; incomplete: boolean }> {
     const client = await this.client();
-    const { revisions } = await this.listAll(client);
-    const skills: Skill[] = [];
+    const { revisions, truncated } = await this.listAll(client, MAX_AGENT_REVISIONS);
+    const skills: T[] = [];
+    // A profile-wide bound must not disclose the size of another workspace's inventory.
+    let incomplete = workspaceId === undefined && truncated;
     for (const revision of revisions) {
       if (!revision.active || revision.origin === 'builtin' || revision.state !== 'active') continue;
+      if (workspaceId !== undefined && !await this.approvedForWorkspace(client, revision, workspaceId)) continue;
       try {
         const skill = await this.readSkill(client, revision);
-        skills.push(skill);
+        skills.push(select(skill));
       } catch (error) {
         if (error instanceof DaemonUnavailableError) throw error;
+        incomplete = true;
         this.options.log?.(`Skill ${revision.packageId} was not offered: its SKILL.md could not be read or parsed.`);
       }
     }
-    return skills;
+    return { skills, incomplete };
+  }
+
+  /** Fresh registry approval is workspace authority; scanner evidence and W0 consent are separate. */
+  private async approvedForWorkspace(client: DaemonClient, revision: SkillRevisionSummary, workspaceId: string): Promise<boolean> {
+    if (!SKILL_WORKSPACE_ID_PATTERN.test(workspaceId)) return false;
+    try {
+      // Do not pass workspaceId: skill.inspect's optional workspace parameter records consent review input.
+      const details = await client.request('skill.inspect', { revisionId: revision.revisionId });
+      const current = details.revision;
+      if (current.revisionId !== revision.revisionId || current.packageId !== revision.packageId || current.origin !== revision.origin
+        || !current.active || current.state !== 'active' || current.treeSha256 !== revision.treeSha256
+        || current.skillMdSha256 !== revision.skillMdSha256 || current.permissionDigest !== revision.permissionDigest) return false;
+      const now = Date.now();
+      return details.approvals.some(approval => approval.workspaceId === workspaceId && approval.status === 'granted'
+        && approval.revokedAt === undefined && approval.permissionDigest === current.permissionDigest
+        && Number.isFinite(Date.parse(approval.expiresAt)) && Date.parse(approval.expiresAt) > now);
+    } catch {
+      return false;
+    }
   }
 
   /** Re-read an offered skill when the model asks for it: still active, bytes verified by the daemon. */
-  async reload(skill: Skill): Promise<Skill> {
-    if (!skill.revisionId || !skill.sha256 || skill.source === 'builtin') throw new Error('Not a registry skill.');
+  async reload(skill: SkillIdentity, workspaceId?: string): Promise<Skill> {
+    return (await this.reloadMany([skill], workspaceId))[0]!;
+  }
+
+  /** One fresh bounded active-index read per metadata page, never one per item. */
+  async reloadMany(skills: readonly SkillIdentity[], workspaceId?: string): Promise<Skill[]> {
+    if (!skills.length || skills.length > 10 || skills.some(skill => !skill.revisionId || !skill.sha256 || skill.source === 'builtin')) throw new Error('Invalid registry skill selection.');
     const client = await this.client();
-    const { revisions } = await this.listAll(client);
-    const revision = revisions.find(item => item.revisionId === skill.revisionId);
-    if (!revision || !revision.active || revision.state !== 'active' || revision.origin === 'builtin' || revision.packageId !== skill.name
-      || sourceOf(revision) !== skill.source || revision.skillMdSha256 !== skill.sha256) throw new Error('Skill revision is no longer available.');
-    return this.readSkill(client, revision);
+    const { revisions } = await this.listAll(client, MAX_AGENT_REVISIONS);
+    const byId = new Map(revisions.map(revision => [revision.revisionId, revision]));
+    const fresh: Skill[] = [];
+    for (const skill of skills) {
+      const revision = byId.get(skill.revisionId!);
+      if (!revision || !revision.active || revision.state !== 'active' || revision.origin === 'builtin' || revision.packageId !== skill.name
+        || sourceOf(revision) !== skill.source || revision.skillMdSha256 !== skill.sha256) throw new Error('Skill revision is no longer available.');
+      if (workspaceId !== undefined && !await this.approvedForWorkspace(client, revision, workspaceId)) throw new Error('Skill revision is not approved for this workspace.');
+      fresh.push(await this.readSkill(client, revision));
+    }
+    return fresh;
   }
 
   private async readSkill(client: DaemonClient, revision: SkillRevisionSummary): Promise<Skill> {

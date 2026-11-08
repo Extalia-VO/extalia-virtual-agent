@@ -13,13 +13,12 @@ use std::collections::BTreeSet;
 const fn corrupt() -> MissionError {
     MissionError::Corrupt("planning lifetime receipt invariants")
 }
-fn resources(begin: &PlanningBegin) -> Vec<(String, String)> {
-    let mut resources = begin
-        .connection_ids
+fn resources(session_id: &str, connection_ids: &[String]) -> Vec<(String, String)> {
+    let mut resources = connection_ids
         .iter()
         .map(|id| ("connection".into(), id.clone()))
         .collect::<Vec<_>>();
-    resources.push(("session".into(), begin.session_id.clone()));
+    resources.push(("session".into(), session_id.to_owned()));
     resources.sort();
     resources
 }
@@ -59,7 +58,7 @@ fn load(tx: &Transaction<'_>, profile: &str, id: &str) -> Result<PlanningInspect
     }
     let claims=tx.prepare("SELECT resource_kind,resource_id FROM planning_resource_claims WHERE profile_id=?1 AND invocation_id=?2 ORDER BY resource_kind,resource_id LIMIT 18")?
         .query_map(params![profile,id],|row|Ok((row.get::<_,String>(0)?,row.get::<_,String>(1)?)))?.collect::<rusqlite::Result<Vec<_>>>()?;
-    if claims != resources(&admission.begin) {
+    if claims != resources(&admission.begin.session_id, &admission.begin.connection_ids) {
         return Err(corrupt());
     }
     let bytes:Option<i64>=tx.query_row("SELECT length(CAST(payload AS BLOB)) FROM planning_observations WHERE profile_id=?1 AND invocation_id=?2",params![profile,id],|row|row.get(0)).optional()?;
@@ -94,27 +93,28 @@ fn load(tx: &Transaction<'_>, profile: &str, id: &str) -> Result<PlanningInspect
 fn overlapping(
     tx: &Transaction<'_>,
     profile: &str,
-    begin: &PlanningBegin,
+    session_id: &str,
+    connection_ids: &[String],
 ) -> Result<BTreeSet<String>, MissionError> {
     let mut owners = BTreeSet::new();
     // Consult original admission scope too: a corrupt missing claim must not make a
     // pending lifetime disappear. The SQL history cap bounds this scan to 1024 rows.
-    let placeholders = (0..begin.connection_ids.len())
+    let placeholders = (0..connection_ids.len())
         .map(|_| "?")
         .collect::<Vec<_>>()
         .join(",");
     let sql = format!(
         "SELECT invocation_id FROM planning_admissions WHERE profile_id=? AND (session_id=? OR EXISTS(SELECT 1 FROM json_each(payload,'$.connectionIds') WHERE value IN ({placeholders}))) LIMIT 1025"
     );
-    let mut values = vec![profile, begin.session_id.as_str()];
-    values.extend(begin.connection_ids.iter().map(String::as_str));
+    let mut values = vec![profile, session_id];
+    values.extend(connection_ids.iter().map(String::as_str));
     let mut statement = tx.prepare(&sql)?;
     for owner in statement.query_map(rusqlite::params_from_iter(values), |row| {
         row.get::<_, String>(0)
     })? {
         owners.insert(owner?);
     }
-    for (kind, id) in resources(begin) {
+    for (kind, id) in resources(session_id, connection_ids) {
         let mut statement=tx.prepare("SELECT invocation_id FROM planning_resource_claims WHERE profile_id=?1 AND resource_kind=?2 AND resource_id=?3 LIMIT 1025")?;
         for owner in
             statement.query_map(params![profile, kind, id], |row| row.get::<_, String>(0))?
@@ -138,7 +138,22 @@ fn guard_pending(
     if inspection.observation.is_some() {
         return Ok(());
     }
-    for owner in overlapping(tx, profile, &inspection.admission.begin)? {
+    super::preparation::refuse_pending_scope(
+        tx,
+        profile,
+        &inspection.admission.begin.session_id,
+        &inspection.admission.begin.connection_ids,
+    )
+    .map_err(|error| match error {
+        MissionError::Conflict(_) => corrupt(),
+        other => other,
+    })?;
+    for owner in overlapping(
+        tx,
+        profile,
+        &inspection.admission.begin.session_id,
+        &inspection.admission.begin.connection_ids,
+    )? {
         if owner != inspection.admission.begin.invocation_id
             && load(tx, profile, &owner)?.observation.is_none()
         {
@@ -184,11 +199,17 @@ impl CoreStore {
         if count >= MAX_PLANNING_HISTORY as i64 {
             return Err(MissionError::Capacity("planning lifetime history"));
         }
-        for owner in overlapping(&tx, profile, begin)? {
+        for owner in overlapping(&tx, profile, &begin.session_id, &begin.connection_ids)? {
             if load(&tx, profile, &owner)?.observation.is_none() {
                 return Err(MissionError::Conflict("planning resource remains pending"));
             }
         }
+        super::preparation::refuse_pending_scope(
+            &tx,
+            profile,
+            &begin.session_id,
+            &begin.connection_ids,
+        )?;
         let mut admission = PlanningAdmission {
             begin: begin.clone(),
             admitted_at: time,
@@ -201,7 +222,7 @@ impl CoreStore {
         }
         tx.execute("INSERT INTO planning_admissions (profile_id,invocation_id,supervisor_id,session_id,workspace_id,admitted_at,admission_digest,payload) VALUES (?1,?2,?3,?4,?5,?6,?7,?8)",
             params![profile,begin.invocation_id,begin.supervisor_id,begin.session_id,begin.workspace_id,admission.admitted_at,admission.admission_digest,payload])?;
-        for (kind, id) in resources(begin) {
+        for (kind, id) in resources(&begin.session_id, &begin.connection_ids) {
             tx.execute("INSERT INTO planning_resource_claims (profile_id,invocation_id,resource_kind,resource_id) VALUES (?1,?2,?3,?4)",params![profile,begin.invocation_id,kind,id])?;
         }
         finish(tx, inject)?;
@@ -263,4 +284,19 @@ impl CoreStore {
         tx.commit()?;
         Ok(inspection)
     }
+}
+
+// Cross-kind exclusion shares the caller's SQLite transaction and validates receipts.
+pub(super) fn refuse_pending_scope(
+    tx: &Transaction<'_>,
+    profile: &str,
+    session_id: &str,
+    connection_ids: &[String],
+) -> Result<(), MissionError> {
+    for owner in overlapping(tx, profile, session_id, connection_ids)? {
+        if load(tx, profile, &owner)?.observation.is_none() {
+            return Err(MissionError::Conflict("planning resource remains pending"));
+        }
+    }
+    Ok(())
 }

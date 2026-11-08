@@ -33,20 +33,26 @@ export interface HandGoals {
   readonly palm: [Goal, Goal];
   /** Relaxed finger flexion in radians; index/middle/ring/little. */
   readonly curl: [[number, number, number, number], [number, number, number, number]];
-  /** Mug (sip) and phone visibility, 0…1. */
+  /** Mug (sip), phone and work-tablet visibility, 0…1. */
   mug: number;
   phone: number;
+  tablet: number;
   /** Which hand holds the mug while sipping. */
   mugHand: 0 | 1;
 }
 
 export function createHandGoals(): HandGoals {
-  return { target: [[0, 0, 0], [0, 0, 0]], weight: [0, 0], direction: [[0, 0, 1], [0, 0, 1]], palm: [[0, -1, 0], [0, -1, 0]], curl: [[.15, .2, .24, .28], [.15, .2, .24, .28]], mug: 0, phone: 0, mugHand: 1 };
+  return { target: [[0, 0, 0], [0, 0, 0]], weight: [0, 0], direction: [[0, 0, 1], [0, 0, 1]], palm: [[0, -1, 0], [0, -1, 0]], curl: [[.15, .2, .24, .28], [.15, .2, .24, .28]], mug: 0, phone: 0, tablet: 0, mugHand: 1 };
 }
 
 /** Where the phone is held: centred on the chest, both wrists either side of it. */
 export const PHONE_CENTRE: XYZ = [0, 0.98, 0.2];
 const PHONE_HAND_X = 0.075;
+/** Where a walking character holds its work tablet: in front of the lower chest, standing frame (metres from the feet). */
+export const TABLET_CENTRE: XYZ = [0, 1.1, 0.29];
+/** Tablet tilt toward the face (radians about X) and the wrists' grip either side of it. */
+export const TABLET_TILT = -0.62;
+const TABLET_HAND_X = 0.105;
 /** Wrists either side of the letter block's centre (a real 19 mm-pitch board: home keys about 17 cm apart). */
 const TYPING_HALF_SPAN = 0.105;
 /** The mouth, for sipping: the cup-holding wrist ends here. */
@@ -66,7 +72,7 @@ function set(out: [Goal, Goal], index: 0 | 1, x: number, y: number, z: number) {
  * character's own gesture amount; `sit` and `walk` come from the movement layer.
  * Clips outside `IK_CLIPS` write zero weights and no props.
  */
-export function writeHandGoals(out: HandGoals, clip: ActivityClip, time: number, phase: number, reach: DeskReach, gesture: number, sit: number, walk: number, seatHeight = 0.45): HandGoals {
+export function writeHandGoals(out: HandGoals, clip: ActivityClip, time: number, phase: number, reach: DeskReach, gesture: number, sit: number, walk: number, seatHeight = 0.45, carry = 0): HandGoals {
   const seatLift = seatHeight - 0.45;
   const weight = usesHandGoals(clip) ? clamp01(sit) * (1 - clamp01(walk)) : 0;
   out.weight[0] = weight; out.weight[1] = weight;
@@ -181,6 +187,17 @@ export function writeHandGoals(out: HandGoals, clip: ActivityClip, time: number,
     default:
       break;
   }
+  // Carrying the work tablet while walking: both hands grip its sides; the walk's arm swing gives way.
+  const carrying = clamp01(carry) * (1 - clamp01(sit));
+  out.tablet = carrying > .5 ? 1 : 0;
+  if (carrying > 0) {
+    const lift = Math.sin(TABLET_TILT) * -.02;
+    set(t, 0, TABLET_CENTRE[0] - TABLET_HAND_X, TABLET_CENTRE[1] - lift, TABLET_CENTRE[2] - .01);
+    set(t, 1, TABLET_CENTRE[0] + TABLET_HAND_X, TABLET_CENTRE[1] - lift, TABLET_CENTRE[2] - .01);
+    set(out.direction, 0, 1, .25, .35); set(out.direction, 1, -1, .25, .35);
+    for (const hand of [0, 1] as const) for (let finger = 0; finger < 4; finger++) out.curl[hand][finger] = .62 + finger * .04;
+    out.weight[0] = Math.max(out.weight[0], carrying); out.weight[1] = Math.max(out.weight[1], carrying);
+  }
   return out;
 }
 
@@ -205,6 +222,7 @@ export function blendHandGoals(shown: HandGoals, target: HandGoals, k: number): 
   }
   shown.mug += (target.mug - shown.mug) * t;
   shown.phone += (target.phone - shown.phone) * t;
+  shown.tablet += (target.tablet - shown.tablet) * t;
   if (target.mug > 0.5 || shown.mug > 0.05) shown.mugHand = target.mugHand;
   return shown;
 }

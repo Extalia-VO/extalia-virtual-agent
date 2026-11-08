@@ -1,3 +1,4 @@
+import { MESSAGES } from "../../i18n";
 import { FixtureSpotLight } from "./interior/prefabs/architecture/FixtureSpotLight";
 import { relocateRoomPoint } from "./interior/roomRelocation";
 import { SceneLabel } from "./interior/SceneLabel";
@@ -36,7 +37,7 @@ import { FootprintBox } from "./interior/FootprintPatch";
 import { FloorFinish } from "./interior/prefabs/finishes/FloorFinish";
 import { FLOOR_FINISH_DEPTH, FLOOR_SLAB_CENTER_Y, FLOOR_SLAB_THICKNESS, FLOOR_UNDERLAY_TOP_Y } from "./interior/floorElevation";
 import { BartenderBar } from "./interior/prefabs/furniture/BartenderBar";
-import { BARTENDER_BAR_BLUEPRINT, LIBRARY_BLUEPRINT, LOUNGE_FURNITURE_BLUEPRINT, RECEPTION_DESK_BLUEPRINT, SERVER_ROOM_BLUEPRINT, TEAM_POD_LAYOUT, TEAM_WORKSPACE_ORIGIN, TEAM_WORKSPACE_TOUCHDOWNS, TEAM_WORKSPACE_LOUNGES } from "./interior/spatialBlueprints";
+import { BARTENDER_BAR_BLUEPRINT, LIBRARY_BLUEPRINT, LOUNGE_FURNITURE_BLUEPRINT, RECEPTION_DESK_BLUEPRINT, SERVER_ROOM_BLUEPRINT, TEAM_POD_LAYOUT, TEAM_POD_STATIONS, TEAM_WORKSPACE_DECOR, TEAM_WORKSPACE_ORIGIN, TEAM_WORKSPACE_TOUCHDOWNS, TEAM_WORKSPACE_LOUNGES, SINGLE_WORKSTATION_BLUEPRINT } from "./interior/spatialBlueprints";
 import { EntertainmentSuite } from "./interior/prefabs/furniture/EntertainmentSuite";
 import { AreaRug, PendantLight, WallArt } from "./interior/prefabs/props/OfficeDecor";
 import { CornerLampFixture, WallSconceFixture, StandLampFixture, DeskLampFixture } from "./interior/prefabs/architecture/LightFixtureGeometries";
@@ -79,6 +80,7 @@ export function Floor1() {
   const qa = requiredRoom("qa");
   const entertainment = requiredRoom("entertainment");
   const [teamWidth, teamDepth] = engineering.size;
+  const touchdownTop = SINGLE_WORKSTATION_BLUEPRINT.topY + SINGLE_WORKSTATION_BLUEPRINT.topSize[1] / 2;
 
   const lobbyWest = lobby.center[0] - lobby.size[0] / 2;
   const lobbyEast = lobby.center[0] + lobby.size[0] / 2;
@@ -243,8 +245,8 @@ export function Floor1() {
       {/* Grand Wayfinding Runner guiding visitors from the Lobby Main Door across to the Staircase */}
       <CorridorWayfindingRunner start={[0, lobby.center[2] - 1]} end={[13.5, lobby.center[2] - 1]} width={2.2} />
 
-      {/* Large Team Workspace: digeser/diluaskan ke barat hingga dinding kantor x=-19.5 (lebar 27.0m, x in [-19.5, 7.5]) */}
-      <group position={relocateRoomPoint("engineering", [TEAM_WORKSPACE_ORIGIN[0], 0, TEAM_WORKSPACE_ORIGIN[1]])} userData={{ officeLightZone: engineering.size }}>
+      {/* Large team workspace uses the full 32 × 19.6 m engineering envelope. */}
+      <group name="office-room:engineering" position={relocateRoomPoint("engineering", [TEAM_WORKSPACE_ORIGIN[0], 0, TEAM_WORKSPACE_ORIGIN[1]])} userData={{ officeLightZone: engineering.size }}>
         <FloorFinish buildingOrigin={[engineering.center[0], engineering.center[2]]} size={engineering.size} material="oak" border />
         <TeamWorkspaceCeilingLights />
 
@@ -318,14 +320,13 @@ export function Floor1() {
 
         <SceneLabel position={[-11.8, 2.95, -teamDepth / 2 + 0.7]} center style={{ display: floorVisible ? "block" : "none" }}>
           <div className="room-label">
-            Large Team Workspace · 4 Pods / 16 seats
+            {MESSAGES[floorState.language].office.teamWorkspaceCapacity(TEAM_POD_LAYOUT.length, TEAM_POD_LAYOUT.length * TEAM_POD_STATIONS.length)}
           </div>
         </SceneLabel>
 
         {/*
-          Central 16-seat work zone.
-          Four separated pods retain sixteen workstations and clear
-          north/south and east/west circulation aisles.
+          Six pods provide twenty-four workstations, with a broad cross aisle
+          and north/south circulation between the three columns.
         */}
         {TEAM_POD_LAYOUT.map((pod) => <TeamPod4
           key={pod.id}
@@ -336,7 +337,7 @@ export function Floor1() {
         />)}
 
         {/* Informal collaboration corner */}
-        <AreaRug position={[-12.0, 0, 4.3]} width={4.0} depth={3.1} color="#c6d0c3" borderColor="#9daa9f" />
+        <AreaRug position={[...TEAM_WORKSPACE_DECOR.westRug.position]} width={TEAM_WORKSPACE_DECOR.westRug.width} depth={TEAM_WORKSPACE_DECOR.westRug.depth} color="#c6d0c3" borderColor="#9daa9f" />
         <Sofa
           position={[...TEAM_WORKSPACE_LOUNGES.westSofa.position]}
           rotationY={Math.PI / 2}
@@ -348,10 +349,10 @@ export function Floor1() {
           color="#d3aa78"
         />
         <CoffeeTable
-          position={[-10.5, 0, 4.6]}
+          position={[...TEAM_WORKSPACE_DECOR.westCoffee]}
           rotationY={Math.PI / 2}
         />
-        <Plant position={[-14.5, 0, 7.9]} scale={1.08} />
+
 
         {/* Team task/progress wall: Flush against the west window wall (x = -13.43, wall at -13.5) */}
         <WallDisplay
@@ -362,7 +363,7 @@ export function Floor1() {
           data={sharedTeamDisplay}
         />
         {/* Accent warm standing lamp in the informal collaboration corner */}
-        <StandLampFixture position={[-14.7, 0, 5.9]} lightColor="#ffbe76" />
+        <StandLampFixture position={[...TEAM_WORKSPACE_DECOR.westLamp]} lightColor="#ffbe76" />
 
         {/* Shared facilities strictly aligned FLUSH against the north and east perimeter walls,
             leaving the middle area completely open for central decorative furniture / lounge setup. */}
@@ -376,7 +377,7 @@ export function Floor1() {
           data={screenForLocation(floorState, TEAM_WORKSPACE_TOUCHDOWNS[1]!.location)}
         />
         <DeskLampFixture
-          position={[TEAM_WORKSPACE_TOUCHDOWNS[1]!.position[0] - 0.55, 0.74, TEAM_WORKSPACE_TOUCHDOWNS[1]!.position[1] - 0.2]}
+          position={[TEAM_WORKSPACE_TOUCHDOWNS[1]!.position[0] - 0.55, touchdownTop, TEAM_WORKSPACE_TOUCHDOWNS[1]!.position[1] - 0.2]}
           rotationY={Math.PI}
           lightColor="#fff0d4"
         />
@@ -418,26 +419,26 @@ export function Floor1() {
           data={screenForLocation(floorState, TEAM_WORKSPACE_TOUCHDOWNS[0]!.location)}
         />
         <DeskLampFixture
-          position={[TEAM_WORKSPACE_TOUCHDOWNS[0]!.position[0] - 0.55, 0.74, TEAM_WORKSPACE_TOUCHDOWNS[0]!.position[1] + 0.2]}
+          position={[TEAM_WORKSPACE_TOUCHDOWNS[0]!.position[0] - 0.55, touchdownTop, TEAM_WORKSPACE_TOUCHDOWNS[0]!.position[1] + 0.2]}
           rotationY={0}
           lightColor="#fff0d4"
         />
 
-        <Plant position={[14.3, 0, 9.0]} />
+
 
         {/* ============================================================ */}
         {/* DECORATIVE FURNITURE ZONE IN THE MIDDLE OF EAST WING         */}
         {/* Karpet dekoratif, round coffee table, armchairs, dan tanaman */}
         {/* ============================================================ */}
         <AreaRug
-          position={[12.0, 0, 5.7]}
-          width={3.2}
-          depth={3.2}
+          position={[...TEAM_WORKSPACE_DECOR.eastRug.position]}
+          width={TEAM_WORKSPACE_DECOR.eastRug.width}
+          depth={TEAM_WORKSPACE_DECOR.eastRug.depth}
           color="#d8dfd5"
           borderColor="#b5c4b1"
         />
         <CoffeeTable
-          position={[12.0, 0, 5.7]}
+          position={[...TEAM_WORKSPACE_DECOR.eastCoffee]}
           rotationY={Math.PI / 2}
         />
         <ArmChair
@@ -450,9 +451,9 @@ export function Floor1() {
           rotationY={-Math.PI / 2}
           color="#527874"
         />
-        <Plant position={[12.0, 0, 3.8]} scale={0.95} />
+        {TEAM_WORKSPACE_DECOR.plants.map((position, index) => <Plant key={index} position={[...position]} scale={1.04} />)}
         {/* Floor stand lamp on the north-east corner of the east breakout rug */}
-        <StandLampFixture position={[13.3, 0, 4.3]} lightColor="#ffbe76" />
+        <StandLampFixture position={[...TEAM_WORKSPACE_DECOR.eastLamp]} lightColor="#ffbe76" />
       </group>
 
       {/* Open Lounge & Pantry on the stair side (East wing, x ~ 14.2, z ~ -0.9) - Terbuka tanpa sekat dinding tertutup */}
@@ -740,9 +741,9 @@ function TeamWorkspaceCeilingLights() {
   // Large team workspace memiliki illuminance sedikit lebih tinggi untuk produktivitas engineering
   const emissiveIntensity = interiorFactor === 0 ? 0 : 0.5 + interiorFactor * 4.5;
 
-  // Grid 25 flush troffers (5 columns × 5 rows).
-  const xCols = [-12.8, -6.4, 0.0, 6.4, 12.8];
-  const zRows = [-7.4, -3.7, 0.0, 3.7, 7.4];
+  // Four aisle/perimeter columns leave each pod's suspended halo unobstructed.
+  const xCols = [-13, -4, 4, 13];
+  const zRows = [-7.4, -2.5, 2.5, 7.4];
   const troffers: [number, number, number][] = [];
   for (const x of xCols) {
     for (const z of zRows) {
@@ -751,7 +752,7 @@ function TeamWorkspaceCeilingLights() {
   }
   // All troffers contribute to cached fixture lighting, with a bounded live beam pool.
 
-  // 4 Armature Halo Akustik melingkar khusus tepat di atas titik tengah masing-masing 4 Pod
+  // A matching acoustic halo sits over every pod, including new workstations.
   const podHaloPositions: [number, number, number][] = TEAM_POD_LAYOUT.map((pod) =>
     [pod.position[0], 2.82, pod.position[1]]);
 
@@ -795,7 +796,7 @@ function TeamWorkspaceCeilingLights() {
 
       {/* 2. 4 Armature Halo Akustik Melingkar tepat di atas masing-masing Pod */}
       {podHaloPositions.map(([hx, hy, hz], pi) => (
-        <group key={`pod-halo-${pi}`} position={[hx, hy, hz]}>
+        <group name="team-pod-halo" key={TEAM_POD_LAYOUT[pi]!.id} position={[hx, hy, hz]}>
           {/* Batang suspensi 3 titik yang terlihat jelas */}
           {[0, (2 * Math.PI) / 3, (4 * Math.PI) / 3].map((angle, wi) => (
             <group key={wi}>

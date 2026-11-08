@@ -236,3 +236,50 @@ describe('manage_team', () => {
     expect(system).toContain('- Run tests');
   });
 });
+
+it('uses member-specific write tools with the existing lexical guard and serializes callback-only writers', async () => {
+  const members: TeamMember[] = [
+    { id: 'writer-one', name: 'Writer One', role: 'Developer', models: ['m'], access: 'write', scope: ['src'] },
+    { id: 'writer-two', name: 'Writer Two', role: 'Developer', models: ['m'], access: 'write', scope: ['src'] },
+  ];
+  const selected: string[] = [];
+  const writes: string[] = [];
+  const timeline: string[] = [];
+  let unblock!: () => void;
+  let firstStarted!: () => void;
+  const blocked = new Promise<void>(resolve => { unblock = resolve; });
+  const started = new Promise<void>(resolve => { firstStarted = resolve; });
+  const tool = createDelegationTool({
+    providerFor: () => { throw new Error('unused'); },
+    workerTools: [], maxDelegations: 2, workspace: { name: 'Example', root: '/projects/example' }, emit: () => undefined,
+    permissions: { fileWrite: 'allow', commands: 'ask' },
+    team: {
+      members, leadModels: ['m'],
+      providerForModel: () => editingProvider('m', timeline, () => 'src/allowed.txt'),
+      writeToolsForMember: member => {
+        selected.push(member.id);
+        return [{
+          name: 'write_file', description: 'Member write', access: 'write', kind: 'edit',
+          parameters: { type: 'object', properties: { path: { type: 'string' }, content: { type: 'string' } }, required: ['path', 'content'] },
+          describe: () => ({ label: 'Writing member file' }),
+          async run() {
+            writes.push(member.id);
+            if (member.id === 'writer-one') { firstStarted(); await blocked; }
+            return { ok: true, output: 'written' };
+          },
+        }];
+      },
+    },
+  });
+  const context = { signal: new AbortController().signal, toolCallId: 'call', emit: () => undefined };
+  const first = tool.run({ task: 'First edit', member: 'writer-one' }, context);
+  await started;
+  const second = tool.run({ task: 'Second edit', member: 'writer-two' }, context);
+  await Promise.resolve();
+  expect(selected).toEqual(['writer-one']);
+  expect(writes).toEqual(['writer-one']);
+  unblock();
+  expect((await Promise.all([first, second])).every(result => result.ok)).toBe(true);
+  expect(selected).toEqual(['writer-one', 'writer-two']);
+  expect(writes).toEqual(['writer-one', 'writer-two']);
+});

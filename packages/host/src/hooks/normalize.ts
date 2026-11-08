@@ -1,7 +1,7 @@
 import { safeLabel, safeText, stopReasonOf, type StopReason } from '@extalia/core';
-import { commandHead, fileTarget, outputText, statedSuccess, stepOutput, toolHints } from '@extalia/importers';
+import { commandHead, explicitToolFailure, extractWrittenFiles, outputText, statedSuccess, stepOutput, toolHints } from '@extalia/importers';
 import { AGENT_APP_IDS, type AgentAppId } from '@extalia/platform';
-import { createEvent, type AgentPhase, type EventBody, type EventSource, type ExtaliaEvent, type FileChangeKind } from '@extalia/protocol';
+import { createEvent, type AgentPhase, type EventBody, type EventSource, type ExtaliaEvent } from '@extalia/protocol';
 import { describeToolCall, toolStateBody } from '../transcriptEvents.js';
 import { normalizeMcpReport } from './mcp.js';
 
@@ -100,36 +100,6 @@ export function hookOutput(response: unknown): string | undefined {
     if (text) return stepOutput(text);
   }
   return stepOutput(outputText(response));
-}
-
-/** Path shown for a written file: relative to the session folder when inside it, else the base name. */
-function displayPath(file: string, cwd: string | undefined): string {
-  const normalized = file.replace(/\\/g, '/');
-  const root = cwd?.replace(/\\/g, '/').replace(/\/+$/, '');
-  if (root && normalized.startsWith(`${root}/`)) return safeLabel(normalized.slice(root.length + 1), 300);
-  return fileTarget(file);
-}
-
-/** Files a successful edit tool call wrote, from well-known argument names and `apply_patch` envelopes. */
-function writtenFiles(input: unknown, response: unknown, cwd: string | undefined, toolName?: unknown): { path: string; change: FileChangeKind }[] {
-  let args: unknown = input;
-  if (typeof args === 'string') { try { args = JSON.parse(args); } catch { /* patch text */ } }
-  const record = obj(args);
-  const patch = typeof args === 'string' ? args : str(record.input) || str(record.patch);
-  if (patch) {
-    const found: { path: string; change: FileChangeKind }[] = [];
-    for (const match of patch.matchAll(/^\*\*\* (Add|Update|Delete) File: (.+)$/gm)) {
-      found.push({ path: displayPath(match[2]!.trim(), cwd), change: match[1] === 'Add' ? 'Add'.toLowerCase() as FileChangeKind : match[1] === 'Delete' ? 'delete' : 'update' });
-      if (found.length >= 20) break;
-    }
-    if (found.length) return found;
-  }
-  const rawFile = first(record.file_path, record.filePath, record.absolute_path, record.AbsolutePath, record.TargetFile, record.notebook_path, record.path);
-  const file = rawFile.replace(/^"(.*)"$/, '$1').trim();
-  if (!file) return [];
-  const isWriteToFile = /(?:^|:)write_to_file$/i.test(str(toolName)) && record.Overwrite !== true && record.Overwrite !== 'true';
-  const created = str(obj(response).type) === 'create' || isWriteToFile;
-  return [{ path: displayPath(file, cwd), change: created ? 'add' : 'update' }];
 }
 
 type Tool = ReturnType<typeof describeToolCall> & { toolCallId?: string };
@@ -241,11 +211,11 @@ function claudeStyle(app: HookApp, raw: unknown, options: NormalizeHookOptions =
     if (!mcpTool) {
       const tool = toolOf(payload.tool_name, payload.tool_input, payload.tool_use_id ?? payload.tool_call_id);
       const response = payload.tool_response ?? payload.tool_output;
-      const failed = event === 'PostToolUseFailure' || Boolean(obj(response).error) || obj(response).interrupted === true;
+      const failed = event === 'PostToolUseFailure' || Boolean(obj(response).error) || obj(response).interrupted === true || explicitToolFailure(hookOutput(response));
       const ok = failed ? false : statedSuccess(response) ?? true;
       const out = options.labelsOnly ? undefined : hookOutput(event === 'PostToolUseFailure' ? first(payload.error, response) || response : response);
       add(completed(tool, ok, out));
-      if (ok && tool.kind === 'edit') for (const file of writtenFiles(payload.tool_input, response, cwd, payload.tool_name)) add({ type: 'file.written', path: file.path, change: file.change });
+      if (ok && tool.kind === 'edit') for (const file of extractWrittenFiles(str(payload.tool_name), payload.tool_input, response, cwd)) add({ type: 'file.written', path: file.path, change: file.change, ...(tool.toolCallId ? { toolCallId: tool.toolCallId } : {}) });
       // Claude Code: the user pressed Esc while the tool ran.
       if (event === 'PostToolUseFailure' && payload.is_interrupt === true) add(stopped('interrupted', undefined, 'interrupted'));
     }
@@ -370,12 +340,12 @@ export function normalizeAntigravityHook(raw: unknown, options: NormalizeHookOpt
         const tool = toolOf(rawName, rawInput, callId);
         const errText = str(payload.error).trim();
         const response = payload.tool_response ?? payload.tool_output ?? payload.toolOutput;
-        const ok = errText ? false : statedSuccess(response) ?? true;
+        const ok = errText || explicitToolFailure(hookOutput(response)) ? false : statedSuccess(response) ?? true;
         const out = options.labelsOnly ? undefined : hookOutput(errText || response);
         add(completed(tool, ok, out));
         if (ok && tool.kind === 'edit') {
-          for (const file of writtenFiles(rawInput, response, cwd, rawName)) {
-            add({ type: 'file.written', path: file.path, change: file.change });
+          for (const file of extractWrittenFiles(rawName, rawInput, response, cwd)) {
+            add({ type: 'file.written', path: file.path, change: file.change, ...(tool.toolCallId ? { toolCallId: tool.toolCallId } : {}) });
           }
         }
       }
@@ -459,9 +429,12 @@ export function normalizeHermesHook(raw: unknown, options: NormalizeHookOptions 
       if (!mcpReportToolName(payload.tool_name)) {
         const call = tool();
         const result = extra.result ?? extra.output ?? extra.tool_response;
-        const ok = extra.error ? false : statedSuccess(result) ?? true;
+        const ok = extra.error || explicitToolFailure(hookOutput(result)) ? false : statedSuccess(result) ?? true;
         const out = options.labelsOnly ? undefined : hookOutput(extra.error ? first(extra.error) || result : result);
         add(completed(call, ok, out));
+        if (ok) for (const file of extractWrittenFiles(call.tool, payload.tool_input, result, cwd)) {
+          add({ type: 'file.written', path: file.path, change: file.change, ...(call.toolCallId ? { toolCallId: call.toolCallId } : {}) });
+        }
       }
       break;
     }

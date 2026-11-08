@@ -30,7 +30,7 @@ async function setup(root?: string, scripted = recordingFetch()) {
   const base = root ?? await tempDir();
   const project = path.join(base, 'project');
   await mkdir(project, { recursive: true });
-  const runtime = await createAgentHost({ kind: 'bridge', version: '0.0.0-test', dataDirectory: path.join(base, 'data'), importHome: path.join(base, 'home'), env: { EXTALIA_SECRET_STORE: 'memory', PATH: process.env.PATH }, fetch: scripted.fetch });
+  const runtime = await createAgentHost({ kind: 'bridge', version: '0.0.0-test', dataDirectory: path.join(base, 'data'), importHome: path.join(base, 'home'), env: { EXTALIA_SECRET_STORE: 'memory', PATH: process.env.PATH, HERMES_MANAGED_DIR: path.join(base, 'no-managed-scope') }, fetch: scripted.fetch });
   runtimes.push(runtime);
   const events: ExtaliaEvent[] = [];
   runtime.host.subscribe(event => events.push(event));
@@ -156,7 +156,7 @@ async function hermesSetup(name: string) {
   const executable = path.join(bin, name);
   await writeFile(executable, FAKE_HERMES);
   await chmod(executable, 0o755);
-  const env = { EXTALIA_SECRET_STORE: 'memory', PATH: process.env.PATH, HOME: home, HERMES_HOME: hermesHome, EXTALIA_HERMES_BIN: executable };
+  const env = { EXTALIA_SECRET_STORE: 'memory', PATH: process.env.PATH, HOME: home, HERMES_HOME: hermesHome, HERMES_MANAGED_DIR: path.join(root, 'no-managed-scope'), EXTALIA_HERMES_BIN: executable };
   const runtime = await createAgentHost({ kind: 'bridge', version: '0.0.0-test', dataDirectory: path.join(root, 'data'), importHome: home, env });
   runtimes.push(runtime);
   const events: ExtaliaEvent[] = [];
@@ -169,7 +169,8 @@ async function hermesSetup(name: string) {
 describe('session model and effort options (Hermes Agent)', { timeout: 30_000 }, () => {
   it.skipIf(POSIX_SCRIPTS_ONLY)('passes the model and, when Hermes supports it, the reasoning effort on the command line', async () => {
     const { runtime, host, events, workspace, calls } = await hermesSetup('hermes');
-    expect(await host.modelChoices(workspace.id)).toEqual({ runtime: 'hermes', defaultModel: 'example/default-model', models: [], efforts: ['low', 'medium', 'high', 'xhigh', 'max'], permissionModes: ['workspace'] });
+    expect(await host.modelChoices(workspace.id)).toEqual({ runtime: 'hermes', defaultModel: 'example/default-model', models: [], efforts: ['low', 'medium', 'high', 'xhigh', 'max'], permissionModes: ['workspace'],
+      hermesDelegation: { profile: 'work', maxTeamMembers: 2, oneshotMaxChildren: 2, maxConcurrentChildren: 10, workerModel: 'example/default-model', workerModelSource: 'lead', modelRouting: 'shared', source: 'defaults' } });
     const session = await host.createSession(workspace.id, { model: 'example/model-x', effort: 'high' });
     expect(session.options).toEqual({ model: 'example/model-x', effort: 'high' });
     await host.sendPrompt(session.id, 'Hello');

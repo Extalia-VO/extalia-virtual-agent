@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { BoxGeometry, Group, Mesh, MeshBasicMaterial } from 'three';
+import { BoxGeometry, Group, Mesh, MeshBasicMaterial, Vector3 } from 'three';
+import { TEAM_POD_STRUCTURE_FOOTPRINT } from '../src/office/scene/interior/teamPodDesktopGeometry';
 import { WalkingClearance, walkingClearanceFor } from '../src/office/scene/movement/naturalClearance';
 import { getMovingOccupantsSnapshot, getNearbyMovingOccupantsSnapshot, trackMovingOccupant } from '../src/office/scene/interior/occupants/movingOccupants';
 import type { Point3 } from '../src/office/scene/layout';
@@ -8,6 +9,43 @@ function cube(size: [number, number, number], position: [number, number, number]
   const mesh = new Mesh(new BoxGeometry(...size), new MeshBasicMaterial()); mesh.position.set(...position); return mesh;
 }
 describe('render-derived walking clearance', () => {
+  it('sweeps the body around transformed concave pod bays while preserving the solid structure and neighboring furniture', () => {
+    for (const yaw of [0, Math.PI / 4, Math.PI / 2, Math.PI]) {
+      const root = new Group(), pod = new Group(), field = new WalkingClearance();
+      pod.position.set(-5, 6.4, -1.2); pod.rotation.y = yaw;
+      pod.userData.officeCollisionFootprint = TEAM_POD_STRUCTURE_FOOTPRINT;
+      // Its rendered tabletop has a square bounding box despite four empty corner bays.
+      pod.add(cube([3, .06, 3], [0, .77, 0]));
+      root.add(pod, cube([100, .16, 100], [0, 6.32, 0]));
+      field.rebuild([root]);
+      const at = (x: number, z: number): Point3 => new Vector3(x, 0, z).applyMatrix4(pod.matrixWorld).toArray();
+      expect(field.segmentClear(at(1.64, 1.64), at(2.56, 1.29), .29)).toBe(true);
+      expect(field.segmentClear(at(1.12, 1.12), at(1.12, 1.12), .29)).toBe(true);
+      expect(field.segmentClear(at(1.1, 1.1), at(1.1, 1.1), .29)).toBe(false);
+      expect(field.segmentClear(at(0, 0), at(0, 0), .29)).toBe(false);
+      expect(field.segmentClear(at(1.4, 0), at(1.4, 0), .29)).toBe(false);
+      expect(field.segmentClear(at(2, 2), at(-2, -2), .29)).toBe(false);
+      const obstruction = new Group(); obstruction.position.copy(pod.position); obstruction.rotation.y = yaw;
+      obstruction.add(cube([.2, 1, .2], [2.1, .5, 1.47])); root.add(obstruction); field.rebuild([root]);
+      expect(field.segmentClear(at(1.64, 1.64), at(2.56, 1.29), .29)).toBe(false);
+    }
+  });
+  it('lets a body straddle an authored ground doorway without opening nearby walls or upper-floor edges', () => {
+    const portal = { center: [0, 0, -19] as Point3, yaw: Math.PI, clearWidth: 2.4 };
+    const root = new Group(), field = new WalkingClearance(() => [portal]);
+    field.rebuild([root]);
+    const baseline = new WalkingClearance(); baseline.rebuild([root]);
+    expect(baseline.segmentClear([0, 0, -18.695], [.85, 0, -18.695], .31)).toBe(false);
+    expect(field.segmentClear([0, 0, -18.695], [.85, 0, -18.695], .31)).toBe(true);
+    expect(field.segmentClear([0, 0, -18.695], [1.05, 0, -18.695], .31)).toBe(false);
+    expect(field.segmentClear([4, 0, -18.695], [4.5, 0, -18.695], .31)).toBe(false);
+    // A valid aperture never removes actual solid geometry.
+    root.add(cube([2.4, 2, .1], [0, 1, -18.7])); field.rebuild([root]);
+    expect(field.segmentClear([0, 0, -18.695], [.85, 0, -18.695], .31)).toBe(false);
+    root.clear(); root.add(cube([100, .16, 100], [0, 6.32, 0])); field.rebuild([root]);
+    const upper = new WalkingClearance(() => [{ ...portal, center: [0, 6.4, -19] }]); upper.rebuild([root]);
+    expect(upper.segmentClear([0, 6.4, -18.695], [.85, 6.4, -18.695], .31)).toBe(false);
+  });
   it('checks the whole swept body, including hidden batching originals, while ignoring duplicate render batches and doors', () => {
     const root = new Group(), field = new WalkingClearance();
     const wall = cube([.12, 2.7, 5], [0, 1.35, 0]); wall.visible = false; wall.userData.officeBatchSource = true; root.add(wall);

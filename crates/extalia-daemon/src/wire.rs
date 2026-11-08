@@ -15,6 +15,7 @@
 mod knowledge;
 mod missions;
 mod planning;
+mod preparation;
 mod skills;
 
 pub use knowledge::{
@@ -36,6 +37,10 @@ use extalia_core::mission::{
 use extalia_core::planning::{
     PlanningAdmission, PlanningBegin, PlanningInspection, PlanningObservation,
     PlanningObservationRecord,
+};
+use extalia_core::preparation::{
+    PreparationAdmission, PreparationBegin, PreparationInspection, PreparationObservation,
+    PreparationObservationRecord,
 };
 use extalia_core::security::permissions::{
     Decision, PermissionMode, SessionPermissionMode, ToolAccess, WorkspacePermissions,
@@ -82,8 +87,11 @@ names!(
         ExecutionObserve = "execution.observe",
         ExecutionRecordLocalDrain = "execution.recordLocalDrain",
         PlanningBegin = "planning.begin",
+        PreparationBegin = "preparation.begin",
         PlanningObserve = "planning.observe",
+        PreparationObserve = "preparation.observe",
         PlanningInspect = "planning.inspect",
+        PreparationInspect = "preparation.inspect",
         TaskTransition = "task.transition",
         EventCommit = "event.commit",
         PermissionCheck = "permission.check",
@@ -182,8 +190,13 @@ pub enum RequestParams {
     ExecutionObserve(ExecutionObservation),
     ExecutionRecordLocalDrain(ExecutionLocalDrain),
     PlanningBegin(PlanningBegin),
+    PreparationBegin(PreparationBegin),
     PlanningObserve(PlanningObservation),
+    PreparationObserve(PreparationObservation),
     PlanningInspect {
+        invocation_id: String,
+    },
+    PreparationInspect {
         invocation_id: String,
     },
     TaskTransition(TaskTransition),
@@ -238,8 +251,11 @@ pub enum ResponseResult {
     ExecutionObserve(ExecutionObservationAck),
     ExecutionRecordLocalDrain(ExecutionLocalDrainAck),
     PlanningBegin(PlanningAdmission),
+    PreparationBegin(PreparationAdmission),
     PlanningObserve(PlanningObservationRecord),
+    PreparationObserve(PreparationObservationRecord),
     PlanningInspect(PlanningInspection),
+    PreparationInspect(PreparationInspection),
     TaskTransition(TransitionAck),
     EventCommit(EventAck),
     /// A skill registry result, validated field by field and kept as that JSON (only the
@@ -295,8 +311,11 @@ impl RequestParams {
             Self::ExecutionObserve(_) => Op::ExecutionObserve,
             Self::ExecutionRecordLocalDrain(_) => Op::ExecutionRecordLocalDrain,
             Self::PlanningBegin(_) => Op::PlanningBegin,
+            Self::PreparationBegin(_) => Op::PreparationBegin,
             Self::PlanningObserve(_) => Op::PlanningObserve,
+            Self::PreparationObserve(_) => Op::PreparationObserve,
             Self::PlanningInspect { .. } => Op::PlanningInspect,
+            Self::PreparationInspect { .. } => Op::PreparationInspect,
             Self::TaskTransition(_) => Op::TaskTransition,
             Self::EventCommit(_) => Op::EventCommit,
             Self::Skill(request) => request.op(),
@@ -320,8 +339,11 @@ impl ResponseResult {
             Self::ExecutionObserve(_) => Op::ExecutionObserve,
             Self::ExecutionRecordLocalDrain(_) => Op::ExecutionRecordLocalDrain,
             Self::PlanningBegin(_) => Op::PlanningBegin,
+            Self::PreparationBegin(_) => Op::PreparationBegin,
             Self::PlanningObserve(_) => Op::PlanningObserve,
+            Self::PreparationObserve(_) => Op::PreparationObserve,
             Self::PlanningInspect(_) => Op::PlanningInspect,
+            Self::PreparationInspect(_) => Op::PreparationInspect,
             Self::TaskTransition(_) => Op::TaskTransition,
             Self::EventCommit(_) => Op::EventCommit,
             Self::Skill { op, .. } => *op,
@@ -404,8 +426,11 @@ impl Frame {
                     RequestParams::ExecutionObserve(observation) => observation.to_value(),
                     RequestParams::ExecutionRecordLocalDrain(drain) => drain.to_value(),
                     RequestParams::PlanningBegin(begin) => begin.to_value(),
+                    RequestParams::PreparationBegin(begin) => begin.to_value(),
                     RequestParams::PlanningObserve(observation) => observation.to_value(),
-                    RequestParams::PlanningInspect { invocation_id } => {
+                    RequestParams::PreparationObserve(observation) => observation.to_value(),
+                    RequestParams::PlanningInspect { invocation_id }
+                    | RequestParams::PreparationInspect { invocation_id } => {
                         object([("invocationId", invocation_id.clone().into())])
                     }
                     RequestParams::TaskTransition(params) => params.to_value(),
@@ -445,8 +470,11 @@ impl Frame {
                     ResponseResult::ExecutionObserve(ack) => ack.to_value(),
                     ResponseResult::ExecutionRecordLocalDrain(ack) => ack.to_value(),
                     ResponseResult::PlanningBegin(admission) => admission.to_value(),
+                    ResponseResult::PreparationBegin(admission) => admission.to_value(),
                     ResponseResult::PlanningObserve(observation) => observation.to_value(),
+                    ResponseResult::PreparationObserve(observation) => observation.to_value(),
                     ResponseResult::PlanningInspect(inspection) => inspection.to_value(),
+                    ResponseResult::PreparationInspect(inspection) => inspection.to_value(),
                     ResponseResult::TaskTransition(ack) => missions::transition_ack_value(ack),
                     ResponseResult::EventCommit(ack) => missions::event_ack_value(ack),
                     ResponseResult::Skill { result, .. } => result.clone(),
@@ -741,6 +769,9 @@ fn request(check: &mut Check, object: &Map<String, Value>, op: Op) -> Option<Fra
         Op::PlanningBegin | Op::PlanningObserve | Op::PlanningInspect => {
             planning::request(check, op, params)
         }
+        Op::PreparationBegin | Op::PreparationObserve | Op::PreparationInspect => {
+            preparation::request(check, op, params)
+        }
         Op::MissionHeartbeat => missions::mission_heartbeat(check, params),
         Op::MissionSnapshot => missions::mission_snapshot(check, params),
         Op::MissionExecutions => missions::mission_executions(check, params),
@@ -848,6 +879,9 @@ fn response(check: &mut Check, object: &Map<String, Value>, op: Op) -> Option<Fr
         Op::MissionCreate => missions::mission_create_result(check, result),
         Op::PlanningBegin | Op::PlanningObserve | Op::PlanningInspect => {
             planning::response(check, op, result)
+        }
+        Op::PreparationBegin | Op::PreparationObserve | Op::PreparationInspect => {
+            preparation::response(check, op, result)
         }
         Op::MissionHeartbeat => missions::mission_heartbeat_result(check, result),
         Op::MissionSnapshot => missions::mission_snapshot_result(check, result),

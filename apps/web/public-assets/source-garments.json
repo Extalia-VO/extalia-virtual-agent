@@ -12,9 +12,9 @@
         "sha256": "b3144a3e92744c15859087850d65872c41dcaa0a87a1088bfb5fc3e84dd20d5e"
       },
       "fittedSHA256": "a05234b88eea64ded8523e1ae4effa761599414f2747504d5b12d2ee82864b0c",
-      "sha256": "6ce11414162b53408ce3a1c4b443c91438c58ff4f8def584e00cdd4dac4a991f",
+      "sha256": "1d498106f44a5da818c2ed4d2db545d10b8a8981ef8fd0968f83138584b5b847",
       "triangles": 16465,
-      "bytes": 2470324,
+      "bytes": 2327152,
       "budgets": {
         "triangles": 16465,
         "bytes": 9326592
@@ -84,7 +84,7 @@
       "license": "CC-BY-4.0",
       "attribution": {
         "title": "Woman Dress",
-        "author": "Ali Şahan Yalçın (https://sketchfab.com/alisahanyalcin)",
+        "author": "Ali \u015eahan Yal\u00e7\u0131n (https://sketchfab.com/alisahanyalcin)",
         "source": "https://sketchfab.com/3d-models/woman-dress-7f36459d7f7b43548d56e63d899d7354",
         "license": "CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)"
       },
@@ -103,9 +103,9 @@
         "sha256": "5628f5eee851c570dcddc466c6a4446d4a17e749f99f073d7015ac7d491d3bab"
       },
       "fittedSHA256": "e927d27afa603600ae016fe2cc7c25c90cff4ca2555631e02c1bdab72e35246b",
-      "sha256": "dbb9d5af26cddb14c07c4ab6c70c1be0aeaa7ad0529d534dbfed52a2dba09a39",
+      "sha256": "ffd0aef0ba29673be840a362bbf02291e202843299f5854ee7e1960dfc2d2b06",
       "triangles": 17012,
-      "bytes": 1276644,
+      "bytes": 1254336,
       "budgets": {
         "triangles": 17012,
         "bytes": 6504448
@@ -210,9 +210,9 @@
         "sha256": "f1783701928d7a6707831fb1360c76ef32a967f17b89ff08076d773ecc4842cd"
       },
       "fittedSHA256": "4f5e3089d58c066b5c86b6340b6e040fde4012177b27965dea9807bd55a0cc62",
-      "sha256": "2c16c6bfeb9f5556895af3e571026890ad4cb7cffac8b6ebdd8af1c2be104d33",
+      "sha256": "57614dbb4fc1f966b40b1bd01af916e3a280110a7e5ab3343df3eff326e372cc",
       "triangles": 666717,
-      "bytes": 22820632,
+      "bytes": 20397732,
       "budgets": {
         "triangles": 666717,
         "bytes": 41050112
@@ -824,9 +824,9 @@
         "sha256": "fd0cd49ce80c65e0e312e7f6437cd854159ebef670aa1c0091d094eb392ec5de"
       },
       "fittedSHA256": "c5dd6a890ba3b1dbf7a760ffa660e1be098d45daed6f6ff561939a0f97431008",
-      "sha256": "d423bff3e16623556e8f28b915c265700a9f08fbd30b0c53c5b5df0f39a86aa0",
+      "sha256": "361157bc4675f948a1cec814fdf1129351518bccf11eb788548c1815bb49676a",
       "triangles": 12311,
-      "bytes": 1089884,
+      "bytes": 782832,
       "budgets": {
         "triangles": 12311,
         "bytes": 22638592
@@ -933,9 +933,9 @@
         "sha256": "98fa6246cf28b3c5901cf769cd83e56e37cd13016120a22565f3f263263d4911"
       },
       "fittedSHA256": "0fdc686346562450611afa78aab1bd6fae85374b66d61585be1fb50b0ff3a01a",
-      "sha256": "192d2201419ddf12d9d92cf9b3f2880c260e5c23cd82b7091e2d7d960efea497",
+      "sha256": "88f0e458dabc6c0c6d824d0ca19de73da903b42ff8c7a56909d59e92496fe7eb",
       "triangles": 11280,
-      "bytes": 659348,
+      "bytes": 607664,
       "budgets": {
         "triangles": 11280,
         "bytes": 10698752
@@ -1038,9 +1038,9 @@
         "sha256": "c0b9b3ba31cc2e7e31cac3ab02f2b8a576f6714f982dc82df90e1613d443271a"
       },
       "fittedSHA256": "99f9087c92f223d1f2c5e64dab59287ad66fca9ce3329ea63eb0f9814eec3637",
-      "sha256": "47c3f51038cc9ff06bc94e689c8cef215a2085716486af6b70bbcc5109d13e3d",
+      "sha256": "2892297b04557203a611ca1243f0d95bae5394426461bc6b2ee58b2f06452657",
       "triangles": 14384,
-      "bytes": 997380,
+      "bytes": 878416,
       "budgets": {
         "triangles": 14384,
         "bytes": 3137536
@@ -1188,9 +1188,9 @@
         "sha256": "d01f2e27118ee64cbbc3a0cd9d4f4e3840e5fb2760a90e1bfc1abe120ddfd0ae"
       },
       "fittedSHA256": "14f6c6a4b4f89c632480e1406350e0bf74cba9699719969356a9b24f55e8a9c4",
-      "sha256": "14d08e0199f74ace67715669e84f0cf6cf4785159c327f2fc8f3886c856c36ff",
+      "sha256": "e72a84b7aaf2c512222351950b804b33bfb9f9c45239ceab8b87da2821fff0d1",
       "triangles": 312068,
-      "bytes": 10912776,
+      "bytes": 10857156,
       "budgets": {
         "triangles": 312068,
         "bytes": 28356608
@@ -2123,9 +2123,9 @@
         "sha256": "9bb912aee3c97dc00919ffbcb6b14feac66c466ae10c06c35302448fb43a35b9"
       },
       "fittedSHA256": "b1e4c578fa19e29fa48923a5f096f7509e8f805a736b828036aefd4a7a1afe29",
-      "sha256": "569169783d60a6b8e8bd0a23f5ffde4872118f5343da396196e143432021ba1d",
+      "sha256": "8e66dbe6de695b68a7f9de2e7204cbcc91caa7ebe746914b59f2ce64dc956ef9",
       "triangles": 198678,
-      "bytes": 7741360,
+      "bytes": 7741352,
       "budgets": {
         "triangles": 198678,
         "bytes": 46985216
@@ -2242,9 +2242,9 @@
         "sha256": "4fb33d66371720052110c2daa275bfc49ef85b9fcc14952f92b64f084262defd"
       },
       "fittedSHA256": "e3f2a2badd9c5b07ddc8aaafe397f7f01debf3edeff7e5d52e72f850d9eff55d",
-      "sha256": "ecd09c6b97a8e1844cd5836d27246f59fbf0f8347344c3884a7b955f60012cb9",
+      "sha256": "5038f2513e35a613125aa7f2569e903b0ce0d805f5564a92328af7a1a463a3ae",
       "triangles": 53900,
-      "bytes": 2901120,
+      "bytes": 2895648,
       "budgets": {
         "triangles": 53900,
         "bytes": 3461120
@@ -2336,9 +2336,9 @@
         "sha256": "801be57040157694ffdd8243d39c48c837b5f8f9348b16f236cb8f6a88f1a315"
       },
       "fittedSHA256": "1ff18e89a1d150b7f45ef47ee847a449a407d073de5b1f72ad491ecdb2a51508",
-      "sha256": "bd268a0bbbce8d556c2b3d4dba39ea3566ca82f5ae4cfa335287c2f347b21bbf",
+      "sha256": "17d1cb8a4d3f111202efd95e316bc785f876359b447269701d2e3160e949fc8e",
       "triangles": 4516,
-      "bytes": 233580,
+      "bytes": 219188,
       "budgets": {
         "triangles": 4516,
         "bytes": 31195136
@@ -2697,9 +2697,9 @@
         "sha256": "801be57040157694ffdd8243d39c48c837b5f8f9348b16f236cb8f6a88f1a315"
       },
       "fittedSHA256": "5eef827dc2f40fe163946984d3cd901cd082a79cda3f87945dce440b61f2edda",
-      "sha256": "9f700c3dc8c39f23f4c4a9ccc05ef15ab555435ccb9e5981cd0bdf4b93bdb96b",
+      "sha256": "5168d2e2a1fe24f93c41bd8a19dd4c2aa78f34ce3bdcdfdd2fef2372408cd1e2",
       "triangles": 1124,
-      "bytes": 103528,
+      "bytes": 101488,
       "budgets": {
         "triangles": 1124,
         "bytes": 31043584
@@ -2760,9 +2760,9 @@
         "sha256": "4065124d8d8f8208f73a97b0facced62137e9bc85ade2bfb07800eaa7aa9a07d"
       },
       "fittedSHA256": "98c0fe5db53fda01c49b74219916148ac1cac52367746913057281023ae816f2",
-      "sha256": "2d8b38feb83f165ac5a38a8027ed9531e85ba138a9e91378028d74faa3aaca1f",
+      "sha256": "201e72c1f7eb7a49e39b7f749f2f21b19c2319e234f68d7380082e5508854273",
       "triangles": 15833,
-      "bytes": 1923988,
+      "bytes": 1097752,
       "budgets": {
         "triangles": 15833,
         "bytes": 14016512
@@ -2984,7 +2984,7 @@
         "sha256": "6d010732e1697a2a73bcbb71d1aa25470506e9fe66a8bdeb1902de897c719b1b"
       },
       "fittedSHA256": "cc0c9b0c5805e196f5fb0eecb3489b00a265f0deeb986d1e1111e5ac78a3c162",
-      "sha256": "0f1a84df61a5ffceca551ecf179d9c473e9aff18c58459d1576a9a6b1bde64e0",
+      "sha256": "4ea7eddb0520f0a3cccdfd1de2f64794866d3a6f4ab9f1d321dbef882d51a7ba",
       "triangles": 15251,
       "bytes": 675764,
       "budgets": {
@@ -3064,9 +3064,9 @@
         "sha256": "6880956a89a8be5b520f2f6a7166830611e983cfd2f3a039c86b044675fe586f"
       },
       "fittedSHA256": "63a7828b91d51dccf8fe18b703998584a6fd7356d87a1852e0e256cb6b203339",
-      "sha256": "a5df36096b88a34c3101dcd2445f6eaefb461187385c1861dccd56643c445449",
+      "sha256": "3dc157401a92af98fdf3b882af3232925c3791e346dcd3556662dd0f7726e8b7",
       "triangles": 21861,
-      "bytes": 909968,
+      "bytes": 909992,
       "budgets": {
         "triangles": 21861,
         "bytes": 35815424
@@ -3158,9 +3158,9 @@
         "sha256": "ebd98523474fbb788a1d1a33f8b11efedfbd3dd36db1eeeb9a19be5972795428"
       },
       "fittedSHA256": "4dc49155600e9775aff4b20632b9cc41b71e3c80cd11f404b294082460370698",
-      "sha256": "9dd188f896cad9009cb9268b9486ed4191826835e3d1d9272ccce973e6e08355",
+      "sha256": "2db9da3cc16b067eae3ab1d5ed17a7967647a67f1411152eb085783b7dbc42cd",
       "triangles": 227132,
-      "bytes": 10666684,
+      "bytes": 10013416,
       "budgets": {
         "triangles": 227132,
         "bytes": 24526848
@@ -3379,9 +3379,9 @@
         "sha256": "4fb33d66371720052110c2daa275bfc49ef85b9fcc14952f92b64f084262defd"
       },
       "fittedSHA256": "e290812d37f723602ed76a26d6fe6f2bf646e29d4232baecab74042ac3725496",
-      "sha256": "5b6696081ce4ce7ee3d8b18ee9c7665aa18adc3287dc5ad8311293e94b2634f7",
+      "sha256": "506ca3716ea35a751159510d905d172ab3af7b13dc4515abbeda7b2fa6c13c6a",
       "triangles": 83703,
-      "bytes": 3152296,
+      "bytes": 3152328,
       "budgets": {
         "triangles": 83703,
         "bytes": 4259840
@@ -3433,9 +3433,9 @@
         "sha256": "cddcbd87c7ce147f1bc3012fdaf17961d166c2565b6d7285b400d0a6e58669b0"
       },
       "fittedSHA256": "e01c7dfd1078479bbd5a7674100544d770291fdada9d53125c88fe56b5d04c02",
-      "sha256": "f064fa17e7e8c56ea35be90611f96017c56997c7d08f342e69d7981a8dc3ea3b",
+      "sha256": "41049253758e9c381712b03ee9dd33aea81274b54150fbb6794680f5a9f89ae4",
       "triangles": 2532,
-      "bytes": 317176,
+      "bytes": 317212,
       "budgets": {
         "triangles": 2532,
         "bytes": 2928640
@@ -3537,9 +3537,9 @@
         "sha256": "6b7fd8dcfb80fdc5d068c1a88eacbadbf4b310fa48636a406a6a01678480bc25"
       },
       "fittedSHA256": "68f76602c6cc0a6ad011676c49249bd359ca480e907a342afd2330b45458d54e",
-      "sha256": "f894bf826e2b4c3fb7be98ecd490601f5d9440dae68ef9a056bbe6b08c4f4cbb",
+      "sha256": "7f620a7df6178d789279c69976923a59b27dfdc76317a74cd171ca41948279de",
       "triangles": 117711,
-      "bytes": 4029856,
+      "bytes": 4029348,
       "budgets": {
         "triangles": 117711,
         "bytes": 24981504
@@ -3809,9 +3809,9 @@
         "sha256": "801be57040157694ffdd8243d39c48c837b5f8f9348b16f236cb8f6a88f1a315"
       },
       "fittedSHA256": "6ab6f760f74771eb7cb1151997836512da7befd3ac2ef0bc264db8863203128d",
-      "sha256": "adf91f7adb3a6b4d65062a113f46a849c8f1a007c15b8429e6384c485526a1f3",
+      "sha256": "2b63d929cdd51ffceb5b37749cd4ebc05a1063ca8c5d0f0471be2e0436ef70c4",
       "triangles": 6729,
-      "bytes": 322332,
+      "bytes": 298256,
       "budgets": {
         "triangles": 6729,
         "bytes": 31297536
@@ -3872,9 +3872,9 @@
         "sha256": "76fbc668988b5d9d06db8cf3952a80728456372cdda2675eec3e442026286836"
       },
       "fittedSHA256": "7f3e5f8f59183d5f33decf7374293cc58002fbc1792faefe4a4dea24a8c06ae0",
-      "sha256": "d040705363daf78a79853059a1c6dc1da1e4452fbd8b58bccff3f2f0eb58d939",
+      "sha256": "7681aa8721f512f496b6935a62386f691259072eeecf29552bb8c65347e723ca",
       "triangles": 13829,
-      "bytes": 1506300,
+      "bytes": 1506296,
       "budgets": {
         "triangles": 13829,
         "bytes": 16539648
@@ -3974,9 +3974,9 @@
         "sha256": "dc49014c8b22e9cb21a31215472bbc30653e8421fd02d603e6200093e6631e8a"
       },
       "fittedSHA256": "7dc261735a7263a98b76d9dbfdfa597569a41fd809980d8fa5583ad1dfca8fcf",
-      "sha256": "f924e5a51266ed66e97f729efba8ab8bf30ca62b3ac7ad7f0a37afac67cb4351",
+      "sha256": "35a6855e232ba83d255eb823f021f063153adabaa20e1314660794596ae42d37",
       "triangles": 116010,
-      "bytes": 3968376,
+      "bytes": 3968396,
       "budgets": {
         "triangles": 116010,
         "bytes": 17907712

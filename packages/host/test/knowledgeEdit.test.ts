@@ -140,9 +140,9 @@ async function fixture(options: { core?: 'rust' | 'typescript'; binary?: string 
 }
 
 describe('Knowledge edit host methods (host)', () => {
-  it('are absent with the TypeScript core', async () => {
+  it('are available with the TypeScript mission backend', async () => {
     const { host } = await fixture({ core: 'typescript' });
-    for (const method of KNOWLEDGE_EDIT_METHODS) expect(host[method]).toBeUndefined();
+    for (const method of KNOWLEDGE_EDIT_METHODS) expect(typeof host[method]).toBe('function');
   });
 
   it('fail with a user-safe message when the native core is unavailable, after validating', async () => {
@@ -160,8 +160,8 @@ describe('Knowledge edit host methods (host)', () => {
 });
 
 describe.skipIf(!HAS_DAEMON)('Knowledge editing over the Rust core daemon', () => {
-  it('writes with compare-and-swap, keeps history, rolls back and refuses blind overwrites', async () => {
-    const { vault, host, root } = await fixture();
+  it.each(['typescript', 'rust'] as const)('writes with compare-and-swap, keeps history, rolls back and refuses blind overwrites (%s)', async core => {
+    const { vault, host, root } = await fixture({ core });
     const status = await host.knowledgeStatus();
     if (status.state !== 'ready') {
       // A daemon binary built before the current wire contract: rebuild it (`cargo build -p extalia-daemon`).

@@ -158,7 +158,8 @@ describe('applyTeamSpec', () => {
   });
 
   it('refuses a spec that breaks the team limits with a readable message', () => {
-    const blocks = Array.from({ length: 21 }, (_, index) => `Subagent ${index + 1}:\n- Role: R${index}`).join('\n');
-    expect(() => applyTeamSpec(undefined, parseTeamSpec(blocks)!, { newId })).toThrow(/The team in this prompt cannot be used: members: at most 20/);
+    const blocks = Array.from({ length: 33 }, (_, index) => `Subagent ${index + 1}:\n- Role: R${index}`);
+    expect(applyTeamSpec(undefined, parseTeamSpec(blocks.slice(0, 32).join('\n'))!, { newId }).members).toHaveLength(32);
+    expect(() => applyTeamSpec(undefined, parseTeamSpec(blocks.join('\n'))!, { newId })).toThrow(/The team in this prompt cannot be used: members: at most 32/);
   });
 });

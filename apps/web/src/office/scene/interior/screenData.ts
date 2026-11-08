@@ -19,8 +19,11 @@ export interface SmartScreenData {
 
 export function resourceIdForLocation(locationPrefix: string): string | undefined {
   if (resourceById(locationPrefix)) return locationPrefix;
-  const teamSeat = locationPrefix.match(/^floor-1\.team-workspace\.(pod-[a-d])\.(seat-[a-z]+)$/);
-  if (teamSeat) return `engineering.${teamSeat[1]}.${teamSeat[2]}`;
+  const teamSeat = locationPrefix.match(/^floor-1\.team-workspace\.(pod-[a-z]+)\.(seat-[a-z]+)$/);
+  if (teamSeat) {
+    const resourceId = `engineering.${teamSeat[1]}.${teamSeat[2]}`;
+    return resourceById(resourceId) ? resourceId : undefined;
+  }
   const touchdown = locationPrefix.match(/^floor-1\.team-workspace\.(touchdown-\d+)$/);
   if (touchdown) return `engineering.${touchdown[1]}`;
 

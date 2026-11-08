@@ -8,6 +8,8 @@ import { checkedVerdict, POLICY_UNAVAILABLE, type PermissionRequest, type Permis
 import type { AnyTool } from './tools.js';
 import { LocalOperationTracker } from './localOperations.js';
 import { EXTERNAL_SKILL_GUIDANCE } from './prompt.js';
+import { RequestBudgetError } from './requestBudget.js';
+import { UsageAccumulator, tokenSum } from './usage.js';
 
 export type NativeLocalSettlementCoverage = 'extalia-native-local-v1';
 
@@ -224,8 +226,11 @@ function boundedProvider(binding: NativeMissionBinding, operations: LocalOperati
     listModels: async () => [],
     complete: async request => {
       if (request.signal?.aborted) throw aborted();
-      let result: ModelResult;
-      try { result = await operations.invoke('provider', () => complete({ ...request, onText: undefined })); } catch { throw new Error('The model request failed.'); }
+      const result = await operations.invoke('provider', () => complete({ ...request, onText: undefined })).catch(error => {
+        if (error instanceof RequestBudgetError) throw error;
+        return undefined; // Raw endpoint failures stay inside the sanitized mission boundary.
+      });
+      if (!result) throw new Error('The model request failed.');
       if (request.signal?.aborted) throw aborted();
       if (typeof result.text !== 'string' || result.text.length > MAX_TEXT || !Array.isArray(result.toolCalls) || result.toolCalls.length > MAX_TOOL_CALLS
         || (result.model !== undefined && result.model !== binding.model)
@@ -351,24 +356,25 @@ export async function runNativeMission(options: NativeMissionOptions): Promise<N
     return verdict;
   } : undefined;
   // Usage accounting (ADR 0015): only provider-reported counts; anything else is unknown.
-  interface Account { input: number; output: number; hasInput: boolean; hasOutput: boolean; unknown: boolean; inFlight: boolean; closed: boolean }
+  interface Account { usage: UsageAccumulator; unknown: boolean; inFlight: boolean; closed: boolean }
   const accounts = new Map<string, Account>();
-  let consumed = 0, exhausted: NativeBudgetExhaustion | undefined;
+  let consumed: number | undefined = 0;
+  let exhausted: NativeBudgetExhaustion | undefined;
   const exhaust = (reason: NativeBudgetExhaustion) => { exhausted ??= reason; };
   const noteUnknown = () => { if (budget.maxTokens !== undefined && !signal?.aborted) exhaust('usage-unknown'); };
   const taskUsage = (taskId: string): NativeTaskUsage | undefined => {
     const account = accounts.get(taskId);
     if (!account) return undefined;
-    return { ...(account.hasInput ? { inputTokens: account.input } : {}), ...(account.hasOutput ? { outputTokens: account.output } : {}), ...(account.unknown ? { unknown: true as const } : {}) };
+    return { ...account.usage.total, ...(account.unknown ? { unknown: true as const } : {}) };
   };
   const missionUsage = (): NativeMissionUsage => {
-    let input = 0, output = 0, hasInput = false, hasOutput = false, unknownTasks = 0;
+    const sum = new UsageAccumulator();
+    let unknownTasks = 0;
     for (const account of accounts.values()) {
-      if (account.hasInput) { input += account.input; hasInput = true; }
-      if (account.hasOutput) { output += account.output; hasOutput = true; }
+      sum.add(account.usage.total);
       if (account.unknown) unknownTasks++;
     }
-    return { ...(hasInput ? { inputTokens: input } : {}), ...(hasOutput ? { outputTokens: output } : {}), unknownTasks };
+    return { ...sum.total, unknownTasks };
   };
   const accounting = (): NativeMissionAccounting => ({
     usage: missionUsage(),
@@ -504,11 +510,13 @@ export async function runNativeMission(options: NativeMissionOptions): Promise<N
     const cancel = () => stop('cancelled');
     stopActive.add(stop);
     // Budget gate at every provider-call boundary; an in-flight call is never aborted for tokens.
-    const account: Account = { input: 0, output: 0, hasInput: false, hasOutput: false, unknown: false, inFlight: false, closed: false };
+    const account: Account = { usage: new UsageAccumulator(), unknown: false, inFlight: false, closed: false };
     const refusal = (): NativeTaskReason | undefined => {
       if (exhausted) return exhaustedReason(exhausted);
       if (budget.maxTaskTokens !== undefined && account.unknown) return 'usage-unknown';
-      if (budget.maxTaskTokens !== undefined && account.input + account.output >= budget.maxTaskTokens) return 'budget-exhausted';
+      const used = tokenSum(account.usage.total.inputTokens ?? 0, account.usage.total.outputTokens ?? 0);
+      if (budget.maxTaskTokens !== undefined && used === undefined) return 'usage-unknown';
+      if (budget.maxTaskTokens !== undefined && used! >= budget.maxTaskTokens) return 'budget-exhausted';
       return undefined;
     };
     const provider = boundedProvider(binding, operations);
@@ -526,17 +534,20 @@ export async function runNativeMission(options: NativeMissionOptions): Promise<N
         let reply: ModelResult;
         try { reply = await provider.complete(request); } catch (error) {
           account.inFlight = false;
-          // A failed or aborted call may still have consumed tokens: unknown, never zero.
-          if (!account.closed) { account.unknown = true; noteUnknown(); }
+          // A local request-budget refusal proves non-entry. Other failed/aborted calls may have consumed tokens.
+          if (error instanceof RequestBudgetError && !error.priorRequestMayHaveRun) {
+            if (!Object.keys(account.usage.total).length && !account.unknown) accounts.delete(taskId);
+          } else if (!account.closed) { account.unknown = true; noteUnknown(); }
           throw error;
         }
         account.inFlight = false;
         if (account.closed) return reply;
         const input = reply.usage?.inputTokens, output = reply.usage?.outputTokens;
-        if (input !== undefined) { account.input += input; account.hasInput = true; consumed += input; }
-        if (output !== undefined) { account.output += output; account.hasOutput = true; consumed += output; }
-        if (input === undefined || output === undefined) { account.unknown = true; noteUnknown(); }
-        if (budget.maxTokens !== undefined && consumed >= budget.maxTokens) exhaust('tokens');
+        account.usage.add({ ...(input !== undefined ? { inputTokens: input } : {}), ...(output !== undefined ? { outputTokens: output } : {}) });
+        const reported = tokenSum(input ?? 0, output ?? 0);
+        consumed = consumed !== undefined && reported !== undefined ? tokenSum(consumed, reported) : undefined;
+        if (input === undefined || output === undefined || account.usage.incomplete || consumed === undefined) { account.unknown = true; noteUnknown(); }
+        if (budget.maxTokens !== undefined && consumed !== undefined && consumed >= budget.maxTokens) exhaust('tokens');
         return reply;
       },
     };

@@ -43,7 +43,8 @@ import { Icon } from '../ui/Icon';
 import { OriginChip } from '../ui/OriginMark';
 import { Select } from '../ui/Select';
 import { useApprovals } from '../approvals/context';
-import { ConnectAgentAppsCard } from './ConnectAgentAppsCard';
+import { useCameraDirector } from '../office/useCameraDirector';
+import { cameraAttentionIds } from '../office/cameraAttention';
 
 const OfficeCanvas = lazy(() => import('../office/scene/OfficeCanvas'));
 const MAX_SESSIONS = 24;
@@ -71,12 +72,13 @@ const getDark = () => document.documentElement.dataset.theme === 'dark';
 const getReduced = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 const getFalse = () => false;
 
-export function OfficePage({ t, language, agents, hostDisconnected = false, state, onState, workspaceId, onWorkspace, onOpenSession, onOpenMissions, onStartChat, onOpenSettings }: {
+export function OfficePage({ t, language, agents, hostDisconnected = false, state, onState, workspaceId, onWorkspace, onOpenSession, onOpenMissions, onStartChat, onOpenSettings, onOpenAgentSettings }: {
   t: Messages; language: Language; agents?: AgentHostApi; hostDisconnected?: boolean; state: HostState | null; workspaceId?: string; onState(next: HostState): void;
   onWorkspace(id: string | undefined): void; onOpenSession(session: SessionSummary): void;
   /** v0.0.43 missions: open the Missions page, optionally for one session. */
   onOpenMissions?: ((session?: SessionSummary) => void) | undefined;
   onStartChat(): void; onOpenSettings(): void;
+  onOpenAgentSettings?(): void;
 }) {
   // Floor view and lights are drawn in the App top bar; one shared store drives both. The Solar theme lets the scene follow the sun.
   const view = useOfficeControls(controls => controls.view);
@@ -84,9 +86,11 @@ export function OfficePage({ t, language, agents, hostDisconnected = false, stat
   const viewRequest = useOfficeControls(controls => controls.viewRequest);
   const followFloor = useOfficeControls(controls => controls.followFloor);
   const lightOverride = useOfficeControls(controls => controls.lightOverride);
+  const autoCamera = useOfficeControls(controls => controls.autoCamera);
   const followSun = usePreferencesStore(preferences => preferences.theme) === 'solar';
   // Avatar click selects a character and opens its card; a board row opens the session dialog. Separate state, one dialog slot.
   const [selection, dispatch] = useReducer(officeSelectionReducer, initialOfficeSelection);
+  const [officeViewport, setOfficeViewport] = useState<HTMLDivElement | null>(null);
   const selectedId = selection.characterId;
   const panelCollapsed = selection.boardCollapsed;
   const [focusRequest, setFocusRequest] = useState(0);
@@ -94,7 +98,6 @@ export function OfficePage({ t, language, agents, hostDisconnected = false, stat
   const [followId, setFollowId] = useState<string | null>(null);
   const [roomFocus, setRoomFocus] = useState<{ roomId: string; point: FocusPoint } | null>(null);
   const [boardOpen, setBoardOpen] = useState(false);
-  const [connectOpen, setConnectOpen] = useState(false);
   // The prompt dock's target: a session to continue (picked on the board or in the dock) and why, or a new session.
   const [dockTarget, setDockTarget] = useState<{ sessionId?: string; note?: string }>({});
   const [expandedRows, setExpandedRows] = useState<ReadonlySet<string>>(() => new Set());
@@ -235,7 +238,7 @@ export function OfficePage({ t, language, agents, hostDisconnected = false, stat
   const channelOf = (agent: OfficeAgent) => agent.origin?.channel ? o.channels[agent.origin.channel] : undefined;
   const modelOf = (agent: OfficeAgent, session: SessionSummary | undefined) => agent.mission
     ? [agent.mission.provider, agent.mission.model].filter(Boolean).join(' · ') || composer.modelUnknown
-    : agent.control === 'managed' ? (state && sessionModel(state, session)) ?? composer.modelUnknown : agent.model ?? o.modelUnknown;
+    : agent.control === 'managed' ? (agent.agentId === 'primary' ? (state && sessionModel(state, session)) : agent.model) ?? composer.modelUnknown : agent.model ?? o.modelUnknown;
   // v0.0.47 (ADR 0016): mission workers on the board: their mission, a warning for unknown work, and the lead's Missions link.
   const mt = t.officeMissions;
   const missionLeads = useMemo(() => new Set(presences.filter(agent => agent.mission).map(agent => agent.sessionId)), [presences]);
@@ -259,7 +262,7 @@ export function OfficePage({ t, language, agents, hostDisconnected = false, stat
   };
   const restoreFocus = (key: string | null | undefined) => {
     if (!key) return;
-    // The board is un-collapsed (and no longer inert) by the same render that removes the dialog.
+    // Closing the dialog removes modal inertness; the board keeps its manual expansion state.
     requestAnimationFrame(() => requestAnimationFrame(() => {
       // A row that left the board (session removed) falls back to the board toggle.
       const target = document.querySelector<HTMLElement>(`[data-focus-key="${CSS.escape(key)}"]`) ?? document.querySelector<HTMLElement>('[data-focus-key="board:toggle"]');
@@ -273,6 +276,19 @@ export function OfficePage({ t, language, agents, hostDisconnected = false, stat
   const popoverAgent = selection.popoverOpen ? selected : undefined;
   const popoverStaff = selection.popoverOpen ? selectedStaff : undefined;
   const popoverPlace = popoverAgent ? placeOf(popoverAgent) : undefined;
+  const automaticShot = useCameraDirector({
+    enabled: autoCamera && loadStage === 'ready' && !renderFailed && !hostDisconnected,
+    reducedMotion,
+    suspended: Boolean(dialog || approvals.inboxOpen || following),
+    workingIds: officeAgents.filter(agent => !agent.stalled && (agent.status === 'thinking' || agent.status === 'working' || agent.status === 'delegating')).map(agent => agent.id),
+    idleIds: [...officeAgents.filter(agent => !['thinking', 'working', 'delegating', 'offline', 'unavailable', 'paused'].includes(agent.status) || agent.stalled).map(agent => agent.id), ...staff.map(entry => entry.definition.id)],
+    positionReady: id => Boolean(positions.position(id)),
+    attentionIds: cameraAttentionIds(officeAgents, events, approvals.pending), scope: workspaceId ?? 'all',
+    onFocus: shot => {
+      setRoomFocus(null);
+      dispatch({ type: shot.mode === 'attention' ? 'pick' : 'select', characterId: shot.targetId });
+    },
+  });
   // The card's quick prompt goes into the character's own managed session (a worker's lead); observed agents have none.
   const popoverTarget = popoverAgent && agents ? promptTargetFor(popoverAgent, state?.sessions ?? []) : undefined;
   const popoverSession = popoverTarget ? state?.sessions.find(item => item.id === popoverTarget.sessionId) : undefined;
@@ -366,21 +382,19 @@ export function OfficePage({ t, language, agents, hostDisconnected = false, stat
         onChange={id => onWorkspace(id === 'all' ? undefined : id)} />
       <OfficeTools t={t} source={overlay.source} rooms={overlay.rooms} currentRoom={roomFocus?.roomId} boardOpen={boardOpen} boardId={boardId} boardCount={overlay.model.board.length}
         onAgent={findAgent} onRoom={focusRoom} onToggleBoard={() => setBoardOpen(value => !value)} />
-      {agents && <button type="button" className="office-tool-button" aria-pressed={connectOpen} title={t.agentApps.title} onClick={() => setConnectOpen(value => !value)}>
+      {agents && <button type="button" className="office-tool-button" title={t.agentApps.title} onClick={onOpenAgentSettings ?? onOpenSettings}>
         <Icon name="terminal" /><span>{t.agentApps.officeButton}</span>
       </button>}
       <span className="office-live" role="status" title={hostDisconnected ? t.hostConnection.title : agents ? t.office.connected : t.office.disconnected}><span className={agents && !hostDisconnected ? 'pulse' : ''} aria-hidden="true" /><span className="office-live-text">{hostDisconnected ? t.hostConnection.title : agents ? t.office.connected : t.office.disconnected}</span></span>
-      <button type="button" className="button primary" onClick={onStartChat}><Icon name="chat" />{t.office.openChat}</button>
     </div>
-    <div className={`office-stage ${showDock ? 'has-dock' : ''} ${showLeadBar ? 'has-lead-bar' : ''} ${boardOpen ? 'has-board' : ''}`} aria-label={t.office.title}>
+    <div ref={setOfficeViewport} className={`office-stage ${showDock ? 'has-dock' : ''} ${showLeadBar ? 'has-lead-bar' : ''} ${boardOpen ? 'has-board' : ''}`} aria-label={t.office.title}>
       <SceneBoundary key={`scene-${attempt}`} fallback={failed} onFailure={markFailed}>
         <Suspense fallback={null}>
-          <OfficeCanvas agents={officeAgents} selectedId={selected?.id ?? selectedStaff?.definition.id ?? null} onSelect={selectAgent} popoverId={popoverAgent?.id ?? popoverStaff?.definition.id ?? null} onMiss={() => dispatch({ type: 'closePopover' })} view={view} viewRequest={viewRequest} language={language} dark={dark} reducedMotion={reducedMotion} appearances={looks.appearances} activities={recentActivity} onScene={markScene} onReady={markReady} focusRequest={focusRequest} follow={following} onFollowEnd={() => setFollowId(null)} onFollowFloor={followFloor} focusPoint={roomFocus?.point} allocations={allocations} positions={positions} lightOverride={lightOverride} followSun={followSun} />
+          <OfficeCanvas automaticShot={automaticShot} agents={officeAgents} selectedId={selected?.id ?? selectedStaff?.definition.id ?? null} onSelect={selectAgent} popoverId={popoverAgent?.id ?? popoverStaff?.definition.id ?? null} onMiss={() => dispatch({ type: 'closePopover' })} view={view} viewRequest={viewRequest} language={language} dark={dark} reducedMotion={reducedMotion} appearances={looks.appearances} activities={recentActivity} onScene={markScene} onReady={markReady} focusRequest={focusRequest} follow={following} onFollowEnd={() => setFollowId(null)} onFollowFloor={followFloor} focusPoint={roomFocus?.point} allocations={allocations} positions={positions} lightOverride={lightOverride} followSun={followSun} />
         </Suspense>
       </SceneBoundary>
       {!renderFailed && <OfficeLoading key={`loading-${attempt}`} t={t} stage={loadStage} reducedMotion={reducedMotion} />}
       {boardOpen && <ActivityBoard t={t} id={boardId} items={overlay.model.board} names={overlay.names} now={overlay.now} onSelect={locateAgent} onClose={() => setBoardOpen(false)} onOpenMissions={onOpenMissions && (() => onOpenMissions())} approvalFor={characterId => approvalById(officeAgents.find(agent => agent.id === characterId)?.pendingApprovalId)} />}
-      {connectOpen && agents && <div className="office-connect-drawer" role="dialog" aria-label={t.agentApps.title}><ConnectAgentAppsCard t={t} agents={agents} compact onClose={() => setConnectOpen(false)} /></div>}
       {showLeadBar && <LeadAgentBar t={t} leads={overlay.model.leads.shown} more={overlay.model.leads.more} appearances={looks.appearances} projects={overlay.projects}
         latest={overlay.model.latest} selectedId={selected?.id ?? null} onSelect={locateAgent} />}
       <aside className={`office-panel ${panelCollapsed ? 'office-panel-collapsed' : ''}`} aria-label={t.office.agents}>
@@ -389,7 +403,7 @@ export function OfficePage({ t, language, agents, hostDisconnected = false, stat
         <OfficeMetrics t={t} kpis={overlay.model.kpis} />
         <OfficeFullNotice t={t} waiting={overlay.model.waitingForDesk} onSelect={locateAgent} />
         {error && <p className="form-error" role="alert">{t.office.activityError} {error}</p>}
-        {!presences.length ? <div className="office-empty"><p>{t.office.empty}</p><div className="row-actions"><button type="button" className="button" onClick={state?.workspaces.length ? onStartChat : onOpenSettings}>{state?.workspaces.length ? t.office.startSession : t.office.configure}</button>{agents && <button type="button" className="button" onClick={() => setConnectOpen(true)}><Icon name="terminal" />{t.agentApps.title}</button>}</div></div> :
+        {!presences.length ? <div className="office-empty"><p>{t.office.empty}</p><div className="row-actions"><button type="button" className="button" onClick={state?.workspaces.length ? onStartChat : onOpenSettings}>{state?.workspaces.length ? t.office.startSession : t.office.configure}</button>{agents && <button type="button" className="button" onClick={onOpenAgentSettings ?? onOpenSettings}><Icon name="terminal" />{t.agentApps.title}</button>}</div></div> :
           <>
             {board.present.length ? <ul ref={boardList} className="office-agent-list">{board.present.map(renderRow)}</ul> : <p className="office-earlier-none">{composer.noneActive}</p>}
             {board.earlierCount > 0 && <section className="office-earlier" aria-label={composer.earlier(board.earlierCount)}>
@@ -426,6 +440,7 @@ export function OfficePage({ t, language, agents, hostDisconnected = false, stat
         appearance={agents ? { ...appearanceOf(popoverStaff.definition.id), uniform: popoverStaff.definition.role, defaults: popoverStaff.definition.appearance } : undefined}
         onLocate={() => locateAgent(popoverStaff.definition.id)} onClose={() => dispatch({ type: 'closePopover' })} />}
       {dialog && agents && state && <AgentSessionDialog key={`dialog:${dialog.characterId}`} t={t} language={language} agents={agents} state={state} onState={onState}
+        viewport={officeViewport}
         officeNames={officeNames} savedLooks={looks.saved}
         session={dialogSession} agent={dialogAgent} role={dialogAgent ? roleOf(dialogAgent) : ''} workspace={state.workspaces.find(item => item.id === dialogSession?.workspaceId)?.name}
         look={looks.appearances[dialog.characterId]} appearance={appearanceOf(dialog.characterId)} tab={dialog.tab} onTab={tab => dispatch({ type: 'setTab', tab })}

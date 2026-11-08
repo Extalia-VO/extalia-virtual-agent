@@ -1,0 +1,40 @@
+.observed-codex { display: grid; gap: 10px; min-width: 0; padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-solid); color: var(--text); }
+.observed-codex h3, .observed-codex p { margin: 0; }
+.observed-codex h3 { font-size: 14px; }
+.observed-codex p, .observed-codex label, .observed-codex legend { font-size: 12px; line-height: 1.5; }
+.observed-codex-hint { color: var(--muted); }
+.observed-codex form, .observed-codex fieldset { display: grid; gap: 10px; min-width: 0; }
+.observed-codex fieldset { margin: 0; padding: 10px; border: 1px solid var(--line); border-radius: 8px; }
+.observed-codex legend { max-width: 100%; overflow-wrap: anywhere; }
+.observed-codex label { display: grid; gap: 5px; }
+.observed-codex input:not([type='radio']), .observed-codex textarea { box-sizing: border-box; width: 100%; min-width: 0; padding: 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--sunken); color: var(--text); font: inherit; font-size: 12px; }
+.observed-codex textarea { resize: vertical; }
+.observed-codex button { justify-self: start; max-width: 100%; padding: 7px 10px; border: 1px solid var(--line); border-radius: 7px; background: var(--sunken); color: var(--text); font: inherit; font-size: 12px; white-space: normal; }
+.observed-codex button:disabled { opacity: .5; cursor: default; }
+.observed-codex input:focus-visible, .observed-codex textarea:focus-visible, .observed-codex button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.observed-codex .observed-codex-option { display: flex; align-items: flex-start; gap: 8px; }
+.observed-codex-option input { margin-top: 4px; flex-shrink: 0; }
+.observed-codex-option small { display: block; color: var(--muted); }
+.observed-codex-thread, .observed-codex-question, .observed-codex-option span { overflow-wrap: anywhere; }
+.observed-codex-question { white-space: pre-wrap; }
+.observed-codex pre { max-width: 100%; min-width: 0; margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.observed-codex-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.observed-codex-request { padding-block: 10px; border-block: 1px solid var(--line); }
+.observed-codex-office { box-sizing: border-box; min-width: 0; max-height: min(45vh, 360px); overflow: auto; border-top: 1px solid var(--line); color: var(--text); }
+.observed-codex-office > summary { padding: 10px 14px; cursor: pointer; font-size: 12px; overflow-wrap: anywhere; }
+.observed-codex-office > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.observed-codex-office > .observed-codex { margin: 0 10px 10px; }
+
+.observed-codex-entry { min-width: 0; color: var(--text); }
+.observed-codex-entry > summary { padding: 8px 0; cursor: pointer; font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
+.observed-codex-entry[open] > summary { margin-bottom: 6px; }
+.observed-codex-entry > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.composer.observed-codex-prompt { display: grid; grid-template-columns: minmax(0, 1fr) 38px; align-items: end; min-width: 0; max-width: 100%; box-sizing: border-box; border: 1px solid var(--line); background: var(--surface-solid); color: var(--text); }
+.observed-codex-prompt textarea { width: 100%; min-width: 0; box-sizing: border-box; resize: vertical; background: transparent; color: var(--text); }
+.observed-codex-prompt-hint { margin: 0; font-size: 12px; line-height: 1.5; color: var(--muted); overflow-wrap: anywhere; }
+.observed-codex-prompt p { grid-column: 1 / -1; margin: 0; overflow-wrap: anywhere; }
+.observed-codex-prompt p:empty { display: none; }
+.observed-codex-prompt > button:not(.send-button) { grid-column: 1 / -1; justify-self: start; }
+.observed-codex-prompt button { max-width: 100%; white-space: normal; }
+.observed-codex-prompt .send-button { width: 38px; min-width: 38px; height: 38px; padding: 0; flex-shrink: 0; }

@@ -1,0 +1,12 @@
+/* Purpose-based groups keep the primary workflow and collections easy to scan. */
+.sidebar > .nav-group + .nav-group { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+.sidebar > .nav-group > .nav-section { margin: 0 10px 7px; font-size: .65rem; letter-spacing: .09em; }
+.sidebar-compact .sidebar > .nav-group + .nav-group { margin-top: 8px; padding-top: 8px; }
+@media (min-width: 681px) {
+  .office-mode .sidebar:not(:hover):not(:focus-within) > .nav-group + .nav-group { margin-top: 8px; padding-top: 8px; }
+}
+@media (max-width: 680px) {
+  .sidebar > .nav-group { flex: 0 0 auto; }
+  .sidebar > .nav-group + .nav-group,
+  .sidebar-compact .sidebar > .nav-group + .nav-group { margin-top: 0; padding-top: 0; border-top: 0; margin-inline-start: 4px; padding-inline-start: 8px; border-inline-start: 1px solid var(--line); }
+}

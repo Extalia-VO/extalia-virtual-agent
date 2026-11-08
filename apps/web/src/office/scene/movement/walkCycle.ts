@@ -26,12 +26,14 @@ export interface CharacterMotion {
   stride: number;
   /** Per hand: index 0 is the character's left (-X), 1 its right (+X). Written by the movement layer, read by the renderers. */
   reach: [ArmReach, ArmReach];
+  /** 1 while a working character walks with its tablet (both hands hold it at the chest), else 0. */
+  carry: number;
 }
 
 export function createCharacterMotion(seated: boolean): CharacterMotion {
   return {
     sit: seated ? 1 : 0, walk: 0, phase: 0, clip: 'none', stride: 1,
-    reach: [{ weight: 0, target: [0, 0, 0] }, { weight: 0, target: [0, 0, 0] }],
+    reach: [{ weight: 0, target: [0, 0, 0] }, { weight: 0, target: [0, 0, 0] }], carry: 0,
   };
 }
 

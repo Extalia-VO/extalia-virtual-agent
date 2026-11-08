@@ -75,6 +75,20 @@ process.stdin.on('end', () => {
 
 interface Call { args: string[]; cwd: string; stdin: string; env: string[]; pid: number; signal?: string }
 
+/** Inspect the fresh state separately so exact prompt checks do not discard user text. */
+function soloPrompt(stdin: string, state: 'disabled' | 'not configured with active members'): string {
+  expect(stdin.startsWith('<extalia-team-state>\n')).toBe(true);
+  const end = stdin.indexOf('\n</extalia-team-state>\n\n');
+  expect(end).toBeGreaterThan(0);
+  const guidance = stdin.slice(0, end);
+  expect(guidance).toContain(`The current Extalia team is ${state}.`);
+  expect(guidance).toContain('supersedes earlier Extalia team briefs');
+  expect(guidance).toContain('Handle this request yourself without delegating');
+  expect(guidance).toContain('Hermes retains control of its runtime tools');
+  expect(guidance).not.toContain('<extalia-team>');
+  return stdin.slice(end + '\n</extalia-team-state>\n\n'.length);
+}
+
 const tempDir = useTempDirs();
 const runtimes: AgentHostRuntime[] = [];
 afterEach(async () => { while (runtimes.length) await runtimes.pop()!.close(); });
@@ -95,8 +109,10 @@ async function setup(options: { missingBinary?: boolean } = {}) {
   const root = await tempDir();
   const home = path.join(root, 'home'), hermesHome = path.join(home, '.hermes'), project = path.join(root, 'project'), bin = path.join(root, 'bin');
   for (const directory of [project, path.join(hermesHome, 'profiles', 'work'), bin]) await mkdir(directory, { recursive: true });
+  // A real named Hermes profile has an identity file; an empty directory is not launchable.
+  await writeFile(path.join(hermesHome, 'profiles', 'work', 'config.yaml'), '{}\n');
   const executable = await fakeHermes(bin);
-  const env = { EXTALIA_SECRET_STORE: 'memory', PATH: process.env.PATH, HOME: home, HERMES_HOME: hermesHome, EXTALIA_HERMES_BIN: options.missingBinary ? path.join(bin, 'missing') : executable, SOME_API_KEY: 'not-for-hermes' };
+  const env = { EXTALIA_SECRET_STORE: 'memory', PATH: process.env.PATH, HOME: home, HERMES_HOME: hermesHome, HERMES_MANAGED_DIR: path.join(root, 'no-managed-scope'), EXTALIA_HERMES_BIN: options.missingBinary ? path.join(bin, 'missing') : executable, SOME_API_KEY: 'not-for-hermes' };
   const runtime = await createAgentHost({ kind: 'bridge', version: '0.0.0-test', dataDirectory: path.join(root, 'data'), importHome: home, env });
   runtimes.push(runtime);
   const events: ExtaliaEvent[] = [];
@@ -203,7 +219,7 @@ describe('Hermes Agent workspaces', { timeout: PROCESS_TEST_TIMEOUT_MS }, () => 
     expect(stored.every((event, index) => event.seq === index)).toBe(true);
     const bodies = stored.map(event => event.body);
     expect(bodies.filter(body => body.type === 'session.started')).toHaveLength(1);
-    expect(bodies).toContainEqual({ type: 'file.written', path: 'notes.txt', change: 'update' });
+    expect(bodies).toContainEqual({ type: 'file.written', path: 'notes.txt', change: 'update', toolCallId: 'call_1' });
     expect(bodies).toContainEqual({ type: 'turn.completed', model: 'fake/model', usage: { inputTokens: 120, outputTokens: 30, cachedInputTokens: 10 } });
     expect(bodies.at(-1)).toEqual({ type: 'agent.state', state: 'idle' });
 
@@ -211,7 +227,7 @@ describe('Hermes Agent workspaces', { timeout: PROCESS_TEST_TIMEOUT_MS }, () => 
     const folder = workspace.projectLocation!;
     expect(first!.args).toEqual(['-p', 'work', 'chat', '--query-file', '-', '--oneshot', '--format', 'stream-json', '--source', 'extalia', '--in', folder]);
     expect(first!.cwd).toBe(folder);
-    expect(first!.stdin).toBe('Write a note');
+    expect(soloPrompt(first!.stdin, 'not configured with active members')).toBe('Write a note');
     // A minimal environment: no Extalia settings or unrelated secrets.
     expect(first!.env).toEqual(expect.arrayContaining(['HERMES_HOME', 'HOME', 'PATH']));
     expect(first!.env.filter(name => name.startsWith('EXTALIA_') || name === 'SOME_API_KEY')).toEqual([]);
@@ -222,7 +238,9 @@ describe('Hermes Agent workspaces', { timeout: PROCESS_TEST_TIMEOUT_MS }, () => 
     const mark = events.length;
     await host.sendPrompt(session.id, 'And another');
     await waitFor(events, ended(session.id), mark);
-    expect((await calls(hermesHome))[1]!.args).toEqual(expect.arrayContaining(['--resume', 'fake_session_1']));
+    const second = (await calls(hermesHome))[1]!;
+    expect(second.args).toEqual(expect.arrayContaining(['--resume', 'fake_session_1']));
+    expect(soloPrompt(second.stdin, 'not configured with active members')).toBe('And another');
     const all = await host.sessionEvents(session.id);
     expect(new Set(all.map(event => event.id)).size).toBe(all.length);
     expect(all.filter(event => event.body.type === 'turn.completed')).toHaveLength(2);
@@ -318,7 +336,7 @@ describe('Hermes Agent workspaces', { timeout: PROCESS_TEST_TIMEOUT_MS }, () => 
     await host.sendPrompt(session.id, 'Please continue');
     await waitFor(events, ended(session.id));
     await idle(runtime);
-    const stdin = (await calls(hermesHome))[0]!.stdin;
+    const stdin = soloPrompt((await calls(hermesHome))[0]!.stdin, 'not configured with active members');
     expect(stdin).toContain('started in Codex');
     expect(stdin).toContain('Found it in auth.ts.');
     expect(stdin.endsWith('Please continue')).toBe(true);
@@ -326,7 +344,7 @@ describe('Hermes Agent workspaces', { timeout: PROCESS_TEST_TIMEOUT_MS }, () => 
     const mark = events.length;
     await host.sendPrompt(session.id, 'Next');
     await waitFor(events, ended(session.id), mark);
-    expect((await calls(hermesHome))[1]!.stdin).toBe('Next');
+    expect(soloPrompt((await calls(hermesHome))[1]!.stdin, 'not configured with active members')).toBe('Next');
   });
 });
 
@@ -375,7 +393,7 @@ describe('Hermes Agent subagent teams', { timeout: PROCESS_TEST_TIMEOUT_MS }, ()
     const workspace = await hermesWorkspace(host, project);
     await host.completeSetup();
     const session = await host.createSession(workspace.id, { team: TEAM });
-    expect(session.team).toEqual({ enabled: true, size: 2 });
+    expect(session.team).toEqual({ enabled: true, size: 2, updatedAt: (await host.getSessionTeam(session.id))!.updatedAt });
     expect((await host.getSessionTeam(session.id))?.members.map(member => member.name)).toEqual(['Elena Mark', 'Kaelen Vael']);
     expect(await host.saveSessionTeam(session.id, { ...TEAM, members: [TEAM.members[0]!] })).toMatchObject({ members: [{ id: 'm-elena' }] });
     await host.saveSessionTeam(session.id, TEAM);
@@ -410,7 +428,7 @@ describe('Hermes Agent subagent teams', { timeout: PROCESS_TEST_TIMEOUT_MS }, ()
     expect(bodies).toContainEqual({ type: 'subagent.state', subagentId: 'm-elena', state: 'idle' });
   });
 
-  it.skipIf(POSIX_SCRIPTS_ONLY)('applies a team written into a Hermes prompt and sends no brief when the team is off', async () => {
+  it.skipIf(POSIX_SCRIPTS_ONLY)('applies a prompt team and supersedes its delegation brief with fresh solo guidance after pausing', async () => {
     const { runtime, host, events, project, hermesHome } = await setup();
     const workspace = await hermesWorkspace(host, project);
     await host.completeSetup();
@@ -422,6 +440,7 @@ describe('Hermes Agent subagent teams', { timeout: PROCESS_TEST_TIMEOUT_MS }, ()
     const team = await host.getSessionTeam(session.id);
     expect(team?.members.map(member => [member.name, member.role])).toEqual([['Elena Mark', 'Backend Engineer'], ['Kaelen Vael', 'Reviewer']]);
     const [first] = await calls(hermesHome);
+    expect(first!.stdin.startsWith('<extalia-team>\n')).toBe(true);
     expect(first!.stdin).toContain('You lead a subagent team set up in Extalia from this prompt.');
     expect(first!.stdin.endsWith(prompt)).toBe(true);
     const spawned = (await host.sessionEvents(session.id)).flatMap(event => event.body.type === 'subagent.spawned' ? [event.body.label] : []);
@@ -431,7 +450,13 @@ describe('Hermes Agent subagent teams', { timeout: PROCESS_TEST_TIMEOUT_MS }, ()
     const mark = events.length;
     await host.sendPrompt(session.id, 'Plain request');
     await waitFor(events, ended(session.id), mark);
-    expect((await calls(hermesHome))[1]!.stdin).toBe('Plain request');
+    const resumed = (await calls(hermesHome))[1]!;
+    expect(resumed.args).toEqual(expect.arrayContaining(['--resume', 'fake_session_1']));
+    expect(soloPrompt(resumed.stdin, 'disabled')).toBe('Plain request');
+    expect(resumed.stdin).not.toContain('<extalia-team>');
+    expect(resumed.stdin).not.toContain('You lead a subagent team');
+    expect((await host.getSessionTeam(session.id))?.members).toEqual(team!.members);
+    expect(events.slice(mark).some(event => event.body.type === 'subagent.spawned')).toBe(false);
   });
 
   it.skipIf(POSIX_SCRIPTS_ONLY)('v0.0.47: a session copies the workspace default team and every Hermes prompt (resumed and continued) carries the brief', async () => {
@@ -441,7 +466,7 @@ describe('Hermes Agent subagent teams', { timeout: PROCESS_TEST_TIMEOUT_MS }, ()
     const saved = await host.saveWorkspaceTeam(workspace.id, TEAM);
     expect(saved.workspaces[0]!.team?.members.map(member => member.name)).toEqual(['Elena Mark', 'Kaelen Vael']);
     const session = await host.createSession(workspace.id);
-    expect(session.team).toEqual({ enabled: true, size: 2 });
+    expect(session.team).toEqual({ enabled: true, size: 2, updatedAt: (await host.getSessionTeam(session.id))!.updatedAt });
     for (const text of ['First', 'Second', 'Third']) {
       const mark = events.length;
       await host.sendPrompt(session.id, text);
@@ -482,7 +507,7 @@ describe('Hermes Agent subagent teams', { timeout: PROCESS_TEST_TIMEOUT_MS }, ()
     expect(secondContinued!.stdin.startsWith('<extalia-team>\n')).toBe(true);
     expect(secondContinued!.stdin.endsWith('</extalia-team>\n\nAnd then')).toBe(true);
 
-    // `team: null` starts without the default; a disabled default is never sent.
+    // `team: null` starts without the default; a disabled default gets solo state instead of its delegation brief.
     const plain = await host.createSession(workspace.id, { team: null });
     expect(plain.team).toBeUndefined();
     await host.saveWorkspaceTeam(workspace.id, { ...TEAM, enabled: false });
@@ -491,6 +516,9 @@ describe('Hermes Agent subagent teams', { timeout: PROCESS_TEST_TIMEOUT_MS }, ()
     await host.sendPrompt(off.id, 'No team please');
     await waitFor(events, ended(off.id), mark);
     await idle(runtime);
-    expect((await calls(hermesHome)).at(-1)!.stdin).toBe('No team please');
+    const disabled = (await calls(hermesHome)).at(-1)!;
+    expect(soloPrompt(disabled.stdin, 'disabled')).toBe('No team please');
+    expect(disabled.stdin).not.toContain('<extalia-team>');
+    expect(disabled.stdin).not.toContain('1. Elena Mark — Backend Engineer');
   });
 });

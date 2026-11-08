@@ -17,6 +17,7 @@ import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js
 import { ExteriorPart } from "./ExteriorPart";
 import { OutdoorSolids } from "./movement/OutdoorSolids";
 import { OUTDOOR_FACILITIES_BLUEPRINT as outdoor } from "./spatialBlueprints";
+import { GREENERY_POOLS, GreeneryModel, pickGreenery, placementSize, placementYaw } from "./greenery";
 
 /**
  * Ground level context for the Virtual Office campus: a calm stone forecourt,
@@ -38,6 +39,10 @@ import { OUTDOOR_FACILITIES_BLUEPRINT as outdoor } from "./spatialBlueprints";
 
 
 /** Warm low-contrast limestone palette used in the exterior reference. */
+/** Lawn and garden-bed ground level; greenery models stand on it. */
+const GROUND_Y = -0.24;
+/** Soil surface inside the garden planter (planter-local). */
+const PLANTER_SOIL_Y = 0.58;
 const PAVER_TONES = ["#aeb5b5", "#bcc2c0", "#c8cdca", "#d4d7d2", "#dde0da"];
 
 function Tree({ position, scale = 1 }: { position: [number, number, number]; scale?: number }) {
@@ -50,6 +55,8 @@ function Tree({ position, scale = 1 }: { position: [number, number, number]; sca
   ] as const;
   return (
     <group position={position} scale={scale}>
+      <GreeneryModel id={pickGreenery(GREENERY_POOLS.shadeTree, position[0], position[2])} height={6.8 * placementSize(position[0], position[2])}
+        rotationY={placementYaw(position[0], position[2])} trunkRadius={.24}>
       <ExteriorPart model="exterior-shade-tree">
         <mesh castShadow position={[0, 1.58, 0]}>
           <cylinderGeometry args={[0.10, 0.21, 3.16, 10]} />
@@ -67,7 +74,7 @@ function Tree({ position, scale = 1 }: { position: [number, number, number]; sca
             <meshStandardMaterial color={color} roughness={0.98} />
           </mesh>
         ))}
-      </ExteriorPart>
+      </ExteriorPart></GreeneryModel>
     </group>
   );
 }
@@ -76,6 +83,8 @@ function Tree({ position, scale = 1 }: { position: [number, number, number]; sca
 function OrnamentalTree({ position, scale = 1 }: { position: [number, number, number]; scale?: number }) {
   return (
     <group position={position} scale={scale}>
+      <GreeneryModel id={pickGreenery(GREENERY_POOLS.ornamentalTree, position[0], position[2])} height={4.2 * placementSize(position[0], position[2])}
+        rotationY={placementYaw(position[0], position[2])} trunkRadius={.16}>
       <ExteriorPart model="exterior-ornamental-tree">
         {[-0.16, 0.14].map((x, i) => (
           <mesh key={`stem-${x}`} castShadow position={[x, 0.85, i * 0.1]} rotation={[0, 0, x * 0.5]}>
@@ -95,7 +104,7 @@ function OrnamentalTree({ position, scale = 1 }: { position: [number, number, nu
           <icosahedronGeometry args={[0.46, 1]} />
           <meshStandardMaterial color="#87a176" roughness={0.96} flatShading />
         </mesh>
-      </ExteriorPart>
+      </ExteriorPart></GreeneryModel>
     </group>
   );
 }
@@ -227,21 +236,23 @@ function GardenBed({ position, size }: { position: [number, number, number]; siz
   );
 }
 
-function Shrub({ position, scale = 1 }: { position: [number, number, number]; scale?: number }) {
+function Shrub({ position, scale = 1, ground = GROUND_Y }: { position: [number, number, number]; scale?: number; ground?: number }) {
   return (
     <group position={position} scale={scale}>
+      <GreeneryModel id={pickGreenery(GREENERY_POOLS.gardenShrub, position[0], position[2])} height={1.0 * placementSize(position[0], position[2])}
+        rotationY={placementYaw(position[0], position[2])} position={[0, (ground - position[1]) / scale, 0]}>
       <ExteriorPart model="exterior-shrub">
         <mesh castShadow>
           <icosahedronGeometry args={[0.48, 1]} />
           <meshStandardMaterial color="#7f9873" roughness={0.98} flatShading />
         </mesh>
-      </ExteriorPart>
+      </ExteriorPart></GreeneryModel>
     </group>
   );
 }
 
 /** Lavender / purple flowering perennial clump. */
-function LavenderShrub({ position, scale = 1 }: { position: [number, number, number]; scale?: number }) {
+function LavenderShrub({ position, scale = 1, ground = GROUND_Y }: { position: [number, number, number]; scale?: number; ground?: number }) {
   const spikes = useMemo(() => {
     const values: [number, number, number, number][] = [];
     let seed = Math.round(Math.abs(position[0] * 53 + position[2] * 29 + 11)) + 5;
@@ -256,6 +267,8 @@ function LavenderShrub({ position, scale = 1 }: { position: [number, number, num
   }, [position]);
   return (
     <group position={position} scale={scale}>
+      <GreeneryModel id={pickGreenery(GREENERY_POOLS.gardenFlower, position[0], position[2])} height={.72 * placementSize(position[0], position[2])}
+        rotationY={placementYaw(position[0], position[2])} position={[0, (ground - position[1]) / scale, 0]}>
       <ExteriorPart model="exterior-lavender">
         <mesh castShadow position={[0, 0.1, 0]}>
           <icosahedronGeometry args={[0.3, 1]} />
@@ -267,7 +280,7 @@ function LavenderShrub({ position, scale = 1 }: { position: [number, number, num
             <meshStandardMaterial color={roll < 0.5 ? "#9b72c9" : "#b794d6"} roughness={0.85} flatShading />
           </mesh>
         ))}
-      </ExteriorPart>
+      </ExteriorPart></GreeneryModel>
     </group>
   );
 }
@@ -409,10 +422,10 @@ function ArrivalGarden({ position }: { position: readonly [number, number, numbe
       <OutdoorSolids kind="planter" />
       <Tree position={[-1.7, 0.58, 0]} scale={0.94} />
       {/* Broadleaf understory fills the bed beneath the tree canopy. */}
-      <Shrub position={[-0.9, 0.64, -0.1]} scale={0.62} />
-      <Shrub position={[-0.15, 0.63, 0.66]} scale={0.54} />
+      <Shrub position={[-0.9, 0.64, -0.1]} scale={0.62} ground={PLANTER_SOIL_Y} />
+      <Shrub position={[-0.15, 0.63, 0.66]} scale={0.54} ground={PLANTER_SOIL_Y} />
       {[0.2, 1.25, 2.3].map((offset, index) => (
-        <LavenderShrub key={offset} position={[offset, 0.6, index % 2 ? 0.4 : -0.25]} scale={0.8} />
+        <LavenderShrub key={offset} position={[offset, 0.6, index % 2 ? 0.4 : -0.25]} scale={0.8} ground={PLANTER_SOIL_Y} />
       ))}
       {/* Slats sit on the low planter wall, making the garden edge a continuous seat. */}
       {outdoor.gardenSeatSlots.map(x => <group key={`garden-seat-${x}`} position={[x, 0, outdoor.gardenSeatZ]} userData={{ officeSeat: true }}>

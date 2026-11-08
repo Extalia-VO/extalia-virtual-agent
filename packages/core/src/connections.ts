@@ -40,6 +40,12 @@ export interface Orchestration {
 
 export const DEFAULT_MAX_DELEGATIONS = 3;
 
+/** Optional user-selected estimated request ceiling; unrelated to a model's advertised window. */
+export const INPUT_TOKEN_LIMITS = { min: 1_024, max: 2_000_000 } as const;
+export function isInputTokenLimit(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= INPUT_TOKEN_LIMITS.min && value <= INPUT_TOKEN_LIMITS.max;
+}
+
 export interface ProviderPreset {
   id: ProviderPresetId;
   label: string;
@@ -88,16 +94,29 @@ export interface Connection {
   model: string;
   credential: CredentialSource;
   /** `history: false` keeps this connection's sessions in memory only (never written to disk). Defaults to true. */
-  features: { memory: FeatureOwner; skills: FeatureOwner; history?: boolean };
+  features: { memory: FeatureOwner; skills: FeatureOwner; history?: boolean; promptCache?: boolean };
   /** Reasoning effort for `anthropic-messages` endpoints that support it. */
   effort?: Effort;
+  /** Explicit estimated input ceiling. Unset applies only the runtime's general safety guard. */
+  inputTokenLimit?: number;
   orchestration: Orchestration;
   createdAt: string;
   updatedAt: string;
 }
 
 // WHATWG URL exists in every JavaScript runtime Extalia targets; core avoids DOM/Node type libraries.
-declare const URL: new (input: string) => { protocol: string; username: string; password: string; search: string; hash: string };
+declare const URL: new (input: string) => { protocol: string; hostname: string; port: string; pathname: string; username: string; password: string; search: string; hash: string };
+
+/** Only the official Anthropic Messages endpoint has verified prompt-cache support. */
+export function supportsPromptCache(connection: Pick<Connection, 'preset' | 'api' | 'baseUrl'>): boolean {
+  if (connection.preset !== 'anthropic' || connection.api !== 'anthropic-messages') return false;
+  try {
+    const url = new URL(connection.baseUrl);
+    return url.protocol === 'https:' && url.hostname === 'api.anthropic.com' && !url.port
+      && !url.username && !url.password && !url.search && !url.hash
+      && ['', '/v1'].includes(url.pathname.replace(/\/+$/, ''));
+  } catch { return false; }
+}
 
 export const ENV_VARIABLE_PATTERN = /^[A-Z_][A-Z0-9_]{0,127}$/;
 
@@ -160,6 +179,7 @@ export function decodeConnection(raw: unknown): DecodeResult<Connection> {
     if (memory === 'provider' && !preset.nativeMemory) throw new Error(`features.memory: ${preset.label} does not manage memory itself.`);
     if (skills === 'provider' && !preset.nativeSkills) throw new Error(`features.skills: ${preset.label} does not manage skills itself.`);
     if (features.history !== undefined && typeof features.history !== 'boolean') throw new Error('features.history: expected true or false.');
+    if (features.promptCache !== undefined && typeof features.promptCache !== 'boolean') throw new Error('features.promptCache: expected true or false.');
     const createdAt = timestamp(value.createdAt, 'createdAt'), updatedAt = timestamp(value.updatedAt, 'updatedAt');
     const connection: Connection = {
       id: entityId(value.id, 'id'),
@@ -174,6 +194,11 @@ export function decodeConnection(raw: unknown): DecodeResult<Connection> {
       createdAt,
       updatedAt,
     };
+    if (features.promptCache === true && supportsPromptCache(connection)) connection.features.promptCache = true;
+    if (value.inputTokenLimit !== undefined) {
+      if (!isInputTokenLimit(value.inputTokenLimit)) throw new Error(`inputTokenLimit: expected a whole number from ${INPUT_TOKEN_LIMITS.min} to ${INPUT_TOKEN_LIMITS.max}.`);
+      connection.inputTokenLimit = value.inputTokenLimit;
+    }
     const effort = optionalText(value.effort, 'effort');
     if (effort !== undefined) connection.effort = oneOf(effort, EFFORTS, 'effort');
     return connection;

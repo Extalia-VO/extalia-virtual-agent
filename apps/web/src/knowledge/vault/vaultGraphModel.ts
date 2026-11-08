@@ -1,4 +1,5 @@
 import { KNOWLEDGE_OVERVIEW_LIMITS, type KnowledgeOverview, type KnowledgeOverviewNode } from '@extalia/platform';
+import { GRAPH_GALAXY_BACKDROP, GRAPH_GALAXY_PALETTE } from './graphReferenceStyle';
 
 /**
  * Pure logic of the whole-vault 3D graph: capping, adjacency, colour groups, degree → size and
@@ -6,8 +7,8 @@ import { KNOWLEDGE_OVERVIEW_LIMITS, type KnowledgeOverview, type KnowledgeOvervi
  * the page shell and the tests load none of the renderer.
  */
 
-export type ColourMode = 'folder' | 'kind' | 'tag';
-export const COLOUR_MODES: readonly ColourMode[] = ['folder', 'kind', 'tag'];
+export type ColourMode = 'folder' | 'kind' | 'tag' | 'cluster';
+export const COLOUR_MODES: readonly ColourMode[] = ['folder', 'kind', 'tag', 'cluster'];
 export type TimeWindow = '1d' | '1w' | '1m' | '1y' | 'all';
 export const TIME_WINDOWS: readonly TimeWindow[] = ['1d', '1w', '1m', '1y', 'all'];
 
@@ -29,6 +30,69 @@ export interface VaultGraph {
   truncated: boolean;
   totalNodes: number;
   totalEdges: number;
+}
+
+/**
+ * Find structural communities with bounded deterministic local modularity moves.
+ * Communities start as single notes; each pass moves notes, in canonical id order,
+ * to the adjacent community with the best positive modularity gain. Isolates stay
+ * distinct. Returned labels are 1-based and ordered by each community's smallest id.
+ */
+export function graphClusters(graph: Pick<VaultGraph, 'nodes' | 'offsets' | 'adjacency'>): Uint32Array {
+  const count = graph.nodes.length;
+  const order = graph.nodes.map((node, index) => index).sort((a, b) => graph.nodes[a]!.nodeId.localeCompare(graph.nodes[b]!.nodeId));
+  const rank = new Int32Array(count);
+  order.forEach((index, canonical) => { rank[index] = canonical; });
+  const communities = rank.slice();
+  const degree = new Uint32Array(count);
+  let edgeTwice = 0;
+  for (let i = 0; i < count; i++) {
+    degree[i] = (graph.offsets[i + 1] ?? 0) - (graph.offsets[i] ?? 0);
+    edgeTwice += degree[i]!;
+  }
+  if (edgeTwice > 0) {
+    const total = new Float64Array(count);
+    for (let i = 0; i < count; i++) total[i] = degree[i]!;
+    const resolution = 1 / edgeTwice;
+    // O(passes × edges), bounded independently of vault size.
+    for (let pass = 0; pass < 12; pass++) {
+      let moved = false;
+      for (const node of order) {
+        const k = degree[node]!;
+        if (!k) continue;
+        const old = communities[node]!;
+        total[old]! -= k;
+        const links = new Map<number, number>();
+        for (let at = graph.offsets[node] ?? 0, end = graph.offsets[node + 1] ?? 0; at < end; at++) {
+          const community = communities[graph.adjacency[at]!]!;
+          links.set(community, (links.get(community) ?? 0) + 1);
+        }
+        let best = old;
+        let bestGain = (links.get(old) ?? 0) - k * total[old]! * resolution;
+        for (const [community, linked] of links) {
+          const gain = linked - k * total[community]! * resolution;
+          if (gain > bestGain + 1e-12 || (Math.abs(gain - bestGain) <= 1e-12 && gain > 0 && community < best)) {
+            best = community;
+            bestGain = gain;
+          }
+        }
+        communities[node] = best;
+        total[best]! += k;
+        if (best !== old) moved = true;
+      }
+      if (!moved) break;
+    }
+  }
+  const minId = new Map<number, string>();
+  for (let i = 0; i < count; i++) {
+    const community = communities[i]!;
+    const id = graph.nodes[i]!.nodeId;
+    const current = minId.get(community);
+    if (current === undefined || id < current) minId.set(community, id);
+  }
+  const ordered = [...minId].sort((a, b) => a[1].localeCompare(b[1]));
+  const label = new Map<number, number>(ordered.map(([community], index) => [community, index + 1]));
+  return Uint32Array.from(communities, community => label.get(community)!);
 }
 
 /**
@@ -89,7 +153,7 @@ export function degreeWeight(degree: number, maxDegree: number): number {
 }
 
 export interface NodeLook {
-  /** Core sphere radius (world units). */
+  /** Star core radius (world units, with a bounded screen-space drawing size). */
   radius: number;
   /** Halo sprite diameter (world units). */
   halo: number;
@@ -107,13 +171,10 @@ export function nodeLook(degree: number, maxDegree: number): NodeLook {
 }
 
 /** Curated for the graph's near-black stage: saturated but not neon, distinct in hue and lightness. */
-export const GRAPH_PALETTE = [
-  '#7c9cff', '#5eead4', '#f472b6', '#fbbf24', '#a78bfa', '#4ade80',
-  '#fb923c', '#38bdf8', '#f87171', '#e879f9', '#a3e635', '#fde68a',
-] as const;
+export const GRAPH_PALETTE = GRAPH_GALAXY_PALETTE;
 /** Groups beyond the palette share a quiet slate. */
 export const GRAPH_OTHER_COLOUR = '#8a94ab';
-export const GRAPH_BACKGROUND = '#05070d';
+export const GRAPH_BACKGROUND = GRAPH_GALAXY_BACKDROP;
 
 export interface ColourGroup { key: string; colour: string; count: number }
 export interface ColourAssignment {
@@ -122,30 +183,38 @@ export interface ColourAssignment {
   /** Groups shown in the legend (largest first), then `other` when some share the slate. */
   legend: ColourGroup[];
   other: number;
+  /** Original group key per node when groups reuse colors, as in structural cluster mode. */
+  keys?: readonly string[];
 }
 
 /** The group a note belongs to in a colour mode. `''` is the vault root / no kind / untagged. */
-export function groupKey(node: KnowledgeOverviewNode, mode: ColourMode, tagCounts?: ReadonlyMap<string, number>): string {
+export function groupKey(node: KnowledgeOverviewNode, mode: ColourMode, tagCounts?: ReadonlyMap<string, number>, clusterKey = '1'): string {
   if (mode === 'folder') return node.folder;
   if (mode === 'kind') return node.kind ?? '';
+  if (mode === 'cluster') return clusterKey;
   if (!node.tags.length) return '';
   // A note with several tags joins the most common one, so groups stay few and meaningful.
   return [...node.tags].sort((a, b) => (tagCounts?.get(b) ?? 0) - (tagCounts?.get(a) ?? 0) || a.localeCompare(b))[0]!;
 }
 
 /** Colour by folder, kind or tag: the largest groups take the palette in order (stable for the same vault). */
-export function assignColours(nodes: readonly KnowledgeOverviewNode[], mode: ColourMode): ColourAssignment {
+export function assignColours(nodes: readonly KnowledgeOverviewNode[], mode: ColourMode, graph?: VaultGraph): ColourAssignment {
   const tagCounts = new Map<string, number>();
   if (mode === 'tag') for (const node of nodes) for (const tag of node.tags) tagCounts.set(tag, (tagCounts.get(tag) ?? 0) + 1);
-  const keys = nodes.map(node => groupKey(node, mode, tagCounts));
+  const clusters = mode === 'cluster' && graph ? graphClusters(graph) : undefined;
+  const keys = nodes.map((node, index) => groupKey(node, mode, tagCounts, clusters && index < clusters.length ? String(clusters[index]) : '1'));
   const counts = new Map<string, number>();
   for (const key of keys) counts.set(key, (counts.get(key) ?? 0) + 1);
-  const ordered = [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  const ordered = [...counts].sort((a, b) => mode === 'cluster'
+    ? b[1] - a[1] || Number(a[0]) - Number(b[0])
+    : b[1] - a[1] || a[0].localeCompare(b[0]));
   const colourOf = new Map<string, string>();
-  ordered.forEach(([key], index) => colourOf.set(key, GRAPH_PALETTE[index] ?? GRAPH_OTHER_COLOUR));
+  ordered.forEach(([key], index) => colourOf.set(key, mode === 'cluster'
+    ? GRAPH_PALETTE[(Number(key) - 1) % GRAPH_PALETTE.length]!
+    : GRAPH_PALETTE[index] ?? GRAPH_OTHER_COLOUR));
   const legend = ordered.slice(0, GRAPH_PALETTE.length).map(([key, count]) => ({ key, colour: colourOf.get(key)!, count }));
   const other = ordered.slice(GRAPH_PALETTE.length).reduce((sum, [, count]) => sum + count, 0);
-  return { colours: keys.map(key => colourOf.get(key)!), legend, other };
+  return { colours: keys.map(key => colourOf.get(key)!), legend, other, ...(mode === 'cluster' ? { keys } : {}) };
 }
 
 /** sRGB 0..1 channels of `#rrggbb`. */

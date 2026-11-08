@@ -363,6 +363,7 @@ export function SetupWizard({ t, platform, agents, state, onState, preferences, 
           )}
 
           {error && <p className="form-error" role="alert"><Icon name="alert" />{error}</p>}
+          {step === 'workspace' && existing.workspace && <p className="note small">{t.setup.skipExistingWorkspace}</p>}
 
           <div className="actions setup-actions">
             {step !== 'welcome' && <button type="button" disabled={busy} onClick={() => go(previousStep(step))}><Icon name="chevron" className="flip" />{t.common.back}</button>}

@@ -1,9 +1,40 @@
 import { describe, expect, it } from 'vitest';
-import { assertNoCredentialFields, countSecrets, decodeIntegrationGate, decodeProfile, decodeWorkspace, redact, safeLabel, workspaceRuntime } from '../src/index.js';
+import { DEFAULT_WORKSPACE_CROSS_ACCESS, MAX_WORKSPACE_FOLDERS, WORKSPACE_CROSS_ACCESS, assertNoCredentialFields, countSecrets, decodeIntegrationGate, decodeProfile, decodeWorkspace, decodeWorkspaceCrossAccess, redact, safeLabel, workspaceCrossAccess, workspaceRuntime } from '../src/index.js';
 
 const T0 = '2026-01-31T10:00:00.000Z';
 
 describe('profiles and workspaces', () => {
+  it('defaults legacy Native cross-workspace access to read-only and rejects damaged policies', () => {
+    const base = { id: 'w1', profileId: 'p1', name: 'Workspace', createdAt: T0, updatedAt: T0 };
+    expect(DEFAULT_WORKSPACE_CROSS_ACCESS).toBe('read-only');
+    expect(workspaceCrossAccess({})).toBe('read-only');
+    expect(decodeWorkspaceCrossAccess(undefined)).toBe('read-only');
+    expect(decodeWorkspace(base)).toEqual({ ok: true, value: base });
+    for (const policy of WORKSPACE_CROSS_ACCESS) {
+      expect(workspaceCrossAccess({ crossWorkspaceAccess: policy })).toBe(policy);
+      for (const runtimeId of ['extalia-native', 'hermes']) {
+        expect(decodeWorkspace({ ...base, runtimeId, crossWorkspaceAccess: policy })).toMatchObject({ ok: true, value: { crossWorkspaceAccess: policy } });
+      }
+    }
+    for (const invalid of [null, '', 'allow', 'READ-ONLY', 0, {}, ['read-write']]) {
+      expect(() => decodeWorkspaceCrossAccess(invalid)).toThrow(/crossWorkspaceAccess/);
+      expect(decodeWorkspace({ ...base, crossWorkspaceAccess: invalid }).ok).toBe(false);
+    }
+  });
+
+  it('keeps up to sixteen own folders and rejects blank, duplicate or malformed extra paths', () => {
+    const base = { id: 'w1', profileId: 'p1', name: 'Workspace', projectLocation: '/projects/app', createdAt: T0, updatedAt: T0 };
+    const locations = Array.from({ length: MAX_WORKSPACE_FOLDERS - 1 }, (_, index) => `/projects/extra-${index}`);
+    const decoded = decodeWorkspace({ ...base, additionalProjectLocations: locations });
+    expect(decoded).toMatchObject({ ok: true, value: { projectLocation: base.projectLocation, additionalProjectLocations: locations } });
+    locations.push('/projects/later');
+    expect(decoded.ok && decoded.value.additionalProjectLocations).toHaveLength(15);
+    for (const invalid of [null, '/projects/extra', [''], ['  '], [1], ['/projects/app/'], ['/projects/x', '/projects/x/'], ['/projects/a\nb'], ['/projects/a\0b'], locations]) {
+      expect(decodeWorkspace({ ...base, additionalProjectLocations: invalid }).ok, JSON.stringify(invalid)).toBe(false);
+    }
+    expect(decodeWorkspace({ ...base, additionalProjectLocations: [] })).toEqual({ ok: true, value: { ...base, additionalProjectLocations: [] } });
+  });
+
   it('accepts user-defined names without special cases', () => {
     const profile = decodeProfile({ id: 'p1', name: 'Personal', defaults: { runtimeId: 'hermes' }, createdAt: T0, updatedAt: T0 });
     const workspace = decodeWorkspace({ id: 'w1', profileId: 'p1', name: 'Website', projectLocation: '/projects/website', createdAt: T0, updatedAt: T0 });

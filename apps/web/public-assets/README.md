@@ -1,15 +1,15 @@
 # Public Office models
 
-The 2026-10-31 inventory snapshot contains **106 models**: 17 project-authored
-scene models, 12 retained body/hair exports, 32 fitted outfits/wardrobe pieces and
-45 simplified campus vehicles. Their registered GLB bytes total **141,266,428**
-(about 135 MiB before packaging compression; 39 garment, outfit and hair files use the compact
+The 2026-11-08 inventory snapshot contains **133 models**: 18 project-authored
+scene models (the work tablet included), 12 retained body/hair exports, 8 detailed hairs from owner-provided packs,
+32 fitted outfits/wardrobe pieces, 45 simplified campus vehicles and 18 campus plants and trees. Their registered GLB bytes total **152,104,948**
+(about 145 MiB before packaging compression; 47 garment, outfit and hair files use the compact
 texture profile, see "Texture encoding"); this is asset size, not measured
 startup cost or runtime memory. Web, Desktop and the npm Bridge share the inventory.
 Exact hashes, sizes, declared licenses and provenance are in [models.json](models.json).
 
-The declared-license counts are MIT 17, RenderHub Extended Use 23, CC-BY-4.0 57,
-CC-BY-NC-SA-4.0 4, CC-BY-NC-4.0 1 and Sketchfab Standard 4. The project's
+The declared-license counts are MIT 18, RenderHub Extended Use 49, CC-BY-4.0 57,
+CC-BY-NC-SA-4.0 4, CC-BY-NC-4.0 1, Sketchfab Standard 4. The project's
 [MIT license](LICENSE.md) does not replace third-party terms. Retained avatars,
 source garments, generated additions and derived vehicles keep the component
 terms described in [AVATAR_SOURCE_LICENSE.md](AVATAR_SOURCE_LICENSE.md) and
@@ -74,6 +74,27 @@ the records) quantizes only the vertex data of **skinned** primitives, with
   code recomputes normals in place); static scene and vehicle meshes are untouched because the
   scene bakes and merges their geometry. UVs, joints, indices, morph targets, skins, materials
   and textures are byte-identical. Each quantized accessor records `extras.extaliaQuantization`.
+
+## Campus greenery
+
+Potted plants (`greenery/plant-*.glb`), garden plants (`greenery/garden-*.glb`) and trees
+(`greenery/tree-*.glb`), one GLB each of at most 1 MiB (9.6 MB for all 18), are simplified by
+`tooling/blender/prepare-greenery.py` from owner-provided downloads listed in
+`tooling/blender/campus-greenery.json`: foliage thinned to seeded leaf islands, bark and stems
+decimated, textures reduced to 512 px WebP with alpha-masked leaves. They replace the procedural
+trees, shrubs and pots once loaded (indoor pots and desk plants, campus and civic-park trees,
+the parking planters and the near city parks); `?greenery=procedural` keeps the fallbacks.
+Variants, yaw, size and a slight foliage tint are picked from each placement's world position.
+The owner confirmed on 2026-11-08 that all 18 greenery models use the existing RenderHub
+Extended Use License profile (`LicenseRef-RenderHub-Extended-Use`), not MIT. Their recorded
+source archives and CGAxis download history remain in the "Campus greenery" section of
+THIRD_PARTY_NOTICES.md. This records owner confirmation, not independent licence verification.
+The confirmed entries have no `licenseUnverified` runtime flag.
+
+The same dated owner confirmation applies to the 8 detailed hair models listed in
+`tooling/hair-packs.json` and the "Owner-provided hair packs" notice section.
+Terms: https://www.renderhub.com/info/3d-content-licensing. Author and product URLs
+were not supplied; source archive names remain unchanged.
 
 ## Campus vehicles
 

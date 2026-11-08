@@ -58,7 +58,7 @@ const task = (name: string, prompt: string) => (body: Body) => body.messages.som
 
 describe.skipIf(!hasGit)('write-capable mission workers (ADR 0028)', { timeout: PROCESS_TEST_TIMEOUT_MS }, () => {
   // With the Rust core, the daemon decides the worktree writes (permission.check) and journals the run.
-  it.each(backends())('runs two writers in parallel in their own worktrees, never in the checkout, and integrates through the queue (%s core)', async backend => {
+  it.each(backends())('runs two writers in parallel in their own worktrees, never in the checkout, and refuses unconfined integration gates (%s core)', async backend => {
     const both = deferred(), entered = new Set<string>();
     const offered = new Map<string, string[]>(), results = new Map<string, string[]>();
     let project = '';
@@ -103,7 +103,7 @@ describe.skipIf(!hasGit)('write-capable mission workers (ADR 0028)', { timeout: 
     expect(offered.get('reader')).toEqual(['list_files', 'read_file', 'search_files']);
     // Writes inside the worktree ran without a per-call approval; escapes were refused by the tool root.
     expect(results.get('alpha')![0]).toMatch(/^Edited shared\.txt/);
-    expect(results.get('alpha')!.slice(1).every(output => /outside the workspace/.test(output))).toBe(true);
+    expect(results.get('alpha')!.slice(1).every(output => /outside|not permitted/.test(output))).toBe(true);
     // The user's checkout is untouched.
     expect(existsSync(path.join(env.project, 'escape.txt'))).toBe(false);
     expect(existsSync(path.join(env.project, 'beta.txt'))).toBe(false);
@@ -120,14 +120,12 @@ describe.skipIf(!hasGit)('write-capable mission workers (ADR 0028)', { timeout: 
     expect(await readFile(path.join(byTask.get('alpha')!.path, 'shared.txt'), 'utf8')).toBe('one\ntwo from alpha\nthree\n');
     expect(await readFile(path.join(byTask.get('beta')!.path, 'beta.txt'), 'utf8')).toBe('beta\n');
     expect(await env.worktrees.orphans()).toEqual([]);
-    // Integration: alpha merges cleanly after its gate; beta then conflicts on the same line.
+    // Production integration cannot run an unrestricted shell gate. Keep the proposal unready.
     const gate = { command: 'node -e "process.exit(0)"', timeoutSeconds: 60 };
     const alpha = await env.worktrees.propose(byTask.get('alpha')!.id, { gate });
-    expect(alpha.status).toBe('ready');
-    await env.worktrees.apply(alpha.id, { diffDigest: alpha.diffDigest! });
-    expect(await readFile(path.join(env.project, 'shared.txt'), 'utf8')).toBe('one\ntwo from alpha\nthree\n');
-    const beta = await env.worktrees.propose(byTask.get('beta')!.id, { gate });
-    expect(beta).toMatchObject({ status: 'conflict', conflicts: ['shared.txt'] });
+    expect(alpha).toMatchObject({ status: 'gate_failed', gate: { ok: false, basis: 'not_run' } });
+    await expect(env.worktrees.apply(alpha.id, { diffDigest: alpha.diffDigest! })).rejects.toThrow(/test gate/);
+    expect(await readFile(path.join(env.project, 'shared.txt'), 'utf8')).toBe('one\ntwo\nthree\n');
     expect(existsSync(path.join(env.project, 'beta.txt'))).toBe(false);
   });
 
@@ -148,7 +146,7 @@ describe.skipIf(!hasGit)('write-capable mission workers (ADR 0028)', { timeout: 
     await expect(env.host.startNativeMission(session.id, { title: 'Bad', tasks: [{ ...writer, access: 'admin' as 'write' }] })).rejects.toThrow();
   });
 
-  it('runs the workspace integration gate when the request names none; without one the proposal stays gate_missing', async () => {
+  it('selects the workspace integration gate but refuses execution without an isolated runner', async () => {
     const env = await setup(async body => {
       if (body.messages.some(message => message.role === 'tool')) return reply('done');
       return calls({ name: 'write_file', input: { path: 'gated.txt', content: 'gated\n' } });
@@ -164,18 +162,18 @@ describe.skipIf(!hasGit)('write-capable mission workers (ADR 0028)', { timeout: 
     expect(missing.gate).toBeUndefined();
     expect(missing.gateSource).toBeUndefined();
     await expect(env.host.applyIntegration!(missing.id, { diffDigest: missing.diffDigest! })).rejects.toThrow(/test gate/);
-    // The workspace setting runs (with its own timeout) when the request has no gate.
+    // Preserve the chosen gate and source while reporting that no command ran.
     const workspace = (await env.host.getState()).workspaces[0]!;
     await env.host.saveWorkspace({ id: workspace.id, name: workspace.name, projectLocation: env.project, connectionId: env.connection.id, permissions: { fileWrite: 'ask', commands: 'ask' },
       integrationGate: { command: 'node -e "process.exit(0)"', timeoutSeconds: 60 } });
     const fromWorkspace = await env.host.proposeIntegration!(record!.id, { targetBranch: 'main' });
-    expect(fromWorkspace).toMatchObject({ status: 'ready', gateSource: 'workspace', gate: { command: 'node -e "process.exit(0)"', exitCode: 0, ok: true } });
+    expect(fromWorkspace).toMatchObject({ status: 'gate_failed', gateSource: 'workspace', gate: { command: 'node -e "process.exit(0)"', exitCode: 1, ok: false, basis: 'not_run' } });
     // A gate in the request wins over the workspace setting.
     const fromRequest = await env.worktrees.propose(record!.id, { gate: { command: 'node -e "process.exit(3)"', timeoutSeconds: 60 } });
-    expect(fromRequest).toMatchObject({ status: 'gate_failed', gateSource: 'request', gate: { exitCode: 3, ok: false } });
+    expect(fromRequest).toMatchObject({ status: 'gate_failed', gateSource: 'request', gate: { exitCode: 1, ok: false, basis: 'not_run' } });
     // The source is persisted with the proposal.
     expect((await env.host.integrationProposals!()).map(item => item.gateSource)).toEqual([undefined, 'workspace', 'request']);
-    await env.host.applyIntegration!(fromWorkspace.id, { diffDigest: fromWorkspace.diffDigest! });
-    expect(await readFile(path.join(env.project, 'gated.txt'), 'utf8')).toBe('gated\n');
+    await expect(env.host.applyIntegration!(fromWorkspace.id, { diffDigest: fromWorkspace.diffDigest! })).rejects.toThrow(/test gate/);
+    expect(existsSync(path.join(env.project, 'gated.txt'))).toBe(false);
   });
 });

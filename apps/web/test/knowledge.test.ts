@@ -38,7 +38,7 @@ function viewProps(status: KnowledgeStatus, patch: Partial<KnowledgeViewProps> =
 }
 
 describe('Knowledge support detection', () => {
-  it('hides the page when the host lacks the knowledge methods', () => {
+  it('detects older hosts without removing the navigation entry', () => {
     expect(knowledgeMethodsPresent(knowledgeHost())).toBe(true);
     expect(knowledgeMethodsPresent(knowledgeHost({ knowledge: 'off' }))).toBe(false);
     expect(knowledgeMethodsPresent(knowledgeHost({ seed: 'setup' }))).toBe(false);
@@ -49,12 +49,12 @@ describe('Knowledge support detection', () => {
     expect(isUnsupportedMessage('The knowledge index is busy.')).toBe(false);
   });
 
-  it('lists Knowledge under Work only when supported, also without a workspace', () => {
+  it('lists Knowledge beside Grimoire in Library for agent hosts, also before capability discovery', () => {
     const pages = (knowledge: boolean, canChat = true, workflow: 'managed' | 'observe' = 'managed') =>
-      navigationGroups({ agents: true, workflow, canChat, knowledge }).flatMap(group => group.section === 'work' ? group.pages : []);
-    expect(pages(true)).toEqual(['office', 'chat', 'missions', 'observe', 'files', 'git', 'knowledge', 'history', 'import', 'logs']);
-    expect(pages(false)).not.toContain('knowledge');
-    expect(pages(true, false, 'observe')).toEqual(['office', 'observe', 'knowledge', 'history', 'import', 'logs']);
+      navigationGroups({ agents: true, workflow, canChat, knowledge }).flatMap(group => group.section === 'library' ? group.pages : []);
+    expect(pages(true)).toEqual(['knowledge', 'skills']);
+    expect(pages(false)).toContain('knowledge');
+    expect(pages(true, false, 'observe')).toEqual(['knowledge', 'skills']);
     expect(navigationGroups({ agents: false, workflow: 'managed', canChat: false, knowledge: true }).flatMap(group => group.pages)).not.toContain('knowledge');
   });
 });

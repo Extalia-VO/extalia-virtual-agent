@@ -168,6 +168,15 @@ describe('user message presentation', () => {
     });
   });
 
+  it('recognizes the async reply envelope with surrounding blank lines and a serialized tool item ID', () => {
+    const item = { questionItemId: JSON.stringify(['request_user_input_async', 'call-example', 0]), question: 'Is the setup ready?', answer: 'The setup is ready.' };
+    for (const raw of [reply([item]), `\n${reply([item])}\n`, `\r\n\r\n${reply([item])}\r\n`, `${reply([item])} \n`]) {
+      expect(presentUserMessage(raw).questionReply).toEqual([{ question: item.question, answer: item.answer }]);
+      expect(promptPreview(raw)).toEqual({ text: item.answer, notice: false });
+    }
+    for (const raw of [`    ${reply([item])}`, `> ${reply([item])}`, `\`\`\`xml\n${reply([item])}\n\`\`\``, `Explain ${reply([item])}`]) unchanged(raw);
+  });
+
   it('falls back completely when a reply has missing, invalid or unsupported fields', () => {
     const item = { questionItemId: 'q1', question: 'Color?', answer: 'Blue' };
     for (const raw of [

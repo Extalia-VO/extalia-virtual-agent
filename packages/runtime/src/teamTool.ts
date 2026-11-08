@@ -34,6 +34,7 @@ type ManageInput = {
   task?: string;
   soul?: string;
   models?: string[];
+  connectionId?: string;
   access?: MemberAccess;
   scope?: string[];
   forbidden?: string[];
@@ -42,12 +43,15 @@ type ManageInput = {
 const line = (value: string) => value.replace(/\s+/g, ' ').trim();
 
 export function describeTeam(team: AgentTeam | undefined): string {
-  if (!team?.members.length) return 'The team has no members.';
-  return [`Team (${team.enabled ? 'enabled' : 'disabled'}):`, ...team.members.map(member => {
+  if (!team || (!team.members.length && !team.connections?.length)) return 'The team has no members.';
+  return [`Team (${team.enabled ? 'enabled' : 'disabled'}):`,
+    `Lead connection models: ${team.allowedModels.join(' → ') || 'lead chain'}.`,
+    ...(team.connections ?? []).map(connection => `Approved connection ${connection.connectionId}: ${connection.allowedModels.join(' → ')}.`), ...team.members.map(member => {
     const access = member.access === 'write'
       ? `can edit${member.scope?.length ? ` ${member.scope.join(', ')}` : ' the workspace'}${member.forbidden?.length ? `, never ${member.forbidden.join(', ')}` : ''}`
       : 'read-only';
-    return `- ${member.name} (${member.role}; ${access}; models: ${member.models.join(' → ') || 'lead chain'})${member.task ? `: ${line(member.task)}` : ''}`;
+    const grant = member.connectionId ? team.connections?.find(connection => connection.connectionId === member.connectionId) : undefined;
+    return `- ${member.name} (${member.role}; ${access}; connection: ${member.connectionId || 'lead'}; models: ${member.models.join(' → ') || grant?.allowedModels.join(' → ') || 'lead chain'})${member.task ? `: ${line(member.task)}` : ''}`;
   })].join('\n');
 }
 
@@ -60,7 +64,7 @@ export function createManageTeamTool(options: ManageTeamOptions): ToolDefinition
       'Create and configure your own subagent team when the user asks for subagents or a team. add: a new member (role required; leave name empty to get a ' +
       'generated unique full name). update: change a member\'s fields. remove: take a member off the team. list: show the team. Members with access "write" may edit ' +
       'files inside scope (never forbidden paths), one writer at a time; "read" members only research. models is an ordered fallback chain: use only model ids ' +
-      'the user named or the team already allows. Hand work to members with delegate_task.',
+      'the user named or the team already allows. Additional connections and their models must already be approved in team settings. Hand work to members with delegate_task.',
     parameters: {
       type: 'object',
       properties: {
@@ -71,7 +75,8 @@ export function createManageTeamTool(options: ManageTeamOptions): ToolDefinition
         role: { type: 'string', description: 'Short role, for example "Backend Engineer".' },
         task: { type: 'string', description: 'The member\'s standing responsibility.' },
         soul: { type: 'string', description: 'Persona and working principles (up to 1000 characters).' },
-        models: { ...list, description: 'Ordered model ids: preferred first, then fallbacks. Empty: your own model chain.' },
+        models: { ...list, description: 'Ordered model ids: preferred first, then fallbacks, within the selected connection grant. Empty: its approved models, or your own model chain on the lead connection.' },
+        connectionId: { type: 'string', description: 'An existing approved additional team connection id. Omit to keep the member selection (lead on add); empty string explicitly switches to the lead connection. Set models to [] to use its default chain when switching.' },
         access: { type: 'string', enum: MEMBER_ACCESS, description: 'read (default) or write.' },
         scope: { ...list, description: 'Workspace-relative directories, files or globs a write member may edit. Empty: the whole workspace.' },
         forbidden: { ...list, description: 'Workspace-relative paths the member must never edit (wins over scope).' },
@@ -90,7 +95,7 @@ export function createManageTeamTool(options: ManageTeamOptions): ToolDefinition
       if (input.action === 'list') return { ok: true, output: describeTeam(current) };
       const members: TeamMember[] = (current?.members ?? []).map(member => ({ ...member }));
       const allowedModels = [...(current?.allowedModels ?? [])];
-      for (const model of input.models ?? []) if (!allowedModels.includes(model)) allowedModels.push(model);
+      if (current?.connections === undefined) for (const model of input.models ?? []) if (!allowedModels.includes(model)) allowedModels.push(model);
       if (allowedModels.length > MAX_TEAM_MODELS) return { ok: false, output: `A team can allow at most ${MAX_TEAM_MODELS} models.` };
       const others = new Set([...options.takenNames()].map(name => name.toLowerCase()));
       const named = input.name?.trim() ? line(input.name) : undefined;
@@ -108,7 +113,7 @@ export function createManageTeamTool(options: ManageTeamOptions): ToolDefinition
         }
         changed = {
           id: newId(), name, ...(gender ? { gender } : {}), role: line(input.role), ...(input.task?.trim() ? { task: input.task.trim() } : {}),
-          models: [...(input.models ?? [])], ...(input.soul?.trim() ? { soul: input.soul.trim() } : {}), access: input.access ?? 'read',
+          models: [...(input.models ?? [])], ...(input.connectionId ? { connectionId: input.connectionId } : {}), ...(input.soul?.trim() ? { soul: input.soul.trim() } : {}), access: input.access ?? 'read',
           ...(input.scope?.length ? { scope: input.scope } : {}), ...(input.forbidden?.length ? { forbidden: input.forbidden } : {}),
         };
         members.push(changed);
@@ -125,6 +130,7 @@ export function createManageTeamTool(options: ManageTeamOptions): ToolDefinition
           if (input.task !== undefined) { if (input.task.trim()) target.task = input.task.trim(); else delete target.task; }
           if (input.soul !== undefined) { if (input.soul.trim()) target.soul = input.soul.trim(); else delete target.soul; }
           if (input.models) target.models = [...input.models];
+          if (input.connectionId !== undefined) { if (input.connectionId) target.connectionId = input.connectionId; else delete target.connectionId; }
           if (input.access) target.access = input.access;
           if (input.scope) { if (input.scope.length) target.scope = input.scope; else delete target.scope; }
           if (input.forbidden) { if (input.forbidden.length) target.forbidden = input.forbidden; else delete target.forbidden; }
@@ -133,8 +139,8 @@ export function createManageTeamTool(options: ManageTeamOptions): ToolDefinition
       }
       const draft = {
         enabled: input.action === 'remove' ? (current?.enabled ?? false) && members.length > 0 : true,
-        allowedModels, members,
-        ...(current?.goal ? { goal: current.goal } : {}), ...(current?.rules?.length ? { rules: current.rules } : {}),
+        allowedModels, members, ...(current?.connections !== undefined ? { connections: current.connections } : {}),
+        ...(current?.goal ? { goal: current.goal } : {}), ...(current?.goalDocument ? { goalDocument: current.goalDocument } : {}), ...(current?.rules?.length ? { rules: current.rules } : {}),
       };
       const decoded = decodeAgentTeam(draft);
       if (!decoded.ok) return { ok: false, output: `The team was not changed: ${decoded.errors.join(' ')}` };

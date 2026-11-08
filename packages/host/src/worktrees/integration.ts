@@ -28,6 +28,7 @@ export interface IntegrationGate {
 /**
  * Test gate outcome. `basis: 'verified_by_extalia'` (ADR 0027): Extalia ran the configured command
  * itself; the evidence is the exit code and a bounded, redacted log with its digest.
+ * `not_run`: the command was refused before execution; the log records the refusal, not test evidence.
  */
 export interface GateResult {
   command: string;
@@ -37,7 +38,7 @@ export interface GateResult {
   log: string;
   logDigest: string;
   observedAt: string;
-  basis: 'verified_by_extalia';
+  basis: 'verified_by_extalia' | 'not_run';
 }
 
 /**
@@ -75,6 +76,8 @@ export interface IntegrationProposal {
 
 export interface IntegrationQueueOptions {
   registryFile: string;
+  /** Refuse the gate command until a verified workspace-isolated executor is available. */
+  requireWorkspaceBoundary?: boolean;
   /** Environment for the gate command; credentials are removed before it runs. */
   env?: Readonly<Record<string, string | undefined>>;
 }
@@ -189,17 +192,21 @@ export class IntegrationQueue {
   }
 
   private async runGate(gate: Required<IntegrationGate>, root: string): Promise<GateResult> {
-    const tool = createCommandTool(root, { env: this.options.env ?? process.env });
+    const tool = createCommandTool(root, { env: this.options.env ?? process.env, filesystemBoundary: this.options.requireWorkspaceBoundary ? 'required' : undefined });
     let exitCode: number | undefined;
+    let commandStarted = false;
     const started = Date.now();
     const outcome = await tool.run({ command: gate.command, timeout_seconds: gate.timeoutSeconds }, {
       signal: new AbortController().signal, toolCallId: 'integration-gate',
-      emit: body => { if (body.type === 'command.completed') exitCode = body.exitCode; },
+      emit: body => {
+        if (body.type === 'command.started') commandStarted = true;
+        if (body.type === 'command.completed') exitCode = body.exitCode;
+      },
     });
     const log = safeText(redact(outcome.output), LOG_LIMIT);
     return {
       command: gate.command, exitCode: exitCode ?? 1, ok: outcome.ok && exitCode === 0, durationMs: Date.now() - started, log,
-      logDigest: `sha256:${createHash('sha256').update(log).digest('hex')}`, observedAt: new Date().toISOString(), basis: 'verified_by_extalia',
+      logDigest: `sha256:${createHash('sha256').update(log).digest('hex')}`, observedAt: new Date().toISOString(), basis: commandStarted ? 'verified_by_extalia' : 'not_run',
     };
   }
 

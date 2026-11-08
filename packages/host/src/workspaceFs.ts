@@ -48,20 +48,20 @@ export function isGitInternalPath(value: string): boolean {
   return segments(value).includes('.git');
 }
 
-function isWithin(parent: string, child: string): boolean {
+export function isWithin(parent: string, child: string): boolean {
   const relative = path.relative(parent, child);
   return relative === '' || (relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative));
 }
 
 const toPosix = (value: string) => value.split(path.sep).join('/');
 
-function checkAllowed(relative: string, label: string, purpose: PathPurpose): void {
+export function checkAllowed(relative: string, label: string, purpose: PathPurpose): void {
   if (isCredentialPath(relative)) throw new WorkspacePathError(`"${label}" looks like a credential file. Agents may not read or change credential files.`);
   if (purpose === 'write' && isGitInternalPath(relative)) throw new WorkspacePathError(`"${label}" is inside .git. Change the repository with git commands instead.`);
 }
 
 /** The real location of a path whose last components may not exist yet. */
-async function realTarget(absolute: string, label: string): Promise<string> {
+export async function realTarget(absolute: string, label: string): Promise<string> {
   const missing: string[] = [];
   let current = absolute;
   for (;;) {

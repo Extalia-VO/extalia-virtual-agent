@@ -9,7 +9,7 @@ skills remain unavailable; shipped canonical built-ins remain usable.
 
 ## Inventory and review
 
-A project may contain `.extalia/skills/<name>/SKILL.md`. Open **Skills** and find
+A project may contain `.extalia/skills/<name>/SKILL.md`. Open **Grimoire** and find
 its workspace under **Project skills** to inspect the name, description, path
 and SHA-256. This is local review information, not an agent catalog.
 

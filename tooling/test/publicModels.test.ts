@@ -95,8 +95,10 @@ describe('licensed public model registry', () => {
       ? model.license === 'CC-BY-4.0' && model.provenance.kind === 'third-party-derived'
       : /^avatars\/outfits\/(?:male|female)\/outfit-/.test(model.path)
       ? vehicleLicenses.includes(model.license) && model.provenance.kind === 'third-party-derived'
+      : model.provenance.exporter === 'tooling/convert-detailed-hair.py' ? vehicleLicenses.includes(model.license) && /^avatars\/hair\//.test(model.path)
       : model.path.startsWith('avatars/') ? model.license === licensedAvatar
       : model.path.startsWith('vehicles/') ? vehicleLicenses.includes(model.license) && model.provenance.kind === 'third-party-derived'
+      : model.path.startsWith('greenery/') ? vehicleLicenses.includes(model.license) && model.provenance.exporter === 'tooling/blender/prepare-greenery.py'
         : model.license === 'MIT')).toBe(true);
     // One published file per campus car catalog entry.
     const catalog = JSON.parse(readFileSync(new URL('../blender/campus-vehicles.json', import.meta.url), 'utf8'));
@@ -306,6 +308,39 @@ describe('licensed public model registry', () => {
     expect(verifyModelBuild(test.dist, { root: test.root })).toHaveLength(3);
     writeFileSync(path.join(test.dist, 'THIRD_PARTY_NOTICES.md'), 'changed');
     expect(() => verifyModelBuild(test.dist, { root: test.root })).toThrow(/published third-party notice differs/);
+  });
+
+  it.each([
+    ['greenery/plant-confirmed.glb', 'tooling/blender/prepare-greenery.py', 'Campus greenery'],
+    ['avatars/hair/female/confirmed-detail.glb', 'tooling/convert-detailed-hair.py', 'Owner-provided hair packs'],
+  ])('validates the license, exporter and terms of confirmed derivatives: %s', (file, exporter, section) => {
+    const test = fixture(), entry = test.add(file);
+    entry.license = licensedAvatar;
+    entry.provenance = { kind: 'third-party-derived', exporter };
+    mkdirSync(path.dirname(path.join(test.root, exporter)), { recursive: true });
+    writeFileSync(path.join(test.root, exporter), '# Synthetic derivative export fixture.\n');
+    const notice = path.join(test.source, 'THIRD_PARTY_NOTICES.md');
+    const credit = `## ${section}\n\n${avatarLicense}\n- \`${file}\` (${licensedAvatar}): owner-confirmed 2026-11-08.\n`;
+    writeFileSync(notice, credit);
+    writeFileSync(path.join(test.source, 'AVATAR_SOURCE_LICENSE.md'), avatarLicense);
+    test.save();
+    expect(verifyPublicModels(test.root)).toHaveLength(3);
+
+    writeFileSync(notice, credit.replaceAll('https://www.renderhub.com/info/3d-content-licensing', ''));
+    expect(() => verifyPublicModels(test.root)).toThrow(/missing third-party (hair|greenery) notice/);
+    writeFileSync(notice, credit.replace(file, 'unregistered.glb'));
+    expect(() => verifyPublicModels(test.root)).toThrow(/missing third-party (hair|greenery) notice/);
+    writeFileSync(notice, credit);
+    entry.provenance = { kind: 'licensed-avatar-export', exporter }; test.save();
+    expect(() => verifyPublicModels(test.root)).toThrow(/invalid third-party (hair|greenery) provenance/);
+    entry.provenance = { kind: 'third-party-derived', exporter: 'tooling/generate.py' }; test.save();
+    expect(() => verifyPublicModels(test.root)).toThrow(/invalid (?:licensed avatar provenance|model declaration)/);
+    entry.provenance = { kind: 'third-party-derived', exporter };
+    entry.license = 'LicenseRef-Owner-Provided-Unverified'; test.save();
+    writeFileSync(notice, credit.replace(`(${licensedAvatar})`, '(LicenseRef-Owner-Provided-Unverified)'));
+    expect(() => verifyPublicModels(test.root)).toThrow(/missing third-party (hair|greenery) notice/);
+    writeFileSync(notice, credit.replace(`(${licensedAvatar})`, '(LicenseRef-Owner-Provided-Unverified)').replace('owner-confirmed 2026-11-08', 'pending owner confirmation'));
+    expect(verifyPublicModels(test.root)).toHaveLength(3);
   });
 
   it('requires a matching Campus vehicles notice entry and CC-BY terms', () => {

@@ -10,6 +10,7 @@ export type CharacterPresentation = (typeof CHARACTER_PRESENTATIONS)[number];
 export const CHARACTER_HAIR_STYLES = [
   'long', 'wavy', 'ponytail', 'bun', 'bob', 'medium', 'curly', 'afro',
   'textured-crop', 'side-part', 'short-fade', 'undercut', 'slicked-back', 'high-ponytail',
+  'bun-bangs', 'sleek-ponytail', 'long-straight', 'long-bangs', 'straight-short', 'dreads', 'dreadlocks',
 ] as const;
 export type CharacterHairStyle = (typeof CHARACTER_HAIR_STYLES)[number];
 

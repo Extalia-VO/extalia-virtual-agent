@@ -5,7 +5,8 @@
  */
 
 export type SimCommand =
-  | { type: 'init'; count: number; edges: Uint32Array; degree: Uint32Array; seed?: Float32Array }
+  | { type: 'init'; count: number; edges: Uint32Array; degree: Uint32Array; seed?: Float32Array; dimensions?: 2 | 3; groups?: Uint32Array }
+  | { type: 'dimensions'; value: 2 | 3 }
   | { type: 'mask'; active: Uint8Array }
   | { type: 'drag'; index: number; x: number; y: number; z: number }
   | { type: 'release'; index: number }
@@ -24,14 +25,21 @@ export const SIM_ALPHA_MIN = 0.004;
 /** Alpha a filter change or drag restarts with: a brief settle, not a new layout. */
 export const SIM_REHEAT_ALPHA = 0.35;
 
+/** Shared deterministic depth when a flat layout is opened in 3D. */
+export function graphDepthSeed(index: number, group = 0): number {
+  const hash = ((index * 1_103_515_245 + group * 12_345) >>> 0) % 1000;
+  return (hash / 999 - 0.5) * 8;
+}
+
 /** A message and the buffers to transfer with it (the sender must not use them afterwards). */
 export interface Encoded<T> { message: T; transfer: Transferable[] }
 
-export function encodeInit(count: number, edges: Uint32Array, degree: Uint32Array, seed?: Float32Array): Encoded<SimCommand> {
+export function encodeInit(count: number, edges: Uint32Array, degree: Uint32Array, seed?: Float32Array, dimensions?: 2 | 3, groups?: Uint32Array): Encoded<SimCommand> {
   // Copies, so the caller keeps its own arrays for drawing.
-  const message: SimCommand = { type: 'init', count, edges: edges.slice(), degree: degree.slice(), ...(seed ? { seed: seed.slice() } : {}) };
+  const message: SimCommand = { type: 'init', count, edges: edges.slice(), degree: degree.slice(), ...(seed ? { seed: seed.slice() } : {}), ...(dimensions === undefined ? {} : { dimensions }), ...(groups ? { groups: groups.slice() } : {}) };
   const transfer: Transferable[] = [message.edges.buffer, message.degree.buffer];
   if (message.seed) transfer.push(message.seed.buffer);
+  if (message.groups) transfer.push(message.groups.buffer);
   return { message, transfer };
 }
 
@@ -54,8 +62,10 @@ export function decodeCommand(data: unknown): SimCommand | null {
   if (!isRecord(data)) return null;
   switch (data.type) {
     case 'init': {
-      const { count, edges, degree, seed } = data;
+      const { count, edges, degree, seed, dimensions, groups } = data;
       if (!index(count) || !(edges instanceof Uint32Array) || edges.length % 2 || !(degree instanceof Uint32Array) || degree.length !== count) return null;
+      if (dimensions !== undefined && dimensions !== 2 && dimensions !== 3) return null;
+      if (groups !== undefined && (!(groups instanceof Uint32Array) || groups.length !== count || !groups.every(Number.isSafeInteger))) return null;
       for (const at of edges) if (at >= count) return null;
       if (seed !== undefined && (!(seed instanceof Float32Array) || seed.length !== count * 3)) return null;
       if (seed instanceof Float32Array) {
@@ -65,8 +75,9 @@ export function decodeCommand(data: unknown): SimCommand | null {
           if (!xyz.every(Number.isFinite) && !xyz.every(Number.isNaN)) return null;
         }
       }
-      return { type: 'init', count, edges, degree, ...(seed ? { seed } : {}) };
+      return { type: 'init', count, edges, degree, ...(seed ? { seed } : {}), ...(dimensions === undefined ? {} : { dimensions }), ...(groups === undefined ? {} : { groups }) };
     }
+    case 'dimensions': return data.value === 2 || data.value === 3 ? { type: 'dimensions', value: data.value } : null;
     case 'mask': return data.active instanceof Uint8Array ? { type: 'mask', active: data.active } : null;
     case 'drag': return index(data.index) && coordinate(data.x) && coordinate(data.y) && coordinate(data.z) ? { type: 'drag', index: data.index, x: data.x, y: data.y, z: data.z } : null;
     case 'release': return index(data.index) ? { type: 'release', index: data.index } : null;

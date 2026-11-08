@@ -1,23 +1,51 @@
-import type { Dirent } from 'node:fs';
-import { mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises';
+import { constants, type Dirent } from 'node:fs';
+import { mkdir, open, readdir, readFile, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { Worker } from 'node:worker_threads';
 import { safeLabel, safeText } from '@extalia/core';
 import type { AnyTool, ToolDefinition } from '@extalia/runtime';
 import { isNotFound } from '../jsonStore.js';
-import { IGNORED_DIRECTORIES, isCredentialPath, resolveInside, type ResolvedPath } from '../workspaceFs.js';
-import { bound, failure, formatBytes, guard, integer, isBinary, OUTPUT_LIMIT, plural, text } from './shared.js';
+import { IGNORED_DIRECTORIES, isCredentialPath, resolveInside, WorkspacePathError, type ResolvedPath } from '../workspaceFs.js';
+import { bound, failure, formatBytes, guard, integer, isBinary, plural, text } from './shared.js';
+import { MAX_READ_BYTES, readTextPage } from './readTextPage.js';
+import type { WorkspaceAccess } from '../workspaceAccess.js';
 
-const MAX_READ_BYTES = 5 * 1024 * 1024;
 const MAX_SEARCH_BYTES = 1024 * 1024;
-const MAX_LINE_LENGTH = 2000;
 const MATCH_TEXT_LENGTH = 300;
 const MAX_SEARCH_FILES = 20_000;
 const MAX_WRITE_CHARACTERS = 5_000_000;
 
+type FileAuthority = Pick<WorkspaceAccess, 'resolve' | 'canRead'>;
+type FileResolver = WorkspaceAccess['resolve'];
+
 export interface FileToolOptions {
+  /** A run-scoped snapshot of registered folders and workspace access policy. */
+  authority?: FileAuthority;
   /** A regular expression can take exponential time; searches run in a worker that is stopped after this long. */
   searchTimeoutMs?: number;
+}
+
+/** Validate the opened descriptor too; path checks alone do not detect hard-link aliases. */
+async function openRegular(absolute: string, writing: boolean, authority?: FileAuthority) {
+  if (!authority) return open(absolute, writing ? 'w' : 'r');
+  const handle = await open(absolute, (writing ? constants.O_WRONLY | constants.O_CREAT : constants.O_RDONLY) | constants.O_NOFOLLOW, 0o666);
+  try {
+    const info = await handle.stat();
+    if (!info.isFile() || info.nlink > 1) throw new WorkspacePathError('Agent file access requires a regular file without hard links.');
+    return handle;
+  } catch (error) { await handle.close(); throw error; }
+}
+
+async function readRegular(absolute: string, authority: FileAuthority): Promise<Buffer> {
+  const handle = await openRegular(absolute, false, authority);
+  try { return await handle.readFile(); } finally { await handle.close(); }
+}
+
+async function writeContent(absolute: string, content: string, authority?: FileAuthority): Promise<void> {
+  if (!authority) return writeFile(absolute, content, 'utf8');
+  const checked = await authority.resolve(absolute, 'write');
+  const handle = await openRegular(checked.absolute, true, authority);
+  try { await handle.truncate(0); await handle.writeFile(content, 'utf8'); } finally { await handle.close(); }
 }
 
 type ListInput = { path?: string; depth?: number; limit?: number };
@@ -45,7 +73,7 @@ function compareEntries(a: Dirent, b: Dirent): number {
 }
 
 /** Breadth-first, so a limited listing shows every top-level entry before deep ones. */
-async function buildTree(start: string, depth: number, limit: number, signal: AbortSignal): Promise<{ nodes: TreeNode[]; truncated: boolean }> {
+async function buildTree(start: string, depth: number, limit: number, signal: AbortSignal, authority?: FileAuthority): Promise<{ nodes: TreeNode[]; truncated: boolean }> {
   const nodes: TreeNode[] = [];
   let level: { absolute: string; children: TreeNode[] }[] = [{ absolute: start, children: nodes }];
   let count = 0;
@@ -57,6 +85,7 @@ async function buildTree(start: string, depth: number, limit: number, signal: Ab
       try { entries = await readdir(directory.absolute, { withFileTypes: true }); }
       catch { directory.children.push({ name: '(not readable)', directory: false }); continue; }
       for (const entry of entries.sort(compareEntries)) {
+        if (authority && !await authority.canRead(path.join(directory.absolute, entry.name))) continue;
         if (count >= limit) return { nodes, truncated: true };
         count++;
         const node: TreeNode = { name: entry.name, directory: entry.isDirectory() };
@@ -82,7 +111,7 @@ function renderTree(nodes: TreeNode[], indent: number, lines: string[]): void {
   }
 }
 
-function listFiles(root: string): ToolDefinition<ListInput> {
+function listFiles(resolve: FileResolver, authority?: FileAuthority): ToolDefinition<ListInput> {
   return {
     name: 'list_files',
     description: 'List files and directories in the workspace as an indented tree. Directories end with "/". Generated and vendored directories such as node_modules and .git are named but not expanded.',
@@ -99,11 +128,11 @@ function listFiles(root: string): ToolDefinition<ListInput> {
     kind: 'read',
     describe: input => ({ label: `Listing ${pathLabel(input.path)}`, target: pathLabel(input.path) }),
     run: (input, context) => guard(pathLabel(input.path), async () => {
-      const resolved = await resolveInside(root, text(input.path, '.'), 'read');
+      const resolved = await resolve(text(input.path, '.'), 'read');
       const info = await stat(resolved.absolute);
       if (!info.isDirectory()) return failure(`"${resolved.relative}" is a file. Use read_file to read it.`);
       const limit = integer(input.limit, 400, 1, 2000);
-      const { nodes, truncated } = await buildTree(resolved.absolute, integer(input.depth, 2, 1, 6), limit, context.signal);
+      const { nodes, truncated } = await buildTree(resolved.absolute, integer(input.depth, 2, 1, 6), limit, context.signal, authority);
       if (!nodes.length) return { ok: true, output: `"${resolved.relative}" is empty.` };
       const lines: string[] = [];
       renderTree(nodes, 0, lines);
@@ -116,7 +145,7 @@ function listFiles(root: string): ToolDefinition<ListInput> {
 // ---------------------------------------------------------------------------
 // read_file
 
-function readFileTool(root: string): ToolDefinition<ReadInput> {
+function readFileTool(resolve: FileResolver, authority?: FileAuthority): ToolDefinition<ReadInput> {
   return {
     name: 'read_file',
     description: 'Read a text file from the workspace. Lines are numbered ("  12<TAB>code"); use offset and limit to page through long files.',
@@ -134,36 +163,26 @@ function readFileTool(root: string): ToolDefinition<ReadInput> {
     kind: 'read',
     describe: input => ({ label: `Reading ${pathLabel(input.path)}`, target: pathLabel(input.path) }),
     run: (input, context) => guard(pathLabel(input.path), async () => {
-      const resolved = await resolveInside(root, text(input.path), 'read');
+      const resolved = await resolve(text(input.path), 'read');
       const name = resolved.relative;
       const info = await stat(resolved.absolute);
       if (info.isDirectory()) return failure(`"${name}" is a directory. Use list_files to see its contents.`);
       if (!info.isFile()) return failure(`"${name}" is not a regular file.`);
       if (info.size > MAX_READ_BYTES) return failure(`"${name}" is ${formatBytes(info.size)}, more than the 5 MB read limit. Use search_files to find the relevant lines.`);
-      const buffer = await readFile(resolved.absolute);
-      context.emit({ type: 'file.read', path: name });
-      if (isBinary(buffer)) return { ok: true, output: `"${name}" is a binary file (${formatBytes(buffer.length)}); its contents are not shown.` };
-      const lines = splitLines(buffer.toString('utf8'));
-      if (!lines.length) return { ok: true, output: `"${name}" is empty.` };
       const offset = integer(input.offset, 1, 1, Number.MAX_SAFE_INTEGER);
-      if (offset > lines.length) return failure(`"${name}" has ${plural(lines.length, 'line')}; offset ${offset} is past the end.`);
-      const end = Math.min(lines.length, offset - 1 + integer(input.limit, 400, 1, 2000));
-      const width = Math.max(4, String(end).length);
-      const output: string[] = [];
-      let size = 0;
-      let shown = offset - 1;
-      for (let index = offset - 1; index < end; index++) {
-        let line = lines[index]!;
-        if (line.length > MAX_LINE_LENGTH) line = `${line.slice(0, MAX_LINE_LENGTH)}… [line clipped, ${line.length} characters]`;
-        const entry = `${String(index + 1).padStart(width)}\t${line}`;
-        if (output.length && size + entry.length + 1 > OUTPUT_LIMIT) break;
-        output.push(entry);
-        size += entry.length + 1;
-        shown = index + 1;
-      }
-      const remaining = lines.length - shown;
-      if (remaining > 0) output.push(`… ${plural(remaining, 'more line')} (continue with offset ${shown + 1}).`);
-      return { ok: true, output: output.join('\n') };
+      const page = await readTextPage(await openRegular(resolved.absolute, false, authority), {
+        offset, limit: integer(input.limit, 400, 1, 2000), signal: context.signal,
+      });
+      if (page.kind === 'directory') return failure(`"${name}" is a directory. Use list_files to see its contents.`);
+      if (page.kind === 'nonregular') return failure(`"${name}" is not a regular file.`);
+      if (page.kind === 'oversized') return failure(`"${name}" is ${formatBytes(page.bytes)}, more than the 5 MB read limit. Use search_files to find the relevant lines.`);
+      context.emit({ type: 'file.read', path: name });
+      if (page.kind === 'binary') return { ok: true, output: `"${name}" is a binary file (${formatBytes(page.bytes)}); its contents are not shown.` };
+      if (!page.totalLines) return { ok: true, output: `"${name}" is empty.` };
+      if (offset > page.totalLines) return failure(`"${name}" has ${plural(page.totalLines, 'line')}; offset ${offset} is past the end.`);
+      const remaining = page.totalLines - page.shown;
+      const continuation = remaining > 0 ? `\n… ${plural(remaining, 'more line')} (continue with offset ${page.shown + 1}).` : '';
+      return { ok: true, output: page.output + continuation };
     }),
   };
 }
@@ -205,15 +224,25 @@ interface SearchResult { matches: string[]; searched: number; skipped: number; t
 const SEARCH_WORKER = `
 const { parentPort, workerData } = require('node:worker_threads');
 const fs = require('node:fs');
-const { pattern, flags, files, limit, maxBytes, clip } = workerData;
+const { pattern, flags, files, limit, maxBytes, clip, guarded } = workerData;
 const regex = new RegExp(pattern, flags);
 const matches = [];
 let searched = 0, skipped = 0, truncated = false;
 search: for (const file of files) {
   let buffer;
   try {
-    if (fs.statSync(file.absolute).size > maxBytes) { skipped++; continue; }
-    buffer = fs.readFileSync(file.absolute);
+    if (guarded) {
+      const descriptor = fs.openSync(file.absolute, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
+      try {
+        const info = fs.fstatSync(descriptor);
+        if (!info.isFile() || info.nlink > 1) continue;
+        if (info.size > maxBytes) { skipped++; continue; }
+        buffer = fs.readFileSync(descriptor);
+      } finally { fs.closeSync(descriptor); }
+    } else {
+      if (fs.statSync(file.absolute).size > maxBytes) { skipped++; continue; }
+      buffer = fs.readFileSync(file.absolute);
+    }
   } catch { continue; }
   if (buffer.subarray(0, 8000).includes(0)) continue;
   searched++;
@@ -286,7 +315,7 @@ function runSearch(data: Record<string, unknown>, timeoutMs: number, signal: Abo
   });
 }
 
-async function collectFiles(start: ResolvedPath, isDirectory: boolean, include: (fromStart: string, fromRoot: string) => boolean, signal: AbortSignal): Promise<{ files: SearchFile[]; capped: boolean }> {
+async function collectFiles(start: ResolvedPath, isDirectory: boolean, include: (fromStart: string, fromRoot: string) => boolean, signal: AbortSignal, authority?: FileAuthority): Promise<{ files: SearchFile[]; capped: boolean }> {
   const files: SearchFile[] = [];
   if (!isDirectory) return { files: [{ absolute: start.absolute, relative: start.relative }], capped: false };
   const prefix = start.relative === '.' ? '' : `${start.relative}/`;
@@ -298,11 +327,13 @@ async function collectFiles(start: ResolvedPath, isDirectory: boolean, include: 
     for (const entry of entries.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))) {
       if (files.length >= MAX_SEARCH_FILES) { capped = true; return; }
       const relative = fromStart ? `${fromStart}/${entry.name}` : entry.name;
+      const candidate = path.join(absolute, entry.name);
+      if (authority && !await authority.canRead(candidate)) continue;
       // Symbolic links are not followed: they could lead outside the workspace or loop.
       if (entry.isDirectory()) {
         if (!IGNORED_DIRECTORIES.has(entry.name) && !isCredentialPath(entry.name)) await walk(path.join(absolute, entry.name), relative);
       } else if (entry.isFile() && !isCredentialPath(prefix + relative) && include(relative, prefix + relative)) {
-        files.push({ absolute: path.join(absolute, entry.name), relative: prefix + relative });
+        files.push({ absolute: authority ? (await authority.resolve(candidate, 'read')).absolute : candidate, relative: prefix + relative });
       }
     }
   };
@@ -310,7 +341,7 @@ async function collectFiles(start: ResolvedPath, isDirectory: boolean, include: 
   return { files, capped };
 }
 
-function searchFiles(root: string, timeoutMs: number): ToolDefinition<SearchInput> {
+function searchFiles(resolve: FileResolver, timeoutMs: number, authority?: FileAuthority): ToolDefinition<SearchInput> {
   return {
     name: 'search_files',
     description: 'Search file contents in the workspace with a JavaScript regular expression. Returns "path:line: text" lines. Skips node_modules, .git and similar directories, binary files and files over 1 MB.',
@@ -341,11 +372,11 @@ function searchFiles(root: string, timeoutMs: number): ToolDefinition<SearchInpu
         const matches = globMatcher(glob);
         include = (fromStart, fromRoot) => matches(fromStart) || matches(fromRoot);
       }
-      const resolved = await resolveInside(root, text(input.path, '.'), 'read');
+      const resolved = await resolve(text(input.path, '.'), 'read');
       const info = await stat(resolved.absolute);
-      const { files, capped } = await collectFiles(resolved, info.isDirectory(), include, context.signal);
+      const { files, capped } = await collectFiles(resolved, info.isDirectory(), include, context.signal, authority);
       const limit = integer(input.limit, 100, 1, 1000);
-      const result = await runSearch({ pattern, flags, files, limit, maxBytes: MAX_SEARCH_BYTES, clip: MATCH_TEXT_LENGTH }, timeoutMs, context.signal);
+      const result = await runSearch({ pattern, flags, files, limit, maxBytes: MAX_SEARCH_BYTES, clip: MATCH_TEXT_LENGTH, guarded: !!authority }, timeoutMs, context.signal);
       if (result === 'cancelled') return failure('The search was cancelled.');
       if (result === 'timeout') return failure(`The search took longer than ${Math.round(timeoutMs / 1000)} s and was stopped. Simplify the pattern or narrow the path or glob.`);
       const notes: string[] = [];
@@ -371,7 +402,7 @@ async function existingKind(absolute: string): Promise<'file' | 'directory' | 'o
   }
 }
 
-function writeFileTool(root: string): ToolDefinition<WriteInput> {
+function writeFileTool(resolve: FileResolver, authority?: FileAuthority): ToolDefinition<WriteInput> {
   return {
     name: 'write_file',
     description: 'Create a file or replace its entire content. Parent directories are created. Prefer edit_file for changes to existing files.',
@@ -391,12 +422,12 @@ function writeFileTool(root: string): ToolDefinition<WriteInput> {
       if (typeof input.content !== 'string') return failure('"content" must be a string.');
       const content = input.content;
       if (content.length > MAX_WRITE_CHARACTERS) return failure('The content is larger than the 5 MB write limit.');
-      const resolved = await resolveInside(root, text(input.path), 'write');
+      const resolved = await resolve(text(input.path), 'write');
       if (resolved.relative === '.') return failure('Give a file path, not the workspace folder.');
       const existing = await existingKind(resolved.absolute);
       if (existing && existing !== 'file') return failure(`"${resolved.relative}" exists and is not a regular file.`);
       await mkdir(path.dirname(resolved.absolute), { recursive: true });
-      await writeFile(resolved.absolute, content, 'utf8');
+      await writeContent(resolved.absolute, content, authority);
       const change = existing ? 'update' : 'add';
       return {
         ok: true,
@@ -413,7 +444,7 @@ function countOccurrences(haystack: string, needle: string): number {
   return count;
 }
 
-function editFileTool(root: string): ToolDefinition<EditInput> {
+function editFileTool(resolve: FileResolver, authority?: FileAuthority): ToolDefinition<EditInput> {
   return {
     name: 'edit_file',
     description: 'Replace exact text in a file. old_text must match the file exactly, including whitespace, and be unique unless replace_all is true. Read the file first.',
@@ -441,12 +472,12 @@ function editFileTool(root: string): ToolDefinition<EditInput> {
       let newText = text(input.new_text);
       if (!oldText) return failure('old_text is empty. Use write_file to create a file.');
       if (oldText === newText) return failure('old_text and new_text are identical; nothing to change.');
-      const resolved = await resolveInside(root, text(input.path), 'write');
+      const resolved = await resolve(text(input.path), 'write');
       const name = resolved.relative;
       const existing = await existingKind(resolved.absolute);
       if (!existing) return failure(`"${name}" does not exist. Use write_file to create it.`);
       if (existing !== 'file') return failure(`"${name}" is not a regular file.`);
-      const buffer = await readFile(resolved.absolute);
+      const buffer = authority ? await readRegular(resolved.absolute, authority) : await readFile(resolved.absolute);
       if (buffer.length > MAX_READ_BYTES) return failure(`"${name}" is larger than the 5 MB edit limit.`);
       if (isBinary(buffer)) return failure(`"${name}" is a binary file and cannot be edited as text.`);
       const content = buffer.toString('utf8');
@@ -465,7 +496,7 @@ function editFileTool(root: string): ToolDefinition<EditInput> {
         const index = content.indexOf(oldText);
         updated = content.slice(0, index) + newText + content.slice(index + oldText.length);
       }
-      await writeFile(resolved.absolute, updated, 'utf8');
+      await writeContent(resolved.absolute, updated, authority);
       const removed = splitLines(oldText).length, added = splitLines(newText).length;
       return {
         ok: true,
@@ -476,9 +507,11 @@ function editFileTool(root: string): ToolDefinition<EditInput> {
   };
 }
 
-/** Workspace file tools. Every path is checked with `resolveInside`; output is bounded. */
+/** Workspace file tools. Every path is checked by the run authority or legacy root resolver. */
 export function createFileTools(root: string, options: FileToolOptions = {}): AnyTool[] {
   const timeoutMs = options.searchTimeoutMs ?? 20_000;
-  return [listFiles(root), readFileTool(root), searchFiles(root, timeoutMs), writeFileTool(root), editFileTool(root)];
+  const authority = options.authority;
+  const resolve: FileResolver = authority ? (requested, purpose) => authority.resolve(requested, purpose) : (requested, purpose) => resolveInside(root, requested, purpose);
+  return [listFiles(resolve, authority), readFileTool(resolve, authority), searchFiles(resolve, timeoutMs, authority), writeFileTool(resolve, authority), editFileTool(resolve, authority)];
 }
 

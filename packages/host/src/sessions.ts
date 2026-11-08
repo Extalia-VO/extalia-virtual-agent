@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { readFile, rm } from 'node:fs/promises';
 import path from 'node:path';
+import { isDeepStrictEqual } from 'node:util';
 import type { AgentTeam, MemberGender } from '@extalia/core';
 import type { SessionContextUsage, SessionOptions } from '@extalia/platform';
 import { parseEventLines, type ExtaliaEvent } from '@extalia/protocol';
@@ -26,9 +27,27 @@ export interface SessionRecord {
   agentGender?: MemberGender;
   /** The lead's context in use after its latest turn (v0.0.48); an invalid stored record is ignored on read. */
   context?: SessionContextUsage;
+  /** Host-owned snapshot of workspace folder/cross-access grants used by model history. */
+  workspaceBoundary?: string;
 }
 
 export type SessionPatch = Partial<Omit<SessionRecord, 'id'>>;
+
+export interface SessionUpdateOptions {
+  /** Compare the persisted team inside the update transaction; an absent team is a valid expectation. */
+  expectedTeam?: AgentTeam;
+}
+
+export class SessionTeamConflictError extends Error {
+  constructor() {
+    super('Team settings changed. Keep the newer user settings and retry after this turn.');
+    this.name = 'SessionTeamConflictError';
+  }
+}
+
+function checkExpectedTeam(record: SessionRecord, options: SessionUpdateOptions | undefined): void {
+  if (options !== undefined && !isDeepStrictEqual(record.team, options.expectedTeam)) throw new SessionTeamConflictError();
+}
 
 export const SESSION_ID_PATTERN = /^s_[a-z0-9]{6,40}$/;
 
@@ -64,7 +83,7 @@ export interface SessionStorage {
   list(): Promise<SessionRecord[]>;
   get(id: string): Promise<SessionRecord | undefined>;
   create(record: SessionRecord): Promise<SessionRecord>;
-  update(id: string, patch: SessionPatch): Promise<SessionRecord>;
+  update(id: string, patch: SessionPatch, options?: SessionUpdateOptions): Promise<SessionRecord>;
   remove(id: string): Promise<void>;
   appendEvent(id: string, event: ExtaliaEvent): Promise<void>;
   readEvents(id: string): Promise<ExtaliaEvent[]>;
@@ -128,12 +147,13 @@ export class SessionStore implements SessionStorage {
     });
   }
 
-  update(id: string, patch: SessionPatch): Promise<SessionRecord> {
+  update(id: string, patch: SessionPatch, options?: SessionUpdateOptions): Promise<SessionRecord> {
     checkSessionId(id);
     return this.serialize('index', async () => {
       const records = await this.readIndex();
       const index = records.findIndex(item => item.id === id);
       if (index === -1) throw new Error(`Session ${id} does not exist.`);
+      checkExpectedTeam(records[index]!, options);
       const updated = { ...records[index]!, ...patch, id };
       if (!isRecord(updated)) throw new Error('The session update has invalid fields.');
       records[index] = updated;
@@ -219,8 +239,9 @@ export class MemorySessionStore implements SessionStorage {
     return { ...record };
   }
 
-  async update(id: string, patch: SessionPatch): Promise<SessionRecord> {
+  async update(id: string, patch: SessionPatch, options?: SessionUpdateOptions): Promise<SessionRecord> {
     const entry = this.entry(id);
+    checkExpectedTeam(entry.record, options);
     const updated = { ...entry.record, ...patch, id: entry.record.id };
     if (!isRecord(updated)) throw new Error('The session update has invalid fields.');
     entry.record = updated;

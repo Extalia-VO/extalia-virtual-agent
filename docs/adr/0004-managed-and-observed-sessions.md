@@ -24,14 +24,18 @@ The prototypes supported both, through different code paths.
   hooks installed once by `extalia connect` with consent and backups (`hook`),
   and optional MCP reporting by the agent (`mcp`). Instructions to the agent
   are a supplement, never the only source.
-- Observed sessions are read-only in Extalia. Continuing them from Extalia
+- Observed sessions are read-only by default. The explicit, same-server Codex
+  attachment in [ADR 0060](0060-observed-codex-same-server-control.md) is a narrow
+  negotiated capability; it never converts the observation to a managed session.
+  Otherwise, continuing them from Extalia
   means a new managed session seeded with context, or an explicit, supported
   resume mechanism.
 
 ## Consequences
 
 - The office and every view handle both modes with the same code.
-- The UI must disable prompting and steering for observed sessions.
+- Generic managed prompting and steering remain disabled for observed sessions;
+  separate adapter-specific controls require a verified, explicitly enabled capability.
 - Each observer and adapter declares the native versions it was verified with.
 
 Details: [runtime-adapters.md](../architecture/runtime-adapters.md).

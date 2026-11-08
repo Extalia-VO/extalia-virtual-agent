@@ -1,0 +1,137 @@
+/* A graph workspace, with controls layered over a theme-aware canvas. */
+.vault-graph.vault-graph-explorer { gap: 10px; }
+.vault-graph-explorer .vault-graph-body, .vault-graph-explorer.has-selection .vault-graph-body { display: block; position: relative; }
+.vault-graph-explorer .vault-graph-stage { height: clamp(520px, calc(100dvh - 300px), 1000px); border-radius: 12px; border: 1px solid var(--line); background-color: var(--canvas); background-image: radial-gradient(ellipse at 58% 40%, var(--accent-soft), transparent 68%); }
+.vault-graph-explorer .vault-graph-toolbar { position: absolute; inset: 12px 12px auto; z-index: 4; padding: 6px; gap: 6px; flex-wrap: nowrap; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); backdrop-filter: blur(16px); color: var(--text); }
+.vault-graph-explorer .vault-graph-search { flex: 1 1 auto; max-width: none; }
+.vault-graph-explorer input.search { height: 34px; padding: 6px 10px; background: var(--sunken); border: 1px solid var(--line); color: var(--text); }
+.vault-graph-explorer input.search::placeholder { color: var(--muted); }
+.vault-graph-explorer .chip-button { border-color: var(--line); color: var(--text); background: var(--surface-solid); }
+.vault-graph-explorer .chip-button:hover { background: var(--accent-soft); color: var(--text); }
+.vault-graph-explorer .chip-button[aria-pressed='true'] { background: var(--accent-soft); border-color: var(--accent); color: var(--text); }
+.vault-graph-explorer .chip-button:disabled { opacity: .45; }
+.vault-graph-explorer .segmented { background: var(--sunken); border-color: var(--line); padding: 2px; flex-shrink: 0; }
+.vault-graph-explorer .segmented .chip-button { padding: 4px 9px; }
+.vault-graph-explorer .graph-control-button { display: flex; align-items: center; gap: 5px; flex-shrink: 0; }
+.graph-control-button .icon { width: 15px; height: 15px; }
+.vault-graph-explorer .graph-expand { flex-shrink: 0; }
+.vault-graph-explorer .graph-control-panel { position: absolute; z-index: 3; top: 72px; left: 12px; width: 234px; max-height: calc(100% - 134px); overflow: auto; padding: 14px; background: var(--opaque, var(--surface-solid)); border: 1px solid var(--line); border-radius: 10px; color: var(--text); box-shadow: 0 14px 32px color-mix(in srgb, var(--text) 14%, transparent); display: grid; gap: 16px; scrollbar-width: thin; }
+.graph-control-title { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: .82rem; }
+.graph-control-title .chip-button { font-size: 18px; line-height: 1; padding: 3px 8px; }
+.vault-graph-explorer .graph-control-panel label { display: grid; gap: 6px; font-size: .75rem; color: var(--muted); }
+.graph-colour-select { display: grid; gap: 6px; min-width: 0; font-size: .75rem; color: var(--muted); }
+.vault-graph-explorer .graph-control-panel .radix-select-wrapper { width: 100%; }
+.vault-graph-explorer .graph-control-panel .glass-select-trigger { padding: 5px 9px !important; font-size: .76rem !important; }
+.vault-graph-explorer .graph-control-panel input[type='range'] { width: 100%; min-width: 0; padding: 0; accent-color: var(--accent); }
+.graph-appearance { display: grid; gap: 13px; }
+.graph-range > span { display: flex; justify-content: space-between; gap: 5px; }
+.graph-range output { color: var(--muted); font-variant-numeric: tabular-nums; }
+.vault-graph-explorer label.graph-check { display: flex; align-items: center; gap: 8px; }
+.graph-check input { accent-color: var(--accent); }
+.graph-control-group { min-width: 0; border-block: 1px solid var(--line); padding: 10px 0; }
+.graph-control-group > summary { cursor: pointer; font-size: .75rem; color: var(--text); }
+.vault-graph-explorer .vault-graph-filters { display: grid; padding-top: 10px; gap: 10px; }
+.vault-graph-explorer .vault-graph-filters > label { flex: none; }
+.vault-graph-explorer .vault-graph-time { justify-content: space-between; }
+.vault-graph-explorer .vault-graph-time .chip-button { padding: 3px 6px; font-size: .72rem; }
+.vault-graph-explorer .vault-graph-focus { padding-top: 10px; }
+.vault-graph-explorer .graph-control-panel .muted, .graph-cluster-note { color: var(--muted); font-size: .7rem; }
+.graph-cluster-note { margin: 0; line-height: 1.5; }
+.vault-graph-explorer .vault-graph-toggles { gap: 6px; }
+.vault-graph-explorer .vault-graph-toggles .chip-button { font-size: .7rem; padding: 4px 8px; white-space: normal; }
+.vault-graph-explorer .vault-graph-counts { position: absolute; z-index: 2; bottom: 14px; left: 12px; margin: 0; max-width: 60%; padding: 6px 9px; border-radius: 6px; font-size: .72rem; color: var(--muted); background: var(--surface); pointer-events: none; }
+.vault-graph-explorer .vault-graph-legend { z-index: 3; left: 12px; bottom: 54px; padding: 7px 10px; max-height: 36%; border-radius: 7px; background: var(--opaque, var(--surface-solid)); color: var(--text); border-color: var(--line); }
+.vault-graph-explorer .vault-graph-legend > summary { cursor: pointer; font-size: .72rem; }
+.vault-graph-explorer .vault-graph-legend ul { padding: 10px 0 0; list-style: none; margin: 0; display: grid; gap: 5px; }
+.vault-graph-explorer .vault-graph-dot { box-shadow: 0 0 8px currentColor; width: 7px; height: 7px; }
+.vault-graph-explorer .graph-camera-tools { position: absolute; z-index: 3; bottom: 12px; right: 12px; display: flex; align-items: center; gap: 4px; }
+.graph-camera-tools .chip-button { min-width: 31px; font-size: .75rem; padding: 5px 8px; }
+.vault-graph-explorer .vault-graph-hint { left: 270px; right: 130px; bottom: 18px; max-width: none; text-align: center; color: var(--muted); font-size: .67rem; }
+.vault-graph-explorer .vault-graph-panel { position: absolute; z-index: 5; top: 72px; right: 12px; width: min(380px, 40%); max-height: calc(100% - 130px); border: 1px solid var(--line); box-shadow: 0 14px 40px color-mix(in srgb, var(--text) 20%, transparent); background: var(--surface-solid); color: var(--text); }
+.vault-graph-explorer .vault-graph-label { font-size: 10.5px; font-weight: 450; color: var(--text); text-shadow: 0 1px 3px color-mix(in srgb, var(--canvas) 78%, transparent), 0 0 7px color-mix(in srgb, var(--canvas) 88%, transparent); }
+.vault-graph-explorer .vault-graph-label[data-focus='true'] { color: var(--accent); font-size: 12px; font-weight: 600; }
+.vault-graph-explorer .vault-graph-results { background: var(--surface-solid); border-color: var(--line); color: var(--text); }
+.vault-graph-explorer .vault-graph-results .vault-graph-row { color: var(--text); }
+.vault-graph-explorer .vault-graph-results .muted { color: var(--muted); }
+.vault-graph-explorer .vault-graph-results .vault-graph-row:hover, .vault-graph-explorer .vault-graph-results [aria-selected='true'] .vault-graph-row { background: var(--accent-soft); }
+.vault-graph.vault-graph-explorer.expanded { position: fixed; inset: 8px; z-index: 85; margin: 0; padding: 0; background: var(--canvas); }
+.vault-graph-explorer.expanded .vault-graph-stage { height: calc(100dvh - 16px); }
+.vault-graph-explorer.expanded .vault-graph-list { display: none; }
+.knowledge-vault-setup > summary { cursor: pointer; color: var(--muted); font-size: .8rem; padding: 5px 0; }
+.knowledge-vault-setup[open] > .settings-section { margin-top: 6px; }
+.knowledge.knowledge-vault-page { gap: 8px; max-width: none; }
+.knowledge-vault-page .page-header { margin-bottom: 0; }
+.knowledge-vault-page .page-header .lead { font-size: .82rem; max-width: 1050px; margin-bottom: 8px; }
+.knowledge-vault-page .knowledge-status { padding: 8px 12px; }
+.knowledge-vault-page .knowledge-status-row { gap: 7px 12px; }
+/* The app shell can establish a fixed containing block; keep the expanded graph inside its visible area. */
+.vault-graph.vault-graph-explorer.expanded { height: var(--graph-expanded-height, calc(100dvh - var(--topbar-offset) - 24px)); bottom: auto; }
+.vault-graph-explorer.expanded .vault-graph-body, .vault-graph-explorer.expanded .vault-graph-stage { height: 100%; }
+@media (max-width: 1000px) {
+  .vault-graph-explorer .vault-graph-hint { display: none; }
+  .vault-graph-explorer .vault-graph-toolbar { flex-wrap: wrap; }
+  .vault-graph-explorer .vault-graph-search { flex-basis: 100%; }
+  .vault-graph-explorer .graph-control-panel { top: 111px; max-height: calc(100% - 172px); width: min(234px, calc(100% - 24px)); }
+  .vault-graph-explorer .vault-graph-panel { position: absolute; top: auto; bottom: 0; left: 0; right: 0; width: auto; max-height: 62dvh; border-radius: 16px 16px 0 0; }
+}
+@media (max-width: 520px) {
+  .vault-graph-explorer .vault-graph-stage { height: max(520px, 70dvh); }
+  .vault-graph-explorer .vault-graph-toolbar { inset: 8px 8px auto; }
+  .vault-graph-explorer .graph-expand { font-size: .7rem; }
+  .vault-graph-explorer .vault-graph-counts { max-width: 56%; font-size: .64rem; bottom: 52px; }
+  .vault-graph-explorer .vault-graph-legend { bottom: 84px; }
+  .vault-graph-explorer.expanded .vault-graph-stage { height: 100%; }
+}
+
+.vault-graph-explorer .vault-graph-webgl { color: var(--muted); }
+
+/* Focus navigation is separate from appearance controls and survives note closure. */
+.vault-graph-explorer .graph-focus-trail { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-solid); color: var(--text); }
+.graph-focus-trail p { margin: 0; flex: 1 1 260px; min-width: 0; font-size: .76rem; overflow-wrap: anywhere; }
+.vault-graph-explorer .graph-focus-trail .chip-button { padding: 5px 9px; font-size: .72rem; }
+.graph-selection-tools { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 12px; border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 2; background: var(--surface-solid); }
+.vault-graph-explorer .graph-selection-tools .chip-button { flex: 1 1 125px; width: auto; padding: 7px 10px; font-size: .76rem; white-space: normal; }
+.vault-graph.vault-graph-explorer.expanded { grid-template-rows: minmax(0, 1fr); gap: 0; }
+.vault-graph.vault-graph-explorer.expanded:has(> .graph-focus-trail) { grid-template-rows: auto minmax(0, 1fr); gap: 8px; }
+.vault-graph-explorer.expanded .vault-graph-body { min-height: 0; }
+@media (max-width: 520px) {
+  .vault-graph-explorer .graph-focus-trail { gap: 6px; padding: 8px; }
+  .graph-focus-trail p { flex-basis: 100%; font-size: .7rem; }
+}
+@media (max-width: 680px) {
+  /* Expanded fixed content must not stretch the shell's mobile navigation row. */
+  .shell:has(.vault-graph-explorer.expanded) { align-content: start; }
+}
+
+/* The graph uses the main column's full width; keep the shell gutter intact. */
+.content.content-knowledge { width: 100%; max-width: none; padding-inline: clamp(16px, 2vw, 32px); }
+.content-knowledge .knowledge-vault-page { width: 100%; min-width: 0; }
+@media (max-width: 680px) {
+  .content.content-knowledge { padding-inline: 16px; }
+}
+[data-material='liquid-glass-pro'] .content.content-knowledge { width: auto; }
+[data-material='liquid-glass-pro'] .content.content-knowledge > .page { max-width: none; }
+
+/* Explore navigation stays compact and works independently of the 3D canvas. */
+.vault-graph-explorer .graph-explore-controls { min-width: 0; display: grid; gap: 7px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-solid); color: var(--text); }
+.graph-explore-header { min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
+.graph-explore-header > p { flex: 1 1 180px; min-width: 0; margin: 0; font-size: .8rem; font-weight: 600; overflow-wrap: anywhere; }
+.graph-explore-actions { display: flex; flex-wrap: wrap; gap: 5px; }
+.vault-graph-explorer .graph-explore-controls .chip-button { flex-shrink: 0; max-width: 100%; padding: 5px 9px; font-size: .72rem; overflow-wrap: anywhere; white-space: normal; }
+.graph-explore-trail { display: flex; gap: 7px; overflow-x: auto; padding: 0; margin: 0; list-style: none; font-size: .7rem; color: var(--muted); scrollbar-width: thin; }
+.graph-explore-trail > li { display: flex; flex-shrink: 0; gap: 7px; max-width: 220px; overflow-wrap: anywhere; }
+.graph-explore-trail > li + li::before { content: '›'; }
+.graph-explore-trail [aria-current='step'] { color: var(--text); }
+.graph-explore-neighbours { display: flex; align-items: center; gap: 6px; min-width: 0; max-height: 72px; overflow-y: auto; flex-wrap: wrap; scrollbar-width: thin; }
+.graph-explore-neighbours > span:first-child { flex-shrink: 0; }
+.graph-explore-help { margin: 0; font-size: .68rem; }
+.vault-graph.vault-graph-explorer.expanded:has(> .graph-explore-controls) { grid-template-rows: auto minmax(0, 1fr); gap: 8px; }
+.vault-graph.vault-graph-explorer.expanded:has(> .graph-focus-trail):has(> .graph-explore-controls) { grid-template-rows: auto auto minmax(0, 1fr); }
+@media (max-width: 520px) {
+  .vault-graph-explorer .graph-explore-controls { padding: 8px; gap: 6px; }
+  .graph-explore-header > p { flex-basis: 100%; font-size: .74rem; }
+  .graph-explore-help { font-size: .64rem; }
+  .graph-explore-neighbours { flex-wrap: nowrap; overflow-x: auto; max-height: 46px; }
+  .vault-graph-explorer .graph-explore-neighbours .chip-button { max-width: 160px; }
+  .vault-graph-explorer .graph-explore-toggle { font-size: .7rem; }
+}

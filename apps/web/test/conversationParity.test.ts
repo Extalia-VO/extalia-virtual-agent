@@ -30,9 +30,25 @@ describe('conversation message parity', () => {
       expect(rendered).not.toContain('href="/projects/');
       expect(rendered).not.toContain('<h3');
       const answer = html(reply, library, language);
-      expect(answer).toContain(MESSAGES[language].chat.yourAnswer);
       expect(answer).toContain('Yes, continue.');
       expect(answer).not.toContain('questionItemId');
+      expect(answer).not.toContain('Continue?');
+      expect(answer).toContain(MESSAGES[language].chat.copyMessage);
+    }
+  });
+
+  it('shows all async answers as ordinary user text without transport markup or repeated questions', () => {
+    const items = [
+      { questionItemId: JSON.stringify(['request_user_input_async', 'call-example', 0]), question: 'Is the setup ready?', answer: '**Ready** to proceed.' },
+      { questionItemId: JSON.stringify(['request_user_input_async', 'call-example', 1]), question: 'Any extra notes?', answer: 'Keep <script>literal</script>.' },
+    ];
+    const raw = `\n<send_user_message_question_reply>\n${JSON.stringify(items)}\n</send_user_message_question_reply>\n`;
+    for (const library of [false, true]) for (const language of ['en', 'id'] as const) {
+      const rendered = html(raw, library, language);
+      expect(rendered).toContain('<strong>Ready</strong> to proceed.');
+      expect(rendered).toContain('literal');
+      expect(rendered).toContain(MESSAGES[language].chat.copyMessage);
+      expect(rendered).not.toMatch(/questionItemId|request_user_input_async|send_user_message_question_reply|Is the setup ready|Any extra notes|<script>/);
     }
   });
 

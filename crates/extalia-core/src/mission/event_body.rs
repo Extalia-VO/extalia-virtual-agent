@@ -315,6 +315,7 @@ const SPECS: &[Spec] = &[
         &[
             req("path", Rule::Label),
             req("change", Rule::Enum(&["add", "update", "delete"])),
+            opt("toolCallId", Rule::Id),
         ],
     ),
     spec_requiring(

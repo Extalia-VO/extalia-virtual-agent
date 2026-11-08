@@ -147,21 +147,21 @@ describe('teams from prompts and manage_team', () => {
     expect(lead.system).toContain('The user\'s latest message defined this team');
     expect(lead.system).toContain('- Kaelen Vael (Backend Engineer) [can edit; never: migrations, .env, package.json]');
     expect(lead.tools).toEqual(expect.arrayContaining(['delegate_task', 'manage_team']));
-    expect((await context.host.getState()).sessions.find(item => item.id === session.id)?.team).toEqual({ enabled: true, size: 2 });
+    expect((await context.host.getState()).sessions.find(item => item.id === session.id)?.team).toEqual({ enabled: true, size: 2, updatedAt: team.updatedAt });
 
     // The same spec again updates the members by name (no duplicates); an invalid spec is refused before the turn.
     await turn(context, session.id, prompt.replace('Role: Backend Engineer', 'Role: API Engineer'));
     const again = (await context.host.getSessionTeam(session.id))!;
     expect(again.members.map(member => [member.id, member.role])).toEqual([[team.members[0]!.id, 'API Engineer'], [team.members[1]!.id, 'Backend Engineer']]);
-    const tooMany = Array.from({ length: 21 }, (_, index) => `Subagent ${index + 1}:\n- Role: R${index}`).join('\n');
-    await expect(context.host.sendPrompt(session.id, tooMany)).rejects.toThrow(/at most 20/);
+    const tooMany = Array.from({ length: 33 }, (_, index) => `Subagent ${index + 1}:\n- Role: R${index}`).join('\n');
+    await expect(context.host.sendPrompt(session.id, tooMany)).rejects.toThrow(/at most 32/);
 
     await runtimes.pop()!.close();
     const restarted = await setup(() => ({ text: 'ok' }), context.root);
     expect((await restarted.host.getSessionTeam(session.id))?.members.map(member => member.name)).toEqual(['Elena Mark', 'Kaelen Vael']);
   });
 
-  it('lets the lead create members with manage_team, then delegate to them in the same turn', async () => {
+  it('lets the lead add members to an active configured team, preserving named delegation', async () => {
     let lead = 0;
     const context = await setup((_body, system) => {
       if (isWorker(system)) return { text: 'Found the auth module.' };
@@ -171,20 +171,20 @@ describe('teams from prompts and manage_team', () => {
       return { text: 'Done.' };
     });
     const workspace = await nativeWorkspace(context.host, context.project);
-    const session = await context.host.createSession(workspace.id);
+    const session = await context.host.createSession(workspace.id, { team: { enabled: true, allowedModels: ['mock-fast'], members: [{ id: 'existing-analyst', name: 'Existing Analyst', role: 'Analyst', models: ['mock-fast'] }] } });
     const { events } = await turn(context, session.id, 'buat 1 subagent researcher untuk auth');
     const team = (await context.host.getSessionTeam(session.id))!;
     expect(team.enabled).toBe(true);
-    const member = team.members[0]!;
+    const member = team.members.find(member => member.role === 'Researcher')!;
     expect(member.name).toMatch(/^\S+ \S+$/);
     expect(member.name).not.toBe(session.agentName);
     expect(events.find(event => event.body.type === 'subagent.spawned')?.body).toEqual({ type: 'subagent.spawned', subagentId: member.id, role: 'Researcher', label: member.name });
-    // No orchestration on the connection: delegate_task is offered from the step after the first member was added.
-    expect(context.requests[0]!.tools).not.toContain('delegate_task');
+    // The active saved team offers named delegation throughout the turn.
+    expect(context.requests[0]!.tools).toContain('delegate_task');
     expect(context.requests[1]!.tools).toContain('delegate_task');
     // "Researcher" is not a member name: the lead gets a clear error listing the members.
     expect(events.find(event => event.body.type === 'tool.completed' && event.body.tool === 'delegate_task')?.body).toMatchObject({ ok: false, output: expect.stringContaining(member.name) });
-    expect((await context.host.getState()).sessions.find(item => item.id === session.id)?.team).toEqual({ enabled: true, size: 1 });
+    expect((await context.host.getState()).sessions.find(item => item.id === session.id)?.team).toEqual({ enabled: true, size: 2, updatedAt: team.updatedAt });
   });
 });
 

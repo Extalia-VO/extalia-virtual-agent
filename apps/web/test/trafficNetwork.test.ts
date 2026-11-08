@@ -8,7 +8,7 @@ import {
   MANEUVER_LOTS, adoptArrival, createParkingSim, stepParking, triggerManeuver, type ParkingSim, type TrafficContext,
 } from '../src/office/scene/parkingManeuvers';
 import {
-  TRAFFIC_STEP, adoptCar, advanceTrafficNetwork, canAdoptCar, createTrafficNetwork, dispatchCar, planRoute, stepTrafficNetwork,
+  SIGNAL_LEAD, TRAFFIC_STEP, adoptCar, advanceTrafficNetwork, turnSignal, canAdoptCar, createTrafficNetwork, dispatchCar, planRoute, stepTrafficNetwork, writeNetworkPoses,
   type NetworkCar, type TrafficNetwork, type TrafficStepInput,
 } from '../src/office/scene/trafficNetwork';
 
@@ -273,12 +273,14 @@ describe('traffic network simulation', () => {
   });
 
   it('holds a queue behind a waiting car with the brake lamps on, and moves on after the crossing wait', () => {
-    const net = createTrafficNetwork(3, dailyStyles(3));
+    const styles = dailyStyles(3), net = createTrafficNetwork(3, styles);
+    // A car of this network's own rotation: the module-level CAR follows today's date and may not be in it.
+    const car = styles.find(vehicle => !vehicle.trafficOnly)!.model;
     const lane = lanes.findIndex(entry => entry.crossing);
     expect(lane).toBeGreaterThanOrEqual(0);
     // Put a car on the crossing lane by adopting it just before the stop line.
     const at = lanes[lane]!.crossAt - TRAFFIC_TIMING.stopLine - 6;
-    expect(adoptCar(net, lane, at, 6, { id: 900001, model: CAR, tone: '#fff', distance: 0 })).toBe(true);
+    expect(adoptCar(net, lane, at, 6, { id: 900001, model: car, tone: '#fff', distance: 0 })).toBe(true);
     let braked = false, waited = 0, crossedAt = -1;
     for (let i = 0; i < 40 / STEP; i++) {
       stepTrafficNetwork(net, STEP, { density: 0, cap: 0, headroom: 4 });
@@ -291,6 +293,59 @@ describe('traffic network simulation', () => {
     expect(waited).toBeGreaterThan(TRAFFIC_TIMING.wait - 1);
     expect(waited).toBeLessThan(TRAFFIC_TIMING.wait + 3);
     expect(crossedAt).toBeGreaterThan(0);
+  });
+});
+
+describe('turn signals', () => {
+  it('signal the side of the coming turn before the junction and through it, never on a straight run', () => {
+    expect([turnSignal('left'), turnSignal('right'), turnSignal('straight')]).toEqual([1, -1, 0]);
+    const net = createTrafficNetwork(SEEDS[0]!, dailyStyles(SEEDS[0]!));
+    const L = lanes.length;
+    let signalled = 0, straight = 0;
+    for (let i = 0; i < 240 / STEP; i++) {
+      stepTrafficNetwork(net, STEP, FULL);
+      for (const car of net.cars) {
+        if (!car.active) continue;
+        const pose = net.poses.find(entry => entry.visible && entry.id === car.id)!;
+        const segment = car.route[car.k]!, next = car.k + 1 < car.length ? car.route[car.k + 1]! : -1;
+        const turn = segment >= L ? turns[segment - L]! : next >= L && lanes[segment]!.length - car.s < SIGNAL_LEAD ? turns[next - L]! : undefined;
+        if (!turn || turn.kind === 'straight') { expect(pose.signal, `car ${car.id}`).toBe(0); straight++; continue; }
+        expect(pose.signal, `car ${car.id} ${turn.kind}`).toBe(turnSignal(turn.kind));
+        signalled++;
+      }
+    }
+    expect(signalled).toBeGreaterThan(50);
+    expect(straight).toBeGreaterThan(50);
+  });
+
+  it('keeps signalling while waiting and through the end of a turn, then cancels on the outgoing lane', () => {
+    for (const kind of ['left', 'right'] as const) {
+      const turn = turns.find(candidate => candidate.kind === kind)!;
+      const net = createTrafficNetwork(SEEDS[0]!, dailyStyles(SEEDS[0]!), 1);
+      const car = net.cars[0]!;
+      Object.assign(car, { active: true, id: 5, model: CAR, length: 3, k: 0, s: lanes[turn.from]!.length - SIGNAL_LEAD - 1, v: 0, braking: true });
+      car.route.set([turn.from, L + turn.index, turn.to]);
+      writeNetworkPoses(net);
+      expect(net.poses[0]!.signal).toBe(0);
+      car.s = lanes[turn.from]!.length - 2;
+      writeNetworkPoses(net);
+      expect(net.poses[0]!.stopped).toBe(true);
+      expect(net.poses[0]!.signal).toBe(turnSignal(kind));
+      car.k = 1; car.s = turn.length * .99;
+      writeNetworkPoses(net);
+      expect(net.poses[0]!.signal).toBe(turnSignal(kind));
+      car.k = 2; car.s = .1;
+      writeNetworkPoses(net);
+      expect(net.poses[0]!.signal).toBe(0);
+    }
+  });
+
+  it('maps road turn directions onto the driver-left (+X) side of a +Z-facing vehicle', () => {
+    for (const turn of turns) {
+      const incoming = lanes[turn.from]!, outgoing = lanes[turn.to]!;
+      const driverLeft = incoming.dz * outgoing.dx - incoming.dx * outgoing.dz;
+      expect(turnSignal(turn.kind)).toBe(Math.sign(driverLeft));
+    }
   });
 });
 

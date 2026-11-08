@@ -4,6 +4,7 @@ import { autoUpdater } from 'electron-updater';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { IPC, reply } from './ipc';
+import { authorizeLinuxInstallerUpdate, isLinuxInstallerAppImage } from './linuxInstallerUpdate';
 import { UpdatePolicy, supportsPackagedUpdates, updateChannel, type UpdateDriver, type UpdaterEvent, type WorkState } from './updatePolicy';
 
 /** Give the window time to settle before the first network request. */
@@ -24,7 +25,24 @@ function connectAutoUpdater(channel: UpdateChannel, handle: (event: UpdaterEvent
   autoUpdater.on('update-available', info => handle({ type: 'available', version: info.version }));
   autoUpdater.on('update-not-available', info => handle({ type: 'not-available', version: info.version }));
   autoUpdater.on('download-progress', progress => handle({ type: 'progress', percent: progress.percent }));
-  autoUpdater.on('update-downloaded', info => handle({ type: 'downloaded', version: info.version }));
+  autoUpdater.on('update-downloaded', info => {
+    if (process.platform === 'linux') {
+      try {
+        if (isLinuxInstallerAppImage(process.env.APPIMAGE)) {
+          // BaseUpdater adds its quit handler immediately after this listener returns.
+          // Keep this handoff synchronous so quitting cannot apply an unreceipted image.
+          autoUpdater.autoInstallOnAppQuit = false;
+          authorizeLinuxInstallerUpdate(process.env.APPIMAGE, info);
+          autoUpdater.autoInstallOnAppQuit = true;
+        }
+      } catch (error) {
+        autoUpdater.autoInstallOnAppQuit = false;
+        handle({ type: 'error', error });
+        return;
+      }
+    }
+    handle({ type: 'downloaded', version: info.version });
+  });
   autoUpdater.on('error', error => handle({ type: 'error', error }));
   return {
     async check() {

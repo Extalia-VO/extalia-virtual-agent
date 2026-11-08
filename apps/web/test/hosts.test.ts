@@ -29,6 +29,18 @@ describe('remote hosts', () => {
     expect(errorMessage(new Error("Error invoking remote method 'agents:call': Error: Folder not found."))).toBe('Folder not found.');
     expect(errorMessage('plain')).toBe('plain');
   });
+
+  it('forwards exact mission cancellation without falling back on an older host', async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(json({ error: 'This host does not support this action.' }, 501));
+    const bridge = bridgeAgentHost('token', { fetch });
+    await expect(bridge.cancelNativeMission!('session', 'mission')).rejects.toThrow(/does not support/);
+    expect(fetch).toHaveBeenCalledOnce();
+    expect(JSON.parse(String(fetch.mock.calls[0]![1]?.body))).toEqual({ method: 'cancelNativeMission', args: ['session', 'mission'] });
+    const call = vi.fn(async () => undefined);
+    const desktop = desktopAgentHost({ call, onEvent: () => () => undefined });
+    await desktop.cancelNativeMission!('session', 'mission');
+    expect(call).toHaveBeenCalledExactlyOnceWith('cancelNativeMission', ['session', 'mission']);
+  });
 });
 
 describe('Bridge transport', () => {

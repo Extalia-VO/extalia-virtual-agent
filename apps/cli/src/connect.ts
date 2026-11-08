@@ -1,9 +1,45 @@
 import { createInterface } from 'node:readline/promises';
-import { ConnectError, createConnectService, runMcpStdioServer, type ConnectService, type McpServerOptions } from '@extalia/host';
+import { awaitObservedReply, isObservedReplyRequest, ConnectError, createConnectService, runMcpStdioServer, type ConnectService, type McpServerOptions, type ObservedReplyRequest } from '@extalia/host';
 import { resolveDataDirectory, type AgentAppConnectOptions, type AgentAppId } from '@extalia/platform';
 import type { CliHost } from './cli';
 
 const APPS: readonly AgentAppId[] = ['codex', 'claude', 'gemini', 'antigravity', 'hermes'];
+
+/** Parse without echoing arguments: the command contains a pairing secret. */
+export function parseReplyArgs(args: readonly string[]): ObservedReplyRequest | undefined {
+  const parsed: Record<string, string> = {};
+  for (let index = 0; index < args.length; index++) {
+    const arg = args[index] as string;
+    const equals = arg.indexOf('=');
+    const flag = equals > 0 ? arg.slice(0, equals) : arg;
+    if (!['--url', '--token', '--question'].includes(flag) || flag in parsed) return undefined;
+    const value = equals > 0 ? arg.slice(equals + 1) : args[++index];
+    if (value === undefined) return undefined;
+    parsed[flag] = value;
+  }
+  const request = { url: parsed['--url'], token: parsed['--token'], ...(parsed['--question'] !== undefined ? { question: parsed['--question'] } : {}) };
+  return isObservedReplyRequest(request) ? request : undefined;
+}
+
+export async function runReply(host: CliHost, args: readonly string[]): Promise<number> {
+  const request = parseReplyArgs(args);
+  if (!request) {
+    host.err('reply: Usage: extalia reply --url <loopback reply URL> --token <secret> [--question <text>]');
+    return 2;
+  }
+  const controller = new AbortController();
+  const cancel = () => controller.abort();
+  process.once('SIGINT', cancel);
+  process.once('SIGTERM', cancel);
+  try {
+    const result = await awaitObservedReply(request, { signal: controller.signal });
+    host.out(JSON.stringify(result));
+    return result.status === 'answered' ? 0 : 1;
+  } finally {
+    process.removeListener('SIGINT', cancel);
+    process.removeListener('SIGTERM', cancel);
+  }
+}
 const LABELS: Record<AgentAppId, string> = {
   codex: 'Codex',
   claude: 'Claude Code',

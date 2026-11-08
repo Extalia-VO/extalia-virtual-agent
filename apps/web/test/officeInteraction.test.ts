@@ -86,23 +86,40 @@ describe('office selection and session dialog', () => {
     expect(state).toMatchObject({ characterId: 's1:primary', popoverOpen: true, boardCollapsed: false, dialog: null });
   });
 
-  it('collapses the board for the dialog and restores it on close', () => {
+  it('preserves the manual board state when a dialog opens and closes', () => {
     const open = run([{ type: 'openDialog', sessionId: 's1', characterId: 's1:primary', tab: 'messages', returnFocus: 'row:s1:primary' }]);
-    expect(open.boardCollapsed).toBe(true);
-    expect(open.dialog).toMatchObject({ boardCollapsedBefore: false, returnFocus: 'row:s1:primary' });
+    expect(open.boardCollapsed).toBe(false);
+    expect(open.dialog).toMatchObject({ returnFocus: 'row:s1:primary' });
     expect(run([{ type: 'closeDialog' }], open).boardCollapsed).toBe(false);
     // A board the user had collapsed stays collapsed.
-    const collapsed = run([{ type: 'toggleBoard' }, { type: 'openDialog', sessionId: 's1', characterId: 's1:primary', tab: 'messages', returnFocus: null }, { type: 'closeDialog' }]);
+    const collapsed = run([{ type: 'toggleBoard' }, { type: 'openDialog', sessionId: 's1', characterId: 's1:primary', tab: 'messages', returnFocus: null }]);
     expect(collapsed.boardCollapsed).toBe(true);
+    expect(run([{ type: 'closeDialog' }], collapsed).boardCollapsed).toBe(true);
   });
 
-  it('keeps a single dialog and the original restore target', () => {
+  it('keeps a single dialog and its original focus target without changing the board', () => {
     const state = run([
       { type: 'openDialog', sessionId: 's1', characterId: 's1:primary', tab: 'messages', returnFocus: 'row:s1:primary' },
       { type: 'openDialog', sessionId: 's1', characterId: 's1:worker', tab: 'activity', returnFocus: null },
     ]);
-    expect(state.dialog).toEqual({ sessionId: 's1', characterId: 's1:worker', tab: 'activity', returnFocus: 'row:s1:primary', boardCollapsedBefore: false });
+    expect(state.dialog).toEqual({ sessionId: 's1', characterId: 's1:worker', tab: 'activity', returnFocus: 'row:s1:primary' });
+    expect(state.boardCollapsed).toBe(false);
     expect(run([{ type: 'closeDialog' }], state)).toMatchObject({ dialog: null, boardCollapsed: false });
+  });
+
+  it('applies manual board toggles immediately while the dialog remains open and retargets', () => {
+    const open = run([{ type: 'openDialog', sessionId: 's1', characterId: 's1:primary', tab: 'messages', returnFocus: 'row:s1:primary' }]);
+    const collapsed = run([{ type: 'toggleBoard' }], open);
+    expect(collapsed.boardCollapsed).toBe(true);
+    expect(collapsed.dialog).toBe(open.dialog);
+    const retargeted = run([{ type: 'openDialog', sessionId: 's2', characterId: 's2:primary', tab: 'activity', returnFocus: 'row:s2:primary' }], collapsed);
+    expect(retargeted.boardCollapsed).toBe(true);
+    expect(retargeted.dialog?.returnFocus).toBe('row:s1:primary');
+    expect(run([{ type: 'closeDialog' }], retargeted).boardCollapsed).toBe(true);
+    const expanded = run([{ type: 'toggleBoard' }], retargeted);
+    expect(expanded.boardCollapsed).toBe(false);
+    expect(expanded.dialog).toBe(retargeted.dialog);
+    expect(run([{ type: 'closeDialog' }], expanded).boardCollapsed).toBe(false);
   });
 
   it('keeps the card and the dialog separate', () => {

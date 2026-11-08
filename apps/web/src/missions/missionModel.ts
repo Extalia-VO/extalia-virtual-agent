@@ -121,6 +121,7 @@ export interface DraftPlan {
   /** Optional runtime budget; absent or empty fields mean no limit. */
   budget?: DraftBudget;
   source: 'model' | 'heuristic' | 'manual';
+  planningBasis?: MissionPlan['planningBasis'];
   note?: string;
   leadModel?: string;
   tasks: DraftTask[];
@@ -132,7 +133,7 @@ const nextKey = () => `task-${++keySeed}`;
 export function draftFromPlan(plan: MissionPlan): DraftPlan {
   return {
     title: plan.title, maxConcurrency: plan.maxConcurrency, source: plan.source,
-    ...(plan.note ? { note: plan.note } : {}), ...(plan.leadModel ? { leadModel: plan.leadModel } : {}),
+    ...(plan.planningBasis ? { planningBasis: plan.planningBasis } : {}), ...(plan.note ? { note: plan.note } : {}), ...(plan.leadModel ? { leadModel: plan.leadModel } : {}),
     tasks: plan.tasks.map(task => ({
       key: nextKey(), id: task.id, title: task.title, role: task.role ?? '', rationale: task.rationale ?? '', instructions: task.instructions,
       connectionId: task.connectionId, model: task.model, dependsOn: [...(task.dependsOn ?? [])],

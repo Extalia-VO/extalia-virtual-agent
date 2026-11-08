@@ -77,14 +77,14 @@ describe('public model build boundary', () => {
     const outputs = bundles.flatMap(bundle => 'output' in bundle ? bundle.output : []);
     expect(outputs.some(item => item.type === 'chunk' && item.code.includes('function sourceAvatarUrls'))).toBe(true);
     const assets = outputs.filter(item => item.type === 'asset');
-    // Two bodies, ten detailed hair styles, four staff uniforms (two roles × two bodies) and the
+    // Two bodies, eighteen detailed hair styles, four staff uniforms (two roles × two bodies) and the
     // fitted outfit catalog (`outfit-*`), whose size grows with the catalog.
     expect(assets.filter(item => /\/(?:reception|bartender)-uniform-/.test(item.fileName))).toHaveLength(4);
     const garments = registered.models.filter(model => /^avatars\/(?:outfits|wardrobe)\//.test(model.path));
-    expect(assets).toHaveLength(12 + garments.length);
+    expect(assets).toHaveLength(20 + garments.length);
     expect(assets.every(item => item.fileName.endsWith('.glb'))).toBe(true);
     expect(assets.filter(item => /\/(?:office-classic|female-casual)-/.test(item.fileName))).toHaveLength(2);
-    expect(assets.filter(item => /-detail-/.test(item.fileName))).toHaveLength(10);
+    expect(assets.filter(item => /-detail-/.test(item.fileName))).toHaveLength(18);
     expect(assets.some(item => /\/(?:business-man|business-woman)-/.test(item.fileName))).toBe(false);
     expect(outputs.some(item => item.type === 'chunk' && Object.keys(item.modules).some(id => id.endsWith('/publicAvatarFiles.ts')))).toBe(true);
     expect(outputs.some(item => item.type === 'chunk' && Object.keys(item.modules).some(id => id.endsWith('/sourceAvatarFiles.ts')))).toBe(false);
