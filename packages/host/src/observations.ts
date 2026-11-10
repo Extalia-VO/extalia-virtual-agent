@@ -538,7 +538,9 @@ export class Observations {
     const fallback = new Set(transcriptFallback(history, history, hook));
     // Earlier history remains readable; activity at/after hook authority must obey the
     // same rules as the live stream, including terminal reports and missed-hook recovery.
-    const unhooked = history.filter(event => !reported.has(stepKey(event)) && (event.at < hook.since || fallback.has(event)));
+    // Conversational prompt and reply history from the transcript is preserved across subsequent hook turns.
+    const isMessage = (event: ExtaliaEvent) => event.body.type === 'prompt.submitted' || event.body.type === 'model.completed' || event.body.type === 'tool.output';
+    const unhooked = history.filter(event => !reported.has(stepKey(event)) && (isMessage(event) || event.at < hook.since || fallback.has(event)));
     const started = unhooked.some(event => event.body.type === 'session.started');
     let hookEnded = false;
     const filteredHooks = hook.events.filter(event => {

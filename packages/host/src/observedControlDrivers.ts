@@ -99,6 +99,9 @@ export function createObservedControlDrivers(options: Options): ObservedControlD
       if (input.action !== 'inbox-send') throw new ObservedControlRefusal('Unsupported inbox action.');
       const operationId = randomUUID();
       const result = options.inboxes.send(id, { channelId: snapshot.bindingId, text: input.text, operationId });
+      if (result.problem || result.state !== 'connected') {
+        throw new ObservedControlRefusal(result.problem ?? 'This inbox channel is no longer active.');
+      }
       const receipt = result.receipts?.find(receipt => receipt.operationId === operationId);
       return { state: receipt && ['queued', 'delivered', 'acknowledged'].includes(receipt.state) ? 'queued' : 'unknown', ...(receipt ? { messageId: receipt.messageId } : {}) };
     },

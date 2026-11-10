@@ -1,6 +1,6 @@
 import { sourceLabel, type PortableSession } from '@extalia/core';
 import type { AgentHostApi, HostState } from '@extalia/platform';
-import { useEffect, useId, useMemo, useState, type KeyboardEvent } from 'react';
+import { useEffect, useId, useMemo, useState, useSyncExternalStore, type KeyboardEvent } from 'react';
 import { SessionList } from '../chat/SessionList';
 import { errorMessage } from '../host/remote';
 import type { Messages } from '../i18n';
@@ -26,7 +26,12 @@ import { ObservedCodexPermissionControls } from '../observe/ObservedCodexPermiss
 import { ManualReplyControls, ObservedReplyControls } from '../observe/ObservedReplyControls';
 import { ObservedHermesControls } from '../observe/ObservedHermesControls';
 import { ObservedSessionControl, ManualObservedInboxControls } from '../observe/ObservedSessionControl';
+import { observedSessionControlFor, type ObservedSessionControlView } from '../observe/observedSessionControlModel';
 import { OBSERVE_SECTIONS, observeTabForKey, type ObserveSection } from '../observe/observerTabs';
+
+const noSubscription = () => () => undefined;
+const emptyControlView: ObservedSessionControlView = { phase: 'loading', draft: '', selected: '', busy: false };
+const getEmptyControlView = () => emptyControlView;
 
 function AddObservedSessions({ t, language, agents, onWatched }: {
   t: Messages; language: string; agents: AgentHostApi; onWatched: (state: HostState, selectedId?: string) => void;
@@ -121,7 +126,9 @@ export function ObserverPage({ t, language, agents, state, initialSessionId, onS
     finally { if (lease.isCurrent()) setOperation(current => ({ ...current, busy: false })); lease.release(); }
   };
   const observation = selected?.observation;
-  const controlHub = !!agents.observedControlStatus && !!agents.dispatchObservedControl;
+  const controlModel = useMemo(() => selected?.id ? observedSessionControlFor(agents, selected.id) : undefined, [agents, selected?.id]);
+  const controlView = useSyncExternalStore(controlModel?.subscribe ?? noSubscription, controlModel?.getSnapshot ?? getEmptyControlView, getEmptyControlView);
+  const controlHub = !!agents.observedControlStatus && !!agents.dispatchObservedControl && controlView.phase !== 'unsupported';
   const content = loaded?.scope === scope && loaded?.id === selected?.id ? loaded : undefined;
   return <div className="page">
     <header className="page-header"><h1>{t.observer.title}</h1><p className="lead">{t.pageRoles.observe}</p><p className="note"><Icon name="shield" />{t.observer.note}</p>

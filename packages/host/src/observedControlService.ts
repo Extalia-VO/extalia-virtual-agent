@@ -152,7 +152,7 @@ export class ObservedControlService {
       return receipt(result.state, result.state === 'unknown' ? 'Delivery was not confirmed. Do not resend automatically.' : undefined,
         typeof result.messageId === 'string' && validId(result.messageId) ? result.messageId : undefined);
     } catch (error) {
-      if (error instanceof ObservedControlRefusal) return receipt('rejected', 'The selected control action is no longer available. Refresh its status.');
+      if (error instanceof ObservedControlRefusal) return receipt('rejected', error.message || 'The selected control action is no longer available. Refresh its status.');
       binding.uncertain.add(capability.signature);
       return receipt('unknown', 'Delivery was not confirmed. Do not resend automatically.');
     }

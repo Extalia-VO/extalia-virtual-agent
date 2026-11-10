@@ -81,9 +81,13 @@ export class ObservedInboxChannels {
       receipts: c.messages.slice(-32).map(m => ({ ...m.receipt })) };
   }
   private validate(c: Channel) {
+    if (this.channels.get(c.sessionId) !== c) return false;
     const target = this.target(c.sessionId);
-    if (this.closed || !target || fingerprint(target) !== c.fingerprint) { this.drop(c.sessionId); return false; }
-    return this.channels.get(c.sessionId) === c;
+    if (this.closed || !target || fingerprint(target) !== c.fingerprint) {
+      if (this.channels.get(c.sessionId) === c) this.drop(c.sessionId);
+      return false;
+    }
+    return true;
   }
   private monitor(c: Channel) {
     c.monitor = this.timers.setTimeout(() => { if (this.validate(c) && c.state === 'connected') this.monitor(c); }, 250);

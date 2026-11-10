@@ -119,9 +119,15 @@ describe('existing observed control transport adapters', () => {
     await expect(driver.dispatch('observed-one', { ...message, action: 'inbox-send' }, snapshot)).rejects.toBeInstanceOf(ObservedControlRefusal);
     expect(f.dependencies.inboxes.send).toHaveBeenCalledOnce();
   });
-  it('reports unknown when the inbox has no matching enqueue receipt, without resending', async () => {
+  it('refuses when the inbox rejects enqueue with a capacity problem, without marking uncertain', async () => {
     const f = fixture();
-    f.dependencies.inboxes.send.mockReturnValueOnce({ sessionId: 'observed-one', state: 'connected', channelId: 'inbox-channel', problem: 'Full', receipts: [] });
+    f.dependencies.inboxes.send.mockReturnValueOnce({ sessionId: 'observed-one', state: 'connected', channelId: 'inbox-channel', problem: 'Inbox queue is full.', receipts: [] });
+    await expect(f.driver('cooperative-inbox').dispatch('observed-one', { ...message, action: 'inbox-send' }, await f.snapshot('cooperative-inbox'))).rejects.toThrow(ObservedControlRefusal);
+    expect(f.dependencies.inboxes.send).toHaveBeenCalledOnce();
+  });
+  it('reports unknown when the inbox has no matching enqueue receipt without an explicit problem', async () => {
+    const f = fixture();
+    f.dependencies.inboxes.send.mockReturnValueOnce({ sessionId: 'observed-one', state: 'connected', channelId: 'inbox-channel', receipts: [] });
     expect(await f.driver('cooperative-inbox').dispatch('observed-one', { ...message, action: 'inbox-send' }, await f.snapshot('cooperative-inbox'))).toEqual({ state: 'unknown' });
     expect(f.dependencies.inboxes.send).toHaveBeenCalledOnce();
   });

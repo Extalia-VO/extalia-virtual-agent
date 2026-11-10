@@ -2,6 +2,8 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExtern
 import type { AgentHostApi, ObservedControlRouteStatus, ObservedInboxStatus, SessionSummary } from '@extalia/platform';
 import type { Messages } from '../i18n';
 import { Select } from '../ui/Select';
+import { PromptQueueControls } from '../chat/PromptQueueControls';
+import { ObservedCodexNativeQueue } from './ObservedCodexNativeQueue';
 import { createObservedReplyControl } from './observedReplyModel';
 import { createObservedInboxControl, observedControlChoices, observedSessionControlFor, validObservedInboxStatus,
   OBSERVED_MESSAGE_LIMIT, type ObservedInboxControlModel, type ObservedInboxView, type ObservedSessionControlModel, type ObservedSessionControlView } from './observedSessionControlModel';
@@ -11,10 +13,10 @@ export function ObservedSessionControl({ agents, session, t, disabled = false, c
   agents: AgentHostApi; session: SessionSummary; t: Messages; disabled?: boolean; compact?: boolean;
 }) {
   if (session.control !== 'observed') return null;
-  return <SessionControls agents={agents} sessionId={session.id} t={t} disabled={disabled} compact={compact} />;
+  return <SessionControls agents={agents} session={session} sessionId={session.id} t={t} disabled={disabled} compact={compact} />;
 }
-function SessionControls({ agents, sessionId, t, disabled = false, manual = false, compact = false }: {
-  agents: AgentHostApi; sessionId: string; t: Messages; disabled?: boolean; manual?: boolean; compact?: boolean;
+function SessionControls({ agents, session, sessionId, t, disabled = false, manual = false, compact = false }: {
+  agents: AgentHostApi; session?: SessionSummary; sessionId: string; t: Messages; disabled?: boolean; manual?: boolean; compact?: boolean;
 }) {
   const model = useMemo(() => observedSessionControlFor(agents, sessionId), [agents, sessionId]);
   const view = useSyncExternalStore(model.subscribe, model.getSnapshot, model.getSnapshot);
@@ -22,6 +24,12 @@ function SessionControls({ agents, sessionId, t, disabled = false, manual = fals
   const pairing = <><InboxControls key={sessionId} agents={agents} sessionId={sessionId} t={t} disabled={disabled} />
     {!manual && agents && <ReplyPairing key={`reply:${sessionId}`} agents={agents} sessionId={sessionId} t={t} disabled={disabled} />}</>;
   return <div className={`observed-session-controls${compact ? ' observed-session-controls-compact' : ''}`}>
+    {session?.observation?.sourceId === 'codex' && !compact && (
+      <ObservedCodexNativeQueue key={`native-queue:${sessionId}`} t={t} agents={agents} session={session} disabled={disabled} />
+    )}
+    {session?.observation?.sourceId === 'codex' && (
+      <PromptQueueControls key={`queue:${sessionId}`} t={t} agents={agents} session={session} disabled={disabled} />
+    )}
     <ObservedSessionControlContent t={t} view={view} control={model} disabled={disabled} compact={compact} />
     {compact ? <details className="observed-control-advanced"><summary>{t.observedControl.pairingDetails}</summary><div className="observed-control-scroll">{pairing}</div></details> : pairing}
   </div>;

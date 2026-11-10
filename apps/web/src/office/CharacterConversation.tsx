@@ -6,6 +6,7 @@ import { ObservedCodexPermissionControls } from '../observe/ObservedCodexPermiss
 import { ObservedReplyControls } from '../observe/ObservedReplyControls';
 import { ObservedHermesControls } from '../observe/ObservedHermesControls';
 import { ObservedSessionControl } from '../observe/ObservedSessionControl';
+import { observedSessionControlFor, type ObservedSessionControlView } from '../observe/observedSessionControlModel';
 import type { CharacterAppearance } from '@extalia/core';
 import type { AgentHostApi, ApprovalDecisionInput, HostState, SessionSummary } from '@extalia/platform';
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
@@ -28,6 +29,10 @@ import type { StaffRole } from './scene/avatars/outfitCatalog';
 import type { LookIdentity } from './scene/avatars/appearance';
 import { ActivityTimeline } from './console/ActivityTimeline';
 import { characterEvents, characterTimeline, shortcutFor, teamRoster } from './console/timeline';
+
+const noSubscription = () => () => undefined;
+const emptyControlView: ObservedSessionControlView = { phase: 'loading', draft: '', selected: '', busy: false };
+const getEmptyControlView = () => emptyControlView;
 import { modelChoicesKey, sessionRuntime } from '../chat/sessionRuntime';
 import { WorkspaceRuntimeNotice } from '../chat/WorkspaceRuntimeNotice';
 import './characterConversationLayout.css';
@@ -107,7 +112,9 @@ export function CharacterConversation({ t, language, agents, state, session, age
   const isWorker = agent.agentId !== 'primary';
   const wide = useSyncExternalStore(subscribeToolsMedia, wideToolsSnapshot, () => true);
   const [toolsChoice, setToolsChoice] = useState<{ wide: boolean; open: boolean }>();
-  const controlHub = !!agents.observedControlStatus && !!agents.dispatchObservedControl;
+  const controlModel = useMemo(() => session.control === 'observed' ? observedSessionControlFor(agents, session.id) : undefined, [agents, session.id]);
+  const controlView = useSyncExternalStore(controlModel?.subscribe ?? noSubscription, controlModel?.getSnapshot ?? getEmptyControlView, getEmptyControlView);
+  const controlHub = !!agents.observedControlStatus && !!agents.dispatchObservedControl && controlView.phase !== 'unsupported';
   const hasTools = !isWorker && !readOnlyReason && (session.control !== 'observed' || !controlHub
     || session.observation?.sourceId === 'codex' || session.observation?.sourceId === 'hermes');
   const toolsOpen = hasTools && (toolsChoice?.wide === wide ? toolsChoice.open : wide);

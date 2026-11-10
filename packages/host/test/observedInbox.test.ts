@@ -182,6 +182,19 @@ describe('cooperative observed inbox transport', () => {
     await new Promise(resolve => setTimeout(resolve, 10)); broker.drop('a'); finish();
     expect(await response).toBe(410); expect(broker.status('a').polling).toBe(false);
   });
+  it('does not revoke a replacement pairing when a stale poll finishes arriving', async () => {
+    const { broker } = make(); const a = await broker.create('a');
+    let finish!: () => void;
+    const oldResponse = new Promise<number>(resolve => {
+      const req = httpRequest(a.url!, { method: 'POST', headers: { authorization: `Bearer ${a.token}`, 'content-type': 'application/json' } }, res => { res.resume(); res.on('end', () => resolve(res.statusCode!)); });
+      req.write('{'); finish = () => req.end('"operation":"poll","waitMs":25000}');
+    });
+    await new Promise(resolve => setTimeout(resolve, 10));
+    const fresh = await broker.create('a');
+    finish();
+    expect(await oldResponse).toBe(410);
+    expect(broker.status('a')).toMatchObject({ channelId: fresh.channelId, state: 'connected' });
+  });
 });
 
 describe('inbox client validation', () => {

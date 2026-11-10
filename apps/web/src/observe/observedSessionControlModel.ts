@@ -1,4 +1,5 @@
 import type { AgentHostApi, ObservedControlCapability, ObservedControlReceipt, ObservedControlRouteStatus, ObservedControlStatus, ObservedInboxStatus } from '@extalia/platform';
+import { composerDraftStore } from '../chat/composerDrafts';
 
 export interface ObservedSessionControlView {
   phase: 'loading' | 'ready' | 'error' | 'unsupported';
@@ -29,7 +30,10 @@ export function observedControlChoices(status?: ObservedControlStatus): { route:
 /** Presentation state only. Every action and its exact authority comes from the host. */
 export function createObservedSessionControl(api: AgentHostApi, sessionId: string) {
   const supported = !!(api?.observedControlStatus && api?.dispatchObservedControl);
-  let view: ObservedSessionControlView = { phase: supported ? 'loading' : 'unsupported', draft: '', selected: '', busy: false };
+  const store = api ? composerDraftStore(api) : undefined;
+  const draftEntry = store?.entry(`observed-control:${sessionId}`);
+  const initialDraft = draftEntry?.getSnapshot().text ?? '';
+  let view: ObservedSessionControlView = { phase: supported ? 'loading' : 'unsupported', draft: initialDraft, selected: '', busy: false };
   let mounts = 0, epoch = 0, revision = 0;
   let reading: Promise<void> | undefined, timer: ReturnType<typeof setInterval> | undefined;
   const uncertain = new Set<string>(), listeners = new Set<() => void>();
@@ -45,7 +49,13 @@ export function createObservedSessionControl(api: AgentHostApi, sessionId: strin
     const ticket = epoch;
     const pending = (async () => {
       try { const status = await api.observedControlStatus!(sessionId); if (mounts && ticket === epoch) receive(status); }
-      catch { if (mounts && ticket === epoch) update({ ...view, phase: 'error', status: undefined, selected: '', notice: 'failed' }); }
+      catch (err: unknown) {
+        if (mounts && ticket === epoch) {
+          const msg = err instanceof Error ? err.message : String(err ?? '');
+          const unsupported = /unknown method/i.test(msg) || /not a function/i.test(msg) || /unsupported/i.test(msg);
+          update({ ...view, phase: unsupported ? 'unsupported' : 'error', status: undefined, selected: '', notice: unsupported ? undefined : 'failed' });
+        }
+      }
     })();
     reading = pending;
     void pending.finally(() => { if (reading === pending) reading = undefined; });
@@ -82,6 +92,7 @@ export function createObservedSessionControl(api: AgentHostApi, sessionId: strin
       const accepted = receipt.state !== 'rejected' && receipt.state !== 'unknown';
       // Successful dispatch consumes its capability. Clear that choice before the
       // next status read so its expected replacement is not a stale-source warning.
+      if (accepted && revision === draftRevision) draftEntry?.setText('');
       update({ ...view, receipt, ...(accepted ? { selected: '', notice: undefined, ...(revision === draftRevision ? { draft: '' } : {}) } : {}) });
     } catch {
       if (dispatched) uncertain.add(selected);
@@ -99,7 +110,11 @@ export function createObservedSessionControl(api: AgentHostApi, sessionId: strin
       if (++mounts === 1) { ++epoch; void refresh(); timer = setInterval(() => { void refresh(); }, 2000); }
       return () => { if (--mounts === 0) { ++epoch; reading = undefined; clearInterval(timer); timer = undefined; } };
     },
-    setDraft(draft: string) { ++revision; update({ ...view, draft }); },
+    setDraft(draft: string) {
+      ++revision;
+      draftEntry?.setText(draft);
+      update({ ...view, draft });
+    },
     select(selected: string) { if (!view.busy) update({ ...view, selected, notice: undefined }); },
     refresh, send, canSend,
   };
