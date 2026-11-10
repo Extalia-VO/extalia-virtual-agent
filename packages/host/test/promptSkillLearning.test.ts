@@ -82,12 +82,28 @@ describe('current-prompt skill learning authority through the Native host', () =
     expect(String(error?.content)).toMatch(/Unknown tool|not available|not found/i);
   });
 
-  for (const mode of ['command', 'option'] as const) it.skipIf(!HAS_DAEMON)(`persists an ${mode}-authorized generated candidate, reports scanner unavailability, and never carries learning into the next turn`, async () => {
+  for (const mode of ['command', 'option'] as const) it.skipIf(!HAS_DAEMON)(`${process.platform === 'win32' ? 'refuses unavailable staging of' : 'persists'} an ${mode}-authorized generated candidate and never carries learning into the next turn`, async () => {
     const { host, runtime, bodies, session, workspace, events, data } = await fixture({ reply: (_body, index) => index === 0 ? { tool: 'skill_propose', args: proposal } : { text: 'Candidate saved; scanner unavailable.' } });
     const prompt = mode === 'command' ? '/learn-skill Learn a review procedure.' : 'Learn a review procedure.';
     await host.sendPrompt(session.id, prompt, mode === 'option' ? { learnSkill: true } : undefined); await idle(runtime);
     expect(hasProposalTool(bodies[0]!)).toBe(true);
-    const listed = await host.skillRegistry(); expect(listed.revisions).toHaveLength(1);
+    const listed = await host.skillRegistry();
+    if (process.platform === 'win32') {
+      // Windows advertises no learning.process artifact port. Explicit opt-in
+      // grants turn authority, never an emulated staging implementation.
+      expect(listed.revisions).toEqual([]);
+      const toolReply = [...bodies[1]!.messages].reverse().find(message => message.role === 'tool');
+      expect(String(toolReply?.content)).toContain('The skill proposal did not complete');
+      expect(String(toolReply?.content)).toContain('no approval or activation was requested');
+      expect(events.some(event => event.body.type === 'tool.completed' && event.body.tool === 'skill_propose' && !event.body.ok)).toBe(true);
+      expect(events.some(event => event.body.type === 'tool.completed' && event.body.tool === 'skill_propose' && event.body.ok)).toBe(false);
+      await expect(lstat(path.join(data, 'profiles', 'default', 'skill-imports'))).rejects.toMatchObject({ code: 'ENOENT' });
+      await host.sendPrompt(session.id, 'Now review another change.'); await idle(runtime);
+      expect(hasProposalTool(bodies.at(-1)!)).toBe(false);
+      expect((await host.skillRegistry()).revisions).toEqual([]);
+      return;
+    }
+    expect(listed.revisions).toHaveLength(1);
     const revision = listed.revisions[0]!;
     expect(revision).toMatchObject({ packageId: proposal.name, origin: 'generated', state: 'quarantined', stateReason: 'scanner-unavailable', active: false });
     const details = await host.inspectSkill(revision.revisionId);
