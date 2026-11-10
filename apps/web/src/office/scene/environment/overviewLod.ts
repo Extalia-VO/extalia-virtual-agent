@@ -13,7 +13,7 @@ import type { Material, Mesh, Object3D } from 'three';
 export const OVERVIEW_CULLED_LAYER = 30;
 
 /** Bounding-sphere radius in CSS pixels below which overview detail is culled, per render budget level. */
-export const OVERVIEW_CULL_RADIUS_PX: readonly number[] = [1.75, 1.75, 2.25, 3];
+export const OVERVIEW_CULL_RADIUS_PX: readonly number[] = [1.75, 1.75, 1.75, 2.25, 3];
 
 /** Development/benchmark switches for A/B measurements (`__EXTALIA_BENCH__.flags`). */
 export const overviewFlags = { detailCull: true, interiorShadows: false, interiorLiveLights: false };

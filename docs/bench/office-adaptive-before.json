@@ -1,0 +1,383 @@
+{
+  "schemaVersion": 1,
+  "label": "before",
+  "browserVersion": "157.0.8103.39",
+  "route": "/?mock=ready&observed&carSeed=20261030",
+  "scenario": {
+    "viewport": {
+      "width": 1366,
+      "height": 900
+    },
+    "nativeDpr": 2,
+    "cpuSlowdown": 4,
+    "secondsPerWindow": 8,
+    "windows": 3,
+    "camera": {
+      "target": [
+        -4,
+        0,
+        -12
+      ],
+      "offset": [
+        -33.3,
+        25.5,
+        -77.4
+      ],
+      "zoom": 11
+    },
+    "solarMinutes": 720,
+    "trafficClock": 240
+  },
+  "limitations": [
+    "CPU throttling simulates browser main-thread slowdown, not a low-end GPU, memory bandwidth/capacity, thermal limits or whole-device load.",
+    "Initial is the first QA-hook observation after navigation, not cold-start time or guaranteed first frame; loading/shader work can precede it.",
+    "QA builds include renderer instrumentation; GPU timer availability depends on Chrome and its graphics backend.",
+    "Resource counts are renderer objects, not allocated GPU bytes; heap readings exclude native/GPU memory and are not forced-GC measurements.",
+    "Automatic quality can change within a measurement window; compare its recorded before/after budget and resolution.",
+    "Pinned tier 0 is a cap check after timing, not a benchmark; a smaller native display may not reach 2160p."
+  ],
+  "initial": {
+    "navigationAgeMs": 13886.29999999702,
+    "budget": null,
+    "targetResolutionHeight": null,
+    "rendererDpr": 1.25,
+    "nativeDpr": 2,
+    "canvasCss": {
+      "width": 1268,
+      "height": 764.5
+    },
+    "canvasBacking": {
+      "width": 1585,
+      "height": 955,
+      "pixels": 1513675
+    },
+    "engine": "three.js r186"
+  },
+  "ready": {
+    "navigationAgeMs": 68811.79999999702,
+    "budget": {
+      "level": 3,
+      "levels": 4,
+      "fps": 0.3,
+      "pixelRatio": 0.7,
+      "liveBeams": 0,
+      "shadowMapSize": 512,
+      "drawCalls": 937,
+      "triangles": 4089214,
+      "pinned": false
+    },
+    "targetResolutionHeight": null,
+    "rendererDpr": 0.7,
+    "nativeDpr": 2,
+    "canvasCss": {
+      "width": 1268,
+      "height": 764.5
+    },
+    "canvasBacking": {
+      "width": 887,
+      "height": 535,
+      "pixels": 474545
+    },
+    "engine": "three.js r186"
+  },
+  "runs": [
+    {
+      "index": 1,
+      "probe": {
+        "frames": 57,
+        "seconds": 7.88,
+        "fps": 7.2,
+        "medianFps": 8.6,
+        "p5Fps": 5,
+        "secondMedianFps": 7.5,
+        "secondP5Fps": 6.4,
+        "renderMs": 99.28,
+        "gpuMs": 9.39,
+        "gpuMedianMs": 7.75,
+        "gpuMaxMs": 19.58,
+        "calls": 2519,
+        "triangles": 8249130,
+        "maxCalls": 3211,
+        "programs": 153,
+        "geometries": 5454,
+        "textures": 576
+      },
+      "intervalMs": 8174.5,
+      "frameP95Ms": 200,
+      "longTasks": {
+        "supported": true,
+        "count": 60,
+        "totalMs": 7922,
+        "maxMs": 199
+      },
+      "before": {
+        "navigationAgeMs": 83858.79999999702,
+        "budget": {
+          "level": 3,
+          "levels": 4,
+          "fps": 7.9,
+          "pixelRatio": 0.7,
+          "liveBeams": 0,
+          "shadowMapSize": 512,
+          "drawCalls": 2426,
+          "triangles": 7686109,
+          "pinned": false
+        },
+        "targetResolutionHeight": null,
+        "rendererDpr": 0.7,
+        "nativeDpr": 2,
+        "canvasCss": {
+          "width": 1268,
+          "height": 764.5
+        },
+        "canvasBacking": {
+          "width": 887,
+          "height": 535,
+          "pixels": 474545
+        },
+        "engine": "three.js r186"
+      },
+      "after": {
+        "navigationAgeMs": 92146.20000000298,
+        "budget": {
+          "level": 3,
+          "levels": 4,
+          "fps": 7.7,
+          "pixelRatio": 0.7,
+          "liveBeams": 0,
+          "shadowMapSize": 512,
+          "drawCalls": 2426,
+          "triangles": 7686109,
+          "pinned": false
+        },
+        "targetResolutionHeight": null,
+        "rendererDpr": 0.7,
+        "nativeDpr": 2,
+        "canvasCss": {
+          "width": 1268,
+          "height": 764.5
+        },
+        "canvasBacking": {
+          "width": 887,
+          "height": 535,
+          "pixels": 474545
+        },
+        "engine": "three.js r186"
+      },
+      "jsHeapUsedBytes": {
+        "before": 435651132,
+        "after": 460543940
+      }
+    },
+    {
+      "index": 2,
+      "probe": {
+        "frames": 56,
+        "seconds": 8.03,
+        "fps": 7,
+        "medianFps": 7.5,
+        "p5Fps": 3.8,
+        "secondMedianFps": 7.4,
+        "secondP5Fps": 5.7,
+        "renderMs": 99.02,
+        "gpuMs": 9.08,
+        "gpuMedianMs": 8.35,
+        "gpuMaxMs": 18.34,
+        "calls": 2521,
+        "triangles": 8264054,
+        "maxCalls": 3211,
+        "programs": 153,
+        "geometries": 5460,
+        "textures": 576
+      },
+      "intervalMs": 8283.20000000298,
+      "frameP95Ms": 266.6000000000058,
+      "longTasks": {
+        "supported": true,
+        "count": 60,
+        "totalMs": 7969,
+        "maxMs": 203
+      },
+      "before": {
+        "navigationAgeMs": 92339.20000000298,
+        "budget": {
+          "level": 3,
+          "levels": 4,
+          "fps": 7.7,
+          "pixelRatio": 0.7,
+          "liveBeams": 0,
+          "shadowMapSize": 512,
+          "drawCalls": 2426,
+          "triangles": 7686109,
+          "pinned": false
+        },
+        "targetResolutionHeight": null,
+        "rendererDpr": 0.7,
+        "nativeDpr": 2,
+        "canvasCss": {
+          "width": 1268,
+          "height": 764.5
+        },
+        "canvasBacking": {
+          "width": 887,
+          "height": 535,
+          "pixels": 474545
+        },
+        "engine": "three.js r186"
+      },
+      "after": {
+        "navigationAgeMs": 100775.60000000149,
+        "budget": {
+          "level": 3,
+          "levels": 4,
+          "fps": 6.2,
+          "pixelRatio": 0.7,
+          "liveBeams": 0,
+          "shadowMapSize": 512,
+          "drawCalls": 2428,
+          "triangles": 7686367,
+          "pinned": false
+        },
+        "targetResolutionHeight": null,
+        "rendererDpr": 0.7,
+        "nativeDpr": 2,
+        "canvasCss": {
+          "width": 1268,
+          "height": 764.5
+        },
+        "canvasBacking": {
+          "width": 887,
+          "height": 535,
+          "pixels": 474545
+        },
+        "engine": "three.js r186"
+      },
+      "jsHeapUsedBytes": {
+        "before": 466581236,
+        "after": 516274176
+      }
+    },
+    {
+      "index": 3,
+      "probe": {
+        "frames": 54,
+        "seconds": 7.92,
+        "fps": 6.8,
+        "medianFps": 7.5,
+        "p5Fps": 4,
+        "secondMedianFps": 7.4,
+        "secondP5Fps": 4.9,
+        "renderMs": 101.16,
+        "gpuMs": 9.24,
+        "gpuMedianMs": 7.94,
+        "gpuMaxMs": 18.6,
+        "calls": 2524,
+        "triangles": 8280212,
+        "maxCalls": 3210,
+        "programs": 153,
+        "geometries": 5470,
+        "textures": 576
+      },
+      "intervalMs": 8379.39999999851,
+      "frameP95Ms": 250,
+      "longTasks": {
+        "supported": true,
+        "count": 58,
+        "totalMs": 8048,
+        "maxMs": 246
+      },
+      "before": {
+        "navigationAgeMs": 100909.20000000298,
+        "budget": {
+          "level": 3,
+          "levels": 4,
+          "fps": 7.4,
+          "pixelRatio": 0.7,
+          "liveBeams": 0,
+          "shadowMapSize": 512,
+          "drawCalls": 2425,
+          "triangles": 7686107,
+          "pinned": false
+        },
+        "targetResolutionHeight": null,
+        "rendererDpr": 0.7,
+        "nativeDpr": 2,
+        "canvasCss": {
+          "width": 1268,
+          "height": 764.5
+        },
+        "canvasBacking": {
+          "width": 887,
+          "height": 535,
+          "pixels": 474545
+        },
+        "engine": "three.js r186"
+      },
+      "after": {
+        "navigationAgeMs": 109446.29999999702,
+        "budget": {
+          "level": 3,
+          "levels": 4,
+          "fps": 7.6,
+          "pixelRatio": 0.7,
+          "liveBeams": 0,
+          "shadowMapSize": 512,
+          "drawCalls": 2425,
+          "triangles": 7686107,
+          "pinned": false
+        },
+        "targetResolutionHeight": null,
+        "rendererDpr": 0.7,
+        "nativeDpr": 2,
+        "canvasCss": {
+          "width": 1268,
+          "height": 764.5
+        },
+        "canvasBacking": {
+          "width": 887,
+          "height": 535,
+          "pixels": 474545
+        },
+        "engine": "three.js r186"
+      },
+      "jsHeapUsedBytes": {
+        "before": 520147468,
+        "after": 558903060
+      }
+    }
+  ],
+  "medianWindow": 2,
+  "worstWindow": 3,
+  "highQualityCap": {
+    "navigationAgeMs": 111856,
+    "budget": {
+      "level": 0,
+      "levels": 4,
+      "fps": 6.8,
+      "pixelRatio": 1.25,
+      "liveBeams": 6,
+      "shadowMapSize": 1024,
+      "drawCalls": 3502,
+      "triangles": 13364390,
+      "pinned": true
+    },
+    "targetResolutionHeight": null,
+    "rendererDpr": 1.25,
+    "nativeDpr": 2,
+    "canvasCss": {
+      "width": 1268,
+      "height": 764.5
+    },
+    "canvasBacking": {
+      "width": 1585,
+      "height": 955,
+      "pixels": 1513675
+    },
+    "engine": "three.js r186",
+    "within4kPixelCap": true,
+    "within2160ShortEdge": true
+  },
+  "pageErrors": [],
+  "failedRequests": [],
+  "blockedExternalRequestProtocols": []
+}

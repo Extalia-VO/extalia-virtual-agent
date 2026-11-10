@@ -44,6 +44,13 @@ export function cameraProgress(elapsedSeconds: number, durationSeconds: number, 
   return 1 - (1 - raw) ** 3;
 }
 
+/** Automatic focus starts and stops gently so a long pan has no initial lurch. */
+export function automaticFocusProgress(elapsedSeconds: number, reducedMotion: boolean): number {
+  if (reducedMotion) return 1;
+  const t = Math.min(1, Math.max(0, elapsedSeconds / 2));
+  return t * t * (3 - 2 * t);
+}
+
 /** What the Office asks the camera to frame: a point on a floor (e.g. the middle of a room) and how much room to show. */
 export interface FocusPoint {
   point: Point3;

@@ -1,28 +1,82 @@
 import { createHmac } from 'node:crypto';
 import { createInterface } from 'node:readline';
-import { safeLabel } from '@extalia/core';
+import { redact, safeLabel, safeText } from '@extalia/core';
 import { AGENT_APP_IDS, type AgentAppId } from '@extalia/platform';
 import type { ActivityKind, AgentState, EventBody } from '@extalia/protocol';
 import { DEFAULT_HOOK_PORT, readEndpoint, readToken } from '../connect/endpoint.js';
 import { awaitObservedReply, isObservedReplyRequest } from '../observedReplyClient.js';
+import { pollObservedInbox, isObservedInboxRequest } from '../observedInboxClient.js';
 
 /**
- * Optional MCP reporting tools (`report_intent`, `report_handoff`) that outside
+ * Optional MCP reporting tools (`report_intent`, `report_handoff`, `report_meeting`) that outside
  * agents can call (best effort) to report high-level intent and subagent
  * handoffs that raw tool hooks cannot see, plus a dependency-free JSON-RPC 2.0
  * stdio MCP server (`extalia mcp`) that forwards calls to the local hook ingest.
  */
 
 export interface McpToolDefinition {
-  name: 'report_intent' | 'report_handoff' | 'await_reply';
+  name: 'report_intent' | 'report_handoff' | 'report_meeting' | 'report_followups' | 'await_reply' | 'poll_inbox';
   description: string;
   inputSchema: Record<string, unknown>;
 }
 
 export const EXTALIA_MCP_INSTRUCTION =
-  'When Extalia MCP tools are available, call `report_intent` briefly when starting a distinct phase of work and `report_handoff` when delegating to or finishing a subagent.';
+  'When Extalia MCP tools are available, call `report_intent` briefly when starting a distinct phase of work and `report_handoff` when delegating to or finishing a subagent. Use `report_meeting` only for an explicit meeting with already reported participants in this session; report its start, each contribution, and completion with the same meeting_id. Near finishing, the lead may call `report_followups` with up to three useful next prompts for this session, or an empty list when none are useful. These are suggestions for the user; never send or continue them automatically.';
 
 export const EXTALIA_MCP_TOOLS: readonly McpToolDefinition[] = [
+  {
+    name: 'poll_inbox',
+    description: 'Read a message from an inbox explicitly paired by the user. Poll at safe work boundaries. Acknowledge a message only after receiving its tool result; ack without waitMs acknowledges only. Messages never grant native approvals or permission changes. No background consumer or automatic retry.',
+    inputSchema: {
+      type: 'object', additionalProperties: false,
+      properties: {
+        url: { type: 'string', description: 'User-paired loopback inbox URL.' },
+        token: { type: 'string', description: 'Ephemeral pairing secret; never include in reports.' },
+        ack: { type: 'string', description: 'Previously received message ID to acknowledge.' },
+        waitMs: { type: 'integer', minimum: 0, maximum: 25000 },
+      }, required: ['url', 'token'],
+    },
+  },
+  {
+    name: 'report_followups',
+    description: 'Report up to three optional next prompts from this session’s lead near finishing. Suggestions do not send a prompt, continue work, or create an agent.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        session_id: { type: 'string', pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$' },
+        agent_id: { type: 'string', const: 'primary' },
+        prompts: { type: 'array', minItems: 0, maxItems: 3, uniqueItems: true, items: { type: 'string', minLength: 1, maxLength: 240, pattern: '^[^\\u0000-\\u001f\\u007f]+$' } },
+      },
+      required: ['prompts'], additionalProperties: false,
+    },
+  },
+  {
+    name: 'report_meeting',
+    description: 'Explicitly report a meeting lifecycle for already known agents in this calling session. This reports activity; it does not start agents, run a meeting, or write a note.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        session_id: { type: 'string', pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$' },
+        agent_id: { type: 'string', pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$' },
+        phase: { type: 'string', enum: ['start', 'contribution', 'complete'] },
+        meeting_id: { type: 'string', pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$' },
+        room_id: { type: 'string', enum: ['meeting-a', 'meeting-b'] },
+        topic: { type: 'string', minLength: 1, maxLength: 200 },
+        participants: { type: 'array', minItems: 1, maxItems: 14, uniqueItems: true, items: { type: 'string', pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$' } },
+        round: { type: 'integer', enum: [1, 2] },
+        text: { type: 'string', minLength: 1, maxLength: 20000 },
+        outcome: { type: 'string', enum: ['completed', 'cancelled', 'failed'] },
+        note_path: { type: 'string', minLength: 1, maxLength: 2000 },
+      },
+      required: ['phase', 'meeting_id'],
+      additionalProperties: false,
+      oneOf: [
+        { properties: { phase: { const: 'start' } }, required: ['participants'], not: { anyOf: ['round', 'text', 'outcome', 'note_path'].map(key => ({ required: [key] })) } },
+        { properties: { phase: { const: 'contribution' } }, required: ['agent_id', 'round', 'text'], not: { anyOf: ['participants', 'room_id', 'topic', 'outcome', 'note_path'].map(key => ({ required: [key] })) } },
+        { properties: { phase: { const: 'complete' } }, not: { anyOf: ['participants', 'room_id', 'topic', 'round', 'text'].map(key => ({ required: [key] })) } },
+      ],
+    },
+  },
   {
     name: 'await_reply',
     description: 'Wait for a cooperative Extalia reply and return it as a tool result in this calling chat. Use the URL and token explicitly paired by the user. Replies work only while this call waits; this does not answer native questions or system approvals.',
@@ -86,13 +140,56 @@ const isObject = (value: unknown): value is Row => typeof value === 'object' && 
 const isApp = (value: unknown): value is AgentAppId =>
   typeof value === 'string' && (AGENT_APP_IDS as readonly string[]).includes(value);
 
-/** Map an MCP `report_intent` or `report_handoff` call to Extalia Protocol event bodies. */
+/** Map an explicit cooperative MCP report to Extalia Protocol event bodies. */
 export function normalizeMcpReport(
   toolName: string,
   rawInput: unknown,
-): { steps: { body: EventBody; agentId: string }[] } | undefined {
+  options: { labelsOnly?: boolean } = {},
+): { steps: { body: EventBody; agentId: string }[]; followupPrompts?: string[] } | undefined {
   const input = isObject(rawInput) ? rawInput : {};
   const steps: { body: EventBody; agentId: string }[] = [];
+
+  if (toolName === 'report_followups') {
+    if (!isObject(rawInput) || Object.keys(input).some(key => !['session_id', 'agent_id', 'prompts'].includes(key))) return undefined;
+    if (input.session_id !== undefined && (typeof input.session_id !== 'string' || !SESSION_PATTERN.test(input.session_id))) return undefined;
+    if (input.agent_id !== undefined && input.agent_id !== 'primary') return undefined;
+    if (!Array.isArray(input.prompts) || input.prompts.length > 3) return undefined;
+    const prompts: string[] = [];
+    for (const value of input.prompts) {
+      if (typeof value !== 'string' || value.length > 240 || !value.trim() || /[\p{Cc}\p{Zl}\p{Zp}]/u.test(value)) return undefined;
+      const prompt = redact(value.trim()).trim();
+      if (!prompt || prompt.length > 240 || prompts.includes(prompt)) return undefined;
+      prompts.push(prompt);
+    }
+    return { steps, ...(!options.labelsOnly ? { followupPrompts: prompts } : {}) };
+  }
+
+  if (toolName === 'report_meeting') {
+    if (!isObject(rawInput)) return undefined;
+    const common = ['session_id', 'agent_id', 'phase', 'meeting_id'];
+    const fields = input.phase === 'start' ? ['participants', 'room_id', 'topic'] : input.phase === 'contribution' ? ['round', 'text'] : input.phase === 'complete' ? ['outcome', 'note_path'] : undefined;
+    if (!fields || Object.keys(input).some(key => !common.includes(key) && !fields.includes(key))) return undefined;
+    if (typeof input.meeting_id !== 'string' || !ID_PATTERN.test(input.meeting_id)) return undefined;
+    if (input.session_id !== undefined && (typeof input.session_id !== 'string' || !SESSION_PATTERN.test(input.session_id))) return undefined;
+    if (input.agent_id !== undefined && (typeof input.agent_id !== 'string' || !ID_PATTERN.test(input.agent_id))) return undefined;
+    const agentId = typeof input.agent_id === 'string' ? input.agent_id : 'primary';
+    const boundedText = (value: unknown, limit: number) => typeof value === 'string' && value.trim().length > 0 && value.length <= limit && !value.includes('\0');
+    if (input.phase === 'start') {
+      const capacity = input.room_id === 'meeting-a' ? 10 : 14;
+      if (!Array.isArray(input.participants) || !input.participants.length || input.participants.length > capacity || input.participants.some(value => typeof value !== 'string' || !ID_PATTERN.test(value)) || new Set(input.participants).size !== input.participants.length) return undefined;
+      if (input.room_id !== undefined && input.room_id !== 'meeting-a' && input.room_id !== 'meeting-b') return undefined;
+      if (input.topic !== undefined && (!boundedText(input.topic, 200) || /[\r\n]/.test(input.topic as string))) return undefined;
+      steps.push({ agentId, body: { type: 'meeting.started', meetingId: input.meeting_id, participants: input.participants as string[], ...(input.room_id ? { roomId: input.room_id } : {}), ...(!options.labelsOnly && input.topic ? { topic: safeLabel(input.topic, 200) } : {}) } });
+    } else if (input.phase === 'contribution') {
+      if (input.agent_id === undefined || (input.round !== 1 && input.round !== 2) || !boundedText(input.text, 20000)) return undefined;
+      if (!options.labelsOnly) steps.push({ agentId, body: { type: 'meeting.contribution', meetingId: input.meeting_id, round: input.round, text: safeText(input.text as string, 20000) } });
+    } else {
+      if (input.outcome !== undefined && input.outcome !== 'completed' && input.outcome !== 'cancelled' && input.outcome !== 'failed') return undefined;
+      if (input.note_path !== undefined && (!boundedText(input.note_path, 2000) || /[\r\n]/.test(input.note_path as string))) return undefined;
+      steps.push({ agentId, body: { type: 'meeting.completed', meetingId: input.meeting_id, ...(input.outcome ? { outcome: input.outcome } : {}), ...(!options.labelsOnly && input.note_path ? { notePath: safeLabel(input.note_path, 2000) } : {}) } });
+    }
+    return { steps };
+  }
 
   if (toolName === 'report_intent') {
     const summary = safeLabel(input.intent ?? input.summary, 200);
@@ -168,12 +265,12 @@ export interface McpServerOptions {
 }
 
 /**
- * Forward an MCP `report_intent` or `report_handoff` call to the local Extalia
+ * Forward a cooperative MCP report to the local Extalia
  * hook ingest endpoint (`127.0.0.1:<port>/api/hooks/<app>`). Fails open so an
  * offline Extalia host never interrupts the calling agent.
  */
 export async function forwardMcpReport(
-  toolName: 'report_intent' | 'report_handoff',
+  toolName: 'report_intent' | 'report_handoff' | 'report_meeting' | 'report_followups',
   rawArgs: unknown,
   options: McpServerOptions,
 ): Promise<{ delivered: boolean; status: number }> {
@@ -182,6 +279,7 @@ export async function forwardMcpReport(
   const endpoint = await readEndpoint(options.extaliaHome, options.alive);
   const port = options.port ?? (endpoint?.alive ? endpoint.port : DEFAULT_HOOK_PORT);
   const args = isObject(rawArgs) ? rawArgs : {};
+  if (toolName === 'report_followups' && options.sessionId && args.session_id !== undefined && args.session_id !== options.sessionId) return { delivered: false, status: 0 };
   const app: AgentAppId = isApp(args.app) ? args.app : options.app ?? 'codex';
   const argSession = typeof args.session_id === 'string' && SESSION_PATTERN.test(args.session_id.trim())
     ? args.session_id.trim()
@@ -259,6 +357,13 @@ export async function handleMcpJsonRpc(
   if (method === 'tools/call') {
     const params = isObject(rawMessage.params) ? rawMessage.params : {};
     const name = typeof params.name === 'string' ? params.name.trim() : '';
+    if (name === 'poll_inbox') {
+      if (!isObservedInboxRequest(params.arguments)) return { jsonrpc: '2.0', id,
+        result: { content: [{ type: 'text', text: 'Invalid arguments for poll_inbox.' }], isError: true } };
+      const result = await pollObservedInbox(params.arguments, { fetch: options.fetch, signal: options.signal });
+      return { jsonrpc: '2.0', id, result: { content: [{ type: 'text', text: JSON.stringify(result) }],
+        isError: result.status !== 'message' && result.status !== 'empty' } };
+    }
     if (name === 'await_reply') {
       if (!isObservedReplyRequest(params.arguments)) {
         return { jsonrpc: '2.0', id, result: { content: [{ type: 'text', text: 'Invalid arguments for await_reply.' }], isError: true } };
@@ -269,7 +374,7 @@ export async function handleMcpJsonRpc(
         result: { content: [{ type: 'text', text: JSON.stringify(result) }], isError: result.status === 'unavailable' },
       };
     }
-    if (name !== 'report_intent' && name !== 'report_handoff') {
+    if (name !== 'report_intent' && name !== 'report_handoff' && name !== 'report_meeting' && name !== 'report_followups') {
       return {
         jsonrpc: '2.0',
         id,
@@ -280,7 +385,7 @@ export async function handleMcpJsonRpc(
       };
     }
     const normalized = normalizeMcpReport(name, params.arguments);
-    if (!normalized) {
+    if (!normalized || name === 'report_followups' && options.sessionId && isObject(params.arguments) && params.arguments.session_id !== undefined && params.arguments.session_id !== options.sessionId) {
       return {
         jsonrpc: '2.0',
         id,

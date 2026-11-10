@@ -1,11 +1,15 @@
 import type { CharacterAppearance } from '@extalia/core';
-import { lazy, Suspense, useMemo } from 'react';
+import { createContext, lazy, Suspense, useContext, useMemo, useSyncExternalStore } from 'react';
+import type { CharacterPositionSource } from '../scene/movement/positionStore';
 import type { LookIdentity } from '../scene/avatars/appearance';
 import { useLookVersion } from '../scene/avatars/useLookVersion';
 import type { PortraitActivity } from './portrait3d/model';
 import { PORTRAIT_HAIR_PATHS, portraitModel, type PortraitModel } from './portrait';
 
 const Portrait3D = lazy(() => import('./portrait3d').then(module => ({ default: module.Portrait3D })));
+/** Office portraits share the scene's admission gate; other pages keep their normal portrait behavior. */
+export const PortraitPositionContext = createContext<CharacterPositionSource | null>(null);
+const subscribeNothing = () => () => {};
 
 /** Shoulder, neck and face outlines by presentation preset (feminine and masculine). */
 const BODY = {
@@ -98,11 +102,14 @@ export function AgentPortrait({ characterId, appearance, identity, activity }: {
   identity?: LookIdentity | undefined;
   activity?: PortraitActivity | undefined;
 }) {
+  const positions = useContext(PortraitPositionContext);
+  const ready = () => !positions || positions.position(characterId) !== undefined;
+  const admitted = useSyncExternalStore(positions?.subscribe ?? subscribeNothing, ready, ready);
   const seed = identity?.seed, presentation = identity?.presentation;
   const looks = useLookVersion();
   const model = useMemo(() => portraitModel(characterId, appearance, seed ? { seed, ...(presentation ? { presentation } : {}) } : undefined), [characterId, appearance, seed, presentation, looks]); // eslint-disable-line react-hooks/exhaustive-deps
   const fallback = <Portrait model={model} />;
-  return <span className="office-portrait" aria-hidden="true" data-portrait-character={characterId}>
-    <Suspense fallback={fallback}><Portrait3D characterId={characterId} appearance={appearance} identity={identity} activity={activity} fallback={fallback} /></Suspense>
+  return <span className="office-portrait" aria-hidden="true" data-portrait-character={characterId} data-portrait-deferred={!admitted || undefined}>
+    {admitted ? <Suspense fallback={fallback}><Portrait3D characterId={characterId} appearance={appearance} identity={identity} activity={activity} fallback={fallback} /></Suspense> : fallback}
   </span>;
 }

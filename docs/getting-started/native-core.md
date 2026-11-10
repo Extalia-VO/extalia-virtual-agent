@@ -1,8 +1,10 @@
 # Native core (preview)
 
-The Rust native core is an optional preview. It is off by default, and Extalia
-keeps using the TypeScript runtime unless you turn it on. Behaviour and the
-switch itself may change before the core becomes the default.
+The Rust backend preference for new saved missions is an optional preview and
+is off by default. It does not choose the implementation language for every
+feature: Knowledge, the skill registry, learning artifacts and OpenAI-compatible
+model discovery use Rust independently of that preference. The remaining
+TypeScript backend is migration work, not the final language destination.
 
 ## What it is
 
@@ -12,7 +14,17 @@ worker tool call. Extalia starts the daemon when the first daemon-routed mission
 needs it and stops it with the host. Its data lives in `state/core.sqlite` in
 the data folder of each profile.
 
-Model calls and tools still run in the TypeScript host.
+Completion HTTP/streaming, Anthropic model discovery and ordinary agent tools
+still run in the TypeScript host. OpenAI-compatible `/models` requests now run
+through the same executable's isolated `--provider-models` mode, without opening
+a profile store. Rust constructs the request and validates/bounds the catalog;
+the host waits for actual child close before reporting local settlement.
+
+Model discovery refuses redirects and environment proxies, uses certificate
+verification for HTTPS, and requires a matched daemon binary. Configure the final
+endpoint URL directly. No silent JavaScript discovery fallback is used. See
+[ADR 0070](../adr/0070-rust-provider-model-discovery.md) for limits and remaining
+TLS/proxy/platform verification work.
 
 ## Native status panel
 
@@ -68,6 +80,7 @@ setting when the host starts, so restart it after you change the file.
 - Saved Rust mission starts record a durable preparation scope before credentials or isolated worktrees are prepared. An uncertain start remains blocked after restart, including when the backend selected for new work changes. This receipt does not automatically reconcile execution or approve changes.
 - Missions that already exist, and missions with history off, stay on the
   TypeScript path.
+- Skill management is independent of this preference too. The lazy profile daemon handles imported and learned candidates, pinned inspection, explicit approval and activation. Scanner execution currently requires a verified macOS 14+ ARM64 bundle; other platforms keep external candidates quarantined. See [Skill Security Center](skill-security-center.md).
 - Knowledge is independent of this preference. Both backends expose the Knowledge page and use one shared lazy daemon for its index and recorded Rust recovery; switching mission routing is unnecessary.
 
 ## Knowledge vault

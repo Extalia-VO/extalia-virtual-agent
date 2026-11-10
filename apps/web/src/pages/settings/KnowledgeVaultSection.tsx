@@ -4,6 +4,7 @@ import { errorMessage } from '../../host/remote';
 import type { Messages } from '../../i18n';
 import { isUnsupportedMessage } from '../../knowledge/knowledgeModel';
 import { Icon } from '../../ui/Icon';
+import { VaultProfilesSection } from './VaultProfilesSection';
 
 type VaultApi = Required<Pick<AgentHostApi, 'knowledgeSettings' | 'setKnowledgeVaultRoot'>>;
 
@@ -81,6 +82,7 @@ function VaultSection({ t, agents, picker, onChanged, locked }: SectionProps) {
   const [error, setError] = useState<string>();
   const [notice, setNotice] = useState<string>();
   const [path, setPath] = useState('');
+  const [profileRefresh, setProfileRefresh] = useState(0);
   const present = vaultSettingsPresent(agents);
 
   useEffect(() => {
@@ -106,6 +108,7 @@ function VaultSection({ t, agents, picker, onChanged, locked }: SectionProps) {
       const next = await api.setKnowledgeVaultRoot(root);
       if (!live.current) return;
       setSettings(next); setPath(next.path ?? '');
+      setProfileRefresh(value => value + 1);
       setNotice(t.knowledgeVault.switched); onChanged?.();
     } catch (failure) { if (live.current) setError(errorMessage(failure)); } finally { if (live.current) setBusy(false); }
   };
@@ -119,7 +122,8 @@ function VaultSection({ t, agents, picker, onChanged, locked }: SectionProps) {
   };
 
   return (
-    <KnowledgeVaultView t={t} settings={settings} busy={busy || Boolean(locked)} error={error} notice={notice} canPick={Boolean(picker)} path={path} onPath={setPath}
+    <><KnowledgeVaultView t={t} settings={settings} busy={busy || Boolean(locked)} error={error} notice={notice} canPick={Boolean(picker)} path={path} onPath={setPath}
       onDefault={() => void apply(null)} onChoose={() => void choose()} onApply={() => void apply(path.trim())} />
+      <VaultProfilesSection t={t} agents={agents} locked={busy || locked} changed={profileRefresh} /></>
   );
 }

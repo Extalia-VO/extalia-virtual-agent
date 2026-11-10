@@ -1,8 +1,7 @@
+import { createProvider } from '../src/index.js';
 import type { EventBody } from '@extalia/protocol';
 import { describe, expect, it } from 'vitest';
-import {
-  createProvider, runTurn, type AnyTool, type FetchLike, type ModelProvider, type ModelRequest, type ModelResult,
-} from '../src/index.js';
+import { runTurn, type AnyTool, type FetchLike, type ModelProvider, type ModelRequest, type ModelResult } from '../src/index.js';
 
 // Synthesized provider responses; no real account or endpoint is used.
 function scripted(steps: ModelResult[]): ModelProvider & { requests: ModelRequest[] } {

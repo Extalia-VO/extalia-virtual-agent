@@ -12,6 +12,13 @@ addition to [CONTRIBUTING.md](CONTRIBUTING.md).
   changing structure. Keep the dependency direction
   `protocol ← core ← platform ← apps`; renderer and UI code never import
   runtimes, providers or adapters.
+- Backend placement follows measured efficiency and output compatibility, not
+  a language-only migration quota. Prefer Rust or supervised Python when the
+  complete participating workload benefits; retain TypeScript when migration
+  adds latency without worthwhile memory or responsiveness benefits. React
+  stays presentation-only. Keep the ownership inventory honest; its strict
+  language diagnostic is not a required product destination. Follow
+  [ADR 0071](docs/adr/0071-rust-openai-completion-and-resource-evidence.md).
 - This is a public repository. Never write personal paths, user names, e-mail
   addresses, credentials, private project names, private endpoints or persona
   names into code, tests, fixtures, docs or commit messages. Use placeholders

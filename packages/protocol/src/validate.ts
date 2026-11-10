@@ -77,8 +77,9 @@ export const EVENT_SPECS: Readonly<Record<EventType, BodySpec>> = {
   'git.status': { fields: { changedFiles: { kind: 'number', integer: true, min: 0 }, branch: optLabel, ahead: optCount, behind: optCount } },
   'git.commit': { fields: { sha: { kind: 'id' }, message: optText } },
   'git.push': { fields: { ok: bool, remote: optLabel, branch: optLabel } },
-  'meeting.started': { fields: { meetingId: id, participants: { kind: 'labels' }, topic: optLabel } },
-  'meeting.completed': { fields: { meetingId: id, decisions: { kind: 'labels', optional: true }, actionItems: { kind: 'labels', optional: true } } },
+  'meeting.started': { fields: { meetingId: id, participants: { kind: 'labels' }, topic: optLabel, roomId: { kind: 'enum', values: ['meeting-a', 'meeting-b'], optional: true } } },
+  'meeting.contribution': { fields: { meetingId: id, round: { kind: 'number', integer: true, min: 1, max: 2 }, text }, requires: ['agentId'] },
+  'meeting.completed': { fields: { meetingId: id, decisions: { kind: 'labels', optional: true }, actionItems: { kind: 'labels', optional: true }, outcome: { kind: 'enum', values: ['completed', 'cancelled', 'failed'], optional: true }, notePath: optLabel } },
 };
 
 export const EVENT_TYPES = Object.keys(EVENT_SPECS) as EventType[];

@@ -1,11 +1,11 @@
 import { providerHeaders, supportsPromptCache, type Connection } from '@extalia/core';
 import type { FetchLike, ModelProvider } from '../model.js';
 import { createAnthropicProvider } from './anthropic.js';
-import { createOpenAIChatProvider } from './openai.js';
+import { type OpenAICompletionPort, createOpenAIChatProvider } from './openai.js';
 import { guardProviderRequests } from '../requestBudget.js';
 
 export { createAnthropicProvider, replayableContent, toAnthropicMessages } from './anthropic.js';
-export { createOpenAIChatProvider, toChatMessages } from './openai.js';
+export { createOpenAIChatProvider, toChatMessages, type OpenAIChatOptions, type OpenAIConnection, type OpenAICompletionPort } from './openai.js';
 export { readSse } from './sse.js';
 
 type ProviderConnection = Pick<Connection, 'preset' | 'api' | 'baseUrl' | 'model' | 'features' | 'effort' | 'inputTokenLimit'>;
@@ -15,7 +15,7 @@ function isAnthropicCloud(baseUrl: string): boolean {
 }
 
 /** Build the model provider for a connection. The secret is passed in and never stored here. */
-export function createProvider(connection: ProviderConnection, secret: string | undefined, fetchImpl?: FetchLike): ModelProvider {
+export function createProvider(connection: ProviderConnection, secret: string | undefined, fetchImpl?: FetchLike, listModels?: ModelProvider['listModels'], completion?: OpenAICompletionPort): ModelProvider {
   const headers = providerHeaders(connection);
   const common = { baseUrl: connection.baseUrl, model: connection.model, ...(secret ? { apiKey: secret } : {}), ...(Object.keys(headers).length ? { headers } : {}), ...(fetchImpl ? { fetch: fetchImpl } : {}) };
   if (connection.api === 'anthropic-messages') {
@@ -26,5 +26,5 @@ export function createProvider(connection: ProviderConnection, secret: string | 
       ...(connection.effort ? { effort: connection.effort } : {}),
     }), connection.inputTokenLimit);
   }
-  return guardProviderRequests(createOpenAIChatProvider(common), connection.inputTokenLimit);
+  return guardProviderRequests(createOpenAIChatProvider({ ...common, ...(listModels ? { listModels } : {}), ...(completion ? { completion } : {}) }), connection.inputTokenLimit);
 }

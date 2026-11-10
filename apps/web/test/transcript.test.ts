@@ -168,6 +168,31 @@ describe('projectTranscript', () => {
     expect(finished[1]).toMatchObject({ status: 'failed', command: { exitCode: 1, durationMs: 900 } });
   });
 
+  it('keeps approvals, tools and workers live when a user steers the current run', () => {
+    const event = session();
+    const events = [
+      event({ type: 'prompt.submitted', text: 'Review the change', via: 'extalia' }),
+      event({ type: 'tool.started', toolCallId: 'delegate', tool: 'delegate_task', kind: 'delegate', label: 'Review together' }),
+      event({ type: 'subagent.spawned', subagentId: 'worker', role: 'reviewer', label: 'Review member' }),
+      event({ type: 'approval.requested', approvalId: 'approval', action: 'Edit example.ts', risk: 'medium' }),
+      event({ type: 'user.intervention', action: 'steer', text: 'Also preserve the existing API' }),
+    ];
+    const items = projectTranscript(events);
+    expect(items.filter(item => item.kind === 'user').map(item => item.text)).toEqual(['Review the change', 'Also preserve the existing API']);
+    expect(items.find(item => item.kind === 'approval')).toMatchObject({ status: 'pending' });
+    expect(items.find(item => item.kind === 'tool')).toMatchObject({ status: 'running' });
+    expect(items.find(item => item.kind === 'worker')).toMatchObject({ status: 'running' });
+    expect(projectActivity(events)).toMatchObject({ running: true, state: 'waiting', stopping: false, pendingApprovalId: 'approval' });
+    const completed = projectTranscript([...events,
+      event({ type: 'approval.resolved', approvalId: 'approval', decision: 'granted', by: 'user' }),
+      event({ type: 'tool.completed', toolCallId: 'delegate', tool: 'delegate_task', kind: 'delegate', label: 'Review together', ok: true }),
+      event({ type: 'turn.completed' }),
+    ]);
+    expect(completed.find(item => item.kind === 'approval')).toMatchObject({ status: 'granted' });
+    expect(completed.find(item => item.kind === 'tool')).toMatchObject({ status: 'ok' });
+    expect(completed.find(item => item.kind === 'worker')).toMatchObject({ status: 'ok' });
+  });
+
   it('tracks approvals and expires unanswered ones when the turn ends', () => {
     const event = session();
     const asked = [

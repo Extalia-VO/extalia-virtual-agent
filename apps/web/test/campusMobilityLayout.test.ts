@@ -173,7 +173,7 @@ describe('campus mobility and pedestrian separation',()=>{
     expect(rush).toBeGreaterThan(midday);expect(midday).toBeGreaterThan(night);expect(night).toBeGreaterThan(rush*.1);
   });
   it('caps moving cars per render tier (fewer on lower tiers) and sizes each model batch for its peak',()=>{
-    expect(RENDER_BUDGET_LEVELS.map(level=>level.trafficCars)).toEqual([16,14,10,6]);
+    expect(RENDER_BUDGET_LEVELS.map(level=>level.trafficCars)).toEqual([16,14,10,6,6]);
     expect(MAX_TRAFFIC_CARS).toBe(16);
     expect(trafficCarCap(99)).toBe(6);expect(trafficCarCap(-1)).toBe(16);
     for(const seed of seeds.slice(0,2)){

@@ -59,6 +59,8 @@ jobs:
           - { target: x86_64-unknown-linux-gnu, runner: ubuntu-22.04 }
           - { target: aarch64-unknown-linux-gnu, runner: ubuntu-22.04-arm }
     runs-on: ${{ matrix.runner }}
+    env:
+      EXTALIA_MAC_RELEASE_MODE: ${{ vars.EXTALIA_MAC_RELEASE_MODE || 'preview' }}
     steps:
       - uses: actions/checkout@v5
       - uses: pnpm/action-setup@v4
@@ -84,8 +86,24 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.target }}
+      - name: Install pinned build-only uv for the supported scanner target
+        if: matrix.target == 'aarch64-apple-darwin'
+        uses: astral-sh/setup-uv@94527f2e458b27549849d47d273a16bec83a01e9 # v7
+        with:
+          version: '0.13.7'
+      - name: Build the self-contained scanner and its pinned daemon
+        if: matrix.target == 'aarch64-apple-darwin'
+        shell: bash
+        run: |
+          if [ "$EXTALIA_MAC_RELEASE_MODE" != "preview" ]; then
+            echo "::error::The scanner must be pre-signed with Developer ID before its manifest and daemon are built. Supply a reviewed pre-signed bundle; ad-hoc scanner bytes cannot enter a notarized release."
+            exit 1
+          fi
+          node tooling/skillspector/build.mjs --target macos-aarch64 --out "$RUNNER_TEMP/extalia-skillspector" --download --uv "$(command -v uv)" --sign-identity -
+          node tooling/build-daemon.mjs --target "${{ matrix.target }}" --out daemon-artifacts --scanner-bundle "$RUNNER_TEMP/extalia-skillspector" --require-scanner
       # Release build, symbols stripped, architecture checked; a native binary must answer `hello`.
-      - run: node tooling/build-daemon.mjs --target ${{ matrix.target }} --out daemon-artifacts
+      - if: matrix.target != 'aarch64-apple-darwin'
+        run: node tooling/build-daemon.mjs --target ${{ matrix.target }} --out daemon-artifacts
       - name: Check the glibc floor
         if: runner.os == 'Linux'
         shell: bash
@@ -103,6 +121,7 @@ jobs:
           # daemon-artifacts/<platform>-<arch>/extalia-daemon[.exe]; artifacts drop the executable bit,
           # so every consumer stages the file with build-daemon --from or generate.mjs, which restore it.
           path: daemon-artifacts/
+          include-hidden-files: true
           if-no-files-found: error
           retention-days: 14
 
@@ -128,7 +147,7 @@ jobs:
           path: daemon-artifacts
           merge-multiple: true
       # Five @extalia/daemon-<platform>-<arch> packages plus extalia-vo with them as optional dependencies.
-      - run: node apps/cli/npm/generate.mjs --binaries daemon-artifacts --out npm-packages --require-all --cli
+      - run: node apps/cli/npm/generate.mjs --binaries daemon-artifacts --out npm-packages --require-all --require-scanner-target darwin-arm64 --cli
       # npm install -g of the packed CLI + linux-x64 package, then run with no toolchain on PATH.
       - run: node tooling/clean-machine-smoke.mjs --npm npm-packages
       - name: Pack (not published)
@@ -245,6 +264,7 @@ jobs:
         # Local pnpm dist remains available without signing credentials.
         env:
           EXTALIA_REQUIRE_DAEMON: '1'
+          EXTALIA_REQUIRE_SKILLSPECTOR_TARGETS: 'darwin-arm64'
           CSC_LINK: ${{ runner.os == 'macOS' && secrets.MAC_CSC_LINK || '' }}
           CSC_KEY_PASSWORD: ${{ runner.os == 'macOS' && secrets.MAC_CSC_KEY_PASSWORD || '' }}
           APPLE_ID: ${{ secrets.APPLE_ID }}

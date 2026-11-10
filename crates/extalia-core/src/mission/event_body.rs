@@ -379,7 +379,24 @@ const SPECS: &[Spec] = &[
             req("meetingId", Rule::Id),
             req("participants", Rule::Labels),
             opt("topic", Rule::Label),
+            opt("roomId", Rule::Enum(&["meeting-a", "meeting-b"])),
         ],
+    ),
+    spec_requiring(
+        "meeting.contribution",
+        &[
+            req("meetingId", Rule::Id),
+            req(
+                "round",
+                Rule::Number {
+                    integer: true,
+                    min: Some(1.0),
+                    max: Some(2.0),
+                },
+            ),
+            req("text", Rule::Text),
+        ],
+        AGENT,
     ),
     spec(
         "meeting.completed",
@@ -387,6 +404,8 @@ const SPECS: &[Spec] = &[
             req("meetingId", Rule::Id),
             opt("decisions", Rule::Labels),
             opt("actionItems", Rule::Labels),
+            opt("outcome", Rule::Enum(&["completed", "cancelled", "failed"])),
+            opt("notePath", Rule::Label),
         ],
     ),
 ];

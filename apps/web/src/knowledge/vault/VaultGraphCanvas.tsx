@@ -2,14 +2,14 @@ import { OrbitControls } from '@react-three/drei';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { useEffect, useRef, type ComponentRef, type RefObject } from 'react';
 import { MOUSE, TOUCH, type PerspectiveCamera } from 'three';
-import { useBudgetPixelRatio } from '../../office/scene/environment/AdaptiveRenderBudget';
 import { VaultGraphRenderer, type GraphOptions } from './vaultGraphRenderer';
 import { useGraphTheme } from './graphTheme';
 import { GRAPH_BACKGROUND } from './vaultGraphModel';
 
 /**
  * The whole-vault 3D graph canvas (lazy chunk): a small R3F canvas that renders on demand, with
- * the pixel ratio of the shared render budget. The scene itself is `VaultGraphRenderer`.
+ * a bounded native pixel ratio. Its demand loop cannot drive Office's FPS controller.
+ * The scene itself is `VaultGraphRenderer`.
  */
 export type VaultGraphCanvasProps = Omit<GraphOptions, never>;
 
@@ -45,14 +45,13 @@ function GraphScene({ options, labels, fps }: { options: GraphOptions; labels: R
 }
 
 export default function VaultGraphCanvas(props: VaultGraphCanvasProps) {
-  const dpr = Math.min(1.5, useBudgetPixelRatio());
   const theme = useGraphTheme();
   const labels = useRef<HTMLDivElement>(null);
   const fps = useRef<HTMLDivElement>(null);
   const showFps = import.meta.env.DEV && props.showFps;
   return (
     <div className="vault-graph-canvas" style={{ backgroundColor: theme.background }}>
-      <Canvas frameloop={showFps ? 'always' : 'demand'} dpr={dpr} camera={{ fov: 50, near: 0.5, far: 20_000, position: [0, props.dimensions === 2 ? 0 : 40, 420] }}
+      <Canvas frameloop={showFps ? 'always' : 'demand'} dpr={[0, 1.25]} camera={{ fov: 50, near: 0.5, far: 20_000, position: [0, props.dimensions === 2 ? 0 : 40, 420] }}
         gl={{ antialias: true, alpha: true, powerPreference: 'high-performance' }} aria-hidden="true">
         <GraphScene options={{ ...props, showFps, theme }} labels={labels} fps={fps} />
       </Canvas>

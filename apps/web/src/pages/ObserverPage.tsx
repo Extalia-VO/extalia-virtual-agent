@@ -12,6 +12,7 @@ import { LIVE_SELECTION_LIMIT, nativeSelectableIds, useNativeDiscovery, useOpera
 import { Icon } from '../ui/Icon';
 import { MessageFileProvider } from '../chat/MessageFilePreview';
 import { useSessionEvents } from '../chat/useSessionEvents';
+import { PromptSuggestions } from '../chat/PromptSuggestions';
 import { projectTranscript } from '../chat/transcript';
 import { TranscriptView } from '../chat/TranscriptView';
 import { ConversationTabs } from '../chat/ChangedFilesView';
@@ -21,10 +22,10 @@ import './observer.css';
 import { ObservedCodexControls } from '../observe/ObservedCodexControls';
 import { ObservedCodexQueueControls } from '../observe/ObservedCodexQueueControls';
 import { ObservedCodexPromptComposer } from '../observe/ObservedCodexPromptComposer';
-import { PromptQueueControls } from '../chat/PromptQueueControls';
 import { ObservedCodexPermissionControls } from '../observe/ObservedCodexPermissionControls';
 import { ManualReplyControls, ObservedReplyControls } from '../observe/ObservedReplyControls';
 import { ObservedHermesControls } from '../observe/ObservedHermesControls';
+import { ObservedSessionControl, ManualObservedInboxControls } from '../observe/ObservedSessionControl';
 import { OBSERVE_SECTIONS, observeTabForKey, type ObserveSection } from '../observe/observerTabs';
 
 function AddObservedSessions({ t, language, agents, onWatched }: {
@@ -120,6 +121,7 @@ export function ObserverPage({ t, language, agents, state, initialSessionId, onS
     finally { if (lease.isCurrent()) setOperation(current => ({ ...current, busy: false })); lease.release(); }
   };
   const observation = selected?.observation;
+  const controlHub = !!agents.observedControlStatus && !!agents.dispatchObservedControl;
   const content = loaded?.scope === scope && loaded?.id === selected?.id ? loaded : undefined;
   return <div className="page">
     <header className="page-header"><h1>{t.observer.title}</h1><p className="lead">{t.pageRoles.observe}</p><p className="note"><Icon name="shield" />{t.observer.note}</p>
@@ -160,8 +162,9 @@ export function ObserverPage({ t, language, agents, state, initialSessionId, onS
             <div className="actions"><button type="button" disabled={busy} onClick={() => { void run(() => agents.setObservation(selected.id, !observation?.watching)).catch(() => undefined); }}>
               <Icon name={observation?.watching ? 'stop' : 'refresh'} />{observation?.watching ? t.observer.pause : t.observer.resume}
             </button></div>
-            {selected.observation?.sourceId === 'codex' && <ObservedCodexPromptComposer key={`codex-prompt:${selected.id}`} t={t} agents={agents} session={selected} disabled={busy} />}
-            {selected.observation?.sourceId === 'codex' && <PromptQueueControls key={`queue:${selected.id}`} t={t} agents={agents} session={selected} disabled={busy} />}
+            {controlHub && <ObservedSessionControl key={`control:${selected.id}`} t={t} agents={agents} session={selected} disabled={busy} />}
+            {!controlHub && selected.observation?.sourceId === 'codex' && <ObservedCodexPromptComposer key={`codex-prompt:${selected.id}`} t={t} agents={agents} session={selected} disabled={busy} />}
+            {(controlHub || selected.observation?.sourceId !== 'codex') && <PromptSuggestions t={t} agents={agents} session={selected} disabled={busy} copyOnly />}
             {selected.observation?.sourceId === 'codex' && <details className="observed-codex-entry">
               <summary>{t.observedCodexPrompt.settings}</summary>
               <ObservedCodexQueueControls key={selected.id} t={t} agents={agents} session={selected} settingsOnly />
@@ -176,12 +179,12 @@ export function ObserverPage({ t, language, agents, state, initialSessionId, onS
             </details>}
             {selected.observation?.sourceId === 'hermes' && <details className="observed-codex-entry">
               <summary>{t.observedHermes.title}</summary>
-              <ObservedHermesControls key={selected.id} t={t} agents={agents} session={selected} />
+              <ObservedHermesControls key={selected.id} t={t} agents={agents} session={selected} settingsOnly={controlHub} />
             </details>}
-            <details className="observed-codex-entry">
+            {!controlHub && <details className="observed-codex-entry">
               <summary>{t.observedReply.title}</summary>
               <ObservedReplyControls key={selected.id} t={t} agents={agents} session={selected} />
-            </details>
+            </details>}
             {content?.session?.messages.length ? (
               <ContinueInExtalia t={t} agents={agents} state={state} source={{ kind: 'observed', id: selected.id }}
                 {...(observation?.projectPath ? { projectPath: observation.projectPath } : {})} onContinued={onContinued} onOpenSettings={onOpenSettings} />
@@ -198,6 +201,7 @@ export function ObserverPage({ t, language, agents, state, initialSessionId, onS
       </div>
     </div>
     <div className="observe-panel" role="tabpanel" id={`${tabsId}-pairing-panel`} aria-labelledby={`${tabsId}-pairing-tab`} hidden={section !== 'pairing'} tabIndex={0}>
+      {controlHub && <ManualObservedInboxControls t={t} agents={agents} />}
       <ManualReplyControls t={t} agents={agents} />
     </div>
   </div>;

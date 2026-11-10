@@ -16,6 +16,157 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.248] - 2026-11-10
+
+### Added
+
+- Keep a rotating standby crew from the current configured Extalia Native team: three members for a team of ten, four for twenty and five for thirty-two, plus the existing lead. Cap synthetic standby attendance at five across visible workspaces, count real attendance first and rotate eligible identities after their existing idle linger duration using spaced entrance admissions.
+- Label standby and off-shift availability in English and Indonesian without starting inference, creating sessions or fabricating work events. Preserve real work, errors, approvals and missions; wait for current host/profile roster revisions and session history before projecting attendance, and retain in-memory rotation fairness across navigation.
+
+## [0.4.247] - 2026-11-10
+
+### Added
+
+- Unify observed conversation messaging in Observe and Office character dialogs with explicit transport capabilities, source-bound actions and correlated delivery receipts. Preserve the existing native Codex, conditional Hermes and waiting-tool routes without inferring control from hooks or transcripts.
+- Add bounded, memory-only cooperative inboxes for existing tool-enabled CLI conversations, with CLI/MCP polling, explicit acknowledgement, expiry and revocation. Manual pairing supports separate conversations without inventing native identity or starting external agents; uncertain sends are not automatically retried or rerouted.
+- Document the Observe control PRD, architecture decision, setup guide and GitHub delivery backlog, separating the local foundation from live provider certification and future managed CLI transports.
+
+## [0.4.246] - 2026-11-10
+
+### Changed
+
+- Admit Office characters in visual waves of at most two every 1.2 seconds, including initial hydration and reduced motion. Wait for real entrance clearance, skip blocked portals and prevent catch-up bursts after delayed frames; agent execution and team capacity remain independent.
+- Keep queued characters' board portraits as lightweight illustrations until their scene body is admitted, and hide speech/callout anchors at empty reserved desks. Preserve complete agent metadata and access to conversations during visual admission.
+
+### Fixed
+
+- Accept a TCP reset as well as EOF in the cancelled-completion transport fixture, while retaining cancellation, worker-join and independent-request assertions.
+
+## [0.4.245] - 2026-11-10
+
+### Changed
+
+- Start the 3D Office with a 480-pixel render budget and recover progressively through 720/1080/1440/2160-pixel ceilings when frame throughput stays smooth. Fit the drawing buffer to the actual Office area, native display density and a 4K pixel cap; preserve sharp DOM controls, resize continuity and existing GLB assets. Keep the demand-rendered vault graph on its own bounded native resolution.
+- Add a reproducible CPU-throttled browser comparison driver and a five-file public GLB optimization backlog, separating render-buffer savings from model downloads, decoded resources and whole-application memory.
+
+## [0.4.244] - 2026-11-10
+
+### Added
+
+- Add a development-only standard-library Python completion worker and comparison mode using the same request/result parity fixtures, latency, CPU, cancellation, idle lifecycle and combined Node/worker memory accounting as the TypeScript/Rust benchmark. Record the selected interpreter and implementation limits; production placement remains based on measured benefit.
+
+## [0.4.243] - 2026-11-09
+
+### Changed
+
+- Retain TypeScript as the production completion default after comparing one-shot and shared Rust workers against a frozen baseline. Select backend placement from measured efficiency and output compatibility rather than a mandatory language migration; existing Rust storage/knowledge/learning services and the Python scanner retain their roles.
+- Add reproducible completion evidence covering request/result parity, latency, CPU, event-loop delay and concurrent parent/worker memory. Keep the unselected native candidates behind the development-only `provider-experiments` Cargo feature, excluded from ordinary release builds and production host imports.
+- Prevent filtered or output-limited OpenAI-compatible responses from executing accumulated tool calls, including valid-looking truncated arguments. Preserve explicit experimental transport isolation without silently replaying an uncertain native operation in JavaScript.
+
+## [0.4.242] - 2026-11-09
+
+### Changed
+
+- Move OpenAI-compatible model catalog HTTP, bounded response parsing and model normalization into an isolated Rust executable mode used by connection tests, selectors and planning. Keep credentials off arguments/environment/logs, refuse redirects and environment proxies, and hold cancellation/shutdown admission until the actual child closes. Preserve inference fallback only for explicit HTTP 404/405/501; completion streaming and Anthropic discovery remain migration work.
+
+## [0.4.241] - 2026-11-09
+
+### Changed
+
+- Set the product language target to UI-only TypeScript/React with Rust or supervised Python backend execution. Add an AST-based source ownership inventory, an explicitly reviewed legacy baseline enforced by lint, and a separate strict check that fails while backend/shared executable debt remains. Include JavaScript variants, embedded worker evidence, runtime imports and privileged application sources; this audit does not claim the existing backend has been migrated or certify generated bundles.
+
+## [0.4.240] - 2026-11-09
+
+### Added
+
+- Inspect imported and explicitly learned skills with pinned NVIDIA SkillSpector 2.13.4 and a bundled, verified Python runtime on macOS 14+ ARM64. Keep incomplete, unavailable and malicious inspections unavailable to agents; require separate digest-bound user approval and activation for eligible instruction-only packages. Preserve genuine evaluation requirements for code and tool packages.
+- Show actual scanner identity, coverage, severity and read-only instruction previews in the Grimoire Security Center, with explicit rescanning of quarantined revisions. Keep scanner work outside daemon control dispatch and bundle the matching scanner/daemon pair in supported Desktop and CLI artifacts without requiring user Python or first-use downloads. Windows/Linux scanner execution remains unavailable pending verified isolation.
+
+## [0.4.239] - 2026-11-09
+
+### Changed
+
+- Move automatic-learning jobs, chunked current-task evidence and AI-result validation, durable deduplication, generated/manual skill staging and profile learning/meeting note publication into the existing Rust sidecar. Keep bounded local work off control dispatch, use connection-bound effects and two-phase immutable note exports, preserve legacy admission receipts and mandatory skill inspection, and refuse unavailable backends before model inference. The host retains consent, approved provider HTTP and physical effect draining; ordinary Chat tools remain separate. This new artifact port is Unix-only; Windows reports unavailable until equivalent directory-handle checks are implemented.
+
+## [0.4.238] - 2026-11-09
+
+### Added
+
+- Offer up to three AI-generated next prompts after successful Native Chat work. A visible conversation requests one bounded tools-free completion from the already approved model; completion and queued tasks remain independent, and stale, cancelled or failed predictions are discarded. Suggestions stay in memory, fill only empty drafts after a user click, and never send themselves.
+- Show observed harness suggestions through the transient `report_followups` MCP/hook report. Existing attached Codex connections can harvest or request native predictions for their exact verified completed turn. Keep source privacy and lifecycle guards; unsupported harnesses do not receive synthetic follow-up turns. Sources without a normal sender offer explicit Copy buttons.
+
+## [0.4.237] - 2026-11-09
+
+### Added
+
+- Show a separate read-only Codex persisted-queue snapshot in observed Chat, Observe and Office message dialogs. Resolve the original native conversation and profile on the host, read through the public experimental queue API without resuming or starting turns, and share bounded in-memory reads across views. Honor labels-only privacy, source changes and pause/shutdown; distinguish unavailable snapshots from empty queues, and keep source prompts separate from Extalia's editable outbox. Desktop-only prompts not yet persisted by Codex are outside the snapshot.
+
+## [0.4.236] - 2026-11-09
+
+### Fixed
+
+- Retain unsent prompt text per host and conversation while hooks update metadata, message dialogs close, or users switch sessions and Chat/Observe/Office views. Keep drafts in application memory only, protect closed drafts from accidental restart, and clear only the exact unchanged draft after a confirmed submission. Preserve first-message drafts when session creation succeeds but sending fails.
+- Show immediate, accessible message-submission feedback and a longer-wait indicator, with visible queue/handoff receipts outside collapsed queue details. Distinguish Extalia acceptance from Codex handoff and uncertain delivery, preserve late receipts after closing a composer, and require explicit inspection before retrying an ambiguous submission.
+
+## [0.4.235] - 2026-11-09
+
+### Added
+
+- Configure automatic post-task learning once per workspace vault profile. Saved Native Chat tasks can run a bounded real curator on their current tool evidence, submit generated candidates for mandatory registry inspection, and save immutable Markdown lessons to the profile vault. Keep candidate activation manual, honor plan/history/team and workspace boundaries, deduplicate uncertain imports, and retain invocation ownership until learning and storage settle.
+
+### Fixed
+
+- Route actual skill/knowledge activity to distinct Skills-room stations, retain learning work there, and let overflow wait at its desk. Ordinary summary mentions no longer send characters to the room.
+
+## [0.4.234] - 2026-11-09
+
+### Fixed
+
+- Keep existing observed agents visible while other sessions load, retain quiet workers' latest activity and terminal evidence through busy sibling event windows, and preserve delivery order for hooks sharing a timestamp. Restore deduplicated transcript catch-up after missed hooks, with matching history reload behavior, explicit stop/end authority and independent concurrent session identities.
+
+## [0.4.233] - 2026-11-09
+
+### Changed
+
+- Give worker message dialogs a compact width and animate Conversation tools opening and closing while preserving their state and keyboard focus. Keep dialogs horizontally centered within the 3D Office, use the full visible screen height, and follow mobile keyboard/viewport changes. Closed tools become inert immediately; reduced motion disables the transitions.
+
+## [0.4.232] - 2026-11-09
+
+### Changed
+
+- Calm automatic Office camera travel with direct same-floor focus and a two-second eased pan; keep overview/zoom transitions for floor changes. Use variable 20–30s idle visits and 30–120s working visits based on main/subagent roles, explicit meetings and live movement. Give journeys bounded arrival grace, preserve input/approval and genuine-spawn priority, and prevent ordinary work restarts from interrupting or repeatedly resetting a shot.
+
+## [0.4.231] - 2026-11-09
+
+### Changed
+
+- Unify Chat, character dialogs and observed Codex around one message input. Messages wait in Extalia's queue while an agent works, with drag-and-drop ordering, accessible move controls and pending-message editing/deletion. Promote a queued text message to a real current-run steer when supported: Native reads it at a safe model boundary, and connected Codex uses its exact active turn. Preserve active approvals, tools and workers during steering, along with uncertain receipts, source/revision checks and text-only queue limits.
+
+## [0.4.230] - 2026-11-09
+
+### Fixed
+
+- Recover completed fixed-seat departures that lost their onward route instead of leaving avatars standing indefinitely. Preserve the newest destination, walk through validated same-floor paths and recheck restored routes at a bounded interval after the local recovery budget is exhausted.
+- Retry unreachable NPC break/recreation plans and abandon stationary failed trips after fifteen simulated seconds. Pause leisure travel deadlines during genuine lift, door, seat, service and reciprocal-chat waits, preserving ordinary visit completion and meeting/work behavior.
+
+## [0.4.229] - 2026-11-09
+
+### Changed
+
+- Give Grimoire books a cursor-following title/category preview with opacity fades and keyboard-accessible category labels. Fly books from outside the view into their shelf slots on page entry, filtering and catalog paging, with flowing curved arrivals and magical dust trails. Emit dense, moving category-colored magic smoke while a book is hovered, with faint front-edge wisps and clipping at the book foot and shelf surface. Keep the full three-row rack visible even for empty filters; preserve reading controls, touch behavior and reduced motion, and stop rendering when no active effect remains.
+
+### Fixed
+
+- Keep every parking simulation tick and collision sample covered while collecting first-failure diagnostics outside hot assertion loops. Check MCP tool membership independently of advertisement order.
+
+## [0.4.228] - 2026-11-09
+
+### Added
+
+- Run explicit Native team meetings with two real read-only discussion rounds, approved member models, durable attributed contributions and distinct completed/cancelled/failed outcomes. Drive meeting-room seating, walking, presentation screens and discussion poses from meeting events instead of ordinary desk activity.
+- Let cooperative observed agents and authenticated hooks report a bounded meeting lifecycle through `report_meeting`, with source/session membership checks, replay protection and labels-only privacy. Plain text, file writes and routine delegation do not create meetings.
+- Group workspaces into named vault profiles with one Obsidian-compatible Markdown destination per profile. Saved Native meetings can export real discussion minutes to their pinned profile vault without granting agent file access or switching the live Knowledge index; explicit destination consent, revision checks and workspace write boundaries remain in force.
+
 ## [0.4.227] - 2026-11-08
 
 - Initialize the configured pnpm version before Node setup in checksum and retained-Mac-archive workflows, so package-manager cache detection can run on fresh hosted runners.

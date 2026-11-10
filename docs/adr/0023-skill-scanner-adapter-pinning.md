@@ -85,3 +85,15 @@ support, and does not close the pin or activate a scanner.
 3. Is the optional LLM pass ever allowed, and with which key, given "no secrets in prompts"?
 4. Fallback if the scanner is not usable on an OS: block skill import there (proposal) or
    accept a different pinned inspector?
+
+## 2026-11-09 implementation amendment
+
+[ADR 0068](0068-pinned-skillspector-inspection.md) implements a pinned one-shot
+adapter with actual upstream 2.13.4 fixture evidence and self-contained staging.
+The older observations above are historical. Required upstream fields and
+coverage ledgers are verified; unknown upstream fields are tolerated but are not
+retained as a raw report. The stored reference hashes the bounded normalized
+summary rather than claiming an archived full finding report. macOS uses an
+explicit sampled resident-memory watchdog where Darwin rejects RLIMIT_AS; its
+latency/overshoot limitation is documented, not represented as a hard virtual
+memory cap. Unsupported platforms and missing/invalid bundles still fail closed.

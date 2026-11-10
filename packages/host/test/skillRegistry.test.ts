@@ -1,3 +1,4 @@
+import { createAgentHost } from '../src/service.js';
 import { chmod, lstat, mkdir, readdir, symlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
@@ -5,17 +6,19 @@ import { HOST_WORKSPACE_ID_PATTERN, type DaemonOp, type SkillRevisionSummary } f
 import { describe, expect, it } from 'vitest';
 import { BUILTIN_SKILLS } from '../src/builtinSkills.js';
 import { DaemonRequestError, DaemonUnavailableError, type DaemonClient, type DaemonSidecar } from '../src/daemon/index.js';
-import { createAgentHost, type AgentHostRuntime } from '../src/service.js';
-import { SKILL_REGISTRY_OPS, SkillRegistry, copyPackage, type SkillConsentWorkspace } from '../src/skillRegistry.js';
+import { type AgentHostRuntime } from '../src/service.js';
+import { SKILL_REGISTRY_OPS, SkillRegistry, type SkillConsentWorkspace } from '../src/skillRegistry.js';
 import { buildAgentSkillCatalog, createSkillTools } from '../src/skills.js';
 import { DAEMON_BINARY, HAS_DAEMON, queryCore } from './daemonBackend.js';
 import { findTool, runTool, useTempDirs } from './helpers.js';
+import { useRustLearningBackend } from './rustLearningFixture.js';
 
 // W3 Skill Security Center: the host's skill registry service over the Rust core daemon. The daemon cases need the
 // debug binary (`cargo build -p extalia-daemon`) and are skipped without it, like missionDaemon.test.ts.
 if (!HAS_DAEMON) console.warn('skillRegistry.test.ts daemon cases skipped: build the daemon with `cargo build -p extalia-daemon`.');
 
 const temp = useTempDirs();
+const rustBackend = useRustLearningBackend();
 const posix = process.platform !== 'win32';
 const SKILL = (name: string, description = 'Write release notes') => `---\nname: ${name}\ndescription: ${description}\n---\nCollect merged changes and summarise them.`;
 
@@ -79,13 +82,14 @@ async function hostFixture(env: Record<string, string>) {
   return { dir, data, project, runtime, host, workspace, catalog, turn, log, recorded, close };
 }
 
-describe('skill registry with the native core flag off (legacy)', () => {
-  it('reports legacy consent inventory while only canonical builtins reach the model', async () => {
-    const fixture = await hostFixture({});
+describe.skipIf(!HAS_DAEMON || process.platform === 'win32')('skill registry independent of the mission backend preference', () => {
+  it('serves imports without the mission flag while only scanner-approved skills can reach the model', async () => {
+    const fixture = await hostFixture({ EXTALIA_DAEMON_PATH: DAEMON_BINARY });
     try {
       const { host, workspace } = fixture;
-      expect(await host.skillRegistry()).toMatchObject({ mode: 'legacy', status: 'off', revisions: [] });
-      await expect(host.importSkill({ kind: 'workspace', workspaceId: workspace.id, name: 'deploy' })).rejects.toThrow(/does not serve the skill registry/);
+      expect(await host.skillRegistry()).toMatchObject({ mode: 'registry', status: 'ready', revisions: [] });
+      const imported = await host.importSkill({ kind: 'workspace', workspaceId: workspace.id, name: 'deploy' });
+      expect(imported).toMatchObject({ state: 'quarantined', stateReason: 'scanner-unavailable' });
       await host.allowWorkspaceSkills(workspace.id, (await host.workspaceSkills(workspace.id)).pending);
       await fixture.turn();
       expect(fixture.catalog()).not.toContain('deploy');
@@ -100,16 +104,18 @@ describe('skill registry with the native core flag off (legacy)', () => {
   });
 });
 
-describe('skill registry with the flag on but the daemon unavailable', () => {
+describe.each([undefined, 'rust'] as const)('skill registry with mission backend %s and the daemon unavailable', backend => {
   it('reports unavailable, refuses actions and offers only built-in skills (fail closed)', async () => {
-    const fixture = await hostFixture({ EXTALIA_NATIVE_CORE: 'rust', EXTALIA_DAEMON_PATH: path.join(await temp(), 'missing-daemon') });
+    const env: Record<string, string> = { EXTALIA_DAEMON_PATH: path.join(await temp(), 'missing-daemon') };
+    if (backend) env.EXTALIA_NATIVE_CORE = backend;
+    const fixture = await hostFixture(env);
     try {
       const { host, workspace } = fixture;
       const report = await host.skillRegistry();
       expect(report).toMatchObject({ mode: 'registry', status: 'unavailable', revisions: [] });
       expect(report.unavailableReason).toMatch(/binary_missing|spawn_failed/);
       await expect(host.importSkill({ kind: 'workspace', workspaceId: workspace.id, name: 'deploy' })).rejects.toThrow(/native core is unavailable/);
-      // W0 consent no longer feeds the model while the flag is on.
+      // W0 consent never becomes scanner authority, independently of the mission backend.
       await host.allowWorkspaceSkills(workspace.id, (await host.workspaceSkills(workspace.id)).pending);
       await fixture.turn();
       const catalog = fixture.catalog();
@@ -126,7 +132,7 @@ describe('skill registry with the flag on but the daemon unavailable', () => {
   });
 });
 
-describe.skipIf(!HAS_DAEMON)('skill registry against the real daemon', () => {
+describe.skipIf(!HAS_DAEMON || process.platform === 'win32')('skill registry against the real daemon', () => {
   const rust = { EXTALIA_NATIVE_CORE: 'rust', EXTALIA_DAEMON_PATH: DAEMON_BINARY };
 
   it('imports a folder into quarantine and refuses approval and activation while no scanner is pinned', async () => {
@@ -181,7 +187,7 @@ describe.skipIf(!HAS_DAEMON)('skill registry against the real daemon', () => {
       const report = await host.skillRegistry();
       expect(report).toMatchObject({
         status: 'ready', scanner: 'unpinned',
-        inspector: { scannerId: 'unavailable', pinned: false, policyVersion: 'extalia.skill-policy.v1', status: 'unavailable' },
+        inspector: { scannerId: 'nvidia-skillspector', pinned: false, policyVersion: 'extalia.skill-policy.v2', status: 'unavailable' },
       });
       expect(report.inspector).not.toHaveProperty('pin');
       await host.allowWorkspaceSkills(workspace.id, (await host.workspaceSkills(workspace.id)).pending);
@@ -237,16 +243,21 @@ describe.skipIf(!HAS_DAEMON)('skill registry against the real daemon', () => {
   });
 });
 
-describe('package copy into the import inbox', () => {
+describe.skipIf(process.platform === 'win32')('Rust package staging into the import inbox', () => {
   it('copies regular files with their executable bit and stops at the caps', async () => {
-    const base = await temp();
+    const base = await temp(), data = path.join(base, 'data');
+    const backend = await rustBackend(data);
     const source = await writePackage(base, 'tools', { 'scripts/run.sh': '#!/bin/sh\necho hi\n' });
-    const target = path.join(base, 'copy');
-    await copyPackage(source, target);
+    if (posix) await chmod(path.join(source, 'scripts/run.sh'), 0o700);
+    const stage = await backend.process('skill.stageFolder', { root: source });
+    const target = path.join(data, 'profiles', 'default', 'skill-imports', stage.path);
     expect((await readdir(target)).sort()).toEqual(['SKILL.md', 'scripts']);
+    if (posix) expect((await lstat(path.join(target, 'scripts/run.sh'))).mode & 0o111).not.toBe(0);
+    await backend.process('skill.cleanup', { stageId: stage.stageId });
     const big = await writePackage(base, 'big', { 'data.md': 'x'.repeat(1024 * 1024 + 1) });
-    await expect(copyPackage(big, path.join(base, 'copy-big'))).rejects.toThrow(/larger than 1 MB/);
-    await expect(copyPackage(path.join(base, 'missing'), path.join(base, 'copy-missing'))).rejects.toThrow(/does not exist/);
+    await expect(backend.process('skill.stageFolder', { root: big })).rejects.toThrow();
+    await expect(backend.process('skill.stageFolder', { root: path.join(base, 'missing') })).rejects.toThrow();
+    expect(await readdir(path.join(data, 'profiles', 'default', 'skill-imports'))).toEqual([]);
   });
 });
 

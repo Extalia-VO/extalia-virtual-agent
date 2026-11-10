@@ -1,4 +1,4 @@
-import { decodePortableSession, generateFullName, isContextUsage, safeLabel, safeText, type MemberGender, type PortableSession } from '@extalia/core';
+import { decodePortableSession, generateFullName, isContextUsage, redact, safeLabel, safeText, type MemberGender, type PortableSession } from '@extalia/core';
 import { claudeAnchor, isInjectedContext, type TranscriptStep } from '@extalia/importers';
 import { detectImageMimeType, normalizeAgentIdentity, type AttachmentPreview, type HookPrivacyOptions, type SessionContextUsage, type SessionSummary } from '@extalia/platform';
 import { createEvent, type EventBody, type ExtaliaEvent } from '@extalia/protocol';
@@ -67,6 +67,9 @@ interface HookLive {
   app: HookApp; since: string; lastAt: string; events: ExtaliaEvent[]; subagents?: Set<string>;
   /** v0.0.38: sub-agents whose transcript label/model were merged into the hook stream. */
   identified?: Set<string>;
+  /** Explicit reports remain scoped to this observed source/session, never inferred from tools or text. */
+  meeting?: { id: string; reporter: string; participants: Set<string>; contributions: Set<string> };
+  meetingIds?: Set<string>;
 }
 interface Live {
   snapshot?: PortableSession; steps?: TranscriptStep[]; eventIds?: Set<string>; lastEventAt?: string;
@@ -87,6 +90,8 @@ interface DiscoverySettings {
   ignoreFolders?: string[];
 }
 export interface ObservationHooks {
+  /** Ephemeral suggestions from an existing watched lead; never observation evidence. */
+  onFollowups?: (sessionId: string, prompts: string[]) => void;
   /** Keeps a retired observation in history (the library). Throwing keeps the observation. */
   retire?: (session: PortableSession) => Promise<void>;
   /** True for sources that must not be added automatically (for example sessions Extalia itself runs). */
@@ -101,15 +106,100 @@ export interface ObservationHooks {
 const digest = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const sourceKey = (ref: NativeObservationRef) => `${ref.locationId}:${ref.nativeSessionId}`;
 const sameSession = (a: NativeObservationRef, b: NativeObservationRef) => a.sourceId === b.sourceId && a.nativeSessionId === b.nativeSessionId;
+const isMeeting = (body: EventBody) => body.type === 'meeting.started' || body.type === 'meeting.contribution' || body.type === 'meeting.completed';
+/** Meeting content is optional for presence; labels-only never retains it. */
+function privateMeeting(body: EventBody): EventBody | undefined {
+  if (body.type === 'meeting.contribution') return undefined;
+  if (body.type === 'meeting.started') return { type: body.type, meetingId: body.meetingId, participants: body.participants, ...(body.roomId ? { roomId: body.roomId } : {}) };
+  if (body.type === 'meeting.completed') return { type: body.type, meetingId: body.meetingId, ...(body.outcome ? { outcome: body.outcome } : {}) };
+  return body;
+}
 /** Identifies the same step reported by a hook and by the transcript. */
 function stepKey(event: ExtaliaEvent): string | undefined {
   const body = event.body;
   if ((body.type === 'tool.started' || body.type === 'tool.completed') && body.toolCallId) return JSON.stringify([event.agentId ?? 'primary', body.type, body.toolCallId]);
   if (body.type === 'file.written' && body.toolCallId) return JSON.stringify([event.agentId ?? 'primary', body.type, body.toolCallId, body.path, body.change]);
-  if (body.type === 'prompt.submitted') return `prompt:${body.text.slice(0, 500)}`;
-  if (body.type === 'model.completed') return `reply:${body.text.slice(0, 500)}`;
+  if (body.type === 'prompt.submitted') return JSON.stringify([event.agentId ?? 'primary', 'prompt', body.text.slice(0, 500)]);
+  if (body.type === 'model.completed') return JSON.stringify([event.agentId ?? 'primary', 'reply', body.text.slice(0, 500)]);
   return undefined;
 }
+/** The actor affected by an event can differ from its reporter. */
+const activityActor = (event: ExtaliaEvent) => event.body.type === 'subagent.state' || event.body.type === 'subagent.spawned'
+  ? event.body.subagentId : event.agentId ?? 'primary';
+const terminalReport = (event: ExtaliaEvent) => event.body.type === 'session.ended' || event.body.type === 'turn.completed' || event.body.type === 'turn.failed'
+  || event.body.type === 'agent.stopped' || event.body.type === 'agent.error'
+  || ((event.body.type === 'agent.state' || event.body.type === 'subagent.state') && event.body.state === 'offline');
+const resumesWork = (event: ExtaliaEvent) => event.body.type === 'prompt.submitted' || event.body.type === 'tool.started'
+  || ((event.body.type === 'agent.state' || event.body.type === 'subagent.state') && ['thinking', 'working', 'delegating'].includes(event.body.state));
+
+/** Hooks win ties and older reports; a missed hook must not disable the transcript forever. */
+function transcriptFallback(fresh: readonly ExtaliaEvent[], history: readonly ExtaliaEvent[], hook: HookLive): ExtaliaEvent[] {
+  const watermarks = new Map<string, string>();
+  const terminal = new Map<string, string>();
+  let ended: string | undefined;
+  for (const event of hook.events) {
+    if (isMeeting(event.body)) continue;
+    const actor = activityActor(event);
+    watermarks.set(actor, event.at);
+    if (event.body.type === 'session.ended') ended = event.at;
+    if (event.body.type === 'session.started') { ended = undefined; terminal.delete(actor); }
+    if (terminalReport(event)) terminal.set(actor, event.at);
+    else if (resumesWork(event)) { terminal.delete(actor); if (actor === 'primary') ended = undefined; }
+  }
+  const reported = new Set(hook.events.map(stepKey).filter(Boolean));
+  // A hook can arrive before its matching row is flushed. That row's source time
+  // fences earlier transcript states too, so an old prompt cannot replace its tool state.
+  for (const event of history) {
+    const key = stepKey(event), actor = activityActor(event);
+    if (key && reported.has(key) && event.at > (watermarks.get(actor) ?? hook.since)) watermarks.set(actor, event.at);
+  }
+  const announced = new Set(hook.events.filter(event => event.body.type === 'subagent.spawned').map(event => activityActor(event)));
+  const duplicateStates = new Set<string>();
+  for (let index = 1; index < history.length; index++) {
+    const event = history[index]!, prior = history[index - 1]!;
+    const key = stepKey(event);
+    if (event.body.type === 'tool.started' && key && reported.has(key) && prior.body.type === 'agent.state'
+      && prior.at === event.at && activityActor(prior) === activityActor(event)) duplicateStates.add(prior.id);
+  }
+  return fresh.filter(event => {
+    const actor = activityActor(event), key = stepKey(event);
+    if (event.body.type === 'session.started' || duplicateStates.has(event.id) || (key && reported.has(key))) return false;
+    if (event.body.type === 'subagent.spawned' && announced.has(actor)) return false;
+    if (event.at <= (watermarks.get(actor) ?? hook.since)) return false;
+    if (ended) return false;
+    const stoppedAt = terminal.get(actor);
+    // Trailing replies/tool results cannot revive a turn explicitly stopped by a hook.
+    // A genuinely later prompt is independent evidence of a new turn, including on a later poll.
+    return !stoppedAt || history.some(prior => prior.body.type === 'prompt.submitted' && activityActor(prior) === actor && prior.at > stoppedAt && prior.at <= event.at);
+  });
+}
+
+/** Retain the latest evidence of quiet actors while a busy sibling fills the activity window. */
+function retainedHookEvents(events: readonly ExtaliaEvent[], activeMeeting?: string): ExtaliaEvent[] {
+  const tail = events.slice(-480), kept = new Set(tail);
+  const evidence = new Map<string, ExtaliaEvent>();
+  const states = new Map<string, ExtaliaEvent>();
+  for (const event of events) {
+    const actor = activityActor(event), body = event.body;
+    if (body.type === 'session.started') evidence.set('session', event);
+    if (body.type === 'subagent.spawned') evidence.set(`spawn:${actor}`, event);
+    if (body.type === 'meeting.started' && body.meetingId === activeMeeting) evidence.set('meeting', event);
+    if (body.type === 'agent.state' || body.type === 'subagent.state') states.set(actor, event);
+    if (body.type === 'agent.state' || body.type === 'subagent.state' || resumesWork(event) || terminalReport(event)
+      || body.type === 'tool.completed' || body.type === 'model.completed') {
+      evidence.set(`activity:${actor}`, event);
+      // Tool state carries approval/planning details that tool.started alone does not.
+      const state = states.get(actor);
+      if (state?.at === event.at) evidence.set(`state:${actor}`, state);
+      else evidence.delete(`state:${actor}`);
+    }
+    if (terminalReport(event)) evidence.set(`terminal:${actor}:${body.type}`, event);
+  }
+  const important = new Set([...evidence.values()]);
+  const lasting = events.filter(event => !kept.has(event) && important.has(event)).slice(-200);
+  return [...lasting, ...tail];
+}
+
 /** The lead's newest model: a report replaces the stored one only when it is at least as new (a tie goes to the later report). */
 function reportModel(record: ObservationRecord, model: string | undefined, at: string | undefined): boolean {
   const time = at ? Date.parse(at) : Number.NaN;
@@ -168,6 +258,8 @@ function decodeSettings(raw: unknown): DiscoverySettings {
 /** Only opt-in transcripts are polled. Native files are never modified or executed. */
 export class Observations {
   private records: ObservationRecord[] = [];
+  /** Source and watch transitions invalidate control handles even after an ABA change. */
+  private controlEpochs = new Map<string, number>();
   private live = new Map<string, Live>();
   private settings = emptySettings();
   private settingsStamp?: number;
@@ -267,6 +359,16 @@ export class Observations {
     if (entries.length > MAX_IGNORED) this.settings.ignored = Object.fromEntries(entries.sort((a, b) => b[1] - a[1]).slice(0, MAX_IGNORED));
   }
   has(id: string) { return this.records.some(record => record.id === id); }
+  /** Host-only authority; neither display summaries nor transcript revisions grant control. */
+  controlTarget(id: string): { sourceId: string; nativeSessionId: string; fingerprint: string; revision: number; watching: boolean } | undefined {
+    const record = this.records.find(item => item.id === id);
+    if (!record) return undefined;
+    return { sourceId: record.reference.sourceId, nativeSessionId: record.reference.nativeSessionId,
+      fingerprint: digest([record.reference, record.projectPath]), revision: this.controlEpochs.get(id) ?? 0, watching: record.watching };
+  }
+  private invalidateControl(record: ObservationRecord) {
+    this.controlEpochs.set(record.id, (this.controlEpochs.get(record.id) ?? 0) + 1);
+  }
   /** Authoritative source association for an explicitly paired cooperative tool. */
   replyTarget(id: string): { app: string; nativeSessionId: string; watching: boolean } | undefined {
     const record = this.records.find(item => item.id === id);
@@ -341,7 +443,15 @@ export class Observations {
     return this.serialize(async () => {
       if (options.labelsOnly !== undefined) {
         if (typeof options.labelsOnly !== 'boolean') throw new Error('Invalid labelsOnly option.');
-        if (options.labelsOnly) this.settings.labelsOnly = true;
+        if (options.labelsOnly) {
+          this.settings.labelsOnly = true;
+          for (const live of this.live.values()) if (live.hook) {
+            live.hook.events = live.hook.events.flatMap(event => {
+              const body = privateMeeting(event.body);
+              return body ? [{ ...event, body }] : [];
+            });
+          }
+        }
         else delete this.settings.labelsOnly;
       }
       if (options.hermesDashboardUrl !== undefined) {
@@ -425,9 +535,18 @@ export class Observations {
     if (!hook?.events.length) return history;
     // Hooks are the live channel; the transcript supplies history steps that hooks never reported (e.g. final assistant reply, earlier history).
     const reported = new Set(hook.events.map(stepKey).filter(Boolean));
-    const unhooked = history.filter(event => !reported.has(stepKey(event)));
+    const fallback = new Set(transcriptFallback(history, history, hook));
+    // Earlier history remains readable; activity at/after hook authority must obey the
+    // same rules as the live stream, including terminal reports and missed-hook recovery.
+    const unhooked = history.filter(event => !reported.has(stepKey(event)) && (event.at < hook.since || fallback.has(event)));
     const started = unhooked.some(event => event.body.type === 'session.started');
-    const filteredHooks = hook.events.filter(event => !(started && event.body.type === 'session.started'));
+    let hookEnded = false;
+    const filteredHooks = hook.events.filter(event => {
+      if (event.body.type === 'session.ended') hookEnded = true;
+      // The transcript replaces the initial introduction only. A hook start after
+      // an end is a real resume and must reset the hydrated session's lifecycle.
+      return event.body.type !== 'session.started' || !started || hookEnded;
+    });
     return [...unhooked, ...filteredHooks].sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0));
   }
   private history(record: ObservationRecord, live: Live | undefined): ExtaliaEvent[] {
@@ -467,7 +586,9 @@ export class Observations {
     if (revision !== current.revision) {
       await writeJsonAtomic(this.file(record.id), snapshot, { mode: 0o600 });
       record.lastActiveAt = snapshot.lastMessageAt;
-      record.projectPath = snapshot.workspace?.projectLocation;
+      const projectPath = snapshot.workspace?.projectLocation;
+      if (record.projectPath !== projectPath) this.invalidateControl(record);
+      record.projectPath = projectPath;
     }
     // Until the user renames it, the title follows the source (a custom title set later, the first typed prompt).
     // Older records follow only when their title is injected context or a hook placeholder.
@@ -487,14 +608,15 @@ export class Observations {
     const fresh = introduce ? [events[0]!, ...latestTurn(events).filter(event => event !== events[0])]
       : current.eventIds ? events.filter(event => !current.eventIds!.has(event.id)) : [];
     const latest = this.live.get(record.id)?.hook ?? current.hook;
-    // While hooks report this session live, transcript events would repeat the same steps; only history is kept.
+    // Deduplicate hook reports, but publish newer transcript evidence when a later hook was missed.
+    const publishable = latest ? transcriptFallback(fresh, events, latest) : fresh;
     const transcriptAt = events.at(-1)?.at;
     const lastEventAt = latest && (!transcriptAt || latest.lastAt > transcriptAt) ? latest.lastAt : transcriptAt;
     const changed = identityChanged || revision !== current.revision || current.status !== 'watching' || fresh.length > 0 || lastEventAt !== current.lastEventAt;
     this.live.set(record.id, { snapshot, steps: read.steps, eventIds: new Set(events.map(event => event.id)), ...(lastEventAt ? { lastEventAt } : {}),
       revision, ...(sourceRevision ? { sourceRevision } : {}), status: 'watching', lastCheckedAt, ...(latest ? { hook: latest } : {}) });
     const identities = latest ? this.identities(record, latest, events) : [];
-    if (changed) { await this.save(); if (!latest) this.publish(fresh); this.notify(record); }
+    if (changed) { await this.save(); this.publish(publishable); this.notify(record); }
     if (identities.length && record.watching) this.publish(identities);
   }
   /** Claude Code's anchor of a validated transcript reference (other sources never continue a conversation this way). */
@@ -545,6 +667,7 @@ export class Observations {
   /** The record takes over the native session that continues its conversation; the earlier one stays ignored until it changes. */
   private async adopt(record: ObservationRecord, reference: NativeObservationRef, read: ObservedRead, revision: string) {
     const previous = record.reference;
+    this.invalidateControl(record);
     record.reference = reference;
     this.ignore(sourceKey(previous), Date.now());
     await this.saveSettings();
@@ -725,7 +848,7 @@ export class Observations {
               await rm(this.attachmentFolder(record.id), { recursive: true, force: true });
               continue;
             }
-            record.reference = root; await this.save();
+            this.invalidateControl(record); record.reference = root; await this.save();
           }
         }
         try {
@@ -784,6 +907,7 @@ export class Observations {
     return this.serialize(async () => {
       const record = this.records.find(item => item.id === id);
       if (!record || typeof watching !== 'boolean') throw new Error('Invalid observation.');
+      if (record.watching !== watching) this.invalidateControl(record);
       record.watching = watching;
       const live = this.live.get(id)!;
       this.live.set(id, { ...live, status: watching ? 'watching' : 'paused', error: undefined });
@@ -828,6 +952,21 @@ export class Observations {
         return;
       }
       // No normalized report means no session/activity evidence to register.
+      if (hook.followupPrompts !== undefined) {
+        // Resolve the reported native source without creating/linking observations.
+        const direct = this.source.hookReference(HOOK_SOURCE_IDS[hook.app], hook.sessionId, hook.transcriptPath, hook.profile)
+          ?? { locationId: `hook-${hook.app}`, sourceId: HOOK_SOURCE_IDS[hook.app], nativeSessionId: hook.sessionId, path: '' };
+        const { subagentId, ...reference } = this.source.rootReference(direct);
+        const record = this.records.find(item => sameSession(item.reference, reference));
+        if (!subagentId && reference.nativeSessionId === hook.sessionId && record?.watching && !this.labelsOnly()) {
+          const prompts = hook.followupPrompts;
+          if (Array.isArray(prompts) && prompts.length <= 3 && prompts.every(prompt => typeof prompt === 'string' && prompt.trim() && prompt.length <= 240 && !/[\p{Cc}\p{Zl}\p{Zp}]/u.test(prompt)) && new Set(prompts).size === prompts.length) {
+            const redacted = prompts.map(prompt => redact(prompt.trim()));
+            if (redacted.every(prompt => prompt.length <= 240) && new Set(redacted).size === redacted.length) this.hooks.onFollowups?.(record.id, redacted);
+          }
+        }
+        return;
+      }
       if (hook.steps.length === 0) return;
       const sourceId = HOOK_SOURCE_IDS[hook.app];
       const skipKey = `${sourceId}:${hook.sessionId}`;
@@ -850,6 +989,8 @@ export class Observations {
       let record = this.records.find(item => sameSession(item.reference, reference));
       // A session the hooks have not reported before may continue a known conversation (Claude Code; see `continuation`).
       if (!record && !subagentId) record = await this.linkHook(reference);
+      // Meeting reports alone cannot establish a new session or agent identity.
+      if (!record && hook.steps.every(step => isMeeting(step.body))) return;
       // Sessions in ignored folders are not observed automatically (a session picked by hand still is).
       if (this.ignoredPath(hook.cwd) && (!record || record.auto)) return;
       const titleHint = this.labelsOnly() ? undefined : hook.titleHint;
@@ -869,10 +1010,10 @@ export class Observations {
         this.records.push(record);
         this.live.set(record.id, { revision: 'empty', status: 'watching' });
       } else {
-        if (!record.reference.path && reference.path) record.reference = reference;
+        if (!record.reference.path && reference.path) { this.invalidateControl(record); record.reference = reference; }
         record.hook = { app: hook.app };
         record.lastActiveAt = at;
-        if (hook.cwd) record.projectPath = hook.cwd;
+        if (hook.cwd && record.projectPath !== hook.cwd) { this.invalidateControl(record); record.projectPath = hook.cwd; }
         if (titleHint && !subagentId && record.title.startsWith(`${HOOK_APP_LABELS[hook.app]} · `)) record.title = titleHint;
       }
       if (hook.model && !subagentId) reportModel(record, safeLabel(hook.model, 120), at);
@@ -885,8 +1026,9 @@ export class Observations {
         ? ownSteps
             .filter(step => step.body.type !== 'prompt.submitted' && step.body.type !== 'model.completed')
             .map(step => (step.body.type === 'tool.completed' && 'output' in step.body ? { ...step, body: (({ output: _out, ...rest }) => rest)(step.body) } : step))
+            .flatMap(step => { const body = privateMeeting(step.body); return body ? [{ ...step, body }] : []; })
         : ownSteps;
-      const events = hookProtocolEvents({ app: hook.app, steps: filteredSteps }, {
+      let events = hookProtocolEvents({ app: hook.app, steps: filteredSteps }, {
         sessionId: record.id,
         at,
         id: index => `hook-${record.id}-${++this.hookCounter}-${index}`,
@@ -910,6 +1052,48 @@ export class Observations {
           }));
         }
       }
+      if (live.hook.meeting || events.some(event => isMeeting(event.body))) {
+        // Only non-meeting evidence can identify a participant. A meeting envelope
+        // must never trigger the missed-start announcement recovery below.
+        const known = new Set<string>(['primary', ...(live.hook.subagents ?? [])]);
+        const evidence = [...this.history(record, live), ...live.hook.events, ...events.filter(event => !isMeeting(event.body))];
+        for (const event of evidence) {
+          if (isMeeting(event.body)) continue;
+          if (event.agentId) known.add(event.agentId);
+          if (event.body.type === 'subagent.spawned' || event.body.type === 'subagent.state') known.add(event.body.subagentId);
+        }
+        const meetingIds = (live.hook.meetingIds ??= new Set());
+        const accepted: ExtaliaEvent[] = [];
+        for (const event of events) {
+          const body = event.body;
+          const actor = event.agentId ?? 'primary';
+          if (body.type === 'meeting.started') {
+            const capacity = body.roomId === 'meeting-a' ? 10 : 14;
+            if (live.hook.meeting || meetingIds.has(body.meetingId) || meetingIds.size >= 500 || !known.has(actor) || !body.participants.length || body.participants.length > capacity || new Set(body.participants).size !== body.participants.length || body.participants.some(id => !known.has(id))) continue;
+            meetingIds.add(body.meetingId);
+            live.hook.meeting = { id: body.meetingId, reporter: actor, participants: new Set(body.participants), contributions: new Set() };
+          } else if (body.type === 'meeting.contribution') {
+            const meeting = live.hook.meeting;
+            const key = `${actor}:${body.round}`;
+            if (!meeting || meeting.id !== body.meetingId || !known.has(actor) || !meeting.participants.has(actor) || meeting.contributions.has(key)) continue;
+            meeting.contributions.add(key);
+          } else if (body.type === 'meeting.completed') {
+            const meeting = live.hook.meeting;
+            if (!meeting || meeting.id !== body.meetingId || actor !== meeting.reporter) continue;
+            delete live.hook.meeting;
+          }
+          accepted.push(event);
+          // The lead's termination closes its session's meeting; a child only
+          // closes a meeting it reported itself.
+          const terminalActor = body.type === 'subagent.state' ? body.subagentId : actor;
+          const terminal = body.type === 'session.ended' ? 'cancelled' : body.type === 'turn.failed' || body.type === 'agent.error' ? 'failed' : body.type === 'agent.stopped' || ((body.type === 'agent.state' || body.type === 'subagent.state') && body.state === 'offline') ? 'cancelled' : undefined;
+          if (terminal && live.hook.meeting && (body.type === 'session.ended' || terminalActor === 'primary' || terminalActor === live.hook.meeting.reporter)) {
+            accepted.push(createEvent({ id: `hook-${record.id}-${++this.hookCounter}-meeting-end`, at, sessionId: record.id, agentId: live.hook.meeting.reporter, source: hookSource(hook.app), body: { type: 'meeting.completed', meetingId: live.hook.meeting.id, outcome: terminal } }));
+            delete live.hook.meeting;
+          }
+        }
+        events = accepted;
+      }
       // v0.0.38: every sub-agent is announced once under its lead, before its own events, also when its start hook
       // was missed (a background Claude Code agent started before this host, or a Codex sub-agent thread).
       const announced = (live.hook.subagents ??= new Set());
@@ -927,11 +1111,7 @@ export class Observations {
       }
       live.hook.events.push(...events);
       if (live.hook.events.length > 500) {
-        // The session start and sub-agent announcements (who nests under whom, models) outlive the activity window.
-        const tail = live.hook.events.slice(-480);
-        const kept = new Set(tail);
-        const lasting = live.hook.events.filter(e => !kept.has(e) && (e.body.type === 'session.started' || e.body.type === 'subagent.spawned')).slice(-200);
-        live.hook.events = [...lasting, ...tail];
+        live.hook.events = retainedHookEvents(live.hook.events, live.hook.meeting?.id);
       }
       live.hook.lastAt = at;
       live.lastEventAt = at;

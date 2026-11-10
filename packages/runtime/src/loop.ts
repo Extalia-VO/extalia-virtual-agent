@@ -53,6 +53,10 @@ export interface TurnOptions {
   newId?: () => string;
   /** Internal native-mission lifecycle gate; tracks complete tool pipelines, including preflight waits. */
   localOperations?: LocalToolPipelines;
+  /** Host-owned, durably admitted text for this invocation, consumed only at safe transcript boundaries. */
+  takeSteering?(history: readonly ModelMessage[], boundary: 'step' | 'complete' | 'stop'): Promise<readonly string[]>;
+  /** Host-owned successful-task finalization, awaited before terminal events. Never recursively attached to delegated work. */
+  beforeComplete?(result: Readonly<TurnResult>): Promise<void>;
 }
 
 export type TurnOutcome = 'completed' | 'failed' | 'cancelled' | 'refused' | 'step-limit';
@@ -111,14 +115,24 @@ export async function runTurn(options: TurnOptions): Promise<TurnResult> {
   const specsNow = () => offeredTools().map(tool => ({ name: tool.name, description: tool.description, parameters: tool.parameters }));
   const storedHistory = (): ModelMessage[] => history.map(message => (message.role === 'user' && message.images ? { role: 'user', text: message.text } : message));
 
-  const finish = (outcome: TurnOutcome, error?: string, reason?: 'context'): TurnResult => {
+  const takeSteering = async (boundary: 'step' | 'complete' | 'stop') => {
+    const pending = await options.takeSteering?.(storedHistory(), boundary) ?? [];
+    history.push(...pending.map(text => ({ role: 'user' as const, text })));
+    return pending.length;
+  };
+  const finish = async (outcome: TurnOutcome, error?: string, reason?: 'context'): Promise<TurnResult> => {
+    await takeSteering('stop');
+    const result: TurnResult = { outcome, history: storedHistory(), usage, ...(error ? { error } : {}), ...(context ? { context } : {}), ...(requestPressure ? { requestPressure } : {}), ...(reason ? { reason } : {}) };
+    if (outcome === 'completed') await options.beforeComplete?.(result);
     if (outcome === 'completed') emit({ type: 'turn.completed', ...(Object.keys(usage).length ? { usage } : {}) });
     else emit({ type: 'turn.failed', error: error ?? outcome, ...(reason ? { reason } : {}) });
     emit({ type: 'agent.state', state: 'idle' });
-    return { outcome, history: storedHistory(), usage, ...(error ? { error } : {}), ...(context ? { context } : {}), ...(requestPressure ? { requestPressure } : {}), ...(reason ? { reason } : {}) };
+    return result;
   };
 
   for (let step = 0; step < maxSteps; step++) {
+    if (signal.aborted) return finish('cancelled', 'Stopped by the user.');
+    await takeSteering('step');
     if (signal.aborted) return finish('cancelled', 'Stopped by the user.');
     const specs = specsNow();
     const budget = checkRequestBudget({ system: options.system, messages: history, tools: specs }, options.maxInputTokens);
@@ -160,6 +174,7 @@ export async function runTurn(options: TurnOptions): Promise<TurnResult> {
     if (!result.toolCalls.length) {
       history.push(assistant);
       if (result.stop === 'max_tokens') return finish('failed', 'The answer was cut off because it reached the output limit.');
+      if (await takeSteering('complete')) continue;
       return finish('completed');
     }
     if (result.stop === 'max_tokens') {

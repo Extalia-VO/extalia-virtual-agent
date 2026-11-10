@@ -59,7 +59,7 @@ describe('read-only skill routing host API', () => {
     const registry = new SkillRegistry({ daemon: { connect: async () => client } as DaemonSidecar, dataDirectory: '/unused', profile: 'default',
       workspaceRoot: () => { throw new Error('No project folder.'); }, workspaceKnown: id => id === workspaceId });
     expect(await registry.routingPreview({ ...input(), workspaceId })).toEqual(answer);
-    expect(request).toHaveBeenCalledExactlyOnceWith('skill.routingPreview', { ...input(), workspaceId });
+    expect(request).toHaveBeenCalledExactlyOnceWith('skill.routingPreview', { ...input(), workspaceId }, 90_000);
     await expect(registry.routingPreview({ ...input(), workspaceId: '00000000-0000-4000-8000-000000000001' })).rejects.toThrow('Unknown workspace');
     expect(request).toHaveBeenCalledTimes(1);
   });

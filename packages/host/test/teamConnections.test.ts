@@ -1,3 +1,4 @@
+import { createAgentHost } from '../src/service.js';
 import type { AgentTeam } from '@extalia/core';
 import type { ConnectionInput } from '@extalia/platform';
 import type { ExtaliaEvent } from '@extalia/protocol';
@@ -6,7 +7,8 @@ import type * as Runtime from '@extalia/runtime';
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createAgentHost, type AgentHostRuntime } from '../src/service.js';
+import { type AgentHostRuntime } from '../src/service.js';
+import { mockModelDiscovery } from './modelDiscoveryFixture.js';
 import { useTempDirs } from './helpers.js';
 import * as secretModule from '../src/secrets.js';
 
@@ -49,6 +51,10 @@ async function setup(script: (request: Request, signal?: AbortSignal | null) => 
       const request = { url, headers: new Headers(init?.headers), body: JSON.parse(String(init?.body)) as Body };
       requests.push(request); return script(request, init?.signal);
     },
+    modelDiscovery: mockModelDiscovery(async (url, init) => {
+      if (/\/models$/.test(url)) return Response.json({ data: [{ id: 'worker-shared' }, { id: 'worker-backup' }, { id: 'bad model' }, { id: 'worker-shared' }] });
+      return script({ url, headers: new Headers(init?.headers), body: JSON.parse(String(init?.body)) as Body }, init?.signal);
+    }),
   });
   runtimes.push(runtime);
   const events: ExtaliaEvent[] = []; runtime.host.subscribe(event => { events.push(event); });

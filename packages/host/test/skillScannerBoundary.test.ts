@@ -1,9 +1,10 @@
+import { createAgentHost } from '../src/service.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { chmod, lstat, mkdir, readdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { BUILTIN_SKILLS } from '../src/builtinSkills.js';
 import { buildAgentSkillCatalog, createSkillTools, referenceSkill, withBuiltinSkills, type AgentSkillCatalog, type Skill, type SkillReference } from '../src/skills.js';
-import { createAgentHost } from '../src/service.js';
+
 import { DAEMON_BINARY, HAS_DAEMON } from './daemonBackend.js';
 import { findTool, runTool, useTempDirs } from './helpers.js';
 

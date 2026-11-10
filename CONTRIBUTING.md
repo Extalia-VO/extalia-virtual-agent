@@ -25,6 +25,11 @@ Thank you for helping. This guide covers the workflow; the architecture is in
 - **Package boundaries.** Dependencies point one way
   (`protocol ← core ← platform ← apps`). A new package adds its rule to
   `tooling/check-boundaries.mjs`.
+- **Backend placement.** React stays presentation-only. Select Rust, Python or
+  TypeScript backend execution from measured resource/latency tradeoffs and
+  output compatibility under [ADR 0071](docs/adr/0071-rust-openai-completion-and-resource-evidence.md).
+  Retain TypeScript when a migration has no worthwhile measured benefit. The
+  reviewed ownership baseline is an inventory guard, not a language quota.
 - **No personal data.** No absolute home paths, personal names, e-mail
   addresses, credentials, private project names or private endpoints in code,
   tests, fixtures or docs. Use placeholders such as `/Users/<name>` and

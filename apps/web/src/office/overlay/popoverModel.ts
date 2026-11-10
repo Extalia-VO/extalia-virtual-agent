@@ -1,5 +1,6 @@
 import type { Messages } from '../../i18n';
 import type { OfficeAgent } from '../presence';
+import { standbyMode } from './status';
 
 /** The four states a character card shows; detail stays in the session dialog. */
 export type PopoverState = 'working' | 'break' | 'waiting' | 'idle';
@@ -23,8 +24,11 @@ export function popoverState(agent: Pick<OfficeAgent, 'status' | 'pendingApprova
  * and activity kind only. Targets, summaries and commands are never shown here:
  * they can hold paths or terminal text.
  */
-export function popoverSummary(t: Messages, agent: Pick<OfficeAgent, 'status' | 'activity' | 'pendingApprovalId'> & Partial<Pick<OfficeAgent, 'phase' | 'reason' | 'stalled' | 'mission'>>, onBreak = false): string {
+export function popoverSummary(t: Messages, agent: Pick<OfficeAgent, 'status' | 'activity' | 'pendingApprovalId'> & Partial<Pick<OfficeAgent, 'phase' | 'reason' | 'stalled' | 'mission' | 'nativeStandby' | 'running'>>, onBreak = false): string {
   const s = t.characterPopover.summary;
+  const shift = standbyMode(agent);
+  if (shift === 'off-shift') return s.offShift;
+  if (shift === 'on-shift' && !onBreak) return s.standby;
   if (agent.pendingApprovalId) return s.approval;
   // v0.0.47: a mission task whose outcome is unknown is not merely blocked: it needs reconciliation.
   if (agent.mission?.state === 'unknown' && agent.status !== 'offline') return t.officeMissions.unknownSummary;

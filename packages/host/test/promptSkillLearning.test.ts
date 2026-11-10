@@ -1,10 +1,11 @@
+import { createAgentHost } from '../src/service.js';
 import { createHash } from 'node:crypto';
 import { chmod, lstat, mkdir, mkdtemp, readdir, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ExtaliaEvent } from '@extalia/protocol';
-import { createAgentHost } from '../src/service.js';
+
 import { DAEMON_BINARY, HAS_DAEMON } from './daemonBackend.js';
 
 interface RequestBody {
@@ -119,8 +120,17 @@ describe('current-prompt skill learning authority through the Native host', () =
     expect((await host.skillRegistry()).revisions).toEqual([]);
   });
 
-  for (const mode of ['plan', 'skills-off', 'typescript', 'hermes', 'empty-command'] as const) it.skipIf(!HAS_DAEMON && mode !== 'typescript')(`refuses ${mode} learning before any provider run or import`, async () => {
-    const { host, bodies, events, session } = await fixture({ backend: mode === 'typescript' ? 'typescript' : 'rust', skills: mode === 'skills-off' ? 'off' : 'extalia', ...(mode === 'hermes' ? { runtimeId: 'hermes' } : {}) });
+  it.skipIf(!HAS_DAEMON || process.platform === 'win32')('uses the Rust skill registry independently of TypeScript mission routing', async () => {
+    const { host, runtime, bodies, session } = await fixture({ backend: 'typescript', reply: (_body, index) => index === 0 ? { tool: 'skill_propose', args: proposal } : { text: 'Candidate saved.' } });
+    await host.sendPrompt(session.id, '/learn-skill Draft a review procedure.');
+    await idle(runtime);
+    expect(hasProposalTool(bodies[0]!)).toBe(true);
+    expect((await host.skillRegistry()).revisions).toHaveLength(1);
+    expect((await host.skillRegistry()).revisions[0]).toMatchObject({ state: 'quarantined', active: false });
+  });
+
+  for (const mode of ['plan', 'skills-off', 'hermes', 'empty-command'] as const) it.skipIf(!HAS_DAEMON)(`refuses ${mode} learning before any provider run or import`, async () => {
+    const { host, bodies, events, session } = await fixture({ backend: 'rust', skills: mode === 'skills-off' ? 'off' : 'extalia', ...(mode === 'hermes' ? { runtimeId: 'hermes' } : {}) });
     if (mode === 'plan') await host.setSessionOptions(session.id, { permissionMode: 'plan' });
     await expect(host.sendPrompt(session.id, mode === 'empty-command' ? '/learn-skill' : '/learn-skill Draft a review procedure.')).rejects.toThrow();
     expect(bodies).toEqual([]); expect(events.some(event => event.body.type === 'prompt.submitted')).toBe(false);

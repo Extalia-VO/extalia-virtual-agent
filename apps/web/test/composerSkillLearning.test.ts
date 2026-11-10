@@ -1,7 +1,7 @@
 import type * as React from 'react';
 import { isValidElement, type ReactElement, type ReactNode } from 'react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { AgentHostApi, HostState, SessionSummary } from '@extalia/platform';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { AgentHostApi, HostState, PromptQueueStatus, SessionSummary } from '@extalia/platform';
 import { Composer, type ComposerSend } from '../src/chat/Composer';
 import { sendPromptWithAttachments, uploadAttachments } from '../src/chat/attachments';
 import { createMockPlatform } from '../src/host/mockHost';
@@ -32,6 +32,7 @@ vi.mock('react', async original => {
       return hooks.memo.get(id)!.value;
     },
     useRef: (initial: unknown) => { const id = hooks.index++; return hooks.state[id] ??= { current: initial }; },
+    useSyncExternalStore: (_subscribe: unknown, getSnapshot: () => unknown) => getSnapshot(),
     useEffect: effect, useLayoutEffect: effect, useId: () => 'test-composer',
   };
 });
@@ -63,6 +64,82 @@ function harness(language: 'en' | 'id' = 'en') {
 }
 
 beforeEach(() => { hooks.index = 0; hooks.dirty = false; hooks.state = []; hooks.memo.clear(); hooks.effects.clear(); hooks.pending = []; });
+afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); });
+
+describe('session-bound prompt recovery', () => {
+  it('restores separate text across session navigation, hook state updates and composer remount', () => {
+    const h = harness();
+    const one = { id: 'session-one', workspaceId: 'workspace', control: 'managed' } as SessionSummary;
+    const two = { ...one, id: 'session-two' };
+    h.props.session = one; h.type('First unsent prompt');
+    h.props.session = two;
+    expect(elements(h.render()).find(node => node.type === 'textarea')!.props.value).toBe('');
+    h.type('Second unsent prompt');
+    h.props.session = { ...one, running: true, title: 'Updated by a live event' };
+    expect(elements(h.render()).find(node => node.type === 'textarea')!.props.value).toBe('First unsent prompt');
+    // Closing removes all local React state, while the same host/session survives.
+    hooks.state = []; hooks.memo.clear(); hooks.effects.clear(); hooks.pending = [];
+    expect(elements(h.render()).find(node => node.type === 'textarea')!.props.value).toBe('First unsent prompt');
+    h.props.session = two;
+    expect(elements(h.render()).find(node => node.type === 'textarea')!.props.value).toBe('Second unsent prompt');
+  });
+  it('allows another session to send while the original receipt is pending, without clearing its new text', async () => {
+    const h = harness(); let finish!: (ok: boolean) => void;
+    h.props.session = { id: 'session-one', workspaceId: 'workspace', control: 'managed' } as SessionSummary;
+    h.props.onSend = vi.fn().mockImplementationOnce(() => new Promise<boolean>(resolve => { finish = resolve; })).mockResolvedValueOnce(true);
+    h.type('First send'); h.submit();
+    expect(elements(h.render()).find(node => node.type === 'textarea')!.props.value).toBe('First send');
+    h.props.session = { ...h.props.session, id: 'session-two' };
+    h.type('Second send'); h.submit(); await Promise.resolve(); await Promise.resolve();
+    expect(h.props.onSend).toHaveBeenCalledTimes(2);
+    h.props.session = { ...h.props.session, id: 'session-one' }; h.type('New text for first session');
+    finish(true); await Promise.resolve(); await Promise.resolve();
+    expect(elements(h.render()).find(node => node.type === 'textarea')!.props.value).toBe('New text for first session');
+  });
+});
+
+describe('one busy-session composer', () => {
+  function queuedComposer(unknown = false) {
+    vi.useFakeTimers();
+    const h = harness();
+    const status: PromptQueueStatus = { sessionId: 'session', revision: 'r1', supported: true, paused: true, maxTextLength: 100_000, items: [] };
+    const changeQueue = vi.fn(async () => ({ ...status, revision: 'r2', paused: false,
+      items: [{ id: 'queued', text: 'Follow up', state: unknown ? 'unknown' as const : 'pending' as const, createdAt: '2030-01-01T00:00:00Z' }] }));
+    h.props.agents = { ...h.props.agents, promptQueueStatus: vi.fn(async () => status), changePromptQueue: changeQueue };
+    h.props.session = { id: 'session', control: 'managed' } as SessionSummary;
+    h.props.running = true; h.props.waiting = true;
+    h.render();
+    return { ...h, changeQueue };
+  }
+  it('queues from the main input during work and approvals without starting another turn', async () => {
+    const h = queuedComposer(); await vi.advanceTimersByTimeAsync(0);
+    h.type('Follow up');
+    expect(elements(h.render()).filter(node => node.type === 'textarea')).toHaveLength(1);
+    expect(elements(h.render()).find(node => node.type === 'textarea')!.props.disabled).toBe(false);
+    h.submit(); await vi.advanceTimersByTimeAsync(0);
+    expect(h.changeQueue).toHaveBeenCalledExactlyOnceWith('session', { action: 'add', text: 'Follow up', start: true, revision: 'r1' });
+    expect(h.props.onSend).not.toHaveBeenCalled();
+    expect(elements(h.render()).find(node => node.type === 'textarea')!.props.value).toBe('');
+  });
+  it('retains the main draft when queue delivery is uncertain', async () => {
+    const h = queuedComposer(true); await vi.advanceTimersByTimeAsync(0);
+    h.type('Follow up'); h.submit(); await vi.advanceTimersByTimeAsync(0);
+    expect(elements(h.render()).find(node => node.type === 'textarea')!.props.value).toBe('Follow up');
+    expect(h.props.onSend).not.toHaveBeenCalled();
+    h.props.running = false; h.props.waiting = false;
+    h.submit(); await vi.advanceTimersByTimeAsync(0);
+    expect(h.changeQueue).toHaveBeenCalledTimes(1);
+    expect(h.props.onSend).not.toHaveBeenCalled();
+  });
+  it('uses the session working flag while transcript activity is still catching up', async () => {
+    const h = queuedComposer();
+    h.props.running = false; h.props.waiting = false; h.props.session!.running = true;
+    await vi.advanceTimersByTimeAsync(0);
+    h.type('Follow up'); h.submit(); await vi.advanceTimersByTimeAsync(0);
+    expect(h.changeQueue).toHaveBeenCalledTimes(1);
+    expect(h.props.onSend).not.toHaveBeenCalled();
+  });
+});
 
 describe('shared Native skill-learning composer', () => {
   it.each(['en', 'id'] as const)('labels opt-in and scanner/quarantine hint in %s, resets after success', async language => {

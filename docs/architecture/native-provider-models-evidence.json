@@ -1,0 +1,118 @@
+{
+  "schema": "extalia.native-provider-models-evidence.v1",
+  "date": "2026-11-09",
+  "version": "0.4.242",
+  "scope": "Local macOS ARM64 implementation verification with synthetic loopback HTTP servers and isolated temporary profiles. No external provider, real user profile or publication.",
+  "productionOwner": {
+    "executableMode": "extalia-daemon --provider-models",
+    "httpAndCatalogProcessing": "Rust",
+    "httpClient": "reqwest 0.13.5; blocking/rustls; defaults disabled",
+    "profileStoreOpened": false,
+    "legacyOpenAiJavaScriptCatalogHttpRemoved": true,
+    "anthropicDiscoveryMigrated": false,
+    "completionHttpOrTurnLoopMigrated": false
+  },
+  "limits": {
+    "requestBytes": 16384,
+    "replyBytes": 131072,
+    "stderrBytes": 4096,
+    "httpBodyBytes": 2097152,
+    "catalogRows": 10000,
+    "returnedModels": 500,
+    "httpTimeoutMs": 15000,
+    "clientKillWatchdogMs": 16000,
+    "admittedProcessHandles": 4,
+    "waitingQueue": 0,
+    "settlement": "Actual child close; timeout/cancellation only initiate termination. Failed spawn without a child is separately settled."
+  },
+  "focusedVerification": {
+    "rustExecutableIntegrationTestsPassed": 16,
+    "hostActualRustHttpAndPlanningTestsPassed": 10,
+    "hostControlledTransportTestsPassed": 8,
+    "protocolEnvelopeTestsPassed": 5,
+    "runtimeProviderAndBudgetTestsPassed": 95,
+    "legacyHostFixtureSuitesPassed": 9,
+    "legacyHostFixtureTestsPassed": 129,
+    "legacyHostOptionalSkips": 1,
+    "independentArchitectureReview": "No blocking defect found; requested actual planning composition test subsequently passed."
+  },
+  "observedBehaviors": {
+    "bearerAndPresetHeaderParity": true,
+    "strictInputEofAndNoProfileInitialization": true,
+    "malformedAndOversizedCatalogsRefused": true,
+    "trickledBodyUsesTotalDeadline": true,
+    "redirectsRefused": true,
+    "environmentProxiesDisabled": true,
+    "errorsDoNotExposeProviderBodies": true,
+    "replyAloneDoesNotFreeProcessCapacity": true,
+    "cancelledHandleHeldUntilClose": true,
+    "only404405501PermitExistingInferenceFallback": true,
+    "defaultHostPathDoesNotUseInjectedJavaScriptFetch": true,
+    "realDelayedCatalogPlanningCancellationPreservesReceipts": true,
+    "closedHostDoesNotStartDiscoveryOrInference": true
+  },
+  "ownershipAudit": {
+    "beforeOutstandingFiles": 224,
+    "afterOutstandingFiles": 226,
+    "newReviewedDebt": [
+      "packages/host/src/daemon/modelDiscovery.ts",
+      "packages/protocol/src/providerModels.ts"
+    ],
+    "qualification": "Node process transport and shared structural validation remain explicit debt. Counts are not a migration completion percentage; strict mode is expected to fail.",
+    "strictExitCode": 1,
+    "baselineCheckPassed": true
+  },
+  "remainingGates": [
+    "Completion streaming and large-input/backpressure transport",
+    "Anthropic discovery and completion parity",
+    "Rust turn/history/delegation/tool execution",
+    "Full executor membership and writer fencing",
+    "Physical reconciliation, exact approvals and accepted evidence",
+    "Actual packaged platform/TLS/proxy certification"
+  ],
+  "sources": [
+    "crates/extalia-daemon/src/provider_models.rs",
+    "crates/extalia-daemon/tests/provider_models.rs",
+    "packages/host/test/modelDiscoveryHost.test.ts",
+    "packages/host/test/modelDiscovery.test.ts",
+    "packages/protocol/test/providerModels.test.ts",
+    "docs/adr/0070-rust-provider-model-discovery.md"
+  ],
+  "releaseBinaryVerification": {
+    "version": "0.4.242",
+    "scope": "Signed macOS ARM64 release binary; synthetic loopback HTTP; empty child environment and temporary empty working directory.",
+    "binaryBytes": 9960064,
+    "binarySha256": "d81955ae9bd9e78b7554b21323ddc0c71e9409e25cae4ee9f1c05165d2c888c5",
+    "actualHttpGet": true,
+    "bearerAndMemoryHeaderParity": true,
+    "sortedUniqueFilteredModels": true,
+    "noProfileOrDatabaseCreated": true,
+    "positiveChildClose": true,
+    "stderrEmpty": true,
+    "signature": "Ad-hoc preview signature; no notarization or publication",
+    "realExternalProviderCalls": 0
+  },
+  "workspaceGate": {
+    "command": "VITEST_MAX_WORKERS=1 CARGO_BUILD_JOBS=2 pnpm check",
+    "exitCode": 0,
+    "typescriptTestsPassed": 7798,
+    "typescriptTestsSkipped": 26,
+    "typescriptFilesPassed": 542,
+    "typescriptFilesSkipped": 3,
+    "rustTestsPassed": 517,
+    "rustTestsIgnored": 0,
+    "checks": [
+      "lint",
+      "dependency boundaries",
+      "public safety",
+      "generated schemas",
+      "reviewed backend ownership baseline",
+      "typechecks",
+      "Rust formatting",
+      "Clippy with warnings denied",
+      "workspace builds",
+      "version consistency",
+      "character hair assets"
+    ]
+  }
+}

@@ -26,6 +26,7 @@ export const MAX_BUBBLES = 6;
 export type BubbleTone = 'speech' | 'thought' | 'attention' | 'handoff' | 'error';
 
 const TONES: Partial<Record<OfficeActivityKind, BubbleTone>> = {
+  'meeting-started': 'handoff', 'meeting-contribution': 'speech', 'meeting-failed': 'error',
   prompt: 'thought', reply: 'speech', tool: 'thought', approval: 'attention', delegated: 'handoff', failed: 'error',
 };
 
@@ -44,6 +45,9 @@ export function bubbleIcon(activity: OfficeActivity): IconName | undefined {
     case 'reply': return 'chat';
     case 'tool': return KIND_ICON[activity.activity ?? 'tool'];
     case 'approval': return 'shield';
+    case 'meeting-started': return 'users';
+    case 'meeting-contribution': return 'chat';
+    case 'meeting-failed': return 'alert';
     case 'delegated': return 'users';
     case 'failed': return 'alert';
     default: return undefined;

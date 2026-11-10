@@ -15,6 +15,9 @@
 //! vault sync never holds back mission, permission or skill requests; answers are
 //! correlated by request id and may leave out of request order.
 //!
+//! `--provider-models` is an exclusive one-shot mode: bounded EOF-terminated JSON in/out,
+//! no profile initialization, and sanitized failure codes without diagnostics.
+//!
 //! Exit status: 0 when stdin ends on a frame boundary (after the knowledge requests already
 //! received are answered); 1 after a fatal protocol error, a truncated frame or an I/O
 //! failure; 2 for invalid arguments; 3 when the core store cannot be opened or recovered; 4
@@ -33,8 +36,12 @@ use extalia_daemon::missions::{DEFAULT_PROFILE, Missions, is_profile_id};
 use extalia_daemon::session::{Exit, Session, serve};
 use extalia_daemon::skills::Skills;
 
+#[cfg(not(feature = "provider-experiments"))]
 const USAGE: &str = "usage: extalia-daemon [--data-dir <absolute directory>] [--profile <profile id>] \
-     [--vault-root <absolute directory>]";
+     [--vault-root <absolute directory>] | extalia-daemon --provider-models";
+#[cfg(feature = "provider-experiments")]
+const USAGE: &str = "usage: extalia-daemon [--data-dir <absolute directory>] [--profile <profile id>] \
+     [--vault-root <absolute directory>] | extalia-daemon --provider-models | extalia-daemon --provider-complete | extalia-daemon --provider-worker <UUID>";
 
 #[derive(Debug, Default)]
 struct Args {
@@ -138,7 +145,40 @@ fn open(dir: &std::path::Path, profile: String) -> Result<(Missions, Skills), Ex
 }
 
 fn main() -> ExitCode {
-    let Ok(args) = parse_args(std::env::args_os().skip(1)) else {
+    // This mode never enters argument parsing or initializes a profile/store.
+    let arguments: Vec<_> = std::env::args_os().skip(1).collect();
+    #[cfg(feature = "provider-experiments")]
+    if arguments.iter().any(|arg| arg == "--provider-worker") {
+        if arguments.len() != 2 || arguments[0] != "--provider-worker" {
+            return ExitCode::from(2);
+        }
+        let Some(worker) = arguments[1].to_str() else {
+            return ExitCode::from(2);
+        };
+        return ExitCode::from(extalia_daemon::provider_complete::worker::serve(
+            worker.to_owned(),
+        ));
+    }
+    #[cfg(feature = "provider-experiments")]
+    if arguments.iter().any(|arg| arg == "--provider-complete") {
+        if arguments.len() != 1 {
+            return ExitCode::from(2);
+        }
+        return ExitCode::from(extalia_daemon::provider_complete::serve(
+            io::stdin().lock(),
+            io::stdout().lock(),
+        ));
+    }
+    if arguments.iter().any(|arg| arg == "--provider-models") {
+        if arguments.len() != 1 {
+            return ExitCode::from(2);
+        }
+        return ExitCode::from(extalia_daemon::provider_models::serve(
+            io::stdin().lock(),
+            io::stdout().lock(),
+        ));
+    }
+    let Ok(args) = parse_args(arguments.into_iter()) else {
         eprintln!("{USAGE}");
         return ExitCode::from(2);
     };
@@ -150,6 +190,7 @@ fn main() -> ExitCode {
         .transpose();
     let mut session = match opened {
         Ok(Some(((missions, skills), dir))) => Session::with_missions(missions)
+            .with_learning(extalia_daemon::learning::Learning::new(&dir, &profile))
             .with_skills(skills)
             .with_knowledge({
                 let knowledge = Knowledge::new(&dir, &profile);

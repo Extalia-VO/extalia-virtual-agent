@@ -14,6 +14,8 @@ import { createMockWorkspaceInspection, createMockWorkspaceSkills } from './mock
 import { createMockBuiltinSkills, createMockSkillRegistry, type MockSkillMode } from './mockSkillRegistry';
 import { createMockKnowledge } from './mockKnowledge';
 import { createMockKnowledgeSettings } from './mockKnowledgeSettings';
+import { createMockVaultProfiles } from './mockVaultProfiles';
+import { createMockPromptQueues } from './mockPromptQueues';
 import { browserNotifications } from '../approvals/browserNotifications';
 
 const MOCK_WORKSPACE_TEAMS_KEY = 'extalia.mock.workspace-teams';
@@ -32,6 +34,7 @@ const MOCK_HERMES_MODELS = [
  * builds with `?mock` in the URL; production builds never contain it.
  *
  * URL options: `mock=ready` starts after setup with sample sessions,
+ * `standby=1..32` replaces the Native sample turns with one idle configured team,
  * `host=desktop` behaves like the Desktop app (folder picker),
  * `update=available|ready|downloading` shows the update banner, and `hermes`
  * reports Hermes Agent as installed (its sessions still run the mock scenarios;
@@ -48,6 +51,10 @@ const MOCK_HERMES_MODELS = [
  */
 
 export interface MockOptions {
+  /** Explicit, developer-only team meeting fixture; never inferred from prompt text. */
+  meeting?: 'active' | 'completed' | 'cancelled';
+  /** With `mock=ready`: one idle Native team, with no worker or turn events. */
+  standby?: number;
   seed: 'setup' | 'ready';
   host: 'desktop' | 'bridge';
   update?: UpdateStatus['state'];
@@ -100,6 +107,7 @@ export function mockOptionsFromSearch(search: string): MockOptions {
     seed: params.get('mock') === 'ready' ? 'ready' : 'setup',
     host: params.get('host') === 'desktop' ? 'desktop' : 'bridge',
     ...(update && (states as string[]).includes(update) ? { update: update as UpdateStatus['state'] } : {}),
+    ...(/^(?:[1-9]|[12]\d|3[0-2])$/.test(params.get('standby') ?? '') ? { standby: Number(params.get('standby')) } : {}),
     ...(params.has('hermes') ? { hermes: true } : {}),
     ...(/^\d{1,3}$/.test(params.get('hermesChildren') ?? '') ? { hermesChildren: Number(params.get('hermesChildren')) } : {}),
     ...(/^[1-9]\d{0,2}$/.test(params.get('hermesConcurrent') ?? '') ? { hermesConcurrent: Number(params.get('hermesConcurrent')) } : {}),
@@ -107,6 +115,7 @@ export function mockOptionsFromSearch(search: string): MockOptions {
     ...(params.has('migrated') ? { migrated: true } : {}),
     ...(params.has('otp') ? { otp: true } : {}),
     ...(params.has('missions') ? { missions: true } : {}),
+    ...(['active', 'completed', 'cancelled'].includes(params.get('meeting') ?? '') ? { meeting: params.get('meeting') as MockOptions['meeting'] } : {}),
     ...(['legacy', 'offline', 'review'].includes(params.get('skills') ?? '') ? { skills: params.get('skills') as MockSkillMode } : {}),
     ...(['large', 'empty', 'off', 'conflict'].includes(params.get('knowledge') ?? '') ? { knowledge: params.get('knowledge') as 'large' | 'empty' | 'off' | 'conflict' } : {}),
   };
@@ -501,28 +510,62 @@ function createMockAgents(options: MockOptions): AgentHostApi {
       toView({ name: 'Ollama', preset: 'ollama', api: 'openai-chat', baseUrl: 'http://localhost:11434/v1', model: 'qwen3-coder:30b', credential: { kind: 'none' }, features: { memory: 'extalia', skills: 'off' } }, 'connection-local', iso()),
     );
     const app = addWorkspace('demo-app', `${HOME}/demo-app`, 'connection-seed', { fileWrite: 'ask', commands: 'ask' });
+    if (options.meeting) {
+      const discussion = addSession(app, 'Review discussion');
+      const participants = ['primary', 'meeting-reviewer', 'meeting-planner'];
+      for (const [id, role, label] of [['meeting-reviewer', 'Reviewer', 'Review member'], ['meeting-planner', 'Planner', 'Planning member']] as const) {
+        emit(discussion.id, { type: 'subagent.spawned', subagentId: id, role, label, model: 'mock-model' });
+        emit(discussion.id, { type: 'agent.state', state: 'working', activity: 'think' }, now, id);
+      }
+      emit(discussion.id, { type: 'agent.state', state: 'working', activity: 'delegate' });
+      emit(discussion.id, { type: 'meeting.started', meetingId: 'mock-meeting', participants, roomId: 'meeting-a', topic: 'Review the implementation plan' });
+      emit(discussion.id, { type: 'meeting.contribution', meetingId: 'mock-meeting', round: 1, text: 'Review the current source before selecting the implementation.' }, now, 'meeting-reviewer');
+      const finish = (outcome: 'completed' | 'cancelled') => {
+        emit(discussion.id, { type: 'meeting.completed', meetingId: 'mock-meeting', outcome });
+        for (const id of participants) emit(discussion.id, { type: 'agent.state', state: 'idle' }, now, id);
+        discussion.running = false;
+      };
+      discussion.running = options.meeting === 'active';
+      if (options.meeting !== 'active') finish(options.meeting);
+      // This whole module is a development-only host; no real session is controlled.
+      // StrictMode evaluates the host initializer twice and keeps the first value.
+      // Keep that first fixture's controls instead of targeting the discarded host.
+      if (typeof window !== 'undefined' && !Object.hasOwn(window, '__EXTALIA_MOCK_MEETING__')) Object.assign(window, { __EXTALIA_MOCK_MEETING__: {
+        sessionId: discussion.id,
+        complete: () => finish('completed'), cancel: () => finish('cancelled'),
+        nextRound: () => emit(discussion.id, { type: 'meeting.contribution', meetingId: 'mock-meeting', round: 2, text: 'Use the review findings in the next step.' }, now, 'meeting-planner'),
+      } });
+    }
     // Missions in demo-app may also use the local connection (two providers, as `setWorkspaceMissionConnections` allows).
     app.missionConnectionIds = ['connection-local'];
     // ADR 0028: demo-app has an integration test gate; docs-site has none (its Changes panel offers a suggestion).
     app.integrationGate = { command: 'npm test' };
     addWorkspace('docs-site', `${HOME}/docs-site`, 'connection-local', { fileWrite: 'allow', commands: 'ask' });
-    // Replayed instantly with timestamps in the past: one finished session and one waiting for approval.
     const past = (minutesAgo: number) => { let offset = 0; return () => new Date(Date.now() - minutesAgo * 60_000 + (offset += 1_200)); };
-    startTurn(addSession(app), 'Fix the flaky login test.', { clock: past(26 * 60), decide: 'once' });
-    // v0.0.48: the second sample session has used 62% of its 200k window (its lead's context in use).
-    const explained = addSession(app);
-    explained.context = { usedTokens: 124_000, windowTokens: 200_000, estimated: false, compactions: 0, updatedAt: iso() };
-    startTurn(explained, 'Explain the build setup', { clock: past(50) });
-    // The newest sample session leads a small subagent team, so the board shows members under their lead.
-    const lead = addSession(app);
-    const allowedModels = ['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-4-5'];
-    const goal = 'Add a test coverage script and run it.';
-    const souls = ['Curious and thorough; cites every file it reads.', 'Skeptical reviewer; looks for the case nobody tested.', 'Calm analyst; compares options before choosing.'];
-    const planned = planTeamHeuristic({ goal, count: 3, allowedModels }, () => nextId('member'), officeNames());
-    // The first member may edit inside its scope (a write member); the others only read.
-    const members = planned.map((member, index) => ({ ...member, soul: souls[index]!, ...(index === 0 ? { access: 'write' as const, scope: ['package.json', 'src'], forbidden: ['src/generated'] } : { access: 'read' as const }) }));
-    setTeam(lead, { enabled: true, allowedModels, goal, rules: ['Run the tests before reporting.'], members });
-    startTurn(lead, goal, { clock: past(3) });
+    if (options.standby) {
+      const lead = addSession(app, 'Native standby team');
+      const allowedModels = ['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-4-5'];
+      const goal = 'General-purpose workspace team.';
+      const members = planTeamHeuristic({ goal, count: options.standby, allowedModels }, () => nextId('member'), officeNames());
+      setTeam(lead, { enabled: true, allowedModels, goal, rules: [], members });
+    } else {
+      // Replayed instantly with timestamps in the past: one finished session and one waiting for approval.
+      startTurn(addSession(app), 'Fix the flaky login test.', { clock: past(26 * 60), decide: 'once' });
+      // v0.0.48: the second sample session has used 62% of its 200k window (its lead's context in use).
+      const explained = addSession(app);
+      explained.context = { usedTokens: 124_000, windowTokens: 200_000, estimated: false, compactions: 0, updatedAt: iso() };
+      startTurn(explained, 'Explain the build setup', { clock: past(50) });
+      // The newest sample session leads a small subagent team, so the board shows members under their lead.
+      const lead = addSession(app);
+      const allowedModels = ['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-4-5'];
+      const goal = 'Add a test coverage script and run it.';
+      const souls = ['Curious and thorough; cites every file it reads.', 'Skeptical reviewer; looks for the case nobody tested.', 'Calm analyst; compares options before choosing.'];
+      const planned = planTeamHeuristic({ goal, count: 3, allowedModels }, () => nextId('member'), officeNames());
+      // The first member may edit inside its scope (a write member); the others only read.
+      const members = planned.map((member, index) => ({ ...member, soul: souls[index]!, ...(index === 0 ? { access: 'write' as const, scope: ['package.json', 'src'], forbidden: ['src/generated'] } : { access: 'read' as const }) }));
+      setTeam(lead, { enabled: true, allowedModels, goal, rules: ['Run the tests before reporting.'], members });
+      startTurn(lead, goal, { clock: past(3) });
+    }
     if (options.hermes) {
       // v0.0.32: a Hermes Agent workspace (profile `default`, models from a local router stand-in) with one session.
       const lab: Workspace = { id: nextId('workspace'), profileId: state.profile.id, name: 'agent-lab', projectLocation: `${HOME}/agent-lab`, runtimeId: 'hermes', runtimeProfileId: 'default', permissions: { fileWrite: 'ask', commands: 'ask' }, createdAt: iso(), updatedAt: iso() };
@@ -725,6 +768,8 @@ function createMockAgents(options: MockOptions): AgentHostApi {
   }
 
   const latency = () => sleep(140);
+  const mockKnowledgeSettings = createMockKnowledgeSettings(latency);
+  const mockVaultProfiles = createMockVaultProfiles(state, mockKnowledgeSettings, () => runs.size > 0, latency);
   /** v0.0.49 mock: uploaded attachments by id until a prompt takes them. */
   let selectionGuide: ModelSelectionGuide | null = null;
   const mockAttachments = new Map<string, { sessionId: string; info: PromptAttachment }>();
@@ -824,6 +869,27 @@ function createMockAgents(options: MockOptions): AgentHostApi {
   };
 
   return {
+    ...createMockPromptQueues(session, (id, text) => { startTurn(session(id), text); },
+      (id, text) => { emit(id, { type: 'user.intervention', action: 'steer', text }); }),
+    async observedCodexNativeQueueStatus(id) {
+      await latency();
+      const selected = session(id);
+      if (selected.control !== 'observed' || selected.observation?.sourceId !== 'codex' || !selected.observation.watching)
+        return { sessionId: id, state: 'unavailable', items: [] };
+      return { sessionId: id, threadId: selected.observation.nativeSessionId,
+        state: hookLabelsOnly ? 'private' : 'ready', items: [], observedAt: iso() };
+    },
+    async promptSuggestions(id) {
+      await latency();
+      const selected = session(id), observed = selected.control === 'observed';
+      const origin = observed ? 'harness' as const : 'native' as const;
+      if (observed && hookLabelsOnly) return { sessionId: id, state: 'private', prompts: [], origin, canRequest: false };
+      if (selected.running || selected.pendingApprovalId || observed && !selected.observation?.watching)
+        return { sessionId: id, state: 'unavailable', prompts: [], origin, canRequest: false };
+      return { sessionId: id, anchor: `mock-completion:${id}:${selected.lastActiveAt}`, state: 'ready', origin, canRequest: false,
+        prompts: ['Review the remaining edge cases.', 'Summarize the changes for review.', 'Document the updated behavior.'] };
+    },
+    async requestPromptSuggestions(id) { return this.promptSuggestions!(id); },
     async getState() { await latency(); return snapshot(); },
     async getProfile() { await latency(); return structuredClone(profile); },
     async saveProfile(patch) {
@@ -1339,7 +1405,7 @@ function createMockAgents(options: MockOptions): AgentHostApi {
     ...createMockSkillRegistry(options.skills ?? 'registry', latency),
     ...createMockBuiltinSkills(latency),
     ...(options.seed === 'ready' && options.knowledge !== 'off' ? createMockKnowledge(options.knowledge === 'empty' || options.knowledge === 'large' ? options.knowledge : 'sample', latency, Date.now(), { conflict: options.knowledge === 'conflict' }) : {}),
-    ...(options.seed === 'ready' && options.knowledge !== 'off' ? createMockKnowledgeSettings(latency) : {}),
+    ...(options.seed === 'ready' && options.knowledge !== 'off' ? { ...mockKnowledgeSettings, ...mockVaultProfiles } : {}),
     subscribe(listener) {
       listeners.add(listener);
       return () => { listeners.delete(listener); };

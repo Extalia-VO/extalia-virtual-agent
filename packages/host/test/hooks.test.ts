@@ -29,6 +29,8 @@ import {
   normalizeCodexHook,
   normalizeGeminiHook,
   normalizeHermesHook,
+  normalizeHook,
+  hookProtocolEvents,
 } from '../src/hooks/normalize.js';
 import { createAgentHost } from '../src/service.js';
 import { useTempDirs } from './helpers.js';
@@ -491,9 +493,50 @@ describe('HTTP hook ingest (hooks/http.ts & hooks/ingest.ts)', () => {
     await ingest.close();
     expect(await readHookEndpoint(dataDir)).toBeUndefined();
   });
+
+  it.each(['codex', 'claude', 'gemini', 'antigravity', 'hermes'] as const)('admits %s meeting reports only through authenticated ingestion and enforces labels-only', async app => {
+    const dataDirectory = path.join(await temp(), 'data');
+    const received: unknown[] = [];
+    const ingest = await createHookIngest({ dataDirectory, kind: 'desktop', labelsOnly: true, sink: hook => received.push(hook) });
+    const listener = await startTestHookEndpoint((req, res, source) => ingest.handle(req, res, source), ingest);
+    const token = (await readHookToken(dataDirectory))!;
+    const body = JSON.stringify({ session_id: 'meeting-session', hook_event_name: 'report_meeting', tool_input: { phase: 'start', meeting_id: 'meeting-1', participants: ['primary'], room_id: 'meeting-a', topic: 'Private meeting topic' } });
+    try {
+      expect((await listener.request({ app, body, headers: { 'content-type': 'application/json' } })).status).toBe(401);
+      expect(received).toEqual([]);
+      expect((await listener.request({ app, body, headers: { 'content-type': 'application/json', ...(app === 'hermes' ? { 'x-hermes-signature-256': hermesSignature(token, body) } : { authorization: `Bearer ${token}` }) } })).status).toBe(204);
+      expect(received).toMatchObject([{ app, sessionId: 'meeting-session', steps: [{ agentId: 'primary', body: { type: 'meeting.started', meetingId: 'meeting-1', participants: ['primary'], roomId: 'meeting-a' } }] }]);
+      expect(JSON.stringify(received)).not.toContain('Private meeting topic');
+    } finally { await listener.close(); await ingest.close(); }
+  });
 });
 
 describe('normalizers (hooks/normalize.ts)', () => {
+  it.each(['codex', 'claude', 'gemini', 'antigravity', 'hermes'] as const)('maps only explicit meeting reports for %s and removes private content', app => {
+    const start = { phase: 'start', meeting_id: 'meeting-1', participants: ['primary', 'worker-1'], room_id: 'meeting-b', topic: 'api_key=synthetic-meeting-secret' };
+    const normalize = (input: unknown, labelsOnly = false) => normalizeHook(app, { session_id: 'session-1', hook_event_name: 'report_meeting', tool_input: input }, { labelsOnly });
+    expect(normalize(start)?.steps).toMatchObject([{ agentId: 'primary', body: { type: 'meeting.started', meetingId: 'meeting-1', participants: ['primary', 'worker-1'], roomId: 'meeting-b' } }]);
+    expect(normalizeHook(app, { session_id: 'session-1', hook_event_name: 'report_meeting', cwd: '/projects/example', ...start })?.steps).toEqual(normalize(start)?.steps);
+    expect(JSON.stringify(normalize(start))).not.toContain('synthetic-meeting-secret');
+    expect(normalize(start, true)?.steps[0]?.body).toEqual({ type: 'meeting.started', meetingId: 'meeting-1', participants: ['primary', 'worker-1'], roomId: 'meeting-b' });
+    const contribution = { phase: 'contribution', meeting_id: 'meeting-1', agent_id: 'worker-1', round: 2, text: 'A concise proposal.' };
+    const hook = normalize(contribution)!;
+    expect(hook.steps).toEqual([{ agentId: 'worker-1', body: { type: 'meeting.contribution', meetingId: 'meeting-1', round: 2, text: 'A concise proposal.' } }]);
+    expect(hookProtocolEvents(hook, { sessionId: 'observed-1', at: '2026-10-09T00:00:00.000Z', id: i => `event-${i}` })[0]).toMatchObject({ agentId: 'worker-1', source: { runtime: app, channel: 'hook' }, body: { type: 'meeting.contribution' } });
+    expect(normalize(contribution, true)?.steps).toEqual([]);
+    expect(normalize({ phase: 'complete', meeting_id: 'meeting-1', outcome: 'completed', note_path: '/projects/example/private-note.md' }, true)?.steps).toEqual([{ agentId: 'primary', body: { type: 'meeting.completed', meetingId: 'meeting-1', outcome: 'completed' } }]);
+    const prompt = normalizeHook(app, { session_id: 'session-1', hook_event_name: app === 'hermes' ? 'pre_llm_call' : 'UserPromptSubmit', prompt: 'Hold a meeting and save an Obsidian note' });
+    expect(prompt?.steps.some(step => step.body.type.startsWith('meeting.'))).toBe(false);
+    const tool = normalizeHook(app, { session_id: 'session-1', hook_event_name: app === 'hermes' ? 'pre_tool_call' : 'PreToolUse', tool_name: 'write_meeting_note', tool_input: { path: '/projects/example/Obsidian/meeting.md', ...start } });
+    expect(tool?.steps.some(step => step.body.type.startsWith('meeting.'))).toBe(false);
+  });
+
+  it('recognizes the exact namespaced report tool and ignores its post-tool duplicate', () => {
+    const payload = { session_id: 'session-1', tool_name: 'mcp__extalia__report_meeting', tool_input: { phase: 'start', meeting_id: 'meeting-1', participants: ['primary'] } };
+    expect(normalizeCodexHook({ ...payload, hook_event_name: 'PreToolUse' })?.steps[0]?.body.type).toBe('meeting.started');
+    expect(normalizeCodexHook({ ...payload, hook_event_name: 'PostToolUse', tool_response: 'ok' })?.steps).toEqual([]);
+    expect(normalizeCodexHook({ ...payload, tool_name: 'report_meeting_summary', hook_event_name: 'PreToolUse' })?.steps.some(step => step.body.type.startsWith('meeting.'))).toBe(false);
+  });
   it('normalizes SessionStart and UserPromptSubmit/BeforeAgent with title hints', () => {
     // Codex SessionStart
     const start = normalizeCodexHook({

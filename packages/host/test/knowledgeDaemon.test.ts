@@ -71,7 +71,7 @@ describe.skipIf(!HAS_DAEMON)('Knowledge over the Rust core daemon', () => {
     await host.syncKnowledge();
     expect((await host.searchKnowledge('connected')).hits).toHaveLength(1);
     expect((await host.getState()).nativeCore).toBeUndefined();
-    expect((await host.skillRegistry()).mode).toBe('legacy');
+    expect((await host.skillRegistry()).mode).toBe('registry');
   });
 
   it('creates the vault on the first sync, then indexes, searches, links and graphs its notes', async () => {

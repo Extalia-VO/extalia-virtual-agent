@@ -209,7 +209,11 @@ display/temp variables survive. The scripts first assert that none of `cargo`, `
   machine's platform package, installs them with `npm install -g` into a temporary prefix, runs
   `extalia version` and `extalia doctor` (Node by absolute path; the installed launcher with
   Node as the only command on `PATH`), resolves the platform package from the installed CLI
-  and requires its daemon to answer `hello`.
+  and requires its daemon to answer `hello`. Paired scanner packages additionally
+  verify the installed daemon/bundle binding and full payload inventory; their cold
+  handshake budget is 90 seconds, while daemon-only packages retain 15 seconds.
+  npm per-file notices are suppressed so large scanner inventories cannot overflow
+  the smoke runner's bounded log buffer.
 
 Enforcement: CI's `package-smoke` job runs both on Linux for every pull request; the release
 workflow runs the Desktop smoke on macOS, Windows and Linux and the CLI smoke on Linux. A red
@@ -221,3 +225,46 @@ Local check (macOS arm64):
 CSC_IDENTITY_AUTO_DISCOVERY=false pnpm --filter @extalia/desktop dist:dir
 pnpm --filter @extalia/desktop smoke:packaged
 ```
+
+
+## Bundled SkillSpector inspection
+
+The verified scanner target is macOS 14+ ARM64. Its daemon and Python bundle are
+one release pair. Other targets explicitly report scanner execution unavailable;
+they must not substitute system Python or install dependencies on first use.
+
+Build the scanner with the pinned source, runtime and wheel hashes described in
+[the bundle guide](../../tooling/skillspector/README.md), then stage the daemon:
+
+```sh
+node tooling/build-daemon.mjs --target darwin-arm64 \
+  --scanner-bundle /absolute/output/skillspector --require-scanner \
+  --out /absolute/output/daemon-artifacts
+node apps/cli/npm/generate.mjs --binaries /absolute/output/daemon-artifacts \
+  --out /absolute/output/npm --cli --require-scanner-target darwin-arm64
+```
+
+Native scanner files must be signed **before** the final manifest is generated
+and its digest compiled into the Rust daemon. The `scanner-binding.json` staging
+record binds the daemon hash to the complete scanner manifest. Desktop copies the
+bundle to `Contents/Resources/skillspector`, beside `daemon/extalia-daemon`; the
+CLI platform package places `skillspector` beside `bin`. Both assembly paths
+verify the pair. After this explicit staging, invoke electron-builder directly; the
+convenience `dist` scripts rebuild daemons without a scanner argument and refuse to
+replace an already paired artifact. Desktop verifies copied payload hashes/signatures before and
+after app signing and narrowly excludes that scanner directory from re-signing.
+The daemon trusts its compiled manifest digest, never a pairing record alone.
+
+Local ad-hoc bundles support preview installers. A notarized release is refused
+unless scanner native files already have Developer ID signatures with the selected
+identity. Supplying only app-signing credentials does not upgrade an ad-hoc scanner
+bundle. Release CI currently builds this scanner pair on native macOS ARM64; no
+Windows/Linux scanner readiness is implied by the daemon build matrix.
+
+Validate the final packaged pair with a temporary profile: benign import and
+explicit learning must produce complete inspection and await user approval;
+activation before approval must fail. After explicit approval and activation,
+verified reads must work. Malicious, incomplete and modified packages must remain
+unavailable. The scanner uses bundled Python with provider credentials removed,
+LLM analysis disabled and network/process-launch denial. Ordinary repository tests
+cover contracts without downloading runtimes or scanning a real user profile.

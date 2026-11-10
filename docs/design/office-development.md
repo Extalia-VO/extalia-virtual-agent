@@ -16,6 +16,98 @@ protocol/session contracts and asset provenance before copying it. Compare the
 affected room or character visually in Web and Desktop. Imported geometry is
 adapted source code, not an automatically synchronized copy.
 
+## Native standby shifts
+
+Enabled Native teams can keep a small configured crew in the Office while no
+task is running. The current lead retains its actual state and presence; only
+eligible dormant team members become explicitly labelled **Standby** or **Off
+shift** rows. This creates no sessions, protocol work events or model requests.
+Actual work, approvals, failures, stalled/unknown outcomes and mission workers
+retain their original state and take precedence.
+
+The member floor is `min(team size, 5, 1 + ceil(team size / 8))`, excluding the
+lead: teams of 10, 20 and 32 therefore target main + 3, main + 4 and main + 5.
+Existing present members cover that floor before synthetic standby is added.
+Across all shown workspaces there are at most five additional standby leases;
+active work is never hidden to satisfy this presentation limit. Departing
+characters can remain briefly visible during the physical handover.
+
+Each lease uses the existing per-character `subagentLingerMs` duration (7–20
+minutes). Expired leases yield to less recently used eligible members, while
+recent real attendance also counts toward fairness. A late clock tick replaces
+the expired crew once instead of replaying missed shifts. A backwards clock
+does not renew leases. Empty or disabled rosters, removed members and ended
+sessions retire their standby state. The latest current managed conversation
+per workspace is selected before Native eligibility checks, so an ended,
+disabled or switched-to-Hermes conversation cannot revive a historical crew.
+Observe stays independent and receives no synthetic standby.
+
+Only those current enabled Native teams retain idle event history, through the
+existing Office hydrator. Synthetic availability waits for successful history
+and roster hydration, including successfully empty histories. Failed or pending
+reads cannot turn an unknown former worker into healthy standby. Availability
+is gated by the current roster request signature and host/profile identity: old
+display metadata retained during a failed revision refresh never certifies a
+new shift. Unchanged sibling rosters can remain ready during that refresh.
+Fairness is cached across Office navigation in a bounded, weak-host-owned profile/view
+cache; switching profile/data source remounts the Office and cannot reuse its
+previous profile's roster or movement state. Restarting the app clears this
+presentation cache; attendance is not a persisted runtime schedule.
+
+New shift members reuse the two-character admission waves below. Existing SVG
+portraits remain until their bodies are admitted. Repeated rotations reuse
+configured identities and saved looks; they do not invent new teammates. This
+bounds extra standby attendance, not the shared asset cache or whole-app RAM.
+
+The [32-member browser record](../bench/native-standby-qa.json) uses the
+mock-only `?mock=ready&standby=32` fixture, which configures an idle team and
+never starts a worker turn. Across the initial selection and two accelerated
+wall-clock rotations, the lead stayed identical, five members were Standby,
+27 were Off shift, and 15 distinct members took a turn. The minified
+production-React QA run reported no page or console errors. Separate tests
+cover sizes 10/20/32, global limits, protected outcomes, cache isolation,
+hydration readiness, cancellation, roster changes and full-roster fairness.
+After the final roster-readiness guard, a rebuilt snapshot also passed English
+light at 1366 px and Indonesian dark at 390 px with five standby labels, 27
+off-shift rows, no page/console errors and no document horizontal overflow.
+
+## Character admission waves
+
+The movement director admits at most two new characters per 1200 ms wave.
+This is a presentation queue: Native/observed agent execution, team limits,
+session state and the complete board roster do not wait for a character mesh.
+An eight-character burst can therefore appear as 2–2–2–2 when independent
+arrival points are clear. A shared or blocked portal can admit fewer than two.
+
+Already-present characters hydrate in seated pairs instead of a mass walk-in.
+The first pair's cooldown starts at the first render-loop tick, so shader or
+loading stalls before that tick cannot place four characters in the first
+frame. Live arrivals retain their floor portal, a 1200 ms same-portal interval
+and at least 0.9 m of clear space around that point, including facility bodies.
+Blocked heads do not prevent admissions through another clear portal. Delayed
+frames skip missed waves instead of banking admissions for a catch-up burst.
+Reduced motion retains batching and seats arriving characters directly.
+
+Pending characters reserve their current desk and retain agent metadata but
+have no mover, rendered body or live position. Changes to their seat, parent
+and gait are reconciled before admission; cancellation removes the pending
+entry. Portraits inside the Office use the same live-position admission gate:
+the existing SVG illustration remains until the character is admitted, then
+the normal shared 3D portrait can load. Other pages keep their normal portrait
+behavior. Bubbles and quick replies do not anchor to an empty pending desk.
+The last frame's admitted bodies remain fully rendered; this changes initial
+construction timing, not the eventual model count or GLB size. No whole-app
+memory or FPS improvement is implied without separate measurements.
+
+The [browser QA record](../bench/office-arrival-waves.json) captures a mixed
+Native/observed mock roster at 2, 4, 6, 8, 10, 12 and 13 characters, without an
+observed increment above two. A minified production-React QA build shows the
+same portrait-admission sequence without page or console errors. RAF snapshot
+timestamps can lag admission during shader/loading stalls; deterministic tests
+cover the actual cooldown, 8/32-character waves, blocked portals, cancellation,
+queued reseating and delayed first frames. The portrait test proves that 32
+queued identities do not request the 3D module and only admitted identities load.
+
 ## Drawing-buffer continuity
 
 The Office keeps adaptive resolution enabled. R3F synchronously resets the
@@ -201,11 +293,27 @@ device) overrides the interior only. Auto switches the lights on after dusk
 (`interiorLightFactor` 0.3); Off leaves only exit signs, screens and the site
 lighting outside. Lit windows follow the interior lights.
 
-An adaptive render budget (`office/scene/environment/renderBudget.ts`) keeps the
-scene above 40 fps: after two slow two-second windows it lowers the pixel ratio,
-then the shadow refresh rate, and finally the live fixture beams and shadow map
-size; it steps back up after sustained headroom. Baked light pools are never
-reduced. Development builds expose `__EXTALIA_SOLAR_PREVIEW__(minutes | null)`,
+An adaptive render budget (`office/scene/environment/renderBudget.ts`) targets
+40 fps. Each application load begins at a 480-pixel physical short edge, then
+can recover through 720, 1080, 1440 and 2160 pixels. These are video-style
+resolution ceilings, not fixed 16:9 canvases: the Office keeps its actual aspect
+ratio. DPR never exceeds the display's native ratio or 2, and total pixels stay
+within 3840 × 2160 even on ultrawide displays. Resizing the Office recalculates
+the budget from its CSS dimensions; DOM text and controls remain native-sharp.
+
+After a three-second sampling warm-up, one-second windows below 40 fps lower
+quality immediately; two consecutive windows below 45 fps also lower it.
+Twelve windows at 57 fps or better allow one recovery step, with an extra
+settling interval after each change. A tier that failed twice is not retried
+in that controller lifetime. Hidden-tab time is excluded. Remounting the scene
+within the application keeps the settled tier. The first two tiers (480/720)
+share cheap lighting, shadows and traffic; higher tiers restore detail. Baked
+light pools are never reduced. This responds to foreground render throughput,
+not network speed, and cannot guarantee 40 fps when geometry or CPU work is the
+bottleneck. GLB downloads, decoded geometry and avatar portrait canvases are not
+reduced by this change. See [the resource guide](../bench/office-adaptive.md).
+
+Development builds expose `__EXTALIA_SOLAR_PREVIEW__(minutes | null)`,
 `__EXTALIA_ENV_STATE__()`, `__EXTALIA_RENDER_BUDGET__` and
 `__EXTALIA_SET_RENDER_BUDGET__(level | null)` for visual QA.
 

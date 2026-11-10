@@ -13,13 +13,16 @@ serde_json.workspace = true
 tokio.workspace = true
 sha2.workspace = true
 serde.workspace = true
+reqwest.workspace = true
 
 [target.'cfg(unix)'.dependencies]
 rustix.workspace = true
 
 [features]
 # Explicitly enabled by the Rust test gate, never by release packaging.
-test-fixtures = []
+test-fixtures = ["provider-experiments"]
+# Explicit development/measurement builds only; official releases omit completion candidates.
+provider-experiments = ["serde_json/raw_value"]
 
 [[bin]]
 name = "extalia-daemon"

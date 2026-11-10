@@ -31,8 +31,11 @@ export const EMPTY_START_MS = 5000;
 export const DEPARTURE_GRACE_MS = 1500;
 /** Arrivals through the same entrance or arrival point come in one after another instead of in one heap. */
 export const ENTRY_SPACING_MS = 1200;
-/** At most about three characters are admitted per second anywhere in the office (staggered spawn queue). */
-export const ADMISSION_SPACING_MS = 340;
+/** New renderers are mounted in small waves, including startup and reduced motion. */
+export const ADMISSION_BATCH_SIZE = 2;
+export const ADMISSION_WAVE_MS = 1200;
+/** A slow or stationary character must clear the portal before another appears. */
+export const ENTRY_CLEARANCE_METERS = 0.9;
 
 /** Arrival and exit points of a floor: both elevator landings and both stair heads, plus the building entrance on F1. */
 export function floorPortals(navigation: Pick<OfficeNavigation, 'waypoints' | 'entryId'>, floor: OfficeFloor): string[] {
@@ -64,6 +67,8 @@ const CHAT_SETTLE_MS = 20_000;
 export interface LeisureVisit {
   readonly spot: LeisureSpotDefinition;
   readonly startedAt: number;
+  /** Simulated travel time, excluding owned interactions and expected waits. */
+  travelMs: number;
   /** Seated / standing at the place since; null while walking there. */
   arrivedAt: number | null;
   readonly lengthMs: number;
@@ -84,6 +89,8 @@ interface CharacterLife {
 const CHAT_PLACES = CHAT_SPOT_PAIRS.map(pair => ({ id: pair.id, floor: pair.floor, spots: chatSpotIds(pair) }));
 const SPOT_BY_ID = new Map(LEISURE_SPOTS.map(spot => [spot.id, spot]));
 const FURNITURE_SPOTS = LEISURE_SPOTS.filter(spot => spot.kind !== 'chat');
+/** Only authored Library seating can host skill work; shelving is never a seat. */
+const SKILL_STATION_IDS = ['library.laptop', ...LEISURE_SPOTS.filter(spot => /^library\.sofa-\d+$/.test(spot.id)).map(spot => spot.id)];
 
 export interface DirectorInput {
   readonly allocations: readonly OfficeAgentAllocation[];
@@ -107,14 +114,20 @@ export class MovementDirector implements CharacterPositionSource {
   readonly list: Mover[] = [];
   private readonly agents = new Map<string, OfficeAgent>();
   private readonly seatOf = new Map<string, SeatApproach>();
+  /** Original desks remain reserved while their owners visit a work station or meeting. */
+  private readonly workstationOf = new Map<string, string>();
+  /** Reserve a work destination through the stand-up grace period, before a mover owns its goal. */
+  private readonly skillStations = new Map<string, string>();
   private readonly removalSince = new Map<string, number>();
   private readonly reseatSince = new Map<string, number>();
   private readonly listeners = new Set<() => void>();
   private readonly seatedFlags = new Map<string, boolean>();
   /** Arrivals waiting for their turn at their arrival point (spawn queue). */
-  private readonly entering = new Map<string, { at: number; gait: GaitParameters; node: string }>();
-  /** Last admission time anywhere, and per arrival point. */
-  private lastAdmission = -Infinity;
+  private readonly entering = new Map<string, { gait: GaitParameters; node: string; seated: boolean; seatId: string; parentId: string | undefined }>();
+  /** Cooldowns start at actual admission time, never at a queued deadline. */
+  private nextAdmissionWaveAt = -Infinity;
+  private hasTicked = false;
+  private initialFramePending = false;
   private readonly lastEntryAt = new Map<string, number>();
   /** Trips walked per character: seeds the per-trip pace variation. */
   private readonly trips = new Map<string, number>();
@@ -185,29 +198,41 @@ export class MovementDirector implements CharacterPositionSource {
   private isSkillTask(agent: OfficeAgent): boolean {
     if (agent.activity === 'knowledge') return true;
     if (agent.toolName && /skill|curat/i.test(agent.toolName)) return true;
-    if (agent.summary && /skill|curat/i.test(agent.summary)) return true;
     return false;
   }
 
   private skillStation(id: string): SeatApproach | undefined {
     const agent = this.agents.get(id);
-    if (!agent || !this.isSkillTask(agent)) return undefined;
-    const desk = this.seatOf.get(id);
-    if (desk?.seatId === 'library.laptop') return undefined;
-    const librarySeat = this.env.navigation.seats.get('library.laptop');
-    if (!librarySeat) return undefined;
-    for (const [otherId, otherMover] of this.movers) {
+    if (!agent || agent.meeting || !this.isSkillTask(agent)) { this.skillStations.delete(id); return undefined; }
+    const occupied = new Set<string>();
+    for (const [otherId, seatId] of this.workstationOf) if (otherId !== id) occupied.add(seatId);
+    for (const [otherId, seatId] of this.skillStations) if (otherId !== id) occupied.add(seatId);
+    for (const [seatId, otherId] of this.reserved) if (otherId !== id) occupied.add(seatId);
+    for (const [otherId, mover] of this.movers) {
       if (otherId === id) continue;
-      const otherTarget = otherMover.pending ?? otherMover.goal;
-      if (otherMover.seat?.seatId === 'library.laptop' || (otherTarget?.kind === 'seat' && otherTarget.seat.seatId === 'library.laptop')) {
-        return this.env.navigation.seats.get('library.sofa-1') ?? undefined;
-      }
+      if (mover.seat) occupied.add(mover.seat.seatId);
+      if (mover.pending?.kind === 'seat') occupied.add(mover.pending.seat.seatId);
+      if (mover.goal?.kind === 'seat') occupied.add(mover.goal.seat.seatId);
     }
-    return librarySeat;
+    // Keep an existing work place rather than repeatedly changing chairs as colleagues leave.
+    const mover = this.movers.get(id);
+    const retained = this.skillStations.get(id)
+      ?? (mover?.pending?.kind === 'seat' ? mover.pending.seat.seatId : undefined)
+      ?? (mover?.goal?.kind === 'seat' ? mover.goal.seat.seatId : undefined);
+    const choices = retained && SKILL_STATION_IDS.includes(retained) ? [retained, ...SKILL_STATION_IDS] : SKILL_STATION_IDS;
+    for (const seatId of choices) {
+      const seat = this.env.navigation.seats.get(seatId);
+      if (!seat || occupied.has(seatId)) continue;
+      this.skillStations.set(id, seatId);
+      return seat;
+    }
+    this.skillStations.delete(id);
+    return undefined;
   }
 
   /** Where a character is headed: active skill station, a leisure place it visits, else its desk. */
   private destinationOf(id: string): SeatApproach | undefined {
+    if (this.agents.get(id)?.meeting) { this.skillStations.delete(id); return this.seatOf.get(id); }
     const skill = this.skillStation(id);
     if (skill) return skill;
     const visit = this.lives.get(id)?.visit;
@@ -236,7 +261,7 @@ export class MovementDirector implements CharacterPositionSource {
   }
 
   /**
-   * A new presence: seated at once while settling or with reduced motion;
+   * An admitted presence: seated while settling or with reduced motion;
    * otherwise it appears at its arrival point (fading in) and walks to its seat.
    */
   private arrive(agent: OfficeAgent, gait: GaitParameters, seat: SeatApproach, node: string | null): Mover {
@@ -280,6 +305,8 @@ export class MovementDirector implements CharacterPositionSource {
     this.list.splice(this.list.indexOf(mover), 1);
     this.agents.delete(id);
     this.seatOf.delete(id);
+    this.workstationOf.delete(id);
+    this.skillStations.delete(id);
     this.removalSince.delete(id);
     this.reseatSince.delete(id);
     this.seatedFlags.delete(id);
@@ -297,33 +324,37 @@ export class MovementDirector implements CharacterPositionSource {
     const animate = !input.reducedMotion && this.settleUntil !== null && now >= this.settleUntil;
     const byId = new Map(input.agents.map(agent => [agent.id, agent]));
     const wanted = new Set<string>();
+    // Register all original desk claims before selecting any temporary work destination.
+    for (const allocation of input.allocations) if (byId.has(allocation.agentId) && this.seatFor(allocation))
+      this.workstationOf.set(allocation.agentId, allocation.workstationId ?? allocation.resourceId);
     let changed = false;
     for (const allocation of input.allocations) {
       const seat = this.seatFor(allocation);
       const agent = byId.get(allocation.agentId);
       if (!seat || !agent) continue;
       wanted.add(agent.id);
+      // Presence objects are stable until their metadata changes. Invalidate the
+      // roster snapshot even when a round/status update keeps the same mover and seat.
+      if (this.agents.get(agent.id) !== agent) changed = true;
       this.agents.set(agent.id, agent);
       this.seatOf.set(agent.id, seat);
-      let mover = this.movers.get(agent.id);
+      const mover = this.movers.get(agent.id);
       // A leisure visit keeps its place; the desk is the destination otherwise.
       const destination = (mover && this.destinationOf(agent.id)) ?? seat;
       const goal: MoverGoal = { kind: 'seat', seat: destination };
       if (!mover) {
         const queued = this.entering.get(agent.id);
-        if (queued) { queued.gait = input.gaitOf(agent.id); if (input.reducedMotion) { this.spawn(agent.id, false); changed = true; } continue; }
-        if (animate) {
-          // Spawn queue: spaced from the previous arrival at the same point and from any admission.
-          const node = this.arrivalNode(agent, seat);
-          const at = Math.max(now, this.lastAdmission + ADMISSION_SPACING_MS, (this.lastEntryAt.get(node) ?? -Infinity) + ENTRY_SPACING_MS);
-          this.lastAdmission = at;
-          this.lastEntryAt.set(node, at);
-          this.entering.set(agent.id, { at, gait: input.gaitOf(agent.id), node });
-          continue;
-        }
-        mover = this.arrive(agent, input.gaitOf(agent.id), seat, null);
-        this.add(mover);
-        changed = true;
+        if (queued) {
+          queued.gait = input.gaitOf(agent.id);
+          if (queued.seatId !== seat.seatId || queued.parentId !== agent.parentId) {
+            queued.node = this.arrivalNode(agent, seat);
+            queued.seatId = seat.seatId;
+            queued.parentId = agent.parentId;
+          }
+          // Initial hydration stays seated even when the queue outlives SETTLE_MS.
+          if (input.reducedMotion) queued.seated = true;
+        } else this.entering.set(agent.id, { gait: input.gaitOf(agent.id), node: this.arrivalNode(agent, seat), seated: !animate,
+          seatId: seat.seatId, parentId: agent.parentId });
         continue;
       }
       mover.gait = input.gaitOf(agent.id);
@@ -344,32 +375,68 @@ export class MovementDirector implements CharacterPositionSource {
         else { this.send(mover, goal, isBusy(agent) ? 'hurry' : 'walk'); this.reseatSince.delete(agent.id); }
       } else this.reseatSince.delete(agent.id);
     }
-    for (const id of [...this.entering.keys()]) if (!wanted.has(id)) { this.entering.delete(id); this.agents.delete(id); this.seatOf.delete(id); }
+    for (const id of [...this.entering.keys()]) if (!wanted.has(id)) { this.entering.delete(id); this.agents.delete(id); this.seatOf.delete(id); this.workstationOf.delete(id); this.skillStations.delete(id); }
     for (const mover of [...this.list]) {
       if (wanted.has(mover.id)) continue;
       this.endVisit(mover.id);
+      this.skillStations.delete(mover.id);
       if (input.reducedMotion) { this.remove(mover.id); changed = true; }
       else if (!this.removalSince.has(mover.id) && mover.goal?.kind !== 'leave') this.removalSince.set(mover.id, now);
     }
+    // Initial/reduced-motion characters can appear immediately, within the same wave budget as ticks.
+    if (!animate && this.admitArrivals(now)) changed = true;
     if (changed) this.bump();
   }
 
-  /** Bring a queued arrival in (walking from its arrival point, or seated when `animate` is off). */
-  private spawn(id: string, animate: boolean): boolean {
+  /** Bring a queued arrival in using its retained arrival mode and latest metadata. */
+  private spawn(id: string): boolean {
     const queued = this.entering.get(id), agent = this.agents.get(id), seat = this.seatOf.get(id);
     this.entering.delete(id);
     if (!queued || !agent || !seat) return false;
-    this.add(this.arrive(agent, queued.gait, seat, animate ? queued.node : null));
+    this.add(this.arrive(agent, queued.gait, seat, !queued.seated && !this.reducedMotion ? queued.node : null));
     return true;
+  }
+
+  private entranceClear(id: string, node: string): boolean {
+    const position = this.env.navigation.waypoints.get(node)?.position;
+    if (!position) return true;
+    const overlaps = (other: Readonly<Point3>) => Math.abs(other[1] - position[1]) < 0.9
+      && Math.hypot(other[0] - position[0], other[2] - position[2]) < ENTRY_CLEARANCE_METERS;
+    for (const mover of this.list) if (mover.id !== id && mover.phase !== 'gone' && overlaps(mover.position)) return false;
+    // Facility characters share the same entrance even though this director does not own them.
+    return !this.env.nearbyWalkers?.(id, position).some(other => other.id !== id && overlaps(other.position));
+  }
+
+  private admitArrivals(now: number): boolean {
+    if (!this.entering.size || this.initialFramePending || now < this.nextAdmissionWaveAt) return false;
+    let admitted = 0;
+    for (const [id, queued] of this.entering) {
+      const walking = !queued.seated && !this.reducedMotion;
+      if (walking && (now < (this.lastEntryAt.get(queued.node) ?? -Infinity) + ENTRY_SPACING_MS
+        || !this.entranceClear(id, queued.node))) continue;
+      if (!this.spawn(id)) continue;
+      if (walking) this.lastEntryAt.set(queued.node, now);
+      if (++admitted === ADMISSION_BATCH_SIZE) break;
+    }
+    // Skip blocked heads, but never bank unused slots or catch up after a long frame.
+    if (admitted) {
+      this.nextAdmissionWaveAt = now + ADMISSION_WAVE_MS;
+      if (!this.hasTicked) this.initialFramePending = true;
+    }
+    return admitted > 0;
   }
 
   /** Advance every character; called once per rendered frame. */
   tick(seconds: number): void {
     const now = this.now();
-    let changed = false;
-    if (this.entering.size) {
-      for (const [id, queued] of this.entering) if (now >= queued.at && this.spawn(id, !this.reducedMotion)) changed = true;
+    if (this.initialFramePending) {
+      // Loading the scene may stall after update admitted the first pair. Give
+      // that first rendered pair its own wave rather than mounting four at once.
+      this.initialFramePending = false;
+      this.nextAdmissionWaveAt = now + ADMISSION_WAVE_MS;
     }
+    this.hasTicked = true;
+    let changed = this.admitArrivals(now);
     if (this.removalSince.size) {
       for (const [id, since] of this.removalSince) {
         if (now - since < DEPARTURE_GRACE_MS) continue;
@@ -388,6 +455,14 @@ export class MovementDirector implements CharacterPositionSource {
         const mover = this.movers.get(id), seat = this.destinationOf(id), agent = this.agents.get(id);
         if (mover && seat) { this.send(mover, { kind: 'seat', seat }, agent && isBusy(agent) ? 'hurry' : 'walk'); changed = true; }
       }
+    }
+    for (const mover of this.list) {
+      const life = this.lives.get(mover.id), visit = life?.visit;
+      if (!life || !visit) continue;
+      const elapsed = Math.min(.1, Math.max(0, seconds)) * 1000;
+      if (this.waitingForVisit(mover, visit)) {
+        if (life.routine.phase === 'outing') life.routine.outingUntil += elapsed;
+      } else visit.travelMs += elapsed;
     }
     this.sinceLife += seconds * 1000;
     if (this.sinceLife >= LIFE_DECISION_MS) {
@@ -480,7 +555,7 @@ export class MovementDirector implements CharacterPositionSource {
   private beginVisit(id: string, spot: LeisureSpotDefinition, now: number, extra?: { partnerId: string; lengthMs: number }): boolean {
     const life = this.lifeOf(id), mover = this.movers.get(id), seat = this.env.navigation.seats.get(spot.id);
     if (!mover || !seat) return false;
-    life.visit = { spot, startedAt: now, arrivedAt: null, lengthMs: extra?.lengthMs ?? visitMs(id, life.routine.turn, life.routine.visits, spot.kind) * this.lifeScale,
+    life.visit = { spot, startedAt: now, travelMs: 0, arrivedAt: null, lengthMs: extra?.lengthMs ?? visitMs(id, life.routine.turn, life.routine.visits, spot.kind) * this.lifeScale,
       ...(extra ? { partnerId: extra.partnerId, chatSince: null } : {}) };
     this.reserved.set(spot.id, id);
     if (spot.kind === 'pantry') this.hospitality.request(id, spot.id);
@@ -508,7 +583,7 @@ export class MovementDirector implements CharacterPositionSource {
     const life = this.lifeOf(id), mover = this.movers.get(id);
     if (!mover) return false;
     const floor = floorAt(mover.position[1]);
-    const reserved = new Set(this.reserved.keys());
+    const reserved = new Set([...this.reserved.keys(), ...this.skillStations.values()]);
     const available = new Set<LeisureKind>();
     for (const spot of FURNITURE_SPOTS) if (!reserved.has(spot.id)) available.add(spot.kind);
     const candidates = this.list.map(other => ({ id: other.id, floor: floorAt(other.position[1]), available: this.chatAvailable(other.id, now) }));
@@ -550,9 +625,9 @@ export class MovementDirector implements CharacterPositionSource {
     return false;
   }
 
-  /** Head back to the desk (no-op when already there or on the way): hurrying when real work arrived, else strolling. */
+  /** Head to the active work place (no-op when already there or on the way); leisure returns to the original desk. */
   private toDesk(id: string, busy: boolean): boolean {
-    const mover = this.movers.get(id), desk = this.seatOf.get(id);
+    const mover = this.movers.get(id), station = this.skillStation(id), desk = station ?? this.seatOf.get(id);
     if (!mover || !desk || this.removalSince.has(id)) return false;
     const target = mover.pending ?? mover.goal;
     if (target?.kind === 'seat' && target.seat.seatId === desk.seatId) {
@@ -560,8 +635,16 @@ export class MovementDirector implements CharacterPositionSource {
       if (busy && this.moods.get(id) === 'stroll' && mover.phase !== 'seated') this.pace(mover, 'hurry');
       return false;
     }
-    // Only leisure trips are redirected here; desk changes and departures keep their own timing.
-    if (target?.kind === 'leave' || (target?.kind === 'seat' && !SPOT_BY_ID.has(target.seat.seatId))) return false;
+    // Desk changes and departures keep their own timing. A waiting knowledge
+    // actor may claim a newly free work place, using the same stand-up grace.
+    if (target?.kind === 'leave') return false;
+    if (target?.kind === 'seat' && !SPOT_BY_ID.has(target.seat.seatId)) {
+      if (!station || target.seat.seatId !== this.seatOf.get(id)?.seatId) return false;
+      if (mover.phase === 'seated') {
+        if (!this.reseatSince.has(id)) this.reseatSince.set(id, this.now());
+        return false;
+      }
+    }
     return this.send(mover, { kind: 'seat', seat: desk }, busy ? 'hurry' : 'stroll');
   }
 
@@ -569,6 +652,9 @@ export class MovementDirector implements CharacterPositionSource {
   private clipOf(mover: Mover, life: CharacterLife, agent: OfficeAgent, now: number): ActivityClip {
     if (mover.phase !== 'seated') return 'none';
     const seconds = now / 1000;
+    if (agent.meeting && mover.seat?.seatId.startsWith('meeting-')) {
+      return agent.meeting.speakerId === agent.agentId ? 'chat-talk' : 'chat-listen';
+    }
     const visit = life.visit;
     if (visit && mover.seat?.seatId === visit.spot.id) {
       if (visit.spot.id === 'outdoor.cafe-counter') {
@@ -595,6 +681,25 @@ export class MovementDirector implements CharacterPositionSource {
     return deskClip(mode, seconds, life.seed, (now - life.activitySince) / 1000);
   }
 
+  /** An owned interaction or a reciprocal social/service plan has a purpose. */
+  private waitingForVisit(mover: Mover, visit: LeisureVisit): boolean {
+    if ((mover.trip && ['waiting', 'boarding', 'riding', 'alighting'].includes(mover.phase)) ||
+      (mover.phase === 'doorwork' && mover.door) || (mover.phase === 'chairing' && mover.chair) ||
+      (mover.phase === 'seatwork' && mover.staticSeat)) return true;
+    if (mover.phase !== 'seated' || mover.seat?.seatId !== visit.spot.id) return false;
+    if (visit.spot.kind === 'pantry') {
+      const service = this.hospitality.serviceFor(mover.id);
+      if (service?.resourceId === visit.spot.id && service.status === 'waiting') return true;
+    }
+    if (visit.partnerId && visit.chatSince == null) {
+      const partner = this.lives.get(visit.partnerId)?.visit;
+      const other = this.movers.get(visit.partnerId);
+      const target = other?.pending ?? other?.goal;
+      return partner?.partnerId === mover.id && target?.kind === 'seat' && target.seat.seatId === partner.spot.id;
+    }
+    return false;
+  }
+
   /** Re-decide every character's routine, visit and clip; true when someone's destination changed. */
   private decideLife(now: number): boolean {
     let changed = false;
@@ -608,9 +713,18 @@ export class MovementDirector implements CharacterPositionSource {
       if (key !== life.activityKey) { life.activityKey = key; life.activitySince = now; }
       if (this.removalSince.has(id) || mover.goal?.kind === 'leave' || mover.phase === 'gone' || mover.phase === 'vanishing') { this.endVisit(id); mover.motion.clip = 'none'; continue; }
       const destination = this.destinationOf(id) ?? desk;
-      const busy = isBusy(agent);
+      const busy = Boolean(agent.meeting) || isBusy(agent);
+      if (agent.meeting) {
+        stepRoutine(life.routine, { now, busy: true, atDesk: false, allowed: false, scale: this.lifeScale });
+        this.endVisit(id);
+        if (this.toDesk(id, true)) changed = true;
+        mover.motion.clip = this.clipOf(mover, life, agent, now);
+        continue;
+      }
       const atDestination = mover.phase === 'seated' && mover.seat?.seatId === destination.seatId;
-      const intent = stepRoutine(life.routine, { now, busy, atDesk: atDestination, allowed, scale: this.lifeScale });
+      const expectedWait = life.visit && this.waitingForVisit(mover, life.visit);
+      const intent = life.routine.phase === 'outing' && expectedWait && allowed && !busy ? 'out'
+        : stepRoutine(life.routine, { now, busy, atDesk: atDestination, allowed, scale: this.lifeScale });
       if (intent === 'desk') {
         if (life.visit) this.endVisit(id);
         if (this.toDesk(id, busy)) changed = true;
@@ -631,7 +745,8 @@ export class MovementDirector implements CharacterPositionSource {
           const atKiosk = visit.spot.id === 'outdoor.cafe-counter';
           const collected = atKiosk && this.kiosk.snapshot()?.actorId === id && this.kiosk.snapshot()?.status === 'collected';
           const done = atKiosk ? collected : since !== null && now - since >= visit.lengthMs;
-          const stuck = now - visit.startedAt > TRAVEL_LIMIT_MS && (visit.arrivedAt === null || (visit.spot.kind === 'pantry' && since === null) || (visit.partnerId && visit.chatSince === null));
+          const stuck = !this.waitingForVisit(mover, visit) && visit.travelMs > TRAVEL_LIMIT_MS &&
+            (visit.arrivedAt === null || (visit.spot.kind === 'pantry' && since === null) || (visit.partnerId && visit.chatSince === null));
           if (done || stuck) {
             this.endVisit(id);
             if (collected) {
@@ -654,6 +769,8 @@ export class MovementDirector implements CharacterPositionSource {
   /** Give back elevator places and door duties when the scene unmounts. */
   dispose(): void {
     this.reserved.clear();
+    this.skillStations.clear();
+    this.workstationOf.clear();
     this.hospitality.clear();
     this.kiosk.clear();
     for (const mover of this.list) {

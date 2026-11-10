@@ -362,6 +362,7 @@ export class HermesObservedControl {
     try {
       await this.live(rpc);
       if (!this.connected || input.executionGeneration !== this.generation) throw new Error('Hermes changed while sending.');
+      if (input.intent !== undefined && input.intent !== (this.running ? 'steer' : 'start')) throw new Error('Hermes changed before the selected action could be admitted.');
       const generation = this.generation;
       const method = this.running ? 'session.steer' : 'prompt.submit';
       const result = row(await rpc.request(method, { session_id: this.options.nativeSessionId, text: input.text,

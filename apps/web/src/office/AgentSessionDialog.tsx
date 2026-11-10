@@ -1,11 +1,11 @@
 import type { CharacterAppearance, CharacterAppearances } from '@extalia/core';
 import type { AgentHostApi, HostState, SessionSummary } from '@extalia/platform';
-import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { Messages } from '../i18n';
 import { Icon } from '../ui/Icon';
 import { OriginChip } from '../ui/OriginMark';
-import { CharacterConversation, type CharacterAppearanceControls } from './CharacterConversation';
+import { CharacterConversation, type CharacterAppearanceControls, type CharacterConversationToolsState } from './CharacterConversation';
 import { AgentPortrait } from './overlay/AgentPortrait';
 import { ContextUsageLine } from './overlay/ContextUsage';
 import { popoverState } from './overlay/popoverModel';
@@ -13,6 +13,8 @@ import type { SessionDialogTab } from './overlay/officeSelection';
 import type { OfficeAgent } from './presence';
 import { sessionTeamSummary, teamSupported } from './team';
 import { TeamSetupDialog } from './TeamSetupDialog';
+import { sessionDialogViewport } from './sessionDialogViewport';
+import './sessionDialogLayout.css';
 
 const FOCUSABLE = 'a[href], button:not([disabled]), summary, textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
@@ -64,7 +66,7 @@ export function AgentSessionDialog({ t, language, agents, state, onState, sessio
   officeNames?: ReadonlySet<string> | undefined;
   /** v0.0.30: saved looks by character id, for the team dialog's portraits. */
   savedLooks?: CharacterAppearances | undefined;
-  /** The 3D Office area, excluding the application sidebar and top bar. */
+  /** The 3D Office area determines horizontal placement; screen height determines vertical placement. */
   viewport?: HTMLElement | null;
 }) {
   const d = t.sessionDialog;
@@ -82,6 +84,12 @@ export function AgentSessionDialog({ t, language, agents, state, onState, sessio
   useEffect(() => { close.current = onClose; });
   // v0.0.29 team-ui: the lead's subagent team setup, layered over this dialog.
   const [teamOpen, setTeamOpen] = useState(false);
+  const [toolsLayout, setToolsLayout] = useState<CharacterConversationToolsState & { characterId: string }>();
+  const characterId = shownAgent?.id;
+  const onToolsStateChange = useCallback((next: CharacterConversationToolsState) => {
+    setToolsLayout(previous => previous && previous.characterId === characterId && previous.available === next.available
+      && previous.open === next.open && previous.wide === next.wide ? previous : { ...next, characterId: characterId ?? '' });
+  }, [characterId]);
 
   useLayoutEffect(() => {
     document.body.appendChild(host);
@@ -90,23 +98,28 @@ export function AgentSessionDialog({ t, language, agents, state, onState, sessio
   useInertOutside(host);
 
   useLayoutEffect(() => {
-    if (!viewport) return;
+    const visible = window.visualViewport;
     const measure = () => {
-      const bounds = viewport.getBoundingClientRect();
-      host.style.setProperty('--session-center-x', `${bounds.left + bounds.width / 2}px`);
-      host.style.setProperty('--session-center-y', `${bounds.top + bounds.height / 2}px`);
+      const bounds = sessionDialogViewport({ left: visible?.offsetLeft ?? 0, top: visible?.offsetTop ?? 0,
+        width: visible?.width ?? window.innerWidth, height: visible?.height ?? window.innerHeight }, viewport?.getBoundingClientRect());
+      host.style.setProperty('--session-center-x', `${bounds.centerX}px`);
+      host.style.setProperty('--session-center-y', `${bounds.centerY}px`);
       host.style.setProperty('--session-viewport-width', `${bounds.width}px`);
       host.style.setProperty('--session-viewport-height', `${bounds.height}px`);
     };
     measure();
     const observer = new ResizeObserver(measure);
-    observer.observe(viewport);
+    if (viewport) observer.observe(viewport);
     window.addEventListener('resize', measure);
     window.addEventListener('scroll', measure, true);
+    visible?.addEventListener('resize', measure);
+    visible?.addEventListener('scroll', measure);
     return () => {
       observer.disconnect();
       window.removeEventListener('resize', measure);
       window.removeEventListener('scroll', measure, true);
+      visible?.removeEventListener('resize', measure);
+      visible?.removeEventListener('scroll', measure);
       for (const key of ['--session-center-x', '--session-center-y', '--session-viewport-width', '--session-viewport-height']) host.style.removeProperty(key);
     };
   }, [host, viewport]);
@@ -146,8 +159,12 @@ export function AgentSessionDialog({ t, language, agents, state, onState, sessio
   const status = ended ? t.chat.status.offline : t.characterPopover.states[popoverState(shownAgent)];
   const teamLead = session && !ended && session.control === 'managed' && !shownAgent.parentId && teamSupported(agents) ? session : undefined;
   const team = sessionTeamSummary(shownSession);
+  const hasTools = shownAgent.agentId === 'primary' && !ended;
+  const toolsExpanded = hasTools && (toolsLayout?.characterId === shownAgent.id
+    ? toolsLayout.open && toolsLayout.wide : window.matchMedia('(min-width: 1100px)').matches);
   return createPortal(<div className="session-dialog-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) close.current(); }}>
-    <div ref={dialog} className="session-dialog" role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1} data-state={ended ? 'ended' : popoverState(shownAgent)}>
+    <div ref={dialog} className="session-dialog" role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1}
+      data-tools-available={hasTools} data-tools-expanded={toolsExpanded} data-state={ended ? 'ended' : popoverState(shownAgent)}>
       <header className="session-dialog-head">
         <AgentPortrait characterId={shownAgent.id} appearance={look} identity={shownAgent.look} activity={shownAgent} />
         <div className="session-dialog-identity">
@@ -178,7 +195,7 @@ export function AgentSessionDialog({ t, language, agents, state, onState, sessio
       <div className="session-dialog-body">
         {shownSession && <CharacterConversation key={shownAgent.id} t={t} language={language} agents={agents} state={state} session={shownSession} agent={shownAgent}
           onState={onState} appearance={ended ? undefined : appearance} tab={tab} onTab={onTab} readOnlyReason={ended}
-          onLocate={ended ? undefined : onLocate} onSelectCharacter={onSelectCharacter} />}
+          onLocate={ended ? undefined : onLocate} onSelectCharacter={onSelectCharacter} onToolsStateChange={onToolsStateChange} />}
       </div>
       {teamOpen && teamLead && <TeamSetupDialog t={t} agents={agents} workspaceId={teamLead.workspaceId} sessionId={teamLead.id} leadName={shownAgent.displayName} officeNames={officeNames} savedLooks={savedLooks}
         onClose={() => setTeamOpen(false)} onState={onState} onSaved={() => { void agents.getState().then(onState, () => undefined); }} />}

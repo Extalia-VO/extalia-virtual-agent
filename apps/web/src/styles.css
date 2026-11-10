@@ -1174,7 +1174,7 @@ fieldset > legend { padding: 0; margin-bottom: 6px; }
 .skill-center .form-error { margin-top: 0; }
 .skill-center-imports { align-self: center; }
 .skill-center-banner { align-items: center; flex-wrap: wrap; }
-.skill-center-banner > span { flex: 1 1 240px; min-width: 0; }
+.skill-center-banner > span { flex: 1 1 240px; min-width: 0; overflow-wrap: anywhere; }
 .skill-center-banner.warn { background: var(--warn-soft); }
 .skill-center-banner.warn > .icon { color: var(--warn); }
 .skill-center-banner.error { background: var(--error-soft); }

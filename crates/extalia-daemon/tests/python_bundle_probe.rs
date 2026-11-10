@@ -1,8 +1,22 @@
 #![cfg(feature = "test-fixtures")]
-#[cfg(unix)]
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{Duration, Instant};
+
+fn temporary_root() -> PathBuf {
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    loop {
+        // Short names also keep Unix socket paths below the platform limit.
+        let id = NEXT.fetch_add(1, Ordering::Relaxed);
+        let root = std::env::temp_dir().join(format!("ep-{:x}-{id:x}", std::process::id()));
+        match std::fs::create_dir(&root) {
+            Ok(()) => return root,
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(error) => panic!("temporary probe directory: {error}"),
+        }
+    }
+}
 
 fn run(args: &[&std::ffi::OsStr]) -> serde_json::Value {
     let mut child = Command::new(env!("CARGO_BIN_EXE_extalia-python-bundle-probe"))
@@ -48,12 +62,7 @@ fn relative_manifest_is_refused_without_opening_it() {
 }
 #[test]
 fn incorrect_independent_pin_cannot_launch_even_a_synthetic_file() {
-    let stamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_nanos();
-    let root = std::env::temp_dir().join(format!("ep-{stamp:x}"));
-    std::fs::create_dir(&root).unwrap();
+    let root = temporary_root();
     let manifest = root.join("manifest.json");
     std::fs::write(&manifest, b"{}").unwrap();
     let result = run(&[
@@ -72,12 +81,7 @@ fn incorrect_independent_pin_cannot_launch_even_a_synthetic_file() {
 #[cfg(unix)]
 #[test]
 fn socket_manifest_is_rejected_before_content_read() {
-    let stamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_nanos();
-    let root = std::env::temp_dir().join(format!("ep-{stamp:x}"));
-    std::fs::create_dir(&root).unwrap();
+    let root = temporary_root();
     let manifest: PathBuf = root.join("m");
     let socket = std::os::unix::net::UnixListener::bind(&manifest).unwrap();
     let result = run(&[

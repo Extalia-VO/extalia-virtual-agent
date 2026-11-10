@@ -12,6 +12,8 @@ export interface PromptQueueStatus {
   sessionId: string;
   revision: string;
   supported: boolean;
+  /** The current source can accept text into its exact live turn. Absent on older hosts. */
+  canSteer?: boolean;
   paused: boolean;
   maxTextLength: number;
   items: PromptQueueItem[];
@@ -19,7 +21,9 @@ export interface PromptQueueStatus {
 }
 
 export type PromptQueueChange = { revision: string } & (
-  | { action: 'add'; text: string }
+  | { action: 'add'; text: string; start?: boolean }
+  /** Hands one pending item to the current live turn, without starting a replacement turn. */
+  | { action: 'steer'; itemId: string }
   | { action: 'edit'; itemId: string; text: string }
   | { action: 'delete'; itemId: string }
   | { action: 'reorder'; itemIds: string[] }

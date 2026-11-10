@@ -11,7 +11,7 @@ import { OFFICE_RESOURCES, type SeatStyle, type SpatialResource } from '../inter
 import type { NaturalLeg } from './naturalWalking';
 import { ENTERTAINMENT_LAYOUT, entertainmentPoint } from '../interior/entertainmentBlueprint';
 import { relocateRoomPoint } from '../interior/roomRelocation';
-import { TEAM_WORKSPACE_ORIGIN } from '../interior/spatialBlueprints';
+import { MEETING_BLUEPRINTS, TEAM_WORKSPACE_ORIGIN } from '../interior/spatialBlueprints';
 import { FACILITY_NAV_RESOURCE_IDS } from './facilityNpcs';
 import { CHAT_SPOT_PAIRS, chatSpotIds, LEISURE_RESOURCE_IDS } from './leisureSpots';
 
@@ -68,6 +68,26 @@ function engineeringSpot(id: string, x: number, z: number): Spot {
   const point = relocateRoomPoint('engineering', [TEAM_WORKSPACE_ORIGIN[0] + x, 0, TEAM_WORKSPACE_ORIGIN[1] + z]);
   return [id, point[0], point[2]];
 }
+
+/** A perimeter aisle stays behind the chairs and around the table, reached only through its door. */
+function meetingAisleRoom(room: 'meeting-a' | 'meeting-b') {
+  const blueprint = MEETING_BLUEPRINTS[room];
+  const center = relocateRoomPoint(room, [blueprint.roomCenter[0], 0, blueprint.roomCenter[1]]);
+  const cx = center[0] + blueprint.furnitureLocal[0], cz = center[2] + blueprint.furnitureLocal[1];
+  const west = cx - blueprint.tableLength / 2 - 1.8, east = cx + blueprint.tableLength / 2 + 1.8;
+  const north = cz - 3.4, south = cz + 3.4;
+  const spots: Spot[] = [
+    [`${room}-outside`, center[0], -8.2], [`${room}-door`, center[0], center[2] - 7, 'door'],
+    [`${room}-inside`, center[0], center[2] - 6.2, 'door'], [`${room}-entry`, center[0], north, 'approach'],
+    [`${room}-nw`, west, north, 'approach'], [`${room}-ne`, east, north, 'approach'],
+    [`${room}-sw`, west, south, 'approach'], [`${room}-se`, east, south, 'approach'],
+  ];
+  const links: Link[] = [[`${room}-outside`, `${room}-door`], [`${room}-door`, `${room}-inside`]];
+  const aisles: Link[] = [[`${room}-inside`, `${room}-entry`], [`${room}-entry`, `${room}-nw`], [`${room}-entry`, `${room}-ne`],
+    [`${room}-nw`, `${room}-sw`], [`${room}-sw`, `${room}-se`], [`${room}-se`, `${room}-ne`]];
+  return { spots, links, aisles };
+}
+const meetingA = meetingAisleRoom('meeting-a'), meetingB = meetingAisleRoom('meeting-b');
 
 const FLOOR_PLANS: Readonly<Record<OfficeFloor, FloorPlan>> = {
   1: {
@@ -154,6 +174,7 @@ const FLOOR_PLANS: Readonly<Record<OfficeFloor, FloorPlan>> = {
   },
   2: {
     spots: [
+      ...meetingA.spots, ...meetingB.spots,
       ...stairHubs, ['stair-hall', 14.6, -16.6], ['north-hall', 14.6, -8.2], ['east-hall', 14.6, -3], ['lounge-east', 19.2, -3], ...elevatorSpots(),
       ['south-hall', 14.6, 9],
       ['corridor-executive', -12, -8.2], ['corridor-mission', 4, -8.2],
@@ -169,6 +190,7 @@ const FLOOR_PLANS: Readonly<Record<OfficeFloor, FloorPlan>> = {
     ],
     links: [
       ['stairs-north', 'stairs-south'], ['stair-hall', 'stairs-north'], ['stair-hall', 'stairs-south'], ['stair-hall', 'north-hall'],
+      ...meetingA.links, ...meetingB.links, ['corridor-executive', 'meeting-a-outside'], ['corridor-mission', 'meeting-b-outside'],
       ['north-hall', 'corridor-mission'], ['corridor-mission', 'corridor-executive'], ['north-hall', 'east-hall'], ['east-hall', 'lounge-east'],
       ['lounge-east', 'elevator-A'], ['lounge-east', 'elevator-B'], ['east-hall', 'south-hall'],
       ['south-hall', 'corridor-architecture'], ['corridor-architecture', 'corridor-review'], ['corridor-review', 'corridor-knowledge'],
@@ -177,6 +199,7 @@ const FLOOR_PLANS: Readonly<Record<OfficeFloor, FloorPlan>> = {
       ['corridor-architecture', 'architecture-door'], ['architecture-door', 'architecture-inside'],
     ],
     aisles: {
+      'meeting-a': meetingA.aisles, 'meeting-b': meetingB.aisles,
       executive: [['executive-inside', 'executive-back'], ['executive-back', 'executive-back-west']],
       'mission-control': [['mission-inside', 'mission-aisle'], ['mission-aisle', 'mission-aisle-west'], ['mission-aisle', 'mission-aisle-east']],
       knowledge: [['knowledge-inside', 'knowledge-aisle-north'], ['knowledge-aisle-north', 'knowledge-aisle-south'], ['knowledge-aisle-south', 'knowledge-aisle-east']],
@@ -359,11 +382,11 @@ function buildNavigation(): OfficeNavigation {
   for (const edge of edges) if (!waypoints.has(edge.from) || !waypoints.has(edge.to)) throw new Error(`Office edge ${edge.from} → ${edge.to} has an unknown end`);
 
   // Seats join the nearest aisle of their own room; aisle edges are split at each join.
-  // Workstations plus the few facility-staff stations and break spots.
+  // Workstations, explicit meeting chairs, facility stations and leisure spots.
   const seats = new Map<string, SeatApproach>();
   const splits = new Map<WaypointEdge, { t: number; id: string }[]>();
   for (const resource of OFFICE_RESOURCES) {
-    if (resource.kind !== 'workstation' && !FACILITY_NAV_RESOURCE_IDS.has(resource.id) && !LEISURE_RESOURCE_IDS.has(resource.id)) continue;
+    if (resource.kind !== 'workstation' && resource.kind !== 'meeting-seat' && !FACILITY_NAV_RESOURCE_IDS.has(resource.id) && !LEISURE_RESOURCE_IDS.has(resource.id)) continue;
     const seat = seatApproach(resource);
     const candidates = (aisles.get(seat.roomId) ?? []).filter(edge => waypoints.get(edge.from)!.floorId === floorId(seat.floor));
     if (!candidates.length) throw new Error(`Seat ${seat.seatId} has no aisle in ${seat.roomId}`);

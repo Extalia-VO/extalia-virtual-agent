@@ -5,6 +5,9 @@ of an existing record, number it sequentially and link it from the table.
 
 | ADR | Decision | Status |
 | --- | --- | --- |
+| [0067](0067-rust-owned-learning-and-profile-artifacts.md) | Rust curator jobs, model-result processing, admission receipts and profile artifact publication | Implemented locally on Unix; Windows artifact support unavailable |
+| [0066](0066-profile-automatic-post-task-learning.md) | Persistent profile consent, bounded post-task curator, inspected candidates and immutable vault notes | Implemented locally |
+| [0065](0065-event-driven-team-meetings-and-profile-vaults.md) | Evidence-backed meeting events, rendered room occupancy and one vault per workspace profile | Proposed; implemented locally |
 | [0058](0058-native-team-connection-authority.md) | Explicit Native team connection/model grants, per-member routing and bounded concurrent workers | Accepted |
 | [0001](0001-clean-public-repository.md) | Clean public repository with selective migration | Accepted |
 | [0002](0002-desktop-shell-electron.md) | Electron for the Desktop shell | Accepted (packaging decided in 0006) |
@@ -103,3 +106,9 @@ Open questions from PRD §44 (local database, Web ↔ Bridge transport and
 authentication, plugin sandboxing, skill format, registry trust, event sourcing,
 Obsidian write policy, license/trademark, DCO vs CLA) each get an ADR before
 implementation.
+
+- [0068: Pinned SkillSpector inspection and explicit skill activation](0068-pinned-skillspector-inspection.md)
+- [0069: UI-only TypeScript and explicit backend ownership](0069-ui-only-typescript-and-backend-ownership.md)
+- [0071: Measured completion placement and development-only native experiments](0071-rust-openai-completion-and-resource-evidence.md)
+- [0070: Rust-owned OpenAI-compatible model discovery](0070-rust-provider-model-discovery.md)
+- [0072: Capability-bound observed control and cooperative inboxes](0072-observed-control-hub-and-cooperative-inboxes.md)

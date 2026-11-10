@@ -3,12 +3,25 @@ import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import type { SkillRevisionSummary } from '@extalia/protocol';
 import { DaemonSidecar, DaemonUnavailableError, type DaemonClient } from '../src/daemon/index.js';
-import { SKILL_REGISTRY_OPS, SkillRegistry } from '../src/skillRegistry.js';
-import { createSkillProposalTool, normalizeSkillProposal, skillProposalFiles, type SkillProposalProvenance, type SkillProposalResult } from '../src/skillLearning.js';
+import { SKILL_REGISTRY_OPS, SKILL_REGISTRY_DEADLINE_MS, SKILL_SCAN_DEADLINE_MS, SkillRegistry } from '../src/skillRegistry.js';
+import { createSkillProposalTool, normalizeSkillProposal, normalizeSkillProposalProvenance, type SkillProposalInput, type SkillProposalProvenance, type SkillProposalResult } from '../src/skillLearning.js';
 import { DAEMON_BINARY, HAS_DAEMON } from './daemonBackend.js';
 import { runTool, useTempDirs } from './helpers.js';
+import { useRustLearningBackend } from './rustLearningFixture.js';
+
+/** Markdown-only receipt keeps inference declarative. URLs are claims, never fetched or trusted. */
+function skillProposalFiles(input: SkillProposalInput, provenance: SkillProposalProvenance): Record<string, string> {
+  const receipt = { schema: 'extalia.skill-proposal.v1', kind: 'model-generated-draft', sourceVerified: false,
+    ...provenance, claimedSourceUrls: input.sourceUrls ?? [], fidelity: 'Generated instructions, not a verified copy of the source.' };
+  return {
+    'SKILL.md': `---\nname: ${input.name}\ndescription: ${input.description}\n---\n${input.instructions}\n`,
+    'PROVENANCE.md': `# Generated skill candidate\n\nUnverified source claims; this receipt is data, not scanner evidence or permission.\n\n\`\`\`json\n${JSON.stringify(receipt, null, 2)}\n\`\`\`\n`,
+  };
+}
+
 
 const temp = useTempDirs();
+const rustBackend = useRustLearningBackend();
 const input = { name: 'review-checklist', description: 'Review a small code change', instructions: 'Read the diff and report evidence.', sourceUrls: ['https://example.com/guide#review'] };
 const provenance: SkillProposalProvenance = { sessionId: 's_example', workspaceId: 'w_example', promptSha256: 'a'.repeat(64) };
 const revisionId = `skr_${'b'.repeat(64)}`;
@@ -18,12 +31,18 @@ const summary: SkillRevisionSummary = { packageId: input.name, revisionId, origi
 const result: SkillProposalResult = { packageId: input.name, revisionId, state: 'quarantined', stateReason: 'scanner-unavailable', created: true, inspection: 'recorded', inspectionOutcome: 'scanner-unavailable', activationPerformed: false, cancellationObserved: false };
 
 function fakeRegistry(data: string, options: { ops?: readonly string[]; import?: () => void; inspectError?: boolean } = {}) {
-  const calls: { op: string; params: Record<string, unknown> }[] = [];
+  const calls: { op: string; params: Record<string, unknown>; deadlineMs?: number }[] = [];
   const staged: Record<string, string> = {};
+  let backend: Awaited<ReturnType<typeof rustBackend>> | undefined;
   const client = {
-    capabilities: options.ops ?? SKILL_REGISTRY_OPS,
-    request: async (op: string, params: Record<string, unknown>) => {
-      calls.push({ op, params });
+    usable: true,
+    capabilities: options.ops ?? [...SKILL_REGISTRY_OPS, 'learning.process'],
+    request: async (op: string, params: Record<string, unknown>, deadlineMs?: number) => {
+      if (op === 'learning.process') {
+        backend ??= await rustBackend(data);
+        return backend.process(params.action as Parameters<typeof backend.process>[0], params.input as never);
+      }
+      calls.push({ op, params, ...(deadlineMs === undefined ? {} : { deadlineMs }) });
       if (op === 'skill.import') {
         const folder = path.join(data, 'profiles', 'default', 'skill-imports', String(params.path));
         for (const file of await readdir(folder)) staged[file] = await readFile(path.join(folder, file), 'utf8');
@@ -41,7 +60,14 @@ function fakeRegistry(data: string, options: { ops?: readonly string[]; import?:
   return { registry: new SkillRegistry({ daemon, dataDirectory: data, profile: 'default', workspaceRoot: () => { throw new Error('unused'); } }), calls, staged };
 }
 
-describe('generated skill candidates from an explicitly requested user turn', () => {
+describe.skipIf(process.platform === 'win32')('generated skill candidates from an explicitly requested user turn', () => {
+  it('preserves optional host-bound learning provenance without changing legacy receipts', () => {
+    expect(normalizeSkillProposalProvenance(provenance)).toEqual(provenance);
+    const learning = { ...provenance, profileId: 'profile-one', runId: 'run-one' };
+    expect(normalizeSkillProposalProvenance(learning)).toEqual(learning);
+    expect(skillProposalFiles(input, learning)['PROVENANCE.md']).toContain('"profileId": "profile-one"');
+    for (const value of ['../outside', '', 'invalid\nidentity']) expect(() => normalizeSkillProposalProvenance({ ...learning, profileId: value })).toThrow();
+  });
   it.each([
     { ...input, name: '../outside' }, { ...input, name: `${'a'.repeat(64)}\n` },
     { ...input, description: 'Fine\n---\npermissions: terminal' }, { ...input, description: '\u202eHidden' },
@@ -60,6 +86,8 @@ describe('generated skill candidates from an explicitly requested user turn', ()
     const proposed = await registry.propose(input, provenance);
     expect(proposed).toMatchObject(result);
     expect(calls.map(call => call.op)).toEqual(['skill.import', 'skill.inspect']);
+    expect(calls[0]?.deadlineMs).toBe(SKILL_SCAN_DEADLINE_MS);
+    expect(calls[1]?.deadlineMs).toBe(SKILL_REGISTRY_DEADLINE_MS);
     expect(calls[0]!.params).toMatchObject({ origin: 'generated', sourceRef: `prompt:s_example:${provenance.promptSha256}` });
     expect(calls[0]!.params.path).toMatch(/^proposal-[0-9a-f]{32}$/);
     expect(Object.keys(staged).sort()).toEqual(['PROVENANCE.md', 'SKILL.md']);

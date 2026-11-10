@@ -1,6 +1,6 @@
 //! The `SkillInspector` port (ADR 0023 §1). A real scanner adapter runs in the Python
-//! worker (ADR 0022) behind this trait once a verified pin exists; until then the only
-//! adapter is [`UnavailableInspector`], which fails closed with `scanner-unavailable`.
+//! worker (ADR 0022) behind this trait when the daemon verifies its pinned bundle and
+//! confinement. [`UnavailableInspector`] fails closed with `scanner-unavailable`.
 //!
 //! An inspector reports an outcome only. It never writes inspections, approvals or
 //! activations; the registry records the outcome, binds it to the tree hash, scanner
@@ -163,6 +163,16 @@ impl ScannerStatus {
 pub trait SkillInspector {
     fn identity(&self) -> ScannerIdentity;
     fn inspect(&self, request: &InspectionRequest<'_>) -> InspectionOutcome;
+
+    /// Production supervisors bound an external scan by the caller's remaining
+    /// deadline. Pure in-process inspectors retain their existing implementation.
+    fn inspect_with_timeout(
+        &self,
+        request: &InspectionRequest<'_>,
+        _timeout: std::time::Duration,
+    ) -> InspectionOutcome {
+        self.inspect(request)
+    }
 
     /// Whether this inspector can attest. By default an adapter is `Ready` exactly when its
     /// identity carries a pin; an adapter that can detect a missing worker overrides this

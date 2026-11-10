@@ -1,0 +1,114 @@
+{
+  "teamSize": 32,
+  "rounds": [
+    {
+      "on": [
+        "session-3:member-4",
+        "session-3:member-5",
+        "session-3:member-6",
+        "session-3:member-7",
+        "session-3:member-8"
+      ],
+      "away": 27,
+      "main": "session-3:primary",
+      "standbyLabels": 5
+    },
+    {
+      "on": [
+        "session-3:member-9",
+        "session-3:member-a",
+        "session-3:member-b",
+        "session-3:member-c",
+        "session-3:member-d"
+      ],
+      "away": 27,
+      "main": "session-3:primary",
+      "standbyLabels": 5
+    },
+    {
+      "on": [
+        "session-3:member-e",
+        "session-3:member-f",
+        "session-3:member-g",
+        "session-3:member-h",
+        "session-3:member-i"
+      ],
+      "away": 27,
+      "main": "session-3:primary",
+      "standbyLabels": 5
+    }
+  ],
+  "uniqueStandbyMembers": 15,
+  "pageErrors": [],
+  "consoleErrors": [],
+  "method": "Fresh minified production-React mock; wall-clock offset only, real RAF/timers; no provider requests or runtime work.",
+  "wallClockOffsetsMinutes": [
+    0,
+    21,
+    42
+  ],
+  "limits": [
+    "QA snapshot before coordinated version bump; Native standby source is verified independently of the parallel Observe control work.",
+    "Only Date.now was advanced; 7–20 minute idle leases were not awaited in real time.",
+    "This verifies roster fairness and labels; physical handovers reuse the separately tested movement admission queue.",
+    "No whole-app memory or frame-rate gain is claimed."
+  ],
+  "refreshedRosterGuardLayoutQA": {
+    "versionBeforeCoordinatedBump": "0.4.247",
+    "sourceIncludesCurrentRosterReadinessGuard": true,
+    "layouts": [
+      {
+        "language": "en",
+        "theme": "light",
+        "width": 1366,
+        "height": 900,
+        "overflow": false,
+        "on": 5,
+        "labels": [
+          "Standbyclaude-sonnet-5-5",
+          "Standbyclaude-opus-5-5",
+          "Standbyclaude-opus-5-5",
+          "Standbyclaude-opus-5-5",
+          "Standbyclaude-sonnet-5-5"
+        ],
+        "away": 27,
+        "errors": []
+      },
+      {
+        "language": "id",
+        "theme": "dark",
+        "width": 390,
+        "height": 844,
+        "overflow": false,
+        "on": 5,
+        "labels": [
+          "Siagaclaude-sonnet-5-5",
+          "Siagaclaude-opus-5-5",
+          "Siagaclaude-opus-5-5",
+          "Siagaclaude-opus-5-5",
+          "Siagaclaude-sonnet-5-5"
+        ],
+        "away": 27,
+        "errors": []
+      }
+    ]
+  },
+  "combinedGate": {
+    "version": "0.4.248",
+    "command": "VITEST_MAX_WORKERS=2 pnpm check",
+    "exitCode": 0,
+    "typescriptSuitesPassed": 561,
+    "typescriptSuitesSkipped": 3,
+    "typescriptTestsPassed": 8015,
+    "typescriptTestsSkipped": 26,
+    "rustTestsPassed": 536,
+    "builds": [
+      "Web",
+      "Desktop",
+      "CLI"
+    ],
+    "sourceFiles": 1977,
+    "sourceSHA256": "1e3fa15f503cf72563f336c938e678f930c35a23df2a6acd82ce3a69bb21fb2f",
+    "sourceUnchangedDuringSuccessfulGate": true
+  }
+}

@@ -8,9 +8,12 @@ import { F1_LAYOUT, F2_LAYOUT, F3_LAYOUT } from '../src/office/scene/interior/fl
 import { CAMPUS_ENTRY_LAYOUT, FLOOR_HEIGHT, OFFICE_BUILDING, type Point3 } from '../src/office/scene/layout';
 import { GLASS_ELEVATORS, type ElevatorId } from '../src/office/scene/prefabs/architecture/elevatorController';
 import { floorAt, floorY, officeNavigation, planRoute, seatStageId, withElevator } from '../src/office/scene/movement/navGraph';
-import { createMover, MAX_WALK_SPEED, preferredElevator, routeFrom, stepMover, type ElevatorAccess, type MovementEnv } from '../src/office/scene/movement/mover';
-import { ADMISSION_SPACING_MS, DEPARTURE_GRACE_MS, EMPTY_START_MS, ENTRY_SPACING_MS, floorPortals, MovementDirector, nearestPortal, SETTLE_MS, visibleOnFloor } from '../src/office/scene/movement/director';
+import { createMover, MAX_WALK_SPEED, preferredElevator, placeSeated, routeFrom, stepMover, type ElevatorAccess, type MovementEnv } from '../src/office/scene/movement/mover';
+import { ADMISSION_BATCH_SIZE, ADMISSION_WAVE_MS, DEPARTURE_GRACE_MS, EMPTY_START_MS, ENTRY_CLEARANCE_METERS, ENTRY_SPACING_MS, floorPortals, MovementDirector, nearestPortal, SETTLE_MS, visibleOnFloor } from '../src/office/scene/movement/director';
 import { createCharacterPositionStore } from '../src/office/scene/movement/positionStore';
+import { MEETING_BLUEPRINTS } from '../src/office/scene/interior/spatialBlueprints';
+import { relocateRoomPoint } from '../src/office/scene/interior/roomRelocation';
+import { OFFICE_RESOURCES } from '../src/office/scene/interior/resourceRegistry';
 import { FACILITY_NAV_RESOURCE_IDS } from '../src/office/scene/movement/facilityNpcs';
 import { LEISURE_SPOTS } from '../src/office/scene/movement/leisureSpots';
 import { advanceWalkDistance, advanceWalkPhase, angleDelta, createWalkPose, turnToward, walkingSpeed, writeWalkPose } from '../src/office/scene/movement/walkCycle';
@@ -53,10 +56,10 @@ function fakeElevators() {
   return { access, advance, rides };
 }
 
-function harness() {
+function harness(overrides: Partial<MovementEnv> = {}) {
   let now = 0;
   const lifts = fakeElevators();
-  const env: MovementEnv = { navigation, elevators: lifts.access };
+  const env: MovementEnv = { navigation, elevators: lifts.access, ...overrides };
   const director = new MovementDirector(env, () => now);
   const gaitOf = () => gaitParameters();
   const run = (seconds: number, onFrame?: () => void) => {
@@ -92,7 +95,7 @@ describe('office walking graph', () => {
   it('joins every workstation to an aisle of its own room and reaches it from the entrance and back', () => {
     const seats = getOfficeSeats();
     // Agent seats plus the facility staff stations and break spots, and the idle characters' leisure furniture and chat spots.
-    expect(navigation.seats.size).toBe(new Set([...seats.map(seat => seat.id), ...FACILITY_NAV_RESOURCE_IDS, ...LEISURE_SPOTS.map(spot => spot.id)]).size);
+    expect(navigation.seats.size).toBe(new Set([...seats.map(seat => seat.id), ...OFFICE_RESOURCES.filter(resource => resource.kind === 'meeting-seat').map(resource => resource.id), ...FACILITY_NAV_RESOURCE_IDS, ...LEISURE_SPOTS.map(spot => spot.id)]).size);
     for (const seat of navigation.seats.values()) {
       if (seat.roomId === 'chat') {
         expect(planRoute(navigation.entryId, seatStageId(seat.seatId)), seat.seatId).not.toBeNull();
@@ -248,6 +251,127 @@ describe('arrival and departure', () => {
     expect(h.director.moving('a:primary')).toBe(false);
   });
 
+  it.each([8, 32].flatMap(count => [false, true].map(reducedMotion => ({ count, reducedMotion }))))(
+    'admits $count initial characters in seated pairs with reduced motion $reducedMotion', ({ count, reducedMotion }) => {
+      const h = harness();
+      h.director.wander = false;
+      const agents = Array.from({ length: count }, (_, index) => agent(`initial-${index}:primary`));
+      const allocations = allocateOfficeAgents(agents);
+      const update = () => h.director.update({ allocations, agents, reducedMotion, gaitOf: h.gaitOf });
+      update();
+      h.director.tick(0);
+      expect(h.director.roster()).toHaveLength(ADMISSION_BATCH_SIZE);
+      for (const actor of agents.slice(ADMISSION_BATCH_SIZE)) expect(h.director.position(actor.id)).toBeUndefined();
+      for (let wave = 1; wave < count / ADMISSION_BATCH_SIZE; wave++) {
+        h.at(wave * ADMISSION_WAVE_MS - 1);
+        update();
+        h.director.tick(0);
+        expect(h.director.roster()).toHaveLength(wave * ADMISSION_BATCH_SIZE);
+        h.at(wave * ADMISSION_WAVE_MS);
+        h.director.tick(0);
+        update();
+        h.director.tick(0);
+        expect(h.director.roster()).toHaveLength((wave + 1) * ADMISSION_BATCH_SIZE);
+        expect(h.director.list.every(mover => mover.phase === 'seated')).toBe(true);
+      }
+      for (const allocation of allocations) expect(h.director.position(allocation.agentId)).toEqual(navigation.seats.get(allocation.resourceId)!.seat);
+      h.director.dispose();
+    });
+
+  it('shows only the initial pair when scene loading delays the first foreground frame', () => {
+    const h = harness();
+    const agents = Array.from({ length: 8 }, (_, index) => agent(`loading-${index}:primary`));
+    const allocations = allocateOfficeAgents(agents);
+    const update = () => h.director.update({ allocations, agents, reducedMotion: true, gaitOf: h.gaitOf });
+    update();
+    h.at(60_000);
+    update();
+    expect(h.director.list).toHaveLength(2);
+    h.director.tick(60);
+    expect(h.director.list).toHaveLength(2);
+    h.at(60_000 + ADMISSION_WAVE_MS - 1);
+    update();
+    h.director.tick(0);
+    expect(h.director.list).toHaveLength(2);
+    h.at(60_000 + ADMISSION_WAVE_MS);
+    h.director.tick(0);
+    expect(h.director.list).toHaveLength(4);
+    h.director.dispose();
+  });
+
+  it('does not bank missed admission waves across long frames or repeated updates', () => {
+    const h = harness();
+    const agents = Array.from({ length: 32 }, (_, index) => agent(`hitch-${index}:primary`));
+    const allocations = allocateOfficeAgents(agents);
+    const update = () => h.director.update({ allocations, agents, reducedMotion: false, gaitOf: h.gaitOf });
+    update();
+    h.director.tick(0);
+    expect(h.director.list).toHaveLength(2);
+    h.at(60_000);
+    h.director.tick(60);
+    expect(h.director.list).toHaveLength(4);
+    for (let frame = 0; frame < 10; frame++) { update(); h.director.tick(0); }
+    expect(h.director.list).toHaveLength(4);
+    h.at(60_000 + ADMISSION_WAVE_MS - 1);
+    h.director.tick(0);
+    expect(h.director.list).toHaveLength(4);
+    h.at(60_000 + ADMISSION_WAVE_MS);
+    h.director.tick(0);
+    expect(h.director.list).toHaveLength(6);
+    h.director.dispose();
+  });
+
+  it('cancels queued presences and admits their latest seat, gait, and roster metadata without transient positions', () => {
+    const h = harness();
+    h.director.wander = false;
+    const agents = Array.from({ length: 8 }, (_, index) => agent(`queued-${index}:primary`));
+    const allocations = allocateOfficeAgents(agents);
+    h.director.update({ allocations, agents, reducedMotion: false, gaitOf: h.gaitOf });
+    h.director.tick(0);
+    const canceled = agents[2]!, moved = agents[3]!;
+    const replacement = { ...moved, displayName: 'Updated worker', status: 'waiting' as const };
+    const replacementSeat = 'engineering.pod-b.seat-se';
+    const latestAgents = agents.filter(actor => actor !== canceled).map(actor => actor === moved ? replacement : actor);
+    const latestAllocations = allocations.filter(allocation => allocation.agentId !== canceled.id)
+      .map(allocation => allocation.agentId === moved.id ? seatAllocation(moved.id, replacementSeat) : allocation);
+    const gait = { ...gaitParameters(), cadence: 1.2 };
+    h.at(1000);
+    h.director.update({ allocations: latestAllocations, agents: latestAgents, reducedMotion: false, gaitOf: () => gait });
+    expect(h.director.position(canceled.id)).toBeUndefined();
+    expect(h.director.position(moved.id)).toBeUndefined();
+    expect(h.director.roster().some(entry => entry.agent.id === moved.id)).toBe(false);
+    h.at(ADMISSION_WAVE_MS);
+    h.director.tick(0);
+    const appeared = h.director.roster().find(entry => entry.agent.id === moved.id)!;
+    expect(appeared.agent).toBe(replacement);
+    expect(appeared.mover.gait).toBe(gait);
+    expect(appeared.mover.position).toEqual(navigation.seats.get(replacementSeat)!.seat);
+    h.run(10);
+    expect(h.director.position(canceled.id)).toBeUndefined();
+    expect(h.director.roster()).toHaveLength(latestAgents.length);
+    h.director.dispose();
+  });
+
+  it('keeps reduced-motion toggles within the admission budget', () => {
+    const h = harness();
+    const agents = Array.from({ length: 8 }, (_, index) => agent(`motion-${index}:primary`));
+    const allocations = allocateOfficeAgents(agents);
+    const update = (reducedMotion: boolean) => h.director.update({ allocations, agents, reducedMotion, gaitOf: h.gaitOf });
+    update(false);
+    h.director.tick(0);
+    update(true);
+    expect(h.director.list).toHaveLength(2);
+    h.at(ADMISSION_WAVE_MS);
+    update(true);
+    expect(h.director.list).toHaveLength(4);
+    update(false);
+    h.at(ADMISSION_WAVE_MS * 2);
+    h.director.tick(0);
+    expect(h.director.list).toHaveLength(6);
+    expect(h.director.list.every(mover => mover.phase === 'seated')).toBe(true);
+    h.director.dispose();
+  });
+
   it('walks the first presence in when the Office has been open and empty', () => {
     const h = harness();
     h.director.update({ allocations: [], agents: [], reducedMotion: false, gaitOf: h.gaitOf });
@@ -262,6 +386,7 @@ describe('arrival and departure', () => {
     const h = harness();
     const first = [agent('a:primary')];
     h.director.update({ allocations: allocateOfficeAgents(first), agents: first, reducedMotion: false, gaitOf: h.gaitOf });
+    h.director.tick(0);
     h.at(SETTLE_MS + 1);
     const agents = [...first, agent('b:primary')];
     const allocations = allocateOfficeAgents(agents, allocateOfficeAgents(first));
@@ -290,6 +415,7 @@ describe('arrival and departure', () => {
   it('lets simultaneous arrivals through the entrance one after another', () => {
     const h = harness();
     h.director.update({ allocations: allocateOfficeAgents([agent('a:primary')]), agents: [agent('a:primary')], reducedMotion: false, gaitOf: h.gaitOf });
+    h.director.tick(0);
     h.at(SETTLE_MS + 1);
     const agents = ['a', 'b', 'c', 'd'].map(id => agent(`${id}:primary`));
     h.director.update({ allocations: allocateOfficeAgents(agents, allocateOfficeAgents(agents.slice(0, 1))), agents, reducedMotion: false, gaitOf: h.gaitOf });
@@ -301,11 +427,123 @@ describe('arrival and departure', () => {
     expect(times[2]! - times[1]!).toBeGreaterThanOrEqual(ENTRY_SPACING_MS - 40);
   });
 
+  it('waits for a slow mover to clear its portal while admitting arrivals through another portal', () => {
+    const h = harness();
+    const lead = agent('clearance:primary');
+    const home = seatAllocation(lead.id, 'engineering.pod-a.seat-se');
+    h.director.update({ allocations: [home], agents: [lead], reducedMotion: false, gaitOf: h.gaitOf });
+    h.director.tick(0);
+    h.at(SETTLE_MS + 1);
+    const first = agent('first:primary'), blocked = agent('blocked:primary');
+    const worker = agent('clearance:worker', { parentId: lead.id });
+    const firstSeat = seatAllocation(first.id, 'engineering.pod-b.seat-se');
+    const workerSeat = getOfficeSeats().find(seat => {
+      const approach = navigation.seats.get(seat.id)!;
+      return nearestPortal(navigation, floorAt(approach.seat[1]), seatStageId(seat.id)) !== navigation.entryId;
+    })!;
+    const allocations = [home, firstSeat, seatAllocation(blocked.id, 'engineering.pod-c.seat-se')];
+    const update = (includeWorker: boolean) => h.director.update({ allocations: includeWorker ? [...allocations, seatAllocation(worker.id, workerSeat.id)] : allocations,
+      agents: includeWorker ? [lead, first, blocked, worker] : [lead, first, blocked], reducedMotion: false, gaitOf: h.gaitOf });
+    update(false);
+    h.director.tick(0);
+    const mover = h.director.list.find(item => item.id === first.id)!;
+    const entry = navigation.waypoints.get(navigation.entryId)!.position;
+    expect(mover.position).toEqual(entry);
+    h.at(h.now + ENTRY_SPACING_MS);
+    // Wall time passed, but no movement frame advanced the first arrival.
+    update(true);
+    h.director.tick(0);
+    expect(h.director.position(blocked.id)).toBeUndefined();
+    expect(h.director.position(worker.id)).toBeDefined();
+    h.at(h.now + ADMISSION_WAVE_MS);
+    mover.position[0] = entry[0] + ENTRY_CLEARANCE_METERS - .01;
+    h.director.tick(0);
+    expect(h.director.position(blocked.id)).toBeUndefined();
+    mover.position[0] = entry[0] + ENTRY_CLEARANCE_METERS + .01;
+    h.director.tick(0);
+    expect(h.director.position(blocked.id)).toEqual(entry);
+    h.director.dispose();
+  });
+
+  it('refreshes a queued live arrival’s portal when its latest snapshot changes seat and parent', () => {
+    const h = harness();
+    const lead = agent('reseat:primary');
+    const home = seatAllocation(lead.id, 'engineering.pod-a.seat-se');
+    h.director.update({ allocations: [home], agents: [lead], reducedMotion: false, gaitOf: h.gaitOf });
+    h.director.tick(0);
+    h.at(SETTLE_MS + 1);
+    const first = agent('first:primary'), queued = agent('queued:primary');
+    const firstSeat = seatAllocation(first.id, 'engineering.pod-b.seat-se');
+    h.director.update({ allocations: [home, firstSeat, seatAllocation(queued.id, 'engineering.pod-c.seat-se')],
+      agents: [lead, first, queued], reducedMotion: false, gaitOf: h.gaitOf });
+    h.director.tick(0);
+    expect(h.director.position(queued.id)).toBeUndefined();
+    const latest = { ...queued, parentId: lead.id, status: 'waiting' as const };
+    const latestSeat = seatAllocation(queued.id, 'multi-engine.station-2');
+    const gait = { ...gaitParameters(), cadence: 1.1 };
+    h.director.update({ allocations: [home, firstSeat, latestSeat], agents: [lead, first, latest],
+      reducedMotion: false, gaitOf: () => gait });
+    expect(h.director.position(queued.id)).toBeUndefined();
+    h.at(h.now + ADMISSION_WAVE_MS);
+    h.director.tick(0);
+    const appeared = h.director.roster().find(entry => entry.agent.id === queued.id)!;
+    const seat = navigation.seats.get(latestSeat.resourceId)!;
+    const portal = nearestPortal(navigation, floorAt(seat.seat[1]), seatStageId(seat.seatId))!;
+    expect(appeared.mover.position).toEqual(navigation.waypoints.get(portal)!.position);
+    expect(appeared.mover.goal?.kind === 'seat' && appeared.mover.goal.seat.seatId).toBe(latestSeat.resourceId);
+    expect(appeared.mover.gait).toBe(gait);
+    expect(appeared.agent).toBe(latest);
+    h.director.dispose();
+  });
+
+  it('does not flush live arrivals whose admission deadlines passed during a long frame', () => {
+    const h = harness();
+    const lead = agent('live-hitch:primary');
+    const home = allocateOfficeAgents([lead]);
+    h.director.update({ allocations: home, agents: [lead], reducedMotion: false, gaitOf: h.gaitOf });
+    h.director.tick(0);
+    h.at(SETTLE_MS + 1);
+    const agents = [lead, ...Array.from({ length: 32 }, (_, index) => agent(`live-hitch:worker-${index}`, { parentId: lead.id }))];
+    const allocations = allocateOfficeAgents(agents, home);
+    const update = () => h.director.update({ allocations, agents, reducedMotion: false, gaitOf: h.gaitOf });
+    update();
+    h.director.tick(0);
+    const before = h.director.list.length;
+    h.at(h.now + 60_000);
+    h.director.tick(60);
+    const after = h.director.list.length;
+    expect(after).toBeGreaterThan(before);
+    expect(after - before).toBeLessThanOrEqual(ADMISSION_BATCH_SIZE);
+    for (let frame = 0; frame < 10; frame++) { update(); h.director.tick(0); }
+    expect(h.director.list).toHaveLength(after);
+    h.at(h.now + ADMISSION_WAVE_MS - 1);
+    h.director.tick(0);
+    expect(h.director.list).toHaveLength(after);
+    h.director.dispose();
+  });
+
+  it('checks external entrance bodies at the same height without blocking other floors', () => {
+    const entry = navigation.waypoints.get(navigation.entryId)!.position;
+    const body: Point3 = [...entry];
+    const h = harness({ nearbyWalkers: () => [{ id: 'facility', position: body, velocity: [0, 0, 0] }] });
+    h.at(EMPTY_START_MS + 1);
+    const actor = agent('visitor:primary');
+    const allocations = [seatAllocation(actor.id, 'engineering.pod-a.seat-se')];
+    h.director.update({ allocations, agents: [actor], reducedMotion: false, gaitOf: h.gaitOf });
+    h.director.tick(0);
+    expect(h.director.position(actor.id)).toBeUndefined();
+    body[1] += FLOOR_HEIGHT;
+    h.director.tick(0);
+    expect(h.director.position(actor.id)).toEqual(entry);
+    h.director.dispose();
+  });
+
   it('waits out brief disappearances, then stands up and walks out of the building', () => {
     const h = harness();
     const agents = [agent('a:primary'), agent('b:primary')];
     const allocations = allocateOfficeAgents(agents);
     h.director.update({ allocations, agents, reducedMotion: false, gaitOf: h.gaitOf });
+    h.director.tick(0);
     h.at(SETTLE_MS + 1);
     // History reloads can drop a presence for a moment: nobody moves.
     h.director.update({ allocations: allocations.slice(0, 1), agents: agents.slice(0, 1), reducedMotion: false, gaitOf: h.gaitOf });
@@ -361,6 +599,7 @@ describe('arrival and departure', () => {
     const h = harness();
     const lead = agent('s:primary');
     h.director.update({ allocations: allocateOfficeAgents([lead]), agents: [lead], reducedMotion: false, gaitOf: h.gaitOf });
+    h.director.tick(0);
     h.at(SETTLE_MS + 1);
     const worker = agent('s:worker-1', { parentId: 's:primary' });
     const allocations = allocateOfficeAgents([lead, worker], allocateOfficeAgents([lead]));
@@ -401,20 +640,20 @@ describe('arrival and departure', () => {
     expect(closestToLead).toBeGreaterThan(1);
   });
 
-  it('admits at most about three arrivals per second, spaced per arrival point', () => {
+  it.each([8, 32])('admits %i live arrivals in waves of at most two, spaced per arrival point', count => {
     const h = harness();
     const lead = agent('s:primary');
     h.director.update({ allocations: allocateOfficeAgents([lead]), agents: [lead], reducedMotion: false, gaitOf: h.gaitOf });
+    h.director.tick(0);
     h.at(SETTLE_MS + 1);
-    const crowd = [lead, ...Array.from({ length: 8 }, (_, index) => agent(`s:w${index}`, { parentId: 's:primary' }))];
+    const crowd = [lead, ...Array.from({ length: count }, (_, index) => agent(`s:w${index}`, { parentId: 's:primary' }))];
     const allocations = allocateOfficeAgents(crowd, allocateOfficeAgents([lead]));
     h.director.update({ allocations, agents: crowd, reducedMotion: false, gaitOf: h.gaitOf });
     const appeared = new Map<string, number>();
-    h.run(15, () => { for (const entry of crowd.slice(1)) if (!appeared.has(entry.id) && h.director.position(entry.id)) appeared.set(entry.id, h.now); });
-    expect(appeared.size).toBe(8);
+    h.run(60, () => { for (const entry of crowd.slice(1)) if (!appeared.has(entry.id) && h.director.position(entry.id)) appeared.set(entry.id, h.now); });
+    expect(appeared.size).toBe(count);
     const times = [...appeared.values()].sort((a, b) => a - b);
-    for (let index = 1; index < times.length; index++) expect(times[index]! - times[index - 1]!).toBeGreaterThanOrEqual(ADMISSION_SPACING_MS - 40);
-    for (const time of times) expect(times.filter(other => other >= time && other < time + 1000).length).toBeLessThanOrEqual(3);
+    for (const time of times) expect(times.filter(other => other >= time && other < time + ADMISSION_WAVE_MS - 40).length).toBeLessThanOrEqual(ADMISSION_BATCH_SIZE);
     // Two arrivals at the same point never overlap.
     const byPoint = new Map<string, number[]>();
     for (const entry of crowd.slice(1)) {
@@ -431,6 +670,7 @@ describe('arrival and departure', () => {
     const first = agent('z:primary');
     h.director.update({ allocations: [seatAllocation(first.id, 'research.laptop-1')], agents: [first], reducedMotion: false, gaitOf: h.gaitOf });
     // Settled on load; a later visitor bound for floor 3 walks.
+    h.director.tick(0);
     h.at(SETTLE_MS + 1);
     const visitor = agent('v:primary');
     const allocations = [seatAllocation(first.id, 'research.laptop-1'), seatAllocation(visitor.id, 'multi-engine.station-2')];
@@ -455,6 +695,7 @@ describe('arrival and departure', () => {
     const h = harness();
     const a = agent('a:primary');
     h.director.update({ allocations: [seatAllocation(a.id, 'engineering.pod-a.seat-se')], agents: [a], reducedMotion: false, gaitOf: h.gaitOf });
+    h.director.tick(0);
     h.at(SETTLE_MS + 1);
     h.director.update({ allocations: [seatAllocation(a.id, 'engineering.pod-b.seat-se')], agents: [a], reducedMotion: false, gaitOf: h.gaitOf });
     h.run(DEPARTURE_GRACE_MS / 1000 - 0.2);
@@ -470,15 +711,16 @@ describe('arrival and departure', () => {
     expect(h.director.list[0]!.phase).toBe('seated');
   });
 
-  it('dispatches a character to the Library/Skills workstation when updating skills and returns to desk when done', () => {
+  it.each([{ toolName: 'skill_manage' }, { activity: 'knowledge' as const }])('dispatches explicit skill activity %j to the Library workstation and returns to desk when done', activity => {
     const h = harness();
     const a = agent('a:primary');
     h.director.update({ allocations: allocateOfficeAgents([a]), agents: [a], reducedMotion: false, gaitOf: h.gaitOf });
+    h.director.tick(0);
     h.at(SETTLE_MS + 1);
-    const homeSeat = h.director.position(a.id);
+    const homeSeat = [...h.director.position(a.id)!];
 
-    // Agent begins skill task (toolName = 'skill_manage')
-    const skillAgent = { ...a, toolName: 'skill_manage', activity: 'knowledge' as const, status: 'working' as const };
+    // Either an actual skill tool or explicit knowledge activity starts a work visit.
+    const skillAgent = { ...a, ...activity, status: 'working' as const };
     h.director.update({ allocations: allocateOfficeAgents([a]), agents: [skillAgent], reducedMotion: false, gaitOf: h.gaitOf });
     h.run(120);
     const librarySeat = navigation.seats.get('library.laptop')!;
@@ -491,10 +733,96 @@ describe('arrival and departure', () => {
     expect(h.director.position(a.id)).toEqual(homeSeat);
   });
 
+  it('gives simultaneous knowledge actors distinct authored work seats, waits at capacity, and walks the overflow in when a seat frees', () => {
+    const h = harness();
+    h.director.wander = false;
+    const stations = [...navigation.seats.keys()].filter(id => /^library\.(laptop|sofa-\d+)$/.test(id));
+    expect(stations.length).toBeGreaterThanOrEqual(3);
+    const actors = Array.from({ length: stations.length + 1 }, (_, index) => agent(`knowledge-${index}:primary`, { activity: 'edit' }));
+    const desks = getOfficeSeats().filter(seat => seat.id.startsWith('engineering.pod-')).slice(0, actors.length)
+      .map((seat, index) => seatAllocation(actors[index]!.id, seat.id));
+    const update = (agents: OfficeAgent[]) => h.director.update({ allocations: desks, agents, reducedMotion: false, gaitOf: h.gaitOf });
+    update(actors);
+    h.run(Math.ceil(actors.length / ADMISSION_BATCH_SIZE) * ADMISSION_WAVE_MS / 1000);
+    const homes = new Map(h.director.list.map(mover => [mover.id, [...mover.position]]));
+    const knowledge = actors.map(actor => ({ ...actor, activity: 'knowledge' as const }));
+    update(knowledge);
+    h.run(.5);
+    expect(h.director.list.every(mover => mover.phase === 'seated' && mover.seat?.seatId === desks.find(desk => desk.agentId === mover.id)?.resourceId)).toBe(true);
+    const assertUniqueTargets = () => {
+      const targets = h.director.list.flatMap(mover => {
+        const target = mover.pending ?? mover.goal;
+        return target?.kind === 'seat' && stations.includes(target.seat.seatId) ? [target.seat.seatId] : [];
+      });
+      expect(new Set(targets).size).toBe(targets.length);
+    };
+    h.run(180, assertUniqueTargets);
+    const visitors = h.director.list.filter(mover => stations.includes(mover.seat?.seatId ?? ''));
+    expect(visitors).toHaveLength(stations.length);
+    expect(visitors.every(mover => mover.phase === 'seated')).toBe(true);
+    expect(new Set(visitors.map(mover => mover.seat!.seatId)).size).toBe(stations.length);
+    const overflow = h.director.list.find(mover => !visitors.includes(mover))!;
+    expect(overflow.phase).toBe('seated');
+    expect(overflow.position).toEqual(homes.get(overflow.id));
+    const first = visitors.find(mover => mover.seat?.seatId === 'library.laptop')!;
+    const retained = new Map(visitors.filter(mover => mover !== first).map(mover => [mover.id, mover.seat!.seatId]));
+    update(knowledge.map(actor => actor.id === first.id ? { ...actor, activity: 'edit' } : actor));
+    h.run(180, assertUniqueTargets);
+    expect(first.position).toEqual(homes.get(first.id));
+    expect(overflow.phase).toBe('seated');
+    expect(overflow.seat?.seatId).toBe('library.laptop');
+    for (const [id, seatId] of retained) expect(h.director.list.find(mover => mover.id === id)?.seat?.seatId).toBe(seatId);
+    h.director.dispose();
+  });
+
+  it.each(['goal', 'pending'] as const)('respects another actor’s current seat and %s, plus a Library desk reserved during a meeting', target => {
+    const h = harness();
+    h.director.wander = false;
+    const owner = agent('desk-owner:primary', { meeting: { meetingId: 'meeting', participants: ['primary'], round: 1 } });
+    const blocker = agent('blocker:primary'), learner = agent('learner:primary');
+    const ownerAllocation = allocateOfficeAgents([owner], [seatAllocation(owner.id, 'library.laptop')])[0]!;
+    expect(ownerAllocation.workstationId).toBe('library.laptop');
+    expect(ownerAllocation.resourceId).toMatch(/^meeting-/);
+    const allocations = [seatAllocation(learner.id, 'engineering.pod-a.seat-se'), seatAllocation(blocker.id, 'engineering.pod-b.seat-se'), ownerAllocation];
+    h.director.update({ allocations, agents: [learner, blocker, owner], reducedMotion: false, gaitOf: h.gaitOf });
+    h.director.tick(0);
+    const other = h.director.list.find(mover => mover.id === blocker.id)!;
+    placeSeated(other, navigation.seats.get('library.sofa-1')!, { navigation, elevators: h.lifts.access });
+    other.goal = { kind: 'seat', seat: navigation.seats.get('engineering.pod-b.seat-se')! };
+    other.pending = { kind: 'seat', seat: navigation.seats.get('engineering.pod-b.seat-se')! };
+    other[target] = { kind: 'seat', seat: navigation.seats.get('library.sofa-2')! };
+    const home = [...h.director.position(learner.id)!];
+    h.at(SETTLE_MS + 1);
+    // A departing actor still owns its current and requested places during the exit grace.
+    h.director.update({ allocations: allocations.filter(allocation => allocation.agentId !== blocker.id), agents: [{ ...learner, activity: 'knowledge' }, owner], reducedMotion: false, gaitOf: h.gaitOf });
+    h.run(2);
+    const waiting = h.director.list.find(mover => mover.id === learner.id)!;
+    expect(waiting.phase).toBe('seated');
+    expect(waiting.position).toEqual(home);
+    expect(waiting.goal?.kind === 'seat' && waiting.goal.seat.seatId).toBe('engineering.pod-a.seat-se');
+    h.director.dispose();
+  });
+
+  it('keeps a character at its desk when only the summary mentions skills or curation', () => {
+    const h = harness();
+    const actor = agent('ordinary:primary');
+    const allocations = [seatAllocation(actor.id, 'engineering.pod-a.seat-se')];
+    h.director.update({ allocations, agents: [actor], reducedMotion: false, gaitOf: h.gaitOf });
+    const home = [...h.director.position(actor.id)!];
+    h.director.tick(0);
+    h.at(SETTLE_MS + 1);
+    h.director.update({ allocations, agents: [{ ...actor, summary: 'Review skills mentioned in the curation report', activity: 'read', toolName: 'read_file' }], reducedMotion: false, gaitOf: h.gaitOf });
+    h.run(180);
+    expect(h.director.position(actor.id)).toEqual(home);
+    expect(h.director.list[0]!.seat?.seatId).toBe(allocations[0]!.resourceId);
+    h.director.dispose();
+  });
+
   it('appears and disappears at the seat with reduced motion', () => {
     const h = harness();
     const a = agent('a:primary'), b = agent('b:primary');
     h.director.update({ allocations: allocateOfficeAgents([a]), agents: [a], reducedMotion: true, gaitOf: h.gaitOf });
+    h.director.tick(0);
     h.at(SETTLE_MS * 4);
     const allocations = allocateOfficeAgents([a, b], allocateOfficeAgents([a]));
     h.director.update({ allocations, agents: [a, b], reducedMotion: true, gaitOf: h.gaitOf });
@@ -554,5 +882,103 @@ describe('seat allocation and live positions', () => {
     expect(notified).toBeGreaterThan(0);
     store.bind(null);
     expect(store.position('a:primary')).toBeUndefined();
+  });
+});
+
+describe('explicit meeting movement', () => {
+  it('refreshes cached meeting metadata without a roster or seat change and leaves stable inputs quiet', () => {
+    const h = harness();
+    const first = agent('s:primary', { meeting: { meetingId: 'sync', participants: ['primary'], round: 1, speakerId: 'primary' } });
+    const allocations = allocateOfficeAgents([first]);
+    const update = (presence: OfficeAgent) => h.director.update({ allocations, agents: [presence], reducedMotion: false, gaitOf: h.gaitOf });
+    update(first);
+    const initial = h.director.roster();
+    const mover = initial[0]!.mover;
+    const firstVersion = h.director.version();
+    const notifications: number[] = [];
+    const unsubscribe = h.director.subscribe(() => notifications.push(h.director.version()));
+    const { speakerId: _speaker, ...previousMeeting } = first.meeting!;
+    const next = { ...first, meeting: { ...previousMeeting, round: 2 as const } };
+    update(next);
+    const roundTwo = h.director.roster();
+    expect(roundTwo).not.toBe(initial);
+    expect(roundTwo[0]!.agent).toBe(next);
+    expect(roundTwo[0]!.agent.meeting?.round).toBe(2);
+    expect(roundTwo[0]!.agent.meeting?.speakerId).toBeUndefined();
+    expect(roundTwo[0]!.mover).toBe(mover);
+    expect(h.director.version()).toBe(firstVersion + 1);
+    update(next);
+    expect(h.director.roster()).toBe(roundTwo);
+    expect(h.director.version()).toBe(firstVersion + 1);
+    expect(notifications).toHaveLength(1);
+
+    const { meeting: _meeting, ...completed } = next;
+    update(completed);
+    const finished = h.director.roster();
+    expect(finished[0]!.agent).toBe(completed);
+    expect(finished[0]!.agent.meeting).toBeUndefined();
+    expect(finished[0]!.mover).toBe(mover);
+    expect(finished[0]!.mover.seat?.seatId).toBe(allocations[0]!.resourceId);
+    expect(notifications).toHaveLength(2);
+    update(completed);
+    expect(h.director.roster()).toBe(finished);
+    expect(notifications).toHaveLength(2);
+    unsubscribe();
+    h.director.dispose();
+  });
+  it('routes every meeting chair around the table with walking clearance, through its own doorway', () => {
+    for (const roomId of ['meeting-a', 'meeting-b'] as const) {
+      const blueprint = MEETING_BLUEPRINTS[roomId];
+      const center = relocateRoomPoint(roomId, [blueprint.roomCenter[0] + blueprint.furnitureLocal[0], 6.4,
+        blueprint.roomCenter[1] + blueprint.furnitureLocal[1]]);
+      for (const resource of OFFICE_RESOURCES.filter(resource => resource.roomId === roomId && resource.kind === 'meeting-seat')) {
+        const route = planRoute('f2.north-hall', seatStageId(resource.id))!;
+        expect(route.nodeIds, resource.id).toContain(`f2.${roomId}-door`);
+        for (let index = 1; index < route.nodeIds.length; index++) {
+          const a = navigation.waypoints.get(route.nodeIds[index - 1]!)!.position;
+          const b = navigation.waypoints.get(route.nodeIds[index]!)!.position;
+          for (let t = 0; t <= 1; t += .02) {
+            const x = a[0] + (b[0] - a[0]) * t, z = a[2] + (b[2] - a[2]) * t;
+            const outside = Math.abs(x - center[0]) > blueprint.tableLength / 2 + .35
+              || Math.abs(z - center[2]) > blueprint.tableWidth / 2 + .35;
+            expect(outside, `${resource.id}: ${x.toFixed(2)}, ${z.toFixed(2)}`).toBe(true);
+          }
+        }
+      }
+    }
+  });
+  it('walks real members into separate meeting chairs, holds their poses, and walks back to their reserved desks', () => {
+    const h = harness();
+    const ordinary = agent('other:primary');
+    const base = [agent('s:primary'), agent('s:member', { parentId: 's:primary', activity: 'knowledge' }), ordinary];
+    const desks = allocateOfficeAgents(base);
+    h.director.update({ allocations: desks, agents: base, reducedMotion: false, gaitOf: h.gaitOf });
+    h.run(4);
+    const meeting = base.map(item => item.sessionId === 's' ? { ...item,
+      meeting: { meetingId: 'sync', participants: ['primary', 'member'], speakerId: 'member', round: 1 as const } } : item);
+    const seats = allocateOfficeAgents(meeting, desks);
+    h.director.update({ allocations: seats, agents: meeting, reducedMotion: false, gaitOf: h.gaitOf });
+    // A real seat change initiates the existing stand, route, and sit choreography.
+    h.run(0.5);
+    expect(h.director.list.find(mover => mover.id === 's:primary')?.seat?.seatId).toBe(desks.find(seat => seat.agentId === 's:primary')?.resourceId);
+    h.run(300);
+    for (const id of ['s:primary', 's:member']) {
+      const mover = h.director.list.find(mover => mover.id === id)!;
+      expect(mover.phase, id).toBe('seated');
+      expect(mover.seat?.seatId, id).toBe(seats.find(seat => seat.agentId === id)?.resourceId);
+      expect(mover.motion.clip, id).toBe(id.endsWith('member') ? 'chat-talk' : 'chat-listen');
+    }
+    expect(h.director.list.find(mover => mover.id === ordinary.id)?.seat?.seatId).toBe(desks.find(seat => seat.agentId === ordinary.id)?.resourceId);
+    const after = base.map(item => item.id === 's:member' ? { ...item, activity: 'edit' as const } : item);
+    const returned = allocateOfficeAgents(after, seats);
+    h.director.update({ allocations: returned, agents: after, reducedMotion: false, gaitOf: h.gaitOf });
+    h.run(300);
+    for (const id of ['s:primary', 's:member']) {
+      const mover = h.director.list.find(mover => mover.id === id)!;
+      expect(mover.phase, id).toBe('seated');
+      expect(mover.seat?.seatId, id).toBe(desks.find(seat => seat.agentId === id)?.resourceId);
+      expect(['chat-talk', 'chat-listen']).not.toContain(mover.motion.clip);
+    }
+    h.director.dispose();
   });
 });

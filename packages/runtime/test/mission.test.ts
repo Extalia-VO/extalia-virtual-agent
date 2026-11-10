@@ -1,7 +1,8 @@
+import { createProvider } from '../src/index.js';
 import { describe, expect, it, vi } from 'vitest';
 import { parseOrchestration, type OrchestrationPlan } from '@extalia/protocol';
 import * as turnLoop from '../src/loop.js';
-import { createProvider, runNativeMission, type AnyTool, type FetchLike, type NativeMissionOptions } from '../src/index.js';
+import { runNativeMission, type AnyTool, type FetchLike, type NativeMissionOptions } from '../src/index.js';
 import { expectAuditedTransitions } from './transitionAudit.js';
 
 // Every emitted state change must be listed in the shared protocol transition tables.

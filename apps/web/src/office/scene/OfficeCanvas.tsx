@@ -1,5 +1,5 @@
 import { NaturalWalkingClearance } from './movement/NaturalWalkingClearance';
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { useProgress } from '@react-three/drei';
 import type { OfficeAgent } from '../presence';
@@ -111,13 +111,14 @@ export default function OfficeCanvas({ automaticShot, view, viewRequest, languag
     return () => positions.bind(null);
   }, [positions, live]);
   const focus = allocations.find(seat => seat.agentId === selectedId)?.position;
-  const dpr = useBudgetPixelRatio();
-  return <Canvas orthographic camera={initialCamera} dpr={dpr} shadows gl={{ antialias: false, powerPreference: 'high-performance' }} style={{ width: '100%', height: '100%' }} onPointerMissed={onMiss}>
+  const [canvas, setCanvas] = useState<HTMLCanvasElement | null>(null);
+  const dpr = useBudgetPixelRatio(canvas);
+  return <Canvas ref={setCanvas} orthographic camera={initialCamera} dpr={dpr} shadows gl={{ antialias: false, powerPreference: 'high-performance' }} style={{ width: '100%', height: '100%' }} onPointerMissed={onMiss}>
     <CanvasContinuity />
     <ModelInstanceBatches />
     <SceneEnvironment dark={dark} reducedMotion={reducedMotion} lightOverride={lightOverride} followSun={followSun}>
       <SceneReadiness onScene={onScene} onReady={onReady} />
-      {/* Sky, fog and sun/moon follow the solar environment; the budget keeps the frame rate above 40 fps. */}
+      {/* Sky, fog and sun/moon follow the solar environment; adaptive resolution targets 40 fps. */}
       <SceneLighting />
       <AdaptiveRenderBudget />
       {QA_HOOKS && <SceneBenchProbe />}

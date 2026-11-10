@@ -10,7 +10,7 @@ import type { OfficeAgentStatus } from './presence';
  */
 export type SemanticCategory =
   | 'command' | 'read' | 'search' | 'git' | 'test' | 'edit' | 'web' | 'think' | 'review'
-  | 'delegate' | 'knowledge' | 'approval' | 'failed' | 'reply' | 'prompt' | 'working' | 'question';
+  | 'meeting' | 'delegate' | 'knowledge' | 'approval' | 'failed' | 'reply' | 'prompt' | 'working' | 'question';
 
 export interface SemanticInput {
   kind: OfficeActivityKind;
@@ -30,6 +30,9 @@ const REVIEW = /\b(review|diff)\b/i;
 export function semanticCategory({ kind, activity, text = '' }: SemanticInput): SemanticCategory | undefined {
   switch (kind) {
     case 'prompt': case 'reply': case 'approval': case 'failed': return kind;
+    case 'meeting-started': case 'meeting-contribution': return 'meeting';
+    case 'meeting-completed': case 'meeting-cancelled': return undefined;
+    case 'meeting-failed': return 'failed';
     case 'delegated': return 'delegate';
     case 'done': return undefined;
     case 'tool': break;

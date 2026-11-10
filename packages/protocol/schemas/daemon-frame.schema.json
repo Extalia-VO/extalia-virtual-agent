@@ -155,7 +155,8 @@
                       "agent.stopped",
                       "agent.error",
                       "subagent.spawned",
-                      "subagent.state"
+                      "subagent.state",
+                      "meeting.contribution"
                     ]
                   }
                 }
@@ -1391,6 +1392,47 @@
               "type": "string",
               "maxLength": 2000,
               "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+            },
+            "roomId": {
+              "type": "string",
+              "enum": [
+                "meeting-a",
+                "meeting-b"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "meetingId",
+            "round",
+            "text"
+          ],
+          "properties": {
+            "type": {
+              "const": "meeting.contribution"
+            },
+            "meetingId": {
+              "type": "string",
+              "maxLength": 200,
+              "pattern": "^[^\\n\\r]*$",
+              "allOf": [
+                {
+                  "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+                }
+              ]
+            },
+            "round": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 2
+            },
+            "text": {
+              "type": "string",
+              "maxLength": 200000
             }
           }
         },
@@ -1430,6 +1472,19 @@
                 "maxLength": 2000,
                 "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
               }
+            },
+            "outcome": {
+              "type": "string",
+              "enum": [
+                "completed",
+                "cancelled",
+                "failed"
+              ]
+            },
+            "notePath": {
+              "type": "string",
+              "maxLength": 2000,
+              "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
             }
           }
         }
@@ -1781,7 +1836,7 @@
         "capabilities": {
           "type": "array",
           "minItems": 1,
-          "maxItems": 44,
+          "maxItems": 46,
           "uniqueItems": true,
           "items": {
             "$ref": "#/$defs/DaemonOp"
@@ -1811,7 +1866,7 @@
         "capabilities": {
           "type": "array",
           "minItems": 1,
-          "maxItems": 44,
+          "maxItems": 46,
           "uniqueItems": true,
           "items": {
             "$ref": "#/$defs/DaemonOp"
@@ -2555,6 +2610,4048 @@
     },
     "DaemonKnowledgeWriteResult": {
       "$ref": "#/$defs/KnowledgeWriteResult"
+    },
+    "DaemonLearningProcessParams": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "action",
+            "input"
+          ],
+          "properties": {
+            "action": {
+              "const": "evidence.begin"
+            },
+            "input": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {}
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "action",
+            "input"
+          ],
+          "properties": {
+            "action": {
+              "const": "evidence.append"
+            },
+            "input": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "intakeId",
+                "toolCallId",
+                "name",
+                "isError",
+                "chunk",
+                "final"
+              ],
+              "properties": {
+                "intakeId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                },
+                "toolCallId": {
+                  "type": "string",
+                  "minLength": 0,
+                  "maxLength": 65536
+                },
+                "name": {
+                  "type": "string",
+                  "minLength": 0,
+                  "maxLength": 65536
+                },
+                "isError": {
+                  "type": "boolean"
+                },
+                "chunk": {
+                  "type": "string",
+                  "minLength": 0,
+                  "maxLength": 65536
+                },
+                "final": {
+                  "type": "boolean"
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "action",
+            "input"
+          ],
+          "properties": {
+            "action": {
+              "const": "evidence.release"
+            },
+            "input": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "intakeId"
+              ],
+              "properties": {
+                "intakeId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "action",
+            "input"
+          ],
+          "properties": {
+            "action": {
+              "const": "vault.ensure"
+            },
+            "input": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "profileId"
+              ],
+              "properties": {
+                "profileId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "action",
+            "input"
+          ],
+          "properties": {
+            "action": {
+              "const": "note.pin"
+            },
+            "input": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "root",
+                "profileId",
+                "revision",
+                "workspaceId",
+                "sessionId",
+                "purpose"
+              ],
+              "properties": {
+                "root": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 4096
+                },
+                "profileId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                },
+                "revision": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "workspaceId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                },
+                "sessionId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                },
+                "purpose": {
+                  "type": "string",
+                  "enum": [
+                    "learning",
+                    "meeting"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "action",
+            "input"
+          ],
+          "properties": {
+            "action": {
+              "const": "note.prepare"
+            },
+            "input": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "pinId",
+                "record"
+              ],
+              "properties": {
+                "pinId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                },
+                "record": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "workspaceId",
+                        "sessionId",
+                        "profileId",
+                        "revision",
+                        "runId",
+                        "promptSha256",
+                        "title",
+                        "lesson",
+                        "evidence"
+                      ],
+                      "properties": {
+                        "workspaceId": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 200
+                        },
+                        "sessionId": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 200
+                        },
+                        "profileId": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 200
+                        },
+                        "revision": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 512
+                        },
+                        "runId": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 200
+                        },
+                        "promptSha256": {
+                          "type": "string",
+                          "minLength": 64,
+                          "maxLength": 64
+                        },
+                        "title": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 200
+                        },
+                        "lesson": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 8000
+                        },
+                        "evidence": {
+                          "type": "array",
+                          "minItems": 1,
+                          "maxItems": 12,
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": [
+                              "id",
+                              "name",
+                              "content"
+                            ],
+                            "properties": {
+                              "id": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 200
+                              },
+                              "name": {
+                                "type": "string",
+                                "minLength": 0,
+                                "maxLength": 200
+                              },
+                              "content": {
+                                "type": "string",
+                                "minLength": 0,
+                                "maxLength": 2000
+                              }
+                            }
+                          }
+                        },
+                        "skill": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "required": [
+                            "packageId",
+                            "revisionId",
+                            "state",
+                            "created",
+                            "inspection",
+                            "activationPerformed",
+                            "cancellationObserved"
+                          ],
+                          "properties": {
+                            "packageId": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 200
+                            },
+                            "revisionId": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 200
+                            },
+                            "state": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 100
+                            },
+                            "stateReason": {
+                              "type": "string",
+                              "minLength": 0,
+                              "maxLength": 200
+                            },
+                            "created": {
+                              "type": "boolean"
+                            },
+                            "inspection": {
+                              "type": "string",
+                              "enum": [
+                                "recorded",
+                                "unavailable"
+                              ]
+                            },
+                            "inspectionOutcome": {
+                              "type": "string",
+                              "minLength": 0,
+                              "maxLength": 200
+                            },
+                            "activationPerformed": {
+                              "const": false
+                            },
+                            "cancellationObserved": {
+                              "type": "boolean"
+                            }
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "meetingId",
+                        "topic",
+                        "startedAt",
+                        "completedAt",
+                        "outcome",
+                        "participants",
+                        "contributions"
+                      ],
+                      "properties": {
+                        "meetingId": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 200
+                        },
+                        "topic": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 2000
+                        },
+                        "roomId": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 200
+                        },
+                        "startedAt": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 64
+                        },
+                        "completedAt": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 64
+                        },
+                        "outcome": {
+                          "type": "string",
+                          "enum": [
+                            "completed",
+                            "failed",
+                            "cancelled"
+                          ]
+                        },
+                        "participants": {
+                          "type": "array",
+                          "minItems": 2,
+                          "maxItems": 14,
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": [
+                              "agentId",
+                              "name",
+                              "role"
+                            ],
+                            "properties": {
+                              "agentId": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 200
+                              },
+                              "name": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 200
+                              },
+                              "role": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 200
+                              }
+                            }
+                          }
+                        },
+                        "contributions": {
+                          "type": "array",
+                          "maxItems": 26,
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": [
+                              "agentId",
+                              "round",
+                              "text"
+                            ],
+                            "properties": {
+                              "agentId": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 200
+                              },
+                              "round": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "maximum": 2
+                              },
+                              "text": {
+                                "type": "string",
+                                "minLength": 0,
+                                "maxLength": 16000
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "action",
+            "input"
+          ],
+          "properties": {
+            "action": {
+              "const": "note.commit"
+            },
+            "input": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "draftId"
+              ],
+              "properties": {
+                "draftId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "action",
+            "input"
+          ],
+          "properties": {
+            "action": {
+              "const": "note.discard"
+            },
+            "input": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "draftId"
+              ],
+              "properties": {
+                "draftId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "action",
+            "input"
+          ],
+          "properties": {
+            "action": {
+              "const": "note.release"
+            },
+            "input": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "pinId"
+              ],
+              "properties": {
+                "pinId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "action",
+            "input"
+          ],
+          "properties": {
+            "action": {
+              "const": "skill.normalize"
+            },
+            "input": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "proposal"
+              ],
+              "properties": {
+                "proposal": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "name",
+                    "description",
+                    "instructions"
+                  ],
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 64
+                    },
+                    "description": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 500
+                    },
+                    "instructions": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 65536
+                    },
+                    "sourceUrls": {
+                      "type": "array",
+                      "maxItems": 8,
+                      "items": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 2048
+                      }
+                    }
+                  }
+                },
+                "provenance": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "sessionId",
+                    "workspaceId",
+                    "promptSha256"
+                  ],
+                  "properties": {
+                    "sessionId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    "workspaceId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    "promptSha256": {
+                      "type": "string",
+                      "minLength": 64,
+                      "maxLength": 64
+                    },
+                    "profileId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    "runId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "action",
+            "input"
+          ],
+          "properties": {
+            "action": {
+              "const": "skill.stage"
+            },
+            "input": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "proposal",
+                "provenance"
+              ],
+              "properties": {
+                "proposal": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "name",
+                    "description",
+                    "instructions"
+                  ],
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 64
+                    },
+                    "description": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 500
+                    },
+                    "instructions": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 65536
+                    },
+                    "sourceUrls": {
+                      "type": "array",
+                      "maxItems": 8,
+                      "items": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 2048
+                      }
+                    }
+                  }
+                },
+                "provenance": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "sessionId",
+                    "workspaceId",
+                    "promptSha256"
+                  ],
+                  "properties": {
+                    "sessionId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    "workspaceId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    "promptSha256": {
+                      "type": "string",
+                      "minLength": 64,
+                      "maxLength": 64
+                    },
+                    "profileId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    "runId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "action",
+            "input"
+          ],
+          "properties": {
+            "action": {
+              "const": "skill.stageFolder"
+            },
+            "input": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "root"
+              ],
+              "properties": {
+                "root": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 4096
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "action",
+            "input"
+          ],
+          "properties": {
+            "action": {
+              "const": "skill.cleanup"
+            },
+            "input": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "stageId"
+              ],
+              "properties": {
+                "stageId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "action",
+            "input"
+          ],
+          "properties": {
+            "action": {
+              "const": "receipt.claim"
+            },
+            "input": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "profileId",
+                "contentSha256",
+                "runId"
+              ],
+              "properties": {
+                "profileId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                },
+                "contentSha256": {
+                  "type": "string",
+                  "minLength": 64,
+                  "maxLength": 64
+                },
+                "runId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "action",
+            "input"
+          ],
+          "properties": {
+            "action": {
+              "const": "job.begin"
+            },
+            "input": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "profileId",
+                    "revision",
+                    "workspaceId",
+                    "sessionId",
+                    "runId",
+                    "promptSha256",
+                    "policy",
+                    "tools",
+                    "evidence"
+                  ],
+                  "properties": {
+                    "profileId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    "revision": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 512
+                    },
+                    "workspaceId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    "sessionId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    "runId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    "promptSha256": {
+                      "type": "string",
+                      "minLength": 64,
+                      "maxLength": 64
+                    },
+                    "policy": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "enabled",
+                        "skills",
+                        "notes"
+                      ],
+                      "properties": {
+                        "enabled": {
+                          "type": "boolean"
+                        },
+                        "skills": {
+                          "type": "boolean"
+                        },
+                        "notes": {
+                          "type": "boolean"
+                        }
+                      }
+                    },
+                    "tools": {
+                      "type": "array",
+                      "maxItems": 16,
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": [
+                          "name",
+                          "description",
+                          "parameters"
+                        ],
+                        "properties": {
+                          "name": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 200
+                          },
+                          "description": {
+                            "type": "string",
+                            "minLength": 0,
+                            "maxLength": 4000
+                          },
+                          "parameters": {
+                            "description": "JSON data bounded to depth 16, 128 object properties, 256 array items, and 131072 serialized UTF-16 units.",
+                            "type": "object"
+                          }
+                        }
+                      }
+                    },
+                    "timeoutMs": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 45000
+                    },
+                    "evidence": {
+                      "type": "array",
+                      "maxItems": 128,
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": [
+                          "toolCallId",
+                          "name",
+                          "content",
+                          "isError"
+                        ],
+                        "properties": {
+                          "toolCallId": {
+                            "type": "string",
+                            "minLength": 0,
+                            "maxLength": 200
+                          },
+                          "name": {
+                            "type": "string",
+                            "minLength": 0,
+                            "maxLength": 200
+                          },
+                          "content": {
+                            "type": "string",
+                            "minLength": 0,
+                            "maxLength": 65536
+                          },
+                          "isError": {
+                            "type": "boolean"
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "profileId",
+                    "revision",
+                    "workspaceId",
+                    "sessionId",
+                    "runId",
+                    "promptSha256",
+                    "policy",
+                    "tools",
+                    "intakeId"
+                  ],
+                  "properties": {
+                    "profileId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    "revision": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 512
+                    },
+                    "workspaceId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    "sessionId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    "runId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    "promptSha256": {
+                      "type": "string",
+                      "minLength": 64,
+                      "maxLength": 64
+                    },
+                    "policy": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "enabled",
+                        "skills",
+                        "notes"
+                      ],
+                      "properties": {
+                        "enabled": {
+                          "type": "boolean"
+                        },
+                        "skills": {
+                          "type": "boolean"
+                        },
+                        "notes": {
+                          "type": "boolean"
+                        }
+                      }
+                    },
+                    "tools": {
+                      "type": "array",
+                      "maxItems": 16,
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": [
+                          "name",
+                          "description",
+                          "parameters"
+                        ],
+                        "properties": {
+                          "name": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 200
+                          },
+                          "description": {
+                            "type": "string",
+                            "minLength": 0,
+                            "maxLength": 4000
+                          },
+                          "parameters": {
+                            "description": "JSON data bounded to depth 16, 128 object properties, 256 array items, and 131072 serialized UTF-16 units.",
+                            "type": "object"
+                          }
+                        }
+                      }
+                    },
+                    "timeoutMs": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 45000
+                    },
+                    "intakeId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "action",
+            "input"
+          ],
+          "properties": {
+            "action": {
+              "const": "job.advance"
+            },
+            "input": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "jobId",
+                "effectId",
+                "completion"
+              ],
+              "properties": {
+                "jobId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                },
+                "effectId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                },
+                "completion": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "kind",
+                        "result"
+                      ],
+                      "properties": {
+                        "kind": {
+                          "const": "model"
+                        },
+                        "result": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "required": [
+                            "text",
+                            "toolCalls",
+                            "stop"
+                          ],
+                          "properties": {
+                            "text": {
+                              "type": "string",
+                              "minLength": 0,
+                              "maxLength": 16000
+                            },
+                            "toolCalls": {
+                              "type": "array",
+                              "maxItems": 16,
+                              "items": {
+                                "type": "object",
+                                "additionalProperties": false,
+                                "required": [
+                                  "id",
+                                  "name",
+                                  "input"
+                                ],
+                                "properties": {
+                                  "id": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 200
+                                  },
+                                  "name": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 200
+                                  },
+                                  "input": {
+                                    "description": "JSON data bounded to depth 16, 128 object properties, 256 array items, and 131072 serialized UTF-16 units.",
+                                    "type": "object"
+                                  },
+                                  "inputError": {
+                                    "type": "string",
+                                    "minLength": 0,
+                                    "maxLength": 2000
+                                  }
+                                }
+                              }
+                            },
+                            "stop": {
+                              "type": "string",
+                              "enum": [
+                                "end",
+                                "tool_use",
+                                "max_tokens",
+                                "refusal",
+                                "other"
+                              ]
+                            },
+                            "model": {
+                              "type": "string",
+                              "minLength": 0,
+                              "maxLength": 200
+                            },
+                            "usage": {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "properties": {
+                                "inputTokens": {
+                                  "type": "integer",
+                                  "minimum": 0,
+                                  "maximum": 9007199254740991
+                                },
+                                "outputTokens": {
+                                  "type": "integer",
+                                  "minimum": 0,
+                                  "maximum": 9007199254740991
+                                },
+                                "cachedInputTokens": {
+                                  "type": "integer",
+                                  "minimum": 0,
+                                  "maximum": 9007199254740991
+                                }
+                              }
+                            },
+                            "promptTokens": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 9007199254740991
+                            },
+                            "native": {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "required": [
+                                "api",
+                                "content"
+                              ],
+                              "properties": {
+                                "api": {
+                                  "type": "string",
+                                  "enum": [
+                                    "openai-chat",
+                                    "openai-responses",
+                                    "anthropic-messages"
+                                  ]
+                                },
+                                "content": {
+                                  "description": "JSON data bounded to depth 16, 128 object properties, 256 array items, and 131072 serialized UTF-16 units."
+                                }
+                              }
+                            },
+                            "refusal": {
+                              "type": "string",
+                              "minLength": 0,
+                              "maxLength": 2000
+                            }
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "kind",
+                        "ok",
+                        "output"
+                      ],
+                      "properties": {
+                        "kind": {
+                          "const": "read"
+                        },
+                        "ok": {
+                          "type": "boolean"
+                        },
+                        "output": {
+                          "type": "string",
+                          "minLength": 0,
+                          "maxLength": 65536
+                        }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "kind"
+                      ],
+                      "properties": {
+                        "kind": {
+                          "const": "failed"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "action",
+            "input"
+          ],
+          "properties": {
+            "action": {
+              "const": "job.cancel"
+            },
+            "input": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "jobId"
+              ],
+              "properties": {
+                "jobId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "action",
+            "input"
+          ],
+          "properties": {
+            "action": {
+              "const": "job.settle"
+            },
+            "input": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "jobId",
+                "effectId"
+              ],
+              "properties": {
+                "jobId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                },
+                "effectId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "action",
+            "input"
+          ],
+          "properties": {
+            "action": {
+              "const": "job.finish"
+            },
+            "input": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "jobId"
+              ],
+              "properties": {
+                "jobId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "action",
+            "input"
+          ],
+          "properties": {
+            "action": {
+              "const": "job.release"
+            },
+            "input": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "jobId"
+              ],
+              "properties": {
+                "jobId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "DaemonLearningProcessResult": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "action",
+            "intakeId"
+          ],
+          "properties": {
+            "action": {
+              "const": "evidence.begin"
+            },
+            "intakeId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "action",
+            "complete"
+          ],
+          "properties": {
+            "action": {
+              "const": "evidence.append"
+            },
+            "complete": {
+              "type": "boolean"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "action",
+            "released"
+          ],
+          "properties": {
+            "action": {
+              "const": "evidence.release"
+            },
+            "released": {
+              "const": true
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "action",
+            "root"
+          ],
+          "properties": {
+            "action": {
+              "const": "vault.ensure"
+            },
+            "root": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4096
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "action",
+            "pinId"
+          ],
+          "properties": {
+            "action": {
+              "const": "note.pin"
+            },
+            "pinId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "action",
+            "draftId",
+            "path"
+          ],
+          "properties": {
+            "action": {
+              "const": "note.prepare"
+            },
+            "draftId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            },
+            "path": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1024
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "action",
+            "path"
+          ],
+          "properties": {
+            "action": {
+              "const": "note.commit"
+            },
+            "path": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1024
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "action",
+            "released"
+          ],
+          "properties": {
+            "action": {
+              "const": "note.discard"
+            },
+            "released": {
+              "const": true
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "action",
+            "released"
+          ],
+          "properties": {
+            "action": {
+              "const": "note.release"
+            },
+            "released": {
+              "const": true
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "action",
+            "proposal"
+          ],
+          "properties": {
+            "action": {
+              "const": "skill.normalize"
+            },
+            "proposal": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "name",
+                "description",
+                "instructions"
+              ],
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 64
+                },
+                "description": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 500
+                },
+                "instructions": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 65536
+                },
+                "sourceUrls": {
+                  "type": "array",
+                  "maxItems": 8,
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 2048
+                  }
+                }
+              }
+            },
+            "provenance": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "sessionId",
+                "workspaceId",
+                "promptSha256"
+              ],
+              "properties": {
+                "sessionId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                },
+                "workspaceId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                },
+                "promptSha256": {
+                  "type": "string",
+                  "minLength": 64,
+                  "maxLength": 64
+                },
+                "profileId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                },
+                "runId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "action",
+            "stageId",
+            "path"
+          ],
+          "properties": {
+            "action": {
+              "const": "skill.stage"
+            },
+            "stageId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            },
+            "path": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1024
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "action",
+            "stageId",
+            "path"
+          ],
+          "properties": {
+            "action": {
+              "const": "skill.stageFolder"
+            },
+            "stageId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            },
+            "path": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1024
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "action",
+            "released"
+          ],
+          "properties": {
+            "action": {
+              "const": "skill.cleanup"
+            },
+            "released": {
+              "const": true
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "action",
+            "claimed"
+          ],
+          "properties": {
+            "action": {
+              "const": "receipt.claim"
+            },
+            "claimed": {
+              "type": "boolean"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "action",
+            "job"
+          ],
+          "properties": {
+            "action": {
+              "const": "job.begin"
+            },
+            "job": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "jobId",
+                "status",
+                "evidence",
+                "provenance"
+              ],
+              "properties": {
+                "jobId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "running",
+                    "ready",
+                    "skipped",
+                    "failed",
+                    "cancelled",
+                    "completed"
+                  ]
+                },
+                "effect": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "kind",
+                        "effectId",
+                        "system",
+                        "messages",
+                        "tools"
+                      ],
+                      "properties": {
+                        "kind": {
+                          "const": "model"
+                        },
+                        "effectId": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 200
+                        },
+                        "system": {
+                          "type": "string",
+                          "minLength": 0,
+                          "maxLength": 4000
+                        },
+                        "messages": {
+                          "type": "array",
+                          "minItems": 1,
+                          "maxItems": 32,
+                          "items": {
+                            "oneOf": [
+                              {
+                                "type": "object",
+                                "additionalProperties": false,
+                                "required": [
+                                  "role",
+                                  "text"
+                                ],
+                                "properties": {
+                                  "role": {
+                                    "const": "user"
+                                  },
+                                  "text": {
+                                    "type": "string",
+                                    "minLength": 0,
+                                    "maxLength": 24000
+                                  }
+                                }
+                              },
+                              {
+                                "type": "object",
+                                "additionalProperties": false,
+                                "required": [
+                                  "role",
+                                  "text",
+                                  "toolCalls"
+                                ],
+                                "properties": {
+                                  "role": {
+                                    "const": "assistant"
+                                  },
+                                  "text": {
+                                    "type": "string",
+                                    "minLength": 0,
+                                    "maxLength": 16000
+                                  },
+                                  "toolCalls": {
+                                    "type": "array",
+                                    "maxItems": 16,
+                                    "items": {
+                                      "type": "object",
+                                      "additionalProperties": false,
+                                      "required": [
+                                        "id",
+                                        "name",
+                                        "input"
+                                      ],
+                                      "properties": {
+                                        "id": {
+                                          "type": "string",
+                                          "minLength": 1,
+                                          "maxLength": 200
+                                        },
+                                        "name": {
+                                          "type": "string",
+                                          "minLength": 1,
+                                          "maxLength": 200
+                                        },
+                                        "input": {
+                                          "description": "JSON data bounded to depth 16, 128 object properties, 256 array items, and 131072 serialized UTF-16 units.",
+                                          "type": "object"
+                                        },
+                                        "inputError": {
+                                          "type": "string",
+                                          "minLength": 0,
+                                          "maxLength": 2000
+                                        }
+                                      }
+                                    }
+                                  },
+                                  "native": {
+                                    "type": "object",
+                                    "additionalProperties": false,
+                                    "required": [
+                                      "api",
+                                      "content"
+                                    ],
+                                    "properties": {
+                                      "api": {
+                                        "type": "string",
+                                        "enum": [
+                                          "openai-chat",
+                                          "openai-responses",
+                                          "anthropic-messages"
+                                        ]
+                                      },
+                                      "content": {
+                                        "description": "JSON data bounded to depth 16, 128 object properties, 256 array items, and 131072 serialized UTF-16 units."
+                                      }
+                                    }
+                                  }
+                                }
+                              },
+                              {
+                                "type": "object",
+                                "additionalProperties": false,
+                                "required": [
+                                  "role",
+                                  "results"
+                                ],
+                                "properties": {
+                                  "role": {
+                                    "const": "tool"
+                                  },
+                                  "results": {
+                                    "type": "array",
+                                    "maxItems": 16,
+                                    "items": {
+                                      "type": "object",
+                                      "additionalProperties": false,
+                                      "required": [
+                                        "toolCallId",
+                                        "name",
+                                        "content",
+                                        "isError"
+                                      ],
+                                      "properties": {
+                                        "toolCallId": {
+                                          "type": "string",
+                                          "minLength": 1,
+                                          "maxLength": 200
+                                        },
+                                        "name": {
+                                          "type": "string",
+                                          "minLength": 1,
+                                          "maxLength": 200
+                                        },
+                                        "content": {
+                                          "type": "string",
+                                          "minLength": 0,
+                                          "maxLength": 2000
+                                        },
+                                        "isError": {
+                                          "type": "boolean"
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            ]
+                          }
+                        },
+                        "tools": {
+                          "type": "array",
+                          "minItems": 1,
+                          "maxItems": 17,
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": [
+                              "name",
+                              "description",
+                              "parameters"
+                            ],
+                            "properties": {
+                              "name": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 200
+                              },
+                              "description": {
+                                "type": "string",
+                                "minLength": 0,
+                                "maxLength": 4000
+                              },
+                              "parameters": {
+                                "description": "JSON data bounded to depth 16, 128 object properties, 256 array items, and 131072 serialized UTF-16 units.",
+                                "type": "object"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "kind",
+                        "effectId",
+                        "callId",
+                        "name",
+                        "input"
+                      ],
+                      "properties": {
+                        "kind": {
+                          "const": "read"
+                        },
+                        "effectId": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 200
+                        },
+                        "callId": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 200
+                        },
+                        "name": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 200
+                        },
+                        "input": {
+                          "description": "JSON data bounded to depth 16, 128 object properties, 256 array items, and 131072 serialized UTF-16 units.",
+                          "type": "object"
+                        }
+                      }
+                    }
+                  ]
+                },
+                "pendingEffectId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                },
+                "submission": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "title",
+                    "lesson",
+                    "evidenceIds"
+                  ],
+                  "properties": {
+                    "title": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    "lesson": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 8000
+                    },
+                    "evidenceIds": {
+                      "type": "array",
+                      "minItems": 1,
+                      "maxItems": 10,
+                      "uniqueItems": true,
+                      "items": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 200
+                      }
+                    },
+                    "skill": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "name",
+                        "description",
+                        "instructions"
+                      ],
+                      "properties": {
+                        "name": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 64
+                        },
+                        "description": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 500
+                        },
+                        "instructions": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 65536
+                        },
+                        "sourceUrls": {
+                          "type": "array",
+                          "maxItems": 8,
+                          "items": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 2048
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "evidence": {
+                  "type": "array",
+                  "maxItems": 10,
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "id",
+                      "name",
+                      "content"
+                    ],
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 200
+                      },
+                      "name": {
+                        "type": "string",
+                        "minLength": 0,
+                        "maxLength": 200
+                      },
+                      "content": {
+                        "type": "string",
+                        "minLength": 0,
+                        "maxLength": 2000
+                      }
+                    }
+                  }
+                },
+                "provenance": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "sessionId",
+                    "workspaceId",
+                    "promptSha256"
+                  ],
+                  "properties": {
+                    "sessionId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    "workspaceId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    "promptSha256": {
+                      "type": "string",
+                      "minLength": 64,
+                      "maxLength": 64
+                    },
+                    "profileId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    "runId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    }
+                  }
+                },
+                "contentSha256": {
+                  "type": "string",
+                  "minLength": 64,
+                  "maxLength": 64
+                },
+                "skillSha256": {
+                  "type": "string",
+                  "minLength": 64,
+                  "maxLength": 64
+                },
+                "reason": {
+                  "type": "string",
+                  "minLength": 0,
+                  "maxLength": 500
+                },
+                "usage": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "inputTokens": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "outputTokens": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "cachedInputTokens": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "action",
+            "job"
+          ],
+          "properties": {
+            "action": {
+              "const": "job.advance"
+            },
+            "job": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "jobId",
+                "status",
+                "evidence",
+                "provenance"
+              ],
+              "properties": {
+                "jobId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "running",
+                    "ready",
+                    "skipped",
+                    "failed",
+                    "cancelled",
+                    "completed"
+                  ]
+                },
+                "effect": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "kind",
+                        "effectId",
+                        "system",
+                        "messages",
+                        "tools"
+                      ],
+                      "properties": {
+                        "kind": {
+                          "const": "model"
+                        },
+                        "effectId": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 200
+                        },
+                        "system": {
+                          "type": "string",
+                          "minLength": 0,
+                          "maxLength": 4000
+                        },
+                        "messages": {
+                          "type": "array",
+                          "minItems": 1,
+                          "maxItems": 32,
+                          "items": {
+                            "oneOf": [
+                              {
+                                "type": "object",
+                                "additionalProperties": false,
+                                "required": [
+                                  "role",
+                                  "text"
+                                ],
+                                "properties": {
+                                  "role": {
+                                    "const": "user"
+                                  },
+                                  "text": {
+                                    "type": "string",
+                                    "minLength": 0,
+                                    "maxLength": 24000
+                                  }
+                                }
+                              },
+                              {
+                                "type": "object",
+                                "additionalProperties": false,
+                                "required": [
+                                  "role",
+                                  "text",
+                                  "toolCalls"
+                                ],
+                                "properties": {
+                                  "role": {
+                                    "const": "assistant"
+                                  },
+                                  "text": {
+                                    "type": "string",
+                                    "minLength": 0,
+                                    "maxLength": 16000
+                                  },
+                                  "toolCalls": {
+                                    "type": "array",
+                                    "maxItems": 16,
+                                    "items": {
+                                      "type": "object",
+                                      "additionalProperties": false,
+                                      "required": [
+                                        "id",
+                                        "name",
+                                        "input"
+                                      ],
+                                      "properties": {
+                                        "id": {
+                                          "type": "string",
+                                          "minLength": 1,
+                                          "maxLength": 200
+                                        },
+                                        "name": {
+                                          "type": "string",
+                                          "minLength": 1,
+                                          "maxLength": 200
+                                        },
+                                        "input": {
+                                          "description": "JSON data bounded to depth 16, 128 object properties, 256 array items, and 131072 serialized UTF-16 units.",
+                                          "type": "object"
+                                        },
+                                        "inputError": {
+                                          "type": "string",
+                                          "minLength": 0,
+                                          "maxLength": 2000
+                                        }
+                                      }
+                                    }
+                                  },
+                                  "native": {
+                                    "type": "object",
+                                    "additionalProperties": false,
+                                    "required": [
+                                      "api",
+                                      "content"
+                                    ],
+                                    "properties": {
+                                      "api": {
+                                        "type": "string",
+                                        "enum": [
+                                          "openai-chat",
+                                          "openai-responses",
+                                          "anthropic-messages"
+                                        ]
+                                      },
+                                      "content": {
+                                        "description": "JSON data bounded to depth 16, 128 object properties, 256 array items, and 131072 serialized UTF-16 units."
+                                      }
+                                    }
+                                  }
+                                }
+                              },
+                              {
+                                "type": "object",
+                                "additionalProperties": false,
+                                "required": [
+                                  "role",
+                                  "results"
+                                ],
+                                "properties": {
+                                  "role": {
+                                    "const": "tool"
+                                  },
+                                  "results": {
+                                    "type": "array",
+                                    "maxItems": 16,
+                                    "items": {
+                                      "type": "object",
+                                      "additionalProperties": false,
+                                      "required": [
+                                        "toolCallId",
+                                        "name",
+                                        "content",
+                                        "isError"
+                                      ],
+                                      "properties": {
+                                        "toolCallId": {
+                                          "type": "string",
+                                          "minLength": 1,
+                                          "maxLength": 200
+                                        },
+                                        "name": {
+                                          "type": "string",
+                                          "minLength": 1,
+                                          "maxLength": 200
+                                        },
+                                        "content": {
+                                          "type": "string",
+                                          "minLength": 0,
+                                          "maxLength": 2000
+                                        },
+                                        "isError": {
+                                          "type": "boolean"
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            ]
+                          }
+                        },
+                        "tools": {
+                          "type": "array",
+                          "minItems": 1,
+                          "maxItems": 17,
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": [
+                              "name",
+                              "description",
+                              "parameters"
+                            ],
+                            "properties": {
+                              "name": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 200
+                              },
+                              "description": {
+                                "type": "string",
+                                "minLength": 0,
+                                "maxLength": 4000
+                              },
+                              "parameters": {
+                                "description": "JSON data bounded to depth 16, 128 object properties, 256 array items, and 131072 serialized UTF-16 units.",
+                                "type": "object"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "kind",
+                        "effectId",
+                        "callId",
+                        "name",
+                        "input"
+                      ],
+                      "properties": {
+                        "kind": {
+                          "const": "read"
+                        },
+                        "effectId": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 200
+                        },
+                        "callId": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 200
+                        },
+                        "name": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 200
+                        },
+                        "input": {
+                          "description": "JSON data bounded to depth 16, 128 object properties, 256 array items, and 131072 serialized UTF-16 units.",
+                          "type": "object"
+                        }
+                      }
+                    }
+                  ]
+                },
+                "pendingEffectId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                },
+                "submission": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "title",
+                    "lesson",
+                    "evidenceIds"
+                  ],
+                  "properties": {
+                    "title": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    "lesson": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 8000
+                    },
+                    "evidenceIds": {
+                      "type": "array",
+                      "minItems": 1,
+                      "maxItems": 10,
+                      "uniqueItems": true,
+                      "items": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 200
+                      }
+                    },
+                    "skill": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "name",
+                        "description",
+                        "instructions"
+                      ],
+                      "properties": {
+                        "name": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 64
+                        },
+                        "description": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 500
+                        },
+                        "instructions": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 65536
+                        },
+                        "sourceUrls": {
+                          "type": "array",
+                          "maxItems": 8,
+                          "items": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 2048
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "evidence": {
+                  "type": "array",
+                  "maxItems": 10,
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "id",
+                      "name",
+                      "content"
+                    ],
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 200
+                      },
+                      "name": {
+                        "type": "string",
+                        "minLength": 0,
+                        "maxLength": 200
+                      },
+                      "content": {
+                        "type": "string",
+                        "minLength": 0,
+                        "maxLength": 2000
+                      }
+                    }
+                  }
+                },
+                "provenance": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "sessionId",
+                    "workspaceId",
+                    "promptSha256"
+                  ],
+                  "properties": {
+                    "sessionId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    "workspaceId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    "promptSha256": {
+                      "type": "string",
+                      "minLength": 64,
+                      "maxLength": 64
+                    },
+                    "profileId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    "runId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    }
+                  }
+                },
+                "contentSha256": {
+                  "type": "string",
+                  "minLength": 64,
+                  "maxLength": 64
+                },
+                "skillSha256": {
+                  "type": "string",
+                  "minLength": 64,
+                  "maxLength": 64
+                },
+                "reason": {
+                  "type": "string",
+                  "minLength": 0,
+                  "maxLength": 500
+                },
+                "usage": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "inputTokens": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "outputTokens": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "cachedInputTokens": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "action",
+            "job"
+          ],
+          "properties": {
+            "action": {
+              "const": "job.cancel"
+            },
+            "job": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "jobId",
+                "status",
+                "evidence",
+                "provenance"
+              ],
+              "properties": {
+                "jobId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "running",
+                    "ready",
+                    "skipped",
+                    "failed",
+                    "cancelled",
+                    "completed"
+                  ]
+                },
+                "effect": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "kind",
+                        "effectId",
+                        "system",
+                        "messages",
+                        "tools"
+                      ],
+                      "properties": {
+                        "kind": {
+                          "const": "model"
+                        },
+                        "effectId": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 200
+                        },
+                        "system": {
+                          "type": "string",
+                          "minLength": 0,
+                          "maxLength": 4000
+                        },
+                        "messages": {
+                          "type": "array",
+                          "minItems": 1,
+                          "maxItems": 32,
+                          "items": {
+                            "oneOf": [
+                              {
+                                "type": "object",
+                                "additionalProperties": false,
+                                "required": [
+                                  "role",
+                                  "text"
+                                ],
+                                "properties": {
+                                  "role": {
+                                    "const": "user"
+                                  },
+                                  "text": {
+                                    "type": "string",
+                                    "minLength": 0,
+                                    "maxLength": 24000
+                                  }
+                                }
+                              },
+                              {
+                                "type": "object",
+                                "additionalProperties": false,
+                                "required": [
+                                  "role",
+                                  "text",
+                                  "toolCalls"
+                                ],
+                                "properties": {
+                                  "role": {
+                                    "const": "assistant"
+                                  },
+                                  "text": {
+                                    "type": "string",
+                                    "minLength": 0,
+                                    "maxLength": 16000
+                                  },
+                                  "toolCalls": {
+                                    "type": "array",
+                                    "maxItems": 16,
+                                    "items": {
+                                      "type": "object",
+                                      "additionalProperties": false,
+                                      "required": [
+                                        "id",
+                                        "name",
+                                        "input"
+                                      ],
+                                      "properties": {
+                                        "id": {
+                                          "type": "string",
+                                          "minLength": 1,
+                                          "maxLength": 200
+                                        },
+                                        "name": {
+                                          "type": "string",
+                                          "minLength": 1,
+                                          "maxLength": 200
+                                        },
+                                        "input": {
+                                          "description": "JSON data bounded to depth 16, 128 object properties, 256 array items, and 131072 serialized UTF-16 units.",
+                                          "type": "object"
+                                        },
+                                        "inputError": {
+                                          "type": "string",
+                                          "minLength": 0,
+                                          "maxLength": 2000
+                                        }
+                                      }
+                                    }
+                                  },
+                                  "native": {
+                                    "type": "object",
+                                    "additionalProperties": false,
+                                    "required": [
+                                      "api",
+                                      "content"
+                                    ],
+                                    "properties": {
+                                      "api": {
+                                        "type": "string",
+                                        "enum": [
+                                          "openai-chat",
+                                          "openai-responses",
+                                          "anthropic-messages"
+                                        ]
+                                      },
+                                      "content": {
+                                        "description": "JSON data bounded to depth 16, 128 object properties, 256 array items, and 131072 serialized UTF-16 units."
+                                      }
+                                    }
+                                  }
+                                }
+                              },
+                              {
+                                "type": "object",
+                                "additionalProperties": false,
+                                "required": [
+                                  "role",
+                                  "results"
+                                ],
+                                "properties": {
+                                  "role": {
+                                    "const": "tool"
+                                  },
+                                  "results": {
+                                    "type": "array",
+                                    "maxItems": 16,
+                                    "items": {
+                                      "type": "object",
+                                      "additionalProperties": false,
+                                      "required": [
+                                        "toolCallId",
+                                        "name",
+                                        "content",
+                                        "isError"
+                                      ],
+                                      "properties": {
+                                        "toolCallId": {
+                                          "type": "string",
+                                          "minLength": 1,
+                                          "maxLength": 200
+                                        },
+                                        "name": {
+                                          "type": "string",
+                                          "minLength": 1,
+                                          "maxLength": 200
+                                        },
+                                        "content": {
+                                          "type": "string",
+                                          "minLength": 0,
+                                          "maxLength": 2000
+                                        },
+                                        "isError": {
+                                          "type": "boolean"
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            ]
+                          }
+                        },
+                        "tools": {
+                          "type": "array",
+                          "minItems": 1,
+                          "maxItems": 17,
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": [
+                              "name",
+                              "description",
+                              "parameters"
+                            ],
+                            "properties": {
+                              "name": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 200
+                              },
+                              "description": {
+                                "type": "string",
+                                "minLength": 0,
+                                "maxLength": 4000
+                              },
+                              "parameters": {
+                                "description": "JSON data bounded to depth 16, 128 object properties, 256 array items, and 131072 serialized UTF-16 units.",
+                                "type": "object"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "kind",
+                        "effectId",
+                        "callId",
+                        "name",
+                        "input"
+                      ],
+                      "properties": {
+                        "kind": {
+                          "const": "read"
+                        },
+                        "effectId": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 200
+                        },
+                        "callId": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 200
+                        },
+                        "name": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 200
+                        },
+                        "input": {
+                          "description": "JSON data bounded to depth 16, 128 object properties, 256 array items, and 131072 serialized UTF-16 units.",
+                          "type": "object"
+                        }
+                      }
+                    }
+                  ]
+                },
+                "pendingEffectId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                },
+                "submission": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "title",
+                    "lesson",
+                    "evidenceIds"
+                  ],
+                  "properties": {
+                    "title": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    "lesson": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 8000
+                    },
+                    "evidenceIds": {
+                      "type": "array",
+                      "minItems": 1,
+                      "maxItems": 10,
+                      "uniqueItems": true,
+                      "items": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 200
+                      }
+                    },
+                    "skill": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "name",
+                        "description",
+                        "instructions"
+                      ],
+                      "properties": {
+                        "name": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 64
+                        },
+                        "description": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 500
+                        },
+                        "instructions": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 65536
+                        },
+                        "sourceUrls": {
+                          "type": "array",
+                          "maxItems": 8,
+                          "items": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 2048
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "evidence": {
+                  "type": "array",
+                  "maxItems": 10,
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "id",
+                      "name",
+                      "content"
+                    ],
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 200
+                      },
+                      "name": {
+                        "type": "string",
+                        "minLength": 0,
+                        "maxLength": 200
+                      },
+                      "content": {
+                        "type": "string",
+                        "minLength": 0,
+                        "maxLength": 2000
+                      }
+                    }
+                  }
+                },
+                "provenance": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "sessionId",
+                    "workspaceId",
+                    "promptSha256"
+                  ],
+                  "properties": {
+                    "sessionId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    "workspaceId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    "promptSha256": {
+                      "type": "string",
+                      "minLength": 64,
+                      "maxLength": 64
+                    },
+                    "profileId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    "runId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    }
+                  }
+                },
+                "contentSha256": {
+                  "type": "string",
+                  "minLength": 64,
+                  "maxLength": 64
+                },
+                "skillSha256": {
+                  "type": "string",
+                  "minLength": 64,
+                  "maxLength": 64
+                },
+                "reason": {
+                  "type": "string",
+                  "minLength": 0,
+                  "maxLength": 500
+                },
+                "usage": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "inputTokens": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "outputTokens": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "cachedInputTokens": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "action",
+            "job"
+          ],
+          "properties": {
+            "action": {
+              "const": "job.settle"
+            },
+            "job": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "jobId",
+                "status",
+                "evidence",
+                "provenance"
+              ],
+              "properties": {
+                "jobId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "running",
+                    "ready",
+                    "skipped",
+                    "failed",
+                    "cancelled",
+                    "completed"
+                  ]
+                },
+                "effect": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "kind",
+                        "effectId",
+                        "system",
+                        "messages",
+                        "tools"
+                      ],
+                      "properties": {
+                        "kind": {
+                          "const": "model"
+                        },
+                        "effectId": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 200
+                        },
+                        "system": {
+                          "type": "string",
+                          "minLength": 0,
+                          "maxLength": 4000
+                        },
+                        "messages": {
+                          "type": "array",
+                          "minItems": 1,
+                          "maxItems": 32,
+                          "items": {
+                            "oneOf": [
+                              {
+                                "type": "object",
+                                "additionalProperties": false,
+                                "required": [
+                                  "role",
+                                  "text"
+                                ],
+                                "properties": {
+                                  "role": {
+                                    "const": "user"
+                                  },
+                                  "text": {
+                                    "type": "string",
+                                    "minLength": 0,
+                                    "maxLength": 24000
+                                  }
+                                }
+                              },
+                              {
+                                "type": "object",
+                                "additionalProperties": false,
+                                "required": [
+                                  "role",
+                                  "text",
+                                  "toolCalls"
+                                ],
+                                "properties": {
+                                  "role": {
+                                    "const": "assistant"
+                                  },
+                                  "text": {
+                                    "type": "string",
+                                    "minLength": 0,
+                                    "maxLength": 16000
+                                  },
+                                  "toolCalls": {
+                                    "type": "array",
+                                    "maxItems": 16,
+                                    "items": {
+                                      "type": "object",
+                                      "additionalProperties": false,
+                                      "required": [
+                                        "id",
+                                        "name",
+                                        "input"
+                                      ],
+                                      "properties": {
+                                        "id": {
+                                          "type": "string",
+                                          "minLength": 1,
+                                          "maxLength": 200
+                                        },
+                                        "name": {
+                                          "type": "string",
+                                          "minLength": 1,
+                                          "maxLength": 200
+                                        },
+                                        "input": {
+                                          "description": "JSON data bounded to depth 16, 128 object properties, 256 array items, and 131072 serialized UTF-16 units.",
+                                          "type": "object"
+                                        },
+                                        "inputError": {
+                                          "type": "string",
+                                          "minLength": 0,
+                                          "maxLength": 2000
+                                        }
+                                      }
+                                    }
+                                  },
+                                  "native": {
+                                    "type": "object",
+                                    "additionalProperties": false,
+                                    "required": [
+                                      "api",
+                                      "content"
+                                    ],
+                                    "properties": {
+                                      "api": {
+                                        "type": "string",
+                                        "enum": [
+                                          "openai-chat",
+                                          "openai-responses",
+                                          "anthropic-messages"
+                                        ]
+                                      },
+                                      "content": {
+                                        "description": "JSON data bounded to depth 16, 128 object properties, 256 array items, and 131072 serialized UTF-16 units."
+                                      }
+                                    }
+                                  }
+                                }
+                              },
+                              {
+                                "type": "object",
+                                "additionalProperties": false,
+                                "required": [
+                                  "role",
+                                  "results"
+                                ],
+                                "properties": {
+                                  "role": {
+                                    "const": "tool"
+                                  },
+                                  "results": {
+                                    "type": "array",
+                                    "maxItems": 16,
+                                    "items": {
+                                      "type": "object",
+                                      "additionalProperties": false,
+                                      "required": [
+                                        "toolCallId",
+                                        "name",
+                                        "content",
+                                        "isError"
+                                      ],
+                                      "properties": {
+                                        "toolCallId": {
+                                          "type": "string",
+                                          "minLength": 1,
+                                          "maxLength": 200
+                                        },
+                                        "name": {
+                                          "type": "string",
+                                          "minLength": 1,
+                                          "maxLength": 200
+                                        },
+                                        "content": {
+                                          "type": "string",
+                                          "minLength": 0,
+                                          "maxLength": 2000
+                                        },
+                                        "isError": {
+                                          "type": "boolean"
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            ]
+                          }
+                        },
+                        "tools": {
+                          "type": "array",
+                          "minItems": 1,
+                          "maxItems": 17,
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": [
+                              "name",
+                              "description",
+                              "parameters"
+                            ],
+                            "properties": {
+                              "name": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 200
+                              },
+                              "description": {
+                                "type": "string",
+                                "minLength": 0,
+                                "maxLength": 4000
+                              },
+                              "parameters": {
+                                "description": "JSON data bounded to depth 16, 128 object properties, 256 array items, and 131072 serialized UTF-16 units.",
+                                "type": "object"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "kind",
+                        "effectId",
+                        "callId",
+                        "name",
+                        "input"
+                      ],
+                      "properties": {
+                        "kind": {
+                          "const": "read"
+                        },
+                        "effectId": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 200
+                        },
+                        "callId": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 200
+                        },
+                        "name": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 200
+                        },
+                        "input": {
+                          "description": "JSON data bounded to depth 16, 128 object properties, 256 array items, and 131072 serialized UTF-16 units.",
+                          "type": "object"
+                        }
+                      }
+                    }
+                  ]
+                },
+                "pendingEffectId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                },
+                "submission": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "title",
+                    "lesson",
+                    "evidenceIds"
+                  ],
+                  "properties": {
+                    "title": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    "lesson": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 8000
+                    },
+                    "evidenceIds": {
+                      "type": "array",
+                      "minItems": 1,
+                      "maxItems": 10,
+                      "uniqueItems": true,
+                      "items": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 200
+                      }
+                    },
+                    "skill": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "name",
+                        "description",
+                        "instructions"
+                      ],
+                      "properties": {
+                        "name": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 64
+                        },
+                        "description": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 500
+                        },
+                        "instructions": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 65536
+                        },
+                        "sourceUrls": {
+                          "type": "array",
+                          "maxItems": 8,
+                          "items": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 2048
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "evidence": {
+                  "type": "array",
+                  "maxItems": 10,
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "id",
+                      "name",
+                      "content"
+                    ],
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 200
+                      },
+                      "name": {
+                        "type": "string",
+                        "minLength": 0,
+                        "maxLength": 200
+                      },
+                      "content": {
+                        "type": "string",
+                        "minLength": 0,
+                        "maxLength": 2000
+                      }
+                    }
+                  }
+                },
+                "provenance": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "sessionId",
+                    "workspaceId",
+                    "promptSha256"
+                  ],
+                  "properties": {
+                    "sessionId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    "workspaceId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    "promptSha256": {
+                      "type": "string",
+                      "minLength": 64,
+                      "maxLength": 64
+                    },
+                    "profileId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    "runId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    }
+                  }
+                },
+                "contentSha256": {
+                  "type": "string",
+                  "minLength": 64,
+                  "maxLength": 64
+                },
+                "skillSha256": {
+                  "type": "string",
+                  "minLength": 64,
+                  "maxLength": 64
+                },
+                "reason": {
+                  "type": "string",
+                  "minLength": 0,
+                  "maxLength": 500
+                },
+                "usage": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "inputTokens": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "outputTokens": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "cachedInputTokens": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "action",
+            "job"
+          ],
+          "properties": {
+            "action": {
+              "const": "job.finish"
+            },
+            "job": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "jobId",
+                "status",
+                "evidence",
+                "provenance"
+              ],
+              "properties": {
+                "jobId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "running",
+                    "ready",
+                    "skipped",
+                    "failed",
+                    "cancelled",
+                    "completed"
+                  ]
+                },
+                "effect": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "kind",
+                        "effectId",
+                        "system",
+                        "messages",
+                        "tools"
+                      ],
+                      "properties": {
+                        "kind": {
+                          "const": "model"
+                        },
+                        "effectId": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 200
+                        },
+                        "system": {
+                          "type": "string",
+                          "minLength": 0,
+                          "maxLength": 4000
+                        },
+                        "messages": {
+                          "type": "array",
+                          "minItems": 1,
+                          "maxItems": 32,
+                          "items": {
+                            "oneOf": [
+                              {
+                                "type": "object",
+                                "additionalProperties": false,
+                                "required": [
+                                  "role",
+                                  "text"
+                                ],
+                                "properties": {
+                                  "role": {
+                                    "const": "user"
+                                  },
+                                  "text": {
+                                    "type": "string",
+                                    "minLength": 0,
+                                    "maxLength": 24000
+                                  }
+                                }
+                              },
+                              {
+                                "type": "object",
+                                "additionalProperties": false,
+                                "required": [
+                                  "role",
+                                  "text",
+                                  "toolCalls"
+                                ],
+                                "properties": {
+                                  "role": {
+                                    "const": "assistant"
+                                  },
+                                  "text": {
+                                    "type": "string",
+                                    "minLength": 0,
+                                    "maxLength": 16000
+                                  },
+                                  "toolCalls": {
+                                    "type": "array",
+                                    "maxItems": 16,
+                                    "items": {
+                                      "type": "object",
+                                      "additionalProperties": false,
+                                      "required": [
+                                        "id",
+                                        "name",
+                                        "input"
+                                      ],
+                                      "properties": {
+                                        "id": {
+                                          "type": "string",
+                                          "minLength": 1,
+                                          "maxLength": 200
+                                        },
+                                        "name": {
+                                          "type": "string",
+                                          "minLength": 1,
+                                          "maxLength": 200
+                                        },
+                                        "input": {
+                                          "description": "JSON data bounded to depth 16, 128 object properties, 256 array items, and 131072 serialized UTF-16 units.",
+                                          "type": "object"
+                                        },
+                                        "inputError": {
+                                          "type": "string",
+                                          "minLength": 0,
+                                          "maxLength": 2000
+                                        }
+                                      }
+                                    }
+                                  },
+                                  "native": {
+                                    "type": "object",
+                                    "additionalProperties": false,
+                                    "required": [
+                                      "api",
+                                      "content"
+                                    ],
+                                    "properties": {
+                                      "api": {
+                                        "type": "string",
+                                        "enum": [
+                                          "openai-chat",
+                                          "openai-responses",
+                                          "anthropic-messages"
+                                        ]
+                                      },
+                                      "content": {
+                                        "description": "JSON data bounded to depth 16, 128 object properties, 256 array items, and 131072 serialized UTF-16 units."
+                                      }
+                                    }
+                                  }
+                                }
+                              },
+                              {
+                                "type": "object",
+                                "additionalProperties": false,
+                                "required": [
+                                  "role",
+                                  "results"
+                                ],
+                                "properties": {
+                                  "role": {
+                                    "const": "tool"
+                                  },
+                                  "results": {
+                                    "type": "array",
+                                    "maxItems": 16,
+                                    "items": {
+                                      "type": "object",
+                                      "additionalProperties": false,
+                                      "required": [
+                                        "toolCallId",
+                                        "name",
+                                        "content",
+                                        "isError"
+                                      ],
+                                      "properties": {
+                                        "toolCallId": {
+                                          "type": "string",
+                                          "minLength": 1,
+                                          "maxLength": 200
+                                        },
+                                        "name": {
+                                          "type": "string",
+                                          "minLength": 1,
+                                          "maxLength": 200
+                                        },
+                                        "content": {
+                                          "type": "string",
+                                          "minLength": 0,
+                                          "maxLength": 2000
+                                        },
+                                        "isError": {
+                                          "type": "boolean"
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            ]
+                          }
+                        },
+                        "tools": {
+                          "type": "array",
+                          "minItems": 1,
+                          "maxItems": 17,
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": [
+                              "name",
+                              "description",
+                              "parameters"
+                            ],
+                            "properties": {
+                              "name": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 200
+                              },
+                              "description": {
+                                "type": "string",
+                                "minLength": 0,
+                                "maxLength": 4000
+                              },
+                              "parameters": {
+                                "description": "JSON data bounded to depth 16, 128 object properties, 256 array items, and 131072 serialized UTF-16 units.",
+                                "type": "object"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "kind",
+                        "effectId",
+                        "callId",
+                        "name",
+                        "input"
+                      ],
+                      "properties": {
+                        "kind": {
+                          "const": "read"
+                        },
+                        "effectId": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 200
+                        },
+                        "callId": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 200
+                        },
+                        "name": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 200
+                        },
+                        "input": {
+                          "description": "JSON data bounded to depth 16, 128 object properties, 256 array items, and 131072 serialized UTF-16 units.",
+                          "type": "object"
+                        }
+                      }
+                    }
+                  ]
+                },
+                "pendingEffectId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                },
+                "submission": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "title",
+                    "lesson",
+                    "evidenceIds"
+                  ],
+                  "properties": {
+                    "title": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    "lesson": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 8000
+                    },
+                    "evidenceIds": {
+                      "type": "array",
+                      "minItems": 1,
+                      "maxItems": 10,
+                      "uniqueItems": true,
+                      "items": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 200
+                      }
+                    },
+                    "skill": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "name",
+                        "description",
+                        "instructions"
+                      ],
+                      "properties": {
+                        "name": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 64
+                        },
+                        "description": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 500
+                        },
+                        "instructions": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 65536
+                        },
+                        "sourceUrls": {
+                          "type": "array",
+                          "maxItems": 8,
+                          "items": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 2048
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "evidence": {
+                  "type": "array",
+                  "maxItems": 10,
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "id",
+                      "name",
+                      "content"
+                    ],
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 200
+                      },
+                      "name": {
+                        "type": "string",
+                        "minLength": 0,
+                        "maxLength": 200
+                      },
+                      "content": {
+                        "type": "string",
+                        "minLength": 0,
+                        "maxLength": 2000
+                      }
+                    }
+                  }
+                },
+                "provenance": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "sessionId",
+                    "workspaceId",
+                    "promptSha256"
+                  ],
+                  "properties": {
+                    "sessionId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    "workspaceId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    "promptSha256": {
+                      "type": "string",
+                      "minLength": 64,
+                      "maxLength": 64
+                    },
+                    "profileId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    "runId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    }
+                  }
+                },
+                "contentSha256": {
+                  "type": "string",
+                  "minLength": 64,
+                  "maxLength": 64
+                },
+                "skillSha256": {
+                  "type": "string",
+                  "minLength": 64,
+                  "maxLength": 64
+                },
+                "reason": {
+                  "type": "string",
+                  "minLength": 0,
+                  "maxLength": 500
+                },
+                "usage": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "inputTokens": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "outputTokens": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "cachedInputTokens": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "action",
+            "released"
+          ],
+          "properties": {
+            "action": {
+              "const": "job.release"
+            },
+            "released": {
+              "const": true
+            }
+          }
+        }
+      ]
     },
     "DaemonMissionCreateParams": {
       "type": "object",
@@ -3364,6 +7461,7 @@
         "preparation.observe",
         "preparation.inspect",
         "skill.import",
+        "skill.rescan",
         "skill.list",
         "skill.inspect",
         "skill.review",
@@ -3388,7 +7486,8 @@
         "knowledge.write",
         "knowledge.history",
         "knowledge.rollback",
-        "knowledge.importMemory"
+        "knowledge.importMemory",
+        "learning.process"
       ]
     },
     "DaemonPermissionCheckParams": {
@@ -4966,6 +9065,39 @@
               "$ref": "#/$defs/Uuid"
             },
             "op": {
+              "const": "skill.rescan"
+            },
+            "deadlineMs": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 600000
+            },
+            "params": {
+              "$ref": "#/$defs/DaemonSkillRescanParams"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "kind",
+            "requestId",
+            "op",
+            "params"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "kind": {
+              "const": "request"
+            },
+            "requestId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "op": {
               "const": "skill.list"
             },
             "deadlineMs": {
@@ -5769,6 +9901,39 @@
               "$ref": "#/$defs/DaemonKnowledgeImportMemoryParams"
             }
           }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "kind",
+            "requestId",
+            "op",
+            "params"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "kind": {
+              "const": "request"
+            },
+            "requestId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "op": {
+              "const": "learning.process"
+            },
+            "deadlineMs": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 600000
+            },
+            "params": {
+              "$ref": "#/$defs/DaemonLearningProcessParams"
+            }
+          }
         }
       ]
     },
@@ -6303,6 +10468,34 @@
             },
             "result": {
               "$ref": "#/$defs/DaemonSkillImportResult"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "kind",
+            "requestId",
+            "op",
+            "result"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "kind": {
+              "const": "response"
+            },
+            "requestId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "op": {
+              "const": "skill.rescan"
+            },
+            "result": {
+              "$ref": "#/$defs/DaemonSkillRescanResult"
             }
           }
         },
@@ -7005,6 +11198,34 @@
               "$ref": "#/$defs/DaemonKnowledgeImportMemoryResult"
             }
           }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "kind",
+            "requestId",
+            "op",
+            "result"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "kind": {
+              "const": "response"
+            },
+            "requestId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "op": {
+              "const": "learning.process"
+            },
+            "result": {
+              "$ref": "#/$defs/DaemonLearningProcessResult"
+            }
+          }
         }
       ]
     },
@@ -7244,6 +11465,19 @@
           "items": {
             "$ref": "#/$defs/SkillFileEntry"
           }
+        },
+        "instructions": {
+          "type": "string",
+          "maxLength": 65536,
+          "pattern": "^[^\\x00-\\x08\\x0b\\x0c\\x0e-\\x1f\\x7f]*$",
+          "allOf": [
+            {
+              "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+            }
+          ]
+        },
+        "instructionsUnavailable": {
+          "type": "boolean"
         },
         "inspections": {
           "type": "array",
@@ -7572,6 +11806,41 @@
           "type": "string",
           "maxLength": 262144,
           "pattern": "^[^\\x00-\\x08\\x0b\\x0c\\x0e-\\x1f\\x7f]*$"
+        }
+      }
+    },
+    "DaemonSkillRescanParams": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "revisionId"
+      ],
+      "properties": {
+        "revisionId": {
+          "$ref": "#/$defs/SkillRevisionId"
+        }
+      }
+    },
+    "DaemonSkillRescanResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "revisionId",
+        "packageId",
+        "state"
+      ],
+      "properties": {
+        "revisionId": {
+          "$ref": "#/$defs/SkillRevisionId"
+        },
+        "packageId": {
+          "$ref": "#/$defs/SkillPackageId"
+        },
+        "state": {
+          "$ref": "#/$defs/SkillRevisionState"
+        },
+        "stateReason": {
+          "$ref": "#/$defs/SkillReason"
         }
       }
     },

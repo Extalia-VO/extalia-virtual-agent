@@ -59,7 +59,25 @@ New visual improvements belong in this repository; see
 appearance is saved in the host and shared by Web and Desktop; avatar walking and
 navigation remain later scene milestones.
 
-Native process placement follows [ADR 0053](../adr/0053-evidence-based-native-process-partition.md): Rust owns the target control/harness lifecycle, TypeScript retains UI and transitional adapters, and verified Python workloads remain optional and on demand. Resource improvements require measured whole-process comparisons; current provider calls and tools are still in the TypeScript host.
+Backend placement follows [ADR 0071](../adr/0071-rust-openai-completion-and-resource-evidence.md): choose Rust, supervised Python or TypeScript from measured resource/latency tradeoffs and output compatibility. Retain TypeScript where migration adds latency without worthwhile memory or responsiveness benefits; React stays presentation-only. This supersedes the mandatory zero-TypeScript destination in [ADR 0069](../adr/0069-ui-only-typescript-and-backend-ownership.md), while retaining its source ownership inventory. A pure parser or scheduler remains backend work even without Node imports. Earlier [ADR 0053](../adr/0053-evidence-based-native-process-partition.md) permission, parity and settlement gates still apply.
+
+The skill registry uses that same lazy profile daemon independently of mission
+backend selection. [Pinned SkillSpector inspection](../adr/0068-pinned-skillspector-inspection.md)
+runs in a separate bounded Rust-owned worker, with a bundled Python/scanner
+manifest pinned into the daemon. Scanner evidence, user review, approval and
+activation remain distinct; imported text never grants its own permissions.
+
+[OpenAI-compatible model discovery](../adr/0070-rust-provider-model-discovery.md)
+uses an isolated Rust mode for actual HTTP and catalog parsing, with child-close
+settlement. [Completion measurements](../adr/0071-rust-openai-completion-and-resource-evidence.md)
+retain TypeScript as the production default: neither native candidate provides an
+overall workload efficiency improvement. Native completion modes are development
+experiments excluded from ordinary release builds. A shared-worker candidate uses separately owned request
+runtimes and positive owner-join receipts; IPC failure still retains affected
+ownership until actual process close. Native orchestration/history, Anthropic
+processing and privileged host services currently remain TypeScript.
+The [resource comparison](../bench/provider-completion.md) measures the isolated
+production provider path, not whole Desktop or 3D Office memory.
 
 ## Dependency direction
 
@@ -105,13 +123,15 @@ actual local pipeline completion on the original connection records a weak
 observation. It does not establish later mission-root, child or writer ownership.
 Saved Rust mission starts also retain a [durable preparation lifetime](../adr/0052-durable-mission-preparation-lifetime.md) before credentials or worktree creation. It correlates the future mission and actual supervisor, drains entered preparation, and hands off only after canonical creation plus host/startup persistence. Uncertain preparation or cleanup remains blocked across backend changes and restart; it is not complete executor or writer ownership.
 Physical-settlement reconciliation and execution-time action approvals
-remain later gates. Production Python
-worker execution and embedded CPython installer packaging are planned, not yet implemented.
+remain later gates. Generic Python workload execution remains planned; the
+separately pinned SkillSpector worker described above is a specific supervised
+Python integration and does not provide a general Native executor.
 The [probe-only worker protocol](../adr/0041-probe-only-worker-protocol.md) adds
 an independent bounded NDJSON codec and pure Rust correlation/deadline state
 machine, with a test-only Python health reference. It has no production launcher,
 scanner operation or runtime consumer; cancellation/EOF never proves physical
-settlement and the inspector remains unavailable.
+settlement or scanner readiness. The later pinned SkillSpector integration is
+separate from this probe-only contract.
 The [owned health-probe supervisor](../adr/0042-owned-health-probe-supervision.md)
 now exercises genuine subprocesses through a disconnected Rust library API,
 with bounded I/O, watchdogs and direct-child reaping. Its feature-gated fixtures
@@ -121,13 +141,14 @@ The [bundle inventory observer](../adr/0043-worker-bundle-artifact-observation.m
 checks an independently supplied manifest pin and bounded exact file contents
 on trusted quiescent Unix staging trees. Its portable contract does not
 authorize a launch; Windows observation refuses until handle/reparse checks are
-implemented. No production Python bundle or consumer is enabled.
+implemented. This observer alone does not enable a production Python consumer.
 An [explicit developer experiment](../adr/0044-relocated-developer-python-bundle.md)
 now stages a pinned CPython source archive, materializes regular files, relocates
 the payload and exercises the Rust health owner on macOS ARM64. The manifest
 permits sixteen path components to retain measured upstream license paths.
-This is not installer integration or a scanner; other platforms remain untested
-and all production capability gates stay closed.
+That developer experiment is not installer or scanner certification. The later
+SkillSpector release path has its own pinning, confinement and packaging evidence;
+generic Python workload execution and unverified platform gates remain closed.
 
 The [shared Native status panel](../adr/0054-native-status-and-recovery-inspection.md) projects actual local operation/worker lifetimes and narrow recorded mission metadata. Explicit rechecks may retire only positively observed inactive scope markers; run-bound cancellation, stale-response guards and existing recovery inspection preserve uncertainty without replay.
 
@@ -161,7 +182,20 @@ overview locally; they do not change the vault or widen agent access.
 
 Knowledge is [independent of the mission backend](../adr/0051-knowledge-independent-of-mission-backend.md): Desktop and Bridge expose its page and vault setup with either backend, using the same lazy sidecar as recorded Rust recovery.
 
+[Automatic learning and profile artifacts](../adr/0067-rust-owned-learning-and-profile-artifacts.md)
+also use that same sidecar. Rust owns curator jobs and result processing, hash
+admissions, generated skill staging and two-phase Markdown exports. A bounded
+worker keeps this filesystem work away from mission/control dispatch. Host ports
+retain consent, approved provider HTTP, actual effect draining and event projection;
+this does not migrate ordinary Native Chat tools or claim local model inference.
+
 ## Further reading
+
+Optional [next-prompt suggestions](../getting-started/prompt-suggestions.md) use
+memory-only platform snapshots. Native prepares bounded completed-task context
+and generates only when the view requests its advertised completion anchor.
+Observed predictions come from an existing harness connection or authenticated
+cooperative report. They never authorize prompt execution or modify history.
 
 PRD v2 adoption follows [ADR 0036](../adr/0036-prd-v2-compatible-adoption.md)
 and its [acceptance map](../product/prd-v2-acceptance-map.md). The additive

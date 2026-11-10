@@ -1,3 +1,4 @@
+import { createAgentHost } from '../src/service.js';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
@@ -8,11 +9,12 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { parseEvent } from '@extalia/protocol';
 import type { HostMissionRequest, HostMissionRun } from '@extalia/platform';
 import type { AnyTool, ToolRunContext } from '@extalia/runtime';
-import { createAgentHost, type AgentHostOptions, type AgentHostRuntime } from '../src/service.js';
+import { type AgentHostOptions, type AgentHostRuntime } from '../src/service.js';
 import { MissionRecords } from '../src/mission.js';
 import type { SessionRecord } from '../src/sessions.js';
 import * as fileTools from '../src/tools/files.js';
 import { MISSION_HEARTBEAT_MS } from '../src/daemon/mission.js';
+import { DaemonClient, DEFAULT_DAEMON_DEADLINE_MS } from '../src/daemon/client.js';
 import { DAEMON_BINARY, HAS_DAEMON, coreFile, dropCoreTrigger, failCoreEvent, queryCore } from './daemonBackend.js';
 
 // Audit PR 8: native missions routed to the Rust core daemon (real binary). The parameterized
@@ -133,6 +135,18 @@ function controlledTaskDeadline() {
 
 /** Only speed up host lease renewal; subprocess IO and every other timeout remain real. */
 function fastHeartbeat() {
+  // A request deadline can share the renewal delay (for example a 30 s startup
+  // inspection). Move only that test deadline by 1 ms before accelerating timers,
+  // preserving normal RPC/hello budgets while keeping actual 20 ms renewals.
+  const deadline = (ms = DEFAULT_DAEMON_DEADLINE_MS) => ms === MISSION_HEARTBEAT_MS ? ms + 1 : ms;
+  const request = DaemonClient.prototype.request;
+  vi.spyOn(DaemonClient.prototype, 'request').mockImplementation(function (this: DaemonClient, ...args: Parameters<DaemonClient['request']>) {
+    return request.call(this, args[0], args[1], deadline(args[2]));
+  });
+  const handshake = DaemonClient.prototype.handshake;
+  vi.spyOn(DaemonClient.prototype, 'handshake').mockImplementation(function (this: DaemonClient, ms) {
+    return handshake.call(this, deadline(ms));
+  });
   const set = globalThis.setTimeout;
   vi.spyOn(globalThis, 'setTimeout').mockImplementation((callback, delay, ...args) =>
     set(callback, delay === MISSION_HEARTBEAT_MS ? 20 : delay, ...args));

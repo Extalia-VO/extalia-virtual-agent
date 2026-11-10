@@ -17,7 +17,8 @@ const approvalKey = (sessionId: string, id: string) => JSON.stringify([sessionId
 const byTime = (a: Attention, b: Attention) => a.at.localeCompare(b.at) || a.characterId.localeCompare(b.characterId) || a.key.localeCompare(b.key);
 const eventOrder = (a: ExtaliaEvent, b: ExtaliaEvent) => {
   if (a.seq !== undefined && b.seq !== undefined && a.seq !== b.seq) return a.seq - b.seq;
-  return a.at.localeCompare(b.at) || a.id.localeCompare(b.id);
+  // Same-timestamp hook steps retain delivery order; opaque IDs are not a clock.
+  return a.at.localeCompare(b.at);
 };
 
 /**

@@ -7,7 +7,7 @@ import { allocateOfficeAgents, type OfficeAgentAllocation } from './seating';
  * arrive or leave, so only the arriving or leaving character walks.
  */
 export function useOfficeAllocations(agents: readonly OfficeAgent[]): readonly OfficeAgentAllocation[] {
-  // Seats depend only on which characters are present, so compare that, not the array's identity:
+  // Seats depend on the roster and explicit meeting membership, not the array's identity:
   // callers may pass a fresh but equal list on every render.
   const key = seatingKey(agents);
   const [state, setState] = useState(() => ({ key, allocations: allocateOfficeAgents(agents) }));
@@ -18,7 +18,7 @@ export function useOfficeAllocations(agents: readonly OfficeAgent[]): readonly O
   return allocations;
 }
 
-/** Present (not offline) character ids in a stable order: the only input that changes seating. */
+/** Stable roster and meeting membership; contribution text/rounds never reshuffle seats. */
 export function seatingKey(agents: readonly OfficeAgent[]): string {
-  return agents.filter(agent => agent.status !== 'offline').map(agent => agent.id).sort().join('|');
+  return agents.filter(agent => agent.status !== 'offline').map(agent => JSON.stringify([agent.id, agent.meeting?.meetingId, agent.meeting?.roomId, agent.meeting?.participants])).sort().join('|');
 }

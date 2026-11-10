@@ -42,15 +42,6 @@ export function ObservedCodexControlsContent({ t, view, control }: { t: Messages
           t={t} request={request} disabled={disabled || !status.canAnswer} onAnswer={answers => { void control.answer(request, answers); }} />)}
         {(status.approvals ?? []).map(request => <CodexApprovalCard key={`${status.connectionId}:${JSON.stringify(request)}`} t={t}
           request={request} disabled={disabled || !status.canApprove} onAnswer={decision => { void control.approve(request, decision); }} />)}
-        <form onSubmit={event => { event.preventDefault(); void control.send(); }}>
-          <label htmlFor={`${id}-message`}>{c.message}</label>
-          <textarea id={`${id}-message`} value={view.draft} onChange={event => control.setDraft(event.target.value)}
-            disabled={!status.canSend} rows={3} />
-          <p className="observed-codex-hint">{status.activeTurnId ? c.running : c.idle}</p>
-          <button type="submit" disabled={disabled || !status.canSend || !view.draft.trim()}>
-            {view.busy === 'send' ? c.busy : status.activeTurnId ? c.steer : c.send}
-          </button>
-        </form>
       </> : <form onSubmit={event => { event.preventDefault(); void control.connect(socketPath); }}>
         <label htmlFor={`${id}-socket`}>{c.socket}</label>
         <input id={`${id}-socket`} value={socketPath} onChange={event => setSocketPath(event.target.value)}

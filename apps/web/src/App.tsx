@@ -8,6 +8,7 @@ import { useBoot } from './boot/useBoot';
 import { isDaytime } from './environment/solarTime';
 import { ChatPage } from './chat/ChatPage';
 import { useWorkspaceMemoryDraftWarning } from './chat/useWorkspaceMemoryDraftWarning';
+import { useComposerDraftWarning } from './chat/useComposerDraftWarning';
 import { ApprovalProvider } from './approvals/ApprovalProvider';
 import { ApprovalInboxButton } from './approvals/ApprovalInbox';
 import { resolveChat, type ChatSelection } from './chat/selection';
@@ -97,6 +98,7 @@ function useColorScheme(theme: Preferences['theme']): void {
 export function App({ platform }: { platform: Platform }) {
   const { agents, updater } = platform.capabilities;
   useWorkspaceMemoryDraftWarning(agents);
+  useComposerDraftWarning(agents);
   const [preferences, setPreferences] = useState(loadPreferences);
   const host = useHostState(agents);
   const hostState = host.state;
@@ -231,7 +233,7 @@ export function App({ platform }: { platform: Platform }) {
             <span className="topbar-meta">{hostLabel} · v{platform.info.appVersion}</span>
           </header>
           <main className={`content ${activePage === 'chat' ? 'content-chat' : activePage === 'office' ? 'content-office' : activePage === 'knowledge' ? 'content-knowledge' : ''}`} key={activePage}>
-            {activePage === 'office' && <OfficePage t={t} language={preferences.language} agents={agents} hostDisconnected={Boolean(host.error)} state={hostState} onState={host.apply} workspaceId={chatWorkspaceId}
+            {activePage === 'office' && <OfficePage key={sourceContext} t={t} language={preferences.language} agents={agents} hostDisconnected={Boolean(host.error)} state={hostState} onState={host.apply} workspaceId={chatWorkspaceId}
               onWorkspace={workspaceId => setSelection({ workspaceId })}
               onOpenSession={session => { setSelection({ workspaceId: session.workspaceId, sessionId: session.id }); setPage(session.control === 'observed' ? 'observe' : 'chat'); }}
               onOpenMissions={hostState?.workspaces.length ? session => { if (session) setSelection({ workspaceId: session.workspaceId, sessionId: session.id }); setPage('missions'); } : undefined}

@@ -1,10 +1,12 @@
+import { createAgentHost } from '../src/service.js';
 import type { AgentTeam } from '@extalia/core';
 import type { ExtaliaEvent } from '@extalia/protocol';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { createAgentHost, type AgentHostRuntime } from '../src/service.js';
+import { type AgentHostOptions, type AgentHostRuntime } from '../src/service.js';
 import { useTempDirs } from './helpers.js';
+import { DAEMON_BINARY } from './daemonBackend.js';
 
 const tempDir = useTempDirs();
 const runtimes: AgentHostRuntime[] = [];
@@ -34,14 +36,16 @@ function scriptedFetch(script: Script) {
   return { fetch, requests };
 }
 
-async function setup(script: Script, root?: string) {
+async function setup(script: Script, root?: string, onMeetingMinutes?: AgentHostOptions['onMeetingMinutes']) {
   const base = root ?? await tempDir();
   const project = path.join(base, 'project');
   await mkdir(project, { recursive: true });
+  await mkdir(path.join(base, 'home'), { recursive: true });
   const scripted = scriptedFetch(script);
   const runtime = await createAgentHost({
-    kind: 'bridge', version: '0.0.0-test', dataDirectory: path.join(base, 'data'), importHome: path.join(base, 'home'),
-    env: { EXTALIA_SECRET_STORE: 'memory', PATH: process.env.PATH, HERMES_MANAGED_DIR: path.join(base, 'no-managed-scope') }, fetch: scripted.fetch,
+    kind: 'bridge', version: '0.0.0-test', dataDirectory: path.join(base, 'data'), homeDirectory: path.join(base, 'home'), importHome: path.join(base, 'home'),
+    env: { EXTALIA_SECRET_STORE: 'memory', EXTALIA_DAEMON_PATH: DAEMON_BINARY, PATH: process.env.PATH, HERMES_MANAGED_DIR: path.join(base, 'no-managed-scope') }, fetch: scripted.fetch,
+    ...(onMeetingMinutes ? { onMeetingMinutes } : {}),
   });
   runtimes.push(runtime);
   const events: ExtaliaEvent[] = [];
@@ -49,10 +53,10 @@ async function setup(script: Script, root?: string) {
   return { root: base, project, runtime, host: runtime.host, events, scripted };
 }
 
-async function nativeWorkspace(host: AgentHostRuntime['host'], project: string) {
+async function nativeWorkspace(host: AgentHostRuntime['host'], project: string, history = true) {
   const saved = await host.saveConnection({
     name: 'Mock', preset: 'custom', api: 'openai-chat', baseUrl: 'http://mock.test/v1', model: 'mock-agent', credential: { kind: 'none' },
-    features: { memory: 'off', skills: 'off' }, orchestration: { enabled: false, maxDelegations: 0, tiers: {} },
+    features: { memory: 'off', skills: 'off', ...(history ? {} : { history: false }) }, orchestration: { enabled: false, maxDelegations: 0, tiers: {} },
   });
   const state = await host.saveWorkspace({ name: 'Project', projectLocation: project, connectionId: saved.connections[0]!.id, permissions: { fileWrite: 'ask', commands: 'ask' } });
   return state.workspaces.at(-1)!;
@@ -214,6 +218,123 @@ describe('subagent teams (Extalia Native)', () => {
     await expect(context.host.planTeam(workspace.id, { ...request, count: 33 })).rejects.toThrow(/1 to 32/);
     await expect(context.host.planTeam(workspace.id, { ...request, goal: 42 } as never)).rejects.toThrow(/goal/);
     await expect(context.host.planTeam(workspace.id, { ...request, allowedModels: ['--bad'] })).rejects.toThrow(/model id/);
+  });
+});
+
+describe('Native team meetings', () => {
+  it.skipIf(process.platform === 'win32')('uses an assigned profile vault for actual meeting minutes without retargeting the default vault', async () => {
+    let calls = 0;
+    const context = await setup(body => body.messages[0]?.content?.startsWith('You are a worker agent')
+      ? { text: 'This is the actual profile-scoped discussion.' }
+      : calls++ === 0 ? { tool: { name: 'conduct_team_meeting', args: { topic: 'Plan the next draft', members: ['m-ava'] } } } : { text: 'Discussion summarized.' });
+    const workspace = await nativeWorkspace(context.host, context.project);
+    const before = await context.host.listVaultProfiles!();
+    const catalog = await context.host.saveVaultProfile!({ name: 'Writing', vaultRoot: null, workspaceIds: [workspace.id], minutesEnabled: true, expectedRevision: before.revision });
+    const assigned = catalog.profiles.find(profile => profile.workspaceIds.includes(workspace.id))!;
+    expect(assigned.id).not.toBe(catalog.defaultProfileId);
+    const session = await context.host.createSession(workspace.id, { team: TEAM });
+    const { events } = await turn(context, session.id, 'Discuss the next draft.');
+    const complete = events.find(event => event.body.type === 'meeting.completed');
+    const relative = complete?.body.type === 'meeting.completed' ? complete.body.notePath : undefined;
+    expect(relative).toBeTruthy();
+    const note = await readFile(path.join(assigned.root, relative!), 'utf8');
+    expect(note).toContain(`profile: "${assigned.id}"`);
+    expect(note).toContain('This is the actual profile-scoped discussion.');
+  });
+  it.skipIf(process.platform === 'win32')('saves default minutes into the workspace profile vault with actual discussion evidence', async () => {
+    let calls = 0;
+    const context = await setup(body => body.messages[0]?.content?.startsWith('You are a worker agent')
+      ? { text: 'Use the current source evidence before implementation.' }
+      : calls++ === 0 ? { tool: { name: 'conduct_team_meeting', args: { topic: 'Review the implementation', members: ['m-ava'] } } } : { text: 'Discussion summarized.' });
+    const workspace = await nativeWorkspace(context.host, context.project);
+    const session = await context.host.createSession(workspace.id, { team: TEAM });
+    const { events } = await turn(context, session.id, 'Discuss the implementation before working.');
+    const complete = events.find(event => event.body.type === 'meeting.completed');
+    expect(complete?.body).toMatchObject({ outcome: 'completed' });
+    const relative = complete?.body.type === 'meeting.completed' ? complete.body.notePath : undefined;
+    expect(relative).toMatch(new RegExp(`^Meetings/${workspace.id}/meeting-`));
+    const content = await readFile(path.join(context.root, 'data', 'vaults', 'default', relative!), 'utf8');
+    expect(content).toContain(`workspace: "${workspace.id}"`);
+    expect(content.match(/Use the current source evidence before implementation\./g)).toHaveLength(2);
+    expect(content).toContain('### Round 2');
+  });
+  it('persists real meeting rounds under stable member ids and exports saved-session minutes', async () => {
+    let leadCalls = 0;
+    const workerCalls = new Map<string, number>();
+    const exported: { sessionId: string; workspaceId: string; contributions: number }[] = [];
+    const context = await setup(body => {
+      if (body.messages[0]?.content?.startsWith('You are a worker agent')) {
+        expect(context.events.some(event => event.body.type === 'meeting.started')).toBe(true);
+        workerCalls.set(body.model, (workerCalls.get(body.model) ?? 0) + 1);
+        if (workerCalls.get(body.model) === 2) expect(body.messages.at(-1)?.content).toContain('mock-fast observed round 1');
+        return { text: `${body.model} observed round ${workerCalls.get(body.model)}` };
+      }
+      return leadCalls++ === 0 ? { tool: { name: 'conduct_team_meeting', args: { topic: 'Compare design options', members: ['m-ava', 'm-milo'], roomId: 'meeting-a' } } } : { text: 'Synthesized the real discussion.' };
+    }, undefined, async (record, source) => {
+      exported.push({ ...source, contributions: record.contributions.length });
+      return 'meetings/example.md';
+    });
+    const workspace = await nativeWorkspace(context.host, context.project);
+    const session = await context.host.createSession(workspace.id, { team: { ...TEAM, members: TEAM.members.map(member => ({ ...member, access: 'write' })) } });
+    const { events } = await turn(context, session.id, 'Meet to compare design options.');
+    const meetings = events.filter(event => event.body.type.startsWith('meeting.'));
+    expect(meetings.map(event => event.body.type)).toEqual(['meeting.started', 'meeting.contribution', 'meeting.contribution', 'meeting.contribution', 'meeting.contribution', 'meeting.completed']);
+    expect(meetings[0]?.body).toMatchObject({ participants: ['primary', 'm-ava', 'm-milo'], roomId: 'meeting-a' });
+    expect(meetings.filter(event => event.body.type === 'meeting.contribution').map(event => event.agentId)).toEqual(['m-ava', 'm-milo', 'm-ava', 'm-milo']);
+    expect(meetings.every(event => event.sessionId === session.id)).toBe(true);
+    expect(meetings.at(-1)?.body).toMatchObject({ outcome: 'completed', notePath: 'meetings/example.md' });
+    expect(exported).toEqual([{ sessionId: session.id, workspaceId: workspace.id, contributions: 4 }]);
+    const workerRequests = context.scripted.requests.filter(request => request.worker);
+    expect(workerRequests).toHaveLength(4);
+    expect(workerRequests.every(request => !request.tools.includes('write_file') && !request.tools.includes('run_command') && !request.tools.includes('conduct_team_meeting'))).toBe(true);
+    expect(context.scripted.requests.find(request => !request.worker)?.system).toContain('Use conduct_team_meeting');
+    const replay = (await context.host.sessionEvents(session.id)).filter(event => event.body.type.startsWith('meeting.'));
+    expect(replay).toEqual(meetings);
+  });
+
+  it('keeps history-off meetings in session memory and never invokes the durable minutes exporter', async () => {
+    let leadCalls = 0;
+    let exports = 0;
+    const context = await setup(body => body.messages[0]?.content?.startsWith('You are a worker agent')
+      ? { text: 'Ephemeral findings' }
+      : leadCalls++ === 0 ? { tool: { name: 'conduct_team_meeting', args: { topic: 'Private temporary plan', members: ['m-ava'] } } } : { text: 'Done.' },
+    undefined, async () => { exports++; return 'meetings/should-not-exist.md'; });
+    const workspace = await nativeWorkspace(context.host, context.project, false);
+    const session = await context.host.createSession(workspace.id, { team: TEAM });
+    expect(session.transient).toBe(true);
+    const { events } = await turn(context, session.id, 'Meet temporarily.');
+    expect(events.find(event => event.body.type === 'meeting.completed')?.body).toMatchObject({ outcome: 'completed' });
+    expect(events.find(event => event.body.type === 'meeting.completed')?.body).not.toHaveProperty('notePath');
+    expect(exports).toBe(0);
+    expect((await context.host.sessionEvents(session.id)).filter(event => event.body.type === 'meeting.contribution')).toHaveLength(2);
+  });
+
+  it('uses a member added by manage_team in the same turn', async () => {
+    let leadCalls = 0;
+    const context = await setup(body => {
+      if (body.messages[0]?.content?.startsWith('You are a worker agent')) return { text: 'New member contribution' };
+      switch (leadCalls++) {
+        case 0: return { tool: { name: 'manage_team', args: { action: 'add', role: 'Planner', name: 'Discussion Member', models: ['mock-fast'] } } };
+        case 1: return { tool: { name: 'conduct_team_meeting', args: { topic: 'Consider the new role', members: ['Discussion Member'] } } };
+        default: return { text: 'Done.' };
+      }
+    });
+    const workspace = await nativeWorkspace(context.host, context.project);
+    const session = await context.host.createSession(workspace.id, { team: TEAM });
+    const { events } = await turn(context, session.id, 'Add a planner then hold a meeting.');
+    const member = (await context.host.getSessionTeam(session.id))!.members.find(item => item.name === 'Discussion Member')!;
+    expect(member).toBeDefined();
+    expect(events.find(event => event.body.type === 'meeting.started')?.body).toMatchObject({ participants: ['primary', member.id] });
+    expect(events.filter(event => event.body.type === 'meeting.contribution').map(event => event.agentId)).toEqual([member.id, member.id]);
+  });
+
+  it('does not invent meetings from plain assistant text or offer meeting tools to disabled teams', async () => {
+    const context = await setup(() => ({ text: 'We should have a meeting.' }));
+    const workspace = await nativeWorkspace(context.host, context.project);
+    const session = await context.host.createSession(workspace.id, { team: { ...TEAM, enabled: false } });
+    const { events } = await turn(context, session.id, 'Consider a discussion.');
+    expect(events.some(event => event.body.type.startsWith('meeting.'))).toBe(false);
+    expect(context.scripted.requests[0]?.tools).not.toContain('conduct_team_meeting');
   });
 });
 

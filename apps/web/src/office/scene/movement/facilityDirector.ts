@@ -15,6 +15,10 @@ import { barServicePhase, FACILITY_NPCS, createFacilityBrain, isDemandFor, stepF
 
 /** Demand and duty are re-evaluated a few times per second, not every frame. */
 export const FACILITY_DECISION_MS = 250;
+/** Missing routes are retried without running the same search every decision. */
+export const FACILITY_ROUTE_RETRY_MS = 2_000;
+/** A voluntary trip with no route must not strand staff in a break state. */
+export const FACILITY_IDLE_ROUTE_LIMIT_MS = 15_000;
 /** First sighting this far north of the lobby door (outside it) marks an arrival from the entrance. */
 const ENTRANCE_Z = -19;
 
@@ -34,6 +38,8 @@ export class FacilityNpcDirector implements CharacterPositionSource {
   private revision = 0;
   private sinceDecision = Infinity;
   private reducedMotion = false;
+  private simulationMs = 0;
+  private readonly failedDestinations = new Map<string, { destination: string; since: number; retryAt: number; position: readonly number[] }>();
 
   constructor(
     private readonly env: MovementEnv,
@@ -113,7 +119,16 @@ export class FacilityNpcDirector implements CharacterPositionSource {
       const arrived = this.arrived(npc);
       const serving = npc.brain.serving;
       const waitingForGuest = serving && barServicePhase(now - serving.since) === 'serve' && characters.find(character => character.id === serving.id)?.phase !== 'seated';
-      if (stepFacilityBrain(npc.brain, { now, demand, arrived, allowBreaks: !this.reducedMotion,
+      const failed = this.failedDestinations.get(npc.definition.id);
+      const stationary = failed && Math.hypot(...npc.mover.position.map((value, index) => value - failed.position[index]!)) < .02;
+      if (failed && (arrived || !stationary || failed.destination !== before)) this.failedDestinations.delete(npc.definition.id);
+      // Only an unsuccessful route request while otherwise settled is orphaned.
+      // Duty, service and owned transit/contact waits have their own lifecycles.
+      const abandonBreak = !arrived && failed?.destination === before && stationary && npc.mover.phase === 'seated' &&
+        !npc.mover.trip && !npc.mover.door && !npc.mover.chair && !npc.mover.staticSeat &&
+        (npc.brain.state === 'BREAK' || npc.brain.state === 'RECREATION') &&
+        this.simulationMs - failed.since >= FACILITY_IDLE_ROUTE_LIMIT_MS;
+      if (stepFacilityBrain(npc.brain, { now, demand, arrived, allowBreaks: !this.reducedMotion && !abandonBreak,
         serviceReady: npc.definition.role !== 'bartender' || this.reducedMotion || (arrived && !waitingForGuest) })) changed = true;
       if (npc.definition.role === 'bartender') {
         const serving = npc.brain.serving;
@@ -136,16 +151,24 @@ export class FacilityNpcDirector implements CharacterPositionSource {
       }
       const base = this.baseGait.get(npc.definition.id)!;
       npc.mover.gait = npc.brain.urgent ? { ...base, cadence: base.cadence * npc.definition.timing.urgency } : base;
+      const failure = this.failedDestinations.get(npc.definition.id);
+      if (failure && failure.destination !== npc.brain.destination) this.failedDestinations.delete(npc.definition.id);
       if (npc.brain.destination === before && !this.reducedMotion && npc.mover.goal?.kind === 'seat' && npc.mover.goal.seat.seatId === before) continue;
+      if (!this.reducedMotion && failure?.destination === npc.brain.destination && this.simulationMs < failure.retryAt) continue;
       const seat = this.env.navigation.seats.get(npc.brain.destination);
       if (!seat) continue;
-      if (this.reducedMotion) placeSeated(npc.mover, seat, this.env);
+      if (this.reducedMotion) { this.failedDestinations.delete(npc.definition.id); placeSeated(npc.mover, seat, this.env); }
       else {
         // A bad/missing connection must leave staff waiting, never trigger the mover's exit recovery.
         const current = npc.mover.seat;
-        if (current && (npc.mover.phase === 'seated' || npc.mover.phase === 'sitting') &&
-          !planRoute(seatStageId(current.seatId), seatStageId(seat.seatId), this.env.navigation)) continue;
-        sendMover(npc.mover, { kind: 'seat', seat }, this.env);
+        const reachable = !current || (npc.mover.phase !== 'seated' && npc.mover.phase !== 'sitting') ||
+          planRoute(seatStageId(current.seatId), seatStageId(seat.seatId), this.env.navigation);
+        if (reachable && sendMover(npc.mover, { kind: 'seat', seat }, this.env)) this.failedDestinations.delete(npc.definition.id);
+        else {
+          const previous = this.failedDestinations.get(npc.definition.id);
+          this.failedDestinations.set(npc.definition.id, { destination: npc.brain.destination, since: previous?.since ?? this.simulationMs,
+            retryAt: this.simulationMs + FACILITY_ROUTE_RETRY_MS, position: previous?.position ?? [...npc.mover.position] });
+        }
       }
     }
     return changed;
@@ -154,6 +177,8 @@ export class FacilityNpcDirector implements CharacterPositionSource {
   /** Advance staff; called once per rendered frame. */
   tick(seconds: number): void {
     let changed = false;
+    // Hidden tabs and a long render frame do not consume the inactivity budget.
+    this.simulationMs += Math.min(.1, Math.max(0, seconds)) * 1000;
     this.sinceDecision += seconds * 1000;
     if (this.sinceDecision >= FACILITY_DECISION_MS) {
       this.sinceDecision = 0;
@@ -177,6 +202,7 @@ export class FacilityNpcDirector implements CharacterPositionSource {
 
   /** Give back elevator places and door duties when the scene unmounts. */
   dispose(): void {
+    this.failedDestinations.clear();
     for (const { mover } of this.npcs) {
       if (mover.trip) this.env.elevators.release(mover.id, mover.trip.id);
       if (mover.door) this.env.doors?.release(mover.door.id, mover.id);

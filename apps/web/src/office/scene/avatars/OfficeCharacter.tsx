@@ -346,7 +346,7 @@ export function CharacterBody({ id, appearance, presentation, seated, typing, se
 /** Visual-only presence: animation never creates or infers a runtime task state. */
 export function OfficeCharacter({ agent, position, rotationY = 0, seated = false, seatHeight, seatFront, onSelect, reducedMotion = false, appearance, motion, desk, resourceId, onHoverStart, onHoverEnd }: OfficeCharacterProps) {
   // Managed agents report running through the host; observed ones only while their own recent events say so.
-  const typing = seated && (agent.control === 'managed' || Boolean(agent.live)) && agent.running && agent.status === 'working';
+  const typing = seated && !agent.meeting && (agent.control === 'managed' || Boolean(agent.live)) && agent.running && agent.status === 'working';
   const expressionState = expressionStateForAgent(agent);
   useEffect(() => bindCharacterExpression(agent.id, { state: expressionState, motion }), [agent.id, expressionState, motion]);
   const pick = (event: ThreeEvent<MouseEvent>) => { event.stopPropagation(); onSelect(agent.id); };

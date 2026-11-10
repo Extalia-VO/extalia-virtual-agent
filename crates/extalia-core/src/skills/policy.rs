@@ -18,7 +18,7 @@ use super::manifest::{Permissions, RiskClass};
 
 /// Version of these rules, bound into every attestation and approval. Changing the rules
 /// means a new version, which makes every attestation stale (re-inspection).
-pub const POLICY_VERSION: &str = "extalia.skill-policy.v1";
+pub const POLICY_VERSION: &str = "extalia.skill-policy.v2";
 
 /// Default expiry of a revision approval: 10 minutes, the `once` default of ADR 0026
 /// (question 1). It is the window for the user's activation after the approval is shown;

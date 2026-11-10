@@ -1,0 +1,92 @@
+{
+  "schema": "extalia.skillspector-integration-evidence.v1",
+  "date": "2026-11-09",
+  "implementationVersionTested": "0.4.239",
+  "releaseVersion": "0.4.240",
+  "scope": "Actual production host and BridgeServer, bundled native daemon and SkillSpector; synthetic packages and isolated temporary profiles. No real provider requests were sent.",
+  "importUi": {
+    "scanner": "nvidia-skillspector 2.13.4",
+    "completeInspection": true,
+    "awaitedUserApproval": true,
+    "approvalDigestConfirmation": true,
+    "separateActivation": true,
+    "literalInstructionPreview": true,
+    "englishLightDesktop": true,
+    "indonesianDarkMobile": true,
+    "mobileViewportWidth": 390,
+    "mobileDocumentWidth": 390,
+    "browserConsoleErrors": 0,
+    "blockedProviderFetchAttempts": 2
+  },
+  "explicitLearn": {
+    "explicitOptIn": true,
+    "model": "synthetic SSE fixture",
+    "syntheticModelCalls": 2,
+    "realProviderCalls": 0,
+    "proposalToolSucceeded": true,
+    "origin": "generated",
+    "inspectionCoverage": "complete",
+    "inspectionVerdict": "none",
+    "resultState": "awaiting_approval",
+    "active": false,
+    "humanPreview": true
+  },
+  "qualification": "UI and explicit-learning observations precede the metadata-only patch bump. Native attack/resource tests are recorded separately; these observations do not certify arbitrary skill safety.",
+  "sources": [
+    "docs/architecture/skillspector-native-evidence.json",
+    "tooling/skillspector/fixture-evidence.json",
+    "apps/web/test/skillCenter.test.ts",
+    "packages/host/test/skillRescan.test.ts",
+    "packages/host/test/promptSkillLearning.test.ts"
+  ],
+  "packagedWorkflow": {
+    "version": "0.4.240",
+    "source": "Final DMG mounted read-only",
+    "scannerVersion": "2.13.4",
+    "scannerPin": "54824463814a0be01360792523ec7245a69190fc:sha256:fbe8a72f86e0a5985c1738cdd4d949890c5ab0d9a4dc9004adaed912609a17c9",
+    "scannerReady": true,
+    "importComplete": true,
+    "activationBeforeApprovalRefused": true,
+    "approvedWithoutAutoActivation": true,
+    "explicitActivationSucceeded": true,
+    "exactPreview": true,
+    "explicitLearningComplete": true,
+    "learnedState": "awaiting_approval",
+    "learnedActive": false,
+    "realProviderCalls": 0,
+    "temporaryProfileCleanup": "passed"
+  },
+  "desktopArtifact": {
+    "name": "Extalia-0.4.240-mac-arm64.dmg",
+    "bytes": 313422359,
+    "sha256": "b3066a0c31a0ecddf94dfe16d7e572976dea4ce775141027d788122a814d1b20",
+    "architecture": "arm64",
+    "mode": "preview; ad-hoc signed, not notarized",
+    "readOnlyArchiveArchitectureAndStrictSignatureVerification": "passed",
+    "cleanMachineAppWithDaemon": "passed",
+    "cleanMachineAppWithoutDaemon": "passed",
+    "scannerHashAndSignaturesBeforeAndAfterAppSigning": "passed"
+  },
+  "workspaceGate": {
+    "version": "0.4.240",
+    "command": "VITEST_MAX_WORKERS=1 pnpm check",
+    "exitCode": 0,
+    "typescriptPassed": 7759,
+    "typescriptSkipped": 26,
+    "rustPassed": 501,
+    "lintTypesClippyBuildVersionsAndHairChecks": "passed",
+    "qualification": "Serial workspace checkpoint before subsequent CLI smoke logging/handshake changes; those tooling changes have separate lint and actual-install validation.",
+    "postPackageLintIncludingCliSmokeAndGeneratedResourceExclusion": "passed",
+    "gitDiffWhitespaceCheck": "passed"
+  },
+  "cliDistribution": {
+    "version": "0.4.240",
+    "platformPackage": "@extalia/daemon-darwin-arm64",
+    "isolatedNpmPackAndGlobalPrefixInstall": "passed",
+    "versionDoctorAndLauncherWithoutDeveloperToolchain": "passed",
+    "pairedScanner": true,
+    "observedHelloMs": 1454,
+    "packedTarballFullScannerManifestAndDaemonBindingVerification": "passed",
+    "qualification": "One local observation, not a performance benchmark. The smoke script suppresses npm per-file notices and gives paired scanner cold verification the same 90-second handshake budget as the profile host; daemon-only packages retain 15 seconds. New installed-pair verification was separately exercised against the actual extracted tarball."
+  }
+}

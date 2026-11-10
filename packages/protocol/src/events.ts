@@ -129,8 +129,9 @@ export type EventBody =
   | { type: 'git.commit'; sha: string; message?: string }
   | { type: 'git.push'; ok: boolean; remote?: string; branch?: string }
   // Meetings
-  | { type: 'meeting.started'; meetingId: string; participants: string[]; topic?: string }
-  | { type: 'meeting.completed'; meetingId: string; decisions?: string[]; actionItems?: string[] };
+  | { type: 'meeting.started'; meetingId: string; participants: string[]; topic?: string; roomId?: 'meeting-a' | 'meeting-b' }
+  | { type: 'meeting.contribution'; meetingId: string; round: 1 | 2; text: string }
+  | { type: 'meeting.completed'; meetingId: string; decisions?: string[]; actionItems?: string[]; outcome?: 'completed' | 'cancelled' | 'failed'; notePath?: string };
 
 export type EventType = EventBody['type'];
 export type BodyOf<T extends EventType> = Extract<EventBody, { type: T }>;

@@ -6,7 +6,6 @@ import type { Messages } from '../i18n';
 import { Icon } from '../ui/Icon';
 import { Composer, type ComposerSend } from './Composer';
 import { ObservedCodexPromptComposer } from '../observe/ObservedCodexPromptComposer';
-import { PromptQueueControls } from './PromptQueueControls';
 import { attachmentPreviewLoader, sendPromptWithAttachments, uploadAttachments } from './attachments';
 import { resolveChat, type ChatSelection } from './selection';
 import { SessionList } from './SessionList';
@@ -207,8 +206,6 @@ export function ChatPage({ t, language, agents, picker, state, onState, selectio
             running={running} waiting={waiting} readOnly={readOnly} stopping={activity.stopping}
             onOpenContext={memoryScope ? openMemoryContext : undefined} contextPanelId={memoryScope ? memoryDetailsId : undefined}
             onSend={send} onStop={() => { if (session) void guard(() => agents.cancel(session.id)); }} onSessionChanged={refreshState} />}
-          {session && (session.control === 'managed' || session.observation?.sourceId === 'codex') &&
-            <PromptQueueControls key={`queue:${session.id}`} t={t} agents={agents} session={session} />}
         </div>
       </section>
     </div>

@@ -15,6 +15,7 @@ export interface SmartScreenData {
   activity?: { kind: ActivityKind; target?: string; label?: string };
   /** Only renderer data backed by a session can activate a display. */
   sessionBacked?: boolean;
+  meeting?: { sessionId: string; meetingId: string };
 }
 
 export function resourceIdForLocation(locationPrefix: string): string | undefined {
@@ -88,7 +89,16 @@ export function missionControlScreen(state: FurnishedFloorState): SmartScreenDat
     rows: agents.slice(0, 5).map(agent => ({ label: agent.displayName, value: agent.status })),
   };
 }
-export function meetingScreen(state: FurnishedFloorState, _roomId: string): SmartScreenData {
-  // Room occupancy is not inferred from an agent's task or engine.
-  return { title: officeInteriorText(state.language, 'STANDBY') };
+export function meetingScreen(state: FurnishedFloorState, roomId: string): SmartScreenData {
+  const seated = state.allocations.filter(allocation => allocation.resourceId.startsWith(`${roomId}.seat-`));
+  const agents = seated.flatMap(allocation => state.agents.filter(agent => agent.id === allocation.agentId && agent.meeting));
+  const meeting = agents[0]?.meeting;
+  if (!meeting) return { title: officeInteriorText(state.language, 'STANDBY') };
+  const t = MESSAGES[state.language].office;
+  const subtitle = [meeting.topic, meeting.round ? t.meetingRound(meeting.round) : undefined].filter(Boolean).join(' · ');
+  return { title: t.meeting, ...(subtitle ? { subtitle } : {}), sessionBacked: true,
+    meeting: { sessionId: agents[0]!.sessionId, meetingId: meeting.meetingId },
+    ...(meeting.round ? { status: t.meetingRound(meeting.round) } : {}),
+    rows: agents.map(agent => ({ label: agent.displayName, value: t.meeting })),
+  };
 }

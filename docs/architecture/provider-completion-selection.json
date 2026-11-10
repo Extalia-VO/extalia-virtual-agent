@@ -1,0 +1,29 @@
+{
+  "version": "0.4.243",
+  "decision": "typescript-default",
+  "reason": "Native placements did not demonstrate an overall workload efficiency improvement.",
+  "measurementSnapshots": [
+    "docs/architecture/provider-completion-oneshot-benchmark.json",
+    "docs/architecture/provider-completion-benchmark.json"
+  ],
+  "productionCli": {
+    "experimentalTransportInputs": [],
+    "checkedInputs": [
+      "packages/host/src/daemon/completion.ts",
+      "packages/host/src/daemon/completionWorker.ts"
+    ],
+    "typescriptProviderPresent": true
+  },
+  "defaultRelease": {
+    "bytes": 11883408,
+    "sha256": "9b817316cca72d9b6383614f37d14c4f8a8e5d3d5620bc4e82dcaa5a68938c32",
+    "excludedExperimentalMarkers": [
+      "--provider-complete",
+      "--provider-worker",
+      "extalia.provider-complete.v1",
+      "extalia.provider-worker.v1"
+    ],
+    "experimentFeatureEnabled": false
+  },
+  "scope": "Local default Rust release and CLI build graph only; not packaged Desktop or cross-platform installer certification."
+}

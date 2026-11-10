@@ -29,6 +29,7 @@ vi.mock('react', async original => {
       return hooks.memo.get(id)!.value;
     },
     useRef: (initial: unknown) => { const id = hooks.index++; return hooks.state[id] ??= { current: initial }; },
+    useSyncExternalStore: (_subscribe: unknown, getSnapshot: () => unknown) => getSnapshot(),
     useEffect: effect, useLayoutEffect: effect, useId: () => 'test-composer',
   };
 });

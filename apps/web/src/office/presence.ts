@@ -8,7 +8,17 @@ import { lingerMs, outingMs } from './scene/movement/idleRoutine';
 
 export type OfficeAgentStatus = AgentState | 'stopping' | 'observing' | 'paused' | 'unavailable';
 
-/** A truthful, renderer-ready presence derived from native sessions and protocol events. */
+/** Explicit session-scoped meeting membership; never inferred from work text or tools. */
+export interface OfficeMeeting {
+  meetingId: string;
+  topic?: string;
+  roomId?: 'meeting-a' | 'meeting-b';
+  participants: readonly string[];
+  round?: 1 | 2;
+  speakerId?: string;
+}
+
+/** Renderer-ready presence from sessions/events or explicitly marked configured Native standby. */
 export interface OfficeAgent {
   /** Session-scoped so native agent ids can safely repeat across sessions. */
   id: string;
@@ -70,6 +80,9 @@ export interface OfficeAgent {
    * workers are listed under their lead but not admitted into the 3D office (`isAdmitted`); unknown work is never idle.
    */
   mission?: OfficeMissionWork;
+  meeting?: OfficeMeeting;
+  /** Configured Native roster availability for the visual shift, never an executing runtime worker. */
+  nativeStandby?: 'on-shift' | 'off-shift';
 }
 
 /** v0.0.47: drawn in the 3D office and seated: every presence except a mission worker that has not started (queued or never run). */
@@ -252,6 +265,8 @@ export function projectOfficePresence(
     const title = session.title.trim();
     const primary: AgentRecord = { agentId: 'primary', displayName: lead.name ?? (title || 'Agent'), stopped: false };
     agents.set(primary.agentId, primary);
+    const meetings = new Map<string, OfficeMeeting>();
+    const closedMeetings = new Set<string>();
     let ended = false;
     let stopping = false;
     // v0.0.38: how the last managed turn ended, so a failed or stopped run is labelled after it stops.
@@ -260,11 +275,38 @@ export function projectOfficePresence(
     const pending = new Set<string>();
     const sessionEvents = [...(bySession.get(session.id) ?? [])].sort((a, b) => {
       if (a.seq !== undefined && b.seq !== undefined && a.seq !== b.seq) return a.seq - b.seq;
-      return a.at.localeCompare(b.at) || a.id.localeCompare(b.id);
+      // Hook IDs are opaque counters, not a causal order ("10" sorts before
+      // "9"). Stable timestamp ties preserve the host's actual delivery order.
+      return a.at.localeCompare(b.at);
     });
 
     for (const event of sessionEvents) {
       const body = event.body;
+      if (body.type === 'session.ended' || body.type === 'turn.failed' || (body.type === 'user.intervention' && body.action === 'cancel')) {
+        for (const id of meetings.keys()) closedMeetings.add(id);
+        meetings.clear();
+      }
+      if (body.type === 'meeting.started') {
+        const participants = body.participants;
+        const limit = body.roomId === 'meeting-a' ? 10 : 14;
+        const valid = !ended && !closedMeetings.has(body.meetingId) && !meetings.has(body.meetingId)
+          && typeof body.meetingId === 'string' && body.meetingId.length > 0
+          && (body.roomId === undefined || body.roomId === 'meeting-a' || body.roomId === 'meeting-b')
+          && (body.topic === undefined || typeof body.topic === 'string')
+          && Array.isArray(participants) && participants.every(id => typeof id === 'string' && id.length > 0) && participants.length > 0 && participants.length <= limit && new Set(participants).size === participants.length
+          && participants.every(id => agents.has(id) && ![...meetings.values()].some(meeting => meeting.participants.includes(id)));
+        if (valid) meetings.set(body.meetingId, { meetingId: body.meetingId, participants: [...participants],
+          ...(body.topic ? { topic: body.topic } : {}), ...(body.roomId ? { roomId: body.roomId } : {}) });
+      } else if (body.type === 'meeting.contribution') {
+        const meeting = meetings.get(body.meetingId);
+        if (meeting && event.agentId && meeting.participants.includes(event.agentId) && typeof body.text === 'string'
+          && (body.round === 1 || body.round === 2) && body.round >= (meeting.round ?? 1)) {
+          meetings.set(body.meetingId, { ...meeting, round: body.round, speakerId: event.agentId });
+        }
+      } else if (body.type === 'meeting.completed') {
+        meetings.delete(body.meetingId);
+        closedMeetings.add(body.meetingId);
+      }
       if (body.type === 'session.ended') ended = true;
       // An outside session can be resumed after it ended.
       if (body.type === 'session.started' && session.control === 'observed' && event.source.channel !== 'import') ended = false;
@@ -474,6 +516,8 @@ export function projectOfficePresence(
 
     return [...agents.values()].map(agent => {
       const isPrimary = agent.agentId === 'primary';
+      const meeting = !ended && !unavailableStatus
+        ? [...meetings.values()].find(item => item.participants.includes(agent.agentId)) : undefined;
       const named = observedLook.get(agent.agentId);
       const work = isPrimary ? undefined : missionWork.get(agent.agentId);
       const look = named ? named.look : work ? missionLooks.get(agent.agentId) : lookOf(agent);
@@ -518,7 +562,7 @@ export function projectOfficePresence(
       const earlier = isPrimary ? leadEarlier : status === 'offline' && (session.control === 'observed' || !teamIds.has(agent.agentId));
       return {
         id: scopedId(session.id, agent.agentId), sessionId: session.id, agentId: agent.agentId,
-        displayName: agent.displayName, control: session.control, status,
+        displayName: agent.displayName, control: session.control, status: meeting ? 'working' : status,
         // An observed agent only counts as running while its own recent events say so; Extalia never drives it.
         running: work ? !ended && session.running && work.state === 'running'
           : session.control === 'managed' ? !ended && session.running
@@ -529,8 +573,8 @@ export function projectOfficePresence(
         ...(agent.phase ? { phase: agent.phase } : {}),
         ...(agent.toolName ? { toolName: agent.toolName } : {}),
         ...(reason ? { reason } : {}),
-        ...(stalled ? { stalled: true } : {}),
-        ...(earlier ? { earlier: true } : {}),
+        ...(stalled && !meeting ? { stalled: true } : {}),
+        ...(earlier && !meeting ? { earlier: true } : {}),
         ...(agent.summary ? { summary: agent.summary } : {}),
         ...(agent.target ? { target: agent.target } : {}),
         ...(isPrimary && primaryPending ? { pendingApprovalId: primaryPending } : {}),
@@ -546,6 +590,7 @@ export function projectOfficePresence(
         ...(model ? { model } : {}),
         ...(isPrimary && session.context ? { context: session.context } : {}),
         ...(work ? { mission: work } : {}),
+        ...(meeting ? { meeting } : {}),
       };
     });
   });

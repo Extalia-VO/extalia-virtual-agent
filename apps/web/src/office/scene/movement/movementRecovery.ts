@@ -4,6 +4,8 @@ import type { WalkableSegment, WalkingNeighbor } from './naturalWalking';
 /** Recovery is bounded per destination, including unsuccessful attempts. */
 export const MOVEMENT_RECOVERY_LIMIT = 3;
 export const WALK_STALL_SECONDS = 3;
+/** Exhausted seat exits only probe their authored route at this simulation interval. */
+export const DEPARTURE_PROBE_SECONDS = 10;
 export const DOOR_STALL_SECONDS = 6;
 export const STAIR_STALL_SECONDS = 6;
 export const LIFT_STALL_SECONDS = 20;
@@ -28,6 +30,8 @@ interface TransitWatch {
 }
 export interface MovementRecoveryState {
   transit: TransitWatch;
+  /** Completed fixed-seat exit whose onward graph route was unavailable. */
+  departure: string | null;
   avoidedElevators: ('A' | 'B')[];
   avoidedEdges: string[];
   stairRetreat: string[];
@@ -41,7 +45,7 @@ export interface MovementRecoveryState {
   yielding: { neighbor: string; origin: Point3; direction: readonly [number, number]; waited: number } | null;
 }
 export function createMovementRecovery(position: Readonly<Point3>): MovementRecoveryState {
-  return { transit: { key: '', elapsed: 0, frozen: 0, missing: 0, observation: null }, avoidedElevators: [], avoidedEdges: [], stairRetreat: [], anchor: [...position], signature: '', leaf: 0, stalled: 0, attempts: 0, goal: null, remaining: Infinity, yielding: null };
+  return { transit: { key: '', elapsed: 0, frozen: 0, missing: 0, observation: null }, departure: null, avoidedElevators: [], avoidedEdges: [], stairRetreat: [], anchor: [...position], signature: '', leaf: 0, stalled: 0, attempts: 0, goal: null, remaining: Infinity, yielding: null };
 }
 export function recoveryGoal(state: MovementRecoveryState, goal: string): void {
   if (state.goal === goal) return;

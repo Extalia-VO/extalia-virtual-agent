@@ -99,6 +99,9 @@ pub enum SkillRequest {
         limit: Option<u64>,
         package_id: Option<String>,
     },
+    Rescan {
+        revision_id: String,
+    },
     Inspect {
         revision_id: String,
         workspace_id: Option<String>,
@@ -148,6 +151,7 @@ impl SkillRequest {
             Self::Import { .. } => Op::SkillImport,
             Self::List { .. } => Op::SkillList,
             Self::Inspect { .. } => Op::SkillInspect,
+            Self::Rescan { .. } => Op::SkillRescan,
             Self::Review { .. } => Op::SkillReview,
             Self::Approve { .. } => Op::SkillApprove,
             Self::Activate { .. } => Op::SkillActivate,
@@ -201,6 +205,9 @@ impl SkillRequest {
                 if let Some(package_id) = package_id {
                     put("packageId", text(package_id));
                 }
+            }
+            Self::Rescan { revision_id } => {
+                put("revisionId", text(revision_id));
             }
             Self::Inspect {
                 revision_id,
@@ -543,6 +550,12 @@ pub(super) fn request(check: &mut Check, op: Op, params: &Value) -> Option<Reque
                 cursor: cursor?,
                 limit: limit?,
                 package_id: package_id?,
+            }
+        }
+        Op::SkillRescan => {
+            let fields = check.object(params, PARAMS, &["revisionId"], &[])?;
+            SkillRequest::Rescan {
+                revision_id: check.revision_id(fields.get("revisionId"), &at("revisionId"))?,
             }
         }
         Op::SkillInspect => {
@@ -1064,6 +1077,30 @@ pub(super) fn result(check: &mut Check, op: Op, result: &Value) -> Option<Respon
                     .is_some(),
             ])
         }
+        Op::SkillRescan => {
+            let fields = check.object(
+                result,
+                RESULT,
+                &["revisionId", "packageId", "state"],
+                &["stateReason"],
+            )?;
+            all(&[
+                check
+                    .revision_id(fields.get("revisionId"), &at("revisionId"))
+                    .is_some(),
+                check
+                    .package_id(fields.get("packageId"), &at("packageId"))
+                    .is_some(),
+                check.state(fields.get("state"), &at("state")).is_some(),
+                optional_field(
+                    check,
+                    fields,
+                    "stateReason",
+                    RESULT,
+                    |check, value, path| check.reason(Some(value), path).is_some(),
+                ),
+            ])
+        }
         Op::SkillInspect => {
             let fields = check.object(
                 result,
@@ -1077,9 +1114,25 @@ pub(super) fn result(check: &mut Check, op: Op, result: &Value) -> Option<Respon
                     "history",
                     "consent",
                 ],
-                &[],
+                &["instructions", "instructionsUnavailable"],
             )?;
             all(&[
+                !(fields.contains_key("instructions")
+                    && fields.contains_key("instructionsUnavailable")),
+                optional_field(
+                    check,
+                    fields,
+                    "instructions",
+                    RESULT,
+                    |check, value, path| check.multiline(Some(value), path, 65536, true).is_some(),
+                ),
+                optional_field(
+                    check,
+                    fields,
+                    "instructionsUnavailable",
+                    RESULT,
+                    |check, value, path| check.boolean(Some(value), path).is_some(),
+                ),
                 fields
                     .get("revision")
                     .is_none_or(|value| summary(check, value, &at("revision")).is_some()),

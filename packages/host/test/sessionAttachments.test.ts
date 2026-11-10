@@ -1,9 +1,10 @@
+import { createAgentHost } from '../src/service.js';
 import type { ExtaliaEvent } from '@extalia/protocol';
 import { existsSync } from 'node:fs';
 import { mkdir, readFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { createAgentHost, type AgentHostRuntime } from '../src/service.js';
+import { type AgentHostRuntime } from '../src/service.js';
 import { WORKSPACE_COMMAND_UNAVAILABLE } from '../src/tools/command.js';
 import { useTempDirs } from './helpers.js';
 

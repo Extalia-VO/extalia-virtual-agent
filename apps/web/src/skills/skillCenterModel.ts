@@ -3,6 +3,7 @@ import type {
 } from '@extalia/platform';
 import { useEffect, useState } from 'react';
 import { errorMessage } from '../host/remote';
+import { MESSAGES } from '../i18n';
 
 /**
  * Skill Security Center model (W3): feature detection, grouping and the actions each lifecycle state offers.
@@ -11,7 +12,7 @@ import { errorMessage } from '../host/remote';
  */
 
 export type SkillCenterHost = Pick<AgentHostApi,
-  'skillRegistry' | 'inspectSkill' | 'importSkill' | 'reviewSkill' | 'approveSkill' | 'activateSkill' | 'deactivateSkill' | 'rollbackSkill' | 'revokeSkill'>;
+  'skillRegistry' | 'inspectSkill' | 'rescanSkill' | 'importSkill' | 'reviewSkill' | 'approveSkill' | 'activateSkill' | 'deactivateSkill' | 'rollbackSkill' | 'revokeSkill'>;
 const METHODS = ['skillRegistry', 'inspectSkill', 'importSkill', 'reviewSkill', 'approveSkill', 'activateSkill', 'deactivateSkill', 'rollbackSkill', 'revokeSkill'] as const;
 
 export function skillCenterSupported(agents: AgentHostApi): boolean {
@@ -106,6 +107,7 @@ export function stateTone(state: SkillRevisionState): 'ok' | 'warn' | 'error' | 
 
 export type SkillCenterAction =
   | { kind: 'import'; source: SkillImportSource }
+  | { kind: 'rescan'; revisionId: string }
   | { kind: 'review'; input: SkillReviewInput }
   | { kind: 'approve'; input: SkillApprovalInput }
   | { kind: 'activate'; revisionId: string }
@@ -122,10 +124,12 @@ export function approvalFor(revision: Pick<SkillRevisionSummary, 'revisionId' | 
  * Run one action, returning the host's fresh report. On failure (for example a stale digest or an expired approval)
  * the host's message is returned with a reloaded report, so the user sees the current state.
  */
-export async function applySkillCenterAction(agents: SkillCenterHost, action: SkillCenterAction): Promise<{ report: SkillRegistryReport | null; result?: SkillActionResult; error?: string }> {
+export async function applySkillCenterAction(agents: SkillCenterHost, action: SkillCenterAction, rescanUnavailable = MESSAGES.en.skillCenter.rescanUnavailable): Promise<{ report: SkillRegistryReport | null; result?: SkillActionResult; error?: string }> {
   try {
+    if (action.kind === 'rescan' && !agents.rescanSkill) throw new Error(rescanUnavailable);
     const result = await (
       action.kind === 'import' ? agents.importSkill(action.source)
+        : action.kind === 'rescan' ? agents.rescanSkill!(action.revisionId)
         : action.kind === 'review' ? agents.reviewSkill(action.input)
           : action.kind === 'approve' ? agents.approveSkill(action.input)
             : action.kind === 'activate' ? agents.activateSkill(action.revisionId)

@@ -2,11 +2,12 @@ import { spawn } from 'node:child_process';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { lstat, realpath } from 'node:fs/promises';
 import path from 'node:path';
+import { redact } from '@extalia/core';
 import type {
   ObservedCodexApprovalAnswerInput, ObservedCodexApprovalDecision, ObservedCodexApprovalRequest,
   ObservedCodexAnswerInput, ObservedCodexInputRequest, ObservedCodexMessageInput,
   ObservedCodexCommandAction, ObservedCodexFileChange, ObservedCodexPermissions,
-  ObservedCodexQuestion, ObservedCodexStatus,
+  ObservedCodexQuestion, ObservedCodexStatus, PromptSuggestionsStatus,
 } from '@extalia/platform';
 
 const MAX_FRAME = 1024 * 1024;
@@ -42,6 +43,8 @@ export interface CodexObservedControlOptions {
   bin: string;
   env?: NodeJS.ProcessEnv;
   onChange?: () => void;
+  /** A newly verified native work phase, rather than repeated activity updates. */
+  onActivity?: () => void;
   rpcFactory?: CodexObservedRpcFactory;
 }
 
@@ -294,6 +297,14 @@ export class CodexObservedControl {
   private ready = false;
   private busy = false;
   private turnRevision = 0;
+  private activityNotified = false;
+  private activityNotifiedTurnId?: string;
+  private completedTurnId?: string;
+  private completionTurnId?: string;
+  private predictionTurnId?: string;
+  private suggestionsPrivate = false;
+  private prediction?: { anchor: string; generation: number; turnId: string; state: 'pending' | 'ready' | 'unavailable' | 'unsupported'; prompts: string[] };
+  private predictionTimer?: NodeJS.Timeout;
   // Cleanup uncertainty survives generation changes and removal of the RPC handle.
   private cleanupFailed = false;
   constructor(private readonly options: CodexObservedControlOptions) {}
@@ -310,6 +321,52 @@ export class CodexObservedControl {
       problem: this.problem, delivery: this.delivery,
     };
   }
+  /** Predictions belong only to this attachment and a positively completed turn. */
+  suggestions(): PromptSuggestionsStatus {
+    if (this.suggestionsPrivate) return { sessionId: this.options.sessionId, state: 'private', prompts: [], origin: 'harness', canRequest: false };
+    const anchor = this.connectionId && this.completedTurnId ? `${this.connectionId}:${this.completedTurnId}` : undefined;
+    const available = this.state === 'connected' && this.activity === 'idle' && !this.activeTurnId && !!anchor;
+    const prediction = available && this.prediction?.anchor === anchor ? this.prediction : undefined;
+    return {
+      sessionId: this.options.sessionId, ...(available ? { anchor } : {}),
+      state: prediction?.state ?? 'unavailable', prompts: prediction ? [...prediction.prompts] : [],
+      origin: 'harness', canRequest: available && !prediction && this.predictionTurnId !== this.completedTurnId,
+    };
+  }
+  setSuggestionsPrivacy(value: boolean): void {
+    if (this.suggestionsPrivate === value) return;
+    this.suggestionsPrivate = value;
+    if (value) this.clearPrediction(false);
+    this.changed();
+  }
+  private clearPrediction(clearCompleted = true): void {
+    clearTimeout(this.predictionTimer); this.predictionTimer = undefined; this.prediction = undefined;
+    if (clearCompleted) { this.completedTurnId = undefined; this.predictionTurnId = undefined; }
+  }
+  async requestSuggestions(anchor: string): Promise<PromptSuggestionsStatus> {
+    const status = this.suggestions();
+    if (anchor !== status.anchor || !status.canRequest || !this.rpc || !this.completedTurnId) return status;
+    const generation = this.generation;
+    const rpc = this.rpc;
+    const prediction: NonNullable<CodexObservedControl['prediction']> = { anchor, generation, turnId: this.completedTurnId, state: 'pending', prompts: [] };
+    this.prediction = prediction; this.predictionTurnId = prediction.turnId;
+    // A server may acknowledge the request without ever publishing a result.
+    this.predictionTimer = setTimeout(() => {
+      if (this.prediction !== prediction) return;
+      prediction.state = 'unavailable'; this.predictionTimer = undefined; this.changed();
+    }, RPC_TIMEOUT);
+    this.predictionTimer.unref(); this.changed();
+    try {
+      await this.revalidate(generation);
+      if (this.prediction !== prediction || this.suggestions().anchor !== anchor) return this.suggestions();
+      await rpc.request('thread/prediction/request', { threadId: this.options.threadId, sourceTurnId: prediction.turnId });
+    } catch {
+      if (this.prediction === prediction && generation === this.generation && prediction.state === 'pending') {
+        clearTimeout(this.predictionTimer); this.predictionTimer = undefined; prediction.state = 'unsupported'; this.changed();
+      }
+    }
+    return this.suggestions();
+  }
   private hasBlockingRequest(): boolean {
     return this.approvals.size > 0 || this.unsupported.size > 0 || [...this.requests.values()].some((request) => request.blocking);
   }
@@ -317,6 +374,14 @@ export class CodexObservedControl {
     this.requests.clear(); this.approvals.clear(); this.unsupported.clear(); this.fileChanges.clear();
   }
   private changed(): void { this.options.onChange?.(); }
+  private reportActivity(turnId?: string): void {
+    if (turnId && this.activityNotifiedTurnId && turnId !== this.activityNotifiedTurnId) this.activityNotified = false;
+    if (turnId) this.activityNotifiedTurnId = turnId;
+    if (this.activityNotified) return;
+    this.activityNotified = true;
+    this.options.onActivity?.();
+  }
+  private resetActivityReport(): void { this.activityNotified = false; this.activityNotifiedTurnId = undefined; }
   private failCleanup(): void {
     this.cleanupFailed = true; this.invalidate('unavailable', CLEANUP_PROBLEM);
   }
@@ -325,6 +390,8 @@ export class CodexObservedControl {
   }
   private invalidate(state: ObservedCodexStatus['state'], problem?: string): void {
     ++this.generation; this.ready = false;
+    this.resetActivityReport();
+    this.clearPrediction(); this.completionTurnId = undefined;
     this.state = this.cleanupFailed ? 'unavailable' : state;
     this.problem = this.cleanupFailed ? CLEANUP_PROBLEM : problem;
     this.connectionId = undefined; this.activeTurnId = undefined; this.activity = 'unknown'; this.clearTurnRequests(); this.seenRequests.clear(); this.staged = [];
@@ -348,6 +415,7 @@ export class CodexObservedControl {
         bin: this.options.bin, env: this.options.env, socketPath: pin.path,
         onMessage: (message) => {
           if (generation !== this.generation) return;
+          if (this.suggestionsPrivate && object(message)?.method === 'thread/prediction/updated') return;
           if (this.ready) this.message(message);
           else if (this.staged.length < 128) this.staged.push(message);
           else { this.invalidate('unavailable', 'Codex sent too many attachment events.'); this.stopRpc(); }
@@ -406,7 +474,9 @@ export class CodexObservedControl {
         if (!this.activeTurnId) throw new Error('The active Codex turn could not be verified.');
         this.activity = 'active';
       }
+      this.completionTurnId = this.activeTurnId;
       this.state = 'connected'; this.connectionId = randomUUID(); this.ready = true;
+      if (this.activity === 'active') this.reportActivity(this.activeTurnId);
       const staged = this.staged; this.staged = [];
       for (const message of staged) this.message(message);
       this.changed();
@@ -459,8 +529,11 @@ export class CodexObservedControl {
         await this.revalidate(generation);
         if (this.activeTurnId) throw new Error('Codex is no longer idle.');
         const revision = this.turnRevision;
+        this.clearPrediction();
         const response = object(await rpc.request('turn/start', params)); const turn = object(response?.turn);
-        if (generation === this.generation && revision === this.turnRevision && boundedText(turn?.id, 256) && turn.status === 'inProgress') { this.activeTurnId = turn.id; this.activity = 'active'; }
+        if (generation === this.generation && revision === this.turnRevision && boundedText(turn?.id, 256) && turn.status === 'inProgress') {
+          this.activeTurnId = turn.id; this.completionTurnId = turn.id; this.activity = 'active'; this.reportActivity(turn.id);
+        }
       }
       if (generation !== this.generation) throw new Error('Codex delivery is unknown after disconnect.');
       this.delivery = 'submitted';
@@ -526,6 +599,29 @@ export class CodexObservedControl {
   private message(value: unknown): void {
     const message = object(value); const params = object(message?.params);
     if (!message || !params || params.threadId !== this.options.threadId) return;
+    if (message.method === 'thread/prediction/updated') {
+      if (this.suggestionsPrivate) return;
+      let prediction = this.prediction;
+      const result = object(params.result);
+      if (!prediction) {
+        // The attached native app may have requested its own prediction first.
+        // Only a source turn already verified by this attachment may supply it.
+        if (!this.ready || this.state !== 'connected' || this.activity !== 'idle' || this.activeTurnId ||
+            !this.connectionId || !this.completedTurnId || params.sourceTurnId !== this.completedTurnId ||
+            this.predictionTurnId === this.completedTurnId || !['completed', 'failed'].includes(String(result?.type))) return;
+        prediction = { anchor: `${this.connectionId}:${this.completedTurnId}`, generation: this.generation, turnId: this.completedTurnId, state: 'pending', prompts: [] };
+        this.prediction = prediction; this.predictionTurnId = prediction.turnId;
+      }
+      if (prediction.state !== 'pending' || prediction.generation !== this.generation ||
+          params.sourceTurnId !== prediction.turnId || this.suggestions().anchor !== prediction.anchor) return;
+      clearTimeout(this.predictionTimer); this.predictionTimer = undefined;
+      const text = typeof result?.text === 'string' ? result.text.trim() : '';
+      const valid = result?.type === 'completed' && text.length > 0 && text.length <= 240 && !/[\p{Cc}\p{Zl}\p{Zp}]/u.test(text);
+      const redacted = valid ? redact(text).trim() : '';
+      const prompt = redacted.length <= 240 ? redacted : '';
+      prediction.prompts = prompt ? [prompt] : [];
+      prediction.state = prompt ? 'ready' : 'unavailable'; this.changed(); return;
+    }
     if (message.method === 'serverRequest/resolved' && nativeId(params.requestId)) {
       for (const [id, request] of this.requests) {
         if (idKey(request.nativeId) === idKey(params.requestId)) { this.requests.delete(id); this.delivery = 'resolved'; this.changed(); }
@@ -542,11 +638,12 @@ export class CodexObservedControl {
     if (message.method === 'thread/status/changed') {
       const type = object(params.status)?.type;
       if (type === 'idle') {
-        ++this.turnRevision; this.activity = 'idle'; this.activeTurnId = undefined; this.clearTurnRequests();
-      } else if (type === 'active') this.activity = 'active';
+        ++this.turnRevision; this.activity = 'idle'; this.activeTurnId = undefined; this.clearTurnRequests(); this.resetActivityReport();
+      } else if (type === 'active') { this.activity = 'active'; this.reportActivity(this.activeTurnId); }
       else if (type === 'notLoaded' || type === 'systemError') {
-        ++this.turnRevision; this.activity = 'unknown'; this.activeTurnId = undefined; this.clearTurnRequests();
+        ++this.turnRevision; this.activity = 'unknown'; this.activeTurnId = undefined; this.completionTurnId = undefined; this.clearTurnRequests(); this.resetActivityReport();
       }
+      if (type === 'active' || type === 'notLoaded' || type === 'systemError') this.clearPrediction();
       this.changed(); return;
     }
     if ((message.method === 'item/started' || message.method === 'item/fileChange/patchUpdated') && params.turnId === this.activeTurnId) {
@@ -580,12 +677,17 @@ export class CodexObservedControl {
     const turn = object(params.turn);
     if (message.method === 'turn/started' && boundedText(turn?.id, 256)) {
       ++this.turnRevision;
+      this.clearPrediction();
       if (this.activeTurnId !== turn.id) this.clearTurnRequests();
-      this.activeTurnId = turn.id; this.activity = 'active'; this.changed(); return;
+      this.activeTurnId = turn.id; this.completionTurnId = turn.id; this.activity = 'active'; this.reportActivity(turn.id); this.changed(); return;
     }
-    if (message.method === 'turn/completed' && turn?.id === this.activeTurnId) {
+    if (message.method === 'turn/completed' && boundedText(turn?.id, 256) && turn.id === this.completionTurnId) {
       ++this.turnRevision;
+      this.clearPrediction();
+      if (turn.status === 'completed') this.completedTurnId = turn.id;
+      this.completionTurnId = undefined;
       this.activeTurnId = undefined; this.activity = 'idle'; this.clearTurnRequests();
+      this.resetActivityReport();
       if (this.delivery === 'submitted') this.delivery = 'unknown';
       this.changed(); return;
     }
