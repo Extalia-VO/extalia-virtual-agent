@@ -4,7 +4,7 @@
  *
  * - Exists only with the native core flag on (`nativeCore: 'rust'`); otherwise the report is
  *   `mode: 'legacy'` and W0 consent is review input only, never agent skill authority.
- * - Imports never pass a source path to the daemon: the host copies the chosen folder (or a
+ * - Imports pass a user-selected source only to the bounded Rust staging port. Rust copies the folder (or a
  *   workspace's `.extalia/skills/<name>`) into `<data>/profiles/<profile>/skill-imports/<unique>`,
  *   refusing what the daemon would refuse, and sends only `<unique>` (ADR 0025 note, slice 2).
  * - Decisions (review, approve) carry the digests the user saw and the local user principal;
@@ -15,7 +15,7 @@
  *   consent as review input (ADR 0025 §7); it never changes a state.
  */
 import {
-  DAEMON_SKILL_LIMITS, DAEMON_SKILL_LIST_MAX_LIMIT, SKILL_PATH_PATTERN, SKILL_WORKSPACE_ID_PATTERN, type DaemonOp, type DaemonOperations,
+  DAEMON_SKILL_LIMITS, DAEMON_SKILL_LIST_MAX_LIMIT, SKILL_WORKSPACE_ID_PATTERN, type DaemonOp, type DaemonOperations,
   type SkillImportOrigin, type SkillRevisionSummary, type SkillScannerReport,
 } from '@extalia/protocol';
 import {
@@ -25,14 +25,13 @@ import {
   normalizeSkillRouting, normalizeSkillRoutingReport, type SkillRoutingInput, type SkillRoutingReport,
   normalizeSkillRegistryPageInput, type SkillRegistryPage, type SkillRegistryPageInput,
 } from '@extalia/platform';
-import { createHash, randomBytes } from 'node:crypto';
-import { constants } from 'node:fs';
-import { lstat, mkdir, open, readdir, realpath, rm, writeFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { lstat, realpath } from 'node:fs/promises';
 import path from 'node:path';
 import { DaemonRequestError, DaemonUnavailableError, type DaemonClient, type DaemonSidecar } from './daemon/index.js';
-import { ensurePrivateDirectory } from './paths.js';
 import { parseSkill, referenceSkill, type Skill, type SkillIdentity, type SkillReference, type SkillSource } from './skills.js';
-import { normalizeSkillProposal, normalizeSkillProposalProvenance, skillProposalFiles, type SkillProposalProvenance, type SkillProposalResult } from './skillLearning.js';
+import { normalizeSkillProposal, normalizeSkillProposalProvenance, type SkillProposalProvenance, type SkillProposalResult } from './skillLearning.js';
+import { RustLearningBackend } from './rustLearning.js';
 
 /**
  * Operations the Security Center needs. Optional: `skill.review` (core migration 0004) and `skill.scanner` (the installed
@@ -43,6 +42,10 @@ export const SKILL_REGISTRY_OPS = [
 ] as const satisfies readonly DaemonOp[];
 /** Folder below the profile directory the daemon imports from (`IMPORT_INBOX` in the daemon). */
 export const SKILL_IMPORT_INBOX = 'skill-imports';
+/** A real scanner runs outside the store lock; unrelated daemon calls keep their short deadline. */
+export const SKILL_SCAN_DEADLINE_MS = 90_000;
+/** Verification may stream the bundled scanner files; this does not widen mission/tool deadlines. */
+export const SKILL_REGISTRY_DEADLINE_MS = 90_000;
 /** Revisions one report carries. */
 export const MAX_REPORT_REVISIONS = 500;
 /** Agent inventory is separate from the smaller Security Center report page. */
@@ -54,12 +57,6 @@ export const MAX_AGENT_REVISIONS = 2048;
 const LIST_PAGE = DAEMON_SKILL_LIST_MAX_LIMIT - 1;
 /** Copy caps: the daemon's default staging caps (ADR 0025 amendment), checked before copying more. */
 export const SKILL_COPY_LIMITS = { fileBytes: 1024 * 1024, packageBytes: 8 * 1024 * 1024, entries: 256, depth: 8 } as const;
-
-/** One path segment the daemon accepts (ADR 0025 amendment, `tree.rs`). */
-const SEGMENT = /^[A-Za-z0-9_][A-Za-z0-9._-]{0,127}$/;
-const WINDOWS_DEVICE = /^(?:con|prn|aux|nul|com[0-9]|lpt[0-9])(?:\..*)?$/i;
-/** Finder metadata is skipped instead of refused; every other hidden entry is refused (not reviewable). */
-const SKIPPED_FILES = new Set(['.DS_Store']);
 
 /** A refusal with a message safe to show; the host turns it into a user error. */
 export class SkillRegistryError extends Error {
@@ -142,7 +139,7 @@ function refusal(error: DaemonRequestError): SkillRegistryError {
 
 function unavailable(code: string): SkillRegistryError {
   if (code === 'not-served') return new SkillRegistryError('This native core does not serve the skill registry, so nothing changed.');
-  return new SkillRegistryError(`The native core is unavailable (${code}), so nothing changed. Try again, or restart Extalia.`);
+  return new SkillRegistryError(`The native core is unavailable (${code}). Refresh the library before retrying; completion of a submitted operation could not be confirmed.`);
 }
 
 /** How the model sees a registry skill's origin. */
@@ -153,12 +150,8 @@ function sourceOf(revision: Pick<SkillRevisionSummary, 'origin'>): SkillSource {
 export class SkillRegistry {
   constructor(private readonly options: SkillRegistryOptions) {}
 
-  /** Registry mode: the native core flag is on (whether or not the daemon is ready). */
+  /** Registry mode: a profile sidecar is configured (whether or not it is ready). */
   get enabled(): boolean { return Boolean(this.options.daemon); }
-
-  private get inbox(): string {
-    return path.join(this.options.dataDirectory, 'profiles', this.options.profile, SKILL_IMPORT_INBOX);
-  }
 
   private async client(): Promise<DaemonClient> {
     if (!this.options.daemon) throw new NotServedError();
@@ -174,7 +167,7 @@ export class SkillRegistry {
     if (op === 'skill.review' && !client.capabilities.includes('skill.review')) throw new SkillRegistryError(REFUSALS.review_unavailable);
     if (op === 'skill.routingPreview' && !client.capabilities.includes('skill.routingPreview')) throw new SkillRegistryError('Routing previews are not supported by this native core.');
     if (op === 'skill.preflight' && !client.capabilities.includes('skill.preflight')) throw new SkillRegistryError('Dependency checks are not supported by this native core.');
-    try { return await client.request(op, params); } catch (error) {
+    try { return await client.request(op, params, SKILL_REGISTRY_DEADLINE_MS); } catch (error) {
       if (error instanceof DaemonRequestError) throw refusal(error);
       if (error instanceof DaemonUnavailableError) throw unavailable(error.code);
       throw error;
@@ -188,7 +181,7 @@ export class SkillRegistry {
     const seen = new Set<string>();
     for (;;) {
       const limit = Math.min(LIST_PAGE, maximum - revisions.length);
-      const page = await client.request('skill.list', { limit, ...(cursor ? { cursor } : {}) });
+      const page = await client.request('skill.list', { limit, ...(cursor ? { cursor } : {}) }, SKILL_REGISTRY_DEADLINE_MS);
       if (page.revisions.length > limit) throw new SkillRegistryError('The skill catalog exceeded its requested page bound.');
       const indexGeneration = page.indexGeneration;
       if (generation !== undefined && generation !== indexGeneration) throw new SkillRegistryError('The skill catalog changed while loading. Reload it.');
@@ -217,6 +210,7 @@ export class SkillRegistry {
         ...(listed.nextCursor ? { nextCursor: listed.nextCursor } : {}),
         scanner: inspector?.status === 'ready' && inspector.pinned ? 'pinned' : 'unpinned', ...(inspector ? { inspector } : {}),
         review: client.capabilities.includes('skill.review'),
+        rescan: client.capabilities.includes('skill.rescan'),
         preflight: client.capabilities.includes('skill.preflight'),
         routingPreview: client.capabilities.includes('skill.routingPreview'),
       };
@@ -258,7 +252,7 @@ export class SkillRegistry {
   /** The daemon's installed inspector, or undefined when it does not serve `skill.scanner` (an older daemon) or refuses it. */
   private async scannerReport(client: DaemonClient): Promise<SkillScannerReport | undefined> {
     if (!client.capabilities.includes('skill.scanner')) return undefined;
-    try { return await client.request('skill.scanner', {}); } catch (error) {
+    try { return await client.request('skill.scanner', {}, SKILL_REGISTRY_DEADLINE_MS); } catch (error) {
       if (error instanceof DaemonUnavailableError) throw error;
       this.options.log?.(`The native core did not report its skill scanner (${error instanceof DaemonRequestError ? error.code : 'error'}).`);
       return undefined;
@@ -301,6 +295,23 @@ export class SkillRegistry {
     return details;
   }
 
+  /** Scan a stored revision only after a separate explicit user action. Details reads stay read-only. */
+  async rescan(rawRevisionId: unknown): Promise<SkillActionResult> {
+    let revisionId: string;
+    try { revisionId = normalizeSkillRevisionId(rawRevisionId); } catch (error) { throw failed(error); }
+    let client: DaemonClient;
+    try { client = await this.client(); } catch (error) { throw unavailable(error instanceof DaemonUnavailableError ? error.code : 'not-served'); }
+    if (!client.capabilities.includes('skill.rescan')) throw new SkillRegistryError('This native core does not support rescanning stored skills.');
+    try {
+      const result = await client.request('skill.rescan', { revisionId }, SKILL_SCAN_DEADLINE_MS);
+      return this.action(result);
+    } catch (error) {
+      if (error instanceof DaemonRequestError) throw refusal(error);
+      if (error instanceof DaemonUnavailableError) throw new SkillRegistryError('The rescan completion could not be confirmed. Refresh the skill details before retrying; an inspection may have been recorded.');
+      throw error;
+    }
+  }
+
   /** Copy the source into the import inbox, import it, and remove the copy (the daemon keeps its own). */
   async import(raw: unknown): Promise<SkillActionResult> {
     let source: SkillImportSource;
@@ -318,20 +329,23 @@ export class SkillRegistry {
       sourceRef = `workspace:${source.workspaceId}/.extalia/skills/${source.name}`.slice(0, 512);
     }
     await this.refuseInsideData(folder);
-    // Fail before copying anything when the daemon cannot take the import.
-    try { await this.client(); } catch (error) { throw unavailable(error instanceof DaemonUnavailableError ? error.code : 'not-served'); }
-    await ensurePrivateDirectory(this.inbox);
-    const unique = `import-${Date.now().toString(36)}-${randomBytes(6).toString('hex')}`;
-    const staged = path.join(this.inbox, unique);
+    // Selection and workspace consent remain host-owned; Rust reads and stages all package bytes.
+    let client: DaemonClient;
+    try { client = await this.client(); } catch (error) { throw unavailable(error instanceof DaemonUnavailableError ? error.code : 'not-served'); }
+    const backend = new RustLearningBackend(async () => client);
+    const staged = await backend.process('skill.stageFolder', { root: folder }).catch(error => {
+      if (error instanceof DaemonRequestError) throw refusal(error);
+      if (error instanceof DaemonUnavailableError) throw unavailable(error.code);
+      throw error;
+    });
     try {
-      await copyPackage(folder, staged);
-      const imported = await this.call('skill.import', { origin, path: unique, sourceRef });
+      const imported = await client.request('skill.import', { origin, path: staged.path, sourceRef }, SKILL_SCAN_DEADLINE_MS);
       return this.action({
         revisionId: imported.revisionId, packageId: imported.packageId, state: imported.state, created: imported.created,
         ...(imported.stateReason ? { stateReason: imported.stateReason } : {}),
       });
     } finally {
-      await rm(staged, { recursive: true, force: true }).catch(() => undefined);
+      await backend.process('skill.cleanup', { stageId: staged.stageId }).catch(() => undefined);
     }
   }
 
@@ -342,25 +356,21 @@ export class SkillRegistry {
     const cancelled = () => { if (signal?.aborted) throw new SkillRegistryError('Cancelled before importing the skill candidate.'); };
     cancelled();
     // Refuse unsupported/offline cores before any candidate directory or file is written.
-    try { await this.client(); } catch (error) { throw unavailable(error instanceof DaemonUnavailableError ? error.code : 'not-served'); }
+    let client: DaemonClient;
+    try { client = await this.client(); } catch (error) { throw unavailable(error instanceof DaemonUnavailableError ? error.code : 'not-served'); }
     cancelled();
-    await ensurePrivateDirectory(this.inbox);
-    const unique = `proposal-${randomBytes(16).toString('hex')}`;
-    const staged = path.join(this.inbox, unique);
-    await mkdir(staged, { mode: 0o700 });
+    const backend = new RustLearningBackend(async () => client);
+    const staged = await backend.process('skill.stage', { proposal: input, provenance });
     try {
-      for (const [file, content] of Object.entries(skillProposalFiles(input, provenance))) {
-        await writeFile(path.join(staged, file), content, { mode: 0o600, flag: 'wx' });
-      }
       cancelled();
-      const imported = await this.call('skill.import', { origin: 'generated', path: unique, sourceRef: `prompt:${provenance.sessionId}:${provenance.promptSha256}` });
+      const imported = await client.request('skill.import', { origin: 'generated', path: staged.path, sourceRef: `prompt:${provenance.sessionId}:${provenance.promptSha256}` }, SKILL_SCAN_DEADLINE_MS);
       const base: SkillProposalResult = { packageId: imported.packageId, revisionId: imported.revisionId, state: imported.state,
         ...(imported.stateReason ? { stateReason: imported.stateReason } : {}), created: imported.created,
         inspection: 'unavailable', activationPerformed: false, cancellationObserved: Boolean(signal?.aborted) };
       // Once import was acknowledged, always request its inspection report, even if the caller cancelled.
       // Cancellation never implies that a persistent import was rolled back or a scan succeeded.
       try {
-        const details = await this.call('skill.inspect', { revisionId: imported.revisionId });
+        const details = await client.request('skill.inspect', { revisionId: imported.revisionId }, SKILL_REGISTRY_DEADLINE_MS);
         if (details.revision.revisionId !== imported.revisionId || details.revision.packageId !== imported.packageId) return base;
         const latest = [...details.inspections].sort((a, b) => b.inspectionId - a.inspectionId)[0];
         return { ...base, state: details.revision.state, stateReason: details.revision.stateReason,
@@ -369,7 +379,7 @@ export class SkillRegistry {
         return { ...base, cancellationObserved: Boolean(signal?.aborted) };
       }
     } finally {
-      await rm(staged, { recursive: true, force: true }).catch(() => undefined);
+      await backend.process('skill.cleanup', { stageId: staged.stageId }).catch(() => undefined);
     }
   }
 
@@ -471,7 +481,7 @@ export class SkillRegistry {
     if (!SKILL_WORKSPACE_ID_PATTERN.test(workspaceId)) return false;
     try {
       // Do not pass workspaceId: skill.inspect's optional workspace parameter records consent review input.
-      const details = await client.request('skill.inspect', { revisionId: revision.revisionId });
+      const details = await client.request('skill.inspect', { revisionId: revision.revisionId }, SKILL_REGISTRY_DEADLINE_MS);
       const current = details.revision;
       if (current.revisionId !== revision.revisionId || current.packageId !== revision.packageId || current.origin !== revision.origin
         || !current.active || current.state !== 'active' || current.treeSha256 !== revision.treeSha256
@@ -509,7 +519,7 @@ export class SkillRegistry {
 
   private async readSkill(client: DaemonClient, revision: SkillRevisionSummary): Promise<Skill> {
     const { revisionId, packageId } = revision;
-    const file = await client.request('skill.read', { revisionId, path: 'SKILL.md' });
+    const file = await client.request('skill.read', { revisionId, path: 'SKILL.md' }, SKILL_REGISTRY_DEADLINE_MS);
     if (file.revisionId !== revisionId || file.packageId !== packageId || file.path !== 'SKILL.md' || file.sha256 !== revision.skillMdSha256
       || file.size !== Buffer.byteLength(file.content, 'utf8') || createHash('sha256').update(file.content).digest('hex') !== file.sha256) throw new Error('Mismatched skill.');
     // The package id names the skill: it is unique per profile, unlike a front-matter name.
@@ -528,58 +538,4 @@ async function workspaceSkillFolder(root: string, name: string): Promise<string>
     if (info.isSymbolicLink() || !info.isDirectory()) throw new SkillRegistryError(`The project skill "${name}" is not a plain folder (symbolic links are not imported).`);
   }
   return current;
-}
-
-/**
- * Copy a package folder to `target` (which must not exist), refusing what the daemon's staging
- * would refuse and stopping at its caps, so a wrong choice never copies a large tree. Bytes are
- * read through a handle opened without following links and checked against the walked entry.
- */
-export async function copyPackage(source: string, target: string): Promise<void> {
-  const root = await lstat(source).catch(() => undefined);
-  if (!root) throw new SkillRegistryError('The skill folder does not exist.');
-  if (root.isSymbolicLink() || !root.isDirectory()) throw new SkillRegistryError('Choose a folder (not a file or a link) that contains SKILL.md.');
-  let entries = 0, total = 0;
-  const refuse = (message: string, relative?: string) => new SkillRegistryError(relative ? `${message} (${relative})` : message);
-  const seen = new Set<string>();
-  const walk = async (from: string, to: string, relative: string, depth: number): Promise<void> => {
-    await mkdir(to, { mode: 0o700 });
-    const items = (await readdir(from, { withFileTypes: true })).sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
-    for (const item of items) {
-      const rel = relative ? `${relative}/${item.name}` : item.name;
-      if (SKIPPED_FILES.has(item.name) && item.isFile()) continue;
-      if (item.name.startsWith('.')) throw refuse(REFUSALS.hidden_entry!, rel);
-      if (!SEGMENT.test(item.name) || item.name.endsWith('.') || WINDOWS_DEVICE.test(item.name) || rel.length > 512 || !SKILL_PATH_PATTERN.test(rel)) throw refuse(REFUSALS.invalid_name!, rel);
-      const folded = rel.toLowerCase();
-      if (seen.has(folded)) throw refuse(REFUSALS.path_collision!, rel);
-      seen.add(folded);
-      if (++entries > SKILL_COPY_LIMITS.entries) throw refuse(REFUSALS.too_many_entries!);
-      const from2 = path.join(from, item.name), to2 = path.join(to, item.name);
-      const info = await lstat(from2);
-      if (info.isSymbolicLink()) throw refuse(REFUSALS.symlink!, rel);
-      if (info.isDirectory()) {
-        if (depth + 1 > SKILL_COPY_LIMITS.depth) throw refuse(REFUSALS.too_deep!, rel);
-        await walk(from2, to2, rel, depth + 1);
-        continue;
-      }
-      if (!info.isFile()) throw refuse(REFUSALS.special_file!, rel);
-      if (info.nlink > 1) throw refuse(REFUSALS.hard_link!, rel);
-      if (info.size > SKILL_COPY_LIMITS.fileBytes) throw refuse(REFUSALS.file_too_large!, rel);
-      const handle = await open(from2, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
-      let bytes: Buffer;
-      try {
-        const opened = await handle.stat();
-        if (!opened.isFile() || opened.ino !== info.ino || opened.dev !== info.dev || opened.size > SKILL_COPY_LIMITS.fileBytes) throw refuse(REFUSALS.changed!, rel);
-        bytes = await handle.readFile();
-      } finally { await handle.close(); }
-      if (bytes.length > SKILL_COPY_LIMITS.fileBytes) throw refuse(REFUSALS.file_too_large!, rel);
-      total += bytes.length;
-      if (total > SKILL_COPY_LIMITS.packageBytes) throw refuse(REFUSALS.package_too_large!);
-      // The executable bit is part of the package identity (tree hash v1).
-      const out = await open(to2, 'wx', info.mode & 0o111 ? 0o700 : 0o600);
-      try { await out.writeFile(bytes); } finally { await out.close(); }
-    }
-  };
-  await walk(source, target, '', 0);
-  if (!entries) throw refuse(REFUSALS.empty!);
 }

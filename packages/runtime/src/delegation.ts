@@ -2,7 +2,7 @@ import { MAX_NATIVE_TEAM_CONCURRENT, TASK_TIERS, type TaskTier, type TeamMember,
 import type { EventBody } from '@extalia/protocol';
 import { createFallbackProvider, modelChain } from './fallback.js';
 import type { SessionPermissionMode } from '@extalia/core';
-import { runTurn, type ApprovalOutcome, type ApprovalRequest } from './loop.js';
+import { runTurn, type ApprovalOutcome, type ApprovalRequest, type TurnOutcome } from './loop.js';
 import { guardMemberTools } from './memberAccess.js';
 import type { ModelMessage, ModelProvider } from './model.js';
 import type { AnyTool, ToolAccess, ToolDefinition } from './tools.js';
@@ -55,6 +55,8 @@ export interface DelegationOptions {
   /** Host-local invocation observers; roster/spawn events are not evidence of entry. */
   onWorkerStarted?(invocationId: string, memberLabel?: string, member?: TeamMember): void;
   onWorkerSettled?(invocationId: string): void;
+  /** Actual final worker text, before presentation wrappers; never a synthetic success message. */
+  onWorkerResult?(agentId: string, outcome: TurnOutcome, text: string): void;
   maxWorkerSteps?: number;
   /** The session's subagent team, when it is enabled. */
   team?: DelegationTeam;
@@ -287,6 +289,7 @@ export function createDelegationTool(options: DelegationOptions): ToolDefinition
     });
     const last = [...result.history].reverse().find((message): message is Extract<ModelMessage, { role: 'assistant' }> => message.role === 'assistant' && Boolean(message.text));
     const answer = last?.text ?? '';
+    try { options.onWorkerResult?.(subagentId, result.outcome, answer); } catch { /* Observers never change worker execution. */ }
     if (result.outcome !== 'completed') {
       return { ok: false, output: `The worker stopped (${result.outcome}): ${result.error ?? 'no result'}${answer ? `\nPartial findings:\n${answer.slice(0, WORKER_RESULT_LIMIT)}` : ''}` };
     }

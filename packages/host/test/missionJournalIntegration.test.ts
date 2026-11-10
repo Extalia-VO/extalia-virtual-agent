@@ -1,3 +1,4 @@
+import { createAgentHost } from '../src/service.js';
 import { DatabaseSync } from 'node:sqlite';
 import { mkdtemp, mkdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -6,7 +7,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { parseEvent, type ExtaliaEvent } from '@extalia/protocol';
 import type { HostMissionRequest, HostMissionRun } from '@extalia/platform';
 import type { AnyTool, ToolRunContext } from '@extalia/runtime';
-import { createAgentHost, type AgentHostRuntime } from '../src/service.js';
+import { type AgentHostRuntime } from '../src/service.js';
 import * as fileTools from '../src/tools/files.js';
 
 const roots: string[] = [];

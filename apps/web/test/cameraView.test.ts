@@ -4,6 +4,7 @@ import { OrthographicCamera, Vector3 } from 'three';
 import { CameraView } from '../src/office/scene/CameraView';
 import { CHARACTER_FOCUS_ZOOM, buildingMinimumZoom, buildingOverviewPose, characterFocusPose, floorMinimumZoom, floorOverviewPose, stackOverviewPose } from '../src/office/scene/cameraFocus';
 import type { CharacterPositionSource } from '../src/office/scene/movement/positionStore';
+import { createCameraDirectorState, stepCameraDirector } from '../src/office/cameraDirector';
 
 type Effect = () => void | (() => void);
 type Slot = { value?: unknown; deps?: readonly unknown[]; cleanup?: () => void };
@@ -37,7 +38,7 @@ function harness(initial: Partial<Props> = {}, size = { width: 1440, height: 900
     hooks.layout.splice(0).forEach(effect => effect()); hooks.effects.splice(0).forEach(effect => effect());
     return node;
   };
-  const frame = () => hooks.frame({}, 1);
+  const frame = (seconds = 1) => hooks.frame({}, seconds);
   const pose = () => ({ position: camera.position.toArray(), target: controls.target.toArray(), zoom: camera.zoom });
   const manual = () => { camera.position.set(17, 24, 18); controls.target.set(-4, 2, 8); camera.zoom = 83; controls.update(); camera.updateProjectionMatrix(); return pose(); };
   render();
@@ -48,6 +49,59 @@ beforeEach(() => { hooks.slots.length = 0; hooks.index = 0; hooks.layout.length 
 afterEach(() => { hooks.slots.forEach(slot => slot.cleanup?.()); vi.unstubAllGlobals(); });
 
 describe('Office camera requests', () => {
+  it('uses the floor-aware director to pan at constant zoom, ease gently and keep following without restarting', () => {
+    const positions: Record<string, [number, number, number]> = { a: [-8, 0, -4], b: [8, 0, 4] };
+    const live = { position: (id: string) => positions[id], floor: () => 1 } as unknown as CharacterPositionSource;
+    let state = createCameraDirectorState();
+    const shot = (now: number) => {
+      const result = stepCameraDirector(state, { now, enabled: true, suspended: false, lastInteractionAt: 0,
+        workingIds: ['a', 'b'], attentionIds: [], random: 0, currentFloor: 1, floorOf: () => 1 });
+      state = result.state; return result.command;
+    };
+    const h = harness({ live, reducedMotion: false });
+    h.render({ automaticShot: shot(60_000), focusId: 'a' }); h.frame(2);
+    const initial = h.pose();
+    const next = shot(90_000);
+    expect(next?.phase).toBe('focus');
+    h.render({ automaticShot: next, focusId: 'b' }); h.frame(.1);
+    const early = h.pose();
+    expect(early.zoom).toBe(initial.zoom);
+    expect(Math.abs(early.target[0]! - initial.target[0]!)).toBeLessThan(.2);
+    for (let i = 0; i < 19; i++) {
+      h.render({ automaticShot: next }); h.frame(.1);
+      expect(h.pose().zoom).toBe(CHARACTER_FOCUS_ZOOM);
+    }
+    const focused = h.pose();
+    expect(focused.target).toEqual(characterFocusPose(positions.b!, undefined, [210, 0]).target.map(value => expect.closeTo(value, 8)));
+    positions.b![0] += 1; h.frame(.1);
+    expect(h.pose().target[0]).toBeCloseTo(focused.target[0]! + 1, 8);
+    h.listeners.get('start')?.();
+    const manual = h.pose(); positions.b![0] += 3; h.frame(.5);
+    expect(h.pose()).toEqual(manual);
+  });
+
+  it('retains the overview transition only when the next automatic target is on another floor', () => {
+    const live = { position: (id: string) => id === 'a' ? [-8, 0, -4] : [8, 6.4, 4], floor: (id: string) => id === 'a' ? 1 : 2 } as unknown as CharacterPositionSource;
+    const onFollowFloor = vi.fn();
+    let state = createCameraDirectorState();
+    const shot = (now: number, currentFloor: number) => {
+      const result = stepCameraDirector(state, { now, enabled: true, suspended: false, lastInteractionAt: 0,
+        workingIds: ['a', 'b'], attentionIds: [], random: 0, currentFloor, floorOf: id => live.floor(id) });
+      state = result.state; return result.command;
+    };
+    const h = harness({ live, onFollowFloor, reducedMotion: false });
+    h.render({ automaticShot: shot(60_000, 1), focusId: 'a' }); h.frame(2);
+    const overview = shot(90_000, 1); expect(overview?.phase).toBe('overview');
+    h.render({ automaticShot: overview }); h.frame(.8);
+    expect(h.pose().zoom).toBeLessThan(CHARACTER_FOCUS_ZOOM);
+    const travel = shot(90_900, 1); expect(travel?.phase).toBe('travel');
+    h.render({ automaticShot: travel }); h.frame(.8);
+    expect(onFollowFloor).toHaveBeenCalledWith(2);
+    const focus = shot(91_800, 2); expect(focus?.phase).toBe('focus');
+    h.render({ automaticShot: focus, focusId: 'b', view: 2 }); h.frame(2);
+    expect(h.pose().zoom).toBe(CHARACTER_FOCUS_ZOOM);
+    expect(h.pose().target[1]).toBeCloseTo(6.4 + .95, 8);
+  });
   it('preserves manual orbit, pan and zoom through character selection, details, seat/activity changes and panel resizing', () => {
     const h = harness(); const manual = h.manual();
     h.render({ focusId: 'agent', focus: [2, 0, 4] }); h.frame(); expect(h.pose()).toEqual(manual);

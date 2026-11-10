@@ -1,10 +1,11 @@
+import { createAgentHost } from '../src/service.js';
 import { createHash } from 'node:crypto';
 import { chmod, lstat, mkdir, mkdtemp, readdir, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ExtaliaEvent } from '@extalia/protocol';
-import { createAgentHost } from '../src/service.js';
+
 import { DAEMON_BINARY, HAS_DAEMON } from './daemonBackend.js';
 
 interface RequestBody {
@@ -81,12 +82,28 @@ describe('current-prompt skill learning authority through the Native host', () =
     expect(String(error?.content)).toMatch(/Unknown tool|not available|not found/i);
   });
 
-  for (const mode of ['command', 'option'] as const) it.skipIf(!HAS_DAEMON)(`persists an ${mode}-authorized generated candidate, reports scanner unavailability, and never carries learning into the next turn`, async () => {
+  for (const mode of ['command', 'option'] as const) it.skipIf(!HAS_DAEMON)(`${process.platform === 'win32' ? 'refuses unavailable staging of' : 'persists'} an ${mode}-authorized generated candidate and never carries learning into the next turn`, async () => {
     const { host, runtime, bodies, session, workspace, events, data } = await fixture({ reply: (_body, index) => index === 0 ? { tool: 'skill_propose', args: proposal } : { text: 'Candidate saved; scanner unavailable.' } });
     const prompt = mode === 'command' ? '/learn-skill Learn a review procedure.' : 'Learn a review procedure.';
     await host.sendPrompt(session.id, prompt, mode === 'option' ? { learnSkill: true } : undefined); await idle(runtime);
     expect(hasProposalTool(bodies[0]!)).toBe(true);
-    const listed = await host.skillRegistry(); expect(listed.revisions).toHaveLength(1);
+    const listed = await host.skillRegistry();
+    if (process.platform === 'win32') {
+      // Windows advertises no learning.process artifact port. Explicit opt-in
+      // grants turn authority, never an emulated staging implementation.
+      expect(listed.revisions).toEqual([]);
+      const toolReply = [...bodies[1]!.messages].reverse().find(message => message.role === 'tool');
+      expect(String(toolReply?.content)).toContain('The skill proposal did not complete');
+      expect(String(toolReply?.content)).toContain('no approval or activation was requested');
+      expect(events.some(event => event.body.type === 'tool.completed' && event.body.tool === 'skill_propose' && !event.body.ok)).toBe(true);
+      expect(events.some(event => event.body.type === 'tool.completed' && event.body.tool === 'skill_propose' && event.body.ok)).toBe(false);
+      await expect(lstat(path.join(data, 'profiles', 'default', 'skill-imports'))).rejects.toMatchObject({ code: 'ENOENT' });
+      await host.sendPrompt(session.id, 'Now review another change.'); await idle(runtime);
+      expect(hasProposalTool(bodies.at(-1)!)).toBe(false);
+      expect((await host.skillRegistry()).revisions).toEqual([]);
+      return;
+    }
+    expect(listed.revisions).toHaveLength(1);
     const revision = listed.revisions[0]!;
     expect(revision).toMatchObject({ packageId: proposal.name, origin: 'generated', state: 'quarantined', stateReason: 'scanner-unavailable', active: false });
     const details = await host.inspectSkill(revision.revisionId);
@@ -119,8 +136,17 @@ describe('current-prompt skill learning authority through the Native host', () =
     expect((await host.skillRegistry()).revisions).toEqual([]);
   });
 
-  for (const mode of ['plan', 'skills-off', 'typescript', 'hermes', 'empty-command'] as const) it.skipIf(!HAS_DAEMON && mode !== 'typescript')(`refuses ${mode} learning before any provider run or import`, async () => {
-    const { host, bodies, events, session } = await fixture({ backend: mode === 'typescript' ? 'typescript' : 'rust', skills: mode === 'skills-off' ? 'off' : 'extalia', ...(mode === 'hermes' ? { runtimeId: 'hermes' } : {}) });
+  it.skipIf(!HAS_DAEMON || process.platform === 'win32')('uses the Rust skill registry independently of TypeScript mission routing', async () => {
+    const { host, runtime, bodies, session } = await fixture({ backend: 'typescript', reply: (_body, index) => index === 0 ? { tool: 'skill_propose', args: proposal } : { text: 'Candidate saved.' } });
+    await host.sendPrompt(session.id, '/learn-skill Draft a review procedure.');
+    await idle(runtime);
+    expect(hasProposalTool(bodies[0]!)).toBe(true);
+    expect((await host.skillRegistry()).revisions).toHaveLength(1);
+    expect((await host.skillRegistry()).revisions[0]).toMatchObject({ state: 'quarantined', active: false });
+  });
+
+  for (const mode of ['plan', 'skills-off', 'hermes', 'empty-command'] as const) it.skipIf(!HAS_DAEMON)(`refuses ${mode} learning before any provider run or import`, async () => {
+    const { host, bodies, events, session } = await fixture({ backend: 'rust', skills: mode === 'skills-off' ? 'off' : 'extalia', ...(mode === 'hermes' ? { runtimeId: 'hermes' } : {}) });
     if (mode === 'plan') await host.setSessionOptions(session.id, { permissionMode: 'plan' });
     await expect(host.sendPrompt(session.id, mode === 'empty-command' ? '/learn-skill' : '/learn-skill Draft a review procedure.')).rejects.toThrow();
     expect(bodies).toEqual([]); expect(events.some(event => event.body.type === 'prompt.submitted')).toBe(false);

@@ -1,7 +1,15 @@
 import type { Messages } from '../../i18n';
 import type { OfficeAgent } from '../presence';
 
-type StatusAgent = Pick<OfficeAgent, 'status'> & Partial<Pick<OfficeAgent, 'phase' | 'activity' | 'toolName' | 'pendingApprovalId' | 'reason' | 'stalled' | 'lastActivityAt' | 'mission'>>;
+type StatusAgent = Pick<OfficeAgent, 'status'> & Partial<Pick<OfficeAgent, 'phase' | 'activity' | 'toolName' | 'pendingApprovalId' | 'reason' | 'stalled' | 'lastActivityAt' | 'mission' | 'meeting' | 'nativeStandby' | 'running'>>;
+
+/** A visual roster shift must never hide actual work, warnings, approvals or task outcomes. */
+export function standbyMode(agent: StatusAgent): OfficeAgent['nativeStandby'] {
+  if (agent.running || agent.mission || agent.meeting || agent.pendingApprovalId || agent.stalled || agent.phase || agent.activity || agent.reason) return undefined;
+  if (agent.nativeStandby === 'on-shift' && agent.status === 'idle') return 'on-shift';
+  if (agent.nativeStandby === 'off-shift' && agent.status === 'offline') return 'off-shift';
+  return undefined;
+}
 
 /**
  * v0.0.47 (ADR 0016): the label a mission worker's task state sets, or undefined when its own reports say more
@@ -41,6 +49,9 @@ export function clockTime(iso: string | undefined, locale?: string): string | un
  * words and MCP server/tool names are shown: never a command, path or reply text.
  */
 export function agentStatusLabel(t: Messages, agent: StatusAgent, locale?: string): string {
+  if (agent.meeting) return agent.meeting.topic ? t.office.meetingTopic(agent.meeting.topic) : t.office.meeting;
+  const shift = standbyMode(agent);
+  if (shift) return shift === 'on-shift' ? t.office.standby : t.office.offShift;
   if (agent.status === 'observing') return t.office.observing;
   if (agent.status === 'paused') return t.observer.paused;
   if (agent.status === 'unavailable') return t.observer.unavailable;

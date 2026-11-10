@@ -4,14 +4,14 @@ import type { Messages } from '../i18n';
 import { createObservedHermesControl, type ObservedHermesControl, type ObservedHermesView } from './observedHermesModel';
 import './observedCodex.css';
 
-export function ObservedHermesControls({ t, agents, session }: { t: Messages; agents: AgentHostApi; session: SessionSummary }) {
+export function ObservedHermesControls({ t, agents, session, settingsOnly = false }: { t: Messages; agents: AgentHostApi; session: SessionSummary; settingsOnly?: boolean }) {
   const model = useMemo(() => createObservedHermesControl(agents, session.id), [agents, session.id]);
   const view = useSyncExternalStore(model.subscribe, model.getSnapshot, model.getSnapshot);
   useEffect(() => model.start(), [model]);
   if (session.control !== 'observed' || session.observation?.sourceId !== 'hermes') return null;
-  return <ObservedHermesContent t={t} view={view} control={model} />;
+  return <ObservedHermesContent t={t} view={view} control={model} settingsOnly={settingsOnly} />;
 }
-export function ObservedHermesContent({ t, view, control }: { t: Messages; view: ObservedHermesView; control: ObservedHermesControl }) {
+export function ObservedHermesContent({ t, view, control, settingsOnly = false }: { t: Messages; view: ObservedHermesView; control: ObservedHermesControl; settingsOnly?: boolean }) {
   const c = t.observedHermes, status = view.status, id = useId();
   const [profile, setProfile] = useState('');
   return <section className="observed-codex" aria-labelledby={`${id}-title`}>
@@ -24,11 +24,11 @@ export function ObservedHermesContent({ t, view, control }: { t: Messages; view:
       <button type="button" disabled={view.busy} onClick={() => { void control.disconnect(); }}>{c.disconnect}</button>
       {status.delivery && <p role="status">{c.delivery[status.delivery]}</p>}
       {status.requests.map(question => <HermesQuestion key={`${status.connectionId}:${JSON.stringify(question)}`} t={t} question={question} disabled={view.busy || !status.canAnswer} control={control} />)}
-      <form onSubmit={event => { event.preventDefault(); void control.send(); }}>
+      {!settingsOnly && <form onSubmit={event => { event.preventDefault(); void control.send(); }}>
         <label htmlFor={`${id}-message`}>{c.message}</label>
         <textarea id={`${id}-message`} rows={3} value={view.draft} maxLength={16000} onChange={event => control.setDraft(event.target.value)} disabled={!status.canSend} />
         <button type="submit" disabled={view.busy || !status.canSend || !view.draft.trim()}>{c.send}</button>
-      </form>
+      </form>}
     </> : <form onSubmit={event => { event.preventDefault(); void control.connect(profile); }}>
       <label htmlFor={`${id}-profile`}>{c.profile}</label>
       <input id={`${id}-profile`} value={profile} maxLength={80} onChange={event => setProfile(event.target.value)} autoComplete="off" />

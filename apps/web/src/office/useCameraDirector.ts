@@ -1,17 +1,19 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { createCameraDirectorState, stepCameraDirector, type CameraDirectorCommand } from './cameraDirector';
+import { createCameraDirectorState, stepCameraDirector, type CameraDirectorCommand, type CameraSubject } from './cameraDirector';
 import { createCameraNewcomers } from './cameraNewcomers';
 
 /** One Office-owned clock. User activity cancels a shot before the next animation frame. */
-export function useCameraDirector({ enabled, suspended, reducedMotion, workingIds, idleIds, attentionIds, positionReady, scope, onFocus }: {
+export function useCameraDirector({ enabled, suspended, reducedMotion, workingIds, idleIds, attentionIds, positionReady, currentFloor, floorOf, subjectOf, scope, onFocus }: {
   enabled: boolean; suspended: boolean; workingIds: readonly string[]; attentionIds: readonly string[];
   idleIds: readonly string[]; positionReady(id: string): boolean;
+  currentFloor?: number | undefined; floorOf?: ((id: string) => number | undefined) | undefined;
+  subjectOf?: ((id: string) => CameraSubject | undefined) | undefined;
   reducedMotion: boolean;
   scope: string; onFocus(command: CameraDirectorCommand): void;
 }) {
   const [command, setCommand] = useState<CameraDirectorCommand | null>(null);
-  const latest = useRef({ enabled, suspended, reducedMotion, workingIds, idleIds, attentionIds, positionReady, onFocus });
-  useLayoutEffect(() => { latest.current = { enabled, suspended, reducedMotion, workingIds, idleIds, attentionIds, positionReady, onFocus }; });
+  const latest = useRef({ enabled, suspended, reducedMotion, workingIds, idleIds, attentionIds, positionReady, currentFloor, floorOf, subjectOf, onFocus });
+  useLayoutEffect(() => { latest.current = { enabled, suspended, reducedMotion, workingIds, idleIds, attentionIds, positionReady, currentFloor, floorOf, subjectOf, onFocus }; });
   useEffect(() => {
     let state = createCameraDirectorState();
     let lastInteractionAt = performance.now();
@@ -31,13 +33,15 @@ export function useCameraDirector({ enabled, suspended, reducedMotion, workingId
     const tick = () => {
       const options = latest.current;
       const now = performance.now();
-      const newcomerIds = newcomers.update(options.workingIds, options.positionReady, now, options.enabled);
+      const newcomerIds = newcomers.update(options.workingIds, options.positionReady, now, options.enabled, [...options.workingIds, ...options.idleIds]);
       const editing = document.activeElement instanceof HTMLElement && Boolean(document.activeElement.closest('input, textarea, select, [contenteditable="true"], [role="textbox"]'));
       const modal = Boolean(document.querySelector('[role="dialog"][aria-modal="true"], dialog[open]'));
       const result = stepCameraDirector(state, {
         now, lastInteractionAt, enabled: options.enabled,
         suspended: options.suspended || pointerDown || editing || modal || document.hidden,
         workingIds: options.workingIds.filter(options.positionReady), idleIds: options.idleIds.filter(options.positionReady), newcomerIds,
+        spawnedIds: newcomers.spawnedIds(), currentFloor: options.currentFloor, floorOf: options.floorOf,
+        subjectOf: options.subjectOf,
         attentionIds: options.attentionIds, random: Math.random(),
         reducedMotion: options.reducedMotion,
       });

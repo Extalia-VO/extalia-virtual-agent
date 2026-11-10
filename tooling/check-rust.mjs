@@ -40,7 +40,9 @@ if (!found) {
 const env = { ...process.env, ...(found.bin ? { PATH: `${found.bin}${path.delimiter}${process.env.PATH ?? ''}` } : {}) };
 if (process.platform === 'darwin' && !env.CC) env.CC = 'clang';
 const buildOnly = process.argv.includes('--build-daemon');
-const steps = buildOnly ? [['build', '-p', 'extalia-daemon', '--locked']] : [
+// Development host suites exercise optional provider experiments. Official
+// release builders do not enable this feature or ship the rejected candidates.
+const steps = buildOnly ? [['build', '-p', 'extalia-daemon', '--locked', '--features', 'provider-experiments']] : [
   ['fmt', '--all', '--check'],
   ['clippy', '--workspace', '--all-targets', '--locked', '--features', 'extalia-daemon/test-fixtures', '--', '-D', 'warnings'],
   ['test', '--workspace', '--locked', '--features', 'extalia-daemon/test-fixtures'],

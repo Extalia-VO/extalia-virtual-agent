@@ -4,6 +4,7 @@ import { DATA_DIRECTORY_OVERRIDE, legacyDataDirectories, resolveDataDirectory } 
 import { PROTOCOL_VERSION, parseEvent, parseEventLines, type ParseResult } from '@extalia/protocol';
 import { runConnect, runConnections, runDisconnect, runMcp, runReply } from './connect';
 import { runCodexPermissions } from './codexPermissions';
+import { runInbox } from './inbox';
 import type { StartOptions } from './start';
 
 export type { StartOptions } from './start';
@@ -58,6 +59,8 @@ Commands:
   mcp                 Run the stdio MCP server (reports and cooperative await_reply)
   reply               Wait for a reply through the original calling tool
     --url <url> --token <secret> [--question <text>]
+  inbox               Poll a manually paired external-agent inbox (no automatic retry)
+    --url <url> --token <secret> [--ack <message ID>] [--wait-ms <0..25000>]
   update              Install the latest version from npm
     --check             Only report whether a newer version exists
   doctor              Show versions, platform and the user-data location
@@ -191,6 +194,8 @@ export async function run(args: readonly string[], host: CliHost): Promise<numbe
       return runMcp(host, rest);
     case 'reply':
       return runReply(host, rest);
+    case 'inbox':
+      return runInbox(host, rest);
     case 'update':
       return update(host, rest);
     case 'help':

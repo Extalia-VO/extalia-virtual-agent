@@ -128,10 +128,12 @@ export interface SlotStatus {
   readonly slotId: string;
   readonly state: SlotState;
   readonly occupantAgentId?: string;
+  readonly occupantSessionId?: string;
   readonly since: string;
 }
 
 export interface AgentIdentity {
+  readonly sessionId?: string;
   readonly agentId: string;
   readonly displayName: string;
   readonly role: string;
@@ -149,6 +151,7 @@ export type PresenceIntent =
 
 export interface OfficePresence {
   readonly identity: AgentIdentity;
+  readonly sessionId?: string;
   readonly intent: PresenceIntent;
   readonly floorId: string;
   readonly destinationWaypointId?: string;
@@ -170,7 +173,8 @@ export interface OfficeState {
   readonly templateId: string;
   readonly presences: readonly OfficePresence[];
   readonly slots: readonly SlotStatus[];
-  readonly meetings: readonly { readonly meetingId: string; readonly roomId: string; readonly participants: readonly string[] }[];
+  readonly meetings: readonly { readonly meetingId: string; readonly sessionId: string; readonly roomId: string; readonly participants: readonly string[] }[];
+  readonly closedMeetings?: readonly { readonly meetingId: string; readonly sessionId: string }[];
   readonly rooms: readonly RoomActivity[];
   readonly spawnQueue: readonly string[];
 }
@@ -332,7 +336,7 @@ export function allocateSlot(
 
   // 3. near_parent (for subagents)
   if (agent.kind === 'subagent' && agent.parentAgentId && template.assignment.subagent === 'near_parent') {
-    const parentOccupied = slots.find(s => s.occupantAgentId === agent.parentAgentId);
+    const parentOccupied = slots.find(s => s.occupantAgentId === agent.parentAgentId && s.occupantSessionId === agent.sessionId);
     if (parentOccupied) {
       const parentRoom = template.floors.flatMap(f => f.rooms).find(r => r.workstations.some(w => w.id === parentOccupied.slotId));
       if (parentRoom) {
@@ -397,6 +401,7 @@ export function initialOfficeState(template: OfficeTemplate): OfficeState {
     presences: [],
     slots: slots.sort((a, b) => cmp(a.slotId, b.slotId)),
     meetings: [],
+    closedMeetings: [],
     rooms,
     spawnQueue: []
   };
@@ -429,13 +434,24 @@ export function reduceOffice(
     });
   }
 
+  const inSession = (presence: OfficePresence) => presence.sessionId === event.sessionId;
+  const ownSlot = (slot: SlotStatus, agentId: string) => slot.occupantAgentId === agentId && slot.occupantSessionId === event.sessionId;
+  const returnFromMeeting = (presence: OfficePresence): OfficePresence => {
+    const slot = state.slots.find(candidate => ownSlot(candidate, presence.identity.agentId));
+    const room = slot && template.floors.flatMap(floor => floor.rooms).find(candidate => candidate.workstations.some(ws => ws.id === slot.slotId));
+    return { ...presence, intent: slot ? { kind: 'at_desk', slotId: slot.slotId, activity: 'waiting' } : { kind: 'idle_at', target: template.idle.default },
+      ...(room ? { floorId: room.floorId } : {}),
+      destinationWaypointId: room?.workstations.find(ws => ws.id === slot?.slotId)?.approachWaypointId, lastEventId: eventId, lastActiveAt: at };
+  };
+
   // 2. Lifecycle & Agent Intent Processing
   switch (body.type) {
     case 'agent.created': {
       const agentId = envelopeAgentId ?? body.name;
-      if (state.presences.some(p => p.identity.agentId === agentId)) return { ...state, rooms };
+      if (state.presences.some(p => p.identity.agentId === agentId && inSession(p))) return { ...state, rooms };
 
       const identity: AgentIdentity = {
+        sessionId: event.sessionId,
         agentId,
         displayName: body.name,
         role: body.role ?? 'primary',
@@ -448,6 +464,7 @@ export function reduceOffice(
 
       const presence: OfficePresence = {
         identity,
+        sessionId: event.sessionId,
         intent: { kind: 'at_desk', slotId, activity: 'waiting' },
         floorId: template.floors[0]?.id ?? 'floor-1',
         lastEventId: eventId,
@@ -455,7 +472,7 @@ export function reduceOffice(
       };
 
       const slots = allocation
-        ? state.slots.map(s => s.slotId === slotId ? { ...s, state: 'OCCUPIED' as SlotState, occupantAgentId: agentId, since: at } : s)
+        ? state.slots.map(s => s.slotId === slotId ? { ...s, state: 'OCCUPIED' as SlotState, occupantAgentId: agentId, occupantSessionId: event.sessionId, since: at } : s)
         : state.slots;
 
       return {
@@ -468,9 +485,10 @@ export function reduceOffice(
 
     case 'subagent.spawned': {
       const { subagentId, role, label } = body;
-      if (state.presences.some(p => p.identity.agentId === subagentId)) return { ...state, rooms };
+      if (state.presences.some(p => p.identity.agentId === subagentId && inSession(p))) return { ...state, rooms };
 
       const identity: AgentIdentity = {
+        sessionId: event.sessionId,
         agentId: subagentId,
         displayName: label ?? subagentId,
         role: role ?? 'subagent',
@@ -483,6 +501,7 @@ export function reduceOffice(
 
       const presence: OfficePresence = {
         identity,
+        sessionId: event.sessionId,
         intent: { kind: 'at_desk', slotId, activity: 'working' },
         floorId: template.floors[0]?.id ?? 'floor-1',
         lastEventId: eventId,
@@ -490,7 +509,7 @@ export function reduceOffice(
       };
 
       const slots = allocation
-        ? state.slots.map(s => s.slotId === slotId ? { ...s, state: 'OCCUPIED' as SlotState, occupantAgentId: subagentId, since: at } : s)
+        ? state.slots.map(s => s.slotId === slotId ? { ...s, state: 'OCCUPIED' as SlotState, occupantAgentId: subagentId, occupantSessionId: event.sessionId, since: at } : s)
         : state.slots;
 
       return {
@@ -503,9 +522,10 @@ export function reduceOffice(
 
     case 'agent.state': {
       const agentId = envelopeAgentId ?? 'primary';
-      const existing = state.presences.find(p => p.identity.agentId === agentId);
+      const existing = state.presences.find(p => p.identity.agentId === agentId && inSession(p));
       if (!existing) return { ...state, rooms };
 
+      if (existing.intent.kind === 'in_meeting') return { ...state, rooms };
       let nextIntent: PresenceIntent = existing.intent;
       if (body.state === 'working' || body.state === 'thinking') {
         const slotId = existing.intent.kind === 'at_desk' ? existing.intent.slotId : 'overflow';
@@ -525,7 +545,7 @@ export function reduceOffice(
         ...state,
         rooms,
         presences: state.presences.map(p =>
-          p.identity.agentId === agentId
+          p.identity.agentId === agentId && inSession(p)
             ? { ...p, intent: nextIntent, activityKind: body.activity, lastEventId: eventId, lastActiveAt: at }
             : p
         )
@@ -534,15 +554,16 @@ export function reduceOffice(
 
     case 'agent.stopped': {
       const agentId = envelopeAgentId ?? 'primary';
+      if (state.presences.some(p => inSession(p) && p.identity.agentId === agentId && p.intent.kind === 'in_meeting')) return { ...state, rooms };
       const slots = state.slots.map(s =>
-        s.occupantAgentId === agentId ? { ...s, state: 'AVAILABLE' as SlotState, occupantAgentId: undefined, since: at } : s
+        ownSlot(s, agentId) ? { ...s, state: 'AVAILABLE' as SlotState, occupantAgentId: undefined, occupantSessionId: undefined, since: at } : s
       );
 
       return {
         ...state,
         rooms,
         presences: state.presences.map(p =>
-          p.identity.agentId === agentId
+          p.identity.agentId === agentId && inSession(p)
             ? { ...p, intent: { kind: 'off_duty' }, lastEventId: eventId, lastActiveAt: at }
             : p
         ),
@@ -552,40 +573,51 @@ export function reduceOffice(
 
     case 'meeting.started': {
       const { meetingId, participants } = body;
-      const meetingRoom = template.floors.flatMap(f => f.rooms).find(r => r.kind === 'meeting');
-      const roomId = meetingRoom ? meetingRoom.id : 'room-meeting';
-
-      const meetings = [...state.meetings, { meetingId, roomId, participants }];
+      if (!meetingId || !Array.isArray(participants) || !participants.length || participants.some(id => typeof id !== 'string' || !id)
+        || state.closedMeetings?.some(meeting => meeting.sessionId === event.sessionId && meeting.meetingId === meetingId) || new Set(participants).size !== participants.length
+        || state.meetings.some(meeting => meeting.sessionId === event.sessionId && meeting.meetingId === meetingId)
+        || participants.some(id => !state.presences.some(p => inSession(p) && p.identity.agentId === id && p.intent.kind !== 'off_duty')
+          || state.meetings.some(meeting => meeting.sessionId === event.sessionId && meeting.participants.includes(id)))) return { ...state, rooms };
+      const meetingRoom = template.floors.flatMap(f => f.rooms).filter(room => room.kind === 'meeting')
+        .find(room => (!body.roomId || room.id === body.roomId) && !state.meetings.some(meeting => meeting.roomId === room.id)
+          && (room.seats?.length ?? 0) >= participants.length && (room.capacity ?? Infinity) >= participants.length);
+      if (!meetingRoom) return { ...state, rooms };
+      const ordered = participants.slice().sort(cmp);
+      const meetings = [...state.meetings, { meetingId, sessionId: event.sessionId, roomId: meetingRoom.id, participants: ordered }];
       const presences = state.presences.map(p => {
-        if (!participants.includes(p.identity.agentId)) return p;
-        return {
-          ...p,
-          intent: { kind: 'in_meeting' as const, meetingId, roomId, seatId: 'seat-1' },
-          lastEventId: eventId,
-          lastActiveAt: at
-        };
+        const index = ordered.indexOf(p.identity.agentId);
+        if (!inSession(p) || index < 0) return p;
+        const seat = meetingRoom.seats![index]!;
+        return { ...p, floorId: meetingRoom.floorId, destinationWaypointId: seat.approachWaypointId,
+          intent: { kind: 'in_meeting' as const, meetingId, roomId: meetingRoom.id, seatId: seat.id },
+          lastEventId: eventId, lastActiveAt: at };
       });
-
       return { ...state, rooms, meetings, presences };
     }
 
     case 'meeting.completed': {
-      const { meetingId } = body;
-      const targetMeeting = state.meetings.find(m => m.meetingId === meetingId);
-      if (!targetMeeting) return { ...state, rooms };
+      const targetMeeting = state.meetings.find(m => m.sessionId === event.sessionId && m.meetingId === body.meetingId);
+      const closedMeetings = [...(state.closedMeetings ?? [])];
+      if (!closedMeetings.some(meeting => meeting.sessionId === event.sessionId && meeting.meetingId === body.meetingId)) {
+        closedMeetings.push({ meetingId: body.meetingId, sessionId: event.sessionId });
+      }
+      if (!targetMeeting) return { ...state, rooms, closedMeetings };
+      return { ...state, rooms, closedMeetings, meetings: state.meetings.filter(m => m !== targetMeeting),
+        presences: state.presences.map(p => inSession(p) && p.intent.kind === 'in_meeting' && p.intent.meetingId === body.meetingId ? returnFromMeeting(p) : p) };
+    }
 
-      const meetings = state.meetings.filter(m => m.meetingId !== meetingId);
-      const presences = state.presences.map(p => {
-        if (!targetMeeting.participants.includes(p.identity.agentId)) return p;
-        return {
-          ...p,
-          intent: { kind: 'idle_at' as const, target: template.idle.default },
-          lastEventId: eventId,
-          lastActiveAt: at
-        };
-      });
-
-      return { ...state, rooms, meetings, presences };
+    case 'session.ended':
+    case 'turn.failed':
+    case 'user.intervention': {
+      if (body.type === 'user.intervention' && body.action !== 'cancel') return { ...state, rooms };
+      const ended = body.type === 'session.ended';
+      return { ...state, rooms, closedMeetings: [...(state.closedMeetings ?? []), ...state.meetings.filter(meeting => meeting.sessionId === event.sessionId).map(({ meetingId, sessionId }) => ({ meetingId, sessionId }))],
+        meetings: state.meetings.filter(meeting => meeting.sessionId !== event.sessionId),
+        presences: state.presences.map(p => !inSession(p) ? p : ended
+          ? { ...p, intent: { kind: 'off_duty' }, lastEventId: eventId, lastActiveAt: at }
+          : p.intent.kind === 'in_meeting' ? returnFromMeeting(p) : p),
+        slots: ended ? state.slots.map(slot => slot.occupantSessionId === event.sessionId
+          ? { ...slot, state: 'AVAILABLE' as const, occupantAgentId: undefined, occupantSessionId: undefined, since: at } : slot) : state.slots };
     }
 
     default:

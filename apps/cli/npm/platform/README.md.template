@@ -7,6 +7,8 @@ Do not install this package directly. The `extalia-vo` CLI lists it as an option
 dependency; npm installs only the package whose `os` and `cpu` match the machine, so the
 CLI runs without a Rust toolchain.
 
+{{scannerNotice}}
+
 ```js
 const daemonPath = require('{{name}}'); // absolute path of bin/{{binary}}
 ```

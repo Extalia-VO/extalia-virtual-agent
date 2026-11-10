@@ -2,9 +2,13 @@ import { MODEL_SELECTION_GUIDE_METHODS, type ModelSelectionGuide, type ModelSele
 import type { NativeStatus } from './nativeStatus.js';
 import type { ObservedCodexStatus, ObservedCodexMessageInput, ObservedCodexAnswerInput, ObservedCodexApprovalAnswerInput } from './observedCodex.js';
 import type { ObservedCodexQueueStatus, ObservedCodexQueueMessageInput } from './observedCodexQueue.js';
+import type { ObservedCodexNativeQueueStatus } from './observedCodexNativeQueue.js';
+import type { PromptSuggestionsStatus } from './promptSuggestions.js';
 import type { CodexPermissionHookStatus, CodexPermissionHookAnswer, CodexPermissionSetupPlan } from './codexPermissionHook.js';
 import type { PromptQueueStatus, PromptQueueChange } from './promptQueue.js';
 import type { ObservedReplyStatus, ObservedReplyAnswer } from './observedReply.js';
+import type { ObservedControlStatus, ObservedControlDispatchInput, ObservedControlReceipt } from './observedControl.js';
+import type { ObservedInboxStatus } from './observedInbox.js';
 import type { HermesObservedStatus, HermesObservedMessageInput, HermesObservedAnswerInput } from './observedHermes.js';
 import { NATIVE_MEMORY_METHODS, type NativeMemoryCatalog, type NativeMemoryReadOptions, type NativeMemoryReadResult, type NativeMemoryWriteInput, type NativeMemoryWriteResult, type NativeMemoryDeleteInput, type NativeMemoryDeleteResult } from './nativeMemory.js';
 import { EFFORTS, MAX_GOAL_DOCUMENT_BYTES, MAX_GOAL_DOCUMENT_CHARS, MAX_TEAM_GOAL, MAX_TEAM_MEMBERS, MEMBER_GENDERS, SESSION_PERMISSION_MODES, decodeAgentTeam, type GoalDocument, type SessionPermissionMode } from '@extalia/core';
@@ -29,6 +33,7 @@ import type {
   KnowledgeHistory, KnowledgeMemoryImport, KnowledgeMemoryImportRequest, KnowledgeNoteFile, KnowledgeRollbackRequest, KnowledgeWriteRequest, KnowledgeWriteResult,
 } from './knowledgeEdit.js';
 import type { KnowledgeVaultSettings } from './knowledgeVault.js';
+import { VAULT_PROFILE_HOST_METHODS, type VaultProfilesCatalog, type SaveVaultProfileInput } from './vaultProfiles.js';
 
 /**
  * The agent host runs the Extalia Native runtime where files and commands are
@@ -791,6 +796,12 @@ export interface AgentHostApi {
   /** Inspect an explicit same-server Codex attachment; never auto-connects or starts a server. */
   observedCodexStatus?(sessionId: string): Promise<ObservedCodexStatus>;
   observedCodexQueueStatus?(sessionId: string): Promise<ObservedCodexQueueStatus>;
+  /** Snapshot only: never resumes a thread or edits Codex's queue. */
+  observedCodexNativeQueueStatus?(sessionId: string): Promise<ObservedCodexNativeQueueStatus>;
+  /** Transient suggestions for the last completed task; never sends a message. */
+  promptSuggestions?(sessionId: string): Promise<PromptSuggestionsStatus>;
+  /** Request an advertised prediction for an exact completed anchor; never sends a task prompt. */
+  requestPromptSuggestions?(sessionId: string, anchor: string): Promise<PromptSuggestionsStatus>;
   promptQueueStatus?(sessionId: string): Promise<PromptQueueStatus>;
   changePromptQueue?(sessionId: string, change: PromptQueueChange): Promise<PromptQueueStatus>;
   observedCodexPermissionStatus?(sessionId: string): Promise<CodexPermissionHookStatus>;
@@ -800,6 +811,15 @@ export interface AgentHostApi {
   setObservedCodexQueue?(sessionId: string, enabled: boolean): Promise<ObservedCodexQueueStatus>;
   queueObservedCodexMessage?(sessionId: string, input: ObservedCodexQueueMessageInput): Promise<ObservedCodexQueueStatus>;
   observedReplyStatus?(sessionId: string): Promise<ObservedReplyStatus>;
+  /** Inspect verified per-action authority; observation alone never enables controls. */
+  observedControlStatus?(sessionId: string): Promise<ObservedControlStatus>;
+  dispatchObservedControl?(sessionId: string, input: ObservedControlDispatchInput): Promise<ObservedControlReceipt>;
+  observedInboxStatus?(sessionId: string): Promise<ObservedInboxStatus>;
+  createObservedInbox?(sessionId: string): Promise<ObservedInboxStatus>;
+  closeObservedInbox?(sessionId: string): Promise<ObservedInboxStatus>;
+  /** Ephemeral manual pairing for a tool-enabled CLI without a native observer. */
+  createManualObservedInbox?(label: string): Promise<ObservedInboxStatus>;
+  listManualObservedInboxes?(): Promise<ObservedInboxStatus[]>;
   createObservedReply?(sessionId: string): Promise<ObservedReplyStatus>;
   /** Explicit manual pairing when the source app has no transcript observer. No session is created. */
   createManualReply?(): Promise<ObservedReplyStatus>;
@@ -948,6 +968,8 @@ export interface AgentHostApi {
   previewSkillRouting?(input: SkillRoutingInput): Promise<SkillRoutingReport>;
   /** One revision with its manifest, files, inspections, approvals and state history. */
   inspectSkill(revisionId: string): Promise<SkillRevisionDetails>;
+  /** Explicitly rescan a quarantined stored revision. Older hosts omit this mutating operation. */
+  rescanSkill?(revisionId: string): Promise<SkillActionResult>;
   /** Copy a chosen folder (or a project skill) into the profile's import inbox and stage it in quarantine. */
   importSkill(source: SkillImportSource): Promise<SkillActionResult>;
   /** Accept or reject a `review_required` revision as the local user (the daemon may not serve this yet). */
@@ -1053,6 +1075,9 @@ export interface AgentHostApi {
    * folder, restarts the native core with it and rebuilds the index. Refused while agent work is running.
    */
   setKnowledgeVaultRoot?(path: string | null): Promise<KnowledgeVaultSettings>;
+  /** Workspace-to-vault grouping only; does not switch the Knowledge index or session/credential scope. */
+  listVaultProfiles?(): Promise<VaultProfilesCatalog>;
+  saveVaultProfile?(input: SaveVaultProfileInput): Promise<VaultProfilesCatalog>;
   /** Live protocol events for every session. Returns an unsubscribe function. */
   subscribe(listener: (event: ExtaliaEvent) => void): () => void;
 }
@@ -1065,22 +1090,26 @@ export const AGENT_HOST_METHODS = [
   'setWorkflow', 'observeImports', 'observationSession', 'setObservation', 'setAutoWatch',
   'observedCodexStatus', 'connectObservedCodex', 'disconnectObservedCodex', 'sendObservedCodexMessage', 'answerObservedCodexInput',
   'answerObservedCodexApproval',
-  'observedCodexQueueStatus', 'setObservedCodexQueue', 'queueObservedCodexMessage',
+  'observedCodexQueueStatus', 'observedCodexNativeQueueStatus', 'setObservedCodexQueue', 'queueObservedCodexMessage',
+  'promptSuggestions', 'requestPromptSuggestions',
   'promptQueueStatus', 'changePromptQueue',
   'observedCodexPermissionStatus', 'previewObservedCodexPermissionHook', 'applyObservedCodexPermissionHook', 'answerObservedCodexPermission',
   'observedReplyStatus', 'createObservedReply', 'answerObservedReply', 'closeObservedReply',
+  'observedControlStatus', 'dispatchObservedControl', 'observedInboxStatus', 'createObservedInbox', 'closeObservedInbox',
+  'createManualObservedInbox', 'listManualObservedInboxes',
   'createManualReply',
   'observedHermesStatus', 'connectObservedHermes', 'disconnectObservedHermes', 'sendObservedHermesMessage', 'answerObservedHermesInput',
   'importLocations', 'scanImports', 'previewImports', 'commitImports', 'importPortable', 'librarySession', 'organizeLibrarySession',
   'listFiles', 'readFile', 'gitStatus', 'gitDiff', 'gitRepositories', 'workspaceSkills', 'allowWorkspaceSkills', 'revokeWorkspaceSkills',
   ...NATIVE_MEMORY_METHODS,
   ...MODEL_SELECTION_GUIDE_METHODS,
-  'skillRegistry', 'skillRegistryPage', 'preflightSkill', 'previewSkillRouting', 'inspectSkill', 'importSkill', 'reviewSkill', 'approveSkill', 'activateSkill', 'deactivateSkill', 'rollbackSkill', 'revokeSkill', 'builtinSkills',
+  'skillRegistry', 'skillRegistryPage', 'preflightSkill', 'previewSkillRouting', 'inspectSkill', 'rescanSkill', 'importSkill', 'reviewSkill', 'approveSkill', 'activateSkill', 'deactivateSkill', 'rollbackSkill', 'revokeSkill', 'builtinSkills',
   'runtimes', 'hermesModels', 'characterAppearances', 'saveCharacterAppearance', 'hookIngest', 'setHookPrivacy',
   'agentAppConnections', 'planAgentAppConnect', 'applyAgentAppConnect', 'disconnectAgentApp', 'testAgentAppConnection', 'recoverAgentAppConnection',
   'listWorktrees', 'worktreeStatus', 'worktreeDiff', 'worktreeOrphans', 'removeWorktree', 'proposeIntegration', 'integrationProposals', 'applyIntegration',
   'knowledgeStatus', 'syncKnowledge', 'knowledgeNode', 'knowledgeLinks', 'knowledgeBacklinks', 'searchKnowledge', 'knowledgeGraph', 'knowledgeOverview',
   'knowledgeSettings', 'setKnowledgeVaultRoot',
+  ...VAULT_PROFILE_HOST_METHODS,
   'readKnowledgeNote', 'writeKnowledgeNote', 'knowledgeHistory', 'rollbackKnowledgeNote', 'importMemoryNotes',
 ] as const satisfies readonly Exclude<keyof AgentHostApi, 'subscribe'>[];
 

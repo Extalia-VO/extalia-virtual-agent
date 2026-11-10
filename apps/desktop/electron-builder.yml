@@ -30,7 +30,8 @@ extraMetadata:
 # electron-builder packs each macOS arch separately, so ${os}-${arch} picks the matching binary
 # (a future universal build would lipo the two). A missing source is skipped with a warning, so
 # local packaging works without Rust; the afterPack hook fails instead when EXTALIA_REQUIRE_DAEMON=1
-# (release builds). The Python worker bundle (ADR 0022) will join the same way under python/.
+# (release builds). Verified SkillSpector bundles (ADR 0068) are staged per target under
+# build-resources/skillspector/ and copied beside daemon/; users need no system Python.
 # On macOS the signer walks the whole bundle, so the daemon is signed with the app's identity and
 # hardened runtime (inherited entitlements); no `mac.binaries` entry is needed.
 extraResources:
@@ -38,12 +39,18 @@ extraResources:
     to: web
   - from: build-resources/daemon/${os}-${arch}
     to: daemon
+  - from: build-resources/skillspector/${os}-${arch}
+    to: skillspector
 afterPack: ./scripts/after-pack.mjs
+afterSign: ./scripts/after-sign.mjs
 artifactName: ${productName}-${version}-${os}-${arch}.${ext}
 
 mac:
   category: public.app-category.developer-tools
   hardenedRuntime: true
+  # Scanner native files are signed before their exact hashes are compiled into
+  # the daemon. Re-signing them here would invalidate that immutable pin.
+  signIgnore: 'Contents/Resources/skillspector/'
   target:
     - target: dmg
       arch: [arm64, x64]

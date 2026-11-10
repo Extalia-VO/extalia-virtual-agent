@@ -4,7 +4,7 @@
  * leave. Positions are mutated in place; free-space trajectories are planned per trip.
  */
 import { advanceNaturalWalk, createNaturalWalkState, naturalRoute, protectedHeadway, walkingSeed, type NaturalWalkState, type WalkableSegment, type WalkingNeighbor } from './naturalWalking';
-import { createMovementRecovery, DOOR_STALL_SECONDS, recoveryDetour, recoveryDue, recoveryGoal, recoverySegmentClear, WALK_STALL_SECONDS, STAIR_STALL_SECONDS, resetTransitWatch, transitRecoveryDue, type ElevatorProgress, type MovementRecoveryState } from './movementRecovery';
+import { createMovementRecovery, DEPARTURE_PROBE_SECONDS, DOOR_STALL_SECONDS, MOVEMENT_RECOVERY_LIMIT, recoveryDetour, recoveryDue, recoveryGoal, recoverySegmentClear, WALK_STALL_SECONDS, STAIR_STALL_SECONDS, resetTransitWatch, transitRecoveryDue, type ElevatorProgress, type MovementRecoveryState } from './movementRecovery';
 import type { GaitParameters } from '../avatars/gait';
 import type { Point3 } from '../layout';
 import type { ElevatorId } from '../prefabs/architecture/elevatorController';
@@ -208,6 +208,7 @@ export function placeSeated(mover: Mover, seat: SeatApproach, env?: MovementEnv)
   mover.door = null;
   mover.chair = null;
   mover.staticSeat = null;
+  mover.recovery.departure = null;
   mover.chairPull = 0;
   mover.motion.reach[0].weight = 0;
   mover.motion.reach[1].weight = 0;
@@ -244,6 +245,12 @@ const goalNode = (goal: MoverGoal) => goal.kind === 'seat' ? seatStageId(goal.se
 export function sendMover(mover: Mover, goal: MoverGoal, env: MovementEnv): boolean {
   if (mover.phase === 'gone') return false;
   recoveryGoal(mover.recovery, goalNode(goal));
+  if (mover.phase === 'seated' && mover.recovery.departure) {
+    // The seat exit already finished. A new intent must not rise from that
+    // cushion again, or discard the destination while its route is retried.
+    mover.pending = goal;
+    return true;
+  }
   if (mover.phase === 'seatwork' && mover.staticSeat) {
     const act = mover.staticSeat;
     if (act.kind === 'sit' && goal.kind === 'seat' && goal.seat.seatId === act.seat.seatId) { mover.goal = goal; mover.pending = null; return true; }
@@ -329,6 +336,7 @@ export function routeFrom(mover: Mover, start: string | null, goal: MoverGoal, e
   mover.backing = false;
   mover.phase = 'walking';
   mover.staticSeat = null;
+  mover.recovery.departure = null;
   env.trackBody?.(mover.id, null);
   if (goal.kind === 'seat') mover.seat = goal.seat;
   return true;
@@ -576,6 +584,10 @@ function abandonRecoveryInteraction(mover: Mover, env: MovementEnv): void {
 function recoverStalledMover(mover: Mover, dt: number, env: MovementEnv): void {
   const goal = mover.pending ?? mover.goal;
   if (goal) recoveryGoal(mover.recovery, goalNode(goal));
+  if (mover.phase === 'seated' && mover.recovery.departure) {
+    recoverSeatDeparture(mover, dt, env);
+    return;
+  }
   const step = mover.steps[mover.stepIndex];
   if (mover.trip && ['waiting', 'boarding', 'riding', 'alighting'].includes(mover.phase)) {
     recoverStalledTransit(mover, dt, env);
@@ -674,6 +686,39 @@ function recoverStalledMover(mover: Mover, dt: number, env: MovementEnv): void {
     // The newest requested destination wins; pending is retained for normal handoff.
     routeFrom(mover, node.id, goal, env, mover.recovery.attempts < 3);
     return;
+  }
+}
+
+/** Only an explicitly completed seat exit can retry an otherwise stationary pose. */
+function recoverSeatDeparture(mover: Mover, dt: number, env: MovementEnv): void {
+  const goal = mover.pending ?? mover.goal;
+  const departure = mover.recovery.departure!;
+  if (!goal || mover.motion.sit !== 0 || mover.trip || mover.door || mover.chair || mover.staticSeat) return;
+  const attempt = recoveryDue(mover.recovery, mover.position, `departure:${departure}`, 0, dt, WALK_STALL_SECONDS);
+  if (!attempt) {
+    if (mover.recovery.attempts < MOVEMENT_RECOVERY_LIMIT || mover.recovery.stalled < DEPARTURE_PROBE_SECONDS) return;
+    // Normal routing may become available later. Re-probe it without renewing
+    // the action budget or repeatedly searching alternate escape corridors.
+    mover.recovery.stalled = 0;
+  }
+  const navigation = recoveryNavigation(mover, env.navigation);
+  const origin = navigation.waypoints.get(departure);
+  // A temporarily disconnected stage can regain its normal authored route.
+  if (origin && Math.hypot(...origin.position.map((value, axis) => value - mover.position[axis]!) as Point3) < ARRIVE
+    && routeFrom(mover, departure, goal, env, false)) { mover.pending = null; return; }
+  if (!attempt || !env.walkable || !env.nearbyWalkers) return;
+  const neighbors = env.nearbyWalkers(mover.id, mover.position);
+  const candidates = [...navigation.waypoints.values()]
+    .filter(node => node.kind !== 'door' && node.kind !== 'connector' && !node.id.startsWith('seat:')
+      && Math.abs(node.position[1] - mover.position[1]) < LEVEL_EPSILON)
+    .map(node => ({ node, distance: Math.hypot(node.position[0] - mover.position[0], node.position[2] - mover.position[2]) }))
+    .filter(candidate => candidate.distance <= 6).sort((a, b) => a.distance - b.distance).slice(0, 16);
+  for (const { node } of candidates) {
+    if (!recoverySegmentClear(mover.id, mover.position, node.position, env.walkable, neighbors)
+      || !recoveryDoorClear(mover.position, node.position, env)
+      || !planRoute(node.id, goalNode(goal), navigation)) continue;
+    // Rejoin by walking on this floor; never snap across furniture or doors.
+    if (routeFrom(mover, node.id, goal, env, true)) { mover.pending = null; return; }
   }
 }
 
@@ -954,11 +999,14 @@ function staticSeatWalk(mover: Mover, target: Point3, dt: number, env: MovementE
 
 function finishStaticExit(mover: Mover, seat: SeatApproach, env: MovementEnv): void {
   const goal = mover.pending ?? mover.goal;
-  mover.pending = null; mover.staticSeat = null;
+  mover.staticSeat = null;
   if (!goal || !routeFrom(mover, seatStageId(seat.seatId), goal, env, false)) {
     // A missing graph route leaves a visible standing body at the safe stage.
+    // Record that departure so only this failed handoff retries, not valid
+    // occupied seats, service stations or blocked seat-contact animations.
     mover.phase = 'seated'; mover.motion.sit = 0;
-  }
+    mover.recovery.departure = seatStageId(seat.seatId);
+  } else mover.pending = null;
 }
 
 function stepStaticSeat(mover: Mover, dt: number, env: MovementEnv): void {

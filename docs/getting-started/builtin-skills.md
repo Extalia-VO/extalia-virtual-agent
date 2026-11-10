@@ -12,6 +12,22 @@ A supporting host provides **Load more skills** when its initial bounded registr
 
 Small shelves show one readable page at a time. **Readable text** provides selectable text inside the same scene area; unavailable 3D and List mode use that same-area fallback. Reduced motion goes directly to the open/closed state. External metadata is shown without inventing instruction bodies or categories.
 
+Hover over a closed book to see its title and category in a cursor-following
+preview with a short fade, without a flying or sliding entrance. List entries
+also reveal this information on keyboard focus. Escape dismisses the preview.
+Changing filters, scrolling or opening a book clears it.
+On first opening Grimoire, changing filters or paging the catalog, books fly
+from outside the shelf view along curved paths and settle into their slots one
+in a flowing sequence. Teal and gold magic dust follows the flying books, and a
+category-colored smoky aura rises and curls around the hovered volume until the
+cursor leaves; brief sparkles add an accent. Faint wisps cross the front lower
+edge while leaving the title clear. Both smoke layers stop at the book foot
+and shelf surface, so they cannot spill below the rack. The animation runs only
+during hover and stops after the exit fade. All three shelf rows
+remain visible for every filter, including an empty result. Decorative
+motion finishes at rest, pauses when hidden and respects reduced motion; the
+book reader and skill review permissions are unchanged.
+
 The visual concept follows [Bookshelf](https://threeui.com/three-js/bookshelf) / [Ashen Press](https://threeui.com/ashen-press); the implementation uses Extalia’s installed Three.js with procedural covers, local canvas text, demand rendering, bounded shelves and complete teardown. No external runtime, fonts or artwork are downloaded.
 
 **Skill management & security** retains import, review and consent controls. **Browse built-in skills** opens that section and jumps to the existing catalog.
@@ -67,8 +83,11 @@ upstream updates; changes ship through reviewed Extalia releases.
 
 Imported/project skills retain their existing review and scanner requirements.
 Native provides bounded lexical category hints for its initial metadata preview.
-General manifest/dependency routing and verified scanner/Python-worker integration
-remain separate work under
+Imported and explicitly learned candidates use the pinned SkillSpector integration
+on verified macOS 14+ ARM64 builds. A complete inspection still requires separate
+user approval and activation; unavailable or incomplete inspection keeps candidates
+quarantined. See [Skill Security Center](skill-security-center.md). General
+manifest/dependency routing remains separate work under
 [V2-16 / #54](https://github.com/Extalia-VO/extalia-virtual-agent/issues/54).
 
 ## Native discovery in a growing Grimoire

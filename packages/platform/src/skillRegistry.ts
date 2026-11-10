@@ -58,6 +58,8 @@ export interface SkillRegistryReport {
   inspector?: SkillScannerReport;
   /** The daemon serves `skill.review` (recording a human review needs core migration 0004). */
   review: boolean;
+  /** Explicit mutation capability; ordinary details reads never trigger a scanner. */
+  rescan?: boolean;
   /** Optional additive capability; older hosts/daemons omit it. */
   preflight?: boolean;
   /** Optional read-only routing diagnostics; true only when advertised by the daemon. */
@@ -85,6 +87,10 @@ export interface SkillRevisionDetails {
   revision: SkillRevisionSummary;
   /** Canonical `extalia-skill.json` (or the inferred manifest) as JSON text. Package text: show it as plain text. */
   manifest: string;
+  /** Literal user preview of the verified SKILL.md; never inserted into agent metadata. */
+  instructions?: string;
+  /** A full preview was unavailable; no silently truncated body is returned. */
+  instructionsUnavailable?: boolean;
   files: SkillFileEntry[];
   inspections: SkillInspectionRecord[];
   approvals: SkillApprovalRecord[];

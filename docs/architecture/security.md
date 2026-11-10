@@ -135,6 +135,16 @@ The conditional Hermes adapter separately verifies the public attach ticket's
 owner/profile, live session and execution generation; it cannot start or recover
 a gateway or persist permanent source-app authorization.
 
+## Observed message dispatch
+
+Observed messaging also uses [capability-bound dispatch and cooperative inboxes](../adr/0072-observed-control-hub-and-cooperative-inboxes.md).
+An operation is tied to an exact source/watch epoch and connection/turn; an
+uncertain result is never automatically replayed or moved to another transport.
+Inbox polling is a separate memory-only loopback capability with explicit
+acknowledgement, bounds, expiry and revocation. Pairing proves token possession,
+not native app/session identity. Inbox messages cannot answer native approvals,
+change permissions, start a CLI or control a Desktop window.
+
 ## Repository safety
 
 `pnpm lint` runs `tooling/check-public-safety.mjs`, which fails on personal

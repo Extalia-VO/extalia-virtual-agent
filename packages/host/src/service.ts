@@ -2,16 +2,25 @@ import { modelPlanningBasis } from '@extalia/platform';
 import { ModelGuideStore } from './modelGuideStore.js';
 import { ObservedCodexService } from './observedCodexService.js';
 import { ObservedCodexQueueService } from './observedCodexQueueService.js';
+import { ObservedCodexNativeQueueService } from './observedCodexNativeQueueService.js';
+import type { readCodexNativeQueue } from './codexNativeQueue.js';
 import { ObservedCodexPermissionService } from './observedCodexPermissionService.js';
 import { PromptQueues } from './promptQueue.js';
+import { NativeTurnSteering } from './nativeTurnSteering.js';
+import { PromptSuggestionsService } from './promptSuggestions.js';
+import type { OpenAICompletionPort } from '@extalia/runtime';
+import { RustModelDiscovery, type ModelDiscoveryPort } from './daemon/modelDiscovery.js';
 import { ObservedReplyChannels } from './observedReplyChannel.js';
+import { ObservedInboxChannels } from './observedInboxChannel.js';
+import { ObservedControlService } from './observedControlService.js';
+import { createObservedControlDrivers } from './observedControlDrivers.js';
 import { ObservedHermesService } from './observedHermesService.js';
 import type { HermesObservedRpcFactory } from './hermesObservedControl.js';
 import type { CodexObservedRpcFactory } from './codexObservedControl.js';
 import {
   assertHermesTeamCapacity, DEFAULT_PERMISSIONS, applyImport, decodeConnection, decodeLibrary, decodeWorkspace, defaultOrchestration, deleteSession as deleteLibrarySession,
   displayTitle, emptyLibrary, keepsHistory, presetById, previewImport, renameSession as renameLibrarySession, resolveFeatures, safeLabel, safeText, setSessionState,
-  sourceLabel, tierModel, EFFORTS, RUNTIME_IDS, workspaceRuntime, workspaceCrossAccess, MAX_WORKSPACE_FOLDERS, type Effort,
+  sourceLabel, tierModel, EFFORTS, RUNTIME_IDS, workspaceRuntime, workspaceCrossAccess, MAX_WORKSPACE_FOLDERS, providerHeaders, type Effort,
   characterSessionId, decodeCharacterAppearance, decodeCharacterAppearanceStore, emptyCharacterAppearanceStore, isCharacterId, MAX_CHARACTER_APPEARANCES,
   type CharacterAppearanceStore, type CharacterAppearances, type Connection, type PortableSession, type SessionLibrary, type TaskTier, type Workspace,
   decodeAgentTeam, parseTeamPlanResult, pickTeamModels, planModelOrder, planTeamHeuristic, teamPlanPrompt, type AgentTeam, type TeamMember, type TeamPlan, type TeamPlanRequest,
@@ -29,8 +38,8 @@ import {
 } from '@extalia/platform';
 import { createEvent, type AgentEvent, type EventBody, type EventSource, type ExtaliaEvent } from '@extalia/protocol';
 import {
-  ProviderError, buildSystemPrompt, composeTurn, memberEditRefusal, createDelegationTool, createFallbackProvider, createManageTeamTool, createProvider, hermesTeamBrief, modelChain, runTurn,
-  type AnyTool, type ApprovalOutcome, type ModelMessage, type ModelProvider, type NativeMissionAccounting, type NativeMissionTaskResult, type ToolAccess, type TurnAttachment,
+  ProviderError, buildSystemPrompt, composeTurn, memberEditRefusal, createConductTeamMeetingTool, createDelegationTool, createFallbackProvider, createManageTeamTool, createProvider, hermesTeamBrief, modelChain, runTurn,
+  type AnyTool, type ApprovalOutcome, type DelegationOptions, type ModelMessage, type ModelProvider, type NativeMeetingMinutes, type NativeMissionAccounting, type NativeMissionTaskResult, type ToolAccess, type ToolResultEntry, type TurnAttachment, type TurnResult,
 } from '@extalia/runtime';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { mkdtemp, readFile, realpath, rename, rm, stat, writeFile } from 'node:fs/promises';
@@ -48,6 +57,10 @@ import { acquireHostLock } from './lock.js';
 import { HostPersistenceGate } from './hostPersistenceGate.js';
 import { migrateLegacyDataDirectory } from './migration.js';
 import { createProfileStore } from './profile.js';
+import { pinMeetingNotes } from './meetingNotes.js';
+import { pinLearningNotes } from './learningNotes.js';
+import { hasAutomaticLearningEvidence, runAutomaticLearning } from './automaticLearning.js';
+import { RustLearningBackend } from './rustLearning.js';
 import { createConnectService, resolveNodePath, type ConnectService } from './connect/index.js';
 import { DaemonSidecar, DaemonUnavailableError, createDaemonMission, resolveDaemonBinary, type DaemonBinaryOptions, type DaemonClient, type DaemonFailureCode, type DaemonMission, type SpawnDaemon } from './daemon/index.js';
 import { createHookIngest, type HookIngest } from './hooks/ingest.js';
@@ -69,6 +82,7 @@ import { createSkillProposalTool } from './skillLearning.js';
 import { SkillRegistry } from './skillRegistry.js';
 import { KnowledgeService, knowledgeHostMethods, type KnowledgeServiceOptions } from './knowledge.js';
 import { KnowledgeVault } from './knowledgeVault.js';
+import { VaultProfiles, type StoredVaultProfiles } from './vaultProfiles.js';
 import { KnowledgeEditService, knowledgeEditHostMethods } from './knowledgeEdit.js';
 import { VaultWatcher, type VaultWatcherOptions } from './vaultWatcher.js';
 import { sessionContext } from './sessionContext.js';
@@ -76,7 +90,7 @@ import { createCommandTool } from './tools/command.js';
 import { createFileTools } from './tools/files.js';
 import { worktreeHostMethods } from './worktrees/hostMethods.js';
 import { IntegrationQueue, WorktreeError, WorktreeManager, type DiffSummary, type IntegrationGate, type IntegrationProposal, type WorktreeOrphan, type WorktreeRecord, type WorktreeStatus } from './worktrees/index.js';
-import { resolveInside, WorkspacePathError } from './workspaceFs.js';
+import { checkAllowed, isWithin, resolveInside, WorkspacePathError } from './workspaceFs.js';
 import { createWorkspaceAccess, type WorkspaceAccess } from './workspaceAccess.js';
 import { assertWorkspaceWorktreeAccess, workspaceBoundaryKey, workspaceFoldersTool, workspaceMemoryDirectory } from './workspaceBoundary.js';
 
@@ -85,6 +99,7 @@ export interface AgentHostOptions {
   observationIntervalMs?: number;
   /** Isolated test transport; normal hosts connect only through Codex's existing-server proxy. */
   observedCodexRpc?: CodexObservedRpcFactory;
+  observedCodexNativeQueueRead?: typeof readCodexNativeQueue;
   observedHermesRpc?: HermesObservedRpcFactory;
   kind: 'desktop' | 'bridge';
   version: string;
@@ -104,6 +119,12 @@ export interface AgentHostOptions {
   lastHookEvent?: (app: AgentAppId) => string | undefined | Promise<string | undefined>;
   /** Injected for tests; defaults to global fetch. */
   fetch?: (input: string, init?: RequestInit) => Promise<Response>;
+  /** Explicit isolated test port; injected fetch never bypasses Rust discovery. */
+  modelDiscovery?: ModelDiscoveryPort;
+  /** Explicit experimental completion port; defaults to the measured TypeScript adapter. */
+  completion?: OpenAICompletionPort;
+  /** Optional profile-scoped meeting exporter. History-off sessions never invoke it. */
+  onMeetingMinutes?(record: NativeMeetingMinutes, context: { sessionId: string; workspaceId: string }): Promise<string | undefined>;
   /**
    * Core for new native missions. `EXTALIA_NATIVE_CORE` in `env` overrides it, and it
    * overrides `nativeCore` in `config/extalia.json`. Default `typescript`.
@@ -155,6 +176,7 @@ export interface AgentHostRuntime {
 }
 
 interface HostConfig {
+  vaultProfiles?: StoredVaultProfiles;
   workflow?: 'managed' | 'observe';
   schema: 'extalia.host-config.v1';
   setupComplete: boolean;
@@ -170,6 +192,7 @@ interface HostConfig {
 }
 
 interface Run {
+  steering?: NativeTurnSteering;
   /** The prompt event and (for Native) text-only history prefix are durable. */
   accepted?: boolean;
   /** Captured from this invocation, never inferred from a current workspace selection. */
@@ -295,6 +318,7 @@ function decodeConfig(raw: Partial<HostConfig> | undefined): HostConfig {
   let vaultRoot: string | null = null;
   try { vaultRoot = normalizeKnowledgeVaultRoot(raw.knowledge?.vaultRoot); } catch { /* dropped like any invalid entry */ }
   if (vaultRoot) config.knowledge = { vaultRoot };
+  if (raw.vaultProfiles !== undefined) config.vaultProfiles = raw.vaultProfiles;
   return config;
 }
 
@@ -374,17 +398,22 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
   });
   const recoveryDaemon = new DaemonSidecar({
     binary: () => resolveDaemonBinary({ ...options.daemon?.binary, env })?.path,
-    dataDirectory: layout.root, profile: 'default', clientVersion: options.version.slice(0, 64), env,
+    dataDirectory: layout.root, profile: 'default', clientVersion: options.version.slice(0, 64), env, handshakeDeadlineMs: 90_000,
     vaultRoot: () => knowledgeVault.startArgument(),
     ...(options.daemon?.spawn ? { spawn: options.daemon.spawn } : {}),
     log: options.daemon?.log ?? (line => console.warn(line)),
   });
-  // Only new saved missions and the skill registry follow the native-core preference.
+  const rustLearning = new RustLearningBackend(() => recoveryDaemon.connect());
+  const modelDiscovery = new RustModelDiscovery({
+    binary: () => resolveDaemonBinary({ ...options.daemon?.binary, env })?.path,
+    directory: layout.root, clientVersion: options.version, env,
+  });
+  // Only new saved missions follow the native-core preference.
   // Recovery still follows recorded authority; Knowledge shares this exact process and lock.
   const daemon = nativeCore === 'rust' ? recoveryDaemon : undefined;
-  // W3 Skill Security Center: the daemon's skill registry; legacy (W0 consent) while the flag is off.
+  // Skill inspection is available on a fresh install independently of the mission backend.
   const skillRegistry = new SkillRegistry({
-    daemon, dataDirectory: layout.root, profile: 'default', log: options.daemon?.log ?? (line => console.warn(line)),
+    daemon: recoveryDaemon, dataDirectory: layout.root, profile: 'default', log: options.daemon?.log ?? (line => console.warn(line)),
     workspaceKnown: workspaceId => config.workspaces.some(item => item.id === workspaceId),
     workspaceRoot: workspaceId => {
       const root = config.workspaces.find(item => item.id === workspaceId)?.projectLocation;
@@ -565,6 +594,22 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     workspaceChanges = next.then(() => undefined, () => undefined);
     return next;
   }
+  const vaultProfiles = new VaultProfiles({
+    dataDirectory: layout.root, homeDirectory,
+    ensureManagedRoot: async profileId => (await rustLearning.process('vault.ensure', { profileId })).root,
+    read: () => ({ profiles: config.vaultProfiles, workspaces: config.workspaces, defaultProfile: config.profile,
+      defaultRoot: config.knowledge?.vaultRoot ?? knowledgeVault.defaultRoot() }),
+    busy: () => closing || persistence.isBusy || runs.size > 0 || workspaceContextReaders > 0 || nativeMemory.isBusy()
+      || nativeOwnership.hasUnresolved() || missions.hasUnresolved() || missionRecovery.isInspecting() || nativeStatusRefresh !== undefined || registryWork > 0,
+    commit: async (profiles, workspaces) => {
+      knowledgeVault.assertStable();
+      const previous = config;
+      const next = { ...config, vaultProfiles: profiles, workspaces };
+      config = next;
+      try { await persistence.run(() => writeJsonAtomic(configFile, next, { mode: 0o600 })); }
+      catch (failure) { if (config === next) config = previous; throw failure; }
+    },
+  });
   const mutateOwnedProfile = <T>(work: () => Promise<T>): Promise<T> => {
     if (closing || persistence.isSealed) return Promise.reject(userError('The host is shutting down.'));
     return persistence.run(work);
@@ -582,8 +627,10 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
   const grants = new Map<string, Set<ToolAccess>>();
   const sequence = new Map<string, number>();
   const credentialStatus = new Map<string, ConnectionView['credentialStatus']>();
+  const followupSuggestions = new PromptSuggestionsService();
   const observations = await Observations.create(layout.state, nativeImport, event => {
     if (closing || persistence.isSealed) return;
+    followupSuggestions.observeEvent(event);
     for (const listener of listeners) { try { listener(event); } catch { /* disconnected UI */ } }
   }, options.observationIntervalMs, {
     // Sessions that fall out of the automatic-discovery LRU are kept in History as linked conversations.
@@ -599,8 +646,16 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     homeDirectory: options.importHome ?? homedir(),
     // Observed leads get names no managed lead or team member uses.
     takenNames: () => managedNames(),
+    onFollowups: (id, prompts) => { if (!closing) followupSuggestions.report(id, prompts); },
   }).catch(error => { missions.close(); throw error; });
-  const observedCodex = new ObservedCodexService({ target: id => observations.codexControlTarget(id), env, ...(options.observedCodexRpc ? { rpcFactory: options.observedCodexRpc } : {}) });
+  const observedCodex = new ObservedCodexService({ target: id => observations.codexControlTarget(id), env,
+    onActivity: id => { if (!closing) followupSuggestions.invalidate(id); },
+    ...(options.observedCodexRpc ? { rpcFactory: options.observedCodexRpc } : {}) });
+  observedCodex.setSuggestionsPrivacy(observations.labelsOnly());
+  const observedCodexNativeQueue = new ObservedCodexNativeQueueService({ env,
+    target: id => observations.codexQueueTarget(id), labelsOnly: () => observations.labelsOnly(),
+    ...(options.observedCodexNativeQueueRead ? { read: options.observedCodexNativeQueueRead } : {}),
+  });
   const observedCodexQueue = await ObservedCodexQueueService.create({ dataDirectory, env, target: id => observations.codexQueueTarget(id) })
     .catch(async error => { await observations.close(); await observedCodex.close(); throw error; });
   const observedCodexPermissions = await ObservedCodexPermissionService.create({ dataDirectory, env,
@@ -608,10 +663,28 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
   }).catch(async error => { await observedCodexQueue.close(); await observations.close(); await observedCodex.close(); throw error; });
   const blockedReplyIds = new Set<string>();
   const manualReplyIds = new Set<string>();
+  const manualInboxIds = new Map<string, string>();
+  const pendingManualInboxes = new Set<string>();
   const pendingManualReplies = new Set<string>();
   const observedReplies = new ObservedReplyChannels({ target: id => blockedReplyIds.has(id) ? undefined
     : manualReplyIds.has(id) ? { app: 'manual-tool', nativeSessionId: id, watching: true } : observations.replyTarget(id) });
   const observedHermes = new ObservedHermesService({ target: id => observations.replyTarget(id), env, ...(options.observedHermesRpc ? { rpcFactory: options.observedHermesRpc } : {}) });
+  const observedControlTarget = (id: string) => {
+    if (closing || blockedReplyIds.has(id)) return undefined;
+    if (manualInboxIds.has(id) || manualReplyIds.has(id)) return {
+      sourceId: 'manual-tool', nativeSessionId: id, fingerprint: id, revision: 0, watching: true,
+    };
+    return observations.controlTarget(id);
+  };
+  const observedInboxes = new ObservedInboxChannels({ target: id => {
+    const target = observedControlTarget(id);
+    return target ? { app: target.sourceId, nativeSessionId: target.nativeSessionId, watching: target.watching,
+      sourceBinding: JSON.stringify([target.fingerprint, target.revision]) } : undefined;
+  } });
+  const observedControls = new ObservedControlService({ target: observedControlTarget,
+    drivers: createObservedControlDrivers({ sourceId: id => observedControlTarget(id)?.sourceId,
+      codex: observedCodex, codexQueue: observedCodexQueue, hermes: observedHermes, replies: observedReplies, inboxes: observedInboxes }),
+  });
   const ingest = await createHookIngest({
     dataDirectory, kind: options.kind, labelsOnly: () => observations.labelsOnly(), sink: hook => { void observations.receiveHook(hook); },
     permissionHandler: (request, response) => observedCodexPermissions.handle(request, response),
@@ -631,16 +704,28 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
         const source = observations.codexQueueTarget(id);
         if (!source) return undefined;
         const current = observations.summaries().find(item => item.id === id);
+        const control = await observedCodex.status(id);
+        const steering = source.watching && control.state === 'connected' && control.canSend && control.connectionId && control.activeTurnId && control.threadId === source.threadId
+          ? { identity: JSON.stringify([control.connectionId, control.activeTurnId]), send: async (text: string): Promise<'sent' | 'unknown'> => {
+            const result = await observedCodex.send(id, { connectionId: control.connectionId!, activeTurnId: control.activeTurnId!, text });
+            return result.delivery === 'submitted' ? 'sent' : 'unknown';
+          } } : undefined;
         return { identity: createHash('sha256').update(JSON.stringify(['codex', source.threadId, source.codexHome, source.sourceFingerprint, source.cwd])).digest('hex'),
           available: true, ready: source.watching && current?.observation?.status === 'watching' && !current.running,
-          maxTextLength: 16_000, persist: !observations.labelsOnly() };
+          maxTextLength: 16_000, persist: !observations.labelsOnly(), ...(steering ? { steering } : {}) };
       }
       const record = await sessions.get(id).catch(() => undefined);
       if (!record || !config.workspaces.some(item => item.id === record.workspaceId)) return undefined;
       let ready = !runs.has(id);
+      const run = runs.get(id);
+      const steering = !record.runtime && run?.native?.kind === 'chat' && run.steering?.available && !run.controller.signal.aborted
+        ? { identity: run.native.id, send: (text: string): Promise<'sent' | 'unknown'> => {
+          if (closing || runs.get(id) !== run || run.controller.signal.aborted) return Promise.reject(new Error('The Native invocation changed.'));
+          return run.steering!.send(text);
+        } } : undefined;
       try { nativeOwnership.assertClear(id); missions.assertSessionClear(id); assertNativeBoundaryAvailable(); } catch { ready = false; }
       return { identity: createHash('sha256').update(JSON.stringify(['managed', record.id, record.workspaceId, record.createdAt, record.connectionId, record.runtime?.id, record.runtime?.profile, workspaceBoundaryKey(config.workspaces)])).digest('hex'),
-        available: true, ready, maxTextLength: 100_000, persist: !unsavedSessions.has(id) };
+        available: true, ready, maxTextLength: 100_000, persist: !unsavedSessions.has(id), ...(steering ? { steering } : {}) };
     },
     async dispatch(id, text) {
       if (closing) return 'unknown';
@@ -690,6 +775,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       const event = createEvent({ sessionId, seq, agentId, source, body, ...(extra.taskId ? { taskId: extra.taskId } : {}), ...(extra.correlationId ? { correlationId: extra.correlationId } : {}) });
       // The event owns admission before entering the chain; do not request nested admission after sealing.
       await storeOf(sessionId).appendEvent(sessionId, event);
+      if (!closing && !persistence.isSealed) followupSuggestions.observeEvent(event);
       if (!closing && !persistence.isSealed) for (const listener of listeners) { try { listener(event); } catch { /* a failing listener must not stop the run */ } }
     }));
     const safe = next.catch(() => undefined);
@@ -1015,7 +1101,17 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
   async function providerFor(connection: Connection, secretOverride?: string): Promise<{ provider: ModelProvider; secret: string | undefined }> {
     const secret = secretOverride?.trim() || await secretFor(connection);
     if (!secret && presetById(connection.preset).apiKey === 'required') throw userError(`Add the API key for "${connection.name}" in Settings.`);
-    return { provider: createProvider(connection, secret, options.fetch), secret };
+    return { provider: nativeProvider(connection, secret), secret };
+  }
+
+  function nativeProvider(connection: Connection, secret: string | undefined): ModelProvider {
+    return createProvider(connection, secret, options.fetch, signal => {
+      const headers = providerHeaders(connection);
+      return (options.modelDiscovery ?? modelDiscovery.list)({
+        baseUrl: connection.baseUrl, ...(secret ? { apiKey: secret } : {}),
+        ...(Object.keys(headers).length ? { headers } : {}),
+      }, signal);
+    }, options.completion);
   }
 
   /** Endpoint model lists per connection, kept in memory only (never the key). */
@@ -1244,12 +1340,15 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       const existing = input.id ? config.connections.find(item => item.id === input.id) : undefined;
       const started = Date.now();
       try {
+        assertHostOpen();
         if (existing) nativeOwnership.assertClear(undefined, [existing.id]);
         const connection = draftConnection(input, existing);
         const { provider } = await providerFor(connection, secret);
+        assertHostOpen();
         if (existing) nativeOwnership.assertClear(undefined, [existing.id]);
         try {
           const models = await provider.listModels(AbortSignal.timeout(15_000));
+          assertHostOpen();
           // A test of a saved connection, unchanged where it matters, refreshes the prompt's model list.
           if (existing && !secret?.trim() && connection.api === existing.api && connection.baseUrl === existing.baseUrl
             && JSON.stringify(connection.credential) === JSON.stringify(existing.credential)) {
@@ -1259,6 +1358,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
         } catch (error) {
           // Some endpoints cannot list models; a one-word request proves the connection instead.
           if (!(error instanceof ProviderError) || ![404, 405, 501].includes(error.status ?? 0)) throw error;
+          assertHostOpen();
           if (existing) nativeOwnership.assertClear(undefined, [existing.id]);
           await provider.complete({ system: 'Reply with OK.', messages: [{ role: 'user', text: 'OK?' }], tools: [], signal: AbortSignal.timeout(30_000) });
           return { ok: true, latencyMs: Date.now() - started };
@@ -1304,7 +1404,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
         }
         const stamp = now();
         const result = decodeWorkspace({
-          id: existing?.id ?? newId('w'), profileId: config.profile.id, name: input.name, projectLocation: folder.path,
+          id: existing?.id ?? newId('w'), profileId: existing?.profileId ?? config.profile.id, name: input.name, projectLocation: folder.path,
           ...runtime, ...(allowed !== undefined ? { missionConnectionIds: allowed } : {}), permissions: input.permissions ?? DEFAULT_PERMISSIONS,
           additionalProjectLocations, crossWorkspaceAccess: input.crossWorkspaceAccess ?? existing?.crossWorkspaceAccess ?? 'read-only',
           // The default team is edited with `saveWorkspaceTeam`; editing the workspace keeps it.
@@ -1409,22 +1509,91 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     async setObservation(id, watching) {
       assertHostOpen();
       if (!watching) {
+        followupSuggestions.invalidate(id);
         blockedReplyIds.add(id);
         observedReplies.drop(id);
+        observedControls.drop(id);
+        observedInboxes.drop(id);
         // Seal authority synchronously, then settle both cleanup and the user's observation preference.
         const stopping = observedCodex.drop(id);
         const stoppingHermes = observedHermes.drop(id);
         const stoppingQueue = observedCodexQueue.drop(id);
+        const stoppingSourceQueue = observedCodexNativeQueue.drop(id);
         const stoppingPrompts = promptQueues?.suspend(id);
         observedCodexPermissions.drop(id);
-        const results = await Promise.allSettled([stopping, stoppingHermes, stoppingQueue, stoppingPrompts, observations.setWatching(id, false)]);
+        const results = await Promise.allSettled([stopping, stoppingHermes, stoppingQueue, stoppingSourceQueue, stoppingPrompts, observations.setWatching(id, false)]);
         const failed = results.find((result): result is PromiseRejectedResult => result.status === 'rejected');
         if (failed) throw failed.reason;
-      } else { await observations.setWatching(id, true); blockedReplyIds.delete(id); observedCodex.resume(id); observedHermes.resume(id); observedCodexQueue.resume(id); observedCodexPermissions.resume(id); }
+      } else { await observations.setWatching(id, true); blockedReplyIds.delete(id); observedCodex.resume(id); observedHermes.resume(id); observedCodexQueue.resume(id); observedCodexNativeQueue.resume(id); observedCodexPermissions.resume(id); }
       return state();
     },
     async observedCodexStatus(id) { assertHostOpen(); return observedCodex.status(id); },
+    async observedControlStatus(id) { assertHostOpen(); return observedControls.status(id); },
+    async dispatchObservedControl(id, input) {
+      assertHostOpen();
+      const receipt = await observedControls.dispatch(id, input);
+      if (receipt.state !== 'rejected') followupSuggestions.invalidate(id);
+      return receipt;
+    },
+    async observedInboxStatus(id) { assertHostOpen(); return { ...observedInboxes.status(id), ...(manualInboxIds.has(id) ? { label: manualInboxIds.get(id) } : {}) }; },
+    async createObservedInbox(id) { assertHostOpen(); observedControls.drop(id); return observedInboxes.create(id); },
+    async closeObservedInbox(id) {
+      assertHostOpen(); observedControls.drop(id); observedInboxes.drop(id);
+      const status = observedInboxes.status(id);
+      manualInboxIds.delete(id);
+      return status;
+    },
+    async createManualObservedInbox(label) {
+      assertHostOpen();
+      if (typeof label !== 'string' || !label.trim() || label.length > 80 || [...label].some(char => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127)) throw userError('Enter an external agent label of 1 to 80 characters.');
+      for (const id of manualInboxIds.keys()) if (!pendingManualInboxes.has(id) && observedInboxes.status(id).state !== 'connected') { observedControls.drop(id); observedInboxes.drop(id); manualInboxIds.delete(id); }
+      if (manualInboxIds.size >= 32) throw userError('Close an existing inbox before pairing another agent.');
+      const id = `inbox-${randomUUID()}`;
+      manualInboxIds.set(id, label.trim());
+      pendingManualInboxes.add(id);
+      try {
+        const result = await observedInboxes.create(id);
+        if (result.state !== 'connected') manualInboxIds.delete(id);
+        return { ...result, label: label.trim() };
+      } finally { pendingManualInboxes.delete(id); }
+    },
+    async listManualObservedInboxes() {
+      assertHostOpen();
+      return [...manualInboxIds].map(([id, label]) => ({ ...observedInboxes.status(id), label }));
+    },
     async observedCodexQueueStatus(id) { assertHostOpen(); return observedCodexQueue.status(id); },
+    async observedCodexNativeQueueStatus(id) { assertHostOpen(); return observedCodexNativeQueue.status(id); },
+    async promptSuggestions(id) {
+      assertHostOpen();
+      if (runs.has(id) || promptQueues?.hasUnfinished(id)) {
+        followupSuggestions.invalidate(id);
+        return { sessionId: id, state: 'unavailable', prompts: [], origin: observations.has(id) ? 'harness' : 'native', canRequest: false };
+      }
+      if (observations.has(id)) {
+        if (observations.labelsOnly()) return { sessionId: id, state: 'private', prompts: [], origin: 'harness', canRequest: false };
+        const source = observations.replyTarget(id);
+        if (!source?.watching) { followupSuggestions.invalidate(id); return followupSuggestions.status(id, 'harness'); }
+        const reported = followupSuggestions.status(id, 'harness');
+        if (reported.state === 'ready' && reported.prompts.length) return reported;
+        if (source.app === 'codex') {
+          const prediction = await observedCodex.suggestions(id);
+          if (observations.labelsOnly()) return { sessionId: id, state: 'private', prompts: [], origin: 'harness', canRequest: false };
+          if (prediction.state === 'ready' || prediction.state === 'pending' || prediction.canRequest) return prediction;
+        }
+        return reported;
+      }
+      if (!await sessions.get(id)) throw userError('That session no longer exists.');
+      return followupSuggestions.status(id);
+    },
+    async requestPromptSuggestions(id, anchor) {
+      assertHostOpen();
+      if (typeof anchor !== 'string' || !anchor || anchor.length > 512) throw userError('This suggestion request is no longer current.');
+      if (!promptQueues?.hasUnfinished(id) && observations.has(id) && !observations.labelsOnly() && observations.replyTarget(id)?.watching
+        && observations.codexControlTarget(id)) return observedCodex.requestSuggestions(id, anchor);
+      if (!observations.has(id) && !runs.has(id) && !promptQueues?.hasUnfinished(id) && await sessions.get(id))
+        return followupSuggestions.requestNative(id, anchor);
+      return host.promptSuggestions!(id);
+    },
     async promptQueueStatus(id) { assertHostOpen(); return promptQueues!.status(id); },
     async changePromptQueue(id, change) { assertHostOpen(); return promptQueues!.change(id, change); },
     async observedCodexPermissionStatus(id) { assertHostOpen(); return observedCodexPermissions.status(id); },
@@ -1459,7 +1628,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     async closeObservedReply(id) { assertHostOpen(); observedReplies.drop(id); return observedReplies.status(id); },
     async connectObservedCodex(id, socketPath) { assertHostOpen(); return observedCodex.connect(id, socketPath); },
     async disconnectObservedCodex(id, connectionId) { assertHostOpen(); return observedCodex.disconnect(id, connectionId); },
-    async sendObservedCodexMessage(id, input) { assertHostOpen(); return observedCodex.send(id, input); },
+    async sendObservedCodexMessage(id, input) { assertHostOpen(); followupSuggestions.invalidate(id); return observedCodex.send(id, input); },
     async answerObservedCodexInput(id, input) { assertHostOpen(); return observedCodex.answer(id, input); },
     async answerObservedCodexApproval(id, input) { assertHostOpen(); return observedCodex.answerApproval(id, input); },
     async setAutoWatch(locationId, enabled) {
@@ -1484,6 +1653,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       if (!record) throw userError('That session no longer exists.');
       // The team is saved with `saveSessionTeam`, never as part of the model override.
       const { team: _team, ...checked } = await checkSessionOptions(sessionWorkspace(findWorkspace(record.workspaceId), record), sessionOptions);
+      followupSuggestions.invalidate(sessionId);
       // Applies from the next turn; a running turn keeps the model it started with.
       return summary(await sessions.update(sessionId, { options: Object.keys(checked).length ? checked : undefined }));
     },
@@ -1689,7 +1859,8 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
 
     async deleteSession(sessionId) {
       assertHostOpen();
-      if (observations.has(sessionId)) { blockedReplyIds.add(sessionId); observedReplies.drop(sessionId); observedCodexPermissions.drop(sessionId); await Promise.all([observedCodex.drop(sessionId), observedHermes.drop(sessionId), observedCodexQueue.drop(sessionId), promptQueues?.drop(sessionId)]); await observations.remove(sessionId); return state(); }
+      followupSuggestions.invalidate(sessionId);
+      if (observations.has(sessionId)) { blockedReplyIds.add(sessionId); observedReplies.drop(sessionId); observedControls.drop(sessionId); observedInboxes.drop(sessionId); observedCodexPermissions.drop(sessionId); await Promise.all([observedCodex.drop(sessionId), observedHermes.drop(sessionId), observedCodexQueue.drop(sessionId), observedCodexNativeQueue.drop(sessionId), promptQueues?.drop(sessionId)]); await observations.remove(sessionId); return state(); }
       const stoppingPrompts = promptQueues?.suspend(sessionId);
       const run = runs.get(sessionId);
       if (run) { run.controller.abort(); run.pending?.resolve('reject'); await run.done; }
@@ -2262,11 +2433,18 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       let settleRun!: () => void;
       const run: Run = { controller, connectionIds, done: new Promise<void>(resolve => { settleRun = resolve; }),
         native: { id: newId('native-run'), sessionId, workspaceId: record.workspaceId, kind: 'chat' } };
+      const noteWriters = new Set<{ close(): Promise<void> }>();
+      const releaseNotes = async () => {
+        await Promise.allSettled([...noteWriters].map(writer => writer.close()));
+        noteWriters.clear();
+      };
       knowledgeVault.assertStable();
       if (run.native) assertNativeBoundaryAvailable();
       runs.set(sessionId, run);
       try {
         const boundary = workspaceBoundaryKey(config.workspaces);
+        followupSuggestions.invalidate(sessionId);
+        const learningProfile = await vaultProfiles.policyFor(workspace.id).catch(() => undefined);
         const access = await createWorkspaceAccess({ workspaceId: workspace.id, workspaces: structuredClone(config.workspaces), protectedRoots: [layout.root] });
         const history = toModelHistory(await sessions.readMessages(sessionId));
         if (record.workspaceBoundary !== boundary && history.length) throw userError('Workspace folders or access boundaries changed. Start a new Native session so earlier context is not replayed under the new boundaries.');
@@ -2315,7 +2493,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
           if (member && !member.connectionId && approvedTeam?.connections !== undefined && !leadModels.includes(model)) throw userError('That model was not approved for the lead connection.');
           if (model === frozen.connection.model) return frozen.provider;
           const key = JSON.stringify([id, model]);
-          if (!modelProviders.has(key)) modelProviders.set(key, createProvider({ ...frozen.connection, model }, frozen.secret, options.fetch));
+          if (!modelProviders.has(key)) modelProviders.set(key, nativeProvider({ ...frozen.connection, model }, frozen.secret));
           return modelProviders.get(key)!;
         };
         // The saved lead policy also covers the first member added during this turn, even when the roster starts empty.
@@ -2401,10 +2579,75 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
           return readOnly.filter(tool => (!tool.name.startsWith('memory_') || workerFeatures.extaliaMemory)
             && (!tool.name.startsWith('skill_') || workerFeatures.extaliaSkills));
         };
+        // Profile consent authorizes only this bounded host curator, not arbitrary delegation.
+        const learningEnabled = Boolean(learningProfile?.policy.enabled && !unsavedSessions.has(sessionId)
+          && permissionMode !== 'plan' && team?.enabled !== false && !learnSkill);
+        const turnEvidence: ToolResultEntry[] = [];
+        const automaticLearning = async (result: Readonly<TurnResult>): Promise<void> => {
+          if (!learningEnabled || !learningProfile || !hasAutomaticLearningEvidence(result, turnEvidence)) return;
+          const assertCurrent = async () => {
+            if (closing || controller.signal.aborted || runs.get(sessionId) !== run || workspaceBoundaryKey(config.workspaces) !== boundary)
+              throw new Error('The learning invocation is no longer current.');
+            const current = await vaultProfiles.policyFor(workspace.id);
+            if (current.profileId !== learningProfile.profileId || current.revision !== learningProfile.revision
+              || JSON.stringify(current.policy) !== JSON.stringify(learningProfile.policy))
+              throw new Error('The learning profile or consent changed.');
+          };
+          let writeNote: ((record: Parameters<Awaited<ReturnType<typeof pinLearningNotes>>>[0], signal?: AbortSignal) => Promise<string>) | undefined;
+          const policy = { ...learningProfile.policy, skills: learningProfile.policy.skills && features.extaliaSkills && skillRegistry.enabled };
+          if (!policy.skills && !policy.notes) return;
+          if (policy.notes) try { const writer = await pinLearningNotes({
+            backend: rustLearning,
+            context: { sessionId, workspaceId: workspace.id },
+            resolve: async () => {
+              await assertCurrent();
+              return vaultProfiles.resolve(workspace.id, { purpose: 'learning', ensure: true });
+            },
+            authorize: async target => {
+              await assertCurrent();
+              checkAllowed(target, 'Learning notes', 'write');
+              if (isWithin(layout.root, target)) return;
+              for (const candidate of config.workspaces) {
+                for (const selected of [candidate.projectLocation, ...(candidate.additionalProjectLocations ?? [])].filter((value): value is string => Boolean(value))) {
+                  const canonical = await realpath(selected);
+                  const fold = (value: string) => process.platform === 'darwin' || process.platform === 'win32' ? value.toLowerCase() : value;
+                  if (!isWithin(fold(path.resolve(selected)), fold(target)) && !isWithin(fold(canonical), fold(target))) continue;
+                  await access.resolve(target, 'write');
+                  if (permissionMode === 'plan' || !(permissionMode === 'accept-edits' || sessionGrants.has('write') || permissions.fileWrite === 'allow'))
+                    throw new Error('The vault overlaps a workspace without permitted note writes.');
+                }
+              }
+            },
+          }); noteWriters.add(writer); writeNote = writer; } catch {
+            // One unavailable output must not prevent another explicitly enabled destination.
+            policy.notes = false;
+          }
+          if (!policy.skills && !policy.notes) {
+            await publish(sessionId, { type: 'tool.completed', tool: 'automatic_learning', kind: 'knowledge', label: 'Completed-task learning unavailable', ok: false, output: 'No usable Rust learning destination is available. No curator model request was made.' }, 'primary', undefined, { strict: true });
+            return;
+          }
+          const toolCallId = `${run.native!.id}-learning`;
+          await publish(sessionId, { type: 'tool.started', toolCallId, tool: 'automatic_learning', kind: 'delegate', label: 'Curating completed-task learning' }, 'primary', undefined, { strict: true });
+          const learned = await runAutomaticLearning({
+            result, currentTurnEvidence: turnEvidence, ...learningProfile, policy,
+            sessionId, workspaceId: workspace.id, runId: run.native!.id,
+            promptSha256: createHash('sha256').update(prompt).digest('hex'),
+            backend: rustLearning,
+            // Current-turn evidence supplies the curator's reads. No generic host file/search tools
+            // cross this Rust-owned workflow or gain access to a profile's export-only vault.
+            provider, tools: [], signal: controller.signal, assertCurrent,
+            emit: (body, agentId) => publish(sessionId, body, agentId, undefined, { strict: true }),
+            proposeSkill: (input, provenance, signal) => withRegistry(() => skillRegistry.propose(input, provenance, signal)),
+            ...(writeNote ? { writeNote: (record: Parameters<typeof writeNote>[0], signal: AbortSignal) => persistence.run(() => writeNote!(record, signal)) } : {}),
+            onWorkerStarted: id => { nativeWorkers.set(id, { id, sessionId, workspaceId: workspace.id, kind: 'delegated', state: 'running', active: true, evidence: 'local-invocation', label: 'Learning curator' }); },
+            onWorkerSettled: id => { nativeWorkers.delete(id); },
+          });
+          await publish(sessionId, { type: 'tool.completed', toolCallId, tool: 'automatic_learning', kind: 'delegate', label: 'Completed-task learning', ok: (learned.outcome === 'completed' || learned.outcome === 'skipped') && learned.skill.status !== 'unknown' && learned.note.status !== 'failed', output: JSON.stringify(learned) }, 'primary', undefined, { strict: true });
+        };
         const providers = new Map<TaskTier, ModelProvider>();
-        const delegation = createDelegationTool({
+        const delegationOptions: DelegationOptions = {
           providerFor: tier => {
-            if (!providers.has(tier)) providers.set(tier, createProvider({ ...connection, model: tierModel(connection, tier) }, secret, options.fetch));
+            if (!providers.has(tier)) providers.set(tier, nativeProvider({ ...connection, model: tierModel(connection, tier) }, secret));
             return providers.get(tier)!;
           },
           onWorkerStarted: (id, label, member) => {
@@ -2447,8 +2690,57 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
           },
           permissions, permissionMode, sessionGrants,
           requestApproval: request => askUser(request),
+        };
+        const delegation = createDelegationTool(delegationOptions);
+        let writeMeetingNote: ((minutes: NativeMeetingMinutes) => Promise<string>) | undefined;
+        const notesUnavailable = () => new Error('Minutes export is unavailable or disabled for this workspace profile. Check the vault profile settings.');
+        const prepareMeetingNote = async () => {
+          if (unsavedSessions.has(sessionId) || options.onMeetingMinutes) return;
+          try {
+            writeMeetingNote = await pinMeetingNotes({
+              backend: rustLearning,
+              context: { sessionId, workspaceId: workspace.id },
+              resolve: async () => {
+                const destination = await vaultProfiles.resolve(workspace.id, { ensure: true });
+                return { ...destination, revision: `${destination.revision}:${workspaceBoundaryKey(config.workspaces)}` };
+              },
+              authorize: async target => {
+                checkAllowed(target, 'Meeting notes', 'write');
+                // Profile-owned exports are not generic file-tool grants. An external
+                // vault inside a registered project must still obey its write scope.
+                if (isWithin(layout.root, target)) return;
+                for (const candidate of config.workspaces) {
+                  const roots = [candidate.projectLocation, ...(candidate.additionalProjectLocations ?? [])].filter((value): value is string => Boolean(value));
+                  for (const selected of roots) {
+                    const canonical = await realpath(selected);
+                    const fold = (value: string) => process.platform === 'darwin' || process.platform === 'win32' ? value.toLowerCase() : value;
+                    if (!isWithin(fold(path.resolve(selected)), fold(target)) && !isWithin(fold(canonical), fold(target))) continue;
+                    await access.resolve(target, 'write');
+                    const writesAllowed = permissionMode === 'accept-edits' || sessionGrants.has('write') || permissions.fileWrite === 'allow';
+                    if (permissionMode === 'plan' || !writesAllowed)
+                      throw new Error('The vault overlaps a workspace without permitted note writes.');
+                  }
+                }
+              },
+            });
+            noteWriters.add(writeMeetingNote as Awaited<ReturnType<typeof pinMeetingNotes>>);
+          } catch { writeMeetingNote = async () => { throw notesUnavailable(); }; }
+        };
+        const meeting = createConductTeamMeetingTool({
+          team: delegationOptions.team!, workspace: delegationOptions.workspace,
+          emit: async (body, agentId) => {
+            if (body.type === 'meeting.started') await prepareMeetingNote();
+            await publish(sessionId, body, agentId, undefined, { strict: true });
+          },
+          emitWorkerEvent: delegationOptions.emit,
+          onWorkerStarted: delegationOptions.onWorkerStarted, onWorkerSettled: delegationOptions.onWorkerSettled,
+          ...(!unsavedSessions.has(sessionId) ? {
+            onMinutes: (minutes: NativeMeetingMinutes) => options.onMeetingMinutes
+              ? options.onMeetingMinutes(minutes, { sessionId, workspaceId: workspace.id })
+              : writeMeetingNote ? writeMeetingNote(minutes) : Promise.reject(notesUnavailable()),
+          } : {}),
         });
-        if (maxDelegations > 0) tools.push(delegation);
+        if (maxDelegations > 0) tools.push(delegation, meeting);
         if (activeTeam) tools.push(createManageTeamTool({
           getTeam: () => liveTeam,
           seed: sessionId,
@@ -2467,6 +2759,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
             liveTeam = updated;
             // The first member makes delegation available within the same turn.
             if (updated.enabled && updated.members.length && !tools.includes(delegation)) tools.push(delegation);
+            if (updated.enabled && updated.members.length && !tools.includes(meeting)) tools.push(meeting);
             return updated;
           },
         }));
@@ -2479,9 +2772,11 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
           ...(memoryNotes ? { memory: memoryNotes, memoryCatalog } : {}),
           ...(skills ? { skills, skillCatalog, skillCategories } : {}),
           ...(learnSkill ? { skillLearning: true } : {}),
+          ...(learningEnabled ? { automaticLearning: true } : {}),
           ...(maxDelegations > 0 ? { orchestration: { maxDelegations } } : {}),
           ...(activeTeam ? { team: { members: activeTeam.members, ...(activeTeam.rules ? { rules: activeTeam.rules } : {}), ...(activeTeam.goal ? { goal: activeTeam.goal } : {}), ...(activeTeam.goalDocument ? { goalDocument: activeTeam.goalDocument } : {}), ...(spec ? { fromPrompt: true } : {}) } } : {}),
           manageTeam: Boolean(activeTeam),
+          teamMeetings: Boolean(activeTeam),
           teamState: team?.enabled === false ? 'disabled' : activeTeam ? 'active' : 'none',
           ...(permissionMode !== 'workspace' ? { permissionMode } : {}),
           ...(record.agentName ? { agentName: record.agentName } : {}),
@@ -2499,14 +2794,33 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
 
         // Past this point the turn runs: its files are removed from the waiting list.
         await persistence.run(() => attachments.consume(sessionId, attachmentIds));
+        const steering = new NativeTurnSteering([...history, { role: 'user', text: acceptedText }], async (messages, text) => {
+          if (closing || controller.signal.aborted || runs.get(sessionId) !== run) throw userError('The Native invocation is no longer accepting steering.');
+          await sessions.writeMessages(sessionId, messages);
+          await publish(sessionId, { type: 'user.intervention', action: 'steer', text }, 'primary', undefined, { strict: true });
+        });
+        run.steering = steering;
         void (async () => {
+          let completed: TurnResult | undefined;
           try {
             const result = await runTurn({
               provider, system, history, prompt, tools, permissions, sessionGrants, permissionMode,
               attachments: turnAttachments(files),
-              emit: body => publish(sessionId, body),
+              emit: body => {
+                if (body.type === 'tool.completed' && body.ok && body.toolCallId && body.output?.trim()
+                  && !/^(memory_|skill_|manage_team|conduct_team_meeting|workspace_folders|automatic_learning)/.test(body.tool))
+                  turnEvidence.push({ toolCallId: body.toolCallId, name: body.tool, content: body.output, isError: false });
+                return publish(sessionId, body);
+              },
               requestApproval: request => askUser(request),
               signal: controller.signal,
+              takeSteering: (history, boundary) => steering.take(history, boundary),
+              beforeComplete: async result => {
+                // Save the successful source turn before optional learning; keep run ownership until all effects settle.
+                await sessions.writeMessages(sessionId, result.history);
+                try { await automaticLearning(result); }
+                catch { await publish(sessionId, { type: 'tool.completed', tool: 'automatic_learning', kind: 'knowledge', label: 'Completed-task learning unavailable', ok: false, output: 'No automatic learning completion was confirmed. Check the profile policy, vault destination and registry.' }); }
+              },
             });
             await sessions.writeMessages(sessionId, result.history);
             // v0.0.48: the prompt size of the turn's last request is the context in use (no compaction happens here).
@@ -2514,16 +2828,33 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
               const previous = isContextUsage(record.context) ? record.context : undefined;
               await sessions.update(sessionId, { context: sessionContext({ ...result.context, compactions: previous?.compactions ?? 0, at: now(), ...(previous ? { previous } : {}) }) }).catch(() => undefined);
             }
+            if (result.outcome === 'completed') completed = result;
           } catch (error) {
             publish(sessionId, { type: 'turn.failed', error: error instanceof Error ? error.message : 'The turn failed.' });
             publish(sessionId, { type: 'agent.state', state: 'idle' });
           } finally {
+            await steering.close();
+            await releaseNotes();
             await sessions.update(sessionId, { lastActiveAt: now() }).catch(() => undefined);
+            await writeChains.get(sessionId);
+            const anchor = followupSuggestions.status(sessionId).anchor;
+            const connectionSnapshot = JSON.stringify(saved), workspaceSnapshot = JSON.stringify(workspace);
             finishRun(sessionId);
             settleRun();
+            if (completed && anchor && !controller.signal.aborted) {
+              const answer = completed.history.at(-1);
+              if (answer?.role === 'assistant' && answer.text.trim()) followupSuggestions.prepareNative({
+                sessionId, anchor, provider, prompt, answer: answer.text, evidence: turnEvidence, signal: controller.signal,
+                isCurrent: () => !closing && !runs.has(sessionId) && !promptQueues?.hasUnfinished(sessionId)
+                  && workspaceBoundaryKey(config.workspaces) === boundary
+                  && JSON.stringify(config.connections.find(item => item.id === record.connectionId)) === connectionSnapshot
+                  && JSON.stringify(config.workspaces.find(item => item.id === workspace.id)) === workspaceSnapshot,
+              });
+            }
           }
         })();
       } catch (error) {
+        await releaseNotes();
         if (run.accepted) await publish(sessionId, { type: 'turn.failed', error: controller.signal.aborted ? 'Stopped by the user.' : error instanceof Error ? error.message : 'The turn could not start.' });
         finishRun(sessionId);
         settleRun();
@@ -2548,6 +2879,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
         throw userError('This Native invocation has changed or already finished. Refresh its status before cancelling.');
       }
       if (observations.has(sessionId)) throw userError('Extalia cannot cancel an observed agent. Pause observation instead.');
+      followupSuggestions.invalidate(sessionId);
       const pausedPrompts = promptQueues.suspend(sessionId);
       if (!run) { await pausedPrompts; return; }
       if (!run.planning) publish(sessionId, { type: 'user.intervention', action: 'cancel' });
@@ -2655,6 +2987,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     preflightSkill: input => withRegistry(() => skillRegistry.preflight(input)),
     previewSkillRouting: input => withRegistry(() => skillRegistry.routingPreview(input)),
     inspectSkill: revisionId => withRegistry(() => skillRegistry.inspect(revisionId)),
+    rescanSkill: revisionId => withRegistry(() => skillRegistry.rescan(revisionId)),
     importSkill: source => withRegistry(() => skillRegistry.import(source)),
     reviewSkill: input => withRegistry(() => skillRegistry.review(input)),
     approveSkill: input => withRegistry(() => skillRegistry.approve(input)),
@@ -2684,8 +3017,12 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
 
     async setHookPrivacy(privacyOptions) {
       assertHostOpen();
+      if (privacyOptions?.labelsOnly === true) observedCodex.setSuggestionsPrivacy(true);
+      followupSuggestions.invalidatePrivacy();
+      observedCodexNativeQueue.invalidatePrivacy();
       try { await observations.setPrivacy(privacyOptions); }
       catch (error) { throw userError(error instanceof Error ? error.message : 'Invalid privacy or dashboard setting.'); }
+      finally { observedCodexNativeQueue.invalidatePrivacy(); followupSuggestions.invalidatePrivacy(); observedCodex.setSuggestionsPrivacy(observations.labelsOnly()); }
       return host.hookIngest();
     },
 
@@ -2814,11 +3151,23 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     }
     Object.assign(host, methods, {
       knowledgeSettings: () => vault.settings(),
-      setKnowledgeVaultRoot: (root: string | null) => { activated = true; return vault.set(root); },
+      setKnowledgeVaultRoot: (root: string | null) => withWorkspaceChange(async () => {
+        const requested = normalizeKnowledgeVaultRoot(root);
+        await vaultProfiles.assertDefaultRoot(requested ?? vault.defaultRoot());
+        activated = true; return vault.set(requested);
+      }),
     } satisfies Pick<Required<AgentHostApi>, 'knowledgeSettings' | 'setKnowledgeVaultRoot'>);
     // Note editing (W5 slice 2b): writes run in the knowledge sync queue; a memory import names a workspace of this host.
     Object.assign(host, knowledgeEditHostMethods(new KnowledgeEditService(knowledge, { workspaces: () => config.workspaces.map(item => item.id) })));
   }
+
+  Object.assign(host, {
+    listVaultProfiles: () => { assertHostOpen(); return vaultProfiles.list(); },
+    saveVaultProfile: (input: Parameters<VaultProfiles['save']>[0]) => withWorkspaceChange(async () => {
+      assertHostOpen(); knowledgeVault.assertStable();
+      return vaultProfiles.save(input);
+    }),
+  } satisfies Pick<Required<AgentHostApi>, 'listVaultProfiles' | 'saveVaultProfile'>);
 
   let closePromise: Promise<void> | undefined;
   return {
@@ -2833,6 +3182,11 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     },
     close() { return closePromise ??= (async () => {
       closing = true;
+      observedControls.close();
+      const inboxClosed = observedInboxes.close();
+      void inboxClosed.catch(() => undefined);
+      const discoveryClosed = modelDiscovery.close();
+      followupSuggestions.close();
       for (const run of runs.values()) { run.controller.abort(); run.pending?.resolve('reject'); }
       await promptQueues?.close();
       const memoryClosed = nativeMemory.close();
@@ -2842,8 +3196,10 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       await observedCodexPermissions.close();
       await ingest.close();
       let codexCloseError: unknown;
+      try { await observedCodexNativeQueue.close(); } catch (error) { codexCloseError = error; }
       try { await observedCodexQueue.close(); } catch (error) { codexCloseError = error; }
       try { await observedReplies.close(); } catch (error) { codexCloseError = error; }
+      try { await inboxClosed; } catch (error) { codexCloseError = error; }
       try { await observedHermes.close(); } catch (error) { codexCloseError ??= error; }
       try { await observedCodex.close(); } catch (error) { codexCloseError = error; }
       await observations.close();
@@ -2868,6 +3224,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       await ownershipClosed;
       await nativeStatusRefresh?.catch(() => undefined);
       await memoryClosed;
+      await discoveryClosed;
       try { missions.close(); } finally { await lock.release(); }
       const failed = interruptions.find((result): result is PromiseRejectedResult => result.status === 'rejected');
       if (failed) throw failed.reason;
@@ -2875,6 +3232,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     })(); },
   };
   } catch (error) {
+    await modelDiscovery.close();
     await recoveryDaemon.stop().catch(() => undefined);
     persistence.seal();
     await persistence.drain();

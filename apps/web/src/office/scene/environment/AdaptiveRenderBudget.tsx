@@ -1,5 +1,5 @@
 import { QA_HOOKS } from '../qaHooks';
-import { useEffect, useRef, useSyncExternalStore } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { budgetPixelRatio, createBudgetController, createRenderFrameSampler, getRenderBudget, getRenderBudgetLevel, RENDER_BUDGET_LEVELS, resetRenderFrameSampler, sampleRenderFrame, setRenderBudgetLevel, subscribeRenderBudget, updateBudget } from './renderBudget';
 
@@ -8,18 +8,60 @@ type BudgetWindow = Window & {
   __EXTALIA_SET_RENDER_BUDGET__?: (level: number | null) => void;
 };
 
-const budgetDpr = () => budgetPixelRatio(getRenderBudget(), typeof window === 'undefined' ? 1 : window.devicePixelRatio);
 /** Canvas pixel ratio for the current budget level; pass it as the Canvas `dpr` (R3F re-applies that prop on render). */
-export function useBudgetPixelRatio(): number {
-  return useSyncExternalStore(subscribeRenderBudget, budgetDpr, budgetDpr);
+export function useBudgetPixelRatio(canvas: HTMLCanvasElement | null): number {
+  const budget = useSyncExternalStore(subscribeRenderBudget, getRenderBudget, getRenderBudget);
+  const [display, setDisplay] = useState({ width: 1920, height: 1080, ratio: 1 });
+  useLayoutEffect(() => {
+    // R3F's full-size container is valid before the canvas's initial 300 × 150
+    // intrinsic box is replaced. Measuring that temporary box could select native DPR.
+    const container = canvas?.parentElement ?? canvas;
+    const measure = () => {
+      const bounds = container?.getBoundingClientRect();
+      const width = bounds?.width || window.innerWidth;
+      const height = bounds?.height || window.innerHeight;
+      const ratio = window.devicePixelRatio;
+      setDisplay(previous => previous.width === width && previous.height === height && previous.ratio === ratio
+        ? previous : { width, height, ratio });
+    };
+    measure();
+    // Observe the sizing container, never the backing buffer: DPR cannot feed back into sizing.
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
+    if (container) observer?.observe(container);
+    // Numeric R3F DPR opts out of its own display-density follower. Re-arm this
+    // query whenever the density changes, even if CSS dimensions stay identical.
+    let density: MediaQueryList | undefined;
+    const watchDensity = () => {
+      density?.removeEventListener('change', densityChanged);
+      density = window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
+      density.addEventListener('change', densityChanged);
+    };
+    const densityChanged = () => { measure(); watchDensity(); };
+    watchDensity();
+    window.addEventListener('resize', measure);
+    return () => {
+      observer?.disconnect(); density?.removeEventListener('change', densityChanged);
+      window.removeEventListener('resize', measure);
+    };
+  }, [canvas]);
+  return budgetPixelRatio(budget, display.ratio, display.width, display.height);
 }
 
 /**
- * Keeps the Office above 40 fps: measures one-second windows after a warm-up and moves
+ * Targets 40 fps: starts with a small drawing buffer, measures one-second windows after warm-up and moves
  * between budget levels (pixel ratio, live beams, shadow detail) with hysteresis.
  */
 export function AdaptiveRenderBudget() {
   const gl = useThree(state => state.gl);
+  const size = useThree(state => state.size);
+  const setDpr = useThree(state => state.setDpr);
+  const budget = useSyncExternalStore(subscribeRenderBudget, getRenderBudget, getRenderBudget);
+  // Reconcile inside the root before its first painted frame as well as through
+  // Canvas props: async/suspended root configuration can precede the outer ref measurement.
+  useLayoutEffect(() => {
+    const ratio = budgetPixelRatio(budget, window.devicePixelRatio, size.width, size.height);
+    if (gl.getPixelRatio() !== ratio) setDpr(ratio);
+  }, [budget, gl, setDpr, size.width, size.height]);
   // A remounted canvas resumes from the level this session already settled on.
   const sample = useRef({ controller: { ...createBudgetController(), level: getRenderBudgetLevel() }, sampler: createRenderFrameSampler(), pinned: false, fps: 0 });
 
@@ -61,6 +103,7 @@ export function AdaptiveRenderBudget() {
       (window as BudgetWindow).__EXTALIA_RENDER_BUDGET__ = {
         level: getRenderBudgetLevel(), levels: RENDER_BUDGET_LEVELS.length, fps: Math.round(data.fps * 10) / 10,
         pixelRatio: gl.getPixelRatio(), liveBeams: budget.liveBeams, shadowMapSize: budget.shadowMapSize,
+        resolutionHeight: budget.resolutionHeight, canvasWidth: gl.domElement.width, canvasHeight: gl.domElement.height,
         drawCalls: gl.info.render.calls, triangles: gl.info.render.triangles, pinned: data.pinned,
       };
     }

@@ -34,6 +34,22 @@ const approval = { kind: 'approval', prompt_id: 'question-one', execution_genera
 const clarify = { kind: 'clarify', prompt_id: 'question-one', execution_generation: 3, question: 'Choose a colour', choices: ['Green', 'Blue'], multi_select: false };
 
 describe('observed Hermes exact-owner controls', () => {
+  it.each(['start', 'steer'] as const)('does not change explicit %s intent while checking the live gateway', async intent => {
+    const f = fixture();
+    f.snapshot.running = intent === 'steer';
+    try {
+      const connected = await f.control.connect();
+      f.request.mockClear();
+      f.request.mockImplementationOnce(async method => {
+        expect(method).toBe('session.list');
+        f.event(intent === 'steer' ? 'message.complete' : 'message.start', {});
+        return { scope: 'live', sessions: [{ session_id: 'native-one' }] };
+      });
+      const result = await f.control.send({ connectionId: connected.connectionId!, executionGeneration: 3, text: 'Explicit action', intent });
+      expect(result.delivery).toBe('unknown');
+      expect(f.request.mock.calls.some(([method]) => method === 'session.steer' || method === 'prompt.submit')).toBe(false);
+    } finally { await f.control.close(); }
+  });
   it('does no discovery until explicitly connected and submits only into the exact live native identity', async () => {
     const f = fixture();
     expect(f.control.status()).toMatchObject({ state: 'disconnected', canSend: false });

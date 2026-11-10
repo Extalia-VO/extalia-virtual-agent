@@ -2,6 +2,16 @@
 
 Status: Verified locally v0.4.184, 2026-11-08
 
+Language destination updated by [ADR 0069](0069-ui-only-typescript-and-backend-ownership.md)
+on 2026-11-09: all backend execution targets Rust or supervised Python;
+TypeScript/React is for UI. The current-owner descriptions below remain a
+historical snapshot. Measurement, permission, parity and settlement requirements
+continue to apply during migration.
+
+The later [ADR 0071](0071-rust-openai-completion-and-resource-evidence.md)
+supersedes that mandatory language destination: retain TypeScript where measured
+efficiency favors it. The original resource/parity gates below still apply.
+
 ## Context
 
 The Native harness assembles context, calls a model provider, validates requested

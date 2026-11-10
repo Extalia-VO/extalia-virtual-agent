@@ -16,7 +16,9 @@ simulation time. Very small frame motion and sideways oscillation cannot keep
 resetting it. Walking is checked after three seconds without progress; stalled
 door choreography after six. Advancing door beats/leaf motion count as progress.
 Seated/idle states and chair/seat interactions are excluded, as are hinged-door
-queues waiting for another operator. Stairs and lifts use the separate progress
+queues waiting for another operator. A completed fixed-seat departure with no
+onward route is tracked separately from a legitimate seated or standing station.
+Stairs and lifts use the separate progress
 guards below. Hidden-tab wall-clock gaps do not immediately trigger recovery.
 
 ## Bounded recovery
@@ -43,6 +45,40 @@ Ground-floor footprint clearance now recognizes registered doorway apertures.
 The exception is limited to the aperture's width and threshold depth; mesh solids
 still block movement, and upper floors still require slab/perimeter support.
 Portal metadata is fetched lazily once per swept clearance check.
+
+## Incomplete departures and inactive plans
+
+A failed route after leaving a sofa or another fixed seat used to leave the
+avatar in a terminal-looking seated state with a standing pose. The explicit
+departure marker now retains its intended destination and checks progress after
+three simulated seconds. Recovery first retries the authored staging route, then
+may walk to a visible, supported same-floor aisle with static, body and door
+clearance. It does not respawn or teleport the avatar. The three-attempt local
+recovery budget remains bounded; afterward, only the original staging route is
+rechecked every ten simulated seconds, so a route restored later can still
+resume the same avatar and destination.
+
+Facility NPCs retry failed voluntary break/recreation routes every two seconds.
+Fifteen simulated seconds without movement abandons only that inactive trip and
+returns through the normal home/duty intent. Actual movement or a destination
+change resets this clock. Serving customers and owned lift, door and seat waits
+are excluded; a hidden-tab wall-clock gap cannot consume the whole deadline.
+
+Agent leisure travel budgets also pause for owned transit/contact interactions,
+expected service and reciprocal chat plans. Waiting is not inferred from a
+motionless pose alone. Ordinary failed travel still expires after its existing
+budget, and a completed leisure visit still ends normally. These policies apply
+to the shared movers for managed/observed avatars and facility NPCs without
+altering runtime work or restarting sessions.
+
+Focused inactivity/departure validation covers 142 tests across eleven suites,
+including late route restoration, preserved latest intent, bounded probes,
+stationary NPC trip reset and protected managed/observed lift/service/chat waits.
+An isolated mock Office also supplied its live render-derived clearance for six
+injected failed departures at F1 benches and F3 terrace sofas. The same movers
+and goals recovered in 4.27–5.77 simulated seconds, with maximum 0.04433 m movement
+per 1/30-second step and no floor changes. This was a movement simulation using
+the loaded scene, not a recording of newly rendered avatars or real workloads.
 
 ## Verification
 

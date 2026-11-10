@@ -1,4 +1,4 @@
-import type { ObservedCodexAnswerInput, ObservedCodexMessageInput, ObservedCodexStatus, ObservedCodexApprovalAnswerInput } from '@extalia/platform';
+import type { ObservedCodexAnswerInput, ObservedCodexMessageInput, ObservedCodexStatus, ObservedCodexApprovalAnswerInput, PromptSuggestionsStatus } from '@extalia/platform';
 import { CodexObservedControl, type CodexObservedRpcFactory } from './codexObservedControl.js';
 import { findOnPath, isExecutable } from './connect/util.js';
 
@@ -7,6 +7,7 @@ interface Options {
   target(id: string): SourceBinding | undefined;
   env: Readonly<Record<string, string | undefined>>;
   rpcFactory?: CodexObservedRpcFactory;
+  onActivity?: (sessionId: string) => void;
 }
 
 /** Ephemeral, user-only connection registry. It never installs hooks or starts an agent engine. */
@@ -17,6 +18,7 @@ export class ObservedCodexService {
   private readonly blocked = new Set<string>();
   private readonly cleanup = new Map<string, Promise<void>>();
   private readonly cleanupFailures = new Set<string>();
+  private suggestionsPrivate = false;
 
   constructor(private readonly options: Options) {}
 
@@ -59,6 +61,23 @@ export class ObservedCodexService {
     if (this.cleanupFailures.has(id)) return this.unavailable(id, 'Codex proxy cleanup could not be confirmed. Control is disabled.');
     return entry?.control.status() ?? { sessionId: id, state: 'disconnected', canSend: false, canAnswer: false, requests: [] };
   }
+  async suggestions(id: string): Promise<PromptSuggestionsStatus> {
+    const unavailable: PromptSuggestionsStatus = { sessionId: id, state: this.suggestionsPrivate ? 'private' : 'unavailable', prompts: [], origin: 'harness', canRequest: false };
+    if (this.closed || this.cleanupFailures.has(id)) return unavailable;
+    return this.valid(id).entry?.control.suggestions() ?? unavailable;
+  }
+  setSuggestionsPrivacy(value: boolean): void {
+    this.suggestionsPrivate = value;
+    for (const { control } of this.controls.values()) control.setSuggestionsPrivacy(value);
+  }
+  async requestSuggestions(id: string, anchor: string): Promise<PromptSuggestionsStatus> {
+    if (this.closed || this.cleanupFailures.has(id)) return this.suggestions(id);
+    const { entry } = this.valid(id);
+    if (!entry) return this.suggestions(id);
+    await entry.control.requestSuggestions(anchor);
+    // The same controller may have changed turn or privacy between continuations.
+    return this.valid(id).entry === entry ? entry.control.suggestions() : this.suggestions(id);
+  }
   private mutate<T>(id: string, action: () => Promise<T>): Promise<T> {
     this.target(id);
     if (this.closed) return Promise.reject(new Error('The Extalia host is closed.'));
@@ -85,7 +104,9 @@ export class ObservedCodexService {
       const control = new CodexObservedControl({
         sessionId: id, threadId: binding.threadId, ...(binding.cwd ? { cwd: binding.cwd } : {}), bin,
         env: { ...this.options.env }, ...(this.options.rpcFactory ? { rpcFactory: this.options.rpcFactory } : {}),
+        onActivity: () => this.options.onActivity?.(id),
       });
+      control.setSuggestionsPrivacy(this.suggestionsPrivate);
       this.controls.set(id, { fingerprint, control });
       try {
         const status = await control.connect(socketPath);

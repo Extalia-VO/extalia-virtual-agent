@@ -1,6 +1,7 @@
+import { createProvider } from '../src/index.js';
 import { describe, expect, it, vi } from 'vitest';
 import type { OrchestrationPlan } from '@extalia/protocol';
-import { createProvider, runNativeMission, type AnyTool, type FetchLike, type NativeMissionOptions, type PermissionRequest } from '../src/index.js';
+import { runNativeMission, type AnyTool, type FetchLike, type NativeMissionOptions, type PermissionRequest } from '../src/index.js';
 import { EXTERNAL_SKILL_GUIDANCE } from '../src/prompt.js';
 
 // Write-capable mission workers (ADR 0028): additive and opt-in per task; read-only tasks are unchanged.

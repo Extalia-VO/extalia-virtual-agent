@@ -1,9 +1,9 @@
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import type { AgentHostApi, ObservedCodexQueueStatus } from '@extalia/platform';
+import type { AgentHostApi, ObservedCodexQueueStatus, SessionSummary } from '@extalia/platform';
 import { afterEach, expect, it, vi } from 'vitest';
 import { MESSAGES } from '../src/i18n';
-import { codexPromptEnterSends, ObservedCodexPromptContent } from '../src/observe/ObservedCodexPromptComposer';
+import { codexPromptEnterSends, ObservedCodexPromptComposer, ObservedCodexPromptContent } from '../src/observe/ObservedCodexPromptComposer';
 import { CODEX_PROMPT_LIMIT, createObservedCodexPromptControl } from '../src/observe/observedCodexPromptModel';
 
 const id = 'observed', threadId = '11111111-1111-4111-8111-111111111111';
@@ -22,6 +22,17 @@ function setup(initial = status()) {
   stops.push(model.start()); return { api, model };
 }
 afterEach(() => { stops.splice(0).forEach(stop => stop()); vi.useRealTimers(); });
+
+it.each(['en', 'id'] as const)('renders one observed input through the host outbox without creating a session (%s)', language => {
+  const api = { promptQueueStatus: vi.fn(), changePromptQueue: vi.fn(), createSession: vi.fn(), queueObservedCodexMessage: vi.fn() };
+  const session = { id, control: 'observed', running: true,
+    observation: { sourceId: 'codex', nativeSessionId: threadId, watching: true, status: 'watching' } } as SessionSummary;
+  const html = renderToStaticMarkup(createElement(ObservedCodexPromptComposer, { t: MESSAGES[language], agents: api as unknown as AgentHostApi, session }));
+  expect(html.match(/<textarea/g)).toHaveLength(1);
+  expect(html).toContain(MESSAGES[language].promptQueue.queueLabel);
+  expect(html).not.toContain(MESSAGES[language].promptQueue.addPlaceholder);
+  expect(api.createSession).not.toHaveBeenCalled(); expect(api.queueObservedCodexMessage).not.toHaveBeenCalled();
+});
 
 it('only reads on mount; first Send checks the source, opts in and queues text to the same observed ID', async () => {
   vi.useFakeTimers(); const { api, model } = setup(); await settle(); await vi.advanceTimersByTimeAsync(4000);
@@ -108,6 +119,46 @@ it('waits for an in-flight poll, then fresh-checks once and suppresses concurren
   expect(api.observedCodexQueueStatus).toHaveBeenCalledTimes(2); expect(api.queueObservedCodexMessage).not.toHaveBeenCalled();
   pending.resolve(status(true)); await read; await send;
   expect(api.observedCodexQueueStatus).toHaveBeenCalledTimes(3); expect(api.queueObservedCodexMessage).toHaveBeenCalledTimes(1);
+});
+
+it('returns a validated source queue acceptance after unmount to settle the original draft', async () => {
+  const { api, model } = setup(status(true)); await settle();
+  const pending = deferred<ObservedCodexQueueStatus>(); api.queueObservedCodexMessage.mockReturnValueOnce(pending.promise);
+  const send = model.send('shared original draft'); await settle(); stops.pop()!();
+  pending.resolve(status(true, { delivery: 'queued' }));
+  expect(await send).toBe('accepted');
+  expect(api.queueObservedCodexMessage).toHaveBeenCalledExactlyOnceWith(id, { text: 'shared original draft' });
+});
+
+it('requires a fresh safe source read and explicit inspection to clear local uncertainty', async () => {
+  const { api, model } = setup(status(true)); await settle();
+  api.queueObservedCodexMessage.mockRejectedValueOnce(new Error('response lost'));
+  expect(await model.send('uncertain draft')).toBe('unknown');
+  expect(model.allowRetry()).toBe(false);
+  api.observedCodexQueueStatus.mockResolvedValue(status(true, { delivery: 'unknown', canQueue: false }));
+  await model.refresh(); expect(model.allowRetry()).toBe(false);
+  api.observedCodexQueueStatus.mockResolvedValue(status(true, { delivery: 'queued' }));
+  await model.refresh();
+  expect(model.canSend('uncertain draft')).toBe(false);
+  expect(model.canRetry()).toBe(true); expect(model.allowRetry()).toBe(true);
+  expect(model.canSend('uncertain draft')).toBe(true);
+  expect(api.queueObservedCodexMessage).toHaveBeenCalledTimes(1);
+});
+
+it('reconstructs positive queue feedback from a persisted receipt on mount', async () => {
+  const { model } = setup(status(true, { delivery: 'queued' })); await settle();
+  expect(model.getSnapshot().notice).toBe('queued');
+  // A remounted composer can retain local uncertainty in its shared draft;
+  // only user inspection, after this fresh safe read, may unlock that draft.
+  expect(model.canRetry()).toBe(true);
+  expect(model.allowRetry()).toBe(true);
+});
+
+it('does not latch an in-flight write-ahead marker as a settled unknown after remount', async () => {
+  const { api, model } = setup(status(true, { delivery: 'unknown', busy: true, canQueue: false })); await settle();
+  expect(model.getSnapshot().notice).not.toBe('unknown'); expect(model.canSend('next draft')).toBe(false);
+  api.observedCodexQueueStatus.mockResolvedValue(status(true, { delivery: 'queued' })); await model.refresh();
+  expect(model.getSnapshot().notice).toBe('queued'); expect(model.canSend('next draft')).toBe(true);
 });
 
 it('rejects oversized, blank and null-containing text without trimming or uploading attachments', async () => {

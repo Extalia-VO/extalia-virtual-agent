@@ -1,9 +1,10 @@
-import type { ExtaliaEvent } from '@extalia/protocol';
+import { createAgentHost } from '../src/service.js';
+import type { DaemonLearningParams, ExtaliaEvent } from '@extalia/protocol';
 import { mkdir, readFile, readdir } from 'node:fs/promises';
 import * as filesystem from 'node:fs/promises';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createAgentHost, type AgentHostOptions, type AgentHostRuntime } from '../src/service.js';
+import { type AgentHostOptions, type AgentHostRuntime } from '../src/service.js';
 import { SessionStore } from '../src/sessions.js';
 import * as credentials from '../src/secrets.js';
 import * as jsonStore from '../src/jsonStore.js';
@@ -14,6 +15,7 @@ import { IntegrationQueue, WorktreeManager, type IntegrationProposal } from '../
 import * as connectServices from '../src/connect/service.js';
 import { withConnectOperation } from '../src/connect/operationJournal.js';
 import { useTempDirs } from './helpers.js';
+import { DAEMON_BINARY, HAS_DAEMON } from './daemonBackend.js';
 
 vi.mock('node:fs/promises', async importOriginal => {
   const actual = await importOriginal<typeof filesystem>();
@@ -43,7 +45,7 @@ async function setup(fetch: NonNullable<AgentHostOptions['fetch']>, history = tr
   const options: AgentHostOptions = {
     kind: 'bridge', version: '0.0.0-test', dataDirectory: path.join(root, 'data'),
     homeDirectory: path.join(root, 'home'), importHome: path.join(root, 'home'), observationIntervalMs: 60_000,
-    env: { EXTALIA_SECRET_STORE: secretStore, EXTALIA_HERMES_BIN: path.join(root, 'not-installed') }, fetch,
+    env: { EXTALIA_SECRET_STORE: secretStore, EXTALIA_HERMES_BIN: path.join(root, 'not-installed'), ...(registry ? { EXTALIA_DAEMON_PATH: DAEMON_BINARY } : {}) }, fetch,
     ...(registry ? { nativeCore: 'rust' } : {}),
   };
   const runtime = await createAgentHost(options);
@@ -70,14 +72,29 @@ async function snapshot(options: AgentHostOptions, sessionId: string) {
   return Promise.all(files.map(file => readFile(path.join(root, file), 'utf8').catch(() => undefined)));
 }
 
-function fakeSkillClient() {
-  const request = vi.fn(async (op: string) => {
+type RpcHold = { entered: ReturnType<typeof deferred<void>>; release: ReturnType<typeof deferred<void>> };
+function fakeSkillClient(holds: Partial<Record<'skill.stage' | 'skill.stageFolder' | 'skill.cleanup', RpcHold>> = {}) {
+  const registryPrototype = SkillRegistry.prototype as unknown as { client(): Promise<DaemonClient> };
+  const realClient = registryPrototype.client;
+  let connectReal: () => Promise<DaemonClient>;
+  let connected: DaemonClient | undefined;
+  const request = vi.fn(async (op: string, params?: unknown, deadlineMs?: number) => {
+    if (op === 'learning.process') {
+      // Exercise real temporary Rust staging. Only its acknowledgement is held;
+      // these host tests cover lifetime fencing, not Rust's filesystem internals.
+      connected ??= await connectReal();
+      const action = params as DaemonLearningParams;
+      const result = await connected.request('learning.process', action, deadlineMs);
+      const hold = holds[action.action as keyof typeof holds];
+      if (hold) { hold.entered.resolve(); await hold.release.promise; }
+      return result;
+    }
     if (op === 'skill.list') return { revisions: [], indexGeneration: 0 };
     if (op === 'skill.import') throw new Error('Controlled import interruption.');
     throw new Error(`Unexpected fixture operation: ${op}`);
   });
-  const client = { capabilities: SKILL_REGISTRY_OPS, request } as unknown as DaemonClient;
-  vi.spyOn(SkillRegistry.prototype as unknown as { client(): Promise<DaemonClient> }, 'client').mockResolvedValue(client);
+  const client = { get usable() { return connected?.usable ?? true; }, capabilities: [...SKILL_REGISTRY_OPS, 'learning.process'], request } as unknown as DaemonClient;
+  vi.spyOn(registryPrototype, 'client').mockImplementation(async function (this: typeof registryPrototype) { connectReal = realClient.bind(this); return client; });
   return request;
 }
 
@@ -325,23 +342,21 @@ describe('host shutdown persistence fencing', () => {
     expect((await h.runtime.host.sessionEvents(h.session.id)).some(event => event.body.type === 'prompt.submitted')).toBe(true);
   });
 
-  it('drains chat skill staging and its finally cleanup after the provider grace expires', async () => {
-    const registryCalls = fakeSkillClient();
-    const actual = await vi.importActual<typeof filesystem>('node:fs/promises');
+  it.skipIf(!HAS_DAEMON || process.platform === 'win32')('drains chat skill staging and its finally cleanup after the provider grace expires', async () => {
     const stageEntered = deferred(), stageRelease = deferred(), cleanupEntered = deferred(), cleanupRelease = deferred();
     releases.push(() => { stageRelease.resolve(); cleanupRelease.resolve(); });
-    vi.spyOn(filesystem, 'writeFile').mockImplementation(async (file, data, options) => {
-      if (String(file).includes('skill-imports') && String(file).endsWith('SKILL.md')) { stageEntered.resolve(); await stageRelease.promise; }
-      return actual.writeFile(file, data, options);
-    });
-    vi.spyOn(filesystem, 'rm').mockImplementation(async (file, options) => {
-      if (String(file).includes('skill-imports') && path.basename(String(file)).startsWith('proposal-')) { cleanupEntered.resolve(); await cleanupRelease.promise; }
-      return actual.rm(file, options);
+    const registryCalls = fakeSkillClient({
+      'skill.stage': { entered: stageEntered, release: stageRelease },
+      'skill.cleanup': { entered: cleanupEntered, release: cleanupRelease },
     });
     const fetch = vi.fn(async () => Response.json({ model: 'mock-agent', choices: [{ message: { content: '', tool_calls: [{ id: 's1', type: 'function', function: { name: 'skill_propose', arguments: JSON.stringify({ name: 'shutdown-review', description: 'Review a change', instructions: 'Read the diff and report evidence.' }) } }] }, finish_reason: 'tool_calls' }] }));
     const h = await setup(fetch, true, false, true);
     await h.runtime.host.sendPrompt(h.session.id, '/learn-skill Save a review draft.');
     await stageEntered.promise;
+    const inbox = path.join(h.options.dataDirectory!, 'profiles/default/skill-imports');
+    const [staged] = await readdir(inbox);
+    expect(staged).toBeDefined();
+    expect(await readFile(path.join(inbox, staged!, 'SKILL.md'), 'utf8')).toContain('Read the diff and report evidence.');
     const idleNotification = vi.fn();
     h.runtime.onIdle(idleNotification);
     let closed = false;
@@ -349,13 +364,19 @@ describe('host shutdown persistence fencing', () => {
     await pause(5_100);
     expect(closed).toBe(false);
     await expect(createAgentHost(h.options)).rejects.toThrow(/already running/i);
+    await expect(h.runtime.host.importSkill!({ kind: 'folder', path: h.project })).rejects.toThrow(/shutting down/);
     stageRelease.resolve();
     await cleanupEntered.promise;
     expect(closed).toBe(false);
     expect(h.runtime.isBusy()).toBe(true);
+    expect(await readdir(inbox)).toEqual([]);
+    await expect(createAgentHost(h.options)).rejects.toThrow(/already running/i);
+    await expect(h.runtime.host.inspectSkill!(`skr_${'a'.repeat(64)}`)).rejects.toThrow(/shutting down/);
     cleanupRelease.resolve();
     await closing;
-    expect(await readdir(path.join(h.options.dataDirectory!, 'profiles/default/skill-imports'))).toEqual([]);
+    expect(await readdir(inbox)).toEqual([]);
+    expect(registryCalls.mock.calls.filter(([op, params]) => op === 'learning.process' && (params as DaemonLearningParams).action === 'skill.stage')).toHaveLength(1);
+    expect(registryCalls.mock.calls.filter(([op, params]) => op === 'learning.process' && (params as DaemonLearningParams).action === 'skill.cleanup')).toHaveLength(1);
     expect(registryCalls.mock.calls.filter(([op]) => op === 'skill.import')).toHaveLength(0);
     expect(fetch).toHaveBeenCalledTimes(1);
     expect(idleNotification).not.toHaveBeenCalled();
@@ -365,19 +386,18 @@ describe('host shutdown persistence fencing', () => {
     await expect(h.runtime.host.importSkill!({ kind: 'folder', path: h.project })).rejects.toThrow(/shutting down/);
   });
 
-  it('drains a human skill import held in filesystem staging and refuses new registry mutations', async () => {
-    fakeSkillClient();
+  it.skipIf(!HAS_DAEMON || process.platform === 'win32')('drains a human skill import held in Rust staging and refuses new registry mutations', async () => {
+    const entered = deferred(), release = deferred(), cleanupEntered = deferred(), cleanupRelease = deferred();
+    releases.push(() => { release.resolve(); cleanupRelease.resolve(); });
+    const registryCalls = fakeSkillClient({
+      'skill.stageFolder': { entered, release },
+      'skill.cleanup': { entered: cleanupEntered, release: cleanupRelease },
+    });
     const h = await setup(async () => answer(), true, false, true);
     const actual = await vi.importActual<typeof filesystem>('node:fs/promises');
     const source = path.join(h.root, 'skill-source');
     await mkdir(source);
     await actual.writeFile(path.join(source, 'SKILL.md'), '---\nname: fixture-skill\ndescription: Review a change\n---\nRead the diff.\n');
-    const entered = deferred(), release = deferred();
-    releases.push(() => release.resolve());
-    vi.spyOn(filesystem, 'open').mockImplementation(async (file, flags, mode) => {
-      if (String(file).includes('skill-imports') && String(file).endsWith('SKILL.md') && String(flags).includes('w')) { entered.resolve(); await release.promise; }
-      return actual.open(file, flags, mode);
-    });
     const importing = h.runtime.host.importSkill!({ kind: 'folder', path: source });
     const rejected = expect(importing).rejects.toThrow('Controlled import interruption.');
     await entered.promise;
@@ -389,8 +409,15 @@ describe('host shutdown persistence fencing', () => {
     await expect(createAgentHost(h.options)).rejects.toThrow(/already running/i);
     await expect(h.runtime.host.inspectSkill!(`skr_${'a'.repeat(64)}`)).rejects.toThrow(/shutting down/);
     release.resolve();
+    await cleanupEntered.promise;
+    expect(closed).toBe(false);
+    expect(h.runtime.isBusy()).toBe(true);
+    await expect(createAgentHost(h.options)).rejects.toThrow(/already running/i);
+    await expect(h.runtime.host.importSkill!({ kind: 'folder', path: source })).rejects.toThrow(/shutting down/);
+    cleanupRelease.resolve();
     await Promise.all([rejected, closing]);
     expect(await readdir(path.join(h.options.dataDirectory!, 'profiles/default/skill-imports'))).toEqual([]);
+    expect(registryCalls.mock.calls.filter(([op]) => op === 'skill.import')).toHaveLength(1);
     const reopened = await createAgentHost(h.options);
     runtimes.push(reopened);
     await reopened.host.saveProfile({ displayName: 'New owner after import' });

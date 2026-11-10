@@ -10,6 +10,20 @@ const base = {
 };
 
 describe('parseEvent', () => {
+  it('validates explicit meeting rooms, attributed contributions and terminal outcomes without breaking legacy reports', () => {
+    const start = { type: 'meeting.started', meetingId: 'meeting-1', participants: ['primary', 'member-1'] };
+    expect(parseEvent({ ...base, body: start }).ok).toBe(true);
+    expect(parseEvent({ ...base, body: { ...start, roomId: 'meeting-b' } }).ok).toBe(true);
+    expect(parseEvent({ ...base, body: { ...start, roomId: 'workroom' } }).ok).toBe(false);
+    const contribution = { type: 'meeting.contribution', meetingId: 'meeting-1', round: 1, text: 'Review finding based on the source.' };
+    expect(parseEvent({ ...base, agentId: 'member-1', body: contribution }).ok).toBe(true);
+    expect(parseEvent({ ...base, body: contribution }).ok).toBe(false);
+    for (const round of [0, 3, 1.5]) expect(parseEvent({ ...base, agentId: 'member-1', body: { ...contribution, round } }).ok).toBe(false);
+    const complete = { type: 'meeting.completed', meetingId: 'meeting-1' };
+    expect(parseEvent({ ...base, body: complete }).ok).toBe(true);
+    for (const outcome of ['completed', 'cancelled', 'failed']) expect(parseEvent({ ...base, body: { ...complete, outcome, notePath: 'Meetings/meeting-1.md' } }).ok).toBe(true);
+    expect(parseEvent({ ...base, body: { ...complete, outcome: 'working' } }).ok).toBe(false);
+  });
   it('accepts legacy and correlated file writes, and rejects invalid tool call ids', () => {
     const legacy = { type: 'file.written', path: 'a.txt', change: 'add' };
     expect(parseEvent({ ...base, body: legacy }).ok).toBe(true);

@@ -9,12 +9,28 @@ import { normalizeUsage, tokenCount } from '../usage.js';
  * OpenAI-compatible Chat Completions with streaming tool calls. Covers OpenAI,
  * OpenRouter, Ollama and local routers such as 9Router and OmniRoute.
  */
+export interface OpenAIConnection {
+  baseUrl: string;
+  model: string;
+  apiKey?: string;
+  headers?: Record<string, string>;
+}
+
+/** Explicit experimental native transport; failures never fall back to another implementation. */
+export type OpenAICompletionPort = (connection: OpenAIConnection, request: ModelRequest, requestUsage: boolean) => Promise<{
+  result: ModelResult;
+  streamOptionsRejected?: boolean;
+}>;
+
 export interface OpenAIChatOptions {
   baseUrl: string;
   model: string;
   apiKey?: string;
   headers?: Record<string, string>;
   fetch?: FetchLike;
+  completion?: OpenAICompletionPort;
+  /** Native-owned model discovery; this adapter only forwards the call. */
+  listModels?: ModelProvider['listModels'];
 }
 
 type ChatMessage =
@@ -47,9 +63,9 @@ export function toChatMessages(system: string, messages: readonly ModelMessage[]
 }
 
 function stopReason(finish: string | undefined, hasTools: boolean): StopReason {
-  if (hasTools) return 'tool_use';
-  if (finish === 'length') return 'max_tokens';
   if (finish === 'content_filter') return 'refusal';
+  if (finish === 'length') return 'max_tokens';
+  if (hasTools) return 'tool_use';
   if (finish === 'stop' || finish === undefined) return 'end';
   return 'other';
 }
@@ -146,13 +162,18 @@ export function createOpenAIChatProvider(options: OpenAIChatOptions): ModelProvi
     api: 'openai-chat',
     images: true,
     async listModels(signal) {
-      const response = await fetchImpl(`${base}/models`, { headers: headers(false), ...(signal ? { signal } : {}) });
-      if (!response.ok) throw await errorFrom(response);
-      const body = await response.json() as { data?: { id?: unknown }[] };
-      return (body.data ?? []).map(item => item.id).filter((id): id is string => typeof id === 'string').sort();
+      if (!options.listModels) throw new ProviderError('Native model discovery is unavailable.');
+      return options.listModels(signal);
     },
 
     async complete(request: ModelRequest): Promise<ModelResult> {
+      if (options.completion) {
+        const connection: OpenAIConnection = { baseUrl: options.baseUrl, model: options.model,
+          ...(options.apiKey ? { apiKey: options.apiKey } : {}), ...(options.headers ? { headers: options.headers } : {}) };
+        const response = await options.completion(connection, request, !streamOptionsRejected.has(base));
+        if (response.streamOptionsRejected) streamOptionsRejected.add(base);
+        return response.result;
+      }
       const messages = toChatMessages(request.system, request.messages);
       const tools = request.tools.length ? {
         tools: request.tools.map(tool => ({ type: 'function', function: { name: tool.name, description: tool.description, parameters: tool.parameters } })),
@@ -224,8 +245,10 @@ export function createOpenAIChatProvider(options: OpenAIChatOptions): ModelProvi
         }
       }
 
+      if (finish === 'content_filter') calls.clear();
       const toolCalls: ToolCall[] = [...calls.entries()].sort(([a], [b]) => a - b).map(([index, call]) => {
-        const parsed = parseArguments(call.args);
+        const parsed = finish === 'length'
+          ? { input: {}, inputError: 'Tool arguments were truncated by the provider.' } : parseArguments(call.args);
         return { id: call.id || `call_${index}`, name: call.name, ...parsed };
       });
       // Validate cross-field relationships after all partial reports have been merged.

@@ -76,7 +76,7 @@ pub struct RestoreReport {
 
 /// The built-in skills of one profile, staged into its object store and recorded in the
 /// core store.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct BuiltinCatalog {
     objects: ObjectStore,
     profile: ProfileId,

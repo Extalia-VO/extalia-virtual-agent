@@ -58,24 +58,30 @@ describe('parking-lot manoeuvres', () => {
   });
 
   it('keeps each lot between its occupancy bounds (never empty, never full) through morning arrivals and evening departures', () => {
+    let firstViolation: { minutes: number; seed: number; tick: number; lot: string; count: number; min: number; max: number; bays: number } | undefined;
     for (const minutes of [8 * 60, 18 * 60, 13 * 60]) {
       const sim = createParkingSim(20261030 + minutes);
-      let arrivals = 0, departures = 0;
-      run(sim, 3 * 3600, options(minutes, 1), s => s.lots.forEach((state, index) => {
-        const [min, max] = occupancyBounds(state.lot.bays.length);
-        expect(min).toBeGreaterThan(0);
-        expect(max).toBeLessThan(state.lot.bays.length);
-        const count = occupied(s, index);
-        expect(count).toBeGreaterThanOrEqual(min - 1);
-        expect(count).toBeLessThanOrEqual(max + 1);
-        expect(count).toBeGreaterThan(0);
-        expect(count).toBeLessThan(state.lot.bays.length);
-      }));
+      let arrivals = 0, departures = 0, tick = 0;
+      run(sim, 3 * 3600, options(minutes, 1), s => {
+        tick++;
+        s.lots.forEach((state, index) => {
+          const bays = state.lot.bays.length, [min, max] = occupancyBounds(bays);
+          const count = occupied(s, index);
+          // Evaluate every invariant on every tick; retain the first failure without matcher overhead.
+          const validMin = min > 0, validMax = max < bays;
+          const aboveMin = count >= min - 1, belowMax = count <= max + 1;
+          const notEmpty = count > 0, notFull = count < bays;
+          if (!(validMin && validMax && aboveMin && belowMax && notEmpty && notFull) && firstViolation === undefined) {
+            firstViolation = { minutes, seed: 20261030 + minutes, tick, lot: state.lot.id, count, min, max, bays };
+          }
+        });
+      });
       expect(new Set(sim.log.filter(event => event.started).map(event => event.lot))).toEqual(new Set(['west', 'east']));
       for (const event of sim.log) if (event.started) { if (event.kind === 'arrive') arrivals++; else departures++; }
       if (minutes === 8 * 60) expect(arrivals).toBeGreaterThan(0);
       if (minutes === 18 * 60) expect(departures).toBeGreaterThan(0);
     }
+    expect(firstViolation).toBeUndefined();
   }, 60_000);
 
   it.each(PARKING_LOTS.map(entry => [entry.id, entry] as const))('drives continuous %s routes: bay to lane end and lane start to bay, heading on the tangent, height on the drawn ramp', (_, lot) => {
@@ -141,18 +147,28 @@ describe('parking-lot manoeuvres', () => {
   });
 
   it('never touches a parked car on the way in or out', () => {
+    let firstViolation: { lot: string; bay: string; kind: string; model: MobilityModel; leg: number; sample: number; overlap: unknown; car: Footprint; parked: Footprint } | undefined;
     for (const lot of PARKING_LOTS) lot.bays.forEach((_, index) => {
       for (const kind of ['depart', 'arrive'] as const) for (const model of ['mobility-sedan', 'mobility-suv-family', 'mobility-hatchback'] as MobilityModel[]) {
         const parked = parkedFootprints(index, lot);
         const route = clearRoute({ lot, lane: laneOf(lot) }, index, kind, model, parked);
         if (!route) continue;
         const car = { x: 0, z: 0, yaw: 0, ...footprintOf(model) };
-        for (const leg of route.legs) for (let i = 0; i < leg.count; i++) {
-          car.x = leg.x[i]!; car.z = leg.z[i]!; car.yaw = leg.yaw[i]!;
-          for (const other of parked) expect(footprintsOverlap(car, other)).toBe(false);
+        for (let legIndex = 0; legIndex < route.legs.length; legIndex++) {
+          const leg = route.legs[legIndex]!;
+          for (let i = 0; i < leg.count; i++) {
+            car.x = leg.x[i]!; car.z = leg.z[i]!; car.yaw = leg.yaw[i]!;
+            for (const other of parked) {
+              const overlap = footprintsOverlap(car, other);
+              if (overlap !== false && firstViolation === undefined) {
+                firstViolation = { lot: lot.id, bay: lot.bays[index]!.id, kind, model, leg: legIndex, sample: i, overlap, car: { ...car }, parked: { ...other } };
+              }
+            }
+          }
         }
       }
     });
+    expect(firstViolation).toBeUndefined();
     // A route through a bay's neighbour is refused.
     const blocked = clearRoute({ lot, lane }, 2, 'depart', 'mobility-sedan', [{ x: -42.5, z: -8, yaw: 0, half: 2.3, halfWidth: 1 }]);
     expect(blocked).toBeNull();

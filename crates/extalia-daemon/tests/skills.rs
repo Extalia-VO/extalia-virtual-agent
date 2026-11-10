@@ -979,7 +979,7 @@ fn import_for_review(
 }
 
 #[test]
-fn medium_findings_are_validated_only_by_a_user_review() {
+fn medium_findings_require_review_and_separate_user_approval() {
     let dir = TempDir::new();
     let mut session = start(
         &dir,
@@ -1034,8 +1034,8 @@ fn medium_findings_are_validated_only_by_a_user_review() {
     .unwrap();
     assert_eq!(
         review,
-        json!({ "revisionId": revision, "decision": "accept", "state": "validated",
-            "stateReason": "review-accepted", "reviewId": 1 })
+        json!({ "revisionId": revision, "decision": "accept", "state": "awaiting_approval",
+            "stateReason": "manual-instruction-approval", "reviewId": 1 })
     );
     // Review on the wrong state.
     assert_eq!(
@@ -1052,7 +1052,8 @@ fn medium_findings_are_validated_only_by_a_user_review() {
         json!({ "revisionId": revision }),
     )
     .unwrap();
-    assert_eq!(details["revision"]["state"], "validated");
+    assert_eq!(details["revision"]["state"], "awaiting_approval");
+    assert_eq!(details["revision"]["active"], false);
     assert_eq!(details["approvals"], json!([]));
     let last = details["history"]
         .as_array()
@@ -1062,17 +1063,23 @@ fn medium_findings_are_validated_only_by_a_user_review() {
         .clone();
     assert_eq!(
         (last["fromState"].clone(), last["reason"].clone()),
-        (json!("review_required"), json!("review-accepted"))
+        (json!("validated"), json!("manual-instruction-approval"))
     );
-    // Still not approvable: evaluation and the policy decision come first.
-    assert_eq!(
-        op(
-            &mut session,
-            "skill.approve",
-            json!({ "revisionId": revision, "treeSha256": tree, "permissionDigest": digest, "principal": USER })
-        ),
-        refused("conflict", "wrong_state")
-    );
+    // The instruction-only route still needs a distinct, hash-bound local user approval.
+    let approval = op(
+        &mut session,
+        "skill.approve",
+        json!({ "revisionId": revision, "treeSha256": tree, "permissionDigest": digest, "principal": USER }),
+    ).unwrap();
+    assert!(approval["approvalId"].as_u64().is_some());
+    let approved = op(
+        &mut session,
+        "skill.inspect",
+        json!({ "revisionId": revision }),
+    )
+    .unwrap();
+    assert_eq!(approved["approvals"].as_array().unwrap().len(), 1);
+    assert_eq!(approved["revision"]["active"], false);
     close(session).close().unwrap();
     let principal: String = cell(&dir, "SELECT principal FROM skill_reviews");
     assert_eq!(principal, USER);
@@ -1383,8 +1390,9 @@ fn scanner_reports_the_installed_inspector_without_running_it() {
     assert!(hello(&mut session).iter().any(|op| op == "skill.scanner"));
     assert_eq!(
         op(&mut session, "skill.scanner", json!({})).unwrap(),
-        json!({ "scannerId": "unavailable", "pinned": false, "policyVersion": POLICY_VERSION,
-            "status": "unavailable" })
+        json!({ "scannerId": "nvidia-skillspector", "pinned": false, "policyVersion": POLICY_VERSION,
+            "status": "unavailable", "version": extalia_daemon::skill_scanner::VERSION,
+            "normalizerVersion": extalia_daemon::skill_scanner::NORMALIZER })
     );
     assert_eq!(
         op(&mut session, "skill.scanner", json!({ "run": true })),
@@ -1428,4 +1436,82 @@ fn scanner_reports_the_installed_inspector_without_running_it() {
         op(&mut bare, "skill.scanner", json!({})),
         Err(("unknown_op".to_owned(), None))
     );
+}
+
+#[test]
+fn scanner_identity_verification_does_not_block_the_control_reader() {
+    let control_answered = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    struct SlowIdentity(std::sync::Arc<std::sync::atomic::AtomicBool>);
+    impl SkillInspector for SlowIdentity {
+        fn identity(&self) -> ScannerIdentity {
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+            while !self.0.load(std::sync::atomic::Ordering::Acquire)
+                && std::time::Instant::now() < deadline
+            {
+                std::thread::sleep(std::time::Duration::from_millis(1));
+            }
+            ScannerIdentity {
+                id: "slow-fixture".into(),
+                pin: Some("fixture-pin".into()),
+                version: Some("1".into()),
+                normalizer_version: Some("1".into()),
+            }
+        }
+        fn inspect(&self, _: &InspectionRequest<'_>) -> InspectionOutcome {
+            panic!("metadata must not scan");
+        }
+    }
+    let dir = TempDir::new();
+    let missions = Missions::new(open(&dir), "default".into());
+    let skills = Skills::with_inspector(
+        &dir.data(),
+        "default",
+        Box::new(SlowIdentity(std::sync::Arc::clone(&control_answered))),
+    );
+    let mut session = Session::with_missions(missions).with_skills(skills);
+    let mut input = Vec::new();
+    for (op, params) in [
+        (
+            "hello",
+            json!({"clientVersion":"fixture","capabilities":["hello"]}),
+        ),
+        ("skill.scanner", json!({})),
+        ("health", json!({})),
+    ] {
+        let frame = wire::parse_frame(
+            &json!({"schemaVersion":1,"kind":"request","requestId":ID,"op":op,"params":params}),
+        )
+        .unwrap();
+        input.extend(wire::encode(&frame).unwrap());
+    }
+    struct ControlWriter<'a> {
+        bytes: &'a mut Vec<u8>,
+        gate: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    }
+    impl Write for ControlWriter<'_> {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            if bytes
+                .windows(b"\"op\":\"health\"".len())
+                .any(|part| part == b"\"op\":\"health\"")
+            {
+                self.gate.store(true, std::sync::atomic::Ordering::Release);
+            }
+            self.bytes.write(bytes)
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+    let mut output = Vec::new();
+    let writer = ControlWriter {
+        bytes: &mut output,
+        gate: control_answered,
+    };
+    extalia_daemon::session::serve(std::io::Cursor::new(input), writer, &mut session).unwrap();
+    let ops = FrameReader::new(MAX_FRAME_BYTES)
+        .push(&output)
+        .into_iter()
+        .map(|frame| frame.unwrap().to_value()["op"].as_str().unwrap().to_owned())
+        .collect::<Vec<_>>();
+    assert_eq!(ops, vec!["hello", "health", "skill.scanner"]);
 }

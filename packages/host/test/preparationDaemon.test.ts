@@ -1,3 +1,4 @@
+import { createAgentHost } from '../src/service.js';
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { DatabaseSync } from 'node:sqlite';
@@ -6,12 +7,13 @@ import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { DaemonOp, DaemonPreparationAdmission, DaemonPreparationBegin, DaemonPreparationObservationRecord } from '@extalia/protocol';
 import type { AgentHostRuntime } from '../src/service.js';
-import { createAgentHost } from '../src/service.js';
+
 import { DaemonClient, DaemonUnavailableError, DaemonRequestError } from '../src/daemon/client.js';
 import * as credentials from '../src/secrets.js';
 import * as jsonStore from '../src/jsonStore.js';
 import { WorktreeManager } from '../src/worktrees/index.js';
 import { DAEMON_BINARY, HAS_DAEMON, coreFile, queryCore } from './daemonBackend.js';
+import { mockModelDiscovery } from './modelDiscoveryFixture.js';
 
 // Real Rust preparation storage with synthetic providers and isolated temporary homes only.
 if (!HAS_DAEMON) console.warn('preparationDaemon.test.ts skipped: build with cargo build -p extalia-daemon.');
@@ -48,6 +50,7 @@ async function fixture(handler: (call: Call) => Response | Promise<Response> = c
       kind: 'bridge', version: 'test', dataDirectory: data, homeDirectory: home, importHome: home, observationIntervalMs: 60_000,
       env: { EXTALIA_NATIVE_CORE: core, EXTALIA_DAEMON_PATH: DAEMON_BINARY, EXTALIA_SECRET_STORE: 'memory', HOME: home, PATH: options.git ? process.env.PATH ?? '' : '', PLAN_KEY_A: 'opaque-plan-key-a', PLAN_KEY_B: 'opaque-plan-key-b', PLAN_KEY_C: 'opaque-plan-key-c' },
       fetch: async (url, init) => { const call = { url: String(url), signal: init?.signal, text: typeof init?.body === 'string' ? init.body : '' }; calls.push(call); return handler(call); },
+      modelDiscovery: mockModelDiscovery(async (url, init) => { const call = { url: String(url), signal: init?.signal, text: typeof init?.body === 'string' ? init.body : '' }; calls.push(call); return handler(call); }),
       daemon: { log: line => { log.push(line); }, spawn: (binary, args, options) => { const child = spawn(binary, args, { ...options, stdio: ['pipe', 'pipe', 'pipe'] }); children.push(child); return child; } },
     });
     let closed = false;

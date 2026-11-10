@@ -1,9 +1,10 @@
+import { createAgentHost } from '../src/service.js';
 import { mkdir, readFile, symlink, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { BUILTIN_SKILLS } from '../src/builtinSkills.js';
-import { createAgentHost, type AgentHostRuntime } from '../src/service.js';
+import { type AgentHostRuntime } from '../src/service.js';
 import { SkillConsentStore, createSkillTools, loadSkills } from '../src/skills.js';
 import { findTool, runTool, useTempDirs } from './helpers.js';
 

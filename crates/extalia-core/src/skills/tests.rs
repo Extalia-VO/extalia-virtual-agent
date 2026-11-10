@@ -2,6 +2,7 @@
 
 mod preflight;
 mod routing;
+mod scanning;
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -1326,7 +1327,7 @@ fn stale_attestations_requarantine_and_void_approvals() {
     let (id, approval) = approve(&mut registry, &source, &inspector);
     // Policy upgrade: the attestation no longer holds.
     let upgraded = PolicyContext {
-        policy_version: "extalia.skill-policy.v2".into(),
+        policy_version: format!("{}.changed", ctx.policy_version),
         ..ctx.clone()
     };
     assert!(matches!(
@@ -1338,7 +1339,7 @@ fn stale_attestations_requarantine_and_void_approvals() {
     assert_eq!(revision.state_reason.as_deref(), Some("policy_changed"));
     // Re-inspection under the new policy starts over; the old approval stays void.
     registry
-        .inspect(&id, &inspector, "extalia.skill-policy.v2", NOW)
+        .inspect(&id, &inspector, &upgraded.policy_version, NOW)
         .unwrap();
     registry.validate(&id, &upgraded, NOW).unwrap();
     registry
@@ -1394,7 +1395,7 @@ fn active_reads_recheck_every_scanner_identity_field_and_policy_without_fallback
     let cases = [
         (
             PolicyContext {
-                policy_version: "extalia.skill-policy.v2".into(),
+                policy_version: format!("{}.changed", ctx.policy_version),
                 ..ctx.clone()
             },
             "policy_changed",

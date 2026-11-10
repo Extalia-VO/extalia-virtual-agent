@@ -263,6 +263,41 @@ describe('Skill Security Center: scanner report and consent input', () => {
     expect(banner({ ...REPORT, inspector: inspector({ scannerId: 'skillspector', status: 'unpinned' }) }, MESSAGES.id)).toContain('pin-nya belum terverifikasi');
   });
 
+  it('keeps scan progress and successful inspection separate from user activation', () => {
+    expect(html({ busy: true, scanning: true })).toContain(t.skillCenter.scanning);
+    expect(html({ scanning: false })).not.toContain(t.skillCenter.scanning);
+    const waiting = revision('instructions', 'awaiting_approval', { stateReason: 'manual-instruction-approval' });
+    const markup = html({ report: { ...REPORT, revisions: [waiting] } });
+    expect(markup).toContain('your approval is required before activation');
+    expect(markup).toContain('Approve'); expect(markup).not.toContain('>Activate<');
+  });
+
+  it('shows scan completeness, severity and pinned version without treating a scan as activation', () => {
+    const detail: SkillRevisionDetails = {
+      revision: BLOCKED, manifest: '{}', files: [], approvals: [], history: [], consent: [],
+      inspections: [{ inspectionId: 1, scannerId: 'nvidia-skillspector', scannerVersion: '2.13.4', scannerPin: hex('a'), policyVersion: 'policy-v2',
+        outcome: 'completed', coverage: 'complete', verdict: 'high', startedAt: '2026-11-09T00:00:00Z', finishedAt: '2026-11-09T00:00:01Z' }],
+    };
+    const markup = renderToStaticMarkup(SkillDetails({ t, detail }));
+    expect(markup).toContain('Coverage: Complete'); expect(markup).toContain('Highest severity: High');
+    expect(markup).toContain('2.13.4'); expect(markup).toContain(hex('a')); expect(markup).toContain('policy-v2');
+    expect(markup).not.toContain('<button');
+    const id = renderToStaticMarkup(SkillDetails({ t: MESSAGES.id, detail }));
+    expect(id).toContain('Cakupan: Lengkap'); expect(id).toContain('Keparahan tertinggi: Tinggi');
+    const partial = renderToStaticMarkup(SkillDetails({ t, detail: { ...detail, inspections: [{ ...detail.inspections[0]!, coverage: 'partial', verdict: undefined, outcome: 'incomplete' }] } }));
+    expect(partial).toContain('Coverage: Partial'); expect(partial).not.toContain('No findings');
+  });
+
+  it('previews candidate instructions literally without executing markup or granting activation', () => {
+    const detail: SkillRevisionDetails = { revision: QUARANTINED, manifest: '{}', files: [], inspections: [], approvals: [], history: [], consent: [], instructions: '# Draft\n<script>run()</script>\nDo not activate automatically.' };
+    const markup = renderToStaticMarkup(SkillDetails({ t, detail }));
+    expect(markup).toContain('Review skill instructions'); expect(markup).toContain('&lt;script&gt;run()&lt;/script&gt;');
+    expect(markup).not.toContain('<script>'); expect(markup).not.toContain('<button');
+    expect(markup).toContain('does not run, approve or activate');
+    const missing = renderToStaticMarkup(SkillDetails({ t: MESSAGES.id, detail: { ...detail, instructions: undefined, instructionsUnavailable: true } }));
+    expect(missing).toContain('Pratinjau teks lengkap tidak tersedia'); expect(missing).not.toContain('<pre');
+  });
+
   it('shows W0 consent as input only, with the project it came from', () => {
     const details: SkillRevisionDetails = {
       revision: QUARANTINED, manifest: '{}', files: [], inspections: [], approvals: [], history: [],

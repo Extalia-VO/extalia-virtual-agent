@@ -275,7 +275,10 @@ export function projectTranscript(events: readonly ExtaliaEvent[]): TranscriptIt
         break;
       }
       case 'user.intervention':
-        if (body.action === 'cancel') {
+        if (body.action === 'steer' && body.text) {
+          // A current-run message does not settle tools, workers or approval cards.
+          items.push({ kind: 'user', id: event.id, text: body.text, at: event.at });
+        } else if (body.action === 'cancel') {
           settleStream();
           currentTurn().cancelled = true;
           items.push({ kind: 'notice', id: event.id, reason: 'cancelled' });

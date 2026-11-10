@@ -6,7 +6,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { NativeImportService } from '../src/nativeImport.js';
 import { Observations } from '../src/observations.js';
 import { createAgentHost } from '../src/service.js';
-import { normalizeCodexHook } from '../src/hooks/normalize.js';
+import { normalizeCodexHook, normalizeHook, type HookApp } from '../src/hooks/normalize.js';
 import { useTempDirs } from './helpers.js';
 
 const temp = useTempDirs();
@@ -30,6 +30,121 @@ async function fixture() {
   await observer.observe(scan.scanId, [scan.sessions[0]!.id]);
   return { root, home, directory, file, initial, source, observer, updates, id: observer.summaries()[0]!.id };
 }
+
+describe('explicit observed meetings', () => {
+  const report = (input: Record<string, unknown>, sessionId = 'native-one', app: HookApp = 'codex') => normalizeHook(app, { session_id: sessionId, hook_event_name: 'report_meeting', tool_input: input })!;
+  const start = { phase: 'start', meeting_id: 'meeting-1', participants: ['primary', 'worker-1'], room_id: 'meeting-a', topic: 'Review the plan' };
+  const contribution = { phase: 'contribution', meeting_id: 'meeting-1', agent_id: 'worker-1', round: 1, text: 'Use the smaller change.' };
+  const complete = { phase: 'complete', meeting_id: 'meeting-1', outcome: 'completed', note_path: '/projects/example/notes/meeting.md' };
+  const meetings = (f: Awaited<ReturnType<typeof fixture>>) => f.observer.events(f.id).filter(event => event.body.type.startsWith('meeting.'));
+  const announce = async (f: Awaited<ReturnType<typeof fixture>>) => f.observer.receiveHook(normalizeCodexHook({ session_id: 'native-one', hook_event_name: 'SubagentStart', agent_id: 'worker-1', agent_type: 'Reviewer' })!);
+
+  it('requires independent participant evidence and admits each explicit lifecycle report once', async () => {
+    const f = await fixture();
+    try {
+      await f.observer.receiveHook(report(start));
+      expect(meetings(f)).toEqual([]);
+      expect(f.observer.events(f.id).some(event => event.body.type === 'subagent.spawned')).toBe(false);
+      await announce(f);
+      await f.observer.receiveHook(report(start));
+      await f.observer.receiveHook(report(start));
+      await f.observer.receiveHook(report({ ...start, meeting_id: 'other-active' }));
+      await f.observer.receiveHook(report(contribution));
+      await f.observer.receiveHook(report(contribution));
+      await f.observer.receiveHook(report({ ...contribution, agent_id: 'invented-agent', round: 2 }));
+      await f.observer.receiveHook(report({ ...contribution, agent_id: 'primary', meeting_id: 'foreign-meeting' }));
+      await f.observer.receiveHook(report({ ...complete, meeting_id: 'foreign-meeting' }));
+      await f.observer.receiveHook(report({ ...complete, agent_id: 'worker-1' }));
+      await f.observer.receiveHook(report({ ...contribution, round: 2 }));
+      await f.observer.receiveHook(report(complete));
+      await f.observer.receiveHook(report(complete));
+      await f.observer.receiveHook(report(start));
+      await f.observer.receiveHook(report(contribution));
+      expect(meetings(f).map(event => event.body.type)).toEqual(['meeting.started', 'meeting.contribution', 'meeting.contribution', 'meeting.completed']);
+      expect(meetings(f).at(-1)?.body).toMatchObject({ outcome: 'completed', notePath: '/projects/example/notes/meeting.md' });
+      expect(meetings(f).every(event => parseEvent(event).ok && event.sessionId === f.id && event.source.runtime === 'codex')).toBe(true);
+      expect(f.observer.events(f.id).some(event => event.body.type === 'subagent.spawned' && event.body.subagentId === 'invented-agent')).toBe(false);
+    } finally { await f.observer.close(); }
+  });
+
+  it('does not borrow participant identity or meeting state from another source or session', async () => {
+    const f = await fixture();
+    try {
+      for (const [app, sessionId] of [['claude', 'native-one'], ['codex', 'native-two']] as const) {
+        await f.observer.receiveHook(normalizeHook(app, { session_id: sessionId, hook_event_name: 'SubagentStart', agent_id: 'worker-1' })!);
+      }
+      await f.observer.receiveHook(report(start));
+      expect(meetings(f)).toEqual([]);
+      await announce(f);
+      await f.observer.receiveHook(report(start));
+      await f.observer.receiveHook(report(contribution, 'native-two'));
+      await f.observer.receiveHook(report(complete, 'native-one', 'claude'));
+      expect(meetings(f).map(event => event.body.type)).toEqual(['meeting.started']);
+      await f.observer.receiveHook(report(complete));
+      expect(meetings(f).map(event => event.body.type)).toEqual(['meeting.started', 'meeting.completed']);
+    } finally { await f.observer.close(); }
+  });
+
+  it('never creates a new observation or participant solely from a meeting report', async () => {
+    const f = await fixture();
+    try {
+      await f.observer.receiveHook(report({ ...start, participants: ['primary'] }, 'unknown-session'));
+      expect(f.observer.summaries()).toHaveLength(1);
+      await f.observer.receiveHook(report({ ...start, agent_id: 'unknown-reporter', participants: ['primary'] }));
+      expect(meetings(f)).toEqual([]);
+      expect(f.observer.events(f.id).some(event => event.body.type === 'subagent.spawned')).toBe(false);
+    } finally { await f.observer.close(); }
+  });
+
+  it.each(['SessionEnd', 'StopFailure'])('closes the active meeting on %s and rejects stale reports', async event => {
+    const f = await fixture();
+    try {
+      await announce(f);
+      await f.observer.receiveHook(report(start));
+      await f.observer.receiveHook(normalizeCodexHook({ session_id: 'native-one', hook_event_name: event, error: 'rate_limit', error_message: 'Rate limit' })!);
+      await f.observer.receiveHook(report(contribution));
+      await f.observer.receiveHook(report(complete));
+      expect(meetings(f).map(event => event.body.type)).toEqual(['meeting.started', 'meeting.completed']);
+      expect(meetings(f).at(-1)?.body).toEqual({ type: 'meeting.completed', meetingId: 'meeting-1', outcome: event === 'SessionEnd' ? 'cancelled' : 'failed' });
+    } finally { await f.observer.close(); }
+  });
+
+  it('closes a child-reported meeting when that known child stops', async () => {
+    const f = await fixture();
+    try {
+      await announce(f);
+      await f.observer.receiveHook(report({ ...start, agent_id: 'worker-1' }));
+      await f.observer.receiveHook(normalizeCodexHook({ session_id: 'native-one', hook_event_name: 'SubagentStop', agent_id: 'worker-1' })!);
+      await f.observer.receiveHook(report({ ...complete, agent_id: 'worker-1' }));
+      expect(meetings(f).map(event => event.body.type)).toEqual(['meeting.started', 'meeting.completed']);
+      expect(meetings(f).at(-1)?.body).toEqual({ type: 'meeting.completed', meetingId: 'meeting-1', outcome: 'cancelled' });
+    } finally { await f.observer.close(); }
+  });
+
+  it('drops meeting content at ingestion and removes retained content when labels-only is enabled', async () => {
+    const f = await fixture();
+    try {
+      await announce(f);
+      await f.observer.receiveHook(report(start));
+      await f.observer.receiveHook(report(contribution));
+      await f.observer.setPrivacy({ labelsOnly: true });
+      // Exercise the observer's own privacy boundary with already-normalized input,
+      // including legacy completion fields that the new MCP tool does not accept.
+      const hook = report(complete);
+      hook.steps[0]!.body = { type: 'meeting.completed', meetingId: 'meeting-1', outcome: 'completed', notePath: '/projects/example/private.md', decisions: ['Private decision'], actionItems: ['Private action'] };
+      await f.observer.receiveHook(hook);
+      await f.observer.receiveHook(report({ ...start, meeting_id: 'meeting-2' }));
+      await f.observer.receiveHook(report({ ...contribution, meeting_id: 'meeting-2' }));
+      await f.observer.receiveHook(report({ ...complete, meeting_id: 'meeting-2' }));
+      expect(meetings(f).map(event => event.body.type)).toEqual(['meeting.started', 'meeting.completed', 'meeting.started', 'meeting.completed']);
+      const serialized = JSON.stringify(meetings(f));
+      for (const content of ['Review the plan', 'Use the smaller change', 'Private decision', 'Private action', '/projects/example']) expect(serialized).not.toContain(content);
+      expect(meetings(f)[0]?.body).toEqual({ type: 'meeting.started', meetingId: 'meeting-1', participants: ['primary', 'worker-1'], roomId: 'meeting-a' });
+      await f.observer.setPrivacy({ labelsOnly: false });
+      expect(JSON.stringify(meetings(f))).not.toContain('Use the smaller change');
+    } finally { await f.observer.close(); }
+  });
+});
 
 describe('live transcript observation', () => {
   it('recovers a missing transcript status when a real hook reports activity without fabricating transcript history', async () => {

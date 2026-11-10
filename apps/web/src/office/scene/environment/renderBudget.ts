@@ -6,6 +6,10 @@
 export interface RenderBudgetLevel {
   /** Upper bound for the canvas pixel ratio (the device ratio is never exceeded). */
   maxDpr: number;
+  /** Maximum physical canvas short edge in pixels; aspect ratio can change the long edge. */
+  resolutionHeight: number;
+  /** Optional total physical canvas pixel cap, including ultrawide canvases. */
+  maxPixels?: number;
   /** Live spot lights that add local detail to the nearest fixtures (baked pools stay). */
   liveBeams: number;
   /** Key light (sun/moon) shadow map size. */
@@ -17,21 +21,23 @@ export interface RenderBudgetLevel {
 }
 
 export const RENDER_BUDGET_LEVELS: readonly RenderBudgetLevel[] = [
-  { maxDpr: 1.25, liveBeams: 6, shadowMapSize: 1024, shadowRefreshSeconds: 0.25, trafficCars: 16 },
-  { maxDpr: 1, liveBeams: 6, shadowMapSize: 1024, shadowRefreshSeconds: 0.25, trafficCars: 14 },
-  // Live beams stay until the last level: hiding a light recompiles every lit material once.
-  { maxDpr: 0.85, liveBeams: 6, shadowMapSize: 1024, shadowRefreshSeconds: 0.5, trafficCars: 10 },
-  { maxDpr: 0.7, liveBeams: 0, shadowMapSize: 512, shadowRefreshSeconds: 1, trafficCars: 6 },
+  { resolutionHeight: 2160, maxDpr: 2, maxPixels: 3840 * 2160, liveBeams: 6, shadowMapSize: 1024, shadowRefreshSeconds: 0.25, trafficCars: 16 },
+  { resolutionHeight: 1440, maxDpr: 2, maxPixels: 3840 * 2160, liveBeams: 6, shadowMapSize: 1024, shadowRefreshSeconds: 0.25, trafficCars: 14 },
+  { resolutionHeight: 1080, maxDpr: 2, maxPixels: 3840 * 2160, liveBeams: 6, shadowMapSize: 1024, shadowRefreshSeconds: 0.5, trafficCars: 10 },
+  // Keep the first recovery step cheap; changing the live-light count recompiles lit materials.
+  { resolutionHeight: 720, maxDpr: 2, maxPixels: 3840 * 2160, liveBeams: 0, shadowMapSize: 512, shadowRefreshSeconds: 1, trafficCars: 6 },
+  { resolutionHeight: 480, maxDpr: 2, maxPixels: 3840 * 2160, liveBeams: 0, shadowMapSize: 512, shadowRefreshSeconds: 1, trafficCars: 6 },
 ];
 
 export const TARGET_FPS = 40;
 
-let level = 0;
+let level = RENDER_BUDGET_LEVELS.length - 1;
 const listeners = new Set<() => void>();
 
 export function getRenderBudgetLevel(): number { return level; }
 export function getRenderBudget(): RenderBudgetLevel { return RENDER_BUDGET_LEVELS[level]!; }
 export function setRenderBudgetLevel(next: number): void {
+  if (!Number.isFinite(next)) return;
   const clamped = Math.max(0, Math.min(RENDER_BUDGET_LEVELS.length - 1, Math.round(next)));
   if (clamped === level) return;
   level = clamped;
@@ -42,9 +48,16 @@ export function subscribeRenderBudget(listener: () => void): () => void {
   return () => { listeners.delete(listener); };
 }
 
-/** Pixel ratio for a level: the display's own ratio (at least 1), capped by the level. */
-export function budgetPixelRatio(budget: RenderBudgetLevel, devicePixelRatio: number): number {
-  return Math.min(budget.maxDpr, Math.max(1, devicePixelRatio || 1));
+/** Fit physical resolution to the level and native display without supersampling small canvases. */
+export function budgetPixelRatio(budget: RenderBudgetLevel, devicePixelRatio: number, width = 1920, height = 1080): number {
+  const nativeRatio = Number.isFinite(devicePixelRatio) && devicePixelRatio > 0 ? devicePixelRatio : 1;
+  const cssWidth = Number.isFinite(width) && width > 0 ? width : 1920;
+  const cssHeight = Number.isFinite(height) && height > 0 ? height : 1080;
+  // Taking each square root first avoids overflow for very large finite dimensions.
+  const pixelCap = budget.maxPixels !== undefined && Number.isFinite(budget.maxPixels) && budget.maxPixels > 0
+    ? Math.sqrt(budget.maxPixels) / Math.sqrt(cssWidth) / Math.sqrt(cssHeight)
+    : Infinity;
+  return Math.min(nativeRatio, budget.maxDpr, budget.resolutionHeight / Math.min(cssWidth, cssHeight), pixelCap);
 }
 
 export interface BudgetSample { fps: number }
@@ -57,7 +70,7 @@ export interface BudgetController {
 }
 
 export function createBudgetController(): BudgetController {
-  return { level: 0, slow: 0, fast: 0, failures: RENDER_BUDGET_LEVELS.map(() => 0) };
+  return { level: RENDER_BUDGET_LEVELS.length - 1, slow: 0, fast: 0, failures: RENDER_BUDGET_LEVELS.map(() => 0) };
 }
 
 /** Windows (about one second each) of sustained headroom before trying the level above again. */

@@ -13,6 +13,7 @@
 //! surrogate escapes are rejected.
 
 mod knowledge;
+pub mod learning;
 mod missions;
 mod planning;
 mod preparation;
@@ -78,6 +79,7 @@ macro_rules! names {
 names!(
     /// Operations defined by contract v1.
     Op {
+        LearningProcess = "learning.process",
         Hello = "hello",
         MissionCreate = "mission.create",
         MissionSnapshot = "mission.snapshot",
@@ -99,6 +101,7 @@ names!(
         SkillImport = "skill.import",
         SkillList = "skill.list",
         SkillInspect = "skill.inspect",
+        SkillRescan = "skill.rescan",
         SkillReview = "skill.review",
         SkillApprove = "skill.approve",
         SkillActivate = "skill.activate",
@@ -206,6 +209,7 @@ pub enum RequestParams {
     Skill(SkillRequest),
     /// A knowledge index operation (`knowledge.*`).
     Knowledge(KnowledgeRequest),
+    Learning(Value),
     /// A defined operation whose parameters this daemon does not inspect yet.
     Unvalidated {
         op: Op,
@@ -264,6 +268,7 @@ pub enum ResponseResult {
         op: Op,
         result: Value,
     },
+    Learning(Value),
     /// A knowledge index result, validated field by field and kept as that JSON.
     Knowledge {
         op: Op,
@@ -319,6 +324,7 @@ impl RequestParams {
             Self::TaskTransition(_) => Op::TaskTransition,
             Self::EventCommit(_) => Op::EventCommit,
             Self::Skill(request) => request.op(),
+            Self::Learning(_) => Op::LearningProcess,
             Self::Knowledge(request) => request.op(),
             Self::Unvalidated { op, .. } => *op,
         }
@@ -347,6 +353,7 @@ impl ResponseResult {
             Self::TaskTransition(_) => Op::TaskTransition,
             Self::EventCommit(_) => Op::EventCommit,
             Self::Skill { op, .. } => *op,
+            Self::Learning(_) => Op::LearningProcess,
             Self::Knowledge { op, .. } => *op,
             Self::Unvalidated { op, .. } => *op,
         }
@@ -436,6 +443,7 @@ impl Frame {
                     RequestParams::TaskTransition(params) => params.to_value(),
                     RequestParams::EventCommit(event) => missions::event_commit_params(event),
                     RequestParams::Skill(request) => request.to_value(),
+                    RequestParams::Learning(value) => value.clone(),
                     RequestParams::Knowledge(request) => request.to_value(),
                     RequestParams::Unvalidated { params, .. } => params.clone(),
                 };
@@ -478,6 +486,7 @@ impl Frame {
                     ResponseResult::TaskTransition(ack) => missions::transition_ack_value(ack),
                     ResponseResult::EventCommit(ack) => missions::event_ack_value(ack),
                     ResponseResult::Skill { result, .. } => result.clone(),
+                    ResponseResult::Learning(value) => value.clone(),
                     ResponseResult::Knowledge { result, .. } => result.clone(),
                     ResponseResult::Unvalidated { result, .. } => result.clone(),
                 };
@@ -783,6 +792,7 @@ fn request(check: &mut Check, object: &Map<String, Value>, op: Op) -> Option<Fra
         Op::SkillImport
         | Op::SkillList
         | Op::SkillInspect
+        | Op::SkillRescan
         | Op::SkillReview
         | Op::SkillApprove
         | Op::SkillActivate
@@ -806,6 +816,7 @@ fn request(check: &mut Check, object: &Map<String, Value>, op: Op) -> Option<Fra
         | Op::KnowledgeHistory
         | Op::KnowledgeRollback
         | Op::KnowledgeImportMemory => knowledge::request(check, op, params),
+        Op::LearningProcess => learning::request(check, params),
     });
     Some(Frame::Request(Request {
         request_id: request_id?,
@@ -896,6 +907,7 @@ fn response(check: &mut Check, object: &Map<String, Value>, op: Op) -> Option<Fr
         Op::SkillImport
         | Op::SkillList
         | Op::SkillInspect
+        | Op::SkillRescan
         | Op::SkillReview
         | Op::SkillApprove
         | Op::SkillActivate
@@ -919,6 +931,7 @@ fn response(check: &mut Check, object: &Map<String, Value>, op: Op) -> Option<Fr
         | Op::KnowledgeHistory
         | Op::KnowledgeRollback
         | Op::KnowledgeImportMemory => knowledge::result(check, op, result),
+        Op::LearningProcess => learning::result(check, result),
     });
     Some(Frame::Response(Response {
         request_id: request_id?,

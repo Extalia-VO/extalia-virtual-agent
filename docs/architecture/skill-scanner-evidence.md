@@ -30,3 +30,15 @@ outputs; and demonstrate network/credential/resource isolation and complete
 coverage. Bundle the supported Python/runtime environment under Rust supervision
 as required by [ADR 0022](../adr/0022-python-worker-distribution.md).
 The default inspector remains unavailable and imported skills remain quarantined.
+
+## 2026-11-09 integration evidence
+
+The audit above is historical. The production candidate is now NVIDIA
+SkillSpector 2.13.4 at `54824463814a0be01360792523ec7245a69190fc`, with
+hash-locked dependencies and a relocated CPython 3.13.18 bundle. See
+[`tooling/skillspector/README.md`](../../tooling/skillspector/README.md),
+[`fixture-evidence.json`](../../tooling/skillspector/fixture-evidence.json) and
+[ADR 0068](../adr/0068-pinned-skillspector-inspection.md) for the exact source,
+license retention, report contract, complete/incomplete fixture results and
+platform/resource limitations. The normalized summary is evidence only;
+activation still requires the user's separate, current approval.

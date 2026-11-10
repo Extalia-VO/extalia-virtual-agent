@@ -4,6 +4,48 @@ Audit date: 2026-11-08. Starting baseline: v0.4.186. The owner requested local
 implementation through 06:00 WIB. This report records product gaps and evidence;
 it does not redefine the PRD or claim completion from UI appearance alone.
 
+## Current incremental checkpoint (2026-11-09)
+
+The table and v0.4.187–188 results below are historical evidence. Current status
+is recorded in the [PRD tracker](prd-app-flow-and-live-agents.md#11-status-tracker).
+There is no defensible overall completion percentage from test or file counts.
+
+Rust already owns canonical mission records/leases, recovery inspection,
+knowledge indexing, skill revisions and approvals, bounded learning jobs and
+profile artifact publication. The pinned SkillSpector path has actual macOS
+ARM64 execution evidence; Unix learning exports and scanner isolation on other
+platforms retain their documented limits.
+
+The v0.4.242 implemented cut is [Rust OpenAI-compatible model discovery](../adr/0070-rust-provider-model-discovery.md):
+actual catalog HTTP/parsing/normalization, an isolated executable mode and
+positive local child settlement. It does not migrate completion streaming or the
+whole Native harness. The source audit deliberately retains its Node transport
+and shared envelope validator as debt.
+
+Major open acceptance groups remain:
+
+1. Provider completion HTTP/streaming, large-request transport/backpressure,
+   bounded provider ingress and Anthropic parity, followed by turn/history,
+   scheduling, delegation and meeting execution (ADR 0069, FR-004/005/012).
+2. Complete executor/child membership and writer fencing, physical reconciliation,
+   exact action approvals and accepted evidence before dependency release
+   (V2-03/04/05/06, FR-009/010/025). Read-only discovery cannot close these gates.
+3. One fully certified permitted worker with ownership, lifecycle, authentication
+   and artifacts; simulated endpoints are supporting evidence only
+   (V2-11/14/15, FR-006/007).
+4. Reviewed memory continuation/compaction, cross-store conflicts and measured
+   skill-quality promotion, beyond saving a lesson or passing a security scan
+   (V2-17A/17, FR-026).
+5. Actual packaged platform/TLS behavior, signing/notarization and traceable
+   end-to-end acceptance evidence. A green unit suite is not broad certification.
+
+Continue through bounded executable cuts with the existing permission and
+recovery boundaries intact. The next provider cut needs a reviewed stream and
+large-input contract before replacing completion execution; it must not move
+JavaScript into a Rust-launched script and call that migration.
+
+## Historical baseline and measurements
+
 | Area | Actual baseline | Gap and current work |
 | --- | --- | --- |
 | Workspace memory | Bounded metadata, literal search, paged redacted reads, lead-only confirmed writes already exist | v0.4.187 adds revision integrity, human inspection/editing and effective scope/context UX. v0.4.188 adds bounded lexical metadata recall and a stat-validated metadata cache; synthetic evaluation records both hits and distant-summary misses |

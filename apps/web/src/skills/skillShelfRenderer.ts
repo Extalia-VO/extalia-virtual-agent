@@ -1,10 +1,12 @@
 import * as THREE from 'three';
-import { BOOK_COLORS, type SkillBook } from './skillLibraryModel';
+import { BOOK_COLORS, BOOKS_PER_SHELF, type SkillBook } from './skillLibraryModel';
 import { SkillBookMotion, type SkillBookPage } from './skillBookMotion';
 import { bookSeed, createBookCover, createClothWeave, createPaperEdges } from './skillBookArtwork';
+import { createShelfFlight, shelfFlightPose, SkillShelfMagic, type ShelfFlight } from './skillShelfMagic';
 
 export interface ShelfReader { id: string | null; pages: readonly SkillBookPage[]; page: number; pageLabel: (page: number, total: number) => string }
-export interface ShelfActions { onSelect(id: string): void; onTurn(direction: -1 | 1): void; onClose(): void; onUnavailable(): void; onShelfRest(): void }
+export interface ShelfHover { id: string; clientX: number; clientY: number }
+export interface ShelfActions { onSelect(id: string): void; onTurn(direction: -1 | 1): void; onClose(): void; onUnavailable(): void; onShelfRest(): void; onHover?(hover: ShelfHover | null): void }
 
 /** Extalia's installed Three.js, procedural geometry and local canvas covers. No remote runtime or artwork. */
 export function createSkillShelf(canvas: HTMLCanvasElement, books: readonly SkillBook[], actions: ShelfActions) {
@@ -16,7 +18,7 @@ export function createSkillShelf(canvas: HTMLCanvasElement, books: readonly Skil
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   const scene = new THREE.Scene();
-  const rows = Math.max(1, Math.ceil(books.length / 6));
+  const rows = Math.ceil(BOOKS_PER_SHELF / 6);
   const camera = new THREE.PerspectiveCamera(34, 1, .1, 50);
   camera.position.set(.25, rows * .8, 12.5);
   camera.lookAt(0, (rows - 1) * .95, 0);
@@ -49,7 +51,7 @@ export function createSkillShelf(canvas: HTMLCanvasElement, books: readonly Skil
     const lip = new THREE.Mesh(geometry(8.1, .035, .03), material('#775d43')); lip.position.set(0, row * 1.9 - .765, .465); scene.add(lip);
   }
   const targets: THREE.Object3D[] = [];
-  const volumes = new Map<string, { book: THREE.Group; hinge: THREE.Group; home: THREE.Vector3; rotation: THREE.Quaternion; title: string; leftStack: THREE.Mesh }>();
+  const volumes = new Map<string, { index: number; book: THREE.Group; hinge: THREE.Group; home: THREE.Vector3; rotation: THREE.Quaternion; title: string; leftStack: THREE.Mesh; glow: THREE.MeshStandardMaterial[]; flight: ShelfFlight | null; flightStart: number; flightPosition: THREE.Vector3 }>();
   books.forEach((book, index) => {
     const group = new THREE.Group();
     const x = (index % 6 - 2.5) * 1.22, y = (rows - 1 - Math.floor(index / 6)) * 1.9;
@@ -65,6 +67,7 @@ export function createSkillShelf(canvas: HTMLCanvasElement, books: readonly Skil
     const hinge = new THREE.Group(); hinge.position.set(-.445, 0, .16); group.add(hinge);
     const cover = new THREE.Mesh(geometry(.94, 1.54, .045), cloth); cover.position.x = .445; hinge.add(cover);
     const printed = new THREE.MeshStandardMaterial({ map: texture(createBookCover(book, index, clothColor)), roughness: .91, bumpMap: weave, bumpScale: .0015 }); resources.push(printed);
+    for (const surface of [cloth, printed]) { surface.emissive.set('#b9a7dc'); surface.emissiveIntensity = 0; }
     const faceGeometry = new THREE.PlaneGeometry(.925, 1.525); resources.push(faceGeometry);
     const face = new THREE.Mesh(faceGeometry, printed); face.position.set(.445, 0, .025); hinge.add(face);
     const leftStack = new THREE.Mesh(geometry(.885, 1.45, .025), [paperEdge, paperEdge, topEdge, topEdge, paper, paper]);
@@ -77,9 +80,133 @@ export function createSkillShelf(canvas: HTMLCanvasElement, books: readonly Skil
       const band = new THREE.Mesh(geometry(.081, .012, .355), gold); band.position.set(-.457, offset, 0); group.add(band);
     }
     group.traverse(part => { part.userData.bookId = book.id; if (part instanceof THREE.Mesh) { part.castShadow = true; part.receiveShadow = true; targets.push(part); } });
-    scene.add(group); volumes.set(book.id, { book: group, hinge, home: group.position.clone(), rotation: group.quaternion.clone(), title: book.title, leftStack });
+    scene.add(group); volumes.set(book.id, { index, book: group, hinge, home: group.position.clone(), rotation: group.quaternion.clone(), title: book.title, leftStack, glow: [cloth, printed], flight: null, flightStart: 0, flightPosition: group.position.clone() });
   });
   const motion = new SkillBookMotion();
+  const magic = new SkillShelfMagic(books.length);
+  // A small, shared point burst; no textures, postprocessing, or perpetual ambient loop.
+  const sparkGeometry = new THREE.BufferGeometry();
+  const sparkPositions = new Float32Array(32 * 3), sparkSeeds = new Float32Array(32);
+  for (let index = 0; index < 32; index++) {
+    const seed = bookSeed(`shelf-spark-${index}`);
+    sparkPositions.set([((seed & 255) / 255 - .5) * 1.16, (((seed >>> 8) & 255) / 255 - .5) * 1.6, .2 + ((seed >>> 16) & 255) / 255 * .14], index * 3);
+    sparkSeeds[index] = (seed % 997) / 997;
+  }
+  sparkGeometry.setAttribute('position', new THREE.BufferAttribute(sparkPositions, 3));
+  sparkGeometry.setAttribute('seed', new THREE.BufferAttribute(sparkSeeds, 1));
+  const sparkMaterial = new THREE.ShaderMaterial({
+    uniforms: { progress: { value: 1 }, pixelRatio: { value: renderer.getPixelRatio() } },
+    vertexShader: `attribute float seed; uniform float progress; uniform float pixelRatio; varying float intensity;
+      void main() {
+        vec3 point = position; point.y += progress * (.16 + seed * .22);
+        point.x += sin(progress * 4.0 + seed * 6.283) * .035;
+        vec4 view = modelViewMatrix * vec4(point, 1.0);
+        gl_Position = projectionMatrix * view;
+        gl_PointSize = clamp((2.5 + seed * 3.0) * pixelRatio * 9.0 / -view.z, 1.0, 9.0);
+        intensity = sin(progress * 3.14159) * (.3 + seed * .5);
+      }`,
+    fragmentShader: `varying float intensity;
+      void main() {
+        vec2 point = abs(gl_PointCoord - .5);
+        float core = 1.0 - smoothstep(.08, .48, length(point));
+        float cross = (1.0 - smoothstep(.02, .08, min(point.x, point.y))) * (1.0 - smoothstep(.1, .49, max(point.x, point.y)));
+        gl_FragColor = vec4(.88, .81, 1.0, max(core * .55, cross) * intensity);
+      }`,
+    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+  });
+  const sparks = new THREE.Points(sparkGeometry, sparkMaterial); sparks.frustumCulled = false; sparks.visible = false; scene.add(sparks);
+  resources.push(sparkGeometry, sparkMaterial);
+  // Eight past-path motes per volume share one bounded draw call and reusable GPU buffers.
+  const dustCapacity = BOOKS_PER_SHELF * 8, dustGeometry = new THREE.BufferGeometry();
+  const dustPositions = new THREE.BufferAttribute(new Float32Array(dustCapacity * 3), 3).setUsage(THREE.DynamicDrawUsage);
+  const dustStrengths = new THREE.BufferAttribute(new Float32Array(dustCapacity), 1).setUsage(THREE.DynamicDrawUsage);
+  const dustTones = new Float32Array(dustCapacity);
+  for (let index = 0; index < dustCapacity; index++) dustTones[index] = index % 3 === 0 ? 1 : 0;
+  dustGeometry.setAttribute('position', dustPositions); dustGeometry.setAttribute('strength', dustStrengths);
+  dustGeometry.setAttribute('tone', new THREE.BufferAttribute(dustTones, 1)); dustGeometry.setDrawRange(0, 0);
+  const dustMaterial = new THREE.ShaderMaterial({
+    uniforms: { pixelRatio: { value: renderer.getPixelRatio() } },
+    vertexShader: `attribute float strength; attribute float tone; uniform float pixelRatio;
+      varying float alpha; varying vec3 tint;
+      void main() {
+        vec4 view = modelViewMatrix * vec4(position, 1.0); gl_Position = projectionMatrix * view;
+        gl_PointSize = clamp((5.0 + tone * 2.0) * pixelRatio * 10.0 / -view.z, 2.0, 11.0);
+        alpha = strength; tint = mix(vec3(.2, .94, .8), vec3(1.0, .78, .34), tone);
+      }`,
+    fragmentShader: `varying float alpha; varying vec3 tint;
+      void main() {
+        float radius = length(gl_PointCoord - .5);
+        float halo = 1.0 - smoothstep(.04, .5, radius);
+        float core = 1.0 - smoothstep(.01, .15, radius);
+        gl_FragColor = vec4(tint, (halo * .65 + core * .35) * alpha);
+      }`,
+    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+  });
+  const dust = new THREE.Points(dustGeometry, dustMaterial); dust.frustumCulled = false; dust.visible = false; scene.add(dust);
+  const dustPoint = new THREE.Vector3(); resources.push(dustGeometry, dustMaterial);
+  // One bounded smoke draw call follows hovered volumes; only active hover keeps it moving.
+  const auraGeometry = new THREE.PlaneGeometry(2.1, 3.05);
+  const auraStrengths = new THREE.InstancedBufferAttribute(new Float32Array(BOOKS_PER_SHELF), 1).setUsage(THREE.DynamicDrawUsage);
+  const auraFloors = new THREE.InstancedBufferAttribute(new Float32Array(BOOKS_PER_SHELF), 1).setUsage(THREE.DynamicDrawUsage);
+  auraGeometry.setAttribute('strength', auraStrengths); auraGeometry.setAttribute('shelfTop', auraFloors);
+  const auraMaterial = new THREE.ShaderMaterial({
+    uniforms: { smokeTime: { value: 0 }, frontLayer: { value: 0 } },
+    vertexShader: `attribute float strength; attribute float shelfTop;
+      varying vec2 point; varying vec2 bookPoint; varying float worldHeight; varying float floorHeight;
+      varying float alpha; varying vec3 tint;
+      void main() {
+        point = uv * 2.0 - 1.0; alpha = strength; tint = instanceColor;
+        bookPoint = position.xy; floorHeight = shelfTop;
+        worldHeight = (modelMatrix * instanceMatrix * vec4(position, 1.0)).y;
+        gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(position, 1.0);
+      }`,
+    fragmentShader: `uniform float smokeTime; uniform float frontLayer;
+      varying vec2 point; varying vec2 bookPoint; varying float worldHeight; varying float floorHeight;
+      varying float alpha; varying vec3 tint;
+      float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+      float noise(vec2 p) {
+        vec2 cell = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+        return mix(mix(hash(cell), hash(cell + vec2(1.0, 0.0)), f.x),
+          mix(hash(cell + vec2(0.0, 1.0)), hash(cell + vec2(1.0)), f.x), f.y);
+      }
+      float smoke(vec2 p) {
+        return noise(p) * .57 + noise(p * 2.07 + vec2(7.1, 3.4)) * .28
+          + noise(p * 4.11 + vec2(2.8, 9.2)) * .15;
+      }
+      void main() {
+        // Clips follow both the tilted book foot and its fixed shelf, preventing undershelf spill.
+        float footClip = smoothstep(-.77, -.69, bookPoint.y) * smoothstep(floorHeight, floorHeight + .035, worldHeight);
+        if (footClip <= .001) discard;
+        vec2 flow = vec2(point.x * 3.4 + sin(point.y * 5.0 - smokeTime * 2.1) * .48,
+          point.y * 3.8 - smokeTime * 1.35);
+        float billow = smoke(flow);
+        vec2 edge = vec2(point.x + sin(point.y * 4.0 - smokeTime * 1.7) * .06, (point.y + .1) * .82);
+        float plume = 1.0 - smoothstep(.60 + billow * .18, 1.0, length(edge));
+        float density = smoothstep(.22, .73, billow);
+        float wisps = smoothstep(.12, .72, billow + sin(point.y * 8.0 - smokeTime * 2.4) * .09);
+        vec3 pigment = tint / max(.12, max(tint.r, max(tint.g, tint.b)));
+        vec3 color = pigment * (.24 + billow * .7);
+        float opacity = min(.94, (.18 + density * .75 + wisps * .24) * plume);
+        if (frontLayer > .5) {
+          float bottom = 1.0 - smoothstep(-.59, -.35, bookPoint.y);
+          float sides = smoothstep(.36, .48, abs(bookPoint.x)) * (1.0 - smoothstep(-.4, .08, bookPoint.y));
+          float coverWidth = 1.0 - smoothstep(.49, .59, abs(bookPoint.x));
+          opacity *= max(bottom * .27, sides * .12) * coverWidth;
+        }
+        gl_FragColor = vec4(color, opacity * alpha * footClip);
+      }`,
+    transparent: true, depthWrite: false, blending: THREE.NormalBlending,
+  });
+  const auras = new THREE.InstancedMesh(auraGeometry, auraMaterial, BOOKS_PER_SHELF);
+  auras.frustumCulled = false; auras.count = 0; auras.visible = false;
+  auras.instanceMatrix.setUsage(THREE.DynamicDrawUsage); auras.setColorAt(0, new THREE.Color());
+  auras.instanceColor!.setUsage(THREE.DynamicDrawUsage); scene.add(auras);
+  const frontAuraMaterial = auraMaterial.clone(); frontAuraMaterial.uniforms.frontLayer!.value = 1;
+  const frontAuras = new THREE.InstancedMesh(auraGeometry, frontAuraMaterial, BOOKS_PER_SHELF);
+  frontAuras.frustumCulled = false; frontAuras.count = 0; frontAuras.visible = false;
+  frontAuras.instanceMatrix.setUsage(THREE.DynamicDrawUsage); frontAuras.instanceColor = auras.instanceColor; scene.add(frontAuras);
+  const auraMatrix = new THREE.Matrix4(), auraOffset = new THREE.Matrix4().makeTranslation(0, 0, -.23), frontAuraOffset = new THREE.Matrix4().makeTranslation(0, 0, .225), auraTint = new THREE.Color();
+  resources.push(auraGeometry, auraMaterial, auras, frontAuraMaterial, frontAuras);
   let requested: ShelfReader = { id: null, pages: [], page: 0, pageLabel: () => '' };
   let content: ShelfReader = requested;
   let attached: string | null = null;
@@ -188,13 +315,17 @@ export function createSkillShelf(canvas: HTMLCanvasElement, books: readonly Skil
     }
   }
 
-  let frame = 0, disposed = false, previousTime: number | undefined, wasActive = false;
+  let frame = 0, disposed = false, previousTime: number | undefined, wasActive = false, smokeActive = false, smokeTime = 0;
   const reduced = window.matchMedia('(prefers-reduced-motion: reduce)');
   const render = (time: number) => {
     frame = 0;
     if (disposed || document.hidden) return;
-    motion.advance(previousTime === undefined ? 16 : Math.min(64, time - previousTime), reduced.matches);
-    previousTime = motion.animating ? time : undefined;
+    // Let finite book motion stay smooth; render a resting smoke plume at at most 30 fps.
+    if (smokeActive && !reduced.matches && !motion.animating && !magic.animating && previousTime !== undefined && time - previousTime < 1000 / 30 - .5) {
+      frame = requestAnimationFrame(render); return;
+    }
+    const delta = previousTime === undefined ? 16 : Math.min(64, time - previousTime);
+    motion.advance(delta, reduced.matches); magic.advance(delta, reduced.matches);
     if (motion.activeId === requested.id && content !== requested) { content = requested; painted = ''; }
     const distance = 3.8;
     const height = 2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2) * distance;
@@ -205,24 +336,78 @@ export function createSkillShelf(canvas: HTMLCanvasElement, books: readonly Skil
     upAxis.set(0, 1, 0).applyQuaternion(camera.quaternion);
     goal.copy(camera.position).addScaledVector(forward, distance).addScaledVector(rightAxis, compact ? 0 : .47 * scale).addScaledVector(upAxis, .02 * height);
     inspectionRotation.copy(camera.quaternion).multiply(inspectionTilt);
+    const decorative = !reduced.matches && !motion.activeId && !requested.id;
+    let dustCount = 0, auraCount = 0;
     for (const [id, volume] of volumes) {
       const amount = id === motion.activeId ? motion.lift : 0;
-      volume.book.position.copy(volume.home).lerp(goal, amount);
-      volume.book.quaternion.copy(volume.rotation).slerp(inspectionRotation, amount);
-      volume.book.scale.setScalar(1 + (scale - 1) * amount);
+      const arrival = magic.reveal(volume.index), hover = motion.activeId || requested.id ? 0 : magic.hover(volume.index);
+      const flight = volume.flight && arrival < 1 ? shelfFlightPose(volume.flight, (arrival - volume.flightStart) / (1 - volume.flightStart), arrival) : null;
+      if (flight) volume.flightPosition.set(flight.x, flight.y, flight.z).unproject(camera);
+      else volume.flightPosition.copy(volume.home);
+      volume.book.position.copy(volume.flightPosition).lerp(goal, amount);
+      volume.book.position.y += hover * .065 * (1 - amount);
+      volume.book.position.z += hover * .15 * (1 - amount);
+      volume.book.quaternion.copy(volume.rotation);
+      if (flight) { volume.book.rotateZ(flight.roll); volume.book.rotateY(flight.tilt); }
+      volume.book.quaternion.slerp(inspectionRotation, amount);
+      volume.book.rotateX(-hover * .025 * (1 - amount));
+      volume.book.scale.setScalar((1 + (scale - 1) * amount) * (1 + ((flight?.scale ?? 1) - 1) * (1 - amount)));
+      const arrivalGlow = decorative ? .14 * Math.sin(arrival * Math.PI) + .12 * Math.sin(Math.max(0, (arrival - .65) / .35) * Math.PI) : 0;
+      for (const surface of volume.glow) surface.emissiveIntensity = (arrivalGlow + hover * .12) * (1 - amount);
+      if (decorative && hover > 0 && auraCount < BOOKS_PER_SHELF) {
+        volume.book.updateMatrixWorld(); auraMatrix.copy(volume.book.matrixWorld).multiply(auraOffset);
+        auras.setMatrixAt(auraCount, auraMatrix);
+        auraMatrix.copy(volume.book.matrixWorld).multiply(frontAuraOffset); frontAuras.setMatrixAt(auraCount, auraMatrix);
+        auraTint.copy(volume.glow[0]!.color);
+        auras.setColorAt(auraCount, auraTint); auraStrengths.setX(auraCount, hover);
+        auraFloors.setX(auraCount, volume.home.y - .79 + .11 / 2); auraCount++;
+      }
+      if (decorative && volume.flight && arrival > 0 && arrival < 1 && volume.index < BOOKS_PER_SHELF) {
+        for (let sample = 0; sample < 8; sample++) {
+          const past = Math.max(volume.flightStart, magic.reveal(volume.index, 16 + sample * 18));
+          const trail = shelfFlightPose(volume.flight, (past - volume.flightStart) / (1 - volume.flightStart), past);
+          const phase = arrival * 8 + sample * .73 + volume.index * 1.31;
+          dustPoint.set(trail.x, trail.y, trail.z).unproject(camera)
+            .addScaledVector(rightAxis, Math.sin(phase) * .065)
+            .addScaledVector(upAxis, Math.cos(phase) * .065 - .17)
+            .addScaledVector(forward, .12);
+          dustPositions.setXYZ(dustCount, dustPoint.x, dustPoint.y, dustPoint.z);
+          dustStrengths.setX(dustCount, (.8 - sample * .07) * Math.sin(arrival * Math.PI));
+          dustCount++;
+        }
+      }
       volume.hinge.rotation.y = id === motion.activeId ? -(Math.PI - .065) * motion.open : 0;
       volume.leftStack.visible = id === motion.activeId && motion.open > .02;
     }
+    dust.visible = dustCount > 0; dustGeometry.setDrawRange(0, dustCount);
+    if (dustCount) { dustPositions.needsUpdate = true; dustStrengths.needsUpdate = true; }
+    auras.count = frontAuras.count = auraCount; auras.visible = frontAuras.visible = auraCount > 0;
+    if (auraCount) {
+      auras.instanceMatrix.needsUpdate = true; frontAuras.instanceMatrix.needsUpdate = true;
+      auras.instanceColor!.needsUpdate = true; auraStrengths.needsUpdate = true; auraFloors.needsUpdate = true;
+    }
+    smokeActive = decorative && auraCount > 0;
+    if (smokeActive) smokeTime += delta / 1000;
+    auraMaterial.uniforms.smokeTime!.value = smokeTime;
+    frontAuraMaterial.uniforms.smokeTime!.value = smokeTime;
+    previousTime = motion.animating || magic.animating || smokeActive ? time : undefined;
     veil.position.copy(camera.position).addScaledVector(forward, 6); veil.quaternion.copy(camera.quaternion);
     veil.scale.set(width * 6 / distance * 1.1, height * 6 / distance * 1.1, 1);
     shade.opacity = .66 * motion.lift; veil.visible = motion.lift > .01;
+    const sparkling = books[magic.burstIndex ?? -1];
+    const sparkVolume = sparkling ? volumes.get(sparkling.id) : undefined;
+    sparks.visible = !!sparkVolume && magic.burst < 1 && !reduced.matches && !motion.activeId && !requested.id;
+    if (sparkVolume && sparks.visible) {
+      sparks.position.copy(sparkVolume.book.position); sparks.quaternion.copy(sparkVolume.book.quaternion);
+      sparkMaterial.uniforms.progress!.value = magic.burst;
+    }
     updatePages();
     canvas.dataset.bookPhase = motion.phase;
     canvas.dataset.activeBook = motion.activeId ?? '';
     renderer.render(scene, camera);
     if (!motion.activeId && wasActive) actions.onShelfRest();
     wasActive = motion.activeId !== null;
-    if (motion.animating) frame = requestAnimationFrame(render);
+    if (!disposed && !document.hidden && (motion.animating || magic.animating || smokeActive)) frame = requestAnimationFrame(render);
   };
   const draw = () => { if (!disposed && !frame && !document.hidden) frame = requestAnimationFrame(render); };
   const resize = () => {
@@ -232,16 +417,39 @@ export function createSkillShelf(canvas: HTMLCanvasElement, books: readonly Skil
     renderer.setSize(width, height, false); camera.aspect = width / height;
     const vertical = THREE.MathUtils.degToRad(camera.fov);
     camera.position.z = Math.max(10.4, 8.8 / (2 * Math.tan(vertical / 2) * camera.aspect));
-    camera.lookAt(0, (rows - 1) * .95, 0); camera.updateProjectionMatrix(); draw();
+    camera.lookAt(0, (rows - 1) * .95, 0); camera.updateProjectionMatrix(); camera.updateMatrixWorld();
+    for (const volume of volumes.values()) {
+      const arrival = magic.reveal(volume.index), home = volume.home.clone().project(camera);
+      const depth = -volume.home.clone().applyMatrix4(camera.matrixWorldInverse).z;
+      // Sphere radius covers the book and its initial tilt; using the near side keeps every edge offscreen.
+      const nearDepth = Math.max(.1, depth - 1.1);
+      const extent = { x: 1.1 * camera.projectionMatrix.elements[0]! / nearDepth, y: 1.1 * camera.projectionMatrix.elements[5]! / nearDepth };
+      // Rebase an airborne path from its current world pose, so resizing never teleports it to an edge.
+      const from = volume.flight && arrival > 0 && arrival < 1 ? volume.flightPosition.clone().project(camera) : undefined;
+      volume.flight = createShelfFlight(volume.index, home, extent, from);
+      volume.flightStart = from ? arrival : 0;
+    }
+    draw();
   };
   const ray = new THREE.Raycaster(); const pointer = new THREE.Vector2();
   const hit = (event: PointerEvent) => {
-    const box = canvas.getBoundingClientRect(); pointer.set((event.clientX - box.left) / box.width * 2 - 1, -(event.clientY - box.top) / box.height * 2 + 1);
+    const box = canvas.getBoundingClientRect(); if (!box.width || !box.height) return;
+    scene.updateMatrixWorld(true); camera.updateMatrixWorld();
+    pointer.set((event.clientX - box.left) / box.width * 2 - 1, -(event.clientY - box.top) / box.height * 2 + 1);
     ray.setFromCamera(pointer, camera); return ray.intersectObjects(targets, false)[0];
   };
   let pressed: { x: number; y: number; pointerId: number; book: string | undefined } | undefined;
-  const down = (event: PointerEvent) => { if (event.button === 0 && event.isPrimary) pressed = { x: event.clientX, y: event.clientY, pointerId: event.pointerId, book: hit(event)?.object.userData.bookId as string | undefined }; };
-  const cancel = () => { pressed = undefined; };
+  let hovered: ShelfHover | null = null;
+  const clearHover = () => {
+    canvas.style.cursor = '';
+    if (hovered) { hovered = null; actions.onHover?.(null); }
+    magic.setHover(null); draw();
+  };
+  const down = (event: PointerEvent) => {
+    if (event.pointerType === 'touch') clearHover();
+    if (event.button === 0 && event.isPrimary) pressed = { x: event.clientX, y: event.clientY, pointerId: event.pointerId, book: hit(event)?.object.userData.bookId as string | undefined };
+  };
+  const cancel = () => { pressed = undefined; clearHover(); };
   const choose = (event: PointerEvent) => {
     if (event.button !== 0 || !event.isPrimary || pressed?.pointerId !== event.pointerId) return;
     const previous = pressed; pressed = undefined;
@@ -258,20 +466,32 @@ export function createSkillShelf(canvas: HTMLCanvasElement, books: readonly Skil
     if (id === motion.activeId && motion.phase === 'reading' && found) {
       const local = volumes.get(id)!.book.worldToLocal(found.point.clone());
       actions.onTurn(local.x > -.47 ? 1 : -1);
-    } else if (id !== motion.activeId) actions.onSelect(id);
+    } else if (id !== motion.activeId) { clearHover(); actions.onSelect(id); }
   };
-  const hover = (event: PointerEvent) => { canvas.style.cursor = hit(event) ? 'pointer' : ''; };
-  const visibility = () => { previousTime = undefined; if (document.hidden && frame) { cancelAnimationFrame(frame); frame = 0; } else draw(); };
+  const hover = (event: PointerEvent) => {
+    if (!['mouse', 'pen'].includes(event.pointerType) || document.hidden) { clearHover(); return; }
+    if (motion.activeId || requested.id) { clearHover(); canvas.style.cursor = hit(event) ? 'pointer' : ''; return; }
+    const id = hit(event)?.object.userData.bookId as string | undefined;
+    if (!id) { clearHover(); return; }
+    canvas.style.cursor = 'pointer';
+    hovered = { id, clientX: event.clientX, clientY: event.clientY }; actions.onHover?.(hovered);
+    magic.setHover(volumes.get(id)!.index); draw();
+  };
+  const visibility = () => {
+    previousTime = undefined;
+    if (document.hidden) { cancel(); if (frame) cancelAnimationFrame(frame); frame = 0; }
+    else draw();
+  };
   const lost = (event: Event) => { event.preventDefault(); actions.onUnavailable(); };
   const observer = new ResizeObserver(resize); observer.observe(canvas);
-  canvas.addEventListener('pointerdown', down); canvas.addEventListener('pointerup', choose); canvas.addEventListener('pointercancel', cancel); canvas.addEventListener('pointermove', hover); canvas.addEventListener('webglcontextlost', lost);
-  document.addEventListener('visibilitychange', visibility); reduced.addEventListener('change', draw); resize();
+  canvas.addEventListener('pointerdown', down); canvas.addEventListener('pointerup', choose); canvas.addEventListener('pointercancel', cancel); canvas.addEventListener('pointerleave', clearHover); canvas.addEventListener('pointermove', hover); canvas.addEventListener('webglcontextlost', lost);
+  document.addEventListener('visibilitychange', visibility); document.addEventListener('scroll', clearHover, true); reduced.addEventListener('change', draw); resize();
   return {
-    read(next: ShelfReader) { requested = next; motion.request(next.id, next.page); draw(); },
+    read(next: ShelfReader) { clearHover(); requested = next; motion.request(next.id, next.page); draw(); },
     dispose() {
-      disposed = true; cancelAnimationFrame(frame); observer.disconnect();
-      canvas.removeEventListener('pointerdown', down); canvas.removeEventListener('pointerup', choose); canvas.removeEventListener('pointercancel', cancel); canvas.removeEventListener('pointermove', hover); canvas.removeEventListener('webglcontextlost', lost);
-      document.removeEventListener('visibilitychange', visibility); reduced.removeEventListener('change', draw);
+      disposed = true; cancel(); cancelAnimationFrame(frame); observer.disconnect();
+      canvas.removeEventListener('pointerdown', down); canvas.removeEventListener('pointerup', choose); canvas.removeEventListener('pointercancel', cancel); canvas.removeEventListener('pointerleave', clearHover); canvas.removeEventListener('pointermove', hover); canvas.removeEventListener('webglcontextlost', lost);
+      document.removeEventListener('visibilitychange', visibility); document.removeEventListener('scroll', clearHover, true); reduced.removeEventListener('change', draw);
       resources.forEach(resource => resource.dispose()); key.shadow.dispose(); scene.clear(); renderer.dispose();
       // StrictMode reuses the canvas immediately; release its context only after actual removal.
       queueMicrotask(() => { if (!canvas.isConnected) renderer.forceContextLoss(); });

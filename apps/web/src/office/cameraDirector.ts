@@ -5,6 +5,17 @@ export const CAMERA_IDLE_DELAY = (CAMERA_IDLE_DELAY_MIN + CAMERA_IDLE_DELAY_MAX)
 export const CAMERA_ATTENTION_DELAY = 2_000;
 export const CAMERA_ATTENTION_SETTLEMENT = 1_500;
 export const CAMERA_PHASE_DURATION = 900;
+export const CAMERA_WORKING_DWELL_MIN = 30_000;
+export const CAMERA_WORKING_DWELL_MAX = 120_000;
+export const CAMERA_IDLE_DWELL_MIN = 20_000;
+export const CAMERA_IDLE_DWELL_MAX = 30_000;
+export const CAMERA_ARRIVAL_SETTLEMENT = 5_000;
+
+export interface CameraSubject {
+  role?: 'lead' | 'worker';
+  meeting?: boolean;
+  moving?: boolean;
+}
 
 export interface CameraDirectorCommand {
   phase: 'overview' | 'travel' | 'focus';
@@ -28,6 +39,9 @@ export interface CameraDirectorState {
   observedInteractionAt: number | null;
   pausedAt: number | null;
   pausedDuration: number;
+  movementSeen: boolean;
+  movementStoppedAt: number | null;
+  workingShot: boolean;
 }
 
 export interface CameraDirectorInput {
@@ -41,6 +55,12 @@ export interface CameraDirectorInput {
   idleIds?: readonly string[];
   /** Recently admitted/activated characters, newest first; absence rearms an ID. */
   newcomerIds?: readonly string[];
+  /** Genuine newly admitted characters; ordinary work restarts cannot interrupt an active shot. */
+  spawnedIds?: readonly string[];
+  /** Current single-floor view and live floor lookup; unknown floors retain the overview sequence. */
+  currentFloor?: number | undefined;
+  floorOf?: ((id: string) => number | undefined) | undefined;
+  subjectOf?: ((id: string) => CameraSubject | undefined) | undefined;
   /** Unique character IDs in oldest-unresolved-request order. */
   attentionIds: readonly string[];
   /** Sample in [0, 1], supplied by the caller; defaults to the midpoint. */
@@ -56,23 +76,37 @@ export interface CameraDirectorResult {
 }
 
 export function createCameraDirectorState(): CameraDirectorState {
-  return { command: null, phaseStartedAt: 0, dwellMs: 13_000, heldAttentionId: null,
+  return { command: null, phaseStartedAt: 0, dwellMs: (CAMERA_WORKING_DWELL_MIN + CAMERA_WORKING_DWELL_MAX) / 2, heldAttentionId: null,
     attentionResolvedAt: null, focusedAttentionId: null, lastTourId: null, idleDelayMs: CAMERA_IDLE_DELAY,
     consumedNewcomerIds: [], newcomerTargetId: null,
-    observedInteractionAt: null, pausedAt: null, pausedDuration: 0 };
+    observedInteractionAt: null, pausedAt: null, pausedDuration: 0, movementSeen: false, movementStoppedAt: null, workingShot: false };
 }
 
 function sampleUnit(sample = 0.5): number {
   return Math.min(1, Math.max(0, Number.isFinite(sample) ? sample : 0.5));
 }
 
+function dwellDuration(active: boolean, random?: number, subject?: CameraSubject): number {
+  const range = !active ? [CAMERA_IDLE_DWELL_MIN, CAMERA_IDLE_DWELL_MAX]
+    : subject?.meeting ? [90_000, 120_000]
+    : subject?.moving ? [60_000, 120_000]
+    : subject?.role === 'lead' ? [60_000, 90_000]
+    : subject?.role === 'worker' ? [30_000, 60_000]
+    : [CAMERA_WORKING_DWELL_MIN, CAMERA_WORKING_DWELL_MAX];
+  return range[0]! + sampleUnit(random) * (range[1]! - range[0]!);
+}
+
 function startMove(state: CameraDirectorState, input: CameraDirectorInput, mode: CameraDirectorCommand['mode'], targetId: string): CameraDirectorState {
   const previous = state.command;
   const fromId = previous?.phase === 'overview' ? previous.fromId : previous?.targetId ?? null;
-  const phase = input.reducedMotion || (mode === 'attention' && state.focusedAttentionId === targetId) ? 'focus' : 'overview';
+  const targetFloor = input.floorOf?.(targetId);
+  const fromFloor = input.currentFloor ?? (previous?.phase === 'focus' && fromId ? input.floorOf?.(fromId) : undefined);
+  const sameFloor = targetFloor !== undefined && fromFloor === targetFloor;
+  const phase = input.reducedMotion || sameFloor || (mode === 'attention' && state.focusedAttentionId === targetId) ? 'focus' : 'overview';
   const active = mode === 'attention' || input.workingIds.includes(targetId);
+  const subject = input.subjectOf?.(targetId);
   return { ...state, phaseStartedAt: input.now,
-    dwellMs: active ? 9_000 + sampleUnit(input.random) * 8_000 : 4_000 + sampleUnit(input.random) * 3_000,
+    dwellMs: dwellDuration(active, input.random, subject), movementSeen: Boolean(subject?.moving), movementStoppedAt: null, workingShot: active,
     lastTourId: mode === 'tour' ? targetId : state.lastTourId,
     focusedAttentionId: mode === 'attention' && phase === 'focus' ? targetId : state.focusedAttentionId,
     command: { phase, mode, targetId, fromId } };
@@ -105,6 +139,7 @@ export function stepCameraDirector(previous: CameraDirectorState, input: CameraD
     const paused = Math.max(0, input.now - state.pausedAt);
     state = { ...state, pausedAt: null, pausedDuration: state.pausedDuration + paused,
       attentionResolvedAt: state.attentionResolvedAt === null ? null : state.attentionResolvedAt + paused,
+      movementStoppedAt: state.movementStoppedAt === null ? null : state.movementStoppedAt + paused,
       phaseStartedAt: state.phaseStartedAt + paused };
   }
 
@@ -126,7 +161,8 @@ export function stepCameraDirector(previous: CameraDirectorState, input: CameraD
   const inactiveFor = Math.max(0, input.now - input.lastInteractionAt - state.pausedDuration);
   const mode = heldAttentionId ? 'attention' : 'tour';
   const newcomerId = !heldAttentionId && !input.reducedMotion && inactiveFor >= CAMERA_ATTENTION_DELAY
-    ? newcomerIds.find(id => !consumed.includes(id) && input.workingIds.includes(id)) : undefined;
+    ? newcomerIds.find(id => !consumed.includes(id) && input.workingIds.includes(id)
+      && (state.command?.targetId === id || (input.spawnedIds ?? newcomerIds).includes(id))) : undefined;
   if (newcomerId) {
     state = { ...state, consumedNewcomerIds: [...newcomerIds], newcomerTargetId: newcomerId };
     if (state.command?.mode !== 'tour' || state.command.targetId !== newcomerId) {
@@ -135,7 +171,7 @@ export function stepCameraDirector(previous: CameraDirectorState, input: CameraD
     }
     // An idle character can become active while already in the shot. Keep the
     // camera steady and grant the full active dwell from this announcement.
-    state = { ...state, dwellMs: 9_000 + sampleUnit(input.random) * 8_000,
+    if (!state.workingShot) state = { ...state, dwellMs: dwellDuration(true, input.random, input.subjectOf?.(newcomerId)), workingShot: true,
       phaseStartedAt: state.command.phase === 'focus' ? input.now : state.phaseStartedAt };
   }
   const continuingNewcomer = state.command?.mode === 'tour' && state.command.targetId === state.newcomerTargetId
@@ -158,11 +194,21 @@ export function stepCameraDirector(previous: CameraDirectorState, input: CameraD
   }
 
   const elapsed = Math.max(0, input.now - state.phaseStartedAt);
+  if (command.phase === 'focus' && mode === 'tour') {
+    const subject = input.subjectOf?.(command.targetId);
+    if (subject?.moving) state = { ...state, movementSeen: true, movementStoppedAt: null };
+    else if (state.movementSeen && state.movementStoppedAt === null) state = { ...state, movementStoppedAt: input.now };
+    // A meeting that starts during a shot earns a longer visit without redrawing its random sample.
+    if (subject?.meeting && state.dwellMs < 90_000) state = { ...state, dwellMs: 90_000 };
+  }
   if (command.phase !== 'focus' && (input.reducedMotion || elapsed >= CAMERA_PHASE_DURATION)) {
     command = { ...command, phase: input.reducedMotion || command.phase === 'travel' ? 'focus' : 'travel' };
     state = { ...state, command, phaseStartedAt: input.now,
       focusedAttentionId: command.mode === 'attention' && command.phase === 'focus' ? command.targetId : state.focusedAttentionId };
   } else if (command.phase === 'focus' && mode === 'tour' && elapsed >= state.dwellMs) {
+    // Give a journey time to finish and settle, with a hard cap for long queues or stalled movement.
+    if (state.movementSeen && elapsed < CAMERA_WORKING_DWELL_MAX
+      && (state.movementStoppedAt === null || input.now - state.movementStoppedAt < CAMERA_ARRIVAL_SETTLEMENT)) return { state, command: state.command };
     if (continuingNewcomer && inactiveFor < state.idleDelayMs) {
       // Keep following the live character while waiting for the ordinary tour
       // threshold. Ending its dwell does not hand control to another subject.

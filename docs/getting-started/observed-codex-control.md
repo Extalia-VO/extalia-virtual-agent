@@ -16,8 +16,9 @@ or another agent conversation. Codex reads them after its active turn finishes.
 or answered. Replies arrive through the watched source transcript.
 
 **Codex connection settings** contains advanced enable/disable and receipt
-information. Uncertain outcomes keep the draft and block another send until you
-check Codex and explicitly reset the connection settings/reload; messages are
+information. Uncertain outcomes keep the draft and block another send. Recheck
+delivery, inspect Codex and explicitly acknowledge before retrying; an unresolved
+host receipt must still be handled in its queue/source controls. Messages are
 never automatically resent. Pause observation to disable the prompt box. Other
 observed apps and observed worker characters remain unchanged.
 
@@ -30,9 +31,23 @@ below and is not required for ordinary prompts.
 
 ## Character message dialog layout
 
+Unsent prompt text stays with its conversation when hooks refresh metadata,
+you close/reopen the dialog, or you switch between Chat, Observe and the Office.
+Each conversation has its own draft. Text is kept only while this application
+window remains open; it is not saved to browser storage or the host. Restart and
+browser-unload protection still apply when a draft's dialog is closed.
+
+Sending immediately shows progress near the input. After a longer wait, a short
+explanation confirms that Extalia is still waiting. **Queued in Extalia** means
+Extalia accepted the text; **Submitted to Codex** means its source handoff returned
+a receipt, not that Codex has read or answered it. Feedback stays visible even
+when queue details are collapsed. You can continue typing the next draft without
+an older receipt clearing it. Uncertain results keep the text and require source
+inspection before an explicit retry; Extalia never retries them automatically.
+
 The Office character's message dialog keeps conversation history and the normal
 prompt box in its main column. **Conversation tools** sits alongside it on wide
-screens, with its own scroll area for the prompt queue, connections and permission
+screens, with its own scroll area for connections and permission
 controls. Hide or reopen that panel without losing unsent drafts or queue edits.
 
 On narrow screens the tools panel starts closed. Choose **Show conversation tools**
@@ -46,17 +61,33 @@ surface instead.
 
 ## Edit or reorder prompts before sending
 
-Open **Prompt queue** below the normal message box in Observe or Chat. In the
-Office, open the lead's **Conversation tools** panel. The same queue is available
-for managed Native and Hermes conversations. Add text with the queue's add icon, then use **Edit prompt**,
-**Move up**, **Move down** or **Delete pending prompt**. Entries start paused.
-Choose **Start queue** to send them in order when that session is ready;
+The separate **Queue in Codex** section near the Chat/Observe input shows pending prompts already
+saved in the original Codex conversation's persisted queue. Expand it to inspect
+the text and attachment counts, the last snapshot time, or refresh. It updates
+while this view is visible, with a short shared cache. No source edit/delete/
+reorder controls are offered, and reading it does not start or resume a turn.
+In the Office character dialog, find it in **Conversation tools**, so the main
+message area keeps its space. Hidden tools do not poll the source queue.
+
+This snapshot can include messages queued outside Extalia. Prompts held only in
+Codex Desktop's local UI and not persisted by Codex cannot appear through this
+API. Empty, unsupported, unavailable and labels-only privacy states are distinct;
+an unavailable read is never shown as an empty queue. This experimental source
+reader requires a compatible installed Codex CLI. Reading the queue does not
+enable message submission or change permissions. It remains separate from
+**Prompt queue**, the editable waiting list owned by Extalia.
+
+Use the normal input in Observe, Chat or the Office. While work is active,
+submitted text joins Extalia's queue automatically. Open **Prompt queue** beside
+the composer to use **Edit prompt**, drag-and-drop, **Move up**, **Move down** or
+**Delete pending prompt** before handoff. The same queue is available for managed
+Native and Hermes conversations. If paused, choose **Start queue** to send entries
+in order when that session is ready;
 **Pause queue** holds the remaining entries. Stopping a managed turn also pauses
 its remaining queue; pausing observation holds the observed queue. Queued prompts use the session's
 current settings at handoff. Queue text does not include attachments.
 
-The normal Send icon still sends through its existing message route. The editable
-list contains prompts you add to **Prompt queue**, not messages already accepted
+The editable list contains prompts waiting inside Extalia, not messages already accepted
 by Codex's native queue. Once sending begins, an item becomes a read-only receipt.
 An uncertain outcome pauses dispatch. Check Codex, then explicitly acknowledge
 the local record before continuing; acknowledgement neither cancels nor resends

@@ -43,7 +43,7 @@ describe('skill library accessible index', () => {
     const picker = elements(tree).find(element => element.type === Select && element.props['aria-label'] === t.skillLibrary.books)!.props as unknown as SelectProps;
     expect(picker.value).toBe('');
     expect(picker.options).toHaveLength(3);
-    expect(picker.options.map(option => option.label)).toContain(`review-code · First · ${t.skillLibrary.statuses.reviewed}`);
+    expect(picker.options.map(option => option.label)).toContain(`review-code · First · ${t.skillLibrary.statuses.reviewed} · ${t.skillsPage.builtinCategories.uncategorized}`);
     expect(picker.options.some(option => option.label.startsWith('release-plan · '))).toBe(true);
     expect(html).toContain(t.skillLibrary.title);
     expect(html).toContain(`aria-label="${t.skillLibrary.books}"`);

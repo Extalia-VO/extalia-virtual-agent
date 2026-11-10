@@ -6,7 +6,7 @@ import { createAgentHost } from '../src/service.js';
 import { useTempDirs } from './helpers.js';
 
 const temp = useTempDirs();
-async function fixture(history = true) {
+async function fixture(history = true, releaseFirst?: Promise<void>) {
   const root = await temp('extalia-prompt-integration-'), project = path.join(root, 'project'), home = path.join(root, 'home'), dataDirectory = path.join(root, 'data');
   await mkdir(project); await mkdir(home);
   const prompts: string[] = [];
@@ -16,7 +16,7 @@ async function fixture(history = true) {
     const user = body.messages.filter((item: { role: string }) => item.role === 'user').at(-1);
     prompts.push(user?.content);
     if (user?.content === 'hold current turn' && init?.signal && !init.signal.aborted) {
-      await new Promise<void>(resolve => init.signal!.addEventListener('abort', () => resolve(), { once: true }));
+      await Promise.race([new Promise<void>(resolve => init.signal!.addEventListener('abort', () => resolve(), { once: true })), ...(releaseFirst ? [releaseFirst] : [])]);
     }
     return new Response(`data: ${JSON.stringify({ choices: [{ delta: { content: 'Done' }, finish_reason: 'stop' }] })}\n\ndata: [DONE]\n\n`, { headers: { 'content-type': 'text/event-stream' } });
   };
@@ -78,6 +78,39 @@ it('pauses queued follow-ups when the user stops the active managed turn', async
     expect(f.prompts).toEqual(['hold current turn']);
   } finally { await f.runtime.close(); }
 });
+it('steers the same actual Native run and durably accepts text before its next inference', async () => {
+  let release!: () => void;
+  const f = await fixture(true, new Promise<void>(resolve => { release = resolve; }));
+  try {
+    await f.host.sendPrompt(f.session.id, 'hold current turn');
+    await wait(async () => f.prompts.length === 1);
+    let queue = await f.host.promptQueueStatus!(f.session.id);
+    expect(queue.canSteer).toBe(true);
+    queue = await f.host.changePromptQueue!(f.session.id, { revision: queue.revision, action: 'add', text: 'steer active run' });
+    queue = await f.host.changePromptQueue!(f.session.id, { revision: queue.revision, action: 'steer', itemId: queue.items[0]!.id });
+    expect(queue.items[0]?.state).toBe('sent');
+    expect(f.prompts).toEqual(['hold current turn']);
+    const historyFiles = (await readdir(f.dataDirectory, { recursive: true, withFileTypes: true })).filter(file => file.isFile() && file.name.endsWith('.messages.json'));
+    expect(historyFiles).toHaveLength(1);
+    expect(JSON.parse(await readFile(path.join(historyFiles[0]!.parentPath, historyFiles[0]!.name), 'utf8'))).toEqual([
+      { role: 'user', text: 'hold current turn' }, { role: 'user', text: 'steer active run' },
+    ]);
+    const events = await f.host.sessionEvents(f.session.id);
+    expect(events.filter(event => event.body.type === 'prompt.submitted').map(event => event.body.type === 'prompt.submitted' ? event.body.text : '')).toEqual(['hold current turn']);
+    expect(events.filter(event => event.body.type === 'user.intervention').map(event => event.body)).toEqual([
+      { type: 'user.intervention', action: 'steer', text: 'steer active run' },
+    ]);
+    // No first-turn completion or replacement cancellation took place at handoff.
+    expect(events.some(event => event.body.type === 'turn.completed' || event.body.type === 'user.intervention' && event.body.action === 'cancel')).toBe(false);
+    expect((await f.host.getState()).sessions.find(item => item.id === f.session.id)?.running).toBe(true);
+    release();
+    await wait(async () => !(await f.host.getState()).sessions.find(item => item.id === f.session.id)?.running);
+    expect(f.prompts).toEqual(['hold current turn', 'steer active run']);
+    expect((await f.host.sessionEvents(f.session.id)).filter(event => event.body.type === 'turn.completed')).toHaveLength(1);
+    expect((await f.host.getState()).sessions).toHaveLength(1);
+    expect((await f.host.promptQueueStatus!(f.session.id)).canSteer).toBe(false);
+  } finally { release(); await f.runtime.close(); }
+});
 it('edits an observed Codex outbox without sending into the source or changing queue opt-in', async () => {
   const f = await fixture();
   try {
@@ -89,6 +122,7 @@ it('edits an observed Codex outbox without sending into the source or changing q
     const state = await f.host.observeImports(scan.scanId, [candidate.id]);
     const observed = state.sessions.find(item => item.observation?.nativeSessionId === nativeId)!;
     let queue: PromptQueueStatus = await f.host.promptQueueStatus!(observed.id);
+    expect(queue.canSteer).toBe(false);
     queue = await f.host.changePromptQueue!(observed.id, { revision: queue.revision, action: 'add', text: 'Edit before native handoff' });
     queue = await f.host.changePromptQueue!(observed.id, { revision: queue.revision, action: 'edit', itemId: queue.items[0]!.id, text: 'Edited locally' });
     expect(queue.items[0]?.text).toBe('Edited locally'); expect(queue.paused).toBe(true);

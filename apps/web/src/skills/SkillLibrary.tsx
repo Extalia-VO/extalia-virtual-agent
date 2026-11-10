@@ -11,6 +11,7 @@ import { CATALOG_FILTERS, type CatalogFilter } from './builtinCatalogModel';
 import { loadSkillCatalogBatch, SkillCatalogChanged } from './skillCatalogLoading';
 import { SkillCatalogPagination } from './SkillCatalogPagination';
 import { BOOK_COLORS, BOOKS_PER_SHELF, DEFAULT_LIST_PAGE_SIZE, LIST_PAGE_SIZES, catalogPage, catalogPageForAnchor, createSkillBookIndex, filterSkillBookIndex, skillBooks, type BookSource, type SkillBook } from './skillLibraryModel';
+import { SkillBookPreview, useSkillBookPreview } from './SkillBookPreview';
 
 const ShelfCanvas = lazy(() => import('./SkillShelfCanvas'));
 
@@ -70,10 +71,10 @@ export function SkillLibrary({ t, agents, state, builtin, refresh }: {
       if (epoch.current === token) setBusyEpoch(null);
     }
   };
-  return <SkillLibraryView key={workspaceKey} t={t} books={books} loading={!current} errors={current?.errors ?? []} onRefresh={() => setReload(value => value + 1)} onLoadMore={current?.cursor ? loadMore : undefined} moreLoading={!!current && busyEpoch === current.epoch} />;
+  return <SkillLibraryView key={workspaceKey} t={t} books={books} previewContext={agents} loading={!current} errors={current?.errors ?? []} onRefresh={() => setReload(value => value + 1)} onLoadMore={current?.cursor ? loadMore : undefined} moreLoading={!!current && busyEpoch === current.epoch} />;
 }
 
-export function SkillLibraryView({ t, books, loading = false, errors = [], onRefresh, onLoadMore, moreLoading = false }: { t: Messages; books: readonly SkillBook[]; loading?: boolean; errors?: readonly string[]; onRefresh?: () => void; onLoadMore?: () => void; moreLoading?: boolean }) {
+export function SkillLibraryView({ t, books, previewContext, loading = false, errors = [], onRefresh, onLoadMore, moreLoading = false }: { t: Messages; books: readonly SkillBook[]; previewContext?: AgentHostApi; loading?: boolean; errors?: readonly string[]; onRefresh?: () => void; onLoadMore?: () => void; moreLoading?: boolean }) {
   const p = t.skillLibrary;
   const [view, setView] = useState<'shelf' | 'list'>('shelf');
   const [listPageSize, setListPageSize] = useState<number>(DEFAULT_LIST_PAGE_SIZE);
@@ -84,6 +85,7 @@ export function SkillLibraryView({ t, books, loading = false, errors = [], onRef
   const [selection, setSelection] = useState<string | null>(null);
   const searchIndex = useMemo(() => createSkillBookIndex(books), [books]);
   const shown = useMemo(() => filterSkillBookIndex(searchIndex, query, source, category), [searchIndex, query, source, category]);
+  const hasBooks = shown.length > 0;
   const pageSize = view === 'shelf' ? BOOKS_PER_SHELF : listPageSize;
   const pagination = catalogPage(shown.length, page, pageSize);
   const currentPage = pagination.page;
@@ -91,7 +93,7 @@ export function SkillLibraryView({ t, books, loading = false, errors = [], onRef
   const selected = shown.find(book => book.id === selection);
   const [readingShelf, setReadingShelf] = useState<readonly SkillBook[] | null>(null);
   // Finish reading/closing on the same shelf; reveal appended covers after it rests.
-  const displayShelf = view === 'shelf' && readingShelf && (selected || selection === null) ? readingShelf : shelf;
+  const displayShelf = view === 'shelf' && hasBooks && readingShelf && (selected || selection === null) ? readingShelf : shelf;
   const stage = useRef<HTMLDivElement>(null);
   const origin = useRef<HTMLElement | null>(null);
   const [readPage, setReadPage] = useState(0);
@@ -102,7 +104,10 @@ export function SkillLibraryView({ t, books, loading = false, errors = [], onRef
   const navigationButton = useRef<HTMLButtonElement>(null);
   const navigationId = useId();
   const selectedId = selected?.id;
-  const hasBooks = shown.length > 0;
+  const previewScope = `${view}:${query.length}:${query}:${source}:${category}:${currentPage}:${listPageSize}:${selectedId ?? ''}:${displayShelf.map(book => `${book.id.length}:${book.id}${book.title.length}:${book.title}:${book.category}`).join('|')}`;
+  const { preview, id: previewId, onHover: previewHover, onFocus: previewFocus, onPointerMove: previewPointer, onKeyDown: previewKeyDown, onBlur: previewBlur, clear: clearPreview } = useSkillBookPreview(previewScope, previewContext);
+  const previewBook = !selected && preview ? displayShelf.find(book => book.id === preview?.id) : undefined;
+  const showStage = view === 'shelf' || !!selected;
   useEffect(() => {
     if (!stage.current) return;
     const observer = new ResizeObserver(entries => {
@@ -111,8 +116,9 @@ export function SkillLibraryView({ t, books, loading = false, errors = [], onRef
     });
     observer.observe(stage.current);
     return () => observer.disconnect();
-  }, [hasBooks]);
+  }, [showStage]);
   const close = () => {
+    clearPreview();
     setSelection(null); setTextView(false); setNavigationOpen(false);
     requestAnimationFrame(() => {
       const target = origin.current?.isConnected ? origin.current : stage.current;
@@ -120,6 +126,7 @@ export function SkillLibraryView({ t, books, loading = false, errors = [], onRef
     });
   };
   const choose = (id: string) => {
+    clearPreview();
     const focused = document.activeElement;
     origin.current = focused instanceof HTMLElement && focused.matches('.skill-book-choice, .skill-shelf-picker') ? focused : stage.current;
     if (origin.current === stage.current) stage.current?.focus({ preventScroll: true });
@@ -164,7 +171,7 @@ export function SkillLibraryView({ t, books, loading = false, errors = [], onRef
   const reader = useMemo(() => ({ id: selectedId ?? null, pages, page: firstPage, pageLabel: p.page }), [selectedId, pages, firstPage, p.page]);
   const fallback = view === 'list' || !webgl || textView;
   const visiblePages = compact ? [pages[firstPage]] : [pages[firstPage], pages[firstPage + 1]];
-  return <section className="skill-library card" aria-labelledby="skill-library-title" onKeyDown={event => { if (event.key === 'Escape' && selectedId) { event.preventDefault(); if (navigationOpen) closeNavigation(); else close(); } }}>
+  return <section className="skill-library card" aria-labelledby="skill-library-title" onKeyDown={event => { previewKeyDown(event); if (!event.defaultPrevented && event.key === 'Escape' && selectedId) { event.preventDefault(); if (navigationOpen) closeNavigation(); else close(); } }}>
     <div className="section-head"><div><p className="skill-library-eyebrow">{p.eyebrow}</p><h2 id="skill-library-title">{p.title}</h2><p className="muted small">{p.lead}</p></div>
       <div className="segmented" role="group" aria-label={p.view}>{(['shelf', 'list'] as const).map(item => <button key={item} type="button" className="chip-button" aria-pressed={view === item} onClick={() => switchView(item)}>{p.views[item]}</button>)}</div>
     </div>
@@ -173,23 +180,24 @@ export function SkillLibraryView({ t, books, loading = false, errors = [], onRef
       <div className="field"><span>{p.source}</span><Select aria-label={p.source} value={source} onChange={value => { setSource(value); setPage(0); setSelection(null); setReadingShelf(null); }} options={(['all', 'builtin', 'project', 'registry'] as const).map(item => ({ value: item, label: p.sources[item] }))} /></div>
       <div className="field"><span>{p.category}</span><Select aria-label={p.category} value={category} onChange={value => { setCategory(value); setPage(0); setSelection(null); setReadingShelf(null); }} options={CATALOG_FILTERS.map(item => ({ value: item, label: t.skillsPage.builtinCategories[item] }))} /></div>
       {view === 'list' && <div className="field skill-page-size"><span>{p.pageSize}</span><Select aria-label={p.pageSize} value={String(listPageSize)} onChange={value => resizeList(Number(value))} options={LIST_PAGE_SIZES.map(size => ({ value: String(size), label: String(size) }))} /></div>}
-      {view === 'shelf' && displayShelf.length > 0 && <div className="field"><span>{p.books}</span><Select aria-label={p.books} className="skill-shelf-picker" value={selected?.id ?? ''} placeholder={p.books} onChange={choose} options={displayShelf.map(book => ({ value: book.id, label: `${book.title} · ${book.workspace ?? p.sources[book.source]} · ${status(book)}` }))} /></div>}
+      {view === 'shelf' && displayShelf.length > 0 && <div className="field"><span>{p.books}</span><Select aria-label={p.books} className="skill-shelf-picker" value={selected?.id ?? ''} placeholder={p.books} onChange={choose} options={displayShelf.map(book => ({ value: book.id, label: `${book.title} · ${book.workspace ?? p.sources[book.source]} · ${status(book)} · ${t.skillsPage.builtinCategories[book.category]}` }))} /></div>}
       {(query || category !== 'all' || source !== 'all') && <button type="button" className="button small" onClick={clear}>{t.skillsPage.clearBuiltinFilters}</button>}
     </div>
     <div className="skill-catalog-load">{onRefresh && <button type="button" className="button small" disabled={loading || moreLoading} onClick={onRefresh}>{p.refreshCatalog}</button>}{onLoadMore && <><button type="button" className="button small" disabled={moreLoading} onClick={onLoadMore}>{moreLoading ? p.loadingMore : p.loadMore}</button><span className="muted small">{p.moreAvailable}</span></>}</div>
     <p className="muted small" role="status">{p.count(shown.length, books.length)}{shown.length > 0 ? ` · ${p.catalogRange(pagination.start + 1, pagination.start + displayShelf.length)}` : ''}{loading ? ` · ${t.skillsPage.loading}` : ''}</p>
     {!webgl && view === 'list' && <p className="note" role="status">{p.unavailable}</p>}
     {errors.map((error, index) => <p key={index} className="form-error" role="alert">{error}</p>)}
-    {shown.length === 0 ? <p className="note">{loading ? t.skillsPage.loading : p.empty}</p> : <>
-      <div ref={stage} data-compact={compact} className={`skill-shelf-stage ${selected ? 'reading' : ''}`} hidden={view === 'list' && !selected} tabIndex={-1}
+    {!hasBooks && <p className="note">{loading ? t.skillsPage.loading : p.empty}</p>}
+    {showStage && <div ref={stage} data-compact={compact} className={`skill-shelf-stage ${selected ? 'reading' : ''}`} tabIndex={-1}
         role="region" aria-label={selected ? p.details(selected.title) : p.views.shelf}
         onKeyDown={event => {
           if ((event.target as HTMLElement).closest('.skill-book-navigation')) return;
           if (!selectedId || event.shiftKey || event.altKey || event.ctrlKey || event.metaKey || !(event.key === 'ArrowLeft' || event.key === 'ArrowRight')) return;
           event.preventDefault(); turn(event.key === 'ArrowRight' ? 1 : -1);
         }}>
+        <div className="skill-shelf-atmosphere" aria-hidden="true"><span className="skill-shelf-orbit" /><span className="skill-shelf-rune">✧</span><span className="skill-shelf-rune">✦</span><span className="skill-shelf-rune">◇</span></div>
         {view === 'shelf' && <Suspense fallback={<p role="status">{t.common.loading}</p>}><ShelfCanvas key={displayShelf.map(book => book.id).join('\n')}
-          books={displayShelf} reader={reader} onSelect={choose} onTurn={turn} onClose={close} onShelfRest={() => setReadingShelf(null)} onAvailability={ready => { setWebgl(ready); if (!ready) switchView('list'); }} /></Suspense>}
+          books={displayShelf} reader={reader} onSelect={choose} onTurn={turn} onClose={close} onHover={previewHover} onShelfRest={() => setReadingShelf(null)} onAvailability={ready => { setWebgl(ready); if (!ready) switchView('list'); }} /></Suspense>}
         {selected ? <>
           <div className="skill-book-toolbar"><div><strong>{selected.title}</strong><span>{p.sources[selected.source]} · {label}</span></div>
             <div className="skill-book-toolbar-actions"><button ref={navigationButton} type="button" className="button small" aria-expanded={navigationOpen} aria-controls={navigationId} onClick={() => setNavigationOpen(value => !value)}>{p.navigate}</button>
@@ -205,15 +213,17 @@ export function SkillLibraryView({ t, books, loading = false, errors = [], onRef
             {view === 'shelf' && webgl && <button type="button" className="button small" aria-pressed={textView} onClick={() => setTextView(current => !current)}>{textView ? p.backToBook : p.readableText}</button>}
           </div>
           <p className="visually-hidden">{visiblePages.map(page => page?.text ?? '').join('\n\n')}</p>
-        </> : <span className="skill-shelf-caption">{p.shelfHint}</span>}
-      </div>
-      {view === 'list' && <ul className="skill-book-index list" aria-label={p.books}>
-        {shelf.map((book, index) => <li key={book.id}><button type="button" className="skill-book-choice" data-book-id={book.id} aria-pressed={selected?.id === book.id} onClick={() => choose(book.id)} style={{ borderInlineStartColor: BOOK_COLORS[book.category] }}>
-          <span className="skill-book-number">{String(pagination.start + index + 1).padStart(2, '0')}</span><span><strong>{book.title}</strong><span className="muted small">{book.workspace ?? p.sources[book.source]} · {status(book)}</span></span>
+        </> : hasBooks && <span className="skill-shelf-caption">{p.shelfHint}</span>}
+      </div>}
+      {view === 'list' && hasBooks && <ul className="skill-book-index list" aria-label={p.books}>
+        {shelf.map((book, index) => <li key={book.id}><button type="button" className="skill-book-choice" data-book-id={book.id} aria-pressed={selected?.id === book.id} aria-label={`${book.title} · ${t.skillsPage.builtinCategories[book.category]} · ${book.workspace ?? p.sources[book.source]} · ${status(book)}`} aria-describedby={previewBook?.id === book.id && !preview?.exiting ? previewId : undefined}
+          onFocus={previewFocus} onBlur={previewBlur} onPointerEnter={previewPointer} onPointerMove={previewPointer} onPointerLeave={() => previewHover(null)} onPointerDown={clearPreview}
+          onClick={() => choose(book.id)} style={{ borderInlineStartColor: BOOK_COLORS[book.category] }}>
+          <span className="skill-book-number">{String(pagination.start + index + 1).padStart(2, '0')}</span><span><strong>{book.title}</strong><span className="skill-book-category">{t.skillsPage.builtinCategories[book.category]}</span><span className="muted small">{book.workspace ?? p.sources[book.source]} · {status(book)}</span></span>
         </button></li>)}
       </ul>}
-      <SkillCatalogPagination t={t} page={currentPage} pageCount={pagination.pageCount} onPage={next => { setPage(next); setSelection(null); setNavigationOpen(false); setReadingShelf(null); }} />
-    </>}
+      {hasBooks && <SkillCatalogPagination t={t} page={currentPage} pageCount={pagination.pageCount} onPage={next => { setPage(next); setSelection(null); setNavigationOpen(false); setReadingShelf(null); }} />}
+    {previewBook && preview && <SkillBookPreview key={previewBook.id} id={previewId} preview={preview} book={previewBook} category={t.skillsPage.builtinCategories[previewBook.category]} />}
     <p className="note small">{p.readOnly}</p>
   </section>;
 }

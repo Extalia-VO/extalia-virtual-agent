@@ -1,8 +1,6 @@
+import { createProvider } from '../src/index.js';
 import { describe, expect, it, vi } from 'vitest';
-import {
-  REQUEST_CHARACTER_LIMIT, RequestBudgetError, checkRequestBudget, createDelegationTool, createFallbackProvider, createProvider, guardProviderRequests, isFallbackError, modelChain, runTurn,
-  type AnyTool, type ModelMessage, type ModelProvider, type ModelRequest, type ModelResult, type TurnOptions,
-} from '../src/index.js';
+import { REQUEST_CHARACTER_LIMIT, RequestBudgetError, checkRequestBudget, createDelegationTool, createFallbackProvider, guardProviderRequests, isFallbackError, modelChain, runTurn, type AnyTool, type ModelMessage, type ModelProvider, type ModelRequest, type ModelResult, type TurnOptions } from '../src/index.js';
 
 const done: ModelResult = { text: 'Done.', toolCalls: [], stop: 'end' };
 const request = (overrides: Partial<ModelRequest> = {}): ModelRequest => ({ system: 'sys', messages: [{ role: 'user', text: 'hi' }], tools: [], ...overrides });
@@ -273,13 +271,13 @@ describe('factory provider request guards', () => {
     const fetch = vi.fn(async (_url: string, init?: RequestInit) => init?.body
       ? Response.json({ model: 'unknown-model', choices: [{ message: { content: 'OK' }, finish_reason: 'stop' }] })
       : Response.json({ data: [{ id: 'unknown-model' }] }));
-    const provider = createProvider(connection('openai-chat', 1_024), undefined, fetch);
+    const provider = createProvider(connection('openai-chat', 1_024), undefined, fetch, async () => ['unknown-model']);
     expect(provider.api).toBe('openai-chat');
     expect(provider.images).toBe(true);
     expect(await provider.listModels()).toEqual(['unknown-model']);
     const input = request({ messages: [{ role: 'user', text: ' Exact request\n' }] });
     expect((await provider.complete(input)).text).toBe('OK');
-    const body = JSON.parse(String(fetch.mock.calls[1]![1]?.body));
+    const body = JSON.parse(String(fetch.mock.calls[0]![1]?.body));
     expect(body.messages.at(-1)).toEqual({ role: 'user', content: ' Exact request\n' });
     expect(body).not.toHaveProperty('inputTokenLimit');
   });

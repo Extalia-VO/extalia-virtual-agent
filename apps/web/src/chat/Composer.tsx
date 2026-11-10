@@ -9,6 +9,11 @@ import { Icon } from '../ui/Icon';
 import { Select, type SelectOption } from '../ui/Select';
 import { LONG_PASTE_THRESHOLD, MESSAGE_TEXT_LIMIT, longTextFiles, pastedValue } from './longTextPaste';
 import { attachmentKind, formatBytes, planAttachments, type AttachmentHostApi, type PendingAttachment } from './attachments';
+import { PromptQueueContent } from './PromptQueueControls';
+import { usePromptQueue } from './usePromptQueue';
+import { useComposerDraft } from './useComposerDraft';
+import { PromptDeliveryStatus } from './PromptDeliveryStatus';
+import { PromptSuggestions } from './PromptSuggestions';
 import {
   CONTEXT_RING_RADIUS, HERMES_CHOICE, choiceFromOptions, choiceFromValue, choiceValue, cleanChoice, contextRing, effortSelectOptions,
   isPermissionMode, modelSelectOptions, permissionSelectOptions, type PermissionMode, type SessionChoice,
@@ -92,8 +97,9 @@ export function Composer({ t, agents, session, workspaceId, hermes, modelScopeKe
   onOpenContext?: (() => void) | undefined;
   contextPanelId?: string | undefined;
 }) {
-  const [text, setText] = useState('');
-  const [sending, setSending] = useState(false);
+  const retainedDraft = useComposerDraft(agents, session, workspaceId);
+  const { text, setText } = retainedDraft;
+  const sending = retainedDraft.sending;
   const [chips, setChips] = useState<PendingAttachment[]>([]);
   const [notice, setNotice] = useState<string | null>(null);
   const [pickerError, setPickerError] = useState<string | null>(null);
@@ -117,13 +123,18 @@ export function Composer({ t, agents, session, workspaceId, hermes, modelScopeKe
 
   const host: AttachmentHostApi = agents;
   const sessionId = session?.id;
+  const queue = usePromptQueue(agents, session, readOnly);
+  const queueAvailable = queue.view.phase === 'ready' && !!queue.view.status?.supported;
+  const queueing = !!session && (session.running || running || waiting || !!queue.view.status?.items.some(item => item.state !== 'sent'));
+  const queueChecked = !session || !agents.promptQueueStatus || queue.view.phase === 'ready';
   const attachmentsSupported = typeof host.uploadAttachment === 'function';
-  const disabled = readOnly || waiting;
-  const canAttach = attachmentsSupported && !disabled && !running && !sending && !readOnly;
-  const pickersEnabled = !readOnly && !running && !sending;
+  const disabled = readOnly || waiting && !queueAvailable;
+  const canAttach = attachmentsSupported && !disabled && !queueing && !sending && !readOnly;
+  const pickersEnabled = !readOnly && !running && !session?.running && !sending;
   const imported = chips.filter(chip => chip.key.startsWith('pasted-prompt-'));
   const promptText = [imported.length ? t.composer.longTextPrompt(imported.map(chip => chip.name).join(', ')) : '', text.trim()].filter(Boolean).join('\n\n');
-  const canSend = !disabled && !running && !sending && (text.trim().length > 0 || chips.length > 0)
+  const canSend = !disabled && queueChecked && (!queueing || queueAvailable && !queue.locked && !queue.view.busy
+    && !queue.view.status?.items.some(item => item.state === 'unknown')) && !sending && retainedDraft.delivery !== 'unknown' && (text.trim().length > 0 || chips.length > 0)
     && promptText.length <= MESSAGE_TEXT_LIMIT && !chips.some(chip => chip.status === 'uploading');
 
   useLayoutEffect(() => { chipsRef.current = chips; }, [chips]);
@@ -252,24 +263,37 @@ export function Composer({ t, agents, session, workspaceId, hermes, modelScopeKe
 
   async function send() {
     if (!canSend) return;
+    if (queueing) {
+      if (chips.length || learnSkill) { setNotice(t.promptQueue.filesUnsupported); return; }
+      const originalText = text;
+      const lease = retainedDraft.beginSend();
+      if (!lease) return;
+      try {
+        const accepted = await queue.control.submit(originalText.trim());
+        lease.finish(accepted ? 'accepted' : queue.control.getSnapshot().delivery === 'unknown' ? 'unknown' : 'failed');
+        if (accepted) setNotice(null);
+      } catch { lease.finish('unknown'); }
+      return;
+    }
     const sent = chips;
     const prompt = promptText;
-    const originalText = text;
+    const lease = retainedDraft.beginSend();
+    if (!lease) return;
     const sentContext = learningContext;
     const owner = new ComposerSubmission(sentContext);
     submission.current = owner;
-    setSending(true);
-    setText('');
     setNotice(null);
     const choice = cleanChoice(hermes ? { ...draft, permissionMode: undefined } : draft);
     const ok = await onSend({ text: prompt, choice, attachments: sent,
       patch: (key, change) => { if (owner.owns(currentLearningContext.current)) patchChip(key, change); },
       bindSession: id => {
         if (!owner.bind(id, currentLearningContext.current)) return false;
+        if (!retainedDraft.bindSession(id)) return false;
         setSessionBinding({ from: sentContext, sessionId: id }); return true;
       },
       ...(learnSkill ? { learnSkill: true } : {}),
     }).catch(() => false);
+    lease.finish(ok ? 'accepted' : 'failed');
     if (submission.current === owner) submission.current = undefined;
     if (!owner.owns(currentLearningContext.current)) {
       // A navigated-away send may consume its files; it cannot restore old input
@@ -279,17 +303,13 @@ export function Composer({ t, agents, session, workspaceId, hermes, modelScopeKe
         for (const chip of chipsRef.current) if (sentKeys.has(chip.key) && chip.previewUrl) URL.revokeObjectURL(chip.previewUrl);
         setChips(current => current.filter(chip => !sentKeys.has(chip.key)));
       }
-      setSending(false); return;
+      return;
     }
     if (ok) {
       for (const chip of chipsRef.current) if (chip.previewUrl) URL.revokeObjectURL(chip.previewUrl);
       setChips([]);
       setLearning(current => owner.owns(current.context) ? { ...current, selected: false } : current);
-    } else {
-      // Keep what the user wrote when the host refused it; attachments stay so a retry reuses uploaded ones.
-      setText(current => current || originalText);
     }
-    setSending(false);
     area.current?.focus();
   }
 
@@ -342,9 +362,17 @@ export function Composer({ t, agents, session, workspaceId, hermes, modelScopeKe
     addFiles(Array.from(event.dataTransfer.files));
   }
 
-  const placeholder = readOnly ? t.chat.placeholderObserved : waiting ? t.chat.placeholderWaiting : t.chat.placeholder;
+  const placeholder = readOnly ? t.chat.placeholderObserved : queueing ? t.promptQueue.placeholder : waiting ? t.chat.placeholderWaiting : t.chat.placeholder;
   const alertText = promptText.length > MESSAGE_TEXT_LIMIT ? t.composer.longTextFailed : notice ?? pickerError;
   return (
+    <>
+    {(!!queue.view.status?.items.length || queueing || !!session && queue.view.phase === 'error') &&
+      <PromptQueueContent t={t} control={queue.control} view={queue.view} disabled={queue.locked} />}
+    <PromptDeliveryStatus t={t} queueView={queue.view.delivery || queue.view.status?.items.length ? queue.view : undefined} phase={retainedDraft.delivery}
+      onRecheck={() => { void queue.control.refresh(); }} rechecking={queue.view.busy}
+      onRetryConfirmed={retainedDraft.delivery === 'unknown' && queue.view.phase === 'ready'
+        && !queue.view.status?.items.some(item => item.state === 'sending' || item.state === 'unknown')
+        ? () => { if (queue.control.allowRetry()) retainedDraft.allowRetry(); } : undefined} />
     <form className={`composer ${dragging ? 'dragging' : ''}`} data-dragging={dragging || undefined}
       onSubmit={event => { event.preventDefault(); void send(); }}
       onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop}>
@@ -375,7 +403,7 @@ export function Composer({ t, agents, session, workspaceId, hermes, modelScopeKe
         title={t.chat.hint} onChange={event => setText(event.target.value)} onKeyDown={onKeyDown} onPaste={onPaste} />
       {dragging && <div className="composer-drop" aria-hidden="true">{t.composer.dropHint}</div>}
       {canLearn && <label className="check-row small">
-        <input type="checkbox" checked={learnSkill} disabled={!pickersEnabled || waiting}
+        <input type="checkbox" checked={learnSkill} disabled={readOnly || sending || (running || waiting) && !queueAvailable}
           onChange={event => setLearning({ context: learningContext, selected: event.target.checked })} />
         <span>{t.composer.learnSkill}</span>
       </label>}
@@ -405,18 +433,21 @@ export function Composer({ t, agents, session, workspaceId, hermes, modelScopeKe
             ? <button type="button" className={`composer-ring composer-ring-button tone-${ring.tone}`} aria-label={ringLabel} title={ringLabel}
                 aria-controls={contextPanelId} onClick={onOpenContext}>{ringGraphic}</button>
             : <span className={`composer-ring tone-${ring.tone}`} role="img" aria-label={ringLabel} title={ringLabel}>{ringGraphic}</span>)}
-          {running ? (
+          {running && (
             <button type="button" className="send-button stop" disabled={stopping || readOnly} onClick={onStop} aria-label={t.chat.stop} title={t.chat.stop}>
               <Icon name="stop" />
             </button>
-          ) : (
-            <button type="submit" className="send-button" disabled={!canSend} aria-label={t.chat.send} title={t.chat.send}>
+          )}
+            <button type="submit" className="send-button" disabled={!canSend} aria-label={queueing ? t.promptQueue.queueLabel : t.chat.send} title={queueing ? t.promptQueue.queueLabel : t.chat.send}>
               <Icon name="send" />
             </button>
-          )}
         </div>
       </div>
       <small id="composer-hint" className="visually-hidden">{t.chat.hint}</small>
     </form>
+    <PromptSuggestions t={t} agents={agents} session={session} workspaceId={workspaceId}
+      copyOnly={session?.control === 'observed' && session.observation?.sourceId !== 'codex'}
+      disabled={readOnly && session?.control !== 'observed' || running || waiting} />
+    </>
   );
 }

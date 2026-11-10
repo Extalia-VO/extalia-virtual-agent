@@ -39,7 +39,7 @@ async function socket(directory = ''): Promise<string> {
   return socketPath;
 }
 const thread = (status = 'active', id = 'native-thread', cwd = '/workspace') => ({ id, cwd, status: { type: status }, turns: status === 'active' ? [{ id: 'turn-1', status: 'inProgress', items: [] }] : [] });
-async function fixture(options: { status?: string; wrongThread?: boolean; wrongCwd?: boolean; resume?: ReturnType<typeof thread>; turnsPage?: unknown; loadedIds?: string[]; factoryGate?: Promise<void> } = {}) {
+async function fixture(options: { status?: string; wrongThread?: boolean; wrongCwd?: boolean; resume?: ReturnType<typeof thread>; turnsPage?: unknown; loadedIds?: string[]; factoryGate?: Promise<void>; onActivity?: () => void } = {}) {
   const socketPath = await socket();
   let callbacks!: CodexObservedRpcOptions;
   const request = vi.fn(async (method: string): Promise<unknown> => {
@@ -52,7 +52,7 @@ async function fixture(options: { status?: string; wrongThread?: boolean; wrongC
   });
   const rpc: CodexObservedRpc = { request, notify: vi.fn(async () => {}), respond: vi.fn(async () => {}), close: vi.fn(async () => {}) };
   const factory = vi.fn(async (value: CodexObservedRpcOptions) => { callbacks = value; await options.factoryGate; return rpc; });
-  const control = new CodexObservedControl({ sessionId: 'observed-session', threadId: 'native-thread', cwd: '/workspace', bin: 'codex', rpcFactory: factory });
+  const control = new CodexObservedControl({ sessionId: 'observed-session', threadId: 'native-thread', cwd: '/workspace', bin: 'codex', rpcFactory: factory, onActivity: options.onActivity });
   controls.push(control);
   const connect = () => control.connect(socketPath);
   return { control, connect, socketPath, rpc, request, factory, emit: (value: unknown) => callbacks.onMessage(value), disconnect: (problem?: string) => callbacks.onClose(problem) };
@@ -666,5 +666,147 @@ describe('bounded observed Codex WebSocket proxy transport', () => {
     await vi.advanceTimersByTimeAsync(10_000); await rejection; vi.useRealTimers(); await rpc.close(); expect(onClose).toHaveBeenCalledOnce();
     const early = await createCodexObservedRpc(rpcOptions(bin)); await early.close();
     await expect(early.request('initialize', {})).rejects.toThrow(/unavailable/);
+  });
+});
+
+describe.skipIf(process.platform === 'win32')('observed Codex native predictions', () => {
+  const finish = (f: Awaited<ReturnType<typeof fixture>>, status = 'completed') => f.emit({ method: 'turn/completed', params: { threadId: 'native-thread', turn: { id: 'turn-1', status } } });
+  const prediction = (text: unknown, extra: Record<string, unknown> = {}) => ({ method: 'thread/prediction/updated', params: { threadId: 'native-thread', sourceTurnId: 'turn-1', result: { type: 'completed', text }, ...extra } });
+  it('harvests an existing native prediction for the exact successful completed turn without another RPC', async () => {
+    const f = await fixture(); await f.connect(); finish(f);
+    const count = f.request.mock.calls.length;
+    f.emit(prediction('  Inspect the final diff  '));
+    const ready = f.control.suggestions();
+    expect(ready).toMatchObject({ state: 'ready', prompts: ['Inspect the final diff'], origin: 'harness', canRequest: false });
+    await f.control.requestSuggestions(ready.anchor!);
+    expect(f.request.mock.calls).toHaveLength(count);
+    f.emit(prediction('A duplicate result'));
+    expect(f.control.suggestions()).toEqual(ready);
+  });
+  it('harvests native failure as unavailable and does not retry the same completed turn', async () => {
+    const f = await fixture(); await f.connect(); finish(f);
+    f.emit(prediction(undefined, { result: { type: 'failed' } }));
+    const state = f.control.suggestions();
+    expect(state).toMatchObject({ state: 'unavailable', prompts: [], canRequest: false });
+    await f.control.requestSuggestions(state.anchor!);
+    expect(f.request.mock.calls.some(([method]) => method === 'thread/prediction/request')).toBe(false);
+  });
+  it('ignores unsolicited unknown, foreign, stale, active and private predictions', async () => {
+    const f = await fixture(); await f.connect();
+    f.emit(prediction('Still active')); expect(f.control.suggestions().prompts).toEqual([]);
+    finish(f);
+    f.emit(prediction('Foreign source', { threadId: 'another-thread' }));
+    f.emit(prediction('Unknown turn', { sourceTurnId: 'unknown-turn' }));
+    expect(f.control.suggestions()).toMatchObject({ state: 'unavailable', canRequest: true, prompts: [] });
+    f.control.setSuggestionsPrivacy(true); f.emit(prediction('Private source'));
+    expect(f.control.suggestions()).toMatchObject({ state: 'private', canRequest: false, prompts: [] });
+    f.control.setSuggestionsPrivacy(false);
+    expect(f.control.suggestions()).toMatchObject({ state: 'unavailable', canRequest: true, prompts: [] });
+    f.emit({ method: 'turn/started', params: { threadId: 'native-thread', turn: { id: 'turn-2' } } });
+    f.emit({ method: 'turn/completed', params: { threadId: 'native-thread', turn: { id: 'turn-2', status: 'completed' } } });
+    f.emit(prediction('Old turn'));
+    expect(f.control.suggestions()).toMatchObject({ state: 'unavailable', canRequest: true, prompts: [] });
+    expect(f.request.mock.calls.some(([method]) => method === 'thread/prediction/request')).toBe(false);
+  });
+  it('requires an existing attachment and a successful completed turn, with one exact request per anchor', async () => {
+    const f = await fixture();
+    expect(await f.control.requestSuggestions('unknown')).toMatchObject({ state: 'unavailable', canRequest: false });
+    expect(f.factory).not.toHaveBeenCalled();
+    await f.connect(); expect(f.control.suggestions()).toMatchObject({ canRequest: false, prompts: [] });
+    finish(f); const before = f.request.mock.calls.length;
+    const anchor = f.control.suggestions().anchor!;
+    const first = f.control.requestSuggestions(anchor);
+    expect(f.control.suggestions()).toMatchObject({ anchor, state: 'pending', canRequest: false });
+    await f.control.requestSuggestions(anchor); await first;
+    expect(f.request.mock.calls.slice(before)).toEqual([['thread/prediction/request', { threadId: 'native-thread', sourceTurnId: 'turn-1' }]]);
+    f.emit(prediction('  Review the resulting changes  '));
+    expect(f.control.suggestions()).toMatchObject({ state: 'ready', prompts: ['Review the resulting changes'], origin: 'harness', canRequest: false });
+    finish(f); await f.control.requestSuggestions(anchor);
+    expect(f.request.mock.calls.slice(before)).toHaveLength(1);
+  });
+  it('ignores foreign sources, new-turn updates and late callbacks from an old connection', async () => {
+    const f = await fixture(); await f.connect(); finish(f);
+    await f.control.requestSuggestions(f.control.suggestions().anchor!);
+    f.emit(prediction('Foreign', { threadId: 'another-thread' })); f.emit(prediction('Old', { sourceTurnId: 'another-turn' }));
+    expect(f.control.suggestions().state).toBe('pending');
+    const old = f.factory.mock.calls[0]![0];
+    f.emit({ method: 'turn/started', params: { threadId: 'native-thread', turn: { id: 'turn-2' } } });
+    f.emit(prediction('Stale')); expect(f.control.suggestions()).toMatchObject({ state: 'unavailable', prompts: [], canRequest: false });
+    await f.connect(); old.onMessage(prediction('Old connection'));
+    expect(f.control.suggestions().prompts).toEqual([]);
+  });
+  it.each(['failed', 'interrupted'])('does not predict %s turns', async status => {
+    const f = await fixture(); await f.connect(); finish(f, status);
+    expect(f.control.suggestions()).toMatchObject({ state: 'unavailable', canRequest: false });
+    expect(f.request.mock.calls.some(([method]) => method === 'thread/prediction/request')).toBe(false);
+  });
+  it.each([null, '', 'x'.repeat(241), 'Two\nlines', 'A\u2028line', 1])('drops malformed or oversized prediction text without truncation %#', async text => {
+    const f = await fixture(); await f.connect(); finish(f); await f.control.requestSuggestions(f.control.suggestions().anchor!);
+    f.emit(prediction(text)); expect(f.control.suggestions()).toMatchObject({ state: 'unavailable', prompts: [], canRequest: false });
+  });
+  it('redacts credential-like content, supports failed results and invalidates on thread close', async () => {
+    const f = await fixture(); await f.connect(); finish(f); await f.control.requestSuggestions(f.control.suggestions().anchor!);
+    f.emit(prediction('Rotate api_key=example-secret-value'));
+    expect(f.control.suggestions().prompts).toEqual(['Rotate api_key=[redacted]']);
+    f.emit({ method: 'thread/closed', params: { threadId: 'native-thread' } });
+    expect(f.control.suggestions()).toMatchObject({ state: 'unavailable', prompts: [], canRequest: false });
+  });
+  it('fails unsupported requests once and bounds notification waits', async () => {
+    const f = await fixture(); await f.connect(); finish(f);
+    const original = f.rpc.request;
+    f.rpc.request = vi.fn(async (method, params) => { if (method === 'thread/prediction/request') throw new Error('Method not found'); return original(method, params); });
+    const anchor = f.control.suggestions().anchor!;
+    expect(await f.control.requestSuggestions(anchor)).toMatchObject({ state: 'unsupported', canRequest: false });
+    await f.control.requestSuggestions(anchor); expect(f.rpc.request).toHaveBeenCalledOnce();
+    const g = await fixture(); await g.connect(); finish(g);
+    await g.control.requestSuggestions(g.control.suggestions().anchor!); vi.useFakeTimers();
+    // Install the timer while fake timers are active on a second completed turn.
+    g.emit({ method: 'turn/started', params: { threadId: 'native-thread', turn: { id: 'turn-2' } } });
+    g.emit({ method: 'turn/completed', params: { threadId: 'native-thread', turn: { id: 'turn-2', status: 'completed' } } });
+    await g.control.requestSuggestions(g.control.suggestions().anchor!); await vi.advanceTimersByTimeAsync(10_000);
+    expect(g.control.suggestions()).toMatchObject({ state: 'unavailable', canRequest: false, prompts: [] });
+  });
+});
+
+describe.skipIf(process.platform === 'win32')('prediction-only privacy', () => {
+  it('drops late prediction text and blocks requests without changing control or active approvals', async () => {
+    const f = await fixture(); await f.connect();
+    f.emit({ method: 'turn/completed', params: { threadId: 'native-thread', turn: { id: 'turn-1', status: 'completed' } } });
+    const anchor = f.control.suggestions().anchor!;
+    await f.control.requestSuggestions(anchor);
+    f.control.setSuggestionsPrivacy(true);
+    f.emit({ method: 'thread/prediction/updated', params: { threadId: 'native-thread', sourceTurnId: 'turn-1', result: { type: 'completed', text: 'Private late text' } } });
+    expect(await f.control.requestSuggestions(anchor)).toMatchObject({ state: 'private', prompts: [], canRequest: false });
+    expect(f.control.status()).toMatchObject({ state: 'connected', canSend: true });
+    expect(f.rpc.close).not.toHaveBeenCalled();
+    f.control.setSuggestionsPrivacy(false);
+    expect(f.control.suggestions()).toMatchObject({ state: 'unavailable', prompts: [], canRequest: false });
+    f.emit({ method: 'turn/started', params: { threadId: 'native-thread', turn: { id: 'turn-1' } } }); f.emit(approval());
+    const before = f.control.status(); f.control.setSuggestionsPrivacy(true);
+    expect(f.control.status()).toEqual(before);
+  });
+});
+
+describe.skipIf(process.platform === 'win32')('observed native activity invalidation', () => {
+  it('reports attached active work once and repeats only for newly verified work', async () => {
+    const onActivity = vi.fn(); const f = await fixture({ onActivity }); await f.connect();
+    expect(onActivity).toHaveBeenCalledOnce();
+    const status = (type: string) => f.emit({ method: 'thread/status/changed', params: { threadId: 'native-thread', status: { type } } });
+    const start = (id: string) => f.emit({ method: 'turn/started', params: { threadId: 'native-thread', turn: { id } } });
+    status('active'); start('turn-1'); status('active');
+    f.emit({ method: 'item/started', params: { threadId: 'native-thread', turnId: 'turn-1', item: { id: 'read-item', type: 'commandExecution' } } });
+    expect(onActivity).toHaveBeenCalledOnce();
+    start('turn-2'); expect(onActivity).toHaveBeenCalledTimes(2);
+    f.emit({ method: 'turn/completed', params: { threadId: 'native-thread', turn: { id: 'turn-2', status: 'completed' } } });
+    status('active'); expect(onActivity).toHaveBeenCalledTimes(3);
+    start('turn-3'); status('active'); expect(onActivity).toHaveBeenCalledTimes(3);
+  });
+  it('reports a successful idle turn admission without requiring a source notification', async () => {
+    const onActivity = vi.fn(); const f = await fixture({ status: 'idle', onActivity }); await f.connect();
+    expect(onActivity).not.toHaveBeenCalled();
+    await f.control.send({ connectionId: connection(f.control), text: 'Inspect the current result' });
+    expect(onActivity).toHaveBeenCalledOnce();
+    f.emit({ method: 'turn/started', params: { threadId: 'native-thread', turn: { id: 'turn-new' } } });
+    expect(onActivity).toHaveBeenCalledOnce();
   });
 });

@@ -1,8 +1,9 @@
+import { createAgentHost } from '../src/service.js';
 import { mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import type { ExtaliaEvent } from '@extalia/protocol';
 import { describe, expect, it } from 'vitest';
-import { createAgentHost } from '../src/service.js';
+
 import { useTempDirs } from './helpers.js';
 const temp = useTempDirs();
 

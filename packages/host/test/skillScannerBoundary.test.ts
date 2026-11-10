@@ -1,9 +1,10 @@
+import { createAgentHost } from '../src/service.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { chmod, lstat, mkdir, readdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { BUILTIN_SKILLS } from '../src/builtinSkills.js';
 import { buildAgentSkillCatalog, createSkillTools, referenceSkill, withBuiltinSkills, type AgentSkillCatalog, type Skill, type SkillReference } from '../src/skills.js';
-import { createAgentHost } from '../src/service.js';
+
 import { DAEMON_BINARY, HAS_DAEMON } from './daemonBackend.js';
 import { findTool, runTool, useTempDirs } from './helpers.js';
 
@@ -167,7 +168,14 @@ describe('unscanned skill inventory never enters lead or delegated provider requ
       const workspace = (await host.saveWorkspace({ name: 'Fixture', projectLocation: project, connectionId: connection.id, permissions: { fileWrite: 'ask', commands: 'ask' } })).workspaces[0]!;
       const inventory = await host.workspaceSkills(workspace.id); await host.allowWorkspaceSkills(workspace.id, inventory.pending);
       expect((await host.workspaceSkills(workspace.id)).allowed.map(skill => skill.name)).toContain('project-private');
-      if (core === 'rust') expect(await host.importSkill({ kind: 'workspace', workspaceId: workspace.id, name: 'project-private' })).toMatchObject({ state: 'quarantined', stateReason: 'scanner-unavailable' });
+      if (core === 'rust') {
+        const request = { kind: 'workspace' as const, workspaceId: workspace.id, name: 'project-private' };
+        if (process.platform === 'win32') {
+          await expect(host.importSkill(request)).rejects.toThrow('missing_capability');
+          expect((await host.skillRegistry()).revisions).toEqual([]);
+          await expect(lstat(path.join(data, 'profiles', 'default', 'skill-imports'))).rejects.toMatchObject({ code: 'ENOENT' });
+        } else expect(await host.importSkill(request)).toMatchObject({ state: 'quarantined', stateReason: 'scanner-unavailable' });
+      }
       const session = await host.createSession(workspace.id, { team: { enabled: true, allowedModels: ['lead-model', 'worker-model'], members: [{ id: 'm-worker', name: 'Worker', role: 'Reviewer', models: ['worker-model'] }] } });
       await host.sendPrompt(session.id, 'Review the current project.');
       await vi.waitFor(() => expect(runtime.isBusy()).toBe(false), { timeout: 5000, interval: 5 });

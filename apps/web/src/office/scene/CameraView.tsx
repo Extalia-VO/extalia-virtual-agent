@@ -5,7 +5,7 @@ import { OrbitControls } from '@react-three/drei';
 import { OrthographicCamera, type Vector3 } from 'three';
 import type { FurnishedOfficeView } from './FurnishedFloors';
 import type { CharacterFloor, CharacterPositionSource } from './movement/positionStore';
-import { cameraProgress, buildingMinimumZoom, buildingOverviewPose, characterFocusPose, floorMinimumZoom, floorOverviewPose, stackOverviewPose, panelClearance, roomFocusZoom, type CameraPose, type FocusPoint } from './cameraFocus';
+import { automaticFocusProgress, cameraProgress, buildingMinimumZoom, buildingOverviewPose, characterFocusPose, floorMinimumZoom, floorOverviewPose, stackOverviewPose, panelClearance, roomFocusZoom, type CameraPose, type FocusPoint } from './cameraFocus';
 import type { Point3 } from './layout';
 import type { CameraDirectorCommand } from '../cameraDirector';
 
@@ -29,7 +29,7 @@ export function CameraView({ automaticShot, automaticSeat, view, viewRequest = 0
   const camera = useThree(s => s.camera);
   const size = useThree(s => s.size);
   const controls = useThree(s => s.controls) as unknown as { target: Vector3; minZoom: number; update(): void } | null;
-  const move = useRef<{ elapsed: number; from: CameraPose; to: CameraPose } | null>(null);
+  const move = useRef<{ elapsed: number; from: CameraPose; to: CameraPose; automaticFocus?: boolean } | null>(null);
   const automated = useRef<CameraDirectorCommand | null>(null);
   const follow = useRef<{ id: string; last: Point3; waiting: boolean } | null>(null);
   const followMode = useRef({ following, focusId });
@@ -122,7 +122,7 @@ export function CameraView({ automaticShot, automaticSeat, view, viewRequest = 0
       to = characterFocusPose([at[0], at[1], at[2]], undefined, panelClearance(size.width, size.height));
       if (targetFloor && view !== targetFloor) onFollowFloor?.(targetFloor);
     } else return;
-    move.current = { elapsed: 0, from, to };
+    move.current = { elapsed: 0, from, to, automaticFocus: automaticShot.phase === 'focus' };
     follow.current = automaticShot.phase === 'focus' && at
       ? { id: automaticShot.targetId, last: [at[0], at[1], at[2]], waiting: !live?.position(automaticShot.targetId) } : null;
     // A shot is an explicit request; floor/selection/viewport changes must not restart it.
@@ -191,7 +191,7 @@ export function CameraView({ automaticShot, automaticSeat, view, viewRequest = 0
     const current = move.current;
     if (!current || !(camera instanceof OrthographicCamera)) return;
     current.elapsed += delta;
-    const t = cameraProgress(current.elapsed, 0.8, reducedMotion);
+    const t = current.automaticFocus ? automaticFocusProgress(current.elapsed, reducedMotion) : cameraProgress(current.elapsed, 0.8, reducedMotion);
     camera.position.set(...lerp3(current.from.position, current.to.position, t));
     camera.zoom = current.from.zoom + (current.to.zoom - current.from.zoom) * t;
     camera.updateProjectionMatrix();

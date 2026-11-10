@@ -1,8 +1,9 @@
+import { createAgentHost } from '../src/service.js';
 import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { ModelGuideStore } from '../src/modelGuideStore.js';
-import { createAgentHost, type AgentHostRuntime } from '../src/service.js';
+import { type AgentHostRuntime } from '../src/service.js';
 import { useTempDirs } from './helpers.js';
 
 const tempDir = useTempDirs();

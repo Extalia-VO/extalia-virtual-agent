@@ -1,10 +1,11 @@
+import { createAgentHost } from '../src/service.js';
 import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { HostMissionRun } from '@extalia/platform';
-import { createAgentHost, type AgentHostRuntime } from '../src/service.js';
+import { type AgentHostRuntime } from '../src/service.js';
 import { backendEnv, backendOptions, backends, type Backend } from './daemonBackend.js';
 import { useTempDirs } from './helpers.js';
 

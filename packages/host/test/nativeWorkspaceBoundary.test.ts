@@ -1,9 +1,10 @@
+import { createAgentHost } from '../src/service.js';
 import { mkdir, readFile, realpath, symlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Workspace, WorkspaceCrossAccess } from '@extalia/core';
 import type { ExtaliaEvent } from '@extalia/protocol';
-import { createAgentHost, type AgentHostRuntime } from '../src/service.js';
+import { type AgentHostRuntime } from '../src/service.js';
 import { useTempDirs } from './helpers.js';
 import { SessionStore } from '../src/sessions.js';
 

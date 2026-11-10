@@ -29,6 +29,64 @@ async function make(overrides: Partial<Parameters<typeof PromptQueues.create>[0]
 afterEach(async () => { await Promise.all(cleanups.splice(0).map(cleanup => cleanup())); });
 
 describe('PromptQueues', () => {
+  it('atomically starts an explicit composer addition and refuses it without adding behind uncertainty', async () => {
+    const fixture = await make({ dispatch: async () => 'unknown' });
+    fixture.target.ready = true;
+    await fixture.change({ action: 'add', text: 'composer submit', start: true });
+    await waitFor(async () => (await fixture.queues.status('session-1')).items[0]?.state === 'unknown');
+    await expect(fixture.change({ action: 'add', text: 'must remain in composer', start: true })).rejects.toThrow('acknowledge');
+    expect((await fixture.queues.status('session-1')).items).toHaveLength(1);
+    expect(await fixture.change({ action: 'add', text: 'explicit paused draft' })).toMatchObject({ paused: true, items: [{ state: 'unknown' }, { state: 'pending' }] });
+  });
+
+  it('reserves an exact pending steer durably, serializes competing requests and never uses idle dispatch', async () => {
+    let entered = false, release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    const fixture = await make({ pollIntervalMs: 0 });
+    fixture.target.steering = { identity: 'live-run-1', async send(text) {
+      expect(text).toBe('steer this run');
+      const raw = JSON.parse(await readFile(path.join(fixture.root, 'state', 'prompt-queues.json'), 'utf8'));
+      expect(raw.queues[0].items[0].state).toBe('sending');
+      entered = true; await gate; return 'sent';
+    } };
+    const queue = await fixture.change({ action: 'add', text: 'steer this run' });
+    expect(queue.canSteer).toBe(true);
+    const steering = fixture.queues.change('session-1', { revision: queue.revision, action: 'steer', itemId: queue.items[0]!.id });
+    await waitFor(() => entered);
+    await expect(fixture.queues.change('session-1', { revision: queue.revision, action: 'steer', itemId: queue.items[0]!.id })).rejects.toThrow('changed');
+    expect((await fixture.queues.status('session-1')).canSteer).toBe(false);
+    release();
+    expect(await steering).toMatchObject({ paused: true, items: [{ state: 'sent' }] });
+    expect(fixture.calls).toEqual([]);
+  });
+
+  it('returns a reservation to pending when the live turn binding changes before steer handoff', async () => {
+    let hold = false, entered = false, release!: () => void, calls = 0;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    const fixture = await make({ pollIntervalMs: 0, persist: async write => { if (hold) { entered = true; await gate; } return write(); } });
+    fixture.target.steering = { identity: 'original-turn', async send() { calls++; return 'sent'; } };
+    const queue = await fixture.change({ action: 'add', text: 'original turn only' });
+    hold = true;
+    const steering = fixture.queues.change('session-1', { revision: queue.revision, action: 'steer', itemId: queue.items[0]!.id });
+    await waitFor(() => entered);
+    fixture.target.steering = { identity: 'replacement-turn', async send() { calls++; return 'sent'; } };
+    release();
+    expect(await steering).toMatchObject({ items: [{ state: 'pending' }] });
+    expect(calls).toBe(0);
+  });
+
+  it('keeps an ambiguous steer as an unknown receipt through restart without replay', async () => {
+    let calls = 0;
+    const fixture = await make({ pollIntervalMs: 0 });
+    fixture.target.steering = { identity: 'same-turn', async send() { calls++; throw new Error('Transport disconnected after write'); } };
+    const queue = await fixture.change({ action: 'add', text: 'ambiguous steering' });
+    const result = await fixture.queues.change('session-1', { revision: queue.revision, action: 'steer', itemId: queue.items[0]!.id });
+    expect(result).toMatchObject({ paused: true, canSteer: false, items: [{ state: 'unknown' }] });
+    await expect(fixture.change({ action: 'steer', itemId: queue.items[0]!.id })).rejects.toThrow('acknowledge');
+    expect(await (await fixture.restart()).status('session-1')).toMatchObject({ paused: true, canSteer: false, items: [{ state: 'unknown' }] });
+    expect(calls).toBe(1); expect(fixture.calls).toEqual([]);
+  });
+
   it('keeps drafts paused, edits/reorders/deletes pending items and dispatches in order only when idle', async () => {
     const fixture = await make();
     const first = await fixture.change({ action: 'add', text: 'first' });

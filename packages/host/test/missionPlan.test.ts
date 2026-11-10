@@ -1,10 +1,12 @@
+import { createAgentHost } from '../src/service.js';
 import { mkdir, mkdtemp, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { missionPlanToRequest, normalizeHostMissionRequest, type HostMissionRun, type MissionPlan } from '@extalia/platform';
 import * as credentials from '../src/secrets.js';
-import { createAgentHost, type AgentHostRuntime } from '../src/service.js';
+import { type AgentHostRuntime } from '../src/service.js';
+import { mockModelDiscovery } from './modelDiscoveryFixture.js';
 
 const cleanups: (() => Promise<void>)[] = [];
 afterEach(async () => { while (cleanups.length) await cleanups.pop()!(); });
@@ -38,7 +40,7 @@ async function setup(planReply: (call: Call) => Response | Promise<Response>, ca
     if (text.includes(PLANNER_MARK)) return planReply(call);
     return call.body.model === 'model-b' ? anthropic(call.body.model) : chat(call.body.model ?? 'model-a', 'Unverified answer');
   };
-  const runtime = await createAgentHost({ kind: 'bridge', version: '0.0.0-test', dataDirectory: data, homeDirectory: home, importHome: home, observationIntervalMs: 60_000, env: { EXTALIA_SECRET_STORE: 'memory', HOME: home, PATH: '', PLAN_KEY_A: 'opaque-plan-secret-a', PLAN_KEY_B: 'opaque-plan-secret-b' }, fetch });
+  const runtime = await createAgentHost({ kind: 'bridge', version: '0.0.0-test', dataDirectory: data, homeDirectory: home, importHome: home, observationIntervalMs: 60_000, env: { EXTALIA_SECRET_STORE: 'memory', HOME: home, PATH: '', PLAN_KEY_A: 'opaque-plan-secret-a', PLAN_KEY_B: 'opaque-plan-secret-b' }, fetch, modelDiscovery: mockModelDiscovery(fetch) });
   let closed = false;
   const close = async () => { if (!closed) { closed = true; await runtime.close(); } };
   cleanups.push(async () => { await close(); await rm(root, { recursive: true, force: true }); });

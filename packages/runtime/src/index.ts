@@ -3,6 +3,7 @@ export * from './delegation.js';
 export * from './fallback.js';
 export * from './loop.js';
 export * from './memberAccess.js';
+export * from './meetings.js';
 export * from './model.js';
 export * from './policy.js';
 export * from './prompt.js';

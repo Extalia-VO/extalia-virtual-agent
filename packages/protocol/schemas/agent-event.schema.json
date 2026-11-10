@@ -155,7 +155,8 @@
                       "agent.stopped",
                       "agent.error",
                       "subagent.spawned",
-                      "subagent.state"
+                      "subagent.state",
+                      "meeting.contribution"
                     ]
                   }
                 }
@@ -1391,6 +1392,47 @@
               "type": "string",
               "maxLength": 2000,
               "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+            },
+            "roomId": {
+              "type": "string",
+              "enum": [
+                "meeting-a",
+                "meeting-b"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "meetingId",
+            "round",
+            "text"
+          ],
+          "properties": {
+            "type": {
+              "const": "meeting.contribution"
+            },
+            "meetingId": {
+              "type": "string",
+              "maxLength": 200,
+              "pattern": "^[^\\n\\r]*$",
+              "allOf": [
+                {
+                  "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+                }
+              ]
+            },
+            "round": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 2
+            },
+            "text": {
+              "type": "string",
+              "maxLength": 200000
             }
           }
         },
@@ -1430,6 +1472,19 @@
                 "maxLength": 2000,
                 "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
               }
+            },
+            "outcome": {
+              "type": "string",
+              "enum": [
+                "completed",
+                "cancelled",
+                "failed"
+              ]
+            },
+            "notePath": {
+              "type": "string",
+              "maxLength": 2000,
+              "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
             }
           }
         }

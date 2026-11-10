@@ -2491,7 +2491,7 @@
               "reason": "symlink"
             },
             {
-              "path": "Bad \ufffd name.md",
+              "path": "Bad � name.md",
               "reason": "invalid_name"
             }
           ],
@@ -2703,7 +2703,7 @@
               "nodeId": "know.laravel.n-plus-one",
               "path": "Knowledge/Laravel/N+1 queries.md",
               "title": "N+1 queries",
-              "snippet": "\u2026 use eager loading with() to \u2026"
+              "snippet": "… use eager loading with() to …"
             },
             {
               "nodeId": "path:Inbox/Idea.md",
@@ -3062,7 +3062,7 @@
           "path": "Inbox/Idea.md",
           "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
           "managed": false,
-          "body": "\ufeff---\nid: idea\n---\n# Idea\n\u0007 kept exactly\n",
+          "body": "﻿---\nid: idea\n---\n# Idea\n\u0007 kept exactly\n",
           "truncated": false
         }
       }
@@ -12080,6 +12080,247 @@
         }
       },
       "code": "invalid_request"
+    },
+    {
+      "name": "learning receipt request",
+      "valid": true,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000100",
+        "op": "learning.process",
+        "params": {
+          "action": "receipt.claim",
+          "input": {
+            "profileId": "default",
+            "contentSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "runId": "run"
+          }
+        }
+      }
+    },
+    {
+      "name": "learning receipt response",
+      "valid": true,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "response",
+        "requestId": "00000000-0000-4000-8000-000000000100",
+        "op": "learning.process",
+        "result": {
+          "action": "receipt.claim",
+          "claimed": true
+        }
+      }
+    },
+    {
+      "name": "learning unknown action refused",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000100",
+        "op": "learning.process",
+        "params": {
+          "action": "execute",
+          "input": {}
+        }
+      },
+      "code": "invalid_request"
+    },
+    {
+      "name": "learning wrong receipt field refused",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000100",
+        "op": "learning.process",
+        "params": {
+          "action": "receipt.claim",
+          "input": {
+            "profileId": "default",
+            "contentSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "runId": "run",
+            "path": "arbitrary"
+          }
+        }
+      },
+      "code": "invalid_request"
+    },
+    {
+      "name": "learning note pin request",
+      "valid": true,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000100",
+        "op": "learning.process",
+        "params": {
+          "action": "note.pin",
+          "input": {
+            "root": "/tmp/example-vault",
+            "profileId": "default",
+            "revision": "r1",
+            "workspaceId": "workspace",
+            "sessionId": "session",
+            "purpose": "learning"
+          }
+        }
+      }
+    },
+    {
+      "name": "learning pin scope widening refused",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000100",
+        "op": "learning.process",
+        "params": {
+          "action": "note.pin",
+          "input": {
+            "root": "/tmp/example-vault",
+            "profileId": "default",
+            "revision": "r1",
+            "workspaceId": "workspace",
+            "sessionId": "session",
+            "purpose": "arbitrary"
+          }
+        }
+      },
+      "code": "invalid_request"
+    },
+    {
+      "name": "learning effect unknown kind refused",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000100",
+        "op": "learning.process",
+        "params": {
+          "action": "job.advance",
+          "input": {
+            "jobId": "job",
+            "effectId": "effect",
+            "completion": {
+              "kind": "shell",
+              "command": "no"
+            }
+          }
+        }
+      },
+      "code": "invalid_request"
+    },
+    {
+      "name": "learning unexpected result authority refused",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "response",
+        "requestId": "00000000-0000-4000-8000-000000000100",
+        "op": "learning.process",
+        "result": {
+          "action": "skill.cleanup",
+          "released": true,
+          "activationPerformed": true
+        }
+      },
+      "code": "invalid_frame"
+    },
+    {
+      "name": "learning evidence chunk request",
+      "valid": true,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000100",
+        "op": "learning.process",
+        "params": {
+          "action": "evidence.append",
+          "input": {
+            "intakeId": "intake",
+            "toolCallId": "source",
+            "name": "knowledge_read",
+            "isError": false,
+            "chunk": "Untrusted result",
+            "final": true
+          }
+        }
+      }
+    },
+    {
+      "name": "learning evidence completion response",
+      "valid": true,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "response",
+        "requestId": "00000000-0000-4000-8000-000000000100",
+        "op": "learning.process",
+        "result": {
+          "action": "evidence.append",
+          "complete": true
+        }
+      }
+    },
+    {
+      "name": "explicit stored skill rescan request",
+      "valid": true,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000100",
+        "op": "skill.rescan",
+        "params": {
+          "revisionId": "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      }
+    },
+    {
+      "name": "explicit stored skill rescan response",
+      "valid": true,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "response",
+        "requestId": "00000000-0000-4000-8000-000000000100",
+        "op": "skill.rescan",
+        "result": {
+          "revisionId": "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "packageId": "release-notes",
+          "state": "awaiting_approval",
+          "stateReason": "manual-instruction-approval"
+        }
+      }
+    },
+    {
+      "name": "stored skill rescan rejects path is not revision",
+      "valid": false,
+      "code": "invalid_request",
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000100",
+        "op": "skill.rescan",
+        "params": {
+          "revisionId": "../outside"
+        }
+      }
+    },
+    {
+      "name": "stored skill rescan rejects no implicit approval",
+      "valid": false,
+      "code": "invalid_request",
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000100",
+        "op": "skill.rescan",
+        "params": {
+          "revisionId": "skr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "approve": true
+        }
+      }
     }
   ]
 }

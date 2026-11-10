@@ -11,7 +11,8 @@ import { useNow, useStableValue } from '../office/useNow';
 import { useOfficeEvents } from '../office/useOfficeEvents';
 import { useCharacterAppearances } from '../office/useCharacterAppearances';
 import { useLookRoster } from '../office/useLookRoster';
-import { useSessionTeams } from '../office/useSessionTeams';
+import { useSessionTeamSnapshot } from '../office/useSessionTeams';
+import { useNativeStandby } from '../office/useNativeStandby';
 import { OfficeLoading, type OfficeLoadStage } from '../office/OfficeLoading';
 import { useRecentActivity } from '../office/useRecentActivity';
 import { OfficePromptDock } from '../office/OfficePromptDock';
@@ -23,7 +24,7 @@ import { OfficeMetrics } from '../office/overlay/OfficeMetrics';
 import { OfficeTools } from '../office/overlay/OfficeTools';
 import { CharacterPopover } from '../office/overlay/CharacterPopover';
 import { ContextUsageLine } from '../office/overlay/ContextUsage';
-import { AgentPortrait } from '../office/overlay/AgentPortrait';
+import { AgentPortrait, PortraitPositionContext } from '../office/overlay/AgentPortrait';
 import { boardAbsolute, boardActivityAt, boardAgo, boardAgoShort, boardBranchActive, boardOrder, boardTreeActive, boardTreeTone, splitBoard, TREE_ELBOW_PATHS, withTeamMembers, type BoardRow } from '../office/overlay/boardTree';
 import { useBoardFlip, useSettledBoardOrder } from '../office/overlay/boardMotion';
 import { inOffice } from '../office/overlay/kpis';
@@ -138,15 +139,17 @@ export function OfficePage({ t, language, agents, hostDisconnected = false, stat
   // v0.0.47: sessions whose mission workers are still in the office keep their history after the mission ends (linger, then leave).
   const [missionSessions, setMissionSessions] = useState<{ key: string; ids: ReadonlySet<string> }>(() => ({ key: '', ids: new Set() }));
   const historyIds = useMemo(() => officeHistoryIds(visible, selectedSessionId, undefined, missionSessions.ids), [visible, selectedSessionId, missionSessions]);
-  const { events, error } = useOfficeEvents(agents, historyIds);
+  const { events, error, loadedSessionIds } = useOfficeEvents(agents, historyIds);
   // v0.0.47 (ADR 0016): retained native mission records (title, connection, exact task state and reason) for mission workers.
   const missions = useOfficeMissions(agents, state, events);
   // Observed liveness and (v0.0.44) a finished subagent's Ready linger depend on event age, so presence re-evaluates on a
   // slow clock while any session is shown.
   const now = useNow(visible.length > 0);
   // v0.0.30: team members' names and genders, so subagents are named and dressed like in the team dialog.
-  const teams = useSessionTeams(agents, visible, events);
-  const presences = useStableValue(useMemo(() => projectOfficePresence(visible, events, now, teams, missions), [visible, events, now, teams, missions]));
+  const standbyScope = JSON.stringify([state?.profile.id, state?.dataDirectory ?? state?.storage.dataDirectory, workspaceId]);
+  const { teams, readySessionIds: readyTeamIds } = useSessionTeamSnapshot(agents, visible, events, standbyScope);
+  const reportedPresences = useMemo(() => projectOfficePresence(visible, events, now, teams, missions), [visible, events, now, teams, missions]);
+  const presences = useStableValue(useNativeStandby(agents, standbyScope, reportedPresences, visible, teams, now, loadedSessionIds, readyTeamIds));
   // v0.0.43: agents under the board's "Earlier" group (ended or quiet sessions, subagents that left) are not in the 3D office.
   // v0.0.47: nor are mission workers that have not started (queued): they walk in through the spawn queue when their task runs.
   const officeAgents = useMemo(() => presences.filter(agent => !agent.earlier && isAdmitted(agent)), [presences]);
@@ -280,9 +283,16 @@ export function OfficePage({ t, language, agents, hostDisconnected = false, stat
     enabled: autoCamera && loadStage === 'ready' && !renderFailed && !hostDisconnected,
     reducedMotion,
     suspended: Boolean(dialog || approvals.inboxOpen || following),
-    workingIds: officeAgents.filter(agent => !agent.stalled && (agent.status === 'thinking' || agent.status === 'working' || agent.status === 'delegating')).map(agent => agent.id),
+    workingIds: officeAgents.filter(agent => !agent.stalled && (agent.meeting || agent.status === 'thinking' || agent.status === 'working' || agent.status === 'delegating')).map(agent => agent.id),
     idleIds: [...officeAgents.filter(agent => !['thinking', 'working', 'delegating', 'offline', 'unavailable', 'paused'].includes(agent.status) || agent.stalled).map(agent => agent.id), ...staff.map(entry => entry.definition.id)],
     positionReady: id => Boolean(positions.position(id)),
+    currentFloor: typeof view === 'number' ? view : undefined,
+    floorOf: id => positions.floor(id),
+    subjectOf: id => {
+      const agent = officeAgents.find(agent => agent.id === id);
+      return { moving: positions.moving(id), meeting: Boolean(agent?.meeting),
+        ...(agent ? { role: agent.agentId === 'primary' && !agent.parentId ? 'lead' as const : 'worker' as const } : {}) };
+    },
     attentionIds: cameraAttentionIds(officeAgents, events, approvals.pending), scope: workspaceId ?? 'all',
     onFocus: shot => {
       setRoomFocus(null);
@@ -318,7 +328,7 @@ export function OfficePage({ t, language, agents, hostDisconnected = false, stat
     const statusText = agentStatusLabel(t, agent, language);
     const hint = statusHint(agent);
     const missionsLink = depth === 0 && agent.agentId === 'primary' && session && onOpenMissions && missionLeads.has(agent.sessionId) ? session : undefined;
-    return <li key={agent.id} data-flip-key={agent.id} className={`office-agent-row ${depth ? 'is-subagent' : ''}${mission ? ' is-mission' : ''}`} data-expanded={open || undefined}
+    return <li key={agent.id} data-flip-key={agent.id} data-native-standby={agent.nativeStandby} className={`office-agent-row ${depth ? 'is-subagent' : ''}${mission ? ' is-mission' : ''}`} data-expanded={open || undefined}
       style={depth ? { '--depth': depth } as CSSProperties : undefined}>
       {(depth > 0 || stem) && <span className="office-tree" aria-hidden="true">
         {guides.map((on, at) => on && <span key={at} className="office-tree-pass" style={{ '--at': at } as CSSProperties} />)}
@@ -376,7 +386,7 @@ export function OfficePage({ t, language, agents, hostDisconnected = false, stat
   // It appears once the scene is shown (or failed), so its first-load entrance is not hidden under the loading screen.
   const showDock = Boolean(agents && state && (loadStage === 'ready' || renderFailed));
   const showLeadBar = overlay.model.leads.shown.length > 0;
-  return <div className="office-page">
+  return <PortraitPositionContext value={positions}><div className="office-page">
     <div className="office-toolbar">
       <Select aria-label={t.office.project} value={workspaceId ?? 'all'} options={[{ value: 'all', label: t.office.allProjects }, ...(state?.workspaces ?? []).map(workspace => ({ value: workspace.id, label: workspace.name }))]}
         onChange={id => onWorkspace(id === 'all' ? undefined : id)} />
@@ -448,5 +458,5 @@ export function OfficePage({ t, language, agents, hostDisconnected = false, stat
         onLocate={() => { dispatch({ type: 'closeDialog' }); locateAgent(dialog.characterId); }}
         onSelectCharacter={id => { const member = presences.find(agent => agent.id === id); if (member) dispatch({ type: 'openDialog', sessionId: member.sessionId, characterId: id, tab: 'activity', returnFocus: null }); }} />}
     </div>
-  </div>;
+  </div></PortraitPositionContext>;
 }

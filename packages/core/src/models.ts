@@ -91,6 +91,7 @@ export function decodeIntegrationGate(raw: unknown): WorkspaceIntegrationGate {
 /** A Workspace is a project context. Its sessions are separate from its project location. */
 export interface Workspace {
   id: string;
+  /** Workspace/vault grouping in this host; not proof of separate runtime or credential isolation. */
   profileId: string;
   name: string;
   /** Host path or remote location chosen by the user; never inferred by scanning. */

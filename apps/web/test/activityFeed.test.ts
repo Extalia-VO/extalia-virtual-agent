@@ -1,5 +1,7 @@
 import { createEvent, type EventBody, type ExtaliaEvent } from '@extalia/protocol';
 import { describe, expect, it } from 'vitest';
+import { MESSAGES } from '../src/i18n';
+import { semanticBubble } from '../src/office/semanticBubble';
 import { activityFromEvent, activityText, latestByCharacter, newActivities } from '../src/office/activityFeed';
 
 let n = 0;
@@ -33,4 +35,22 @@ describe('office activity feed', () => {
     expect(fresh.map(item => item.text)).toEqual(['two', 'three']);
     expect([...latestByCharacter(newActivities(events, new Set())).values()].map(item => item.text)).toEqual(['two', 'three']);
   });
+});
+
+
+it('displays real meeting contributions and outcomes with localized, world-safe labels', () => {
+  const start = activityFromEvent(event({ type: 'meeting.started', meetingId: 'sync', participants: ['primary'], topic: 'Design review' }))!;
+  const contribution = activityFromEvent(event({ type: 'meeting.contribution', meetingId: 'sync', round: 2, text: 'Use **the** shared interface.' }, { agentId: 'member' }))!;
+  expect(start).toMatchObject({ kind: 'meeting-started', text: 'Design review' });
+  expect(contribution).toMatchObject({ characterId: 's1:member', kind: 'meeting-contribution', round: 2, text: 'Use the shared interface.' });
+  for (const language of ['en', 'id'] as const) {
+    expect(semanticBubble(contribution, MESSAGES[language])).toBe(MESSAGES[language].officeUx.semantic.meeting);
+    expect(MESSAGES[language].officeUx.toast[contribution.kind]).toBeTruthy();
+  }
+  for (const outcome of ['completed', 'cancelled', 'failed'] as const) {
+    const completed = activityFromEvent(event({ type: 'meeting.completed', meetingId: 'sync', outcome, decisions: ['Use shared interfaces'], notePath: 'notes/meeting.md' }))!;
+    expect(completed.kind).toBe(`meeting-${outcome}`);
+    expect(completed.text).toBe('Use shared interfaces');
+    expect(JSON.stringify(completed)).not.toContain('notes/meeting.md');
+  }
 });

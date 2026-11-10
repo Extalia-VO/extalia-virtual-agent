@@ -1,0 +1,80 @@
+{
+  "schema": "extalia.skillspector-native-evidence.v1",
+  "date": "2026-11-09",
+  "implementationVersionTested": "0.4.239",
+  "upstream": {
+    "repository": "https://github.com/NVIDIA/SkillSpector",
+    "version": "2.13.4",
+    "commit": "54824463814a0be01360792523ec7245a69190fc",
+    "normalizer": "extalia-skillspector-v1"
+  },
+  "bundle": {
+    "target": "macos-aarch64",
+    "minimumMacosMajor": 14,
+    "runtime": "CPython 3.13.18",
+    "manifestSha256": "fbe8a72f86e0a5985c1738cdd4d949890c5ab0d9a4dc9004adaed912609a17c9",
+    "files": 12315,
+    "payloadBytes": 213679956,
+    "nativeFilesSignedBeforeHashing": 49
+  },
+  "scope": "One native macOS ARM64 host, synthetic packages and temporary profiles. Windows and Linux execution remain unavailable until equivalent confinement is implemented and tested.",
+  "nativeWorkflowResults": {
+    "benignImportedInstructionsAwaitUserApproval": true,
+    "benignGeneratedInstructionsAwaitUserApproval": true,
+    "activationBeforeUserApprovalRefused": true,
+    "explicitUserApprovalAndActivationSucceeded": true,
+    "activeInstructionReadMatchedOriginalBytes": true,
+    "maliciousHighFindingBlocked": true,
+    "inactiveHumanInstructionPreviewSucceeded": true,
+    "explicitInactiveRescanSucceeded": true,
+    "activeRescanRefused": true,
+    "changedScannerPayloadBecameUnavailable": true,
+    "changedScannerRefusedPreviouslyActiveRead": true,
+    "changedScannerQuarantinedAndDeactivatedRevision": true,
+    "restoredScannerRequiredFreshUserApproval": true,
+    "noRuntimeEvaluationWasInvented": true,
+    "invalidControlTextPreviewUnavailable": true
+  },
+  "operatingSystemBoundaryResults": {
+    "candidateReadAllowed": true,
+    "privateJobWriteAllowed": true,
+    "outsideFileReadDenied": true,
+    "outsideFileWriteDenied": true,
+    "outsideFileViaSystemVolumesDataAliasReadDenied": true,
+    "networkDenied": true,
+    "forkDenied": true,
+    "posixSpawnDenied": true
+  },
+  "resourcePolicy": {
+    "wallTimeLimitMs": 60000,
+    "cpuLimitSeconds": 30,
+    "stdoutLimitBytes": 65536,
+    "stderrLimitBytes": 65536,
+    "residentMemoryWatchdogKiB": 524288,
+    "memorySamplingIntervalMs": 100,
+    "memoryProbeDeadlineMs": 250,
+    "memoryEnforcement": "Sampled resident-memory watchdog with kill and reap; not a kernel hard virtual-memory cap. Transient overshoot is possible.",
+    "observedSampledResidentHighWaterKiB": 203104,
+    "wallTimeEnforcement": "Watchdog initiates termination at the configured deadline; uninterruptible operating-system I/O can delay reaping. Ownership remains held until reaped; restart quarantines unfinished inspections."
+  },
+  "focusedTests": {
+    "coreAdmissionApprovalAndPreview": 7,
+    "adapterNormalizerAndPlatformFloor": 5,
+    "daemonSkillSuiteIncludingControlReaderLiveness": 21,
+    "clippyAllWorkspaceTargets": "passed"
+  },
+  "observedReleaseTimingsMs": {
+    "coldHello": 3736,
+    "scannerStatus": 3025,
+    "benignImportAndScan": 8789,
+    "healthDuringImport": 1,
+    "qualification": "Individual local observations during concurrent development checks, not a reproducible performance benchmark."
+  },
+  "sources": [
+    "crates/extalia-core/src/skills/tests/scanning.rs",
+    "crates/extalia-daemon/src/skill_scanner.rs",
+    "crates/extalia-daemon/src/skill_scanner/process.rs",
+    "crates/extalia-daemon/tests/skills.rs",
+    "tooling/skillspector/fixture-evidence.json"
+  ]
+}

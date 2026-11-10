@@ -18,6 +18,7 @@ export {
 export { DESKTOP_HOOK_PORT } from './hooks/files.js';
 export { previewCodexPermissionHookSetup, previewCodexPermissionHookUndo, applyCodexPermissionHookSetup, undoCodexPermissionHookSetup, type CodexPermissionHookSetupOptions, type CodexPermissionHookUndoOptions } from './connect/codexPermissionHookSetup.js';
 export { awaitObservedReply, isObservedReplyRequest, type ObservedReplyRequest, type ObservedReplyResult, type ObservedReplyClientOptions } from './observedReplyClient.js';
+export { pollObservedInbox, isObservedInboxRequest } from './observedInboxClient.js';
 export { HOOK_PATH, startHookListener, type HookListener } from './hooks/http.js';
 export { createHookIngest, type HookIngest, type HookIngestOptions } from './hooks/ingest.js';
 export {

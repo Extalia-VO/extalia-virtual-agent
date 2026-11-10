@@ -150,6 +150,22 @@ three observation channels, used together where available:
    adds meaning, but it is best-effort: the model may skip it and it costs
    tokens. It never replaces channels 1 and 2 as the source of truth.
 
+Office history loading is scoped to the host and session. Adding or removing a
+watched session preserves the histories and pending reads of the others; changing
+hosts discards that cache. A busy sibling's recent-event window also retains a
+bounded roster of quiet agents' latest activity and terminal evidence. Source
+timestamps remain unchanged, so retaining a report does not renew its liveness.
+When events have no sequence number and share a timestamp, their delivery order
+is preserved; opaque event IDs are not a causal clock.
+
+Receiving a hook does not permanently disable transcript catch-up. Newer source
+events that hooks did not report can reach the live observation stream, with
+actor-scoped deduplication and the same authority rules on history reload.
+Older transcript states cannot replace a newer hook report. Explicit stop/end
+reports and user pauses remain authoritative. This is evidence-based catch-up,
+not a heartbeat: silence from both channels cannot prove that an outside process
+is still working.
+
 ### Why not "just one prompt"
 
 A prompt only affects the session it is typed into, the model may ignore or

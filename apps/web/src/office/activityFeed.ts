@@ -6,7 +6,8 @@ import type { ActivityKind, ExtaliaEvent } from '@extalia/protocol';
  * avatar bubbles share this feed so both say the same thing about the same
  * event. Nothing here is invented: every item maps to one reported event.
  */
-export type OfficeActivityKind = 'prompt' | 'reply' | 'tool' | 'approval' | 'delegated' | 'done' | 'failed';
+export type OfficeActivityKind = 'prompt' | 'reply' | 'tool' | 'approval' | 'delegated' | 'done' | 'failed'
+  | 'meeting-started' | 'meeting-contribution' | 'meeting-completed' | 'meeting-cancelled' | 'meeting-failed';
 
 export interface OfficeActivity {
   /** The event id, so repeated deliveries collapse into one item. */
@@ -19,16 +20,18 @@ export interface OfficeActivity {
   text: string;
   /** Tool category when `kind` is `tool`. */
   activity?: ActivityKind;
+  round?: 1 | 2;
   at: string;
 }
 
 /** Event types the Office keeps for presence, toasts and bubbles. */
 export const OFFICE_EVENT_TYPES: ReadonlySet<string> = new Set([
-  'agent.created', 'agent.state', 'agent.stopped', 'subagent.spawned', 'subagent.state', 'session.ended',
+  'agent.created', 'agent.state', 'agent.stopped', 'subagent.spawned', 'subagent.state', 'session.started', 'session.ended',
   'prompt.submitted', 'model.completed', 'tool.started', 'tool.completed', 'turn.completed', 'turn.failed',
   'approval.requested', 'approval.resolved', 'user.intervention',
   // v0.0.47 (ADR 0016): native mission task lifecycle, for mission workers' presence (no activity line of their own).
   'task.created', 'task.assigned', 'task.completed',
+  'meeting.started', 'meeting.contribution', 'meeting.completed',
 ]);
 
 const TEXT_LIMIT = 140;
@@ -64,6 +67,10 @@ export function activityFromEvent(event: ExtaliaEvent): OfficeActivity | undefin
     case 'approval.requested': return { ...base, kind: 'approval', text: activityText(body.detail ? `${body.action}: ${body.detail}` : body.action) };
     case 'subagent.spawned': return { ...base, kind: 'delegated', text: activityText(body.label ?? body.role ?? body.subagentId) };
     case 'turn.completed': return { ...base, kind: 'done', text: activityText(body.summary ?? '') };
+    case 'meeting.started': return { ...base, kind: 'meeting-started', text: activityText(body.topic ?? '') };
+    case 'meeting.contribution': return { ...base, kind: 'meeting-contribution', round: body.round, text: activityText(body.text) };
+    case 'meeting.completed': return { ...base, kind: body.outcome === 'cancelled' ? 'meeting-cancelled'
+      : body.outcome === 'failed' ? 'meeting-failed' : 'meeting-completed', text: activityText(body.decisions?.join(' · ') ?? '') };
     case 'turn.failed': return { ...base, kind: 'failed', text: activityText(body.error) };
     default: return undefined;
   }

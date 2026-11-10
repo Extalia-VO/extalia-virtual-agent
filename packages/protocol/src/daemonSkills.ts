@@ -201,6 +201,11 @@ export interface DaemonSkillOperations {
     params: { origin: SkillImportOrigin; path: string; sourceRef?: string };
     result: { packageId: string; revisionId: string; treeSha256: string; version: string; state: SkillRevisionState; stateReason?: string; created: boolean };
   };
+  /** Explicit user request to scan an existing quarantined revision; never a details read. */
+  'skill.rescan': {
+    params: { revisionId: string };
+    result: { revisionId: string; packageId: string; state: SkillRevisionState; stateReason?: string };
+  };
   /** Revisions (and built-in skills) ordered by package id, then revision id. */
   'skill.list': {
     params: { cursor?: string; limit?: number; packageId?: string };
@@ -212,6 +217,9 @@ export interface DaemonSkillOperations {
     result: {
       revision: SkillRevisionSummary; manifest: string; files: SkillFileEntry[]; inspections: SkillInspectionRecord[];
       approvals: SkillApprovalRecord[]; history: SkillStateEvent[]; consent: SkillConsentInput[];
+      /** User-only literal preview; not an active skill read or model instruction. Never truncated. */
+      instructions?: string;
+      instructionsUnavailable?: boolean;
     };
   };
   /**
@@ -248,6 +256,6 @@ export interface DaemonSkillOperations {
 }
 export type DaemonSkillOp = keyof DaemonSkillOperations;
 export const DAEMON_SKILL_OPS = [
-  'skill.import', 'skill.list', 'skill.inspect', 'skill.review', 'skill.approve', 'skill.activate', 'skill.deactivate', 'skill.rollback',
+  'skill.import', 'skill.rescan', 'skill.list', 'skill.inspect', 'skill.review', 'skill.approve', 'skill.activate', 'skill.deactivate', 'skill.rollback',
   'skill.revoke', 'skill.read', 'skill.scanner', 'skill.preflight', 'skill.routingPreview',
 ] as const satisfies readonly DaemonSkillOp[];

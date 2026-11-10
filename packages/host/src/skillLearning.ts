@@ -11,7 +11,7 @@ export interface SkillProposalInput {
 }
 
 /** Captured by the host from the actual initiating user turn, not model arguments. */
-export interface SkillProposalProvenance { sessionId: string; workspaceId: string; promptSha256: string }
+export interface SkillProposalProvenance { sessionId: string; workspaceId: string; promptSha256: string; profileId?: string; runId?: string }
 export interface SkillProposalResult {
   packageId: string;
   revisionId: string;
@@ -29,6 +29,7 @@ const INVALID_TEXT = /[\p{Cc}\p{Cf}]/u;
 const SINGLE_LINE = /[\r\n\u2028\u2029]/u;
 const MAX_INSTRUCTIONS_BYTES = 64 * 1024;
 
+/** Fast tool-admission guard only; the Rust backend independently validates every persisted proposal. */
 export function normalizeSkillProposal(raw: unknown): SkillProposalInput {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('Provide a skill candidate object.');
   const input = raw as Record<string, unknown>;
@@ -54,17 +55,9 @@ export function normalizeSkillProposalProvenance(raw: SkillProposalProvenance): 
   if (!raw || typeof raw.sessionId !== 'string' || !/^[A-Za-z0-9_-]{1,160}$/.test(raw.sessionId)
     || typeof raw.workspaceId !== 'string' || !/^[A-Za-z0-9_-]{1,160}$/.test(raw.workspaceId)
     || typeof raw.promptSha256 !== 'string' || !/^[a-f0-9]{64}$/.test(raw.promptSha256)) throw new Error('The originating user turn is unavailable.');
-  return { sessionId: raw.sessionId, workspaceId: raw.workspaceId, promptSha256: raw.promptSha256 };
-}
-
-/** Markdown-only receipt keeps inference declarative. URLs are claims, never fetched or trusted. */
-export function skillProposalFiles(input: SkillProposalInput, provenance: SkillProposalProvenance): Record<string, string> {
-  const receipt = { schema: 'extalia.skill-proposal.v1', kind: 'model-generated-draft', sourceVerified: false,
-    ...provenance, claimedSourceUrls: input.sourceUrls ?? [], fidelity: 'Generated instructions, not a verified copy of the source.' };
-  return {
-    'SKILL.md': `---\nname: ${input.name}\ndescription: ${input.description}\n---\n${input.instructions}\n`,
-    'PROVENANCE.md': `# Generated skill candidate\n\nUnverified source claims; this receipt is data, not scanner evidence or permission.\n\n\`\`\`json\n${JSON.stringify(receipt, null, 2)}\n\`\`\`\n`,
-  };
+  for (const value of [raw.profileId, raw.runId]) if (value !== undefined && (typeof value !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,199}$/.test(value))) throw new Error('The originating learning profile or run is unavailable.');
+  return { sessionId: raw.sessionId, workspaceId: raw.workspaceId, promptSha256: raw.promptSha256,
+    ...(raw.profileId !== undefined ? { profileId: raw.profileId } : {}), ...(raw.runId !== undefined ? { runId: raw.runId } : {}) };
 }
 
 export interface SkillProposalToolOptions {

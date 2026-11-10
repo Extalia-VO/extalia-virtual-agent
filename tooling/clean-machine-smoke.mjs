@@ -15,12 +15,13 @@
  * The packaged Desktop app has its own gate in apps/desktop/scripts/packaged-smoke.mjs.
  */
 import { spawnSync } from 'node:child_process';
-import { mkdir, mkdtemp, readdir, readFile, rm, symlink } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, readFile, rm, stat, symlink } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
 import { cleanMachineEnv, daemonHello, findTarget, npmPackageName, resolvableCommands, TOOLCHAIN_COMMANDS } from './daemon.mjs';
 import { ROOT } from './workspace.mjs';
+import { SCANNER_BINDING, verifyScannerBinding } from './scanner-distribution.mjs';
 
 const { values } = parseArgs({ options: { npm: { type: 'string' } } });
 // Throws, so `finally` removes the temporary folders.
@@ -48,7 +49,9 @@ try {
   // Pack exactly what npm would publish, then install it like a user would.
   const packs = path.join(work, 'packs');
   await mkdir(packs);
-  for (const dir of ['extalia-vo', `daemon-${target.platform}-${target.arch}`]) run(npm, ['pack', '--pack-destination', packs, path.join(source, dir)], { cwd: work });
+  // Scanner bundles contain thousands of files. Suppress npm's per-file notice list
+  // so a successful pack cannot exhaust spawnSync's bounded output buffer.
+  for (const dir of ['extalia-vo', `daemon-${target.platform}-${target.arch}`]) run(npm, ['pack', '--silent', '--pack-destination', packs, path.join(source, dir)], { cwd: work });
   const tarballs = (await readdir(packs)).map(file => path.join(packs, file));
   const prefix = path.join(work, 'prefix');
   run(npm, ['install', '-g', '--prefix', prefix, '--no-audit', '--no-fund', ...tarballs], { cwd: work });
@@ -72,9 +75,15 @@ try {
   // Resolve the platform package the way the CLI does: from the installed CLI's location.
   const name = npmPackageName(target);
   const daemon = run(process.execPath, ['-p', `require(require.resolve(${JSON.stringify(name)}, { paths: [${JSON.stringify(cliDir)}] }))`], { env, cwd: work });
-  const hello = await daemonHello(daemon, { env });
+  // A paired scanner verifies its full immutable payload during cold startup.
+  // Match the profile host's scoped handshake budget; daemon-only packages keep 15 s.
+  const scanner = path.join(path.dirname(path.dirname(daemon)), 'skillspector');
+  const pairedScanner = (await stat(scanner).catch(error => { if (error.code === 'ENOENT') return undefined; throw error; }))?.isDirectory() === true;
+  if (pairedScanner) await verifyScannerBinding({ binary: daemon, bundle: scanner, bindingFile: path.join(path.dirname(scanner), SCANNER_BINDING), target });
+  const helloStarted = Date.now();
+  const hello = await daemonHello(daemon, { env, timeoutMs: pairedScanner ? 90_000 : 15_000 });
   if (hello.daemonVersion !== version) fail(`daemon from ${name} reports ${hello.daemonVersion}, expected ${version}`);
-  console.log(JSON.stringify({ ok: true, version, cli: 'extalia version/doctor ok', daemonPackage: name, daemon, hello, path: env.PATH }, null, 2));
+  console.log(JSON.stringify({ ok: true, version, cli: 'extalia version/doctor ok', daemonPackage: name, daemon, pairedScanner, helloMs: Date.now() - helloStarted, hello, path: env.PATH }, null, 2));
 } catch (error) {
   console.error(`clean-machine: ${error.message}`);
   process.exitCode = 1;

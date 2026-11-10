@@ -3,7 +3,6 @@ import path from 'node:path';
 import type { ExtaliaEvent } from '@extalia/protocol';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
-  createAgentHost,
   DEFAULT_HERMES_DASHBOARD_URL,
   EXTALIA_MCP_INSTRUCTION,
   EXTALIA_MCP_TOOLS,
@@ -11,6 +10,7 @@ import {
   normalizeMcpReport,
   parseHermesDashboardUrl,
 } from '../src/index.js';
+import { createAgentHost } from '../src/service.js';
 import { normalizeClaudeHook, normalizeCodexHook, normalizeHermesHook } from '../src/hooks/normalize.js';
 import { useTempDirs } from './helpers.js';
 
@@ -206,7 +206,7 @@ describe('Hermes dashboard read source (D3)', () => {
 
 describe('MCP reporting (Phase E) and labelsOnly privacy option', () => {
   it('exposes report_intent and report_handoff MCP tool definitions and normalizes their payloads', () => {
-    expect(EXTALIA_MCP_TOOLS.map(t => t.name)).toEqual(['await_reply', 'report_intent', 'report_handoff']);
+    expect(EXTALIA_MCP_TOOLS.map(t => t.name)).toEqual(['poll_inbox', 'report_followups', 'report_meeting', 'await_reply', 'report_intent', 'report_handoff']);
     expect(EXTALIA_MCP_INSTRUCTION).toContain('report_intent');
     expect(EXTALIA_MCP_INSTRUCTION).toContain('report_handoff');
 

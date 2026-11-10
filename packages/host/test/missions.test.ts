@@ -1,3 +1,4 @@
+import { createAgentHost } from '../src/service.js';
 import { randomUUID } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 import { existsSync } from 'node:fs';
@@ -9,8 +10,9 @@ import { parseEvent, type ExtaliaEvent } from '@extalia/protocol';
 import type { HostMissionRequest, HostMissionRun } from '@extalia/platform';
 import { MissionCheckpointStore } from '../src/missionCheckpoints.js';
 import { MissionRecords } from '../src/mission.js';
-import { createAgentHost, type AgentHostRuntime } from '../src/service.js';
+import { type AgentHostRuntime } from '../src/service.js';
 import { backendEnv, backendOptions, backends, coreFile, queryCore, type Backend } from './daemonBackend.js';
+import { mockModelDiscovery } from './modelDiscoveryFixture.js';
 
 const cleanups: (() => Promise<void>)[] = [];
 // Each suite below runs once per native core backend (audit PR 8).
@@ -38,7 +40,7 @@ async function setup(fetch: Fetch = async (_url, init) => {
   const root = existingRoot ?? await mkdtemp(path.join(tmpdir(), 'extalia-missions-'));
   const project = path.join(root, 'project'), home = path.join(root, 'home'), data = path.join(root, 'data');
   await mkdir(project, { recursive: true }); await mkdir(home, { recursive: true });
-  const runtime = await createAgentHost({ kind: 'bridge', version: '0.0.0-test', dataDirectory: data, homeDirectory: home, importHome: home, observationIntervalMs: 60_000, env: { EXTALIA_SECRET_STORE: 'memory', HOME: home, PATH: '', MISSION_KEY_A: 'opaque-secret-a-value', MISSION_KEY_B: 'opaque-secret-b-value', ...backendEnv(backend) }, fetch, ...backendOptions(backend) });
+  const runtime = await createAgentHost({ kind: 'bridge', version: '0.0.0-test', dataDirectory: data, homeDirectory: home, importHome: home, observationIntervalMs: 60_000, env: { EXTALIA_SECRET_STORE: 'memory', HOME: home, PATH: '', MISSION_KEY_A: 'opaque-secret-a-value', MISSION_KEY_B: 'opaque-secret-b-value', ...backendEnv(backend) }, fetch, modelDiscovery: mockModelDiscovery(async (url, init) => url.endsWith('/models') ? Response.json({ data: [{ id: 'model-a' }, { id: 'model-b' }] }) : fetch(url, init)), ...backendOptions(backend) });
   let closed = false;
   const close = async () => { if (!closed) { closed = true; await runtime.close(); } };
   cleanups.push(async () => { await close(); if (!existingRoot) await rm(root, { recursive: true, force: true }); });

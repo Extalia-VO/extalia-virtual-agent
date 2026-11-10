@@ -59,7 +59,7 @@ describe('read-only skill routing host API', () => {
     const registry = new SkillRegistry({ daemon: { connect: async () => client } as DaemonSidecar, dataDirectory: '/unused', profile: 'default',
       workspaceRoot: () => { throw new Error('No project folder.'); }, workspaceKnown: id => id === workspaceId });
     expect(await registry.routingPreview({ ...input(), workspaceId })).toEqual(answer);
-    expect(request).toHaveBeenCalledExactlyOnceWith('skill.routingPreview', { ...input(), workspaceId });
+    expect(request).toHaveBeenCalledExactlyOnceWith('skill.routingPreview', { ...input(), workspaceId }, 90_000);
     await expect(registry.routingPreview({ ...input(), workspaceId: '00000000-0000-4000-8000-000000000001' })).rejects.toThrow('Unknown workspace');
     expect(request).toHaveBeenCalledTimes(1);
   });
@@ -80,12 +80,30 @@ describe('read-only skill routing host API', () => {
     const runtime = await createAgentHost({ kind: 'bridge', version: 'test', dataDirectory: data, homeDirectory: home, importHome: home, observationIntervalMs: 60_000,
       env: { EXTALIA_SECRET_STORE: 'memory', EXTALIA_NATIVE_CORE: 'rust', EXTALIA_DAEMON_PATH: DAEMON_BINARY, HOME: home, PATH: process.env.PATH ?? '' }, daemon: { log: () => undefined } });
     try {
-      const imported = await runtime.host.importSkill({ kind: 'folder', path: source });
       expect((await runtime.host.skillRegistry()).routingPreview).toBe(true);
+      const emptyRequest = { ...input(), candidateRevisionIds: [] };
+      const beforeEmpty = snapshot(data);
+      const emptyResult = await runtime.host.previewSkillRouting!(emptyRequest);
+      expect(emptyResult).toMatchObject({ status: 'no_safe_skill', dispatchEligible: false, exclusions: [] });
+      expect(snapshot(data)).toEqual(beforeEmpty);
+      // Unknown identities fail closed rather than becoming diagnostic exclusions.
+      await expect(runtime.host.previewSkillRouting!(input())).rejects.toThrow();
+      expect(snapshot(data)).toEqual(beforeEmpty);
+      let candidateRevisionIds: string[] = [];
+      if (process.platform === 'win32') {
+        const beforeImport = snapshot(data);
+        await expect(runtime.host.importSkill({ kind: 'folder', path: source })).rejects.toThrow('missing_capability');
+        expect(snapshot(data)).toEqual(beforeImport);
+        expect((await runtime.host.skillRegistry()).revisions).toEqual([]);
+        await expect(lstat(path.join(data, 'profiles', 'default', 'skill-imports'))).rejects.toMatchObject({ code: 'ENOENT' });
+      } else {
+        candidateRevisionIds = [(await runtime.host.importSkill({ kind: 'folder', path: source })).revisionId!];
+      }
       const before = snapshot(data);
-      const request = { ...input(), candidateRevisionIds: [imported.revisionId!] };
+      const request = { ...input(), candidateRevisionIds };
       const result = await runtime.host.previewSkillRouting!(request);
-      expect(result.status).toBe('no_safe_skill'); expect(result.dispatchEligible).toBe(false); expect(result.exclusions[0]!.identity.revisionId).toBe(imported.revisionId);
+      expect(result.status).toBe('no_safe_skill'); expect(result.dispatchEligible).toBe(false);
+      expect(result.exclusions.map(item => item.identity.revisionId)).toEqual(candidateRevisionIds);
       expect(snapshot(data)).toEqual(before);
       await expect(runtime.host.previewSkillRouting!({ ...request, workspaceId: '00000000-0000-4000-8000-000000000001' })).rejects.toThrow();
       expect(snapshot(data)).toEqual(before);

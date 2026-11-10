@@ -2,7 +2,9 @@ import { chmod, mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Workspace } from '@extalia/core';
-import { createAgentHost, type AgentHostRuntime } from '../src/service.js';
+import type { AgentHostRuntime } from '../src/service.js';
+import { createAgentHost } from '../src/service.js';
+import { mockModelDiscovery } from './modelDiscoveryFixture.js';
 import { useTempDirs } from './helpers.js';
 
 const temp = useTempDirs();
@@ -33,15 +35,17 @@ process.stdin.on('end', () => {
 `);
   await chmod(executable, 0o755);
   const requests: { url: string; body?: Record<string, unknown> }[] = [];
+  const fetch = async (url: string, init?: RequestInit) => {
+    const body = init?.body ? JSON.parse(String(init.body)) as Record<string, unknown> : undefined;
+    requests.push({ url, ...(body ? { body } : {}) });
+    if (url.endsWith('/models')) return Response.json({ data: [{ id: url.includes('original') ? 'native-original' : 'native-replacement' }] });
+    return new Response('data: {"choices":[{"delta":{"content":"Done."},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n', { headers: { 'content-type': 'text/event-stream' } });
+  };
   const runtime = await createAgentHost({
     kind: 'bridge', version: '0.0.0-test', dataDirectory: path.join(root, 'data'), homeDirectory: home, importHome: home,
     env: { EXTALIA_SECRET_STORE: 'memory', EXTALIA_NATIVE_CORE: 'typescript', HOME: home, HERMES_HOME: path.join(home, '.hermes'), HERMES_MANAGED_DIR: path.join(root, 'no-managed-scope'), EXTALIA_HERMES_BIN: executable, PATH: process.env.PATH },
-    fetch: async (url, init) => {
-      const body = init?.body ? JSON.parse(String(init.body)) as Record<string, unknown> : undefined;
-      requests.push({ url, ...(body ? { body } : {}) });
-      if (url.endsWith('/models')) return Response.json({ data: [{ id: url.includes('original') ? 'native-original' : 'native-replacement' }] });
-      return new Response('data: {"choices":[{"delta":{"content":"Done."},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n', { headers: { 'content-type': 'text/event-stream' } });
-    },
+    fetch,
+    modelDiscovery: mockModelDiscovery(fetch),
   });
   runtimes.push(runtime);
   return { root, home, project, runtime, host: runtime.host, requests };

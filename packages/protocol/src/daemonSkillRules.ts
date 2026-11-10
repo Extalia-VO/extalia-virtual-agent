@@ -76,6 +76,7 @@ export const SKILL_PARAMS: Record<DaemonSkillOp, Rule> = {
     limit: optional(number(1, true, DAEMON_SKILL_LIST_MAX_LIMIT)), packageId: optional(packageId.ref),
   }),
   'skill.inspect': object({ revisionId: revisionId.ref, workspaceId: optional(workspaceId.ref) }),
+  'skill.rescan': object({ revisionId: revisionId.ref }),
   'skill.review': object({ revisionId: revisionId.ref, treeSha256: digest, principal: principal.ref, decision, note: optional(multiline(DAEMON_SKILL_LIMITS.note, true)) }),
   'skill.approve': object({
     revisionId: revisionId.ref, treeSha256: digest, permissionDigest: digest, principal: principal.ref, workspaceId: optional(workspaceId.ref), expiresAt: optional(timestamp),
@@ -93,12 +94,14 @@ export const SKILL_RESULTS: Record<DaemonSkillOp, Rule> = {
   'skill.import': object({
     packageId: packageId.ref, revisionId: revisionId.ref, treeSha256: digest, version: text(128), state: state.ref, stateReason: optional(skillReason.ref), created: boolean,
   }),
+  'skill.rescan': object({ revisionId: revisionId.ref, packageId: packageId.ref, state: state.ref, stateReason: optional(skillReason.ref) }),
   'skill.list': object({
     revisions: array(summary.ref, false, 0, DAEMON_SKILL_LIST_MAX_LIMIT),
     nextCursor: optional(matching(SKILL_LIST_CURSOR_PATTERN, 'expected a cursor')), indexGeneration: count,
   }),
   'skill.inspect': object({
     revision: summary.ref, manifest: text(DAEMON_SKILL_LIMITS.manifest), files: array(file.ref, false, 0, DAEMON_SKILL_LIMITS.files),
+    instructions: optional(multiline(65_536, true)), instructionsUnavailable: optional(boolean),
     inspections: array(inspection.ref, false, 0, DAEMON_SKILL_LIMITS.inspections), approvals: array(approval.ref, false, 0, DAEMON_SKILL_LIMITS.approvals),
     history: array(event.ref, false, 0, DAEMON_SKILL_LIMITS.history), consent: array(consent.ref, false, 0, DAEMON_SKILL_LIMITS.consent),
   }),
