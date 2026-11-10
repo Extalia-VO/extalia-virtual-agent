@@ -6,6 +6,7 @@
 </p>
 
 # Extalia
+## Virtual Agents Office
 
 <p align="center">
   <a href="https://github.com/Extalia-VO/extalia-virtual-agent/releases/latest"><img src="https://img.shields.io/github/v/release/Extalia-VO/extalia-virtual-agent?style=flat-square" alt="Latest published release"></a>
