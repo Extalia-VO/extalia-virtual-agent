@@ -256,6 +256,53 @@ fn note_prepare_commit_is_pinned_immutable_and_cleans_abandoned_drafts() {
             .count(),
         1
     );
+    #[cfg(unix)]
+    {
+        let mut tampered_record = record.clone();
+        tampered_record["runId"] = "tampered-run".into();
+        let tampered_draft = run(
+            &mut owner,
+            "note.prepare",
+            json!({"pinId":pin["pinId"],"record":tampered_record}),
+        );
+        let temp_name = format!(".learning-{}.tmp", tampered_draft["draftId"].as_str().unwrap());
+        let temp_path = vault.join("Learning/workspace").join(&temp_name);
+        assert!(temp_path.exists());
+        // Replace temp file with a symlink to an outside file
+        std::fs::remove_file(&temp_path).unwrap();
+        let outside = data.join("outside.txt");
+        std::fs::write(&outside, "evil content").unwrap();
+        symlink(&outside, &temp_path).unwrap();
+        assert!(
+            owner
+                .handle(&request(
+                    "note.commit",
+                    json!({"draftId":tampered_draft["draftId"]})
+                ))
+                .is_err()
+        );
+        assert!(!vault.join("Learning/workspace/tampered-run.md").exists());
+
+        // Replace temp file with a modified regular file
+        let tampered_draft2 = run(
+            &mut owner,
+            "note.prepare",
+            json!({"pinId":pin["pinId"],"record":tampered_record}),
+        );
+        let temp_name2 = format!(".learning-{}.tmp", tampered_draft2["draftId"].as_str().unwrap());
+        let temp_path2 = vault.join("Learning/workspace").join(&temp_name2);
+        std::fs::remove_file(&temp_path2).unwrap();
+        std::fs::write(&temp_path2, "different content").unwrap();
+        assert!(
+            owner
+                .handle(&request(
+                    "note.commit",
+                    json!({"draftId":tampered_draft2["draftId"]})
+                ))
+                .is_err()
+        );
+        assert!(!vault.join("Learning/workspace/tampered-run.md").exists());
+    }
     let old = vault.with_extension("old");
     std::fs::rename(&vault, &old).unwrap();
     std::fs::create_dir(&vault).unwrap();

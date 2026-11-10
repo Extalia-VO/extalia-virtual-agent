@@ -204,4 +204,34 @@ describe('inbox client validation', () => {
     }
     expect(await pollObservedInbox(request, { fetch: async () => new Response('x'.repeat(100_001), { headers: { 'content-type': 'application/json' } }) })).toEqual({ status: 'unknown' });
   });
+  it('connects directly to loopback without leaking bearer token to an active environment proxy', async () => {
+    let proxyHits = 0;
+    const { createServer } = await import('node:http');
+    const proxyServer = createServer((_req, res) => {
+      proxyHits++;
+      res.writeHead(502, { 'content-type': 'text/plain' });
+      res.end('bad gateway from proxy');
+    });
+    await new Promise<void>(resolve => proxyServer.listen(0, '127.0.0.1', () => resolve()));
+    const proxyPort = (proxyServer.address() as { port: number }).port;
+    const prevHttpProxy = process.env.HTTP_PROXY;
+    const prevHttpProxyLower = process.env.http_proxy;
+    process.env.HTTP_PROXY = `http://127.0.0.1:${proxyPort}`;
+    process.env.http_proxy = `http://127.0.0.1:${proxyPort}`;
+
+    try {
+      const { broker } = make();
+      const a = await broker.create('a');
+      broker.send('a', { channelId: a.channelId!, text: 'secret message' });
+      const result = await pollObservedInbox(paired(a));
+      expect(result).toMatchObject({ status: 'message', message: { text: 'secret message' } });
+      expect(proxyHits).toBe(0);
+    } finally {
+      if (prevHttpProxy !== undefined) process.env.HTTP_PROXY = prevHttpProxy;
+      else delete process.env.HTTP_PROXY;
+      if (prevHttpProxyLower !== undefined) process.env.http_proxy = prevHttpProxyLower;
+      else delete process.env.http_proxy;
+      await new Promise<void>(resolve => proxyServer.close(() => resolve()));
+    }
+  });
 });

@@ -1,3 +1,5 @@
+import http from 'node:http';
+
 export interface ObservedInboxRequest { url: string; token: string; ack?: string; waitMs?: number }
 export type ObservedInboxResult =
   | { status: 'message'; message: { messageId: string; text: string }; acknowledged?: string }
@@ -7,6 +9,91 @@ export interface ObservedInboxClientOptions { signal?: AbortSignal; fetch?: type
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const PATH = /^\/inbox\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const TOKEN = /^[0-9a-f]{64}$/i;
+const directAgent = new http.Agent({ keepAlive: false });
+
+function directLoopbackPost(
+  urlStr: string,
+  headers: Record<string, string>,
+  body: string,
+  signal: AbortSignal,
+): Promise<{ status: number; ok: boolean; headers: { get(name: string): string | null }; bodyBytes: Uint8Array }> {
+  return new Promise((resolve, reject) => {
+    if (signal.aborted) {
+      return reject(new Error('Aborted'));
+    }
+    const parsed = new URL(urlStr);
+    const bodyBuffer = Buffer.from(body, 'utf-8');
+    const req = http.request({
+      protocol: 'http:',
+      hostname: '127.0.0.1',
+      port: Number(parsed.port),
+      path: parsed.pathname,
+      method: 'POST',
+      headers: {
+        ...headers,
+        'content-length': bodyBuffer.byteLength,
+        connection: 'close',
+      },
+      agent: directAgent,
+      signal,
+    });
+
+    req.on('error', reject);
+
+    req.on('response', (res) => {
+      const status = res.statusCode ?? 500;
+      const responseHeaders = {
+        get(name: string) {
+          const val = res.headers[name.toLowerCase()];
+          if (Array.isArray(val)) return val[0] ?? null;
+          return val ?? null;
+        },
+      };
+
+      const length = responseHeaders.get('content-length');
+      if (length !== null && (!/^\d+$/.test(length) || Number(length) > 100_000)) {
+        req.destroy();
+        return resolve({
+          status,
+          ok: status >= 200 && status < 300,
+          headers: responseHeaders,
+          bodyBytes: new Uint8Array(0),
+        });
+      }
+
+      const chunks: Buffer[] = [];
+      let size = 0;
+
+      res.on('data', (chunk: Buffer) => {
+        size += chunk.length;
+        if (size > 100_000) {
+          req.destroy();
+          return resolve({
+            status,
+            ok: status >= 200 && status < 300,
+            headers: responseHeaders,
+            bodyBytes: new Uint8Array(0),
+          });
+        }
+        chunks.push(chunk);
+      });
+
+      res.on('end', () => {
+        resolve({
+          status,
+          ok: status >= 200 && status < 300,
+          headers: responseHeaders,
+          bodyBytes: new Uint8Array(Buffer.concat(chunks)),
+        });
+      });
+
+      res.on('error', reject);
+    });
+
+    req.write(bodyBuffer);
+    req.end();
+  });
+}
 /** Validate the exact paired route before attaching a secret; no DNS or redirects. */
 export function isObservedInboxRequest(value: unknown): value is ObservedInboxRequest {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
@@ -33,44 +120,71 @@ export async function pollObservedInbox(request: ObservedInboxRequest, options: 
   if (options.signal?.aborted) cancel();
   let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
   try {
-    const response = await (options.fetch ?? globalThis.fetch)(request.url, {
-      method: 'POST', headers: { authorization: `Bearer ${request.token}`, 'content-type': 'application/json' },
-      body: JSON.stringify({ operation: 'poll', ...(request.ack ? { ack: request.ack } : {}), ...(request.waitMs !== undefined ? { waitMs: request.waitMs } : {}) }),
-      redirect: 'error', signal: controller.signal,
-    });
-    if ((!response.ok && ![408, 409, 410].includes(response.status)) || !response.body) return { status: 'unavailable' };
-    if (!/^application\/json(?:\s*;|\s*$)/i.test(response.headers.get('content-type') ?? '')) return { status: 'unknown' };
-    const length = response.headers.get('content-length');
-    if (length !== null && (!/^\d+$/.test(length) || Number(length) > 100_000)) return { status: 'unknown' };
-    reader = response.body.getReader();
-    const chunks: Uint8Array[] = [];
-    let size = 0;
-    for (;;) {
-      const next = await reader.read();
-      if (next.done) break;
-      size += next.value.byteLength;
-      if (size > 100_000) return { status: 'unknown' };
-      chunks.push(next.value);
+    const bodyStr = JSON.stringify({ operation: 'poll', ...(request.ack ? { ack: request.ack } : {}), ...(request.waitMs !== undefined ? { waitMs: request.waitMs } : {}) });
+    let status: number;
+    let ok: boolean;
+    let getHeader: (name: string) => string | null;
+    let bytes: Uint8Array;
+
+    if (options.fetch) {
+      const response = await options.fetch(request.url, {
+        method: 'POST', headers: { authorization: `Bearer ${request.token}`, 'content-type': 'application/json' },
+        body: bodyStr,
+        redirect: 'error', signal: controller.signal,
+      });
+      status = response.status;
+      ok = response.ok;
+      getHeader = (name: string) => response.headers.get(name);
+      if ((!ok && ![408, 409, 410].includes(status)) || !response.body) return { status: 'unavailable' };
+      if (!/^application\/json(?:\s*;|\s*$)/i.test(getHeader('content-type') ?? '')) return { status: 'unknown' };
+      const length = getHeader('content-length');
+      if (length !== null && (!/^\d+$/.test(length) || Number(length) > 100_000)) return { status: 'unknown' };
+      reader = response.body.getReader();
+      const chunks: Uint8Array[] = [];
+      let size = 0;
+      for (;;) {
+        const next = await reader.read();
+        if (next.done) break;
+        size += next.value.byteLength;
+        if (size > 100_000) return { status: 'unknown' };
+        chunks.push(next.value);
+      }
+      if (controller.signal.aborted) return { status: 'unknown' };
+      bytes = new Uint8Array(size);
+      let offset = 0;
+      for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
+    } else {
+      const res = await directLoopbackPost(
+        request.url,
+        { authorization: `Bearer ${request.token}`, 'content-type': 'application/json' },
+        bodyStr,
+        controller.signal,
+      );
+      status = res.status;
+      ok = res.ok;
+      getHeader = (name: string) => res.headers.get(name);
+      bytes = res.bodyBytes;
+      if ((!ok && ![408, 409, 410].includes(status)) || !bytes.length) return { status: 'unavailable' };
+      if (!/^application\/json(?:\s*;|\s*$)/i.test(getHeader('content-type') ?? '')) return { status: 'unknown' };
+      const length = getHeader('content-length');
+      if (length !== null && (!/^\d+$/.test(length) || Number(length) > 100_000 || Number(length) !== bytes.byteLength)) return { status: 'unknown' };
     }
-    if (controller.signal.aborted) return { status: 'unknown' };
-    const bytes = new Uint8Array(size);
-    let offset = 0;
-    for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
+
     const value: unknown = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
     if (!value || typeof value !== 'object' || Array.isArray(value)) return { status: 'unknown' };
     const row = value as Record<string, unknown>;
     if (Object.keys(row).some(key => !['status', 'message', 'acknowledged'].includes(key))) return { status: 'unknown' };
     if (row.acknowledged !== undefined && (typeof row.acknowledged !== 'string' || row.acknowledged !== request.ack)) return { status: 'unknown' };
     const acknowledged = typeof row.acknowledged === 'string' ? { acknowledged: row.acknowledged } : {};
-    if (response.ok && row.status === 'empty' && row.message === undefined) return { status: 'empty', ...acknowledged };
-    if (response.ok && row.status === 'message' && row.message && typeof row.message === 'object' && !Array.isArray(row.message)) {
+    if (ok && row.status === 'empty' && row.message === undefined) return { status: 'empty', ...acknowledged };
+    if (ok && row.status === 'message' && row.message && typeof row.message === 'object' && !Array.isArray(row.message)) {
       const m = row.message as Record<string, unknown>;
       if (Object.keys(m).every(key => ['messageId', 'text'].includes(key)) && typeof m.messageId === 'string' && UUID.test(m.messageId) && typeof m.text === 'string' && m.text.trim() && m.text.length <= 16_000 && new TextEncoder().encode(m.text).length <= 16 * 1024) return { status: 'message', message: { messageId: m.messageId, text: m.text }, ...acknowledged };
     }
     if (row.message !== undefined || row.acknowledged !== undefined) return { status: 'unknown' };
-    if (row.status === 'expired' && response.status === 408) return { status: 'expired' };
-    if (row.status === 'busy' && response.status === 409) return { status: 'busy' };
-    if (row.status === 'unavailable' && [409, 410].includes(response.status)) return { status: 'unavailable' };
+    if (row.status === 'expired' && status === 408) return { status: 'expired' };
+    if (row.status === 'busy' && status === 409) return { status: 'busy' };
+    if (row.status === 'unavailable' && [409, 410].includes(status)) return { status: 'unavailable' };
     return { status: 'unknown' };
   } catch { return { status: 'unknown' }; }
   finally {

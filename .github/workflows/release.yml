@@ -115,12 +115,15 @@ jobs:
             echo "::error::extalia-daemon needs glibc $needed, newer than the supported floor $floor."
             exit 1
           fi
+      - name: Archive daemon artifacts
+        shell: bash
+        run: |
+          mkdir -p daemon-archives
+          tar -czf "daemon-archives/daemon-${{ matrix.target }}.tar.gz" -C daemon-artifacts .
       - uses: actions/upload-artifact@v4
         with:
           name: daemon-${{ matrix.target }}
-          # daemon-artifacts/<platform>-<arch>/extalia-daemon[.exe]; artifacts drop the executable bit,
-          # so every consumer stages the file with build-daemon --from or generate.mjs, which restore it.
-          path: daemon-artifacts/
+          path: daemon-archives/
           include-hidden-files: true
           if-no-files-found: error
           retention-days: 14
@@ -144,8 +147,16 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           pattern: daemon-*
-          path: daemon-artifacts
+          path: daemon-archives
           merge-multiple: true
+      - name: Extract daemon archives
+        shell: bash
+        run: |
+          mkdir -p daemon-artifacts
+          for archive in daemon-archives/*.tar.gz; do
+            [ -f "$archive" ] || continue
+            tar -xzf "$archive" -C daemon-artifacts
+          done
       # Five @extalia/daemon-<platform>-<arch> packages plus extalia-vo with them as optional dependencies.
       - run: node apps/cli/npm/generate.mjs --binaries daemon-artifacts --out npm-packages --require-all --require-scanner-target darwin-arm64 --cli
       # npm install -g of the packed CLI + linux-x64 package, then run with no toolchain on PATH.
@@ -240,8 +251,16 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           pattern: daemon-*
-          path: daemon-artifacts
+          path: daemon-archives
           merge-multiple: true
+      - name: Extract daemon archives
+        shell: bash
+        run: |
+          mkdir -p daemon-artifacts
+          for archive in daemon-archives/*.tar.gz; do
+            [ -f "$archive" ] || continue
+            tar -xzf "$archive" -C daemon-artifacts
+          done
       # Stage the daemon for every arch this OS packages (electron-builder.yml: macOS arm64 + x64,
       # Windows x64, Linux x64) at apps/desktop/build-resources/daemon/<os>-<arch>/; no Rust here.
       - name: Stage the daemon

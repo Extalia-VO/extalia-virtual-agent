@@ -1,7 +1,7 @@
 use super::*;
 use std::fs::File;
 #[cfg(unix)]
-use std::io::{Read, Write};
+use std::io::{Read, Seek, Write};
 use std::sync::Arc;
 #[cfg(unix)]
 mod platform {
@@ -49,7 +49,7 @@ mod platform {
         let opened = openat(
             parent,
             name,
-            OFlags::WRONLY | OFlags::CREATE | OFlags::EXCL | OFlags::NOFOLLOW | OFlags::CLOEXEC,
+            OFlags::RDWR | OFlags::CREATE | OFlags::EXCL | OFlags::NOFOLLOW | OFlags::CLOEXEC,
             Mode::from_raw_mode(0o600),
         );
         let mut file = match opened {
@@ -63,9 +63,48 @@ mod platform {
         parent.sync_all().map_err(io_fail)?;
         Ok(Some(file))
     }
-    pub fn publish(parent: &File, temp: &str, target: &str, content: &[u8]) -> Result<()> {
+    pub fn publish(
+        parent: &File,
+        temp: &str,
+        draft_file: &File,
+        target: &str,
+        content: &[u8],
+    ) -> Result<()> {
+        let mut df = draft_file.try_clone().map_err(io_fail)?;
+        let m = df.metadata().map_err(io_fail)?;
+        if !m.is_file() || m.len() != content.len() as u64 {
+            return Err(refuse("draft_changed"));
+        }
+        df.seek(std::io::SeekFrom::Start(0)).map_err(io_fail)?;
+        let mut draft_bytes = Vec::with_capacity(content.len());
+        (&mut df)
+            .take(content.len() as u64 + 1)
+            .read_to_end(&mut draft_bytes)
+            .map_err(io_fail)?;
+        if draft_bytes != content {
+            return Err(refuse("draft_changed"));
+        }
+
+        let temp_handle = openat(parent, temp, flags(), Mode::empty())
+            .map(File::from)
+            .map_err(|_| refuse("draft_changed"))?;
+        if !same(&temp_handle, draft_file) {
+            return Err(refuse("draft_changed"));
+        }
+
         match linkat(parent, temp, parent, target, AtFlags::empty()) {
-            Ok(()) => {}
+            Ok(()) => {
+                let target_handle = openat(parent, target, flags(), Mode::empty())
+                    .map(File::from)
+                    .map_err(|_| {
+                        remove(parent, target, false);
+                        refuse("draft_changed")
+                    })?;
+                if !same(&target_handle, draft_file) {
+                    remove(parent, target, false);
+                    return Err(refuse("draft_changed"));
+                }
+            }
             Err(e) if e == rustix::io::Errno::EXIST => {
                 let mut f = File::from(
                     openat(parent, target, flags(), Mode::empty())
@@ -120,7 +159,7 @@ mod platform {
     pub fn create(_: &File, _: &str, _: &[u8]) -> Result<Option<File>> {
         Err(refuse("platform_unavailable"))
     }
-    pub fn publish(_: &File, _: &str, _: &str, _: &[u8]) -> Result<()> {
+    pub fn publish(_: &File, _: &str, _: &File, _: &str, _: &[u8]) -> Result<()> {
         Err(refuse("platform_unavailable"))
     }
     pub fn remove(_: &File, _: &str, _: bool) {}
@@ -177,6 +216,7 @@ pub(super) struct Draft {
     pub created: Instant,
     pub pin_id: String,
     folder: File,
+    file: File,
     category: String,
     workspace: String,
     temp: String,
@@ -298,10 +338,13 @@ impl Learning {
         let temp = format!(".learning-{draft_id}.tmp");
         let target = format!("{name}.md");
         let relative = format!("{category}/{workspace}/{target}");
+        let draft_file = create(&folder, &temp, content.as_bytes())?
+            .ok_or(refuse("draft_conflict"))?;
         let draft = Draft {
             created: Instant::now(),
             pin_id: pin_id.into(),
             folder,
+            file: draft_file,
             category: category.into(),
             workspace: workspace.into(),
             temp,
@@ -309,8 +352,6 @@ impl Learning {
             relative: relative.clone(),
             content,
         };
-        create(&draft.folder, &draft.temp, draft.content.as_bytes())?
-            .ok_or(refuse("draft_conflict"))?;
         pin.check()?;
         self.drafts.insert(draft_id.clone(), draft);
         Ok(json!({"draftId":draft_id,"path":relative}))
@@ -334,6 +375,7 @@ impl Learning {
         publish(
             &draft.folder,
             &draft.temp,
+            &draft.file,
             &draft.target,
             draft.content.as_bytes(),
         )?;
