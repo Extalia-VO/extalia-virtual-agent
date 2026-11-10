@@ -62,10 +62,14 @@ Non-intrusive monitoring of outside agents (Claude Code, Codex, Hermes) with rea
 ### Multi-Floor Team Pods & Navigation
 ![Multi-Floor Workforce and Team Pods](docs/images/teams.png)
 
-### Subagent Team Planning & Delegation
-| Subagent Role Orchestration | Delegated Multi-Agent Execution |
-| :---: | :---: |
-| ![Subagent Planning](docs/images/subagent.png) | ![Delegated Execution](docs/images/extalia-deligating-teams.webp) |
+### Subagent Role Orchestration & Delegated Execution
+Planning multi-agent subtask contracts and observing real-time parallel execution across workers:
+
+#### 1. Role Planning & Delegation Matrix
+![Subagent Planning](docs/images/subagent.png)
+
+#### 2. Live Delegated Multi-Agent Execution
+![Delegated Multi-Agent Execution](docs/images/extalia-deligating-teams.webp)
 
 ---
 
