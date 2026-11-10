@@ -112,7 +112,9 @@ export function CharacterConversation({ t, language, agents, state, session, age
   const isWorker = agent.agentId !== 'primary';
   const wide = useSyncExternalStore(subscribeToolsMedia, wideToolsSnapshot, () => true);
   const [toolsChoice, setToolsChoice] = useState<{ wide: boolean; open: boolean }>();
-  const controlModel = useMemo(() => session.control === 'observed' ? observedSessionControlFor(agents, session.id) : undefined, [agents, session.id]);
+  const sessionControl = session.control;
+  const sessionId = session.id;
+  const controlModel = useMemo(() => sessionControl === 'observed' ? observedSessionControlFor(agents, sessionId) : undefined, [agents, sessionControl, sessionId]);
   const controlView = useSyncExternalStore(controlModel?.subscribe ?? noSubscription, controlModel?.getSnapshot ?? getEmptyControlView, getEmptyControlView);
   const controlHub = !!agents.observedControlStatus && !!agents.dispatchObservedControl && controlView.phase !== 'unsupported';
   const hasTools = !isWorker && !readOnlyReason && (session.control !== 'observed' || !controlHub

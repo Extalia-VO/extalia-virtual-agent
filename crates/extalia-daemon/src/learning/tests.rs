@@ -265,7 +265,10 @@ fn note_prepare_commit_is_pinned_immutable_and_cleans_abandoned_drafts() {
             "note.prepare",
             json!({"pinId":pin["pinId"],"record":tampered_record}),
         );
-        let temp_name = format!(".learning-{}.tmp", tampered_draft["draftId"].as_str().unwrap());
+        let temp_name = format!(
+            ".learning-{}.tmp",
+            tampered_draft["draftId"].as_str().unwrap()
+        );
         let temp_path = vault.join("Learning/workspace").join(&temp_name);
         assert!(temp_path.exists());
         // Replace temp file with a symlink to an outside file
@@ -289,7 +292,10 @@ fn note_prepare_commit_is_pinned_immutable_and_cleans_abandoned_drafts() {
             "note.prepare",
             json!({"pinId":pin["pinId"],"record":tampered_record}),
         );
-        let temp_name2 = format!(".learning-{}.tmp", tampered_draft2["draftId"].as_str().unwrap());
+        let temp_name2 = format!(
+            ".learning-{}.tmp",
+            tampered_draft2["draftId"].as_str().unwrap()
+        );
         let temp_path2 = vault.join("Learning/workspace").join(&temp_name2);
         std::fs::remove_file(&temp_path2).unwrap();
         std::fs::write(&temp_path2, "different content").unwrap();

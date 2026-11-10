@@ -126,7 +126,8 @@ export function ObserverPage({ t, language, agents, state, initialSessionId, onS
     finally { if (lease.isCurrent()) setOperation(current => ({ ...current, busy: false })); lease.release(); }
   };
   const observation = selected?.observation;
-  const controlModel = useMemo(() => selected?.id ? observedSessionControlFor(agents, selected.id) : undefined, [agents, selected?.id]);
+  const selectedId = selected?.id;
+  const controlModel = useMemo(() => selectedId ? observedSessionControlFor(agents, selectedId) : undefined, [agents, selectedId]);
   const controlView = useSyncExternalStore(controlModel?.subscribe ?? noSubscription, controlModel?.getSnapshot ?? getEmptyControlView, getEmptyControlView);
   const controlHub = !!agents.observedControlStatus && !!agents.dispatchObservedControl && controlView.phase !== 'unsupported';
   const content = loaded?.scope === scope && loaded?.id === selected?.id ? loaded : undefined;

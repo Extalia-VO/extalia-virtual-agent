@@ -338,8 +338,8 @@ impl Learning {
         let temp = format!(".learning-{draft_id}.tmp");
         let target = format!("{name}.md");
         let relative = format!("{category}/{workspace}/{target}");
-        let draft_file = create(&folder, &temp, content.as_bytes())?
-            .ok_or(refuse("draft_conflict"))?;
+        let draft_file =
+            create(&folder, &temp, content.as_bytes())?.ok_or(refuse("draft_conflict"))?;
         let draft = Draft {
             created: Instant::now(),
             pin_id: pin_id.into(),
