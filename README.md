@@ -65,7 +65,7 @@ Non-intrusive monitoring of outside agents (Claude Code, Codex, Hermes) with rea
 ### Subagent Team Planning & Delegation
 | Subagent Role Orchestration | Delegated Multi-Agent Execution |
 | :---: | :---: |
-| ![Subagent Planning](docs/images/subagent.png) | ![Delegated Execution](docs/images/deligated.png) |
+| ![Subagent Planning](docs/images/subagent.png) | ![Delegated Execution](docs/images/extalia-deligating-teams.webp) |
 
 ---
 
