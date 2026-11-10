@@ -2,11 +2,11 @@ import { createHash } from 'node:crypto';
 import { chmod, link, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { buildSkillSpectorBundle, verifySkillSpectorBundle, type SkillSpectorManifest } from '../skillspector/build.mjs';
 
 const temporary: string[] = [];
-afterEach(async () => { await Promise.all(temporary.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
+afterEach(async () => { vi.unstubAllGlobals(); await Promise.all(temporary.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
 const sha = (bytes: string | Buffer) => createHash('sha256').update(bytes).digest('hex');
 async function fixture() {
   const root = await mkdtemp(path.join(os.tmpdir(), 'extalia-skillspector-fixture-')); temporary.push(root);
@@ -23,6 +23,19 @@ describe('pinned SkillSpector build boundary', () => {
     const f = await fixture();
     const result = await verifySkillSpectorBundle(f.root, { expectedSha256: f.hash, target: 'macos-aarch64' });
     expect(result.manifestSha256).toBe(f.hash); expect(result.fileCount).toBe(2); expect(result.totalBytes).toBeGreaterThan(0);
+  });
+  it('verifies foreign payload bytes and declared target modes on Windows without POSIX execute bits', async () => {
+    const f = await fixture(); await chmod(path.join(f.root, 'payload/python/bin/python3.13'), 0o644);
+    vi.stubGlobal('process', new Proxy(process, { get: (source, key) => key === 'platform' ? 'win32' : Reflect.get(source, key) }));
+    await expect(verifySkillSpectorBundle(f.root, { expectedSha256: f.hash, target: 'macos-aarch64' })).resolves.toMatchObject({ fileCount: 2 });
+    f.manifest.files[0]!.executable = false; await f.save();
+    await expect(verifySkillSpectorBundle(f.root)).rejects.toThrow();
+    f.manifest.files[0]!.executable = true;
+    const invalid = { ...f.manifest, files: f.manifest.files.map(item => ({ ...item, executable: 'true' })) };
+    await writeFile(path.join(f.root, 'bundle-manifest.json'), JSON.stringify(invalid));
+    await expect(verifySkillSpectorBundle(f.root)).rejects.toThrow();
+    const restoredHash = await f.save(); await writeFile(path.join(f.root, 'payload/worker/scan.py'), 'Changed payload');
+    await expect(verifySkillSpectorBundle(f.root, { expectedSha256: restoredHash })).rejects.toThrow();
   });
   it('refuses changed manifest authority and target mismatch', async () => {
     const f = await fixture();

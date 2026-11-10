@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ExtaliaEvent } from '@extalia/protocol';
 import { type AgentHostRuntime } from '../src/service.js';
 import { useTempDirs } from './helpers.js';
-import { DAEMON_BINARY } from './daemonBackend.js';
+import { DAEMON_BINARY, HAS_DAEMON } from './daemonBackend.js';
 
 const temp = useTempDirs();
 const runtimes: AgentHostRuntime[] = [];
@@ -63,7 +63,7 @@ const idle = async (runtime: AgentHostRuntime) => { await vi.waitFor(() => expec
 const noteFiles = async (root: string, workspace: string) => readdir(path.join(root, 'Learning', workspace)).catch((error: NodeJS.ErrnoException) => { if (error.code === 'ENOENT') return []; throw error; });
 
 describe.skipIf(process.platform === 'win32')('saved profile automatic learning through the Native host', () => {
-  it('runs a real curator without a per-message flag and saves only to the assigned profile', async () => {
+  it.skipIf(!HAS_DAEMON)('runs a real curator without a per-message flag and saves only to the assigned profile', async () => {
     const f = await fixture();
     await f.host.sendPrompt(f.session.id, 'Read the parser and report its validation order.'); await idle(f.runtime);
     const worker = f.requests.filter(curator);
@@ -83,7 +83,7 @@ describe.skipIf(process.platform === 'win32')('saved profile automatic learning 
     expect(f.events.some(event => event.body.type === 'tool.completed' && event.body.tool === 'automatic_learning' && event.body.ok)).toBe(true);
   });
 
-  it('retains busy ownership and seals steering through curation before any terminal/idle/next prompt', async () => {
+  it.skipIf(!HAS_DAEMON)('retains busy ownership and seals steering through curation before any terminal/idle/next prompt', async () => {
     const release = deferred(), f = await fixture({ holdCurator: release.promise });
     let idleNotifications = 0; const unsubscribe = f.runtime.onIdle(() => { idleNotifications++; });
     try {
@@ -118,7 +118,7 @@ describe.skipIf(process.platform === 'win32')('saved profile automatic learning 
     expect(f.events.filter(event => event.agentId === 'primary' && event.body.type === 'turn.completed')).toHaveLength(1);
   });
 
-  it('never replays successful older-turn evidence into learning for a later trivial turn', async () => {
+  it.skipIf(!HAS_DAEMON)('never replays successful older-turn evidence into learning for a later trivial turn', async () => {
     const f = await fixture();
     await f.host.sendPrompt(f.session.id, 'Read the parser and explain validation.'); await idle(f.runtime);
     expect(f.requests.filter(curator)).toHaveLength(2); expect(await noteFiles(f.profile.root, f.workspace.id)).toHaveLength(1);

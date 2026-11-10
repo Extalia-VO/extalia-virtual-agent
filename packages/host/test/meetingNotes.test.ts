@@ -6,6 +6,7 @@ import type { NativeMeetingMinutes } from '@extalia/runtime';
 import { pinMeetingNotes as pinNativeMeetingNotes } from '../src/meetingNotes.js';
 
 import { useRustLearningBackend } from './rustLearningFixture.js';
+import { HAS_DAEMON } from './daemonBackend.js';
 
 const rustBackend = useRustLearningBackend();
 const pinMeetingNotes = async (options: Omit<Parameters<typeof pinNativeMeetingNotes>[0], 'backend'>) => pinNativeMeetingNotes({ ...options, backend: await rustBackend() });
@@ -18,7 +19,7 @@ const minutes: NativeMeetingMinutes = {
   contributions: [{ agentId: 'member-one', round: 1, text: 'The input still needs validation.' }, { agentId: 'member-one', round: 2, text: 'Validate before starting the task.' }],
   startedAt: '2026-01-01T00:00:00.000Z', completedAt: '2026-01-01T00:01:00.000Z',
 };
-describe.skipIf(process.platform === 'win32')('profile-bound meeting note exports', () => {
+describe.skipIf(!HAS_DAEMON || process.platform === 'win32')('profile-bound meeting note exports', () => {
   it('keeps different profile vaults separate while workspaces in one profile share its vault', async () => {
     const base = await root(); const one = path.join(base, 'profile-one'), two = path.join(base, 'profile-two');
     await mkdir(one); await mkdir(two);

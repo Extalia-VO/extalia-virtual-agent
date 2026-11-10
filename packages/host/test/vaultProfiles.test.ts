@@ -7,6 +7,7 @@ import { writeJsonAtomic } from '../src/jsonStore.js';
 import { useTempDirs } from './helpers.js';
 import { createAgentHost } from '../src/service.js';
 import { useRustLearningBackend } from './rustLearningFixture.js';
+import { HAS_DAEMON } from './daemonBackend.js';
 
 const temp = useTempDirs();
 const rustBackend = useRustLearningBackend();
@@ -33,7 +34,7 @@ async function setup() {
 }
 
 describe.skipIf(process.platform === 'win32')('workspace vault profiles', () => {
-  it('keeps existing default notes, groups workspaces in an isolated managed vault and atomically persists actual profileIds', async () => {
+  it.skipIf(!HAS_DAEMON)('keeps existing default notes, groups workspaces in an isolated managed vault and atomically persists actual profileIds', async () => {
     const h = await setup();
     const initial = await h.profiles.resolve('w-one', { ensure: true });
     await writeFile(path.join(initial.root, 'Keep.md'), '# Existing');
@@ -116,7 +117,7 @@ describe.skipIf(process.platform === 'win32')('workspace vault profiles', () => 
     expect(await readFile(path.join(invalid, 'Keep.md'), 'utf8')).toBe('# Keep');
   });
 
-  it('recognizes only vaults/default through the host data-directory alias without migrating profile identities', async () => {
+  it.skipIf(!HAS_DAEMON)('recognizes only vaults/default through the host data-directory alias without migrating profile identities', async () => {
     const h = await setup();
     const alias = path.join(h.root, 'data-alias'); await symlink(h.data, alias);
     const profiles = new VaultProfiles({ ...h.options, dataDirectory: alias,
@@ -133,7 +134,7 @@ describe.skipIf(process.platform === 'win32')('workspace vault profiles', () => 
     await expect(profiles.resolve('w-one', { ensure: true })).rejects.toThrow(/outside the Extalia data folder/);
   });
 
-  it('defaults learning off independently of minutes and persists explicit per-profile learning policy atomically', async () => {
+  it.skipIf(!HAS_DAEMON)('defaults learning off independently of minutes and persists explicit per-profile learning policy atomically', async () => {
     const h = await setup();
     expect((await h.profiles.policyFor('w-one')).policy).toEqual({ enabled: false, skills: false, notes: false });
     await expect(h.profiles.resolve('w-one', { purpose: 'learning', ensure: true })).rejects.toThrow(/not enabled/);

@@ -6,7 +6,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { type AgentHostOptions, type AgentHostRuntime } from '../src/service.js';
 import { useTempDirs } from './helpers.js';
-import { DAEMON_BINARY } from './daemonBackend.js';
+import { DAEMON_BINARY, HAS_DAEMON } from './daemonBackend.js';
 
 const tempDir = useTempDirs();
 const runtimes: AgentHostRuntime[] = [];
@@ -222,7 +222,7 @@ describe('subagent teams (Extalia Native)', () => {
 });
 
 describe('Native team meetings', () => {
-  it.skipIf(process.platform === 'win32')('uses an assigned profile vault for actual meeting minutes without retargeting the default vault', async () => {
+  it.skipIf(!HAS_DAEMON || process.platform === 'win32')('uses an assigned profile vault for actual meeting minutes without retargeting the default vault', async () => {
     let calls = 0;
     const context = await setup(body => body.messages[0]?.content?.startsWith('You are a worker agent')
       ? { text: 'This is the actual profile-scoped discussion.' }
@@ -241,7 +241,7 @@ describe('Native team meetings', () => {
     expect(note).toContain(`profile: "${assigned.id}"`);
     expect(note).toContain('This is the actual profile-scoped discussion.');
   });
-  it.skipIf(process.platform === 'win32')('saves default minutes into the workspace profile vault with actual discussion evidence', async () => {
+  it.skipIf(!HAS_DAEMON || process.platform === 'win32')('saves default minutes into the workspace profile vault with actual discussion evidence', async () => {
     let calls = 0;
     const context = await setup(body => body.messages[0]?.content?.startsWith('You are a worker agent')
       ? { text: 'Use the current source evidence before implementation.' }

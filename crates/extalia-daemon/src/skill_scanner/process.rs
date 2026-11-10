@@ -7,11 +7,14 @@ use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+#[cfg(unix)]
+use std::sync::atomic::AtomicU64;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 const MAX_OUTPUT: usize = 65536;
 const DEADLINE: Duration = Duration::from_secs(60);
 const MEMORY_KIB: u64 = 512 * 1024;
+#[cfg(unix)]
 static NEXT: AtomicU64 = AtomicU64::new(0);
 pub fn supported() -> bool {
     macos_supported()
@@ -51,29 +54,27 @@ impl Drop for Job {
         let _ = fs::remove_dir_all(&self.0);
     }
 }
+#[cfg(unix)]
 fn job() -> Result<Job, Failure> {
+    use std::os::unix::fs::DirBuilderExt;
+
     for _ in 0..100 {
         let root = std::env::temp_dir().join(format!(
             "extalia-skill-scan-{}-{}",
             std::process::id(),
             NEXT.fetch_add(1, Ordering::Relaxed)
         ));
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::DirBuilderExt;
-            match fs::DirBuilder::new().mode(0o700).create(&root) {
-                Ok(()) => return Ok(Job(root)),
-                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
-                Err(_) => return Err(Failure::Error),
-            }
-        }
-        #[cfg(not(unix))]
-        {
-            let _ = root;
-            return Err(Failure::ScannerUnavailable);
+        match fs::DirBuilder::new().mode(0o700).create(&root) {
+            Ok(()) => return Ok(Job(root)),
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(_) => return Err(Failure::Error),
         }
     }
     Err(Failure::Error)
+}
+#[cfg(not(unix))]
+fn job() -> Result<Job, Failure> {
+    Err(Failure::ScannerUnavailable)
 }
 fn literal(path: &std::path::Path) -> Result<String, Failure> {
     let value = path.to_str().ok_or(Failure::ScannerUnavailable)?;
@@ -308,6 +309,13 @@ pub fn scan(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(not(unix))]
+    #[test]
+    fn unsupported_platform_refuses_job_preparation() {
+        assert!(matches!(job(), Err(Failure::ScannerUnavailable)));
+    }
+
     #[test]
     fn macos_wheel_floor_is_explicit_and_missing_version_refuses() {
         for (version, expected) in [

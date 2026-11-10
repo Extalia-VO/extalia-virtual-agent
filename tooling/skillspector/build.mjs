@@ -129,9 +129,13 @@ export async function verifySkillSpectorBundle(root, { expectedSha256, target } 
   for (let i = 0; i < observed.length; i++) {
     const expected = value.files[i], actual = observed[i];
     if (!exactKeys(expected, ['path', 'bytes', 'sha256', 'executable']) || !validPath(expected.path)
-      || expected.path !== actual.path || expected.bytes !== actual.bytes || expected.sha256 !== actual.sha256 || expected.executable !== actual.executable) throw refusal();
+      || expected.path !== actual.path || expected.bytes !== actual.bytes || expected.sha256 !== actual.sha256
+      || typeof expected.executable !== 'boolean'
+      // Windows filesystems do not expose POSIX execute bits. The pinned manifest
+      // still declares target modes; POSIX packaging/runtime verifies actual modes.
+      || (process.platform !== 'win32' && expected.executable !== actual.executable)) throw refusal();
   }
-  if (!observed.some(item => item.path === value.interpreter && item.executable) || !observed.some(item => item.path === value.entry_script)) throw refusal();
+  if (!value.files.some(item => item.path === value.interpreter && item.executable) || !observed.some(item => item.path === value.entry_script)) throw refusal();
   const executable = await readExecutableKind(path.join(root, 'payload', value.interpreter));
   if (executable?.platform !== ({ macos: 'darwin', linux: 'linux', windows: 'win32' })[value.target.os]
     || executable?.arch !== (value.target.arch === 'aarch64' ? 'arm64' : 'x64')) throw refusal();

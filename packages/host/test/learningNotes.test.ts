@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { pinLearningNotes as pinNativeLearningNotes, type LearningNoteRecord } from '../src/learningNotes.js';
 import { useTempDirs } from './helpers.js';
 import { useRustLearningBackend } from './rustLearningFixture.js';
+import { HAS_DAEMON } from './daemonBackend.js';
 
 const temp = useTempDirs();
 const rustBackend = useRustLearningBackend();
@@ -16,7 +17,7 @@ const record: LearningNoteRecord = {
 const context = { workspaceId: record.workspaceId, sessionId: record.sessionId };
 const destination = (root: string) => ({ root, profileId: record.profileId, revision: record.revision });
 
-describe.skipIf(process.platform === 'win32')('immutable profile-bound learning notes', () => {
+describe.skipIf(!HAS_DAEMON || process.platform === 'win32')('immutable profile-bound learning notes', () => {
   it('writes generated findings, current source evidence and actual user-library skill receipts', async () => {
     const root = await temp(); const authorize = vi.fn();
     const save = await pinLearningNotes({ context, resolve: async () => destination(root), authorize });

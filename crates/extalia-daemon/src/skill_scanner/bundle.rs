@@ -21,7 +21,13 @@ struct Entry {
     path: String,
     bytes: u64,
     sha256: String,
+    #[cfg(unix)]
     executable: bool,
+    // Non-Unix targets still validate the manifest schema, but cannot verify
+    // Unix execute permissions or admit this scanner bundle.
+    #[cfg(not(unix))]
+    #[serde(rename = "executable")]
+    _executable: bool,
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -193,6 +199,7 @@ impl Bundle {
                 }
             }
             let mut file = regular_file(&path)?;
+            #[cfg(unix)]
             let before = file.metadata().ok()?;
             let mut hash = Sha256::new();
             let mut bytes = 0_u64;
@@ -211,10 +218,10 @@ impl Bundle {
             if bytes != entry.bytes || super::hex(&hash.finalize()) != entry.sha256 {
                 return None;
             }
-            let after = file.metadata().ok()?;
             #[cfg(unix)]
             {
                 use std::os::unix::fs::MetadataExt;
+                let after = file.metadata().ok()?;
                 if before.dev() != after.dev()
                     || before.ino() != after.ino()
                     || before.ctime() != after.ctime()
@@ -233,5 +240,27 @@ impl Bundle {
             root,
             manifest_pin: expected.to_owned(),
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Entry;
+
+    #[test]
+    fn execute_permission_remains_a_required_boolean_on_every_platform() {
+        for executable in ["true", "false"] {
+            let json = format!(
+                r#"{{"path":"worker/scan.py","bytes":1,"sha256":"digest","executable":{executable}}}"#
+            );
+            assert!(serde_json::from_str::<Entry>(&json).is_ok());
+        }
+        for json in [
+            r#"{"path":"worker/scan.py","bytes":1,"sha256":"digest"}"#,
+            r#"{"path":"worker/scan.py","bytes":1,"sha256":"digest","executable":1}"#,
+            r#"{"path":"worker/scan.py","bytes":1,"sha256":"digest","_executable":true}"#,
+        ] {
+            assert!(serde_json::from_str::<Entry>(json).is_err());
+        }
     }
 }

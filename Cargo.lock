@@ -191,7 +191,7 @@ dependencies = [
 
 [[package]]
 name = "extalia-core"
-version = "0.4.248"
+version = "0.4.249"
 dependencies = [
  "rusqlite",
  "semver",
@@ -200,7 +200,7 @@ dependencies = [
 
 [[package]]
 name = "extalia-daemon"
-version = "0.4.248"
+version = "0.4.249"
 dependencies = [
  "extalia-core",
  "reqwest",

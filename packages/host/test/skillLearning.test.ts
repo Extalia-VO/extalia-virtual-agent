@@ -81,7 +81,7 @@ describe.skipIf(process.platform === 'win32')('generated skill candidates from a
     expect(calls).toEqual([]); await expect(lstat(data)).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
-  it('stages only generated markdown and host-bound provenance, imports, then reports inspection without activation', async () => {
+  it.skipIf(!HAS_DAEMON)('stages only generated markdown and host-bound provenance, imports, then reports inspection without activation', async () => {
     const data = path.join(await temp(), 'data'); const { registry, calls, staged } = fakeRegistry(data);
     const proposed = await registry.propose(input, provenance);
     expect(proposed).toMatchObject(result);
@@ -109,14 +109,14 @@ describe.skipIf(process.platform === 'win32')('generated skill candidates from a
     }
   });
 
-  it('still inspects an acknowledged import after cancellation and does not claim rollback', async () => {
+  it.skipIf(!HAS_DAEMON)('still inspects an acknowledged import after cancellation and does not claim rollback', async () => {
     const controller = new AbortController();
     const { registry, calls } = fakeRegistry(await temp(), { import: () => controller.abort() });
     expect(await registry.propose(input, provenance, controller.signal)).toMatchObject({ ...result, cancellationObserved: true });
     expect(calls.map(call => call.op)).toEqual(['skill.import', 'skill.inspect']);
   });
 
-  it('fails closed on offline connect without writing, and cleans staged files after an uncertain import failure', async () => {
+  it.skipIf(!HAS_DAEMON)('fails closed on offline connect without writing, and cleans staged files after an uncertain import failure', async () => {
     const data = path.join(await temp(), 'data');
     const offline = new SkillRegistry({ daemon: { connect: async () => { throw new DaemonUnavailableError('crashed'); } } as unknown as DaemonSidecar,
       dataDirectory: data, profile: 'default', workspaceRoot: () => '' });
@@ -128,7 +128,7 @@ describe.skipIf(process.platform === 'win32')('generated skill candidates from a
     expect(await readdir(path.join(data, 'profiles', 'default', 'skill-imports'))).toEqual([]);
   });
 
-  it('retains the acknowledged import state when inspection transport fails, without claiming scanner success', async () => {
+  it.skipIf(!HAS_DAEMON)('retains the acknowledged import state when inspection transport fails, without claiming scanner success', async () => {
     const data = await temp(); const { registry } = fakeRegistry(data, { inspectError: true });
     const proposed = await registry.propose(input, provenance);
     expect(proposed).toMatchObject({ state: 'quarantined', inspection: 'unavailable', activationPerformed: false, created: true });

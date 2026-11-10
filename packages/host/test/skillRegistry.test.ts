@@ -243,7 +243,7 @@ describe.skipIf(!HAS_DAEMON || process.platform === 'win32')('skill registry aga
   });
 });
 
-describe.skipIf(process.platform === 'win32')('Rust package staging into the import inbox', () => {
+describe.skipIf(!HAS_DAEMON || process.platform === 'win32')('Rust package staging into the import inbox', () => {
   it('copies regular files with their executable bit and stops at the caps', async () => {
     const base = await temp(), data = path.join(base, 'data');
     const backend = await rustBackend(data);
