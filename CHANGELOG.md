@@ -23,6 +23,7 @@ All notable changes to this project are documented here. The format follows
 - Keep scanner permission checks and private job setup scoped to supported Unix targets so strict Windows Clippy builds pass while unsupported Windows scanner execution remains unavailable.
 - Validate pinned scanner artifacts portably on Windows without treating its file modes as POSIX execute bits; preserve exact manifests, inventories, content hashes and executable metadata checks.
 - Declare real-daemon prerequisites for host integration tests and require the built daemon in Rust CI, preserving dependency-free test coverage in ordinary Check jobs and real backend coverage in the Rust matrix.
+- Exercise model-discovery transport failures through a local malformed HTTP response, preserving strict sanitization and deadlines without depending on platform-specific closed-port refusal timing.
 
 ## [0.4.248] - 2026-11-10
 

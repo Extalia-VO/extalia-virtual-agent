@@ -392,13 +392,21 @@ fn slow_headers_and_slow_body_time_out() {
 
 #[test]
 fn transport_errors_are_sanitized() {
-    let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
-    let base = format!("http://{}", listener.local_addr().unwrap());
-    drop(listener);
-    let value = reply(Sandbox::new().run(&serde_json::to_vec(&request(&base)).unwrap()));
+    // A closed port can exhaust the request deadline before Winsock reports
+    // refusal. Establish a real connection, then fail HTTP framing instead.
+    let (base, server) = fixture(|stream| {
+        stream.write_all(b"invalid HTTP response\r\n\r\n").unwrap();
+    });
+    let mut input = request(&base);
+    input["apiKey"] = json!("synthetic-transport-key");
+    let value = reply(Sandbox::new().run(&serde_json::to_vec(&input).unwrap()));
+    let sent = server.join().unwrap().to_ascii_lowercase();
+    assert!(sent.starts_with("get /models http/1.1\r\n"));
+    assert!(sent.contains("authorization: bearer synthetic-transport-key\r\n"));
     assert_eq!(value["code"], "transport_error");
     assert!(value.get("status").is_none());
     assert!(!value.to_string().contains(&base));
+    assert!(!value.to_string().contains("synthetic-transport-key"));
 }
 
 #[test]
