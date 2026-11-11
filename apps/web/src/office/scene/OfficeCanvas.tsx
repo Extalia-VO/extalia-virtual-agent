@@ -113,7 +113,7 @@ export default function OfficeCanvas({ automaticShot, view, viewRequest, languag
   const focus = allocations.find(seat => seat.agentId === selectedId)?.position;
   const [canvas, setCanvas] = useState<HTMLCanvasElement | null>(null);
   const dpr = useBudgetPixelRatio(canvas);
-  return <Canvas ref={setCanvas} orthographic camera={initialCamera} dpr={dpr} shadows gl={{ antialias: false, powerPreference: 'high-performance' }} style={{ width: '100%', height: '100%' }} onPointerMissed={onMiss}>
+  return <Canvas ref={setCanvas} orthographic camera={initialCamera} dpr={dpr} shadows="percentage" gl={{ antialias: false, powerPreference: 'high-performance' }} style={{ width: '100%', height: '100%' }} onPointerMissed={onMiss}>
     <CanvasContinuity />
     <ModelInstanceBatches />
     <SceneEnvironment dark={dark} reducedMotion={reducedMotion} lightOverride={lightOverride} followSun={followSun}>

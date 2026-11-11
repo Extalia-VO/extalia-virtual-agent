@@ -23,9 +23,9 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v5
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v5
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .node-version
       - name: Validate archive coordinates
@@ -39,7 +39,7 @@ jobs:
             throw new Error('Expected a numeric run ID and an exact release version.');
           }
           JS
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: unverified-macos-v${{ inputs.version }}
           path: retained-archives
@@ -76,7 +76,7 @@ jobs:
           JS
       - name: Retain bounded diagnostic report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: mac-archive-diagnostics-${{ github.run_id }}
           path: mac-archive-diagnostics.json

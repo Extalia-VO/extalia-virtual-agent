@@ -25,7 +25,7 @@ jobs:
     name: Create draft release
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - name: Check that the tag matches the app version
         run: |
           version="$(node -p "require('./apps/desktop/package.json').version")"
@@ -62,9 +62,9 @@ jobs:
     env:
       EXTALIA_MAC_RELEASE_MODE: ${{ vars.EXTALIA_MAC_RELEASE_MODE || 'preview' }}
     steps:
-      - uses: actions/checkout@v5
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v5
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .node-version
           cache: pnpm
@@ -120,7 +120,7 @@ jobs:
         run: |
           mkdir -p daemon-archives
           tar -czf "daemon-archives/daemon-${{ matrix.target }}.tar.gz" -C daemon-artifacts .
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: daemon-${{ matrix.target }}
           path: daemon-archives/
@@ -135,16 +135,16 @@ jobs:
     env:
       ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
     steps:
-      - uses: actions/checkout@v5
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v5
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .node-version
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @extalia/web build
       - run: pnpm --filter extalia-vo build
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: daemon-*
           path: daemon-archives
@@ -169,7 +169,7 @@ jobs:
           ls -l npm-tarballs
       - name: Verify six version-matched tarballs
         run: node tooling/package-release-assets.mjs npm --directory npm-tarballs
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: npm-packages
           path: npm-tarballs/
@@ -189,9 +189,9 @@ jobs:
     env:
       ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
     steps:
-      - uses: actions/checkout@v5
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v5
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .node-version
           cache: pnpm
@@ -202,7 +202,7 @@ jobs:
           pnpm --filter @extalia/web build
       - name: Validate registered models and package Web files
         run: node tooling/package-release-assets.mjs web --out release-artifacts
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: web-distribution
           path: release-artifacts/*.zip
@@ -230,9 +230,9 @@ jobs:
       # Set this repository variable to notarized when Developer ID credentials are available.
       EXTALIA_MAC_RELEASE_MODE: ${{ vars.EXTALIA_MAC_RELEASE_MODE || 'preview' }}
     steps:
-      - uses: actions/checkout@v5
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v5
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .node-version
           cache: pnpm
@@ -248,7 +248,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @extalia/web build
       - run: pnpm --filter @extalia/desktop build
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: daemon-*
           path: daemon-archives
@@ -317,7 +317,7 @@ jobs:
         run: node scripts/release.mjs upload
       - name: Retain unverified macOS archives for failure diagnosis
         if: failure() && runner.os == 'macOS'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: unverified-macos-${{ github.ref_name }}
           path: |
@@ -336,9 +336,9 @@ jobs:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       EXTALIA_MAC_RELEASE_MODE: ${{ vars.EXTALIA_MAC_RELEASE_MODE || 'preview' }}
     steps:
-      - uses: actions/checkout@v5
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v5
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .node-version
       - name: Download every completed draft asset

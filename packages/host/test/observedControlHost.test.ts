@@ -153,7 +153,8 @@ it.each([
   }
 });
 
-it('delivers observed Antigravity prompts directly via native agentapi send-message when installed', async () => {
+// This fake agentapi executable is a POSIX shell script.
+it.skipIf(process.platform === 'win32')('delivers observed Antigravity prompts directly via native agentapi send-message when installed', async () => {
   const f = await fixture();
   try {
     const binDir = path.join(f.home, '.gemini', 'antigravity', 'bin');

@@ -16,6 +16,18 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.256] - 2026-11-11
+
+### Changed
+
+- Refresh the reviewed Dependabot minor/patch dependency group and align checkout v7, setup-node v7, pnpm setup v6, artifact upload v7 and artifact download v8 across all current workflows.
+
+### Fixed
+
+- Limit the POSIX-shell Antigravity CLI fixture to Unix runners, preserving the existing portable inbox and capability coverage in Windows checks.
+- Exercise artifact upload/download and tar permission preservation in Linux CI before relying on the updated artifact actions in release packaging.
+- Use the supported PCF shadow mode for the Office and skill shelf with the updated Three.js renderer.
+
 ## [0.4.255] - 2026-11-11
 
 ### Added
