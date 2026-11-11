@@ -63,7 +63,7 @@ jobs:
       EXTALIA_MAC_RELEASE_MODE: ${{ vars.EXTALIA_MAC_RELEASE_MODE || 'preview' }}
     steps:
       - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v5
         with:
           node-version-file: .node-version
@@ -136,7 +136,7 @@ jobs:
       ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
     steps:
       - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v5
         with:
           node-version-file: .node-version
@@ -190,7 +190,7 @@ jobs:
       ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
     steps:
       - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v5
         with:
           node-version-file: .node-version
@@ -231,7 +231,7 @@ jobs:
       EXTALIA_MAC_RELEASE_MODE: ${{ vars.EXTALIA_MAC_RELEASE_MODE || 'preview' }}
     steps:
       - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v5
         with:
           node-version-file: .node-version
@@ -337,7 +337,7 @@ jobs:
       EXTALIA_MAC_RELEASE_MODE: ${{ vars.EXTALIA_MAC_RELEASE_MODE || 'preview' }}
     steps:
       - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v5
         with:
           node-version-file: .node-version
