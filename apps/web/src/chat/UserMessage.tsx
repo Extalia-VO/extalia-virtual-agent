@@ -1,13 +1,12 @@
-import { useEffect, useState, type ReactNode } from 'react';
-import { createPortal } from 'react-dom';
+import { useState, type ReactNode } from 'react';
 import type { Messages } from '../i18n';
 import { CopyButton } from '../ui/CopyButton';
 import { Icon } from '../ui/Icon';
-import { formatBytes, type AttachmentMetadata, type AttachmentPreviewLoader } from './attachments';
+import { type AttachmentMetadata, type AttachmentPreviewLoader } from './attachments';
+import { MessageAttachments } from './MessageAttachments';
 import { Markdown } from './Markdown';
 import { presentUserMessage, type PresentedNotice } from './messagePresentation';
 import type { UserItem } from './transcript';
-import { useMessageFiles } from './MessageFilePreview';
 
 const COLLAPSE_CHARS = 900;
 const COLLAPSE_LINES = 14;
@@ -106,53 +105,8 @@ export function UserMessage({ t, item, previewAttachment, language }: { t: Messa
       <CopyButton text={text} label={t.chat.copyMessage} />
     </div>}
     <div className="bubble">
-    {files.length > 0 && <ul className="bubble-files" aria-label={t.composer.sentAttachments}>{files.map((file, index) => (
-      file.kind === 'image' && file.ref && previewAttachment
-        ? <AttachmentThumb key={index} t={t} file={file} ref_={file.ref} load={previewAttachment} />
-        : <AttachmentRow key={index} file={file} />
-    ))}</ul>}
+    <MessageAttachments t={t} files={files} load={previewAttachment} label={t.composer.sentAttachments} allowOpenFile />
     {text && <FoldedText t={t} text={text} />}
   </div></li>;
-}
-
-/** An attached file listed by name, kind and size. */
-function AttachmentRow({ file }: { file: AttachmentMetadata & { path?: string } }) {
-  const openFile = useMessageFiles();
-  const content = <><Icon name="file" /><span className="bubble-file-name">{file.name}</span>{file.size > 0 && <span className="bubble-file-size">{formatBytes(file.size)}</span>}</>;
-  return <li className={`bubble-file kind-${file.kind}`}>{openFile
-    ? <button type="button" className="message-file-chip" onClick={() => openFile({ name: file.name, path: file.path })}>{content}</button>
-    : content}</li>;
-}
-
-/** A small preview of an attached image the host kept a copy of; it opens full size and closes on a click or Escape. */
-function AttachmentThumb({ t, file, ref_, load }: { t: Messages; file: AttachmentMetadata; ref_: string; load: AttachmentPreviewLoader }) {
-  const [url, setUrl] = useState<string | null | undefined>(undefined);
-  const [open, setOpen] = useState(false);
-  useEffect(() => {
-    let live = true;
-    void load(ref_).then(found => { if (live) setUrl(found ?? null); });
-    return () => { live = false; };
-  }, [load, ref_]);
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') setOpen(false); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [open]);
-  // No copy (yet): the file is listed like any other.
-  if (url === null) return <AttachmentRow file={file} />;
-  return <li className="bubble-thumb">
-    <button type="button" className="bubble-thumb-button" title={file.name} aria-label={t.chat.openAttachment(file.name)} disabled={!url} onClick={() => setOpen(true)}>
-      {url ? <img src={url} alt="" /> : <span className="bubble-thumb-loading" aria-hidden="true" />}
-    </button>
-    {/* Rendered on the page body: dialogs with transforms or blur would otherwise clip a fixed overlay. */}
-    {open && url && typeof document !== 'undefined' && createPortal(<div className="attachment-viewer" role="dialog" aria-modal="true" aria-label={file.name} onClick={() => setOpen(false)}>
-      <figure onClick={event => event.stopPropagation()}>
-        <img src={url} alt={file.name} />
-        <figcaption><span>{file.name}</span>{file.size > 0 && <span>{formatBytes(file.size)}</span>}
-          <button type="button" className="icon-button small" aria-label={t.chat.closeAttachment} onClick={() => setOpen(false)}><Icon name="close" /></button></figcaption>
-      </figure>
-    </div>, document.body)}
-  </li>;
 }
 

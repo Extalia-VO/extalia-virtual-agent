@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { lstat, realpath } from 'node:fs/promises';
 import path from 'node:path';
-import type { Workspace } from '@extalia/core';
+import { workspaceCrossAccess, type Workspace } from '@extalia/core';
 import { normalizeAutomaticLearningPolicy, normalizeSaveVaultProfile, type AutomaticLearningPolicy, type SaveVaultProfileInput, type VaultProfilesCatalog } from '@extalia/platform';
 import { validateVaultRoot } from './knowledgeVault.js';
 
@@ -73,7 +73,9 @@ export class VaultProfiles {
     for (const profile of rows) if (profile.id !== defaultId && !/^vp-[a-f0-9-]{36}$/.test(profile.id)) throw error('The vault profile registry contains an invalid id.');
     return Promise.all(rows.map(async profile => {
       const root = await canonical(profile.id === defaultId ? snapshot.defaultRoot : profile.vaultRoot ?? path.join(data, 'vaults', profile.id));
-      const learning = normalizeAutomaticLearningPolicy(profile.automaticLearning);
+      const learning = this.effectiveLearning(profile, profile.id === defaultId, root, snapshot, data);
+      const learningNotesApproved = profile.learningRoot === root
+        || (profile.id === defaultId ? this.indexedOwned(snapshot, data, root) : profile.vaultRoot === null);
       return { id: profile.id, name: profile.name,
       kind: profile.id === defaultId ? 'indexed' as const : profile.vaultRoot ? 'custom' as const : 'managed' as const,
       root,
@@ -81,9 +83,16 @@ export class VaultProfiles {
         ? profile.minutesEnabled === true && profile.minutesRoot === root || this.indexedOwned(snapshot, data, root)
         : profile.minutesEnabled ?? !profile.vaultRoot,
       automaticLearning: { enabled: learning.enabled, skills: learning.enabled && learning.skills,
-        notes: learning.enabled && learning.notes && profile.learningRoot === root },
+        notes: learning.enabled && learning.notes && learningNotesApproved },
       workspaceIds: snapshot.workspaces.filter(workspace => workspace.profileId === profile.id).map(workspace => workspace.id),
     }; }));
+  }
+  /** Missing policy opts managed roots into useful defaults; custom roots still need explicit consent. */
+  private effectiveLearning(profile: StoredVaultProfiles['profiles'][number], isDefault: boolean, root: string,
+    snapshot: Snapshot, dataDirectory: string): AutomaticLearningPolicy {
+    if (profile.automaticLearning !== undefined) return normalizeAutomaticLearningPolicy(profile.automaticLearning);
+    const owned = isDefault ? this.indexedOwned(snapshot, dataDirectory, root) : profile.vaultRoot === null;
+    return owned ? { enabled: true, skills: true, notes: true } : normalizeAutomaticLearningPolicy(undefined);
   }
   private revision(snapshot: Snapshot): string {
     return createHash('sha256').update(JSON.stringify({ profiles: this.stored(snapshot), defaultProfile: snapshot.defaultProfile,
@@ -122,12 +131,24 @@ export class VaultProfiles {
         dataDirectory: this.options.dataDirectory, homeDirectory: this.options.homeDirectory, profile: id,
       })).path;
       const previous = stored.profiles.find(profile => profile.id === id);
-      const automaticLearning = input.automaticLearning ?? normalizeAutomaticLearningPolicy(previous?.automaticLearning);
+      const targetRoot = isDefault ? snapshot.defaultRoot : root ?? path.join(this.options.dataDirectory, 'vaults', id);
+      const automaticLearning = input.automaticLearning ?? (previous?.automaticLearning !== undefined
+        ? normalizeAutomaticLearningPolicy(previous.automaticLearning)
+        : isDefault ? (this.indexedOwned(snapshot, await canonical(path.resolve(this.options.dataDirectory)), await canonical(targetRoot))
+          ? { enabled: true, skills: true, notes: true } : normalizeAutomaticLearningPolicy(undefined))
+          : root === null ? { enabled: true, skills: true, notes: true } : normalizeAutomaticLearningPolicy(undefined));
       const learningRoot = input.automaticLearning === undefined ? previous?.learningRoot
         : automaticLearning.enabled && automaticLearning.notes
-          ? await canonical(isDefault ? snapshot.defaultRoot : root ?? path.join(this.options.dataDirectory, 'vaults', id)) : undefined;
+          ? await canonical(targetRoot) : undefined;
+      // For managed/indexed roots the safe, host-owned folder is the consent boundary itself.
+      // This also initializes legacy profiles which have no stored policy at all.
+      const approvedLearningRoot = input.automaticLearning === undefined && previous?.learningRoot === undefined
+        && automaticLearning.enabled && automaticLearning.notes && (isDefault
+          ? this.indexedOwned(snapshot, await canonical(path.resolve(this.options.dataDirectory)), await canonical(targetRoot))
+          : root === null)
+        ? await canonical(targetRoot) : learningRoot;
       const next = { id, name: input.name, vaultRoot: root, minutesEnabled: input.minutesEnabled, automaticLearning,
-        ...(learningRoot !== undefined ? { learningRoot } : {}),
+        ...(approvedLearningRoot !== undefined ? { learningRoot: approvedLearningRoot } : {}),
         ...(isDefault && input.minutesEnabled ? { minutesRoot: await canonical(snapshot.defaultRoot) } : {}) };
       const profiles = { profiles: [...stored.profiles.filter(profile => profile.id !== id), next] };
       const roots = await this.roots(snapshot, profiles);
@@ -138,11 +159,52 @@ export class VaultProfiles {
       const workspaces = snapshot.workspaces.map(workspace => ({ ...workspace,
         profileId: input.workspaceIds.includes(workspace.id) ? id : workspace.profileId === id && !isDefault ? snapshot.defaultProfile.id : workspace.profileId,
       }));
+      this.assertWorkspaceProfileIsolation(workspaces, snapshot.defaultProfile.id);
       if (this.options.busy()) throw error('Agent work started. Finish it before changing vault profiles.');
       if (this.revision(this.options.read()) !== input.expectedRevision) throw error('Vault profiles changed. Refresh before saving.');
       await this.options.commit(profiles, workspaces);
       return await this.list();
     } finally { this.changing = false; }
+  }
+
+  private assertWorkspaceProfileIsolation(workspaces: readonly Workspace[], defaultProfileId: string): void {
+    const members = new Map<string, Workspace[]>();
+    for (const workspace of workspaces) members.set(workspace.profileId, [...(members.get(workspace.profileId) ?? []), workspace]);
+    for (const workspace of workspaces) {
+      if (workspaceCrossAccess(workspace) === 'isolated' && workspace.profileId === defaultProfileId)
+        throw error('An isolated workspace needs its own vault profile. Create or assign a dedicated profile before saving.');
+      if (workspaceCrossAccess(workspace) === 'isolated' && members.get(workspace.profileId)!.length !== 1)
+        throw error('An isolated workspace must be the only workspace assigned to its vault profile.');
+    }
+  }
+
+  /** Resolve the current workspace's Knowledge vault without requiring automatic-learning consent. */
+  async knowledgeTarget(workspaceId: string): Promise<{ profileId: string; root: string; revision: string; custom: boolean }> {
+    if (this.changing) throw error('Vault profiles are changing. Try again when they have finished.');
+    const snapshot = this.options.read();
+    const workspace = snapshot.workspaces.find(item => item.id === workspaceId);
+    if (!workspace) throw error('That workspace no longer exists.');
+    const profileId = workspace.profileId;
+    const stored = this.stored(snapshot).profiles.find(item => item.id === profileId);
+    if (!stored && profileId !== snapshot.defaultProfile.id) throw error('That workspace has an unknown vault profile. Assign a registered profile in Settings.');
+    if (stored && profileId !== snapshot.defaultProfile.id && !/^vp-[a-f0-9-]{36}$/.test(stored.id)) throw error('The vault profile registry contains an invalid id.');
+    const data = await canonical(path.resolve(this.options.dataDirectory));
+    const owned = path.join(data, 'vaults', profileId === snapshot.defaultProfile.id ? 'default' : profileId);
+    let root: string;
+    let custom = false;
+    const selected = profileId === snapshot.defaultProfile.id ? snapshot.defaultRoot : stored!.vaultRoot;
+    if (!selected) root = owned;
+    else if (profileId === snapshot.defaultProfile.id && this.indexedOwned(snapshot, data, await canonical(selected))) root = owned;
+    else {
+      const check = await validateVaultRoot(selected, { dataDirectory: data, homeDirectory: this.options.homeDirectory,
+        profile: profileId === snapshot.defaultProfile.id ? 'default' : profileId });
+      root = check.path ?? owned;
+      if (check.path && !samePath(root, await canonical(selected))) throw error('The vault folder identity changed. Choose it again in Settings.');
+      custom = Boolean(check.path);
+    }
+    const revision = this.revision(snapshot);
+    if (this.changing || this.revision(this.options.read()) !== revision) throw error('Vault profiles changed while resolving the workspace Knowledge vault.');
+    return { profileId, root, revision, custom };
   }
 
   /** Read effective policy without requiring a notes vault (including skills-only profiles). */
@@ -154,11 +216,17 @@ export class VaultProfiles {
     const stored = this.stored(snapshot).profiles.find(item => item.id === workspace.profileId);
     if (!stored && workspace.profileId !== snapshot.defaultProfile.id) throw error('That workspace has an unknown vault profile. Assign a registered profile in Settings.');
     if (stored && workspace.profileId !== snapshot.defaultProfile.id && !/^vp-[a-f0-9-]{36}$/.test(stored.id)) throw error('The vault profile registry contains an invalid id.');
-    const learning = normalizeAutomaticLearningPolicy(stored?.automaticLearning);
+    const profileRoot = stored ? stored.vaultRoot ?? path.join(this.options.dataDirectory, 'vaults', stored.id) : snapshot.defaultRoot;
+    const canonicalRoot = await canonical(workspace.profileId === snapshot.defaultProfile.id ? snapshot.defaultRoot : profileRoot);
+    const learning = stored
+      ? this.effectiveLearning(stored, workspace.profileId === snapshot.defaultProfile.id, canonicalRoot, snapshot, await canonical(path.resolve(this.options.dataDirectory)))
+      : this.effectiveLearning({ id: snapshot.defaultProfile.id, name: snapshot.defaultProfile.name, vaultRoot: null }, true,
+        canonicalRoot, snapshot, await canonical(path.resolve(this.options.dataDirectory)));
     // A skills-only profile does not need filesystem access or a usable notes destination.
-    const approvedNotes = learning.enabled && learning.notes && !!stored?.learningRoot
-      && stored.learningRoot === await canonical(workspace.profileId === snapshot.defaultProfile.id ? snapshot.defaultRoot
-        : stored.vaultRoot ?? path.join(this.options.dataDirectory, 'vaults', workspace.profileId));
+    const ownedDefault = workspace.profileId === snapshot.defaultProfile.id
+      && this.indexedOwned(snapshot, await canonical(path.resolve(this.options.dataDirectory)), canonicalRoot);
+    const ownedManaged = workspace.profileId !== snapshot.defaultProfile.id && stored?.vaultRoot === null;
+    const approvedNotes = learning.enabled && learning.notes && (ownedDefault || ownedManaged || stored?.learningRoot === canonicalRoot);
     const policy = { enabled: learning.enabled, skills: learning.enabled && learning.skills, notes: approvedNotes };
     const revision = this.revision(snapshot);
     if (this.changing || this.revision(this.options.read()) !== revision) throw error('Vault profiles changed while reading the learning policy.');

@@ -19,7 +19,7 @@ export function TouchdownDesk({
   const top = SINGLE_WORKSTATION_BLUEPRINT.topY + SINGLE_WORKSTATION_BLUEPRINT.topSize[1] / 2;
   const input = deskInputPlacement([0, 0.80, SINGLE_WORKSTATION_BLUEPRINT.keyboardZ], 0, top, deskLayout(data.resourceId));
   return (
-    <group position={position} rotation={[0, rotationY, 0]}>
+    <group position={position} rotation={[0, rotationY, 0]} userData={{ officeSeatStation: true }}>
       <SingleDeskStructure color="#ad845f" />
 
       <Monitor

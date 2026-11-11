@@ -26,6 +26,8 @@ export interface StepAttachment {
   size: number;
   mimeType?: string;
   data?: string;
+  /** Host-owned private copy reference, never a filesystem path. Filled only after observation admission. */
+  ref?: string;
 }
 
 export type TranscriptFileChange = 'add' | 'update' | 'delete';
@@ -40,8 +42,8 @@ export type TranscriptStep = StepBase & (
   | { type: 'prompt'; text: string; attachments?: StepAttachment[] }
   /** `final` is set only when the source marks the reply as the end of the turn. */
   | { type: 'reply'; text: string; final?: boolean; model?: string }
-  | { type: 'tool.call'; tool: string; callId?: string; target?: string; command?: string; files?: TranscriptFileChangeCandidate[] }
-  | { type: 'tool.result'; callId?: string; tool?: string; ok: boolean; output?: string; files?: TranscriptFileChangeCandidate[]; writesConfirmed?: boolean }
+  | { type: 'tool.call'; tool: string; callId?: string; target?: string; command?: string; files?: TranscriptFileChangeCandidate[]; imagePath?: string }
+  | { type: 'tool.result'; callId?: string; tool?: string; ok: boolean; output?: string; files?: TranscriptFileChangeCandidate[]; writesConfirmed?: boolean; attachments?: StepAttachment[]; imagePath?: string }
   | { type: 'turn.end'; reason?: 'completed' | 'interrupted' }
   /**
    * v0.0.38: a state the source states without a tool call or message: the model
@@ -447,6 +449,60 @@ export function promptAttachments(parts: unknown): StepAttachment[] {
     }
   }
   return out;
+}
+
+/** Explicit tool-result content blocks only. A URL is metadata, never permission to fetch it. */
+export function toolResultAttachments(value: unknown): StepAttachment[] {
+  const out: StepAttachment[] = [];
+  const visit = (input: unknown, depth: number) => {
+    if (depth > 3 || out.length >= MAX_STEP_ATTACHMENTS) return;
+    if (typeof input === 'string') {
+      if (input.length < MAX_INLINE_IMAGE_BYTES * 14 && /^[\s]*[[{]/.test(input)) {
+        try { visit(JSON.parse(input), depth + 1); } catch { /* plain tool output */ }
+      }
+      return;
+    }
+    if (Array.isArray(input)) { for (const part of input.slice(0, 64)) visit(part, depth + 1); return; }
+    const part = record(input), type = text(part.type);
+    if (['image', 'input_image', 'image_url', 'output_image'].includes(type)) {
+      if (type === 'image' && typeof part.data === 'string') {
+        out.push(imageAttachment({ base64: part.data, mimeType: text(part.mimeType ?? part.mime_type), name: text(part.name) || undefined }, out.length));
+      } else out.push(...promptAttachments([type === 'output_image' ? { ...part, type: 'input_image' } : part]).slice(0, MAX_STEP_ATTACHMENTS - out.length));
+      return;
+    }
+    if (part.content !== undefined) visit(part.content, depth + 1);
+    else if (part.output !== undefined) visit(part.output, depth + 1);
+  };
+  visit(value, 0);
+  // Bound aggregate retained base64 as well as each image; metadata remains available.
+  let retained = 0;
+  return out.map(file => {
+    if (!file.data) return file;
+    retained += file.size;
+    if (retained <= MAX_INLINE_IMAGE_BYTES * 2) return file;
+    const { data: _data, ...metadata } = file;
+    return metadata;
+  });
+}
+
+/** Text accompanying explicit image content, never its image bytes or remote URL. */
+export function toolImageOutputText(value: unknown): string {
+  const parts: string[] = [];
+  const visit = (input: unknown, depth: number) => {
+    if (depth > 4 || parts.length >= 64) return;
+    if (typeof input === 'string') {
+      if (/^[\s]*[[{]/.test(input)) { try { visit(JSON.parse(input), depth + 1); return; } catch { /* text */ } }
+      parts.push(input.replace(/data:image\/[^;,\s]+;base64,[A-Za-z0-9+/=\s]+/g, '[image omitted]')); return;
+    }
+    if (Array.isArray(input)) { input.slice(0, 64).forEach(part => visit(part, depth + 1)); return; }
+    const part = record(input);
+    if (['image', 'input_image', 'image_url', 'output_image'].includes(text(part.type))) return;
+    if (typeof part.text === 'string') visit(part.text, depth + 1);
+    else if (part.content !== undefined) visit(part.content, depth + 1);
+    else if (part.output !== undefined) visit(part.output, depth + 1);
+  };
+  visit(value, 0);
+  return parts.join('\n').slice(0, STEP_OUTPUT_LIMIT);
 }
 
 /** Codex `user_message` events list pasted images as `data:` URLs and attached files as local paths. */

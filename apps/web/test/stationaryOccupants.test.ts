@@ -22,9 +22,9 @@ describe('stationary character clearance', () => {
       expect(body?.velocity).toEqual([0, 0, 0]);
       expect(getNearbyMovingOccupantsSnapshot('seated-body', [0, 0, 0]).some(x => x.id === 'seated-body')).toBe(false);
       expect(getNearbyMovingOccupantsSnapshot('observer', [0, 6.4, 0]).some(x => x.id === 'seated-body')).toBe(false);
-      const doorWalkers: string[] = [];
-      forEachTrackedWalker(id => doorWalkers.push(id));
-      expect(doorWalkers).not.toContain('seated-body');
+      const doorBodies: { id: string; position: Readonly<Point3>; target: Readonly<Point3> }[] = [];
+      forEachTrackedWalker((id, position, target) => doorBodies.push({ id, position, target }));
+      expect(doorBodies.find(body => body.id === 'seated-body')).toEqual({ id: 'seated-body', position: [1, 0, 2], target: [1, 0, 2] });
     } finally { trackStationaryOccupant('seated-body', null); clock.mockRestore(); }
     expect(getMovingOccupantsSnapshot().some(x => x.id === 'seated-body')).toBe(false);
   });

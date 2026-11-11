@@ -1,82 +1,126 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import type { AgentHostApi, ObservedControlRouteStatus, ObservedInboxStatus, SessionSummary } from '@extalia/platform';
 import type { Messages } from '../i18n';
+import { ConversationToolsTabs } from './ConversationToolsTabs';
 import { Select } from '../ui/Select';
-import { PromptQueueControls } from '../chat/PromptQueueControls';
-import { ObservedCodexNativeQueue } from './ObservedCodexNativeQueue';
-import { supportsObservedPromptQueue } from './observedCodexPromptModel';
+import { Icon } from '../ui/Icon';
+import { useUnsavedDraft } from '../restart/unsavedDrafts';
 import { createObservedReplyControl } from './observedReplyModel';
 import { createObservedInboxControl, observedControlChoices, observedSessionControlFor, validObservedInboxStatus,
   OBSERVED_MESSAGE_LIMIT, type ObservedInboxControlModel, type ObservedInboxView, type ObservedSessionControlModel, type ObservedSessionControlView } from './observedSessionControlModel';
 import './observedSessionControl.css';
 
-export function ObservedSessionControl({ agents, session, t, disabled = false, compact = false }: {
-  agents: AgentHostApi; session: SessionSummary; t: Messages; disabled?: boolean; compact?: boolean;
-}) {
+type SessionControlProps = { agents: AgentHostApi; session: SessionSummary; t: Messages; disabled?: boolean; compact?: boolean; onOpenTools?: () => void; nativeControls?: ReactNode };
+export function ObservedSessionControl({ agents, session, t, disabled = false, compact = false, onOpenTools }: SessionControlProps) {
   if (session.control !== 'observed') return null;
-  return <SessionControls agents={agents} session={session} sessionId={session.id} t={t} disabled={disabled} compact={compact} />;
+  return <SessionControls agents={agents} sessionId={session.id} t={t} disabled={disabled || !session.observation?.watching} compact={compact} onOpenTools={onOpenTools} />;
 }
-function SessionControls({ agents, session, sessionId, t, disabled = false, manual = false, compact = false }: {
-  agents: AgentHostApi; session?: SessionSummary; sessionId: string; t: Messages; disabled?: boolean; manual?: boolean; compact?: boolean;
+function SessionControls({ agents, sessionId, t, disabled = false, manual = false, compact = false, onOpenTools }: {
+  agents: AgentHostApi; sessionId: string; t: Messages; disabled?: boolean; manual?: boolean; compact?: boolean; onOpenTools?: () => void;
 }) {
   const model = useMemo(() => observedSessionControlFor(agents, sessionId), [agents, sessionId]);
   const view = useSyncExternalStore(model.subscribe, model.getSnapshot, model.getSnapshot);
   useEffect(() => model.start(), [model]);
-  const pairing = <><InboxControls key={sessionId} agents={agents} sessionId={sessionId} t={t} disabled={disabled} />
-    {!manual && agents && <ReplyPairing key={`reply:${sessionId}`} agents={agents} sessionId={sessionId} t={t} disabled={disabled} />}</>;
-  return <div className={`observed-session-controls${compact ? ' observed-session-controls-compact' : ''}`}>
-    {session?.observation?.sourceId === 'codex' && !compact && (
-      <ObservedCodexNativeQueue key={`native-queue:${sessionId}`} t={t} agents={agents} session={session} disabled={disabled} />
-    )}
-    {supportsObservedPromptQueue(session?.observation?.sourceId) && (
-      <PromptQueueControls key={`queue:${sessionId}`} t={t} agents={agents} session={session} disabled={disabled} />
-    )}
-    <ObservedSessionControlContent t={t} view={view} control={model} disabled={disabled} compact={compact} />
-    {compact ? <details className="observed-control-advanced"><summary>{t.observedControl.pairingDetails}</summary><div className="observed-control-scroll">{pairing}</div></details> : pairing}
+  const [tools, setTools] = useState(false), id = useId();
+  const openTools = onOpenTools ?? (() => setTools(true));
+  return <div className="observed-session-controls">
+    {!compact && <div className="observed-control-tabs" role="tablist" aria-label={t.characterConsole.tools}>
+      {[false, true].map(isTools => <button key={String(isTools)} type="button" role="tab" id={`${id}-${isTools}-tab`}
+        aria-controls={`${id}-${isTools}-panel`} aria-selected={tools === isTools} tabIndex={tools === isTools ? 0 : -1}
+        onClick={() => setTools(isTools)} onKeyDown={event => {
+          if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+          event.preventDefault(); const next = event.key === 'Home' ? false : event.key === 'End' ? true : !isTools;
+          setTools(next); document.getElementById(`${id}-${next}-tab`)?.focus();
+        }}>{isTools ? t.characterConsole.tools : t.characterConsole.messages}</button>)}
+    </div>}
+    <div className="observed-control-tab-panel" {...(!compact ? { id: `${id}-false-panel`, role: 'tabpanel', 'aria-labelledby': `${id}-false-tab`, hidden: tools } : {})}>
+      <ObservedSessionControlContent t={t} view={view} control={model} disabled={disabled} onOpenTools={openTools} />
+    </div>
+    {!compact && <div className="observed-control-tab-panel" id={`${id}-true-panel`} role="tabpanel" aria-labelledby={`${id}-true-tab`} hidden={!tools}>
+      {tools && <SessionTools agents={agents} sessionId={sessionId} t={t} disabled={disabled} manual={manual} />}
+    </div>}
   </div>;
 }
 
-export function ObservedSessionControlContent({ t, view, control, disabled = false, compact = false }: {
-  t: Messages; view: ObservedSessionControlView; control: ObservedSessionControlModel; disabled?: boolean; compact?: boolean;
+/** Advanced controls share the composer's controller and draft, without another message input. */
+export function ObservedSessionTools({ agents, session, t, disabled = false, nativeControls }: SessionControlProps) {
+  if (session.control !== 'observed') return null;
+  return <SessionTools agents={agents} sessionId={session.id} t={t} disabled={disabled || !session.observation?.watching} nativeControls={nativeControls} />;
+}
+function SessionTools({ agents, sessionId, t, disabled, manual = false, nativeControls }: { agents: AgentHostApi; sessionId: string; t: Messages; disabled?: boolean; manual?: boolean; nativeControls?: ReactNode }) {
+  const model = useMemo(() => observedSessionControlFor(agents, sessionId), [agents, sessionId]);
+  const view = useSyncExternalStore(model.subscribe, model.getSnapshot, model.getSnapshot);
+  useEffect(() => model.start(), [model]);
+  const labels = t.characterConsole.toolTabs;
+  return <ConversationToolsTabs label={t.characterConsole.tools} items={[
+    { id: 'connection', label: labels.connection, render: active => <ObservedSessionToolsContent t={t} view={view} control={model} disabled={disabled || !active} /> },
+    { id: 'pairing', label: labels.pairing, render: active => <div className="observed-session-tools">
+      <InboxControls key={sessionId} agents={agents} sessionId={sessionId} t={t} disabled={disabled || !active} />
+      {!manual && <ReplyPairing key={`reply:${sessionId}`} agents={agents} sessionId={sessionId} t={t} disabled={disabled || !active} />}
+    </div> },
+    ...(nativeControls ? [{ id: 'session', label: labels.session, render: () => nativeControls }] : []),
+  ]} />;
+}
+
+export function ObservedSessionControlContent({ t, view, control, disabled = false, onOpenTools }: {
+  t: Messages; view: ObservedSessionControlView; control: ObservedSessionControlModel; disabled?: boolean; compact?: boolean; onOpenTools?: () => void;
 }) {
-  const c = t.observedControl, id = useId(), choices = observedControlChoices(view.status);
-  const blocked = disabled || view.busy;
+  const c = t.observedControl, id = useId(), area = useRef<HTMLTextAreaElement>(null), composing = useRef(false);
+  const blocked = disabled || view.busy, available = !!observedControlChoices(view.status).length;
+  const needsAction = view.phase === 'ready' && available && !view.busy && !view.notice && view.receipt?.state !== 'unknown' && !control.hasMessageAction();
+  useUnsavedDraft(id, !!view.draft.trim());
+  useLayoutEffect(() => {
+    if (!area.current) return;
+    area.current.style.height = 'auto'; area.current.style.height = `${Math.min(area.current.scrollHeight, 240)}px`;
+  }, [view.draft]);
+  const send = () => { if (!blocked) void control.sendMessage(); };
+  return <div className="observed-session-prompt">
+    {view.phase !== 'ready' || !available || needsAction ? <p className="observed-control-feedback" role="status">{view.phase === 'loading' ? c.loading
+      : view.phase === 'error' ? c.failed : needsAction ? c.chooseInTools : c.needsTools}{view.phase !== 'loading' && onOpenTools && <button type="button" className="button small" onClick={onOpenTools}>{t.characterConsole.tools}</button>}</p> : null}
+    {view.notice && <p className="observed-control-feedback" role="alert">{c[view.notice]}</p>}
+    {view.receipt && <p className="observed-control-feedback" role="status" aria-live="polite">{c.receipts[view.receipt.state]}</p>}
+    <form className="composer observed-session-control" onSubmit={event => { event.preventDefault(); send(); }}>
+      <label className="visually-hidden" htmlFor={`${id}-message`}>{c.message}</label>
+      <textarea ref={area} id={`${id}-message`} value={view.draft} rows={2} maxLength={OBSERVED_MESSAGE_LIMIT} placeholder={c.placeholder}
+        autoComplete="off" disabled={disabled} onChange={event => control.setDraft(event.target.value)}
+        onCompositionStart={() => { composing.current = true; }} onCompositionEnd={() => { composing.current = false; }}
+        onKeyDown={event => {
+          if (event.key !== 'Enter' || event.shiftKey || composing.current || event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return;
+          event.preventDefault(); send();
+        }} />
+      <button className="send-button" type="submit" aria-busy={view.busy} aria-label={view.busy ? c.sending : c.send} title={view.busy ? c.sending : c.send}
+        disabled={blocked || !control.canSendMessage()}><Icon name="send" /></button>
+    </form>
+  </div>;
+}
+
+export function ObservedSessionToolsContent({ t, view, control, disabled = false }: {
+  t: Messages; view: ObservedSessionControlView; control: ObservedSessionControlModel; disabled?: boolean;
+}) {
+  const c = t.observedControl, id = useId(), choices = observedControlChoices(view.status), blocked = disabled || view.busy;
   const renderRoute = (route: ObservedControlRouteStatus) => <article className="observed-control-route" key={route.route}>
-      <div className="observed-control-heading"><strong>{c.routes[route.route]}</strong><span className="badge small">{c.states[route.state]}</span></div>
-      <p className="observed-control-evidence">{route.evidence === 'native-attachment' && route.state === 'unavailable' ? c.nativeUnverified : c.evidence[route.evidence]}</p><p className="observed-control-hint">{c.limits[route.limit]}</p>
-      {!!route.capabilities.length && <ul className="observed-control-capabilities">{route.capabilities.map(capability => <li key={capability.action}>
-        <span>{c.actions[capability.action]}</span><span>{capability.available && !!capability.capabilityId && route.state === 'ready' ? c.states.ready : c.states.unavailable}</span>
-      </li>)}</ul>}
-      {route.relatedControls.some(item => item.available) && <p className="observed-control-hint">{c.related}</p>}
-      {route.problem && <p className="observed-control-hint">{route.problem}</p>}
-    </article>;
+    <div className="observed-control-heading"><strong>{c.routes[route.route]}</strong><span className="badge small">{c.states[route.state]}</span></div>
+    <p className="observed-control-evidence">{route.evidence === 'native-attachment' && route.state === 'unavailable' ? c.nativeUnverified : c.evidence[route.evidence]}</p><p className="observed-control-hint">{c.limits[route.limit]}</p>
+    {!!route.capabilities.length && <ul className="observed-control-capabilities">{route.capabilities.map(capability => <li key={capability.action}>
+      <span>{c.actions[capability.action]}</span><span>{capability.available && !!capability.capabilityId && route.state === 'ready' ? c.states.ready : c.states.unavailable}</span>
+    </li>)}</ul>}
+    {route.relatedControls.some(item => item.available) && <p className="observed-control-hint">{c.related}</p>}
+    {route.problem && <p className="observed-control-hint">{route.problem}</p>}
+  </article>;
   const visible = (route: ObservedControlRouteStatus) => route.state !== 'unavailable' || route.relatedControls.some(item => item.available);
-  const mainRoutes = view.status?.routes.filter(route => compact || visible(route)) ?? [];
-  const otherRoutes = compact ? [] : view.status?.routes.filter(route => !visible(route)) ?? [];
-  const routeCards = <>{!!mainRoutes.length && <div className="observed-control-routes">{mainRoutes.map(renderRoute)}</div>}
-    {!!otherRoutes.length && <details className="observed-control-advanced"><summary>{c.otherConnections}</summary>
-      <div className="observed-control-scroll"><div className="observed-control-routes">{otherRoutes.map(renderRoute)}</div></div>
-    </details>}</>;
-  return <section className="observed-session-control" aria-labelledby={`${id}-title`}>
+  const mainRoutes = view.status?.routes.filter(visible) ?? [], otherRoutes = view.status?.routes.filter(route => !visible(route)) ?? [];
+  return <section className="observed-session-control-settings" aria-labelledby={`${id}-title`}>
     <div className="observed-control-heading"><h3 id={`${id}-title`}>{c.title}</h3>
       <button className="button" type="button" disabled={blocked || view.phase === 'unsupported'} onClick={() => { void control.refresh(); }}>{c.refresh}</button></div>
     <p className="observed-control-hint">{c.helper}</p>
-    <div role="status" aria-live="polite">{view.phase === 'unsupported' ? c.unsupported : view.phase === 'loading' ? c.loading
-      : view.phase === 'error' ? c.failed : !choices.length ? c.unavailable : null}</div>
-    {compact ? <details className="observed-control-advanced"><summary>{c.capabilityDetails}</summary><div className="observed-control-scroll">{routeCards}</div></details> : routeCards}
-    <form onSubmit={event => { event.preventDefault(); if (!blocked) void control.send(); }}>
-      <Select label={c.action} value={view.selected} placeholder={c.choose} disabled={blocked || !choices.length}
-        options={choices.map(({ route, capability }) => ({ value: capability.capabilityId!, label: `${c.routes[route.route]} · ${c.actions[capability.action]}` }))}
-        onChange={value => control.select(value)} />
-      <label htmlFor={`${id}-message`}>{c.message}</label>
-      <textarea id={`${id}-message`} value={view.draft} rows={compact ? 2 : 3} maxLength={OBSERVED_MESSAGE_LIMIT} placeholder={c.placeholder}
-        autoComplete="off" disabled={disabled} onChange={event => control.setDraft(event.target.value)} />
-      <p className="observed-control-hint">{c.messageLimit}</p>
-      {view.notice && <p role="alert">{c[view.notice]}</p>}
-      {view.receipt && <p role="status" aria-live="polite">{c.receipts[view.receipt.state]}</p>}
-      {view.receipt?.problem && <p className="observed-control-hint">{view.receipt.problem}</p>}
-      <div className="observed-control-actions"><button className="button primary" type="submit" disabled={blocked || !control.canSend()}>{view.busy ? c.sending : c.send}</button></div>
-    </form>
+    <p role="status">{view.phase === 'unsupported' ? c.unsupported : view.phase === 'loading' ? c.loading : view.phase === 'error' ? c.failed : !choices.length ? c.unavailable : null}</p>
+    <Select label={c.action} value={view.selected} placeholder={c.choose} disabled={blocked || !choices.length}
+      options={choices.map(({ route, capability }) => ({ value: capability.capabilityId!, label: `${c.routes[route.route]} · ${c.actions[capability.action]}` }))}
+      onChange={value => control.select(value)} />
+    {!!mainRoutes.length && <div className="observed-control-routes">{mainRoutes.map(renderRoute)}</div>}
+    {!!otherRoutes.length && <details className="observed-control-advanced"><summary>{c.otherConnections}</summary>
+      <div className="observed-control-scroll"><div className="observed-control-routes">{otherRoutes.map(renderRoute)}</div></div>
+    </details>}
   </section>;
 }
 

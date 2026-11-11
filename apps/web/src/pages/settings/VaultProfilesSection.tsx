@@ -68,7 +68,7 @@ export function VaultProfilesSection({ t, agents, locked, changed }: { t: Messag
     let live = true;
     agents.listVaultProfiles().then(value => {
       if (!live) return;
-      setCatalog(value); setDraft(vaultProfileDraft(value.profiles[0]!)); setError(undefined);
+      setCatalog(value); setDraft(current => vaultProfileDraft(value.profiles.find(profile => profile.id === current?.id) ?? value.profiles[0]!)); setError(undefined);
     }, failure => { if (live) { const message = errorMessage(failure); if (isUnsupportedMessage(message)) setHidden(true); else setError(message); } }).finally(() => { if (live) setBusy(false); });
     return () => { live = false; };
   }, [agents, refresh, changed]);
@@ -88,6 +88,6 @@ export function VaultProfilesSection({ t, agents, locked, changed }: { t: Messag
   };
   return <VaultProfilesView t={t} catalog={catalog} draft={draft} busy={busy || !!locked} error={error} notice={notice} onDraft={setDraft}
     onSelect={profile => { setDraft(vaultProfileDraft(profile)); setNotice(undefined); }}
-    onNew={() => { setDraft({ name: '', vaultRoot: null, workspaceIds: [], minutesEnabled: true, automaticLearning: normalizeAutomaticLearningPolicy(undefined) }); setNotice(undefined); }}
+    onNew={() => { setDraft({ name: '', vaultRoot: null, workspaceIds: [], minutesEnabled: true, automaticLearning: { enabled: true, skills: true, notes: true } }); setNotice(undefined); }}
     onSave={() => void save()} onRefresh={() => setRefresh(value => value + 1)} />;
 }

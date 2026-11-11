@@ -33,7 +33,8 @@ export const LIBRARY_BLUEPRINT = Object.freeze({
   sofaPosition: [1.95, 0, 2.4] as const,
   sofaRotationY: Math.PI,
   rugPosition: [1.2, 0, 2.0] as const,
-  coffeeTablePosition: [0, 0, 1.95] as const,
+  // Leave the full pulled-chair rear corridor clear beside the library desk.
+  coffeeTablePosition: [0, 0, 3.0] as const,
   plantPosition: [3.4, 0, 2.8] as const,
   lampPosition: [1.2, 0, -3.0] as const
 });

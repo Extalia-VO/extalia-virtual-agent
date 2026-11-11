@@ -169,7 +169,7 @@ export interface NativeImportOptions {
 }
 
 export interface NativePreview {
-  sessions: { candidateId: string; session: PortableSession; steps?: TranscriptStep[]; model?: string; context?: TranscriptContext }[];
+  sessions: { candidateId: string; session: PortableSession; steps?: TranscriptStep[]; model?: string; modelAt?: string; effort?: NativeParseResult['effort']; effortAt?: string; context?: TranscriptContext; userInput?: NativeParseResult['userInput'] }[];
   diagnostics: ImportDiagnostic[];
 }
 
@@ -181,7 +181,7 @@ export interface NativeObservationRef { locationId: string; sourceId: string; na
  * activity, including the activity of its sub-agents (Claude Code subagent
  * files, Codex threads it spawned), and the lead's latest model.
  */
-export interface ObservedRead { session: PortableSession; steps: TranscriptStep[]; model?: string; context?: TranscriptContext }
+export interface ObservedRead { session: PortableSession; steps: TranscriptStep[]; model?: string; modelAt?: string; effort?: NativeParseResult['effort']; effortAt?: string; context?: TranscriptContext; userInput?: NativeParseResult['userInput'] }
 
 /** A session whose source changed after `since`, found by automatic discovery. */
 export interface DiscoveredSession { reference: NativeObservationRef; updatedAt: number; projectPath?: string }
@@ -837,7 +837,7 @@ export class NativeImportService {
           const length = Buffer.byteLength(JSON.stringify(parsed.session));
           if (bytes + length > MAX_PREVIEW_BYTES) { add('The preview is larger than 10 MB; select fewer sessions.'); continue; }
           bytes += length;
-          result.sessions.push({ candidateId: id, session: parsed.session, ...(withSteps && parsed.steps ? { steps: parsed.steps } : {}), ...(withSteps && parsed.model ? { model: parsed.model } : {}), ...(withSteps && parsed.context ? { context: parsed.context } : {}) });
+          result.sessions.push({ candidateId: id, session: parsed.session, ...(withSteps && parsed.steps ? { steps: parsed.steps } : {}), ...(withSteps && parsed.model ? { model: parsed.model } : {}), ...(withSteps && parsed.modelAt ? { modelAt: parsed.modelAt } : {}), ...(withSteps && parsed.effort ? { effort: parsed.effort } : {}), ...(withSteps && parsed.effortAt ? { effortAt: parsed.effortAt } : {}), ...(withSteps && parsed.context ? { context: parsed.context } : {}), ...(withSteps && parsed.userInput ? { userInput: parsed.userInput } : {}) });
         }
       } catch (error) {
         add(error instanceof Error ? error.message : 'Unable to read this session.');
@@ -903,11 +903,11 @@ export class NativeImportService {
   }
 
   /** A live read: the lead's steps merged with its sub-agents' steps (a failing sub-agent read never hides the lead). */
-  private observedRead(ref: Ref, entry: { session: PortableSession; steps?: TranscriptStep[]; model?: string; context?: TranscriptContext }): ObservedRead {
+  private observedRead(ref: Ref, entry: { session: PortableSession; steps?: TranscriptStep[]; model?: string; modelAt?: string; effort?: NativeParseResult['effort']; effortAt?: string; context?: TranscriptContext; userInput?: NativeParseResult['userInput'] }): ObservedRead {
     const steps = entry.steps ?? [];
     let subagents: SubagentTranscript[];
     try { subagents = this.subagents(ref, steps, entry.session.startedAt); } catch { subagents = []; }
-    return { session: entry.session, steps: subagents.length ? mergeSubagentSteps(steps, subagents) : steps, ...(entry.model ? { model: entry.model } : {}), ...(entry.context ? { context: entry.context } : {}) };
+    return { session: entry.session, steps: subagents.length ? mergeSubagentSteps(steps, subagents) : steps, ...(entry.model ? { model: entry.model } : {}), ...(entry.modelAt ? { modelAt: entry.modelAt } : {}), ...(entry.effort ? { effort: entry.effort } : {}), ...(entry.effortAt ? { effortAt: entry.effortAt } : {}), ...(entry.context ? { context: entry.context } : {}), ...(entry.userInput ? { userInput: entry.userInput } : {}) };
   }
 
   /** Claude Code keeps a session's extras in a folder named after it: `<project>/<sessionId>/`. */

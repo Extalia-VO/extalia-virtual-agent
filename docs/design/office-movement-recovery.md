@@ -29,16 +29,16 @@ There are at most three recovery attempts per destination:
 - In narrow encounters, use stable character-ID arbitration: one walker retreats
   to a clear apron and briefly yields so the other can pass. Replanning can join
   a nearby visible waypoint with a route to the newest requested destination.
-- As a last resort, relocate the same avatar to a validated ordinary waypoint on
-  its current floor, within six metres, then continue its route with a fade-in.
+- As a last resort, walk the same avatar to a validated ordinary waypoint on
+  its current floor, within six metres, then continue its original route.
 
-Relocation requires static clearance, nearby-body information and a reachable
+The joining walk requires static clearance, nearby-body information and a reachable
 route. Recovery never grants passage through a shut door or moves a character
 across a threshold without normal door handling. Failed candidates leave owned
 interactions intact. On a validated recovery, owned door/elevator reservations,
 body registrations and stale hand/curve state are released or rebuilt. Pending
 destinations are preserved. When no safe candidate exists, recovery refuses the
-move rather than placing a character inside geometry; the normal mover can still
+move; the normal mover can still
 resume when an obstruction clears or a new destination arrives.
 
 Ground-floor footprint clearance now recognizes registered doorway apertures.
@@ -149,3 +149,96 @@ Transit validation on v0.4.208: `VITEST_MAX_WORKERS=4 pnpm check` passed
 all builds and version/asset checks. The final focused movement/NPC/transit sweep
 passed 120 tests. Implementation introduced in v0.4.207; no real profiles or
 provider workloads were used.
+
+## Measured stationary intent and cached seating routes
+
+Every shared mover records actual feet speed, accumulated no-progress simulation
+time, destination and a reason. Development inspection can read detached snapshots
+through `movementDiagnostics()` on either movement director. Animation blend and
+retry timer changes cannot disguise stationary feet. Settled sitting/standing
+stations, physical door queues and owned elevator phases remain intentional waits.
+Pose and finite choreography progress also defer a blocked classification.
+
+A cached fixed-seat exterior approach could remain blocked forever after its
+clearance changed, because only an absent route was recomputed. After ten seconds
+without progress, the mover invalidates that exterior path and recomputes from
+its actual feet, preserving its destination and contact choreography. An external
+fixed-seat exit or ordinary level-floor walk whose bounded recovery is exhausted
+can also recheck a nearby supported aisle every ten seconds. It validates the
+body/static sweep, excludes door thresholds, and verifies the aisle's onward leg
+before continuing at walking speed. Stair/lift/contact ownership is retained;
+these periodic checks neither renew recovery attempts nor relocate the avatar.
+
+Regression coverage includes changed cached paths, permanent contact blockage,
+late alternative aisles, simulation-time clamping, slow progress versus jitter,
+protected queues/stations and detached diagnostic snapshots.
+
+Final scene-focused verification for this update passes 292 tests in fourteen
+suites, plus the loaded-scene doorway probes described in the door review.
+Workspace lint/type checks, Web/Desktop/CLI builds, version consistency and hair
+assets pass at v0.4.262 (the movement update was introduced in v0.4.261). The full
+workspace gate is not green: its wider integration run reports observed-agent
+control, installer and Git subprocess failures outside the movement paths.
+Those failures also include an independently reproduced observed-control suite;
+this evidence does not claim full repository validation.
+
+The broader run was stopped after those independently reproduced integration
+failures; supplemental Rust validation was also stopped before all suites
+completed. No full-gate or complete Rust-suite success is claimed for this update.
+
+## Physical crowd supervision
+
+A shared `CrowdWatch` measures displacement rather than animation speed. After
+three simulation seconds without 8 cm of progress, a stable encounter can nominate
+one character for a short retreat. It groups two or more overlapping bodies
+(distance below 0.56 m), stopped following/opposing walkers within 1.4 m, and
+blocked interactions with a free neighbour within 0.85 m. Overlap groups are
+reported even when every member is protected. A one-second group settling window
+avoids reacting to a passing encounter. Frame time is capped at 0.1 seconds, so
+resuming a suspended tab does not instantly age every timer.
+
+Only level walking, hands-free chair walking and ungripped door reservations can
+move aside. Working seats, stairs, cab ownership and held interactions remain
+protected. Legitimate queues are exempt while their head or leaf still progresses;
+a stalled operator can request space from a nearby free waiter. Nomination rotates
+through untried/oldest actors rather than repeatedly selecting the lowest ID.
+Failed plans retry after eight seconds, with one second between nominations.
+
+The nominee validates a 0.75–1.5 m side/back corridor against real furniture,
+current and predicted bodies, floor support and door portals. It walks there,
+briefly gives peers room, and resumes its original goal; the intervention lasts
+at most four seconds. FIFO tickets are refreshed while yielding. A partial
+retreat retains its checked origin breadcrumb when a direct rejoin is blocked;
+curved routes rebase from actual feet. New goals cancel the obsolete retreat.
+There is no teleport, forced seat assignment or simultaneous mass sidestep.
+
+Every physical phase publishes a fallback body, including exhausted door routes,
+waiting lifts, riding, alighting and departure fades. Fresh moving records retain
+measured velocity; stale records fall back to the body instead of hiding it.
+All director bodies are published before the first character queries neighbours.
+Stationary bodies also protect swinging leaves without inventing crossing intent.
+Timed chair roots and door-operator roots validate proposed displacement before
+advancing pose, chair, timer or leaf. A velocity prediction never removes the
+current physical body from the swept collision check.
+
+Physical seat claims also cover already admitted walkers: a new character cannot
+begin a seat interaction while another actor still stands, sits, handles that
+chair or completes its exit. Logical reassignment cannot release a held chair.
+The waiting actor retains a real staging leg and its destination, so ordinary
+crowd yielding remains available while the old owner finishes.
+
+A complete desk maneuver is checked before choosing its side. A safe preferred
+side retains variation; a blocked side falls back to the other, and neither-side
+clearance never grants passage through furniture. The animated root legitimately
+reaches under its own tabletop/input edge at the authored seated pose. Clearance
+matches the exact station through its chair anchor; only narrow, sampled contact
+curves get a smaller surface/input radius. Foreign furniture, people, desk legs,
+walls and floor support keep normal clearance. Full walking legs are split at the
+contact apron so the exemption cannot extend along an unrelated aisle.
+
+Furnished-scene probes also require layout fixes: F3 Multi-Engine rows move to
+world Z −18.5/−15.5 with the connecting aisle at −16.3; the north Flex row moves
+0.3 m north. Matching rendered/resource coordinates stay synchronized. Lateral
+desk approaches use sufficient corner clearance, and the library coffee table
+moves away from the pulled-chair corridor. These changes provide actual room
+for the existing choreography rather than exempting foreign desks or glass.

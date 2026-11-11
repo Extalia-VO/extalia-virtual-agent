@@ -1,0 +1,128 @@
+{
+  "cases": [
+    {
+      "lang": "en",
+      "theme": "light",
+      "width": 1440,
+      "overflow": false,
+      "expanded": 4,
+      "minHeight": 44,
+      "omitted": "12 other candidates were not loaded"
+    },
+    {
+      "lang": "en",
+      "theme": "light",
+      "width": 390,
+      "overflow": false,
+      "expanded": 4,
+      "minHeight": 67.28125,
+      "omitted": "12 other candidates were not loaded"
+    },
+    {
+      "lang": "en",
+      "theme": "dark",
+      "width": 1440,
+      "overflow": false,
+      "expanded": 4,
+      "minHeight": 44,
+      "omitted": "12 other candidates were not loaded"
+    },
+    {
+      "lang": "en",
+      "theme": "dark",
+      "width": 390,
+      "overflow": false,
+      "expanded": 4,
+      "minHeight": 67.28125,
+      "omitted": "12 other candidates were not loaded"
+    },
+    {
+      "lang": "id",
+      "theme": "light",
+      "width": 1440,
+      "overflow": false,
+      "expanded": 4,
+      "minHeight": 44,
+      "omitted": "12 kandidat lain tidak dimuat"
+    },
+    {
+      "lang": "id",
+      "theme": "light",
+      "width": 390,
+      "overflow": false,
+      "expanded": 4,
+      "minHeight": 67.28125,
+      "omitted": "12 kandidat lain tidak dimuat"
+    },
+    {
+      "lang": "id",
+      "theme": "dark",
+      "width": 1440,
+      "overflow": false,
+      "expanded": 4,
+      "minHeight": 44,
+      "omitted": "12 kandidat lain tidak dimuat"
+    },
+    {
+      "lang": "id",
+      "theme": "dark",
+      "width": 390,
+      "overflow": false,
+      "expanded": 4,
+      "minHeight": 67.28125,
+      "omitted": "12 kandidat lain tidak dimuat"
+    }
+  ],
+  "errors": [],
+  "scope": "Managed Native Chat, ordinary delegated workers and team-meeting participants. Synthetic providers and isolated temporary profiles; no paid provider or live external harness certification.",
+  "version": "0.4.260",
+  "date": "2026-11-11",
+  "keyboard": "Native disclosure opens/closes with Enter/Space and focus retained.",
+  "contrastCheck": {
+    "loadedStatusLight": {
+      "foreground": "#18794e",
+      "background": "#ffffff",
+      "ratio": 5.407
+    },
+    "loadedStatusDark": {
+      "foreground": "#5fd39a",
+      "background": "#2a2c30",
+      "ratio": 7.507
+    },
+    "qualification": "Default status token pairs only, not complete accessibility certification; checked after visual pass."
+  },
+  "schema": "extalia.native-skill-loading-evidence.v1",
+  "workspaceGate": {
+    "command": "VITEST_MAX_WORKERS=2 CARGO_BUILD_JOBS=2 pnpm check",
+    "exitCode": 0,
+    "typescriptPassed": 8147,
+    "typescriptSkipped": 26,
+    "rustPassed": 543,
+    "lintTypesSchemasClippyBuildsVersionsAssetsPassed": true
+  },
+  "limits": {
+    "contextCharacters": 24000,
+    "optionalProceduresIncludingDependencies": 3,
+    "externalReadAttempts": 8,
+    "optionalReadAttempts": 12,
+    "receiptEntries": 8,
+    "omittedMaximum": 4096
+  },
+  "verification": [
+    "Required memory guidance without enabling disabled memory access",
+    "Configured active lead team only for orchestrator",
+    "Connection skills-off and worker-specific feature ownership",
+    "Full-body admission with whole prospective request pressure",
+    "Fresh exact-revision reads and revocation at next request",
+    "Current exclusions override registry ranking and dependencies",
+    "Steering rebuilds context without retaining prior injected bodies",
+    "Both read-only meeting rounds use participant preparation",
+    "Metadata-only receipt and rejected canonical mission journal admission",
+    "CLI/Desktop host hooks and localized shared renderer included"
+  ],
+  "remainingScope": [
+    "Canonical mission workers and their separate admission/display integration",
+    "Observed external harnesses and planner/curator helper completions",
+    "Live-provider model compliance, actual token savings and whole-app resource measurements"
+  ]
+}

@@ -2,6 +2,7 @@ import { useLayoutEffect } from 'react';
 import { useThree } from '@react-three/fiber';
 import { DynamicDrawUsage, InstancedMesh, Matrix4, Object3D, type Mesh, type Material, type Scene } from 'three';
 import { OVERVIEW_CULLED_LAYER } from './environment/overviewLod';
+import { registerModelBatchSource, releaseModelBatchSource } from './modelBatchSources';
 
 const OVERVIEW_CULLED_MASK = 1 << OVERVIEW_CULLED_LAYER;
 
@@ -75,6 +76,7 @@ export class ModelBatchController {
     if (source.batchSource === undefined) delete source.mesh.userData.officeBatchSource;
     else source.mesh.userData.officeBatchSource = source.batchSource;
     this.owned.delete(source.mesh);
+    releaseModelBatchSource(source.mesh, source);
   }
 
   private release(batch: Batch): void {
@@ -136,6 +138,7 @@ export class ModelBatchController {
           get: () => false, set: (visible: boolean) => { source.visible = visible; } });
         mesh.userData.officeBatchSource = true;
         this.owned.set(mesh, source);
+        registerModelBatchSource(mesh, source);
         return source;
       });
       this.scene.add(instance);

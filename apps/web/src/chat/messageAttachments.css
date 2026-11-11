@@ -1,0 +1,16 @@
+.tool-row .tool-attachments,
+.worker .tool-attachments { margin: 8px 10px 8px 36px; }
+.tool-media-badge { flex: none; color: var(--muted); font-size: .75rem; font-weight: 500; }
+.tool-media-badge .icon { width: 13px; height: 13px; vertical-align: -2px; margin-right: 4px; }
+.tool-attachments .bubble-file { color: var(--text); background: var(--accent-soft); overflow-wrap: anywhere; }
+.tool-attachments .bubble-file-name { max-width: min(220px, 52vw); }
+.attachment-viewer figure { min-width: 0; }
+.attachment-viewer figcaption { min-width: 0; }
+.attachment-viewer figcaption .icon-button { flex: none; min-width: 40px; min-height: 40px; }
+.attachment-viewer img { display: block; }
+@media (max-width: 600px) {
+  .tool-row .tool-attachments, .worker .tool-attachments { margin-left: 12px; }
+  .attachment-viewer { padding: 12px; }
+}
+
+.bubble-preview-unavailable { color: var(--muted); font-size: .72rem; white-space: normal; }

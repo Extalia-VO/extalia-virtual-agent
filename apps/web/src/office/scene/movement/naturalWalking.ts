@@ -1,5 +1,6 @@
 /** Stable trip geometry and short-horizon passing; no frame-to-frame random noise. */
 import type { Point3 } from '../layout';
+import { staticSeatNeighborsClear } from './staticSeating';
 import type { OfficeNavigation, RouteStep } from './navGraph';
 
 export type WalkableSegment = (from: Readonly<Point3>, to: Readonly<Point3>, radius?: number) => boolean;
@@ -7,6 +8,8 @@ export interface WalkingNeighbor {
   readonly id: string;
   readonly position: Readonly<Point3>;
   readonly velocity: Readonly<Point3>;
+  /** Optional current travel intent; stationary bodies leave this absent. */
+  readonly target?: Readonly<Point3>;
 }
 /** A sampled curve leg, with progress measured along its centre line, not the displaced body. */
 export interface NaturalLeg {
@@ -37,7 +40,7 @@ export function walkingSeed(id: string, trip: number): number {
 
 function protectedNode(node: string, navigation: OfficeNavigation): boolean {
   const kind = navigation.waypoints.get(node)?.kind;
-  return kind === 'door' || kind === 'connector' || node.endsWith(':stage');
+  return kind === 'door' || kind === 'connector' || node.endsWith(':stage') || node.endsWith('-entry-turn');
 }
 interface CurvePoint { point: Point3; node: string; transit: boolean }
 
@@ -238,7 +241,7 @@ export function advanceNaturalWalk(id: string, position: Readonly<Point3>, targe
       }
       if (distance(position, p) > budget + 1e-6) continue;
       lateralSpeed = (actualOffset - state.offset) / Math.max(1e-6, dt);
-      if (!walkable(position, p, 0.29)) continue;
+      if (!walkable(position, p, 0.29) || !staticSeatNeighborsClear(id, position, p, neighbors)) continue;
       const vx = (p[0] - position[0]) / Math.max(dt, 1e-6), vz = (p[2] - position[2]) / Math.max(dt, 1e-6);
       let risk = 0, collision = false;
       for (const other of neighbors) {

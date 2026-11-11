@@ -196,6 +196,22 @@ async function freshSkills(selection: readonly CatalogSkill[], options: SkillToo
   return fresh.map(snapshot);
 }
 
+/** Metadata from the private turn inventory, never caller-supplied preview objects. */
+export function catalogSkillMetadata(catalog: AgentSkillCatalog): readonly SkillIdentity[] {
+  return (catalogs.get(catalog)?.inventory ?? []).map(({ name, description, source, sha256, revisionId }) => ({
+    name, description, source, ...(sha256 ? { sha256 } : {}), ...(revisionId ? { revisionId } : {}),
+  }));
+}
+
+/** Full, untruncated instructions for host context preparation; every external read is fresh. */
+export async function readCatalogSkill(catalog: AgentSkillCatalog, name: string): Promise<Skill | undefined> {
+  const owned = catalogs.get(catalog);
+  const listed = owned?.inventory.find(skill => skill.name === name);
+  if (!owned || !listed) return undefined;
+  if (canonicalBuiltin(listed)) return snapshot(listed);
+  return (await freshSkills([listed], { reload: owned.reload, reloadMany: owned.reloadMany }))[0];
+}
+
 const CATEGORY_TERMS: readonly [BuiltinSkillCategory, readonly string[]][] = [
   ['development', ['code', 'implement', 'implementation', 'build', 'bug', 'fix', 'debug', 'refactor', 'kode', 'buat', 'perbaiki', 'fitur']],
   ['quality', ['review', 'test', 'tests', 'testing', 'regression', 'validate', 'verification', 'uji', 'pengujian', 'tinjau']],

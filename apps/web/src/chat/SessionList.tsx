@@ -10,7 +10,7 @@ function formatWhen(iso: string, language: string, today: string): string {
   return new Intl.DateTimeFormat(language, sameDay ? { hour: '2-digit', minute: '2-digit' } : { day: 'numeric', month: 'short' }).format(date);
 }
 
-function SessionRow({ t, session, active, language, today, onSelect, onRename, onDelete }: {
+function SessionRow({ t, session, active, language, today, onSelect, onRename, onDelete, onMove }: {
   t: Messages;
   session: SessionSummary;
   active: boolean;
@@ -19,11 +19,13 @@ function SessionRow({ t, session, active, language, today, onSelect, onRename, o
   onSelect: () => void;
   onRename: (title: string) => Promise<void>;
   onDelete: () => Promise<void>;
+  onMove?: () => void;
 }) {
   const [mode, setMode] = useState<'view' | 'rename' | 'delete'>('view');
   const [title, setTitle] = useState(session.title);
   const [busy, setBusy] = useState(false);
   const label = session.title || t.chat.untitled;
+  const canMove = Boolean(onMove && session.control === 'managed' && !session.runtime);
   const act = (action: () => Promise<void>) => { setBusy(true); action().then(() => setMode('view'), () => undefined).finally(() => setBusy(false)); };
 
   if (mode === 'rename') {
@@ -42,7 +44,7 @@ function SessionRow({ t, session, active, language, today, onSelect, onRename, o
   }
 
   return (
-    <li className={`session-row ${active ? 'active' : ''}`}>
+    <li className={`session-row ${active ? 'active' : ''} ${canMove ? 'has-move' : ''}`}>
       <button type="button" className="session-select" aria-current={active ? 'true' : undefined} onClick={onSelect}>
         <span className="session-title">{label}</span>
         <span className="session-meta">
@@ -61,6 +63,7 @@ function SessionRow({ t, session, active, language, today, onSelect, onRename, o
         </div>
       ) : (
         <div className="row-tools" role="group" aria-label={t.chat.actions(label)}>
+          {canMove && <button type="button" className="icon-button small" aria-label={`${t.chat.move.title}: ${label}`} title={t.chat.move.title} disabled={session.running} onClick={onMove}><Icon name="folder" /></button>}
           <button type="button" className="icon-button small" aria-label={`${t.chat.rename}: ${label}`} title={t.chat.rename} onClick={() => { setTitle(session.title); setMode('rename'); }}><Icon name="edit" /></button>
           <button type="button" className="icon-button small" aria-label={`${t.common.delete}: ${label}`} title={t.common.delete} onClick={() => setMode('delete')}><Icon name="trash" /></button>
         </div>
@@ -69,7 +72,7 @@ function SessionRow({ t, session, active, language, today, onSelect, onRename, o
   );
 }
 
-export function SessionList({ t, sessions, activeId, language, onSelect, onRename, onDelete }: {
+export function SessionList({ t, sessions, activeId, language, onSelect, onRename, onDelete, onMove }: {
   t: Messages;
   sessions: SessionSummary[];
   activeId: string | undefined;
@@ -77,6 +80,7 @@ export function SessionList({ t, sessions, activeId, language, onSelect, onRenam
   onSelect: (id: string) => void;
   onRename: (id: string, title: string) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
+  onMove?: (session: SessionSummary) => void;
 }) {
   const [today] = useState(() => new Date().toDateString());
   if (!sessions.length) return <p className="muted small session-empty">{t.chat.noSessions}</p>;
@@ -84,7 +88,7 @@ export function SessionList({ t, sessions, activeId, language, onSelect, onRenam
     <ul className="session-list">
       {sessions.map(session => (
         <SessionRow key={session.id} t={t} session={session} active={session.id === activeId} language={language} today={today}
-          onSelect={() => onSelect(session.id)} onRename={title => onRename(session.id, title)} onDelete={() => onDelete(session.id)} />
+          onSelect={() => onSelect(session.id)} onRename={title => onRename(session.id, title)} onDelete={() => onDelete(session.id)} {...(onMove ? { onMove: () => onMove(session) } : {})} />
       ))}
     </ul>
   );

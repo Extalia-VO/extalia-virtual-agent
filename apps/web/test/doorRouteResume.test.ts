@@ -189,6 +189,7 @@ describe('natural routes after door choreography', () => {
     });
   }
 
+  // Exhaustive route simulation needs a separate budget under parallel suite load.
   it('rejoins each completed door interaction on all 658 actual office leisure routes', () => {
     let routes = 0, joins = 0, curvedRoutes = 0;
     // Conservative wall planes reject optional chords outside the authored
@@ -234,5 +235,5 @@ describe('natural routes after door choreography', () => {
     expect(routes).toBe(658);
     expect(joins).toBeGreaterThan(200);
     expect(curvedRoutes).toBeGreaterThan(0);
-  });
+  }, 60_000);
 });

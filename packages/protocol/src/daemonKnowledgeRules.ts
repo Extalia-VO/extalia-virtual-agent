@@ -3,10 +3,10 @@
  * package: `daemonValidate.ts` merges them into the daemon frame rules and `$defs`.
  */
 import {
-  DAEMON_KNOWLEDGE_LIMITS as LIMITS, KNOWLEDGE_BODY_STATUSES, KNOWLEDGE_CONFLICT_REASONS, KNOWLEDGE_EDGE_TYPES, KNOWLEDGE_FOLDER_PATTERN,
+  DAEMON_KNOWLEDGE_LIMITS as LIMITS, KNOWLEDGE_PROFILE_PATTERN, KNOWLEDGE_BODY_STATUSES, KNOWLEDGE_CONFLICT_REASONS, KNOWLEDGE_EDGE_TYPES, KNOWLEDGE_FOLDER_PATTERN,
   KNOWLEDGE_HISTORY_AUTHOR_PATTERN, KNOWLEDGE_HISTORY_KINDS, KNOWLEDGE_IMPORT_OUTCOMES, KNOWLEDGE_INDEX_STATES, KNOWLEDGE_LINK_STATUSES,
   KNOWLEDGE_NODE_ID_PATTERN, KNOWLEDGE_ORIGINS, KNOWLEDGE_PATH_PATTERN, KNOWLEDGE_RESOLUTIONS, KNOWLEDGE_SKIP_REASONS, KNOWLEDGE_SYNC_MODES,
-  KNOWLEDGE_TRUST_STATUSES, KNOWLEDGE_VAULT_LABEL_PATTERN, KNOWLEDGE_WRITE_AUTHORS, KNOWLEDGE_WRITE_OUTCOMES, type DaemonKnowledgeOp,
+  KNOWLEDGE_TRUST_STATUSES, KNOWLEDGE_VAULT_LABEL_PATTERN, KNOWLEDGE_WRITE_AUTHORS, KNOWLEDGE_WRITE_OUTCOMES, type DaemonKnowledgeOp, type DaemonKnowledgeOrdinaryOp,
 } from './daemonKnowledge.js';
 import { SKILL_WORKSPACE_ID_MAX_LENGTH, SKILL_WORKSPACE_ID_PATTERN } from './daemonSkills.js';
 import { multiline, skillReason } from './daemonSkillRules.js';
@@ -168,7 +168,7 @@ const nodeParams = rule((value, path, errors) => {
   }
 }, { ...nodeParamsFields.schema, oneOf: [{ required: ['nodeId'] }, { required: ['path'] }] });
 
-export const KNOWLEDGE_PARAMS: Record<DaemonKnowledgeOp, Rule> = {
+const ORDINARY_PARAMS: Record<DaemonKnowledgeOrdinaryOp, Rule> = {
   'knowledge.status': object({}),
   'knowledge.sync': object({ mode: syncMode.ref }),
   'knowledge.node': nodeParams,
@@ -185,7 +185,7 @@ export const KNOWLEDGE_PARAMS: Record<DaemonKnowledgeOp, Rule> = {
   'knowledge.rollback': object({ path: vaultPath.ref, toSha256: digest, expectedSha256: expected }),
   'knowledge.importMemory': object({ workspaceId, dryRun: optional(boolean) }),
 };
-export const KNOWLEDGE_RESULTS: Record<DaemonKnowledgeOp, Rule> = {
+const ORDINARY_RESULTS: Record<DaemonKnowledgeOrdinaryOp, Rule> = {
   'knowledge.status': object({
     state: enumeration(KNOWLEDGE_INDEX_STATES), reason: optional(skillReason.ref), vaultRoot: matching(KNOWLEDGE_VAULT_LABEL_PATTERN, 'expected a vault label (vaults/<profile> or custom:<folder name>)', 7 + LIMITS.customLabel), vaultPresent: boolean,
     schemaVersion: optional(positive), generation: count, counts: optional(counts.ref), lastSync: optional(summary.ref),
@@ -230,3 +230,21 @@ export function knowledgeJsonSchemaDefs(): Record<string, JsonSchema> {
   ];
   return Object.fromEntries(named.map(({ name, field }) => [name, field.schema]));
 }
+
+const profileId = matching(KNOWLEDGE_PROFILE_PATTERN, 'expected a vault profile id', 39);
+const vaultRoot = rule((value, path, errors) => {
+  if (value !== null) text(4096).check(value, path, errors);
+}, { oneOf: [text(4096).schema, { type: 'null' }] });
+function scopedRule(rules: Record<DaemonKnowledgeOrdinaryOp, Rule>, field: 'params' | 'result'): Rule {
+  const variants = Object.entries(rules).map(([op, nested]) => object({
+    ...(field === 'params' ? { profileId, vaultRoot } : {}), op: enumeration([op]), [field]: nested,
+  }));
+  return rule((value, path, errors) => {
+    if (!isPlainObject(value) || typeof value.op !== 'string' || !Object.hasOwn(rules, value.op)) {
+      fail(path, 'expected an ordinary knowledge operation', errors); return;
+    }
+    variants[Object.keys(rules).indexOf(value.op)]!.check(value, path, errors);
+  }, { oneOf: variants.map(variant => variant.schema) });
+}
+export const KNOWLEDGE_PARAMS: Record<DaemonKnowledgeOp, Rule> = { ...ORDINARY_PARAMS, 'knowledge.scoped': scopedRule(ORDINARY_PARAMS, 'params') };
+export const KNOWLEDGE_RESULTS: Record<DaemonKnowledgeOp, Rule> = { ...ORDINARY_RESULTS, 'knowledge.scoped': scopedRule(ORDINARY_RESULTS, 'result') };

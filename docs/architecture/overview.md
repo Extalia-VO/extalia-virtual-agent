@@ -61,6 +61,13 @@ navigation remain later scene milestones.
 
 Backend placement follows [ADR 0071](../adr/0071-rust-openai-completion-and-resource-evidence.md): choose Rust, supervised Python or TypeScript from measured resource/latency tradeoffs and output compatibility. Retain TypeScript where migration adds latency without worthwhile memory or responsiveness benefits; React stays presentation-only. This supersedes the mandatory zero-TypeScript destination in [ADR 0069](../adr/0069-ui-only-typescript-and-backend-ownership.md), while retaining its source ownership inventory. A pure parser or scheduler remains backend work even without Node imports. Earlier [ADR 0053](../adr/0053-evidence-based-native-process-partition.md) permission, parity and settlement gates still apply.
 
+Workspace-bound [deferred learning](../adr/0074-deferred-learning-and-workspace-knowledge.md)
+uses a bounded host admission timer and independent background settlement. Rust
+retains curator execution and artifact ownership. Isolated workspaces bind a stable
+vault profile, and scoped Knowledge requests reuse the daemon's dedicated index
+thread with an eight-profile LRU. All default/scoped Knowledge requests share a host
+admission lane so queue wait does not consume wire execution deadlines.
+
 The skill registry uses that same lazy profile daemon independently of mission
 backend selection. [Pinned SkillSpector inspection](../adr/0068-pinned-skillspector-inspection.md)
 runs in a separate bounded Rust-owned worker, with a bundled Python/scanner
@@ -160,6 +167,13 @@ Native Chat and Teams use [progressive workspace memory](../adr/0045-progressive
 a bounded summary catalog, literal metadata search and optional paged reads.
 Workers receive read tools only. Built-in recall and opt-in concise-response
 instructions do not install upstream hooks or enable automatic learning.
+[Automatic Native skill context](../adr/0073-automatic-native-skill-context.md)
+uses that private inventory for complete, bounded procedure reads before each
+managed Chat, delegation or meeting request. Mandatory memory guidance and
+configured-lead orchestration remain separate from capabilities. Selection
+refreshes after steering and re-verifies selected external revisions; a quiet
+metadata-only receipt appears in the shared Chat/Office transcript. Canonical
+mission workers and observed external harnesses remain separate contracts.
 The [bounded Native skill inventory](../adr/0057-bounded-native-skill-discovery.md)
 retains external metadata/private digests and offers constant-size discovery
 schemas. Fresh registered reads remain mandatory; initial verification still

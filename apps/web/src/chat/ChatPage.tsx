@@ -1,5 +1,6 @@
+import { ObservedInputCards } from '../observe/ObservedInputCards';
 import { sourceLabel } from '@extalia/core';
-import type { AgentHostApi, ApprovalDecisionInput, FileSystemCapability, HostState } from '@extalia/platform';
+import type { AgentHostApi, ApprovalDecisionInput, FileSystemCapability, HostState, SessionSummary } from '@extalia/platform';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { errorMessage } from '../host/remote';
 import type { Messages } from '../i18n';
@@ -7,9 +8,12 @@ import { Icon } from '../ui/Icon';
 import { Composer, type ComposerSend } from './Composer';
 import { ObservedCodexPromptComposer } from '../observe/ObservedCodexPromptComposer';
 import { supportsObservedPromptQueue } from '../observe/observedCodexPromptModel';
+import { ObservedSessionControl } from '../observe/ObservedSessionControl';
 import { attachmentPreviewLoader, sendPromptWithAttachments, uploadAttachments } from './attachments';
 import { resolveChat, type ChatSelection } from './selection';
 import { SessionList } from './SessionList';
+import { SessionMoveDialog } from './SessionMoveDialog';
+import { sessionFileRoots } from './sessionFileScopes';
 import { projectActivity, projectTranscript } from './transcript';
 import { TranscriptView } from './TranscriptView';
 import { ConversationTabs } from './ChangedFilesView';
@@ -44,11 +48,13 @@ export function ChatPage({ t, language, agents, picker, state, onState, selectio
   const { events, error: loadError, loading } = useSessionEvents(agents, session?.id);
   const sessionId = session?.id;
   const previewAttachment = useMemo(() => sessionId ? attachmentPreviewLoader(agents, sessionId) : undefined, [agents, sessionId]);
-  const items = useMemo(() => projectTranscript(events), [events]);
-  const changedFiles = useMemo(() => projectChangedFiles(events, session?.observation?.projectPath ?? workspace?.projectLocation), [events, session, workspace]);
+  const fileRoots = useMemo(() => sessionFileRoots(events, session?.workspaceFileScopes), [events, session?.workspaceFileScopes]);
+  const items = useMemo(() => projectTranscript(events, fileRoots), [events, fileRoots]);
+  const changedFiles = useMemo(() => projectChangedFiles(events, session?.observation?.projectPath ?? workspace?.projectLocation, fileRoots), [events, session, workspace, fileRoots]);
   const activity = useMemo(() => projectActivity(events), [events]);
   const [error, setError] = useState<string | null>(null);
   const [listOpen, setListOpen] = useState(false);
+  const [movingSession, setMovingSession] = useState<SessionSummary>();
   const stick = useRef(true);
   const memoryDetails = useRef<HTMLDetailsElement>(null);
   const memoryDetailsId = useId();
@@ -166,7 +172,8 @@ export function ChatPage({ t, language, agents, picker, state, onState, selectio
         </button>
         <h2 className="side-heading">{t.chat.sessions}</h2>
         <SessionList t={t} sessions={sessions} activeId={session?.id} language={language}
-          onSelect={id => { onSelect({ workspaceId: workspace.id, sessionId: id }); setListOpen(false); }} onRename={rename} onDelete={remove} />
+          onSelect={id => { onSelect({ workspaceId: workspace.id, sessionId: id }); setListOpen(false); }} onRename={rename} onDelete={remove}
+          {...(agents.previewSessionMove && agents.moveSession ? { onMove: setMovingSession } : {})} />
       </aside>
 
       <section className="chat-main" aria-labelledby="chat-title">
@@ -200,15 +207,22 @@ export function ChatPage({ t, language, agents, picker, state, onState, selectio
             agents={agents} workspaceId={workspace.id} ownerKey={memoryScope.key} draftKey={memoryScope.draftKey}
             workspaceName={workspace.name} connection={memoryScope.connection} context={memoryScope.context}
             onOpenSettings={onOpenSettings} onOpenSkills={() => onReviewSkills(workspace.id)} onOpenKnowledge={onOpenKnowledge} />}
+          {session?.control === 'observed' && <ObservedInputCards t={t} sessionId={session.id} />}
           <ChatTeamControls t={t} agents={agents} state={state} workspace={workspace} session={session} running={running} control={teamControl} />
           {session?.control === 'observed' && supportsObservedPromptQueue(session.observation?.sourceId)
             ? <ObservedCodexPromptComposer key={session.id} t={t} agents={agents} session={session} />
-            : <Composer t={t} agents={agents} session={session} workspaceId={workspace.id} hermes={sessionRuntime(workspace, session) === 'hermes'} modelScopeKey={modelChoicesKey(state, workspace, session)}
+            : session?.control === 'observed' && agents.observedControlStatus && agents.dispatchObservedControl
+              ? <ObservedSessionControl key={session.id} t={t} agents={agents} session={session} />
+              : <Composer t={t} agents={agents} session={session} workspaceId={workspace.id} hermes={sessionRuntime(workspace, session) === 'hermes'} modelScopeKey={modelChoicesKey(state, workspace, session)}
             running={running} waiting={waiting} readOnly={readOnly} stopping={activity.stopping}
             onOpenContext={memoryScope ? openMemoryContext : undefined} contextPanelId={memoryScope ? memoryDetailsId : undefined}
             onSend={send} onStop={() => { if (session) void guard(() => agents.cancel(session.id)); }} onSessionChanged={refreshState} />}
         </div>
       </section>
+      {movingSession && <SessionMoveDialog key={movingSession.id} t={t} agents={agents} session={movingSession} workspaces={state.workspaces}
+        onClose={() => setMovingSession(undefined)} onMoved={(next, workspaceId) => {
+          onState(next); onSelect({ workspaceId, sessionId: movingSession.id }); setMovingSession(undefined); setListOpen(false); focusComposer();
+        }} />}
     </div>
   );
 }

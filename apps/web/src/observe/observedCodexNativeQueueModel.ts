@@ -1,4 +1,5 @@
 import type { AgentHostApi, ObservedCodexNativeQueueStatus } from '@extalia/platform';
+import { safeQueueThumbnail } from '@extalia/core';
 
 export const CODEX_NATIVE_QUEUE_POLL_MS = 5000;
 export const CODEX_NATIVE_QUEUE_LIMITS = { items: 50, text: 16000, bytes: 256 * 1024 } as const;
@@ -24,6 +25,7 @@ export function validateCodexNativeQueue(value: ObservedCodexNativeQueueStatus, 
     ...(value.threadId ? { threadId: value.threadId } : {}), ...(value.observedAt ? { observedAt: value.observedAt } : {}) };
   let remaining: number = CODEX_NATIVE_QUEUE_LIMITS.bytes;
   let truncated = !!value.truncated;
+  let thumbnailCount = 0, thumbnailBytes = 0;
   const items: ObservedCodexNativeQueueStatus['items'] = [];
   for (const item of value.items.slice(0, CODEX_NATIVE_QUEUE_LIMITS.items)) {
     if (!item || typeof item.id !== 'string' || !item.id || item.id.length > 256 || ids.has(item.id)
@@ -46,7 +48,20 @@ export function validateCodexNativeQueue(value: ObservedCodexNativeQueueStatus, 
     remaining -= size(text);
     const itemTruncated = !!item.truncated || text !== item.text;
     truncated ||= itemTruncated;
-    items.push({ id: item.id, text, nonTextItems: item.nonTextItems, ...(itemTruncated ? { truncated: true } : {}) });
+    let attachments: typeof item.attachments;
+    if (item.attachments !== undefined) {
+      if (!Array.isArray(item.attachments) || item.attachments.length > 8 || item.attachments.length > item.nonTextItems) throw new Error('Invalid queue attachments');
+      attachments = item.attachments.map(file => {
+        if (!file || !['image', 'audio', 'file', 'skill'].includes(file.kind)
+          || file.name !== undefined && (typeof file.name !== 'string' || !file.name || file.name.length > 200 || /[/\\]/.test(file.name)
+            || Array.from(file.name).some(char => char.charCodeAt(0) < 32 || char.charCodeAt(0) >= 127 && char.charCodeAt(0) <= 159))) throw new Error('Invalid queue attachment');
+        let thumbnail = file.kind === 'image' ? safeQueueThumbnail(file.thumbnail) : undefined;
+        if (thumbnail && (thumbnailCount >= 8 || thumbnailBytes + thumbnail.length > 256 * 1024)) thumbnail = undefined;
+        if (thumbnail) { thumbnailCount++; thumbnailBytes += thumbnail.length; }
+        return { kind: file.kind, ...(file.name ? { name: file.name } : {}), ...(thumbnail ? { thumbnail } : {}) };
+      });
+    }
+    items.push({ id: item.id, text, nonTextItems: item.nonTextItems, ...(attachments?.length ? { attachments } : {}), ...(itemTruncated ? { truncated: true } : {}) });
     if (remaining <= 0) { truncated ||= items.length < value.items.length; break; }
   }
   truncated ||= value.items.length > items.length;

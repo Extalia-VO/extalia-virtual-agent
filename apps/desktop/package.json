@@ -1,7 +1,7 @@
 {
   "name": "@extalia/desktop",
   "description": "Extalia Desktop shell for macOS, Windows and Linux.",
-  "version": "0.4.256",
+  "version": "0.4.274",
   "private": true,
   "license": "MIT",
   "author": "Extalia contributors",
@@ -20,11 +20,11 @@
   "dependencies": {
     "@extalia/host": "workspace:*",
     "@extalia/platform": "workspace:*",
-    "electron-updater": "6.8.11"
+    "electron-updater": "6.8.9"
   },
   "devDependencies": {
     "electron": "~44.7.2",
-    "electron-builder": "26.18.0",
+    "electron-builder": "26.15.3",
     "esbuild": "^0.28.2"
   }
 }

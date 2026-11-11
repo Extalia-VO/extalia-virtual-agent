@@ -38,11 +38,34 @@ export interface SecureStorageCapability {
   delete(reference: string): Promise<void>;
 }
 
+/** Navigation only: a notification never carries question text, answers or authority. */
+export type NotificationTarget = { kind: 'approval-inbox' } | { kind: 'observed-input'; sessionId: string; requestId: string };
+
+export const NOTIFICATION_TARGET_ID_LIMIT = 512;
+
+/** Validate and copy the small, closed notification navigation contract at host boundaries. */
+export function parseNotificationTarget(value: unknown): NotificationTarget {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) throw new Error('Invalid notification target.');
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype !== null && prototype !== Object.prototype) throw new Error('Invalid notification target.');
+  const target = value as Record<string, unknown>;
+  const fields = target.kind === 'approval-inbox' ? ['kind'] : ['kind', 'sessionId', 'requestId'];
+  if (Object.keys(target).some(key => !fields.includes(key))) throw new Error('Invalid notification target.');
+  if (target.kind === 'approval-inbox') return { kind: 'approval-inbox' };
+  const validId = (id: unknown): id is string => typeof id === 'string' && id.length > 0 && id.length <= NOTIFICATION_TARGET_ID_LIMIT
+    // eslint-disable-next-line no-control-regex
+    && id.trim().length > 0 && !/[\x00-\x1f\x7f]/.test(id);
+  if (target.kind !== 'observed-input' || !validId(target.sessionId) || !validId(target.requestId)) throw new Error('Invalid notification target.');
+  return { kind: 'observed-input', sessionId: target.sessionId, requestId: target.requestId };
+}
+
 export interface NotificationCapability {
+  /** Only explicit true permits targeted notifications; older hosts omit this flag. */
+  supportsTargets?: boolean;
   /** Show an OS or browser notification. Callers never put secrets in the text; hosts still bound its length. */
-  notify(notification: { title: string; body?: string }): Promise<void>;
+  notify(notification: { title: string; body?: string; target?: NotificationTarget }): Promise<void>;
   /** The user clicked a notification: the app focuses itself and shows what the notification refers to. */
-  onActivate(listener: () => void): () => void;
+  onActivate(listener: (target?: NotificationTarget) => void): () => void;
 }
 
 export type UpdateChannel = 'stable' | 'beta';
@@ -71,8 +94,8 @@ export interface UpdateCapability {
   /** Ask the release feed now. */
   check(): Promise<UpdateStatus>;
   /** Install a downloaded or available update and restart at a safe point. */
-  install(): Promise<void>;
-  /** Cancel a scheduled automatic restart; the update installs on the next quit. */
+  install(expectedVersion?: string): Promise<void>;
+  /** Cancel a scheduled automatic restart; resume later with install(). */
   postpone(): Promise<void>;
   onStatus(listener: (status: UpdateStatus) => void): () => void;
 }
@@ -142,17 +165,14 @@ export interface DesktopHostApi {
   updater: {
     status(): Promise<UpdateStatus>;
     check(): Promise<UpdateStatus>;
-    install(): Promise<void>;
+    install(expectedVersion?: string): Promise<void>;
     postpone(): Promise<void>;
     onStatus(listener: (status: UpdateStatus) => void): () => void;
   };
   /** Relaunch the Desktop app. The main process validates the options and stops agent work before quitting. */
   restart(options?: RestartOptions): Promise<void>;
   /** Native notifications (v0.0.48). The main process validates and bounds each payload and activates the window on click. */
-  notifications?: {
-    notify(notification: { title: string; body?: string }): Promise<void>;
-    onActivate(listener: () => void): () => void;
-  };
+  notifications?: NotificationCapability;
 }
 export const DESKTOP_HOST_GLOBAL = 'extaliaDesktop';
 

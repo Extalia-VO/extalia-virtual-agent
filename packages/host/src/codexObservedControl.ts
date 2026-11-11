@@ -2,12 +2,13 @@ import { spawn } from 'node:child_process';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { lstat, realpath } from 'node:fs/promises';
 import path from 'node:path';
-import { redact } from '@extalia/core';
+import { EFFORTS, redact } from '@extalia/core';
+import { isModelId } from '@extalia/platform';
 import type {
   ObservedCodexApprovalAnswerInput, ObservedCodexApprovalDecision, ObservedCodexApprovalRequest,
   ObservedCodexAnswerInput, ObservedCodexInputRequest, ObservedCodexMessageInput,
   ObservedCodexCommandAction, ObservedCodexFileChange, ObservedCodexPermissions,
-  ObservedCodexQuestion, ObservedCodexStatus, PromptSuggestionsStatus,
+  ObservedCodexQuestion, ObservedCodexStatus, ObservedCodexSettingsInput, PromptSuggestionsStatus,
 } from '@extalia/platform';
 
 const MAX_FRAME = 1024 * 1024;
@@ -21,6 +22,22 @@ const boundedText = (value: unknown, max = 16_384): value is string =>
   typeof value === 'string' && value.length > 0 && value.length <= max;
 const nativeId = (value: unknown): value is NativeId => boundedText(value, 256) || typeof value === 'number' && Number.isSafeInteger(value);
 const idKey = (id: NativeId): string => `${typeof id}:${id}`;
+const SETTINGS_PROBE = 'extalia/observed/settings/capabilityProbe';
+const settingText = (value: unknown, max: number): value is string => boundedText(value, max) && !/[\s\p{Cc}\p{Cf}]/u.test(value);
+
+/** Only the verified native dispatch inventory is retained; raw diagnostics stay private. */
+export class CodexObservedRpcError extends Error {
+  readonly supportsThreadSettingsUpdate: boolean;
+  constructor(value: unknown) {
+    super('Codex rejected the request.');
+    const error = object(value);
+    const prefix = `Invalid request: unknown variant \`${SETTINGS_PROBE}\`, expected one of `;
+    const message = error?.message;
+    const methods = error?.code === -32600 && typeof message === 'string' && message.length <= 32_768 && message.startsWith(prefix)
+      ? message.slice(prefix.length).split(', ') : [];
+    this.supportsThreadSettingsUpdate = methods.length > 0 && methods.every(method => /^`[A-Za-z][A-Za-z0-9_/-]{0,199}`$/.test(method)) && methods.includes('`thread/settings/update`');
+  }
+}
 
 export interface CodexObservedRpc {
   request(method: string, params: ObjectValue): Promise<unknown>;
@@ -136,7 +153,7 @@ export const createCodexObservedRpc: CodexObservedRpcFactory = async (options) =
     const entry = pending.get(idKey(message.id));
     if (!entry) return;
     pending.delete(idKey(message.id)); clearTimeout(entry.timer);
-    if ('error' in message) entry.reject(new Error('Codex rejected the request.'));
+    if ('error' in message) entry.reject(new CodexObservedRpcError(message.error));
     else if ('result' in message) entry.resolve(message.result);
     else { entry.reject(new Error('Invalid Codex response.')); throw new Error('Invalid Codex response.'); }
   };
@@ -297,6 +314,11 @@ export class CodexObservedControl {
   private ready = false;
   private busy = false;
   private turnRevision = 0;
+  private model?: string;
+  private effort?: string;
+  private settingsRevision = 0;
+  private settingsSupported = false;
+  private settingsDelivery?: ObservedCodexStatus['settingsDelivery'];
   private activityNotified = false;
   private activityNotifiedTurnId?: string;
   private completedTurnId?: string;
@@ -314,6 +336,10 @@ export class CodexObservedControl {
     return {
       sessionId: this.options.sessionId, state: this.state, connectionId: this.connectionId,
       threadId: connected ? this.options.threadId : undefined, activeTurnId: this.activeTurnId,
+      model: connected ? this.model : undefined, effort: connected ? this.effort : undefined,
+      settingsRevision: connected ? this.settingsRevision : undefined,
+      canSetSettings: connected && this.settingsSupported && this.settingsDelivery !== 'unknown' && !this.busy && !!this.model,
+      settingsDelivery: connected ? this.settingsDelivery : undefined,
       canSend: connected && !this.busy && (this.activity === 'idle' || !!this.activeTurnId) && !this.hasBlockingRequest(), canAnswer: connected && [...this.requests.values()].some((request) => request.view.state === 'pending'),
       requests: structuredClone([...this.requests.values()].map((request) => request.view)),
       approvals: structuredClone([...this.approvals.values()].map((request) => request.view)),
@@ -395,6 +421,7 @@ export class CodexObservedControl {
     this.state = this.cleanupFailed ? 'unavailable' : state;
     this.problem = this.cleanupFailed ? CLEANUP_PROBLEM : problem;
     this.connectionId = undefined; this.activeTurnId = undefined; this.activity = 'unknown'; this.clearTurnRequests(); this.seenRequests.clear(); this.staged = [];
+    this.model = undefined; this.effort = undefined; this.settingsRevision = 0; this.settingsSupported = false; this.settingsDelivery = undefined;
     if (this.delivery === 'submitted') this.delivery = 'unknown';
     this.changed();
   }
@@ -438,10 +465,19 @@ export class CodexObservedControl {
       const loaded = object(await rpc.request('thread/loaded/list', { limit: 100 }));
       if (generation !== this.generation) throw new Error('Connection superseded.');
       if (!loaded || !Array.isArray(loaded.data) || loaded.data.length > 100 || !loaded.data.every((id) => boundedText(id, 256)) || !loaded.data.includes(this.options.threadId)) throw new Error('Invalid thread inventory.');
-      this.verifyThread(await rpc.request('thread/read', { threadId: this.options.threadId, includeTurns: false }));
-      await this.revalidate(generation);
-      const resumed = this.verifyThread(await rpc.request('thread/resume', { threadId: this.options.threadId, excludeTurns: true }));
+      // An unknown method cannot invoke a handler. Only an explicit method inventory
+      // from this exact server establishes setter support; versions never do.
+      try { await rpc.request(SETTINGS_PROBE, {}); }
+      catch (error) { this.settingsSupported = error instanceof CodexObservedRpcError && error.supportsThreadSettingsUpdate; }
       if (generation !== this.generation) throw new Error('Connection superseded.');
+      const initial = this.verifyThread(await rpc.request('thread/read', { threadId: this.options.threadId, includeTurns: false }));
+      if (generation !== this.generation) throw new Error('Connection superseded.');
+      this.captureSettings(initial);
+      await this.revalidate(generation);
+      const resumedResponse = await rpc.request('thread/resume', { threadId: this.options.threadId, excludeTurns: true });
+      const resumed = this.verifyThread(resumedResponse);
+      if (generation !== this.generation) throw new Error('Connection superseded.');
+      this.captureSettings('model' in resumed ? resumed : object(resumedResponse)!);
       this.activity = object(resumed.status)?.type === 'idle' ? 'idle' : 'unknown';
       const turns = resumed.turns;
       if (Array.isArray(turns)) {
@@ -512,6 +548,63 @@ export class CodexObservedControl {
     if (this.state !== 'connected' || id !== this.connectionId || !this.rpc) throw new Error('Stale Codex connection.');
     return { rpc: this.rpc, generation: this.generation };
   }
+  private captureSettings(value: ObjectValue, notification = false): void {
+    const model = isModelId(value.model) ? value.model : undefined;
+    const sourceEffort = notification ? value.effort : value.reasoningEffort;
+    const effort = settingText(sourceEffort, 64) ? sourceEffort : undefined;
+    if (model !== this.model || effort !== this.effort) {
+      this.model = model; this.effort = effort; ++this.settingsRevision;
+      this.changed();
+    }
+  }
+  async updateSettings(input: ObservedCodexSettingsInput): Promise<ObservedCodexStatus> {
+    const value = object(input);
+    if (!value || Object.keys(value).some(key => !['connectionId', 'settingsRevision', 'model', 'effort'].includes(key)) ||
+        !Number.isSafeInteger(input.settingsRevision) || input.settingsRevision < 0 ||
+        input.model === undefined && input.effort === undefined ||
+        input.model !== undefined && !isModelId(input.model) || input.effort !== undefined && !(EFFORTS as readonly unknown[]).includes(input.effort)) throw new Error('Choose valid Codex model or effort settings.');
+    input = { connectionId: input.connectionId, settingsRevision: input.settingsRevision, model: input.model, effort: input.effort };
+    const { rpc, generation } = this.requireConnection(input.connectionId);
+    if (!this.status().canSetSettings || this.busy) throw new Error('Native Codex settings updates are unavailable.');
+    if (input.settingsRevision !== this.settingsRevision) throw new Error('Codex settings changed. Refresh before updating.');
+    this.busy = true; this.changed();
+    let dispatched = false;
+    try {
+      await this.revalidate(generation);
+      const loaded = object(await rpc.request('thread/loaded/list', { limit: 100 }));
+      if (generation !== this.generation) throw new Error('Stale Codex connection.');
+      if (!loaded || !Array.isArray(loaded.data) || loaded.data.length > 100 || !loaded.data.every(id => boundedText(id, 256)) || !loaded.data.includes(this.options.threadId)) throw new Error('The observed Codex thread is no longer loaded.');
+      const beforeRead = this.settingsRevision;
+      const fresh = this.verifyThread(await rpc.request('thread/read', { threadId: this.options.threadId, includeTurns: false }));
+      if (generation !== this.generation) throw new Error('Stale Codex connection.');
+      if (!['idle', 'active'].includes(String(object(fresh.status)?.type))) throw new Error('The observed Codex thread is no longer loaded.');
+      if (beforeRead !== this.settingsRevision) throw new Error('Codex settings changed. Refresh before updating.');
+      this.captureSettings(fresh);
+      if (!this.model || input.settingsRevision !== this.settingsRevision) throw new Error('Codex settings changed. Refresh before updating.');
+      await this.revalidate(generation);
+      if (input.settingsRevision !== this.settingsRevision) throw new Error('Codex settings changed. Refresh before updating.');
+      dispatched = true;
+      await rpc.request('thread/settings/update', {
+        threadId: this.options.threadId,
+        ...(input.model !== undefined ? { model: input.model } : {}),
+        ...(input.effort !== undefined ? { effort: input.effort } : {}),
+      });
+      await this.revalidate(generation);
+      const beforeReceipt = this.settingsRevision;
+      const receipt = this.verifyThread(await rpc.request('thread/read', { threadId: this.options.threadId, includeTurns: false }));
+      if (generation !== this.generation) throw new Error('Stale Codex connection.');
+      if (beforeReceipt === this.settingsRevision) this.captureSettings(receipt);
+      if (input.model !== undefined && this.model !== input.model || input.effort !== undefined && this.effort !== input.effort) throw new Error('Codex did not confirm the requested settings. Refresh before retrying.');
+      this.settingsDelivery = 'confirmed';
+    } catch (error) {
+      if (dispatched && generation === this.generation) {
+        this.settingsDelivery = 'unknown';
+        this.problem = 'Codex settings delivery could not be confirmed. Reconnect before updating settings again.';
+      }
+      throw error;
+    } finally { this.busy = false; this.changed(); }
+    return this.status();
+  }
   async send(input: ObservedCodexMessageInput): Promise<ObservedCodexStatus> {
     const { rpc, generation } = this.requireConnection(input.connectionId);
     if (!this.status().canSend || !boundedText(input.text, 65_536) || !input.text.trim()) throw new Error('A bounded message is required.');
@@ -526,6 +619,7 @@ export class CodexObservedControl {
       } else {
         const thread = this.verifyThread(await rpc.request('thread/read', { threadId: this.options.threadId, includeTurns: false }));
         if (object(thread.status)?.type !== 'idle' || this.activeTurnId || generation !== this.generation) throw new Error('Codex is no longer idle.');
+        this.captureSettings(thread);
         await this.revalidate(generation);
         if (this.activeTurnId) throw new Error('Codex is no longer idle.');
         const revision = this.turnRevision;
@@ -599,6 +693,11 @@ export class CodexObservedControl {
   private message(value: unknown): void {
     const message = object(value); const params = object(message?.params);
     if (!message || !params || params.threadId !== this.options.threadId) return;
+    if (message.method === 'thread/settings/updated') {
+      const settings = object(params.threadSettings);
+      if (settings) { this.captureSettings(settings, true); this.changed(); }
+      return;
+    }
     if (message.method === 'thread/prediction/updated') {
       if (this.suggestionsPrivate) return;
       let prediction = this.prediction;

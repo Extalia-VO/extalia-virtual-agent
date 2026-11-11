@@ -1,3 +1,5 @@
+import { ObservedUserInputService } from './observedUserInputService.js';
+import { lstat } from 'node:fs/promises';
 import { modelPlanningBasis } from '@extalia/platform';
 import { ModelGuideStore } from './modelGuideStore.js';
 import { ObservedCodexService } from './observedCodexService.js';
@@ -6,7 +8,12 @@ import { ObservedCodexNativeQueueService } from './observedCodexNativeQueueServi
 import type { readCodexNativeQueue } from './codexNativeQueue.js';
 import { ObservedCodexPermissionService } from './observedCodexPermissionService.js';
 import { PromptQueues } from './promptQueue.js';
+import { SessionMoveReviews } from './sessionMove.js';
+import { LearningSchedule } from './learningSchedule.js';
+import { WorkspaceKnowledge, serializeKnowledgeRequests } from './workspaceKnowledge.js';
+import { assignWorkspaceVaultProfile } from './workspaceVaultProfile.js';
 import { NativeTurnSteering } from './nativeTurnSteering.js';
+import { createNativeSkillPreparation } from './nativeSkillPreparation.js';
 import { PromptSuggestionsService } from './promptSuggestions.js';
 import type { OpenAICompletionPort } from '@extalia/runtime';
 import { RustModelDiscovery, type ModelDiscoveryPort } from './daemon/modelDiscovery.js';
@@ -31,9 +38,9 @@ import {
   type MissionPlan, type MissionPlanCandidate, type MissionPlanContext, isModelId, normalizeAgentIdentity, normalizeAgentTeam, normalizeSessionOptions, normalizeTeamPlanRequest, resolveDataDirectory, SETUP_VERSION, type ModelChoices, type SessionOptions,
   type AgentAppId, type AgentHostApi, type ApprovalDecisionInput, type ConnectionInput, type ConnectionTestResult, type ConnectionView,
   type FolderCheck, type HostState, type LibrarySessionSummary, type NativeCore, type SessionSummary, type WorkspaceInput,
-  HERMES_PERMISSION_MODES, PERMISSION_MODES, normalizeAttachmentUpload, normalizePromptAttachmentIds, normalizePromptLearnSkill, type PermissionMode, type PromptAttachment, type PromptAttachmentInput,
+  HERMES_PERMISSION_MODES, PERMISSION_MODES, ATTACHMENT_ID_PATTERN, normalizeAttachmentUpload, normalizePromptAttachmentIds, normalizePromptLearnSkill, type PermissionMode, type PromptAttachment, type PromptAttachmentInput,
   normalizeBuiltinSkills, normalizeSkillConsent, normalizeSkillNames, type SkillConsentInput, type WorkspaceSkills,
-  normalizeIntegrationGate,
+  normalizeIntegrationGate, normalizeLearningScheduleAction, normalizeWorkspaceKnowledgeRequest, type KnowledgeVaultSettings,
   KNOWLEDGE_EVENT_SESSION_ID, normalizeKnowledgeVaultRoot, type NativeActiveRun, type NativeStatus, type NativeStatusRecheck, type NativeStatusWorker,
 } from '@extalia/platform';
 import { createEvent, type AgentEvent, type EventBody, type EventSource, type ExtaliaEvent } from '@extalia/protocol';
@@ -43,7 +50,7 @@ import {
 } from '@extalia/runtime';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
-import { mkdir, mkdtemp, readdir, readFile, realpath, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdtemp, readdir, readFile, realpath, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import path from 'node:path';
 import { AttachmentStore, type TakenAttachment } from './attachments.js';
@@ -78,8 +85,8 @@ import { DEFAULT_IGNORE_FOLDERS, Observations } from './observations.js';
 import { mapObservedWorkspaces } from './observedWorkspace.js';
 import { dataLayout, ensureLayout, ensurePrivateDirectory, PRIVATE_FILE_MODE } from './paths.js';
 import { createSecretStore, resolveCredential, type SecretStore } from './secrets.js';
-import { MemorySessionStore, SessionStore, newSessionId, type SessionRecord, type SessionStorage } from './sessions.js';
-import { SkillConsentStore, buildAgentSkillCatalog, createSkillTools, loadSkills, skillOrigin } from './skills.js';
+import { MemorySessionStore, SESSION_ID_PATTERN, SessionStore, newSessionId, type SessionRecord, type SessionStorage } from './sessions.js';
+import { SkillConsentStore, buildAgentSkillCatalog, createSkillTools, loadSkills, skillOrigin, type AgentSkillCatalog } from './skills.js';
 import { createSkillProposalTool } from './skillLearning.js';
 import { SkillRegistry } from './skillRegistry.js';
 import { KnowledgeService, knowledgeHostMethods, type KnowledgeServiceOptions } from './knowledge.js';
@@ -94,7 +101,7 @@ import { worktreeHostMethods } from './worktrees/hostMethods.js';
 import { IntegrationQueue, WorktreeError, WorktreeManager, type DiffSummary, type IntegrationGate, type IntegrationProposal, type WorktreeOrphan, type WorktreeRecord, type WorktreeStatus } from './worktrees/index.js';
 import { checkAllowed, isWithin, resolveInside, WorkspacePathError } from './workspaceFs.js';
 import { createWorkspaceAccess, type WorkspaceAccess } from './workspaceAccess.js';
-import { assertWorkspaceWorktreeAccess, workspaceBoundaryKey, workspaceFoldersTool, workspaceMemoryDirectory } from './workspaceBoundary.js';
+import { assertWorkspaceWorktreeAccess, workspaceBoundaryKey, workspaceBoundaryMatches, workspaceSessionBoundaryKey, workspaceFoldersTool, workspaceMemoryDirectory } from './workspaceBoundary.js';
 
 export interface AgentHostOptions {
   /** Test harness only; normal hosts poll observed transcripts every two seconds. */
@@ -384,6 +391,17 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
   const configFile = path.join(layout.config, 'extalia.json');
   const modelGuide = new ModelGuideStore(layout.config);
   let config = decodeConfig(await readJson<Partial<HostConfig> | undefined>(configFile, undefined));
+  let assignedProfiles = config.vaultProfiles;
+  let assignedWorkspaces = config.workspaces;
+  let assigned = false;
+  for (const workspace of config.workspaces) if (workspace.crossWorkspaceAccess === 'isolated') {
+    const result = assignWorkspaceVaultProfile({ profiles: assignedProfiles, workspaces: assignedWorkspaces, defaultProfile: config.profile }, workspace.id);
+    assignedProfiles = result.profiles; assignedWorkspaces = result.workspaces; assigned ||= result.created;
+  }
+  if (assigned) {
+    config = { ...config, vaultProfiles: assignedProfiles, workspaces: assignedWorkspaces };
+    await writeJsonAtomic(configFile, config, { mode: 0o600 });
+  }
   const secrets: SecretStore = await createSecretStore({ stateDirectory: layout.state, platform: process.platform, env });
   const savedSessions = new SessionStore(layout.sessions);
   const unsavedSessions = new MemorySessionStore();
@@ -405,6 +423,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     ...(options.daemon?.spawn ? { spawn: options.daemon.spawn } : {}),
     log: options.daemon?.log ?? (line => console.warn(line)),
   });
+  const knowledgePort = serializeKnowledgeRequests(recoveryDaemon);
   const rustLearning = new RustLearningBackend(() => recoveryDaemon.connect());
   const modelDiscovery = new RustModelDiscovery({
     binary: () => resolveDaemonBinary({ ...options.daemon?.binary, env })?.path,
@@ -491,6 +510,11 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
   const runs = new Map<string, Run>();
   let promptQueues: PromptQueues | undefined = undefined;
   const nativeWorkers = new Map<string, NativeStatusWorker>();
+  const learningSchedule = new LearningSchedule({ onChange: () => {
+    if (!closing && !learningSchedule.isBusy && !runs.size && !persistence.isBusy && !workspaceContextReaders
+      && !nativeStatusRefresh && !nativeMemory.isBusy() && !promptQueues?.isBusy)
+      for (const listener of idleListeners) { try { listener(); } catch { /* disconnected observer */ } }
+  } });
   let nativeStatusRefresh: Promise<NativeStatus> | undefined;
   let workspaceBoundaryMutations = 0;
   let workspaceContextReaders = 0;
@@ -502,11 +526,11 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     checkOpen: () => { if (closing) throw userError('The host is shutting down.'); },
     checkAdmission: assertNativeBoundaryAvailable,
     onIdle: () => {
-      if (!closing && !persistence.isBusy && !runs.size && !nativeStatusRefresh && !nativeMemory.isBusy() && !promptQueues?.isBusy) for (const listener of idleListeners) { try { listener(); } catch { /* disconnected observer */ } }
+      if (!closing && !persistence.isBusy && !runs.size && !nativeStatusRefresh && !nativeMemory.isBusy() && !learningSchedule.isBusy && !promptQueues?.isBusy) for (const listener of idleListeners) { try { listener(); } catch { /* disconnected observer */ } }
     },
   });
   persistence.onIdle(() => {
-    if (!closing && !runs.size && !nativeStatusRefresh && !nativeMemory.isBusy() && !promptQueues?.isBusy) for (const listener of idleListeners) { try { listener(); } catch { /* disconnected observer */ } }
+    if (!closing && !runs.size && !nativeStatusRefresh && !nativeMemory.isBusy() && !learningSchedule.isBusy && !promptQueues?.isBusy) for (const listener of idleListeners) { try { listener(); } catch { /* disconnected observer */ } }
   });
   let nativeStatusCursor = 0;
   let lastNativeRecheck: NativeStatusRecheck | undefined;
@@ -561,7 +585,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       return sampleNativeStatus();
     }).finally(() => {
       if (nativeStatusRefresh === work) nativeStatusRefresh = undefined;
-      if (!closing && !persistence.isBusy && !runs.size && !nativeStatusRefresh && !nativeMemory.isBusy() && !promptQueues?.isBusy) for (const listener of idleListeners) { try { listener(); } catch { /* ignore */ } }
+      if (!closing && !persistence.isBusy && !runs.size && !nativeStatusRefresh && !nativeMemory.isBusy() && !learningSchedule.isBusy && !promptQueues?.isBusy) for (const listener of idleListeners) { try { listener(); } catch { /* ignore */ } }
     });
     nativeStatusRefresh = work;
     return work.then(value => structuredClone(value));
@@ -590,9 +614,18 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
   // Profile/default-team checks and their config commits share one ordered mutation lane.
   // A concurrent profile switch cannot invalidate the roster snapshot being admitted.
   let workspaceChanges: Promise<void> = Promise.resolve();
-  function withWorkspaceChange<T>(change: () => Promise<T>): Promise<T> {
+  let workspaceChangeRevision = 0;
+  const sessionMoveReviews = new SessionMoveReviews();
+  function withWorkspaceChange<T>(change: () => Promise<T>, invalidatePendingLearning = true): Promise<T> {
+    workspaceChangeRevision++;
     workspaceBoundaryMutations++;
-    const next = workspaceChanges.then(() => { assertHostOpen(); return change(); }).finally(() => { workspaceBoundaryMutations--; });
+    const next = workspaceChanges.then(async () => {
+      assertHostOpen();
+      if (learningSchedule.isBusy) throw userError('Wait for the learning update to settle before changing workspace settings.');
+      const result = await change();
+      if (invalidatePendingLearning) learningSchedule.invalidatePending();
+      return result;
+    }).finally(() => { workspaceBoundaryMutations--; });
     workspaceChanges = next.then(() => undefined, () => undefined);
     return next;
   }
@@ -601,7 +634,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     ensureManagedRoot: async profileId => (await rustLearning.process('vault.ensure', { profileId })).root,
     read: () => ({ profiles: config.vaultProfiles, workspaces: config.workspaces, defaultProfile: config.profile,
       defaultRoot: config.knowledge?.vaultRoot ?? knowledgeVault.defaultRoot() }),
-    busy: () => closing || persistence.isBusy || runs.size > 0 || workspaceContextReaders > 0 || nativeMemory.isBusy()
+    busy: () => closing || learningSchedule.isBusy || persistence.isBusy || runs.size > 0 || workspaceContextReaders > 0 || nativeMemory.isBusy()
       || nativeOwnership.hasUnresolved() || missions.hasUnresolved() || missionRecovery.isInspecting() || nativeStatusRefresh !== undefined || registryWork > 0,
     commit: async (profiles, workspaces) => {
       knowledgeVault.assertStable();
@@ -612,6 +645,11 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       catch (failure) { if (config === next) config = previous; throw failure; }
     },
   });
+  const workspaceKnowledge = new WorkspaceKnowledge({ daemon: knowledgePort,
+    workspaces: profileId => config.workspaces.filter(workspace => workspace.profileId === profileId).map(workspace => workspace.id),
+  });
+  // eslint-disable-next-line prefer-const -- Bound after host initialization; startup callbacks may run before it is available.
+  let refreshWorkspaceKnowledge: ((workspaceId: string) => Promise<void>) | undefined;
   const mutateOwnedProfile = <T>(work: () => Promise<T>): Promise<T> => {
     if (closing || persistence.isSealed) return Promise.reject(userError('The host is shutting down.'));
     return persistence.run(work);
@@ -660,9 +698,13 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
   });
   const observedCodexQueue = await ObservedCodexQueueService.create({ dataDirectory, env, target: id => observations.codexQueueTarget(id) })
     .catch(async error => { await observations.close(); await observedCodex.close(); throw error; });
+  const observedUserInput = await ObservedUserInputService.create({ dataDirectory,
+    target: id => observations.codexQueueTarget(id), evidence: id => observations.codexUserInput(id),
+    labelsOnly: () => observations.labelsOnly(), native: observedCodex, queue: observedCodexQueue,
+  }).catch(async error => { await observedCodexQueue.close(); await observations.close(); await observedCodex.close(); throw error; });
   const observedCodexPermissions = await ObservedCodexPermissionService.create({ dataDirectory, env,
     target: id => observations.codexQueueTarget(id), resolve: payload => observations.codexPermissionTarget(payload),
-  }).catch(async error => { await observedCodexQueue.close(); await observations.close(); await observedCodex.close(); throw error; });
+  }).catch(async error => { await observedUserInput.close(); await observedCodexQueue.close(); await observations.close(); await observedCodex.close(); throw error; });
   const blockedReplyIds = new Set<string>();
   const manualReplyIds = new Set<string>();
   const manualInboxIds = new Map<string, string>();
@@ -724,9 +766,9 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     discovered.sort((a, b) => Number(b.alive) - Number(a.alive) || b.mtimeMs - a.mtimeMs);
     return discovered;
   };
-  const observedModelChoices = async (sessionId: string, sourceId: string): Promise<ModelChoices> => {
+  const readObservedModelCatalog = async (sessionId: string, sourceId: string, activeModel?: string): Promise<ModelChoices> => {
     const observedSummary = observations.summaries().find(item => item.id === sessionId);
-    const sessionModel = isModelId(observedSummary?.model?.trim()) ? observedSummary.model.trim() : undefined;
+    const sessionModel = activeModel ?? (isModelId(observedSummary?.model?.trim()) ? observedSummary.model.trim() : undefined);
     const importHome = options.importHome ?? homeDirectory;
     const geminiRoot = env.GEMINI_CLI_HOME?.trim() || path.join(importHome, '.gemini');
     if (sourceId === 'antigravity') {
@@ -787,14 +829,16 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
               ? payload.defaultOverrideModelConfig.modelOrAlias.model
               : typeof payload.defaultOverrideModelConfig?.modelOrAlias?.alias === 'string'
                 ? payload.defaultOverrideModelConfig.modelOrAlias.alias : undefined;
-            const defaultModel = (sessionModel && available.includes(sessionModel) ? sessionModel : undefined)
+            const reportedModel = sessionModel && (available.includes(sessionModel) ? sessionModel : byEnum.get(sessionModel));
+            const defaultModel = reportedModel
               ?? (defaultEnum ? byEnum.get(defaultEnum) : undefined)
               ?? available[0];
             return {
               runtime: 'extalia-native',
               ...(defaultModel ? { defaultModel } : {}),
               models: cleanModels(available),
-              efforts: [...EFFORTS],
+              ...(reportedModel ? { observedSelection: { model: reportedModel, canSetSettings: false } } : {}),
+              efforts: [],
               permissionModes: [],
             };
           }
@@ -804,31 +848,38 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
         runtime: 'extalia-native',
         ...(sessionModel ? { defaultModel: sessionModel } : {}),
         models: cleanModels(sessionModel ? [sessionModel] : []),
-        efforts: [...EFFORTS],
+        efforts: [],
         permissionModes: [],
       };
     }
     if (sourceId === 'codex') {
-      const codexRoot = env.CODEX_HOME?.trim() || path.join(importHome, '.codex');
+      const codexRoot = (observations.codexQueueTarget(sessionId)?.codexHome ?? env.CODEX_HOME?.trim()) || path.join(importHome, '.codex');
       let configuredDefault: string | undefined;
+      let configuredEffort: Effort | undefined;
+      const reasoning = new Map<string, Effort[]>();
       try {
         const toml = await readFile(path.join(codexRoot, 'config.toml'), 'utf8');
         const match = /^\s*model\s*=\s*["']([^"'\r\n]+)["']/m.exec(toml);
         if (match?.[1] && isModelId(match[1].trim())) configuredDefault = match[1].trim();
+        const effort = /^\s*model_reasoning_effort\s*=\s*["']([^"'\r\n]+)["']/m.exec(toml)?.[1];
+        if ((EFFORTS as readonly unknown[]).includes(effort)) configuredEffort = effort as Effort;
       } catch { /* ignore unreadable config.toml */ }
       const discoveredModels: string[] = [];
       for (const fileName of ['models_cache.json', 'models_cache.codex_work_desktop.json']) {
         try {
           const raw = JSON.parse(await readFile(path.join(codexRoot, fileName), 'utf8')) as {
-            models?: Array<{ slug?: unknown; id?: unknown; visibility?: unknown; supported_in_api?: unknown; disabled?: unknown }>;
+            models?: Array<{ slug?: unknown; id?: unknown; visibility?: unknown; supported_in_api?: unknown; disabled?: unknown; supported_reasoning_levels?: Array<{ effort?: unknown }> }>;
           };
           for (const entry of raw.models ?? []) {
             if (!entry || typeof entry !== 'object') continue;
-            if (entry.disabled === true || entry.supported_in_api === false) continue;
+            if (entry.disabled === true) continue;
             if (typeof entry.visibility === 'string' && entry.visibility !== 'list') continue;
             const candidate = typeof entry.slug === 'string' ? entry.slug.trim()
               : typeof entry.id === 'string' ? entry.id.trim() : '';
-            if (isModelId(candidate) && !discoveredModels.includes(candidate)) discoveredModels.push(candidate);
+            if (isModelId(candidate) && !discoveredModels.includes(candidate)) {
+              discoveredModels.push(candidate);
+              if (Array.isArray(entry.supported_reasoning_levels)) reasoning.set(candidate, EFFORTS.filter(level => entry.supported_reasoning_levels!.some(item => item?.effort === level)));
+            }
           }
           if (discoveredModels.length > 0) break;
         } catch { /* try next cache file */ }
@@ -843,7 +894,8 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
         runtime: 'extalia-native',
         ...(defaultModel ? { defaultModel } : {}),
         models,
-        efforts: [...EFFORTS],
+        efforts: defaultModel ? reasoning.get(defaultModel) ?? [] : [],
+        ...(configuredEffort && defaultModel === configuredDefault ? { defaultEffort: configuredEffort } : {}),
         permissionModes: [],
       };
     }
@@ -967,6 +1019,25 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       permissionModes: [],
     };
   };
+  const observedModelChoices = async (sessionId: string, sourceId: string): Promise<ModelChoices> => {
+    const summary = observations.summaries().find(item => item.id === sessionId);
+    const native = sourceId === 'codex' ? await observedCodex.status(sessionId) : undefined;
+    const nativeModel = native?.state === 'connected' && isModelId(native.model) ? native.model : undefined;
+    const model = nativeModel ?? (isModelId(summary?.model) ? summary.model : undefined);
+    const reportedEffort = nativeModel ? native?.effort : summary?.effort;
+    const effort = (EFFORTS as readonly unknown[]).includes(reportedEffort) ? reportedEffort as Effort : undefined;
+    const catalog = await readObservedModelCatalog(sessionId, sourceId, model);
+    const selectedModel = catalog.observedSelection?.model ?? model;
+    const canSetSettings = native?.canSetSettings === true && !!native.connectionId && Number.isSafeInteger(native.settingsRevision);
+    return { ...catalog,
+      ...(selectedModel ? { defaultModel: selectedModel, models: cleanModels([...catalog.models, selectedModel]) } : {}),
+      ...(effort ? { defaultEffort: effort } : summary?.effortAt || nativeModel ? { defaultEffort: undefined } : {}),
+      efforts: canSetSettings ? catalog.efforts : effort ? [effort] : [],
+      observedSelection: { ...(selectedModel ? { model: selectedModel } : {}), ...(effort ? { effort } : {}), canSetSettings,
+        ...(canSetSettings ? { connectionId: native!.connectionId!, settingsRevision: native!.settingsRevision! } : {}),
+        ...(native?.settingsDelivery === 'unknown' ? { uncertain: true } : {}) },
+    };
+  };
   const sendAntigravityAgentApiMessage = async (nativeSessionId: string, text: string): Promise<boolean> => {
     if (!nativeSessionId || !text.trim()) return false;
     const importHome = options.importHome ?? homeDirectory;
@@ -974,6 +1045,12 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     const antigravityRoot = env.ANTIGRAVITY_HOME?.trim() || path.join(geminiRoot, 'antigravity');
     const candidates = [
       env.EXTALIA_ANTIGRAVITY_AGENTAPI_BIN?.trim(),
+      ...(process.platform === 'win32'
+        ? [
+          path.join(antigravityRoot, 'bin', 'agentapi.exe'),
+          path.join(geminiRoot, 'antigravity-ide', 'bin', 'agentapi.exe'),
+        ]
+        : []),
       path.join(antigravityRoot, 'bin', 'agentapi'),
       path.join(geminiRoot, 'antigravity-ide', 'bin', 'agentapi'),
     ].filter((item): item is string => Boolean(item));
@@ -1011,27 +1088,106 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     }
     return false;
   };
+  interface PreparedObservedAttachments {
+    text: string;
+    consumedIds: string[];
+    redundantIds: string[];
+  }
+  const fitObservedDispatchText = (value: string, maxChars = 16_000, maxBytes = 16 * 1024): string => {
+    let result = value;
+    if (result.length > maxChars) {
+      result = result.slice(0, maxChars);
+      const last = result.charCodeAt(result.length - 1);
+      if (last >= 0xd800 && last <= 0xdbff) result = result.slice(0, -1);
+    }
+    while (result.length > 0 && Buffer.byteLength(result, 'utf8') > maxBytes) {
+      const trim = Math.max(1, Math.ceil((Buffer.byteLength(result, 'utf8') - maxBytes) / 3));
+      result = result.slice(0, Math.max(0, result.length - trim));
+      const last = result.charCodeAt(result.length - 1);
+      if (last >= 0xd800 && last <= 0xdbff) result = result.slice(0, -1);
+    }
+    return result;
+  };
+  const prepareObservedAttachmentText = async (id: string, text: string): Promise<PreparedObservedAttachments> => {
+    const pending = attachments.listPending(id);
+    if (!pending.length || !SESSION_ID_PATTERN.test(id)) return { text, consumedIds: [], redundantIds: [] };
+    const byName = new Map<string, PromptAttachment[]>();
+    for (const item of pending) {
+      const list = byName.get(item.name);
+      if (list) list.push(item);
+      else byName.set(item.name, [item]);
+    }
+    let current = text;
+    let expanded = false;
+    const consumedIds: string[] = [];
+    const redundantIds: string[] = [];
+    for (const [name, queue] of byName) {
+      const bareTag = `[Attached file: ${name}]`;
+      const pathedPrefix = `[Attached file: ${name} (`;
+      let cursor = 0;
+      while (queue.length > 0) {
+        const bareIdx = current.indexOf(bareTag, cursor);
+        const pathedIdx = current.indexOf(pathedPrefix, cursor);
+        if (bareIdx < 0 && pathedIdx < 0) break;
+        const useBare = bareIdx >= 0 && (pathedIdx < 0 || bareIdx < pathedIdx);
+        const item = queue.shift()!;
+        consumedIds.push(item.id);
+        if (useBare) {
+          let stagedFile: string | undefined;
+          if (ATTACHMENT_ID_PATTERN.test(item.id)) {
+            const candidate = path.join(layout.root, 'attachments', id, 'files', item.id, item.name);
+            try { if ((await stat(candidate)).isFile()) stagedFile = candidate; } catch { /* leave bare tag */ }
+          }
+          if (stagedFile) {
+            const replacement = `[Attached file: ${item.name} (${stagedFile})]`;
+            current = `${current.slice(0, bareIdx)}${replacement}${current.slice(bareIdx + bareTag.length)}`;
+            expanded = true;
+            cursor = bareIdx + replacement.length;
+          } else {
+            cursor = bareIdx + bareTag.length;
+          }
+        } else {
+          redundantIds.push(item.id);
+          const afterPrefix = pathedIdx + pathedPrefix.length;
+          const lineEnd = current.indexOf('\n', afterPrefix);
+          const closeIdx = current.indexOf(']', afterPrefix);
+          cursor = closeIdx >= 0 && (lineEnd < 0 || closeIdx < lineEnd) ? closeIdx + 1 : afterPrefix;
+        }
+      }
+    }
+    return {
+      text: expanded ? fitObservedDispatchText(current) : current,
+      consumedIds,
+      redundantIds,
+    };
+  };
+  const finalizeObservedAttachments = async (id: string, prepared: PreparedObservedAttachments): Promise<void> => {
+    if (!prepared.consumedIds.length && !prepared.redundantIds.length) return;
+    await persistence.run(async () => {
+      if (prepared.consumedIds.length) await attachments.consume(id, prepared.consumedIds);
+      for (const redundantId of prepared.redundantIds) {
+        if (SESSION_ID_PATTERN.test(id) && ATTACHMENT_ID_PATTERN.test(redundantId)) {
+          await rm(path.join(layout.root, 'attachments', id, 'files', redundantId), { recursive: true, force: true }).catch(() => undefined);
+        }
+      }
+    }).catch(() => undefined);
+  };
   const dispatchCooperativeObservedMessage = async (id: string, text: string): Promise<'sent' | 'unknown'> => {
     const target = observations.controlTarget(id);
     if (closing || !target?.watching || !isCooperativeObservedSource(target.sourceId)) return 'unknown';
-    let fullText = text;
-    if (attachments.pending(id) > 0) {
-      const filesDir = path.join(layout.root, 'attachments', id, 'files');
-      try {
-        const names = await readdir(filesDir);
-        const lines = names.map(name => `[Attached file: ${name} (${path.join(filesDir, name)})]`);
-        if (lines.length) fullText = [lines.join('\n'), text.trim()].filter(Boolean).join('\n\n');
-      } catch { /* ignore */ }
-    }
+    const prepared = await prepareObservedAttachmentText(id, text);
+    const fullText = prepared.text;
     const replyStatus = observedReplies.status(id);
     if (replyStatus.state === 'waitingForReply' && replyStatus.channelId) {
       const answered = observedReplies.answer(id, { channelId: replyStatus.channelId, text: fullText });
       if (answered.state === 'answered' && !answered.problem) {
+        await finalizeObservedAttachments(id, prepared);
         followupSuggestions.invalidate(id);
         return 'sent';
       }
     }
     if (target.sourceId === 'antigravity' && await sendAntigravityAgentApiMessage(target.nativeSessionId, fullText)) {
+      await finalizeObservedAttachments(id, prepared);
       await observations.receiveHook({
         app: 'antigravity',
         sessionId: target.nativeSessionId,
@@ -1055,6 +1211,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     if (sent.problem) return 'unknown';
     const latest = sent.receipts?.at(-1);
     if (!latest || (latest.state !== 'queued' && latest.state !== 'delivered' && latest.state !== 'acknowledged')) return 'unknown';
+    await finalizeObservedAttachments(id, prepared);
     followupSuggestions.invalidate(id);
     return 'sent';
   };
@@ -1084,7 +1241,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     dataDirectory,
     persist: write => persistence.run(write),
     onIdle() {
-      if (!closing && !persistence.isBusy && !runs.size && !nativeStatusRefresh && !nativeMemory.isBusy() && !promptQueues?.isBusy) {
+      if (!closing && !persistence.isBusy && !runs.size && !nativeStatusRefresh && !nativeMemory.isBusy() && !learningSchedule.isBusy && !promptQueues?.isBusy) {
         for (const listener of idleListeners) { try { listener(); } catch { /* disconnected observer */ } }
       }
     },
@@ -1097,8 +1254,13 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
           const control = await observedCodex.status(id);
           const steering = source.watching && control.state === 'connected' && control.canSend && control.connectionId && control.activeTurnId && control.threadId === source.threadId
             ? { identity: JSON.stringify([control.connectionId, control.activeTurnId]), send: async (text: string): Promise<'sent' | 'unknown'> => {
-              const result = await observedCodex.send(id, { connectionId: control.connectionId!, activeTurnId: control.activeTurnId!, text });
-              return result.delivery === 'submitted' ? 'sent' : 'unknown';
+              const prepared = await prepareObservedAttachmentText(id, text);
+              const result = await observedCodex.send(id, { connectionId: control.connectionId!, activeTurnId: control.activeTurnId!, text: prepared.text });
+              if (result.delivery === 'submitted') {
+                await finalizeObservedAttachments(id, prepared);
+                return 'sent';
+              }
+              return 'unknown';
             } } : undefined;
           return { identity: createHash('sha256').update(JSON.stringify(['codex', source.threadId, source.codexHome, source.sourceFingerprint, source.cwd])).digest('hex'),
             available: true, ready: source.watching && current?.observation?.status === 'watching' && !current.running,
@@ -1134,7 +1296,12 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
           return run.steering!.send(text);
         } } : undefined;
       try { nativeOwnership.assertClear(id); missions.assertSessionClear(id); assertNativeBoundaryAvailable(); } catch { ready = false; }
-      return { identity: createHash('sha256').update(JSON.stringify(['managed', record.id, record.workspaceId, record.createdAt, record.connectionId, record.runtime?.id, record.runtime?.profile, workspaceBoundaryKey(config.workspaces)])).digest('hex'),
+      const queueIdentity = (boundary: string) => createHash('sha256').update(JSON.stringify(['managed', record.id, record.workspaceId,
+        record.createdAt, record.connectionId, record.runtime?.id, record.runtime?.profile, boundary])).digest('hex');
+      const legacyBoundary = workspaceBoundaryKey(config.workspaces);
+      return { identity: queueIdentity(record.runtime ? legacyBoundary : workspaceSessionBoundaryKey(record.workspaceId, config.workspaces)),
+        ...(!record.runtime && workspaceBoundaryMatches(record.workspaceBoundary, record.workspaceId, config.workspaces)
+          ? { compatibleIdentities: [queueIdentity(legacyBoundary)] } : {}),
         available: true, ready, maxTextLength: 100_000, persist: !unsavedSessions.has(id), ...(steering ? { steering } : {}) };
     },
     async dispatch(id, text) {
@@ -1147,8 +1314,13 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
           if (status.delivery === 'unknown') return 'unknown';
           if (!status.enabled) status = await observedCodexQueue.setEnabled(id, true);
           if (!status.canQueue || closing) return 'unknown';
-          const result = await observedCodexQueue.send(id, { text });
-          return result.delivery === 'queued' ? 'sent' : 'unknown';
+          const prepared = await prepareObservedAttachmentText(id, text);
+          const result = await observedCodexQueue.send(id, { text: prepared.text });
+          if (result.delivery === 'queued') {
+            await finalizeObservedAttachments(id, prepared);
+            return 'sent';
+          }
+          return 'unknown';
         }
         return dispatchCooperativeObservedMessage(id, text);
       }
@@ -1283,7 +1455,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       const created: SessionRecord = {
         id, workspaceId: workspace.id, connectionId: connection?.id ?? '', title, createdAt: stamp, lastActiveAt: stamp,
         agentName: lead.name, agentGender: lead.gender,
-        ...(!hermes ? { workspaceBoundary: workspaceBoundaryKey(config.workspaces) } : {}),
+        ...(!hermes ? { workspaceBoundary: workspaceSessionBoundaryKey(workspace.id, config.workspaces), workspaceFileRoot: workspace.projectLocation } : {}),
         ...(continuedFrom ? { continuedFrom } : {}),
         ...(hermes ? { runtime: { id: 'hermes' as const, profile: workspace.runtimeProfileId ?? 'default' } } : {}),
         ...(Object.keys(sessionOptions).length ? { options: sessionOptions } : {}),
@@ -1562,6 +1734,36 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       : { ...common, providerProfileId: record.connectionId };
   }
 
+  async function sessionMoveSnapshot(sessionId: string, workspaceId: string) {
+    if (typeof sessionId !== 'string' || typeof workspaceId !== 'string' || observations.has(sessionId)) throw userError('Choose an Extalia Native session.');
+    if (runs.has(sessionId)) throw userError('Wait for this session to finish or stop it before moving it.');
+    nativeOwnership.assertClear(sessionId);
+    missions.assertSessionClear(sessionId);
+    knowledgeVault.assertStable();
+    if (workspaceContextReaders) throw userError('Wait for Native context or team planning to finish before moving a session.');
+    const record = await sessions.get(sessionId);
+    if (!record || record.runtime) throw userError('Only Extalia Native sessions can change workspace here. External runtimes keep their original session directory.');
+    const source = findWorkspace(record.workspaceId), destination = findWorkspace(workspaceId);
+    if (workspaceRuntime(destination) !== 'extalia-native' || !destination.projectLocation) throw userError('Choose an Extalia Native workspace with a project folder.');
+    nativeOwnership.assertWorkspaceClear(source.id);
+    nativeOwnership.assertWorkspaceClear(destination.id);
+    const effective = sessionWorkspace(destination, record);
+    findConnection(record.connectionId);
+    validateTeamConnections(storedTeam(record), effective);
+    await checkSessionOptions(effective, storedOptions(record));
+    const workspaces = structuredClone(config.workspaces);
+    const access = await createWorkspaceAccess({ workspaceId, workspaces, protectedRoots: [layout.root] });
+    const messages = await sessions.readMessages(sessionId);
+    await writeChains.get(sessionId);
+    const events = await sessions.readEvents(sessionId);
+    const lastEventId = events.at(-1)?.id;
+    const started = events.find(event => event.body.type === 'session.started');
+    const previousFileRoot = typeof record.workspaceFileRoot === 'string' ? record.workspaceFileRoot
+      : record.workspaceFileRoot !== undefined ? '' : started?.body.type === 'session.started' ? started.body.cwd : undefined;
+    if (runs.has(sessionId)) throw userError('This session started working. Review the destination after it finishes.');
+    return { record, source, destination, workspaces, access, messages, lastEventId, previousFileRoot, permissionMode: storedOptions(record).permissionMode ?? 'workspace' as const };
+  }
+
   /** Efforts the selected runtime honours: Anthropic Messages endpoints, and Hermes versions with `--reasoning`. */
   async function effortsFor(workspace: Workspace): Promise<Effort[]> {
     if (workspaceRuntime(workspace) === 'hermes') {
@@ -1633,7 +1835,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
   function finishRun(sessionId: string): void {
     runs.delete(sessionId);
     if (!closing) promptQueues?.wake(sessionId);
-    if (!closing && !persistence.isBusy && !runs.size && !nativeStatusRefresh && !nativeMemory.isBusy() && !promptQueues?.isBusy) for (const listener of idleListeners) { try { listener(); } catch { /* ignore */ } }
+    if (!closing && !persistence.isBusy && !runs.size && !nativeStatusRefresh && !nativeMemory.isBusy() && !learningSchedule.isBusy && !promptQueues?.isBusy) for (const listener of idleListeners) { try { listener(); } catch { /* ignore */ } }
   }
 
   /** Track direct local writers, never a delegation pipeline that can wait on a remote provider. */
@@ -1667,10 +1869,11 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     const records = await sessions.list();
     try { for (const workspace of config.workspaces) assertMissionPolicyEditable(workspace.id, records); }
     catch { throw userError('Stop running Native work or reconcile unresolved missions before changing workspace folders or cross-workspace access.'); }
-    if (workspaceContextReaders || nativeMemory.isBusy() || [...runs.values()].some(run => run.native)) throw userError('Stop Native work and wait for memory operations before changing workspace folders or cross-workspace access.');
+    if (learningSchedule.isBusy || workspaceContextReaders || nativeMemory.isBusy() || [...runs.values()].some(run => run.native)) throw userError('Stop Native work and wait for memory operations before changing workspace folders or cross-workspace access.');
   }
   const connectionChanges = new Set<string>();
   async function withConnectionChange<T>(id: string, change: () => Promise<T>): Promise<T> {
+    if (learningSchedule.isBusy) throw userError('Wait for the learning update to settle before changing model connections.');
     clearMissionResources([id]);
     connectionChanges.add(id);
     try { return await change(); } finally { connectionChanges.delete(id); }
@@ -1831,8 +2034,13 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
         if (existing && effectiveMissionPolicy(existing) !== effectiveMissionPolicy(result.value)) assertMissionPolicyEditable(existing.id, await sessions.list());
         const nextWorkspaces = existing ? config.workspaces.map(item => item.id === result.value.id ? result.value : item) : [...config.workspaces, result.value];
         if (workspaceBoundaryKey(config.workspaces) !== workspaceBoundaryKey(nextWorkspaces)) await assertWorkspaceBoundaryEditable();
-        config = { ...config, workspaces: nextWorkspaces };
-        await save();
+        const assignment = result.value.crossWorkspaceAccess === 'isolated'
+          ? assignWorkspaceVaultProfile({ profiles: config.vaultProfiles, workspaces: nextWorkspaces, defaultProfile: config.profile }, result.value.id) : undefined;
+        const previous = config;
+        const next = { ...config, workspaces: assignment?.workspaces ?? nextWorkspaces,
+          ...(assignment ? { vaultProfiles: assignment.profiles } : {}) };
+        config = next;
+        try { await save(); } catch (error) { if (config === next) config = previous; throw error; }
         return state();
       });
     },
@@ -1928,18 +2136,21 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
         observedControls.drop(id);
         observedInboxes.drop(id);
         // Seal authority synchronously, then settle both cleanup and the user's observation preference.
+        const stoppingInput = observedUserInput.drop(id);
         const stopping = observedCodex.drop(id);
         const stoppingHermes = observedHermes.drop(id);
         const stoppingQueue = observedCodexQueue.drop(id);
         const stoppingSourceQueue = observedCodexNativeQueue.drop(id);
         const stoppingPrompts = promptQueues?.suspend(id);
         observedCodexPermissions.drop(id);
-        const results = await Promise.allSettled([stopping, stoppingHermes, stoppingQueue, stoppingSourceQueue, stoppingPrompts, observations.setWatching(id, false)]);
+        const results = await Promise.allSettled([stoppingInput, stopping, stoppingHermes, stoppingQueue, stoppingSourceQueue, stoppingPrompts, observations.setWatching(id, false)]);
         const failed = results.find((result): result is PromiseRejectedResult => result.status === 'rejected');
         if (failed) throw failed.reason;
-      } else { await observations.setWatching(id, true); blockedReplyIds.delete(id); observedInboxes.reset(id); observedCodex.resume(id); observedHermes.resume(id); observedCodexQueue.resume(id); observedCodexNativeQueue.resume(id); observedCodexPermissions.resume(id); }
+      } else { await observations.setWatching(id, true); blockedReplyIds.delete(id); observedInboxes.reset(id); observedUserInput.resume(id); observedCodex.resume(id); observedHermes.resume(id); observedCodexQueue.resume(id); observedCodexNativeQueue.resume(id); observedCodexPermissions.resume(id); }
       return state();
     },
+    async observedUserInputStatus(id) { assertHostOpen(); return observedUserInput.status(id); },
+    async answerObservedUserInput(id, input) { assertHostOpen(); return observedUserInput.answer(id, input); },
     async observedCodexStatus(id) { assertHostOpen(); return observedCodex.status(id); },
     async observedControlStatus(id) {
       assertHostOpen();
@@ -2050,6 +2261,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     async connectObservedCodex(id, socketPath) { assertHostOpen(); return observedCodex.connect(id, socketPath); },
     async disconnectObservedCodex(id, connectionId) { assertHostOpen(); return observedCodex.disconnect(id, connectionId); },
     async sendObservedCodexMessage(id, input) { assertHostOpen(); followupSuggestions.invalidate(id); return observedCodex.send(id, input); },
+    async updateObservedCodexSettings(id, input) { assertHostOpen(); followupSuggestions.invalidate(id); return observedCodex.updateSettings(id, input); },
     async answerObservedCodexInput(id, input) { assertHostOpen(); return observedCodex.answer(id, input); },
     async answerObservedCodexApproval(id, input) { assertHostOpen(); return observedCodex.answerApproval(id, input); },
     async setAutoWatch(locationId, enabled) {
@@ -2068,6 +2280,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
 
     async setSessionOptions(sessionId, sessionOptions) {
       assertHostOpen();
+      assertNativeBoundaryAvailable();
       if (typeof sessionId !== 'string') throw userError('That session no longer exists.');
       if (observations.has(sessionId)) throw userError('Observed sessions run in their own app; choose the model there.');
       const record = await sessions.get(sessionId).catch(() => undefined);
@@ -2076,7 +2289,8 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       const { team: _team, ...checked } = await checkSessionOptions(sessionWorkspace(findWorkspace(record.workspaceId), record), sessionOptions);
       followupSuggestions.invalidate(sessionId);
       // Applies from the next turn; a running turn keeps the model it started with.
-      return summary(await sessions.update(sessionId, { options: Object.keys(checked).length ? checked : undefined }));
+      assertNativeBoundaryAvailable();
+      return summary(await sessions.update(sessionId, { options: Object.keys(checked).length ? checked : undefined }, { expectedWorkspaceId: record.workspaceId }));
     },
 
     async modelChoices(workspaceId, sessionId): Promise<ModelChoices> {
@@ -2139,6 +2353,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
 
     async saveSessionTeam(sessionId, raw) {
       assertHostOpen();
+      assertNativeBoundaryAvailable();
       if (typeof sessionId !== 'string') throw userError('That session no longer exists.');
       if (observations.has(sessionId)) throw userError(OBSERVED_TEAM_MESSAGE);
       const record = await sessions.get(sessionId).catch(() => undefined);
@@ -2148,7 +2363,8 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       validateTeamConnections(team, sessionWorkspace(findWorkspace(record.workspaceId), record));
       await validateHermesTeam(team, sessionWorkspace(findWorkspace(record.workspaceId), record));
       // Applies from the next turn; a running turn keeps the team it started with.
-      const updated = await sessions.update(sessionId, { team: team ? { ...team, updatedAt: now() } : undefined });
+      assertNativeBoundaryAvailable();
+      const updated = await sessions.update(sessionId, { team: team ? { ...team, updatedAt: now() } : undefined }, { expectedWorkspaceId: record.workspaceId });
       return storedTeam(updated);
     },
 
@@ -2178,7 +2394,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       const home = options.importHome ?? homedir();
       // Without a goal the plan is a general team for the workspace, based on its name and recent sessions.
       const records = await sessions.list();
-      const recentTitles = (workspaceCrossAccess(workspace) === 'isolated' ? [] : records).filter(record => record.workspaceId === workspace.id && record.title !== NEW_SESSION_TITLE && record.workspaceBoundary === workspaceBoundaryKey(config.workspaces))
+      const recentTitles = (workspaceCrossAccess(workspace) === 'isolated' ? [] : records).filter(record => record.workspaceId === workspace.id && record.title !== NEW_SESSION_TITLE && workspaceBoundaryMatches(record.workspaceBoundary, workspace.id, config.workspaces))
         .sort((a, b) => b.lastActiveAt.localeCompare(a.lastActiveAt)).slice(0, 5).map(record => safeLabel(record.title, 80)).filter(Boolean);
       request = { ...request, context: { modelSelectionGuide: workspaceCrossAccess(workspace) === 'isolated' ? null : await modelGuide.get(), workspace: safeLabel(workspace.name, 80), ...(recentTitles.length ? { recentTitles } : {}) } };
       // Native can choose a bounded model pool; Hermes worker routing stays with its profile.
@@ -2241,7 +2457,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       } catch (error) { return failed(error); }
       } finally {
         workspaceContextReaders--;
-        if (!closing && !workspaceContextReaders && !persistence.isBusy && !runs.size && !nativeStatusRefresh && !nativeMemory.isBusy() && !promptQueues?.isBusy) for (const listener of idleListeners) { try { listener(); } catch { /* detached observer */ } }
+        if (!closing && !workspaceContextReaders && !persistence.isBusy && !runs.size && !nativeStatusRefresh && !nativeMemory.isBusy() && !learningSchedule.isBusy && !promptQueues?.isBusy) for (const listener of idleListeners) { try { listener(); } catch { /* detached observer */ } }
       }
     },
 
@@ -2284,10 +2500,46 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       return state();
     },
 
+    async previewSessionMove(sessionId, workspaceId) {
+      assertHostOpen();
+      return withWorkspaceChange(async () => {
+        if (promptQueues?.hasUnfinished(sessionId)) throw userError('Finish or remove pending prompts and inspect uncertain deliveries before moving this session.');
+        return sessionMoveReviews.preview(await sessionMoveSnapshot(sessionId, workspaceId));
+      }, false);
+    },
+
+    async moveSession(sessionId, input) {
+      assertHostOpen();
+      return withWorkspaceChange(async () => {
+        if (!input || typeof input.workspaceId !== 'string' || typeof input.reviewId !== 'string') throw userError('Review the destination workspace first.');
+        const apply = async () => {
+          const snapshot = await sessionMoveSnapshot(sessionId, input.workspaceId);
+          try { sessionMoveReviews.verify(input.reviewId, snapshot); } catch (error) { throw userError((error as Error).message); }
+          const boundary = workspaceSessionBoundaryKey(snapshot.destination.id, config.workspaces);
+          followupSuggestions.invalidate(sessionId);
+          const recordedScopes = snapshot.record.workspaceFileScopes;
+          const workspaceFileScopes = Array.isArray(recordedScopes) ? structuredClone(recordedScopes) : [];
+          if (recordedScopes !== undefined && !Array.isArray(recordedScopes) && snapshot.lastEventId) {
+            workspaceFileScopes.push({ throughEventId: snapshot.lastEventId, workspaceId: snapshot.source.id, projectLocation: '' });
+          }
+          if (snapshot.lastEventId && workspaceFileScopes.at(-1)?.throughEventId !== snapshot.lastEventId) {
+            workspaceFileScopes.push({ throughEventId: snapshot.lastEventId, workspaceId: snapshot.source.id, projectLocation: snapshot.previousFileRoot ?? '' });
+          }
+          await sessions.update(sessionId, { workspaceId: snapshot.destination.id, workspaceBoundary: boundary,
+            reviewedContextBoundary: boundary, workspaceFileRoot: snapshot.destination.projectLocation,
+            ...(workspaceFileScopes.length ? { workspaceFileScopes } : {}) }, { expectedRecord: snapshot.record });
+          sessionMoveReviews.consume(input.reviewId);
+          grants.delete(sessionId);
+        };
+        if (promptQueues) await promptQueues.withIdleSession(sessionId, apply); else await apply();
+        return state();
+      });
+    },
+
     async deleteSession(sessionId) {
       assertHostOpen();
       followupSuggestions.invalidate(sessionId);
-      if (observations.has(sessionId)) { blockedReplyIds.add(sessionId); observedReplies.drop(sessionId); observedControls.drop(sessionId); observedInboxes.drop(sessionId); observedCodexPermissions.drop(sessionId); await Promise.all([observedCodex.drop(sessionId), observedHermes.drop(sessionId), observedCodexQueue.drop(sessionId), observedCodexNativeQueue.drop(sessionId), promptQueues?.drop(sessionId)]); await observations.remove(sessionId); return state(); }
+      if (observations.has(sessionId)) { blockedReplyIds.add(sessionId); observedReplies.drop(sessionId); observedControls.drop(sessionId); observedInboxes.drop(sessionId); observedCodexPermissions.drop(sessionId); await Promise.all([observedUserInput.drop(sessionId), observedCodex.drop(sessionId), observedHermes.drop(sessionId), observedCodexQueue.drop(sessionId), observedCodexNativeQueue.drop(sessionId), promptQueues?.drop(sessionId), persistence.run(() => attachments.drop(sessionId))]); await observations.remove(sessionId); return state(); }
       const stoppingPrompts = promptQueues?.suspend(sessionId);
       const run = runs.get(sessionId);
       if (run) { run.controller.abort(); run.pending?.resolve('reject'); await run.done; }
@@ -2777,22 +3029,32 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       if (!isObserved && !await sessions.get(sessionId).catch(() => undefined)) throw userError('That session no longer exists.');
       let input: PromptAttachmentInput;
       try { input = normalizeAttachmentUpload(file); } catch (error) { throw userError(error instanceof Error ? error.message : 'Invalid file.'); }
-      const uploaded = await persistence.run(() => attachments.upload(sessionId, input));
-      if (isObserved) {
-        try {
-          const observedDir = path.join(layout.root, 'attachments', sessionId, 'files');
-          await mkdir(observedDir, { recursive: true, mode: 0o700 });
-          const bytes = Buffer.from(input.data, 'base64');
-          await writeFile(path.join(observedDir, uploaded.name), bytes, { mode: PRIVATE_FILE_MODE });
-        } catch { /* best-effort named file copy for observed agents */ }
-      }
+      const uploaded = await persistence.run(async () => {
+        const meta = await attachments.upload(sessionId, input);
+        if (isObserved && SESSION_ID_PATTERN.test(sessionId) && ATTACHMENT_ID_PATTERN.test(meta.id)) {
+          try {
+            const filesRoot = path.join(layout.root, 'attachments', sessionId, 'files');
+            const observedDir = path.join(filesRoot, meta.id);
+            await ensurePrivateDirectory(filesRoot);
+            await ensurePrivateDirectory(observedDir);
+            const bytes = Buffer.from(input.data, 'base64');
+            await writeFile(path.join(observedDir, meta.name), bytes, { mode: PRIVATE_FILE_MODE });
+          } catch { /* best-effort named file copy for observed agents */ }
+        }
+        return meta;
+      });
       return uploaded;
     },
 
     async removeAttachment(sessionId, attachmentId) {
       assertHostOpen();
       if (typeof sessionId !== 'string' || typeof attachmentId !== 'string') throw userError('That file is no longer attached.');
-      await persistence.run(() => attachments.remove(sessionId, attachmentId));
+      await persistence.run(async () => {
+        await attachments.remove(sessionId, attachmentId);
+        if (observations.has(sessionId) && SESSION_ID_PATTERN.test(sessionId) && ATTACHMENT_ID_PATTERN.test(attachmentId)) {
+          await rm(path.join(layout.root, 'attachments', sessionId, 'files', attachmentId), { recursive: true, force: true }).catch(() => undefined);
+        }
+      });
     },
 
     async attachmentPreview(sessionId, ref) {
@@ -2803,6 +3065,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
 
     async sendPrompt(sessionId, text, promptOptions) {
       if (closing) throw userError('The host is shutting down.');
+      const admittedWorkspaceRevision = workspaceChangeRevision;
       nativeOwnership.assertClear(sessionId);
       missions.assertSessionClear(sessionId);
       if (observations.has(sessionId)) throw userError('Observed sessions are read-only. Prompt in the agent’s own app.');
@@ -2865,6 +3128,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       if (!root) throw userError('This workspace has no project folder.');
       const controller = new AbortController();
       assertNativeBoundaryAvailable();
+      if (admittedWorkspaceRevision !== workspaceChangeRevision) throw userError('Workspace settings changed while preparing this prompt. Send it again using the current workspace.');
       if (closing || runs.has(sessionId)) throw userError('This session is still working or the host is shutting down.');
       let settleRun!: () => void;
       const run: Run = { controller, connectionIds, done: new Promise<void>(resolve => { settleRun = resolve; }),
@@ -2878,14 +3142,14 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       if (run.native) assertNativeBoundaryAvailable();
       runs.set(sessionId, run);
       try {
-        const boundary = workspaceBoundaryKey(config.workspaces);
+        const boundary = workspaceSessionBoundaryKey(workspace.id, config.workspaces);
         followupSuggestions.invalidate(sessionId);
         const learningProfile = await vaultProfiles.policyFor(workspace.id).catch(() => undefined);
         const access = await createWorkspaceAccess({ workspaceId: workspace.id, workspaces: structuredClone(config.workspaces), protectedRoots: [layout.root] });
         const history = toModelHistory(await sessions.readMessages(sessionId));
-        if (record.workspaceBoundary !== boundary && history.length) throw userError('Workspace folders or access boundaries changed. Start a new Native session so earlier context is not replayed under the new boundaries.');
-        if (workspaceCrossAccess(workspace) === 'isolated' && record.continuedFrom) throw userError('An isolated workspace needs a fresh session without imported conversation context.');
-        if (record.workspaceBoundary !== boundary) await sessions.update(sessionId, { workspaceBoundary: boundary });
+        if (!workspaceBoundaryMatches(record.workspaceBoundary, workspace.id, config.workspaces) && history.length) throw userError('Workspace folders or access boundaries changed. Review this session’s workspace from session actions to keep its history under the current access, or start a new Native session.');
+        if (workspaceCrossAccess(workspace) === 'isolated' && record.continuedFrom && record.reviewedContextBoundary !== boundary) throw userError('An isolated workspace needs a fresh session without imported conversation context, or an explicit review of this session’s workspace access.');
+        if (record.workspaceBoundary !== boundary) await sessions.update(sessionId, { workspaceBoundary: boundary, workspaceFileRoot: workspace.projectLocation });
         const files = await attachments.take(sessionId, attachmentIds);
         if (closing || controller.signal.aborted) throw userError('The host is shutting down.');
         // Both built-in Native provider APIs accept typed images. Persist exactly the composed text,
@@ -2894,6 +3158,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
         await sessions.writeMessages(sessionId, [...history, { role: 'user', text: acceptedText }]);
         await publish(sessionId, { type: 'prompt.submitted', text: prompt, via: 'extalia', ...(files.length ? { attachments: promptAttachments(files) } : {}) }, 'primary', undefined, { strict: true });
         run.accepted = true;
+        learningSchedule.deferWorkspace(workspace.id);
         // Resolve all credentials under the admitted connection guards; later team edits affect only the next turn.
         const frozenProviders = new Map(await Promise.all([...snapshots].map(async ([id, savedConnection]) => {
           const selected = id === record.connectionId ? connection : savedConnection;
@@ -2962,6 +3227,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
         let skills: { name: string; description: string }[] | undefined;
         let skillCatalog: { omitted: number; incomplete: boolean } | undefined;
         let skillCategories: Parameters<typeof buildSystemPrompt>[0]['skillCategories'];
+        let automaticSkillCatalog: AgentSkillCatalog | undefined;
         if (selectedFeatures.some(selected => selected.extaliaSkills)) {
           let inventory: Awaited<ReturnType<SkillRegistry['activeCatalog']>>['skills'] = [];
           let incomplete = false;
@@ -2981,6 +3247,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
             reloadMany: selected => withRegistry(() => skillRegistry.reloadMany(selected, workspace.id)),
           } : {}) });
           const offered = catalog.skills;
+          automaticSkillCatalog = catalog;
           if (features.extaliaSkills) {
             skillCatalog = { omitted: catalog.omitted ?? 0, incomplete: catalog.incomplete === true };
             skillCategories = catalog.categories;
@@ -3019,19 +3286,30 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
         const learningEnabled = Boolean(learningProfile?.policy.enabled && !unsavedSessions.has(sessionId)
           && permissionMode !== 'plan' && team?.enabled !== false && !learnSkill);
         const turnEvidence: ToolResultEntry[] = [];
-        const automaticLearning = async (result: Readonly<TurnResult>): Promise<void> => {
-          if (!learningEnabled || !learningProfile || !hasAutomaticLearningEvidence(result, turnEvidence)) return;
+        const learningPromptSha256 = createHash('sha256').update(prompt).digest('hex');
+        const learningConnectionSnapshot = JSON.stringify(saved);
+        const learningSessionSnapshot = JSON.stringify({ options: record.options });
+        const learningRunId = run.native!.id;
+        const learningCurrent = async (): Promise<boolean> => {
+          if (closing || connectionChanges.size || workspaceSessionBoundaryKey(workspace.id, config.workspaces) !== boundary
+            || JSON.stringify(config.connections.find(item => item.id === record.connectionId)) !== learningConnectionSnapshot) return false;
+          const currentSession = await sessions.get(sessionId);
+          if (!currentSession || JSON.stringify({ options: currentSession.options }) !== learningSessionSnapshot) return false;
+          if (currentSession.team?.enabled === false) return false;
+          const current = await vaultProfiles.policyFor(workspace.id);
+          return current.profileId === learningProfile?.profileId && current.revision === learningProfile.revision
+            && JSON.stringify(current.policy) === JSON.stringify(learningProfile.policy);
+        };
+        const automaticLearning = async (evidence: readonly ToolResultEntry[], signal: AbortSignal): Promise<void> => {
+          const result: TurnResult = { outcome: 'completed', history: [], usage: {} };
+          if (!learningEnabled || !learningProfile || !hasAutomaticLearningEvidence(result, evidence)) return;
           const assertCurrent = async () => {
-            if (closing || controller.signal.aborted || runs.get(sessionId) !== run || workspaceBoundaryKey(config.workspaces) !== boundary)
-              throw new Error('The learning invocation is no longer current.');
-            const current = await vaultProfiles.policyFor(workspace.id);
-            if (current.profileId !== learningProfile.profileId || current.revision !== learningProfile.revision
-              || JSON.stringify(current.policy) !== JSON.stringify(learningProfile.policy))
-              throw new Error('The learning profile or consent changed.');
+            if (signal.aborted || !await learningCurrent()) throw new Error('The learning profile or consent changed.');
           };
-          let writeNote: ((record: Parameters<Awaited<ReturnType<typeof pinLearningNotes>>>[0], signal?: AbortSignal) => Promise<string>) | undefined;
+          let writeNote: Awaited<ReturnType<typeof pinLearningNotes>> | undefined;
           const policy = { ...learningProfile.policy, skills: learningProfile.policy.skills && features.extaliaSkills && skillRegistry.enabled };
           if (!policy.skills && !policy.notes) return;
+          try {
           if (policy.notes) try { const writer = await pinLearningNotes({
             backend: rustLearning,
             context: { sessionId, workspaceId: workspace.id },
@@ -3054,34 +3332,67 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
                 }
               }
             },
-          }); noteWriters.add(writer); writeNote = writer; } catch {
+          }); writeNote = writer; } catch {
             // One unavailable output must not prevent another explicitly enabled destination.
             policy.notes = false;
           }
           if (!policy.skills && !policy.notes) {
             await publish(sessionId, { type: 'tool.completed', tool: 'automatic_learning', kind: 'knowledge', label: 'Completed-task learning unavailable', ok: false, output: 'No usable Rust learning destination is available. No curator model request was made.' }, 'primary', undefined, { strict: true });
-            return;
+            throw new Error('No usable learning destination.');
           }
-          const toolCallId = `${run.native!.id}-learning`;
+          const toolCallId = `${learningRunId}-learning`;
           await publish(sessionId, { type: 'tool.started', toolCallId, tool: 'automatic_learning', kind: 'delegate', label: 'Curating completed-task learning' }, 'primary', undefined, { strict: true });
           const learned = await runAutomaticLearning({
-            result, currentTurnEvidence: turnEvidence, ...learningProfile, policy,
-            sessionId, workspaceId: workspace.id, runId: run.native!.id,
-            promptSha256: createHash('sha256').update(prompt).digest('hex'),
+            result, currentTurnEvidence: evidence, ...learningProfile, policy,
+            sessionId, workspaceId: workspace.id, runId: learningRunId,
+            promptSha256: learningPromptSha256,
             backend: rustLearning,
             // Current-turn evidence supplies the curator's reads. No generic host file/search tools
             // cross this Rust-owned workflow or gain access to a profile's export-only vault.
-            provider, tools: [], signal: controller.signal, assertCurrent,
+            provider: leadProvider, tools: [], signal, assertCurrent,
             emit: (body, agentId) => publish(sessionId, body, agentId, undefined, { strict: true }),
             proposeSkill: (input, provenance, signal) => withRegistry(() => skillRegistry.propose(input, provenance, signal)),
-            ...(writeNote ? { writeNote: (record: Parameters<typeof writeNote>[0], signal: AbortSignal) => persistence.run(() => writeNote!(record, signal)) } : {}),
+            ...(writeNote ? { writeNote: (record: Parameters<NonNullable<typeof writeNote>>[0], signal: AbortSignal) => persistence.run(() => writeNote!(record, signal)) } : {}),
             onWorkerStarted: id => { nativeWorkers.set(id, { id, sessionId, workspaceId: workspace.id, kind: 'delegated', state: 'running', active: true, evidence: 'local-invocation', label: 'Learning curator' }); },
             onWorkerSettled: id => { nativeWorkers.delete(id); },
           });
           await publish(sessionId, { type: 'tool.completed', toolCallId, tool: 'automatic_learning', kind: 'delegate', label: 'Completed-task learning', ok: (learned.outcome === 'completed' || learned.outcome === 'skipped') && learned.skill.status !== 'unknown' && learned.note.status !== 'failed', output: JSON.stringify(learned) }, 'primary', undefined, { strict: true });
+          if (learned.note.status === 'saved') await refreshWorkspaceKnowledge?.(workspace.id).catch(() => undefined);
+          if (learned.outcome === 'failed' || learned.outcome === 'cancelled' || learned.skill.status === 'unknown' || learned.note.status === 'failed') throw new Error('Learning did not confirm all enabled outputs.');
+          } finally { await writeNote?.close(); }
+        };
+        const scheduleLearning = (result: TurnResult) => {
+          if (!learningEnabled || !learningProfile || !hasAutomaticLearningEvidence(result, turnEvidence)) return;
+          // Queue only a small evidence copy, never conversation history, images or the full tool-result array.
+          const evidence = turnEvidence.filter(item => !item.isError && item.content.trim()).slice(0, 10)
+            .map(item => ({ ...item, content: item.content.slice(0, 2_000) }));
+          const profileName = config.vaultProfiles?.profiles.find(item => item.id === learningProfile.profileId)?.name ?? config.profile.name;
+          const admitted = learningSchedule.schedule({ id: learningRunId, workspaceId: workspace.id, profileId: learningProfile.profileId,
+            profileName, sessionId, execute: signal => automaticLearning(evidence, signal),
+            validate: learningCurrent, ready: () => !closing && !runs.size && !workspaceBoundaryMutations && !connectionChanges.size && !registryWork && !persistence.isBusy,
+          });
+          if (!admitted) void publish(sessionId, { type: 'tool.completed', tool: 'automatic_learning', kind: 'knowledge', label: 'Learning queue full', ok: false,
+            output: 'This completed task was not queued for learning. Existing updates remain scheduled.' }).catch(() => undefined);
+        };
+        const prepareSkillsFor = (connectionId: string, worker = false, agentId = 'primary') => {
+          const selected = frozenProviders.get(connectionId)!;
+          return createNativeSkillPreparation({
+            catalog: automaticSkillCatalog!, enabled: resolveFeatures(selected.connection).extaliaSkills,
+            worker, orchestrator: () => !worker && Boolean(liveTeam?.enabled && liveTeam.members.length),
+            inputTokenLimit: selected.connection.inputTokenLimit,
+            assertCurrent: () => {
+              const current = config.connections.find(item => item.id === connectionId);
+              if (closing || runs.get(sessionId) !== run || !current
+                || workspaceSessionBoundaryKey(workspace.id, config.workspaces) !== boundary
+                || JSON.stringify(resolveFeatures(current)) !== JSON.stringify(resolveFeatures(selected.connection)))
+                throw userError('The Native skill context changed. Start a new turn.');
+            },
+            report: report => publish(sessionId, { type: 'skills.loaded', ...report }, agentId, undefined, { strict: true }),
+          });
         };
         const providers = new Map<TaskTier, ModelProvider>();
         const delegationOptions: DelegationOptions = {
+          ...(automaticSkillCatalog ? { prepareWorkerRequest: (member: TeamMember | undefined, agentId: string) => prepareSkillsFor(member?.connectionId ?? record.connectionId, true, agentId) } : {}),
           providerFor: tier => {
             if (!providers.has(tier)) providers.set(tier, nativeProvider({ ...connection, model: tierModel(connection, tier) }, secret));
             return providers.get(tier)!;
@@ -3138,7 +3449,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
               context: { sessionId, workspaceId: workspace.id },
               resolve: async () => {
                 const destination = await vaultProfiles.resolve(workspace.id, { ensure: true });
-                return { ...destination, revision: `${destination.revision}:${workspaceBoundaryKey(config.workspaces)}` };
+                return { ...destination, revision: `${destination.revision}:${workspaceSessionBoundaryKey(workspace.id, config.workspaces)}` };
               },
               authorize: async target => {
                 checkAllowed(target, 'Meeting notes', 'write');
@@ -3170,6 +3481,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
           },
           emitWorkerEvent: delegationOptions.emit,
           onWorkerStarted: delegationOptions.onWorkerStarted, onWorkerSettled: delegationOptions.onWorkerSettled,
+          prepareWorkerRequest: delegationOptions.prepareWorkerRequest,
           ...(!unsavedSessions.has(sessionId) ? {
             onMinutes: (minutes: NativeMeetingMinutes) => options.onMeetingMinutes
               ? options.onMeetingMinutes(minutes, { sessionId, workspaceId: workspace.id })
@@ -3206,7 +3518,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
           projectInstructions: await projectInstructions(root, access),
           workspaceFolders: access.folders(),
           ...(memoryNotes ? { memory: memoryNotes, memoryCatalog } : {}),
-          ...(skills ? { skills, skillCatalog, skillCategories } : {}),
+          ...(skills ? { skills, skillCatalog, skillCategories, automaticSkillLoading: true } : {}),
           ...(learnSkill ? { skillLearning: true } : {}),
           ...(learningEnabled ? { automaticLearning: true } : {}),
           ...(maxDelegations > 0 ? { orchestration: { maxDelegations } } : {}),
@@ -3241,6 +3553,8 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
           try {
             const result = await runTurn({
               provider, system, history, prompt, tools, permissions, sessionGrants, permissionMode,
+              ...(automaticSkillCatalog ? { prepareRequest: prepareSkillsFor(record.connectionId) } : {}),
+              ...(connection.inputTokenLimit !== undefined ? { maxInputTokens: connection.inputTokenLimit } : {}),
               attachments: turnAttachments(files),
               emit: body => {
                 if (body.type === 'tool.completed' && body.ok && body.toolCallId && body.output?.trim()
@@ -3252,10 +3566,8 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
               signal: controller.signal,
               takeSteering: (history, boundary) => steering.take(history, boundary),
               beforeComplete: async result => {
-                // Save the successful source turn before optional learning; keep run ownership until all effects settle.
+                // Source completion is independent of the later quiet-period curator.
                 await sessions.writeMessages(sessionId, result.history);
-                try { await automaticLearning(result); }
-                catch { await publish(sessionId, { type: 'tool.completed', tool: 'automatic_learning', kind: 'knowledge', label: 'Completed-task learning unavailable', ok: false, output: 'No automatic learning completion was confirmed. Check the profile policy, vault destination and registry.' }); }
               },
             });
             await sessions.writeMessages(sessionId, result.history);
@@ -3276,15 +3588,16 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
             const anchor = followupSuggestions.status(sessionId).anchor;
             const connectionSnapshot = JSON.stringify(saved), workspaceSnapshot = JSON.stringify(workspace);
             finishRun(sessionId);
+            if (completed && !controller.signal.aborted) scheduleLearning(completed);
             settleRun();
             if (completed && anchor && !controller.signal.aborted) {
               const answer = completed.history.at(-1);
               if (answer?.role === 'assistant' && answer.text.trim()) followupSuggestions.prepareNative({
                 sessionId, anchor, provider, prompt, answer: answer.text, evidence: turnEvidence, signal: controller.signal,
                 isCurrent: () => !closing && !runs.has(sessionId) && !promptQueues?.hasUnfinished(sessionId)
-                  && workspaceBoundaryKey(config.workspaces) === boundary
-                  && JSON.stringify(config.connections.find(item => item.id === record.connectionId)) === connectionSnapshot
-                  && JSON.stringify(config.workspaces.find(item => item.id === workspace.id)) === workspaceSnapshot,
+                  && JSON.stringify(config.workspaces.find(item => item.id === workspace.id)) === workspaceSnapshot
+                  && workspaceSessionBoundaryKey(workspace.id, config.workspaces) === boundary
+                  && JSON.stringify(config.connections.find(item => item.id === record.connectionId)) === connectionSnapshot,
               });
             }
           }
@@ -3455,6 +3768,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       assertHostOpen();
       if (privacyOptions?.labelsOnly === true) observedCodex.setSuggestionsPrivacy(true);
       followupSuggestions.invalidatePrivacy();
+      observedUserInput.invalidatePrivacy();
       observedCodexNativeQueue.invalidatePrivacy();
       try { await observations.setPrivacy(privacyOptions); }
       catch (error) { throw userError(error instanceof Error ? error.message : 'Invalid privacy or dashboard setting.'); }
@@ -3551,7 +3865,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     // The service asks the vault setting before every request; the setting switches inside the service's sync queue.
     const checkKnowledgeOpen = () => { if (closing) throw userError('The host is shutting down.'); };
     const knowledge = new KnowledgeService({
-      daemon, ...knowledgeOptions, log,
+      daemon: knowledgePort, ...knowledgeOptions, log,
       vault: {
         check: () => { checkKnowledgeOpen(); vault.check(); },
         label: () => vault.label(),
@@ -3562,11 +3876,16 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     vault.attach({
       daemon, knowledge,
       persist: async root => {
+        const previousPolicy = (await vaultProfiles.list()).profiles.find(profile => profile.id === config.profile.id)!.automaticLearning;
+        const previousProfile = config.vaultProfiles?.profiles.find(profile => profile.id === config.profile.id);
+        const profile = { ...previousProfile, id: config.profile.id, name: previousProfile?.name ?? config.profile.name, vaultRoot: null,
+          automaticLearning: previousPolicy, learningRoot: previousPolicy.notes ? root ?? vault.defaultRoot() : undefined };
+        const profiles = [...(config.vaultProfiles?.profiles ?? []).filter(item => item.id !== config.profile.id), profile];
         const { knowledge: _previous, ...rest } = config;
-        config = root ? { ...rest, knowledge: { vaultRoot: root } } : rest;
+        config = { ...rest, ...(root ? { knowledge: { vaultRoot: root } } : {}), vaultProfiles: { profiles } };
         await save();
       },
-      busy: () => closing || persistence.isBusy || runs.size > 0 || nativeOwnership.hasUnresolved() || missions.hasUnresolved() || missionRecovery.isInspecting() || nativeStatusRefresh !== undefined || registryWork > 0,
+      busy: () => closing || learningSchedule.isBusy || workspaceContextReaders > 0 || persistence.isBusy || runs.size > 0 || nativeOwnership.hasUnresolved() || missions.hasUnresolved() || missionRecovery.isInspecting() || nativeStatusRefresh !== undefined || registryWork > 0,
       watch: () => vaultWatcher?.state() ?? 'off',
       changed: () => { void vaultWatcher?.refresh(); knowledgeChanged('knowledge-vault', 0); },
     });
@@ -3598,19 +3917,67 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
   }
 
   Object.assign(host, {
+    workspaceKnowledge: async (workspaceId, method, args) => {
+      assertHostOpen();
+      const request = normalizeWorkspaceKnowledgeRequest(workspaceId, method, args);
+      const selected = findWorkspace(request.workspaceId);
+      if (request.method === 'setKnowledgeVaultRoot') {
+        const root = normalizeKnowledgeVaultRoot(request.args[0]);
+        if (selected.profileId === config.profile.id) return host.setKnowledgeVaultRoot!(root);
+        return withWorkspaceChange(async () => {
+          const catalog = await vaultProfiles.list();
+          const profile = catalog.profiles.find(item => item.id === findWorkspace(workspaceId).profileId);
+          if (!profile) throw userError('This workspace vault profile no longer exists.');
+          await vaultProfiles.save({ id: profile.id, name: profile.name, vaultRoot: root,
+            workspaceIds: profile.workspaceIds, minutesEnabled: profile.minutesEnabled,
+            automaticLearning: profile.automaticLearning, expectedRevision: catalog.revision });
+          return { kind: root ? 'custom' : 'default', label: root ? `custom:${path.basename(root)}` : `vaults/${profile.id}`,
+            ...(root ? { path: root } : {}), available: true, obsidian: false, watch: 'off' } satisfies KnowledgeVaultSettings;
+        });
+      }
+      assertNativeBoundaryAvailable();
+      workspaceContextReaders++;
+      try {
+        const target = await vaultProfiles.knowledgeTarget(workspaceId);
+        if (target.profileId === config.profile.id) {
+          const action = host[request.method];
+          if (typeof action !== 'function') throw userError('This host does not support this Knowledge action.');
+          return await (action as (...input: unknown[]) => Promise<unknown>)(...request.args);
+        }
+        if (request.method === 'knowledgeSettings') return {
+          kind: target.custom ? 'custom' : 'default', label: target.custom ? `custom:${path.basename(target.root)}` : `vaults/${target.profileId}`,
+          ...(target.custom ? { path: target.root } : {}), available: true,
+          obsidian: (await lstat(path.join(target.root, '.obsidian')).catch(() => undefined))?.isDirectory() ?? false, watch: 'off',
+        } satisfies KnowledgeVaultSettings;
+        return await workspaceKnowledge.call(target, request.method, request.args);
+      } finally { workspaceContextReaders--; }
+    },
+  } satisfies Pick<Required<AgentHostApi>, 'workspaceKnowledge'>);
+  refreshWorkspaceKnowledge = async workspaceId => {
+    await host.workspaceKnowledge!(workspaceId, 'syncKnowledge', ['incremental']);
+    const event = createEvent({ sessionId: KNOWLEDGE_EVENT_SESSION_ID, source: { runtime: 'extalia-native', channel: 'system', adapter: 'knowledge' },
+      body: { type: 'session.updated', revision: 'learning-updated', messageCount: 0 } });
+    if (!closing) for (const listener of listeners) { try { listener(event); } catch { /* disconnected UI */ } }
+  };
+
+  Object.assign(host, {
+    learningSchedule: async () => { assertHostOpen(); return learningSchedule.snapshot(); },
+    changeLearningSchedule: async (id: string, revision: string, action: 'snooze' | 'run-now') => {
+      assertHostOpen(); return learningSchedule.act(normalizeLearningScheduleAction({ id, revision, action }));
+    },
     listVaultProfiles: () => { assertHostOpen(); return vaultProfiles.list(); },
     saveVaultProfile: (input: Parameters<VaultProfiles['save']>[0]) => withWorkspaceChange(async () => {
       assertHostOpen(); knowledgeVault.assertStable();
       return vaultProfiles.save(input);
     }),
-  } satisfies Pick<Required<AgentHostApi>, 'listVaultProfiles' | 'saveVaultProfile'>);
+  } satisfies Pick<Required<AgentHostApi>, 'listVaultProfiles' | 'saveVaultProfile' | 'learningSchedule' | 'changeLearningSchedule'>);
 
   let closePromise: Promise<void> | undefined;
   return {
     host,
     worktrees: worktreeApi,
     hooks: ingest,
-    isBusy: () => persistence.isBusy || runs.size > 0 || workspaceContextReaders > 0 || nativeStatusRefresh !== undefined || nativeMemory.isBusy() || !!promptQueues?.isBusy,
+    isBusy: () => learningSchedule.isBusy || persistence.isBusy || runs.size > 0 || workspaceContextReaders > 0 || nativeStatusRefresh !== undefined || nativeMemory.isBusy() || !!promptQueues?.isBusy,
     onIdle(listener) {
       if (closing) return () => undefined;
       idleListeners.add(listener);
@@ -3618,6 +3985,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     },
     close() { return closePromise ??= (async () => {
       closing = true;
+      const learningClosed = learningSchedule.close();
       observedControls.close();
       const inboxClosed = observedInboxes.close();
       void inboxClosed.catch(() => undefined);
@@ -3629,6 +3997,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       // Never release the profile lock while an old registry can still rename markers.
       const ownershipClosed = Promise.all([planningOwnership.close(), preparationOwnership.close()]);
       vaultWatcher?.stop();
+      const userInputClosed = observedUserInput.close();
       await observedCodexPermissions.close();
       await ingest.close();
       let codexCloseError: unknown;
@@ -3638,6 +4007,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       try { await inboxClosed; } catch (error) { codexCloseError = error; }
       try { await observedHermes.close(); } catch (error) { codexCloseError ??= error; }
       try { await observedCodex.close(); } catch (error) { codexCloseError = error; }
+      await userInputClosed;
       await observations.close();
       let graceTimer: ReturnType<typeof setTimeout> | undefined;
       try {
@@ -3647,12 +4017,15 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       // before any queue await; late provider continuations receive no new write authority.
       const interrupted = [...runs.entries()].filter(([, run]) => run.accepted && !run.planning).map(([sessionId]) =>
         publish(sessionId, { type: 'turn.failed', error: 'The host closed before this turn settled. Provider execution may still be in progress.' }, 'primary', undefined, { strict: true }));
+      // Curator cancellation retains actual provider/registry/file ownership until effects drain.
+      await learningClosed;
       persistence.seal();
       const interruptions = await Promise.allSettled(interrupted);
       await persistence.drain();
       await Promise.allSettled([...preparationWrites]);
       await Promise.all(writeChains.values());
       await drainKnowledge?.();
+      await workspaceKnowledge.close();
       listeners.clear();
       idleListeners.clear();
       // After the runs: their final commits reach the daemon before its stdin closes.

@@ -12321,6 +12321,317 @@
           "approve": true
         }
       }
+    },
+    {
+      "name": "knowledge scoped knowledge.status request",
+      "valid": true,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000100",
+        "op": "knowledge.scoped",
+        "params": {
+          "op": "knowledge.status",
+          "params": {},
+          "profileId": "vp-00000000-0000-4000-8000-000000000001",
+          "vaultRoot": null
+        }
+      }
+    },
+    {
+      "name": "knowledge scoped knowledge.status response",
+      "valid": true,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "response",
+        "requestId": "00000000-0000-4000-8000-000000000100",
+        "op": "knowledge.scoped",
+        "result": {
+          "op": "knowledge.status",
+          "result": {
+            "state": "ready",
+            "vaultRoot": "vaults/default",
+            "vaultPresent": true,
+            "schemaVersion": 1,
+            "generation": 4,
+            "counts": {
+              "notes": 12,
+              "edges": 30,
+              "unresolvedLinks": 3,
+              "skipped": 2
+            },
+            "lastSync": {
+              "mode": "incremental",
+              "at": "2026-10-23T10:00:00.000Z",
+              "generation": 4,
+              "notes": 12,
+              "added": 1,
+              "updated": 2,
+              "removed": 0,
+              "unchanged": 9,
+              "renamed": 1,
+              "skipped": 2,
+              "unresolvedLinks": 3
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "knowledge scoped knowledge.overview request",
+      "valid": true,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000100",
+        "op": "knowledge.scoped",
+        "params": {
+          "op": "knowledge.overview",
+          "params": {
+            "nodeLimit": 2000,
+            "edgeLimit": 8000
+          },
+          "profileId": "vp-00000000-0000-4000-8000-000000000001",
+          "vaultRoot": null
+        }
+      }
+    },
+    {
+      "name": "knowledge scoped knowledge.overview response",
+      "valid": true,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "response",
+        "requestId": "00000000-0000-4000-8000-000000000100",
+        "op": "knowledge.scoped",
+        "result": {
+          "op": "knowledge.overview",
+          "result": {
+            "generation": 4,
+            "totalNodes": 2,
+            "totalEdges": 2,
+            "truncated": false,
+            "nodes": [
+              {
+                "nodeId": "proj.alpha",
+                "title": "Alpha",
+                "path": "Projects/Alpha.md",
+                "kind": "project",
+                "folder": "Projects",
+                "tags": [
+                  "demo",
+                  "laravel"
+                ],
+                "degree": 3,
+                "inDegree": 1,
+                "outDegree": 2,
+                "modifiedAt": "2026-10-23T10:00:00.000Z"
+              },
+              {
+                "nodeId": "path:Beta.md",
+                "title": "Beta",
+                "path": "Beta.md",
+                "folder": "",
+                "tags": [],
+                "degree": 2,
+                "inDegree": 1,
+                "outDegree": 1,
+                "modifiedAt": "2026-10-22T08:30:00.000Z"
+              }
+            ],
+            "edges": [
+              {
+                "source": "proj.alpha",
+                "target": "path:Beta.md",
+                "type": "related_to"
+              },
+              {
+                "source": "path:Beta.md",
+                "target": "proj.alpha",
+                "type": "links_to"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "knowledge scoped knowledge.write request",
+      "valid": true,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000100",
+        "op": "knowledge.scoped",
+        "params": {
+          "op": "knowledge.write",
+          "params": {
+            "path": "Inbox/Idea.md",
+            "content": "---\nid: idea\n---\n# Idea\n\tTabbed\r\nline\n",
+            "expectedSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "author": "user"
+          },
+          "profileId": "vp-00000000-0000-4000-8000-000000000001",
+          "vaultRoot": null
+        }
+      }
+    },
+    {
+      "name": "knowledge scoped knowledge.write response",
+      "valid": true,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "response",
+        "requestId": "00000000-0000-4000-8000-000000000100",
+        "op": "knowledge.scoped",
+        "result": {
+          "op": "knowledge.write",
+          "result": {
+            "outcome": "written",
+            "path": "Inbox/Idea.md",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "previousSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          }
+        }
+      }
+    },
+    {
+      "name": "knowledge scoped default profile",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000100",
+        "op": "knowledge.scoped",
+        "params": {
+          "profileId": "default",
+          "vaultRoot": null,
+          "op": "knowledge.status",
+          "params": {}
+        }
+      },
+      "code": "invalid_request"
+    },
+    {
+      "name": "knowledge scoped traversal profile",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000100",
+        "op": "knowledge.scoped",
+        "params": {
+          "profileId": "../x",
+          "vaultRoot": null,
+          "op": "knowledge.status",
+          "params": {}
+        }
+      },
+      "code": "invalid_request"
+    },
+    {
+      "name": "knowledge scoped nested scoped",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000100",
+        "op": "knowledge.scoped",
+        "params": {
+          "profileId": "vp-00000000-0000-4000-8000-000000000001",
+          "vaultRoot": null,
+          "op": "knowledge.scoped",
+          "params": {
+            "profileId": "vp-00000000-0000-4000-8000-000000000001",
+            "vaultRoot": null,
+            "op": "knowledge.status",
+            "params": {}
+          }
+        }
+      },
+      "code": "invalid_request"
+    },
+    {
+      "name": "knowledge scoped wrong nested fields",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000100",
+        "op": "knowledge.scoped",
+        "params": {
+          "profileId": "vp-00000000-0000-4000-8000-000000000001",
+          "vaultRoot": null,
+          "op": "knowledge.status",
+          "params": {
+            "x": true
+          }
+        }
+      },
+      "code": "invalid_request"
+    },
+    {
+      "name": "knowledge scoped other domain",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000100",
+        "op": "knowledge.scoped",
+        "params": {
+          "profileId": "vp-00000000-0000-4000-8000-000000000001",
+          "vaultRoot": null,
+          "op": "health",
+          "params": {}
+        }
+      },
+      "code": "invalid_request"
+    },
+    {
+      "name": "knowledge scoped missing root",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000100",
+        "op": "knowledge.scoped",
+        "params": {
+          "profileId": "vp-00000000-0000-4000-8000-000000000001",
+          "op": "knowledge.status",
+          "params": {}
+        }
+      },
+      "code": "invalid_request"
+    },
+    {
+      "name": "knowledge scoped wrong nested result",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "response",
+        "requestId": "00000000-0000-4000-8000-000000000100",
+        "op": "knowledge.scoped",
+        "result": {
+          "op": "knowledge.overview",
+          "result": {}
+        }
+      },
+      "code": "invalid_frame"
+    },
+    {
+      "name": "knowledge scoped recursive result",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "response",
+        "requestId": "00000000-0000-4000-8000-000000000100",
+        "op": "knowledge.scoped",
+        "result": {
+          "op": "knowledge.scoped",
+          "result": {}
+        }
+      },
+      "code": "invalid_frame"
     }
   ]
 }

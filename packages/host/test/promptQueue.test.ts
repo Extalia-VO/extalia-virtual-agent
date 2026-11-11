@@ -212,6 +212,83 @@ describe('PromptQueues', () => {
     expect(calls).toEqual([]);
   });
 
+  it('durably upgrades a host-verified legacy identity after restart while keeping pending prompts paused', async () => {
+    const fixture = await make({ pollIntervalMs: 0 });
+    const before = await fixture.change({ action: 'add', text: 'preserved upgrade prompt' });
+    await fixture.change({ action: 'pause', paused: false });
+    const legacy = fixture.target.identity;
+    fixture.target.identity = 'scoped-source-identity'; fixture.target.compatibleIdentities = [legacy]; fixture.target.ready = true;
+    const restored = await fixture.restart();
+    const status = await restored.status('session-1');
+    expect(status).toMatchObject({ supported: true, paused: true, items: before.items });
+    expect(status.revision).not.toBe(before.revision);
+    const file = path.join(fixture.root, 'state', 'prompt-queues.json');
+    expect(JSON.parse(await readFile(file, 'utf8')).queues[0]).toMatchObject({ identity: fixture.target.identity, paused: true, items: before.items });
+    expect(fixture.calls).toEqual([]);
+    // Compatibility is no longer needed after the local identity migration is durable.
+    delete fixture.target.compatibleIdentities;
+    expect(await (await fixture.restart()).status('session-1')).toMatchObject({ supported: true, paused: true, items: before.items });
+    expect(fixture.calls).toEqual([]);
+    await fixture.change({ action: 'pause', paused: false });
+    await waitFor(() => fixture.calls.length === 1);
+    expect(fixture.calls).toEqual([{ id: 'session-1', text: 'preserved upgrade prompt' }]);
+  });
+
+  it.each([true, false])('preserves an existing paused=%s state during a verified identity upgrade without inspection dispatch', async paused => {
+    const fixture = await make({ pollIntervalMs: 0 });
+    await fixture.change({ action: 'add', text: 'existing start state' });
+    if (!paused) await fixture.change({ action: 'pause', paused: false });
+    // Finish any already scheduled readiness lookup before changing the identity.
+    await fixture.queues.status('session-1');
+    fixture.target.compatibleIdentities = [fixture.target.identity]; fixture.target.identity = 'upgraded-source';
+    expect(await fixture.queues.status('session-1')).toMatchObject({ supported: true, paused, items: [{ state: 'pending' }] });
+    expect(fixture.calls).toEqual([]);
+  });
+
+  it.each([{ compatible: undefined }, { compatible: ['another-original-identity'] }])('keeps incompatible persisted identities blocked with compatibility $compatible', async ({ compatible }) => {
+    const fixture = await make({ pollIntervalMs: 0 });
+    const before = await fixture.change({ action: 'add', text: 'original grants only' });
+    const legacy = fixture.target.identity;
+    fixture.target.identity = 'different-source'; fixture.target.compatibleIdentities = compatible; fixture.target.ready = true;
+    const restored = await fixture.restart();
+    expect(await restored.status('session-1')).toMatchObject({ supported: false, paused: true, items: before.items });
+    const file = path.join(fixture.root, 'state', 'prompt-queues.json');
+    expect(JSON.parse(await readFile(file, 'utf8')).queues[0].identity).toBe(legacy);
+    expect(fixture.calls).toEqual([]);
+  });
+
+  it('never upgrades sending or unknown deliveries even when the host verifies the old identity', async () => {
+    let entered = false, release!: (result: 'sent') => void;
+    const held = new Promise<'sent'>(resolve => { release = resolve; });
+    const fixture = await make({ pollIntervalMs: 0, dispatch: async () => { entered = true; return held; } });
+    await fixture.change({ action: 'add', text: 'uncertain original handoff' });
+    await fixture.change({ action: 'add', text: 'later pending prompt' });
+    fixture.target.ready = true;
+    await fixture.change({ action: 'pause', paused: false });
+    await waitFor(() => { fixture.queues.wake('session-1'); return entered; });
+    const legacy = fixture.target.identity;
+    fixture.target.compatibleIdentities = [legacy]; fixture.target.identity = 'scoped-source';
+    const sending = await fixture.queues.status('session-1');
+    expect(sending).toMatchObject({ supported: false, paused: true, items: [{ state: 'sending' }, { state: 'pending' }] });
+    const file = path.join(fixture.root, 'state', 'prompt-queues.json');
+    expect(JSON.parse(await readFile(file, 'utf8')).queues[0].identity).toBe(legacy);
+    const restored = await fixture.restart();
+    release('sent');
+    expect(await restored.status('session-1')).toMatchObject({ supported: false, paused: true, items: [{ state: 'unknown' }, { state: 'pending' }] });
+    expect(JSON.parse(await readFile(file, 'utf8')).queues[0].identity).toBe(legacy);
+    await expect(fixture.change({ action: 'pause', paused: false })).rejects.toThrow('unavailable');
+    expect(fixture.calls).toEqual([]);
+  });
+
+  it.each([Array.from({ length: 5 }, (_, index) => `legacy-${index}`), ['x'.repeat(4097)], ['bad\0identity']].map(compatible => ({ compatible })))(
+    'refuses unbounded or invalid compatibility declarations', async ({ compatible }) => {
+      const fixture = await make({ pollIntervalMs: 0 });
+      await fixture.change({ action: 'add', text: 'bounded compatibility' });
+      fixture.target.compatibleIdentities = compatible;
+      expect(await fixture.queues.status('session-1')).toMatchObject({ supported: false, paused: true, items: [{ state: 'pending' }] });
+      expect(fixture.calls).toEqual([]);
+    });
+
   it('never persists history-off text and restores all saved queues paused', async () => {
     const fixture = await make();
     fixture.target.persist = false;

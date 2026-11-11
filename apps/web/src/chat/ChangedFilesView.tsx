@@ -2,7 +2,7 @@ import { useState, type ReactNode } from 'react';
 import type { Messages } from '../i18n';
 import { Icon } from '../ui/Icon';
 import type { ChangedFile } from './changedFiles';
-import { useMessageFiles } from './MessageFilePreview';
+import { HistoricalMessageFileScope, useMessageFiles } from './MessageFilePreview';
 
 function FileRow({ t, file, time }: { t: Messages; file: ChangedFile; time: Intl.DateTimeFormat }) {
   const openFile = useMessageFiles();
@@ -18,7 +18,7 @@ function FileRow({ t, file, time }: { t: Messages; file: ChangedFile; time: Intl
   </>;
   // A deleted file has nothing left to open.
   return <li>{openFile && file.change !== 'delete'
-    ? <button type="button" className="changed-file" onClick={() => openFile({ name, path: file.path, link: true })}>{content}</button>
+    ? <button type="button" className="changed-file" onClick={() => openFile({ name, path: file.path, link: file.fileScope === undefined })}>{content}</button>
     : <span className="changed-file static">{content}</span>}</li>;
 }
 
@@ -29,7 +29,7 @@ export function ChangedFilesView({ t, language, files }: { t: Messages; language
   if (!files.length) return <p className="muted-note changed-files-empty">{c.noFiles}</p>;
   return <div className="changed-files">
     <p className="changed-files-summary">{c.filesSummary(files.length)}</p>
-    <ul>{files.map(file => <FileRow key={file.path} t={t} file={file} time={time} />)}</ul>
+    <ul>{files.map(file => <HistoricalMessageFileScope key={file.path} scope={file.fileScope}><FileRow t={t} file={file} time={time} /></HistoricalMessageFileScope>)}</ul>
   </div>;
 }
 

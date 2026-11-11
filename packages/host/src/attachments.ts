@@ -143,4 +143,10 @@ export class AttachmentStore {
   pending(sessionId: string): number {
     return this.memory.get(sessionId)?.size ?? 0;
   }
+
+  /** Waiting files of a session in upload order, metadata only. */
+  listPending(sessionId: string): PromptAttachment[] {
+    const entries = this.memory.get(sessionId);
+    return entries ? [...entries.values()].map(entry => ({ ...entry.meta })) : [];
+  }
 }

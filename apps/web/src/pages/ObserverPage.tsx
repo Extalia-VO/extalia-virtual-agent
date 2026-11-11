@@ -1,4 +1,6 @@
 import { sourceLabel, type PortableSession } from '@extalia/core';
+import { ObservedInputCards } from '../observe/ObservedInputCards';
+import { useObservedInputs } from '../observe/ObservedInputProvider';
 import type { AgentHostApi, HostState } from '@extalia/platform';
 import { useEffect, useId, useMemo, useState, useSyncExternalStore, type KeyboardEvent } from 'react';
 import { SessionList } from '../chat/SessionList';
@@ -82,6 +84,7 @@ export function ObserverPage({ t, language, agents, state, initialSessionId, onS
 }) {
   const scope = useOperationScope(agents);
   const sessions = state.sessions.filter(item => item.control === 'observed');
+  const inputContext = useObservedInputs();
   const [section, setSection] = useState<ObserveSection>('sessions');
   const [discoveryOpen, setDiscoveryOpen] = useState(false);
   const tabsId = useId();
@@ -170,6 +173,7 @@ export function ObserverPage({ t, language, agents, state, initialSessionId, onS
             <div className="actions"><button type="button" disabled={busy} onClick={() => { void run(() => agents.setObservation(selected.id, !observation?.watching)).catch(() => undefined); }}>
               <Icon name={observation?.watching ? 'stop' : 'refresh'} />{observation?.watching ? t.observer.pause : t.observer.resume}
             </button></div>
+            <ObservedInputCards t={t} sessionId={selected.id} />
             {supportsObservedPromptQueue(selected.observation?.sourceId) && <ObservedCodexPromptComposer key={`codex-prompt:${selected.id}`} t={t} agents={agents} session={selected} disabled={busy} />}
             {controlHub && !supportsObservedPromptQueue(selected.observation?.sourceId) && <ObservedSessionControl key={`control:${selected.id}`} t={t} agents={agents} session={selected} disabled={busy} />}
             {!supportsObservedPromptQueue(selected.observation?.sourceId) && <PromptSuggestions t={t} agents={agents} session={selected} disabled={busy} copyOnly />}
@@ -183,7 +187,7 @@ export function ObserverPage({ t, language, agents, state, initialSessionId, onS
             </details>}
             {selected.observation?.sourceId === 'codex' && <details className="observed-codex-entry">
               <summary>{t.observedCodex.title}</summary>
-              <ObservedCodexControls key={selected.id} t={t} agents={agents} session={selected} />
+              <ObservedCodexControls key={selected.id} t={t} agents={agents} session={selected} showQuestions={!(inputContext?.view.entries[selected.id]?.phase === 'ready' || inputContext?.view.entries[selected.id]?.phase === 'private' || inputContext?.view.entries[selected.id]?.requests.some(request => request.origin === 'codex-native'))} />
             </details>}
             {selected.observation?.sourceId === 'hermes' && <details className="observed-codex-entry">
               <summary>{t.observedHermes.title}</summary>

@@ -27,8 +27,14 @@ export type MovingOccupantSnapshot = {
 type MovingOccupantState = Omit<MovingOccupantSnapshot, "id">;
 
 const movingOccupants = new Map<string, MovingOccupantState>();
-// Seated bodies remain physical obstacles without registering door-opening intent.
+// Every physical phase has a fallback body without registering door-opening intent.
 const stationaryOccupants = new Map<string, Point3>();
+const MOVING_FRESH_MS = 750;
+
+function freshMoving(id: string, now: number): boolean {
+  const state = movingOccupants.get(id);
+  return Boolean(state && now - state.updatedAt <= MOVING_FRESH_MS);
+}
 
 export function trackStationaryOccupant(id: string, position: Readonly<Point3> | null): void {
   if (!position) { stationaryOccupants.delete(id); return; }
@@ -74,9 +80,13 @@ export function forEachDoorPortal(visit: (id: string, portal: Readonly<DoorPorta
   for (const [id, portal] of doorPortals) visit(id, portal);
 }
 
-/** Visit every walking character tracked for door logic, without copying. */
+/** Physical bodies keep leaves clear; stationary target=self never invents travel intent. */
 export function forEachTrackedWalker(visit: (id: string, position: Readonly<Point3>, target: Readonly<Point3>, updatedAt: number) => void) {
-  for (const [id, state] of movingOccupants) visit(id, state.position, state.target, state.updatedAt);
+  const now = nowMs();
+  for (const [id, state] of movingOccupants) {
+    if (freshMoving(id, now) || !stationaryOccupants.has(id)) visit(id, state.position, state.target, state.updatedAt);
+  }
+  for (const [id, point] of stationaryOccupants) if (!freshMoving(id, now)) visit(id, point, point, now);
 }
 
 /** Return detached, stable semantic portal data for scene overlays and inspection. */
@@ -191,8 +201,9 @@ export function trackMovingOccupant(occupantId: string, position: Readonly<Point
 /** Return a stable copy so callers can safely iterate while other agents move. */
 export function getMovingOccupantsSnapshot(excludeId?: string): MovingOccupantSnapshot[] {
   const result: MovingOccupantSnapshot[] = [];
+  const now = nowMs();
   for (const [id, state] of movingOccupants) {
-    if (id === excludeId) continue;
+    if (id === excludeId || (!freshMoving(id, now) && stationaryOccupants.has(id))) continue;
     result.push({
       id,
       position: [...state.position] as Point3,
@@ -203,7 +214,7 @@ export function getMovingOccupantsSnapshot(excludeId?: string): MovingOccupantSn
     });
   }
   for (const [id, point] of stationaryOccupants) {
-    if (id !== excludeId && !movingOccupants.has(id)) result.push(stationarySnapshot(id, point, nowMs()));
+    if (id !== excludeId && !freshMoving(id, now)) result.push(stationarySnapshot(id, point, now));
   }
   return result;
 }
@@ -217,13 +228,13 @@ export function getNearbyMovingOccupantsSnapshot(excludeId: string, point: Reado
   const result: MovingOccupantSnapshot[] = [];
   const now = nowMs();
   for (const [id, state] of movingOccupants) {
-    if (id === excludeId || now - state.updatedAt > 750 || Math.abs(state.position[1] - point[1]) > 1.5 ||
+    if (id === excludeId || now - state.updatedAt > MOVING_FRESH_MS || Math.abs(state.position[1] - point[1]) > 1.5 ||
         Math.hypot(state.position[0] - point[0], state.position[2] - point[2]) > 12) continue;
     result.push({ id, position: [...state.position] as Point3, target: [...state.target] as Point3,
       velocity: [...state.velocity] as Point3, motion: state.motion, updatedAt: state.updatedAt });
   }
   for (const [id, position] of stationaryOccupants) {
-    if (id === excludeId || movingOccupants.has(id) || Math.abs(position[1] - point[1]) > 1.5 ||
+    if (id === excludeId || freshMoving(id, now) || Math.abs(position[1] - point[1]) > 1.5 ||
         Math.hypot(position[0] - point[0], position[2] - point[2]) > 12) continue;
     result.push(stationarySnapshot(id, position, now));
   }

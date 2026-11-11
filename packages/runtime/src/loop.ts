@@ -1,7 +1,7 @@
 import type { SessionPermissionMode, WorkspacePermissions } from '@extalia/core';
 import type { EventBody, RiskLevel, Usage } from '@extalia/protocol';
 import { composeTurn, type TurnAttachment } from './attachments.js';
-import { ProviderError, type ModelMessage, type ModelProvider, type ToolCall, type ToolResultEntry } from './model.js';
+import { ProviderError, type ModelMessage, type ModelProvider, type ModelRequest, type ToolCall, type ToolResultEntry } from './model.js';
 import { checkedVerdict, decide, offersAccess, POLICY_UNAVAILABLE, type PermissionRequest, type PermissionVerdict } from './policy.js';
 import { validateArguments, type AnyTool, type ToolAccess } from './tools.js';
 import type { LocalToolPipelines } from './localOperations.js';
@@ -50,6 +50,8 @@ export interface TurnOptions {
   maxSteps?: number;
   /** Optional estimated input ceiling: a positive safe integer, never inferred from a model name. */
   maxInputTokens?: number;
+  /** Host-owned context refresh after steering, before every budget check/provider request. */
+  prepareRequest?(request: Readonly<Pick<ModelRequest, 'system' | 'messages' | 'tools'>> & { signal: AbortSignal }): Promise<string>;
   newId?: () => string;
   /** Internal native-mission lifecycle gate; tracks complete tool pipelines, including preflight waits. */
   localOperations?: LocalToolPipelines;
@@ -135,7 +137,18 @@ export async function runTurn(options: TurnOptions): Promise<TurnResult> {
     await takeSteering('step');
     if (signal.aborted) return finish('cancelled', 'Stopped by the user.');
     const specs = specsNow();
-    const budget = checkRequestBudget({ system: options.system, messages: history, tools: specs }, options.maxInputTokens);
+    let system = options.system;
+    try {
+      if (options.prepareRequest) system = await options.prepareRequest({ system, messages: history, tools: specs, signal });
+    } catch (error) {
+      if (isAbort(error, signal)) return finish('cancelled', 'Stopped by the user.');
+      if (error instanceof RequestBudgetError) {
+        requestPressure = error.pressure;
+        return finish('failed', error.code, 'context');
+      }
+      return finish('failed', 'The Native request context could not be prepared.');
+    }
+    const budget = checkRequestBudget({ system, messages: history, tools: specs }, options.maxInputTokens);
     if (signal.aborted) return finish('cancelled', 'Stopped by the user.');
     requestPressure = budget.pressure;
     if (budget.reason || !budget.pressure) return finish('failed', 'native_context_limit', 'context');
@@ -144,7 +157,7 @@ export async function runTurn(options: TurnOptions): Promise<TurnResult> {
 
     let result;
     try {
-      result = await provider.complete({ system: options.system, messages: history, tools: specs, signal, onText: text => { if (!signal.aborted) emit({ type: 'model.delta', text }); } });
+      result = await provider.complete({ system, messages: history, tools: specs, signal, onText: text => { if (!signal.aborted) emit({ type: 'model.delta', text }); } });
     } catch (error) {
       if (isAbort(error, signal)) return finish('cancelled', 'Stopped by the user.');
       if (error instanceof RequestBudgetError) {

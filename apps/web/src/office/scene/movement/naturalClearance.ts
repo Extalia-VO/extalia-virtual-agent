@@ -4,11 +4,14 @@ import { buildingFootprintPolygon } from '../interior/buildingFootprintGeometry'
 import type { SeatApproach } from './navGraph';
 import type { DoorInfo } from '../interior/doorTraffic';
 import { getDoorPortalsSnapshot } from '../interior/occupants/movingOccupants';
+import { modelBatchSourceVisibility } from '../modelBatchSources';
+import { CHAIR_FRONT_APPROACH, chairRootForward, chairWalkPath, chairWorld, smooth01, standPull } from './chairChoreography';
 
 type XZ = readonly [number, number];
-interface Bounds { minX: number; maxX: number; minZ: number; maxZ: number; minY: number; maxY: number; seatOwner?: Object3D; footprint?: readonly XZ[] }
+interface Bounds { minX: number; maxX: number; minZ: number; maxZ: number; minY: number; maxY: number; seatOwner?: Object3D; stationOwner?: Object3D; podOwner?: Object3D; footprint?: readonly XZ[] }
 type DoorAperture = Pick<DoorInfo, 'center' | 'yaw' | 'clearWidth'>;
 const CELL = 2;
+const CHAIR_CONTACT_REAR = .32;
 const bounds = (box: Box3): Bounds => ({ minX: box.min.x, maxX: box.max.x, minZ: box.min.z, maxZ: box.max.z, minY: box.min.y, maxY: box.max.y });
 const key = (x: number, z: number) => `${x}:${z}`;
 function cells(box: Bounds, visit: (key: string) => void) {
@@ -78,28 +81,38 @@ export class WalkingClearance {
   private readonly solids = new Map<string, Bounds[]>();
   private readonly supports = new Map<string, Bounds[]>();
   private readonly seats = new Map<Object3D, Bounds>();
+  private readonly stationAnchors: { station: Object3D; anchor: Object3D }[] = [];
+  private readonly contactPaths = new Map<number, readonly (readonly [XZ, XZ])[]>();
   private ready = false;
   revision = 0;
   colliderCount = 0;
   constructor(private readonly portals: () => readonly DoorAperture[] = () => []) {}
-  clear(): void { this.solids.clear(); this.supports.clear(); this.seats.clear(); this.ready = false; this.colliderCount = 0; this.revision++; }
+  clear(): void { this.solids.clear(); this.supports.clear(); this.seats.clear(); this.stationAnchors.length = 0; this.ready = false; this.colliderCount = 0; this.revision++; }
   rebuild(roots: readonly Object3D[]): void {
     this.clear();
     const box = new Box3();
-    const visit = (node: Object3D, owner?: Object3D) => {
+    const visit = (node: Object3D, owner?: Object3D, station?: Object3D) => {
       const data = node.userData;
       if (data.officePassable === true || data.officeCollision === false) return;
       // Batched originals are invisible only as a rendering optimization. Hidden templates are not colliders.
-      const invisible = !node.visible && data.officeBatchSource !== true;
+      const batchedVisibility = modelBatchSourceVisibility(node);
+      const invisible = batchedVisibility === undefined ? !node.visible && data.officeBatchSource !== true : !batchedVisibility;
       if (invisible) return;
+      const stationOwner = data.officeSeatStation === true ? node : station;
       const footprint = authoredFootprint(node);
       if (footprint) {
+        if (stationOwner) footprint.stationOwner = stationOwner;
+        // A pod's shared authored tabletop is a sibling of its four stations.
+        if (typeof data.teamPodAuthored === 'boolean' && node.parent) footprint.podOwner = node.parent;
         cells(footprint, cell => { const bucket = this.solids.get(cell) ?? []; bucket.push(footprint); this.solids.set(cell, bucket); });
         this.colliderCount++;
         return;
       }
       const seatOwner = data.officeSeat === true ? node : owner;
-      if (data.officeSeat === true) this.seats.set(node, bounds(new Box3().setFromObject(node)));
+      if (data.officeSeat === true) {
+        this.seats.set(node, bounds(new Box3().setFromObject(node)));
+        if (stationOwner) this.stationAnchors.push({ station: stationOwner, anchor: node });
+      }
       const mesh = node as Mesh;
       if (mesh.isMesh && !('isInstancedMesh' in mesh && mesh.isInstancedMesh)) {
         mesh.geometry.computeBoundingBox();
@@ -108,6 +121,7 @@ export class WalkingClearance {
           if (!box.isEmpty() && [box.min.x, box.min.y, box.min.z, box.max.x, box.max.y, box.max.z].every(Number.isFinite)) {
             const record = bounds(box), level = Math.round(box.max.y / FLOOR_HEIGHT) * FLOOR_HEIGHT;
             if (seatOwner) record.seatOwner = seatOwner;
+            if (stationOwner) record.stationOwner = stationOwner;
             if (box.max.y - box.min.y <= .45 && box.max.y >= level - .15 && box.max.y <= level + .24 &&
               box.max.x - box.min.x > .25 && box.max.z - box.min.z > .25) {
               cells(record, cell => { const bucket = this.supports.get(cell) ?? []; bucket.push(record); this.supports.set(cell, bucket); });
@@ -119,7 +133,7 @@ export class WalkingClearance {
           }
         }
       }
-      for (const child of node.children) visit(child, seatOwner);
+      for (const child of node.children) visit(child, seatOwner, stationOwner);
     };
     for (const root of roots) {
       root.updateWorldMatrix(true, true);
@@ -158,6 +172,121 @@ export class WalkingClearance {
       const x = dx * c - dz * s, z = dx * s + dz * c;
       if (Math.abs(x) > .12 || z < -.01 || z > (seat.seatFront ?? .23) + 1.3 || Math.abs(point[1] - seat.seat[1]) > .05) return false;
     }
+    const owner = this.seatOwner(seat);
+    return Boolean(owner) && this.segmentClearExcept(from, to, radius, owner);
+  };
+  /** A meeting/guest chair may overlap only its authored rear departure lane. */
+  seatExitClear = (seat: SeatApproach, from: Readonly<Point3>, to: Readonly<Point3>, radius = .29): boolean => {
+    if (!['meeting', 'guest'].includes(seat.seatStyle ?? '') || ![...seat.seat, ...seat.staging, seat.rotationY, ...from, ...to, radius].every(Number.isFinite)
+      || Math.abs(seat.staging[1] - seat.seat[1]) > .05) return false;
+    const dx = seat.staging[0] - seat.seat[0], dz = seat.staging[2] - seat.seat[2], length2 = dx * dx + dz * dz;
+    // Authoring must actually place the stage behind this chair, not beside it.
+    if (length2 < .01 || dx * Math.sin(seat.rotationY) + dz * Math.cos(seat.rotationY) >= -.05) return false;
+    const progress: number[] = [];
+    for (const point of [from, to]) {
+      const x = point[0] - seat.seat[0], z = point[2] - seat.seat[2], t = (x * dx + z * dz) / length2;
+      if (Math.abs(point[1] - seat.seat[1]) > .05 || t < -.01 || t > 1.01
+        || Math.hypot(x - t * dx, z - t * dz) > .12) return false;
+      progress.push(t);
+    }
+    if (progress[1]! < progress[0]! - .01) return false;
+    const owner = this.seatOwner(seat);
+    return Boolean(owner) && this.segmentClearExcept(from, to, radius, owner);
+  };
+  /** The same rear lane may be entered inward, masking only its target chair. */
+  seatEntryClear = (seat: SeatApproach, from: Readonly<Point3>, to: Readonly<Point3>, radius = .29): boolean => {
+    return this.seatExitClear(seat, to, from, radius);
+  };
+  /** Desk-chair beats may overlap their own chair, within the authored root envelope. */
+  chairMotionClear = (seat: SeatApproach, from: Readonly<Point3>, to: Readonly<Point3>, radius = .29): boolean => {
+    if (seat.seatStyle !== 'office' || seat.standing || ![...seat.seat, seat.rotationY, seat.seatHeight, seat.seatFront ?? 0, ...from, ...to, radius].every(Number.isFinite)) return false;
+    const c = Math.cos(seat.rotationY), s = Math.sin(seat.rotationY);
+    for (const point of [from, to]) {
+      const dx = point[0] - seat.seat[0], dz = point[2] - seat.seat[2], x = dx * c - dz * s, z = dx * s + dz * c;
+      // All authored desk stages and both chair sides fit |x| <= 1.5,
+      // -1.56 <= z <= 0; keep 5 cm for frame/authoring precision.
+      if (Math.abs(point[1] - seat.seat[1]) > .05 || Math.abs(x) > 1.55 || z < -1.61 || z > .05) return false;
+    }
+    const owner = this.seatOwner(seat);
+    if (this.segmentClearExcept(from, to, radius, owner)) return true;
+    const station = this.chairStation(seat);
+    if (!station || !this.chairContactApron(seat, from, to)) return false;
+    let contactFrom = from, contactTo = to;
+    const fromZ = (from[0] - seat.seat[0]) * s + (from[2] - seat.seat[2]) * c;
+    const toZ = (to[0] - seat.seat[0]) * s + (to[2] - seat.seat[2]) * c;
+    const atApron = (): Point3 => {
+      const t = (-CHAIR_CONTACT_REAR - fromZ) / (toZ - fromZ);
+      return [from[0] + t * (to[0] - from[0]), from[1], from[2] + t * (to[2] - from[2])];
+    };
+    // Preflight checks can cover an entire chair leg: relax only its contact
+    // subinterval, keeping the rest at the full body radius.
+    if (fromZ < -CHAIR_CONTACT_REAR) { contactFrom = atApron(); if (!this.segmentClearExcept(from, contactFrom, radius, owner)) return false; }
+    if (toZ < -CHAIR_CONTACT_REAR) { contactTo = atApron(); if (!this.segmentClearExcept(contactTo, to, radius, owner)) return false; }
+    // Only authored pose/contact paths use narrower bodies against their own
+    // surfaces and thin inputs. Legs, other stations and floor support retain
+    // the full walking radius; the owned surfaces still remain solid.
+    return this.segmentClearExcept(contactFrom, contactTo, radius, owner, box => {
+      const input = box.stationOwner === station && box.minY >= seat.seat[1] + .7 && box.maxY <= seat.seat[1] + .9
+        && box.maxY - box.minY <= .08 && box.maxX - box.minX <= .6 && box.maxZ - box.minZ <= .6;
+      // Thin own keyboard/pad planes share the seated contact, rather than
+      // blocking a valid pose with their conservative diagonal mesh bounds.
+      if (input) return Math.min(radius, .12);
+      if (box.podOwner !== undefined && box.podOwner === station.parent) return Math.min(radius, .16);
+      const tabletop = box.stationOwner === station && box.minY >= seat.seat[1] + .65 && box.maxY <= seat.seat[1] + .9
+        && box.maxY - box.minY <= .22 && box.maxX - box.minX >= .6 && box.maxZ - box.minZ >= .5;
+      return tabletop ? Math.min(radius, .18) : radius;
+    });
+  };
+  private chairStation(seat: SeatApproach): Object3D | undefined {
+    const forward = chairRootForward(seat), sin = Math.sin(seat.rotationY), cos = Math.cos(seat.rotationY);
+    for (const { station, anchor } of this.stationAnchors) {
+      const m = anchor.matrixWorld.elements, length = Math.hypot(m[8]!, m[10]!);
+      if (Math.hypot(m[12]! - seat.seat[0] + sin * forward, m[14]! - seat.seat[2] + cos * forward) <= .03
+        && Math.abs(m[13]! - seat.seat[1]) <= .05 && length > 0 && (m[8]! * sin + m[10]! * cos) / length > .999) return station;
+    }
+    return undefined;
+  }
+  private chairContactApron(seat: SeatApproach, from: Readonly<Point3>, to: Readonly<Point3>): boolean {
+    const c = Math.cos(seat.rotationY), s = Math.sin(seat.rotationY);
+    const local = (p: Readonly<Point3>): XZ => [(p[0] - seat.seat[0]) * c - (p[2] - seat.seat[2]) * s,
+      (p[0] - seat.seat[0]) * s + (p[2] - seat.seat[2]) * c];
+    const a = local(from), b = local(to);
+    // Diagonal inputs contact until .225 m rearward; the shared pod rim starts
+    // contact at .295 m on its exact front walk. Keep a .32 m bounded apron.
+    if (Math.max(a[1], b[1]) < -CHAIR_CONTACT_REAR || Math.max(a[1], b[1]) > .005) return false;
+    const front = seat.seatFront ?? .225;
+    let paths = this.contactPaths.get(front);
+    if (!paths) {
+      const segments: (readonly [XZ, XZ])[] = [], frame = { ...seat, seat: [0, 0, 0] as Point3, rotationY: 0 };
+      for (const side of [-1, 1] as const) for (const kind of ['stand', 'centre', 'lower']) {
+        let previous: XZ | null = null;
+        for (let sample = 0; sample <= 100; sample++) {
+          const t = sample / 100, pull = kind === 'stand' ? standPull(t) : kind === 'centre' ? t : 1;
+          const z = kind === 'stand' ? CHAIR_FRONT_APPROACH * smooth01((t - .6) / .4) : kind === 'lower' ? CHAIR_FRONT_APPROACH * (1 - t) : 0;
+          const point = chairWorld(frame, pull, 0, 0, z, [0, 0, 0], side), next: XZ = [point[0], point[2]];
+          if (previous && Math.max(previous[1], next[1]) >= -CHAIR_CONTACT_REAR - .02) segments.push([previous, next]);
+          previous = next;
+        }
+      }
+      for (const side of [-1, 1] as const) for (const beat of ['walk-sit', 'walk-out']) {
+        const points = chairWalkPath(frame, beat, side);
+        if (beat === 'walk-out') points.unshift(chairWorld(frame, 1, 0, 0, CHAIR_FRONT_APPROACH, [0, 0, 0], side));
+        for (let i = 1; i < points.length; i++) {
+          const a = points[i - 1]!, b = points[i]!;
+          if (Math.max(a[2], b[2]) >= -CHAIR_CONTACT_REAR - .02) segments.push([[a[0], a[2]], [b[0], b[2]]]);
+        }
+      }
+      paths = segments; this.contactPaths.set(front, paths);
+    }
+    const count = Math.max(1, Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) / .02));
+    for (let i = 0; i <= count; i++) {
+      const t = i / count, point: XZ = [a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1])];
+      if (point[1] < -CHAIR_CONTACT_REAR) continue;
+      if (!paths.some(([start, end]) => pointDistanceSquared(point, start, end) <= .012 ** 2)) return false;
+    }
+    return true;
+  }
+  private seatOwner(seat: SeatApproach): Object3D | undefined {
     let owner: Object3D | undefined, area = Infinity;
     for (const [node, box] of this.seats) {
       if (box.maxY < seat.seat[1] + .25 || box.minY > seat.seat[1] + seat.seatHeight + .1 ||
@@ -165,9 +294,9 @@ export class WalkingClearance {
       const size = (box.maxX - box.minX) * (box.maxZ - box.minZ);
       if (size < area) { area = size; owner = node; }
     }
-    return Boolean(owner) && this.segmentClearExcept(from, to, radius, owner);
-  };
-  private segmentClearExcept(from: Readonly<Point3>, to: Readonly<Point3>, radius: number, ignore?: Object3D): boolean {
+    return owner;
+  }
+  private segmentClearExcept(from: Readonly<Point3>, to: Readonly<Point3>, radius: number, ignore?: Object3D, colliderRadius?: (box: Bounds) => number): boolean {
     if (!this.ready || ![...from, ...to, radius].every(Number.isFinite) || radius < 0 || Math.abs(from[1] - to[1]) > .05) return false;
     const query: Bounds = { minX: Math.min(from[0], to[0]) - radius, maxX: Math.max(from[0], to[0]) + radius,
       minZ: Math.min(from[2], to[2]) - radius, maxZ: Math.max(from[2], to[2]) + radius, minY: from[1] + .3, maxY: from[1] + 1.75 };
@@ -175,8 +304,9 @@ export class WalkingClearance {
     const seen = new Set<Bounds>();
     cells(query, cell => { if (hit) return; for (const box of this.solids.get(cell) ?? []) {
       if (seen.has(box) || (ignore && box.seatOwner === ignore)) continue; seen.add(box);
-      if (box.maxY > query.minY && box.minY < query.maxY && intersects(from, to, box, radius)
-        && (!box.footprint || footprintIntersects(from, to, box.footprint, radius))) { hit = true; break; }
+      const bodyRadius = colliderRadius?.(box) ?? radius;
+      if (box.maxY > query.minY && box.minY < query.maxY && intersects(from, to, box, bodyRadius)
+        && (!box.footprint || footprintIntersects(from, to, box.footprint, bodyRadius))) { hit = true; break; }
     } });
     if (hit) return false;
     const keepBuilding = from[1] > .5 || (this.inside(from[0], from[2]) && this.inside(to[0], to[2]));

@@ -100,6 +100,7 @@ const en = {
     choose: 'Fill the empty message box. Review before sending.', keepDraft: 'Clear your draft before choosing a suggestion. Nothing is sent automatically.',
   },
   promptQueue: {
+    attachmentKinds: { image: 'Image', audio: 'Audio', file: 'Attachment', skill: 'Skill' },
     title: 'Prompt queue', helper: 'Use the message box below. Messages wait here while the agent works and use the session settings when handed off.',
     steer: 'Steer now', dragHandle: 'Drag to reorder prompt', dropHint: 'Drop to move this prompt', queueLabel: 'Queue message',
     placeholder: 'Message or add to the queue…', queued: 'Added to the queue', filesUnsupported: 'Queued messages support text only. Keep these files or skill-learning selection for an idle session, or remove them to queue the text.',
@@ -120,6 +121,8 @@ const en = {
     recheck: 'Recheck delivery', allowRetry: 'I checked the agent; allow another send',
   },
   observedCodexPrompt: {
+    settingsReadOnly: 'Settings reported by the source app · change them in that app', settingsNative: 'Update settings in the original conversation',
+    settingsUpdated: 'Source settings confirmed for subsequent messages.', settingsUnknown: 'The settings update could not be confirmed. Check the source app before trying again.', settingsFailed: 'The source settings could not be updated. Refresh and check the source app.',
     label: 'Message Codex', placeholder: 'Message this Codex conversation…',
     send: 'Send', sending: 'Sending…', loading: 'Checking this conversation…', unsupported: 'Update the Extalia host to send to this Codex conversation.',
     paused: 'Resume observing this conversation to send a message.', unavailable: 'This Codex conversation is unavailable. Your draft is kept.',
@@ -167,7 +170,17 @@ const en = {
     answerLabel: 'Your answer', answer: 'Submit this response', refresh: 'Check connection',
     delivery: { submitted: 'Submitted · waiting for Hermes', resolved: 'Request resolved', unknown: 'Delivery uncertain · check the source app before retrying' },
   },
+  observedInput: {
+    title: 'Questions for you', answer: 'Answer', submit: 'Send answer', sending: 'Sending…', other: 'Write your own answer',
+    queued: 'Answer queued in Codex. This does not confirm it has been read.', submitted: 'Answer submitted.',
+    unknown: 'Delivery is uncertain. Check the source before trying again.', unavailable: 'Question updates are unavailable. Your draft is kept.',
+    private: 'Question details are hidden by privacy settings.', locate: 'Show agent', alert: (count: number) => `${count} input request${count === 1 ? '' : 's'} need your answer`,
+    notifyTitle: 'Extalia · Answer needed', notifyBody: 'An agent has a question for you. Open Extalia to respond.',
+    replyUnavailable: 'A verified reply route is not currently available for this question.',
+    sourceAsync: 'Codex question', sourceNative: 'Codex native request', emptyAnswer: 'Answer each question before sending.', failed: 'The answer could not be sent. Your draft is kept.',
+  },
   observedControl: {
+    needsTools: 'Connect this conversation in Conversation tools.', chooseInTools: 'Choose how to send in Conversation tools.',
     title: 'Message the original conversation', helper: 'Choose an action reported by this host. Each message uses only that connection.',
     loading: 'Checking conversation controls…', unavailable: 'No conversation action is available. Connect a native session or explicitly pair a tool below.',
     unsupported: 'This host does not provide unified conversation controls.', failed: 'Controls could not be verified. Your draft is kept.',
@@ -825,6 +838,7 @@ const en = {
     save: 'Save', saving: 'Saving…', saved: 'Appearance saved.', cancel: 'Cancel', reset: 'Reset to generated look',
   },
   characterConsole: {
+    toolTabs: { connection: 'Connection', permissions: 'Permissions', session: 'Session', pairing: 'Tool pairing' },
     tools: 'Conversation tools', showTools: 'Show conversation tools', hideTools: 'Hide conversation tools',
     messages: 'Messages', activity: 'Activity', files: 'Files', team: 'Team', locate: 'Find in office',
     noFiles: 'No file changes reported yet. Completed edits appear here when the agent app reports them.', filesSummary: (count: number) => `${count} ${count === 1 ? 'file' : 'files'} changed`, fileEdits: (count: number) => `${count} edits`,
@@ -1463,6 +1477,25 @@ const en = {
     },
   },
   chat: {
+    skillLoading: {
+      title: 'Skill context',
+      loaded: (count: number) => `${count} ${count === 1 ? 'instruction set' : 'instruction sets'} loaded`,
+      skipped: (count: number) => `${count} skipped`,
+      primary: 'Primary agent', worker: (name: string) => `Worker: ${name}`, agent: (name: string) => `Agent: ${name}`,
+      help: 'The host prepared these instructions for the model request. Loading grants no tool access and does not confirm that the model followed them.',
+      noneLoaded: 'No skill instructions were added for this preparation. The reasons below explain what was skipped.',
+      omitted: (count: string) => `${count} other candidates were not loaded`,
+      characters: (used: string, budget: string) => `Skill context: ${used} of ${budget} characters`,
+      entryCharacters: (count: string) => `${count} instruction characters`,
+      sources: { builtin: 'Built-in', registry: 'Registered' },
+      reasons: {
+        'default-memory': 'Required memory guidance; memory access still follows its settings',
+        'configured-team': 'Team orchestration', 'explicit-request': 'Requested by name',
+        'current-context': 'Matches the current request', 'recent-context': 'Matches the recent conversation', dependency: 'Needed by another selected skill',
+      },
+      statuses: { loaded: 'Loaded', budget: 'Skipped: context budget', unavailable: 'Unavailable', 'not-configured': 'Skipped: team not configured' },
+      intents: { planning: 'Planning', debugging: 'Debugging', testing: 'Testing', review: 'Review', security: 'Security', documentation: 'Documentation', design: 'Design', refactoring: 'Refactoring', delivery: 'Delivery' },
+    },
     team: {
       title: 'Team & orchestrator', setup: 'Set up team', switchLabel: 'Team orchestration',
       active: 'Active', inactive: 'Inactive', empty: 'Not set up', loading: 'Loading team…', unavailable: 'Team unavailable',
@@ -1490,6 +1523,15 @@ const en = {
     untitled: 'New session',
     actions: (title: string) => `Actions for ${title}`,
     rename: 'Rename', renameLabel: 'Session title',
+    move: {
+      title: 'Move / review workspace', destination: 'Destination workspace', review: 'Review destination', reviewing: 'Reviewing…',
+      description: 'Keep this Native conversation, team and model in the selected workspace. You can also review the current workspace after folder access changes.',
+      folders: 'Folders available after applying', readOnly: 'Read only', readWrite: 'Read and write', crossAccess: 'Cross-workspace access',
+      policies: { isolated: 'Isolated', 'read-only': 'Read only', 'read-write': 'Read and write' },
+      permissions: { ask: 'Ask', allow: 'Allow' }, fileWrites: 'Workspace file edits', commands: 'Workspace commands',
+      context: 'The model keeps the conversation history. Workspace instructions, memory and vault follow the destination. Files are not copied. Pending prompts must be resolved first.',
+      confirm: 'Keep this conversation and apply the workspace access shown above.', apply: 'Apply workspace', applying: 'Applying…',
+    },
     deleteConfirm: 'Delete this session and its history?',
     running: 'Running', waiting: 'Needs approval',
     showSessions: 'Sessions', hideSessions: 'Hide sessions',
@@ -1531,7 +1573,7 @@ const en = {
     },
     you: 'You', agent: 'Agent',
     question: 'Question', yourAnswer: 'Your answer', taskNotification: 'Task update', taskResult: 'Task result', contextSummary: 'Context summary', sourceDetails: 'Original message', systemContext: 'Context from the app', turnInterrupted: 'Turn interrupted', commandOutput: 'Command output', showMore: 'Show more', showLess: 'Show less', copyMessage: 'message', taskTokens: (count: string) => `${count} tokens`, taskToolUses: (count: string) => `${count} tool uses`, taskStatuses: { completed: 'Completed', failed: 'Failed', stopped: 'Stopped' },
-    openAttachment: (name: string) => `Open ${name}`, closeAttachment: 'Close image',
+    openAttachment: (name: string) => `Open ${name}`, closeAttachment: 'Close image', imagePreviewUnavailable: 'Preview unavailable',
     usage: (input: string | undefined, output: string | undefined) => `${input === undefined ? 'Input not reported' : `${input} in`} · ${output === undefined ? 'Output not reported' : `${output} out`}`,
     cachedInput: (count: string) => `${count} cached input (reported)`,
     cost: (usd: string) => `$${usd}`,
@@ -1574,6 +1616,7 @@ const en = {
   tool: {
     status: { running: 'Running', ok: 'Done', failed: 'Failed', stopped: 'Stopped' },
     showOutput: 'Show output', hideOutput: 'Hide output',
+    resultAttachments: 'Tool result attachments', images: (count: number) => `${count} ${count === 1 ? 'image' : 'images'}`,
     /** Summary of a run of consecutive tool calls (lower case; joined and capitalised by the view). */
     run: {
       command: (n: number) => n === 1 ? 'ran a command' : `ran ${n} commands`,
@@ -1608,8 +1651,8 @@ const en = {
       many: (count: number) => `${count} agents need your approval`,
     },
     settings: {
-      title: 'Approval requests',
-      toggle: 'Notify me about approval requests',
+      title: 'Agent requests',
+      toggle: 'Notify me about questions and approval requests',
       hint: 'When an agent waits for you while Extalia is in the background, show a notification. Notifications never include secrets.',
       unsupported: 'This browser cannot show notifications.',
       blocked: 'Notifications are blocked for this site. Allow them in the browser settings to use this.',
@@ -1640,7 +1683,11 @@ const en = {
   },
   updates: {
     title: 'Updates',
-    lead: 'Extalia checks for new releases in the background.',
+    lead: 'Extalia checks for new releases when it opens. Updates are downloaded only after you approve.',
+    confirm: {
+      title: 'A new version is available',
+      description: 'Download and install this update? Extalia will restart after the download, once running agents finish. You can postpone the restart.',
+    },
     current: 'Installed version', latest: 'Latest version', state: 'Status',
     states: {
       idle: 'Not checked yet', checking: 'Checking…', 'up-to-date': 'Up to date', available: 'Update available',
@@ -1757,6 +1804,7 @@ const en = {
   },
   // W5 Knowledge: the profile's vault index (ADR 0024). Notes are untrusted; front matter is declared, never verified.
   knowledge: {
+    workspaceVault: 'Workspace vault',
     title: 'Knowledge',
     about: 'About Knowledge', syncAndNotes: 'Sync & note tools',
     refresh: 'Refresh status', hostHelp: 'If the local index service is unavailable, update Extalia and restart the Desktop app or Bridge. Your notes stay in their chosen folder.',
@@ -1969,17 +2017,26 @@ const en = {
     cancelled: 'No folder selected.',
     pathHidden: 'The browser does not reveal the full path.',
   },
+  learningCountdown: {
+    title: 'Learning after completed work', help: 'Knowledge and skill candidates follow this profile’s settings. New skill candidates still need your review.',
+    scheduled: 'Learning will begin when this countdown ends.', starting: 'Ready to learn. Waiting for the host to start.',
+    busy: 'Waiting for agent work to finish. The countdown will resume automatically.', running: 'Learning from completed work…',
+    failed: 'This update could not be confirmed. Check the session activity and vault settings.', cancelled: 'This scheduled update was cancelled.',
+    changed: 'The workspace, profile or destination changed. Previous work was not sent to a different vault.',
+    interrupted: 'Extalia closed before this update finished. It will not be replayed automatically.',
+    timeRemaining: 'Time until learning begins', runNow: 'Run now', snooze: (minutes: number) => `Snooze ${minutes} min`, dismiss: 'Dismiss update notice',
+  },
   vaultProfiles: {
     title: 'Extalia vault profiles', lead: 'One Extalia profile has one Obsidian vault. Assign several workspaces to share a profile vault.',
-    scope: 'These profiles group workspace notes and meeting minutes. Sessions, credentials and interface preferences remain in this app. The Knowledge page indexes only the indexed default vault.',
-    indexed: 'Indexed default vault', notesOnly: 'Notes destination', noWorkspaces: 'No workspaces assigned', create: 'New vault profile', refresh: 'Refresh',
+    scope: 'These profiles group workspace notes and meeting minutes. Sessions, credentials and interface preferences remain in this app. Knowledge follows the selected workspace’s profile vault. Isolated workspaces have a dedicated profile.',
+    indexed: 'Indexed default vault', notesOnly: 'Workspace vault', noWorkspaces: 'No workspaces assigned', create: 'New vault profile', refresh: 'Refresh',
     name: 'Profile name', root: 'Vault folder', managed: 'Leave blank for an Extalia-managed folder',
-    indexedHint: 'This profile follows the Knowledge vault setting above. Changing profiles does not switch the Knowledge index.',
+    indexedHint: 'This profile follows the Knowledge vault setting above. Select a workspace on Knowledge to browse its assigned profile vault.',
     folderHint: 'Choose an existing absolute folder, or leave blank for a separate managed vault. Existing notes are never moved or deleted.',
     minutes: 'Allow Extalia to save meeting minutes in this vault', minutesHint: 'Enabling this authorizes automatic meeting-note creation in this folder. Existing notes and Obsidian settings are preserved.',
     learningTitle: 'Automatic learning', learningEnabled: 'Enable automatic learning for this profile',
     learningSkills: 'Propose reusable skill candidates', learningNotes: 'Save useful lessons as Obsidian notes in this vault',
-    learningHint: 'After useful completed work, a bounded curator uses the current approved model to select reusable lessons. It may skip work with nothing to retain. Skill candidates need review and never activate automatically.',
+    learningHint: 'After useful completed work and a 60-second countdown, a bounded curator uses the current approved model to select reusable lessons. It may skip work with nothing to retain. Skill candidates need review and never activate automatically.',
     learningConsent: 'Saving with learning notes enabled authorizes writes to this selected vault. Meeting-minutes permission is separate. Changing the vault requires saving this consent again.',
     workspaces: 'Workspaces sharing this vault', bindingHint: 'Selecting a workspace moves its vault binding here. Removing it returns it to the default profile. To move a default workspace, select it in another profile.',
     busyHint: 'Finish running agent work before changing profiles or workspace assignments.', save: 'Save vault profile', saved: 'Vault profile and workspace assignments saved.',
@@ -2257,6 +2314,7 @@ const id: Messages = {
     choose: 'Isi kotak pesan yang kosong. Tinjau sebelum mengirim.', keepDraft: 'Kosongkan draf sebelum memilih saran. Tidak ada pesan yang dikirim otomatis.',
   },
   promptQueue: {
+    attachmentKinds: { image: 'Gambar', audio: 'Audio', file: 'Lampiran', skill: 'Skill' },
     title: 'Antrean prompt', helper: 'Gunakan kotak pesan di bawah. Pesan menunggu di sini saat agent bekerja dan memakai pengaturan sesi saat diserahkan.',
     steer: 'Steer sekarang', dragHandle: 'Seret untuk mengurutkan prompt', dropHint: 'Lepaskan untuk memindahkan prompt', queueLabel: 'Antrekan pesan',
     placeholder: 'Kirim pesan atau tambahkan ke antrean…', queued: 'Ditambahkan ke antrean', filesUnsupported: 'Pesan antrean mendukung teks saja. Simpan berkas atau pilihan pelajari skill ini untuk sesi yang siap, atau hapus pilihan tersebut untuk mengantrekan teks.',
@@ -2277,6 +2335,8 @@ const id: Messages = {
     recheck: 'Periksa pengiriman', allowRetry: 'Saya sudah memeriksa agent; izinkan pengiriman lain',
   },
   observedCodexPrompt: {
+    settingsReadOnly: 'Setting yang dilaporkan aplikasi asal · ubah melalui aplikasi tersebut', settingsNative: 'Perbarui setting pada percakapan asal',
+    settingsUpdated: 'Setting asal terkonfirmasi untuk pesan berikutnya.', settingsUnknown: 'Perubahan setting belum dapat dipastikan. Periksa aplikasi asal sebelum mencoba lagi.', settingsFailed: 'Setting asal gagal diperbarui. Perbarui status dan periksa aplikasi asal.',
     label: 'Pesan ke Codex', placeholder: 'Kirim pesan ke percakapan Codex ini…',
     send: 'Kirim', sending: 'Mengirim…', loading: 'Memeriksa percakapan ini…', unsupported: 'Perbarui host Extalia untuk mengirim ke percakapan Codex ini.',
     paused: 'Lanjutkan pemantauan percakapan ini untuk mengirim pesan.', unavailable: 'Percakapan Codex ini tidak tersedia. Draf Anda tetap disimpan.',
@@ -2324,7 +2384,17 @@ const id: Messages = {
     answerLabel: 'Jawaban Anda', answer: 'Kirim respons ini', refresh: 'Periksa koneksi',
     delivery: { submitted: 'Terkirim · menunggu Hermes', resolved: 'Permintaan selesai', unknown: 'Pengiriman belum pasti · periksa aplikasi asal sebelum mencoba lagi' },
   },
+  observedInput: {
+    title: 'Pertanyaan untuk Anda', answer: 'Jawaban', submit: 'Kirim jawaban', sending: 'Mengirim…', other: 'Tulis jawaban sendiri',
+    queued: 'Jawaban masuk antrean Codex. Ini belum memastikan jawaban telah dibaca.', submitted: 'Jawaban dikirim.',
+    unknown: 'Pengiriman belum pasti. Periksa sumber sebelum mencoba kembali.', unavailable: 'Pembaruan pertanyaan tidak tersedia. Draf Anda disimpan.',
+    private: 'Detail pertanyaan disembunyikan oleh pengaturan privasi.', locate: 'Lihat agent', alert: (count: number) => `${count} permintaan input memerlukan jawaban Anda`,
+    notifyTitle: 'Extalia · Perlu jawaban', notifyBody: 'Agent memiliki pertanyaan untuk Anda. Buka Extalia untuk menjawab.',
+    replyUnavailable: 'Jalur balasan terverifikasi belum tersedia untuk pertanyaan ini.',
+    sourceAsync: 'Pertanyaan Codex', sourceNative: 'Permintaan native Codex', emptyAnswer: 'Jawab setiap pertanyaan sebelum mengirim.', failed: 'Jawaban belum dapat dikirim. Draf Anda disimpan.',
+  },
   observedControl: {
+    needsTools: 'Hubungkan percakapan ini melalui alat percakapan.', chooseInTools: 'Pilih cara mengirim melalui alat percakapan.',
     title: 'Kirim pesan ke percakapan asli', helper: 'Pilih tindakan yang dilaporkan host ini. Setiap pesan hanya memakai koneksi tersebut.',
     loading: 'Memeriksa kontrol percakapan…', unavailable: 'Belum ada tindakan percakapan. Hubungkan sesi native atau pasangkan tool secara eksplisit di bawah.',
     unsupported: 'Host ini belum menyediakan kontrol percakapan terpadu.', failed: 'Kontrol belum dapat diverifikasi. Draf Anda disimpan.',
@@ -2981,6 +3051,7 @@ const id: Messages = {
     save: 'Simpan', saving: 'Menyimpan…', saved: 'Penampilan tersimpan.', cancel: 'Batal', reset: 'Kembalikan ke tampilan bawaan',
   },
   characterConsole: {
+    toolTabs: { connection: 'Koneksi', permissions: 'Izin', session: 'Sesi', pairing: 'Pemasangan tool' },
     tools: 'Alat percakapan', showTools: 'Tampilkan alat percakapan', hideTools: 'Sembunyikan alat percakapan',
     messages: 'Pesan', activity: 'Aktivitas', files: 'File', team: 'Tim', locate: 'Cari di kantor',
     noFiles: 'Belum ada perubahan file yang dilaporkan. Edit yang selesai muncul saat aplikasi agent melaporkannya.', filesSummary: (count: number) => `${count} file diubah`, fileEdits: (count: number) => `${count} kali edit`,
@@ -3615,6 +3686,25 @@ const id: Messages = {
     },
   },
   chat: {
+    skillLoading: {
+      title: 'Konteks skill',
+      loaded: (count: number) => `${count} panduan dimuat`,
+      skipped: (count: number) => `${count} dilewati`,
+      primary: 'Agent utama', worker: (name: string) => `Worker: ${name}`, agent: (name: string) => `Agent: ${name}`,
+      help: 'Host menyiapkan panduan ini untuk permintaan model. Pemuatan tidak memberi akses tool dan tidak membuktikan model mengikutinya.',
+      noneLoaded: 'Tidak ada panduan skill yang ditambahkan pada persiapan ini. Alasan di bawah menjelaskan yang dilewati.',
+      omitted: (count: string) => `${count} kandidat lain tidak dimuat`,
+      characters: (used: string, budget: string) => `Konteks skill: ${used} dari ${budget} karakter`,
+      entryCharacters: (count: string) => `${count} karakter panduan`,
+      sources: { builtin: 'Bawaan', registry: 'Terdaftar' },
+      reasons: {
+        'default-memory': 'Panduan memory wajib; akses memory tetap mengikuti pengaturannya',
+        'configured-team': 'Orkestrasi tim', 'explicit-request': 'Diminta berdasarkan nama',
+        'current-context': 'Sesuai permintaan saat ini', 'recent-context': 'Sesuai percakapan terbaru', dependency: 'Dibutuhkan skill lain yang dipilih',
+      },
+      statuses: { loaded: 'Dimuat', budget: 'Dilewati: batas konteks', unavailable: 'Tidak tersedia', 'not-configured': 'Dilewati: tim belum diatur' },
+      intents: { planning: 'Perencanaan', debugging: 'Debugging', testing: 'Pengujian', review: 'Peninjauan', security: 'Keamanan', documentation: 'Dokumentasi', design: 'Desain', refactoring: 'Refactoring', delivery: 'Delivery' },
+    },
     team: {
       title: 'Tim & orkestrator', setup: 'Atur tim', switchLabel: 'Orkestrasi tim',
       active: 'Aktif', inactive: 'Nonaktif', empty: 'Belum diatur', loading: 'Memuat tim…', unavailable: 'Tim tidak tersedia',
@@ -3642,6 +3732,15 @@ const id: Messages = {
     untitled: 'Session baru',
     actions: (title: string) => `Aksi untuk ${title}`,
     rename: 'Ganti nama', renameLabel: 'Judul session',
+    move: {
+      title: 'Pindah / tinjau workspace', destination: 'Workspace tujuan', review: 'Tinjau tujuan', reviewing: 'Meninjau…',
+      description: 'Pertahankan percakapan Native, tim, dan model di workspace pilihan. Anda juga dapat meninjau workspace saat ini setelah akses folder berubah.',
+      folders: 'Folder yang tersedia setelah diterapkan', readOnly: 'Hanya baca', readWrite: 'Baca dan tulis', crossAccess: 'Akses antarworkspace',
+      policies: { isolated: 'Terisolasi', 'read-only': 'Hanya baca', 'read-write': 'Baca dan tulis' },
+      permissions: { ask: 'Tanya', allow: 'Izinkan' }, fileWrites: 'Edit file workspace', commands: 'Perintah workspace',
+      context: 'Model tetap memakai riwayat percakapan. Instruksi workspace, memori, dan vault mengikuti tujuan. File tidak disalin. Antrean prompt harus diselesaikan terlebih dahulu.',
+      confirm: 'Pertahankan percakapan ini dan terapkan akses workspace yang ditampilkan di atas.', apply: 'Terapkan workspace', applying: 'Menerapkan…',
+    },
     deleteConfirm: 'Hapus session ini beserta riwayatnya?',
     running: 'Berjalan', waiting: 'Perlu persetujuan',
     showSessions: 'Session', hideSessions: 'Sembunyikan session',
@@ -3681,7 +3780,7 @@ const id: Messages = {
     },
     you: 'Anda', agent: 'Agent',
     question: 'Pertanyaan', yourAnswer: 'Jawaban Anda', taskNotification: 'Pembaruan tugas', taskResult: 'Hasil tugas', contextSummary: 'Ringkasan konteks', sourceDetails: 'Pesan asli', systemContext: 'Konteks dari aplikasi', turnInterrupted: 'Giliran dihentikan', commandOutput: 'Keluaran perintah', showMore: 'Tampilkan lebih banyak', showLess: 'Tampilkan lebih sedikit', copyMessage: 'pesan', taskTokens: (count: string) => `${count} token`, taskToolUses: (count: string) => `${count} pemakaian alat`, taskStatuses: { completed: 'Selesai', failed: 'Gagal', stopped: 'Berhenti' },
-    openAttachment: (name: string) => `Buka ${name}`, closeAttachment: 'Tutup gambar',
+    openAttachment: (name: string) => `Buka ${name}`, closeAttachment: 'Tutup gambar', imagePreviewUnavailable: 'Pratinjau tidak tersedia',
     usage: (input: string | undefined, output: string | undefined) => `${input === undefined ? 'Input tidak dilaporkan' : `${input} masuk`} · ${output === undefined ? 'Output tidak dilaporkan' : `${output} keluar`}`,
     cachedInput: (count: string) => `${count} input cache (dilaporkan)`,
     cost: (usd: string) => `$${usd}`,
@@ -3724,6 +3823,7 @@ const id: Messages = {
   tool: {
     status: { running: 'Berjalan', ok: 'Selesai', failed: 'Gagal', stopped: 'Dihentikan' },
     showOutput: 'Tampilkan output', hideOutput: 'Sembunyikan output',
+    resultAttachments: 'Lampiran hasil tool', images: (count: number) => `${count} gambar`,
     run: {
       command: (n: number) => n === 1 ? 'menjalankan sebuah perintah' : `menjalankan ${n} perintah`,
       read: (n: number) => n === 1 ? 'membaca sebuah berkas' : `membaca ${n} berkas`,
@@ -3757,8 +3857,8 @@ const id: Messages = {
       many: (count: number) => `${count} agen perlu persetujuan Anda`,
     },
     settings: {
-      title: 'Permintaan persetujuan',
-      toggle: 'Beri tahu saya tentang permintaan persetujuan',
+      title: 'Permintaan agent',
+      toggle: 'Beri tahu saya tentang pertanyaan dan permintaan persetujuan',
       hint: 'Saat agen menunggu Anda dan Extalia berada di latar belakang, tampilkan notifikasi. Notifikasi tidak pernah memuat rahasia.',
       unsupported: 'Browser ini tidak dapat menampilkan notifikasi.',
       blocked: 'Notifikasi diblokir untuk situs ini. Izinkan di pengaturan browser untuk memakai fitur ini.',
@@ -3789,7 +3889,11 @@ const id: Messages = {
   },
   updates: {
     title: 'Pembaruan',
-    lead: 'Extalia memeriksa rilis baru di latar belakang.',
+    lead: 'Extalia memeriksa rilis baru saat dibuka. Pembaruan hanya diunduh setelah Anda menyetujuinya.',
+    confirm: {
+      title: 'Versi baru tersedia',
+      description: 'Unduh dan pasang pembaruan ini? Extalia akan dimulai ulang setelah unduhan selesai dan agen yang berjalan selesai bekerja. Anda dapat menunda restart.',
+    },
     current: 'Versi terpasang', latest: 'Versi terbaru', state: 'Status',
     states: {
       idle: 'Belum diperiksa', checking: 'Memeriksa…', 'up-to-date': 'Sudah terbaru', available: 'Pembaruan tersedia',
@@ -3905,6 +4009,7 @@ const id: Messages = {
     openRoot: 'Kembali ke folder project',
   },
   knowledge: {
+    workspaceVault: 'Vault workspace',
     title: 'Pengetahuan',
     about: 'Tentang Pengetahuan', syncAndNotes: 'Sinkronisasi & alat catatan',
     refresh: 'Muat ulang status', hostHelp: 'Jika layanan indeks lokal tidak tersedia, perbarui Extalia dan mulai ulang aplikasi Desktop atau Bridge. Catatan tetap berada di folder yang dipilih.',
@@ -4115,12 +4220,21 @@ const id: Messages = {
     cancelled: 'Tidak ada folder yang dipilih.',
     pathHidden: 'Browser tidak menampilkan path lengkap.',
   },
+  learningCountdown: {
+    title: 'Pembelajaran setelah pekerjaan selesai', help: 'Knowledge dan kandidat skill mengikuti pengaturan profil ini. Kandidat skill baru tetap perlu ditinjau oleh Anda.',
+    scheduled: 'Pembelajaran akan dimulai saat hitung mundur ini selesai.', starting: 'Siap belajar. Menunggu host memulai.',
+    busy: 'Menunggu pekerjaan agent selesai. Hitung mundur akan dilanjutkan otomatis.', running: 'Mempelajari pekerjaan yang selesai…',
+    failed: 'Pembaruan ini belum dapat dikonfirmasi. Periksa aktivitas sesi dan pengaturan vault.', cancelled: 'Pembaruan terjadwal ini dibatalkan.',
+    changed: 'Workspace, profil, atau tujuan berubah. Pekerjaan sebelumnya tidak dikirim ke vault lain.',
+    interrupted: 'Extalia ditutup sebelum pembaruan selesai. Pembaruan tidak diulang otomatis.',
+    timeRemaining: 'Waktu menuju pembelajaran dimulai', runNow: 'Jalankan sekarang', snooze: (minutes: number) => `Tunda ${minutes} menit`, dismiss: 'Tutup pemberitahuan pembaruan',
+  },
   vaultProfiles: {
     title: 'Profil vault Extalia', lead: 'Satu profil Extalia memiliki satu vault Obsidian. Beberapa workspace dapat memakai vault profil yang sama.',
-    scope: 'Profil ini mengelompokkan catatan workspace dan notulen rapat. Sesi, kredensial, dan preferensi tampilan tetap di aplikasi ini. Halaman Knowledge hanya mengindeks vault bawaan yang ditandai.',
-    indexed: 'Vault bawaan terindeks', notesOnly: 'Tujuan catatan', noWorkspaces: 'Belum ada workspace', create: 'Profil vault baru', refresh: 'Muat ulang',
+    scope: 'Profil ini mengelompokkan catatan workspace dan notulen rapat. Sesi, kredensial, dan preferensi tampilan tetap di aplikasi ini. Knowledge mengikuti vault profil workspace yang dipilih. Workspace terisolasi memiliki profil khusus.',
+    indexed: 'Vault bawaan terindeks', notesOnly: 'Vault workspace', noWorkspaces: 'Belum ada workspace', create: 'Profil vault baru', refresh: 'Muat ulang',
     name: 'Nama profil', root: 'Folder vault', managed: 'Kosongkan untuk folder yang dikelola Extalia',
-    indexedHint: 'Profil ini mengikuti pengaturan vault Knowledge di atas. Mengganti profil tidak mengganti indeks Knowledge.',
+    indexedHint: 'Profil ini mengikuti pengaturan vault Knowledge di atas. Pilih workspace di Knowledge untuk melihat vault profilnya.',
     folderHint: 'Pilih folder absolut yang sudah ada, atau kosongkan untuk vault terkelola terpisah. Catatan lama tidak dipindah atau dihapus.',
     minutes: 'Izinkan Extalia menyimpan notulen rapat di vault ini', minutesHint: 'Mengaktifkannya mengizinkan pembuatan catatan rapat otomatis di folder ini. Catatan lama dan pengaturan Obsidian tetap dipertahankan.',
     learningTitle: 'Pembelajaran otomatis', learningEnabled: 'Aktifkan pembelajaran otomatis untuk profil ini',

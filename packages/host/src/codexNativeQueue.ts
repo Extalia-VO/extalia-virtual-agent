@@ -1,11 +1,13 @@
 import { spawn } from 'node:child_process';
 import path from 'node:path';
+import { safeQueueThumbnail } from '@extalia/core';
 import type { ObservedCodexNativeQueueItem } from '@extalia/platform';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MAX_FRAME_BYTES = 2 * 1024 * 1024;
 const MAX_OUTPUT_BYTES = 4 * 1024 * 1024;
 const MAX_TEXT_BYTES = 256 * 1024;
+const MAX_PREVIEW_BYTES = 256 * 1024;
 const TIMEOUT_MS = 10_000;
 type ObjectValue = Record<string, unknown>;
 const object = (value: unknown): ObjectValue | undefined => value !== null && typeof value === 'object' && !Array.isArray(value) ? value as ObjectValue : undefined;
@@ -28,11 +30,12 @@ export class CodexNativeQueueError extends Error {
   }
 }
 
-/** Installed Codex 0.167 queue projection. Attachment values and text spans never cross this boundary. */
+/** Installed Codex 0.167 queue projection. Only bounded display metadata crosses this boundary. */
 function project(value: unknown): CodexNativeQueueResult {
   const page = object(value);
   if (!page || !Array.isArray(page.data) || page.data.length > 50 || page.nextCursor !== undefined && page.nextCursor !== null && !bounded(page.nextCursor, 4096)) throw new CodexNativeQueueError();
   let remaining = MAX_TEXT_BYTES;
+  let previewBytes = 0, previews = 0;
   let truncated = typeof page.nextCursor === 'string';
   const ids = new Set<string>();
   const items = page.data.map((value): ObservedCodexNativeQueueItem => {
@@ -40,6 +43,7 @@ function project(value: unknown): CodexNativeQueueResult {
     if (!entry || !bounded(entry.id, 256) || ids.has(entry.id) || !bounded(entry.clientUserMessageId, 256) || !Array.isArray(entry.input) || entry.input.length > 1024) throw new CodexNativeQueueError();
     ids.add(entry.id);
     let text = '', nonTextItems = 0, clipped = false;
+    const attachments: NonNullable<ObservedCodexNativeQueueItem['attachments']> = [];
     for (const value of entry.input) {
       const input = object(value);
       if (!input || typeof input.type !== 'string') throw new CodexNativeQueueError();
@@ -53,16 +57,34 @@ function project(value: unknown): CodexNativeQueueResult {
           text += char; remaining -= bytes;
         }
       } else {
-        // Validate known discriminants without returning private attachment paths, URLs or names.
+        // Preserve fail-closed discriminant validation before projecting any display metadata.
         const valid = ['image', 'audio'].includes(input.type) ? true
           : ['localImage', 'localAudio'].includes(input.type) ? bounded(input.path, 4096)
             : ['skill', 'mention'].includes(input.type) && bounded(input.path, 4096) && bounded(input.name, 4096);
         if (!valid) throw new CodexNativeQueueError('unsupported');
         nonTextItems++;
+        if (attachments.length >= 8) continue;
+        const kind = ['image', 'localImage'].includes(input.type) ? 'image'
+          : ['audio', 'localAudio'].includes(input.type) ? 'audio' : input.type === 'skill' ? 'skill' : 'file';
+        const attachment: NonNullable<ObservedCodexNativeQueueItem['attachments']>[number] = { kind };
+        if (input.type === 'localImage' || input.type === 'localAudio') {
+          const basename = Array.from((input.path as string).split(/[\\/]/).at(-1)!).filter(char => {
+            const code = char.codePointAt(0)!;
+            return code >= 32 && !(code >= 127 && code <= 159) && !(code >= 0x202a && code <= 0x202e) && !(code >= 0x2066 && code <= 0x2069);
+          }).join('').trim().slice(0, 200);
+          if (basename && basename !== '.' && basename !== '..') attachment.name = basename;
+        }
+        if (input.type === 'image' && previews < 8) {
+          const thumbnail = safeQueueThumbnail(input.url);
+          if (thumbnail && previewBytes + thumbnail.length <= MAX_PREVIEW_BYTES) {
+            attachment.thumbnail = thumbnail; previews++; previewBytes += thumbnail.length;
+          }
+        }
+        attachments.push(attachment);
       }
     }
     if (clipped) truncated = true;
-    return { id: entry.id, text, nonTextItems, ...(clipped ? { truncated: true } : {}) };
+    return { id: entry.id, text, nonTextItems, ...(attachments.length ? { attachments } : {}), ...(clipped ? { truncated: true } : {}) };
   });
   return { items, ...(truncated ? { truncated: true } : {}) };
 }

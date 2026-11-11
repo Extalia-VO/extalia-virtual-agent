@@ -137,10 +137,11 @@ describe('prompt attachment metadata', () => {
       { name: 4, kind: 'file', size: 3 },
       null,
       { name: 'd.bin', kind: 'file', size: -5 },
+      { name: 'empty.bin', kind: 'file', size: 0 },
     ])).toEqual([
       { name: 'a.png', kind: 'image', size: 120 },
       { name: 'b.md', kind: 'text', size: 3 },
-      { name: 'd.bin', kind: 'file', size: 0 },
+      { name: 'empty.bin', kind: 'file', size: 0 },
     ]);
     expect(promptAttachmentMetadata(undefined)).toEqual([]);
     expect(promptAttachmentMetadata('a.png')).toEqual([]);

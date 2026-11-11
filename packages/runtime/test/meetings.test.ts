@@ -50,6 +50,18 @@ function harness(script?: (id: string, request: ModelRequest) => Promise<ModelRe
 }
 
 describe('conduct_team_meeting', () => {
+  it('prepares each participant independently in both rounds without widening discussion tools', async () => {
+    const h = harness(), prepared: string[] = [];
+    h.options.prepareWorkerRequest = (selected, agentId) => async request => {
+      prepared.push(agentId);
+      expect(selected?.id).toBe(agentId);
+      expect(request.tools.some(tool => ['write_file', 'run_command', 'memory_write', 'manage_team'].includes(tool.name))).toBe(false);
+      return `${request.system}\nprepared-for:${agentId}`;
+    };
+    expect((await createConductTeamMeetingTool(h.options).run({ topic: 'Review', members: ['member-0', 'member-1'] }, h.context)).ok).toBe(true);
+    expect(prepared.sort()).toEqual(['member-0', 'member-0', 'member-1', 'member-1']);
+    for (const request of h.requests) expect(request.request.system).toContain(`prepared-for:${request.id}`);
+  });
   it('runs two real rounds with shared first-round evidence and only read tools even for writers', async () => {
     const h = harness();
     const meeting = createConductTeamMeetingTool(h.options);

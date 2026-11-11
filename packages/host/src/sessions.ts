@@ -3,7 +3,7 @@ import { readFile, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import type { AgentTeam, MemberGender } from '@extalia/core';
-import type { SessionContextUsage, SessionOptions } from '@extalia/platform';
+import type { SessionContextUsage, SessionOptions, SessionWorkspaceFileScope } from '@extalia/platform';
 import { parseEventLines, type ExtaliaEvent } from '@extalia/protocol';
 import { appendLine, CorruptFileError, isNotFound, readJson, writeJsonAtomic } from './jsonStore.js';
 
@@ -29,6 +29,11 @@ export interface SessionRecord {
   context?: SessionContextUsage;
   /** Host-owned snapshot of workspace folder/cross-access grants used by model history. */
   workspaceBoundary?: string;
+  /** Explicit user review allowing this conversation's context under these exact grants. */
+  reviewedContextBoundary?: string;
+  workspaceFileScopes?: SessionWorkspaceFileScope[];
+  /** Project root of the most recent history segment, before a folder setting changes. */
+  workspaceFileRoot?: string;
 }
 
 export type SessionPatch = Partial<Omit<SessionRecord, 'id'>>;
@@ -36,6 +41,10 @@ export type SessionPatch = Partial<Omit<SessionRecord, 'id'>>;
 export interface SessionUpdateOptions {
   /** Compare the persisted team inside the update transaction; an absent team is a valid expectation. */
   expectedTeam?: AgentTeam;
+  /** Move admission compares the complete reviewed record atomically. */
+  expectedRecord?: SessionRecord;
+  /** Reject configuration saves validated before a concurrent workspace move. */
+  expectedWorkspaceId?: string;
 }
 
 export class SessionTeamConflictError extends Error {
@@ -46,7 +55,11 @@ export class SessionTeamConflictError extends Error {
 }
 
 function checkExpectedTeam(record: SessionRecord, options: SessionUpdateOptions | undefined): void {
-  if (options !== undefined && !isDeepStrictEqual(record.team, options.expectedTeam)) throw new SessionTeamConflictError();
+  if (options?.expectedRecord !== undefined && !isDeepStrictEqual(record, options.expectedRecord)) throw new Error('Session settings changed. Review the workspace destination again.');
+  if (options?.expectedWorkspaceId !== undefined && record.workspaceId !== options.expectedWorkspaceId) throw new Error('The session moved to another workspace. Refresh before saving settings.');
+  // An empty options object historically compares against an absent team.
+  if (options !== undefined && (!('expectedRecord' in options) && !('expectedWorkspaceId' in options) || 'expectedTeam' in options)
+    && !isDeepStrictEqual(record.team, options.expectedTeam)) throw new SessionTeamConflictError();
 }
 
 export const SESSION_ID_PATTERN = /^s_[a-z0-9]{6,40}$/;

@@ -26,6 +26,9 @@ export function useFacilityDirector(characters: MovementDirector): FacilityNpcDi
   const director = useMemo(() => new FacilityNpcDirector(
     { navigation: officeNavigation(), elevators: liveElevatorAccess, trackWalker: trackMovingOccupant, trackBody: trackStationaryOccupant, doors: doorTraffic,
       walkable: walkingClearanceFor(characters).segmentClear, seatContactClear: walkingClearanceFor(characters).seatContactClear,
+      seatExitClear: walkingClearanceFor(characters).seatExitClear,
+      seatEntryClear: walkingClearanceFor(characters).seatEntryClear,
+      chairMotionClear: walkingClearanceFor(characters).chairMotionClear,
       nearbyWalkers: getNearbyMovingOccupantsSnapshot },
     () => characters.list,
   ), [characters]);

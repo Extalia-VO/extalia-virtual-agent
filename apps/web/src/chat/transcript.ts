@@ -1,5 +1,6 @@
-import type { ActivityKind, AgentState, ExtaliaEvent, FileChangeKind, RiskLevel, Usage } from '@extalia/protocol';
+import type { ActivityKind, AgentState, ExtaliaEvent, FileChangeKind, RiskLevel, SkillLoadReport, Usage } from '@extalia/protocol';
 import { promptAttachmentMetadata, type AttachmentMetadata } from './attachments';
+import { historicalSessionFilePath, type SessionFileRoots, type SessionFileScope } from './sessionFileScopes';
 
 /**
  * Pure projection of a session's protocol events into what Chat shows. It
@@ -30,6 +31,8 @@ export interface ToolItem {
   target?: string;
   status: ToolStatus;
   output?: string;
+  /** Passive result media, resolved only through this session’s preview loader. */
+  attachments?: AttachmentMetadata[];
   command?: CommandRun;
   files: FileChange[];
 }
@@ -37,6 +40,14 @@ export interface ApprovalItem { kind: 'approval'; id: string; approvalId: string
 export interface FilesItem { kind: 'files'; id: string; files: FileChange[] }
 export interface NoticeItem { kind: 'notice'; id: string; reason: 'cancelled' | 'failed' | 'agent-error'; text?: string }
 export interface UsageItem { kind: 'usage'; id: string; usage?: Usage; model?: string; costUsd?: number; summary?: string }
+/** Instructions prepared by the host, distinct from a model-issued tool call. */
+export interface SkillLoadItem extends SkillLoadReport {
+  kind: 'skills';
+  id: string;
+  owner: 'primary' | 'worker' | 'agent';
+  agentId?: string;
+  agentLabel?: string;
+}
 /** A worker agent the primary delegated to; its own tool calls only update this card. */
 export interface WorkerItem {
   kind: 'worker';
@@ -51,6 +62,8 @@ export interface WorkerItem {
   /** Label of the worker's latest tool call. */
   activity?: string;
   toolCalls: number;
+  /** At most ten distinct result attachments, in source order, inside this worker’s card. */
+  attachments?: AttachmentMetadata[];
   /** The primary's delegate call that started the worker. */
   callId?: string;
 }
@@ -58,7 +71,10 @@ export interface WorkerItem {
 /** Edge of a conversation carried over from another agent (`import` channel events). */
 export interface HandoffItem { kind: 'handoff'; id: string; edge: 'start' | 'end'; runtime: string }
 
-export type TranscriptItem = UserItem | AssistantItem | ToolItem | ApprovalItem | FilesItem | NoticeItem | UsageItem | WorkerItem | HandoffItem;
+export type TranscriptItem = (UserItem | AssistantItem | ToolItem | ApprovalItem | FilesItem | NoticeItem | UsageItem | WorkerItem | HandoffItem | SkillLoadItem) & {
+  /** Absent follows the current workspace; null disables ambiguous historical file links. */
+  fileScope?: SessionFileScope | null;
+};
 
 interface Turn {
   cancelled: boolean;
@@ -86,7 +102,7 @@ const addFile = (files: FileChange[], change: FileChange) => {
   else files.push({ ...change });
 };
 
-export function projectTranscript(events: readonly ExtaliaEvent[]): TranscriptItem[] {
+export function projectTranscript(events: readonly ExtaliaEvent[], historicalRoots?: SessionFileRoots): TranscriptItem[] {
   const items: TranscriptItem[] = [];
   const seen = new Set<string>();
   const toolsByCall = new Map<string, ToolItem>();
@@ -96,6 +112,7 @@ export function projectTranscript(events: readonly ExtaliaEvent[]): TranscriptIt
   let turn: Turn | undefined;
   /** Runtime whose carried-over conversation is being shown. */
   let carrying: string | undefined;
+  let primaryAgentId: string | undefined;
 
   const currentTurn = (): Turn => (turn ??= { cancelled: false, tools: [], workers: [], approvals: [] });
   const settleStream = () => { if (streaming) streaming.streaming = false; streaming = undefined; };
@@ -134,13 +151,33 @@ export function projectTranscript(events: readonly ExtaliaEvent[]): TranscriptIt
       carrying = undefined;
     }
     const worker = event.agentId ? workers.get(event.agentId) : undefined;
+    if (body.type === 'skills.loaded') {
+      settleStream();
+      items.push({ kind: 'skills', id: event.id, skills: body.skills.map(skill => ({ ...skill })),
+        characters: body.characters, budgetCharacters: body.budgetCharacters,
+        ...(body.omitted === undefined ? {} : { omitted: body.omitted }),
+        owner: worker ? 'worker' : !event.agentId || event.agentId === primaryAgentId ? 'primary' : 'agent',
+        ...(event.agentId ? { agentId: event.agentId } : {}), ...(worker ? { agentLabel: worker.label ?? worker.subagentId } : {}) });
+      continue;
+    }
     if (worker) {
       // Worker activity stays inside its card instead of joining the primary's tool cards.
       if (body.type === 'tool.started') { worker.toolCalls++; worker.activity = body.label; }
+      if (body.type === 'tool.completed' && body.attachments?.length) {
+        const current = worker.attachments ?? [];
+        const key = (file: AttachmentMetadata) => file.ref ?? `${file.kind}:${file.name}:${file.size}`;
+        const known = new Set(current.map(key));
+        const added = promptAttachmentMetadata(body.attachments).filter(file => {
+          if (known.has(key(file))) return false;
+          known.add(key(file)); return true;
+        });
+        worker.attachments = [...current, ...added].slice(0, 10);
+      }
       continue;
     }
     switch (body.type) {
       case 'prompt.submitted':
+        primaryAgentId = event.agentId;
         endTurn();
         {
           const attachments = promptAttachmentMetadata((body as { attachments?: unknown }).attachments);
@@ -231,6 +268,7 @@ export function projectTranscript(events: readonly ExtaliaEvent[]): TranscriptIt
           ?? startTool({ kind: 'tool', id: event.id, tool: body.tool, activity: body.kind, label: body.label, status: 'running', files: [], ...(body.toolCallId ? { callId: body.toolCallId } : {}) });
         tool.status = body.ok ? 'ok' : 'failed';
         if (body.output !== undefined) tool.output = body.output;
+        if (body.attachments !== undefined) tool.attachments = promptAttachmentMetadata(body.attachments);
         if (body.target && !tool.target) tool.target = body.target;
         // A finished delegate call also settles the workers it started.
         for (const item of currentTurn().workers) {
@@ -262,7 +300,8 @@ export function projectTranscript(events: readonly ExtaliaEvent[]): TranscriptIt
         break;
       }
       case 'file.written': {
-        const change = { path: body.path, change: body.change };
+        const scope = historicalRoots?.get(event.id);
+        const change = { path: scope ? historicalSessionFilePath(body.path, scope) ?? body.path : body.path, change: body.change };
         const active = currentTurn();
         const tool = body.toolCallId ? toolsByCall.get(body.toolCallId) : runningTool();
         if (tool) { addFile(tool.files, change); break; }
@@ -318,6 +357,9 @@ export function projectTranscript(events: readonly ExtaliaEvent[]): TranscriptIt
     // Carried turns never finish here; the next prompt continues in Extalia.
     endTurn();
     items.push({ kind: 'handoff', id: 'handoff:end', edge: 'end', runtime: carrying });
+  }
+  for (const item of items) {
+    if (historicalRoots?.has(item.id)) item.fileScope = historicalRoots.get(item.id)!;
   }
   return items;
 }

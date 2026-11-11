@@ -9,13 +9,18 @@ export function ObservedHermesControls({ t, agents, session, settingsOnly = fals
   const view = useSyncExternalStore(model.subscribe, model.getSnapshot, model.getSnapshot);
   useEffect(() => model.start(), [model]);
   if (session.control !== 'observed' || session.observation?.sourceId !== 'hermes') return null;
-  return <ObservedHermesContent t={t} view={view} control={model} settingsOnly={settingsOnly} />;
+  return <ObservedHermesContent t={t} view={view} control={model} settingsOnly={settingsOnly} session={session} />;
 }
-export function ObservedHermesContent({ t, view, control, settingsOnly = false }: { t: Messages; view: ObservedHermesView; control: ObservedHermesControl; settingsOnly?: boolean }) {
+export function ObservedHermesContent({ t, view, control, settingsOnly = false, session }: { t: Messages; view: ObservedHermesView; control: ObservedHermesControl; settingsOnly?: boolean; session?: SessionSummary }) {
   const c = t.observedHermes, status = view.status, id = useId();
   const [profile, setProfile] = useState('');
   return <section className="observed-codex" aria-labelledby={`${id}-title`}>
     <h3 id={`${id}-title`}>{c.title}</h3><p className="observed-codex-hint">{c.helper}</p>
+    {(session?.model || session?.effort) && <p className="observed-codex-hint" title={t.observedCodexPrompt.settingsReadOnly}>
+      {session.model && <span>{t.composer.model}: <strong>{session.model}</strong></span>}
+      {session.model && session.effort && ' · '}
+      {session.effort && <span>{t.composer.effort}: <strong>{t.composer.effortLabel[session.effort]}</strong></span>}
+    </p>}
     <p role="status">{view.phase === 'unsupported' ? c.unsupported : view.phase === 'loading' ? c.loading : view.phase === 'error' ? c.failed
       : status?.state === 'connected' ? c.connected : status?.state === 'unavailable' ? c.unavailable : c.disconnected}</p>
     {status?.problem && <p className="observed-codex-hint">{status.problem}</p>}

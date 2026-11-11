@@ -8,6 +8,6 @@
 .observed-codex-native-queue button { max-width: 100%; padding: 5px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--sunken); color: var(--text); font: inherit; white-space: normal; }
 .observed-codex-native-queue button:disabled { opacity: .5; cursor: default; }
 .observed-codex-native-queue > summary:focus-visible, .observed-codex-native-queue button:focus-visible, .observed-codex-native-queue ol:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.observed-codex-native-queue ol { display: grid; gap: 8px; min-width: 0; max-height: 240px; overflow: auto; margin: 0; padding: 0 0 0 24px; scrollbar-gutter: stable; }
-.observed-codex-native-queue li { min-width: 0; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--sunken); }
+.observed-codex-native-queue-body > ol { display: grid; gap: 8px; min-width: 0; max-height: 240px; overflow: auto; margin: 0; padding: 0 0 0 24px; scrollbar-gutter: stable; }
+.observed-codex-native-queue-body > ol > li { min-width: 0; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--sunken); }
 .observed-codex-native-queue-text { white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; }

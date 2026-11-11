@@ -4,6 +4,7 @@ import type { AgentHostApi, HostState, SessionSummary } from '@extalia/platform'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { MESSAGES } from '../src/i18n';
 import { CharacterConversation } from '../src/office/CharacterConversation';
+import { ObservedSessionTools } from '../src/observe/ObservedSessionControl';
 import type { OfficeAgent } from '../src/office/presence';
 
 // Run the conversation's handlers and layout effects without mounting its host-backed children.
@@ -13,6 +14,8 @@ const hooks = vi.hoisted(() => ({
   pending: [] as (() => void)[], frames: [] as FrameRequestCallback[],
 }));
 vi.mock('../src/chat/useSessionEvents', () => ({ useSessionEvents: () => ({ events: [], error: null, loading: false }) }));
+// This handler-only harness has no mounted provider; use its normal absent-context state.
+vi.mock('../src/observe/ObservedInputProvider', () => ({ useObservedInputs: () => null }));
 vi.mock('react', async original => ({
   ...await original<typeof React>(),
   useState: (initial: unknown) => {
@@ -134,12 +137,16 @@ it('publishes unmount cleanup to the latest callback', () => {
   expect(h.report).toHaveBeenCalledTimes(1);
 });
 
-it('keeps cooperative-only observed conversations free of an empty native tools rail', () => {
+it('keeps cooperative observed settings collapsed until the user opens the tools', () => {
   const h = harness();
-  h.props.session = { ...h.props.session, observation: { ...h.props.session.observation!, sourceId: 'claude-code' } };
+  h.props.session = { ...h.props.session, observation: { ...h.props.session.observation!, sourceId: 'hermes' } };
   h.props.agents = { observedControlStatus: vi.fn(), dispatchObservedControl: vi.fn() } as unknown as AgentHostApi;
   const tree = h.render();
-  expect(elements(tree).some(element => element.type === 'aside')).toBe(false);
-  expect(elements(tree).some(element => String(element.props.className).includes('character-tools-toggle'))).toBe(false);
-  expect(h.report).toHaveBeenLastCalledWith({ available: false, open: false, wide: true });
+  expect(byClass(tree, 'character-conversation-tools').props.inert).toBe(true);
+  expect(byClass(tree, 'character-tools-toggle').props['aria-expanded']).toBe(false);
+  expect(h.report).toHaveBeenLastCalledWith({ available: true, open: false, wide: true });
+  click(byClass(tree, 'character-tools-toggle'));
+  const opened = h.render();
+  expect(byClass(opened, 'character-conversation-tools').props.inert).toBeUndefined();
+  expect(elements(opened).some(element => element.type === ObservedSessionTools)).toBe(true);
 });

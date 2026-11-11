@@ -16,7 +16,7 @@ export function desktopUpdater(updater: DesktopHostApi['updater']): UpdateCapabi
   return {
     status: () => updater.status(),
     check: () => updater.check(),
-    install: () => updater.install(),
+    install: expectedVersion => updater.install(expectedVersion),
     postpone: () => updater.postpone(),
     onStatus: listener => updater.onStatus(listener),
   };
@@ -29,5 +29,9 @@ export function desktopRestart(restart: DesktopHostApi['restart']): RestartCapab
 
 /** Native notifications through the Desktop main process, which validates and bounds every payload. */
 export function desktopNotifications(notifications: NonNullable<DesktopHostApi['notifications']>): NotificationCapability {
-  return { notify: notification => notifications.notify(notification), onActivate: listener => notifications.onActivate(listener) };
+  return {
+    supportsTargets: notifications.supportsTargets === true,
+    notify: notification => notifications.notify(notification),
+    onActivate: listener => notifications.onActivate(listener),
+  };
 }

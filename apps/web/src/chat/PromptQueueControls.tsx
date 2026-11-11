@@ -6,6 +6,7 @@ import { supportsObservedPromptQueue } from '../observe/observedCodexPromptModel
 import { Icon } from '../ui/Icon';
 import type { PromptQueueControl, PromptQueueDrag, PromptQueueView } from './promptQueueModel';
 import { usePromptQueue } from './usePromptQueue';
+import { QueuedPromptPreview } from './QueuedPromptPreview';
 import './promptQueue.css';
 
 export interface PromptQueueControlsProps { t: Messages; agents: AgentHostApi; session: SessionSummary; disabled?: boolean }
@@ -36,8 +37,10 @@ export function PromptQueueContent({ t, control, view, disabled = false }: {
   const canReorder = !locked && !view.edit && pending.length > 1;
   const stopDrag = () => { drag.current = undefined; setDropTarget(undefined); };
   useUnsavedDraft(id, !!view.edit && view.edit.text !== view.edit.original.text);
+  const activeCount = visibleItems.filter(item => item.state !== 'sent').length;
+  if (!activeCount && !view.edit && view.phase !== 'error') return null;
   return <details className="prompt-queue prompt-queue-list" open={pending.length > 0 || uncertain || view.phase === 'error' || undefined}>
-    <summary title={c.sourceHint}>{c.title} <span className="badge">{pending.length}</span></summary>
+    <summary title={c.sourceHint}>{c.title} <span className="badge">{activeCount}</span></summary>
     <div className="prompt-queue-body">
       <div className="prompt-queue-toolbar">
         <p className="prompt-queue-hint" role="status">{view.phase === 'unsupported' || status && !status.supported ? c.unsupported : view.phase === 'loading' ? c.loading
@@ -81,7 +84,7 @@ export function PromptQueueContent({ t, control, view, disabled = false }: {
               }} onDragEnd={stopDrag}><Icon name="menu" /></button>}
             <p className={`prompt-queue-hint${item.state === 'pending' ? ' visually-hidden' : ''}`}>{c.states[item.state]}</p>
           </div>
-          <pre title={item.text}>{item.text}</pre>
+          <QueuedPromptPreview t={t} text={item.text} />
           {item.state === 'pending' ? <div className="prompt-queue-actions">
             {status?.canSteer && <button type="button" aria-label={c.steer} title={c.steer} disabled={locked || !!view.edit} onClick={() => { void control.steer(item); }}><Icon name="send" /></button>}
             <button type="button" aria-label={c.edit} title={c.edit} disabled={locked || !!view.edit} onClick={() => control.beginEdit(item)}><Icon name="edit" /></button>

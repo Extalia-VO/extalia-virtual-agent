@@ -1,6 +1,7 @@
 import type { ExtaliaEvent } from '@extalia/protocol';
 import { projectTranscript } from '../chat/transcript';
 import type { TranscriptItem } from '../chat/transcript';
+import type { SessionFileRoots } from '../chat/sessionFileScopes';
 import type { OfficeAgent } from './presence';
 
 /**
@@ -8,7 +9,7 @@ import type { OfficeAgent } from './presence';
  * conversation with its workers as cards; a managed worker shows its card; an observed subagent
  * shows its own messages and tools (its task, replies and calls), never the lead's.
  */
-export function characterTranscript(events: readonly ExtaliaEvent[], agent: OfficeAgent): TranscriptItem[] {
+export function characterTranscript(events: readonly ExtaliaEvent[], agent: OfficeAgent, fileRoots?: SessionFileRoots): TranscriptItem[] {
   const sessionEvents = events.filter(event => event.sessionId === agent.sessionId);
   const selectedEvents = agent.agentId === 'primary'
     ? sessionEvents
@@ -16,7 +17,7 @@ export function characterTranscript(events: readonly ExtaliaEvent[], agent: Offi
       ? sessionEvents.filter(event => event.agentId === agent.agentId && event.body.type !== 'subagent.spawned' && event.body.type !== 'subagent.state')
       : sessionEvents.filter(event => event.agentId === agent.agentId
         || ('subagentId' in event.body && event.body.subagentId === agent.agentId));
-  const items = projectTranscript(selectedEvents);
+  const items = projectTranscript(selectedEvents, fileRoots);
   return agent.control === 'observed' || agent.agentId !== 'primary'
     ? items.filter(item => item.kind !== 'approval')
     : items;

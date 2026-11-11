@@ -167,4 +167,40 @@ describe.each(['saved', 'memory'] as const)('%s session team compare-and-swap', 
     expect(second.team?.goal).toBe('Second');
     expect((await store.get(id))!.team).toEqual(second.team);
   });
+
+  it('compares the complete move review inside the update transaction', async () => {
+    const snapshot = structuredClone((await store.get(id))!);
+    const user = store.update(id, { options: { model: 'newer-model' } });
+    const move = store.update(id, { workspaceId: 'destination' }, { expectedRecord: snapshot });
+    const results = await Promise.allSettled([user, move]);
+    expect(results[0].status).toBe('fulfilled');
+    expect(results[1]).toMatchObject({ status: 'rejected', reason: { message: expect.stringMatching(/Review the workspace destination again/) } });
+    expect(await store.get(id)).toMatchObject({ workspaceId: 'workspace', options: { model: 'newer-model' }, team: original });
+  });
+
+  it('admits an exact record expectation without implicitly requiring an absent team', async () => {
+    const snapshot = structuredClone((await store.get(id))!);
+    const moved = await store.update(id, { workspaceId: 'destination', reviewedContextBoundary: 'reviewed-boundary' }, { expectedRecord: snapshot });
+    expect(moved).toEqual({ ...snapshot, workspaceId: 'destination', reviewedContextBoundary: 'reviewed-boundary' });
+    await expect(store.update(id, { title: 'Stale move' }, { expectedRecord: snapshot })).rejects.toThrow(/Review the workspace destination again/);
+    expect(await store.get(id)).toEqual(moved);
+  });
+
+  it('rejects settings validated for the source workspace when a move wins the queue', async () => {
+    const move = store.update(id, { workspaceId: 'destination' });
+    const settings = store.update(id, { options: { model: 'stale-model' } }, { expectedWorkspaceId: 'workspace' });
+    const results = await Promise.allSettled([move, settings]);
+    expect(results[0].status).toBe('fulfilled');
+    expect(results[1]).toMatchObject({ status: 'rejected', reason: { message: expect.stringMatching(/moved to another workspace/) } });
+    expect(await store.get(id)).toMatchObject({ workspaceId: 'destination', team: original });
+    expect((await store.get(id))!.options).toBeUndefined();
+  });
+
+  it('checks explicit team expectations together with workspace expectations', async () => {
+    const changed = { ...team(), goal: 'Current workspace choice' };
+    const updated = await store.update(id, { team: changed }, { expectedWorkspaceId: 'workspace' });
+    expect(updated.team).toEqual(changed);
+    await expect(store.update(id, { team: team() }, { expectedWorkspaceId: 'workspace', expectedTeam: team() })).rejects.toBeInstanceOf(SessionTeamConflictError);
+    expect((await store.get(id))!.team).toEqual(changed);
+  });
 });

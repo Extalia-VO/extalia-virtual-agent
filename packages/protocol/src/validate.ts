@@ -3,6 +3,7 @@ import {
   type EventBody, type EventType, type ExtaliaEvent,
 } from './events.js';
 import { NONBLANK_PATTERN, SINGLE_LINE_PATTERN, type JsonSchema } from './jsonSchema.js';
+import { SKILL_LOAD_LIMITS, skillLoadEntriesJsonSchema, skillLoadEntryErrors, skillLoadReportErrors } from './skillLoading.js';
 
 /** Identifiers: non-empty, single line, bounded. */
 const ID_LIMIT = 200;
@@ -18,7 +19,7 @@ type FieldRule =
   | { kind: 'id' | 'label' | 'text' | 'boolean' | 'usage' | 'labels'; optional?: true }
   | { kind: 'number'; optional?: true; integer?: true; min?: number; max?: number }
   | { kind: 'enum'; values: readonly string[]; optional?: true }
-  | { kind: 'attachments'; optional?: true };
+  | { kind: 'attachments' | 'skill-load-entries'; optional?: true };
 
 interface BodySpec {
   fields: Record<string, FieldRule>;
@@ -50,6 +51,7 @@ export const EVENT_SPECS: Readonly<Record<EventType, BodySpec>> = {
   'prompt.submitted': { fields: { text, via: { kind: 'enum', values: ['extalia', 'native'] }, attachments: { kind: 'attachments', optional: true } } },
   'user.intervention': { fields: { action: { kind: 'enum', values: ['steer', 'pause', 'resume', 'cancel'] }, text: optText } },
   'model.thinking': { fields: {} },
+  'skills.loaded': { fields: { skills: { kind: 'skill-load-entries' }, characters: { kind: 'number', integer: true, min: 0, max: SKILL_LOAD_LIMITS.characters }, budgetCharacters: { kind: 'number', integer: true, min: 0, max: SKILL_LOAD_LIMITS.characters }, omitted: { kind: 'number', integer: true, min: 0, max: 4096, optional: true } } },
   'model.delta': { fields: { text } },
   'model.completed': { fields: { text, model: optLabel, usage } },
   'turn.completed': { fields: { summary: optText, model: optLabel, usage, costUsd: { kind: 'number', min: 0, optional: true } } },
@@ -62,7 +64,7 @@ export const EVENT_SPECS: Readonly<Record<EventType, BodySpec>> = {
   'subagent.state': { fields: { subagentId: id, state: agentState, summary: optLabel, phase, reason }, requires: ['agentId'] },
   'tool.started': { fields: { toolCallId: optId, tool: label, kind: activity, label, target: optLabel } },
   'tool.output': { fields: { toolCallId: optId, text } },
-  'tool.completed': { fields: { toolCallId: optId, tool: label, kind: activity, label, ok: bool, target: optLabel, output: optText } },
+  'tool.completed': { fields: { toolCallId: optId, tool: label, kind: activity, label, ok: bool, target: optLabel, output: optText, attachments: { kind: 'attachments', optional: true } } },
   'command.started': { fields: { commandId: optId, command: text, cwd: optLabel } },
   'command.output': { fields: { commandId: optId, stream: { kind: 'enum', values: ['stdout', 'stderr'] }, text } },
   'command.completed': { fields: { commandId: optId, exitCode: { kind: 'number', integer: true }, durationMs: optCount } },
@@ -117,6 +119,7 @@ function checkString(value: unknown, path: string, limit: number, allowEmpty: bo
 
 function checkField(value: unknown, rule: FieldRule, path: string, errors: string[]): void {
   switch (rule.kind) {
+    case 'skill-load-entries': errors.push(...skillLoadEntryErrors(value, path)); return;
     case 'id': return checkString(value, path, ID_LIMIT, false, true, errors);
     case 'label': return checkString(value, path, LABEL_LIMIT, false, false, errors);
     case 'text': return checkString(value, path, TEXT_LIMIT, true, false, errors);
@@ -142,7 +145,7 @@ function checkField(value: unknown, rule: FieldRule, path: string, errors: strin
         const at = `${path}[${index}]`;
         if (!isRecord(item)) { errors.push(`${at}: expected an object.`); return; }
         for (const key of Object.keys(item)) if (!['name', 'kind', 'size', 'ref'].includes(key)) errors.push(`${at}.${key}: unknown field.`);
-        if (item.ref !== undefined && (typeof item.ref !== 'string' || !/^[0-9a-f]{64}$/.test(item.ref))) errors.push(`${at}.ref: expected a SHA-256 hex digest.`);
+        if (item.ref !== undefined && (typeof item.ref !== 'string' || item.ref.length !== 64 || !/^[0-9a-f]{64}$/.test(item.ref))) errors.push(`${at}.ref: expected a SHA-256 hex digest.`);
         checkString(item.name, `${at}.name`, LABEL_LIMIT, false, true, errors);
         if (typeof item.kind !== 'string' || !['image', 'text', 'file'].includes(item.kind)) errors.push(`${at}.kind: expected image, text or file.`);
         checkField(item.size, { kind: 'number', integer: true, min: 0 }, `${at}.size`, errors);
@@ -169,6 +172,7 @@ function fieldSchema(rule: FieldRule): JsonSchema {
   });
   const count: JsonSchema = { type: 'integer', minimum: 0 };
   switch (rule.kind) {
+    case 'skill-load-entries': return skillLoadEntriesJsonSchema();
     case 'id': return string(ID_LIMIT, false, true);
     case 'label': return string(LABEL_LIMIT, false, false);
     case 'text': return string(TEXT_LIMIT, true, false);
@@ -178,7 +182,7 @@ function fieldSchema(rule: FieldRule): JsonSchema {
     case 'labels': return { type: 'array', items: string(LABEL_LIMIT, false, false) };
     case 'attachments': return {
       type: 'array', maxItems: MAX_PROMPT_ATTACHMENTS,
-      items: { type: 'object', additionalProperties: false, required: ['name', 'kind', 'size'], properties: { name: string(LABEL_LIMIT, false, true), kind: { type: 'string', enum: ['image', 'text', 'file'] }, size: count, ref: { type: 'string', pattern: '^[0-9a-f]{64}$' } } },
+      items: { type: 'object', additionalProperties: false, required: ['name', 'kind', 'size'], properties: { name: string(LABEL_LIMIT, false, true), kind: { type: 'string', enum: ['image', 'text', 'file'] }, size: count, ref: { type: 'string', minLength: 64, maxLength: 64, pattern: '^[0-9a-f]{64}$' } } },
     };
     case 'usage': return { type: 'object', additionalProperties: false, properties: { inputTokens: count, outputTokens: count, cachedInputTokens: count } };
   }
@@ -190,6 +194,7 @@ export function eventBodyJsonSchema(type: EventType): JsonSchema {
   const required = Object.entries(fields).filter(([, rule]) => !rule.optional).map(([key]) => key);
   return {
     type: 'object', additionalProperties: false, required: ['type', ...required],
+    ...(type === 'skills.loaded' ? { $comment: 'The reference validator additionally enforces unique skill names, characters <= budgetCharacters and loaded instruction totals <= characters.' } : {}),
     properties: { type: { const: type }, ...Object.fromEntries(Object.entries(fields).map(([key, rule]) => [key, fieldSchema(rule)])) },
   };
 }
@@ -234,6 +239,7 @@ export function parseEvent(raw: unknown): ParseResult {
       if (value === undefined) { if (!rule.optional) errors.push(`body.${key}: required for ${raw.body.type}.`); }
       else checkField(value, rule, `body.${key}`, errors);
     }
+    if (raw.body.type === 'skills.loaded') errors.push(...skillLoadReportErrors(raw.body));
     for (const key of spec.requires ?? []) if (raw[key] === undefined) errors.push(`${key}: required for ${raw.body.type}.`);
   }
 

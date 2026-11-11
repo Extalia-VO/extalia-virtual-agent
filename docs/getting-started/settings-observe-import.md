@@ -39,6 +39,33 @@ remain available only where the source supports them.
 conversation without a transcript observer. It is distinct from configuring the
 source application. See [observed replies](observed-replies.md).
 
+### Images viewed by tools
+
+Supported Codex tool results now show image thumbnails beneath the tool activity,
+including results that arrive after their hook row. A run containing a captured
+image opens automatically unless you explicitly folded it. Text output keeps its
+own disclosure. Click the thumbnail to view the original; Escape closes it and
+returns keyboard focus.
+
+Explicit image content in the source is copied into private session storage. For
+a successful, matched `view_image` call that records only a local path, Extalia
+may copy a supported image from the observed project's folder or the system's
+temporary folder. It does not fetch remote image URLs or interpret ordinary tool
+text as a file-read instruction. Labels-only observation suppresses image storage
+and delivery. Choosing a conversation already grants observation access; viewing
+these captured copies does not rerun a tool or call a model.
+
+If the source did not retain image bytes and its file disappeared before capture,
+or the image falls outside the supported scope/size limits, its literal filename
+is shown with **Preview unavailable**. Previously captured copies can survive
+deletion of the original file. The source history must remain readable to rebuild
+the tool rows. These previews belong to observed sessions; portable History
+imports do not automatically include their private image files.
+
+Passive thumbnails are resized to at most 192 pixels. Original images are opened
+only on demand, and offscreen/closed previews release their display resources.
+See the [implementation and limits](../architecture/observed-tool-images.md).
+
 ## Import conversation history
 
 In **Import**, scan sources, choose conversations and give permission to read

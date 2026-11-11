@@ -29,7 +29,38 @@ decisions. Setup/receipt metadata live in
 there. Source changes revoke the saved binding. Hook approval is a separate setup
 below and is not required for ordinary prompts.
 
+## Source model and reasoning effort
+
+The observed prompt box displays the model and reasoning effort reported by the
+original conversation. Source reports take priority over configured defaults;
+unreported effort stays hidden. Visible choices refresh periodically and when
+source metadata changes, while unsent drafts remain with their conversation.
+
+Codex model/effort controls become editable only on an attached original-server
+connection that positively advertises the native settings API. Extalia validates
+the connection and settings revision, sends the settings change to that same
+thread, then reads it back. These settings apply to subsequent messages. An
+uncertain result disables further changes until reconnection; inspect Codex
+before retrying. No new thread, turn or global configuration edit is involved.
+The separate CLI queue messaging path alone does not provide this capability.
+
+Antigravity, Claude Code, Gemini CLI and Hermes display available source metadata
+read-only until a verified native settings API is integrated. Extalia does not
+simulate setting changes by adding model or effort instructions to prompts.
+Configured catalog defaults are fallbacks, not evidence of an active source
+selection. Some integrations do not report reasoning effort.
+
 ## Character message dialog layout
+
+The generic observed sender also uses an ordinary prompt input with an icon
+send button. Press Enter to send and Shift+Enter for a new line. Delivery action,
+connection capabilities and pairing live in **Conversation tools**: a separate
+tab in Observe/Chat, or the Office's tools panel (closed initially for this
+sender). Each tool type has its own tab; switching within tools preserves pending
+tool form inputs. Switching tools or closing the dialog keeps the same conversation draft.
+A normal send prefers an available queue, then an unambiguous native start or
+paired action. It never automatically steers, retargets a changed source or retries
+uncertain delivery. Ambiguous connections require an explicit choice in tools.
 
 Unsent prompt text stays with its conversation when hooks refresh metadata,
 you close/reopen the dialog, or you switch between Chat, Observe and the Office.
@@ -63,7 +94,10 @@ surface instead.
 
 The separate **Queue in Codex** section near the Chat/Observe input shows pending prompts already
 saved in the original Codex conversation's persisted queue. Expand it to inspect
-the text and attachment counts, the last snapshot time, or refresh. It updates
+formatted text and clickable web links, passive attachment names/thumbnails,
+the last snapshot time, or refresh. Only small inline PNGs already supplied by
+Codex have thumbnails; path-only images show their filename without reading the
+file. Empty queue panels disappear and reappear automatically when items arrive. It updates
 while this view is visible, with a short shared cache. No source edit/delete/
 reorder controls are offered, and reading it does not start or resume a turn.
 In the Office character dialog, find it in **Conversation tools**, so the main
@@ -143,6 +177,42 @@ activation and the user's direct manual test remain pending. See
 [the hook decision](../adr/0063-codex-synchronous-permission-hooks.md) and
 [official hook review instructions](https://learn.chatgpt.com/docs/hooks).
 
+## Questions from Codex
+
+Structured Codex questions appear above the normal message input in Chat,
+Observe and the Office character dialog. The global input alert opens the
+requesting character's conversation; an admitted character is framed on its
+current floor. Outstanding questions also enter the existing automatic camera's
+attention list without changing an asynchronously working agent to Waiting.
+
+Codex asynchronous questions (`request_user_input_async`) are metadata on async
+agent messages. Extalia reads them through the existing watched transcript path.
+When the source call identity is verified and the original profile's queue is
+available, selecting an option or entering a custom answer sends a correlated
+user message to that exact conversation through the public Codex queue. The
+first explicit answer enables only that exact queue association, just like a
+normal prompt. No source application configuration or permission policy changes.
+A queued receipt confirms handoff, not that Codex consumed the answer. An exact
+reply later observed in Codex removes the question, including replies entered in
+Codex itself. Identity-less legacy question mirrors remain visible read-only without raising pending-input alerts.
+
+Blocking native input requests retain the original-server callback described
+below. Answers are never selected or submitted automatically. Source changes,
+pausing and labels-only privacy revoke answering; uncertain handoffs stay blocked
+across restart. Native option descriptions and secret fields remain intact.
+
+Question notifications use the existing **Settings → agent request notifications**
+preference. Desktop and permitted browsers can notify while Extalia is running
+in the background. Clicking a question notification routes to that request's
+character, while approval notifications keep their existing inbox behavior.
+Question/answer text is excluded from system notifications. The first settled
+snapshot is a startup baseline, so historical unanswered questions show the
+in-app alert without a burst of system notifications. This is not an offline
+cloud push service; browser permission and operating-system settings still apply.
+
+The source behavior is established by [Codex's structured async-input change](https://github.com/openai/codex/pull/42178)
+and the [official Codex app-server protocol](https://learn.chatgpt.com/docs/app-server).
+
 ## Native questions and permissions
 
 Extalia can attach to a Codex conversation that is already running on a Codex
@@ -175,8 +245,9 @@ submitting again. Reconnect explicitly after a disconnect or restart.
   The inspected ChatGPT Desktop session has this limit. The separate native
   App Server experiment used CLI 0.167.0.
   Internal Desktop IPC sockets are not interchangeable with app-server sockets.
-- Questions already pending before attachment were not replayed by the tested
-  Codex server. Answer them in Codex; connect before subsequent questions appear.
+- Blocking native questions already pending before attachment were not replayed by the tested
+  Codex server. Answer those in Codex; connect before subsequent blocking questions appear.
+  Structured asynchronous questions follow the metadata/queue path described above.
 - Generic notifications, transcript-derived waiting states and unsupported native
   schemas cannot be answered. Persistent grants and policy amendments remain in
   Codex. File requests with a broader root grant allow only decline/cancel here.

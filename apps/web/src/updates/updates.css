@@ -1,0 +1,7 @@
+.update-confirmation { width: min(460px, calc(100vw - 40px)); max-height: calc(100dvh - 40px); overflow-y: auto; box-sizing: border-box; padding: 28px; border: 1px solid var(--line); border-radius: 20px; background: var(--surface-solid); color: var(--text); box-shadow: var(--shadow); font: inherit; }
+.update-confirmation::backdrop { background: rgb(3 8 14 / 55%); }
+.update-confirmation h2 { margin: 14px 0 8px; font-size: 21px; }
+.update-confirm-icon { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 14px; color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.update-confirm-version { margin: 0 0 20px; overflow-wrap: anywhere; }
+.update-confirmation .actions { justify-content: flex-end; margin-top: 24px; flex-wrap: wrap; }
+@media (max-width: 480px) { .update-confirmation { padding: 22px; } }

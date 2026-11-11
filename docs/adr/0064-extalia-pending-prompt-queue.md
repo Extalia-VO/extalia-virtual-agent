@@ -108,8 +108,11 @@ The read client is a helper process, not a new agent conversation.
 
 Bound frame/text sizes, fifty-entry previews, a five-second in-memory cache,
 single-flight reads and a two-reader concurrency ceiling limit inspection cost.
-Only plain prompt text and counts of non-text inputs cross the view boundary;
-attachments are never fetched or previewed. Pausing, removing a source, privacy
+The initial projection returned plain prompt text and non-text counts only.
+The 2026-11-11 display update adds bounded attachment types, sanitized local
+basenames and small inline PNG thumbnails already embedded in the queued input.
+Thumbnails have strict encoded-size, dimensions and aggregate limits. No local
+file contents or remote media are fetched; names and thumbnails remain passive. Pausing, removing a source, privacy
 changes and shutdown invalidate pending results and drain admitted readers. Labels
 only skips queue content inspection. No snapshot text is persisted by Extalia.
 

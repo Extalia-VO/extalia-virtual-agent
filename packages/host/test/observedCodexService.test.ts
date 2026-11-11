@@ -5,7 +5,7 @@ import { ObservedCodexService } from '../src/observedCodexService.js';
 import type { CodexObservedRpc, CodexObservedRpcOptions } from '../src/codexObservedControl.js';
 import { createAgentHost } from '../src/service.js';
 import { PromptSuggestionsService } from '../src/promptSuggestions.js';
-import { CodexObservedControl } from '../src/codexObservedControl.js';
+import { CodexObservedControl, CodexObservedRpcError } from '../src/codexObservedControl.js';
 
 const settle = async () => { for (let i = 0; i < 20; i++) await Promise.resolve(); };
 const deferred = <T,>() => { let resolve!: (value: T) => void; const promise = new Promise<T>(yes => { resolve = yes; }); return { promise, resolve }; };
@@ -31,6 +31,25 @@ async function fixture(onActivity?: (sessionId: string) => void) {
 }
 
 describe.skipIf(process.platform === 'win32')('host-owned observed Codex bindings', () => {
+  it('routes native settings through the original attachment and revokes updates on source rebinding', async () => {
+    const f = await fixture(), original = f.request.getMockImplementation()!;
+    const threadId = '11111111-1111-4111-8111-111111111111';
+    vi.mocked(f.rpc.request).mockImplementation(async method => {
+      if (method === 'extalia/observed/settings/capabilityProbe') throw new CodexObservedRpcError({ code: -32600, message: 'Invalid request: unknown variant `extalia/observed/settings/capabilityProbe`, expected one of `initialize`, `thread/settings/update`' });
+      const response = await original(method);
+      return method === 'thread/read' || method === 'thread/resume' ? { thread: { ...response.thread, model: 'gpt-example', reasoningEffort: 'high' } } : response;
+    });
+    try {
+      const status = await f.service.connect('observed-one', f.socket);
+      const input = { connectionId: status.connectionId!, settingsRevision: status.settingsRevision!, model: 'gpt-example' };
+      expect(await f.service.updateSettings('observed-one', input)).toMatchObject({ model: 'gpt-example', effort: 'high', settingsDelivery: 'confirmed' });
+      expect(f.request).toHaveBeenCalledWith('thread/settings/update', { threadId, model: 'gpt-example' });
+      f.change({ threadId: 'different-native', cwd: '/projects/example', watching: true });
+      await expect(f.service.updateSettings('observed-one', input)).rejects.toThrow('no longer active');
+      expect(f.request.mock.calls.filter(([method]) => method === 'thread/settings/update')).toHaveLength(1);
+      expect(f.factory).toHaveBeenCalledOnce();
+    } finally { await f.cleanup(); }
+  });
   it('does not connect on a status read or accept an unrelated observed identity', async () => {
     const f = await fixture();
     try {

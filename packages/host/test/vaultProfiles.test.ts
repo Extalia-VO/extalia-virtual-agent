@@ -30,7 +30,7 @@ async function setup() {
   const profiles = new VaultProfiles(options);
   const save = async (patch: Partial<Parameters<VaultProfiles['save']>[0]> = {}) => profiles.save({ name: 'Group', vaultRoot: null, workspaceIds: ['w-one', 'w-two'],
     expectedRevision: (await profiles.list()).revision, minutesEnabled: true, ...patch });
-  return { root, data, home, options, profiles, save, read, setBusy: (value: boolean) => { busy = value; }, setDefault: (value: string) => { defaultRoot = value; } };
+  return { root, data, home, options, profiles, save, read, setBusy: (value: boolean) => { busy = value; }, setDefault: (value: string) => { defaultRoot = value; }, setWorkspaces: (value: Workspace[]) => { workspaces = value; }, setStored: (value: StoredVaultProfiles | undefined) => { saved = value; } };
 }
 
 describe.skipIf(process.platform === 'win32')('workspace vault profiles', () => {
@@ -134,10 +134,10 @@ describe.skipIf(process.platform === 'win32')('workspace vault profiles', () => 
     await expect(profiles.resolve('w-one', { ensure: true })).rejects.toThrow(/outside the Extalia data folder/);
   });
 
-  it.skipIf(!HAS_DAEMON)('defaults learning off independently of minutes and persists explicit per-profile learning policy atomically', async () => {
+  it.skipIf(!HAS_DAEMON)('defaults learning on for indexed and managed roots, while persisting explicit per-profile policy', async () => {
     const h = await setup();
-    expect((await h.profiles.policyFor('w-one')).policy).toEqual({ enabled: false, skills: false, notes: false });
-    await expect(h.profiles.resolve('w-one', { purpose: 'learning', ensure: true })).rejects.toThrow(/not enabled/);
+    expect((await h.profiles.policyFor('w-one')).policy).toEqual({ enabled: true, skills: true, notes: true });
+    expect((await h.profiles.resolve('w-one', { purpose: 'learning', ensure: true })).root).toBe(path.join(h.data, 'vaults', 'default'));
     const catalog = await h.save({ minutesEnabled: false, automaticLearning: { enabled: true, skills: true, notes: true } });
     const profile = catalog.profiles.find(item => item.kind === 'managed')!;
     const learning = await h.profiles.resolve('w-one', { purpose: 'learning', ensure: true });
@@ -153,6 +153,65 @@ describe.skipIf(process.platform === 'win32')('workspace vault profiles', () => 
     await h.save({ id: profile.id, automaticLearning: { enabled: false, skills: true, notes: true } });
     expect((await restarted.policyFor('w-one')).policy).toEqual({ enabled: false, skills: false, notes: false });
     await expect(restarted.resolve('w-one', { purpose: 'learning' })).rejects.toThrow(/not enabled/);
+  });
+
+  it('keeps custom roots opt-in when an automatic-learning policy is absent', async () => {
+    const h = await setup();
+    const custom = path.join(h.root, 'custom-vault'); await mkdir(custom);
+    const saved = await h.save({ vaultRoot: custom });
+    const profile = saved.profiles.find(item => item.kind === 'custom')!;
+    expect(profile.automaticLearning).toEqual({ enabled: false, skills: false, notes: false });
+    expect((await h.profiles.policyFor('w-one')).policy).toEqual({ enabled: false, skills: false, notes: false });
+  });
+
+  it('treats a legacy managed profile with no policy or learningRoot as approved for notes', async () => {
+    const h = await setup();
+    const catalog = await h.save({ workspaceIds: ['w-one'] });
+    const profile = catalog.profiles.find(item => item.kind === 'managed')!;
+    const legacy = structuredClone(h.read().profiles!);
+    const record = legacy.profiles.find(item => item.id === profile.id)!;
+    delete record.automaticLearning;
+    delete record.learningRoot;
+    h.setStored(legacy);
+    expect((await h.profiles.list()).profiles.find(item => item.id === profile.id)?.automaticLearning).toEqual({ enabled: true, skills: true, notes: true });
+    expect((await h.profiles.policyFor('w-one')).policy).toEqual({ enabled: true, skills: true, notes: true });
+  });
+
+  it('approves an explicit enabled policy for an owned managed root without a stored learningRoot', async () => {
+    const h = await setup();
+    const catalog = await h.save({ workspaceIds: ['w-one'] });
+    const profile = catalog.profiles.find(item => item.kind === 'managed')!;
+    const legacy = structuredClone(h.read().profiles!);
+    const record = legacy.profiles.find(item => item.id === profile.id)!;
+    record.automaticLearning = { enabled: true, skills: true, notes: true };
+    delete record.learningRoot;
+    h.setStored(legacy);
+    expect((await h.profiles.policyFor('w-one')).policy).toEqual({ enabled: true, skills: true, notes: true });
+  });
+
+  it('resolves current Knowledge roots by workspace without requiring learning consent and rejects retargeted custom paths', async () => {
+    const h = await setup();
+    expect(await h.profiles.knowledgeTarget('w-one')).toMatchObject({ profileId: 'default', root: path.join(h.data, 'vaults', 'default'), custom: false });
+    const first = path.join(h.root, 'knowledge-one'), second = path.join(h.root, 'knowledge-two');
+    await mkdir(first); await mkdir(second);
+    const catalog = await h.save({ vaultRoot: first, automaticLearning: { enabled: false, skills: false, notes: false } });
+    const profile = catalog.profiles.find(item => item.kind === 'custom')!;
+    expect(await h.profiles.knowledgeTarget('w-one')).toMatchObject({ profileId: profile.id, root: first, custom: true });
+    await rename(first, path.join(h.root, 'moved-vault'));
+    await symlink(second, first);
+    await expect(h.profiles.knowledgeTarget('w-one')).rejects.toThrow(/symbolic link/);
+  });
+
+  it('rejects assigning a shared workspace to an isolated workspace profile', async () => {
+    const h = await setup();
+    h.setWorkspaces([workspace('w-one'), { ...workspace('w-two'), crossWorkspaceAccess: 'isolated' }]);
+    const first = await h.profiles.list();
+    const assigned = await h.profiles.save({ name: 'Private', vaultRoot: null, workspaceIds: ['w-two'], expectedRevision: first.revision, minutesEnabled: true });
+    const profile = assigned.profiles.find(item => item.kind === 'managed')!;
+    const second = await h.profiles.list();
+    await expect(h.profiles.save({ id: profile.id, name: profile.name, vaultRoot: null, workspaceIds: ['w-one', 'w-two'], expectedRevision: second.revision, minutesEnabled: true }))
+      .rejects.toThrow(/only workspace assigned/);
+    expect((await h.profiles.list()).workspaces.find(item => item.id === 'w-one')?.profileId).toBe('default');
   });
 
   it('reads skills-only policy without creating or accessing a notes vault', async () => {

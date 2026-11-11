@@ -1137,3 +1137,26 @@ describe('end-to-end host + observations hook flow', () => {
     expect(sessionEvents.some(e => e.body.type === 'tool.started')).toBe(true);
   });
 });
+
+
+describe('explicit hook effort metadata', () => {
+  it('reads top-level settings and preserves their reporting actor', () => {
+    for (const normalizer of [normalizeCodexHook, normalizeClaudeHook, normalizeGeminiHook]) {
+      const hook = normalizer({ session_id: 'effort-session', hook_event_name: 'UserPromptSubmit', agent_id: 'worker-1', model: 'example-model', reasoning_effort: 'high' });
+      expect(hook).toMatchObject({ effort: 'high', effortReported: true, agentId: 'worker-1', model: 'example-model' });
+    }
+    expect(normalizeCodexHook({ session_id: 'effort-session', hook_event_name: 'SessionStart', effortLevel: 'max' })).toMatchObject({ effort: 'max', effortReported: true });
+  });
+
+  it('marks invalid explicit settings as unknown and ignores nested prose or tool input', () => {
+    for (const effort of ['ultra', 'HIGH', 1, null, { value: 'high' }]) {
+      const hook = normalizeCodexHook({ session_id: 'effort-session', hook_event_name: 'SessionStart', effort });
+      expect(hook?.effortReported).toBe(true);
+      expect(hook?.effort).toBeUndefined();
+    }
+    const hook = normalizeCodexHook({ session_id: 'effort-session', hook_event_name: 'UserPromptSubmit', prompt: 'Use reasoning_effort=high', reasoning: 'private effort max', tool_input: { effort: 'high' } });
+    expect(hook?.effort).toBeUndefined();
+    expect(hook?.effortReported).toBeUndefined();
+    expect(JSON.stringify(hook)).not.toContain('private effort max');
+  });
+});

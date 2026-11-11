@@ -88,6 +88,35 @@ describe('bounded movement recovery', () => {
     expect(mover.phase).toBe('walking');
   });
 
+  it('rechecks an exhausted walk when a safe alternative aisle becomes available later', () => {
+    const base = navigation([[0, 0, 0], [4, 0, 0], [0, 0, 2], [4, 0, 2]]);
+    const edges = new Map(base.graph.edges);
+    const nav = { ...base, graph: { ...base.graph, edges } };
+    edges.set('node-0', [{ to: 'node-1', cost: 4 }]);
+    edges.set('node-2', [{ to: 'node-3', cost: 4 }]);
+    edges.set('node-3', [{ to: 'node-1', cost: 2 }]);
+    let restored = false;
+    const clear = (from: Readonly<Point3>, to: Readonly<Point3>) => restored &&
+      !(Math.min(from[0], to[0]) < 2 && Math.max(from[0], to[0]) > 1 && Math.min(from[2], to[2]) < 1);
+    const env: MovementEnv = { navigation: nav, elevators, walkable: clear, nearbyWalkers: () => [] };
+    const mover = createMover('late-aisle', gaitParameters(), [0, 0, 0], 0, false);
+    const goal = { kind: 'leave' as const, node: 'node-1' };
+    routeFrom(mover, 'node-0', goal, env, false);
+    run(30, () => stepMover(mover, 1 / 30, env));
+    expect(mover.recovery.attempts).toBe(3);
+    expect(mover.position).toEqual([0, 0, 0]);
+    restored = true;
+    run(40, () => {
+      const before: Point3 = [...mover.position];
+      stepMover(mover, 1 / 30, env);
+      expect(Math.hypot(...mover.position.map((value, axis) => value - before[axis]!) as Point3)).toBeLessThan(.08);
+      expect(clear(before, mover.position)).toBe(true);
+    });
+    expect(mover.phase).toBe('gone');
+    expect(mover.goal).toBe(goal);
+    expect(mover.recovery.attempts).toBe(3);
+  });
+
   it('retreats and yields through a one-body portal while preserving both destinations', () => {
     const nav = navigation([[-3, 0, 0], [3, 0, 0]]);
     const movers = [createMover('a', gaitParameters(), [-3, 0, 0], 0, false), createMover('b', gaitParameters(), [3, 0, 0], 0, false)];
@@ -126,7 +155,7 @@ describe('bounded movement recovery', () => {
     expect(recoverySegmentClear('walker', [0, 0, 0], [0, 0, 1], () => false, body)).toBe(false);
   });
 
-  it('releases owned interactions after safe placement and honors a reachable pending goal over an obsolete goal', () => {
+  it('releases owned interactions and walks to a safe aisle while honoring the pending goal', () => {
     const door: DoorInfo = { center: [0, 0, 0], floor: 1, yaw: 0, clearWidth: 1.2, height: 2.5, openAngle: -Math.PI / 2, sliding: false };
     const doors = new DoorTraffic({ forEachDoor: visit => visit('door', door), forEachWalker() {} }, () => 0);
     vi.spyOn(doors, 'clearForSwing').mockReturnValue(false);
@@ -145,16 +174,21 @@ describe('bounded movement recovery', () => {
     mover.recovery.goal = 'node-2'; mover.recovery.attempts = 2;
     for (let frame = 0; frame < 250 && mover.phase === 'doorwork'; frame++) stepMover(mover, 1 / 30, env);
     expect(mover.phase).toBe('walking');
-    expect(mover.position).toEqual([1, 0, 1.3]);
+    expect(mover.position).toEqual([0, 0, 1.3]);
     expect(mover.goal).toBe(pending); expect(mover.pending).toBe(pending);
     expect(mover.trip).toBeNull(); expect(mover.door).toBeNull();
     expect(release).toHaveBeenCalledWith(mover.id, 'A');
     expect(doors.duty(mover.id)).toBeNull(); expect(doors.claim('door', 'next')).toBe(true);
-    expect(trackWalker).toHaveBeenCalledWith(mover.id, null);
-    expect(trackBody).toHaveBeenCalledWith(mover.id, null);
-    expect(mover.opacity).toBe(0);
-    stepMover(mover, 1 / 30, env);
-    expect(mover.opacity).toBeGreaterThan(0);
+    expect(mover.opacity).toBe(1);
+    for (let frame = 0; frame < 200 && (mover.phase as string) !== 'gone'; frame++) {
+      const before: Point3 = [...mover.position];
+      stepMover(mover, 1 / 30, env);
+      expect(Math.hypot(...mover.position.map((value, axis) => value - before[axis]!) as Point3)).toBeLessThan(.08);
+      if ((mover.phase as string) !== 'gone' && (mover.phase as string) !== 'vanishing') expect(mover.opacity).toBe(1);
+    }
+    expect(mover.phase).toBe('gone');
+    expect(mover.position).toEqual([3, 0, 2.5]);
+    expect(trackWalker.mock.calls.some(([id, position]) => id === mover.id && position !== null)).toBe(true);
   });
 
   it('keeps a hinged-door queue waiting while another avatar owns the leaf', () => {

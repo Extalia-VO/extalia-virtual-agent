@@ -370,6 +370,8 @@
                   },
                   "ref": {
                     "type": "string",
+                    "minLength": 64,
+                    "maxLength": 64,
                     "pattern": "^[0-9a-f]{64}$"
                   }
                 }
@@ -412,6 +414,178 @@
           "properties": {
             "type": {
               "const": "model.thinking"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "skills",
+            "characters",
+            "budgetCharacters"
+          ],
+          "$comment": "The reference validator additionally enforces unique skill names, characters <= budgetCharacters and loaded instruction totals <= characters.",
+          "properties": {
+            "type": {
+              "const": "skills.loaded"
+            },
+            "skills": {
+              "type": "array",
+              "maxItems": 8,
+              "uniqueItems": true,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "name",
+                  "source",
+                  "reason",
+                  "status",
+                  "characters"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "maxLength": 64,
+                    "pattern": "^[a-z0-9][a-z0-9-]{0,63}$",
+                    "allOf": [
+                      {
+                        "pattern": "^[^\\x00-\\x1f\\x7f]*$"
+                      }
+                    ]
+                  },
+                  "source": {
+                    "type": "string",
+                    "enum": [
+                      "builtin",
+                      "registry"
+                    ]
+                  },
+                  "reason": {
+                    "type": "string",
+                    "enum": [
+                      "default-memory",
+                      "configured-team",
+                      "explicit-request",
+                      "current-context",
+                      "recent-context",
+                      "dependency"
+                    ]
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "loaded",
+                      "budget",
+                      "unavailable",
+                      "not-configured"
+                    ]
+                  },
+                  "characters": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 24000
+                  },
+                  "intent": {
+                    "type": "string",
+                    "enum": [
+                      "planning",
+                      "debugging",
+                      "testing",
+                      "review",
+                      "security",
+                      "documentation",
+                      "design",
+                      "refactoring",
+                      "delivery"
+                    ]
+                  },
+                  "revisionId": {
+                    "type": "string",
+                    "minLength": 68,
+                    "maxLength": 68,
+                    "pattern": "^skr_[0-9a-f]{64}$"
+                  }
+                },
+                "allOf": [
+                  {
+                    "if": {
+                      "properties": {
+                        "status": {
+                          "const": "loaded"
+                        }
+                      },
+                      "required": [
+                        "status"
+                      ]
+                    },
+                    "then": {
+                      "properties": {
+                        "characters": {
+                          "minimum": 1
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "if": {
+                      "properties": {
+                        "status": {
+                          "not": {
+                            "const": "loaded"
+                          }
+                        }
+                      },
+                      "required": [
+                        "status"
+                      ]
+                    },
+                    "then": {
+                      "properties": {
+                        "characters": {
+                          "const": 0
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "if": {
+                      "properties": {
+                        "source": {
+                          "const": "builtin"
+                        }
+                      },
+                      "required": [
+                        "source"
+                      ]
+                    },
+                    "then": {
+                      "not": {
+                        "required": [
+                          "revisionId"
+                        ]
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            "characters": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 24000
+            },
+            "budgetCharacters": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 24000
+            },
+            "omitted": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 4096
             }
           }
         },
@@ -938,6 +1112,49 @@
             "output": {
               "type": "string",
               "maxLength": 200000
+            },
+            "attachments": {
+              "type": "array",
+              "maxItems": 10,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "name",
+                  "kind",
+                  "size"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "maxLength": 2000,
+                    "pattern": "^[^\\n\\r]*$",
+                    "allOf": [
+                      {
+                        "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+                      }
+                    ]
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "image",
+                      "text",
+                      "file"
+                    ]
+                  },
+                  "size": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "ref": {
+                    "type": "string",
+                    "minLength": 64,
+                    "maxLength": 64,
+                    "pattern": "^[0-9a-f]{64}$"
+                  }
+                }
+              }
             }
           }
         },

@@ -1,6 +1,7 @@
 import { NaturalWalkingClearance } from './movement/NaturalWalkingClearance';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
+import { officePointerEvents } from './officePointerEvents';
 import { useProgress } from '@react-three/drei';
 import type { OfficeAgent } from '../presence';
 import type { Language } from '../../i18n';
@@ -113,7 +114,7 @@ export default function OfficeCanvas({ automaticShot, view, viewRequest, languag
   const focus = allocations.find(seat => seat.agentId === selectedId)?.position;
   const [canvas, setCanvas] = useState<HTMLCanvasElement | null>(null);
   const dpr = useBudgetPixelRatio(canvas);
-  return <Canvas ref={setCanvas} orthographic camera={initialCamera} dpr={dpr} shadows="percentage" gl={{ antialias: false, powerPreference: 'high-performance' }} style={{ width: '100%', height: '100%' }} onPointerMissed={onMiss}>
+  return <Canvas ref={setCanvas} events={officePointerEvents} orthographic camera={initialCamera} dpr={dpr} shadows="percentage" gl={{ antialias: false, powerPreference: 'high-performance' }} style={{ width: '100%', height: '100%' }} onPointerMissed={onMiss}>
     <CanvasContinuity />
     <ModelInstanceBatches />
     <SceneEnvironment dark={dark} reducedMotion={reducedMotion} lightOverride={lightOverride} followSun={followSun}>

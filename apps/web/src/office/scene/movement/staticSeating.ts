@@ -30,13 +30,16 @@ export function staticSeatNeighborsClear(id: string, from: Readonly<Point3>, to:
   for (const other of neighbors) {
     if (other.id === id || Math.abs(other.position[1] - from[1]) > 0.8) continue;
     const ox = from[0] - other.position[0], oz = from[2] - other.position[2];
-    const rx = dx - other.velocity[0] * seconds, rz = dz - other.velocity[2] * seconds;
-    const length2 = rx * rx + rz * rz;
-    const t = length2 > 1e-9 ? Math.max(0, Math.min(1, -(ox * rx + oz * rz) / length2)) : 0;
-    const closest = Math.hypot(ox + rx * t, oz + rz * t);
-    // A pre-existing overlap may recover by moving away, never by moving deeper.
-    const clearance = Math.min(STATIC_BODY_SEPARATION, Math.hypot(ox, oz));
-    if (closest < clearance - 1e-6) return false;
+    // Motion forecasts cannot erase the body that physically exists now.
+    for (const horizon of seconds > 0 ? [0, seconds] : [0]) {
+      const rx = dx - other.velocity[0] * horizon, rz = dz - other.velocity[2] * horizon;
+      const length2 = rx * rx + rz * rz;
+      const t = length2 > 1e-9 ? Math.max(0, Math.min(1, -(ox * rx + oz * rz) / length2)) : 0;
+      const closest = Math.hypot(ox + rx * t, oz + rz * t);
+      // A pre-existing overlap may recover by moving away, never by moving deeper.
+      const clearance = Math.min(STATIC_BODY_SEPARATION, Math.hypot(ox, oz));
+      if (closest < clearance - 1e-6) return false;
+    }
   }
   return true;
 }

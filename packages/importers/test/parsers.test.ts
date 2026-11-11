@@ -1,4 +1,4 @@
-import { decodePortableSession, type PortableSession } from '@extalia/core';
+import { EFFORTS, decodePortableSession, type PortableSession } from '@extalia/core';
 import { describe, expect, it } from 'vitest';
 import { codexThreadSpawn, isInjectedContext, parseAntigravity, parseClaude, parseCodex, parseGemini, parseHermes, type NativeParseResult, type ParseContext } from '../src/index.js';
 
@@ -249,5 +249,62 @@ describe('v0.0.37 titles, models and sub-agent metadata', () => {
     expect(codexThreadSpawn({ id: 'child', thread_source: 'subagent', parent_thread_id: 'root', agent_role: 'worker' })).toEqual({ parentThreadId: 'root', role: 'worker' });
     expect(codexThreadSpawn({ id: 'root', source: 'vscode', thread_source: 'user' })).toBeUndefined();
     expect(codexThreadSpawn({ id: 'root', source: { subagent: { thread_spawn: { parent_thread_id: null } } } })).toBeUndefined();
+  });
+});
+
+
+describe('source-reported Codex effort', () => {
+  const rollout = (...contexts: unknown[]) => jsonl(
+    { type: 'session_meta', payload: { id: 'effort-session', timestamp: T } },
+    { timestamp: T, type: 'event_msg', payload: { type: 'user_message', message: 'Check the plan' } },
+    ...contexts,
+  );
+  const turn = (timestamp: string, payload: unknown) => ({ timestamp, type: 'turn_context', payload });
+
+  it.each(EFFORTS)('reads the exact structured %s setting without adding it to portable history', effort => {
+    for (const setting of [{ effort }, { reasoning_effort: effort }, { collaboration_mode: { settings: { reasoning_effort: effort } } }]) {
+      const result = parseCodex(rollout(turn(T1, { model: 'gpt-example', ...setting })), context('codex'));
+      valid(result);
+      expect(result).toMatchObject({ model: 'gpt-example', modelAt: T1, effort, effortAt: T1 });
+      expect(result.session).not.toHaveProperty('effort');
+      expect(result.session).not.toHaveProperty('modelAt');
+    }
+  });
+
+  it('uses context timestamps before replies, rejects stale contexts and clears unknown effort', () => {
+    const initial = [turn(T1, { model: 'gpt-first', effort: 'high' }), turn(T2, { model: 'gpt-next', effort: 'max' }), turn(T, { model: 'stale-model', effort: 'low' })];
+    expect(parseCodex(rollout(...initial), context('codex'))).toMatchObject({ model: 'gpt-next', modelAt: T2, effort: 'max', effortAt: T2 });
+    const newest = '2026-10-08T00:00:03.000Z';
+    for (const setting of [{}, { effort: 'ultra' }, { effort: null }, { reasoning_effort: { value: 'high' } }]) {
+      const result = parseCodex(rollout(...initial, turn(newest, { model: 'gpt-new', ...setting })), context('codex'));
+      expect(result).toMatchObject({ model: 'gpt-new', modelAt: newest, effortAt: newest });
+      expect(result.effort).toBeUndefined();
+    }
+  });
+
+  it.each([undefined, null, 'invalid-timestamp'])('preserves dated metadata across an untimed context (%s) and an older report', timestamp => {
+    const dated = turn(T2, { model: 'gpt-current', effort: 'high' });
+    const untimed = { type: 'turn_context', timestamp, payload: { model: 'gpt-untimed', effort: 'low' } };
+    const stale = turn(T1, { model: 'gpt-stale', effort: 'medium' });
+    for (const rows of [[dated, untimed], [dated, untimed, stale]]) {
+      const result = parseCodex(rollout(...rows), context('codex'));
+      valid(result);
+      expect(result).toMatchObject({ model: 'gpt-current', modelAt: T2, effort: 'high', effortAt: T2 });
+    }
+    const newest = '2026-10-08T00:00:03.000Z';
+    const fresh = parseCodex(rollout(dated, untimed, stale, turn(newest, { model: 'gpt-new' })), context('codex'));
+    expect(fresh).toMatchObject({ model: 'gpt-new', modelAt: newest, effortAt: newest });
+    expect(fresh.effort).toBeUndefined();
+  });
+
+  it('never infers effort from prompt, analysis or reasoning bodies', () => {
+    const result = parseCodex(rollout(
+      turn(T1, { model: 'gpt-example', reasoning: 'private-reasoning high', instructions: 'effort=max' }),
+      { timestamp: T1, type: 'response_item', payload: { type: 'reasoning', summary: [{ text: 'private-summary reasoning_effort=high' }] } },
+      { timestamp: T2, type: 'response_item', payload: { type: 'message', role: 'assistant', channel: 'analysis', content: [{ type: 'output_text', text: 'private-analysis effort high' }] } },
+    ), context('codex'));
+    valid(result);
+    expect(result.effort).toBeUndefined();
+    expect(JSON.stringify(result)).not.toMatch(/private-reasoning|private-summary|private-analysis|effort=max/);
   });
 });

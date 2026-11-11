@@ -138,6 +138,11 @@ pub enum NodeTarget {
 /// Parameters of one knowledge operation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum KnowledgeRequest {
+    Scoped {
+        profile_id: String,
+        vault_root: Option<String>,
+        request: Box<KnowledgeRequest>,
+    },
     Status,
     Sync {
         mode: SyncMode,
@@ -197,6 +202,7 @@ pub enum KnowledgeRequest {
 impl KnowledgeRequest {
     pub fn op(&self) -> Op {
         match self {
+            Self::Scoped { .. } => Op::KnowledgeScoped,
             Self::Status => Op::KnowledgeStatus,
             Self::Sync { .. } => Op::KnowledgeSync,
             Self::Node { .. } => Op::KnowledgeNode,
@@ -221,6 +227,19 @@ impl KnowledgeRequest {
             }
         };
         match self {
+            Self::Scoped {
+                profile_id,
+                vault_root,
+                request,
+            } => {
+                put("profileId", Some(profile_id.as_str().into()));
+                put(
+                    "vaultRoot",
+                    Some(vault_root.as_deref().map_or(Value::Null, Value::from)),
+                );
+                put("op", Some(request.op().as_str().into()));
+                put("params", Some(request.to_value()));
+            }
             Self::Status => {}
             Self::Sync { mode } => put("mode", Some(mode.as_str().into())),
             Self::Node { target } => match target {
@@ -603,6 +622,42 @@ fn all(results: &[bool]) -> Option<()> {
 // ---- requests ----
 
 pub(super) fn request(check: &mut Check, op: Op, params: &Value) -> Option<RequestParams> {
+    if op == Op::KnowledgeScoped {
+        let fields = check.object(
+            params,
+            PARAMS,
+            &["profileId", "vaultRoot", "op", "params"],
+            &[],
+        )?;
+        let profile = fields.get("profileId")?.as_str()?;
+        if !is_scoped_profile(profile) {
+            check.fail(PARAMS, "expected a vault profile id");
+            return None;
+        }
+        let root = match fields.get("vaultRoot")? {
+            Value::Null => None,
+            value => {
+                if !text(check, Some(value), PARAMS, 4096) {
+                    return None;
+                }
+                Some(value.as_str()?.to_owned())
+            }
+        };
+        let inner = fields.get("op")?.as_str().and_then(Op::parse)?;
+        if !ordinary(inner) {
+            check.fail(PARAMS, "expected an ordinary knowledge operation");
+            return None;
+        }
+        let RequestParams::Knowledge(request) = request(check, inner, fields.get("params")?)?
+        else {
+            return None;
+        };
+        return Some(RequestParams::Knowledge(KnowledgeRequest::Scoped {
+            profile_id: profile.to_owned(),
+            vault_root: root,
+            request: Box::new(request),
+        }));
+    }
     let at = |key: &str| format!("{PARAMS}.{key}");
     let limit_opt =
         |check: &mut Check, fields: &Fields, key: &str, min: u64, max: u64| match fields.get(key) {
@@ -1262,6 +1317,19 @@ fn import_counts(check: &mut Check, value: Option<&Value>, path: &str) -> bool {
 }
 
 pub(super) fn result(check: &mut Check, op: Op, result: &Value) -> Option<ResponseResult> {
+    if op == Op::KnowledgeScoped {
+        let fields = check.object(result, RESULT, &["op", "result"], &[])?;
+        let inner = fields.get("op")?.as_str().and_then(Op::parse)?;
+        if !ordinary(inner) {
+            check.fail(RESULT, "expected an ordinary knowledge operation");
+            return None;
+        }
+        self::result(check, inner, fields.get("result")?)?;
+        return Some(ResponseResult::Knowledge {
+            op,
+            result: result.clone(),
+        });
+    }
     let at = |key: &str| format!("{RESULT}.{key}");
     let valid = match op {
         Op::KnowledgeStatus => {
@@ -1599,4 +1667,21 @@ pub fn validate_result(op: Op, result: &Value) -> Result<(), Vec<String>> {
         Some(_) if check.errors.is_empty() => Ok(()),
         _ => Err(check.errors),
     }
+}
+
+fn ordinary(op: Op) -> bool {
+    op.as_str().starts_with("knowledge.") && op != Op::KnowledgeScoped
+}
+pub(crate) fn is_scoped_profile(profile: &str) -> bool {
+    let Some(uuid) = profile.strip_prefix("vp-") else {
+        return false;
+    };
+    uuid.len() == 36
+        && uuid.bytes().enumerate().all(|(index, byte)| {
+            if [8, 13, 18, 23].contains(&index) {
+                byte == b'-'
+            } else {
+                byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte)
+            }
+        })
 }

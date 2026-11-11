@@ -5,6 +5,7 @@
  * Console, Office, …) consumes only these events. Nothing here may reference a
  * specific runtime, provider, UI framework or host platform.
  */
+import type { SkillLoadReport } from './skillLoading.js';
 
 export const PROTOCOL_VERSION = 'extalia.v0';
 export type ProtocolVersion = typeof PROTOCOL_VERSION;
@@ -75,7 +76,7 @@ export interface EventSource {
   adapterVersion?: string;
 }
 
-/** What a prompt event records about an attached file: its name, kind and size, never its contents. */
+/** File metadata on prompts or tool results: name, kind and size, never its contents. */
 export interface PromptAttachmentSummary {
   name: string;
   kind: 'image' | 'text' | 'file';
@@ -96,6 +97,7 @@ export type EventBody =
   | { type: 'prompt.submitted'; text: string; via: 'extalia' | 'native'; attachments?: PromptAttachmentSummary[] }
   | { type: 'user.intervention'; action: InterventionAction; text?: string }
   | { type: 'model.thinking' }
+  | ({ type: 'skills.loaded' } & SkillLoadReport)
   | { type: 'model.delta'; text: string }
   | { type: 'model.completed'; text: string; model?: string; usage?: Usage }
   | { type: 'turn.completed'; summary?: string; model?: string; usage?: Usage; costUsd?: number }
@@ -110,7 +112,7 @@ export type EventBody =
   // Tools, commands and files
   | { type: 'tool.started'; toolCallId?: string; tool: string; kind: ActivityKind; label: string; target?: string }
   | { type: 'tool.output'; toolCallId?: string; text: string }
-  | { type: 'tool.completed'; toolCallId?: string; tool: string; kind: ActivityKind; label: string; ok: boolean; target?: string; output?: string }
+  | { type: 'tool.completed'; toolCallId?: string; tool: string; kind: ActivityKind; label: string; ok: boolean; target?: string; output?: string; attachments?: PromptAttachmentSummary[] }
   | { type: 'command.started'; commandId?: string; command: string; cwd?: string }
   | { type: 'command.output'; commandId?: string; stream: 'stdout' | 'stderr'; text: string }
   | { type: 'command.completed'; commandId?: string; exitCode: number; durationMs?: number }

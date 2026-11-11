@@ -4517,10 +4517,11 @@ button.mission-dag-card:hover { border-color: var(--accent); }
 @media (prefers-reduced-motion: reduce) { .bubble-more .icon, .source-notice-chevron, .message-actions { transition: none; } }
 
 /* Files tab: what the session changed, one row per file. */
-.conversation-tabs { display: flex; width: min(100%, 320px); margin: 10px auto 2px; }
-.conversation-panel { display: contents; }
+.conversation-tabs { display: flex; flex: 0 0 auto; align-self: center; align-items: center; width: fit-content; max-width: 100%; margin: 8px auto; }
+.conversation-tabs button { flex: 0 0 auto; min-width: 104px; min-height: 32px; padding: 6px 14px; }
+.conversation-panel { display: block; flex: 1 0 auto; width: min(100%, 860px); min-width: 0; margin-inline: auto; }
 .conversation-panel[hidden] { display: none; }
-.conversation-files { width: min(100%, 760px); margin-inline: auto; padding-block: 12px; }
+.conversation-files { flex: 1 0 auto; width: min(100%, 860px); min-width: 0; margin-inline: auto; padding-block: 12px; }
 .changed-files { display: grid; gap: 8px; font-size: 14px; }
 .changed-files-summary { margin: 0; color: var(--muted); font-size: 13px; }
 .changed-files ul { display: grid; gap: 1px; margin: 0; padding: 0; list-style: none; }
