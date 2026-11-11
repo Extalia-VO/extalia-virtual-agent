@@ -120,7 +120,7 @@ jobs:
         run: |
           mkdir -p daemon-archives
           tar -czf "daemon-archives/daemon-${{ matrix.target }}.tar.gz" -C daemon-artifacts .
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: daemon-${{ matrix.target }}
           path: daemon-archives/
@@ -169,7 +169,7 @@ jobs:
           ls -l npm-tarballs
       - name: Verify six version-matched tarballs
         run: node tooling/package-release-assets.mjs npm --directory npm-tarballs
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: npm-packages
           path: npm-tarballs/
@@ -202,7 +202,7 @@ jobs:
           pnpm --filter @extalia/web build
       - name: Validate registered models and package Web files
         run: node tooling/package-release-assets.mjs web --out release-artifacts
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: web-distribution
           path: release-artifacts/*.zip
@@ -317,7 +317,7 @@ jobs:
         run: node scripts/release.mjs upload
       - name: Retain unverified macOS archives for failure diagnosis
         if: failure() && runner.os == 'macOS'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: unverified-macos-${{ github.ref_name }}
           path: |

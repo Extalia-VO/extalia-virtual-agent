@@ -76,7 +76,7 @@ jobs:
           JS
       - name: Retain bounded diagnostic report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: mac-archive-diagnostics-${{ github.run_id }}
           path: mac-archive-diagnostics.json
