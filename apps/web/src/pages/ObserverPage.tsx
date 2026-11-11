@@ -22,6 +22,7 @@ import './observer.css';
 import { ObservedCodexControls } from '../observe/ObservedCodexControls';
 import { ObservedCodexQueueControls } from '../observe/ObservedCodexQueueControls';
 import { ObservedCodexPromptComposer } from '../observe/ObservedCodexPromptComposer';
+import { supportsObservedPromptQueue } from '../observe/observedCodexPromptModel';
 import { ObservedCodexPermissionControls } from '../observe/ObservedCodexPermissionControls';
 import { ManualReplyControls, ObservedReplyControls } from '../observe/ObservedReplyControls';
 import { ObservedHermesControls } from '../observe/ObservedHermesControls';
@@ -169,9 +170,9 @@ export function ObserverPage({ t, language, agents, state, initialSessionId, onS
             <div className="actions"><button type="button" disabled={busy} onClick={() => { void run(() => agents.setObservation(selected.id, !observation?.watching)).catch(() => undefined); }}>
               <Icon name={observation?.watching ? 'stop' : 'refresh'} />{observation?.watching ? t.observer.pause : t.observer.resume}
             </button></div>
-            {controlHub && <ObservedSessionControl key={`control:${selected.id}`} t={t} agents={agents} session={selected} disabled={busy} />}
-            {!controlHub && selected.observation?.sourceId === 'codex' && <ObservedCodexPromptComposer key={`codex-prompt:${selected.id}`} t={t} agents={agents} session={selected} disabled={busy} />}
-            {(controlHub || selected.observation?.sourceId !== 'codex') && <PromptSuggestions t={t} agents={agents} session={selected} disabled={busy} copyOnly />}
+            {supportsObservedPromptQueue(selected.observation?.sourceId) && <ObservedCodexPromptComposer key={`codex-prompt:${selected.id}`} t={t} agents={agents} session={selected} disabled={busy} />}
+            {controlHub && !supportsObservedPromptQueue(selected.observation?.sourceId) && <ObservedSessionControl key={`control:${selected.id}`} t={t} agents={agents} session={selected} disabled={busy} />}
+            {!supportsObservedPromptQueue(selected.observation?.sourceId) && <PromptSuggestions t={t} agents={agents} session={selected} disabled={busy} copyOnly />}
             {selected.observation?.sourceId === 'codex' && <details className="observed-codex-entry">
               <summary>{t.observedCodexPrompt.settings}</summary>
               <ObservedCodexQueueControls key={selected.id} t={t} agents={agents} session={selected} settingsOnly />

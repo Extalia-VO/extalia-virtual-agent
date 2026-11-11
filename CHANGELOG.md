@@ -16,6 +16,53 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.255] - 2026-11-11
+
+### Added
+
+- Extend the observed prompt composer (`<ObservedCodexPromptComposer>`), cooperative inbox control, and `host.modelChoices` discovery to watched Claude Code sessions alongside Codex, Hermes, Gemini CLI, and Antigravity.
+
+### Fixed
+
+- Publish `model.completed` replies during live transcript fallback polling even when newer tool hook watermarks exist, and merge late transcript replies into existing timelines in source timestamp order (`mergeEvents`).
+- Display the actual observed agent name in `<PromptDeliveryStatus>` instead of hardcoding `Codex`.
+
+## [0.4.254] - 2026-11-10
+
+### Added
+
+- Discover available models for watched Google Antigravity (`GetCascadeModelConfigData` over the local Antigravity daemon, filtering out disabled and exhausted-quota entries) and Gemini CLI (`~/.gemini/settings.json` and active session models) via `host.modelChoices`, and expose a Model selector (`composer-model`) in `<ObservedCodexPromptComposer>` across Chat, Observe and 3D Office character dialogs.
+
+## [0.4.253] - 2026-11-10
+
+### Added
+
+- Add file attachment picker, drag-and-drop and clipboard file paste (`composer-chips`), and an Effort selector (`Default` / `Low` / `Medium` / `High` / `Max`) to the observed prompt composer (`<ObservedCodexPromptComposer>`) across Chat, Observe and 3D Office character dialogs, saving attached files for observed sessions so external agents can inspect them directly.
+
+### Fixed
+
+- Discover active Google Antigravity language-server daemon ports and CSRF tokens from `~/.gemini/antigravity/daemon/*.json` when invoking `agentapi send-message`, so Extalia Desktop and Bridge can deliver prompts directly into running Antigravity sessions without requiring inherited Antigravity shell environment variables.
+
+## [0.4.252] - 2026-11-10
+
+### Fixed
+
+- Render the normal observed prompt composer (`<ObservedCodexPromptComposer>`) directly in 3D Office character dialogs and Observe for watched Codex, Gemini CLI and Google Antigravity sessions even when the host control hub API is active, instead of requiring manual route selection.
+- Deliver prompts sent from Extalia to watched Google Antigravity sessions directly via Antigravity's native `agentapi send-message` CLI when installed, recording the submitted prompt immediately in the session transcript without requiring manual pairing.
+
+## [0.4.251] - 2026-11-10
+
+### Added
+
+- Capture changed and created files (`file.written` events) from Google Antigravity (`Path`, `TargetFile` and multi-tool `stepIdx` queues) and Gemini CLI (`BeforeTool`/`AfterTool` input and working directory recall) hooks and transcripts, retaining changed-file evidence across long sessions for the Files tab in Chat, Observe and 3D Office.
+
+## [0.4.250] - 2026-11-10
+
+### Added
+
+- Enable observed prompt queuing and sending for watched Gemini CLI and Google Antigravity sessions across Chat, Observe and 3D Office character dialogs, matching the Codex observed prompt composer and queue controls.
+- Automatically prepare session-bound cooperative inboxes for watched Gemini CLI and Antigravity sessions and support hook-authenticated `poll_inbox({ session_id })` in `extalia mcp` so connected sessions can poll and acknowledge queued messages without manual URL/token pairing.
+
 ## [0.4.249] - 2026-11-10
 
 ### Fixed

@@ -113,22 +113,59 @@ export function isObservedInboxRequest(value: unknown): value is ObservedInboxRe
  */
 export async function pollObservedInbox(request: ObservedInboxRequest, options: ObservedInboxClientOptions = {}): Promise<ObservedInboxResult> {
   if (!isObservedInboxRequest(request) || options.signal?.aborted) return { status: 'unavailable' };
+  const bodyStr = JSON.stringify({ operation: 'poll', ...(request.ack ? { ack: request.ack } : {}), ...(request.waitMs !== undefined ? { waitMs: request.waitMs } : {}) });
+  return executeInboxPoll(request.url, request.token, bodyStr, request.ack, request.waitMs, options);
+}
+
+export interface HookObservedInboxRequest { port: number; app: string; token: string; sessionId: string; ack?: string; waitMs?: number }
+const SESSION_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$/;
+const APP_ID = /^[a-z0-9-]{1,32}$/;
+
+export async function pollHookObservedInbox(request: HookObservedInboxRequest, options: ObservedInboxClientOptions = {}): Promise<ObservedInboxResult> {
+  if (
+    !request ||
+    !Number.isInteger(request.port) || request.port < 1 || request.port > 65_535 ||
+    !APP_ID.test(request.app) ||
+    typeof request.token !== 'string' || !request.token.trim() ||
+    typeof request.sessionId !== 'string' || !SESSION_ID.test(request.sessionId) ||
+    (request.ack !== undefined && (typeof request.ack !== 'string' || !UUID.test(request.ack))) ||
+    (request.waitMs !== undefined && (typeof request.waitMs !== 'number' || !Number.isInteger(request.waitMs) || request.waitMs < 0 || request.waitMs > 25_000)) ||
+    options.signal?.aborted
+  ) {
+    return { status: 'unavailable' };
+  }
+  const bodyStr = JSON.stringify({
+    operation: 'poll',
+    session_id: request.sessionId,
+    ...(request.ack ? { ack: request.ack } : {}),
+    ...(request.waitMs !== undefined ? { waitMs: request.waitMs } : {}),
+  });
+  return executeInboxPoll(`http://127.0.0.1:${request.port}/api/hooks/${request.app}`, request.token, bodyStr, request.ack, request.waitMs, options);
+}
+
+async function executeInboxPoll(
+  url: string,
+  token: string,
+  bodyStr: string,
+  ack: string | undefined,
+  waitMs: number | undefined,
+  options: ObservedInboxClientOptions,
+): Promise<ObservedInboxResult> {
   const controller = new AbortController();
   const cancel = () => controller.abort();
-  const timer = setTimeout(cancel, (request.waitMs ?? 0) + 5_000);
+  const timer = setTimeout(cancel, (waitMs ?? 0) + 5_000);
   options.signal?.addEventListener('abort', cancel, { once: true });
   if (options.signal?.aborted) cancel();
   let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
   try {
-    const bodyStr = JSON.stringify({ operation: 'poll', ...(request.ack ? { ack: request.ack } : {}), ...(request.waitMs !== undefined ? { waitMs: request.waitMs } : {}) });
     let status: number;
     let ok: boolean;
     let getHeader: (name: string) => string | null;
     let bytes: Uint8Array;
 
     if (options.fetch) {
-      const response = await options.fetch(request.url, {
-        method: 'POST', headers: { authorization: `Bearer ${request.token}`, 'content-type': 'application/json' },
+      const response = await options.fetch(url, {
+        method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
         body: bodyStr,
         redirect: 'error', signal: controller.signal,
       });
@@ -155,8 +192,8 @@ export async function pollObservedInbox(request: ObservedInboxRequest, options: 
       for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
     } else {
       const res = await directLoopbackPost(
-        request.url,
-        { authorization: `Bearer ${request.token}`, 'content-type': 'application/json' },
+        url,
+        { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
         bodyStr,
         controller.signal,
       );
@@ -174,7 +211,7 @@ export async function pollObservedInbox(request: ObservedInboxRequest, options: 
     if (!value || typeof value !== 'object' || Array.isArray(value)) return { status: 'unknown' };
     const row = value as Record<string, unknown>;
     if (Object.keys(row).some(key => !['status', 'message', 'acknowledged'].includes(key))) return { status: 'unknown' };
-    if (row.acknowledged !== undefined && (typeof row.acknowledged !== 'string' || row.acknowledged !== request.ack)) return { status: 'unknown' };
+    if (row.acknowledged !== undefined && (typeof row.acknowledged !== 'string' || row.acknowledged !== ack)) return { status: 'unknown' };
     const acknowledged = typeof row.acknowledged === 'string' ? { acknowledged: row.acknowledged } : {};
     if (ok && row.status === 'empty' && row.message === undefined) return { status: 'empty', ...acknowledged };
     if (ok && row.status === 'message' && row.message && typeof row.message === 'object' && !Array.isArray(row.message)) {

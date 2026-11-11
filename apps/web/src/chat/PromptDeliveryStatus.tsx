@@ -10,6 +10,7 @@ export interface PromptDeliveryStatusProps {
   queueView?: PromptQueueView;
   phase?: PromptDeliveryPhase;
   observed?: boolean;
+  sourceLabel?: string;
   onRecheck?: () => void;
   rechecking?: boolean;
   /** Only offered after a fresh read excludes sending/unknown host receipts. */
@@ -17,8 +18,10 @@ export interface PromptDeliveryStatusProps {
 }
 
 /** Always outside queue details: a CLI receipt never claims that Codex read a message. */
-export function PromptDeliveryStatus({ t, queueView, phase, observed = false, onRecheck, rechecking = false, onRetryConfirmed }: PromptDeliveryStatusProps) {
+export function PromptDeliveryStatus({ t, queueView, phase, observed = false, sourceLabel, onRecheck, rechecking = false, onRetryConfirmed }: PromptDeliveryStatusProps) {
   const c = t.promptDelivery, items = queueView?.status?.items ?? [];
+  const targetLabel = sourceLabel?.trim() || 'Codex';
+  const withSource = (message: string) => targetLabel !== 'Codex' ? message.replaceAll('Codex', targetLabel) : message;
   const unknown = phase === 'unknown' || queueView?.delivery === 'unknown' || items.some(item => item.state === 'unknown');
   const submitting = phase === 'submitting' || queueView?.delivery === 'submitting';
   const sending = items.some(item => item.state === 'sending');
@@ -33,10 +36,10 @@ export function PromptDeliveryStatus({ t, queueView, phase, observed = false, on
   }, [waiting]);
   const text = unknown ? c.unknown : submitting ? slow ? c.stillWaiting : c.submitting
     : failed ? c.failed
-      : sending ? slow ? c.stillWaiting : observed ? c.sendingCodex : c.sending
+      : sending ? slow ? c.stillWaiting : observed ? withSource(c.sendingCodex) : c.sending
         : items.some(item => item.state === 'pending') ? c.queued
-        : items.some(item => item.state === 'sent') ? observed ? c.codexSubmitted : c.accepted
-          : phase === 'accepted' || queueView?.delivery === 'accepted' ? queueView ? c.queued : observed ? c.codexQueued : c.accepted
+        : items.some(item => item.state === 'sent') ? observed ? withSource(c.codexSubmitted) : c.accepted
+          : phase === 'accepted' || queueView?.delivery === 'accepted' ? queueView ? c.queued : observed ? withSource(c.codexQueued) : c.accepted
           : undefined;
   if (!text) return null;
   return <div className={`prompt-delivery-status${unknown ? ' prompt-delivery-uncertain' : ''}`}>

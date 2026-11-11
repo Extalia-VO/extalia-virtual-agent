@@ -1,4 +1,5 @@
 import type { AgentHostApi, PromptQueueStatus, SessionSummary } from '@extalia/platform';
+import { supportsObservedPromptQueue } from '../observe/observedCodexPromptModel';
 
 /** In-memory preview only; production queue admission and persistence belong to the host. */
 export function createMockPromptQueues(session: (id: string) => SessionSummary, dispatch: (id: string, text: string) => void,
@@ -6,9 +7,10 @@ export function createMockPromptQueues(session: (id: string) => SessionSummary, 
   const queues = new Map<string, PromptQueueStatus>();
   const read = (id: string) => {
     const summary = session(id);
+    const observedSupported = summary.control === 'observed' && supportsObservedPromptQueue(summary.observation?.sourceId);
     let queue = queues.get(id);
     if (!queue) {
-      queue = { sessionId: id, revision: crypto.randomUUID(), supported: summary.control === 'managed', paused: true, maxTextLength: 100_000, items: [] };
+      queue = { sessionId: id, revision: crypto.randomUUID(), supported: summary.control === 'managed' || observedSupported, paused: true, maxTextLength: observedSupported ? 16_000 : 100_000, items: [] };
       queues.set(id, queue);
     }
     queue.canSteer = queue.supported && summary.running && !summary.runtime && !summary.pendingApprovalId;

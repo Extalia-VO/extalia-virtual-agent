@@ -173,6 +173,10 @@ export class ObservedInboxChannels {
     const c = this.channels.get(id);
     if (c) this.revoke(c, 'unavailable');
   }
+  reset(id: string): void {
+    this.drop(id);
+    this.channels.delete(id);
+  }
   private async handle(request: IncomingMessage, response: ServerResponse) {
     const headerCount = (name: string) => request.rawHeaders.filter((_, index) => index % 2 === 0 && request.rawHeaders[index]!.toLowerCase() === name).length;
     if (headerCount('host') !== 1 || headerCount('authorization') !== 1 || request.headers.host !== `127.0.0.1:${this.port}` || request.headers.origin !== undefined) { json(response, 403, { status: 'unavailable' }); request.resume(); return; }
@@ -208,6 +212,19 @@ export class ObservedInboxChannels {
       if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Invalid body.');
       row = value as Record<string, unknown>;
     } catch { json(response, 400, { status: 'unavailable' }); return; }
+    this.pollChannel(c, row, response);
+  }
+  poll(id: string, row: Record<string, unknown>, response: ServerResponse): void {
+    const c = validId(id) ? this.channels.get(id) : undefined;
+    if (!c) { json(response, 404, { status: 'unavailable' }); return; }
+    if (!this.validate(c) || c.state !== 'connected') {
+      const expired = this.view(c).state === 'expired';
+      json(response, expired ? 408 : 410, { status: expired ? 'expired' : 'unavailable' });
+      return;
+    }
+    this.pollChannel(c, row, response);
+  }
+  private pollChannel(c: Channel, row: Record<string, unknown>, response: ServerResponse): void {
     if (Object.keys(row).some(key => !['operation', 'ack', 'waitMs'].includes(key)) || row.operation !== 'poll' ||
       (row.ack !== undefined && (typeof row.ack !== 'string' || !UUID.test(row.ack))) ||
       (row.waitMs !== undefined && (typeof row.waitMs !== 'number' || !Number.isInteger(row.waitMs) || row.waitMs < 0 || row.waitMs > MAX_WAIT))) { json(response, 400, { status: 'unavailable' }); return; }

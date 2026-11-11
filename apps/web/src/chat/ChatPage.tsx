@@ -6,6 +6,7 @@ import type { Messages } from '../i18n';
 import { Icon } from '../ui/Icon';
 import { Composer, type ComposerSend } from './Composer';
 import { ObservedCodexPromptComposer } from '../observe/ObservedCodexPromptComposer';
+import { supportsObservedPromptQueue } from '../observe/observedCodexPromptModel';
 import { attachmentPreviewLoader, sendPromptWithAttachments, uploadAttachments } from './attachments';
 import { resolveChat, type ChatSelection } from './selection';
 import { SessionList } from './SessionList';
@@ -200,7 +201,7 @@ export function ChatPage({ t, language, agents, picker, state, onState, selectio
             workspaceName={workspace.name} connection={memoryScope.connection} context={memoryScope.context}
             onOpenSettings={onOpenSettings} onOpenSkills={() => onReviewSkills(workspace.id)} onOpenKnowledge={onOpenKnowledge} />}
           <ChatTeamControls t={t} agents={agents} state={state} workspace={workspace} session={session} running={running} control={teamControl} />
-          {session?.control === 'observed' && session.observation?.sourceId === 'codex'
+          {session?.control === 'observed' && supportsObservedPromptQueue(session.observation?.sourceId)
             ? <ObservedCodexPromptComposer key={session.id} t={t} agents={agents} session={session} />
             : <Composer t={t} agents={agents} session={session} workspaceId={workspace.id} hermes={sessionRuntime(workspace, session) === 'hermes'} modelScopeKey={modelChoicesKey(state, workspace, session)}
             running={running} waiting={waiting} readOnly={readOnly} stopping={activity.stopping}

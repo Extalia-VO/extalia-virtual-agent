@@ -909,9 +909,9 @@
     {
       "path": "packages/host/src/hooks/http.ts",
       "category": "legacy-backend",
-      "sha256": "098307b099dc1de00c555a10c187b1ae806e9dd1fa9fd3974074e0691d8c7add",
-      "loc": 183,
-      "bytes": 9364,
+      "sha256": "64400f35bba9a366c1f68afc14cc5e310909361a3fadccddd2516588d674a1f3",
+      "loc": 190,
+      "bytes": 9842,
       "effectKinds": [
         "node-builtin",
         "runtime-call"
@@ -921,9 +921,9 @@
     {
       "path": "packages/host/src/hooks/ingest.ts",
       "category": "legacy-backend",
-      "sha256": "238bbac8771c223641bc9fa24650e69a1a6dabd42cda8b526f3deabb68e8f192",
-      "loc": 94,
-      "bytes": 4980,
+      "sha256": "d598fb921e965215c1c67e03d92b06fa05a4b719aef5b3d89af1c07438819138",
+      "loc": 96,
+      "bytes": 5151,
       "effectKinds": [
         "runtime-call"
       ],
@@ -932,9 +932,9 @@
     {
       "path": "packages/host/src/hooks/mcp.ts",
       "category": "legacy-backend",
-      "sha256": "82431b074d546ba7520c05f9e69f7fa69702f98756e9e98946e8e759a1b02198",
-      "loc": 472,
-      "bytes": 23482,
+      "sha256": "0374d9c07fb0f63f4270c8dd171f68c7ed320abaa4a313c54b5960643e375b51",
+      "loc": 503,
+      "bytes": 25834,
       "effectKinds": [
         "node-builtin"
       ],
@@ -943,9 +943,9 @@
     {
       "path": "packages/host/src/hooks/normalize.ts",
       "category": "legacy-backend",
-      "sha256": "e5c45574935cd174911add918ab078bb33fb6991c1ab69a0e5233a57c5a5287b",
-      "loc": 525,
-      "bytes": 31568,
+      "sha256": "e53f12f301261a191e9ebdac3dcc4f5a8491c72592cb9f8b43ea1ed05cfbec94",
+      "loc": 555,
+      "bytes": 33197,
       "effectKinds": [],
       "unresolvedRuntimeImports": 0
     },
@@ -1154,9 +1154,9 @@
     {
       "path": "packages/host/src/observations.ts",
       "category": "legacy-backend",
-      "sha256": "5d90a1779db7f1caa10c2a4c871c35c762113ca20942448b1be2735528fb8fdb",
-      "loc": 1147,
-      "bytes": 74800,
+      "sha256": "ceef634d88537890063bb5b0663a22b4c3a6b8686296357cf97fd4a1157fcb12",
+      "loc": 1161,
+      "bytes": 76120,
       "effectKinds": [
         "node-builtin",
         "runtime-call"
@@ -1239,9 +1239,9 @@
     {
       "path": "packages/host/src/observedInboxChannel.ts",
       "category": "legacy-backend",
-      "sha256": "153f76500f8b588e3e957d199994965ce37e001d92e2097f8066d776c703d27f",
-      "loc": 244,
-      "bytes": 15173,
+      "sha256": "e24eb89e40d098f9d22c9238475e359a44c8ac9eb2236203f6d5d50d1e4ab63a",
+      "loc": 261,
+      "bytes": 15882,
       "effectKinds": [
         "node-builtin"
       ],
@@ -1250,9 +1250,9 @@
     {
       "path": "packages/host/src/observedInboxClient.ts",
       "category": "legacy-backend",
-      "sha256": "a69fca10763e0288fc2d62bc350c3b91baa4c1cffd948b215d1c76e92b346aaa",
-      "loc": 196,
-      "bytes": 9158,
+      "sha256": "c71c60f39acfad484b3bae77da470737d8b85366f1e0c7ca10a9250b9a9da767",
+      "loc": 233,
+      "bytes": 10816,
       "effectKinds": [
         "node-builtin",
         "runtime-call"
@@ -1394,9 +1394,9 @@
     {
       "path": "packages/host/src/service.ts",
       "category": "legacy-backend",
-      "sha256": "9d7371975edba3aeb61f94ea3ff814d858dfc46f90c8c8338f70cf6d56a62a61",
-      "loc": 3242,
-      "bytes": 217282,
+      "sha256": "e557164ef68a74c185cf2967a4a53d1228baa2b25982e0004f1a63346e10d6a8",
+      "loc": 3678,
+      "bytes": 238859,
       "effectKinds": [
         "node-builtin",
         "runtime-call"
@@ -1630,18 +1630,18 @@
     {
       "path": "packages/importers/src/parsers.ts",
       "category": "legacy-backend",
-      "sha256": "9a3ca929c413d09bf26b7c46bb4a28dc24a1dfb73878a7fc85980479a0516c91",
-      "loc": 699,
-      "bytes": 50251,
+      "sha256": "6d625fd4eaff8c1b082115e9724ff263ce142e13b05785560e579ee9ff4e7af3",
+      "loc": 711,
+      "bytes": 51138,
       "effectKinds": [],
       "unresolvedRuntimeImports": 0
     },
     {
       "path": "packages/importers/src/steps.ts",
       "category": "legacy-backend",
-      "sha256": "b0bfacfcae41b4e09173df8c6025bc519459e5fa8bebf1d196db904ae9980d14",
-      "loc": 450,
-      "bytes": 26156,
+      "sha256": "64b7ec1e8deeb4024b6dc8b56a68dcafa56d3fd1a1307a6135f7f337e64ba46f",
+      "loc": 458,
+      "bytes": 26812,
       "effectKinds": [],
       "unresolvedRuntimeImports": 0
     },
@@ -2465,7 +2465,7 @@
     {
       "path": "apps/web/src/chat/ChatPage.tsx",
       "category": "ui",
-      "runtimeSignature": "5c76be37bd31ab7df8280c8494e8e176366ec8f10574c2d987fc13488de7172d"
+      "runtimeSignature": "0ad78632bc5da2a0d544c31571c6a12c3832d12c46f82413a90fbd0404da0588"
     },
     {
       "path": "apps/web/src/chat/chatTeam.ts",
@@ -2485,7 +2485,7 @@
     {
       "path": "apps/web/src/chat/Composer.tsx",
       "category": "ui",
-      "runtimeSignature": "c54f97e44d554e22e4138a296a37b39e9ab9ec631536070ad4644e0e9f902b28"
+      "runtimeSignature": "fe293c80519791f06e3b4831b8cc8eeab09a20a6399dd21a492a60889d176309"
     },
     {
       "path": "apps/web/src/chat/composerDrafts.ts",
@@ -2540,7 +2540,7 @@
     {
       "path": "apps/web/src/chat/PromptQueueControls.tsx",
       "category": "ui",
-      "runtimeSignature": "282e4cf3b76bbfad6d05909e943c4a70be107f30644ee71bf43b10370ab12f6e"
+      "runtimeSignature": "1ae49f5fa3adb0c436cb5634d2dcf807e53d5f644a31a1979e3701c9b9d66ecc"
     },
     {
       "path": "apps/web/src/chat/promptQueueModel.ts",
@@ -2600,7 +2600,7 @@
     {
       "path": "apps/web/src/chat/usePromptQueue.ts",
       "category": "ui",
-      "runtimeSignature": "a4149d49318f24e4bb6175d8878f8bf7619c93c4e91da26575558e2a2392d243"
+      "runtimeSignature": "2b64872b7b362cf4d095fd63fd18723334a421485c6483a06751294b99186bfd"
     },
     {
       "path": "apps/web/src/chat/UserMessage.tsx",
@@ -2720,7 +2720,7 @@
     {
       "path": "apps/web/src/host/mockPromptQueues.ts",
       "category": "ui",
-      "runtimeSignature": "0a144d1b52939ff20b1ace05314d2cfb962ed218c4eafd4072bd333f3a812da7"
+      "runtimeSignature": "3bc6ac58825417f38e28ff81cd9a62d31bb3b2dbe73cdbe0a03f4b4d6820b617"
     },
     {
       "path": "apps/web/src/host/mockSkillRegistry.ts",
@@ -3050,7 +3050,7 @@
     {
       "path": "apps/web/src/observe/ObservedCodexPromptComposer.tsx",
       "category": "ui",
-      "runtimeSignature": "d014274b9d2f2952f8641be4aa78465422ac851b4a6b11e104da506a6f2a00fd"
+      "runtimeSignature": "ca396824035905866abf0bf5de51a62a2307cacb83653a066ce793ec80510aca"
     },
     {
       "path": "apps/web/src/observe/observedCodexPromptModel.ts",
@@ -3090,7 +3090,7 @@
     {
       "path": "apps/web/src/observe/ObservedSessionControl.tsx",
       "category": "ui",
-      "runtimeSignature": "56b6b2c36794fd39cee810cfa83f404b0db166ba2e70927b666dc01256567488"
+      "runtimeSignature": "e076fb3daa4aa302e27955f49b3e0bea6b3f6bd51a9e1cc0fdb993c04669ba7f"
     },
     {
       "path": "apps/web/src/observe/observedSessionControlModel.ts",
@@ -3140,7 +3140,7 @@
     {
       "path": "apps/web/src/office/CharacterConversation.tsx",
       "category": "ui",
-      "runtimeSignature": "e0d9abb7be97634954026f588bf2e65f74e13d75ac18e67f97f04c23c1150d49"
+      "runtimeSignature": "178751f93d3ae012b4e8cb22efe2a6f4c8114e83149704b49c44d864cef9c4be"
     },
     {
       "path": "apps/web/src/office/characterHistory.ts",
@@ -4785,7 +4785,7 @@
     {
       "path": "apps/web/src/pages/ObserverPage.tsx",
       "category": "ui",
-      "runtimeSignature": "be0d67528f8fedef0b3a374f73326d7f368a8e6333600641488c57c49e281919"
+      "runtimeSignature": "2e784bbcda569020dd07f92d358ba2437bc8475aeb191ab92a577e5b994946e7"
     },
     {
       "path": "apps/web/src/pages/OfficePage.tsx",

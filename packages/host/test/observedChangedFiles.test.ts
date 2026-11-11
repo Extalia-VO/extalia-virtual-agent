@@ -31,6 +31,55 @@ describe('observed changed-file evidence', () => {
     expect(files(result)).toEqual([{ type: 'file.written', path: 'src/a.ts', change: 'update', toolCallId: 'step-4' }]);
   });
 
+  it('tracks Antigravity write_file and edit_file hooks with Path and multiple parallel tool calls in one stepIdx', () => {
+    normalizeAntigravityHook({
+      conversationId: 'ag-parallel',
+      hook_event_name: 'PreToolUse',
+      stepIdx: 7,
+      workspacePaths: [cwd],
+      toolCall: { name: 'default_api:write_file', args: { Path: `${cwd}/src/created.ts`, Content: 'export const x = 1;\n' } },
+    });
+    normalizeAntigravityHook({
+      conversationId: 'ag-parallel',
+      hook_event_name: 'PreToolUse',
+      stepIdx: 7,
+      workspacePaths: [cwd],
+      toolCall: { name: 'default_api:edit_file', args: { Path: `${cwd}/src/updated.ts`, Target: 'old', Replacement: 'new' } },
+    });
+    const firstPost = normalizeAntigravityHook({
+      conversationId: 'ag-parallel',
+      hook_event_name: 'PostToolUse',
+      stepIdx: 7,
+      toolOutput: 'Created file',
+    });
+    const secondPost = normalizeAntigravityHook({
+      conversationId: 'ag-parallel',
+      hook_event_name: 'PostToolUse',
+      stepIdx: 7,
+      toolOutput: 'Made 1 replacement',
+    });
+    expect(files(firstPost)).toEqual([{ type: 'file.written', path: 'src/created.ts', change: 'add', toolCallId: 'step-7' }]);
+    expect(files(secondPost)).toEqual([{ type: 'file.written', path: 'src/updated.ts', change: 'update', toolCallId: 'step-7-2' }]);
+  });
+
+  it('recalls Gemini CLI BeforeTool input when AfterTool omits tool_input or cwd', () => {
+    normalizeGeminiHook({
+      session_id: 'gem-recall',
+      hook_event_name: 'BeforeTool',
+      cwd,
+      tool_name: 'replace',
+      tool_call_id: 'gem-call-1',
+      tool_input: { file_path: `${cwd}/src/geminiEdited.ts`, old_string: 'a', new_string: 'b' },
+    });
+    const after = normalizeGeminiHook({
+      session_id: 'gem-recall',
+      hook_event_name: 'AfterTool',
+      tool_call_id: 'gem-call-1',
+      tool_response: { success: true },
+    });
+    expect(files(after)).toEqual([{ type: 'file.written', path: 'src/geminiEdited.ts', change: 'update', toolCallId: 'gem-call-1' }]);
+  });
+
   it('supports Hermes structured output and labels-only privacy without leaking file content', () => {
     const result = normalizeHermesHook({ session_id: 'hermes-files', hook_event_name: 'post_tool_call', cwd, tool_name: 'write_file', tool_input: { path: `${cwd}/src/a.ts`, content: 'private-content' }, extra: { tool_call_id: 'h1', result: JSON.stringify({ success: true, files_modified: [`${cwd}/src/a.ts`, `${cwd}/tests/a.ts`] }) } }, { labelsOnly: true });
     expect(files(result)).toEqual([

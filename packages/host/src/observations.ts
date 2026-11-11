@@ -165,8 +165,11 @@ function transcriptFallback(fresh: readonly ExtaliaEvent[], history: readonly Ex
     const actor = activityActor(event), key = stepKey(event);
     if (event.body.type === 'session.started' || duplicateStates.has(event.id) || (key && reported.has(key))) return false;
     if (event.body.type === 'subagent.spawned' && announced.has(actor)) return false;
-    if (event.at <= (watermarks.get(actor) ?? hook.since)) return false;
     if (ended) return false;
+    // Reply text exists only in the transcript (hooks report tools, not prose) and carries no state,
+    // so a reply written before the tools it announced is still published instead of waiting for a reload.
+    if (event.body.type === 'model.completed') return true;
+    if (event.at <= (watermarks.get(actor) ?? hook.since)) return false;
     const stoppedAt = terminal.get(actor);
     // Trailing replies/tool results cannot revive a turn explicitly stopped by a hook.
     // A genuinely later prompt is independent evidence of a new turn, including on a later poll.
@@ -183,6 +186,7 @@ function retainedHookEvents(events: readonly ExtaliaEvent[], activeMeeting?: str
     const actor = activityActor(event), body = event.body;
     if (body.type === 'session.started') evidence.set('session', event);
     if (body.type === 'subagent.spawned') evidence.set(`spawn:${actor}`, event);
+    if (body.type === 'file.written') evidence.set(`file:${actor}:${body.path}`, event);
     if (body.type === 'meeting.started' && body.meetingId === activeMeeting) evidence.set('meeting', event);
     if (body.type === 'agent.state' || body.type === 'subagent.state') states.set(actor, event);
     if (body.type === 'agent.state' || body.type === 'subagent.state' || resumesWork(event) || terminalReport(event)
@@ -366,6 +370,13 @@ export class Observations {
     return { sourceId: record.reference.sourceId, nativeSessionId: record.reference.nativeSessionId,
       fingerprint: digest([record.reference, record.projectPath]), revision: this.controlEpochs.get(id) ?? 0, watching: record.watching };
   }
+  /** Resolve a watched observed session by its hook app or sourceId and native session id (or observation id). */
+  resolveWatchedSessionId(sourceOrApp: string, nativeOrObservationId: string): string | undefined {
+    const sourceId = isHookApp(sourceOrApp) ? HOOK_SOURCE_IDS[sourceOrApp] : sourceOrApp;
+    const matches = this.records.filter(record =>
+      record.watching && record.reference.sourceId === sourceId && (record.reference.nativeSessionId === nativeOrObservationId || record.id === nativeOrObservationId));
+    return matches.length === 1 ? matches[0]!.id : undefined;
+  }
   private invalidateControl(record: ObservationRecord) {
     this.controlEpochs.set(record.id, (this.controlEpochs.get(record.id) ?? 0) + 1);
   }
@@ -535,11 +546,14 @@ export class Observations {
     if (!hook?.events.length) return history;
     // Hooks are the live channel; the transcript supplies history steps that hooks never reported (e.g. final assistant reply, earlier history).
     const reported = new Set(hook.events.map(stepKey).filter(Boolean));
+    const reportedFiles = new Set(hook.events.flatMap(event =>
+      event.body.type === 'file.written' ? [JSON.stringify([event.agentId ?? 'primary', event.body.path, event.body.change])] : []));
     const fallback = new Set(transcriptFallback(history, history, hook));
     // Earlier history remains readable; activity at/after hook authority must obey the
     // same rules as the live stream, including terminal reports and missed-hook recovery.
-    // Conversational prompt and reply history from the transcript is preserved across subsequent hook turns.
-    const isMessage = (event: ExtaliaEvent) => event.body.type === 'prompt.submitted' || event.body.type === 'model.completed' || event.body.type === 'tool.output';
+    // Conversational prompt, reply and unreported file-change history from the transcript is preserved across subsequent hook turns.
+    const isMessage = (event: ExtaliaEvent) => event.body.type === 'prompt.submitted' || event.body.type === 'model.completed' || event.body.type === 'tool.output'
+      || (event.body.type === 'file.written' && !reportedFiles.has(JSON.stringify([event.agentId ?? 'primary', event.body.path, event.body.change])));
     const unhooked = history.filter(event => !reported.has(stepKey(event)) && (isMessage(event) || event.at < hook.since || fallback.has(event)));
     const started = unhooked.some(event => event.body.type === 'session.started');
     let hookEnded = false;

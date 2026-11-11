@@ -4,6 +4,7 @@ import type { Messages } from '../i18n';
 import { Select } from '../ui/Select';
 import { PromptQueueControls } from '../chat/PromptQueueControls';
 import { ObservedCodexNativeQueue } from './ObservedCodexNativeQueue';
+import { supportsObservedPromptQueue } from './observedCodexPromptModel';
 import { createObservedReplyControl } from './observedReplyModel';
 import { createObservedInboxControl, observedControlChoices, observedSessionControlFor, validObservedInboxStatus,
   OBSERVED_MESSAGE_LIMIT, type ObservedInboxControlModel, type ObservedInboxView, type ObservedSessionControlModel, type ObservedSessionControlView } from './observedSessionControlModel';
@@ -27,7 +28,7 @@ function SessionControls({ agents, session, sessionId, t, disabled = false, manu
     {session?.observation?.sourceId === 'codex' && !compact && (
       <ObservedCodexNativeQueue key={`native-queue:${sessionId}`} t={t} agents={agents} session={session} disabled={disabled} />
     )}
-    {session?.observation?.sourceId === 'codex' && (
+    {supportsObservedPromptQueue(session?.observation?.sourceId) && (
       <PromptQueueControls key={`queue:${sessionId}`} t={t} agents={agents} session={session} disabled={disabled} />
     )}
     <ObservedSessionControlContent t={t} view={view} control={model} disabled={disabled} compact={compact} />

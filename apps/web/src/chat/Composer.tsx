@@ -14,6 +14,7 @@ import { usePromptQueue } from './usePromptQueue';
 import { useComposerDraft } from './useComposerDraft';
 import { PromptDeliveryStatus } from './PromptDeliveryStatus';
 import { PromptSuggestions } from './PromptSuggestions';
+import { supportsObservedPromptQueue } from '../observe/observedCodexPromptModel';
 import {
   CONTEXT_RING_RADIUS, HERMES_CHOICE, choiceFromOptions, choiceFromValue, choiceValue, cleanChoice, contextRing, effortSelectOptions,
   isPermissionMode, modelSelectOptions, permissionSelectOptions, type PermissionMode, type SessionChoice,
@@ -446,7 +447,7 @@ export function Composer({ t, agents, session, workspaceId, hermes, modelScopeKe
       <small id="composer-hint" className="visually-hidden">{t.chat.hint}</small>
     </form>
     <PromptSuggestions t={t} agents={agents} session={session} workspaceId={workspaceId}
-      copyOnly={session?.control === 'observed' && session.observation?.sourceId !== 'codex'}
+      copyOnly={session?.control === 'observed' && !supportsObservedPromptQueue(session.observation?.sourceId)}
       disabled={readOnly && session?.control !== 'observed' || running || waiting} />
     </>
   );

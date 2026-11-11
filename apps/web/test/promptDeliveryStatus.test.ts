@@ -47,3 +47,11 @@ it('does not mistake local Extalia acceptance without a source receipt for Codex
   const html = renderToStaticMarkup(createElement(PromptDeliveryStatus, { t, queueView, phase: 'accepted', observed: true }));
   expect(html).toContain(t.promptDelivery.queued); expect(html).not.toContain(t.promptDelivery.codexQueued);
 });
+
+it.each(['en', 'id'] as const)('names the actual observed app instead of Codex (%s)', language => {
+  const t = MESSAGES[language];
+  for (const label of ['Antigravity', 'Claude Code', 'Gemini CLI']) {
+    const html = renderToStaticMarkup(createElement(PromptDeliveryStatus, { t, queueView: view('sent'), observed: true, sourceLabel: label }));
+    expect(html).toContain(label); expect(html).not.toContain('Codex');
+  }
+});

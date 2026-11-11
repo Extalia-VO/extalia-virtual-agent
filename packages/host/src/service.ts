@@ -42,7 +42,8 @@ import {
   type AnyTool, type ApprovalOutcome, type DelegationOptions, type ModelMessage, type ModelProvider, type NativeMeetingMinutes, type NativeMissionAccounting, type NativeMissionTaskResult, type ToolAccess, type ToolResultEntry, type TurnAttachment, type TurnResult,
 } from '@extalia/runtime';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
-import { mkdtemp, readFile, realpath, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { spawn } from 'node:child_process';
+import { mkdir, mkdtemp, readdir, readFile, realpath, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import path from 'node:path';
 import { AttachmentStore, type TakenAttachment } from './attachments.js';
@@ -62,6 +63,7 @@ import { pinLearningNotes } from './learningNotes.js';
 import { hasAutomaticLearningEvidence, runAutomaticLearning } from './automaticLearning.js';
 import { RustLearningBackend } from './rustLearning.js';
 import { createConnectService, resolveNodePath, type ConnectService } from './connect/index.js';
+import { isExecutable } from './connect/util.js';
 import { DaemonSidecar, DaemonUnavailableError, createDaemonMission, resolveDaemonBinary, type DaemonBinaryOptions, type DaemonClient, type DaemonFailureCode, type DaemonMission, type SpawnDaemon } from './daemon/index.js';
 import { createHookIngest, type HookIngest } from './hooks/ingest.js';
 import { MissionRecovery } from './missionRecovery.js';
@@ -685,9 +687,397 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     drivers: createObservedControlDrivers({ sourceId: id => observedControlTarget(id)?.sourceId,
       codex: observedCodex, codexQueue: observedCodexQueue, hermes: observedHermes, replies: observedReplies, inboxes: observedInboxes }),
   });
+  const isCooperativeObservedSource = (sourceId?: string): sourceId is 'gemini-cli' | 'antigravity' | 'claude-code' =>
+    sourceId === 'gemini-cli' || sourceId === 'antigravity' || sourceId === 'claude-code';
+  const ensureCooperativeObservedInbox = async (id: string) => {
+    const target = observedControlTarget(id);
+    if (target?.watching && isCooperativeObservedSource(target.sourceId) && observedInboxes.status(id).state === 'disconnected') {
+      await observedInboxes.create(id);
+    }
+  };
+  const discoverAntigravityDaemons = async (): Promise<Array<{ lsAddress: string; csrfToken: string; alive: boolean; mtimeMs: number }>> => {
+    const importHome = options.importHome ?? homeDirectory;
+    const geminiRoot = env.GEMINI_CLI_HOME?.trim() || path.join(importHome, '.gemini');
+    const antigravityRoot = env.ANTIGRAVITY_HOME?.trim() || path.join(geminiRoot, 'antigravity');
+    const daemonDirs = [path.join(antigravityRoot, 'daemon'), path.join(geminiRoot, 'antigravity-ide', 'daemon')];
+    const discovered: Array<{ lsAddress: string; csrfToken: string; alive: boolean; mtimeMs: number }> = [];
+    for (const dir of daemonDirs) {
+      let entries: string[];
+      try { entries = await readdir(dir); } catch { continue; }
+      for (const name of entries) {
+        if (!name.endsWith('.json')) continue;
+        try {
+          const full = path.join(dir, name);
+          const info = await stat(full);
+          const raw = JSON.parse(await readFile(full, 'utf8')) as { pid?: unknown; httpPort?: unknown; csrfToken?: unknown };
+          const httpPort = typeof raw.httpPort === 'number' && Number.isInteger(raw.httpPort) && raw.httpPort > 0 ? raw.httpPort : undefined;
+          const csrfToken = typeof raw.csrfToken === 'string' && raw.csrfToken.trim() ? raw.csrfToken.trim() : undefined;
+          if (!httpPort || !csrfToken) continue;
+          let alive = false;
+          if (typeof raw.pid === 'number' && Number.isInteger(raw.pid) && raw.pid > 0) {
+            try { process.kill(raw.pid, 0); alive = true; } catch { alive = false; }
+          }
+          discovered.push({ lsAddress: `localhost:${httpPort}`, csrfToken, alive, mtimeMs: info.mtimeMs });
+        } catch { /* ignore unreadable daemon file */ }
+      }
+    }
+    discovered.sort((a, b) => Number(b.alive) - Number(a.alive) || b.mtimeMs - a.mtimeMs);
+    return discovered;
+  };
+  const observedModelChoices = async (sessionId: string, sourceId: string): Promise<ModelChoices> => {
+    const observedSummary = observations.summaries().find(item => item.id === sessionId);
+    const sessionModel = isModelId(observedSummary?.model?.trim()) ? observedSummary.model.trim() : undefined;
+    const importHome = options.importHome ?? homeDirectory;
+    const geminiRoot = env.GEMINI_CLI_HOME?.trim() || path.join(importHome, '.gemini');
+    if (sourceId === 'antigravity') {
+      const daemons = await discoverAntigravityDaemons();
+      if (env.ANTIGRAVITY_LS_ADDRESS?.trim() && env.ANTIGRAVITY_CSRF_TOKEN?.trim()) {
+        daemons.unshift({
+          lsAddress: env.ANTIGRAVITY_LS_ADDRESS.trim(),
+          csrfToken: env.ANTIGRAVITY_CSRF_TOKEN.trim(),
+          alive: true,
+          mtimeMs: Number.MAX_SAFE_INTEGER,
+        });
+      }
+      const fetchFn = (options.fetch as typeof fetch | undefined) ?? fetch;
+      for (const daemon of daemons) {
+        try {
+          const response = await fetchFn(`http://${daemon.lsAddress}/exa.language_server_pb.LanguageServerService/GetCascadeModelConfigData`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Connect-Protocol-Version': '1',
+              'x-codeium-csrf-token': daemon.csrfToken,
+            },
+            body: '{}',
+            signal: AbortSignal.timeout(1500),
+          });
+          if (!response.ok) continue;
+          const payload = (await response.json()) as {
+            clientModelConfigs?: Array<{
+              modelId?: unknown;
+              disabled?: unknown;
+              modelOrAlias?: { model?: unknown; alias?: unknown };
+              quotaInfo?: { remainingFraction?: unknown } | null;
+            }>;
+            defaultOverrideModelConfig?: { modelOrAlias?: { model?: unknown; alias?: unknown } };
+          };
+          const byEnum = new Map<string, string>();
+          const available: string[] = [];
+          for (const item of payload.clientModelConfigs ?? []) {
+            if (!item || typeof item !== 'object' || item.disabled === true) continue;
+            const hasQuota = item.quotaInfo === undefined
+              ? true
+              : Boolean(item.quotaInfo && typeof item.quotaInfo === 'object' && (
+                typeof item.quotaInfo.remainingFraction === 'number'
+                  ? item.quotaInfo.remainingFraction > 0
+                  : Object.keys(item.quotaInfo).length > 0
+              ));
+            if (!hasQuota) continue;
+            const id = typeof item.modelId === 'string' && isModelId(item.modelId.trim()) ? item.modelId.trim() : undefined;
+            if (!id) continue;
+            if (!available.includes(id)) available.push(id);
+            const enumKey = typeof item.modelOrAlias?.model === 'string'
+              ? item.modelOrAlias.model
+              : typeof item.modelOrAlias?.alias === 'string' ? item.modelOrAlias.alias : undefined;
+            if (enumKey) byEnum.set(enumKey, id);
+          }
+          if (available.length > 0) {
+            const defaultEnum = typeof payload.defaultOverrideModelConfig?.modelOrAlias?.model === 'string'
+              ? payload.defaultOverrideModelConfig.modelOrAlias.model
+              : typeof payload.defaultOverrideModelConfig?.modelOrAlias?.alias === 'string'
+                ? payload.defaultOverrideModelConfig.modelOrAlias.alias : undefined;
+            const defaultModel = (sessionModel && available.includes(sessionModel) ? sessionModel : undefined)
+              ?? (defaultEnum ? byEnum.get(defaultEnum) : undefined)
+              ?? available[0];
+            return {
+              runtime: 'extalia-native',
+              ...(defaultModel ? { defaultModel } : {}),
+              models: cleanModels(available),
+              efforts: [...EFFORTS],
+              permissionModes: [],
+            };
+          }
+        } catch { /* try next daemon */ }
+      }
+      return {
+        runtime: 'extalia-native',
+        ...(sessionModel ? { defaultModel: sessionModel } : {}),
+        models: cleanModels(sessionModel ? [sessionModel] : []),
+        efforts: [...EFFORTS],
+        permissionModes: [],
+      };
+    }
+    if (sourceId === 'codex') {
+      const codexRoot = env.CODEX_HOME?.trim() || path.join(importHome, '.codex');
+      let configuredDefault: string | undefined;
+      try {
+        const toml = await readFile(path.join(codexRoot, 'config.toml'), 'utf8');
+        const match = /^\s*model\s*=\s*["']([^"'\r\n]+)["']/m.exec(toml);
+        if (match?.[1] && isModelId(match[1].trim())) configuredDefault = match[1].trim();
+      } catch { /* ignore unreadable config.toml */ }
+      const discoveredModels: string[] = [];
+      for (const fileName of ['models_cache.json', 'models_cache.codex_work_desktop.json']) {
+        try {
+          const raw = JSON.parse(await readFile(path.join(codexRoot, fileName), 'utf8')) as {
+            models?: Array<{ slug?: unknown; id?: unknown; visibility?: unknown; supported_in_api?: unknown; disabled?: unknown }>;
+          };
+          for (const entry of raw.models ?? []) {
+            if (!entry || typeof entry !== 'object') continue;
+            if (entry.disabled === true || entry.supported_in_api === false) continue;
+            if (typeof entry.visibility === 'string' && entry.visibility !== 'list') continue;
+            const candidate = typeof entry.slug === 'string' ? entry.slug.trim()
+              : typeof entry.id === 'string' ? entry.id.trim() : '';
+            if (isModelId(candidate) && !discoveredModels.includes(candidate)) discoveredModels.push(candidate);
+          }
+          if (discoveredModels.length > 0) break;
+        } catch { /* try next cache file */ }
+      }
+      const models = cleanModels([
+        ...(configuredDefault ? [configuredDefault] : []),
+        ...discoveredModels,
+        ...(sessionModel ? [sessionModel] : []),
+      ]);
+      const defaultModel = sessionModel ?? configuredDefault ?? models[0];
+      return {
+        runtime: 'extalia-native',
+        ...(defaultModel ? { defaultModel } : {}),
+        models,
+        efforts: [...EFFORTS],
+        permissionModes: [],
+      };
+    }
+    if (sourceId === 'claude-code') {
+      const claudeRoot = env.CLAUDE_CONFIG_DIR?.trim() || path.join(importHome, '.claude');
+      let configuredDefault: string | undefined;
+      const configuredModels: string[] = [];
+      const envModels: string[] = [];
+      try {
+        const raw = JSON.parse(await readFile(path.join(claudeRoot, 'settings.json'), 'utf8')) as {
+          model?: unknown;
+          models?: unknown;
+          env?: Record<string, unknown>;
+        };
+        if (typeof raw.model === 'string' && isModelId(raw.model.trim())) {
+          configuredDefault = raw.model.trim();
+        }
+        if (Array.isArray(raw.models)) {
+          for (const entry of raw.models) {
+            if (typeof entry === 'string' && isModelId(entry.trim())) {
+              configuredModels.push(entry.trim());
+            } else if (entry && typeof entry === 'object') {
+              const item = entry as { id?: unknown; name?: unknown; modelId?: unknown; disabled?: unknown };
+              if (item.disabled === true) continue;
+              const candidate = typeof item.modelId === 'string' ? item.modelId.trim()
+                : typeof item.id === 'string' ? item.id.trim()
+                  : typeof item.name === 'string' ? item.name.trim() : '';
+              if (isModelId(candidate)) configuredModels.push(candidate);
+            }
+          }
+        }
+        if (raw.env && typeof raw.env === 'object') {
+          for (const key of [
+            'ANTHROPIC_MODEL',
+            'ANTHROPIC_DEFAULT_SONNET_MODEL',
+            'ANTHROPIC_DEFAULT_OPUS_MODEL',
+            'ANTHROPIC_DEFAULT_HAIKU_MODEL',
+            'ANTHROPIC_DEFAULT_FABLE_MODEL',
+          ]) {
+            const value = raw.env[key];
+            if (typeof value === 'string' && isModelId(value.trim())) envModels.push(value.trim());
+          }
+        }
+      } catch { /* ignore unreadable settings.json */ }
+      const baseModels = configuredModels.length > 0
+        ? configuredModels
+        : [...envModels, 'sonnet', 'opus', 'haiku'];
+      const models = cleanModels([
+        ...(configuredDefault ? [configuredDefault] : []),
+        ...baseModels,
+        ...(sessionModel ? [sessionModel] : []),
+      ]);
+      const defaultModel = sessionModel ?? configuredDefault ?? models[0];
+      return {
+        runtime: 'extalia-native',
+        ...(defaultModel ? { defaultModel } : {}),
+        models,
+        efforts: [...EFFORTS],
+        permissionModes: [],
+      };
+    }
+    if (sourceId === 'hermes') {
+      const catalog = await hermesModelCatalog(env, importHome, 'default', options.fetch as typeof fetch | undefined);
+      const models = cleanModels([
+        ...(catalog.defaultModel ? [catalog.defaultModel] : []),
+        ...catalog.models,
+        ...(sessionModel ? [sessionModel] : []),
+      ]);
+      const defaultModel = sessionModel ?? catalog.defaultModel ?? models[0];
+      return {
+        runtime: 'hermes',
+        ...(defaultModel ? { defaultModel } : {}),
+        models,
+        efforts: [...EFFORTS],
+        permissionModes: [],
+      };
+    }
+    let configuredDefault: string | undefined;
+    const configuredModels: string[] = [];
+    try {
+      const raw = JSON.parse(await readFile(path.join(geminiRoot, 'settings.json'), 'utf8')) as {
+        model?: unknown;
+        models?: unknown;
+      };
+      if (typeof raw.model === 'string' && isModelId(raw.model.trim())) {
+        configuredDefault = raw.model.trim();
+      } else if (raw.model && typeof raw.model === 'object') {
+        const modelObj = raw.model as { name?: unknown; default?: unknown };
+        const candidate = typeof modelObj.name === 'string' ? modelObj.name.trim() : typeof modelObj.default === 'string' ? modelObj.default.trim() : '';
+        if (isModelId(candidate)) configuredDefault = candidate;
+      }
+      if (Array.isArray(raw.models)) {
+        for (const entry of raw.models) {
+          if (typeof entry === 'string' && isModelId(entry.trim())) {
+            configuredModels.push(entry.trim());
+          } else if (entry && typeof entry === 'object') {
+            const item = entry as { id?: unknown; name?: unknown; modelId?: unknown; disabled?: unknown };
+            if (item.disabled === true) continue;
+            const candidate = typeof item.modelId === 'string' ? item.modelId.trim()
+              : typeof item.id === 'string' ? item.id.trim()
+                : typeof item.name === 'string' ? item.name.trim() : '';
+            if (isModelId(candidate)) configuredModels.push(candidate);
+          }
+        }
+      }
+    } catch { /* ignore unreadable settings.json */ }
+    const baseModels = configuredModels.length > 0
+      ? configuredModels
+      : ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'];
+    const models = cleanModels([
+      ...(configuredDefault ? [configuredDefault] : []),
+      ...baseModels,
+      ...(sessionModel ? [sessionModel] : []),
+    ]);
+    const defaultModel = sessionModel ?? configuredDefault ?? models[0];
+    return {
+      runtime: 'extalia-native',
+      ...(defaultModel ? { defaultModel } : {}),
+      models,
+      efforts: [...EFFORTS],
+      permissionModes: [],
+    };
+  };
+  const sendAntigravityAgentApiMessage = async (nativeSessionId: string, text: string): Promise<boolean> => {
+    if (!nativeSessionId || !text.trim()) return false;
+    const importHome = options.importHome ?? homeDirectory;
+    const geminiRoot = env.GEMINI_CLI_HOME?.trim() || path.join(importHome, '.gemini');
+    const antigravityRoot = env.ANTIGRAVITY_HOME?.trim() || path.join(geminiRoot, 'antigravity');
+    const candidates = [
+      env.EXTALIA_ANTIGRAVITY_AGENTAPI_BIN?.trim(),
+      path.join(antigravityRoot, 'bin', 'agentapi'),
+      path.join(geminiRoot, 'antigravity-ide', 'bin', 'agentapi'),
+    ].filter((item): item is string => Boolean(item));
+    const discovered = await discoverAntigravityDaemons();
+    const envConfigs: Array<NodeJS.ProcessEnv> = [];
+    if (env.ANTIGRAVITY_LS_ADDRESS?.trim() && env.ANTIGRAVITY_CSRF_TOKEN?.trim()) {
+      envConfigs.push(env as NodeJS.ProcessEnv);
+    }
+    for (const item of discovered) {
+      envConfigs.push({
+        ...(env as NodeJS.ProcessEnv),
+        ANTIGRAVITY_LS_ADDRESS: item.lsAddress,
+        ANTIGRAVITY_CSRF_TOKEN: item.csrfToken,
+      });
+    }
+    if (!envConfigs.length) envConfigs.push(env as NodeJS.ProcessEnv);
+    for (const candidate of candidates) {
+      if (!(await isExecutable(candidate))) continue;
+      for (const spawnEnv of envConfigs) {
+        const delivered = await new Promise<boolean>(resolve => {
+          let settled = false;
+          const finish = (ok: boolean) => { if (!settled) { settled = true; clearTimeout(timer); resolve(ok); } };
+          let child: ReturnType<typeof spawn>;
+          try {
+            child = spawn(candidate, ['send-message', '--title=Extalia Prompt', nativeSessionId, text], {
+              env: spawnEnv, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true, shell: false,
+            });
+          } catch { finish(false); return; }
+          const timer = setTimeout(() => { try { child.kill('SIGTERM'); } catch { /* ignore */ } finish(false); }, 5000);
+          child.once('error', () => finish(false));
+          child.once('close', (code, signal) => finish(code === 0 && signal === null));
+        });
+        if (delivered) return true;
+      }
+    }
+    return false;
+  };
+  const dispatchCooperativeObservedMessage = async (id: string, text: string): Promise<'sent' | 'unknown'> => {
+    const target = observations.controlTarget(id);
+    if (closing || !target?.watching || !isCooperativeObservedSource(target.sourceId)) return 'unknown';
+    let fullText = text;
+    if (attachments.pending(id) > 0) {
+      const filesDir = path.join(layout.root, 'attachments', id, 'files');
+      try {
+        const names = await readdir(filesDir);
+        const lines = names.map(name => `[Attached file: ${name} (${path.join(filesDir, name)})]`);
+        if (lines.length) fullText = [lines.join('\n'), text.trim()].filter(Boolean).join('\n\n');
+      } catch { /* ignore */ }
+    }
+    const replyStatus = observedReplies.status(id);
+    if (replyStatus.state === 'waitingForReply' && replyStatus.channelId) {
+      const answered = observedReplies.answer(id, { channelId: replyStatus.channelId, text: fullText });
+      if (answered.state === 'answered' && !answered.problem) {
+        followupSuggestions.invalidate(id);
+        return 'sent';
+      }
+    }
+    if (target.sourceId === 'antigravity' && await sendAntigravityAgentApiMessage(target.nativeSessionId, fullText)) {
+      await observations.receiveHook({
+        app: 'antigravity',
+        sessionId: target.nativeSessionId,
+        event: 'UserPromptSubmit',
+        starts: false,
+        ends: false,
+        steps: [
+          { agentId: 'primary', body: { type: 'prompt.submitted', via: 'native', text: safeText(fullText, 4000) } },
+          { agentId: 'primary', body: { type: 'agent.state', state: 'thinking' } },
+        ],
+      }).catch(() => undefined);
+      followupSuggestions.invalidate(id);
+      return 'sent';
+    }
+    let inbox = observedInboxes.status(id);
+    if (inbox.state !== 'connected' || !inbox.channelId) {
+      inbox = await observedInboxes.create(id);
+    }
+    if (closing || inbox.state !== 'connected' || !inbox.channelId) return 'unknown';
+    const sent = observedInboxes.send(id, { channelId: inbox.channelId, text: fullText });
+    if (sent.problem) return 'unknown';
+    const latest = sent.receipts?.at(-1);
+    if (!latest || (latest.state !== 'queued' && latest.state !== 'delivered' && latest.state !== 'acknowledged')) return 'unknown';
+    followupSuggestions.invalidate(id);
+    return 'sent';
+  };
   const ingest = await createHookIngest({
     dataDirectory, kind: options.kind, labelsOnly: () => observations.labelsOnly(), sink: hook => { void observations.receiveHook(hook); },
     permissionHandler: (request, response) => observedCodexPermissions.handle(request, response),
+    async pollInbox(app, payload, response) {
+      if (Object.keys(payload).some(key => !['operation', 'session_id', 'ack', 'waitMs'].includes(key))) {
+        observedInboxes.poll('', payload, response);
+        return;
+      }
+      const sessionId = typeof payload.session_id === 'string' ? payload.session_id.trim() : '';
+      const observationId = observations.resolveWatchedSessionId(app, sessionId);
+      if (!observationId || closing || blockedReplyIds.has(observationId)) {
+        observedInboxes.poll('', payload, response);
+        return;
+      }
+      if (observedInboxes.status(observationId).state === 'disconnected') {
+        await observedInboxes.create(observationId);
+      }
+      const { session_id: _sessionId, ...pollRow } = payload;
+      observedInboxes.poll(observationId, pollRow, response);
+    },
   }).catch(async error => { await observations.close(); missions.close(); throw error; });
 
   promptQueues = await PromptQueues.create({
@@ -702,17 +1092,37 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       if (closing) return undefined;
       if (observations.has(id)) {
         const source = observations.codexQueueTarget(id);
-        if (!source) return undefined;
+        if (source) {
+          const current = observations.summaries().find(item => item.id === id);
+          const control = await observedCodex.status(id);
+          const steering = source.watching && control.state === 'connected' && control.canSend && control.connectionId && control.activeTurnId && control.threadId === source.threadId
+            ? { identity: JSON.stringify([control.connectionId, control.activeTurnId]), send: async (text: string): Promise<'sent' | 'unknown'> => {
+              const result = await observedCodex.send(id, { connectionId: control.connectionId!, activeTurnId: control.activeTurnId!, text });
+              return result.delivery === 'submitted' ? 'sent' : 'unknown';
+            } } : undefined;
+          return { identity: createHash('sha256').update(JSON.stringify(['codex', source.threadId, source.codexHome, source.sourceFingerprint, source.cwd])).digest('hex'),
+            available: true, ready: source.watching && current?.observation?.status === 'watching' && !current.running,
+            maxTextLength: 16_000, persist: !observations.labelsOnly(), ...(steering ? { steering } : {}) };
+        }
+        const controlTarget = observations.controlTarget(id);
+        if (!controlTarget || !isCooperativeObservedSource(controlTarget.sourceId)) return undefined;
         const current = observations.summaries().find(item => item.id === id);
-        const control = await observedCodex.status(id);
-        const steering = source.watching && control.state === 'connected' && control.canSend && control.connectionId && control.activeTurnId && control.threadId === source.threadId
-          ? { identity: JSON.stringify([control.connectionId, control.activeTurnId]), send: async (text: string): Promise<'sent' | 'unknown'> => {
-            const result = await observedCodex.send(id, { connectionId: control.connectionId!, activeTurnId: control.activeTurnId!, text });
-            return result.delivery === 'submitted' ? 'sent' : 'unknown';
-          } } : undefined;
-        return { identity: createHash('sha256').update(JSON.stringify(['codex', source.threadId, source.codexHome, source.sourceFingerprint, source.cwd])).digest('hex'),
-          available: true, ready: source.watching && current?.observation?.status === 'watching' && !current.running,
-          maxTextLength: 16_000, persist: !observations.labelsOnly(), ...(steering ? { steering } : {}) };
+        const reply = observedReplies.status(id);
+        const inbox = observedInboxes.status(id);
+        const waitingForInput = (reply.state === 'waitingForReply' && !!reply.channelId) || (inbox.state === 'connected' && !!inbox.polling);
+        const activeWatching = controlTarget.watching && current?.observation?.status === 'watching';
+        const steering = activeWatching && current?.running
+          ? { identity: JSON.stringify([controlTarget.sourceId, controlTarget.nativeSessionId, controlTarget.fingerprint]),
+            send: (text: string): Promise<'sent' | 'unknown'> => dispatchCooperativeObservedMessage(id, text) }
+          : undefined;
+        return {
+          identity: createHash('sha256').update(JSON.stringify([controlTarget.sourceId, controlTarget.nativeSessionId, controlTarget.fingerprint])).digest('hex'),
+          available: true,
+          ready: activeWatching && (!current?.running || waitingForInput),
+          maxTextLength: 16_000,
+          persist: !observations.labelsOnly(),
+          ...(steering ? { steering } : {}),
+        };
       }
       const record = await sessions.get(id).catch(() => undefined);
       if (!record || !config.workspaces.some(item => item.id === record.workspaceId)) return undefined;
@@ -731,13 +1141,16 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       if (closing) return 'unknown';
       if (observations.has(id)) {
         const source = observations.codexQueueTarget(id);
-        if (!source?.watching) return 'unknown';
-        let status = await observedCodexQueue.status(id);
-        if (status.delivery === 'unknown') return 'unknown';
-        if (!status.enabled) status = await observedCodexQueue.setEnabled(id, true);
-        if (!status.canQueue || closing) return 'unknown';
-        const result = await observedCodexQueue.send(id, { text });
-        return result.delivery === 'queued' ? 'sent' : 'unknown';
+        if (source) {
+          if (!source.watching) return 'unknown';
+          let status = await observedCodexQueue.status(id);
+          if (status.delivery === 'unknown') return 'unknown';
+          if (!status.enabled) status = await observedCodexQueue.setEnabled(id, true);
+          if (!status.canQueue || closing) return 'unknown';
+          const result = await observedCodexQueue.send(id, { text });
+          return result.delivery === 'queued' ? 'sent' : 'unknown';
+        }
+        return dispatchCooperativeObservedMessage(id, text);
       }
       await host.sendPrompt(id, text);
       return 'sent';
@@ -1524,18 +1937,26 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
         const results = await Promise.allSettled([stopping, stoppingHermes, stoppingQueue, stoppingSourceQueue, stoppingPrompts, observations.setWatching(id, false)]);
         const failed = results.find((result): result is PromiseRejectedResult => result.status === 'rejected');
         if (failed) throw failed.reason;
-      } else { await observations.setWatching(id, true); blockedReplyIds.delete(id); observedCodex.resume(id); observedHermes.resume(id); observedCodexQueue.resume(id); observedCodexNativeQueue.resume(id); observedCodexPermissions.resume(id); }
+      } else { await observations.setWatching(id, true); blockedReplyIds.delete(id); observedInboxes.reset(id); observedCodex.resume(id); observedHermes.resume(id); observedCodexQueue.resume(id); observedCodexNativeQueue.resume(id); observedCodexPermissions.resume(id); }
       return state();
     },
     async observedCodexStatus(id) { assertHostOpen(); return observedCodex.status(id); },
-    async observedControlStatus(id) { assertHostOpen(); return observedControls.status(id); },
+    async observedControlStatus(id) {
+      assertHostOpen();
+      await ensureCooperativeObservedInbox(id);
+      return observedControls.status(id);
+    },
     async dispatchObservedControl(id, input) {
       assertHostOpen();
       const receipt = await observedControls.dispatch(id, input);
       if (receipt.state !== 'rejected') followupSuggestions.invalidate(id);
       return receipt;
     },
-    async observedInboxStatus(id) { assertHostOpen(); return { ...observedInboxes.status(id), ...(manualInboxIds.has(id) ? { label: manualInboxIds.get(id) } : {}) }; },
+    async observedInboxStatus(id) {
+      assertHostOpen();
+      await ensureCooperativeObservedInbox(id);
+      return { ...observedInboxes.status(id), ...(manualInboxIds.has(id) ? { label: manualInboxIds.get(id) } : {}) };
+    },
     async createObservedInbox(id) { assertHostOpen(); observedControls.drop(id); return observedInboxes.create(id); },
     async closeObservedInbox(id) {
       assertHostOpen(); observedControls.drop(id); observedInboxes.drop(id);
@@ -1660,11 +2081,17 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
 
     async modelChoices(workspaceId, sessionId): Promise<ModelChoices> {
       if (typeof workspaceId !== 'string') throw userError('Choose a workspace.');
+      if (sessionId !== undefined && typeof sessionId === 'string' && observations.has(sessionId)) {
+        const target = observations.controlTarget(sessionId);
+        if (target && (!workspaceId || isCooperativeObservedSource(target.sourceId))) {
+          return observedModelChoices(sessionId, target.sourceId);
+        }
+        throw userError('Observed sessions run in their own app; choose the model there.');
+      }
       let workspace = findWorkspace(workspaceId);
       let sessionModel: string | undefined;
       if (sessionId !== undefined) {
         if (typeof sessionId !== 'string') throw userError('Choose a managed session.');
-        if (observations.has(sessionId)) throw userError('Observed sessions run in their own app; choose the model there.');
         const record = await sessions.get(sessionId).catch(() => undefined);
         if (!record) throw userError('That session no longer exists.');
         if (record.workspaceId !== workspaceId) throw userError('That session belongs to another workspace.');
@@ -2346,11 +2773,20 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       if (closing) throw userError('The host is shutting down.');
       knowledgeVault.assertStable();
       if (typeof sessionId !== 'string') throw userError('That session no longer exists.');
-      if (observations.has(sessionId)) throw userError('Observed sessions are read-only. Attach files in the agent’s own app.');
-      if (!await sessions.get(sessionId).catch(() => undefined)) throw userError('That session no longer exists.');
+      const isObserved = observations.has(sessionId);
+      if (!isObserved && !await sessions.get(sessionId).catch(() => undefined)) throw userError('That session no longer exists.');
       let input: PromptAttachmentInput;
       try { input = normalizeAttachmentUpload(file); } catch (error) { throw userError(error instanceof Error ? error.message : 'Invalid file.'); }
-      return persistence.run(() => attachments.upload(sessionId, input));
+      const uploaded = await persistence.run(() => attachments.upload(sessionId, input));
+      if (isObserved) {
+        try {
+          const observedDir = path.join(layout.root, 'attachments', sessionId, 'files');
+          await mkdir(observedDir, { recursive: true, mode: 0o700 });
+          const bytes = Buffer.from(input.data, 'base64');
+          await writeFile(path.join(observedDir, uploaded.name), bytes, { mode: PRIVATE_FILE_MODE });
+        } catch { /* best-effort named file copy for observed agents */ }
+      }
+      return uploaded;
     },
 
     async removeAttachment(sessionId, attachmentId) {

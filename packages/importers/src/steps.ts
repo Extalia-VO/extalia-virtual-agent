@@ -114,7 +114,7 @@ function patchFiles(patch: string): string[] {
 }
 
 const MAX_FILE_CANDIDATES = 200;
-const EDIT_TOOL = /^(?:apply_patch|patch|edit|write|multiedit|write_file|edit_file|replace|write_to_file|notebookedit|str_replace_editor|writefile|editfile|replace_file_content|multi_replace_file_content)$/i;
+const EDIT_TOOL = /^(?:apply_patch|patch|edit|write|multiedit|write_file|edit_file|replace|write_to_file|notebookedit|str_replace_editor|writefile|editfile|replace_file_content|multi_replace_file_content|create_file|update_file|modify_file|save_file)$/i;
 
 export function normalizeWrittenFilePath(value: unknown, cwd?: string): string | undefined {
   if (typeof value !== 'string') return undefined;
@@ -163,17 +163,25 @@ export function extractWrittenFiles(tool: string, input: unknown, response?: unk
     }
   }
   if (!found.length) {
-    const path = [record.file_path, record.filePath, record.absolute_path, record.AbsolutePath, record.TargetFile, record.notebook_path, record.path].find(value => typeof value === 'string' && value.trim());
+    const unquotedRecord: RecordValue = Object.fromEntries(Object.entries(record).map(([key, val]) => [key, unquote(val)]));
+    const path = [unquotedRecord.file_path, unquotedRecord.filePath, unquotedRecord.absolute_path, unquotedRecord.AbsolutePath, unquotedRecord.TargetFile, unquotedRecord.notebook_path, unquotedRecord.path, unquotedRecord.Path].find(value => typeof value === 'string' && value.trim());
     const collectNested = (value: unknown, depth = 0): void => {
       if (depth > 5 || found.length >= MAX_FILE_CANDIDATES) return;
       if (Array.isArray(value)) { for (const item of value.slice(0, MAX_FILE_CANDIDATES)) collectNested(item, depth + 1); return; }
       const item = obj(value);
-      const nestedPath = [item.file_path, item.filePath, item.absolute_path, item.AbsolutePath, item.TargetFile, item.notebook_path, item.path]
+      const nestedPath = [item.file_path, item.filePath, item.absolute_path, item.AbsolutePath, item.TargetFile, item.notebook_path, item.path, item.Path]
+        .map(unquote)
         .find(candidate => typeof candidate === 'string' && candidate.trim());
       if (nestedPath) add(nestedPath);
       for (const [key, child] of Object.entries(item)) if (['edits', 'changes', 'operations'].includes(key)) collectNested(child, depth + 1);
     };
-    if (path) add(path, name.toLowerCase() === 'write_to_file' && record.Overwrite !== true && record.Overwrite !== 'true' ? 'add' : 'update');
+    const lowerName = name.toLowerCase();
+    const isCreateCall = lowerName === 'create_file' || (
+      (lowerName === 'write_to_file' || ((lowerName === 'write_file' || lowerName === 'writefile') && (unquotedRecord.Path !== undefined || unquotedRecord.TargetFile !== undefined))) &&
+      unquotedRecord.Overwrite !== true && unquotedRecord.Overwrite !== 'true' &&
+      unquotedRecord.Append !== true && unquotedRecord.Append !== 'true'
+    );
+    if (path) add(path, isCreateCall ? 'add' : 'update');
     else collectNested(args);
   }
   // Some adapters return structured changed-file lists. Never parse prose or command output for paths.
@@ -250,7 +258,7 @@ export function toolHints(tool: string, input: unknown): { target?: string; comm
   if (command.trim()) return { command: commandHead(command), target: commandHead(command) };
   const patch = str(record.input) || str(record.patch);
   if (patch) { const hints = toolHints(tool, patch); if (hints.target) return hints; }
-  const file = [record.file_path, record.filePath, record.absolute_path, record.AbsolutePath, record.TargetFile, record.notebook_path, record.path, record.dir_path, record.DirectoryPath, record.SearchPath].find(value => typeof value === 'string' && value.trim());
+  const file = [record.file_path, record.filePath, record.absolute_path, record.AbsolutePath, record.TargetFile, record.notebook_path, record.path, record.Path, record.dir_path, record.DirectoryPath, record.SearchPath].find(value => typeof value === 'string' && value.trim());
   if (typeof file === 'string') return { target: fileTarget(file) };
   const url = str(record.url) || str(record.Url);
   const host = /^[a-z][a-z0-9+.-]*:\/\/(?:[^/?#\s@]*@)?([^/?#\s]+)/i.exec(url)?.[1];

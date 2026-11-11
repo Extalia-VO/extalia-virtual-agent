@@ -375,5 +375,14 @@ export function projectActivity(events: readonly ExtaliaEvent[]): SessionActivit
 export function mergeEvents(existing: readonly ExtaliaEvent[], incoming: readonly ExtaliaEvent[]): ExtaliaEvent[] {
   const ids = new Set(existing.map(event => event.id));
   const added = incoming.filter(event => !ids.has(event.id) && ids.add(event.id));
-  return added.length ? [...existing, ...added] : existing as ExtaliaEvent[];
+  if (!added.length) return existing as ExtaliaEvent[];
+  const merged = [...existing, ...added];
+  // A transcript row can arrive after later hook events; keep source order like the host's history does.
+  const tail = existing.at(-1)?.at;
+  if (tail && added.some(event => event.at < tail)) {
+    return merged.map((event, index) => ({ event, index }))
+      .sort((a, b) => (a.event.at < b.event.at ? -1 : a.event.at > b.event.at ? 1 : a.index - b.index))
+      .map(item => item.event);
+  }
+  return merged;
 }

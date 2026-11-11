@@ -55,3 +55,41 @@ it('keeps observed worker characters and ended Office dialogs without a prompt s
   expect(renderToStaticMarkup(createElement(CharacterConversation, { ...props, agent }))).not.toContain('composer observed-codex-prompt');
   expect(renderToStaticMarkup(createElement(CharacterConversation, { ...props, agent: { ...agent, agentId: 'primary' }, readOnlyReason: 'Ended' }))).not.toContain('composer observed-codex-prompt');
 });
+
+it.each(['gemini-cli', 'antigravity', 'claude-code'] as const)('shows the observed prompt composer in Observe, Office and Chat for watched %s sessions', sourceId => {
+  const t = MESSAGES.en;
+  const cooperativeSession = {
+    ...session,
+    id: `observed-${sourceId}`,
+    title: `Observed ${sourceId}`,
+    model: sourceId === 'antigravity' ? 'gemini-4-argon-medium' : 'gemini-2.5-pro',
+    observation: { ...session.observation!, sourceId },
+  } as SessionSummary;
+  const cooperativeState = { ...state, sessions: [cooperativeSession] } as unknown as HostState;
+  const host = {
+    createSession: vi.fn(), sendPrompt: vi.fn(),
+    modelChoices: vi.fn(),
+    promptQueueStatus: vi.fn(), changePromptQueue: vi.fn(),
+    observedControlStatus: vi.fn(), dispatchObservedControl: vi.fn(),
+  } as unknown as AgentHostApi;
+  const common = { t, language: 'en' as const, agents: host, state: cooperativeState, ...callbacks };
+  const views = [
+    createElement(ObserverPage, { ...common, onContinued: vi.fn() }),
+    createElement(CharacterConversation, { ...common, session: cooperativeSession, agent: {
+      id: `${cooperativeSession.id}:primary`, sessionId: cooperativeSession.id, agentId: 'primary', displayName: 'Observed agent',
+      control: 'observed', status: 'observing', running: false,
+    } as OfficeAgent }),
+    createElement(ChatPage, { ...common, selection: { workspaceId: 'workspace', sessionId: cooperativeSession.id }, onSelect: vi.fn(), onReviewSkills: vi.fn() }),
+  ];
+  for (const view of views) {
+    const markup = renderToStaticMarkup(view);
+    const visible = markup.replace(/<details\b[\s\S]*?<\/details>/g, '');
+    expect(visible).toContain('composer observed-codex-prompt');
+    expect(visible).toContain(t.observedControl.placeholder);
+    expect(visible).toContain('composer-attach');
+    expect(visible).toContain('composer-model');
+    expect(visible).toContain('composer-effort');
+    expect(visible).toContain('type="file"');
+    expect(visible.match(/<textarea\b/g)).toHaveLength(1);
+  }
+});

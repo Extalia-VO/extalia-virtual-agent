@@ -64,6 +64,8 @@ export interface HookRequestOptions {
   verifySignature(body: Buffer, header: string): Promise<boolean>;
   /** Receives every authenticated JSON object; must not throw or block. */
   deliver(app: HookApp, payload: Record<string, unknown>): void;
+  /** Optional session-bound inbox poll handler for authenticated `extalia mcp` requests. */
+  pollInbox?(app: HookApp, payload: Record<string, unknown>, response: ServerResponse): Promise<void>;
   limiter: HookRateLimiter;
   maxBodyBytes?: number;
 }
@@ -137,7 +139,12 @@ export async function handleHookRequest(request: IncomingMessage, response: Serv
     let payload: unknown;
     try { payload = JSON.parse(body.toString('utf8')); } catch { payload = undefined; }
     if (payload && typeof payload === 'object' && !Array.isArray(payload)) {
-      try { options.deliver(app, payload as Record<string, unknown>); } catch { /* a hook never fails the agent */ }
+      const record = payload as Record<string, unknown>;
+      if (record.operation === 'poll' && typeof record.session_id === 'string' && record.hook_event_name === undefined && record.event === undefined && options.pollInbox) {
+        await options.pollInbox(app, record, response);
+        return;
+      }
+      try { options.deliver(app, record); } catch { /* a hook never fails the agent */ }
     }
   }
   reply(response, 204);

@@ -2,6 +2,7 @@ import { useId, useRef, useState } from 'react';
 import type { AgentHostApi, SessionSummary } from '@extalia/platform';
 import type { Messages } from '../i18n';
 import { useUnsavedDraft } from '../restart/unsavedDrafts';
+import { supportsObservedPromptQueue } from '../observe/observedCodexPromptModel';
 import { Icon } from '../ui/Icon';
 import type { PromptQueueControl, PromptQueueDrag, PromptQueueView } from './promptQueueModel';
 import { usePromptQueue } from './usePromptQueue';
@@ -9,7 +10,7 @@ import './promptQueue.css';
 
 export interface PromptQueueControlsProps { t: Messages; agents: AgentHostApi; session: SessionSummary; disabled?: boolean }
 export function PromptQueueControls(props: PromptQueueControlsProps) {
-  if (props.session.control === 'observed' && props.session.observation?.sourceId !== 'codex') return null;
+  if (props.session.control === 'observed' && !supportsObservedPromptQueue(props.session.observation?.sourceId)) return null;
   return <QueueSession key={`${props.session.id}:${props.session.observation?.nativeSessionId ?? ''}`} {...props} />;
 }
 function QueueSession({ t, agents, session, disabled }: PromptQueueControlsProps) {

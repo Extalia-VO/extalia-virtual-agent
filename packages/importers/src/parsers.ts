@@ -643,11 +643,23 @@ export function parseAntigravity(text: string, context: ParseContext): NativePar
       const settingsModel = antigravityModelFromSettings(rawContent);
       if (settingsModel) model = settingsModel;
       const prompt = antigravityUserText(rawContent);
+      const tagModel = /\[Model:\s*([^\]]+)\]/i.exec(prompt)?.[1]?.trim();
+      if (tagModel && !/^(?:none|auto)$/i.test(tagModel)) model = safeLabel(tagModel, 120);
       if (isInjectedContext(prompt)) continue;
       const attached = antigravityMedia(row.media, context.readMedia);
       if (!prompt && !attached.length) continue;
       if (prompt) drafts.push({ role: 'user', content: prompt, at: row.created_at ?? row.timestamp });
       steps.push({ ...base, type: 'prompt', text: prompt, ...files(attached) });
+    } else if (type === 'SYSTEM_MESSAGE' && /Extalia Prompt/.test(rawContent)) {
+      const bodyMatch = /<SYSTEM_MESSAGE>[\s\S]*?\bcontent=([\s\S]*?)\s*<\/SYSTEM_MESSAGE>/i.exec(rawContent);
+      const prompt = unquoteArg(bodyMatch?.[1] ?? '');
+      if (prompt && !isInjectedContext(prompt)) {
+        pendingCalls = [];
+        const tagModel = /\[Model:\s*([^\]]+)\]/i.exec(prompt)?.[1]?.trim();
+        if (tagModel && !/^(?:none|auto)$/i.test(tagModel)) model = safeLabel(tagModel, 120);
+        drafts.push({ role: 'user', content: prompt, at: row.created_at ?? row.timestamp });
+        steps.push({ ...base, type: 'prompt', text: prompt });
+      }
     } else if (type === 'PLANNER_RESPONSE') {
       pendingCalls = [];
       const calls = list(row.tool_calls).map(obj).filter(call => str(call.name));
@@ -667,7 +679,7 @@ export function parseAntigravity(text: string, context: ParseContext): NativePar
           const cwd = unquoteArg(args.Cwd ?? args.cwd ?? args.DirectoryPath ?? args.SearchPath);
           if (/^(?:\/|[A-Za-z]:[\\/])/.test(cwd)) projectPath = cwd;
           else {
-            const fileTarget = unquoteArg(args.AbsolutePath ?? args.TargetFile);
+            const fileTarget = unquoteArg(args.AbsolutePath ?? args.TargetFile ?? args.Path ?? args.file_path ?? args.filePath ?? args.path);
             const dirMatch = /^(\/projects\/[^/]+|\/Users\/[^/]+\/[^/]+)/.exec(fileTarget);
             if (dirMatch) projectPath = dirMatch[1]!;
           }

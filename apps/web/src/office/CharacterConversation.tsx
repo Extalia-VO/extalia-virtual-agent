@@ -1,6 +1,7 @@
 import { ObservedCodexControls } from '../observe/ObservedCodexControls';
 import { ObservedCodexQueueControls } from '../observe/ObservedCodexQueueControls';
 import { ObservedCodexPromptComposer } from '../observe/ObservedCodexPromptComposer';
+import { supportsObservedPromptQueue } from '../observe/observedCodexPromptModel';
 import { ObservedCodexNativeQueue } from '../observe/ObservedCodexNativeQueue';
 import { ObservedCodexPermissionControls } from '../observe/ObservedCodexPermissionControls';
 import { ObservedReplyControls } from '../observe/ObservedReplyControls';
@@ -265,14 +266,14 @@ export function CharacterConversation({ t, language, agents, state, session, age
           {running && !waiting && <span className="pulse" aria-hidden="true" />}{waiting && <Icon name="shield" />}{status}
         </p>
         {error && <p className="form-error" role="alert"><Icon name="alert" />{error}</p>}
-        {!isWorker && !readOnlyReason && session.control === 'observed' && controlHub &&
-          <ObservedSessionControl key={`control:${session.id}`} t={t} agents={agents} session={session} compact />}
-        {!isWorker && !readOnlyReason && session.control === 'observed' && !controlHub && session.observation?.sourceId === 'codex' &&
+        {!isWorker && !readOnlyReason && session.control === 'observed' && supportsObservedPromptQueue(session.observation?.sourceId) &&
           <ObservedCodexPromptComposer key={session.id} t={t} agents={agents} session={session} showNativeQueue={false} />}
+        {!isWorker && !readOnlyReason && session.control === 'observed' && !supportsObservedPromptQueue(session.observation?.sourceId) && controlHub &&
+          <ObservedSessionControl key={`control:${session.id}`} t={t} agents={agents} session={session} compact />}
         {!readOnly && <Composer t={t} agents={agents} session={session} workspaceId={session.workspaceId}
           hermes={sessionRuntime(workspace, session) === 'hermes'} modelScopeKey={modelChoicesKey(state, workspace, session)} running={running} waiting={waiting} readOnly={false} stopping={activity.stopping}
           onSend={send} onStop={() => { void guard(async () => { await agents.cancel(session.id); refreshState(); }); }} onSessionChanged={refreshState} />}
-        {!isWorker && !readOnlyReason && session.control === 'observed' && (controlHub || session.observation?.sourceId !== 'codex') &&
+        {!isWorker && !readOnlyReason && session.control === 'observed' && !supportsObservedPromptQueue(session.observation?.sourceId) &&
           <PromptSuggestions t={t} agents={agents} session={session} copyOnly />}
 
       </footer>

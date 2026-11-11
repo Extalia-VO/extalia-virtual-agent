@@ -31,6 +31,8 @@
 .observed-codex-entry > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 .composer.observed-codex-prompt { display: grid; grid-template-columns: minmax(0, 1fr) 38px; align-items: end; min-width: 0; max-width: 100%; box-sizing: border-box; border: 1px solid var(--line); background: var(--surface-solid); color: var(--text); }
+.composer.observed-codex-prompt.has-toolbar { grid-template-columns: minmax(0, 1fr); align-items: stretch; gap: 6px; }
+.composer.observed-codex-prompt.has-toolbar .composer-toolbar { grid-column: 1 / -1; }
 .observed-codex-prompt textarea { width: 100%; min-width: 0; box-sizing: border-box; resize: vertical; background: transparent; color: var(--text); }
 .observed-codex-prompt-hint { margin: 0; font-size: 12px; line-height: 1.5; color: var(--muted); overflow-wrap: anywhere; }
 .observed-codex-prompt p { grid-column: 1 / -1; margin: 0; overflow-wrap: anywhere; }

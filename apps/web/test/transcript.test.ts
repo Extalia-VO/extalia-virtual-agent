@@ -284,4 +284,12 @@ describe('mergeEvents', () => {
     expect(merged.map(item => item.id)).toEqual([a.id, b.id]);
     expect(mergeEvents(merged, [a, b])).toBe(merged);
   });
+
+  it('places a late transcript reply before newer hook events, like reloaded history', () => {
+    const at = (second: number) => `2026-11-10T00:00:${String(second).padStart(2, '0')}.000Z`;
+    const make = (id: string, second: number, body: EventBody) => createEvent({ id, at: at(second), sessionId: 's', source: { runtime: 'antigravity', channel: 'hook' }, body });
+    const tool = make('tool', 5, { type: 'tool.started', toolCallId: 'c1', tool: 'run_command', kind: 'command', label: 'Run command' });
+    const reply = make('reply', 3, { type: 'model.completed', text: 'Checking models' });
+    expect(mergeEvents([tool], [reply]).map(item => item.id)).toEqual(['reply', 'tool']);
+  });
 });

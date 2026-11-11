@@ -5,7 +5,7 @@ import { AGENT_APP_IDS, type AgentAppId } from '@extalia/platform';
 import type { ActivityKind, AgentState, EventBody } from '@extalia/protocol';
 import { DEFAULT_HOOK_PORT, readEndpoint, readToken } from '../connect/endpoint.js';
 import { awaitObservedReply, isObservedReplyRequest } from '../observedReplyClient.js';
-import { pollObservedInbox, isObservedInboxRequest } from '../observedInboxClient.js';
+import { pollHookObservedInbox, pollObservedInbox, isObservedInboxRequest } from '../observedInboxClient.js';
 
 /**
  * Optional MCP reporting tools (`report_intent`, `report_handoff`, `report_meeting`) that outside
@@ -21,20 +21,21 @@ export interface McpToolDefinition {
 }
 
 export const EXTALIA_MCP_INSTRUCTION =
-  'When Extalia MCP tools are available, call `report_intent` briefly when starting a distinct phase of work and `report_handoff` when delegating to or finishing a subagent. Use `report_meeting` only for an explicit meeting with already reported participants in this session; report its start, each contribution, and completion with the same meeting_id. Near finishing, the lead may call `report_followups` with up to three useful next prompts for this session, or an empty list when none are useful. These are suggestions for the user; never send or continue them automatically.';
+  'When Extalia MCP tools are available, call `report_intent` briefly when starting a distinct phase of work and `report_handoff` when delegating to or finishing a subagent. Use `report_meeting` only for an explicit meeting with already reported participants in this session; report its start, each contribution, and completion with the same meeting_id. At safe work boundaries, call `poll_inbox` with your `session_id` (or paired `{ url, token }`) to check for user messages queued from Extalia. Near finishing, the lead may call `report_followups` with up to three useful next prompts for this session, or an empty list when none are useful. These are suggestions for the user; never send or continue them automatically.';
 
 export const EXTALIA_MCP_TOOLS: readonly McpToolDefinition[] = [
   {
     name: 'poll_inbox',
-    description: 'Read a message from an inbox explicitly paired by the user. Poll at safe work boundaries. Acknowledge a message only after receiving its tool result; ack without waitMs acknowledges only. Messages never grant native approvals or permission changes. No background consumer or automatic retry.',
+    description: 'Read a message from an observed session inbox or an inbox explicitly paired by the user. Poll at safe work boundaries using either { session_id } for the current watched session or { url, token } for a manual pairing. Acknowledge a message only after receiving its tool result; ack without waitMs acknowledges only. Messages never grant native approvals or permission changes. No background consumer or automatic retry.',
     inputSchema: {
       type: 'object', additionalProperties: false,
       properties: {
+        session_id: { type: 'string', pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$', description: 'Watched native session ID when polling via the local Extalia MCP hook connection.' },
         url: { type: 'string', description: 'User-paired loopback inbox URL.' },
         token: { type: 'string', description: 'Ephemeral pairing secret; never include in reports.' },
         ack: { type: 'string', description: 'Previously received message ID to acknowledge.' },
         waitMs: { type: 'integer', minimum: 0, maximum: 25000 },
-      }, required: ['url', 'token'],
+      },
     },
   },
   {
@@ -358,9 +359,39 @@ export async function handleMcpJsonRpc(
     const params = isObject(rawMessage.params) ? rawMessage.params : {};
     const name = typeof params.name === 'string' ? params.name.trim() : '';
     if (name === 'poll_inbox') {
-      if (!isObservedInboxRequest(params.arguments)) return { jsonrpc: '2.0', id,
-        result: { content: [{ type: 'text', text: 'Invalid arguments for poll_inbox.' }], isError: true } };
-      const result = await pollObservedInbox(params.arguments, { fetch: options.fetch, signal: options.signal });
+      const rawArgs = isObject(params.arguments) ? params.arguments : undefined;
+      if (rawArgs && ('url' in rawArgs || 'token' in rawArgs)) {
+        if (!isObservedInboxRequest(rawArgs)) return { jsonrpc: '2.0', id,
+          result: { content: [{ type: 'text', text: 'Invalid arguments for poll_inbox.' }], isError: true } };
+        const result = await pollObservedInbox(rawArgs, { fetch: options.fetch, signal: options.signal });
+        return { jsonrpc: '2.0', id, result: { content: [{ type: 'text', text: JSON.stringify(result) }],
+          isError: result.status !== 'message' && result.status !== 'empty' } };
+      }
+      if (!rawArgs || Object.keys(rawArgs).some(key => !['session_id', 'ack', 'waitMs'].includes(key))
+        || (options.sessionId && rawArgs.session_id !== undefined && rawArgs.session_id !== options.sessionId)) {
+        return { jsonrpc: '2.0', id, result: { content: [{ type: 'text', text: 'Invalid arguments for poll_inbox.' }], isError: true } };
+      }
+      const sessionId = typeof rawArgs.session_id === 'string' && SESSION_PATTERN.test(rawArgs.session_id.trim())
+        ? rawArgs.session_id.trim()
+        : (options.sessionId && SESSION_PATTERN.test(options.sessionId) ? options.sessionId : undefined);
+      if (!sessionId) {
+        return { jsonrpc: '2.0', id, result: { content: [{ type: 'text', text: 'Invalid arguments for poll_inbox.' }], isError: true } };
+      }
+      const token = await readToken(options.extaliaHome);
+      if (!token) {
+        return { jsonrpc: '2.0', id, result: { content: [{ type: 'text', text: JSON.stringify({ status: 'unavailable' }) }], isError: true } };
+      }
+      const endpoint = await readEndpoint(options.extaliaHome, options.alive);
+      const port = options.port ?? (endpoint?.alive ? endpoint.port : DEFAULT_HOOK_PORT);
+      const app: AgentAppId = options.app ?? 'codex';
+      const result = await pollHookObservedInbox({
+        port,
+        app,
+        token,
+        sessionId,
+        ...(typeof rawArgs.ack === 'string' ? { ack: rawArgs.ack } : {}),
+        ...(typeof rawArgs.waitMs === 'number' ? { waitMs: rawArgs.waitMs } : {}),
+      }, { fetch: options.fetch, signal: options.signal });
       return { jsonrpc: '2.0', id, result: { content: [{ type: 'text', text: JSON.stringify(result) }],
         isError: result.status !== 'message' && result.status !== 'empty' } };
     }

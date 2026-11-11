@@ -1,6 +1,13 @@
 import type { AgentHostApi, ObservedCodexQueueStatus } from '@extalia/platform';
 
 export const CODEX_PROMPT_LIMIT = 16_000;
+export type ObservedPromptQueueSourceId = 'codex' | 'gemini-cli' | 'antigravity' | 'claude-code';
+export function supportsObservedPromptQueue(sourceId?: string): sourceId is ObservedPromptQueueSourceId {
+  return sourceId === 'codex'
+    || sourceId === 'gemini-cli'
+    || sourceId === 'antigravity'
+    || sourceId === 'claude-code';
+}
 export type ObservedCodexSendResult = 'accepted' | 'unknown' | 'failed';
 export interface ObservedCodexPromptView {
   phase: 'loading' | 'ready' | 'error' | 'unsupported';

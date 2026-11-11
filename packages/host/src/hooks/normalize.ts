@@ -169,6 +169,8 @@ function notificationKind(type: string, message: string): 'approval' | 'idle' | 
 /** The first line of a prompt, for titles. */
 const titleOf = (prompt: string) => safeLabel(prompt.trim().split(/\r?\n/)[0] ?? '', 60) || undefined;
 
+const claudeStylePendingTools = new Map<string, { name: string; input: unknown; cwd?: string }>();
+
 /** Event-name families shared by Claude Code, Codex and Gemini CLI. */
 const START = new Set(['SessionStart']);
 const PROMPT = new Set(['UserPromptSubmit', 'BeforeAgent']);
@@ -223,20 +225,39 @@ function claudeStyle(app: HookApp, raw: unknown, options: NormalizeHookOptions =
       const report = sourceMcpReport(mcpTool, payload.tool_input, payload, sessionId, options);
       if (report) { steps.push(...report.steps); followupPrompts = report.followupPrompts; }
     } else {
-      const tool = toolOf(payload.tool_name, payload.tool_input, payload.tool_use_id ?? payload.tool_call_id);
+      const rawCallId = id(payload.tool_use_id ?? payload.tool_call_id, AGENT_ID);
+      if (payload.tool_name !== undefined || payload.tool_input !== undefined) {
+        claudeStylePendingTools.set(`${app}:${sessionId}:${rawCallId ?? 'last'}`, {
+          name: str(payload.tool_name),
+          input: payload.tool_input,
+          ...(cwd ? { cwd } : {}),
+        });
+        while (claudeStylePendingTools.size > 400) {
+          const oldest = claudeStylePendingTools.keys().next().value;
+          if (oldest !== undefined) claudeStylePendingTools.delete(oldest); else break;
+        }
+      }
+      const tool = toolOf(payload.tool_name, payload.tool_input, rawCallId);
       add(working(tool));
       add(started(tool));
     }
   } else if (POST_TOOL.has(event)) {
-    const mcpTool = mcpReportToolName(payload.tool_name);
+    const rawCallId = id(payload.tool_use_id ?? payload.tool_call_id, AGENT_ID);
+    const pendingKey = `${app}:${sessionId}:${rawCallId ?? 'last'}`;
+    const cached = claudeStylePendingTools.get(pendingKey);
+    claudeStylePendingTools.delete(pendingKey);
+    const effectiveToolName = first(payload.tool_name, cached?.name);
+    const effectiveToolInput = payload.tool_input ?? cached?.input;
+    const effectiveCwd = cwd ?? cached?.cwd;
+    const mcpTool = mcpReportToolName(effectiveToolName);
     if (!mcpTool) {
-      const tool = toolOf(payload.tool_name, payload.tool_input, payload.tool_use_id ?? payload.tool_call_id);
+      const tool = toolOf(effectiveToolName, effectiveToolInput, rawCallId);
       const response = payload.tool_response ?? payload.tool_output;
       const failed = event === 'PostToolUseFailure' || Boolean(obj(response).error) || obj(response).interrupted === true || explicitToolFailure(hookOutput(response));
       const ok = failed ? false : statedSuccess(response) ?? true;
       const out = options.labelsOnly ? undefined : hookOutput(event === 'PostToolUseFailure' ? first(payload.error, response) || response : response);
       add(completed(tool, ok, out));
-      if (ok && tool.kind === 'edit') for (const file of extractWrittenFiles(str(payload.tool_name), payload.tool_input, response, cwd)) add({ type: 'file.written', path: file.path, change: file.change, ...(tool.toolCallId ? { toolCallId: tool.toolCallId } : {}) });
+      if (ok && tool.kind === 'edit') for (const file of extractWrittenFiles(effectiveToolName, effectiveToolInput, response, effectiveCwd)) add({ type: 'file.written', path: file.path, change: file.change, ...(tool.toolCallId ? { toolCallId: tool.toolCallId } : {}) });
       // Claude Code: the user pressed Esc while the tool ran.
       if (event === 'PostToolUseFailure' && payload.is_interrupt === true) add(stopped('interrupted', undefined, 'interrupted'));
     }
@@ -286,7 +307,7 @@ export const normalizeCodexHook = (payload: unknown, options?: NormalizeHookOpti
 /** Gemini CLI: SessionStart/End, BeforeAgent/AfterAgent, BeforeTool/AfterTool, Notification. */
 export const normalizeGeminiHook = (payload: unknown, options?: NormalizeHookOptions) => claudeStyle('gemini', payload, options);
 
-const antigravityPendingTools = new Map<string, { name: string; input: unknown }>();
+const antigravityPendingTools = new Map<string, Array<{ callId: string; name: string; input: unknown; cwd?: string }>>();
 
 /**
  * Antigravity command hooks (`~/.gemini/config/hooks.json`):
@@ -339,34 +360,43 @@ export function normalizeAntigravityHook(raw: unknown, options: NormalizeHookOpt
         const report = sourceMcpReport(mcpTool, rawInput, payload, sessionId, options);
         if (report) { steps.push(...report.steps); followupPrompts = report.followupPrompts; }
       } else {
+        let effectiveCallId = callId;
         if (callId) {
-          antigravityPendingTools.set(`${sessionId}:${callId}`, { name: rawName, input: rawInput });
+          const key = `${sessionId}:${callId}`;
+          const queue = antigravityPendingTools.get(key) ?? [];
+          effectiveCallId = queue.length > 0 ? `${callId}-${queue.length + 1}` : callId;
+          queue.push({ callId: effectiveCallId, name: rawName, input: rawInput, ...(cwd ? { cwd } : {}) });
+          antigravityPendingTools.set(key, queue);
           while (antigravityPendingTools.size > 400) {
             const oldest = antigravityPendingTools.keys().next().value;
             if (oldest !== undefined) antigravityPendingTools.delete(oldest); else break;
           }
         }
-        const tool = toolOf(rawName, rawInput, callId);
+        const tool = toolOf(rawName, rawInput, effectiveCallId);
         add(working(tool));
         add(started(tool));
       }
       break;
     }
     case 'PostToolUse': {
-      const cached = callId ? antigravityPendingTools.get(`${sessionId}:${callId}`) : undefined;
-      if (callId) antigravityPendingTools.delete(`${sessionId}:${callId}`);
+      const key = callId ? `${sessionId}:${callId}` : undefined;
+      const queue = key ? antigravityPendingTools.get(key) : undefined;
+      const cached = queue?.shift();
+      if (key && (!queue || queue.length === 0)) antigravityPendingTools.delete(key);
       const toolCall = obj(payload.toolCall);
       const rawName = (first(toolCall.name, payload.tool_name, cached?.name) || 'tool').replace(/^default_api:/, '');
       const rawInput = toolCall.args ?? payload.tool_input ?? cached?.input;
+      const effectiveCwd = cwd ?? cached?.cwd;
+      const effectiveCallId = cached?.callId ?? callId;
       if (!mcpReportToolName(rawName)) {
-        const tool = toolOf(rawName, rawInput, callId);
+        const tool = toolOf(rawName, rawInput, effectiveCallId);
         const errText = str(payload.error).trim();
         const response = payload.tool_response ?? payload.tool_output ?? payload.toolOutput;
         const ok = errText || explicitToolFailure(hookOutput(response)) ? false : statedSuccess(response) ?? true;
         const out = options.labelsOnly ? undefined : hookOutput(errText || response);
         add(completed(tool, ok, out));
         if (ok && tool.kind === 'edit') {
-          for (const file of extractWrittenFiles(rawName, rawInput, response, cwd)) {
+          for (const file of extractWrittenFiles(rawName, rawInput, response, effectiveCwd)) {
             add({ type: 'file.written', path: file.path, change: file.change, ...(tool.toolCallId ? { toolCallId: tool.toolCallId } : {}) });
           }
         }
