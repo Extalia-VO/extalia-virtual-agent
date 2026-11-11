@@ -36,6 +36,46 @@ jobs:
       - run: pnpm test
       - run: pnpm build
       - run: node tooling/check-versions.mjs
+      - name: Prepare executable artifact fixture
+        if: runner.os == 'Linux'
+        run: |
+          node --input-type=module <<'JS'
+          import { chmod, mkdir, writeFile } from 'node:fs/promises';
+          import path from 'node:path';
+          const directory = path.join(process.env.RUNNER_TEMP, 'extalia-artifact-fixture');
+          const executable = path.join(directory, 'bin', 'fixture');
+          await mkdir(path.dirname(executable), { recursive: true });
+          await writeFile(executable, 'Synthetic artifact fixture\n');
+          await chmod(executable, 0o755);
+          JS
+          tar -czf "$RUNNER_TEMP/extalia-artifact-fixture.tar.gz" -C "$RUNNER_TEMP/extalia-artifact-fixture" .
+      - uses: actions/upload-artifact@v7
+        if: runner.os == 'Linux'
+        with:
+          name: artifact-transfer-${{ github.run_id }}
+          path: ${{ runner.temp }}/extalia-artifact-fixture.tar.gz
+          retention-days: 1
+      - uses: actions/download-artifact@v8
+        if: runner.os == 'Linux'
+        with:
+          pattern: artifact-transfer-${{ github.run_id }}
+          path: ${{ runner.temp }}/extalia-artifact-download
+          merge-multiple: true
+      - name: Verify downloaded artifact content and execute mode
+        if: runner.os == 'Linux'
+        run: |
+          mkdir "$RUNNER_TEMP/extalia-artifact-restored"
+          tar -xzf "$RUNNER_TEMP/extalia-artifact-download/extalia-artifact-fixture.tar.gz" -C "$RUNNER_TEMP/extalia-artifact-restored"
+          node --input-type=module <<'JS'
+          import { readFile, stat } from 'node:fs/promises';
+          import path from 'node:path';
+          const executable = path.join(process.env.RUNNER_TEMP, 'extalia-artifact-restored', 'bin', 'fixture');
+          const content = await readFile(executable, 'utf8');
+          const metadata = await stat(executable);
+          if (content !== 'Synthetic artifact fixture\n' || (metadata.mode & 0o777) !== 0o755) {
+            throw new Error('Artifact transfer changed fixture contents or executable mode.');
+          }
+          JS
 
   rust:
     name: Rust (${{ matrix.os }})

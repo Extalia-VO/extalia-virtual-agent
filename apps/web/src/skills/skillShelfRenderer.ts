@@ -16,7 +16,7 @@ export function createSkillShelf(canvas: HTMLCanvasElement, books: readonly Skil
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.05;
   renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.shadowMap.type = THREE.PCFShadowMap;
   const scene = new THREE.Scene();
   const rows = Math.ceil(BOOKS_PER_SHELF / 6);
   const camera = new THREE.PerspectiveCamera(34, 1, .1, 50);
