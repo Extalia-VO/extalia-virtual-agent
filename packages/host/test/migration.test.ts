@@ -162,7 +162,7 @@ describe('legacy data migration', () => {
   it('tells connected apps to connect again until their hooks use the new folder', async () => {
     const { home, legacy } = await legacyFixture();
     const context = {
-      platform: 'linux', env: {}, homeDirectory: home, nodePath: process.execPath,
+      platform: process.platform, env: {}, homeDirectory: home, nodePath: process.execPath,
       findBinary: async (name: string) => `/usr/local/bin/${name}`,
       run: async () => ({ code: 0, stdout: 'gemini-cli 0.5.0\n', stderr: '' }),
     };

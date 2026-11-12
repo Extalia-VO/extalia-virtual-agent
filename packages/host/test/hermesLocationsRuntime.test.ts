@@ -1,12 +1,14 @@
-import { chmod, mkdir, readFile, realpath, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createConnectService } from '../src/connect/service.js';
 import { discoverRuntimes, hermesEnvironment, hermesModelCatalog, runHermesTurn } from '../src/hermes.js';
 import { hermesDelegationLimits } from '../src/hermesDelegation.js';
 import { useTempDirs } from './helpers.js';
 
 const temp = useTempDirs();
+const cwdFixtures: string[] = [];
+afterEach(async () => { await Promise.all(cwdFixtures.splice(0).map(directory => rm(directory, { recursive: true, force: true }))); });
 describe('Hermes installation and explicit profile coherence', () => {
   it.skipIf(process.platform === 'win32')('reads the explicit named profile and launches that profile from a different project directory', async () => {
     const root = await temp('extalia-hermes-profile-location-');
@@ -39,9 +41,15 @@ process.stdin.resume(); process.stdin.on('end', () => {
   });
 
   it.each(['relative', 'unresolved'] as const)('rejects an invalid %s home without reading/writing that location or hiding other integrations', async kind => {
-    const root = await temp('extalia-invalid-agent-location-');
+    // Windows runner TEMP and the checkout can be on different drives; relative()
+    // then returns an absolute path. Keep this fixture on the checkout's drive.
+    const parent = path.join(process.cwd(), 'output', 'relative-agent-tests');
+    if (kind === 'relative') await mkdir(parent, { recursive: true });
+    const root = kind === 'relative' ? await mkdtemp(path.join(parent, 'case-')) : await temp('extalia-invalid-agent-location-');
+    if (kind === 'relative') cwdFixtures.push(root);
     const home = path.join(root, 'home'), data = path.join(root, 'data'); await mkdir(home);
     const invalid = kind === 'relative' ? path.relative(process.cwd(), path.join(root, 'candidate')) : path.join(root, '%EXTALIA_MISSING_TEST_HOME%', 'candidate');
+    if (kind === 'relative') expect(path.isAbsolute(invalid)).toBe(false);
     const run = vi.fn(async () => ({ code: 0, stdout: 'Hermes 0.21.0', stderr: '' }));
     const env = { HERMES_HOME: invalid, EXTALIA_HERMES_BIN: process.execPath, PATH: '', HOME: home };
     const connector = createConnectService({ platform: process.platform, homeDirectory: home, extaliaHome: data, env, run,

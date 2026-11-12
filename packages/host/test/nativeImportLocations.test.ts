@@ -1,11 +1,22 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { NativeImportService } from '../src/nativeImport.js';
 import { useTempDirs } from './helpers.js';
 
 const temp = useTempDirs();
+const relativeRoots: string[] = [];
+afterEach(async () => {
+  await Promise.all(relativeRoots.splice(0).map(root => rm(root, { recursive: true, force: true })));
+});
+async function relativeFixtureRoot() {
+  // Windows CI may put tmpdir() and cwd() on different drives, making
+  // path.relative(cwd, tmpdir) absolute. Keep these invalid-root fixtures local.
+  const root = await mkdtemp(path.join(process.cwd(), '.extalia-relative-import-'));
+  relativeRoots.push(root);
+  return root;
+}
 const stamp = '2026-11-12T00:00:00.000Z';
 async function hermesDatabase(home: string, message: string) {
   await mkdir(home, { recursive: true });
@@ -78,7 +89,7 @@ describe('connected-agent history roots in temporary homes', () => {
   });
 
   it.each(['relative', 'unresolved'] as const)('marks a %s Hermes home unavailable without scanning it or falling back, while Codex still works', async kind => {
-    const root = await temp(), home = path.join(root, 'home');
+    const root = await relativeFixtureRoot(), home = path.join(root, 'home');
     await hermesDatabase(path.join(home, '.hermes'), 'Default history must not be substituted');
     const selected = kind === 'relative' ? path.join(root, 'relative-hermes') : path.join(root, '${UNRESOLVED_HERMES_HOME}', 'hermes');
     await hermesDatabase(selected, 'Invalid-root history must not be read');
@@ -87,7 +98,9 @@ describe('connected-agent history roots in temporary homes', () => {
       { type: 'session_meta', payload: { id: 'valid-codex', cwd: '/projects/example', timestamp: stamp } },
       { timestamp: stamp, type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'The unaffected Codex session' }] } },
     ].map(row => JSON.stringify(row)).join('\n'));
-    const source = await NativeImportService.create({ homeDirectory: home, env: { HERMES_HOME: kind === 'relative' ? path.relative(process.cwd(), selected) : selected } });
+    const relativeHome = path.relative(process.cwd(), selected);
+    expect(path.isAbsolute(relativeHome)).toBe(false);
+    const source = await NativeImportService.create({ homeDirectory: home, env: { HERMES_HOME: kind === 'relative' ? relativeHome : selected } });
     const locations = source.locations().filter(item => item.sourceId === 'hermes');
     expect(locations).toHaveLength(1);
     expect(locations[0]).toMatchObject({ available: false, supported: false, note: expect.stringMatching(/absolute|unresolved/) });
@@ -95,14 +108,16 @@ describe('connected-agent history roots in temporary homes', () => {
   });
 
   it('reports bad Codex and Gemini roots separately without hiding a valid Claude transcript', async () => {
-    const root = await temp(), home = path.join(root, 'home'), badCodex = path.join(root, 'relative-codex'), badGemini = path.join(root, '${UNRESOLVED_GEMINI_HOME}');
+    const root = await relativeFixtureRoot(), home = path.join(root, 'home'), badCodex = path.join(root, 'relative-codex'), badGemini = path.join(root, '${UNRESOLVED_GEMINI_HOME}');
     const codex = path.join(badCodex, 'sessions'); await mkdir(codex, { recursive: true });
     await writeFile(path.join(codex, 'rollout-invalid.jsonl'), JSON.stringify({ type: 'session_meta', payload: { id: 'unselected-codex', timestamp: stamp } }));
     const chats = path.join(badGemini, '.gemini', 'tmp', 'project', 'chats'); await mkdir(chats, { recursive: true });
     await writeFile(path.join(chats, 'session-invalid.json'), JSON.stringify({ sessionId: 'unselected-gemini', startTime: stamp, messages: [{ type: 'user', timestamp: stamp, content: 'Do not scan this unresolved path' }] }));
     const claude = path.join(home, '.claude', 'projects', 'example'); await mkdir(claude, { recursive: true });
     await writeFile(path.join(claude, 'valid.jsonl'), JSON.stringify({ type: 'user', uuid: 'user-one', sessionId: 'valid-claude', cwd: '/projects/example', timestamp: stamp, message: { content: 'The unaffected Claude session' } }));
-    const source = await NativeImportService.create({ homeDirectory: home, env: { CODEX_HOME: path.relative(process.cwd(), badCodex), GEMINI_CLI_HOME: badGemini } });
+    const relativeCodex = path.relative(process.cwd(), badCodex);
+    expect(path.isAbsolute(relativeCodex)).toBe(false);
+    const source = await NativeImportService.create({ homeDirectory: home, env: { CODEX_HOME: relativeCodex, GEMINI_CLI_HOME: badGemini } });
     const locations = source.locations();
     expect(locations.filter(item => item.sourceId === 'codex').every(item => !item.available && !item.supported && /absolute/.test(item.note ?? ''))).toBe(true);
     expect(locations.find(item => item.sourceId === 'gemini-cli')).toMatchObject({ available: false, supported: false, note: expect.stringMatching(/unresolved/) });
