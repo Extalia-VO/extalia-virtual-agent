@@ -1,6 +1,7 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ClipboardEvent, type DragEvent, type KeyboardEvent } from 'react';
-import { EFFORTS, type Effort } from '@extalia/core';
-import type { AgentHostApi, ModelChoices, SessionSummary } from '@extalia/platform';
+import { type Effort } from '@extalia/core';
+import { sanitizeAttachmentName, type AgentHostApi, type SessionSummary } from '@extalia/platform';
+import { errorMessage } from '../host/remote';
 import type { Messages } from '../i18n';
 import { useUnsavedDraft } from '../restart/unsavedDrafts';
 import { Icon } from '../ui/Icon';
@@ -14,6 +15,7 @@ import { PromptDeliveryStatus } from '../chat/PromptDeliveryStatus';
 import { observedSource } from '../office/agentOrigin';
 import { ObservedCodexNativeQueue } from './ObservedCodexNativeQueue';
 import { PromptSuggestions } from '../chat/PromptSuggestions';
+import { createObservedModelChoicesControl } from './observedModelChoices';
 import { CODEX_PROMPT_LIMIT, createObservedCodexPromptControl, supportsObservedPromptQueue, type ObservedCodexPromptControl, type ObservedCodexPromptView } from './observedCodexPromptModel';
 import './observedCodex.css';
 
@@ -38,23 +40,37 @@ function QueuedPromptSession({ t, agents, session, disabled }: ObservedCodexProm
   const [chips, setChips] = useState<PendingAttachment[]>([]);
   const [notice, setNotice] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
-  const [choices, setChoices] = useState<ModelChoices | null>(null);
-  const [model, setModel] = useState<string | undefined>(undefined);
-  const [effort, setEffort] = useState<Effort | undefined>(undefined);
+  const [settingsBusy, setSettingsBusy] = useState(false);
+  const [settingsNotice, setSettingsNotice] = useState<'unknown' | 'updated' | 'failed'>();
   const chipsRef = useRef(chips);
   const files = useRef<HTMLInputElement>(null);
   const id = useId(), area = useRef<HTMLTextAreaElement>(null), composing = useRef(false);
   const sourceId = session.observation?.sourceId;
-  const supportsModelPicker = supportsObservedPromptQueue(sourceId) && typeof agents.modelChoices === 'function';
-  const activeChoices = supportsModelPicker ? choices : null;
+  const modelRead = agents.modelChoices;
+  const choiceControl = useMemo(() => createObservedModelChoicesControl(agents, session.id),
+    // A host can replace just its catalog capability.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [agents, modelRead, session.id, sourceId, session.observation?.nativeSessionId]);
+  const choiceView = useSyncExternalStore(choiceControl.subscribe, choiceControl.getSnapshot, choiceControl.getSnapshot);
+  const activeChoices = choiceView.choices;
+  const sourceSignal = JSON.stringify([session.model, session.effort]);
+  const previousSource = useRef({ control: choiceControl, signal: sourceSignal });
+  useLayoutEffect(() => { choiceControl.setDisabled(!!disabled || !session.observation?.watching || session.observation.status !== 'watching'); },
+    [choiceControl, disabled, session.observation?.watching, session.observation?.status]);
+  useLayoutEffect(() => {
+    const visibility = () => choiceControl.setVisible(!document.hidden);
+    visibility(); document.addEventListener('visibilitychange', visibility);
+    const stop = choiceControl.start();
+    return () => { document.removeEventListener('visibilitychange', visibility); stop(); };
+  }, [choiceControl]);
   useEffect(() => {
-    if (!supportsModelPicker || !agents.modelChoices) return;
-    let active = true;
-    void agents.modelChoices('', session.id)
-      .then(result => { if (active) setChoices(result); })
-      .catch(() => { if (active) setChoices(null); });
-    return () => { active = false; };
-  }, [agents, session.id, supportsModelPicker]);
+    const previous = previousSource.current;
+    previousSource.current = { control: choiceControl, signal: sourceSignal };
+    if (previous.control === choiceControl && previous.signal !== sourceSignal) choiceControl.invalidateSource();
+  }, [choiceControl, sourceSignal]);
+  const sourceModel = activeChoices?.observedSelection?.model ?? session.model;
+  const sourceEffort = activeChoices?.observedSelection ? activeChoices.observedSelection.effort : session.effort;
+  const canSetSourceSettings = activeChoices?.observedSelection?.canSetSettings === true && typeof agents.updateObservedCodexSettings === 'function';
   const pending = queue.view.status?.items.some(item => item.state === 'pending');
   const busySession = session.running || !!session.pendingApprovalId || pending;
   const locked = !!disabled || queue.view.disabled;
@@ -63,7 +79,7 @@ function QueuedPromptSession({ t, agents, session, disabled }: ObservedCodexProm
   const canAttach = !locked && !sending;
   const maxTextLength = queue.view.status?.maxTextLength ?? CODEX_PROMPT_LIMIT;
   const hasContent = !!draft.trim() || chips.length > 0;
-  const canSend = !locked && !queue.locked && !sending && !queue.view.busy && !blocked && draftState.delivery !== 'unknown'
+  const canSend = !settingsBusy && !locked && !queue.locked && !sending && !queue.view.busy && !blocked && draftState.delivery !== 'unknown'
     && queue.view.delivery !== 'unknown' && queue.view.phase === 'ready' && !!queue.view.status?.supported
     && hasContent && !draft.includes('\0') && draft.length <= maxTextLength
     && !chips.some(chip => chip.status === 'uploading');
@@ -110,26 +126,56 @@ function QueuedPromptSession({ t, agents, session, disabled }: ObservedCodexProm
     }
   }
 
+  const modelOptions = useMemo(() => {
+    const models = activeChoices?.models ?? (sourceModel ? [sourceModel] : []);
+    return models.length || sourceModel ? modelSelectOptions({ defaultModel: sourceModel ? undefined : activeChoices?.defaultModel, models, current: sourceModel }, {
+      defaultLabel: value => t.composer.defaultModel(value),
+    }) : [];
+  }, [activeChoices, sourceModel, t.composer]);
+  const effortOptions = useMemo(() => {
+    const efforts = activeChoices?.efforts ?? (sourceEffort ? [sourceEffort] : []);
+    if (!sourceEffort && !activeChoices?.defaultEffort && !canSetSourceSettings) return [];
+    return effortSelectOptions({ efforts: sourceEffort && !efforts.includes(sourceEffort) ? [...efforts, sourceEffort] : efforts,
+      defaultEffort: activeChoices?.defaultEffort }, {
+      effort: (value: Effort) => t.composer.effortLabel[value], defaultLabel: label => t.composer.defaultEffort(label),
+    });
+  }, [activeChoices, sourceEffort, canSetSourceSettings, t.composer]);
+
+  async function changeSourceSettings(change: { model?: string; effort?: Effort }) {
+    const selection = activeChoices?.observedSelection;
+    if (!canSetSourceSettings || !selection?.connectionId || selection.settingsRevision === undefined || settingsBusy || locked || sending) return;
+    setSettingsBusy(true); setSettingsNotice(undefined);
+    try {
+      const result = await agents.updateObservedCodexSettings!(session.id, { connectionId: selection.connectionId,
+        settingsRevision: selection.settingsRevision, ...change });
+      setSettingsNotice(result.settingsDelivery === 'unknown' ? 'unknown' : 'updated');
+    } catch { setSettingsNotice('failed'); }
+    finally {
+      await choiceControl.invalidateSource();
+      if (choiceControl.getSnapshot().choices?.observedSelection?.uncertain) setSettingsNotice('unknown');
+      setSettingsBusy(false);
+    }
+  }
+
   async function buildSubmissionText(rawText: string, attached: PendingAttachment[]): Promise<string> {
     const parts: string[] = [];
-    const headerTags: string[] = [];
-    if (model) headerTags.push(`[Model: ${model}]`);
-    if (effort) headerTags.push(`[Effort: ${t.composer.effortLabel[effort]}]`);
-    if (headerTags.length > 0) parts.push(headerTags.join(' '));
     if (attached.length > 0) {
       const host = agents as AttachmentHostApi;
+      let uploadedIds: string[] = [];
       if (typeof host.uploadAttachment === 'function') {
-        await uploadAttachments(host, session.id, attached, patchChip);
+        uploadedIds = await uploadAttachments(host, session.id, attached, patchChip);
       }
-      for (const chip of attached) {
+      for (const [index, chip] of attached.entries()) {
+        const safeName = sanitizeAttachmentName(chip.name);
         const filePath = (chip.file as File & { path?: string }).path;
+        const hasUploaded = Boolean(chip.attachmentId ?? uploadedIds[index]);
         if (filePath) {
-          parts.push(`[Attached file: ${chip.name} (${filePath})]`);
-        } else if (chip.kind === 'text' && typeof (agents as AttachmentHostApi).uploadAttachment !== 'function') {
+          parts.push(`[Attached file: ${safeName} (${filePath})]`);
+        } else if (chip.kind === 'text' && !hasUploaded) {
           const textContent = await chip.file.text().catch(() => '');
-          parts.push(textContent ? `[Attached file: ${chip.name}]\n${textContent.slice(0, 4000)}` : `[Attached file: ${chip.name}]`);
+          parts.push(textContent ? `[Attached file: ${safeName}]\n${textContent.slice(0, 4000)}` : `[Attached file: ${safeName}]`);
         } else {
-          parts.push(`[Attached file: ${chip.name}]`);
+          parts.push(`[Attached file: ${safeName}]`);
         }
       }
     }
@@ -150,9 +196,9 @@ function QueuedPromptSession({ t, agents, session, disabled }: ObservedCodexProm
         for (const chip of chipsRef.current) if (chip.previewUrl) URL.revokeObjectURL(chip.previewUrl);
         setChips([]);
       }
-    } catch {
+    } catch (failure) {
       lease.finish('failed');
-      setNotice(t.composer.uploadFailed);
+      setNotice(errorMessage(failure));
     }
   }
 
@@ -183,18 +229,6 @@ function QueuedPromptSession({ t, agents, session, disabled }: ObservedCodexProm
     addFiles(Array.from(event.dataTransfer.files));
   }
 
-  const modelOptions = useMemo(() => {
-    const availableModels = activeChoices?.models ?? (supportsModelPicker && session.model ? [session.model] : []);
-    return availableModels.length > 0
-      ? modelSelectOptions({ defaultModel: activeChoices?.defaultModel ?? session.model, models: availableModels, current: model ?? session.model }, {
-        defaultLabel: value => t.composer.defaultModel(value),
-      })
-      : [];
-  }, [activeChoices, model, session.model, supportsModelPicker, t.composer]);
-  const effortOptions = effortSelectOptions({ efforts: EFFORTS }, {
-    effort: (value: Effort) => t.composer.effortLabel[value],
-    defaultLabel: label => t.composer.defaultEffort(label),
-  });
   const originLabel = observedSource(session.observation?.sourceId).label || 'Codex';
   const withSource = (message: string) => originLabel !== 'Codex' ? message.replaceAll('Codex', originLabel) : message;
   const isCodex = session.observation?.sourceId === 'codex';
@@ -233,6 +267,7 @@ function QueuedPromptSession({ t, agents, session, disabled }: ObservedCodexProm
           </li>
         ))}
       </ul>}
+      {settingsNotice && <p className="observed-source-settings-notice" role="status">{settingsNotice === 'unknown' ? t.observedCodexPrompt.settingsUnknown : settingsNotice === 'updated' ? t.observedCodexPrompt.settingsUpdated : t.observedCodexPrompt.settingsFailed}</p>}
       {notice && <p className="composer-notice" role="alert"><Icon name="alert" />{notice}</p>}
       <textarea ref={area} id={`${id}-input`} rows={2} value={draft} disabled={locked}
         placeholder={inputPlaceholder} autoComplete="off"
@@ -253,13 +288,18 @@ function QueuedPromptSession({ t, agents, session, disabled }: ObservedCodexProm
         <div className="composer-controls">
           {modelOptions.length > 0 && (
             <Select className="composer-picker composer-model" aria-label={t.composer.model}
-              value={choiceValue(model)} options={modelOptions} disabled={locked || sending}
+              value={choiceValue(sourceModel)} options={modelOptions} disabled={locked || sending || settingsBusy || !canSetSourceSettings}
               placeholder={t.composer.defaultModel(activeChoices?.defaultModel ?? session.model)}
-              onChange={value => setModel(choiceFromValue(value))} />
+              title={canSetSourceSettings ? t.observedCodexPrompt.settingsNative : t.observedCodexPrompt.settingsReadOnly}
+              onChange={value => { const model = choiceFromValue(value); if (model) void changeSourceSettings({ model }); }} />
           )}
-          <Select className="composer-picker composer-effort" aria-label={t.composer.effort}
-            value={choiceValue(effort)} options={effortOptions} disabled={locked || sending} placeholder={t.composer.defaultEffort(undefined)}
-            onChange={value => setEffort(choiceFromValue(value) as Effort | undefined)} />
+          {effortOptions.length > 0 && (
+            <Select className="composer-picker composer-effort" aria-label={t.composer.effort}
+              value={choiceValue(sourceEffort)} options={effortOptions} disabled={locked || sending || settingsBusy || !canSetSourceSettings}
+              placeholder={t.composer.defaultEffort(activeChoices?.defaultEffort ? t.composer.effortLabel[activeChoices.defaultEffort] : undefined)}
+              title={canSetSourceSettings ? t.observedCodexPrompt.settingsNative : t.observedCodexPrompt.settingsReadOnly}
+              onChange={value => { const effort = choiceFromValue(value) as Effort | undefined; if (effort) void changeSourceSettings({ effort }); }} />
+          )}
           <button type="submit" className="send-button" disabled={!canSend} aria-busy={sending}
             aria-label={sendLabel}
             title={sendLabel}>
@@ -283,19 +323,22 @@ function PromptSession({ t, agents, session, disabled }: ObservedCodexPromptComp
   const control = useMemo(() => createObservedCodexPromptControl(agents, session.id, nativeSessionId), [agents, session.id, nativeSessionId]);
   const view = useSyncExternalStore(control.subscribe, control.getSnapshot, control.getSnapshot);
   const paused = !!disabled || !session.observation?.watching || session.observation.status !== 'watching';
+  const originLabel = observedSource(session.observation?.sourceId).label || 'Codex';
   useLayoutEffect(() => { control.setDisabled(paused); }, [control, paused]);
   useLayoutEffect(() => control.start(), [control]);
-  return <ObservedCodexPromptContent t={t} control={control} view={view} disabled={paused} draft={draft} />;
+  return <ObservedCodexPromptContent t={t} control={control} view={view} disabled={paused} draft={draft} sourceLabel={originLabel} />;
 }
 
 export function codexPromptEnterSends(event: { key: string; shiftKey: boolean; isComposing?: boolean; keyCode?: number }): boolean {
   return event.key === 'Enter' && !event.shiftKey && !event.isComposing && event.keyCode !== 229;
 }
 
-export function ObservedCodexPromptContent({ t, control, view, disabled = false, draft }: {
-  t: Messages; control: ObservedCodexPromptControl; view: ObservedCodexPromptView; disabled?: boolean; draft?: ReturnType<typeof useComposerDraft>;
+export function ObservedCodexPromptContent({ t, control, view, disabled = false, draft, sourceLabel }: {
+  t: Messages; control: ObservedCodexPromptControl; view: ObservedCodexPromptView; disabled?: boolean; draft?: ReturnType<typeof useComposerDraft>; sourceLabel?: string;
 }) {
   const c = t.observedCodexPrompt, id = useId(), area = useRef<HTMLTextAreaElement>(null), composing = useRef(false);
+  const targetLabel = sourceLabel?.trim() || 'Codex';
+  const withSource = (message: string) => targetLabel !== 'Codex' ? message.replaceAll('Codex', targetLabel) : message;
   const locked = disabled || view.disabled || view.phase === 'unsupported';
   const text = draft?.text ?? view.draft, setText = draft?.setText ?? control.setDraft;
   const busy = !!draft?.sending || view.busy || !!view.status?.busy;
@@ -318,27 +361,27 @@ export function ObservedCodexPromptContent({ t, control, view, disabled = false,
     event.preventDefault();
     if (canSend) void send();
   }
-  const notice = view.notice === 'unknown' || view.status?.delivery === 'unknown' ? c.unknown
-    : view.notice === 'queued' ? c.queued : view.notice === 'failed' || view.phase === 'error' ? c.failed
-      : view.notice === 'unavailable' || view.phase === 'ready' && (!view.status?.threadId || view.status.enabled && !view.status.canQueue && !view.status.busy) ? c.unavailable
-        : view.phase === 'unsupported' ? c.unsupported : view.phase === 'loading' ? c.loading : undefined;
+  const notice = view.notice === 'unknown' || view.status?.delivery === 'unknown' ? withSource(c.unknown)
+    : view.notice === 'queued' ? withSource(c.queued) : view.notice === 'failed' || view.phase === 'error' ? withSource(c.failed)
+      : view.notice === 'unavailable' || view.phase === 'ready' && (!view.status?.threadId || view.status.enabled && !view.status.canQueue && !view.status.busy) ? withSource(c.unavailable)
+        : view.phase === 'unsupported' ? withSource(c.unsupported) : view.phase === 'loading' ? c.loading : undefined;
   const delivery = draft?.delivery === 'unknown' || view.notice === 'unknown' ? 'unknown'
     : busy ? 'submitting' : view.notice === 'queued' || view.status?.delivery === 'queued' ? 'accepted' : draft?.delivery;
-  return <><PromptDeliveryStatus t={t} phase={delivery} observed onRecheck={() => { void control.refresh(); }} rechecking={busy}
+  return <><PromptDeliveryStatus t={t} phase={delivery} observed sourceLabel={targetLabel} onRecheck={() => { void control.refresh(); }} rechecking={busy}
     onRetryConfirmed={draft?.delivery === 'unknown' && control.canRetry() ? () => { if (control.allowRetry()) draft.allowRetry(); } : undefined} />
   <form className="composer observed-codex-prompt" onSubmit={event => { event.preventDefault(); if (canSend) void send(); }}
     onDragOver={event => { if (Array.from(event.dataTransfer.types).includes('Files')) event.preventDefault(); }}
     onDrop={event => { if (Array.from(event.dataTransfer.types).includes('Files')) event.preventDefault(); }}>
-    <label className="visually-hidden" htmlFor={`${id}-input`}>{c.label}</label>
+    <label className="visually-hidden" htmlFor={`${id}-input`}>{withSource(c.label)}</label>
     <textarea ref={area} id={`${id}-input`} rows={2} value={text}
-      placeholder={c.placeholder} disabled={locked} aria-describedby={`${id}-status`} autoComplete="off"
+      placeholder={withSource(c.placeholder)} disabled={locked} aria-describedby={`${id}-status`} autoComplete="off"
       onChange={event => setText(event.target.value)} onKeyDown={keyDown}
       onCompositionStart={() => { composing.current = true; }} onCompositionEnd={() => { composing.current = false; }} />
     <button type="submit" className="send-button" disabled={!canSend} aria-label={busy ? c.sending : c.send} title={busy ? c.sending : c.send} aria-busy={busy}>
       <Icon name={busy ? 'refresh' : 'send'} className={busy ? 'spin' : ''} />
     </button>
     <p className="observed-codex-prompt-hint" id={`${id}-status`} role="status">{disabled || view.disabled ? c.paused
-      : text.length > CODEX_PROMPT_LIMIT ? c.tooLong : delivery ? undefined : notice}</p>
+      : text.length > CODEX_PROMPT_LIMIT ? withSource(c.tooLong) : delivery ? undefined : notice}</p>
     {view.phase === 'error' && <button type="button" disabled={view.busy || locked} onClick={() => { void control.refresh(); }}>{c.refresh}</button>}
   </form></>;
 }

@@ -27,7 +27,8 @@ import { StairLandingDecor } from "./interior/prefabs/architecture/StairLandingD
 import { RooftopTerrace } from "./interior/prefabs/architecture/RooftopTerrace";
 
 const engineBayXs = [-4.8, -1.8, 1.8, 4.8];
-const engineBayZs = [-1.35, 1.25];
+// Keep the complete chair-pull corridor between rows and inside the south glass.
+const engineBayZs = [-2.6, .4];
 
 /** Intelligence floor: north and south rooms open onto two clear cross-floor corridors. */
 export function Floor3() {
@@ -171,7 +172,7 @@ export function Floor3() {
         floorFinish="carpet"
       >
         {[-2.2, 2.2].flatMap((x, column) =>
-          [-1.5, 1.25].map((z, row) => (
+          [-1.8, 1.25].map((z, row) => (
             <AllInOneDesk
               key={`flex-${column}-${row}`}
               position={[x, 0, z]}

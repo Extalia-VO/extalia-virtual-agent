@@ -71,6 +71,13 @@ stays English independently of the app language.
   replacing an existing app requires confirmation and a running copy is refused.
   Successful installation relaunches the installed app. Opening without installing
   restarts normal app boot, with no temporary installer profile carried over.
+  The initial Finder icon view reserves only those three visible items. Generated
+  `.background.tiff`, `.background.png`, `.VolumeIcon.icns` and `.DS_Store`
+  support icons receive positions outside the 900×620 artwork, so enabling
+  Finder's hidden-file display does not place them over the title. Their bytes
+  remain available for the background, disk icon and layout; no Finder preference
+  is changed. This is an initial icon-view layout, not removal from a manually
+  sorted/list view. Rebuild the DMG to apply it to an existing installer.
 - **Windows:** an English assisted NSIS wizard includes a welcome page, destination
   selection, desktop/Start menu shortcuts and an explicit finish/launch choice.
   Existing profile preservation and updater behavior remain in place.
@@ -89,7 +96,11 @@ stays English independently of the app language.
 installer-only code. `pnpm --filter @extalia/desktop installer:art` regenerates the
 committed PNG/BMP/SVG artwork in an isolated Electron profile. The `beforePack`
 hook verifies the artwork/copy/identity/photo hashes and generates English NSIS
-and guide files. The Linux post-build hook creates the self-contained `.run` from
+and guide files. On macOS it also adds metadata-only DMG positions after config
+validation, before artifact signing or update hashes are computed. This uses the
+pinned dmg-builder 26.15.3 adapter's `position` support, which its enclosing JSON
+schema does not expose; dependency upgrades must reverify native DMG metadata.
+The Linux post-build hook creates the self-contained `.run` from
 its matching AppImage; release validation verifies that relationship before upload.
 
 For visual review, build Desktop, then run

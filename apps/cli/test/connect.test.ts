@@ -431,7 +431,7 @@ describe('extalia connect / disconnect / connections CLI and Bridge hook route',
       expect(await run(['mcp', '--app', 'codex', '--session', 'mcp-live-1', '--port', String(server.port)], mcpIo.value)).toBe(0);
       const responses = mcpIo.out.map(line => JSON.parse(line) as { id: number; result?: Record<string, unknown> });
       expect(responses.map(r => r.id).sort()).toEqual([1, 2, 3, 4]);
-      expect((responses.find(response => response.id === 2)?.result?.tools as Array<{ name: string }>).map(t => t.name).sort()).toEqual(['await_reply', 'poll_inbox', 'report_followups', 'report_handoff', 'report_intent', 'report_meeting']);
+      expect((responses.find(response => response.id === 2)?.result?.tools as Array<{ name: string }>).map(t => t.name).sort()).toEqual(['await_reply', 'extalia_continuity_read', 'extalia_continuity_status', 'poll_inbox', 'report_followups', 'report_handoff', 'report_intent', 'report_meeting']);
 
       // Wait briefly for the async hook queue in Observations to flush
       await new Promise(resolve => setTimeout(resolve, 60));

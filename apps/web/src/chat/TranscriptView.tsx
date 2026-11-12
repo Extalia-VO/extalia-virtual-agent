@@ -8,6 +8,9 @@ import { Icon, type IconName } from '../ui/Icon';
 import type { AttachmentPreviewLoader } from './attachments';
 import { Markdown } from './Markdown';
 import { UserMessage } from './UserMessage';
+import { MessageAttachments } from './MessageAttachments';
+import { SkillLoadCard } from './SkillLoadCard';
+import { HistoricalMessageFileScope } from './MessageFilePreview';
 import type { ApprovalItem, ToolItem, TranscriptItem, UsageItem, WorkerItem } from './transcript';
 
 const KIND_ICON: Record<ActivityKind, IconName> = {
@@ -15,7 +18,7 @@ const KIND_ICON: Record<ActivityKind, IconName> = {
 };
 
 /** One tool call as a row of a run: icon, label, status; its output and changed files open below it. */
-function ToolRow({ t, item }: { t: Messages; item: ToolItem }) {
+function ToolRow({ t, item, previewAttachment }: { t: Messages; item: ToolItem; previewAttachment?: AttachmentPreviewLoader }) {
   const [expanded, setExpanded] = useState<boolean | null>(null);
   const live = item.status === 'running' && Boolean(item.command);
   const open = expanded ?? live;
@@ -50,6 +53,7 @@ function ToolRow({ t, item }: { t: Messages; item: ToolItem }) {
           <span className={item.status === 'ok' ? 'visually-hidden' : undefined}>{t.tool.status[item.status]}</span>
         </span>
       </div>
+      <MessageAttachments t={t} files={item.attachments ?? []} load={previewAttachment} label={t.tool.resultAttachments} className="tool-attachments" />
       {item.files.length > 0 && <FileList t={t} files={item.files} />}
       {hasOutput && open && (
         <pre className="tool-output" id={outputId} tabIndex={0}>
@@ -85,33 +89,37 @@ export function toolRunSummary(t: Messages, items: readonly ToolItem[]): string 
  * Consecutive tool calls as one compact block: a summary line that folds the list, and one card with a
  * row per call. A run stays open while a call in it is running; a single call shows as its row alone.
  */
-function ToolRun({ t, items }: { t: Messages; items: ToolItem[] }) {
+function ToolRun({ t, items, previewAttachment }: { t: Messages; items: ToolItem[]; previewAttachment?: AttachmentPreviewLoader }) {
   const [expanded, setExpanded] = useState<boolean | null>(null);
   const running = items.some(item => item.status === 'running');
   const failed = items.filter(item => item.status === 'failed').length;
-  const open = items.length === 1 || (expanded ?? running);
+  const images = items.reduce((sum, item) => sum + (item.attachments?.filter(file => file.kind === 'image').length ?? 0), 0);
+  // An arriving kept image is immediately visible; an explicit user fold remains authoritative.
+  const hasPreview = Boolean(previewAttachment && items.some(item => item.attachments?.some(file => file.kind === 'image' && file.ref)));
+  const open = items.length === 1 || (expanded ?? (running || hasPreview));
   const listId = `run-${items[0]!.id}`;
   return (
     <div className={`tool-run ${failed ? 'has-failed' : ''}`}>
       {items.length > 1 && (
         <button type="button" className="tool-run-head" aria-expanded={open} aria-controls={listId} onClick={() => setExpanded(!open)}>
           <span>{toolRunSummary(t, items)}</span>
+          {images > 0 && <span className="tool-media-badge"><Icon name="files" />{t.tool.images(images)}</span>}
           {running && <span className="pulse" aria-hidden="true" />}
           {failed > 0 && <span className="tool-run-failed"><Icon name="alert" />{t.tool.run.failed(failed)}</span>}
           <Icon name="chevron" className="tool-run-chevron" />
         </button>
       )}
-      {open && <ul className="tool-run-list" id={listId}>{items.map(item => <ToolRow key={item.id} t={t} item={item} />)}</ul>}
+      {open && <ul className="tool-run-list" id={listId}>{items.map(item => <ToolRow key={item.id} t={t} item={item} previewAttachment={previewAttachment} />)}</ul>}
     </div>
   );
 }
 
 /** Consecutive workers (subagents) as one card with a row each. */
-function WorkerRun({ t, items }: { t: Messages; items: WorkerItem[] }) {
-  return <ul className="tool-run-list worker-run">{items.map(item => <li key={item.id} className="tool-row"><WorkerCard t={t} item={item} /></li>)}</ul>;
+function WorkerRun({ t, items, previewAttachment }: { t: Messages; items: WorkerItem[]; previewAttachment?: AttachmentPreviewLoader }) {
+  return <ul className="tool-run-list worker-run">{items.map(item => <li key={item.id} className="tool-row"><WorkerCard t={t} item={item} previewAttachment={previewAttachment} /></li>)}</ul>;
 }
 
-function WorkerCard({ t, item }: { t: Messages; item: WorkerItem }) {
+function WorkerCard({ t, item, previewAttachment }: { t: Messages; item: WorkerItem; previewAttachment?: AttachmentPreviewLoader }) {
   const tier = item.tier && item.tier in t.connection.tiers ? t.connection.tiers[item.tier as keyof Messages['connection']['tiers']] : item.tier;
   const detail = item.status === 'running' ? item.activity ?? item.summary : item.summary ?? item.activity;
   return (
@@ -129,6 +137,7 @@ function WorkerCard({ t, item }: { t: Messages; item: WorkerItem }) {
         </span>
       </div>
       {detail && <p className="worker-detail">{detail}</p>}
+      <MessageAttachments t={t} files={item.attachments ?? []} load={previewAttachment} label={t.tool.resultAttachments} className="tool-attachments" />
     </div>
   );
 }
@@ -250,21 +259,21 @@ export function TranscriptView({ t, items, language, onDecide, previewAttachment
         if (Array.isArray(item)) {
           const run = item as Run;
           return run[0]!.kind === 'tool'
-            ? <li key={run[0]!.id} className="msg"><ToolRun t={t} items={run as ToolItem[]} /></li>
-            : <li key={run[0]!.id} className="msg worker-row"><WorkerRun t={t} items={run as WorkerItem[]} /></li>;
+            ? <li key={run[0]!.id} className="msg"><ToolRun t={t} items={run as ToolItem[]} previewAttachment={previewAttachment} /></li>
+            : <li key={run[0]!.id} className="msg worker-row"><WorkerRun t={t} items={run as WorkerItem[]} previewAttachment={previewAttachment} /></li>;
         }
         switch (item.kind) {
           case 'user':
-            return <UserMessage key={item.id} t={t} item={item} previewAttachment={previewAttachment} language={language} />;
+            return <HistoricalMessageFileScope key={item.id} scope={item.fileScope}><UserMessage t={t} item={item} previewAttachment={previewAttachment} language={language} /></HistoricalMessageFileScope>;
           case 'assistant':
             return (
               <li key={item.id} className={`msg assistant ${item.streaming ? 'streaming' : ''}`} aria-busy={item.streaming || undefined}>
                 <span className="visually-hidden">{t.chat.agent}: </span>
-                <Markdown text={item.text} />
+                <HistoricalMessageFileScope scope={item.fileScope}><Markdown text={item.text} /></HistoricalMessageFileScope>
                 {!item.streaming && item.text.trim() && <div className="message-actions"><CopyButton text={item.text} label={t.chat.copyMessage} /></div>}
               </li>
             );
-          case 'approval': return <li key={item.id} className="msg"><ApprovalCard t={t} item={item} onDecide={onDecide} actionable={approvalsEnabled} /></li>;
+          case 'approval': return <li key={item.id} className="msg"><HistoricalMessageFileScope scope={item.fileScope}><ApprovalCard t={t} item={item} onDecide={onDecide} actionable={approvalsEnabled} /></HistoricalMessageFileScope></li>;
           case 'files': return <li key={item.id} className="msg"><div className="tool-card status-ok"><FileList t={t} files={item.files} /></div></li>;
           case 'notice':
             return (
@@ -274,6 +283,7 @@ export function TranscriptView({ t, items, language, onDecide, previewAttachment
               </li>
             );
           case 'usage': return <li key={item.id} className="msg"><UsageLine t={t} item={item} language={language} /></li>;
+          case 'skills': return <li key={item.id} className="msg"><SkillLoadCard t={t} item={item} language={language} /></li>;
           case 'handoff':
             return (
               <li key={item.id} className={`msg handoff ${item.edge}`}>

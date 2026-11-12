@@ -7,6 +7,9 @@ import { ObserverPage } from '../src/pages/ObserverPage';
 import { ChatPage } from '../src/chat/ChatPage';
 import { CharacterConversation } from '../src/office/CharacterConversation';
 import type { OfficeAgent } from '../src/office/presence';
+import { ObservedHermesControls } from '../src/observe/ObservedHermesControls';
+import { ObservedCodexPromptComposer, ObservedCodexPromptContent } from '../src/observe/ObservedCodexPromptComposer';
+import type { ObservedCodexPromptControl, ObservedCodexPromptView } from '../src/observe/observedCodexPromptModel';
 
 const session = {
   id: 'observed-example', title: 'Original Codex conversation', workspaceId: 'workspace', connectionId: 'observed', control: 'observed', running: false,
@@ -88,8 +91,66 @@ it.each(['gemini-cli', 'antigravity', 'claude-code'] as const)('shows the observ
     expect(visible).toContain(t.observedControl.placeholder);
     expect(visible).toContain('composer-attach');
     expect(visible).toContain('composer-model');
-    expect(visible).toContain('composer-effort');
+    expect(visible).not.toContain('composer-effort');
     expect(visible).toContain('type="file"');
     expect(visible.match(/<textarea\b/g)).toHaveLength(1);
   }
+});
+
+it.each(['en', 'id'] as const)('replaces Codex fallback wording with the watched source label (%s)', language => {
+  const t = MESSAGES[language];
+  const control = {
+    subscribe: () => () => {},
+    getSnapshot: () => ({ phase: 'ready', busy: false, disabled: false, draft: 'Hello', notice: 'queued' }),
+    start: () => () => {},
+    refresh: async () => {},
+    setDisabled: () => {},
+    setDraft: () => {},
+    send: async () => 'accepted' as const,
+    canSend: () => true,
+    canRetry: () => false,
+    allowRetry: () => false,
+  } as unknown as ObservedCodexPromptControl;
+  const baseView = {
+    phase: 'ready',
+    busy: false,
+    disabled: false,
+    draft: 'Hello',
+    status: { sessionId: session.id, threadId: 't1', enabled: true, canQueue: true },
+  } as ObservedCodexPromptView;
+  for (const patch of [
+    { notice: 'queued' as const },
+    { notice: 'failed' as const },
+    { notice: 'unknown' as const },
+    { draft: 'x'.repeat(16_001) },
+  ]) {
+    const html = renderToStaticMarkup(createElement(ObservedCodexPromptContent, {
+      t,
+      control,
+      view: { ...baseView, ...patch },
+      sourceLabel: 'Antigravity',
+    }));
+    expect(html).toContain('Antigravity');
+    expect(html).not.toContain('Codex');
+  }
+});
+
+
+it.each(['codex', 'antigravity', 'claude-code', 'gemini-cli'] as const)('shows source-reported model/effort without pretending to change %s settings', sourceId => {
+  const active = { ...session, model: 'example-active-model', effort: 'high' as const,
+    observation: { ...session.observation!, sourceId } };
+  const api = { promptQueueStatus: vi.fn(), changePromptQueue: vi.fn() } as unknown as AgentHostApi;
+  const html = renderToStaticMarkup(createElement(ObservedCodexPromptComposer, { t: MESSAGES.en, agents: api, session: active, showNativeQueue: false }));
+  expect(html).toContain('>example-active-model</span>');
+  expect(html).toContain('>High</span>');
+  expect(html).not.toContain('Default (example-active-model)');
+  expect(html).toContain(MESSAGES.en.observedCodexPrompt.settingsReadOnly);
+  expect(api.changePromptQueue).not.toHaveBeenCalled();
+});
+
+it('shows source-reported Hermes settings without offering an unsupported native setter', () => {
+  const active = { ...session, model: 'example-hermes-model', effort: 'high' as const, observation: { ...session.observation!, sourceId: 'hermes' } };
+  const html = renderToStaticMarkup(createElement(ObservedHermesControls, { t: MESSAGES.en, agents: {} as AgentHostApi, session: active }));
+  expect(html).toContain('<strong>example-hermes-model</strong>'); expect(html).toContain('<strong>High</strong>');
+  expect(html).toContain(MESSAGES.en.observedCodexPrompt.settingsReadOnly);
 });

@@ -6,6 +6,7 @@ pub mod missions;
 pub mod provider_complete;
 pub mod provider_models;
 pub mod session;
+pub mod skill_market;
 pub mod skills;
 pub mod wire;
 pub mod worker_bundle;

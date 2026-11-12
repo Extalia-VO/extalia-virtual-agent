@@ -199,7 +199,7 @@ describe('workspace skill consent through the host API', () => {
       const listed = await runtime.host.builtinSkills!();
       const expected = [...BUILTIN_SKILLS].sort((a, b) => (a.name < b.name ? -1 : 1)).map(({ name, description, category, body }) => ({ name, description, category, body }));
       expect(listed).toHaveLength(BUILTIN_SKILLS.length);
-      expect(listed.map(skill => skill.name)).toEqual(['caveman', 'code-review', 'commit-changes', 'debug-issue', 'explain-codebase', 'memory-recall', 'orchestrator', 'plan-feature', 'refactor-safely', 'security-review', 'update-docs', 'write-tests']);
+      expect(listed.map(skill => skill.name)).toEqual(expect.arrayContaining(['orchestrator', 'caveman', 'antislop', 'superpowers', 'open-design']));
       expect(listed).toEqual(expected);
       expect(listed.every(skill => skill.category && skill.body)).toBe(true);
       expect(listed.every(skill => Object.keys(skill).sort().join(',') === 'body,category,description,name')).toBe(true);

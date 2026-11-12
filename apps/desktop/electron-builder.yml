@@ -67,6 +67,8 @@ dmg:
     width: 900
     height: 620
   contents:
+    # beforePack adds position-only entries for generated support files outside
+    # this viewport, so Finder's Show Hidden Files mode cannot cover the artwork.
     - x: 224
       y: 502
       type: file

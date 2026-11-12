@@ -1,6 +1,7 @@
 import { useId, useLayoutEffect, useMemo, useSyncExternalStore } from 'react';
 import type { AgentHostApi, SessionSummary } from '@extalia/platform';
 import type { Messages } from '../i18n';
+import { QueuedPromptPreview } from '../chat/QueuedPromptPreview';
 import { createCodexNativeQueueControl, type CodexNativeQueueControl, type CodexNativeQueueView } from './observedCodexNativeQueueModel';
 import './observedCodexNativeQueue.css';
 
@@ -37,6 +38,7 @@ export function ObservedCodexNativeQueueContent({ t, control, view, disabled = f
   const phase = disabled ? 'paused' : view.phase;
   const status = phase === 'ready' ? view.status : undefined;
   const items = status?.items ?? [];
+  if (phase === 'ready' && !items.length) return null;
   return <details className="observed-codex-native-queue">
     <summary>{c.title} <span>{phase === 'ready' ? c.count.replace('{count}', String(items.length)) : c.states[phase]}</span></summary>
     <div className="observed-codex-native-queue-body" aria-labelledby={`${id}-title`}>
@@ -48,8 +50,8 @@ export function ObservedCodexNativeQueueContent({ t, control, view, disabled = f
       </div>
       {status?.observedAt && <p className="observed-codex-native-queue-hint">{c.observedAt} <time dateTime={status.observedAt}>{status.observedAt}</time></p>}
       {!!items.length && <ol aria-label={c.items} tabIndex={0}>{items.map(item => <li key={item.id}>
-        {item.text && <p className="observed-codex-native-queue-text">{item.text}</p>}
-        {item.nonTextItems > 0 && <p className="observed-codex-native-queue-hint">{c.nonText.replace('{count}', String(item.nonTextItems))}</p>}
+        <QueuedPromptPreview t={t} text={item.text} attachments={item.attachments} />
+        {item.nonTextItems > (item.attachments?.length ?? 0) && <p className="observed-codex-native-queue-hint">{c.nonText.replace('{count}', String(item.nonTextItems - (item.attachments?.length ?? 0)))}</p>}
         {!item.text && item.nonTextItems === 0 && <p className="observed-codex-native-queue-hint">{c.noText}</p>}
         {item.truncated && <p className="observed-codex-native-queue-hint">{c.itemTruncated}</p>}
       </li>)}</ol>}

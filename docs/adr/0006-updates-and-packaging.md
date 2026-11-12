@@ -14,10 +14,15 @@ working.
 
 **Desktop** is packaged with electron-builder (DMG + ZIP on macOS, NSIS on
 Windows, AppImage + DEB on Linux) and published to GitHub Releases by a tag
-workflow. `electron-updater` checks the release feed shortly after launch,
-downloads a newer version in the background and, once it is downloaded and no
-agent turn is running, announces a 10-second restart that the user can postpone
-(the update then installs on quit). Development builds report updates as
+workflow. `electron-updater` checks the release feed shortly after launch.
+Desktop shows the installed and available versions in a confirmation dialog;
+checking never downloads or installs an update. **Later** or Escape dismisses
+that release for the current opening, while Settings and the update banner keep
+the manual action available. Approval binds the offered version and starts its
+download. Once downloaded and no agent turn is running, Desktop announces a
+10-second restart that the user can postpone. A postponed update waits for an
+explicit restart action; ordinary app quit never silently installs it.
+Failed checks/downloads expose a manual retry. Development builds report updates as
 unsupported. macOS auto-update requires a signed and notarized build.
 
 **Web/CLI** is the npm package `extalia-vo` (command `extalia`). On start it

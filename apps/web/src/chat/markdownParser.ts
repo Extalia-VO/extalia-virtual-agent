@@ -113,6 +113,12 @@ function tableAt(lines: readonly string[], index: number): TableAlign[] | undefi
 }
 
 export function parseMarkdown(source: string, options: MarkdownOptions = {}): Block[] {
+  return parseMarkdownBlocks(source, options, 0);
+}
+
+function parseMarkdownBlocks(source: string, options: MarkdownOptions, depth: number): Block[] {
+  // Deep source markup stays literal instead of exhausting the UI stack.
+  if (depth >= MAX_BLOCK_DEPTH) return [{ type: 'paragraph', children: [{ type: 'text', text: source }] }];
   const parseInline = (text: string) => parseInlineText(text, 0, options);
   const lines = source.replace(/\r\n?/g, '\n').split('\n');
   const blocks: Block[] = [];
@@ -169,7 +175,7 @@ export function parseMarkdown(source: string, options: MarkdownOptions = {}): Bl
             index++;
           }
           const strip = Math.min(...inner.filter(row => !BLANK.test(row)).map(indentOf));
-          const parsed = parseMarkdown(inner.map(row => row.replace(/\t/g, '    ').slice(strip)).join('\n'), options);
+          const parsed = parseMarkdownBlocks(inner.map(row => row.replace(/\t/g, '    ').slice(strip)).join('\n'), options, depth + 1);
           nested[entries.length - 1] = [...(nested[entries.length - 1] ?? []), ...parsed];
           afterBlank = false;
           continue;
@@ -210,7 +216,7 @@ export function parseMarkdown(source: string, options: MarkdownOptions = {}): Bl
       const quoted: string[] = [];
       while (index < lines.length && QUOTE.test(lines[index]!)) quoted.push(QUOTE.exec(lines[index++]!)![1]!);
       const rich = quoted.some(row => BLANK.test(row) || startsBlock(row));
-      blocks.push({ type: 'quote', children: parseInline(quoted.join('\n')), ...(rich ? { blocks: parseMarkdown(quoted.join('\n'), options) } : {}) });
+      blocks.push({ type: 'quote', children: parseInline(quoted.join('\n')), ...(rich ? { blocks: parseMarkdownBlocks(quoted.join('\n'), options, depth + 1) } : {}) });
       continue;
     }
 
@@ -240,6 +246,7 @@ export function parseMarkdown(source: string, options: MarkdownOptions = {}): Bl
 const WORD = /[\p{L}\p{N}]/u;
 const URL_START = /^https?:\/\/[^\s<>]+/i;
 const MAX_DEPTH = 4;
+const MAX_BLOCK_DEPTH = 16;
 
 const WIKILINK = /^(!?)\[\[((?:[^[\]\n\\]|\\.)+?)\]\]/;
 
@@ -260,7 +267,7 @@ export function parseInline(text: string, depth = 0): Inline[] {
   return parseInlineText(text, depth, {});
 }
 
-function parseInlineText(text: string, depth: number, options: MarkdownOptions): Inline[] {
+function parseInlineText(text: string, depth: number, options: MarkdownOptions, linkLabel = false): Inline[] {
   const result: Inline[] = [];
   let buffer = '';
   // Delimiters known to have no closer after a position; avoids rescanning on long unmatched input.
@@ -305,7 +312,7 @@ function parseInlineText(text: string, depth: number, options: MarkdownOptions):
       continue;
     }
 
-    if (options.wikilinks && (char === '[' || char === '!') && text.startsWith('[[', char === '!' ? index + 1 : index)) {
+    if (!linkLabel && options.wikilinks && (char === '[' || char === '!') && text.startsWith('[[', char === '!' ? index + 1 : index)) {
       const match = WIKILINK.exec(text.slice(index));
       const node = match ? parseWikilink(match[2]!, match[1] === '!') : null;
       if (match && node) {
@@ -316,12 +323,12 @@ function parseInlineText(text: string, depth: number, options: MarkdownOptions):
       }
     }
 
-    if (char === '[' && depth < MAX_DEPTH) {
+    if (!linkLabel && char === '[' && depth < MAX_DEPTH) {
       const angle = /^\[((?:[^[\]\\]|\\.)*)\]\(<([^<>\n]{1,4096})>\)/.exec(text.slice(index));
       const match = angle ?? /^\[((?:[^[\]\\]|\\.)*)\]\(\s*([^\s()]*(?:\([^\s()]*\)[^\s()]*)*)(?:\s+"[^"]*")?\s*\)/.exec(text.slice(index));
       if (match) {
         flush();
-        const children = parseInlineText(match[1]!, depth + 1, options).filter(child => child.type !== 'link' && child.type !== 'wikilink' && child.type !== 'filelink');
+        const children = parseInlineText(match[1]!, depth + 1, options, true);
         const href = safeHref(match[2]!);
         const file = options.fileLinks ? fileReference(match[2]!) : undefined;
         // Unsafe targets keep their label as plain text.
@@ -333,7 +340,7 @@ function parseInlineText(text: string, depth: number, options: MarkdownOptions):
       }
     }
 
-    if ((char === 'h' || char === 'H') && (!previous || /[\s(]/.test(previous))) {
+    if (!linkLabel && (char === 'h' || char === 'H') && (!previous || /[\s(]/.test(previous))) {
       const match = URL_START.exec(text.slice(index));
       if (match) {
         const url = match[0].replace(/[.,;:!?'")\]]+$/, '');
@@ -351,7 +358,7 @@ function parseInlineText(text: string, depth: number, options: MarkdownOptions):
       const close = findCloser('~~', index + 3, at => !/\s/.test(text[at - 1]!));
       if (close !== -1) {
         flush();
-        result.push({ type: 'del', children: parseInlineText(text.slice(index + 2, close), depth + 1, options) });
+        result.push({ type: 'del', children: parseInlineText(text.slice(index + 2, close), depth + 1, options, linkLabel) });
         index = close + 2;
         continue;
       }
@@ -372,7 +379,7 @@ function parseInlineText(text: string, depth: number, options: MarkdownOptions):
         });
         if (close !== -1) {
           flush();
-          const children = parseInlineText(text.slice(index + delimiter.length, close), depth + 1, options);
+          const children = parseInlineText(text.slice(index + delimiter.length, close), depth + 1, options, linkLabel);
           result.push(strong ? { type: 'strong', children } : { type: 'em', children });
           index = close + delimiter.length;
           continue;

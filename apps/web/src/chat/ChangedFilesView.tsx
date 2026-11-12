@@ -2,7 +2,7 @@ import { useState, type ReactNode } from 'react';
 import type { Messages } from '../i18n';
 import { Icon } from '../ui/Icon';
 import type { ChangedFile } from './changedFiles';
-import { useMessageFiles } from './MessageFilePreview';
+import { HistoricalMessageFileScope, useMessageFiles } from './MessageFilePreview';
 
 function FileRow({ t, file, time }: { t: Messages; file: ChangedFile; time: Intl.DateTimeFormat }) {
   const openFile = useMessageFiles();
@@ -18,7 +18,7 @@ function FileRow({ t, file, time }: { t: Messages; file: ChangedFile; time: Intl
   </>;
   // A deleted file has nothing left to open.
   return <li>{openFile && file.change !== 'delete'
-    ? <button type="button" className="changed-file" onClick={() => openFile({ name, path: file.path, link: true })}>{content}</button>
+    ? <button type="button" className="changed-file" onClick={() => openFile({ name, path: file.path, link: file.fileScope === undefined })}>{content}</button>
     : <span className="changed-file static">{content}</span>}</li>;
 }
 
@@ -29,18 +29,21 @@ export function ChangedFilesView({ t, language, files }: { t: Messages; language
   if (!files.length) return <p className="muted-note changed-files-empty">{c.noFiles}</p>;
   return <div className="changed-files">
     <p className="changed-files-summary">{c.filesSummary(files.length)}</p>
-    <ul>{files.map(file => <FileRow key={file.path} t={t} file={file} time={time} />)}</ul>
+    <ul>{files.map(file => <HistoricalMessageFileScope key={file.path} scope={file.fileScope}><FileRow t={t} file={file} time={time} /></HistoricalMessageFileScope>)}</ul>
   </div>;
 }
 
 /** Messages and Files over one conversation. Messages stay mounted, so switching keeps the scroll position. */
-export function ConversationTabs({ t, language, files, children }: { t: Messages; language: string; files: readonly ChangedFile[]; children: ReactNode }) {
+export function ConversationTabs({ t, language, files, children, header }: { t: Messages; language: string; files: readonly ChangedFile[]; children: ReactNode; header?: ReactNode }) {
   const [tab, setTab] = useState<'messages' | 'files'>('messages');
   const c = t.characterConsole;
   return <>
-    <div className="character-tabs conversation-tabs" role="tablist" aria-label={c.messages}>
-      <button type="button" role="tab" aria-selected={tab === 'messages'} onClick={() => setTab('messages')}>{c.messages}</button>
-      <button type="button" role="tab" aria-selected={tab === 'files'} onClick={() => setTab('files')}>{c.files}{files.length > 0 && <span className="badge">{files.length}</span>}</button>
+    <div className="conversation-header">
+      {header}
+      <div className="character-tabs conversation-tabs" role="tablist" aria-label={c.messages}>
+        <button type="button" role="tab" aria-selected={tab === 'messages'} onClick={() => setTab('messages')}>{c.messages}</button>
+        <button type="button" role="tab" aria-selected={tab === 'files'} onClick={() => setTab('files')}>{c.files}{files.length > 0 && <span className="badge">{files.length}</span>}</button>
+      </div>
     </div>
     <div className="conversation-panel" role="tabpanel" hidden={tab !== 'messages'}>{children}</div>
     {tab === 'files' && <div className="conversation-files" role="tabpanel"><ChangedFilesView t={t} language={language} files={files} /></div>}

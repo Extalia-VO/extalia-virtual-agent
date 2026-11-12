@@ -3,6 +3,7 @@
 mod preflight;
 mod routing;
 mod scanning;
+mod sources;
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -21,6 +22,44 @@ use crate::sha256::hex_digest;
 const NOW: i64 = 1_800_000_000_000;
 const LATER: i64 = NOW + 600_000;
 const SKILL_MD: &str = "---\nname: demo\ndescription: Demo skill\n---\nDo the thing.\n";
+
+#[test]
+fn pinned_import_refuses_changed_bytes_before_revision_registration() {
+    let dir = TempDir::new();
+    let mut store = open(&dir);
+    let source = dir.package("market", &[("SKILL.md", SKILL_MD)]);
+    let expected = tree::scan(&source, &StagingLimits::default()).unwrap();
+    fs::write(
+        source.join("SKILL.md"),
+        format!("{SKILL_MD}\nChanged upstream bytes.\n"),
+    )
+    .unwrap();
+    let mut registry = SkillRegistry::new(&mut store, &dir.data(), profile("default"));
+    assert!(matches!(
+        registry.import_expected(
+            &source,
+            Origin::Imported,
+            "github:example/skills@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#demo",
+            NOW,
+            Some(&expected.sha256)
+        ),
+        Err(SkillError::Denied("import_tree_changed"))
+    ));
+    assert!(registry.list(None, None, 10).unwrap().is_empty());
+    let current = tree::scan(&source, &StagingLimits::default()).unwrap();
+    let imported = registry
+        .import_expected(
+            &source,
+            Origin::Imported,
+            "github:example/skills@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#demo",
+            NOW,
+            Some(&current.sha256),
+        )
+        .unwrap();
+    assert!(imported.created);
+    assert_eq!(imported.tree_sha256, current.sha256);
+    assert_eq!(imported.state, RevisionState::Quarantined);
+}
 
 struct TempDir(PathBuf);
 

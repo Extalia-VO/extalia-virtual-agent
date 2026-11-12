@@ -92,6 +92,7 @@ pub enum SkillRequest {
         /// Relative to the profile's import inbox.
         path: String,
         source_ref: Option<String>,
+        expected_tree_sha256: Option<String>,
     },
     List {
         /// `<packageId>/<revisionId>` of the previous page's last entry.
@@ -184,11 +185,15 @@ impl SkillRequest {
                 origin,
                 path,
                 source_ref,
+                expected_tree_sha256,
             } => {
                 put("origin", text(origin.as_str()));
                 put("path", text(path));
                 if let Some(source_ref) = source_ref {
                     put("sourceRef", text(source_ref));
+                }
+                if let Some(expected) = expected_tree_sha256 {
+                    put("expectedTreeSha256", text(expected));
                 }
             }
             Self::List {
@@ -513,7 +518,12 @@ pub(super) fn request(check: &mut Check, op: Op, params: &Value) -> Option<Reque
     let at = |key: &str| format!("{PARAMS}.{key}");
     let request = match op {
         Op::SkillImport => {
-            let fields = check.object(params, PARAMS, &["origin", "path"], &["sourceRef"])?;
+            let fields = check.object(
+                params,
+                PARAMS,
+                &["origin", "path"],
+                &["sourceRef", "expectedTreeSha256"],
+            )?;
             let origin = check.name(fields.get("origin"), &at("origin"), Origin::parse);
             let path = check.skill_path(fields.get("path"), &at("path"));
             let source_ref = match fields.get("sourceRef") {
@@ -522,10 +532,22 @@ pub(super) fn request(check: &mut Check, op: Op, params: &Value) -> Option<Reque
                     .text(Some(value), &at("sourceRef"), MAX_SOURCE_REF)
                     .map(Some),
             };
+            let expected_tree_sha256 = match fields.get("expectedTreeSha256") {
+                None => Some(None),
+                Some(value) => check
+                    .pattern(
+                        Some(value),
+                        &at("expectedTreeSha256"),
+                        is_digest,
+                        "expected a SHA-256 digest",
+                    )
+                    .map(Some),
+            };
             SkillRequest::Import {
                 origin: origin?,
                 path: path?,
                 source_ref: source_ref?,
+                expected_tree_sha256: expected_tree_sha256?,
             }
         }
         Op::SkillList => {
@@ -797,6 +819,68 @@ fn optional_field(
         None => true,
         Some(value) => rule(check, value, &format!("{path}.{key}")),
     }
+}
+
+fn revision_source(check: &mut Check, value: &Value, path: &str) -> Option<()> {
+    let fields = check.object(value, path, &["origin", "sourceRef", "recordedAt"], &[])?;
+    all(&[
+        check
+            .name(
+                fields.get("origin"),
+                &format!("{path}.origin"),
+                Origin::parse,
+            )
+            .is_some(),
+        check
+            .text(
+                fields.get("sourceRef"),
+                &format!("{path}.sourceRef"),
+                MAX_SOURCE_REF,
+            )
+            .is_some(),
+        check
+            .timestamp(fields.get("recordedAt"), &format!("{path}.recordedAt"))
+            .is_some(),
+    ])
+}
+
+fn source_evidence(check: &mut Check, fields: &Map<String, Value>) -> bool {
+    if !["sources", "sourcesTotal", "sourcesOmitted"]
+        .iter()
+        .any(|key| fields.contains_key(*key))
+    {
+        return true;
+    }
+    all(&[
+        check
+            .items(
+                fields.get("sources"),
+                &format!("{RESULT}.sources"),
+                20,
+                revision_source,
+            )
+            .is_some(),
+        check
+            .count(
+                fields.get("sourcesTotal"),
+                &format!("{RESULT}.sourcesTotal"),
+                0,
+                256,
+            )
+            .is_some(),
+        check
+            .count(
+                fields.get("sourcesOmitted"),
+                &format!("{RESULT}.sourcesOmitted"),
+                0,
+                256,
+            )
+            .is_some(),
+    ])
+    .is_some()
+        && ["sources", "sourcesTotal", "sourcesOmitted"]
+            .iter()
+            .all(|key| fields.contains_key(*key))
 }
 
 fn inspection(check: &mut Check, value: &Value, path: &str) -> Option<()> {
@@ -1114,9 +1198,16 @@ pub(super) fn result(check: &mut Check, op: Op, result: &Value) -> Option<Respon
                     "history",
                     "consent",
                 ],
-                &["instructions", "instructionsUnavailable"],
+                &[
+                    "instructions",
+                    "instructionsUnavailable",
+                    "sources",
+                    "sourcesTotal",
+                    "sourcesOmitted",
+                ],
             )?;
             all(&[
+                source_evidence(check, fields),
                 !(fields.contains_key("instructions")
                     && fields.contains_key("instructionsUnavailable")),
                 optional_field(
@@ -1349,4 +1440,47 @@ pub(super) fn result(check: &mut Check, op: Op, result: &Value) -> Option<Respon
         op,
         result: result.clone(),
     })
+}
+
+#[cfg(test)]
+mod provenance_tests {
+    use super::*;
+    use serde_json::json;
+    #[test]
+    fn provenance_is_optional_for_old_peers_but_complete_and_bounded_when_present() {
+        assert!(source_evidence(&mut Check::default(), &Map::new()));
+        let valid = json!({"sources":[{"origin":"imported","sourceRef":"github:example/skills@1111111111111111111111111111111111111111#demo","recordedAt":"2026-01-01T00:00:00.000Z"}],"sourcesTotal":1,"sourcesOmitted":0});
+        assert!(source_evidence(
+            &mut Check::default(),
+            valid.as_object().unwrap()
+        ));
+        for key in ["sources", "sourcesTotal", "sourcesOmitted"] {
+            let mut incomplete = valid.clone();
+            incomplete.as_object_mut().unwrap().remove(key);
+            assert!(!source_evidence(
+                &mut Check::default(),
+                incomplete.as_object().unwrap()
+            ));
+        }
+        for field in ["sourcesTotal", "sourcesOmitted"] {
+            let mut invalid = valid.clone();
+            invalid[field] = json!(257);
+            assert!(!source_evidence(
+                &mut Check::default(),
+                invalid.as_object().unwrap()
+            ));
+        }
+        let mut invalid = valid.clone();
+        invalid["sources"][0]["origin"] = json!("builtin");
+        assert!(!source_evidence(
+            &mut Check::default(),
+            invalid.as_object().unwrap()
+        ));
+        let mut invalid = valid.clone();
+        invalid["sources"] = json!(vec![valid["sources"][0].clone(); 21]);
+        assert!(!source_evidence(
+            &mut Check::default(),
+            invalid.as_object().unwrap()
+        ));
+    }
 }

@@ -12,8 +12,13 @@ Agents need a host that can reach your files and run commands, so Extalia runs
 in one of two ways:
 
 - **Desktop app** (macOS, Windows, Linux): download it from GitHub Releases. It
-  checks for updates when it starts, downloads them in the background and
-  restarts into the new version when no agent is working.
+  checks for updates shortly after it starts. If a newer version is available,
+  a dialog shows both versions. Choose **Update and restart** to download it,
+  or **Later** to keep working. After an approved download, Extalia waits for
+  running agents to finish before a postponable 10-second restart. A normal
+  quit does not install an update. You can also check and update under
+  **Settings → System**. Automatic installation requires a supported packaged
+  build; ad-hoc macOS previews continue to use manual replacement.
 - **Web client through the `extalia` command**:
 
   ```bash
@@ -45,12 +50,23 @@ before `pnpm dev:desktop`; it will have its own setup and sessions.
 
 On first start a short setup asks for:
 
-1. **A model connection**: OpenAI, Anthropic, OpenRouter, 9Router, OmniRoute,
+1. **A model connection**: choose **Extalia Native** for the primary API/local
+   setup path, then select OpenAI, Anthropic, OpenRouter, 9Router, OmniRoute,
    Ollama or any OpenAI-compatible endpoint, with its API key (kept in your OS
    credential store) or an environment variable. Choose who provides memory and
    skills: Extalia, the provider where it has its own (OmniRoute), or off.
 2. **A workspace**: the project folder the agent works in, and whether file
    edits and commands need your approval (they do by default).
+
+For a local connection, select the matching preset and check its API base URL.
+Ollama defaults to `http://localhost:11434/v1` and needs no key; 9Router and
+OmniRoute allow an optional key. Use **Custom** for another OpenAI-compatible
+router or an authenticated Ollama proxy. Use the service's actual API base path;
+Extalia preserves it rather than adding `/v1` automatically. The existing named
+preset is **OmniRoute**; an OmniRouter service can use Custom with its own URL.
+Run **Test connection**, then choose or enter the intended model. Catalog success
+checks discovery, not whether every listed model can run tools or process images.
+Hermes Agent is an optional runtime with its own configuration.
 
 After setup, you land in the **3D Office** in the same application, and every later
 launch opens there too, after a short start screen (the last-used workspace is kept).

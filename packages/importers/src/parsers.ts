@@ -1,8 +1,9 @@
+import { codexUserInputEvidence, type CodexUserInputEvidence } from './codexUserInput.js';
 import {
-  PORTABLE_SESSION_FORMAT, decodePortableSession, safeLabel, safeText, stopReasonOf,
-  type ImportMode, type MessageRole, type PortableSession,
+  EFFORTS, PORTABLE_SESSION_FORMAT, decodePortableSession, literalProjectPath, safeLabel, safeText, stopReasonOf,
+  type Effort, type ImportMode, type MessageRole, type PortableSession,
 } from '@extalia/core';
-import { MAX_STEP_ATTACHMENTS, StepList, codexEventAttachments, explicitToolFailure, extractWrittenFiles, imageAttachment, outputText, promptAttachments, statedSuccess, stepOutput, stepTime, toolHints, type StepAttachment, type TranscriptContext, type TranscriptStatus, type TranscriptStep } from './steps.js';
+import { MAX_STEP_ATTACHMENTS, StepList, codexEventAttachments, explicitToolFailure, extractWrittenFiles, imageAttachment, outputText, promptAttachments, statedSuccess, stepOutput, stepTime, toolHints, toolResultAttachments, toolImageOutputText, type StepAttachment, type TranscriptContext, type TranscriptStatus, type TranscriptStep } from './steps.js';
 
 /**
  * Parsers for native agent histories. Input is untrusted data: parsers have no
@@ -31,6 +32,7 @@ export interface ParseContext {
 }
 
 export interface NativeParseResult {
+  userInput?: CodexUserInputEvidence;
   session?: PortableSession;
   /** The lead agent's context in use and compactions, when the transcript reports usage (v0.0.48). */
   context?: TranscriptContext;
@@ -38,6 +40,12 @@ export interface NativeParseResult {
   steps?: TranscriptStep[];
   /** The lead agent's latest model, when the transcript states one. */
   model?: string;
+  /** Timestamp of the source context that states the latest model, before any reply. */
+  modelAt?: string;
+  /** Explicit source setting only; never inferred from reasoning or prompt text. */
+  effort?: Effort;
+  /** Latest source effort context, including contexts with unknown or invalid effort. */
+  effortAt?: string;
   diagnostics: string[];
 }
 
@@ -159,7 +167,7 @@ export function isInjectedContext(text: string): boolean {
   return INJECTED_CONTEXT.test(text);
 }
 
-function finish(context: ParseContext, id: unknown, drafts: Draft[], diagnostics: string[], metadata: { path?: unknown; title?: unknown; customTitle?: unknown; start?: unknown; parser: string; model?: string; context?: TranscriptContext }, steps?: StepList): NativeParseResult {
+function finish(context: ParseContext, id: unknown, drafts: Draft[], diagnostics: string[], metadata: { path?: unknown; title?: unknown; customTitle?: unknown; start?: unknown; parser: string; model?: string; modelAt?: string; effort?: Effort; effortAt?: string; context?: TranscriptContext }, steps?: StepList): NativeParseResult {
   const nativeId = (str(id) || context.nativeSessionId || '').trim();
   if (!nativeId) return { diagnostics: [...diagnostics, 'The session identity is missing.'] };
   const readable = drafts.filter(message => message.content.trim());
@@ -181,7 +189,11 @@ function finish(context: ParseContext, id: unknown, drafts: Draft[], diagnostics
 
   const profile = context.profile || 'default';
   const sourceSessionId = context.sourceId === 'hermes' && profile !== 'default' ? `profile:${encodeURIComponent(profile)}:${nativeId}` : nativeId;
-  const projectLocation = safeText(context.projectPath || str(metadata.path), 2000).trim();
+  const reportedProject = context.projectPath || str(metadata.path);
+  // A filesystem path is an identity, not a display label. Trimming, redacting
+  // or clipping it can turn a sibling directory into an authorized project.
+  const projectLocation = literalProjectPath(reportedProject);
+  if (reportedProject && !projectLocation) diagnostics.push('The project folder could not be preserved as a literal safe path and was omitted.');
   const firstUser = messages.find(message => message.role === 'user' && !isInjectedContext(message.content) && safeLabel(message.content, 160))?.content;
   const exportedAt = new Date(toEpochMs(context.exportedAt) ?? Date.now()).toISOString();
   const provider = PROVIDERS[context.sourceId];
@@ -202,7 +214,7 @@ function finish(context: ParseContext, id: unknown, drafts: Draft[], diagnostics
     lastMessageAt: messages.at(-1)!.createdAt,
   };
   const decoded = decodePortableSession(session);
-  return decoded.ok ? { session: decoded.value, ...(steps ? { steps: steps.steps } : {}), ...(metadata.model ? { model: metadata.model } : {}), ...(metadata.context ? { context: metadata.context } : {}), diagnostics } : { diagnostics: [...diagnostics, `The conversation failed validation: ${decoded.errors.join(' ')}`] };
+  return decoded.ok ? { session: decoded.value, ...(steps ? { steps: steps.steps } : {}), ...(metadata.model ? { model: metadata.model } : {}), ...(metadata.modelAt ? { modelAt: metadata.modelAt } : {}), ...(metadata.effort ? { effort: metadata.effort } : {}), ...(metadata.effortAt ? { effortAt: metadata.effortAt } : {}), ...(metadata.context ? { context: metadata.context } : {}), diagnostics } : { diagnostics: [...diagnostics, `The conversation failed validation: ${decoded.errors.join(' ')}`] };
 }
 
 /** Context Codex injects as user-role messages; it is not something the user typed (bug 7). */
@@ -274,13 +286,25 @@ export function parseCodex(text: string, context: ParseContext): NativeParseResu
     if (best) matched.add(best.index);
   }
   const drafts: Draft[] = [], steps = new StepList();
-  let model: string | undefined;
+  const viewImages = new Map<string, { tool: string; path: string }>();
+  let model: string | undefined, modelAt: string | undefined, effort: Effort | undefined, effortAt: string | undefined;
   // v0.0.48: context in use is the latest request's input (`last_token_usage`); the thread total is not context.
   let usedTokens: number | undefined, windowTokens: number | undefined, compactedRows = 0, compactedEvents = 0;
   for (const [index, row] of rows.entries()) {
     const payload = obj(row.payload), pos = `L${index}`, at = stepTime(row.timestamp);
     const base = { pos, ...(at ? { at } : {}) };
-    if (row.type === 'turn_context' && str(payload.model)) model = safeLabel(payload.model, 120);
+    if (row.type === 'turn_context') {
+      // A new context replaces effort even when the source omits it. Once dated
+      // evidence exists, untimed contexts cannot erase its freshness watermark.
+      // Bodies and reasoning are never consulted.
+      if (!effortAt || (at !== undefined && at >= effortAt)) {
+        const statedModel = safeLabel(str(payload.model), 120);
+        if (statedModel) { model = statedModel; modelAt = at; }
+        const setting = payload.effort ?? payload.reasoning_effort ?? obj(obj(payload.collaboration_mode).settings).reasoning_effort;
+        effort = (EFFORTS as readonly unknown[]).includes(setting) ? setting as Effort : undefined;
+        effortAt = at;
+      }
+    }
     if (row.type === 'event_msg' && payload.type === 'token_count') {
       // Rate-limit-only reports carry no `info`; they keep the last reading.
       const info = obj(payload.info);
@@ -302,18 +326,40 @@ export function parseCodex(text: string, context: ParseContext): NativeParseResu
         const input = payload.type === 'local_shell_call' ? obj(payload.action) : payload.type === 'web_search_call' ? { query: obj(payload.action).query } : payload.arguments ?? payload.input;
         drafts.push({ role: 'tool', content: `Tool call ${safeLabel(tool, 120)}${payload.call_id ? ` (${safeLabel(payload.call_id, 120)})` : ''}\n${jsonData(input)}`, at: row.timestamp });
         const callId = str(payload.call_id) || str(payload.id) || undefined;
+        let imagePath: string | undefined;
+        if (callId && /^(?:functions\.)?view_image$/.test(tool)) {
+          let argumentsValue = input;
+          if (typeof argumentsValue === 'string') { try { argumentsValue = JSON.parse(argumentsValue); } catch { argumentsValue = undefined; } }
+          const selected = obj(argumentsValue).path;
+          if (typeof selected === 'string' && selected.length > 0 && selected.length <= 4096 && !/[\0\r\n]/.test(selected)) {
+            imagePath = selected; viewImages.set(callId, { tool, path: selected });
+          } else viewImages.delete(callId);
+        } else if (callId) viewImages.delete(callId);
         const candidateFiles = extractWrittenFiles(tool, input, undefined, str(meta.cwd) || context.projectPath);
-        steps.push({ ...base, type: 'tool.call', tool, ...(callId ? { callId } : {}), ...toolHints(tool, input), ...(candidateFiles.length ? { files: candidateFiles } : {}) });
+        steps.push({ ...base, type: 'tool.call', tool, ...(callId ? { callId } : {}), ...toolHints(tool, input), ...(candidateFiles.length ? { files: candidateFiles } : {}), ...(imagePath ? { imagePath } : {}) });
         // Built-in calls without a separate output record report their status inline.
         if (payload.type === 'web_search_call' && ['completed', 'failed'].includes(str(payload.status))) steps.push({ ...base, pos: `${pos}.result`, type: 'tool.result', tool, ...(callId ? { callId } : {}), ok: payload.status === 'completed' });
       } else if (payload.type === 'reasoning') {
         // v0.0.38: the model reasons (its text and encrypted content are never kept).
         steps.push({ ...base, type: 'status', status: 'thinking' });
       } else if (['function_call_output', 'custom_tool_call_output'].includes(str(payload.type))) {
-        drafts.push({ role: 'tool', content: `Tool result${payload.call_id ? ` (${safeLabel(payload.call_id, 120)})` : ''}\n${jsonData(payload.output)}`, at: row.timestamp });
-        const visibleOutput = outputText(payload.output), output = stepOutput(visibleOutput), status = statedSuccess(payload.output), failed = status === false || explicitToolFailure(visibleOutput);
+        const attached = toolResultAttachments(payload.output);
+        const visibleOutput = attached.length ? toolImageOutputText(payload.output) : outputText(payload.output);
+        const output = stepOutput(visibleOutput), status = statedSuccess(payload.output);
+        const failureText = toolImageOutputText(payload.output) || visibleOutput;
+        const cancelledView = viewImages.has(str(payload.call_id)) && typeof failureText === 'string'
+          && /^\s*(?:tool(?: execution)? (?:was )?)?(?:aborted|cancelled|canceled|interrupted)\b/i.test(failureText);
+        const failed = payload.is_error === true || payload.isError === true || statedSuccess(payload) === false || status === false || cancelledView || explicitToolFailure(failureText);
+        const callId = str(payload.call_id), matchedView = viewImages.get(callId);
+        const viewed = matchedView && (!payload.name || payload.name === matchedView.tool) ? matchedView : undefined;
+        viewImages.delete(callId);
+        if (!failed && viewed && !attached.length) attached.push({ name: viewed.path.split(/[\\/]/).pop() || 'image', kind: 'image', size: 0 });
+        drafts.push({ role: 'tool', content: `Tool result${callId ? ` (${safeLabel(callId, 120)})` : ''}\n${attached.length ? visibleOutput : jsonData(payload.output)}`, at: row.timestamp });
         const writesConfirmed = !failed && (status === true || /^\s*Success\. (?:Updated|Added|Deleted)/i.test(typeof visibleOutput === 'string' ? visibleOutput : ''));
-        steps.push({ ...base, type: 'tool.result', ...(str(payload.call_id) ? { callId: str(payload.call_id) } : {}), ok: failed ? false : status ?? true, writesConfirmed, ...(output ? { output } : {}) });
+        steps.push({ ...base, type: 'tool.result', ...(callId ? { callId } : {}), ...(viewed ? { tool: viewed.tool } : {}),
+          ok: !failed && (status ?? true), writesConfirmed, ...(output ? { output } : {}),
+          ...(!failed && attached.length ? { attachments: attached.slice(0, MAX_STEP_ATTACHMENTS) } : {}),
+          ...(!failed && viewed && !attached.some(file => file.data || file.size > 0) ? { imagePath: viewed.path } : {}) });
       }
     } else if (row.type === 'event_msg' && ['user_message', 'agent_message'].includes(str(payload.type)) && !matched.has(index)) {
       if (payload.type === 'user_message' && CODEX_INJECTED.test(str(payload.message))) continue;
@@ -331,7 +377,7 @@ export function parseCodex(text: string, context: ParseContext): NativeParseResu
     }
   }
   const contextUsage = usedTokens !== undefined ? { usedTokens, ...(windowTokens ? { windowTokens } : {}), compactions: Math.max(compactedRows, compactedEvents) } : undefined;
-  return finish(context, meta.id, drafts, diagnostics, { path: meta.cwd, start: meta.timestamp, parser: 'codex-rollout', ...(model ? { model } : {}), ...(contextUsage ? { context: contextUsage } : {}) }, steps);
+  return { ...finish(context, meta.id, drafts, diagnostics, { path: meta.cwd, start: meta.timestamp, parser: 'codex-rollout', ...(model ? { model } : {}), ...(modelAt ? { modelAt } : {}), ...(effort ? { effort } : {}), ...(effortAt ? { effortAt } : {}), ...(contextUsage ? { context: contextUsage } : {}) }, steps), userInput: codexUserInputEvidence(rows) };
 }
 
 /** Claude Code UI echoes of local commands (`/model`, `/clear`, …) written as user rows. */

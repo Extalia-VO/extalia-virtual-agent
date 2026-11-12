@@ -1,6 +1,6 @@
 import {
   KNOWLEDGE_UI_LIMITS, isKnowledgeIndexEvent, type FileSystemCapability, type AgentHostApi, type KnowledgeGraph, type KnowledgeLink, type KnowledgeLinkPage, type KnowledgeNode, type KnowledgeNodeRef,
-  type KnowledgeNoteResult, type KnowledgeOverview, type KnowledgeSearchResult, type KnowledgeStatus,
+  type KnowledgeNoteResult, type KnowledgeOverview, type KnowledgeSearchResult, type KnowledgeStatus, type HostState, type VaultProfilesCatalog,
 } from '@extalia/platform';
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode, type KeyboardEvent } from 'react';
 import { Markdown, type WikilinkNode } from '../chat/Markdown';
@@ -12,6 +12,7 @@ import { isUnsupportedMessage, layoutGraph, linkKey, linksByTarget, nodeLabel, o
 import { KnowledgeVaultSection } from '../pages/settings/KnowledgeVaultSection';
 import { VaultGraphView } from './vault/VaultGraphView';
 import { useKnowledgeEditing, type KnowledgeEditSlots } from './KnowledgeEdit';
+import { workspaceKnowledgeHost } from './workspaceKnowledgeHost';
 
 /**
  * Knowledge (W5): search the profile's vault index, read a note with clickable wikilinks, see its
@@ -429,11 +430,38 @@ export function KnowledgeView(props: KnowledgeViewProps) {
 }
 
 /** The Knowledge page with its state. Mounted only when the host serves the knowledge methods. */
-type PageProps = { t: Messages; language: string; agents: AgentHostApi; picker?: FileSystemCapability | undefined };
+type PageProps = { t: Messages; language: string; agents: AgentHostApi; picker?: FileSystemCapability | undefined;
+  workspaces?: HostState['workspaces']; workspaceId?: string; onWorkspace?: (id: string) => void };
 export function KnowledgePage(props: PageProps) {
+  const workspaceId = props.workspaces?.some(workspace => workspace.id === props.workspaceId) ? props.workspaceId : props.workspaces?.[0]?.id;
+  const scopedAgents = useMemo(() => workspaceKnowledgeHost(props.agents, workspaceId), [props.agents, workspaceId]);
+  const [catalog, setCatalog] = useState<VaultProfilesCatalog>();
+  useEffect(() => {
+    let active = true, loading = false;
+    const load = () => {
+      if (!active || loading || !props.agents.listVaultProfiles) return;
+      loading = true;
+      void props.agents.listVaultProfiles().then(value => { if (active) setCatalog(current => current?.revision === value.revision ? current : value); }, () => undefined)
+        .finally(() => { loading = false; });
+    };
+    load();
+    const timer = setInterval(load, 5_000);
+    return () => { active = false; clearInterval(timer); };
+  }, [props.agents]);
+  const profileId = catalog?.workspaces.find(workspace => workspace.id === workspaceId)?.profileId;
+  const profile = catalog?.profiles.find(item => item.id === profileId);
   const [binding, setBinding] = useState({ agents: props.agents, key: 0 });
   if (binding.agents !== props.agents) setBinding({ agents: props.agents, key: binding.key + 1 });
-  return <KnowledgeSession key={binding.key} {...props} onVaultChanged={() => setBinding(current => ({ ...current, key: current.key + 1 }))} />;
+  return <>
+    {!!props.workspaces?.length && <section className="card knowledge-workspace">
+      <label className="field"><span>{props.t.knowledge.workspaceVault}</span><select value={workspaceId} onChange={event => props.onWorkspace?.(event.target.value)}>
+        {props.workspaces.map(workspace => <option key={workspace.id} value={workspace.id}>{workspace.name}</option>)}
+      </select></label>
+      {profile && <p className="muted small">{props.t.vaultProfiles.name}: {profile.name}</p>}
+    </section>}
+    <KnowledgeSession key={`${workspaceId ?? 'default'}:${profileId ?? ''}:${profile?.root ?? ''}:${binding.key}`} {...props} agents={scopedAgents}
+      onVaultChanged={() => setBinding(current => ({ ...current, key: current.key + 1 }))} />
+  </>;
 }
 function KnowledgeSession({ t, language, agents, picker, onVaultChanged }: PageProps & { onVaultChanged: () => void }) {
   const live = useRef(true);
@@ -451,12 +479,20 @@ function KnowledgeSession({ t, language, agents, picker, onVaultChanged }: PageP
   const [scope, setScope] = useState<KnowledgeScope>('vault');
 
   useEffect(() => {
-    let active = true;
-    const load = () => Promise.resolve().then(() => api.knowledgeStatus()).then(value => { if (active) setStatus({ value, loading: false }); }, failure => { if (active) setStatus({ error: errorMessage(failure), loading: false }); });
+    let active = true, loading = false;
+    const load = async () => {
+      if (!active || loading) return;
+      loading = true;
+      try { const value = await api.knowledgeStatus(); if (active) setStatus({ value, loading: false }); }
+      catch (failure) { if (active) setStatus({ error: errorMessage(failure), loading: false }); }
+      finally { loading = false; }
+    };
     void load();
     // The vault watcher indexed an outside edit (or the vault folder changed): a new generation refreshes what is shown.
     const stop = api.subscribe(event => { if (active && isKnowledgeIndexEvent(event)) void load(); });
-    return () => { active = false; stop(); };
+    // Scoped indexes refresh visible profiles without keeping a watcher/process alive for every workspace.
+    const timer = api.workspaceKnowledge ? setInterval(() => { if (!document.hidden) void load(); }, 5_000) : undefined;
+    return () => { active = false; stop(); clearInterval(timer); };
   }, [api, refresh]);
   useEffect(() => {
     const timer = setTimeout(() => setDebounced(query.trim()), SEARCH_DELAY_MS);

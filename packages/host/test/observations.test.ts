@@ -319,3 +319,88 @@ describe('live transcript observation', () => {
     } finally { await runtime.close(); }
   });
 });
+
+
+describe('observed source model and effort', () => {
+  const contextLine = (timestamp: string, model: string, effort?: unknown) => line({ type: 'turn_context', timestamp, payload: { model, ...(effort !== undefined ? { effort } : {}) } });
+
+  it('updates from context before a reply, ignores stale settings and clears effort on a model switch', async () => {
+    const f = await fixture();
+    let reopened: Observations | undefined;
+    try {
+      await appendFile(f.file, contextLine(later, 'gpt-first', 'high'));
+      await f.observer.refresh();
+      expect(f.observer.summaries()[0]).toMatchObject({ model: 'gpt-first', modelAt: later, effort: 'high', effortAt: later });
+      expect(f.observer.snapshot(f.id).messages).toHaveLength(1);
+      const next = '2026-10-09T00:00:02.000Z';
+      await appendFile(f.file, contextLine(next, 'gpt-next') + contextLine(at, 'stale-model', 'low'));
+      await f.observer.refresh();
+      expect(f.observer.summaries()[0]).toMatchObject({ model: 'gpt-next', modelAt: next, effortAt: next });
+      expect(f.observer.summaries()[0]?.effort).toBeUndefined();
+      await f.observer.setWatching(f.id, false);
+      await f.observer.close();
+      reopened = await Observations.create(f.directory, f.source, () => undefined, 60_000);
+      expect(reopened.summaries()[0]).toMatchObject({ model: 'gpt-next', effortAt: next });
+      expect(reopened.summaries()[0]?.effort).toBeUndefined();
+    } finally { await f.observer.close(); await reopened?.close(); }
+  });
+
+  it('keeps lead hook settings separate from children and stale transcript replies', async () => {
+    const f = await fixture();
+    try {
+      await f.observer.receiveHook(normalizeCodexHook({ session_id: 'native-one', hook_event_name: 'UserPromptSubmit', model: 'gpt-lead', effort: 'high' })!);
+      const reported = f.observer.summaries()[0]!;
+      expect(reported).toMatchObject({ model: 'gpt-lead', effort: 'high' });
+      await f.observer.receiveHook(normalizeCodexHook({ session_id: 'native-one', hook_event_name: 'SubagentStart', agent_id: 'worker-1', model: 'gpt-child', effort: 'max' })!);
+      await f.observer.receiveHook(normalizeCodexHook({ session_id: 'native-one', hook_event_name: 'Stop', agent_id: 'worker-1', model: 'gpt-child', reasoning_effort: 'low' })!);
+      await f.observer.receiveHook(normalizeCodexHook({ session_id: 'native-one', hook_event_name: 'SubagentStart', subagent_id: 'worker-2', model: 'gpt-child', effort: 'max' })!);
+      expect(f.observer.summaries()[0]).toMatchObject({ model: 'gpt-lead', modelAt: reported.modelAt, effort: 'high', effortAt: reported.effortAt });
+      // A late reply must not lend its timestamp to the older model context.
+      const replyAt = '2099-01-01T00:00:00.000Z';
+      await appendFile(f.file, contextLine(later, 'stale-model', 'low') + message('assistant', 'Late reply', replyAt));
+      await f.observer.refresh();
+      expect(f.observer.summaries()[0]).toMatchObject({ model: 'gpt-lead', effort: 'high' });
+      await f.observer.receiveHook(normalizeCodexHook({ session_id: 'native-one', hook_event_name: 'UserPromptSubmit', model: 'gpt-new' })!);
+      expect(f.observer.summaries()[0]?.model).toBe('gpt-new');
+      expect(f.observer.summaries()[0]?.effort).toBeUndefined();
+    } finally { await f.observer.close(); }
+  });
+
+  it('persists valid effort for the same model and clears a later unknown context', async () => {
+    const f = await fixture();
+    let reopened: Observations | undefined;
+    try {
+      await appendFile(f.file, contextLine(later, 'gpt-lead', 'high'));
+      await f.observer.refresh();
+      await f.observer.setWatching(f.id, false);
+      await f.observer.close();
+      reopened = await Observations.create(f.directory, f.source, () => undefined, 60_000);
+      expect(reopened.summaries()[0]).toMatchObject({ model: 'gpt-lead', effort: 'high', effortAt: later });
+      const next = '2026-10-09T00:00:02.000Z';
+      await appendFile(f.file, contextLine(next, 'gpt-lead'));
+      await reopened.setWatching(f.id, true);
+      expect(reopened.summaries()[0]).toMatchObject({ model: 'gpt-lead', effortAt: next });
+      expect(reopened.summaries()[0]?.effort).toBeUndefined();
+    } finally { await f.observer.close(); await reopened?.close(); }
+  });
+
+  it('clears invalid explicit effort and validates saved effort on restart', async () => {
+    const f = await fixture();
+    let reopened: Observations | undefined;
+    try {
+      const hook = (effort: unknown) => normalizeCodexHook({ session_id: 'native-one', hook_event_name: 'UserPromptSubmit', model: 'gpt-lead', effort })!;
+      await f.observer.receiveHook(hook('high'));
+      expect(f.observer.summaries()[0]?.effort).toBe('high');
+      await f.observer.receiveHook(hook('ultra'));
+      expect(f.observer.summaries()[0]?.effort).toBeUndefined();
+      await f.observer.setWatching(f.id, false);
+      await f.observer.close();
+      const index = path.join(f.directory, 'observations.json');
+      const saved = JSON.parse(await readFile(index, 'utf8'));
+      saved[0].effort = 'ultra';
+      await writeFile(index, JSON.stringify(saved));
+      reopened = await Observations.create(f.directory, f.source, () => undefined, 60_000);
+      expect(reopened.summaries()[0]?.effort).toBeUndefined();
+    } finally { await f.observer.close(); await reopened?.close(); }
+  });
+});

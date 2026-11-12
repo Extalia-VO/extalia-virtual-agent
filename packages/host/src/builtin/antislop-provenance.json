@@ -1,0 +1,50 @@
+{
+  "schema": "extalia.builtin-skill-provenance.v1",
+  "source": "https://github.com/miqdadbadjuber/anti-slop",
+  "revision": "41b85ede0257f39bfcffedf3f58c3c59bcc8530d",
+  "upstreamVersion": "3.2.28",
+  "license": "MIT",
+  "adaptation": "Six compact English instruction sets; rule identifiers and concerns preserved. Task-based modes, no upstream installer/global preferences/scripts/MCP or filesystem references. WCAG large-text sizes corrected; user scope and host permissions prevail. Not an unmodified upstream installation or a runtime mode implementation.",
+  "upstreamFiles": [
+    {
+      "path": "LICENSE",
+      "sha256": "9fd83fb1fda52ca0094b96e2ed5a3d6c42a81b95a6c6326553f5bbe570f443de"
+    },
+    {
+      "path": "skills/antislop/VERSION",
+      "sha256": "0daeb969e6fe8a646347de1d59b45bd8fc48363b9465c2dad2d447a4ccceac24"
+    },
+    {
+      "path": "skills/antislop/SKILL.md",
+      "sha256": "30bc532fb59d4c77a301dfdd5ab9f495f098f1085f31e09b3064078ba39a7b01"
+    },
+    {
+      "path": "skills/antislop-ui/SKILL.md",
+      "sha256": "e8cb54f3d436de9253e0e66e0a31b18be80b6054d67b3ad50a4f61fb9f4557f2"
+    },
+    {
+      "path": "skills/antislop-copywriting/SKILL.md",
+      "sha256": "d708fc33608b4f1d41cc7bef8b5fb2aca3dc3fbc5ec1ee174b45cac23bb767cd"
+    },
+    {
+      "path": "skills/antislop-human/SKILL.md",
+      "sha256": "49421878e0c014fa03deea8dcfbfcfae526a8423a43bb517ebfa3ef2cb4a80ef"
+    },
+    {
+      "path": "skills/antislop-layoutmobile/SKILL.md",
+      "sha256": "8613395a5109f637837f5c24f0ce5e58a96df1c2567a9f7666fcaecc47ff39cd"
+    },
+    {
+      "path": "skills/antislop-code/SKILL.md",
+      "sha256": "004933009d352710dcbea7817101d5c188474a442e3ece26a6e0c18d3223898f"
+    },
+    {
+      "path": "skills/antislop-ui/LICENSE-web-quality-skills",
+      "sha256": "c122223ac43e86421958e18623979942c21b642951e2e3736dcb63eff13587c3"
+    },
+    {
+      "path": "skills/antislop-human/LICENSE-web-quality-skills",
+      "sha256": "c122223ac43e86421958e18623979942c21b642951e2e3736dcb63eff13587c3"
+    }
+  ]
+}

@@ -81,9 +81,14 @@
 
 export const DAEMON_KNOWLEDGE_OPS = [
   'knowledge.status', 'knowledge.sync', 'knowledge.node', 'knowledge.links', 'knowledge.backlinks', 'knowledge.search', 'knowledge.graph',
-  'knowledge.overview', 'knowledge.read', 'knowledge.write', 'knowledge.history', 'knowledge.rollback', 'knowledge.importMemory',
+  'knowledge.scoped', 'knowledge.overview', 'knowledge.read', 'knowledge.write', 'knowledge.history', 'knowledge.rollback', 'knowledge.importMemory',
 ] as const;
 export type DaemonKnowledgeOp = (typeof DAEMON_KNOWLEDGE_OPS)[number];
+
+export type DaemonKnowledgeOrdinaryOp = Exclude<DaemonKnowledgeOp, 'knowledge.scoped'>;
+export const KNOWLEDGE_PROFILE_PATTERN = /^vp-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+export type KnowledgeScopedParams = { [K in DaemonKnowledgeOrdinaryOp]: { profileId: string; vaultRoot: string | null; op: K; params: DaemonKnowledgeOperations[K]['params'] } }[DaemonKnowledgeOrdinaryOp];
+export type KnowledgeScopedResult = { [K in DaemonKnowledgeOrdinaryOp]: { op: K; result: DaemonKnowledgeOperations[K]['result'] } }[DaemonKnowledgeOrdinaryOp];
 
 export const KNOWLEDGE_SYNC_MODES = ['incremental', 'rebuild'] as const;
 export type KnowledgeSyncMode = (typeof KNOWLEDGE_SYNC_MODES)[number];
@@ -323,6 +328,7 @@ export interface KnowledgeImportCounts {
 }
 
 export interface DaemonKnowledgeOperations {
+  'knowledge.scoped': { params: KnowledgeScopedParams; result: KnowledgeScopedResult };
   /** Index availability, generation, counts and this daemon's last sync. Never refused for an unavailable index. */
   'knowledge.status': {
     params: Record<string, never>;

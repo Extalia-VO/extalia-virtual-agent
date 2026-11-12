@@ -21,6 +21,70 @@ interface BridgeDeps {
 
 const defaultDeps = (): BridgeDeps => ({ fetch: (...args) => globalThis.fetch(...args), EventSource: globalThis.EventSource });
 
+export interface BridgeConnection {
+  readonly token: string;
+  /** Recover only an explicitly refused credential, never an uncertain request. */
+  recover(rejectedToken: string): Promise<boolean>;
+  subscribe(listener: () => void): () => void;
+}
+
+interface BridgeConnectionOptions {
+  fetch?: typeof fetch;
+  /** Trusted bootstrap dependency for isolated transport tests. */
+  bootstrap?: (signal: AbortSignal) => Promise<string | null>;
+  bootstrapTimeoutMs?: number;
+}
+
+/** Re-read the same-origin page without executing it or replacing the mounted application. */
+async function bootstrapBridgeToken(fetch: typeof globalThis.fetch, signal: AbortSignal): Promise<string | null> {
+  if (typeof location === 'undefined' || typeof DOMParser === 'undefined' || !['http:', 'https:'].includes(location.protocol)) return null;
+  const origin = location.origin;
+  const response = await fetch('/', { method: 'GET', headers: { Accept: 'text/html' }, cache: 'no-store', credentials: 'same-origin', redirect: 'error', signal });
+  if (!response.ok || response.redirected || !response.url || new URL(response.url).origin !== origin
+    || !/^text\/html(?:\s*;|$)/i.test(response.headers.get('Content-Type') ?? '')) return null;
+  const document = new DOMParser().parseFromString(await response.text(), 'text/html');
+  return readBridgeToken(document);
+}
+
+/** Shared by AgentHost and updater so a manual Bridge restart does not require a page reload. */
+export function createBridgeConnection(initialToken: string, options: BridgeConnectionOptions = {}): BridgeConnection {
+  let token = initialToken;
+  let pending: Promise<boolean> | undefined;
+  const listeners = new Set<() => void>();
+  const bootstrap = options.bootstrap ?? (signal => bootstrapBridgeToken(options.fetch ?? globalThis.fetch, signal));
+  return {
+    get token() { return token; },
+    recover(rejectedToken) {
+      // An older request may finish after another poll has already recovered.
+      if (token !== rejectedToken) return Promise.resolve(true);
+      if (pending) return pending;
+      const controller = new AbortController();
+      let timer: ReturnType<typeof setTimeout>;
+      const deadline = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => { controller.abort(); reject(new Error('The Bridge reconnect request timed out.')); }, options.bootstrapTimeoutMs ?? 5_000);
+      });
+      const recovery = Promise.race([Promise.resolve().then(() => bootstrap(controller.signal)), deadline]).then(next => {
+        if (token !== rejectedToken) return true;
+        if (!next || next === token || /[\r\n]/.test(next)) return false;
+        token = next;
+        for (const listener of [...listeners]) listener();
+        return true;
+      }).finally(() => { clearTimeout(timer); if (pending === recovery) pending = undefined; });
+      pending = recovery;
+      return recovery;
+    },
+    subscribe(listener) { listeners.add(listener); return () => { listeners.delete(listener); }; },
+  };
+}
+
+class BridgeResponseError extends Error {
+  constructor(readonly status: number, message: string) { super(message); }
+}
+
+function assertCurrentCredential(connection: BridgeConnection, sentToken: string): void {
+  if (connection.token !== sentToken) throw new Error('The Bridge connection changed while this request was running. Check its result before trying again.');
+}
+
 async function readJson(response: Response): Promise<Record<string, unknown> | undefined> {
   try {
     const value: unknown = await response.json();
@@ -41,7 +105,7 @@ async function request(deps: BridgeDeps, token: string, path: string, init: { me
   });
   const payload = await readJson(response);
   if (!response.ok || typeof payload?.error === 'string') {
-    throw new Error(typeof payload?.error === 'string' ? payload.error : `Extalia Bridge answered ${response.status}.`);
+    throw new BridgeResponseError(response.status, typeof payload?.error === 'string' ? payload.error : `Extalia Bridge answered ${response.status}.`);
   }
   return payload;
 }
@@ -52,20 +116,33 @@ const looksLikeEvent = (value: unknown): value is ExtaliaEvent => {
     && event.body && typeof event.body === 'object' && typeof event.body.type === 'string');
 };
 
-export function bridgeAgentHost(token: string, deps: BridgeDeps = defaultDeps()): AgentHostApi {
+export function bridgeAgentHost(credential: string | BridgeConnection, deps: BridgeDeps = defaultDeps()): AgentHostApi {
+  const connection = typeof credential === 'string' ? createBridgeConnection(credential, { fetch: deps.fetch }) : credential;
   let source: EventSource | undefined;
+  let subscribed = false;
+  let stopCredentials: (() => void) | undefined;
+  const openSource = () => {
+    source?.close(); source = undefined;
+    if (!subscribed || !deps.EventSource) return;
+    // EventSource cannot send headers; a changed token needs a new stream URL.
+    let current: EventSource;
+    try { current = new deps.EventSource(`/api/events?token=${encodeURIComponent(connection.token)}`); }
+    catch { return; } // Polling still verifies the host when streaming is unavailable.
+    source = current;
+    current.onmessage = message => {
+      if (!subscribed || source !== current) return;
+      let value: unknown;
+      try { value = JSON.parse(String(message.data)); } catch { return; }
+      if (looksLikeEvent(value)) events.emit(value);
+    };
+  };
   const events = listenerSet<ExtaliaEvent>(
     () => {
-      if (!deps.EventSource) return;
-      // EventSource cannot send headers, so the token travels in the query; it reconnects on its own.
-      source = new deps.EventSource(`/api/events?token=${encodeURIComponent(token)}`);
-      source.onmessage = message => {
-        let value: unknown;
-        try { value = JSON.parse(String(message.data)); } catch { return; }
-        if (looksLikeEvent(value)) events.emit(value);
-      };
+      subscribed = true;
+      stopCredentials = connection.subscribe(openSource);
+      openSource();
     },
-    () => { source?.close(); source = undefined; },
+    () => { subscribed = false; stopCredentials?.(); stopCredentials = undefined; source?.close(); source = undefined; },
   );
   return createRemoteHost(
     // A file upload may be larger than an ordinary call; the Bridge admits that size only with this header.
@@ -77,11 +154,24 @@ export function bridgeAgentHost(token: string, deps: BridgeDeps = defaultDeps())
       if (hasGoalDocument && new TextEncoder().encode(JSON.stringify(payload)).byteLength > MAX_GOAL_DOCUMENT_RPC_BODY_BYTES) {
         throw new Error('The goal attachment request is too large to send. Remove it or shorten the text, then try again.');
       }
-      return (await request(deps, token, '/api/call', {
-        method: 'POST', body: payload,
-        ...(method === 'uploadAttachment' ? { headers: { [ATTACHMENT_BODY_HEADER]: 'attachment' } }
-          : hasGoalDocument ? { headers: { [GOAL_DOCUMENT_BODY_HEADER]: 'goal-document' } } : {}),
-      }))?.result;
+      const headers: Record<string, string> = {};
+      if (method === 'uploadAttachment') headers[ATTACHMENT_BODY_HEADER] = 'attachment';
+      else if (hasGoalDocument) headers[GOAL_DOCUMENT_BODY_HEADER] = 'goal-document';
+      const init = { method: 'POST', body: payload, headers };
+      const sentToken = connection.token;
+      const send = async (token: string) => {
+        const response = await request(deps, token, '/api/call', init);
+        assertCurrentCredential(connection, token);
+        return response?.result;
+      };
+      try { return await send(sentToken); }
+      catch (error) {
+        // Only this read-only snapshot may be retried after an explicit 401.
+        // A prompt/approval/upload may already have taken effect: never replay it.
+        if (method !== 'getState' || !(error instanceof BridgeResponseError) || error.status !== 401) throw error;
+        if (!await connection.recover(sentToken)) throw error;
+        return send(connection.token);
+      }
     },
     listener => events.add(listener),
   );
@@ -103,9 +193,15 @@ interface UpdaterOptions {
  * is polled while someone listens. After an install the Bridge restarts
  * itself; the page reloads once it answers again.
  */
-export function bridgeUpdater(token: string, options: UpdaterOptions = {}, deps: BridgeDeps = defaultDeps()): UpdateCapability {
+export function bridgeUpdater(credential: string | BridgeConnection, options: UpdaterOptions = {}, deps: BridgeDeps = defaultDeps()): UpdateCapability {
+  const connection = typeof credential === 'string' ? createBridgeConnection(credential, { fetch: deps.fetch }) : credential;
   const { pollMs = 30_000, restartPollMs = 1_500, restartTimeoutMs = 120_000, reload = () => location.reload() } = options;
-  const get = async (path: string, method = 'GET') => (await request(deps, token, path, { method })) as unknown as UpdateStatus;
+  const get = async (path: string, method = 'GET') => {
+    const token = connection.token;
+    const response = await request(deps, token, path, { method });
+    assertCurrentCredential(connection, token);
+    return response as unknown as UpdateStatus;
+  };
   let last: UpdateStatus | undefined;
   let restarting = false;
   let timer: ReturnType<typeof setInterval> | undefined;

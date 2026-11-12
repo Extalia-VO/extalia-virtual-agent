@@ -1,4 +1,4 @@
-import type { AgentHostApi, ObservedControlCapability, ObservedControlReceipt, ObservedControlRouteStatus, ObservedControlStatus, ObservedInboxStatus } from '@extalia/platform';
+import { OBSERVED_CONTROL_ROUTES, type AgentHostApi, type ObservedControlCapability, type ObservedControlReceipt, type ObservedControlRouteStatus, type ObservedControlStatus, type ObservedInboxStatus } from '@extalia/platform';
 import { composerDraftStore } from '../chat/composerDrafts';
 
 export interface ObservedSessionControlView {
@@ -26,6 +26,9 @@ export function observedControlChoices(status?: ObservedControlStatus): { route:
   return status?.state === 'ready' ? status.routes.flatMap(route => route.state === 'ready'
     ? route.capabilities.filter(capability => capability.available && !!capability.capabilityId).map(capability => ({ route, capability })) : []) : [];
 }
+function sourceBinding(status?: ObservedControlStatus) {
+  return JSON.stringify([status?.bindingId, status?.sourceId, status?.nativeSessionId]);
+}
 
 /** Presentation state only. Every action and its exact authority comes from the host. */
 export function createObservedSessionControl(api: AgentHostApi, sessionId: string) {
@@ -40,8 +43,9 @@ export function createObservedSessionControl(api: AgentHostApi, sessionId: strin
   const update = (next: ObservedSessionControlView) => { view = next; listeners.forEach(listener => listener()); };
   const receive = (status: ObservedControlStatus) => {
     if (!validObservedControlStatus(status, sessionId)) throw new Error('Invalid observed status');
-    const selected = observedControlChoices(status).some(choice => choice.capability.capabilityId === view.selected) ? view.selected : '';
-    update({ ...view, status, selected, phase: 'ready', ...(view.selected && !selected ? { notice: 'stale' as const } : {}) });
+    const changedDraftSource = !!view.status && !!view.draft && sourceBinding(status) !== sourceBinding(view.status);
+    const selected = !changedDraftSource && observedControlChoices(status).some(choice => choice.capability.capabilityId === view.selected) ? view.selected : '';
+    update({ ...view, status, selected, phase: 'ready', ...(changedDraftSource || view.selected && !selected ? { notice: 'stale' as const } : {}) });
   };
   function refresh(): Promise<void> {
     if (!mounts || !supported || view.busy) return Promise.resolve();
@@ -61,17 +65,36 @@ export function createObservedSessionControl(api: AgentHostApi, sessionId: strin
     void pending.finally(() => { if (reading === pending) reading = undefined; });
     return pending;
   }
-  function canSend() {
+  function readyToSend() {
     return !!mounts && supported && view.phase === 'ready' && !view.busy && !!view.draft.trim()
       && view.draft.length <= OBSERVED_MESSAGE_LIMIT && new TextEncoder().encode(view.draft).byteLength <= 16 * 1024
-      && !view.draft.includes('\0') && !uncertain.has(view.selected)
+      && !view.draft.includes('\0');
+  }
+  function canSend() {
+    return readyToSend() && !uncertain.has(view.selected)
       && observedControlChoices(view.status).some(choice => choice.capability.capabilityId === view.selected);
   }
-  async function send() {
-    if (!canSend()) return;
-    const selected = view.selected, text = view.draft, draftRevision = revision;
-    const binding = (status?: ObservedControlStatus) => JSON.stringify([status?.bindingId, status?.sourceId, status?.nativeSessionId]);
-    const source = binding(view.status);
+  // Eligibility never selects an action. Resolve a default only for the simple
+  // composer, and pin it before preflight so a changed source cannot retarget it.
+  function messageCapability() {
+    const choices = observedControlChoices(view.status);
+    const explicit = choices.find(choice => choice.capability.capabilityId === view.selected);
+    if (explicit) return uncertain.has(view.selected) ? undefined : view.selected;
+    if (view.selected || view.notice || view.receipt?.state === 'unknown') return undefined;
+    const compatible = choices.filter(({ route, capability }) => OBSERVED_CONTROL_ROUTES.some(supported => supported.route === route.route
+      && supported.evidence === route.evidence && supported.limit === route.limit && supported.actions.includes(capability.action)));
+    const native = compatible.filter(({ route, capability }) => (route.evidence === 'native-attachment' || route.evidence === 'official-queue')
+      && capability.action !== 'steer');
+    const queues = native.filter(({ capability }) => capability.action === 'queue');
+    const candidates = queues.length ? queues : native.length ? native
+      : compatible.filter(({ capability }) => capability.action === 'reply-tool' || capability.action === 'inbox-send');
+    const selected = candidates.length === 1 ? candidates[0]!.capability.capabilityId : undefined;
+    return selected && !uncertain.has(selected) ? selected : undefined;
+  }
+  function canSendMessage() { return readyToSend() && !!messageCapability(); }
+  async function sendCapability(selected: string) {
+    const text = view.draft, draftRevision = revision;
+    const source = sourceBinding(view.status);
     const ticket = ++epoch, operationId = crypto.randomUUID();
     reading = undefined;
     let dispatched = false;
@@ -81,7 +104,7 @@ export function createObservedSessionControl(api: AgentHostApi, sessionId: strin
       const status = await api.observedControlStatus!(sessionId);
       if (!current()) return;
       receive(status);
-      if (binding(status) !== source || !observedControlChoices(status).some(choice => choice.capability.capabilityId === selected)) {
+      if (sourceBinding(status) !== source || !observedControlChoices(status).some(choice => choice.capability.capabilityId === selected)) {
         update({ ...view, selected: '', notice: 'stale' }); return;
       }
       dispatched = true;
@@ -103,6 +126,14 @@ export function createObservedSessionControl(api: AgentHostApi, sessionId: strin
       if (mounts) await refresh();
     }
   }
+  async function send() {
+    if (canSend()) await sendCapability(view.selected);
+  }
+  async function sendMessage() {
+    if (!readyToSend()) return;
+    const selected = messageCapability();
+    if (selected) await sendCapability(selected);
+  }
   return {
     subscribe(listener: () => void) { listeners.add(listener); return () => { listeners.delete(listener); }; },
     getSnapshot: () => view,
@@ -116,7 +147,7 @@ export function createObservedSessionControl(api: AgentHostApi, sessionId: strin
       update({ ...view, draft });
     },
     select(selected: string) { if (!view.busy) update({ ...view, selected, notice: undefined }); },
-    refresh, send, canSend,
+    refresh, send, canSend, sendMessage, canSendMessage, hasMessageAction: () => !!messageCapability(),
   };
 }
 export type ObservedSessionControlModel = ReturnType<typeof createObservedSessionControl>;

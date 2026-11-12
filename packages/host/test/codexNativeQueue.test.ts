@@ -35,6 +35,12 @@ if(message.method==='thread/queue/list'){${reply}}
 }
 async function captured(file: string) { return (await readFile(file, 'utf8')).trim().split('\n').map(line => JSON.parse(line)); }
 function expectReaped(pid: number) { expect(() => process.kill(pid, 0)).toThrow(); }
+function pngThumbnail(bytes = 68, width = 1, height = 1) {
+  const image = Buffer.alloc(bytes);
+  Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=', 'base64').copy(image);
+  image.writeUInt32BE(width, 16); image.writeUInt32BE(height, 20);
+  return 'data:image/png;base64,' + image.toString('base64');
+}
 
 describe('read-only public native Codex queue', () => {
   it('uses only initialize/initialized/queue-list and the exact supplied profile, then reaps the client', async () => {
@@ -47,13 +53,52 @@ describe('read-only public native Codex queue', () => {
     expect(messages[2].params).toEqual({ threadId, limit: 50 });
     expectReaped(launch.pid);
   });
-  it('joins text safely and counts attachments without exposing attachment metadata', async () => {
+  it('joins text safely and returns bounded display metadata without paths, URLs or sensitive identities', async () => {
     const inputs = [{ type: 'text', text: '<b>first</b>', text_elements: [{ placeholder: 'hidden' }] }, { type: 'text', text: 'second' },
       { type: 'localImage', path: '/private/image.png' }, { type: 'image', fileId: 'private-file' }, { type: 'audio', url: 'https://example.com/private' },
       { type: 'localAudio', path: '/private/audio' }, { type: 'skill', name: 'private-name', path: '/private/skill' }, { type: 'mention', name: 'private-person', path: '/private/mention' },
       { type: 'image' }, { type: 'audio' }];
     const f = await fixture(`send({id:2,result:${JSON.stringify({ data: [row(inputs)] })}});`);
-    expect(await readCodexNativeQueue(f)).toEqual({ items: [{ id: 'queue-one', text: '<b>first</b>\nsecond', nonTextItems: 8 }] });
+    const result = await readCodexNativeQueue(f);
+    expect(result).toEqual({ items: [{ id: 'queue-one', text: '<b>first</b>\nsecond', nonTextItems: 8, attachments: [
+      { kind: 'image', name: 'image.png' }, { kind: 'image' }, { kind: 'audio' }, { kind: 'audio', name: 'audio' },
+      { kind: 'skill' }, { kind: 'file' }, { kind: 'image' }, { kind: 'audio' },
+    ] }] });
+    expect(JSON.stringify(result)).not.toMatch(/private|https:|\/private/);
+  });
+  it('sanitizes cross-platform local basenames and never reads local files', async () => {
+    const inputs = [{ type: 'localImage', path: 'C:\\private\\image\n.png' }, { type: 'localAudio', path: '/missing/' + 'a'.repeat(201) },
+      { type: 'localImage', path: '/private/..' }, { type: 'localAudio', path: '/private/' }];
+    const f = await fixture(`send({id:2,result:${JSON.stringify({ data: [row(inputs)] })}});`);
+    expect((await readCodexNativeQueue(f)).items[0]?.attachments).toEqual([
+      { kind: 'image', name: 'image.png' }, { kind: 'audio', name: 'a'.repeat(200) }, { kind: 'image' }, { kind: 'audio' },
+    ]);
+  });
+  it('includes only validated inline PNG previews while retaining invalid or remote image metadata', async () => {
+    const valid = pngThumbnail();
+    const urls = [valid, 'https://example.com/private.png', 'data:image/svg+xml;base64,PHN2Zy8+', pngThumbnail(68, 1025), valid + '=', 'file:///private/image.png'];
+    const f = await fixture(`send({id:2,result:${JSON.stringify({ data: [row(urls.map(url => ({ type: 'image', url })))] })}});`);
+    expect((await readCodexNativeQueue(f)).items[0]?.attachments).toEqual([
+      { kind: 'image', thumbnail: valid }, ...urls.slice(1).map(() => ({ kind: 'image' })),
+    ]);
+  });
+  it('counts every nontext input while bounding descriptors to eight per item and previews to eight globally', async () => {
+    const url = pngThumbnail();
+    const data = Array.from({ length: 50 }, (_, index) => row(Array.from({ length: 10 }, () => ({ type: 'image', url })), `queue-${index}`));
+    const f = await fixture(`send({id:2,result:${JSON.stringify({ data })}});`);
+    const result = await readCodexNativeQueue(f);
+    expect(result.items.every(item => item.nonTextItems === 10 && item.attachments?.length === 8)).toBe(true);
+    expect(result.items.flatMap(item => item.attachments ?? []).filter(item => item.thumbnail)).toHaveLength(8);
+    expect(result.items.flatMap(item => item.attachments ?? [])).toHaveLength(400);
+  });
+  it('bounds aggregate preview URI bytes and preserves kind metadata when the budget is exhausted', async () => {
+    const url = pngThumbnail(70_000);
+    const data = Array.from({ length: 5 }, (_, index) => row([{ type: 'image', url }], `queue-${index}`));
+    const f = await fixture(`send({id:2,result:${JSON.stringify({ data })}});`);
+    const attachments = (await readCodexNativeQueue(f)).items.flatMap(item => item.attachments ?? []);
+    expect(attachments.filter(item => item.thumbnail)).toHaveLength(2);
+    expect(attachments.reduce((sum, item) => sum + (item.thumbnail?.length ?? 0), 0)).toBeLessThanOrEqual(256 * 1024);
+    expect(attachments.at(-1)).toEqual({ kind: 'image' });
   });
   it('uses the exact profile directory as cwd when the observed source has no workspace', async () => {
     const f = await fixture();
@@ -83,6 +128,10 @@ describe('read-only public native Codex queue', () => {
     `send({id:99,result:{data:[]}});`,
     `process.stdout.write('invalid-json\\n');`,
     `process.stdout.write(Buffer.from([255,10]));`,
+    `send({id:2,result:${JSON.stringify({ data: [row([{ type: 'localImage' }])] })}});`,
+    `send({id:2,result:${JSON.stringify({ data: [row([{ type: 'localAudio', path: 'invalid\0path' }])] })}});`,
+    `send({id:2,result:${JSON.stringify({ data: [row([{ type: 'skill', path: '/private/skill' }])] })}});`,
+    `send({id:2,result:${JSON.stringify({ data: [row([{ type: 'mention', name: 'private' }])] })}});`,
   ])('fails closed on malformed responses without returning partial queue text', async reply => {
     const f = await fixture(reply);
     await expect(readCodexNativeQueue(f)).rejects.toBeInstanceOf(CodexNativeQueueError);

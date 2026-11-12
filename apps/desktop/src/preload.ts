@@ -1,4 +1,4 @@
-import { DESKTOP_HOST_GLOBAL, type DesktopHostApi } from '@extalia/platform';
+import { DESKTOP_HOST_GLOBAL, parseNotificationTarget, type DesktopHostApi } from '@extalia/platform';
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
 import { IPC, unwrap, type IpcReply } from './ipc';
 
@@ -22,16 +22,22 @@ const api: DesktopHostApi = {
   updater: {
     status: () => invoke(IPC.update, 'status'),
     check: () => invoke(IPC.update, 'check'),
-    install: () => invoke(IPC.update, 'install'),
+    install: expectedVersion => invoke(IPC.update, 'install', expectedVersion),
     postpone: () => invoke(IPC.update, 'postpone'),
     onStatus: listener => listen(IPC.updateStatus, listener),
   },
   // Only the confirmation flag crosses; the main process validates it again.
   restart: options => invoke<void>(IPC.restart, { acknowledgeActiveWork: options?.acknowledgeActiveWork === true }),
   notifications: {
-    // Title and body only; the main process refuses any other field and bounds the length.
-    notify: notification => invoke<void>(IPC.notify, { title: notification.title, ...(notification.body !== undefined ? { body: notification.body } : {}) }),
-    onActivate: listener => listen<void>(IPC.notificationActivate, () => listener()),
+    supportsTargets: true,
+    // The main process validates the text and target again.
+    notify: notification => invoke<void>(IPC.notify, { title: notification.title, ...(notification.body !== undefined ? { body: notification.body } : {}), ...(notification.target !== undefined ? { target: parseNotificationTarget(notification.target) } : {}) }),
+    onActivate: listener => listen<unknown>(IPC.notificationActivate, value => {
+      if (value === undefined) { listener(); return; }
+      let target;
+      try { target = parseNotificationTarget(value); } catch { return; }
+      listener(target);
+    }),
   },
 };
 

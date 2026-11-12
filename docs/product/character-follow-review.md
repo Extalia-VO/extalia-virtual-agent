@@ -14,3 +14,19 @@ Elevator cabins and passengers remain drawn throughout the nearest floor's heigh
 - Actual Office browser review activates Follow through its character card, then advances the production mover and elevator controller with controlled simulation time. Upward/downward stair routes and through-trips visit F1/F2/F3. Relative camera error stays below floating-point tolerance, with no floor-preset zoom reset or hidden in-transit cabin/character. A custom zoom is retained through stair travel; wheel zoom retains Follow.
 - Explicit view ownership and drag cancellation are checked in the actual Office. The test session uses mock data and does not write a real profile.
 - Full `pnpm check` passed: 229 suites, 2,414 tests passed and one skipped; Rust checks and Web, CLI and Desktop builds passed. Read-only review found no unresolved issues in the follow changes.
+
+## Agents & sessions row selection
+
+Selecting a present character's row now starts persistent Follow immediately,
+clears any room framing and frames its live position. Floor selection uses the
+same non-cancelling floor update as ongoing Follow, including when a followed
+character is selected again. Existing live movement and stair/elevator tracking
+continue without requiring the card's Follow button. Selecting an Earlier or
+unadmitted entry clears Follow rather than tracking an absent avatar. Detail and
+branch toggles retain their existing behavior.
+
+Verification for v0.4.270 passes 38 existing camera, controls and selection tests,
+workspace lint/typechecking, production Web/Desktop builds and synchronized
+versions. The full `pnpm check` reaches the native debug build but stalls in the
+same macOS dependency-directory read observed in the previous update. Only its
+owned verification processes were stopped; no full-gate success is claimed.

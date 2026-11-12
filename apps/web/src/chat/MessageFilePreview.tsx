@@ -3,15 +3,29 @@ import { createContext, useCallback, useContext, useEffect, useId, useLayoutEffe
 import { createPortal } from 'react-dom';
 import type { Messages } from '../i18n';
 import { Icon } from '../ui/Icon';
-import { resolveMessageFile, type MessageFileReference, type MessageFileScope } from './messageFilePaths';
+import type { MessageFileReference, MessageFileScope } from './messageFilePaths';
+import { resolveSessionMessageFile, type SessionFileScope } from './sessionFileScopes';
 
 export type { MessageFileReference, MessageFileScope, WorkspaceSummary } from './messageFilePaths';
 export interface MessageFileProviderProps extends MessageFileScope { t: Messages; agents?: AgentHostApi; children: ReactNode }
 export type OpenMessageFile = (file: MessageFileReference) => void;
 
 const MessageFiles = createContext<OpenMessageFile | undefined>(undefined);
+const HistoricalMessageFiles = createContext<{
+  open(file: MessageFileReference, scope: SessionFileScope): void;
+  workspaces: MessageFileScope['workspaces'];
+} | undefined>(undefined);
 /** Static transcript exports omit file actions when no preview provider is available. */
 export function useMessageFiles(): OpenMessageFile | undefined { return useContext(MessageFiles); }
+
+/** Old links retain their recorded root; a removed or relocated root never falls back to today's workspace. */
+export function HistoricalMessageFileScope({ scope, children }: { scope?: SessionFileScope | null; children: ReactNode }) {
+  const historical = useContext(HistoricalMessageFiles);
+  if (scope === undefined) return children;
+  const available = scope && historical?.workspaces.some(workspace => workspace.id === scope.workspaceId && workspace.projectLocation === scope.projectLocation);
+  const open: OpenMessageFile | undefined = available ? file => historical!.open(file, scope!) : undefined;
+  return <MessageFiles.Provider value={open}>{children}</MessageFiles.Provider>;
+}
 
 type Preview = { kind: 'loading' | 'unavailable' | 'readFailed' | 'tooLarge' | 'binary' }
   | { kind: 'text'; content: string; truncated?: boolean }
@@ -53,10 +67,10 @@ function ScopedMessageFiles({ t, agents, workspaces, workspaceId, projectPath, c
   const close = useCallback(() => { version.current++; releaseImage(); setOpened(undefined); }, [releaseImage]);
   useEffect(() => () => { version.current++; releaseImage(); }, [agents, releaseImage]);
 
-  const openFile = useCallback<OpenMessageFile>(file => {
+  const openFile = useCallback((file: MessageFileReference, historicalScope?: SessionFileScope) => {
     const request = ++version.current;
     releaseImage();
-    const resolved = resolveMessageFile(file, { workspaces, workspaceId, projectPath });
+    const resolved = resolveSessionMessageFile(file, { workspaces, workspaceId, projectPath }, historicalScope);
     const initial: OpenPreview = { name: file.name, host: agents, preview: { kind: resolved && agents?.readFile ? 'loading' : 'unavailable' } };
     setOpened(initial);
     if (!resolved || !agents?.readFile) return;
@@ -98,12 +112,12 @@ function ScopedMessageFiles({ t, agents, workspaces, workspaceId, projectPath, c
 
   // An API replacement cannot reveal a previous host's result while effect cleanup runs.
   const current = opened?.host === agents ? opened : undefined;
-  return <MessageFiles.Provider value={openFile}>
+  return <HistoricalMessageFiles.Provider value={{ open: openFile, workspaces }}><MessageFiles.Provider value={openFile}>
     {children}
     {current && <FilePreviewDialog t={t} opened={current} onClose={close} onChoose={file => { void chooseLocal(file); }} onImageError={() => {
       releaseImage(); setOpened({ ...current, preview: { kind: 'binary' } });
     }} />}
-  </MessageFiles.Provider>;
+  </MessageFiles.Provider></HistoricalMessageFiles.Provider>;
 }
 
 function FilePreviewDialog({ t, opened, onClose, onChoose, onImageError }: {

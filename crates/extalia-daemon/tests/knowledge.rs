@@ -1152,3 +1152,130 @@ fn the_binary_serves_one_profile_per_data_directory() {
         );
     }
 }
+
+fn scoped(
+    session: &mut Session,
+    profile: &str,
+    root: Option<&Path>,
+    name: &str,
+    params: Value,
+) -> Answer {
+    op(session, "knowledge.scoped", json!({
+        "profileId": profile, "vaultRoot": root.map(|path| path.to_str().unwrap()), "op": name, "params": params,
+    })).map(|result| { assert_eq!(result["op"], name); result["result"].clone() })
+}
+
+#[test]
+fn scoped_profiles_isolate_indexes_and_preserve_default() {
+    let dir = TempDir::new();
+    let first = "vp-00000000-0000-4000-8000-000000000001";
+    let second = "vp-00000000-0000-4000-8000-000000000002";
+    dir.notes("default", &[("default.md", "# Default")]);
+    dir.notes(
+        first,
+        &[
+            ("first.md", "# First\n[[linked]]"),
+            ("linked.md", "# Linked"),
+        ],
+    );
+    dir.notes(second, &[("second.md", "# Second")]);
+    let mut session = start(&dir, "default");
+    assert!(
+        hello(&mut session)
+            .iter()
+            .any(|op| op == "knowledge.scoped")
+    );
+    op(&mut session, "knowledge.sync", json!({"mode":"rebuild"})).unwrap();
+    let a = scoped(&mut session, first, None, "knowledge.overview", json!({})).unwrap();
+    assert_eq!(a["totalNodes"], 2);
+    assert_eq!(a["totalEdges"], 1);
+    let b = scoped(&mut session, second, None, "knowledge.overview", json!({})).unwrap();
+    assert_eq!(b["totalNodes"], 1);
+    assert_eq!(b["nodes"][0]["path"], "second.md");
+    let default = op(&mut session, "knowledge.overview", json!({})).unwrap();
+    assert_eq!(default["totalNodes"], 1);
+    assert_eq!(default["nodes"][0]["path"], "default.md");
+}
+
+#[test]
+fn scoped_root_changes_rebuild_without_exposing_old_graph_or_fallback() {
+    let dir = TempDir::new();
+    let profile = "vp-00000000-0000-4000-8000-000000000003";
+    let first = dir.0.join("first");
+    let second = dir.0.join("second");
+    for root in [&first, &second] {
+        fs::create_dir(root).unwrap();
+        private(root);
+    }
+    fs::write(first.join("old.md"), "# Old").unwrap();
+    fs::write(second.join("new.md"), "# New").unwrap();
+    let mut session = start(&dir, "default");
+    let old = scoped(
+        &mut session,
+        profile,
+        Some(&first),
+        "knowledge.overview",
+        json!({}),
+    )
+    .unwrap();
+    assert_eq!(old["nodes"][0]["path"], "old.md");
+    let new = scoped(
+        &mut session,
+        profile,
+        Some(&second),
+        "knowledge.overview",
+        json!({}),
+    )
+    .unwrap();
+    assert_eq!(new["totalNodes"], 1);
+    assert_eq!(new["nodes"][0]["path"], "new.md");
+    let missing = dir.0.join("missing");
+    assert!(
+        scoped(
+            &mut session,
+            profile,
+            Some(&missing),
+            "knowledge.overview",
+            json!({})
+        )
+        .is_err()
+    );
+    assert!(!missing.exists());
+    let restored = scoped(
+        &mut session,
+        profile,
+        Some(&first),
+        "knowledge.overview",
+        json!({}),
+    )
+    .unwrap();
+    assert_eq!(restored["nodes"][0]["path"], "old.md");
+}
+
+#[test]
+fn scoped_cache_eviction_reopens_the_correct_profile() {
+    let dir = TempDir::new();
+    let mut session = start(&dir, "default");
+    for index in 0..10 {
+        let profile = format!("vp-00000000-0000-4000-8000-{index:012}");
+        dir.notes(&profile, &[("note.md", &format!("# Profile {index}"))]);
+        let result = scoped(
+            &mut session,
+            &profile,
+            None,
+            "knowledge.overview",
+            json!({}),
+        )
+        .unwrap();
+        assert_eq!(result["nodes"][0]["title"], format!("Profile {index}"));
+    }
+    let result = scoped(
+        &mut session,
+        "vp-00000000-0000-4000-8000-000000000000",
+        None,
+        "knowledge.overview",
+        json!({}),
+    )
+    .unwrap();
+    assert_eq!(result["nodes"][0]["title"], "Profile 0");
+}

@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import type { AgentHostApi, ObservedControlDispatchInput, ObservedControlReceipt, ObservedControlStatus, ObservedInboxStatus, SessionSummary } from '@extalia/platform';
 import { afterEach, expect, it, vi } from 'vitest';
 import { MESSAGES } from '../src/i18n';
-import { ManualObservedInboxControls, ObservedInboxContent, ObservedSessionControl, ObservedSessionControlContent } from '../src/observe/ObservedSessionControl';
+import { ManualObservedInboxControls, ObservedInboxContent, ObservedSessionControl, ObservedSessionControlContent, ObservedSessionToolsContent } from '../src/observe/ObservedSessionControl';
 import { createObservedInboxControl, createObservedSessionControl, observedSessionControlFor, validObservedControlStatus, validObservedInboxStatus } from '../src/observe/observedSessionControlModel';
 
 const id = 'observed-session';
@@ -143,7 +143,9 @@ it.each(['en', 'id'] as const)('renders host capabilities and explicit secret di
   const t = MESSAGES[language], model = createObservedSessionControl({} as AgentHostApi, id);
   const html = renderToStaticMarkup(createElement(ObservedSessionControlContent, { t, control: model,
     view: { phase: 'ready', draft: 'Original user draft', selected: '', busy: false, status: status(), receipt: { sessionId: id, operationId: 'operation', state: 'unknown', retryable: false } } }));
-  expect(html).toContain(t.observedControl.helper); expect(html).toContain(t.observedControl.evidence['paired-inbox']); expect(html).toContain(t.observedControl.receipts.unknown);
+  expect(html).not.toContain(t.observedControl.helper); expect(html).not.toContain('role="combobox"'); expect(html).toContain(t.observedControl.receipts.unknown);
+  const tools = renderToStaticMarkup(createElement(ObservedSessionToolsContent, { t, control: model, view: { phase: 'ready', draft: '', selected: '', busy: false, status: status() } }));
+  expect(tools).toContain(t.observedControl.helper); expect(tools).toContain(t.observedControl.evidence['paired-inbox']); expect(tools).not.toContain('<textarea');
   expect(html).toContain('Original user draft'); expect(html.match(/<textarea/g)).toHaveLength(1); expect(html).toContain('disabled=""');
   const control = createObservedInboxControl({} as AgentHostApi, id);
   const hidden = renderToStaticMarkup(createElement(ObservedInboxContent, { t, control, view: { phase: 'ready', busy: false, revealed: false, status: inbox } }));
@@ -157,26 +159,35 @@ it('renders a manual pairing registry without creating a session or a character'
   expect(html).toContain(MESSAGES.en.observedControl.manualHint); expect(html).toContain(MESSAGES.en.observedControl.label);
   expect(createManualObservedInbox).not.toHaveBeenCalled();
 });
-it('keeps one compact composer visible with capability and pairing details closed', () => {
+it('keeps only the ordinary input and icon send button in the compact composer', () => {
   const t = MESSAGES.en, model = createObservedSessionControl({} as AgentHostApi, id);
-  const content = renderToStaticMarkup(createElement(ObservedSessionControlContent, { t, control: model, compact: true,
+  const content = renderToStaticMarkup(createElement(ObservedSessionControlContent, { t, control: model,
     view: { phase: 'ready', draft: 'Keep visible', selected: '', busy: false, status: status() } }));
-  expect(content).toContain(`<summary>${t.observedControl.capabilityDetails}</summary>`);
   expect(content).toContain('Keep visible'); expect(content.match(/<textarea/g)).toHaveLength(1);
-  expect(content).not.toMatch(/<details[^>]*\bopen/);
+  expect(content).toContain('class="send-button"');
+  for (const text of [t.observedControl.helper, t.observedControl.action, t.observedControl.messageLimit, t.observedControl.capabilityDetails, t.observedControl.pairingDetails]) expect(content).not.toContain(text);
   const complete = renderToStaticMarkup(createElement(ObservedSessionControl, { t, agents: {} as AgentHostApi,
     session: { id, control: 'observed' } as SessionSummary, compact: true }));
-  expect(complete).toContain(`<summary>${t.observedControl.pairingDetails}</summary>`);
-  expect(complete.match(/<textarea/g)).toHaveLength(1); expect(complete).not.toMatch(/<details[^>]*\bopen/);
+  expect(complete).not.toContain('<details'); expect(complete).not.toContain('role="combobox"');
+  expect(complete.match(/<textarea/g)).toHaveLength(1);
+});
+it('puts settings behind a Conversation tools tab by default', () => {
+  const html = renderToStaticMarkup(createElement(ObservedSessionControl, { t: MESSAGES.en, agents: {} as AgentHostApi,
+    session: { id, control: 'observed' } as SessionSummary }));
+  expect(html.match(/role="tab"/g)).toHaveLength(2);
+  expect(html).toContain(MESSAGES.en.characterConsole.tools);
+  expect(html).not.toContain(MESSAGES.en.observedControl.helper);
+  expect(html).not.toContain(MESSAGES.en.observedControl.pairingDetails);
+  expect(html.match(/<textarea/g)).toHaveLength(1);
 });
 it('uses app button styles and folds unavailable connection options without hiding active capabilities', () => {
   const t = MESSAGES.en, model = createObservedSessionControl({} as AgentHostApi, id), current = status();
   current.routes.push({ route: 'codex-native', state: 'unavailable', evidence: 'native-attachment', limit: 'existing-native-owner', capabilities: [], relatedControls: [] });
-  const html = renderToStaticMarkup(createElement(ObservedSessionControlContent, { t, control: model,
+  const html = renderToStaticMarkup(createElement(ObservedSessionToolsContent, { t, control: model,
     view: { phase: 'ready', draft: '', selected: '', busy: false, status: current } }));
   const split = html.indexOf(`<summary>${t.observedControl.otherConnections}</summary>`);
   expect(split).toBeGreaterThan(0); expect(html.indexOf(t.observedControl.routes['cooperative-inbox'])).toBeLessThan(split);
   expect(html.indexOf(t.observedControl.routes['codex-native'])).toBeGreaterThan(split);
-  expect(html).not.toMatch(/<details[^>]*\bopen/); expect(html).toContain('class="button primary"');
-  expect(html.match(/<button[^>]+class="button(?: primary)?"/g)).toHaveLength(2);
+  expect(html).not.toMatch(/<details[^>]*\bopen/); expect(html).not.toContain('<textarea');
+  expect(html.match(/<button[^>]+class="button(?: primary)?"/g)).toHaveLength(1);
 });

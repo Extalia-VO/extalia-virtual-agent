@@ -147,7 +147,7 @@ export function transcriptEvents(input: ObservedTranscript): ExtaliaEvent[] {
         close(agentId, at, step.pos, 'before');
         if (!input.labelsOnly) {
           const attachments = (step.attachments ?? []).slice(0, 10).map(file => {
-            const ref = file.data && file.mimeType ? input.keepAttachment?.(file.data, file.mimeType) : undefined;
+            const ref = file.ref ?? (file.data && file.mimeType ? input.keepAttachment?.(file.data, file.mimeType) : undefined);
             return { name: file.name, kind: file.kind, size: file.size, ...(ref ? { ref } : {}) };
           });
           add({ type: 'prompt.submitted', text: step.text, via: 'native', ...(attachments.length ? { attachments } : {}) }, at, [step.pos, 'prompt'], agentId);
@@ -183,11 +183,15 @@ export function transcriptEvents(input: ObservedTranscript): ExtaliaEvent[] {
       case 'tool.result': {
         const call: Call = (step.callId ? calls.get(callKey(agentId, step.callId)) : undefined) ?? (() => { const tool = step.tool || 'tool'; const classified = classifyTool(tool); return { tool, kind: classified.kind, label: classified.label }; })();
         const output = !input.labelsOnly && step.output ? step.output.slice(0, OUTPUT_LIMIT) : undefined;
+        const attachments = !input.labelsOnly && step.ok ? (step.attachments ?? []).slice(0, 10).map(file => {
+          const ref = file.ref ?? (file.data && file.mimeType ? input.keepAttachment?.(file.data, file.mimeType) : undefined);
+          return { name: file.name, kind: file.kind, size: file.size, ...(ref ? { ref } : {}) };
+        }) : [];
         const turn = open.get(agentId);
         if (turn) { turn.lastStep = 'tool.result'; turn.lastPos = step.pos; turn.lastAt = at; }
         add({
           type: 'tool.completed', ...(step.callId ? { toolCallId: step.callId } : {}), tool: call.tool, kind: call.kind, label: call.label, ok: step.ok,
-          ...(call.target ? { target: call.target } : {}), ...(output ? { output } : {}),
+          ...(call.target ? { target: call.target } : {}), ...(output ? { output } : {}), ...(attachments.length ? { attachments } : {}),
         }, at, [step.pos, 'tool.completed'], agentId);
         // Calls alone are proposals. Only their successful result confirms candidate writes.
         if (step.ok && step.writesConfirmed !== false) {

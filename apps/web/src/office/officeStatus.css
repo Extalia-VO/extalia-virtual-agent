@@ -1,0 +1,25 @@
+.office-follow-status {
+  position: absolute; z-index: 21; top: 8px; left: 80px;
+  display: flex; align-items: center; gap: 7px;
+  max-width: min(300px, calc(100% - 96px)); min-width: 0;
+  padding: 3px 5px 3px 9px; border: 1px solid var(--line); border-radius: 10px;
+  background: var(--office-overlay, var(--opaque)); color: var(--text); box-shadow: var(--shadow);
+  font-size: 12px;
+}
+.office-follow-status > svg { flex: none; width: 15px; height: 15px; color: var(--accent); }
+.office-follow-status > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.office-follow-status .icon-button { flex: none; width: 28px; height: 28px; border-radius: 7px; }
+.office-render-recovery {
+  position: absolute; inset: 0; z-index: 27; display: grid; place-items: center;
+  padding: 16px; border-radius: inherit; color: var(--text);
+  pointer-events: none;
+}
+.office-stage .office-scene-message { z-index: 27; pointer-events: none; }
+.office-render-recovery-card, .office-scene-error-card {
+  box-sizing: border-box; width: min(400px, 100%); max-height: 100%; overflow: auto;
+  padding: 20px; border: 1px solid var(--line); border-radius: 16px;
+  background: var(--opaque); color: var(--text); box-shadow: var(--shadow); text-align: center;
+  pointer-events: auto;
+}
+.office-render-recovery-card p, .office-scene-error-card p { margin: 10px 0; line-height: 1.5; overflow-wrap: anywhere; }
+.office-scene-error-card .actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }

@@ -11,6 +11,7 @@ import { tripPace } from './pace';
 import { floorAt, planRoute, seatStageId } from './navGraph';
 import type { CharacterFloor, CharacterPositionSource } from './positionStore';
 import { hospitalityState, type HospitalityState } from './hospitality';
+import { movementDiagnostic, type MovementDiagnostic } from './movementMonitor';
 import { barServicePhase, FACILITY_NPCS, createFacilityBrain, isDemandFor, stepFacilityBrain, type CharacterSample, type FacilityBrain, type FacilityNpcDefinition } from './facilityNpcs';
 
 /** Demand and duty are re-evaluated a few times per second, not every frame. */
@@ -68,6 +69,8 @@ export class FacilityNpcDirector implements CharacterPositionSource {
   position(id: string) { return this.npc(id)?.mover.position; }
   floor(id: string): CharacterFloor | undefined { const npc = this.npc(id); return npc ? floorAt(npc.mover.position[1]) : undefined; }
   moving(id: string): boolean { const phase = this.npc(id)?.mover.phase; return phase !== undefined && phase !== 'seated' && phase !== 'gone'; }
+  /** The same inactivity inspection applies to service staff without changing duty. */
+  movementDiagnostics(): MovementDiagnostic[] { return this.npcs.map(({ mover }) => movementDiagnostic(mover.monitor, mover)); }
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
   version = () => this.revision;
   private bump() { this.revision++; for (const listener of this.listeners) listener(); }
@@ -205,7 +208,7 @@ export class FacilityNpcDirector implements CharacterPositionSource {
     this.failedDestinations.clear();
     for (const { mover } of this.npcs) {
       if (mover.trip) this.env.elevators.release(mover.id, mover.trip.id);
-      if (mover.door) this.env.doors?.release(mover.door.id, mover.id);
+      if (mover.door) this.env.doors?.cancel(mover.door.id, mover.id);
       this.env.doors?.clearDuty(mover.id);
       this.env.trackWalker?.(mover.id, null);
       this.env.trackBody?.(mover.id, null);

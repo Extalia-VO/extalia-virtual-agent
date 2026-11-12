@@ -113,9 +113,9 @@ it('renders pending controls separately from read-only receipts with an explicit
   for (const language of ['en', 'id'] as const) {
     const t = MESSAGES[language], html = renderToStaticMarkup(createElement(PromptQueueContent, { t, control: model, view: model.getSnapshot() }));
     expect(html).toContain('class="prompt-queue prompt-queue-list" open=""'); expect(html).toContain(t.promptQueue.sourceHint);
-    expect(html.match(/>Prompt pending<\/pre>/g)).toHaveLength(1);
-    expect(html.indexOf('>Prompt unknown</pre>')).toBeLessThan(html.indexOf('>Prompt pending</pre>'));
-    expect(html.indexOf('>Prompt pending</pre>')).toBeLessThan(html.indexOf('>Prompt sent</pre>'));
+    expect(html.match(/>Prompt pending<\/p>/g)).toHaveLength(1);
+    expect(html.indexOf('>Prompt unknown</p>')).toBeLessThan(html.indexOf('>Prompt pending</p>'));
+    expect(html.indexOf('>Prompt pending</p>')).toBeLessThan(html.indexOf('>Prompt sent</p>'));
     expect(html.split(`aria-label="${t.promptQueue.delete}"`)).toHaveLength(2);
     expect(html.split(`>${t.promptQueue.acknowledge}</button>`)).toHaveLength(3);
     expect(html).not.toContain('type="file"'); expect(html).not.toContain('maxLength=');
@@ -154,7 +154,7 @@ it('accepts empty unsupported status without enabling changes, and can refresh a
 it('allows explicit local removal of sent receipts without an uncertain warning or source action', async () => {
   const sent = item('sent', 'sent'); const { api, model } = setup(status([sent], { supported: false })); await settle();
   const html = renderToStaticMarkup(createElement(PromptQueueContent, { t: MESSAGES.en, control: model, view: model.getSnapshot() }));
-  expect(html).toContain(MESSAGES.en.promptQueue.acknowledge); expect(html).not.toContain(MESSAGES.en.promptQueue.blocked);
+  expect(html).toBe('');
   await model.acknowledge(sent);
   expect(api.changePromptQueue).toHaveBeenCalledExactlyOnceWith('session', { revision: 'r1', action: 'acknowledge', itemId: 'sent' });
 });
@@ -298,4 +298,22 @@ it('confirms the accepted composer receipt even if a subscriber immediately refr
     else if (sawBusy) { sawBusy = false; void model.refresh(); }
   });
   expect(await model.submit('accepted draft')).toBe(true); unsubscribe();
+});
+
+
+it('hides a genuinely empty queue while polling continues and shows new or unresolved entries', async () => {
+  const { api, model } = setup(); await settle();
+  const render = () => renderToStaticMarkup(createElement(PromptQueueContent, { t: MESSAGES.en, control: model, view: model.getSnapshot() }));
+  expect(render()).toBe('');
+  api.promptQueueStatus.mockResolvedValue(status([item('new')])); await model.refresh();
+  expect(render()).toContain('Prompt new');
+  api.promptQueueStatus.mockResolvedValue(status([item('waiting', 'sending')])); await model.refresh();
+  expect(render()).toContain('Prompt waiting');
+  api.promptQueueStatus.mockResolvedValue(status([item('uncertain', 'unknown')])); await model.refresh();
+  expect(render()).toContain(MESSAGES.en.promptQueue.blocked);
+  api.promptQueueStatus.mockResolvedValue(status([item('delivered', 'sent')])); await model.refresh();
+  expect(render()).toBe('');
+  expect(model.getSnapshot().status?.items).toHaveLength(1);
+  api.promptQueueStatus.mockResolvedValue(status()); await model.refresh();
+  expect(render()).toBe('');
 });

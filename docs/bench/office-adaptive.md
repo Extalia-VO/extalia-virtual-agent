@@ -1,7 +1,7 @@
 # Progressive Office rendering
 
-The Office starts at the lowest render tier instead of allocating its sharpest
-drawing buffer first. It adapts to observed foreground frame throughput, not
+The Office starts at the 1080-pixel render tier, then attempts sharper tiers when
+foreground throughput permits. It adapts to observed frame throughput, not
 network bandwidth or a device-model allowlist. This is a rendering change;
 agent execution, sessions and GLB files are unchanged.
 
@@ -9,9 +9,9 @@ agent execution, sessions and GLB files are unchanged.
 
 | Physical short-edge ceiling | Live fixture beams | Shadow map | Maximum traffic cars |
 | --- | --- | --- | --- |
-| 480 pixels, initial tier | 0 | 512 | 6 |
+| 480 pixels, fallback | 0 | 512 | 6 |
 | 720 pixels | 0 | 512 | 6 |
-| 1080 pixels | 6 | 1024 | 10 |
+| 1080 pixels, initial tier | 6 | 1024 | 10 |
 | 1440 pixels | 6 | 1024 | 14 |
 | 2160 pixels | 6 | 1024 | 16 |
 
@@ -23,16 +23,78 @@ resolution. Higher quality is a ceiling, not a promise that every device can
 reach it.
 
 One-second windows below 40 fps reduce quality immediately; two windows below
-45 fps also reduce it. Twelve windows at or above 57 fps permit one upgrade.
+45 fps also reduce it. Six windows at or above 48 fps permit one upgrade;
+thirty stable windows at or above 40 fps also permit a probe on capped displays.
 The sampler warms up for three seconds and settles briefly after a change.
-Twice-failed tiers are not retried during that controller's lifetime. Hidden
+Failed tiers are retried after 15/30/60/120 foreground windows, with the delay
+capped at 120 instead of permanently excluding a tier. Hidden
 time does not count; a remounted Office resumes its settled session tier.
+
+A small top-left FPS badge updates once per measurement window without rerendering
+the scene. It reports unfiltered rendered throughput, including hitches; the
+quality controller separately ignores a single hitch in an otherwise smooth
+window. Hidden/resumed and unmounted canvases clear the readout until fresh
+frames are measured. Desktop uses this same renderer and policy; normal Desktop
+launches have no separate quality cap or software-WebGL switch.
 
 Lower resolution reduces the size of the drawing buffer and fragment workload.
 It does not reduce decoded mesh/texture allocations, model download sizes,
 draw-call counts by itself, or the separate avatar portrait renderers. CPU-heavy
 scenes can still be slow at 480p. Actual renderer resource counts and browser
 measurements must remain separate from whole Desktop memory claims.
+
+## Hidden character poses and graphics recovery
+
+Characters on hidden floors continue their movement simulation and retain body,
+seat, door and lift ownership. Their invisible rigs skip facial, skeletal,
+clothing and hair pose work. Visibility includes every ancestor; this does not
+cull an offscreen character that could still cast a visible shadow. Revealing a
+rig forces a current pose on its first frame at every detail tier, drops pending
+hidden pose time, and refreshes clip, hand and forearm blends from current state.
+Hidden character groups also stop recursive raycasts before testing their model
+meshes. The final hit-visibility filter remains in place for independently
+registered hover volumes; visible hit ordering and identity are preserved.
+
+A lost WebGL context pauses the Office frame loop and displays recovery controls
+while sessions and the prompt composer remain available. Browser restoration
+retains the same canvas, scene and characters, then requires healthy frames
+before removing the overlay. An explicit restart creates a new scene attempt
+without remounting the composer or discarding its draft and attachments. A
+failed lazy engine import also gets a fresh attempt only when Retry is selected.
+FPS sampling forgets the interrupted interval instead of interpreting it as a
+slow foreground frame.
+
+Source-avatar body and hair clones explicitly release their instance materials
+and skeleton bone textures when replaced or removed. Fitted outfit skeletons
+are owned too; linings and native footwear can share a body's instance skeleton,
+so cleanup deduplicates it. Shared asset geometry, ordinary material maps and
+cached garment corrections stay available to other characters. Fresh, uncached
+waist-backing geometry and its final morph derivative are registered against
+their particular clone and released only while attached to it. Never-rendered
+intermediates are not mistaken for the final GPU allocation. Cleanup permits a second release after
+StrictMode has rendered the same resources again and recreated their GPU state.
+
+In a mixed twenty-avatar mount/removal fixture, material-only cleanup retained
+584 additional bone textures per full cycle. Explicit skeleton cleanup returned
+the empty renderer to the same 59-texture baseline for three cycles, including
+a cleanup/render/cleanup replay. These are resource counts in that fixture,
+not bytes, a universal empty-scene budget or a measured application FPS gain.
+Repeated wardrobe geometry allocations are checked separately from textures.
+
+The Building view and F1 cutaway share one mounted front-arrival context. It
+reuses the existing paving, entrance walk, forecourt lamps and benches at their
+original positions; F2 and F3 hide it. This gives the front outdoor approach a
+visible surface without drawing the full neighborhood or duplicating fixture
+and seat registration. It does not add context for every side/rear outdoor
+outing, and static avatar placement screenshots do not establish seating or
+floor-support physics.
+
+GPU cache counts can warm up again after restoration; they are not byte-level
+memory measurements. The pinned Three.js version can report stale-context
+deletion warnings when surviving meshes release pre-restoration listeners.
+These cleanup warnings require separate observation from JavaScript errors,
+missing geometry or stopped frames; successful rendering alone does not prove
+the absence of a memory leak.
 
 ## Reproducible browser comparison
 
@@ -50,7 +112,7 @@ Example with a QA bundle served on loopback port 5400:
 
 ```sh
 node tooling/bench/office-adaptive.mjs --url http://127.0.0.1:5400 \
-  --label after --cpu 4 --dpr 2 --seconds 8 --initial-ceiling 480 \
+  --label current --cpu 4 --dpr 2 --seconds 8 --initial-ceiling 1080 \
   --output output/playwright/office-adaptive-after.json
 ```
 
@@ -66,7 +128,10 @@ The sizing source is the canvas's full-size container, not its temporary
 budget before rendering. Display-density changes are followed even when the
 CSS dimensions do not change.
 
-## Observed comparison
+## Historical 480p-start comparison
+
+The records below precede the 1080p startup and retry policy. They are evidence
+for the earlier allocation change, not a performance measurement of the current policy.
 
 The [before record](office-adaptive-before.json) and [after record](office-adaptive-after.json)
 use Chrome 157 on macOS with a 1366 × 900 CSS viewport, native DPR 2, fourfold

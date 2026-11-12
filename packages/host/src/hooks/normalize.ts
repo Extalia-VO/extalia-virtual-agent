@@ -1,4 +1,4 @@
-import { safeLabel, safeText, stopReasonOf, type StopReason } from '@extalia/core';
+import { EFFORTS, literalProjectPath, safeLabel, safeText, stopReasonOf, type Effort, type StopReason } from '@extalia/core';
 import { commandHead, explicitToolFailure, extractWrittenFiles, outputText, statedSuccess, stepOutput, toolHints } from '@extalia/importers';
 import { AGENT_APP_IDS, type AgentAppId } from '@extalia/platform';
 import { createEvent, type AgentPhase, type EventBody, type EventSource, type ExtaliaEvent } from '@extalia/protocol';
@@ -49,6 +49,12 @@ export interface NormalizedHook {
   cwd?: string;
   transcriptPath?: string;
   model?: string;
+  /** The actor that supplied metadata; child reports never replace the lead's settings. */
+  agentId?: string;
+  /** Explicit top-level source effort only, independent of prompt/reasoning bodies. */
+  effort?: Effort;
+  /** Includes invalid/unknown explicit settings, which clear an older effort. */
+  effortReported?: boolean;
   /** Hermes profile name. */
   profile?: string;
   /** v0.0.38: Claude Code `agent_type` of the sub-agent a hook fired in, for announcing it when its start was missed. */
@@ -70,10 +76,19 @@ const obj = (value: unknown): Row => value && typeof value === 'object' && !Arra
 const str = (value: unknown): string => typeof value === 'string' ? value : '';
 const first = (...values: unknown[]): string => { for (const value of values) if (typeof value === 'string' && value.trim()) return value; return ''; };
 
+/** Only explicit transport fields are settings; free text and nested tool data are never inspected. */
+function reportedSettings(payload: Row): Pick<NormalizedHook, 'effort' | 'effortReported' | 'agentId'> {
+  const key = ['effort', 'reasoning_effort', 'effortLevel'].find(field => Object.hasOwn(payload, field));
+  const agentId = id(payload.agent_id, AGENT_ID);
+  const effort = key === undefined ? undefined : payload[key];
+  return { ...(agentId ? { agentId } : {}), ...(key !== undefined ? { effortReported: true } : {}),
+    ...((EFFORTS as readonly unknown[]).includes(effort) ? { effort: effort as Effort } : {}) };
+}
+
 /** An absolute, single-line path of bounded length; anything else is dropped. */
 function pathField(value: unknown): string | undefined {
-  const text = str(value).trim();
-  if (!text || text.length > 2000 || /[\0\r\n]/.test(text)) return undefined;
+  const text = literalProjectPath(value);
+  if (!text) return undefined;
   return /^(?:\/|[A-Za-z]:[\\/]|\\\\)/.test(text) ? text : undefined;
 }
 
@@ -296,7 +311,7 @@ function claudeStyle(app: HookApp, raw: unknown, options: NormalizeHookOptions =
   }
   const agentType = inner ? safeLabel(first(payload.agent_type, payload.subagent_type), 80) : '';
   return {
-    app, sessionId, event: event || 'unknown', starts: START.has(event), ends: END.has(event), steps, ...(followupPrompts ? { followupPrompts } : {}), ...(agentType ? { agentType } : {}),
+    app, sessionId, ...reportedSettings(payload), event: event || 'unknown', starts: START.has(event), ends: END.has(event), steps, ...(followupPrompts ? { followupPrompts } : {}), ...(agentType ? { agentType } : {}),
     ...(cwd ? { cwd } : {}), ...(transcriptPath ? { transcriptPath } : {}), ...(model ? { model } : {}), ...(titleHint ? { titleHint } : {}),
   };
 }
@@ -341,7 +356,7 @@ export function normalizeAntigravityHook(raw: unknown, options: NormalizeHookOpt
     const report = sourceMcpReport(mcpEventTool, reportEventInput(mcpEventTool, payload.tool_input ?? obj(payload.toolCall).args ?? payload, payload), payload, sessionId, options);
     if (report) { steps.push(...report.steps); followupPrompts = report.followupPrompts; }
     return {
-      app: 'antigravity', sessionId, event: event || 'unknown', starts: false, ends: false, steps, ...(followupPrompts ? { followupPrompts } : {}),
+      app: 'antigravity', sessionId, ...reportedSettings(payload), event: event || 'unknown', starts: false, ends: false, steps, ...(followupPrompts ? { followupPrompts } : {}),
       ...(cwd ? { cwd } : {}), ...(transcriptPath ? { transcriptPath } : {}), ...(model ? { model } : {}),
     };
   }
@@ -420,7 +435,7 @@ export function normalizeAntigravityHook(raw: unknown, options: NormalizeHookOpt
   }
 
   return {
-    app: 'antigravity', sessionId, event: event || 'unknown', starts: event === 'PreInvocation', ends: false, steps, ...(followupPrompts ? { followupPrompts } : {}),
+    app: 'antigravity', sessionId, ...reportedSettings(payload), event: event || 'unknown', starts: event === 'PreInvocation', ends: false, steps, ...(followupPrompts ? { followupPrompts } : {}),
     ...(cwd ? { cwd } : {}), ...(transcriptPath ? { transcriptPath } : {}), ...(model ? { model } : {}),
   };
 }
@@ -451,7 +466,7 @@ export function normalizeHermesHook(raw: unknown, options: NormalizeHookOptions 
   if (mcpEventTool) {
     const report = sourceMcpReport(mcpEventTool, reportEventInput(mcpEventTool, payload.tool_input ?? (payload.extra !== undefined ? extra : payload), payload), payload, sessionId, options);
     if (report) { steps.push(...report.steps); followupPrompts = report.followupPrompts; }
-    return { app: 'hermes', sessionId, event: event || 'unknown', starts: false, ends: false, steps, ...(followupPrompts ? { followupPrompts } : {}), ...(cwd ? { cwd } : {}), ...(model ? { model } : {}), ...(profile ? { profile } : {}) };
+    return { app: 'hermes', sessionId, ...reportedSettings(payload), event: event || 'unknown', starts: false, ends: false, steps, ...(followupPrompts ? { followupPrompts } : {}), ...(cwd ? { cwd } : {}), ...(model ? { model } : {}), ...(profile ? { profile } : {}) };
   }
   switch (event) {
     case 'on_session_start':
@@ -521,7 +536,7 @@ export function normalizeHermesHook(raw: unknown, options: NormalizeHookOptions 
     default: break;
   }
   return {
-    app: 'hermes', sessionId, event: event || 'unknown', starts: event === 'on_session_start', ends: false, steps, ...(followupPrompts ? { followupPrompts } : {}),
+    app: 'hermes', sessionId, ...reportedSettings(payload), event: event || 'unknown', starts: event === 'on_session_start', ends: false, steps, ...(followupPrompts ? { followupPrompts } : {}),
     ...(cwd ? { cwd } : {}), ...(model ? { model } : {}), ...(profile ? { profile } : {}), ...(titleHint ? { titleHint } : {}),
   };
 }

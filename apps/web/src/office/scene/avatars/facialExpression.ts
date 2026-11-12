@@ -40,7 +40,7 @@ export function resolveCharacterExpression(id?: string, fallback: CharacterExpre
   const state = live?.state ?? fallback;
   if (state === 'offline') return state;
   if (current && current.walk > 0.15) return 'moving';
-  if (current?.clip === 'chat-talk' || current?.clip === 'bar-serve') return 'talking';
+  if (current?.clip === 'chat-talk' || current?.clip === 'seated-chat-talk' || current?.clip === 'bar-serve') return 'talking';
   return state;
 }
 

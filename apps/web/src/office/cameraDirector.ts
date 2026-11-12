@@ -161,7 +161,7 @@ export function stepCameraDirector(previous: CameraDirectorState, input: CameraD
   const inactiveFor = Math.max(0, input.now - input.lastInteractionAt - state.pausedDuration);
   const mode = heldAttentionId ? 'attention' : 'tour';
   const newcomerId = !heldAttentionId && !input.reducedMotion && inactiveFor >= CAMERA_ATTENTION_DELAY
-    ? newcomerIds.find(id => !consumed.includes(id) && input.workingIds.includes(id)
+    ? newcomerIds.find(id => !consumed.includes(id) && tourIds.includes(id)
       && (state.command?.targetId === id || (input.spawnedIds ?? newcomerIds).includes(id))) : undefined;
   if (newcomerId) {
     state = { ...state, consumedNewcomerIds: [...newcomerIds], newcomerTargetId: newcomerId };
@@ -171,7 +171,7 @@ export function stepCameraDirector(previous: CameraDirectorState, input: CameraD
     }
     // An idle character can become active while already in the shot. Keep the
     // camera steady and grant the full active dwell from this announcement.
-    if (!state.workingShot) state = { ...state, dwellMs: dwellDuration(true, input.random, input.subjectOf?.(newcomerId)), workingShot: true,
+    if (!state.workingShot && input.workingIds.includes(newcomerId)) state = { ...state, dwellMs: dwellDuration(true, input.random, input.subjectOf?.(newcomerId)), workingShot: true,
       phaseStartedAt: state.command.phase === 'focus' ? input.now : state.phaseStartedAt };
   }
   const continuingNewcomer = state.command?.mode === 'tour' && state.command.targetId === state.newcomerTargetId

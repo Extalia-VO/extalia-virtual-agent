@@ -31,6 +31,9 @@ export function useMovementDirector(store?: CharacterPositionStore): MovementDir
       trackWalker: trackMovingOccupant, trackBody: trackStationaryOccupant, doors: doorTraffic,
       walkable: (from, to, radius) => walkingClearanceFor(instance).segmentClear(from, to, radius),
       seatContactClear: (seat, from, to, radius) => walkingClearanceFor(instance).seatContactClear(seat, from, to, radius),
+      seatExitClear: (seat, from, to, radius) => walkingClearanceFor(instance).seatExitClear(seat, from, to, radius),
+      seatEntryClear: (seat, from, to, radius) => walkingClearanceFor(instance).seatEntryClear(seat, from, to, radius),
+      chairMotionClear: (seat, from, to, radius) => walkingClearanceFor(instance).chairMotionClear(seat, from, to, radius),
       nearbyWalkers: getNearbyMovingOccupantsSnapshot });
     return instance;
   }, []);

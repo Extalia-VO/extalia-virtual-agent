@@ -1,4 +1,4 @@
-import type { ObservedCodexAnswerInput, ObservedCodexMessageInput, ObservedCodexStatus, ObservedCodexApprovalAnswerInput, PromptSuggestionsStatus } from '@extalia/platform';
+import type { ObservedCodexAnswerInput, ObservedCodexMessageInput, ObservedCodexSettingsInput, ObservedCodexStatus, ObservedCodexApprovalAnswerInput, PromptSuggestionsStatus } from '@extalia/platform';
 import { CodexObservedControl, type CodexObservedRpcFactory } from './codexObservedControl.js';
 import { findOnPath, isExecutable } from './connect/util.js';
 
@@ -122,6 +122,9 @@ export class ObservedCodexService {
   }
   send(id: string, input: ObservedCodexMessageInput): Promise<ObservedCodexStatus> {
     return this.mutate(id, () => this.current(id, input?.connectionId).send(input));
+  }
+  updateSettings(id: string, input: ObservedCodexSettingsInput): Promise<ObservedCodexStatus> {
+    return this.mutate(id, () => this.current(id, input?.connectionId).updateSettings(input));
   }
   answer(id: string, input: ObservedCodexAnswerInput): Promise<ObservedCodexStatus> {
     return this.mutate(id, () => this.current(id, input?.connectionId).answer(input));

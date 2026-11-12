@@ -1,0 +1,26 @@
+.session-handover-dialog { width: min(960px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); overflow: auto; overscroll-behavior: contain; padding: 24px; border: 1px solid var(--line); border-radius: 20px; color: var(--text); background: var(--surface-solid); }
+.session-handover-dialog::backdrop { background: rgb(8 10 14 / 55%); }
+.session-handover-header { display: flex; justify-content: space-between; align-items: center; gap: 16px; position: sticky; top: -24px; z-index: 2; padding: 10px 0; background: var(--surface-solid); }
+.session-handover-header h2 { margin: 0; font-size: 1.2rem; }
+.session-handover-dialog code, .session-handover-dialog p, .handover-chain span { overflow-wrap: anywhere; }
+.handover-section { margin: 16px 0; padding: 16px; border: 1px solid var(--line); border-radius: 12px; }
+.handover-section summary { cursor: pointer; font-weight: 600; }
+.handover-section h3 { margin: 0 0 12px; font-size: 1rem; }
+.handover-section label { display: grid; gap: 6px; font-size: .9rem; }
+.handover-section input[type="text"], .handover-section textarea { width: 100%; min-width: 0; box-sizing: border-box; color: var(--text); background: var(--surface); border: 1px solid var(--line); border-radius: 9px; padding: 9px 11px; font: inherit; }
+.handover-section textarea { resize: vertical; }
+.handover-target-fields { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; margin-top: 12px; }
+.handover-note-fields { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; }
+.handover-note-fields label:first-child { grid-column: 1 / -1; }
+.handover-coverage { list-style: none; padding: 0; display: grid; gap: 16px; }
+.handover-coverage > li { min-width: 0; padding-bottom: 12px; border-bottom: 1px solid var(--line); font-size: .85rem; }
+.handover-coverage > li > code { display: block; margin-top: 5px; }
+.handover-chain { display: grid; gap: 12px; padding-left: 20px; font-size: .85rem; }
+.handover-chain li > * { display: block; }
+.handover-evidence { padding-left: 22px; max-height: 400px; overflow: auto; }
+.handover-evidence pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: .8rem; }
+.handover-packet > textarea { display: block; margin-bottom: 12px; font: .8rem/1.5 ui-monospace, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+.handover-section .handover-confirm { display: flex; align-items: flex-start; gap: 10px; margin-top: 16px; }
+.handover-confirm input { flex: none; margin-top: 3px; }
+.session-handover-dialog footer { justify-content: flex-end; flex-wrap: wrap; gap: 10px; }
+@media (max-width: 600px) { .session-handover-dialog { padding: 16px; width: calc(100vw - 20px); max-height: calc(100dvh - 20px); } .session-handover-header { top: -16px; } .handover-section { padding: 12px; } .handover-target-fields, .handover-note-fields { grid-template-columns: minmax(0, 1fr); } }

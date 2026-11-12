@@ -1,9 +1,9 @@
 .observed-session-controls { display: grid; gap: 12px; min-width: 0; }
-.observed-session-control, .observed-control-pairing, .observed-manual-inboxes {
+.observed-session-control-settings, .observed-control-pairing, .observed-manual-inboxes {
   min-width: 0; padding: 14px; border: 1px solid var(--line); border-radius: 16px;
   background: var(--surface-glass, var(--surface)); backdrop-filter: blur(18px);
 }
-.observed-session-control h3, .observed-control-pairing h4 { margin: 0; }
+.observed-session-control-settings h3, .observed-control-pairing h4 { margin: 0; }
 .observed-control-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
 .observed-control-heading button { flex-shrink: 0; }
 .observed-control-hint { color: var(--muted); font-size: .85rem; line-height: 1.5; margin: 7px 0; }
@@ -12,8 +12,8 @@
 .observed-control-route { min-width: 0; padding: 10px; border: 1px solid var(--line); border-radius: 10px; }
 .observed-control-capabilities { display: grid; gap: 5px; padding: 0; list-style: none; font-size: .8rem; }
 .observed-control-capabilities li { display: flex; justify-content: space-between; gap: 8px; }
-.observed-session-control form, .observed-manual-inboxes > form, .observed-control-instructions { display: grid; gap: 8px; }
-.observed-session-control textarea, .observed-control-pairing textarea, .observed-manual-inboxes input {
+.observed-manual-inboxes > form, .observed-control-instructions { display: grid; gap: 8px; }
+.observed-control-pairing textarea, .observed-manual-inboxes input {
   width: 100%; min-width: 0; box-sizing: border-box; resize: vertical; font: inherit;
 }
 .observed-control-pairing textarea[readonly] { font-family: var(--font-mono, monospace); font-size: .8rem; overflow-wrap: anywhere; }
@@ -24,13 +24,25 @@
 .observed-control-advanced .observed-control-scroll { max-height: min(240px, 35dvh); overflow: auto; overscroll-behavior: contain; display: grid; gap: 8px; }
 .observed-session-controls-compact { gap: 6px; }
 .observed-session-controls-compact .observed-session-control { padding: 10px; }
-.observed-session-controls-compact .observed-session-control h3 { font-size: .9rem; }
+.observed-session-controls-compact .observed-session-control-settings h3 { font-size: .9rem; }
 .observed-session-controls-compact .observed-control-hint { font-size: .78rem; margin: 4px 0; }
 .observed-session-controls-compact .observed-control-routes { grid-template-columns: 1fr; margin: 6px 0; }
 .observed-control-receipts { padding-left: 18px; font-size: .8rem; overflow-wrap: anywhere; }
 .observed-manual-inboxes > .radix-select-wrapper, .observed-manual-inboxes > .observed-session-controls { margin-top: 12px; }
 @media (max-width: 540px) {
-  .observed-session-control, .observed-control-pairing, .observed-manual-inboxes { padding: 10px; border-radius: 12px; }
+  .observed-session-control-settings, .observed-control-pairing, .observed-manual-inboxes { padding: 10px; border-radius: 12px; }
   .observed-control-heading { align-items: flex-start; }
   .observed-control-actions > button { flex: 1; }
 }
+
+.observed-control-tabs { display: flex; gap: 6px; min-width: 0; border-bottom: 1px solid var(--line); }
+.observed-control-tabs > button { padding: 8px 12px; border: 0; background: transparent; color: var(--muted); font: inherit; font-size: .85rem; border-radius: 10px 10px 0 0; }
+.observed-control-tabs > button[aria-selected='true'] { color: var(--text); background: var(--accent-soft); }
+.observed-control-tab-panel[hidden] { display: none; }
+.observed-session-tools { display: grid; gap: 10px; min-width: 0; }
+.observed-session-prompt { min-width: 0; }
+.observed-session-prompt .observed-session-control { padding: 12px; grid-template-columns: minmax(0, 1fr) auto; align-items: end; }
+.observed-session-control > textarea { grid-column: 1; grid-row: 1; }
+.observed-session-control > .send-button { grid-column: 2; grid-row: 1; justify-self: end; align-self: end; }
+.observed-session-control textarea { width: 100%; min-width: 0; font: inherit; }
+.observed-control-feedback { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 5px 0; color: var(--muted); font-size: .8rem; overflow-wrap: anywhere; }

@@ -12,10 +12,19 @@ import { floorAt, floorY, planRoute, seatStageId, STAIR_SPEED_FACTOR, withElevat
 import { advanceWalkDistance, advanceWalkPhase, angleDelta, createCharacterMotion, headingOf, smoothstep, turnToward, walkingSpeed, type CharacterMotion } from './walkCycle';
 import { doorInteractionTempo, strideAndCadence } from './pace';
 import { isDeskChair } from '../interior/deskChairs';
-import { doorAxes, doorHandle, doorLeafDistance, doorHandedness, doorPoint as doorWorldPoint, DOOR_SWING_RATE, type DoorHit, type DoorInfo, type DoorTraffic } from '../interior/doorTraffic';
+import { APPROACH_RANGE_M, doorAxes, doorHandle, doorLeafDistance, doorHandedness, doorPoint as doorWorldPoint, DOOR_SWING_RATE, type DoorHit, type DoorInfo, type DoorTraffic } from '../interior/doorTraffic';
+import { doorApproachPath, doorParkingClear, doorWaitingPath, waitingSegmentClear } from './doorWaitingPath';
+import { crossesDoorPortal, doorAlternativeRoute } from './doorAlternativeRoute';
+import { createMovementMonitor, stepMovementMonitor, type MovementMonitorState } from './movementMonitor';
 import { DOOR_BODY_CLEARANCE, doorClosePosition, doorEntryCloseHandWeight, doorOpenPosition, doorOpenHandWeight, doorSwingSide, doorWalkPath } from './doorChoreography';
 import { ARMREST, BEAT_S, CHAIR_FRONT_APPROACH, chairManeuverSide, chairWalkPath, chairWorld, chairContactWorld, chairYaw, GRIP_BACK_Z, GRIP_HAND_X, GRIP_HEIGHT, GRIP_STAND, scootPull, SEAT_EDGE, sittingCentre, smooth01, standPull, toCharacterFrame, yawToward, type ChairSide } from './chairChoreography';
+import { crowdEscape } from './crowdEscape';
+import { encounterDue, encounterPassed, encounterPath, type EncounterMemory } from './encounterRecovery';
+import { chooseChairManeuverSide } from './chairManeuverClearance';
+import type { CrowdWatchActor } from './crowdWatch';
+import { createStaticRoutePlanner } from './staticRoutePlanner';
 import { isStaticSeat, STATIC_BODY_RADIUS, staticSeatContact, staticSeatNeighborsClear, staticSeatRoute, type StaticSeatRoute } from './staticSeating';
+import { elevatorMovementTarget, elevatorSegmentClear, elevatorWaitingPosition, elevatorWaitingRetreatTarget } from './elevatorMovement';
 
 /** `vanishing`: reached the waypoint where it leaves and fades out there; `gone` once invisible. */
 export type MoverPhase = 'seated' | 'standing' | 'walking' | 'waiting' | 'boarding' | 'riding' | 'alighting' | 'sitting' | 'vanishing' | 'gone' | 'chairing' | 'doorwork' | 'seatwork';
@@ -44,7 +53,7 @@ export interface MovementEnv {
   readonly elevators: ElevatorAccess;
   /** Lets automatic doors see a walker heading through them; `null` when it stops. */
   readonly trackWalker?: (id: string, position: Readonly<Point3> | null, target?: Readonly<Point3>) => void;
-  /** Stationary bodies remain collision obstacles without requesting automatic doors. */
+  /** Every physical body remains an obstacle even when it has no travel target. */
   readonly trackBody?: (id: string, position: Readonly<Point3> | null) => void;
   /** Doors on the way: hinged leaves are swung by hand, the last one through closes them. */
   readonly doors?: DoorTraffic;
@@ -52,7 +61,13 @@ export interface MovementEnv {
   readonly walkable?: WalkableSegment;
   /** Front contact may overlap its own cushion bounds, while other furniture still blocks it. */
   readonly seatContactClear?: (seat: SeatApproach, from: Readonly<Point3>, to: Readonly<Point3>, radius?: number) => boolean;
+  /** Controlled authored departure masks only its own meeting/guest chair or fitness station. */
+  readonly seatExitClear?: (seat: SeatApproach, from: Readonly<Point3>, to: Readonly<Point3>, radius?: number) => boolean;
+  readonly seatEntryClear?: (seat: SeatApproach, from: Readonly<Point3>, to: Readonly<Point3>, radius?: number) => boolean;
+  readonly chairMotionClear?: (seat: SeatApproach, from: Readonly<Point3>, to: Readonly<Point3>, radius?: number) => boolean;
   readonly nearbyWalkers?: (id: string, position: Readonly<Point3>) => readonly WalkingNeighbor[];
+  /** Retain chair/seat ownership until its current physical interaction finishes. */
+  readonly canUseSeat?: (id: string, seat: SeatApproach) => boolean;
 }
 
 /** A chair beat in progress: sitting down (grip, pull, let go, walk round, lower, scoot in) or standing up (walk out, grip, push in, let go). */
@@ -65,6 +80,8 @@ export interface ChairAct {
   begun: boolean;
   /** Walk points still to reach in a walking beat. */
   path: Point3[];
+  /** Checked crowd-retreat breadcrumbs before the authored chair corridor. */
+  rejoining?: number;
 }
 
 export interface StaticSeatAct {
@@ -79,13 +96,13 @@ export interface StaticSeatAct {
   trail: Point3[];
 }
 
-/** A hinged door in progress: stop and open it, wait for a free passage, or close it behind. */
+/** Door approach, ordered passage and (for hinged leaves) hand-operated opening/closing. */
 export interface DoorAct {
   kind: 'open' | 'wait' | 'close' | 'pass';
   readonly id: string;
   readonly door: Readonly<DoorInfo>;
   timer: number;
-  beat: 'reserve' | 'approach' | 'grip' | 'swing' | 'passage' | 'handoff' | 'release';
+  beat: 'reserve' | 'approach' | 'grip' | 'swing' | 'passage' | 'handoff' | 'release' | 'resume';
   side: 1 | -1;
   entrySide: 1 | -1;
   hand: 0 | 1;
@@ -94,6 +111,19 @@ export interface DoorAct {
   /** Entry-side closing tug, followed by a clear arc inside the moving free tip. */
   entryCloseStart?: number;
   path: Point3[] | null;
+  queueIndex?: number;
+  queueRetry?: number;
+  approachRetry?: number;
+  queueYield?: { id: string; origin: Point3; direction: readonly [number, number] };
+  walkRetry?: number;
+  traffic?: { head: string | null; leaf: number; position: Point3 | null; stalled: number };
+  /** A group crossing stays open until even its final ticket reaches the exit face. */
+  shared?: boolean;
+  /** A physical passage transfers closing responsibility once, never on a later retry. */
+  passRecorded?: boolean;
+  /** Checked authored aisle bridge for a retained closer returning from a room. */
+  returnPath?: Point3[];
+  returnTarget?: Point3;
 }
 
 interface ElevatorTrip {
@@ -150,6 +180,7 @@ export interface Mover {
   chairSide: ChairSide;
   chairSequence: number;
   staticSeat: StaticSeatAct | null;
+  seatExit: SeatApproach | null;
   /** Door in progress (phase `doorwork`) and the door this walker has already been let through. */
   door: DoorAct | null;
   cleared: string | null;
@@ -159,6 +190,10 @@ export interface Mover {
   routeSequence: number;
   readonly natural: NaturalWalkState;
   readonly recovery: MovementRecoveryState;
+  readonly monitor: MovementMonitorState;
+  stationaryRecheck: number;
+  /** Short physical retreat selected by the shared crowd arbiter. */
+  crowdYield: { point: Point3; origin: Point3; elapsed: number; settled: number; peer?: string; direction?: readonly [number, number] } | null;
 }
 
 /** Turning speed in rad/s: a person turns a right-angle corner in about a quarter of a second. */
@@ -175,6 +210,8 @@ export const FADE_OUT_S = 0.7;
 const BACKING_SPEED = 0.5;
 const BACKING_DISTANCE = 0.6;
 const ARRIVE = 1e-3;
+/** Reserve before reaching the final doorway marker, including a full meeting outflow. */
+export const DOOR_QUEUE_RANGE_M = 10;
 
 export function createMover(id: string, gait: GaitParameters, position: Point3, yaw: number, seated: boolean): Mover {
   const floor = floorAt(position[1]);
@@ -182,7 +219,8 @@ export function createMover(id: string, gait: GaitParameters, position: Point3, 
     id, position: [position[0], position[1], position[2]], yaw, motion: createCharacterMotion(seated), phase: seated ? 'seated' : 'walking', gait,
     goal: null, seat: null, steps: [], stepIndex: 0, lastNode: null, backing: false, timer: 0, from: [0, 0, 0], fromYaw: 0, fromSit: 0,
     trip: null, pending: null, target: null, floorLow: floor, floorHigh: floor, pace: 1, cadenceScale: 1, opacity: 1,
-    routeSequence: 0, natural: createNaturalWalkState(), recovery: createMovementRecovery(position), chair: null, chairPull: 0, chairSide: 1, chairSequence: 0, staticSeat: null, door: null, cleared: null, prev: [position[0], position[1], position[2]],
+    routeSequence: 0, natural: createNaturalWalkState(), recovery: createMovementRecovery(position), monitor: createMovementMonitor(), stationaryRecheck: 0, crowdYield: null,
+    chair: null, chairPull: 0, chairSide: 1, chairSequence: 0, staticSeat: null, seatExit: null, door: null, cleared: null, prev: [position[0], position[1], position[2]],
   };
 }
 
@@ -202,13 +240,17 @@ export function walkSpeed(mover: Pick<Mover, 'gait' | 'pace'>): number {
 
 /** Put a character on its seat at once (initial load, reduced motion). */
 export function placeSeated(mover: Mover, seat: SeatApproach, env?: MovementEnv): void {
+  mover.crowdYield = null;
+  mover.seatExit = null;
   releaseTrip(mover, env);
-  if (mover.door && env?.doors) env.doors.release(mover.door.id, mover.id);
+  if (mover.door && env?.doors) env.doors.cancel(mover.door.id, mover.id);
+  env?.doors?.clearActiveDoor(mover.id);
   env?.doors?.clearDuty(mover.id);
   mover.door = null;
   mover.chair = null;
   mover.staticSeat = null;
   mover.recovery.departure = null;
+  mover.recovery.encounter = null; mover.recovery.encounterSearches = 0; mover.recovery.yielding = null;
   mover.chairPull = 0;
   mover.motion.reach[0].weight = 0;
   mover.motion.reach[1].weight = 0;
@@ -244,7 +286,9 @@ const goalNode = (goal: MoverGoal) => goal.kind === 'seat' ? seatStageId(goal.se
  */
 export function sendMover(mover: Mover, goal: MoverGoal, env: MovementEnv): boolean {
   if (mover.phase === 'gone') return false;
+  if (mover.crowdYield) finishCrowdYield(mover, env);
   recoveryGoal(mover.recovery, goalNode(goal));
+  if (mover.seatExit) { mover.pending = goal; return true; }
   if (mover.phase === 'seated' && mover.recovery.departure) {
     // The seat exit already finished. A new intent must not rise from that
     // cushion again, or discard the destination while its route is retried.
@@ -291,28 +335,57 @@ export function sendMover(mover: Mover, goal: MoverGoal, env: MovementEnv): bool
   const ahead = step?.kind === 'walk' ? step.node : mover.steps[mover.stepIndex - 1]?.node ?? null, behind = mover.lastNode;
   const options = [ahead, behind].filter((node): node is string => Boolean(node));
   const freeSpaceReplan = Boolean(env.walkable && step?.kind === 'walk' && !step.stairs && !mover.backing);
+  const navigation = recoveryNavigation(mover, env.navigation);
+  const plan = staticRoutePlanner(navigation, env);
   // A curved trip or local detour can be away from either graph endpoint.
   // Rejoin only a real, visible waypoint instead of walking through furniture.
   if (freeSpaceReplan) {
     const nearby = [...env.navigation.waypoints.values()]
-      .filter(node => Math.abs(node.position[1] - mover.position[1]) < 0.05 && node.kind !== 'connector')
-      .sort((a, b) => Math.hypot(a.position[0] - mover.position[0], a.position[2] - mover.position[2]) - Math.hypot(b.position[0] - mover.position[0], b.position[2] - mover.position[2]))
-      .slice(0, 24);
+      .filter(node => Math.abs(node.position[1] - mover.position[1]) < 0.05 && node.kind !== 'connector' && node.kind !== 'door'
+        && (!node.id.startsWith('seat:') || node.id.endsWith(':aisle'))
+        && Math.hypot(node.position[0] - mover.position[0], node.position[2] - mover.position[2]) <= 6)
+      .sort((a, b) => Math.hypot(a.position[0] - mover.position[0], a.position[2] - mover.position[2]) - Math.hypot(b.position[0] - mover.position[0], b.position[2] - mover.position[2]));
     for (const node of nearby) if (!options.includes(node.id)) options.push(node.id);
   }
-  let best: { node: string; cost: number } | null = null;
-  for (const node of options) {
-    const route = planRoute(node, goalNode(goal), env.navigation);
-    const point = env.navigation.waypoints.get(node)?.position;
-    if (!route || !point || (freeSpaceReplan && !env.walkable?.(mover.position, point, 0.29))) continue;
-    const cost = route.cost + Math.hypot(point[0] - mover.position[0], point[1] - mover.position[1], point[2] - mover.position[2]);
-    if (!best || cost < best.cost) best = { node, cost };
+  const neighbors = env.nearbyWalkers?.(mover.id, mover.position) ?? [];
+  const portals = env.doors?.portals() ?? [];
+  const clear = (from: Readonly<Point3>, to: Readonly<Point3>) => Boolean(env.walkable
+    && recoverySegmentClear(mover.id, from, to, env.walkable, neighbors) && recoveryDoorClear(from, to, env)
+    && !portals.some(hit => crossesDoorPortal(hit, from, to)));
+  let best: { node: string; cost: number; bend: Point3 | null } | null = null;
+  // Filter visibility before bounding route candidates: nearby chair contacts
+  // must not hide the first usable authored aisle from a pending departure.
+  for (const detour of freeSpaceReplan ? [false, true] : [false]) {
+    let checked = 0;
+    for (const node of options) {
+      const point = env.navigation.waypoints.get(node)?.position;
+      if (!point) continue;
+      const direct = !freeSpaceReplan || clear(mover.position, point);
+      const bend = !direct && detour ? recoveryDetour(mover.position, point, clear) : null;
+      if (!direct && !bend) continue;
+      const route = plan(node, goalNode(goal));
+      if (!route) continue;
+      const first = route.steps[0];
+      if (freeSpaceReplan && first?.kind === 'walk' && !first.stairs && Math.abs(first.to[1] - point[1]) < LEVEL_EPSILON
+        && !env.walkable?.(point, first.to, .29)) continue;
+      const cost = route.cost + (bend ? Math.hypot(bend[0] - mover.position[0], bend[2] - mover.position[2])
+        + Math.hypot(point[0] - bend[0], point[2] - bend[2]) : Math.hypot(point[0] - mover.position[0], point[1] - mover.position[1], point[2] - mover.position[2]));
+      if (!best || cost < best.cost) best = { node, cost, bend };
+      if (++checked >= 24) break;
+    }
+    if (best) break;
   }
   if (!best) {
     if (freeSpaceReplan) { mover.pending = goal; return true; }
     return false;
   }
-  return routeFrom(mover, best.node, goal, env, true);
+  if (!best.bend) return routeFrom(mover, best.node, goal, env, true);
+  const point = env.navigation.waypoints.get(best.node)!.position;
+  if (!routeFrom(mover, best.node, goal, env, false, point)) return false;
+  mover.steps.unshift({ kind: 'walk', node: 'movement-pending-bend', to: best.bend, stairs: false },
+    { kind: 'walk', node: best.node, to: [...point], stairs: false });
+  mover.lastNode = null;
+  return true;
 }
 
 /** Plan from waypoint `start`; with `walkToStart`, first walk to that waypoint from the current spot. */
@@ -320,9 +393,14 @@ export function routeFrom(mover: Mover, start: string | null, goal: MoverGoal, e
   if (!start) return false;
   recoveryGoal(mover.recovery, goalNode(goal));
   const navigation = recoveryNavigation(mover, env.navigation);
-  const route = planRoute(start, goalNode(goal), navigation);
+  // With no graph alternative, keep the authored intent for local recovery or
+  // later obstruction clearance. Execution still checks every physical step.
+  const authored = planRoute(start, goalNode(goal), navigation);
+  if (!authored) return false;
+  const route = staticRoutePlanner(navigation, env)(start, goalNode(goal), authored) ?? authored;
   const point = env.navigation.waypoints.get(start)?.position;
   if (!route || !point) return false;
+  mover.crowdYield = null;
   mover.goal = goal;
   const preferred = preferredElevator(mover.id);
   const elevatorId = mover.recovery.avoidedElevators.includes(preferred) ? preferred === 'A' ? 'B' : 'A' : preferred;
@@ -336,8 +414,9 @@ export function routeFrom(mover: Mover, start: string | null, goal: MoverGoal, e
   mover.backing = false;
   mover.phase = 'walking';
   mover.staticSeat = null;
+  mover.seatExit = null;
   mover.recovery.departure = null;
-  env.trackBody?.(mover.id, null);
+  env.trackBody?.(mover.id, mover.position);
   if (goal.kind === 'seat') mover.seat = goal.seat;
   return true;
 }
@@ -352,6 +431,11 @@ function recoveryNavigation(mover: Mover, navigation: OfficeNavigation): OfficeN
     return !avoidedEdges.includes(key) && (!elevator || !avoidedElevators.includes(elevator));
   })]));
   return { ...navigation, graph: { ...navigation.graph, edges } };
+}
+
+function staticRoutePlanner(navigation: OfficeNavigation, env: MovementEnv) {
+  const portals = env.doors?.portals() ?? [];
+  return createStaticRoutePlanner(navigation, env.walkable, (from, to) => portals.some(hit => crossesDoorPortal(hit, from, to)));
 }
 
 /** A waypoint this close to a floor's height is on that floor. */
@@ -383,8 +467,15 @@ function leaveSeat(mover: Mover, env: MovementEnv) {
   mover.pending = null;
   if (!seat || !goal) { mover.phase = 'gone'; return; }
   if (goal.kind === 'seat' && goal.seat.seatId === seat.seatId) { mover.phase = 'sitting'; beginSitting(mover); mover.timer = 0; return; }
-  if (isDeskChairSeat(seat)) { mover.goal = goal; startChair(mover, 'stand', seat); return; }
-  if (!routeFrom(mover, seatStageId(seat.seatId), goal, env, false)) { mover.phase = 'gone'; return; }
+  if (isDeskChairSeat(seat)) { mover.goal = goal; startChair(mover, 'stand', seat, env); return; }
+  if (!routeFrom(mover, seatStageId(seat.seatId), goal, env, false, seat.equipment ? seat.staging : mover.position)) { mover.phase = 'gone'; return; }
+  if (seat.seatStyle === 'meeting' || seat.seatStyle === 'guest' || seat.equipment) {
+    // Reach the complete authored departure stage before ordinary clearance
+    // takes over; a short backstep can remain inside a chair or fitness frame.
+    mover.steps.unshift({ kind: 'walk', node: seatStageId(seat.seatId), to: [...seat.staging], stairs: false });
+    mover.seatExit = seat; mover.lastNode = null; mover.backing = true;
+    return;
+  }
   // Push back from the desk a short step without turning, then walk to the standing point.
   const node = seatStageId(seat.seatId);
   const dx = seat.staging[0] - mover.position[0], dz = seat.staging[2] - mover.position[2], distance = Math.hypot(dx, dz);
@@ -459,7 +550,12 @@ function easeWalk(mover: Mover, target: number, seconds: number) {
 
 /** Advance one character by `seconds`, sharing one movement and turning budget. */
 export function stepMover(mover: Mover, seconds: number, env: MovementEnv): void {
+  env.doors?.setActiveDoor(mover.id, mover.door?.id ?? null);
   const dt = Math.min(Math.max(seconds, 0), 0.1);
+  // Development refresh can retain actors created by the previous scene module.
+  mover.recovery.encounter ??= null; mover.recovery.encounterSearches ??= 0; mover.recovery.encounterBodies ??= '';
+  mover.recovery.avoidedDoors ??= [];
+  mover.recovery.doorProbeIn = Math.max(0, (mover.recovery.doorProbeIn ?? 0) - dt);
   mover.target = null;
   const yawBefore = mover.yaw;
   const walkingBefore = mover.phase === 'walking';
@@ -467,7 +563,8 @@ export function stepMover(mover: Mover, seconds: number, env: MovementEnv): void
   // Arms reach only while a chair or door beat drives them (or a standing beat rests the hands on the armrests).
   if (mover.phase !== 'standing' && mover.phase !== 'chairing' && mover.phase !== 'doorwork') { mover.motion.reach[0].weight = 0; mover.motion.reach[1].weight = 0; }
   if (mover.opacity < 1 && mover.phase !== 'vanishing' && mover.phase !== 'gone') mover.opacity = Math.min(1, mover.opacity + dt / FADE_IN_S);
-  switch (mover.phase) {
+  if (mover.crowdYield) stepCrowdYield(mover, dt, env);
+  else switch (mover.phase) {
     case 'seated':
     case 'gone':
       easeWalk(mover, 0, dt);
@@ -481,9 +578,15 @@ export function stepMover(mover: Mover, seconds: number, env: MovementEnv): void
     case 'standing': {
       const seat = mover.seat;
       const duration = seat && isDeskChairSeat(seat) ? Math.max(BEAT_S.stand, seat.standMs / 1000) : (seat?.standMs ?? 760) / 1000;
-      mover.timer += dt;
-      mover.motion.sit = mover.fromSit * (1 - smoothstep(mover.timer / duration));
-      if (seat && isDeskChairSeat(seat)) standingAtChair(mover, seat, Math.min(1, mover.timer / duration), dt);
+      if (seat && isDeskChairSeat(seat) && mover.timer === 0 && env.chairMotionClear) {
+        const side = chooseChairManeuverSide(seat, 'stand', mover.position, mover.chairSide, env.chairMotionClear);
+        if (side === null) { easeWalk(mover, 0, dt); break; }
+        mover.chairSide = side;
+      }
+      const timer = mover.timer + dt;
+      if (seat && isDeskChairSeat(seat) && !standingAtChair(mover, seat, Math.min(1, timer / duration), dt, env)) { easeWalk(mover, 0, dt); break; }
+      mover.timer = timer;
+      mover.motion.sit = mover.fromSit * (1 - smoothstep(timer / duration));
       if (mover.timer >= duration) { mover.motion.sit = 0; leaveSeat(mover, env); }
       break;
     }
@@ -500,8 +603,17 @@ export function stepMover(mover: Mover, seconds: number, env: MovementEnv): void
       const seat = mover.seat!;
       if (mover.timer < 0) {
         // Step from the standing point to the chair, then lower onto it.
+        const before: Point3 = [...mover.position], phase = mover.motion.phase;
+        const neighbors = env.nearbyWalkers?.(mover.id, before) ?? [];
+        const scale = protectedHeadway(mover.id, before, seat.seat, walkSpeed(mover) * .7, dt, neighbors);
         easeWalk(mover, 1, dt);
-        if (walkToward(mover, seat.seat, dt, 0.7, false) > 0) break;
+        const remaining = walkToward(mover, seat.seat, dt, .7 * scale, false);
+        const contact = seat.seatStyle === 'meeting' || seat.seatStyle === 'guest' || seat.equipment ? env.seatEntryClear : undefined;
+        if (!staticSeatNeighborsClear(mover.id, before, mover.position, neighbors, dt)
+          || (contact && !contact(seat, before, mover.position, .29))) {
+          copy(mover.position, before); mover.motion.phase = phase; easeWalk(mover, 0, dt); break;
+        }
+        if (remaining > 0) break;
         beginSitting(mover);
       }
       const duration = seat.sitMs / 1000;
@@ -526,17 +638,19 @@ export function stepMover(mover: Mover, seconds: number, env: MovementEnv): void
   }
   // Several short curve samples may be consumed in one frame; share one turn budget.
   if (walkingBefore) mover.yaw = turnToward(yawBefore, mover.yaw, TURN_RATE, dt);
-  recoverStalledMover(mover, dt, env);
+  recoverEncounter(mover, dt, env);
+  stepMovementMonitor(mover.monitor, mover, dt, mover.prev);
+  if (!mover.crowdYield) { recoverStandingIntent(mover, env); recoverStalledMover(mover, dt, env); }
   updateFloors(mover);
   if (walkingBefore && env.doors) env.doors.moved(mover.id, mover.prev, mover.position);
   const routeStep = mover.steps[mover.stepIndex];
   const trackedTarget = mover.phase === 'doorwork' && routeStep?.kind === 'walk' ? routeStep.to : mover.target;
   // A yielding walker still occupies physical space after its walk blend fades.
   env.trackWalker?.(mover.id, mover.phase === 'doorwork' || (trackedTarget && (mover.phase === 'walking' || mover.motion.walk > 0.05)) ? mover.position : null, trackedTarget ?? undefined);
-  env.trackBody?.(mover.id, mover.phase === 'seated' || mover.phase === 'standing' || mover.phase === 'sitting' || mover.phase === 'seatwork' || mover.phase === 'chairing' ? mover.position : null);
+  env.trackBody?.(mover.id, mover.phase === 'gone' ? null : mover.position);
 }
 
-function finishRoute(mover: Mover, env: MovementEnv) {
+function finishRoute(mover: Mover, env: MovementEnv, dt: number) {
   if (mover.pending && mover.lastNode) {
     const pending = mover.pending;
     if (routeFrom(mover, mover.lastNode, pending, env, false)) { mover.pending = null; return; }
@@ -544,11 +658,17 @@ function finishRoute(mover: Mover, env: MovementEnv) {
   mover.steps = []; mover.stepIndex = 0; mover.backing = false;
   // The last one through a door closes it, even when the walk ends right beside it.
   const hit = env.doors?.duty(mover.id);
-  if (hit && env.doors && beginClosing(mover, env.doors, hit, 0)) return;
+  if (hit && env.doors && beginClosing(mover, env, hit, 0, dt)) return;
   const goal = mover.goal;
   if (goal?.kind === 'seat') {
+    if (env.canUseSeat && !env.canUseSeat(mover.id, goal.seat)) {
+      // Keep a real staging leg so a waiting newcomer can still make room.
+      mover.steps = [{ kind: 'walk', node: seatStageId(goal.seat.seatId), to: [...goal.seat.staging], stairs: false }];
+      mover.stepIndex = 0; mover.target = goal.seat.staging; mover.motion.walk = 0;
+      return;
+    }
     mover.seat = goal.seat;
-    if (isDeskChairSeat(goal.seat)) { releaseTrip(mover, env); startChair(mover, 'sit', goal.seat); return; }
+    if (isDeskChairSeat(goal.seat)) { releaseTrip(mover, env); startChair(mover, 'sit', goal.seat, env); return; }
     if (isStaticSeat(goal.seat)) { releaseTrip(mover, env); startStaticSeat(mover, 'sit', goal.seat); return; }
     mover.phase = 'sitting'; mover.timer = -1;
   }
@@ -571,8 +691,8 @@ function recoveryDoorClear(from: Readonly<Point3>, to: Readonly<Point3>, env: Mo
 }
 
 function abandonRecoveryInteraction(mover: Mover, env: MovementEnv): void {
-  if (mover.door) env.doors?.release(mover.door.id, mover.id);
-  env.doors?.clearDuty(mover.id);
+  if (mover.door) env.doors?.cancel(mover.door.id, mover.id);
+  env.doors?.clearActiveDoor(mover.id);
   releaseTrip(mover, env);
   mover.door = null; mover.cleared = null; mover.target = null;
   mover.recovery.yielding = null;
@@ -580,7 +700,287 @@ function abandonRecoveryInteraction(mover: Mover, env: MovementEnv): void {
   Object.assign(mover.natural, createNaturalWalkState());
 }
 
-/** A destination has three bounded chances: step aside, replan, then safe placement. */
+/** Phase ownership is stricter than merely seeing zero walking speed. */
+export function crowdWatchActor(mover: Mover, yielding = false): CrowdWatchActor {
+  const step = mover.steps[mover.stepIndex];
+  const chair = mover.chair;
+  const beat = chair ? (chair.kind === 'sit' ? SIT_BEATS : STAND_BEATS)[chair.beat] : null;
+  const freeChair = mover.phase === 'chairing' && mover.motion.reach.every(hand => hand.weight < .05)
+    && (beat === 'grip-walk' || beat === 'walk-out' || beat === 'walk-sit');
+  const door = mover.door;
+  const freeDoor = mover.phase === 'doorwork' && door?.beat === 'reserve';
+  const levelWalk = mover.phase === 'walking' && step?.kind === 'walk' && !step.stairs && !mover.backing;
+  const target = freeChair ? chair?.path[0] : mover.target ?? (step?.kind === 'walk' ? step.to : null);
+  const eligible = !yielding && !mover.recovery.yielding && !mover.trip && mover.motion.sit < .01 && Boolean(levelWalk || freeChair || freeDoor)
+    && Math.abs(mover.position[1] - floorY(floorAt(mover.position[1]))) < .05;
+  const goal = mover.pending ?? mover.goal;
+  let terminal: RouteStep | undefined;
+  for (let index = mover.steps.length - 1; index >= 0; index--) { if (mover.steps[index]?.kind === 'walk') { terminal = mover.steps[index]; break; } }
+  const destination = goal?.kind === 'seat' ? goal.seat.staging : terminal?.kind === 'walk' ? terminal.to : undefined;
+  return { id: mover.id, destination, floor: floorAt(mover.position[1]), position: mover.position, target,
+    movementIntent: Boolean(mover.goal || mover.pending) && mover.phase !== 'seated' && mover.phase !== 'gone', eligible,
+    intentionalWait: Boolean(mover.trip) || mover.phase === 'seated' || mover.phase === 'gone' || mover.phase === 'vanishing'
+      || Boolean(step?.kind === 'walk' && step.stairs)
+      || Boolean(door && (door.traffic?.stalled ?? 0) < 3)
+      || Boolean(mover.phase === 'chairing' && mover.monitor.stationarySeconds < 3) };
+}
+
+/** Retain a peer encounter across sampled-leg changes and reversible retreats. */
+function recoverEncounter(mover: Mover, dt: number, env: MovementEnv): void {
+  const step = mover.steps[mover.stepIndex], goal = mover.pending ?? mover.goal;
+  if (mover.phase !== 'walking' || !goal || mover.trip || mover.door || mover.chair || mover.staticSeat || mover.backing
+    || step?.kind !== 'walk' || step.stairs || !env.walkable || !env.nearbyWalkers) return;
+  let destination: Readonly<Point3> | undefined = env.navigation.waypoints.get(goalNode(goal))?.position;
+  if (!destination || Math.abs(destination[1] - mover.position[1]) > .05) {
+    // Cross-floor goals still need progress through their current floor run;
+    // the connector's controller owns the trip only once physically reached.
+    destination = undefined;
+    for (const next of mover.steps.slice(mover.stepIndex)) {
+      if (next.kind !== 'walk' || next.stairs || Math.abs(next.to[1] - mover.position[1]) > .05) break;
+      destination = next.to;
+      if (env.navigation.waypoints.get(next.node)?.kind === 'connector') break;
+    }
+  }
+  if (!destination) return;
+  const neighbors = env.nearbyWalkers(mover.id, mover.position);
+  let memory = mover.recovery.encounter;
+  const retainedPeer = memory?.peer;
+  let peer = memory && neighbors.find(other => other.id === retainedPeer && Math.abs(other.position[1] - mover.position[1]) < .8);
+  if (memory && (!peer || encounterPassed(memory, peer.position, mover.position))) { mover.recovery.encounter = null; mover.recovery.encounterSearches = 0; memory = null; peer = null; }
+  if (!memory) {
+    const dx = step.to[0] - mover.position[0], dz = step.to[2] - mover.position[2], length = Math.hypot(dx, dz);
+    if (length < .01) return;
+    const tx = dx / length, tz = dz / length;
+    peer = [...neighbors].filter(other => other.id !== mover.id && Math.abs(other.position[1] - mover.position[1]) < .8
+      && Math.hypot(other.position[0] - mover.position[0], other.position[2] - mover.position[2]) < 2
+      && (other.position[0] - mover.position[0]) * tx + (other.position[2] - mover.position[2]) * tz > .05
+      && Math.abs((other.position[0] - mover.position[0]) * tz - (other.position[2] - mover.position[2]) * tx) < .9)
+      .sort((a, b) => Math.hypot(a.position[0] - mover.position[0], a.position[2] - mover.position[2])
+        - Math.hypot(b.position[0] - mover.position[0], b.position[2] - mover.position[2]) || a.id.localeCompare(b.id))[0];
+    if (!peer) return;
+    memory = { peer: peer.id, origin: [...mover.position], direction: [tx, tz],
+      bestRemaining: Math.hypot(destination[0] - mover.position[0], destination[2] - mover.position[2]), stalled: 0, attempts: 0, retryIn: 0 };
+    mover.recovery.encounter = memory;
+  }
+  if (!peer || mover.crowdYield) return;
+  // A committed avoidance path owns its corners until it finishes or really stalls.
+  if (step.node === 'encounter-detour' && mover.monitor.stationarySeconds < 3) return;
+  const remaining = Math.hypot(destination[0] - mover.position[0], destination[2] - mover.position[2]);
+  if (memory.retryIn <= 0) refreshEncounterSearch(mover, neighbors);
+  // Ordinary yielding and crowd arbitration use the same stable winner. Give its
+  // peer the first search; the winner can escalate later if no passing bay exists.
+  const waitForPeer = Boolean(peer.target && mover.id < peer.id && memory.stalled < 24);
+  if (!encounterDue(memory, remaining, dt, waitForPeer ? 24 : 12)) return;
+  replanEncounter(mover, env, neighbors);
+}
+
+/** Changed physical occupancy can make a previously impossible bypass possible. */
+function refreshEncounterSearch(mover: Mover, neighbors: readonly WalkingNeighbor[]): void {
+  if (mover.recovery.encounterSearches < 3) return;
+  const signature = encounterBodySignature(neighbors);
+  if (signature === mover.recovery.encounterBodies) return;
+  mover.recovery.encounterSearches = 0;
+  if (mover.recovery.encounter) mover.recovery.encounter.attempts = 0;
+}
+
+const encounterBodySignature = (neighbors: readonly WalkingNeighbor[]) => JSON.stringify(neighbors.map(other =>
+  [other.id, ...other.position.map(value => Math.round(value / .25))]).sort((a, b) => String(a[0]).localeCompare(String(b[0]))));
+
+/** A clear tiny curve sample is insufficient: validate the onward corridor too. */
+function encounterContinuationClear(mover: Mover, env: MovementEnv, neighbors: readonly WalkingNeighbor[], encounter: Pick<EncounterMemory, 'origin' | 'direction'>): boolean {
+  if (!env.walkable) return false;
+  let previous: Readonly<Point3> = mover.position, length = 0;
+  for (let index = mover.stepIndex; index < mover.steps.length; index++) {
+    const step = mover.steps[index]!;
+    if (step.kind !== 'walk' || step.stairs || Math.abs(step.to[1] - previous[1]) > .05) return false;
+    if (!recoverySegmentClear(mover.id, previous, step.to, env.walkable, neighbors) || !recoveryDoorClear(previous, step.to, env)) return false;
+    length += Math.hypot(step.to[0] - previous[0], step.to[2] - previous[2]); previous = step.to;
+    const onward = (step.to[0] - encounter.origin[0]) * encounter.direction[0]
+      + (step.to[2] - encounter.origin[2]) * encounter.direction[1];
+    // Retracing a long parking breadcrumb is not proof the encounter is clear.
+    if (length >= 1.4 && onward >= 1.4) return true;
+    if (length > 8) return false;
+    const kind = env.navigation.waypoints.get(step.node)?.kind;
+    if (kind === 'door' || kind === 'connector' || step.node.endsWith(':stage') || step.node.endsWith('-entry-turn')) {
+      return index === mover.steps.length - 1;
+    }
+  }
+  return length > .05;
+}
+
+/** Replace only ordinary floor approaches, retaining every protected contact ahead. */
+function replanEncounter(mover: Mover, env: MovementEnv, neighbors: readonly WalkingNeighbor[]): boolean {
+  const first = mover.steps[mover.stepIndex];
+  if (!env.walkable || first?.kind !== 'walk' || first.stairs || mover.door || mover.trip || mover.backing) return false;
+  let join = mover.stepIndex, target = first;
+  for (let index = join + 1; index < mover.steps.length; index++) {
+    const next = mover.steps[index]!;
+    if (next.kind !== 'walk' || next.stairs || Math.abs(next.to[1] - mover.position[1]) > .05) break;
+    const kind = env.navigation.waypoints.get(target.node)?.kind;
+    if (kind === 'door' || kind === 'connector' || target.node.endsWith(':stage') || target.node.endsWith('-entry-turn')) break;
+    target = next; join = index;
+    if (Math.hypot(target.to[0] - mover.position[0], target.to[2] - mover.position[2]) >= 5) break;
+  }
+  const clear = (a: Readonly<Point3>, b: Readonly<Point3>) => recoverySegmentClear(mover.id, a, b, env.walkable!, neighbors)
+    && recoveryDoorClear(a, b, env) && !env.doors?.portals().some(hit => crossesDoorPortal(hit, a, b));
+  refreshEncounterSearch(mover, neighbors);
+  if ((mover.recovery.encounterSearches ?? 0) >= 3) return false;
+  mover.recovery.encounterBodies = encounterBodySignature(neighbors);
+  mover.recovery.encounterSearches = (mover.recovery.encounterSearches ?? 0) + 1;
+  const path = encounterPath(mover.position, target.to, clear);
+  if (!path) return false;
+  mover.steps.splice(mover.stepIndex, join - mover.stepIndex + 1, ...path.map((point, index) => ({
+    kind: 'walk' as const, node: index === path.length - 1 ? target.node : 'encounter-detour', to: point, stairs: false,
+  })));
+  mover.recovery.yielding = null;
+  Object.assign(mover.natural, createNaturalWalkState());
+  return true;
+}
+
+/** Called once for the arbiter’s nominee, never for every member of a cluster. */
+export function beginCrowdYield(mover: Mover, env: MovementEnv): boolean {
+  if (!env.walkable || !crowdWatchActor(mover).eligible) return false;
+  const actor = crowdWatchActor(mover), target = actor.target;
+  if (!target) return false;
+  const clear: WalkableSegment = (a, b, radius) => env.walkable!(a, b, radius)
+    || Boolean(mover.chair && env.chairMotionClear?.(mover.chair.seat, a, b, radius));
+  const neighbors = env.nearbyWalkers?.(mover.id, mover.position) ?? [];
+  const dx = target[0] - mover.position[0], dz = target[2] - mover.position[2], length = Math.hypot(dx, dz);
+  const direction: readonly [number, number] = length > .01 ? [dx / length, dz / length] : [0, 0];
+  const peer = mover.phase === 'walking' ? [...neighbors].filter(other => other.target && other.id !== mover.id
+    && Math.abs(other.position[1] - mover.position[1]) < .8
+    && Math.hypot(other.position[0] - mover.position[0], other.position[2] - mover.position[2]) < 2
+    && (other.position[0] - mover.position[0]) * direction[0] + (other.position[2] - mover.position[2]) * direction[1] > 0)
+    .sort((a, b) => a.id.localeCompare(b.id))[0] : undefined;
+  // Agree with ordinary recovery: the higher ID makes room. Otherwise the
+  // arbiter's nominee and the peer's local watchdog can both retreat at once.
+  if (peer && (peer.yieldingTo === mover.id || mover.id < peer.id)) return false;
+  const point = crowdEscape(mover.id, mover.position, target, neighbors, clear,
+    (a, b) => recoveryDoorClear(a, b, env) && !(env.doors?.portals().some(hit => crossesDoorPortal(hit, a, b))),
+    mover.door?.beat === 'reserve' ? mover.position : target);
+  if (!point) return false;
+  mover.crowdYield = { point, origin: [...mover.position], elapsed: 0, settled: 0, peer: peer?.id, direction };
+  return true;
+}
+
+function stepCrowdYield(mover: Mover, dt: number, env: MovementEnv): void {
+  const act = mover.crowdYield!;
+  act.elapsed += dt;
+  if (mover.door?.beat === 'reserve') env.doors?.queue(mover.door.id, mover.door.door, mover.id, mover.position, mover.door.entrySide);
+  // A new externally requested action must finish through its normal owner.
+  const eligible = crowdWatchActor(mover).eligible;
+  const before: Point3 = [...mover.position], phase = mover.motion.phase;
+  const neighbors = env.nearbyWalkers?.(mover.id, before) ?? [];
+  const remaining = eligible ? walkToward(mover, act.point, dt, .65, false) : 0;
+  const clear = env.walkable?.(before, mover.position, .29)
+    || Boolean(mover.chair && env.chairMotionClear?.(mover.chair.seat, before, mover.position, .29));
+  if (!clear || !staticSeatNeighborsClear(mover.id, before, mover.position, neighbors)
+    || !recoveryDoorClear(before, mover.position, env)) {
+    copy(mover.position, before); mover.motion.phase = phase;
+  }
+  const moved = Math.hypot(mover.position[0] - before[0], mover.position[2] - before[2]) > 1e-5;
+  easeWalk(mover, moved ? 1 : 0, dt);
+  if (remaining <= ARRIVE && !moved) act.settled += dt;
+  if (eligible && act.peer && act.direction) {
+    const peer = neighbors.find(other => other.id === act.peer);
+    const passed = !peer || encounterPassed({ origin: act.origin, direction: act.direction }, peer.position, mover.position);
+    if (!passed) {
+      if (act.elapsed < 4 && act.settled < 1.2) return;
+      // Release the shared crowd initiative as soon as the short retreat ends.
+      // The peer-specific handshake holds the rebased/breadcrumb route, so
+      // another cluster can recover while this pair waits for a physical pass.
+      finishCrowdYield(mover, env);
+      mover.recovery.yielding = { neighbor: act.peer, origin: act.origin, direction: act.direction, waited: 0 };
+      return;
+    }
+  }
+  if (eligible && act.elapsed < 4 && act.settled < 1.2) return;
+  finishCrowdYield(mover, env);
+}
+
+function finishCrowdYield(mover: Mover, env: MovementEnv): void {
+  const act = mover.crowdYield;
+  if (!act) return;
+  mover.crowdYield = null;
+  const ownedStep = mover.steps[mover.stepIndex];
+  const target = mover.chair ? mover.chair.path[0] : ownedStep?.kind === 'walk' ? ownedStep.to : null;
+  mover.target = null;
+  const clear = (a: Readonly<Point3>, b: Readonly<Point3>) => Boolean(env.walkable?.(a, b, .29)
+    || (mover.chair && env.chairMotionClear?.(mover.chair.seat, a, b, .29))) && recoveryDoorClear(a, b, env)
+    && !env.doors?.portals().some(hit => crossesDoorPortal(hit, a, b));
+  const retreatBack = target && !clear(mover.position, target) && clear(mover.position, act.origin);
+  // A partial retreat may not have reached its checked rejoin chord. Preserve
+  // the already swept breadcrumb rather than cutting the corner on timeout.
+  // Chair legs are authored around a held resource. Return through the checked
+  // breadcrumb even when a different direct chord appears clear.
+  if (mover.chair) {
+    mover.chair.path.unshift(act.origin);
+    mover.chair.rejoining = (mover.chair.rejoining ?? 0) + 1;
+  }
+  // Curve progress belongs to its old origin. Rebase from the real feet rather
+  // than replaying a sample (which would otherwise pull the body backwards).
+  const step = mover.steps[mover.stepIndex];
+  if (mover.phase === 'walking' && step?.kind === 'walk' && step.natural) {
+    const from = retreatBack ? act.origin : mover.position;
+    const dx = step.to[0] - from[0], dz = step.to[2] - from[2], length = Math.max(1e-6, Math.hypot(dx, dz));
+    const right: readonly [number, number] = [dz / length, -dx / length];
+    mover.steps[mover.stepIndex] = { ...step, natural: { ...step.natural, from: [...from], startDistance: 0,
+      endDistance: length, rightFrom: right, rightTo: right } };
+    Object.assign(mover.natural, createNaturalWalkState());
+  }
+  if (retreatBack && mover.phase === 'walking' && step?.kind === 'walk') {
+    mover.steps.splice(mover.stepIndex, 0, { kind: 'walk', node: mover.lastNode ?? step.node, to: act.origin, stairs: false });
+  }
+  if (mover.door?.beat === 'reserve') { mover.door.path = null; mover.door.queueRetry = 0; mover.door.approachRetry = 0; }
+}
+
+/** Recheck an inactive intent without renewing action budgets or disturbing purposeful waits. */
+function recoverStandingIntent(mover: Mover, env: MovementEnv): void {
+  if (!mover.monitor.actionable) { mover.stationaryRecheck = 0; return; }
+  if (mover.monitor.stationarySeconds < 10 || mover.monitor.stationarySeconds - mover.stationaryRecheck < 10) return;
+  mover.stationaryRecheck = mover.monitor.stationarySeconds;
+  const act = mover.staticSeat;
+  if (act?.kind === 'sit' && act.beat === 'approach' && act.route && mover.motion.sit === 0) {
+    // A once-clear exterior leg may now be occupied. Recompute from actual feet.
+    act.route = null; act.path = null; act.retry = 0;
+    return;
+  }
+  const externalExit = act?.kind === 'stand' && act.beat === 'exit' && mover.motion.sit === 0;
+  const step = mover.steps[mover.stepIndex];
+  const exhaustedWalk = mover.phase === 'walking' && mover.recovery.attempts >= MOVEMENT_RECOVERY_LIMIT
+    && step?.kind === 'walk' && !step.stairs && !mover.backing
+    && !env.navigation.connectors.some(connector => connector.waypoints.includes(step.node))
+    && Math.abs(mover.position[1] - floorY(floorAt(mover.position[1]))) < LEVEL_EPSILON;
+  const goal = mover.pending ?? mover.goal;
+  if ((!externalExit && !exhaustedWalk) || !goal || mover.trip || mover.door || !env.walkable || !env.nearbyWalkers) return;
+  if (exhaustedWalk) {
+    // Retry the retained intent from the current feet without renewing its
+    // exhausted recovery budget. The ten-second monitor cadence owns retries.
+    sendMover(mover, goal, env);
+    return;
+  }
+  const navigation = recoveryNavigation(mover, env.navigation);
+  const neighbors = env.nearbyWalkers(mover.id, mover.position);
+  const plan = staticRoutePlanner(navigation, env);
+  const candidates = [...navigation.waypoints.values()]
+    .filter(node => node.kind !== 'door' && node.kind !== 'connector' && (!node.id.startsWith('seat:') || node.id.endsWith(':aisle')) && Math.abs(node.position[1] - mover.position[1]) < LEVEL_EPSILON)
+    .map(node => ({ node, distance: Math.hypot(node.position[0] - mover.position[0], node.position[2] - mover.position[2]) }))
+    .filter(candidate => candidate.distance >= .25 && candidate.distance <= 6).sort((a, b) => a.distance - b.distance).slice(0, 16);
+  for (const { node } of candidates) {
+    if (!recoverySegmentClear(mover.id, mover.position, node.position, env.walkable, neighbors)
+      || !recoveryDoorClear(mover.position, node.position, env)) continue;
+    const route = plan(node.id, goalNode(goal));
+    if (!route) continue;
+    const first = route.steps[0];
+    // Do not repeatedly retreat to an origin whose onward leg is still blocked.
+    if (first?.kind === 'walk' && !first.stairs && Math.abs(first.to[1] - node.position[1]) < LEVEL_EPSILON
+      && !env.walkable(node.position, first.to, .29)) continue;
+    // This is an ordinary swept walk, never a placement through an obstacle.
+    if (routeFrom(mover, node.id, goal, env, true)) { mover.pending = null; return; }
+  }
+}
+
+/** A destination has three bounded chances to rejoin by continuous, checked walking. */
 function recoverStalledMover(mover: Mover, dt: number, env: MovementEnv): void {
   const goal = mover.pending ?? mover.goal;
   if (goal) recoveryGoal(mover.recovery, goalNode(goal));
@@ -605,12 +1005,13 @@ function recoverStalledMover(mover: Mover, dt: number, env: MovementEnv): void {
   }
   const door = mover.phase === 'doorwork' ? mover.door : null;
   const walking = mover.phase === 'walking' && step?.kind === 'walk' && !step.stairs && !mover.backing && Math.abs(mover.position[1] - floorY(floorAt(mover.position[1]))) < LEVEL_EPSILON;
-  const queued = door && !door.door.sliding && door.kind === 'wait' && door.beat === 'reserve';
+  const queued = door && ((door.kind === 'wait' && door.beat === 'reserve')
+    || (door.beat === 'resume' && (env.doors?.hasQueued(door.id, mover.id) || (env.doors?.amount(door.id) ?? 0) > .05)));
   const yielding = mover.recovery.yielding && step?.node !== 'movement-recovery-yield';
   const signature = queued || yielding ? null : door ? `door:${door.id}:${door.kind}:${door.beat}` : walking ? `walk:${mover.stepIndex}` : null;
   const remaining = walking && step?.kind === 'walk' ? Math.hypot(step.to[0] - mover.position[0], step.to[2] - mover.position[2]) : Infinity;
   if (!recoveryDue(mover.recovery, mover.position, signature, door ? env.doors?.amount(door.id) ?? 0 : 0, dt, door ? DOOR_STALL_SECONDS : WALK_STALL_SECONDS, remaining)) return;
-  // Static clearance is required for detours; placement also needs a body snapshot.
+  // Static clearance and current bodies must allow each escape corridor.
   if (!env.walkable) return;
   const neighbors = env.nearbyWalkers?.(mover.id, mover.position) ?? [];
   const clear = (from: Readonly<Point3>, to: Readonly<Point3>) => recoverySegmentClear(mover.id, from, to, env.walkable!, neighbors) && recoveryDoorClear(from, to, env);
@@ -623,7 +1024,7 @@ function recoverStalledMover(mover: Mover, dt: number, env: MovementEnv): void {
       if (!next || next.kind !== 'walk' || next.stairs) break;
       target = next; join++;
     }
-    const middle = recoveryDetour(mover.position, target.to, (from, to) => recoverySegmentClear(mover.id, from, to, env.walkable!, neighbors));
+    const middle = recoveryDetour(mover.position, target.to, clear);
     if (middle && recoveryDoorClear(mover.position, middle, env)) {
       // Discard obsolete curve progress, retaining every authored contact ahead.
       mover.steps.splice(mover.stepIndex, join - mover.stepIndex + 1,
@@ -638,7 +1039,7 @@ function recoverStalledMover(mover: Mover, dt: number, env: MovementEnv): void {
     if (length > 0.01) {
       const tx = dx / length, tz = dz / length;
       // A stable winner continues; the other retreats to a clear same-side apron.
-      const blocker = neighbors.find(other => other.id < mover.id && Math.abs(other.position[1] - mover.position[1]) < .8
+      const blocker = neighbors.find(other => other.id < mover.id && other.yieldingTo !== mover.id && Math.abs(other.position[1] - mover.position[1]) < .8
         && (other.position[0] - mover.position[0]) * tx + (other.position[2] - mover.position[2]) * tz > 0
         && Math.hypot(other.position[0] - mover.position[0], other.position[2] - mover.position[2]) < 2);
       if (blocker) {
@@ -662,29 +1063,25 @@ function recoverStalledMover(mover: Mover, dt: number, env: MovementEnv): void {
     }
   }
   if (mover.recovery.attempts === 1) {
-    if (door && step?.kind === 'walk') {
+    if (door && step?.kind === 'walk' && (door.door.sliding || door.beat !== 'passage' && door.beat !== 'handoff')) {
       abandonRecoveryInteraction(mover, env);
       mover.phase = 'walking';
     }
     return;
   }
   if (!goal || !env.nearbyWalkers) return;
+  const plan = staticRoutePlanner(recoveryNavigation(mover, env.navigation), env);
   const candidates = [...env.navigation.waypoints.values()]
     .filter(node => node.kind !== 'door' && node.kind !== 'connector' && !node.id.startsWith('seat:') && Math.abs(node.position[1] - mover.position[1]) < LEVEL_EPSILON)
     .map(node => ({ node, distance: Math.hypot(node.position[0] - mover.position[0], node.position[2] - mover.position[2]) }))
     .filter(candidate => candidate.distance >= 0.75 && candidate.distance <= 6)
     .sort((a, b) => a.distance - b.distance).slice(0, 16);
   for (const { node } of candidates) {
-    if (!clear(mover.position, node.position) || !planRoute(node.id, goalNode(goal), env.navigation)) continue;
+    if (!clear(mover.position, node.position) || !plan(node.id, goalNode(goal))) continue;
     // Validate first. Failed recovery must not discard ownership or a pending goal.
     abandonRecoveryInteraction(mover, env);
-    if (mover.recovery.attempts >= 3) {
-      env.trackWalker?.(mover.id, null); env.trackBody?.(mover.id, null);
-      copy(mover.position, node.position); copy(mover.prev, node.position);
-      mover.motion.walk = 0; mover.opacity = 0;
-    }
     // The newest requested destination wins; pending is retained for normal handoff.
-    routeFrom(mover, node.id, goal, env, mover.recovery.attempts < 3);
+    routeFrom(mover, node.id, goal, env, true);
     return;
   }
 }
@@ -821,13 +1218,74 @@ function cornerAhead(mover: Mover, step: Extract<RouteStep, { kind: 'walk' }>): 
   return next.to;
 }
 
+function routeDoorAhead(mover: Mover, env: MovementEnv): DoorHit | null {
+  const doors = env.doors!, neighbors = env.nearbyWalkers?.(mover.id, mover.position) ?? [], registered = doors.portals();
+  const step = mover.steps[mover.stepIndex], target = neighbors.some(other => other.queueDoor)
+    ? walkingTravelTarget(mover) ?? mover.target ?? (step?.kind === 'walk' ? step.to : null) : null;
+  const dx = target ? target[0] - mover.position[0] : 0, dz = target ? target[2] - mover.position[2] : 0, length = Math.hypot(dx, dz);
+  const joinsVisibleTail = (hit: DoorHit): boolean => {
+    if (length < .02 || dx * (hit.door.center[0] - mover.position[0]) + dz * (hit.door.center[2] - mover.position[2]) <= 0) return false;
+    return neighbors.some(other => {
+      const queue = other.queueDoor;
+      if (!queue || queue.id !== hit.id || Math.abs(other.position[1] - mover.position[1]) > .1
+        || doorAxes(hit.door, mover.position).through * queue.entrySide < .29
+        || doorAxes(hit.door, other.position).through * queue.entrySide < .29) return false;
+      const x = other.position[0] - mover.position[0], z = other.position[2] - mover.position[2], ahead = (x * dx + z * dz) / length;
+      if (ahead <= .05 || Math.hypot(x, z) > 2.5 || Math.abs(x * dz - z * dx) / length > .8
+        || env.walkable && !env.walkable(mover.position, other.position, .29)
+        || registered.some(portal => portal.id !== hit.id && crossesDoorPortal(portal, mover.position, other.position))) return false;
+      const turn = doors.queueStatus(hit.id, other.id);
+      return turn.ahead < turn.count;
+    });
+  };
+  const portals = registered.filter(hit => Math.abs(hit.door.center[1] - mover.position[1]) < .1);
+  const eligible = new Set(portals.filter(hit =>
+    (Math.hypot(hit.door.center[0] - mover.position[0], hit.door.center[2] - mover.position[2]) <= DOOR_QUEUE_RANGE_M || joinsVisibleTail(hit))
+    && (Math.abs(doorAxes(hit.door, mover.position).through) > DOOR_BODY_CLEARANCE + .02
+      || Math.abs(doorAxes(hit.door, mover.position).across) <= hit.door.clearWidth / 2 + .25)).map(hit => hit.id));
+  if (eligible.size === 0) return null;
+  let from: Readonly<Point3> = mover.position, distance = 0;
+  for (let index = mover.stepIndex; index < Math.min(mover.steps.length, mover.stepIndex + 96); index++) {
+    const step = mover.steps[index]!;
+    if (step.kind !== 'walk' || step.stairs || Math.abs(step.to[1] - mover.position[1]) > .1) break;
+    const hits = portals.filter(hit => crossesDoorPortal(hit, from, step.to));
+    if (hits.length) {
+      const first = hits.sort((a, b) => Math.hypot(a.door.center[0] - from[0], a.door.center[2] - from[2])
+        - Math.hypot(b.door.center[0] - from[0], b.door.center[2] - from[2]))[0]!;
+      // An out-of-range portal is still physically first; never reserve a
+      // farther queue through it merely because that queue has a visible tail.
+      return eligible.has(first.id) ? first : null;
+    }
+    // A route can pass a door's infinite plane elsewhere on the floor first.
+    // Reserve only from the face where its actual portal approach begins.
+    for (const hit of portals) {
+      const at = doorAxes(hit.door, step.to);
+      if (at.through * doorAxes(hit.door, mover.position).through < 0
+        || Math.abs(at.through) <= DOOR_BODY_CLEARANCE + .02 && Math.abs(at.across) > hit.door.clearWidth / 2 + .25) eligible.delete(hit.id);
+    }
+    distance += Math.hypot(step.to[0] - from[0], step.to[2] - from[2]);
+    if (distance > DOOR_QUEUE_RANGE_M * 2) break;
+    from = step.to;
+  }
+  return null;
+}
+
 function stepWalking(mover: Mover, dt: number, env: MovementEnv) {
   const yielding = mover.recovery.yielding;
   if (yielding && mover.steps[mover.stepIndex]?.node !== 'movement-recovery-yield') {
     const other = env.nearbyWalkers?.(mover.id, mover.position).find(neighbor => neighbor.id === yielding.neighbor);
-    const passed = other && (other.position[0] - yielding.origin[0]) * yielding.direction[0] + (other.position[2] - yielding.origin[2]) * yielding.direction[1] < -.75;
+    const passed = other && encounterPassed(yielding, other.position, mover.position);
     yielding.waited += dt;
-    if (other && !passed && yielding.waited < 6) {
+    const neighbors = env.nearbyWalkers?.(mover.id, mover.position) ?? [];
+    const recheck = Math.floor(yielding.waited) !== Math.floor(yielding.waited - dt);
+    const onwardClear = recheck && encounterContinuationClear(mover, env, neighbors, yielding);
+    if (other && !passed && !onwardClear) {
+      // Keep the passing decision until physical progress proves it resolved.
+      // A stalled peer gets a different checked route probe, not a timed re-entry.
+      if (yielding.waited >= 12) {
+        yielding.waited = 0;
+        if (replanEncounter(mover, env, neighbors)) return;
+      }
       const step = mover.steps[mover.stepIndex];
       mover.target = step?.kind === 'walk' ? step.to : null;
       easeWalk(mover, 0, dt);
@@ -837,17 +1295,22 @@ function stepWalking(mover: Mover, dt: number, env: MovementEnv) {
   }
   let budget = dt;
   const hit = env.doors?.duty(mover.id);
-  if (hit && env.doors && beginClosing(mover, env.doors, hit, DOOR_CLOSE_MIN_M)) return;
+  if (hit && env.doors && beginClosing(mover, env, hit, DOOR_CLOSE_MIN_M, dt)) return;
   // Carry the frame across short curve samples without stopping at each marker.
   for (let guard = 0; guard < 16 && budget > 0; guard++) {
     const step = mover.steps[mover.stepIndex];
-    if (!step) { finishRoute(mover, env); return; }
+    if (!step) { finishRoute(mover, env, dt); return; }
+    // A promised follower may cancel after the last physical passer left the
+    // aisle. Resolve that responsibility before changing floors or vanishing.
+    if (hit && (step.kind === 'elevator' || step.kind === 'walk' && step.stairs)
+      && beginClosing(mover, env, hit, 0, dt)) return;
     if (step.kind === 'walk' && env.doors && !step.stairs && !mover.backing) {
-      const door = env.doors.doorAhead(mover.position, step.to);
+      const door = (env.nearbyWalkers ? routeDoorAhead(mover, env) : null)
+        ?? env.doors.doorAhead(mover.position, step.to, APPROACH_RANGE_M);
       if (door && mover.cleared !== door.id) {
+        if (hit && hit.id !== door.id && beginClosing(mover, env, hit, 0, dt)) return;
         const verdict = env.doors.request(door.id, door.door, mover.id);
-        if (verdict === 'pass' && door.door.sliding) mover.cleared = door.id;
-        else { startDoorAct(mover, verdict, door); return; }
+        startDoorAct(mover, verdict, door); return;
       } else if (!door) mover.cleared = null;
     }
     if (step.kind === 'elevator') {
@@ -879,13 +1342,21 @@ function stepWalking(mover: Mover, dt: number, env: MovementEnv) {
       state.blockedTime = travelled < 1e-4 ? state.blockedTime + budget : 0;
       left = advanced.arrived ? 0 : 1;
     } else {
+      const seatExit = mover.backing ? mover.seatExit : null;
+      const departureNeighbors = seatExit ? env.nearbyWalkers?.(mover.id, mover.position) ?? [] : [];
+      if (seatExit) scale *= protectedHeadway(mover.id, mover.position, step.to, walkSpeed(mover) * scale, budget, departureNeighbors);
       if (env.walkable && env.nearbyWalkers && (!step.stairs || mover.recovery.stairRetreat.includes(step.node)) && !mover.backing) {
         scale *= protectedHeadway(mover.id, mover.position, step.to, walkSpeed(mover) * scale, budget, env.nearbyWalkers(mover.id, mover.position));
       }
       const beforePosition: Point3 = [...mover.position];
       const beforePhase = mover.motion.phase;
       left = walkToward(mover, step.to, budget, scale, mover.backing, cornerAhead(mover, step));
-      if (env.walkable && env.nearbyWalkers && !step.stairs && !mover.backing && !env.walkable(beforePosition, mover.position, 0.29)) {
+      if (seatExit && ((env.seatExitClear && !env.seatExitClear(seatExit, beforePosition, mover.position, .29))
+        || !staticSeatNeighborsClear(mover.id, beforePosition, mover.position, departureNeighbors, budget))) {
+        copy(mover.position, beforePosition); mover.motion.phase = beforePhase; left = 1;
+      }
+      if (!step.stairs && !mover.backing && ((!staticSeatNeighborsClear(mover.id, beforePosition, mover.position, env.nearbyWalkers?.(mover.id, beforePosition) ?? []))
+        || (env.walkable && env.nearbyWalkers && !env.walkable(beforePosition, mover.position, 0.29)))) {
         copy(mover.position, beforePosition); mover.motion.phase = beforePhase; left = 1;
       }
     }
@@ -897,6 +1368,7 @@ function stepWalking(mover: Mover, dt: number, env: MovementEnv) {
     if (!step.natural?.transit) mover.lastNode = step.node;
     if (mover.recovery.stairRetreat[0] === step.node) mover.recovery.stairRetreat.shift();
     mover.backing = false;
+    mover.seatExit = null;
     mover.stepIndex++;
     if (mover.pending) {
       const pending = mover.pending;
@@ -918,29 +1390,48 @@ function stepElevator(mover: Mover, dt: number, env: MovementEnv) {
   const trip = mover.trip;
   if (!trip) { mover.phase = 'walking'; return; }
   const lifts = env.elevators;
+  const move = (target: Readonly<Point3>, speed: number, landingOnly = false, allowWaitingRetreat = false): boolean => {
+    if (Math.hypot(target[0] - mover.position[0], target[2] - mover.position[2]) < ARRIVE) { easeWalk(mover, 0, dt); return true; }
+    const before: Point3 = [...mover.position], phase = mover.motion.phase;
+    const neighbors = env.nearbyWalkers?.(mover.id, before) ?? [];
+    let next = elevatorMovementTarget(mover, mover.id, trip.id, before, target, dt, env.walkable, neighbors, landingOnly);
+    if (!next && allowWaitingRetreat && neighbors.some(other => other.id !== mover.id
+      && (lifts.canBoard(other.id, trip.id) || lifts.canExit(other.id, trip.id)))) {
+      // Keep this waiting reservation while clearing the actual doorway owner's path.
+      next = elevatorWaitingRetreatTarget(mover.id, trip.id, before, trip.landing, env.walkable, neighbors, dt);
+    }
+    mover.target = target;
+    if (!next || Math.hypot(next[0] - before[0], next[2] - before[2]) < 1e-5) { easeWalk(mover, 0, dt); return false; }
+    easeWalk(mover, 1, dt);
+    walkToward(mover, next, dt, speed, false);
+    if (!elevatorSegmentClear(trip.id, before, mover.position, env.walkable)
+      || !staticSeatNeighborsClear(mover.id, before, mover.position, neighbors, dt)) {
+      copy(mover.position, before); mover.motion.phase = phase; easeWalk(mover, 0, dt); return false;
+    }
+    return Math.hypot(target[0] - mover.position[0], target[2] - mover.position[2]) < ARRIVE;
+  };
   if (mover.phase === 'waiting') {
     if (!trip.requested) { lifts.request(mover.id, trip.from, trip.to, trip.id); trip.requested = true; }
-    // Queue beside the landing door, one body apart per reserved waiting place.
+    if (lifts.canBoard(mover.id, trip.id)) { mover.phase = 'boarding'; trip.stage = 'approach'; return; }
+    // Even the first waiting place stays beside the shared exit/approach lane.
     const slot = lifts.waitingSlot(mover.id, trip.id) ?? 0;
-    const door = lifts.door(trip.id);
-    const approach = trip.landing;
-    scratch[0] = approach[0] - 0.75 * (slot % 3); scratch[1] = floorY(trip.from); scratch[2] = approach[2] + (slot >= 3 ? (door.z < 0 ? -0.75 : 0.75) : 0);
-    if (walkToward(mover, scratch, dt, 0.8, false) > 0) { easeWalk(mover, 1, dt); return; }
+    if (!move(elevatorWaitingPosition(trip.landing, lifts.door(trip.id), slot), .8, true, true)) return;
     easeWalk(mover, 0, dt);
     mover.yaw = turnToward(mover.yaw, headingOf(1, 0), TURN_RATE, dt);
-    if (lifts.canBoard(mover.id, trip.id)) { mover.phase = 'boarding'; trip.stage = 'door'; }
     return;
   }
   if (mover.phase === 'boarding') {
-    easeWalk(mover, 1, dt);
+    if (!lifts.canBoard(mover.id, trip.id)) { easeWalk(mover, 0, dt); return; }
+    if (trip.stage === 'approach') {
+      if (move(trip.landing, .8, true)) trip.stage = 'door';
+      return;
+    }
     if (trip.stage === 'door') {
-      if (walkToward(mover, doorPoint(env, trip, trip.from, scratch), dt, 0.8, false) > 0) return;
-      trip.stage = 'slot';
+      if (move(doorPoint(env, trip, trip.from, scratch), .8)) trip.stage = 'slot';
+      return;
     }
     const slot = lifts.standingPosition(mover.id, trip.id);
-    if (!slot) return;
-    if (walkToward(mover, slot, dt, 0.7, false) > 0) return;
-    if (lifts.confirmBoarded(mover.id, trip.id)) mover.phase = 'riding';
+    if (slot && move(slot, .7) && lifts.confirmBoarded(mover.id, trip.id)) mover.phase = 'riding';
     return;
   }
   if (mover.phase === 'riding') {
@@ -952,14 +1443,15 @@ function stepElevator(mover: Mover, dt: number, env: MovementEnv) {
     if (lifts.canExit(mover.id, trip.id)) { mover.phase = 'alighting'; trip.stage = 'door'; }
     return;
   }
-  // Alighting: clear the doorway (then free it for the next rider), then the landing.
-  easeWalk(mover, 1, dt);
+  // Keep the controller token until the entire doorway/landing lane is clear.
   if (trip.stage === 'door') {
-    if (walkToward(mover, doorPoint(env, trip, trip.to, scratch), dt, 0.8, false) > 0) return;
-    if (!trip.exited) trip.exited = lifts.confirmExited(mover.id, trip.id);
-    trip.stage = 'approach';
+    if (!lifts.canExit(mover.id, trip.id)) { easeWalk(mover, 0, dt); return; }
+    if (move(doorPoint(env, trip, trip.to, scratch), .8)) trip.stage = 'approach';
+    return;
   }
-  if (walkToward(mover, trip.exit, dt, 0.9, false) > 0) return;
+  if (!move(trip.exit, .9)) return;
+  if (!trip.exited) trip.exited = lifts.confirmExited(mover.id, trip.id);
+  if (!trip.exited) return;
   mover.trip = null;
   mover.lastNode = mover.steps[mover.stepIndex]?.node ?? null;
   mover.stepIndex++;
@@ -1104,22 +1596,39 @@ function aimHand(mover: Mover, hand: 0 | 1, weight: number, point: Readonly<Poin
   if (point) toCharacterFrame(mover.position, mover.yaw, point, reach.target);
 }
 
-function startChair(mover: Mover, kind: 'sit' | 'stand', seat: SeatApproach): void {
-  if (kind === 'sit') mover.chairSide = chairManeuverSide(mover.id, mover.chairSequence++);
+function startChair(mover: Mover, kind: 'sit' | 'stand', seat: SeatApproach, env: MovementEnv): void {
+  if (kind === 'sit') {
+    const preferred = chairManeuverSide(mover.id, mover.chairSequence);
+    const side = env.chairMotionClear ? chooseChairManeuverSide(seat, kind, mover.position, preferred, env.chairMotionClear) : preferred;
+    if (side === null) {
+      mover.phase = 'walking'; mover.target = seat.staging;
+      mover.steps = [{ kind: 'walk', node: seatStageId(seat.seatId), to: [...seat.staging], stairs: false }]; mover.stepIndex = 0;
+      return;
+    }
+    mover.chairSide = side; mover.chairSequence++;
+  }
   mover.chair = { kind, seat, side: mover.chairSide, beat: 0, timer: 0, begun: false, path: [] };
   mover.phase = 'chairing';
 }
 
 /** Standing up from a desk chair: the hands press on the armrests and the chair rolls back as the body rises. */
-function standingAtChair(mover: Mover, seat: SeatApproach, fraction: number, dt: number): void {
+function chairBodyClear(mover: Mover, seat: SeatApproach, to: Readonly<Point3>, env: MovementEnv, from: Readonly<Point3> = mover.position, rejoining = false): boolean {
+  return (!env.chairMotionClear || (rejoining && env.walkable?.(from, to, .29)) || env.chairMotionClear(seat, from, to, .29))
+    && staticSeatNeighborsClear(mover.id, from, to, env.nearbyWalkers?.(mover.id, from) ?? []);
+}
+
+function standingAtChair(mover: Mover, seat: SeatApproach, fraction: number, dt: number, env: MovementEnv): boolean {
   const pull = standPull(fraction), side = mover.chairSide;
-  mover.chairPull = pull;
   const front = CHAIR_FRONT_APPROACH * smooth01((fraction - 0.6) / 0.4);
-  chairWorld(seat, pull, 0, 0, front, mover.position, side);
+  chairWorld(seat, pull, 0, 0, front, scratch, side);
+  if (!chairBodyClear(mover, seat, scratch, env)) return false;
+  mover.chairPull = pull;
+  copy(mover.position, scratch);
   mover.yaw = chairYaw(seat, pull, side);
   const release = 1 - smooth01((fraction - 0.6) / 0.2);
   aimHand(mover, LEFT, Math.min(release, rampWeight(mover.motion.reach[LEFT].weight, 1, dt, RAMP_S)), chairContactWorld(seat, pull, -ARMREST.x, ARMREST.y, ARMREST.z, handPoint, side));
   aimHand(mover, RIGHT, Math.min(release, rampWeight(mover.motion.reach[RIGHT].weight, 1, dt, RAMP_S)), chairContactWorld(seat, pull, ARMREST.x, ARMREST.y, ARMREST.z, handPoint, side));
+  return true;
 }
 
 function nextBeat(act: ChairAct): void { act.beat++; act.timer = 0; act.begun = false; }
@@ -1132,8 +1641,17 @@ function stepChair(mover: Mover, dt: number, env: MovementEnv): void {
   if (beat === undefined) { finishChair(mover, env); return; }
   const seat = act.seat;
   if (!act.begun) { act.begun = true; act.timer = 0; act.path = chairWalkPath(seat, beat, act.side); }
-  act.timer += dt;
-  const t = act.timer;
+  const t = act.timer + dt;
+  // Validate root proposals before advancing the beat, chair or sitting pose.
+  let proposal: Point3 | null = null;
+  if (beat === 'pull' || beat === 'push') {
+    const along = smooth01(t / BEAT_S.pull), pull = beat === 'pull' ? along : 1 - along;
+    proposal = chairWorld(seat, pull, GRIP_STAND[0], 0, GRIP_STAND[1], [0, 0, 0], act.side);
+  } else if (beat === 'lower') {
+    proposal = chairWorld(seat, 1, 0, 0, CHAIR_FRONT_APPROACH * (1 - smooth01(t / BEAT_S.lower)), [0, 0, 0], act.side);
+  } else if (beat === 'scoot') proposal = sittingCentre(seat, scootPull(t), [0, 0, 0], act.side);
+  if (proposal && !chairBodyClear(mover, seat, proposal, env)) { easeWalk(mover, 0, dt); return; }
+  act.timer = t;
   const hand = mover.motion.reach;
   const gripHand = act.side === 1 ? RIGHT : LEFT;
   const freeHand = gripHand === RIGHT ? LEFT : RIGHT;
@@ -1145,8 +1663,14 @@ function stepChair(mover: Mover, dt: number, env: MovementEnv): void {
     aimHand(mover, RIGHT, rampWeight(hand[RIGHT].weight, 0, dt, RAMP_S), null);
     const target = act.path[0];
     if (!target) { nextBeat(act); return; }
-    if (walkToward(mover, target, dt, 0.7, false, act.path[1] ?? null) > 0) return;
+    const before: Point3 = [...mover.position], phase = mover.motion.phase;
+    const remaining = walkToward(mover, target, dt, .7, false, act.path[1] ?? null);
+    if (!chairBodyClear(mover, seat, mover.position, env, before, (act.rejoining ?? 0) > 0)) {
+      copy(mover.position, before); mover.motion.phase = phase; act.timer -= dt; easeWalk(mover, 0, dt); return;
+    }
+    if (remaining > 0) return;
     act.path.shift();
+    if (act.rejoining) act.rejoining--;
     if (act.path.length === 0) nextBeat(act);
     return;
   }
@@ -1219,6 +1743,7 @@ function stepChair(mover: Mover, dt: number, env: MovementEnv): void {
 /** The chair beats are done: a sitter sits in place, a standing person leaves on its route. */
 function finishChair(mover: Mover, env: MovementEnv): void {
   const act = mover.chair;
+  if (act?.kind === 'sit' && !chairBodyClear(mover, act.seat, act.seat.seat, env)) return;
   mover.chair = null;
   mover.chairPull = 0;
   aimHand(mover, LEFT, 0, null);
@@ -1267,24 +1792,130 @@ function startDoorAct(mover: Mover, kind: DoorAct['kind'], hit: DoorHit): void {
 /** Which side of the frame the walker approached from (fixed throughout an act). */
 const doorSide = (door: Readonly<DoorInfo>, position: Readonly<Point3>): 1 | -1 => doorAxes(door, position).through >= 0 ? 1 : -1;
 
-function beginClosing(mover: Mover, doors: DoorTraffic, hit: DoorHit, minMeters: number): boolean {
-  const distance = Math.abs(doorAxes(hit.door, mover.position).through);
-  if (distance > DOOR_CLOSE_MAX_M) { doors.clearDuty(mover.id); return false; }
+/** Leaf-local detours alone cannot route round a room's desks. Join its authored aisles. */
+function doorReturnPath(mover: Mover, env: MovementEnv, hit: DoorHit, amount: number, target: Readonly<Point3>, origin: Readonly<Point3> = mover.position): Point3[] | null {
+  const portals = env.doors?.portals() ?? [];
+  const checked = (from: Readonly<Point3>, to: Readonly<Point3>): Point3[] | null => {
+    const path = doorWalkPath(hit.door, amount, from, to, env.walkable);
+    let previous = from;
+    if (!path?.every(point => {
+      const clear = (!env.walkable || env.walkable(previous, point, .29))
+        && staticSeatNeighborsClear(mover.id, previous, point, env.nearbyWalkers?.(mover.id, previous) ?? [])
+        && !portals.some(portal => portal.id !== hit.id && crossesDoorPortal(portal, previous, point));
+      previous = point; return clear;
+    })) return null;
+    return path;
+  };
+  const direct = checked(origin, target);
+  if (direct) return direct;
+  const distance = (a: Readonly<Point3>, b: Readonly<Point3>) => Math.hypot(a[0] - b[0], a[2] - b[2]);
+  const nodes = [...env.navigation.waypoints.values()].filter(node => node.kind !== 'connector'
+    && (!node.id.startsWith('seat:') || node.id.endsWith(':aisle'))
+    && Math.abs(node.position[1] - origin[1]) <= .05
+    && distance(node.position, hit.door.center) <= 12 && distance(node.position, origin) <= 12)
+    .sort((a, b) => distance(a.position, origin) + distance(a.position, target)
+      - distance(b.position, origin) - distance(b.position, target)).slice(0, 64);
+  const index = new Map(nodes.map((node, i) => [node.id, i]));
+  const costs = nodes.map(() => Infinity), paths: (Point3[] | null)[] = nodes.map(() => null), visited = new Set<number>();
+  const length = (from: Readonly<Point3>, path: readonly Point3[]) => {
+    let cost = 0; for (const point of path) { cost += distance(from, point); from = point; } return cost;
+  };
+  for (const [i, node] of nodes.entries()) {
+    const path = checked(origin, node.position);
+    if (path) { costs[i] = length(origin, path); paths[i] = path; }
+  }
+  let best: Point3[] | null = null, bestCost = Infinity;
+  for (let guard = 0; guard < nodes.length; guard++) {
+    let at = -1;
+    for (let i = 0; i < nodes.length; i++) if (!visited.has(i) && (at < 0 || costs[i]! < costs[at]!)) at = i;
+    if (at < 0 || !Number.isFinite(costs[at]!) || costs[at]! >= bestCost) break;
+    visited.add(at);
+    const node = nodes[at]!, finish = checked(node.position, target);
+    if (finish && costs[at]! + length(node.position, finish) < bestCost) {
+      bestCost = costs[at]! + length(node.position, finish); best = [...paths[at]!, ...finish];
+    }
+    for (const edge of env.navigation.graph.edges.get(node.id) ?? []) {
+      const next = index.get(edge.to);
+      if (next === undefined || visited.has(next)) continue;
+      const path = checked(node.position, nodes[next]!.position);
+      const cost = path ? costs[at]! + length(node.position, path) : Infinity;
+      if (path && cost < costs[next]!) { costs[next] = cost; paths[next] = [...paths[at]!, ...path]; }
+    }
+  }
+  return best;
+}
+
+function beginClosing(mover: Mover, env: MovementEnv, hit: DoorHit, minMeters: number, dt: number): boolean {
+  const doors = env.doors!;
+  const wait = () => { mover.target = mover.position; easeWalk(mover, 0, dt); return true; };
+  if (Math.abs(mover.position[1] - hit.door.center[1]) > .05) return wait();
+  if (doors.localSuccessor(hit.id, mover.id)) return minMeters === 0 ? wait() : false;
+  const axes = doorAxes(hit.door, mover.position), distance = Math.abs(axes.through);
   if (distance < minMeters) return false;
-  doors.clearDuty(mover.id);
+  let returning: { side: 1 | -1; target: Point3; path: Point3[]; rejoin: Point3[] } | undefined;
+  if (Math.hypot(axes.across, axes.through) > DOOR_CLOSE_MAX_M) {
+    for (const side of [-1, 1] as const) {
+      const target = doorClosePosition(hit.door, doors.amount(hit.id), side, [0, 0, 0]);
+      const path = doorReturnPath(mover, env, hit, doors.amount(hit.id), target);
+      // The other handle face may strand a closer outside its room after the
+      // swing. Verify and retain an actual return with the leaf fully shut.
+      const closed = doorClosePosition(hit.door, 0, side, [0, 0, 0]);
+      const rejoin = path && doorReturnPath(mover, env, hit, 0, mover.position, closed);
+      if (path && rejoin) { returning = { side, target, path, rejoin }; break; }
+    }
+    if (!returning) return wait();
+  }
+  if (!doors.claimClosure(hit.id, mover.id)) return wait();
+  const step = mover.steps[mover.stepIndex];
+  if (minMeters === 0 || !step || step.kind === 'elevator' || step.kind === 'walk' && step.stairs) {
+    // A seat/exit/transit boundary must be rejoined after the handle maneuver,
+    // even when finishRoute already consumed its final walking leg.
+    const node = mover.lastNode ?? step?.node ?? (mover.goal ? goalNode(mover.goal) : mover.id);
+    mover.steps.splice(mover.stepIndex, 0, { kind: 'walk', node, to: [...mover.position], stairs: false });
+  }
   startDoorAct(mover, 'close', hit);
+  if (returning) {
+    const act = mover.door!;
+    act.side = returning.side; act.entrySide = returning.side;
+    act.returnPath = returning.path; act.returnTarget = returning.target;
+    // Consume the checked closed-leaf route instead of replaying open-tip points.
+    const node = mover.lastNode ?? mover.steps[mover.stepIndex]?.node ?? mover.id;
+    mover.steps.splice(mover.stepIndex, 0, ...returning.rejoin.map(to => ({ kind: 'walk' as const, node, to: [...to] as Point3, stairs: false })));
+  }
   return true;
+}
+
+function closePhysicalPass(mover: Mover, act: DoorAct, doors: DoorTraffic, amount: number): boolean {
+  if (!act.passRecorded) { doors.passed(act.id, act.door, mover.id); act.passRecorded = true; }
+  if (!doors.closing(act.id, mover.id)) {
+    // The crossing is complete. Reserve a separate, noncrossing service turn;
+    // every waiting crossing ticket retains its original relative position.
+    doors.finishPass(act.id, mover.id);
+    if (!doors.claimClosure(act.id, mover.id)) return false;
+  }
+  act.kind = 'close'; act.side = -act.entrySide as 1 | -1;
+  entryClosing(act, amount); doorBeat(act, 'approach'); return true;
 }
 
 function endDoorAct(mover: Mover, env: MovementEnv, cleared: string | null): void {
   if (mover.door) {
+    const act = mover.door, doors = env.doors, amount = doors?.amount(act.id) ?? 0;
+    if (doors && !act.door.sliding && amount > .05
+      && doorAxes(act.door, mover.position).through * -act.entrySide >= .29) {
+      if (!act.passRecorded) { doors.passed(act.id, act.door, mover.id); act.passRecorded = true; }
+      if (!doors.localSuccessor(act.id, mover.id)
+        && (act.kind !== 'close' || act.beat !== 'release' || mover.pending)) {
+        if (closePhysicalPass(mover, act, doors, amount)) return;
+      }
+    }
     // Door choreography moves the feet independently of the sampled route.
     // Join it from the actual release point before using curve progress again.
-    if (env.doors && !mover.pending && !mover.door.door.sliding && !resumeDoorRoute(mover, mover.door, env.doors.amount(mover.door.id), env.walkable)) return;
-    env.doors?.release(mover.door.id, mover.id);
+    if (env.doors && !mover.pending && !resumeDoorRoute(mover, mover.door, env.doors.amount(mover.door.id), env.walkable)) return;
+    env.doors?.finishPass(mover.door.id, mover.id);
   }
   Object.assign(mover.natural, createNaturalWalkState());
   mover.door = null;
+  env.doors?.clearActiveDoor(mover.id);
   mover.phase = 'walking';
   mover.cleared = cleared;
   aimHand(mover, LEFT, 0, null);
@@ -1293,7 +1924,138 @@ function endDoorAct(mover: Mover, env: MovementEnv, cleared: string | null): voi
 }
 
 function doorBeat(act: DoorAct, beat: DoorAct['beat']): void {
-  act.beat = beat; act.timer = 0; act.path = null;
+  act.beat = beat; act.timer = 0; act.path = null; act.walkRetry = 0;
+}
+
+/** A displaced natural walker still travels along its route, not toward its centreline. */
+export function walkingTravelTarget(mover: Mover): Point3 | undefined {
+  const step = mover.steps[mover.stepIndex];
+  if (mover.phase !== 'walking' || mover.backing || mover.crowdYield || mover.recovery.yielding
+    || step?.kind !== 'walk' || step.stairs || !step.natural) return undefined;
+  const dx = step.to[0] - step.natural.from[0], dz = step.to[2] - step.natural.from[2];
+  const length = Math.hypot(dx, dz);
+  if (length < 1e-6) return undefined;
+  const tx = dx / length, tz = dz / length;
+  let remaining = 0;
+  for (let index = mover.stepIndex; index < mover.steps.length && remaining < 2.5; index++) {
+    const next = mover.steps[index];
+    if (next?.kind !== 'walk' || next.stairs || !next.natural || Math.abs(next.to[1] - mover.position[1]) > .05) break;
+    const x = next.to[0] - next.natural.from[0], z = next.to[2] - next.natural.from[2], meters = Math.hypot(x, z);
+    // Do not advertise an aisle beyond a turn or a protected exact waypoint.
+    if (meters < 1e-6 || (x * tx + z * tz) / meters < .85) break;
+    remaining += Math.max(0, meters - (index === mover.stepIndex && mover.natural.index === index ? mover.natural.progress : 0));
+  }
+  if (remaining < .02) return undefined;
+  const ahead = Math.min(2.5, remaining);
+  return [mover.position[0] + tx * ahead, mover.position[1], mover.position[2] + tz * ahead];
+}
+
+/** Advertise a held operator's next maneuver even when a parked body prevents its first step. */
+export function doorTravelTarget(mover: Mover, doors: DoorTraffic | undefined): Point3 | undefined {
+  const act = mover.door;
+  if (!doors || mover.phase !== 'doorwork' || !act || act.kind === 'wait' || mover.crowdYield) return undefined;
+  const amount = doors.amount(act.id);
+  if (act.beat === 'handoff' || act.beat === 'passage') {
+    return doorWorldPoint(act.door, 0, -act.entrySide * (act.door.clearWidth + .65), [0, 0, 0]);
+  }
+  if (act.beat === 'approach') return act.path?.[0] ?? act.returnTarget
+    ?? (act.kind === 'close' ? doorClosePosition(act.door, amount, act.side, [0, 0, 0], act.entryCloseStart)
+      : doorOpenPosition(act.door, amount, act.side, [0, 0, 0]));
+  if (act.beat === 'grip' || act.beat === 'swing') {
+    const next = act.kind === 'close' ? Math.max(0, amount - .15) : Math.min(act.openAmount ?? 1, amount + .15);
+    return act.kind === 'close' ? doorClosePosition(act.door, next, act.side, [0, 0, 0], act.entryCloseStart)
+      : doorOpenPosition(act.door, next, act.side, [0, 0, 0]);
+  }
+  return undefined;
+}
+
+/** Keep FIFO ownership while clearing a released walker or the head's exit aisle. */
+function doorQueueYield(mover: Mover, act: DoorAct, neighbors: readonly WalkingNeighbor[], doors: DoorTraffic): DoorAct['queueYield'] {
+  let yielding = act.queueYield;
+  const peer = yielding && neighbors.find(other => other.id === yielding?.id);
+  const peerTurn = peer && doors.queueStatus(act.id, peer.id);
+  const peerTarget = peer?.travelTarget ?? peer?.target;
+  const travelling = peer && peerTarget && Math.hypot(peerTarget[0] - peer.position[0], peerTarget[2] - peer.position[2]) >= .02;
+  const ticketed = peerTurn && peerTurn.ahead < peerTurn.count;
+  const heldHead = peer && ticketed && peerTurn.head === peer.id
+    && (peer.travelDoor === act.id || doorAxes(act.door, peer.position).through * act.entrySide >= .29);
+  const passed = yielding && peer && (peer.position[0] - yielding.origin[0]) * yielding.direction[0]
+    + (peer.position[2] - yielding.origin[2]) * yielding.direction[1] > 1
+    && (act.path?.length === 0 || (peer.position[0] - mover.position[0]) * yielding.direction[0]
+      + (peer.position[2] - mover.position[2]) * yielding.direction[1] > .8);
+  // A head may stop while we retreat around a desk. Its retained ticket must
+  // not cancel the very yield that lets it finish the physical handoff.
+  if (yielding && (!peer || !doors.mayYieldTo(act.id, peer.id) || (ticketed && !heldHead) || (!heldHead && (!travelling || passed)))) {
+    act.queueYield = undefined; yielding = undefined; act.path = null;
+  }
+  if (yielding && peer && peerTarget && travelling) {
+    const dx = peerTarget[0] - peer.position[0], dz = peerTarget[2] - peer.position[2], length = Math.hypot(dx, dz);
+    if ((dx * yielding.direction[0] + dz * yielding.direction[1]) / length < .85) {
+      // Keep the original passing breadcrumb, but clear the newly turning aisle.
+      yielding.direction = [dx / length, dz / length]; act.path = null; act.queueRetry = 0;
+    }
+  }
+  if (!yielding) for (const other of neighbors) {
+    if (!doors.mayYieldTo(act.id, other.id)) continue;
+    const target = other.travelTarget ?? other.target;
+    if (!target || Math.abs(other.position[1] - mover.position[1]) > .1) continue;
+    const status = doors.queueStatus(act.id, other.id);
+    const queued = status.ahead < status.count;
+    const physicalHead = queued && status.head === other.id && other.travelDoor === act.id;
+    if (queued && (status.head !== other.id
+      || !physicalHead && doorAxes(act.door, other.position).through * act.entrySide < .29)) continue;
+    const dx = target[0] - other.position[0], dz = target[2] - other.position[2], length = Math.hypot(dx, dz);
+    if (length < .02) continue;
+    const towardDoor = dx * (act.door.center[0] - other.position[0]) + dz * (act.door.center[2] - other.position[2]);
+    if (!physicalHead && (queued ? towardDoor >= -1e-6 : towardDoor > 0)) continue;
+    const tx = dx / length, tz = dz / length, ox = mover.position[0] - other.position[0], oz = mover.position[2] - other.position[2];
+    const ahead = ox * tx + oz * tz;
+    if (ahead > 0 && ahead < 2.5 && Math.abs(ox * tz - oz * tx) < .75) {
+      yielding = { id: other.id, origin: [...mover.position], direction: [tx, tz] };
+      act.queueYield = yielding; act.path = null; act.queueRetry = 0; break;
+    }
+  }
+  return yielding;
+}
+
+function waitAtDoor(mover: Mover, act: DoorAct, point: Point3, index: number, dt: number, env: MovementEnv): void {
+  act.kind = 'wait';
+  if (act.queueIndex !== index) {
+    act.queueIndex = index;
+    // The head may hand off while a waiter is still walking to its bay.
+    // Finish that checked retreat instead of replanning back into the aisle.
+    if (!act.queueYield) { act.path = null; act.queueRetry = 0; }
+  }
+  act.queueRetry = Math.max(0, (act.queueRetry ?? 0) - dt);
+  const neighbors = env.nearbyWalkers?.(mover.id, mover.position) ?? [];
+  const yielding = doorQueueYield(mover, act, neighbors, env.doors!);
+  const portals = env.doors!.portals();
+  const clear: WalkableSegment = (from, to, radius) => (!env.walkable || env.walkable(from, to, radius))
+    && !portals.some(hit => hit.id !== act.id && crossesDoorPortal(hit, from, to));
+  const parkingClear = (target: Point3): boolean => {
+    if (!yielding) return true;
+    const other = neighbors.find(neighbor => neighbor.id === yielding.id);
+    if (!other) return true;
+    const ox = target[0] - other.position[0], oz = target[2] - other.position[2];
+    const ahead = ox * yielding.direction[0] + oz * yielding.direction[1];
+    return ahead < -.7 || Math.abs(ox * yielding.direction[1] - oz * yielding.direction[0]) >= .8;
+  };
+  if (yielding && act.path?.length === 0 && !parkingClear(mover.position)) act.path = null;
+  if (act.path?.length === 0 && !doorParkingClear(act.door, mover.position)) { act.path = null; act.queueRetry = 0; }
+  const amount = env.doors!.amount(act.id);
+  if (act.path === null && act.queueRetry === 0) {
+    act.path = doorWaitingPath(mover.id, act.door, amount, act.entrySide, mover.position, point, clear, neighbors, parkingClear, Boolean(yielding), env.navigation);
+    act.queueRetry = .5;
+  }
+  const next = act.path?.[0];
+  if (!next) { easeWalk(mover, 0, dt); return; }
+  const before: Point3 = [...mover.position], phase = mover.motion.phase;
+  const remaining = walkToward(mover, next, dt, .7, false, act.path?.[1] ?? null);
+  if (!waitingSegmentClear(mover.id, act.door, amount, act.entrySide, before, mover.position, clear, neighbors)) {
+    copy(mover.position, before); mover.motion.phase = phase; act.path = null; easeWalk(mover, 0, dt); return;
+  }
+  easeWalk(mover, Math.hypot(mover.position[0] - before[0], mover.position[2] - before[2]) > 1e-5 ? .7 : 0, dt);
+  if (remaining <= ARRIVE) act.path!.shift();
 }
 
 /** Consume only threshold waypoints already crossed; retain destination-side waypoints. */
@@ -1308,13 +2070,33 @@ function crossedDoorSteps(mover: Mover, act: DoorAct): void {
   }
 }
 
-function doorWalk(mover: Mover, act: DoorAct, amount: number, target: Readonly<Point3>, dt: number): boolean {
+/** Passage already crossed these ordinary inner markers; do not walk back into the next entrant. */
+function passedDoorExitSteps(mover: Mover, act: DoorAct): void {
+  crossedDoorSteps(mover, act);
+  const exitSide = -act.entrySide, body = doorAxes(act.door, mover.position);
+  while (mover.stepIndex + 1 < mover.steps.length) {
+    const step = mover.steps[mover.stepIndex]!, next = mover.steps[mover.stepIndex + 1]!;
+    if (step.kind !== 'walk' || step.stairs || next.kind !== 'walk' || next.stairs) break;
+    const node = doorAxes(act.door, step.to);
+    if (Math.abs(step.to[1] - mover.position[1]) > .05 || node.through * exitSide < -.01
+      || node.through * exitSide > body.through * exitSide || Math.abs(node.across) > act.door.clearWidth / 2 + .25) break;
+    mover.lastNode = step.node; mover.stepIndex++;
+  }
+}
+
+function doorWalk(mover: Mover, act: DoorAct, amount: number, target: Readonly<Point3>, dt: number, env: MovementEnv): boolean {
   const tempo = doorInteractionTempo(walkSpeed(mover));
   const walk = (point: Readonly<Point3>, scale: number, next: Readonly<Point3> | null): number => {
-    const x = mover.position[0], z = mover.position[2], phase = mover.motion.phase;
+    const before: Point3 = [...mover.position], phase = mover.motion.phase;
     const left = walkToward(mover, point, dt, scale, false, next, tempo);
+    if ((env.walkable && !env.walkable(before, mover.position, .29))
+      || act.kind === 'close' && env.doors?.portals().some(hit => hit.id !== act.id && crossesDoorPortal(hit, before, mover.position))
+      || !staticSeatNeighborsClear(mover.id, before, mover.position, env.nearbyWalkers?.(mover.id, before) ?? [], dt)) {
+      copy(mover.position, before); mover.motion.phase = phase; act.path = null; act.walkRetry = .4;
+      easeWalk(mover, 0, dt); return 1;
+    }
     // A short tip-path segment can end before the frame's travel budget does.
-    mover.motion.phase = advanceWalkDistance(phase, mover.gait, Math.hypot(mover.position[0] - x, mover.position[2] - z), mover.motion.stride);
+    mover.motion.phase = advanceWalkDistance(phase, mover.gait, Math.hypot(mover.position[0] - before[0], mover.position[2] - before[2]), mover.motion.stride);
     return left;
   };
   // Recover old live actors parked inside a shut leaf's capsule. Walk straight
@@ -1331,13 +2113,18 @@ function doorWalk(mover: Mover, act: DoorAct, amount: number, target: Readonly<P
     walk(retreat, 0.8, null);
     return false;
   }
-  if (!act.path) act.path = doorWalkPath(act.door, amount, mover.position, target);
+  act.walkRetry = Math.max(0, (act.walkRetry ?? 0) - dt);
+  if (!act.path && act.walkRetry === 0) {
+    act.path = act.returnTarget && act.kind === 'close'
+      ? doorReturnPath(mover, env, act, amount, target) : doorWalkPath(act.door, amount, mover.position, target, env.walkable);
+    if (!act.path) act.walkRetry = .4;
+  }
   if (!act.path) { easeWalk(mover, 0, dt); return false; }
   const next = act.path[0];
   if (!next) { easeWalk(mover, 0, dt); return true; }
   easeWalk(mover, 1, dt);
   if (walk(next, 1, act.path[1] ?? null) <= ARRIVE) act.path.shift();
-  return act.path.length === 0;
+  return act.path?.length === 0;
 }
 
 /** Reconnect moved feet to their route without reusing an obsolete curve leg. */
@@ -1346,7 +2133,7 @@ function resumeDoorRoute(mover: Mover, act: DoorAct, amount: number, walkable?: 
   for (; index < mover.steps.length; index++) {
     const step = mover.steps[index];
     if (!step || step.kind !== 'walk' || step.stairs) return index === mover.stepIndex;
-    const path = doorWalkPath(act.door, amount, mover.position, step.to);
+    const path = act.door.sliding ? [[...step.to] as Point3] : doorWalkPath(act.door, amount, mover.position, step.to, walkable);
     let from: Readonly<Point3> = mover.position;
     if (path && path.every(point => { const clear = !walkable || walkable(from, point, 0.29); from = point; return clear; })) {
       // Include the joining point as an exact leg. Its old natural.from and
@@ -1377,6 +2164,81 @@ function doorHandWeight(act: DoorAct, amount: number): number {
     : act.entryCloseStart === undefined ? 1 : doorEntryCloseHandWeight(act.door, amount, act.entryCloseStart);
 }
 
+/** Only leave a stalled entry queue via a checked, ordinary walk to another portal. */
+function tryAlternativeDoor(mover: Mover, act: DoorAct, dt: number, env: MovementEnv): boolean {
+  const doors = env.doors!;
+  const status = doors.queueStatus(act.id, mover.id), leaf = doors.amount(act.id);
+  if (status.count > 1) act.shared = true;
+  const position = status.head === mover.id ? mover.position : status.headPosition;
+  const traffic = act.traffic;
+  if (!traffic || traffic.head !== status.head || Math.abs(traffic.leaf - leaf) >= .02
+    || position && traffic.position && Math.hypot(...position.map((value, axis) => value - traffic.position![axis]!) as Point3) >= .08) {
+    act.traffic = { head: status.head, leaf, position: position ? [...position] : null, stalled: 0 };
+    return false;
+  }
+  traffic.stalled += dt;
+  const waiting = status.ahead > 0 && act.beat === 'reserve';
+  const untouchedEntry = status.head === mover.id && (act.door.sliding && act.beat === 'reserve'
+    || (act.beat === 'reserve' || act.beat === 'approach') && leaf <= .05);
+  const goal = mover.pending ?? mover.goal;
+  if ((!waiting && !untouchedEntry) || act.kind === 'close' || mover.trip || !goal || !env.walkable || !env.nearbyWalkers
+    || mover.recovery.avoidedDoors.length >= 2 || mover.recovery.doorProbeIn > 0 || traffic.stalled < (waiting ? 12 : 4)) return false;
+  mover.recovery.doorProbeIn = 15;
+  const alternative = doorAlternativeRoute({ id: mover.id, position: mover.position, current: { id: act.id, door: act.door },
+    side: act.entrySide, destination: goalNode(goal), navigation: recoveryNavigation(mover, env.navigation), doors,
+    walkable: env.walkable, neighbors: env.nearbyWalkers(mover.id, mover.position),
+    avoidedEdges: mover.recovery.avoidedEdges, avoidedDoors: mover.recovery.avoidedDoors });
+  if (!alternative) return false;
+  const previous = mover.recovery.avoidedEdges;
+  mover.recovery.avoidedEdges = alternative.avoidedEdges;
+  if (!routeFrom(mover, alternative.start, goal, { ...env, navigation: alternative.navigation }, true)) {
+    mover.recovery.avoidedEdges = previous; return false;
+  }
+  // Cancel only after a complete alternative is ready; its local queue is joined
+  // normally on arrival, with no inherited priority over people already there.
+  abandonRecoveryInteraction(mover, env);
+  mover.recovery.avoidedDoors.push(act.id); mover.recovery.doorProbeIn = 20;
+  mover.pending = null;
+  return true;
+}
+
+/** Reconnect a parked head to its approach while retaining physical portal ownership. */
+function reconnectDoorApproach(mover: Mover, act: DoorAct, amount: number, env: MovementEnv): void {
+  if (!env.walkable || (act.approachRetry ?? 0) > 0) return;
+  act.approachRetry = .5;
+  const neighbors = env.nearbyWalkers?.(mover.id, mover.position) ?? [];
+  let selected = mover.stepIndex;
+  let previous: Readonly<Point3> = mover.position;
+  for (let i = mover.stepIndex; i < mover.steps.length; i++) {
+    const step = mover.steps[i]!;
+    if (step.kind !== 'walk' || step.stairs || Math.abs(step.to[1] - act.door.center[1]) > .05
+      || doorAxes(act.door, step.to).through * act.entrySide < DOOR_BODY_CLEARANCE + .02
+      || crossesDoorPortal({ id: act.id, door: act.door }, previous, step.to)) break;
+    // Parking changes the feet, not the destination. Rejoin a later visible
+    // aisle sample instead of walking back to an obsolete chair-side sample.
+    if (waitingSegmentClear(mover.id, act.door, amount, act.entrySide, mover.position, step.to, env.walkable, neighbors)
+      && !env.doors?.portals().some(hit => hit.id !== act.id && crossesDoorPortal(hit, mover.position, step.to))) selected = i;
+    previous = step.to;
+  }
+  if (selected <= mover.stepIndex) {
+    const current = mover.steps[mover.stepIndex];
+    if (current?.kind !== 'walk' || waitingSegmentClear(mover.id, act.door, amount, act.entrySide, mover.position, current.to, env.walkable, neighbors)) return;
+    const portals = env.doors?.portals() ?? [];
+    const join = doorApproachPath(mover.id, act.door, amount, act.entrySide, mover.position, mover.steps, mover.stepIndex, env.navigation,
+      (a, b) => !portals.some(hit => crossesDoorPortal(hit, a, b)), env.walkable, neighbors);
+    if (!join) return;
+    const destination = mover.steps[join.index]!;
+    mover.steps.splice(mover.stepIndex, join.index - mover.stepIndex + 1,
+      ...join.path.map(to => ({ kind: 'walk' as const, node: destination.node, to, stairs: false })));
+    Object.assign(mover.natural, createNaturalWalkState());
+    return;
+  }
+  const step = mover.steps[selected]!;
+  if (step.kind !== 'walk') return;
+  mover.steps.splice(mover.stepIndex, selected - mover.stepIndex + 1, { kind: 'walk', node: step.node, to: step.to, stairs: false });
+  Object.assign(mover.natural, createNaturalWalkState());
+}
+
 /**
  * A single reservation covers opening and passage. Push entries follow the
  * leaf; pull entries tug and move to the latch side, then regrip for closing.
@@ -1386,28 +2248,106 @@ function stepDoorWork(mover: Mover, dt: number, env: MovementEnv): void {
   const act = mover.door, doors = env.doors;
   if (!act || !doors) { endDoorAct(mover, env, null); return; }
   const { id, door } = act;
+  doors.setActiveDoor(mover.id, id);
   const amount = doors.amount(id);
+  act.approachRetry = Math.max(0, (act.approachRetry ?? 0) - dt);
   const tempo = doorInteractionTempo(walkSpeed(mover));
   const contactDt = dt * tempo;
   act.timer += contactDt;
   aimHand(mover, LEFT, rampWeight(mover.motion.reach[LEFT].weight, 0, contactDt, RAMP_S), null);
   aimHand(mover, RIGHT, rampWeight(mover.motion.reach[RIGHT].weight, 0, contactDt, RAMP_S), null);
-  if (door.sliding) {
-    easeWalk(mover, 0, dt);
-    if (doors.request(id, door, mover.id) === 'pass') endDoorAct(mover, env, id);
+  if (act.beat === 'resume') {
+    if (mover.pending) { endDoorAct(mover, env, id); return; }
+    if (resumeDoorRoute(mover, act, amount, env.walkable)) { endDoorAct(mover, env, id); return; }
+    const exitSide = -act.entrySide as 1 | -1;
+    // Keep the original entry side for route semantics, but park on the exit face.
+    act.entrySide = exitSide;
+    waitAtDoor(mover, act, doorWorldPoint(door, doorHandedness(door) * (door.clearWidth / 2 + .72), exitSide * (door.clearWidth + .9), [0, 0, 0]), -1, dt, env);
+    act.entrySide = -exitSide as 1 | -1;
     return;
+  }
+  const turn = doors.queue(id, door, mover.id, mover.position, act.entrySide);
+  if (tryAlternativeDoor(mover, act, dt, env)) return;
+  if (act.kind === 'close' && act.beat === 'reserve' && !doors.closing(id, mover.id) && doors.hasQueued(id, mover.id)) {
+    doors.cancel(id, mover.id); endDoorAct(mover, env, id); return;
+  }
+  if (!turn.granted) {
+    if (act.beat !== 'reserve') { doorBeat(act, 'reserve'); act.queueIndex = undefined; }
+    if (turn.position) waitAtDoor(mover, act, turn.position, turn.index, dt, env);
+    return;
+  }
+  if (act.beat === 'reserve' && act.kind !== 'close'
+    && doorQueueYield(mover, act, env.nearbyWalkers?.(mover.id, mover.position) ?? [], doors)) {
+    const point = doorWorldPoint(door, doorHandedness(door) * (door.clearWidth / 2 + .72), act.entrySide * (door.clearWidth + .9), [0, 0, 0]);
+    waitAtDoor(mover, act, point, 0, dt, env); return;
+  }
+  if (act.queueIndex !== undefined) { act.queueIndex = undefined; act.path = null; }
+  if (act.beat === 'reserve' && act.kind !== 'close') reconnectDoorApproach(mover, act, amount, env);
+  const approach = mover.steps[mover.stepIndex];
+  const leafBlocksPrefix = !door.sliding && approach?.kind === 'walk'
+    && Math.hypot(mover.position[0] - door.center[0], mover.position[2] - door.center[2]) < door.clearWidth + DOOR_BODY_CLEARANCE + .4
+    && !waitingSegmentClear(mover.id, door, amount, act.entrySide, mover.position, approach.to, undefined, []);
+  if (act.beat === 'reserve' && act.kind !== 'close' && approach?.kind === 'walk' && !approach.stairs
+    && !leafBlocksPrefix
+    && Math.abs(doorAxes(door, approach.to).through) > DOOR_BODY_CLEARANCE + .02
+    && !crossesDoorPortal({ id, door }, mover.position, approach.to)) {
+    // Admission happens before the last doorway marker. The head still follows
+    // authored aisles around tables. A nearby partial leaf must be opened from
+    // its handle before consuming an inside marker blocked by that same leaf.
+    act.kind = 'open';
+    const before: Point3 = [...mover.position], phase = mover.motion.phase;
+    const neighbors = env.nearbyWalkers?.(mover.id, before) ?? [];
+    const scale = protectedHeadway(mover.id, before, approach.to, walkSpeed(mover), dt, neighbors);
+    const remaining = walkToward(mover, approach.to, dt, scale, false);
+    if (!waitingSegmentClear(mover.id, door, amount, act.entrySide, before, mover.position, env.walkable, neighbors)) {
+      copy(mover.position, before); mover.motion.phase = phase; easeWalk(mover, 0, dt); return;
+    }
+    easeWalk(mover, Math.hypot(mover.position[0] - before[0], mover.position[2] - before[2]) > 1e-5 ? 1 : 0, dt);
+    if (remaining <= ARRIVE) {
+      if (!approach.natural?.transit) mover.lastNode = approach.node;
+      mover.stepIndex++; Object.assign(mover.natural, createNaturalWalkState());
+    }
+    return;
+  }
+  if (door.sliding) {
+    if (doors.request(id, door, mover.id) !== 'pass') {
+      // The head is waiting for leaf motion, not another ticket's turn. A frozen
+      // controller must remain visible to the bounded door-progress watchdog.
+      act.kind = 'open'; easeWalk(mover, 0, dt); return;
+    }
+    if (act.beat === 'reserve') {
+      act.kind = 'pass';
+      doorBeat(act, 'passage');
+      act.path = [doorWorldPoint(door, 0, act.entrySide * .8, [0, 0, 0]),
+        doorWorldPoint(door, 0, -act.entrySide * 1.1, [0, 0, 0])];
+    }
+    const next = act.path?.[0];
+    if (!next) { passedDoorExitSteps(mover, act); endDoorAct(mover, env, id); return; }
+    const before: Point3 = [...mover.position], phase = mover.motion.phase;
+    const remaining = walkToward(mover, next, dt, 1, false, act.path?.[1] ?? null);
+    if ((env.walkable && !env.walkable(before, mover.position, .29))
+      || !staticSeatNeighborsClear(mover.id, before, mover.position, env.nearbyWalkers?.(mover.id, before) ?? [], dt)) {
+      copy(mover.position, before); mover.motion.phase = phase; easeWalk(mover, 0, dt); return;
+    }
+    easeWalk(mover, 1, dt);
+    if (remaining <= ARRIVE) act.path!.shift();
+    return;
+  }
+  // A late arrival inherits an already opened leaf; never freeze halfway through closing it.
+  if (act.kind === 'close' && !doors.closing(id, mover.id) && amount > .05 && doors.hasQueued(id, mover.id) && act.beat !== 'reserve' && act.beat !== 'handoff') {
+    doorBeat(act, 'handoff');
   }
   if (act.beat === 'reserve') {
     if (!doors.claim(id, mover.id)) {
       act.kind = 'wait';
       // Stay beyond the sweep radius, rather than waiting in the other
       // operator's opening arc. No timeout grants passage through a shut leaf.
-      const safe = doorWorldPoint(door, 0, act.side * (door.clearWidth + 0.65), handPoint);
-      doorWalk(mover, act, amount, safe, dt);
+      const queued = doors.queue(id, door, mover.id, mover.position, act.entrySide);
+      if (queued.position) waitAtDoor(mover, act, queued.position, queued.index, dt, env);
       return;
     }
     if (act.kind !== 'close') act.kind = amount >= 0.99 ? 'pass' : 'open';
-    if (act.kind === 'close' && amount >= .8) {
+    if (act.kind === 'close' && amount >= .8 && !act.returnTarget) {
       // Close duties also cover free walkers crossing an already-open door.
       // Infer the reachable leaf face from their body, not the frame normal.
       const at = doorAxes(door, mover.position), theta = amount * door.openAngle;
@@ -1421,8 +2361,9 @@ function stepDoorWork(mover: Mover, dt: number, env: MovementEnv): void {
     doorBeat(act, act.kind === 'pass' ? 'passage' : 'approach');
   }
   if (act.beat === 'approach') {
-    const target = act.kind === 'close' ? doorClosePosition(door, amount, act.side, handPoint, act.entryCloseStart) : doorOpenPosition(door, amount, act.side, handPoint);
-    if (doorWalk(mover, act, amount, target, dt)) doorBeat(act, 'grip');
+    if (act.returnPath) { act.path = act.returnPath; act.returnPath = undefined; }
+    const target = act.returnTarget ?? (act.kind === 'close' ? doorClosePosition(door, amount, act.side, handPoint, act.entryCloseStart) : doorOpenPosition(door, amount, act.side, handPoint));
+    if (doorWalk(mover, act, amount, target, dt, env)) doorBeat(act, 'grip');
     return;
   }
   if (act.beat === 'grip' || act.beat === 'swing') {
@@ -1438,7 +2379,7 @@ function stepDoorWork(mover: Mover, dt: number, env: MovementEnv): void {
       if (act.timer >= DOOR_STOP_S && Math.abs(angleDelta(mover.yaw, yaw)) < 0.15) {
         if (act.kind === 'open' && act.openAmount === undefined) {
           const pulling = act.entrySide === doorSwingSide(door);
-          const shared = doors.approachers(door, mover.id).length > 0 || doors.occupied(door, mover.id);
+          const shared = doors.hasQueued(id, mover.id) || doors.approachers(door, mover.id).length > 0 || doors.occupied(door, mover.id);
           const passAngle = Math.max(Math.PI / 4, Math.asin(Math.min(0.98, (2 * DOOR_BODY_CLEARANCE + 0.22) / door.clearWidth)));
           act.openAmount = pulling && !shared ? Math.max(amount, Math.min(1, passAngle / Math.abs(door.openAngle))) : 1;
         }
@@ -1460,8 +2401,13 @@ function stepDoorWork(mover: Mover, dt: number, env: MovementEnv): void {
       const travel = Math.min(anchorDistance, walkSpeed(mover) * DOOR_MANEUVER_SCALE * dt);
       const k = travel / anchorDistance;
       const backwards = (scratch[0] - mover.position[0]) * Math.sin(mover.yaw) + (scratch[2] - mover.position[2]) * Math.cos(mover.yaw) < 0;
-      mover.position[0] += (scratch[0] - mover.position[0]) * k;
-      mover.position[2] += (scratch[2] - mover.position[2]) * k;
+      const proposal: Point3 = [mover.position[0] + (scratch[0] - mover.position[0]) * k, mover.position[1],
+        mover.position[2] + (scratch[2] - mover.position[2]) * k];
+      if ((env.walkable && env.nearbyWalkers && !env.walkable(mover.position, proposal, .29))
+        || !staticSeatNeighborsClear(mover.id, mover.position, proposal, env.nearbyWalkers?.(mover.id, mover.position) ?? [])) {
+        easeWalk(mover, 0, dt); return;
+      }
+      copy(mover.position, proposal);
       mover.target = scratch;
       easeWalk(mover, DOOR_MANEUVER_SCALE, dt);
       mover.motion.phase = advanceWalkDistance(mover.motion.phase, mover.gait, (backwards ? -1 : 1) * travel, mover.motion.stride, DOOR_MANEUVER_SCALE);
@@ -1483,6 +2429,11 @@ function stepDoorWork(mover: Mover, dt: number, env: MovementEnv): void {
       }
       safeAmount = amount + (nextAmount - amount) * low;
     }
+    bodyPosition(door, safeAmount, act.side, scratch);
+    if ((env.walkable && env.nearbyWalkers && !env.walkable(mover.position, scratch, .29))
+      || !staticSeatNeighborsClear(mover.id, mover.position, scratch, env.nearbyWalkers?.(mover.id, mover.position) ?? [])) {
+      easeWalk(mover, 0, dt); aimHand(mover, act.hand, doorHandWeight(act, amount), handle); return;
+    }
     const moved = doors.hold(id, mover.id, direction, Math.abs(safeAmount - amount) / DOOR_SWING_RATE);
     bodyPosition(door, moved, act.side, scratch);
     const dx = scratch[0] - mover.position[0], dz = scratch[2] - mover.position[2];
@@ -1499,30 +2450,78 @@ function stepDoorWork(mover: Mover, dt: number, env: MovementEnv): void {
     return;
   }
   if (act.beat === 'passage') {
+    if (!act.passRecorded && doorAxes(door, mover.position).through * -act.entrySide >= .29
+      && doorLeafDistance(door, amount, mover.position) >= DOOR_BODY_CLEARANCE) {
+      doors.passed(id, door, mover.id); act.passRecorded = true;
+    }
     // Switch leaf faces directly beside its free edge. A lone closer turns
     // here; walking out to the far waiting apron and back serves no purpose.
     const exitSide = -act.entrySide as 1 | -1;
-    if (amount >= 0.99 && (doors.approachers(door, mover.id).length > 0 || doors.occupied(door, mover.id))) { doorBeat(act, 'handoff'); return; }
+    if (amount >= 0.99 && (act.shared || doors.hasQueued(id, mover.id) || doors.approachers(door, mover.id).length > 0 || doors.occupied(door, mover.id))) { doorBeat(act, 'handoff'); return; }
     entryClosing(act, amount);
     const destination = doorClosePosition(door, amount, act.entryCloseStart === undefined ? exitSide : act.side, handPoint, act.entryCloseStart);
-    if (!doorWalk(mover, act, amount, destination, dt)) return;
+    if (!doorWalk(mover, act, amount, destination, dt, env)) return;
     act.kind = 'close'; if (act.entryCloseStart === undefined) act.side = exitSide;
-    doors.clearDuty(mover.id);
     doorBeat(act, 'grip');
     return;
   }
   if (act.beat === 'handoff') {
     const exitSide = -act.entrySide as 1 | -1;
+    if (!act.passRecorded && doorAxes(door, mover.position).through * exitSide >= .29
+      && doorLeafDistance(door, amount, mover.position) >= DOOR_BODY_CLEARANCE) {
+      doors.passed(id, door, mover.id); act.passRecorded = true;
+    }
+    const following = Boolean(doors.localSuccessor(id, mover.id));
+    const depth = doorAxes(door, mover.position).through * exitSide;
+    if (following && depth >= .29 && env.walkable && (act.approachRetry ?? 0) === 0) {
+      passedDoorExitSteps(mover, act);
+      const portals = doors.portals(), minimum = Math.min(DOOR_BODY_CLEARANCE, depth);
+      const join = doorApproachPath(mover.id, door, amount, exitSide, mover.position, mover.steps, mover.stepIndex, env.navigation,
+        (a, b) => !portals.some(hit => crossesDoorPortal(hit, a, b)) && doorWalkPath(door, amount, a, b, env.walkable)?.length === 1,
+        env.walkable, env.nearbyWalkers?.(mover.id, mover.position) ?? [], minimum, 3);
+      act.approachRetry = .5;
+      if (join) {
+        const node = mover.steps[join.index]!.node;
+        mover.steps.splice(mover.stepIndex, join.index - mover.stepIndex + 1,
+          ...join.path.map(to => ({ kind: 'walk' as const, node, to, stairs: false })));
+        Object.assign(mover.natural, createNaturalWalkState());
+        act.path = null;
+      }
+    }
+    if (following && doorAxes(door, mover.position).through * exitSide >= .7
+      && doorLeafDistance(door, amount, mover.position) >= DOOR_BODY_CLEARANCE) {
+      // A narrow room may turn its aisle before the standard far apron. Once
+      // the body is through, hand off into a checked forward route instead of
+      // forcing everyone to the same centre point beyond the doorway.
+      passedDoorExitSteps(mover, act);
+      if (resumeDoorRoute(mover, act, amount, env.walkable)) {
+        const next = mover.steps[mover.stepIndex];
+        if (next?.kind === 'walk' && !next.stairs
+          && waitingSegmentClear(mover.id, door, amount, exitSide, mover.position, next.to, env.walkable,
+            env.nearbyWalkers?.(mover.id, mover.position) ?? [])) {
+          endDoorAct(mover, env, id); return;
+        }
+      }
+    }
     const distance = exitSide === doorSwingSide(door) ? door.clearWidth + 0.65 : 0.7;
     const destination = doorWorldPoint(door, 0, exitSide * distance, handPoint);
-    if (!doorWalk(mover, act, amount, destination, dt)) return;
-    crossedDoorSteps(mover, act);
-    doors.clearDuty(mover.id);
+    const forward = mover.steps[mover.stepIndex];
+    if (following && depth >= .29 && forward?.kind === 'walk' && !forward.stairs
+      && waitingSegmentClear(mover.id, door, amount, exitSide, mover.position, forward.to, env.walkable,
+        env.nearbyWalkers?.(mover.id, mover.position) ?? [], Math.min(DOOR_BODY_CLEARANCE, depth))
+      && doorWalkPath(door, amount, mover.position, forward.to, env.walkable)?.length === 1) copy(destination, forward.to);
+    if (env.walkable && !env.walkable(destination, destination, .29)) {
+      const compact = doorWorldPoint(door, 0, exitSide * 1.1, [0, 0, 0]);
+      if (env.walkable(compact, compact, .29) && doorLeafDistance(door, amount, compact) >= DOOR_BODY_CLEARANCE) copy(destination, compact);
+    }
+    if (!doorWalk(mover, act, amount, destination, dt, env)) return;
+    passedDoorExitSteps(mover, act);
     // Hand the open door to the next person; only the final passer closes it.
-    if ((doors.approachers(door, mover.id).length > 0 || doors.occupied(door, mover.id)) && resumeDoorRoute(mover, act, amount, env.walkable)) { endDoorAct(mover, env, id); return; }
-    act.kind = 'close'; act.side = -act.entrySide as 1 | -1;
-    entryClosing(act, amount);
-    doorBeat(act, 'approach');
+    if (doors.localSuccessor(id, mover.id)) {
+      if (resumeDoorRoute(mover, act, amount, env.walkable)) { endDoorAct(mover, env, id); return; }
+      doors.finishPass(id, mover.id); doorBeat(act, 'resume'); return;
+    }
+    if (!closePhysicalPass(mover, act, doors, amount)) endDoorAct(mover, env, id);
     return;
   }
   easeWalk(mover, 0, dt);

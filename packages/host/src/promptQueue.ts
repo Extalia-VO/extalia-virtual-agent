@@ -7,6 +7,8 @@ import { isNotFound, writeJsonAtomic } from './jsonStore.js';
 
 export interface PromptQueueTarget {
   identity: string; available: boolean; ready: boolean; maxTextLength: number; persist: boolean;
+  /** Exact prior identities verified by the host as the same source and grants. At most four. */
+  compatibleIdentities?: readonly string[];
   /** Captured from an actual live invocation, never a lookup of a later run at send time. */
   steering?: { identity: string; send(text: string): Promise<'sent' | 'unknown'> };
 }
@@ -23,7 +25,7 @@ interface Options {
 }
 interface Queue { sessionId: string; identity: string; revision: string; paused: boolean; persist: boolean; items: PromptQueueItem[] }
 interface Operation { done: Promise<void>; generation: number; retired: boolean; handed: boolean; itemId?: string }
-const MAX_QUEUES = 128, MAX_PENDING = 50, MAX_RECEIPTS = 20, MAX_TEXT = 100_000;
+const MAX_QUEUES = 128, MAX_PENDING = 50, MAX_RECEIPTS = 20, MAX_TEXT = 100_000, MAX_COMPATIBLE_IDENTITIES = 4;
 // JSON escaping can require six bytes for one text code unit.
 const MAX_CHARACTERS = 8_000_000, MAX_FILE_BYTES = 64 * 1024 * 1024;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -124,6 +126,8 @@ export class PromptQueues {
     try {
       const target = await this.options.target(id);
       return target && string(target.identity, 4096) && typeof target.available === 'boolean' && typeof target.ready === 'boolean'
+        && (target.compatibleIdentities === undefined || Array.isArray(target.compatibleIdentities)
+          && target.compatibleIdentities.length <= MAX_COMPATIBLE_IDENTITIES && target.compatibleIdentities.every(identity => string(identity, 4096)))
         && typeof target.persist === 'boolean' && Number.isInteger(target.maxTextLength) && target.maxTextLength > 0 && target.maxTextLength <= MAX_TEXT ? target : undefined;
     } catch { return undefined; }
   }
@@ -140,8 +144,12 @@ export class PromptQueues {
     if (!queue && create && target) {
       queue = { sessionId: id, identity: target.identity, revision: emptyRevision(id, target.identity), paused: true, persist: target.persist, items: [] };
     }
-    const matched = !!queue && !!target && queue.identity === target.identity;
     let changed = false;
+    if (queue && target?.available && queue.identity !== target.identity && target.compatibleIdentities?.includes(queue.identity)
+      && !queue.items.some(item => item.state === 'sending' || item.state === 'unknown')) {
+      queue.identity = target.identity; this.revoke(id); changed = true;
+    }
+    const matched = !!queue && !!target && queue.identity === target.identity;
     if (queue && (!matched || !target?.available) && !queue.paused) { queue.paused = true; this.revoke(id); changed = true; }
     if (queue?.persist && matched && !target!.persist) { queue.persist = false; changed = true; }
     if (queue && changed) { this.touch(queue); await this.save(); }
@@ -223,6 +231,23 @@ export class PromptQueues {
   get isBusy(): boolean { return [...this.work.values()].some(operation => !operation.retired && operation.itemId !== undefined); }
   /** Local admission guard for optional post-task work; never discovers or dispatches a source. */
   hasUnfinished(id: string): boolean { return this.queues.get(id)?.items.some(item => item.state !== 'sent') ?? false; }
+  /** Pending, paused and uncertain delivery still belong to foreground work. */
+  get hasUnfinishedWork(): boolean { return [...this.queues.values()].some(queue => queue.items.some(item => item.state !== 'sent')); }
+  /** Serialize a reviewed session move against enqueue/dispatch; only completed receipts can follow it. */
+  withIdleSession<T>(id: string, action: () => Promise<T>): Promise<T> {
+    return this.serial(async () => {
+      const queue = this.queues.get(id);
+      if (queue?.items.some(item => item.state !== 'sent') || this.work.get(id)?.itemId !== undefined) {
+        throw new Error('Finish or remove pending prompts and inspect uncertain deliveries before moving this session.');
+      }
+      const result = await action();
+      if (queue) {
+        const target = await this.target(id);
+        if (target) { queue.identity = target.identity; queue.paused = true; this.revoke(id); this.touch(queue); await this.save(); }
+      }
+      return result;
+    });
+  }
   private async steer(id: string, input: Extract<PromptQueueChange, { action: 'steer' }>): Promise<PromptQueueStatus> {
     const generation = this.generation(id);
     let settle!: () => void;

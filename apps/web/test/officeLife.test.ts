@@ -233,7 +233,7 @@ describe('idle characters in the director', () => {
         expect(FACILITY_NAV_RESOURCE_IDS.has(visit.spotId)).toBe(false);
         if (visit.arrived) visited.add(visit.spotId);
         const mover = director.list.find(entry => entry.id === id)!;
-        if (visit.kind === 'chat' && visit.arrived && mover.motion.clip.startsWith('chat')) chatted = true;
+        if (visit.kind === 'chat' && visit.arrived && mover.motion.clip.includes('chat')) chatted = true;
       }
     });
     expect(visited.size).toBeGreaterThan(0);
@@ -253,6 +253,41 @@ describe('idle characters in the director', () => {
       expect(mover.seat?.seatId).toBe(seats[index]);
       expect(['typing', 'mouse', 'read-screen', 'thinking']).toContain(mover.motion.clip);
     }
+  });
+
+  it('moves both colleagues to a shared sofa, animates seated conversation and interrupts it for real work', () => {
+    let now = 0;
+    const director = new MovementDirector({ navigation, elevators: lifts }, () => now, null);
+    director.lifeScale = .3; director.preferKind = 'chat';
+    const ids = ['social-first:primary', 'social-second:primary'];
+    const allocations = ids.map((id, index) => allocation(id, `qa.station-${index + 1}`));
+    const agents = ids.map(make('idle'));
+    director.update({ allocations, agents, reducedMotion: false, gaitOf: () => gaitParameters() });
+    const runUntil = (condition: () => boolean, limit: number) => {
+      for (let frame = 0; frame < limit * 30 && !condition(); frame++) { now += 1000 / 30; director.tick(1 / 30); }
+      expect(condition()).toBe(true);
+    };
+    try {
+      runUntil(() => Boolean(director.lifeState(ids[0]!)?.visit?.partnerId), 300);
+      const visits = ids.map(id => director.lifeState(id)!.visit!);
+      expect(visits.map(visit => visit.partnerId)).toEqual([ids[1], ids[0]]);
+      expect(visits.every(visit => !navigation.seats.get(visit.spotId)!.standing)).toBe(true);
+      const before = ids.map(id => [...director.position(id)!]);
+      runUntil(() => ids.every((id, index) => Math.hypot(director.position(id)![0] - before[index]![0]!,
+        director.position(id)![2] - before[index]![2]!) > .25), 10);
+      for (const [index, id] of ids.entries()) {
+        const mover = director.list.find(mover => mover.id === id)!;
+        const target = mover.pending ?? mover.goal;
+        expect(target?.kind === 'seat' && target.seat.seatId).toBe(visits[index]!.spotId);
+      }
+      runUntil(() => ids.every(id => director.list.find(mover => mover.id === id)!.motion.clip.startsWith('seated-chat')), 150);
+      expect(new Set(director.list.map(mover => mover.motion.clip))).toEqual(new Set(['seated-chat-talk', 'seated-chat-listen']));
+      director.update({ allocations, agents: [make('working')(ids[0]!), agents[1]!], reducedMotion: false, gaitOf: () => gaitParameters() });
+      runUntil(() => ids.every(id => !director.lifeState(id)?.visit?.partnerId), 1);
+      const mover = director.list.find(mover => mover.id === ids[0])!;
+      const target = mover.pending ?? mover.goal;
+      expect(target?.kind === 'seat' && target.seat.seatId).toBe('qa.station-1');
+    } finally { director.dispose(); }
   });
 
   it('keeps everyone at the desk with reduced motion', () => {

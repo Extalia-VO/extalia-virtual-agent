@@ -134,6 +134,7 @@ export function AgentSessionDialog({ t, language, agents, state, onState, sessio
     const onKey = (event: KeyboardEvent) => {
       if (host.hasAttribute('inert')) return;
       if (document.querySelector('[data-message-file-preview], .attachment-viewer')) return;
+      if (dialog.current?.querySelector('dialog.session-handover-dialog[open], dialog.observed-workspace-link-dialog[open]')) return;
       if (event.key === 'Escape') {
         if (document.querySelector('[role="listbox"]')) return;
         const drawer = dialog.current?.querySelector<HTMLElement>('[data-conversation-drawer="true"]:not([hidden])');
@@ -195,7 +196,7 @@ export function AgentSessionDialog({ t, language, agents, state, onState, sessio
       <div className="session-dialog-body">
         {shownSession && <CharacterConversation key={shownAgent.id} t={t} language={language} agents={agents} state={state} session={shownSession} agent={shownAgent}
           onState={onState} appearance={ended ? undefined : appearance} tab={tab} onTab={onTab} readOnlyReason={ended}
-          onLocate={ended ? undefined : onLocate} onSelectCharacter={onSelectCharacter} onToolsStateChange={onToolsStateChange} />}
+          onLocate={ended ? undefined : onLocate} onSelectCharacter={onSelectCharacter} onToolsStateChange={onToolsStateChange} onHandoverReady={onOpenInChat} />}
       </div>
       {teamOpen && teamLead && <TeamSetupDialog t={t} agents={agents} workspaceId={teamLead.workspaceId} sessionId={teamLead.id} leadName={shownAgent.displayName} officeNames={officeNames} savedLooks={savedLooks}
         onClose={() => setTeamOpen(false)} onState={onState} onSaved={() => { void agents.getState().then(onState, () => undefined); }} />}

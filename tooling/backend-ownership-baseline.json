@@ -91,9 +91,9 @@
     {
       "path": "apps/cli/src/start.ts",
       "category": "legacy-backend",
-      "sha256": "5f237702e2f35f19da442048460edff1aaea5af4a272a6e5d54f16bac252f4a7",
-      "loc": 150,
-      "bytes": 6816,
+      "sha256": "7c66baf382860f8951147c23d69a6bc07c0c1a43eef8365df71de1c0ea0a7720",
+      "loc": 165,
+      "bytes": 7639,
       "effectKinds": [
         "runtime-call"
       ],
@@ -189,9 +189,9 @@
     {
       "path": "apps/desktop/src/main.ts",
       "category": "legacy-backend",
-      "sha256": "414a9c853b1e7940064bb05ffe29c80efad5fb1743ed933a3c6410dd2e6997ae",
-      "loc": 233,
-      "bytes": 11789,
+      "sha256": "6bd61cf218fee62f60c3b4586902edc28324186a03e111c1f052b04afc81c3c4",
+      "loc": 235,
+      "bytes": 11938,
       "effectKinds": [
         "node-builtin",
         "privileged-shell"
@@ -201,9 +201,9 @@
     {
       "path": "apps/desktop/src/notificationIpc.ts",
       "category": "legacy-backend",
-      "sha256": "6eec398f7ee5f21e2fe5543d879437956dd6e87b018eef97df1e0824e09de432",
-      "loc": 31,
-      "bytes": 1335,
+      "sha256": "31c304345722267ffcac8fe8fc729b73df38f80cdcf76d8be3f5a2af949df50f",
+      "loc": 30,
+      "bytes": 1303,
       "effectKinds": [
         "privileged-shell"
       ],
@@ -212,18 +212,18 @@
     {
       "path": "apps/desktop/src/notifications.ts",
       "category": "legacy-backend",
-      "sha256": "508f511dd8ef0121829e980a1812eda6ab3a0e7d2eb87aa01151c581b2479da6",
-      "loc": 45,
-      "bytes": 2539,
+      "sha256": "86856d32f3b9ef8953257c14bf84eaef815241546cfa6025a9e0fd8aada0becd",
+      "loc": 47,
+      "bytes": 2729,
       "effectKinds": [],
       "unresolvedRuntimeImports": 0
     },
     {
       "path": "apps/desktop/src/preload.ts",
       "category": "legacy-backend",
-      "sha256": "535a563d3a1891ec74483260e3fcb1bfcb941c582b91ed5af03b2bccd8b2c298",
-      "loc": 38,
-      "bytes": 1992,
+      "sha256": "708d83da2ea69b9e7f43fcddf2aa0cfd8c7adf9aef6ef1c7606b637841efe7fb",
+      "loc": 44,
+      "bytes": 2320,
       "effectKinds": [
         "privileged-shell"
       ],
@@ -263,9 +263,9 @@
     {
       "path": "apps/desktop/src/smoke.ts",
       "category": "legacy-backend",
-      "sha256": "c2cd7c32481f1ce6ad734ecbbc00b5da5e6073a0bea084a99720f586c4a6470e",
-      "loc": 199,
-      "bytes": 12824,
+      "sha256": "613c6ea4ae240d36d7796f3d5ade0ffd926184c185decc13ed86f5ecb8b4ee8e",
+      "loc": 220,
+      "bytes": 14172,
       "effectKinds": [
         "node-builtin",
         "privileged-shell",
@@ -285,9 +285,9 @@
     {
       "path": "apps/desktop/src/updatePolicy.ts",
       "category": "legacy-backend",
-      "sha256": "ad54848a2edc1e799a61b2c31460d3af2c2e0a3f3d0346e3c956c03272a50d85",
-      "loc": 179,
-      "bytes": 7375,
+      "sha256": "2a6d0fca31e1fc6c0411686abf16230f6c1a784d08f6866613e953473fffa638",
+      "loc": 211,
+      "bytes": 9085,
       "effectKinds": [
         "runtime-call"
       ],
@@ -296,9 +296,9 @@
     {
       "path": "apps/desktop/src/updater.ts",
       "category": "legacy-backend",
-      "sha256": "e20d8027a3e6907eb52f5d041c59d8a3e3b7af8c41dd88b460b98f5247caa92d",
-      "loc": 96,
-      "bytes": 4593,
+      "sha256": "bfe40596f71988268a91f1182c7249e0fdea80e3dcd37f3c39ac36fabe2c0dde",
+      "loc": 138,
+      "bytes": 5915,
       "effectKinds": [
         "node-builtin",
         "privileged-shell",
@@ -372,9 +372,9 @@
     {
       "path": "packages/core/src/index.ts",
       "category": "shared-backend-review",
-      "sha256": "73bcb48c20f5466a91d5e704b6c8fc9639b1b2417afc1325fe263eb055d94eca",
-      "loc": 19,
-      "bytes": 665,
+      "sha256": "4e442774ae14606df84d4dd1603f7619ee9639feb5c71d3294e586c7fdecc368",
+      "loc": 20,
+      "bytes": 702,
       "effectKinds": [],
       "unresolvedRuntimeImports": 0
     },
@@ -426,9 +426,18 @@
     {
       "path": "packages/core/src/privacy.ts",
       "category": "shared-backend-review",
-      "sha256": "2e4226ac8ea2235f1bb63da6fb1ab0a11e12320fb6b7e8b45b226112ebe884ae",
-      "loc": 75,
-      "bytes": 3421,
+      "sha256": "975f8cfba54550e3ba9a907775413e346593d08853efffa91eee7a9f5ddec6e7",
+      "loc": 81,
+      "bytes": 3794,
+      "effectKinds": [],
+      "unresolvedRuntimeImports": 0
+    },
+    {
+      "path": "packages/core/src/queueThumbnail.ts",
+      "category": "shared-backend-review",
+      "sha256": "89666c8efb62a10e319e4091da4ade1789c90eabcf3d1981c08388246fa7810c",
+      "loc": 25,
+      "bytes": 1828,
       "effectKinds": [],
       "unresolvedRuntimeImports": 0
     },
@@ -489,9 +498,9 @@
     {
       "path": "packages/host/src/attachments.ts",
       "category": "legacy-backend",
-      "sha256": "7a92b4ba611d245d7709112d76ce361568b3f79b7ca214f4aaf808bb2d3d5c7a",
-      "loc": 146,
-      "bytes": 6562,
+      "sha256": "1d7698f25bd88b6516172a81378d0f7a8aa4037586239729b549561ebc988fc4",
+      "loc": 152,
+      "bytes": 6821,
       "effectKinds": [
         "node-builtin"
       ],
@@ -512,18 +521,18 @@
     {
       "path": "packages/host/src/builtinSkills.ts",
       "category": "legacy-backend",
-      "sha256": "ff44f5635e05cf60edb9201a8b02d58edbf368d0955ba3db451b5ba50e7fbb87",
-      "loc": 170,
-      "bytes": 14496,
+      "sha256": "2219b9a700b9f47f27c7029017c5de3d542284d6530414d044d6ab2db1f06285",
+      "loc": 175,
+      "bytes": 15027,
       "effectKinds": [],
       "unresolvedRuntimeImports": 0
     },
     {
       "path": "packages/host/src/codexNativeQueue.ts",
       "category": "legacy-backend",
-      "sha256": "3c894ccc25b2c073472e1a8b565557632ee4a29d1941cead4c6dffcfbf7c639b",
-      "loc": 164,
-      "bytes": 9264,
+      "sha256": "663c3219650f6de69f77f0ae12ebba53d1c0ea9d7c2a4ede471f3941c8f53af3",
+      "loc": 186,
+      "bytes": 10714,
       "effectKinds": [
         "node-builtin",
         "runtime-call"
@@ -533,9 +542,9 @@
     {
       "path": "packages/host/src/codexObservedControl.ts",
       "category": "legacy-backend",
-      "sha256": "eb9136adb837807176a8f866433d2960f8561596ae0ddc60d043e6818812146d",
-      "loc": 861,
-      "bytes": 54676,
+      "sha256": "bf82bc98d0bf960effafd648f8802867f1d0f6fd4d5096551aa360ad2c9d4e77",
+      "loc": 960,
+      "bytes": 61637,
       "effectKinds": [
         "node-builtin",
         "runtime-call"
@@ -750,6 +759,35 @@
       "unresolvedRuntimeImports": 0
     },
     {
+      "path": "packages/host/src/continuityAccess.ts",
+      "category": "legacy-backend",
+      "sha256": "f43e854727dc48b67e185cfcc21bfc6852edc2983f9240d3238b53b59776e861",
+      "loc": 225,
+      "bytes": 14559,
+      "effectKinds": [
+        "node-builtin"
+      ],
+      "unresolvedRuntimeImports": 0
+    },
+    {
+      "path": "packages/host/src/continuityClient.ts",
+      "category": "legacy-backend",
+      "sha256": "3026b64e61190a086a2b7a38ce2aaecf011586745d848a5102a539a436365134",
+      "loc": 60,
+      "bytes": 4564,
+      "effectKinds": [],
+      "unresolvedRuntimeImports": 0
+    },
+    {
+      "path": "packages/host/src/continuityTools.ts",
+      "category": "legacy-backend",
+      "sha256": "bec3fb152156e8abca9edd369a53c579bf656fc7ae3362fde2e6ba9e0747f022",
+      "loc": 36,
+      "bytes": 2742,
+      "effectKinds": [],
+      "unresolvedRuntimeImports": 0
+    },
+    {
       "path": "packages/host/src/daemon/binary.ts",
       "category": "legacy-backend",
       "sha256": "f3b07ec1708209e52bdd281b451de948ced083f773a2068b691a4f147940334b",
@@ -841,11 +879,43 @@
       "unresolvedRuntimeImports": 0
     },
     {
+      "path": "packages/host/src/daemon/skillMarket.ts",
+      "category": "legacy-backend",
+      "sha256": "41d655dbb59031224cca5b8c44048710e6decf127e2c004fae102384e76be48c",
+      "loc": 221,
+      "bytes": 17016,
+      "effectKinds": [
+        "node-builtin",
+        "runtime-call"
+      ],
+      "unresolvedRuntimeImports": 0
+    },
+    {
       "path": "packages/host/src/directories.ts",
       "category": "legacy-backend",
       "sha256": "b4987331e815535b9ce54041ec3cc1aec1f1a854802e09dd3ee21778ad44d4bd",
       "loc": 91,
       "bytes": 3896,
+      "effectKinds": [
+        "node-builtin"
+      ],
+      "unresolvedRuntimeImports": 0
+    },
+    {
+      "path": "packages/host/src/handoverEvidence.ts",
+      "category": "legacy-backend",
+      "sha256": "b8e92372b1ade52021b1775707be66b889ab0f670ed10b75f57da1470511cbdf",
+      "loc": 56,
+      "bytes": 3354,
+      "effectKinds": [],
+      "unresolvedRuntimeImports": 0
+    },
+    {
+      "path": "packages/host/src/handoverHistory.ts",
+      "category": "legacy-backend",
+      "sha256": "2b7fe5273e2fd55209af652b48e05c7f22062142061bc962cad841bb3b003327",
+      "loc": 19,
+      "bytes": 1056,
       "effectKinds": [
         "node-builtin"
       ],
@@ -866,9 +936,9 @@
     {
       "path": "packages/host/src/hermesDashboard.ts",
       "category": "legacy-backend",
-      "sha256": "2b709fc81db91d8cf8a0313f214ec6f62d346b848cc1411faded99f9743aa622",
+      "sha256": "751b1c0493f2b64dbc858064242e33a93ead0af0baacdc3b58f5dc2049262107",
       "loc": 275,
-      "bytes": 11249,
+      "bytes": 11314,
       "effectKinds": [],
       "unresolvedRuntimeImports": 0
     },
@@ -909,9 +979,9 @@
     {
       "path": "packages/host/src/hooks/http.ts",
       "category": "legacy-backend",
-      "sha256": "64400f35bba9a366c1f68afc14cc5e310909361a3fadccddd2516588d674a1f3",
-      "loc": 190,
-      "bytes": 9842,
+      "sha256": "22a1ad38f1721047eea45aaca2b73cbdbabb3eea26111937086131941962aa8b",
+      "loc": 195,
+      "bytes": 10108,
       "effectKinds": [
         "node-builtin",
         "runtime-call"
@@ -921,9 +991,9 @@
     {
       "path": "packages/host/src/hooks/ingest.ts",
       "category": "legacy-backend",
-      "sha256": "d598fb921e965215c1c67e03d92b06fa05a4b719aef5b3d89af1c07438819138",
-      "loc": 96,
-      "bytes": 5151,
+      "sha256": "fb27455919eac85adc027812d3eec4aa379dff8bcbba448346cf690d5a0f0329",
+      "loc": 98,
+      "bytes": 5342,
       "effectKinds": [
         "runtime-call"
       ],
@@ -932,9 +1002,9 @@
     {
       "path": "packages/host/src/hooks/mcp.ts",
       "category": "legacy-backend",
-      "sha256": "0374d9c07fb0f63f4270c8dd171f68c7ed320abaa4a313c54b5960643e375b51",
-      "loc": 503,
-      "bytes": 25834,
+      "sha256": "b8a83ae57afdc827637a4be5ffd8bf9fbe14427b286b850aa418918b303791a4",
+      "loc": 530,
+      "bytes": 28967,
       "effectKinds": [
         "node-builtin"
       ],
@@ -943,9 +1013,9 @@
     {
       "path": "packages/host/src/hooks/normalize.ts",
       "category": "legacy-backend",
-      "sha256": "e53f12f301261a191e9ebdac3dcc4f5a8491c72592cb9f8b43ea1ed05cfbec94",
-      "loc": 555,
-      "bytes": 33197,
+      "sha256": "0dd141cab67973975bf8182a06f8f31373520805cbf5d4f8b9e18dfe3696e688",
+      "loc": 570,
+      "bytes": 34307,
       "effectKinds": [],
       "unresolvedRuntimeImports": 0
     },
@@ -992,9 +1062,9 @@
     {
       "path": "packages/host/src/knowledge.ts",
       "category": "legacy-backend",
-      "sha256": "af21706be0146a6d8c4aed6608bc94f4655ff6aa0e91d67d2c247bc178dd6ee5",
-      "loc": 334,
-      "bytes": 18720,
+      "sha256": "673567cf8e9bf7d134b93636a34f541608827cf8a727ef8e8a08a6dfd93a7752",
+      "loc": 335,
+      "bytes": 18871,
       "effectKinds": [
         "runtime-call"
       ],
@@ -1003,9 +1073,9 @@
     {
       "path": "packages/host/src/knowledgeEdit.ts",
       "category": "legacy-backend",
-      "sha256": "6a153ab6f71c07f0dfd5b3edd91db8b395b0f79139dbc13a804bf5826d07f435",
+      "sha256": "491a361a3786dc107b371d866c7d767400ca477a80958ed811d8b044655333db",
       "loc": 142,
-      "bytes": 7473,
+      "bytes": 7495,
       "effectKinds": [],
       "unresolvedRuntimeImports": 0
     },
@@ -1027,6 +1097,17 @@
       "loc": 20,
       "bytes": 900,
       "effectKinds": [],
+      "unresolvedRuntimeImports": 0
+    },
+    {
+      "path": "packages/host/src/learningSchedule.ts",
+      "category": "legacy-backend",
+      "sha256": "a7716c13810917c93f27cea04cd0af2dc86e6a9b9add930a953b999a3eaecb39",
+      "loc": 320,
+      "bytes": 15927,
+      "effectKinds": [
+        "node-builtin"
+      ],
       "unresolvedRuntimeImports": 0
     },
     {
@@ -1116,20 +1197,38 @@
     {
       "path": "packages/host/src/nativeImport.ts",
       "category": "legacy-backend",
-      "sha256": "2b767f36412f1c141d0079d1e1bf8494e16b9e12757bbca447061d53f897040c",
-      "loc": 1157,
-      "bytes": 71999,
+      "sha256": "ed265e208869863c2d333a460696eeeb32f6dd2e12b1e3295a2d050f44e35d23",
+      "loc": 1158,
+      "bytes": 73102,
       "effectKinds": [
         "node-builtin"
       ],
       "unresolvedRuntimeImports": 0
     },
     {
+      "path": "packages/host/src/nativeKnowledgeMeeting.ts",
+      "category": "legacy-backend",
+      "sha256": "c79ab90034d0a603d66adee516b12859b46a535bf611c0193217dbaf4c9b7ab3",
+      "loc": 128,
+      "bytes": 7238,
+      "effectKinds": [],
+      "unresolvedRuntimeImports": 0
+    },
+    {
       "path": "packages/host/src/nativeMemory.ts",
       "category": "legacy-backend",
-      "sha256": "fa4dd5ef135ea1153dfe2e889e88ab6749e1ea2f43399ac51a072aea02f5264d",
-      "loc": 103,
-      "bytes": 4309,
+      "sha256": "64f49f0fc1490885e8ad3216154d2c2b7ba952051423934dd4899221a9fa70ab",
+      "loc": 108,
+      "bytes": 4518,
+      "effectKinds": [],
+      "unresolvedRuntimeImports": 0
+    },
+    {
+      "path": "packages/host/src/nativeSkillPreparation.ts",
+      "category": "legacy-backend",
+      "sha256": "3551f897229c69c6f95162a3cacde59841da5f0bf1e998ea723fe9b1935dae2c",
+      "loc": 52,
+      "bytes": 2480,
       "effectKinds": [],
       "unresolvedRuntimeImports": 0
     },
@@ -1154,9 +1253,9 @@
     {
       "path": "packages/host/src/observations.ts",
       "category": "legacy-backend",
-      "sha256": "ceef634d88537890063bb5b0663a22b4c3a6b8686296357cf97fd4a1157fcb12",
-      "loc": 1161,
-      "bytes": 76120,
+      "sha256": "763f0f535b3249e527ffea8bcd6b85769b80cdd5b3eb7ba6cd2211f1a9f861b8",
+      "loc": 1293,
+      "bytes": 86025,
       "effectKinds": [
         "node-builtin",
         "runtime-call"
@@ -1188,9 +1287,9 @@
     {
       "path": "packages/host/src/observedCodexQueueService.ts",
       "category": "legacy-backend",
-      "sha256": "59f9bcaa25df662d3cfcdf3f4e45b3e8fa361ee03b4f8d0c508a35f1edd2855f",
-      "loc": 263,
-      "bytes": 16048,
+      "sha256": "b29ac61a41860ed86fc8f8b4d4879e985a24c40d764b1a35815c83dc34c850bd",
+      "loc": 266,
+      "bytes": 16450,
       "effectKinds": [
         "node-builtin"
       ],
@@ -1199,9 +1298,9 @@
     {
       "path": "packages/host/src/observedCodexService.ts",
       "category": "legacy-backend",
-      "sha256": "357e38e4d6d9570e24404a4be24179c98cfdfc598716d63ded2351ef2f679a3b",
-      "loc": 160,
-      "bytes": 9146,
+      "sha256": "f7a1ebbb0d6049814d1b02ef58b15a18789a5351979892c79d072ffee5673c5a",
+      "loc": 163,
+      "bytes": 9369,
       "effectKinds": [],
       "unresolvedRuntimeImports": 0
     },
@@ -1250,9 +1349,9 @@
     {
       "path": "packages/host/src/observedInboxClient.ts",
       "category": "legacy-backend",
-      "sha256": "c71c60f39acfad484b3bae77da470737d8b85366f1e0c7ca10a9250b9a9da767",
-      "loc": 233,
-      "bytes": 10816,
+      "sha256": "70727f8943f3b20f8e07cf41f67b2442b46594089c5a5eceb4fabb941b67c8dc",
+      "loc": 234,
+      "bytes": 10847,
       "effectKinds": [
         "node-builtin",
         "runtime-call"
@@ -1282,11 +1381,33 @@
       "unresolvedRuntimeImports": 0
     },
     {
+      "path": "packages/host/src/observedToolImages.ts",
+      "category": "legacy-backend",
+      "sha256": "914980db210b5fabe722797439d45bb067b10236f62c4930c02961b26125daa6",
+      "loc": 342,
+      "bytes": 22622,
+      "effectKinds": [
+        "node-builtin"
+      ],
+      "unresolvedRuntimeImports": 0
+    },
+    {
+      "path": "packages/host/src/observedUserInputService.ts",
+      "category": "legacy-backend",
+      "sha256": "8b5954b8f56ff72a4395ebfeb089332e87f6d6c00bc5cbde3c1f8277da59b2b9",
+      "loc": 175,
+      "bytes": 14239,
+      "effectKinds": [
+        "node-builtin"
+      ],
+      "unresolvedRuntimeImports": 0
+    },
+    {
       "path": "packages/host/src/observedWorkspace.ts",
       "category": "legacy-backend",
-      "sha256": "3568bfc4b75a130b056a7228234ca54235320a6414036c794621d7d38fbeb547",
-      "loc": 52,
-      "bytes": 2574,
+      "sha256": "ba7379881705979622b738d61926d47af59908205b2a6e8a7b8c7ba04f5c5370",
+      "loc": 132,
+      "bytes": 7340,
       "effectKinds": [
         "node-builtin"
       ],
@@ -1350,9 +1471,9 @@
     {
       "path": "packages/host/src/promptQueue.ts",
       "category": "legacy-backend",
-      "sha256": "55bc73fc157c744371650e2057c1363cd727957b2f66600822ab617d9ccb0a15",
-      "loc": 339,
-      "bytes": 23651,
+      "sha256": "2bd0a7074b50cc59e856f0fad23e17277ca836af3dc03e066c6954b6ac0b9ac4",
+      "loc": 364,
+      "bytes": 25364,
       "effectKinds": [
         "node-builtin",
         "runtime-call"
@@ -1394,9 +1515,9 @@
     {
       "path": "packages/host/src/service.ts",
       "category": "legacy-backend",
-      "sha256": "e557164ef68a74c185cf2967a4a53d1228baa2b25982e0004f1a63346e10d6a8",
-      "loc": 3678,
-      "bytes": 238859,
+      "sha256": "57c4c9a90345d486488f624dc331b724ff32778ae4fd2d91924a8de7c630b84a",
+      "loc": 4652,
+      "bytes": 309205,
       "effectKinds": [
         "node-builtin",
         "runtime-call"
@@ -1413,14 +1534,45 @@
       "unresolvedRuntimeImports": 0
     },
     {
-      "path": "packages/host/src/sessions.ts",
+      "path": "packages/host/src/sessionContinuity.ts",
       "category": "legacy-backend",
-      "sha256": "c183ff7132fd754fcd2a7b85b90ea82143971ff2dbe5a23ad7ce40421fd58d1b",
-      "loc": 264,
-      "bytes": 12269,
+      "sha256": "a6ed549133ec6277218a63fdb533ae7ce6619df4d364b98eda12e4b2737b5bea",
+      "loc": 463,
+      "bytes": 37680,
       "effectKinds": [
         "node-builtin"
       ],
+      "unresolvedRuntimeImports": 0
+    },
+    {
+      "path": "packages/host/src/sessionMove.ts",
+      "category": "legacy-backend",
+      "sha256": "8909ed0664606d9452928c573082bfc32d623bdcbffae14664469eabc79fb82c",
+      "loc": 50,
+      "bytes": 2885,
+      "effectKinds": [
+        "node-builtin"
+      ],
+      "unresolvedRuntimeImports": 0
+    },
+    {
+      "path": "packages/host/src/sessions.ts",
+      "category": "legacy-backend",
+      "sha256": "54517f4b74ad888f5505e4ead1438c13e513b1c4cdff0ed61c50df649f5da18d",
+      "loc": 279,
+      "bytes": 13522,
+      "effectKinds": [
+        "node-builtin"
+      ],
+      "unresolvedRuntimeImports": 0
+    },
+    {
+      "path": "packages/host/src/skillAutoLoad.ts",
+      "category": "legacy-backend",
+      "sha256": "020bc8f8fffec3a4d39ec04b549f77958f6737f1f5b715c9026ab98003042368",
+      "loc": 242,
+      "bytes": 15757,
+      "effectKinds": [],
       "unresolvedRuntimeImports": 0
     },
     {
@@ -1433,11 +1585,31 @@
       "unresolvedRuntimeImports": 0
     },
     {
+      "path": "packages/host/src/skillLearningNotices.ts",
+      "category": "legacy-backend",
+      "sha256": "95c97cfe1445d79d25d44673b5a665c7971ecf2031e7a92445e9c5d83f47df8f",
+      "loc": 65,
+      "bytes": 3180,
+      "effectKinds": [
+        "node-builtin"
+      ],
+      "unresolvedRuntimeImports": 0
+    },
+    {
+      "path": "packages/host/src/skillMarketplace.ts",
+      "category": "legacy-backend",
+      "sha256": "b3b4df91ea96cf234de5be6e184e38415935e2ed470b7d1524a0749bd506f218",
+      "loc": 93,
+      "bytes": 4779,
+      "effectKinds": [],
+      "unresolvedRuntimeImports": 0
+    },
+    {
       "path": "packages/host/src/skillRegistry.ts",
       "category": "legacy-backend",
-      "sha256": "535b8e10118621c01d3f3168addfb201715ef558be98a1acf032db059f0cbdc1",
-      "loc": 541,
-      "bytes": 34557,
+      "sha256": "9431bf3c8a76257fe3a052c79c2b64c2da049049794c39d170b9054963316b6e",
+      "loc": 567,
+      "bytes": 36430,
       "effectKinds": [
         "node-builtin"
       ],
@@ -1446,9 +1618,9 @@
     {
       "path": "packages/host/src/skills.ts",
       "category": "legacy-backend",
-      "sha256": "0945b59eddac923979a4eef7a323c68a5ed3aefbecc06b3b47f85f0ac4d22541",
-      "loc": 394,
-      "bytes": 26625,
+      "sha256": "485a154dc73f600ed6a7461b9100e7b2b15d440bcdfab41419041b0ca3d2193b",
+      "loc": 410,
+      "bytes": 27549,
       "effectKinds": [
         "node-builtin"
       ],
@@ -1503,9 +1675,9 @@
     {
       "path": "packages/host/src/transcriptEvents.ts",
       "category": "legacy-backend",
-      "sha256": "128015280b553e443328d184645a13bd2525810970b9f872fd907f17509cd0b0",
-      "loc": 242,
-      "bytes": 14625,
+      "sha256": "5bbcb09fc4d396d0f0a5fe70bab68bdde3254d4cdbc811a415f4deaff844fdde",
+      "loc": 246,
+      "bytes": 15039,
       "effectKinds": [
         "node-builtin"
       ],
@@ -1514,9 +1686,9 @@
     {
       "path": "packages/host/src/vaultProfiles.ts",
       "category": "legacy-backend",
-      "sha256": "ae92b39c454b36dbd16441cba41157fdcc06c001a8f400d47d09d97e405a6b53",
-      "loc": 208,
-      "bytes": 16435,
+      "sha256": "e03c39db4d7ac4170d1c44ed2b24b183bcb292dc0af1f2676a762203e98803a1",
+      "loc": 276,
+      "bytes": 22135,
       "effectKinds": [
         "node-builtin"
       ],
@@ -1548,9 +1720,9 @@
     {
       "path": "packages/host/src/workspaceBoundary.ts",
       "category": "legacy-backend",
-      "sha256": "7f89c1b56cfa7b3f20c27ffdcd8cb65acfbbbc2350857ee6eadca715f1dd26dc",
-      "loc": 50,
-      "bytes": 3169,
+      "sha256": "167184a8de24875fab45d69821cb0726bfda08c405bff2cf3666f823ee873a49",
+      "loc": 76,
+      "bytes": 5073,
       "effectKinds": [
         "node-builtin"
       ],
@@ -1562,6 +1734,28 @@
       "sha256": "97344a206bfb650ac1ef9b77b77aef24bca60873222bd45c4d139a83da6f2587",
       "loc": 110,
       "bytes": 5660,
+      "effectKinds": [
+        "node-builtin"
+      ],
+      "unresolvedRuntimeImports": 0
+    },
+    {
+      "path": "packages/host/src/workspaceKnowledge.ts",
+      "category": "legacy-backend",
+      "sha256": "61f09d4b5e2bf968f8754aaf13668eb66a157ad39cb57cffed61876ff88299f1",
+      "loc": 96,
+      "bytes": 5309,
+      "effectKinds": [
+        "node-builtin"
+      ],
+      "unresolvedRuntimeImports": 0
+    },
+    {
+      "path": "packages/host/src/workspaceVaultProfile.ts",
+      "category": "legacy-backend",
+      "sha256": "cc802db328ad80fe25343605de52946688cb4b49ea40d4f7ac29b33bb5a3b9d7",
+      "loc": 53,
+      "bytes": 2804,
       "effectKinds": [
         "node-builtin"
       ],
@@ -1619,29 +1813,38 @@
       "unresolvedRuntimeImports": 0
     },
     {
+      "path": "packages/importers/src/codexUserInput.ts",
+      "category": "legacy-backend",
+      "sha256": "cf04f65fd360268f8236af7ab0d7462e18296a247a140b9dc7e6b4b820b14a25",
+      "loc": 75,
+      "bytes": 5719,
+      "effectKinds": [],
+      "unresolvedRuntimeImports": 0
+    },
+    {
       "path": "packages/importers/src/index.ts",
       "category": "legacy-backend",
-      "sha256": "f46c543d7776fd319011f3fb36545ffc5f527e8129ea9750a010dfdb07ea69e1",
-      "loc": 2,
-      "bytes": 58,
+      "sha256": "1cace8973646231cb9b957e441a62401c4dce0bebb27b4fc20c491212dedda26",
+      "loc": 3,
+      "bytes": 95,
       "effectKinds": [],
       "unresolvedRuntimeImports": 0
     },
     {
       "path": "packages/importers/src/parsers.ts",
       "category": "legacy-backend",
-      "sha256": "6d625fd4eaff8c1b082115e9724ff263ce142e13b05785560e579ee9ff4e7af3",
-      "loc": 711,
-      "bytes": 51138,
+      "sha256": "4c1e7566bc284d4f52ae79e0a304b67fbfeb53c367c1d46b79afacabe895d082",
+      "loc": 757,
+      "bytes": 55063,
       "effectKinds": [],
       "unresolvedRuntimeImports": 0
     },
     {
       "path": "packages/importers/src/steps.ts",
       "category": "legacy-backend",
-      "sha256": "64b7ec1e8deeb4024b6dc8b56a68dcafa56d3fd1a1307a6135f7f337e64ba46f",
-      "loc": 458,
-      "bytes": 26812,
+      "sha256": "c71029751ad8cda507463ff8673368d89f3470b54cd914ab7c43cc4b7b395875",
+      "loc": 514,
+      "bytes": 29777,
       "effectKinds": [],
       "unresolvedRuntimeImports": 0
     },
@@ -1657,9 +1860,9 @@
     {
       "path": "packages/platform/src/agentHost.ts",
       "category": "shared-backend-review",
-      "sha256": "6f786769f5270af599e3e141f641db76fc9175d41968ef8c916058de2859e0dc",
-      "loc": 1125,
-      "bytes": 63992,
+      "sha256": "aa425256f53b021d586fc994cb29013faffd11c5f4c003ac28fe0db2afe1a379",
+      "loc": 1189,
+      "bytes": 69368,
       "effectKinds": [],
       "unresolvedRuntimeImports": 0
     },
@@ -1675,9 +1878,9 @@
     {
       "path": "packages/platform/src/capabilities.ts",
       "category": "shared-backend-review",
-      "sha256": "53ca58ad7e360a83946cefd6e17a767a942f763345871580901bef05d000d5b0",
-      "loc": 171,
-      "bytes": 7063,
+      "sha256": "14ea88abe0817b85071df3ccbbc1ad03c3823e07273552b7c07547c441a9cf9d",
+      "loc": 191,
+      "bytes": 8719,
       "effectKinds": [],
       "unresolvedRuntimeImports": 0
     },
@@ -1693,9 +1896,9 @@
     {
       "path": "packages/platform/src/index.ts",
       "category": "shared-backend-review",
-      "sha256": "8bd13b258359fc96ab07040a8386ed4a0acd1d8c2527d47a7bc43d02b83cfcb4",
-      "loc": 27,
-      "bytes": 966,
+      "sha256": "40b92a509a4e5f0d81efaa6f4d03d549221de627c8d61b5398c2272c262cead0",
+      "loc": 34,
+      "bytes": 1229,
       "effectKinds": [],
       "unresolvedRuntimeImports": 0
     },
@@ -1723,6 +1926,15 @@
       "sha256": "77768ba651350c6ca8eb876a078b864842f4b7e3975716eb965c51cac659f220",
       "loc": 65,
       "bytes": 3621,
+      "effectKinds": [],
+      "unresolvedRuntimeImports": 0
+    },
+    {
+      "path": "packages/platform/src/learningSchedule.ts",
+      "category": "shared-backend-review",
+      "sha256": "1f27f61783e59e96f6e6f8dc46a95272174007841a5f153d02284412b2f021f3",
+      "loc": 78,
+      "bytes": 2990,
       "effectKinds": [],
       "unresolvedRuntimeImports": 0
     },
@@ -1772,6 +1984,15 @@
       "unresolvedRuntimeImports": 0
     },
     {
+      "path": "packages/platform/src/observedWorkspaceLink.ts",
+      "category": "shared-backend-review",
+      "sha256": "2dbd2954c15c0c0ca4690b1ed453cc34e9f71375b56139081c75b4b4cb96d069",
+      "loc": 32,
+      "bytes": 1734,
+      "effectKinds": [],
+      "unresolvedRuntimeImports": 0
+    },
+    {
       "path": "packages/platform/src/promptOptions.ts",
       "category": "shared-backend-review",
       "sha256": "b8fa9f799f5ee083a644184cddde8f19eb0740008c365f98a5d94ef67ac5abc0",
@@ -1790,11 +2011,20 @@
       "unresolvedRuntimeImports": 0
     },
     {
+      "path": "packages/platform/src/skillMarket.ts",
+      "category": "shared-backend-review",
+      "sha256": "5006b42268b4c015a028fe576c383f47c7e77ff3c1a876d2861335fd379caf36",
+      "loc": 100,
+      "bytes": 5409,
+      "effectKinds": [],
+      "unresolvedRuntimeImports": 0
+    },
+    {
       "path": "packages/platform/src/skillRegistry.ts",
       "category": "shared-backend-review",
-      "sha256": "f948d44c4eb6b2632aac2f6fb8e694a10ee880f6e530ce235245a70868ebbd0a",
-      "loc": 241,
-      "bytes": 13664,
+      "sha256": "67c4ef48e432484cca12c5325a7978752f9cea4baa46526d758c8f5ac728a6a4",
+      "loc": 245,
+      "bytes": 13924,
       "effectKinds": [],
       "unresolvedRuntimeImports": 0
     },
@@ -1813,6 +2043,15 @@
       "sha256": "927ca3f6bf8198de69787650bdbcca788fa030da0ef00939fa84b1c1161cddaf",
       "loc": 57,
       "bytes": 3852,
+      "effectKinds": [],
+      "unresolvedRuntimeImports": 0
+    },
+    {
+      "path": "packages/platform/src/workspaceKnowledge.ts",
+      "category": "shared-backend-review",
+      "sha256": "4d6b649f60a92c176405a98b961a937c4164d0bb88b18c7c2e66598998380657",
+      "loc": 15,
+      "bytes": 1126,
       "effectKinds": [],
       "unresolvedRuntimeImports": 0
     },
@@ -1909,18 +2148,18 @@
     {
       "path": "packages/protocol/src/daemonKnowledge.ts",
       "category": "shared-backend-review",
-      "sha256": "1cdef8a94d7198f26cac39a8f93c2d0fabcf9257a398ce0299add3478e871c61",
-      "loc": 417,
-      "bytes": 21314,
+      "sha256": "a760245e0b15604b7242ecc64ce194a8b7dcee182e4b2d059ea58c6384787afc",
+      "loc": 423,
+      "bytes": 21986,
       "effectKinds": [],
       "unresolvedRuntimeImports": 0
     },
     {
       "path": "packages/protocol/src/daemonKnowledgeRules.ts",
       "category": "shared-backend-review",
-      "sha256": "4f732b9fba0f1104e54af488f4ba5bb6b920dcdd211abb3576507ab47ad4946d",
-      "loc": 232,
-      "bytes": 15294,
+      "sha256": "62d7a1ec9f85b7c7b0226bdf81c8c8c6d6d716f62bd49a1c1529b492e000f0bb",
+      "loc": 250,
+      "bytes": 16557,
       "effectKinds": [],
       "unresolvedRuntimeImports": 0
     },
@@ -2008,18 +2247,18 @@
     {
       "path": "packages/protocol/src/daemonSkillRules.ts",
       "category": "shared-backend-review",
-      "sha256": "852dd83eda78c4b979fe77328408802d92addf0eeaf4943ca150aa8e6cb71283",
-      "loc": 128,
-      "bytes": 9865,
+      "sha256": "df7624205b969e40557f5bab28271f987681f8aab7b57e3857671858068a91bd",
+      "loc": 143,
+      "bytes": 10937,
       "effectKinds": [],
       "unresolvedRuntimeImports": 0
     },
     {
       "path": "packages/protocol/src/daemonSkills.ts",
       "category": "shared-backend-review",
-      "sha256": "5cfe9e1251f2bdde373b9fd6f1cd58233d1888cf2be6c98f6aaa22728c889e3f",
-      "loc": 261,
-      "bytes": 14879,
+      "sha256": "0a14ba0607cc1d6dc4babca2060bbb5c4639f7f00b4c3e3c02a95656f2a34dd5",
+      "loc": 265,
+      "bytes": 15247,
       "effectKinds": [],
       "unresolvedRuntimeImports": 0
     },
@@ -2035,18 +2274,18 @@
     {
       "path": "packages/protocol/src/events.ts",
       "category": "shared-backend-review",
-      "sha256": "b190682af1e78f36cfcf7e50a4c7f8e31320fbd97b53507f2e0a2f17d6ca8218",
-      "loc": 157,
-      "bytes": 8585,
+      "sha256": "2e042b623f2cd1d39af56ec08164879dc7b12ce5ad9a60a68b74f9a037e0f02a",
+      "loc": 159,
+      "bytes": 8720,
       "effectKinds": [],
       "unresolvedRuntimeImports": 0
     },
     {
       "path": "packages/protocol/src/index.ts",
       "category": "shared-backend-review",
-      "sha256": "0d45f5b1f3d0ee9fa1377272c1de27e275b0272ba5fe00902770ffb85a08ee03",
-      "loc": 59,
-      "bytes": 2925,
+      "sha256": "1eaec075714453fabee0517a1a9c6ea0f89fb876e7ab0210a71ab0934246f185",
+      "loc": 60,
+      "bytes": 2960,
       "effectKinds": [],
       "unresolvedRuntimeImports": 0
     },
@@ -2132,6 +2371,15 @@
       "unresolvedRuntimeImports": 0
     },
     {
+      "path": "packages/protocol/src/skillLoading.ts",
+      "category": "shared-backend-review",
+      "sha256": "cc79adf2be0559bf5bc29b443f0309d2975e351792a68230fd9d618468e6692b",
+      "loc": 93,
+      "bytes": 6387,
+      "effectKinds": [],
+      "unresolvedRuntimeImports": 0
+    },
+    {
       "path": "packages/protocol/src/transitions.ts",
       "category": "shared-backend-review",
       "sha256": "b3ee0b9aa265b22a4c4931e0d0ab35f053481f3a9bb8411aefa3858cb342c24a",
@@ -2143,9 +2391,9 @@
     {
       "path": "packages/protocol/src/validate.ts",
       "category": "shared-backend-review",
-      "sha256": "9c5d8af7f4ed8e6d3f6df08db305159840a6ac0ab97c83b13681331a31254bd2",
-      "loc": 270,
-      "bytes": 17806,
+      "sha256": "daddd923f2f080bc57181145691b9877bd1a8639fd613bbdd085fa8db946683c",
+      "loc": 276,
+      "bytes": 18857,
       "effectKinds": [],
       "unresolvedRuntimeImports": 0
     },
@@ -2179,9 +2427,9 @@
     {
       "path": "packages/runtime/src/delegation.ts",
       "category": "legacy-backend",
-      "sha256": "b835ebc841c9efc04e15a34da52994bda96f09fe35dce8838573639200144c10",
-      "loc": 298,
-      "bytes": 19716,
+      "sha256": "bed09f4604b17e8ba5c939667116629c7e82650849fa6b922fc210a16aeeb91d",
+      "loc": 301,
+      "bytes": 20062,
       "effectKinds": [],
       "unresolvedRuntimeImports": 0
     },
@@ -2224,18 +2472,18 @@
     {
       "path": "packages/runtime/src/loop.ts",
       "category": "legacy-backend",
-      "sha256": "aca9d5507aa66fd1754a8575d4f189dd18b5cc843f2b51168c22e6d930bb4ec0",
-      "loc": 288,
-      "bytes": 16821,
+      "sha256": "0eb02ca4c208b0cdd39d4797d611e9dc70c6ec6338fab636ff3e4ec13f209edb",
+      "loc": 301,
+      "bytes": 17560,
       "effectKinds": [],
       "unresolvedRuntimeImports": 0
     },
     {
       "path": "packages/runtime/src/meetings.ts",
       "category": "legacy-backend",
-      "sha256": "3d49710e96666d135c1f69436e2a701110539c74aca9b0023a7b3ecffa0624bd",
-      "loc": 179,
-      "bytes": 11742,
+      "sha256": "ab0f798591dc1db12d00f5ef5cf309fd06f724cdf7a7fd52ddb5603f0b01c372",
+      "loc": 181,
+      "bytes": 11870,
       "effectKinds": [],
       "unresolvedRuntimeImports": 0
     },
@@ -2280,9 +2528,9 @@
     {
       "path": "packages/runtime/src/prompt.ts",
       "category": "legacy-backend",
-      "sha256": "5c2a55b619cb7479c8f6d71f9d8e70112a59a6aaa833e3d58e40aa8736aac188",
-      "loc": 269,
-      "bytes": 20635,
+      "sha256": "a7b18c6b88a9763f1bc1cef8e13f54e0f912a39762072a09b2e9039080e505d7",
+      "loc": 274,
+      "bytes": 20996,
       "effectKinds": [],
       "unresolvedRuntimeImports": 0
     },
@@ -2375,7 +2623,7 @@
     {
       "path": "apps/web/src/App.tsx",
       "category": "ui",
-      "runtimeSignature": "6c5f8e954f1f1337b051d21cacb8d7284ca33e5be6c067e23aaac0ed3f4bfdba"
+      "runtimeSignature": "5576e7e4aadfbcacaeba40ee409fa1c7cd680df0960704cf27e9efe7f99eded9"
     },
     {
       "path": "apps/web/src/appMode.ts",
@@ -2395,7 +2643,7 @@
     {
       "path": "apps/web/src/approvals/browserNotifications.ts",
       "category": "ui",
-      "runtimeSignature": "0a144d1b52939ff20b1ace05314d2cfb962ed218c4eafd4072bd333f3a812da7"
+      "runtimeSignature": "f19300491d48bf66f34b28b69dfbbe998774a9e70151f16b61dd52854bfce893"
     },
     {
       "path": "apps/web/src/approvals/context.ts",
@@ -2455,7 +2703,7 @@
     {
       "path": "apps/web/src/chat/changedFiles.ts",
       "category": "ui",
-      "runtimeSignature": "0a144d1b52939ff20b1ace05314d2cfb962ed218c4eafd4072bd333f3a812da7"
+      "runtimeSignature": "70e3e7206c5bc5f3b20933f752e03300a9d9288b6a181e8381bab581ffa0d8ae"
     },
     {
       "path": "apps/web/src/chat/ChangedFilesView.tsx",
@@ -2465,7 +2713,12 @@
     {
       "path": "apps/web/src/chat/ChatPage.tsx",
       "category": "ui",
-      "runtimeSignature": "0ad78632bc5da2a0d544c31571c6a12c3832d12c46f82413a90fbd0404da0588"
+      "runtimeSignature": "b6b954a50c8d3f21b98a8cb68c6494f0d1b13c8dbbe538de2e7776586face4f4"
+    },
+    {
+      "path": "apps/web/src/chat/ChatSessionInfo.tsx",
+      "category": "ui",
+      "runtimeSignature": "14eba056746470783c3a8456f00ac26c81dfcef72288af946b49cc5360dfc45d"
     },
     {
       "path": "apps/web/src/chat/chatTeam.ts",
@@ -2518,6 +2771,11 @@
       "runtimeSignature": "167e870ecdea0061ce712f82cf2c1d95620453fdee5400263b4ece1208f2a09d"
     },
     {
+      "path": "apps/web/src/chat/MessageAttachments.tsx",
+      "category": "ui",
+      "runtimeSignature": "72a4613d4090695e9b5f1d0f89c269e0f487d8b0747f805dd240bf81c17259bc"
+    },
+    {
       "path": "apps/web/src/chat/messageFilePaths.ts",
       "category": "ui",
       "runtimeSignature": "0a144d1b52939ff20b1ace05314d2cfb962ed218c4eafd4072bd333f3a812da7"
@@ -2525,7 +2783,7 @@
     {
       "path": "apps/web/src/chat/MessageFilePreview.tsx",
       "category": "ui",
-      "runtimeSignature": "43af4bac4a48bfa677ecaaf86c97b84a2cf8e16672e96d8581a47bf21ce87864"
+      "runtimeSignature": "9162d3b22df5dc14ea0e6e523128d071a37addb512cf4360da82ba369d1dd662"
     },
     {
       "path": "apps/web/src/chat/messagePresentation.ts",
@@ -2540,7 +2798,7 @@
     {
       "path": "apps/web/src/chat/PromptQueueControls.tsx",
       "category": "ui",
-      "runtimeSignature": "1ae49f5fa3adb0c436cb5634d2dcf807e53d5f644a31a1979e3701c9b9d66ecc"
+      "runtimeSignature": "423baf0a4f33d45c4e58205a3c5e614386aec9ffa84c16b1fbf9c30425f19925"
     },
     {
       "path": "apps/web/src/chat/promptQueueModel.ts",
@@ -2558,9 +2816,24 @@
       "runtimeSignature": "3cfc0df8217c781db473e83b2e8a7d96ab1043cd73cec29b5a48df04bc9cc283"
     },
     {
+      "path": "apps/web/src/chat/QueuedPromptPreview.tsx",
+      "category": "ui",
+      "runtimeSignature": "dfe6b308acd4998b29c0c90ad6f89c51259db607b243467104e47e9e99d76081"
+    },
+    {
       "path": "apps/web/src/chat/selection.ts",
       "category": "ui",
       "runtimeSignature": "0a144d1b52939ff20b1ace05314d2cfb962ed218c4eafd4072bd333f3a812da7"
+    },
+    {
+      "path": "apps/web/src/chat/sessionEventFeed.ts",
+      "category": "ui",
+      "runtimeSignature": "d311462e8bff24c86d52a6edbb8e0ed797bc7eddb7e7c6a95ecd67df50cd3f33"
+    },
+    {
+      "path": "apps/web/src/chat/sessionFileScopes.ts",
+      "category": "ui",
+      "runtimeSignature": "cea808628cfaab7adec478c108ffed2e6812a95f9a4b31d8df774e2296422cdd"
     },
     {
       "path": "apps/web/src/chat/sessionHandoff.ts",
@@ -2568,9 +2841,19 @@
       "runtimeSignature": "0a144d1b52939ff20b1ace05314d2cfb962ed218c4eafd4072bd333f3a812da7"
     },
     {
+      "path": "apps/web/src/chat/SessionHandoverDialog.tsx",
+      "category": "ui",
+      "runtimeSignature": "8c11b6fad082483f7798ba4282682bfeb3e00368dbb235b94451390f606fc3f1"
+    },
+    {
       "path": "apps/web/src/chat/SessionList.tsx",
       "category": "ui",
       "runtimeSignature": "2cfee629f9f7efd187d4d8932ba96755f229c0d91bb6c0b36f1d8444607e973d"
+    },
+    {
+      "path": "apps/web/src/chat/SessionMoveDialog.tsx",
+      "category": "ui",
+      "runtimeSignature": "1c3ef49a796573af6ba097371cf10c4bb8a3e82a121fa87a2335bf35ac9a59c9"
     },
     {
       "path": "apps/web/src/chat/sessionRuntime.ts",
@@ -2578,14 +2861,19 @@
       "runtimeSignature": "0a144d1b52939ff20b1ace05314d2cfb962ed218c4eafd4072bd333f3a812da7"
     },
     {
+      "path": "apps/web/src/chat/SkillLoadCard.tsx",
+      "category": "ui",
+      "runtimeSignature": "711453093e7840ca8cc5061156caa5905aec79a6927d91e06f8a93a8fe8f79ec"
+    },
+    {
       "path": "apps/web/src/chat/transcript.ts",
       "category": "ui",
-      "runtimeSignature": "d6384e3e9e69d8c18275653dc7999d05179816fe91c1266f73c8326c22e0fe74"
+      "runtimeSignature": "c703a93e0fa20b23009f68d835acef349cb2f81cb84c42733b3f3035268b648a"
     },
     {
       "path": "apps/web/src/chat/TranscriptView.tsx",
       "category": "ui",
-      "runtimeSignature": "d5f0c4eeb81bfd4fd6c4689b8040251a950ec4ae1325e6076abb9018e6ffffb1"
+      "runtimeSignature": "b8e04e0b148dbe9a5aeadd845f2a4deb98279471c6bbd2059eda5d8c7ae07d26"
     },
     {
       "path": "apps/web/src/chat/useComposerDraft.ts",
@@ -2605,12 +2893,12 @@
     {
       "path": "apps/web/src/chat/UserMessage.tsx",
       "category": "ui",
-      "runtimeSignature": "5ba7210321931a4fb04f1bb2edc1515e6eef95cb171b19c968d7561bd7074d4d"
+      "runtimeSignature": "4ca95d0b4c95fb4ac6a8482c6efe0cb7edc64f59ec148b8c207789d60452c8c2"
     },
     {
       "path": "apps/web/src/chat/useSessionEvents.ts",
       "category": "ui",
-      "runtimeSignature": "842923b7fea6187b3534511008cc0cd7210f3df29e204b8a78de7e418f3301a9"
+      "runtimeSignature": "98578b76cc87de1fef0565c88945b1fb5be5b9c26eae3c20e1cfe2561179fd37"
     },
     {
       "path": "apps/web/src/chat/useWorkspaceMemoryDraftWarning.ts",
@@ -2660,7 +2948,7 @@
     {
       "path": "apps/web/src/host/bridgeHost.ts",
       "category": "ui",
-      "runtimeSignature": "3227ce91cb95f4a5bce67624e86f7e78ab2a6a34212c4d6e8b1ef95c9bb7cd33"
+      "runtimeSignature": "fda74aad135c71a2800e087ac8d3b5f5d8c87d1a63586a913b5fc579c8b726b8"
     },
     {
       "path": "apps/web/src/host/desktopHost.ts",
@@ -2668,9 +2956,9 @@
       "runtimeSignature": "958d2dc9f8e89142d2e249c7da29a5e523c6bb18c569378b73a45b2a9ac6f63a"
     },
     {
-      "path": "apps/web/src/host/HostConnectionBanner.tsx",
+      "path": "apps/web/src/host/HostConnectionDialog.tsx",
       "category": "ui",
-      "runtimeSignature": "e53b373cee0dc0f54fdc13875331237f12a6fbc22832db7d3699589ebe5a9402"
+      "runtimeSignature": "ef369a31f634646deab495dc051387e74f01dd1bb25d444f5e176ec483d8f6c1"
     },
     {
       "path": "apps/web/src/host/hostStateMonitor.ts",
@@ -2795,7 +3083,12 @@
     {
       "path": "apps/web/src/knowledge/KnowledgePage.tsx",
       "category": "ui",
-      "runtimeSignature": "7c7bc9aca898652286c70ac8f5ae703350d4814191af649851c58d6fb3032098"
+      "runtimeSignature": "adfe6c47d9bda0f8b66264ac0782ec842151f78bafa52d39eaf17ed0f3f6f388"
+    },
+    {
+      "path": "apps/web/src/knowledge/LearningCountdown.tsx",
+      "category": "ui",
+      "runtimeSignature": "cfd126f83da30f90da6c51cb0f7491ca1240965380ff3e9822b155e6e317f7e6"
     },
     {
       "path": "apps/web/src/knowledge/noteEditModel.ts",
@@ -2908,9 +3201,14 @@
       "runtimeSignature": "9de2e88557212e744566d106cf576104ab8d7eaf7edf12566e5cbc1ed6944ba9"
     },
     {
+      "path": "apps/web/src/knowledge/workspaceKnowledgeHost.ts",
+      "category": "ui",
+      "runtimeSignature": "f19300491d48bf66f34b28b69dfbbe998774a9e70151f16b61dd52854bfce893"
+    },
+    {
       "path": "apps/web/src/library/ContinueInExtalia.tsx",
       "category": "ui",
-      "runtimeSignature": "ab123ef3a682449ac607565575a97e4645f6076d468c3a9bf4c0b00d1214fd0b"
+      "runtimeSignature": "9e149ac4f70163b831543eb425910fa84d41df386ddc93131bee38bdfa4a836e"
     },
     {
       "path": "apps/web/src/library/HistoryPage.tsx",
@@ -3023,6 +3321,11 @@
       "runtimeSignature": "9c8f93be2a1360fd2c44971be9cb559da013533a4d57c0ec7147fb9af915b82d"
     },
     {
+      "path": "apps/web/src/observe/ConversationToolsTabs.tsx",
+      "category": "ui",
+      "runtimeSignature": "d0872b27b6d6c76b62b3587f960d7ff6433e1e994924a0f683fb1e3558a81936"
+    },
+    {
       "path": "apps/web/src/observe/ObservedCodexControls.tsx",
       "category": "ui",
       "runtimeSignature": "a18de1a8176ea3768a4f31770fedb1247a362745506db36248a588b21f1ad1d3"
@@ -3035,12 +3338,12 @@
     {
       "path": "apps/web/src/observe/ObservedCodexNativeQueue.tsx",
       "category": "ui",
-      "runtimeSignature": "87637e7e3d46b257940873543dee3bbd2c79509dc5f9c11decbc6983259c5ecd"
+      "runtimeSignature": "55a54b58c0bc7cb42f6cebb7b8975a5642e7eb6d4bb6a77ae03e7b19f2751607"
     },
     {
       "path": "apps/web/src/observe/observedCodexNativeQueueModel.ts",
       "category": "ui",
-      "runtimeSignature": "73675f36e4640ae8d6e2b1071a637d29a2da18fd2f8f8d4a12c74a185791988b"
+      "runtimeSignature": "735319f2105bef6df39c6aaddfff402979b186fbb55a8e8d54de9c403a20bbda"
     },
     {
       "path": "apps/web/src/observe/ObservedCodexPermissionControls.tsx",
@@ -3050,7 +3353,7 @@
     {
       "path": "apps/web/src/observe/ObservedCodexPromptComposer.tsx",
       "category": "ui",
-      "runtimeSignature": "ca396824035905866abf0bf5de51a62a2307cacb83653a066ce793ec80510aca"
+      "runtimeSignature": "2b2edcbd15d657d0e980a9a7cb60d663d1543d1d70a5bf41ac0748f9a2f285a0"
     },
     {
       "path": "apps/web/src/observe/observedCodexPromptModel.ts",
@@ -3078,6 +3381,26 @@
       "runtimeSignature": "73675f36e4640ae8d6e2b1071a637d29a2da18fd2f8f8d4a12c74a185791988b"
     },
     {
+      "path": "apps/web/src/observe/ObservedInputCards.tsx",
+      "category": "ui",
+      "runtimeSignature": "afa84aa51296d4f15755a4f8ace91b3113cd427fa10592bc113542c0a1c956e4"
+    },
+    {
+      "path": "apps/web/src/observe/observedInputModel.ts",
+      "category": "ui",
+      "runtimeSignature": "1f11354a7929fe9e543db35b085122cc384d32c56f15e9e30ef727506f490346"
+    },
+    {
+      "path": "apps/web/src/observe/ObservedInputProvider.tsx",
+      "category": "ui",
+      "runtimeSignature": "b50b273a54afc2d5639468bf4c1f6a96229ff5d926bdbe539b41edfcd17dcb6b"
+    },
+    {
+      "path": "apps/web/src/observe/observedModelChoices.ts",
+      "category": "ui",
+      "runtimeSignature": "35acbfb06c17a69a7f9f200e011e10e7e2873744460abe23a24ceb1d2b8009a6"
+    },
+    {
       "path": "apps/web/src/observe/ObservedReplyControls.tsx",
       "category": "ui",
       "runtimeSignature": "6d29a55038246cff7f8b572c20493b1c3336da4e3a062d6f1a251b8e9b2a47ec"
@@ -3090,12 +3413,17 @@
     {
       "path": "apps/web/src/observe/ObservedSessionControl.tsx",
       "category": "ui",
-      "runtimeSignature": "e076fb3daa4aa302e27955f49b3e0bea6b3f6bd51a9e1cc0fdb993c04669ba7f"
+      "runtimeSignature": "566194d487056268fa5dd8075ee0207574ef12182c764832f411bd9b8839a532"
     },
     {
       "path": "apps/web/src/observe/observedSessionControlModel.ts",
       "category": "ui",
-      "runtimeSignature": "83f23dc4c8bdb42c86bb34f261e2f9b7e35b6aaa6dcfa55fd667416c38adc160"
+      "runtimeSignature": "92e7a1d1d5a593f5a834aa69bd1e033cb1f9627cad9464e9d251e6c2a5dedc11"
+    },
+    {
+      "path": "apps/web/src/observe/ObservedWorkspaceLinkDialog.tsx",
+      "category": "ui",
+      "runtimeSignature": "2f6a65cc0f13cd2f2affeca23628effd53673fd52d60d97cdb12e292ccf41680"
     },
     {
       "path": "apps/web/src/observe/observerTabs.ts",
@@ -3138,9 +3466,14 @@
       "runtimeSignature": "0a144d1b52939ff20b1ace05314d2cfb962ed218c4eafd4072bd333f3a812da7"
     },
     {
+      "path": "apps/web/src/office/characterContext.ts",
+      "category": "ui",
+      "runtimeSignature": "cb4aef19a8eee1efd87bf6e1a331fb1aa8fc7f8c2cd6c4a95ad83866a325e413"
+    },
+    {
       "path": "apps/web/src/office/CharacterConversation.tsx",
       "category": "ui",
-      "runtimeSignature": "178751f93d3ae012b4e8cb22efe2a6f4c8114e83149704b49c44d864cef9c4be"
+      "runtimeSignature": "10de33da3f19bda665b3587e6b5ae8ae6c2fb91a4e1f40ac459857f2dadfa0de"
     },
     {
       "path": "apps/web/src/office/characterHistory.ts",
@@ -3156,6 +3489,11 @@
       "path": "apps/web/src/office/console/timeline.ts",
       "category": "ui",
       "runtimeSignature": "7d04d851b4e94bccbcf6d57df13f1aa9f9b313486b8d14984f82ef24e0a0b8bc"
+    },
+    {
+      "path": "apps/web/src/office/contextRecovery.ts",
+      "category": "ui",
+      "runtimeSignature": "0a144d1b52939ff20b1ace05314d2cfb962ed218c4eafd4072bd333f3a812da7"
     },
     {
       "path": "apps/web/src/office/historyIds.ts",
@@ -3191,6 +3529,11 @@
       "path": "apps/web/src/office/officeControls.ts",
       "category": "ui",
       "runtimeSignature": "6e4d6bf7d9ad3aac4cc7069cd5bccf4e2184aac844724805e1cdd3787c5ccbf7"
+    },
+    {
+      "path": "apps/web/src/office/OfficeFollowStatus.tsx",
+      "category": "ui",
+      "runtimeSignature": "9af2dbf957415424cdc288682b786ec39bfb5f5e3ed48251a0618f14b35eb229"
     },
     {
       "path": "apps/web/src/office/OfficeLoading.tsx",
@@ -3398,6 +3741,11 @@
       "runtimeSignature": "84c76dc549d4b6c9d35b2e4ff48b47eb93d4a7ca5f808e178755a95b7d64f7d3"
     },
     {
+      "path": "apps/web/src/office/scene/avatars/avatarCloneResources.ts",
+      "category": "ui",
+      "runtimeSignature": "0a144d1b52939ff20b1ace05314d2cfb962ed218c4eafd4072bd333f3a812da7"
+    },
+    {
       "path": "apps/web/src/office/scene/avatars/avatarLod.ts",
       "category": "ui",
       "runtimeSignature": "84c76dc549d4b6c9d35b2e4ff48b47eb93d4a7ca5f808e178755a95b7d64f7d3"
@@ -3480,7 +3828,7 @@
     {
       "path": "apps/web/src/office/scene/avatars/OfficeCharacter.tsx",
       "category": "ui",
-      "runtimeSignature": "e12d94b91e6e3dbb8254e35d30f1c7a5206425622c0dd0c9d65a100c82cbaa00"
+      "runtimeSignature": "9427c9ae6e4876b37664c0c55a6120c5c8f4acc530fa8a02c5389f8a2b8c65b7"
     },
     {
       "path": "apps/web/src/office/scene/avatars/outfitCatalog.ts",
@@ -3560,7 +3908,7 @@
     {
       "path": "apps/web/src/office/scene/avatars/SourceHumanoid.tsx",
       "category": "ui",
-      "runtimeSignature": "c63064ffcee52af9a1bdd47dbc3b7f64525e012702a2f93a364326bea0e2f82a"
+      "runtimeSignature": "88acfa8c8a8fd9ba1cdd5b9134416b8cc3a680dfc59a323bfda822abc784b390"
     },
     {
       "path": "apps/web/src/office/scene/avatars/sourceLimbWeights.ts",
@@ -3795,7 +4143,7 @@
     {
       "path": "apps/web/src/office/scene/environment/AdaptiveRenderBudget.tsx",
       "category": "ui",
-      "runtimeSignature": "48a90c94c74d01852cc0550aaef80d3793fb17aba825b28d41b816084f3a538a"
+      "runtimeSignature": "dc5e3575cd2c6fe0600b2cfe89f04009f24c3762756547f2a199c4c16017cea0"
     },
     {
       "path": "apps/web/src/office/scene/environment/CampusNightLighting.tsx",
@@ -3818,6 +4166,16 @@
       "runtimeSignature": "0a144d1b52939ff20b1ace05314d2cfb962ed218c4eafd4072bd333f3a812da7"
     },
     {
+      "path": "apps/web/src/office/scene/environment/OfficeContextLifecycle.tsx",
+      "category": "ui",
+      "runtimeSignature": "b86e438be33a22cee84d0f78685999c68b1adb14ab0211177acd170ae792457c"
+    },
+    {
+      "path": "apps/web/src/office/scene/environment/OfficeRenderStats.tsx",
+      "category": "ui",
+      "runtimeSignature": "37f198e0088906fb33146bf82516c283bbfc961fbf60f2f3bbb2719534be189c"
+    },
+    {
       "path": "apps/web/src/office/scene/environment/OverviewDetail.tsx",
       "category": "ui",
       "runtimeSignature": "75ecf6319efbea0a72249b7d676e9b94f1af7bac1ba15c1dd7395d034b62de8d"
@@ -3829,6 +4187,11 @@
     },
     {
       "path": "apps/web/src/office/scene/environment/renderBudget.ts",
+      "category": "ui",
+      "runtimeSignature": "0a144d1b52939ff20b1ace05314d2cfb962ed218c4eafd4072bd333f3a812da7"
+    },
+    {
+      "path": "apps/web/src/office/scene/environment/renderStats.ts",
       "category": "ui",
       "runtimeSignature": "0a144d1b52939ff20b1ace05314d2cfb962ed218c4eafd4072bd333f3a812da7"
     },
@@ -4408,14 +4771,39 @@
       "runtimeSignature": "0a144d1b52939ff20b1ace05314d2cfb962ed218c4eafd4072bd333f3a812da7"
     },
     {
+      "path": "apps/web/src/office/scene/modelBatchSources.ts",
+      "category": "ui",
+      "runtimeSignature": "0a144d1b52939ff20b1ace05314d2cfb962ed218c4eafd4072bd333f3a812da7"
+    },
+    {
       "path": "apps/web/src/office/scene/ModelInstanceBatches.tsx",
       "category": "ui",
-      "runtimeSignature": "f3fdfd96abef6db96b5e006f361454cb1d56ffb1008c1c6a2ca253d63deb2780"
+      "runtimeSignature": "edcd1a250b9c2fb9bc3d3b2cc0a87dfbf2665bdb08f0e041f09f4c1e675633d2"
     },
     {
       "path": "apps/web/src/office/scene/movement/chairChoreography.ts",
       "category": "ui",
       "runtimeSignature": "f34e5f8665dd3371c24907ed8be296afcc22a2b208486d07ab122567e7232ae9"
+    },
+    {
+      "path": "apps/web/src/office/scene/movement/chairManeuverClearance.ts",
+      "category": "ui",
+      "runtimeSignature": "0729ab5241ffdbf5225894b2a3fcdeca5594266dd468c8df69b1fedccc8689d7"
+    },
+    {
+      "path": "apps/web/src/office/scene/movement/chatRendezvous.ts",
+      "category": "ui",
+      "runtimeSignature": "54095ba407348ccdaa44a893773adf7cbfbec040636c36d0424de64faa1ea8ff"
+    },
+    {
+      "path": "apps/web/src/office/scene/movement/crowdEscape.ts",
+      "category": "ui",
+      "runtimeSignature": "a88311529e901375743aab69e4e42dc48ddae95218e4bdd17c267a1dd964a178"
+    },
+    {
+      "path": "apps/web/src/office/scene/movement/crowdWatch.ts",
+      "category": "ui",
+      "runtimeSignature": "0a144d1b52939ff20b1ace05314d2cfb962ed218c4eafd4072bd333f3a812da7"
     },
     {
       "path": "apps/web/src/office/scene/movement/deskPresence.ts",
@@ -4430,7 +4818,12 @@
     {
       "path": "apps/web/src/office/scene/movement/director.ts",
       "category": "ui",
-      "runtimeSignature": "78a1877b797f61fe5d318b7f573f056d8cdb6a69408ee6b0436ca0e2a743347d"
+      "runtimeSignature": "23c108c8b6817286712669395c0e408d997fe756c6a684d61d81fe921b684a1a"
+    },
+    {
+      "path": "apps/web/src/office/scene/movement/doorAlternativeRoute.ts",
+      "category": "ui",
+      "runtimeSignature": "7e08e2dbf15badb32abea83893c6a09cf1d879ab5fdde9aea83500248e5f6f16"
     },
     {
       "path": "apps/web/src/office/scene/movement/doorChoreography.ts",
@@ -4438,14 +4831,29 @@
       "runtimeSignature": "32a3ba497cedab9e5abca7b7d070c0eac75cd873ad1025f91eb407f7baf1e8ab"
     },
     {
+      "path": "apps/web/src/office/scene/movement/doorWaitingPath.ts",
+      "category": "ui",
+      "runtimeSignature": "67ceb1b6892bd137f63fbf334ed09644f32d726282785d1899ca1d671ea247b6"
+    },
+    {
       "path": "apps/web/src/office/scene/movement/elevatorAccess.ts",
       "category": "ui",
       "runtimeSignature": "895367bdaea04da17ac74a44969f590403ea41dbd5bcda130f01c9a3a5a0e09b"
     },
     {
+      "path": "apps/web/src/office/scene/movement/elevatorMovement.ts",
+      "category": "ui",
+      "runtimeSignature": "b92c12b8f895af94f53b626db4d2b64c09dbf4ca926ad0cce1103d24e31b84d7"
+    },
+    {
+      "path": "apps/web/src/office/scene/movement/encounterRecovery.ts",
+      "category": "ui",
+      "runtimeSignature": "0a144d1b52939ff20b1ace05314d2cfb962ed218c4eafd4072bd333f3a812da7"
+    },
+    {
       "path": "apps/web/src/office/scene/movement/facilityDirector.ts",
       "category": "ui",
-      "runtimeSignature": "b03f384c1ae818fe78ff9426d35aeefee412544ee05b75e7f308781aed10007c"
+      "runtimeSignature": "54529416f55c13c853acf6a6ca3e19f651a69dad622ed4224478a9c8714bca2f"
     },
     {
       "path": "apps/web/src/office/scene/movement/facilityNpcs.ts",
@@ -4488,6 +4896,11 @@
       "runtimeSignature": "66cf3b7d6a1622f48495f1dcb8eeff2f9effd94d0d9adea04760ae3ec0e5190e"
     },
     {
+      "path": "apps/web/src/office/scene/movement/movementMonitor.ts",
+      "category": "ui",
+      "runtimeSignature": "0a144d1b52939ff20b1ace05314d2cfb962ed218c4eafd4072bd333f3a812da7"
+    },
+    {
       "path": "apps/web/src/office/scene/movement/movementRecovery.ts",
       "category": "ui",
       "runtimeSignature": "0a144d1b52939ff20b1ace05314d2cfb962ed218c4eafd4072bd333f3a812da7"
@@ -4495,17 +4908,17 @@
     {
       "path": "apps/web/src/office/scene/movement/mover.ts",
       "category": "ui",
-      "runtimeSignature": "61268375a6ff924d13e37d1f6d02819de43281a8f5c43c1199dd770b136a89b0"
+      "runtimeSignature": "a5b5b2874469007ae5c8a8a4759d819f84b49d7eea41e4134dbcfaeacef131e9"
     },
     {
       "path": "apps/web/src/office/scene/movement/naturalClearance.ts",
       "category": "ui",
-      "runtimeSignature": "b743a1b013ef68dd9044d4b5310823efb54b73a910fa3d19639fa084775e334c"
+      "runtimeSignature": "2257810fb38e750f672076fa9a8ab1f32269f86bd9cbeb16ebc9c00f463cbeca"
     },
     {
       "path": "apps/web/src/office/scene/movement/naturalWalking.ts",
       "category": "ui",
-      "runtimeSignature": "0a144d1b52939ff20b1ace05314d2cfb962ed218c4eafd4072bd333f3a812da7"
+      "runtimeSignature": "9f5649edfa5cf82e105e3f61db2ab8677132e2158a3313c3e1e8fe13699faa5d"
     },
     {
       "path": "apps/web/src/office/scene/movement/NaturalWalkingClearance.tsx",
@@ -4543,6 +4956,11 @@
       "runtimeSignature": "0a144d1b52939ff20b1ace05314d2cfb962ed218c4eafd4072bd333f3a812da7"
     },
     {
+      "path": "apps/web/src/office/scene/movement/staticRoutePlanner.ts",
+      "category": "ui",
+      "runtimeSignature": "8c587d1da0a05b9aa5e59396394c9bec77f25bd507f621098cea564ad5d8fa49"
+    },
+    {
       "path": "apps/web/src/office/scene/movement/staticSeating.ts",
       "category": "ui",
       "runtimeSignature": "0a144d1b52939ff20b1ace05314d2cfb962ed218c4eafd4072bd333f3a812da7"
@@ -4560,7 +4978,12 @@
     {
       "path": "apps/web/src/office/scene/OfficeCanvas.tsx",
       "category": "ui",
-      "runtimeSignature": "bdcd14d50f103c8cd3d28afbed18e03e36c59839f183daa2abea47c98bbb6744"
+      "runtimeSignature": "c688ed2c093931eef3445d5ac1da18e1d052b3bf9021fd72974eaeb67bf4106c"
+    },
+    {
+      "path": "apps/web/src/office/scene/officePointerEvents.ts",
+      "category": "ui",
+      "runtimeSignature": "02497a3c223969023739355fe0bbec0203a46ca49eeeaa1416769699b474e3a3"
     },
     {
       "path": "apps/web/src/office/scene/parkingManeuvers.ts",
@@ -4671,6 +5094,16 @@
       "path": "apps/web/src/office/scene/trafficNetwork.ts",
       "category": "ui",
       "runtimeSignature": "fa15e8b7c6380ad3ea12976db8b5b61cc70af7518050ef7384660b368822afb5"
+    },
+    {
+      "path": "apps/web/src/office/sceneAttempt.ts",
+      "category": "ui",
+      "runtimeSignature": "0e46f63c0cf15d4cddf31deb8cac7832c0f46ad07a529657aa9bd66c5c5c5687"
+    },
+    {
+      "path": "apps/web/src/office/sceneReadiness.ts",
+      "category": "ui",
+      "runtimeSignature": "0a144d1b52939ff20b1ace05314d2cfb962ed218c4eafd4072bd333f3a812da7"
     },
     {
       "path": "apps/web/src/office/semanticBubble.ts",
@@ -4785,12 +5218,17 @@
     {
       "path": "apps/web/src/pages/ObserverPage.tsx",
       "category": "ui",
-      "runtimeSignature": "2e784bbcda569020dd07f92d358ba2437bc8475aeb191ab92a577e5b994946e7"
+      "runtimeSignature": "42eb4cefc33999b7e54bff8cedf295cdfc0a2aa2bbcf5c6cff25f78b2fe764b4"
     },
     {
       "path": "apps/web/src/pages/OfficePage.tsx",
       "category": "ui",
-      "runtimeSignature": "57405f6b9061976951b76e7317fd7fbc70b6f9fc767f53cb60f1a31a8c3a3410"
+      "runtimeSignature": "20fc454ca5f37d3e620e321bf4137f9d0fc314e17017dd241c11bd3483f78c1c"
+    },
+    {
+      "path": "apps/web/src/pages/PageLoadBoundary.tsx",
+      "category": "ui",
+      "runtimeSignature": "2c857bc24bd2ce82eae610caca697e2080df579d46d16bf2af0b38411868c57a"
     },
     {
       "path": "apps/web/src/pages/settings/ConnectionsSection.tsx",
@@ -5013,6 +5451,11 @@
       "runtimeSignature": "0e46f63c0cf15d4cddf31deb8cac7832c0f46ad07a529657aa9bd66c5c5c5687"
     },
     {
+      "path": "apps/web/src/skills/SkillMarketplace.tsx",
+      "category": "ui",
+      "runtimeSignature": "a90de8dccc54c4ddfa6f27592d056ec7dfde1bcabae441a6acb1a9520c97265a"
+    },
+    {
       "path": "apps/web/src/skills/skillPreflightContext.ts",
       "category": "ui",
       "runtimeSignature": "0a144d1b52939ff20b1ace05314d2cfb962ed218c4eafd4072bd333f3a812da7"
@@ -5055,12 +5498,17 @@
     {
       "path": "apps/web/src/skills/SkillsPage.tsx",
       "category": "ui",
-      "runtimeSignature": "38d4e802ed124459ba764f66313478ed13d63216ea57683198fc895935f211b7"
+      "runtimeSignature": "4d912ca0ced598fe2beaac5a5cbac54e9503f55d339ebe834db6f436f1e6fa25"
     },
     {
       "path": "apps/web/src/ui/Brand.tsx",
       "category": "ui",
       "runtimeSignature": "982f2d2896d93511ca3470d504a11e563301c4559d14f3db4984ea6544b3be1a"
+    },
+    {
+      "path": "apps/web/src/ui/browserFullscreen.ts",
+      "category": "ui",
+      "runtimeSignature": "0a144d1b52939ff20b1ace05314d2cfb962ed218c4eafd4072bd333f3a812da7"
     },
     {
       "path": "apps/web/src/ui/ComboBox.tsx",
@@ -5081,6 +5529,11 @@
       "path": "apps/web/src/ui/FlagIcon.tsx",
       "category": "ui",
       "runtimeSignature": "0a144d1b52939ff20b1ace05314d2cfb962ed218c4eafd4072bd333f3a812da7"
+    },
+    {
+      "path": "apps/web/src/ui/FullscreenButton.tsx",
+      "category": "ui",
+      "runtimeSignature": "bc087770924f67e245ce5a7a12e703e83d7061fe568ed754e3d5e3c0274f3633"
     },
     {
       "path": "apps/web/src/ui/Icon.tsx",
@@ -5118,12 +5571,27 @@
       "runtimeSignature": "68edbeb172ab286c3fb40add5beea7c7ac18c44100c202a3a0cd24b11facb6cc"
     },
     {
+      "path": "apps/web/src/updates/UpdateAvailableDialog.tsx",
+      "category": "ui",
+      "runtimeSignature": "3f7105ab384ea8662fa32bb9145cc3cc5f202221e376600fb1daad4162ac5e82"
+    },
+    {
       "path": "apps/web/src/updates/Updates.tsx",
       "category": "ui",
-      "runtimeSignature": "158cc75dd3312e027f78d44b69a504e240ba1fdd4fb8b5a2f8546d5340375c5d"
+      "runtimeSignature": "d031b77c8b5bfeb0bd195fa0c50c0414dc3dc912a729584968f1d362e2bd37b2"
+    },
+    {
+      "path": "apps/web/src/updates/updateStatusFeed.ts",
+      "category": "ui",
+      "runtimeSignature": "0a144d1b52939ff20b1ace05314d2cfb962ed218c4eafd4072bd333f3a812da7"
     },
     {
       "path": "packages/platform/src/codexPermissionHook.ts",
+      "category": "boundary-contract",
+      "runtimeSignature": "0a144d1b52939ff20b1ace05314d2cfb962ed218c4eafd4072bd333f3a812da7"
+    },
+    {
+      "path": "packages/platform/src/handover.ts",
       "category": "boundary-contract",
       "runtimeSignature": "0a144d1b52939ff20b1ace05314d2cfb962ed218c4eafd4072bd333f3a812da7"
     },
@@ -5163,7 +5631,17 @@
       "runtimeSignature": "0a144d1b52939ff20b1ace05314d2cfb962ed218c4eafd4072bd333f3a812da7"
     },
     {
+      "path": "packages/platform/src/observedUserInput.ts",
+      "category": "boundary-contract",
+      "runtimeSignature": "0a144d1b52939ff20b1ace05314d2cfb962ed218c4eafd4072bd333f3a812da7"
+    },
+    {
       "path": "packages/platform/src/promptQueue.ts",
+      "category": "boundary-contract",
+      "runtimeSignature": "0a144d1b52939ff20b1ace05314d2cfb962ed218c4eafd4072bd333f3a812da7"
+    },
+    {
+      "path": "packages/platform/src/sessionMove.ts",
       "category": "boundary-contract",
       "runtimeSignature": "0a144d1b52939ff20b1ace05314d2cfb962ed218c4eafd4072bd333f3a812da7"
     }

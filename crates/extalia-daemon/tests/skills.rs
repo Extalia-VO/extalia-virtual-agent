@@ -1515,3 +1515,47 @@ fn scanner_identity_verification_does_not_block_the_control_reader() {
         .collect::<Vec<_>>();
     assert_eq!(ops, vec!["hello", "health", "skill.scanner"]);
 }
+
+#[test]
+fn market_source_provenance_is_durable_and_conflicts_are_rejected_over_wire() {
+    let dir = TempDir::new();
+    let mut session = start(&dir, open(&dir), "default", None);
+    dir.inbox_package("default", "market", &[("SKILL.md", SKILL_MD)]);
+    let first = format!("github:example/skills@{}#demo", "1".repeat(40));
+    let second = format!("github:example/skills@{}#demo", "2".repeat(40));
+    let imported = op(
+        &mut session,
+        "skill.import",
+        json!({"origin":"imported","path":"market","sourceRef":first}),
+    )
+    .unwrap();
+    let repeated = op(
+        &mut session,
+        "skill.import",
+        json!({"origin":"imported","path":"market","sourceRef":second}),
+    )
+    .unwrap();
+    assert_eq!(repeated["created"], false);
+    assert_eq!(
+        op(
+            &mut session,
+            "skill.import",
+            json!({"origin":"imported","path":"market","sourceRef":format!("github:other/skills@{}#demo","3".repeat(40))})
+        ),
+        refused("denied", "market_package_source_conflict")
+    );
+    close(session).close().unwrap();
+    let mut session = start(&dir, open(&dir), "default", None);
+    let details = op(
+        &mut session,
+        "skill.inspect",
+        json!({"revisionId":imported["revisionId"]}),
+    )
+    .unwrap();
+    assert_eq!(details["sourcesTotal"], 2);
+    assert_eq!(details["sourcesOmitted"], 0);
+    assert_eq!(details["sources"][0]["sourceRef"], first);
+    assert_eq!(details["sources"][1]["sourceRef"], second);
+    assert_eq!(details["revision"]["active"], false);
+    close(session).close().unwrap();
+}

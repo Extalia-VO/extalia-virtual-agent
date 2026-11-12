@@ -1,0 +1,25 @@
+{
+  "schema": "extalia.builtin-skill-provenance.v1",
+  "source": "https://github.com/nexu-io/open-design",
+  "revision": "3d8bc24158ae858c8c3842c92118b5bb0bbf6af7",
+  "license": "Apache-2.0",
+  "adaptation": "Two compact portable instruction adaptations, not the OpenDesign app or whole skill catalog. No mandatory vocabulary, invented defaults, plugin/CLI/MCP/preview or unconditional file creation. Root license applies to selected files; no separately licensed third-party cards/templates included.",
+  "upstreamFiles": [
+    {
+      "path": "LICENSE",
+      "sha256": "9d95806a26532623360eb84bb17d298f394b55ef73fb4c0796d99b4319b2b0da"
+    },
+    {
+      "path": "skills/design-brief/SKILL.md",
+      "sha256": "de27756b79d8f91349a6c0e9d7f8808993c2bcd7fa9c133c91dd18e0a04d6294"
+    },
+    {
+      "path": "skills/reference-design-contract/SKILL.md",
+      "sha256": "56d5e0c077263cd30f586ffa763fec5caebdee2821fa9653e86c3376b937e222"
+    },
+    {
+      "path": "skills/reference-design-contract/references/checklist.md",
+      "sha256": "45b0fb2dc33a82c192f37e2454f049f08729e5abe04cf7c3bc978acc6048b599"
+    }
+  ]
+}

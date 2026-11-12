@@ -4,7 +4,7 @@ import type { Messages } from '../i18n';
 import { createObservedCodexControl, type ObservedCodexControl, type ObservedCodexView } from './observedCodexModel';
 import './observedCodex.css';
 
-export interface ObservedCodexControlsProps { t: Messages; agents: AgentHostApi; session: SessionSummary }
+export interface ObservedCodexControlsProps { t: Messages; agents: AgentHostApi; session: SessionSummary; showQuestions?: boolean }
 
 /** Separate explicit capability; ordinary observed conversation composers remain read-only. */
 export function ObservedCodexControls(props: ObservedCodexControlsProps) {
@@ -12,15 +12,15 @@ export function ObservedCodexControls(props: ObservedCodexControlsProps) {
   return <CodexSessionControls key={props.session.id} {...props} />;
 }
 
-function CodexSessionControls({ t, agents, session }: ObservedCodexControlsProps) {
+function CodexSessionControls({ t, agents, session, showQuestions = true }: ObservedCodexControlsProps) {
   const control = useMemo(() => createObservedCodexControl(agents, session.id), [agents, session.id]);
   const view = useSyncExternalStore(control.subscribe, control.getSnapshot, control.getSnapshot);
   useEffect(() => control.start(), [control]);
-  return <ObservedCodexControlsContent t={t} view={view} control={control} />;
+  return <ObservedCodexControlsContent t={t} view={view} control={control} showQuestions={showQuestions} />;
 }
 
 /** Pure content boundary also supports server-rendered presentation verification. */
-export function ObservedCodexControlsContent({ t, view, control }: { t: Messages; view: ObservedCodexView; control: ObservedCodexControl }) {
+export function ObservedCodexControlsContent({ t, view, control, showQuestions = true }: { t: Messages; view: ObservedCodexView; control: ObservedCodexControl; showQuestions?: boolean }) {
   const c = t.observedCodex;
   const id = useId();
   const [socketPath, setSocketPath] = useState('');
@@ -38,7 +38,7 @@ export function ObservedCodexControlsContent({ t, view, control }: { t: Messages
         <p className="observed-codex-thread">{c.thread}: <code>{status.threadId}</code></p>
         <button type="button" disabled={disabled} onClick={() => { void control.disconnect(); }}>{c.disconnect}</button>
         {status.delivery && <p role="status">{status.delivery === 'submitted' ? c.submitted : status.delivery === 'resolved' ? c.resolved : c.unknown}</p>}
-        {status.requests.map(request => <CodexQuestionCard key={`${status.connectionId}:${JSON.stringify(request)}`}
+        {showQuestions && status.requests.map(request => <CodexQuestionCard key={`${status.connectionId}:${JSON.stringify(request)}`}
           t={t} request={request} disabled={disabled || !status.canAnswer} onAnswer={answers => { void control.answer(request, answers); }} />)}
         {(status.approvals ?? []).map(request => <CodexApprovalCard key={`${status.connectionId}:${JSON.stringify(request)}`} t={t}
           request={request} disabled={disabled || !status.canApprove} onAnswer={decision => { void control.approve(request, decision); }} />)}

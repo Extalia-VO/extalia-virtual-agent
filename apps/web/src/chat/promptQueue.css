@@ -3,7 +3,7 @@
 .prompt-queue-list .prompt-queue-body { gap: 7px; padding: 0 10px 10px; }
 .prompt-queue-toolbar { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; justify-content: space-between; }
 .prompt-queue-toolbar .prompt-queue-actions { margin: 0; flex-shrink: 0; }
-.prompt-queue-list .prompt-queue-body ol { list-style: none; padding: 0; gap: 6px; }
+.prompt-queue-list .prompt-queue-body > ol { list-style: none; padding: 0; gap: 6px; }
 .prompt-queue-list .prompt-queue-item { padding: 7px 9px; background: var(--sunken); }
 .prompt-queue-item-heading { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .prompt-queue-list .prompt-queue-item pre { margin: 4px 0; max-height: 7.5em; overflow: auto; line-height: 1.5; }
@@ -16,7 +16,8 @@
 .prompt-queue-list .prompt-queue-drop-hint { font-size: 11px; }
 .chat-footer .prompt-queue-list .prompt-queue-body { max-height: min(26vh, 190px); }
 .prompt-queue-list li[data-queue-state="pending"] { display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; align-items: center; gap: 6px; }
-.prompt-queue-list li[data-queue-state="pending"] pre { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin: 0; }
+.prompt-queue-list .queued-prompt-preview { max-height: 10.5em; overflow: auto; }
+.prompt-queue-list li[data-queue-state="pending"] .queued-prompt-preview { margin: 0; }
 .prompt-queue-list li[data-queue-state="pending"] .prompt-queue-actions { flex-wrap: nowrap; margin: 0; }
 .prompt-queue-list .prompt-queue-actions .icon { width: 14px; height: 14px; }
 .prompt-queue-list .prompt-queue-actions button { min-height: 28px; }
@@ -33,4 +34,6 @@
   .prompt-queue-list .prompt-queue-item { padding: 6px; }
   .prompt-queue-list .prompt-queue-actions { gap: 5px; }
   .prompt-queue-list button:not(.send-button) { min-height: 30px; }
+  .prompt-queue-list li[data-queue-state="pending"] { grid-template-columns: 24px minmax(0, 1fr); align-items: start; }
+  .prompt-queue-list li[data-queue-state="pending"] > .prompt-queue-actions { grid-column: 2; flex-wrap: wrap; }
 }

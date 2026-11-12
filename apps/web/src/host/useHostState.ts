@@ -29,8 +29,8 @@ export function useHostState(agents: AgentHostApi | undefined): HostController {
       onState: next => {
         // Heartbeats should not reconcile the Office when its snapshot is unchanged.
         setState(current => current && JSON.stringify(current) === JSON.stringify(next) ? current : next);
-        setError(null);
       },
+      onConnected: () => setError(null),
       onError: failure => setError(errorMessage(failure)),
     });
     monitor.current = current;

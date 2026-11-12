@@ -1,7 +1,11 @@
 import type { BuiltinSkillCategory } from '@extalia/platform';
 import type { Skill } from './skills.js';
+import antislopCore from './builtin/antislop-core.json' with { type: 'json' };
+import antislopSpecialists from './builtin/antislop-specialists.json' with { type: 'json' };
+import superpowers from './builtin/superpowers.json' with { type: 'json' };
+import openDesign from './builtin/open-design.json' with { type: 'json' };
 
-/** Skills that ship with Extalia. User and workspace skills with the same name replace them. */
+/** Canonical shipped instructions; external same-name skills cannot replace agent offerings. */
 export const BUILTIN_SKILLS: readonly (Skill & { category: BuiltinSkillCategory })[] = [
   {
     name: 'orchestrator',
@@ -167,4 +171,5 @@ export const BUILTIN_SKILLS: readonly (Skill & { category: BuiltinSkillCategory 
 4. Add a changelog entry when the project keeps one.
 5. List what you updated and anything that still needs a decision from the user.`,
   },
+  ...[antislopCore, ...antislopSpecialists, ...superpowers, ...openDesign].map(skill => ({ ...skill, body: skill.body.trim(), source: 'builtin' as const, category: skill.category as BuiltinSkillCategory })),
 ];

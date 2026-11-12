@@ -112,6 +112,7 @@ names!(
         SkillScanner = "skill.scanner",
         SkillPreflight = "skill.preflight",
         SkillRoutingPreview = "skill.routingPreview",
+        KnowledgeScoped = "knowledge.scoped",
         KnowledgeStatus = "knowledge.status",
         KnowledgeSync = "knowledge.sync",
         KnowledgeNode = "knowledge.node",
@@ -803,7 +804,8 @@ fn request(check: &mut Check, object: &Map<String, Value>, op: Op) -> Option<Fra
         | Op::SkillScanner
         | Op::SkillPreflight
         | Op::SkillRoutingPreview => skills::request(check, op, params),
-        Op::KnowledgeStatus
+        Op::KnowledgeScoped
+        | Op::KnowledgeStatus
         | Op::KnowledgeSync
         | Op::KnowledgeNode
         | Op::KnowledgeLinks
@@ -918,7 +920,8 @@ fn response(check: &mut Check, object: &Map<String, Value>, op: Op) -> Option<Fr
         | Op::SkillScanner
         | Op::SkillPreflight
         | Op::SkillRoutingPreview => skills::result(check, op, result),
-        Op::KnowledgeStatus
+        Op::KnowledgeScoped
+        | Op::KnowledgeStatus
         | Op::KnowledgeSync
         | Op::KnowledgeNode
         | Op::KnowledgeLinks
@@ -1227,3 +1230,5 @@ fn is_text(text: &str, max: usize) -> bool {
             .chars()
             .any(|character| (character as u32) < 32 || character as u32 == 127)
 }
+
+pub(crate) use knowledge::is_scoped_profile as is_scoped_knowledge_profile;

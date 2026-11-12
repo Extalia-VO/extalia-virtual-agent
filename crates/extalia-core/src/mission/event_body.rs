@@ -11,6 +11,28 @@ const LABEL_LIMIT: usize = 2_000;
 /// `TEXT_LIMIT` of `validate.ts`.
 const TEXT_LIMIT: usize = 200_000;
 const MAX_PROMPT_ATTACHMENTS: usize = 10;
+const MAX_SKILL_LOAD_ENTRIES: usize = 8;
+const MAX_SKILL_LOAD_CHARACTERS: u64 = 24_000;
+const SKILL_LOAD_REASONS: &[&str] = &[
+    "default-memory",
+    "configured-team",
+    "explicit-request",
+    "current-context",
+    "recent-context",
+    "dependency",
+];
+const SKILL_LOAD_STATUSES: &[&str] = &["loaded", "budget", "unavailable", "not-configured"];
+const SKILL_LOAD_INTENTS: &[&str] = &[
+    "planning",
+    "debugging",
+    "testing",
+    "review",
+    "security",
+    "documentation",
+    "design",
+    "refactoring",
+    "delivery",
+];
 
 const AGENT_STATES: &[&str] = &[
     "idle",
@@ -61,6 +83,7 @@ enum Rule {
     Usage,
     Labels,
     Attachments,
+    SkillLoads,
     Number {
         integer: bool,
         min: Option<f64>,
@@ -108,6 +131,11 @@ const COUNT: Rule = Rule::Number {
     integer: true,
     min: Some(0.0),
     max: None,
+};
+const SKILL_LOAD_COUNT: Rule = Rule::Number {
+    integer: true,
+    min: Some(0.0),
+    max: Some(MAX_SKILL_LOAD_CHARACTERS as f64),
 };
 const AGENT_STATE: Rule = Rule::Enum(AGENT_STATES);
 const ACTIVITY: Rule = Rule::Enum(ACTIVITY_KINDS);
@@ -171,6 +199,22 @@ const SPECS: &[Spec] = &[
         ],
     ),
     spec("model.thinking", &[]),
+    spec(
+        "skills.loaded",
+        &[
+            req("skills", Rule::SkillLoads),
+            req("characters", SKILL_LOAD_COUNT),
+            req("budgetCharacters", SKILL_LOAD_COUNT),
+            opt(
+                "omitted",
+                Rule::Number {
+                    integer: true,
+                    min: Some(0.0),
+                    max: Some(4096.0),
+                },
+            ),
+        ],
+    ),
     spec("model.delta", &[req("text", Rule::Text)]),
     spec(
         "model.completed",
@@ -276,6 +320,7 @@ const SPECS: &[Spec] = &[
             req("ok", Rule::Boolean),
             opt("target", Rule::Label),
             opt("output", Rule::Text),
+            opt("attachments", Rule::Attachments),
         ],
     ),
     spec(
@@ -443,9 +488,139 @@ fn string(
     }
 }
 
+fn skill_load_count(value: Option<&Value>) -> Option<u64> {
+    value
+        .and_then(number)
+        .filter(|value| {
+            value.is_finite()
+                && value.fract() == 0.0
+                && (0.0..=MAX_SKILL_LOAD_CHARACTERS as f64).contains(value)
+        })
+        .map(|value| value as u64)
+}
+
+fn skill_loads(value: &Value, path: &str, errors: &mut Vec<String>) {
+    let Some(items) = value
+        .as_array()
+        .filter(|items| items.len() <= MAX_SKILL_LOAD_ENTRIES)
+    else {
+        errors.push(format!(
+            "{path}: expected up to {MAX_SKILL_LOAD_ENTRIES} skill entries"
+        ));
+        return;
+    };
+    let mut names = std::collections::HashSet::new();
+    for (index, item) in items.iter().enumerate() {
+        let at = format!("{path}[{index}]");
+        let Some(record) = item.as_object() else {
+            errors.push(format!("{at}: expected an object"));
+            continue;
+        };
+        for key in record.keys() {
+            if ![
+                "name",
+                "source",
+                "reason",
+                "status",
+                "characters",
+                "intent",
+                "revisionId",
+            ]
+            .contains(&key.as_str())
+            {
+                errors.push(format!("{at}.{key}: unknown field"));
+            }
+        }
+        match record.get("name").and_then(Value::as_str) {
+            Some(name)
+                if (1..=64).contains(&name.len())
+                    && name.as_bytes()[0].is_ascii_alphanumeric()
+                    && name.bytes().all(|byte| {
+                        byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-'
+                    }) =>
+            {
+                if !names.insert(name) {
+                    errors.push(format!("{at}.name: duplicate skill name"));
+                }
+            }
+            _ => errors.push(format!("{at}.name: invalid skill name")),
+        }
+        let source = record.get("source").and_then(Value::as_str);
+        if !source.is_some_and(|source| ["builtin", "registry"].contains(&source)) {
+            errors.push(format!("{at}.source: expected builtin or registry"));
+        }
+        for (key, values) in [
+            ("reason", SKILL_LOAD_REASONS),
+            ("status", SKILL_LOAD_STATUSES),
+        ] {
+            if !record
+                .get(key)
+                .and_then(Value::as_str)
+                .is_some_and(|value| values.contains(&value))
+            {
+                errors.push(format!("{at}.{key}: unknown skill-load value"));
+            }
+        }
+        match skill_load_count(record.get("characters")) {
+            Some(characters) => {
+                let loaded = record.get("status").and_then(Value::as_str) == Some("loaded");
+                if (loaded && characters == 0) || (!loaded && characters != 0) {
+                    errors.push(format!("{at}.characters: inconsistent with skill status"));
+                }
+            }
+            None => errors.push(format!("{at}.characters: invalid character count")),
+        }
+        if let Some(intent) = record.get("intent")
+            && !intent
+                .as_str()
+                .is_some_and(|intent| SKILL_LOAD_INTENTS.contains(&intent))
+        {
+            errors.push(format!("{at}.intent: unknown skill intent"));
+        }
+        if let Some(revision) = record.get("revisionId")
+            && (source != Some("registry")
+                || !revision.as_str().is_some_and(|revision| {
+                    revision.len() == 68
+                        && revision.starts_with("skr_")
+                        && revision[4..]
+                            .bytes()
+                            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+                }))
+        {
+            errors.push(format!(
+                "{at}.revisionId: invalid registry revision identifier"
+            ));
+        }
+    }
+}
+
+fn skill_load_totals(record: &serde_json::Map<String, Value>, errors: &mut Vec<String>) {
+    let Some(characters) = skill_load_count(record.get("characters")) else {
+        return;
+    };
+    if skill_load_count(record.get("budgetCharacters")).is_some_and(|budget| characters > budget) {
+        errors.push("body.characters: exceeds the context budget".into());
+    }
+    if let Some(skills) = record
+        .get("skills")
+        .and_then(Value::as_array)
+        .filter(|skills| skills.len() <= MAX_SKILL_LOAD_ENTRIES)
+    {
+        let loaded: u64 = skills
+            .iter()
+            .filter(|skill| skill.get("status").and_then(Value::as_str) == Some("loaded"))
+            .filter_map(|skill| skill_load_count(skill.get("characters")))
+            .sum();
+        if loaded > characters {
+            errors.push("body.characters: smaller than the loaded instruction total".into());
+        }
+    }
+}
+
 /// `checkField`.
 fn field(value: &Value, rule: Rule, path: &str, errors: &mut Vec<String>) {
     match rule {
+        Rule::SkillLoads => skill_loads(value, path, errors),
         Rule::Id => string(value, path, ID_LIMIT, false, true, errors),
         Rule::Label => string(value, path, LABEL_LIMIT, false, false, errors),
         Rule::Text => string(value, path, TEXT_LIMIT, true, false, errors),
@@ -586,5 +761,165 @@ pub(super) fn check(body: &Value, errors: &mut Vec<String>) {
             None => {}
             Some(value) => field(value, rule.rule, &format!("body.{}", rule.name), errors),
         }
+    }
+    if spec.kind == "skills.loaded" {
+        skill_load_totals(record, errors);
+    }
+}
+
+#[cfg(test)]
+mod skill_load_tests {
+    use super::*;
+    use crate::mission::{contract, policy};
+    use serde_json::json;
+
+    fn receipt() -> Value {
+        json!({ "type": "skills.loaded", "skills": [
+            { "name": "memory-recall", "source": "builtin", "reason": "default-memory", "status": "loaded", "characters": 120 },
+            { "name": "orchestrator", "source": "builtin", "reason": "configured-team", "status": "not-configured", "characters": 0 }
+        ], "characters": 200, "budgetCharacters": 24000 })
+    }
+
+    fn accepts(body: &Value) -> bool {
+        let mut errors = Vec::new();
+        check(body, &mut errors);
+        errors.is_empty()
+    }
+
+    #[test]
+    fn tool_result_image_metadata_matches_shared_contract_cases() {
+        let fixtures: Value = serde_json::from_str(include_str!(
+            "../../../../packages/protocol/test/fixtures/orchestration/agent-event.json"
+        ))
+        .unwrap();
+        let mut compared = 0;
+        for case in fixtures["cases"].as_array().unwrap() {
+            let name = case["name"].as_str().unwrap();
+            if name.starts_with("tool image ") {
+                assert_eq!(
+                    accepts(&case["value"]["body"]),
+                    case["valid"].as_bool().unwrap(),
+                    "{name}"
+                );
+                compared += 1;
+            }
+        }
+        assert_eq!(compared, 5);
+    }
+
+    #[test]
+    fn skill_load_receipt_accepts_bounded_metadata_and_empty_results() {
+        let mut body = receipt();
+        assert!(accepts(&body));
+        body["skills"][1] = json!({ "name": "registered-review", "source": "registry", "reason": "current-context", "status": "loaded", "characters": 40, "intent": "review", "revisionId": format!("skr_{}", "a".repeat(64)) });
+        assert!(accepts(&body));
+        assert!(accepts(
+            &json!({ "type": "skills.loaded", "skills": [], "characters": 0, "budgetCharacters": 0 })
+        ));
+    }
+
+    #[test]
+    fn skill_load_receipt_bounds_optional_omitted_candidate_counts() {
+        for omitted in [json!(0), json!(1), json!(4096)] {
+            let mut body = receipt();
+            body["omitted"] = omitted;
+            assert!(accepts(&body));
+        }
+        for omitted in [json!(-1), json!(1.5), json!(4097), json!(null), json!("1")] {
+            let mut body = receipt();
+            body["omitted"] = omitted;
+            assert!(!accepts(&body));
+        }
+    }
+
+    #[test]
+    fn skill_load_receipt_refuses_instruction_payloads_and_unknown_claims() {
+        for (key, value) in [
+            ("body", json!("Injected instructions")),
+            ("name", json!("bad name")),
+            ("name", json!("skill\n")),
+            ("name", json!("x".repeat(65))),
+            ("source", json!("file")),
+            ("reason", json!("a private prompt quote")),
+            ("status", json!("applied")),
+            ("intent", json!("execute")),
+            ("revisionId", json!(format!("skr_{}", "a".repeat(64)))),
+        ] {
+            let mut body = receipt();
+            body["skills"][0][key] = value;
+            assert!(!accepts(&body), "{key}: {body}");
+        }
+        let mut body = receipt();
+        body["context"] = json!("Unrecorded instructions");
+        assert!(!accepts(&body));
+    }
+
+    #[test]
+    fn skill_load_receipt_preserves_entry_and_aggregate_count_invariants() {
+        for characters in [json!(0), json!(-1), json!(1.5), json!(24001)] {
+            let mut body = receipt();
+            body["skills"][0]["characters"] = characters;
+            assert!(!accepts(&body));
+        }
+        for key in ["characters", "budgetCharacters"] {
+            let mut body = receipt();
+            body[key] = json!(24001);
+            assert!(!accepts(&body));
+        }
+        let mut body = receipt();
+        body["characters"] = json!(119);
+        assert!(!accepts(&body));
+        body = receipt();
+        body["budgetCharacters"] = json!(199);
+        assert!(!accepts(&body));
+        body = receipt();
+        body["skills"][1]["characters"] = json!(1);
+        assert!(!accepts(&body));
+        body = receipt();
+        body["skills"][1]["name"] = json!("memory-recall");
+        assert!(!accepts(&body));
+        body = receipt();
+        body["skills"] = json!((0..9).map(|i| json!({ "name": format!("skill-{i}"), "source": "builtin", "reason": "current-context", "status": "loaded", "characters": 1 })).collect::<Vec<_>>());
+        assert!(!accepts(&body));
+    }
+
+    #[test]
+    fn skill_load_receipt_requires_fields_and_exact_registry_revisions() {
+        for key in ["skills", "characters", "budgetCharacters"] {
+            let mut body = receipt();
+            body.as_object_mut().unwrap().remove(key);
+            assert!(!accepts(&body));
+        }
+        for key in ["name", "source", "reason", "status", "characters"] {
+            let mut body = receipt();
+            body["skills"][0].as_object_mut().unwrap().remove(key);
+            assert!(!accepts(&body));
+        }
+        for revision in [
+            json!(null),
+            json!("revision-1"),
+            json!(format!("skr_{}\n", "a".repeat(64))),
+        ] {
+            let mut body = receipt();
+            body["skills"][0]["source"] = json!("registry");
+            body["skills"][0]["revisionId"] = revision;
+            assert!(!accepts(&body));
+        }
+    }
+
+    #[test]
+    fn skill_load_receipt_is_valid_wire_metadata_but_never_a_mission_journal_grant() {
+        let body = receipt();
+        let raw = json!({ "schemaVersion": 1, "id": "00000000-0000-4000-8000-000000000001",
+            "workspaceId": "00000000-0000-4000-8000-000000000002", "sessionId": "00000000-0000-4000-8000-000000000003",
+            "missionId": "00000000-0000-4000-8000-000000000004", "taskId": "00000000-0000-4000-8000-000000000005",
+            "agentId": "00000000-0000-4000-8000-000000000006", "source": { "runtime": "extalia-native", "channel": "system" },
+            "observedAt": "2026-11-11T00:00:00Z", "confidence": "reported", "body": body });
+        let mut errors = Vec::new();
+        let event = contract::agent_event(&raw, "event", &mut errors)
+            .expect("display receipt validates on the wire");
+        assert!(errors.is_empty());
+        assert!(policy::admit(&event).is_err());
+        assert!(policy::journal_role(body.as_object().unwrap()).is_none());
     }
 }

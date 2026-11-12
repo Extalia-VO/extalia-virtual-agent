@@ -2,7 +2,7 @@ import { MAX_NATIVE_TEAM_CONCURRENT, TASK_TIERS, type TaskTier, type TeamMember,
 import type { EventBody } from '@extalia/protocol';
 import { createFallbackProvider, modelChain } from './fallback.js';
 import type { SessionPermissionMode } from '@extalia/core';
-import { runTurn, type ApprovalOutcome, type ApprovalRequest, type TurnOutcome } from './loop.js';
+import { runTurn, type ApprovalOutcome, type ApprovalRequest, type TurnOptions, type TurnOutcome } from './loop.js';
 import { guardMemberTools } from './memberAccess.js';
 import type { ModelMessage, ModelProvider } from './model.js';
 import type { AnyTool, ToolAccess, ToolDefinition } from './tools.js';
@@ -41,6 +41,8 @@ export interface DelegationTeam {
 }
 
 export interface DelegationOptions {
+  /** Prepare only the selected worker's context; never inherit the lead's loaded bodies. */
+  prepareWorkerRequest?(member: TeamMember | undefined, agentId: string): NonNullable<TurnOptions['prepareRequest']>;
   /** Provider for a tier; created lazily so unused tiers cost nothing. */
   providerFor(tier: TaskTier): ModelProvider;
   /** Read-only tools available to workers (must not include delegation itself). */
@@ -273,6 +275,7 @@ export function createDelegationTool(options: DelegationOptions): ToolDefinition
       history: [],
       prompt,
       tools: [...(member ? options.team?.workerToolsForMember?.(member) ?? options.workerTools : options.workerTools), ...writeTools],
+      ...(options.prepareWorkerRequest ? { prepareRequest: options.prepareWorkerRequest(member, subagentId) } : {}),
       permissions: options.permissions ?? { fileWrite: 'ask', commands: 'ask' },
       sessionGrants: writer ? options.sessionGrants ?? new Set() : new Set(),
       permissionMode: options.permissionMode,

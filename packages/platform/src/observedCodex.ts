@@ -1,3 +1,5 @@
+import type { Effort } from '@extalia/core';
+
 /** Explicit same-server Codex attachment; ordinary transcript observation stays read-only. */
 export interface ObservedCodexQuestion {
   id: string;
@@ -63,6 +65,13 @@ export interface ObservedCodexStatus {
   connectionId?: string;
   threadId?: string;
   activeTurnId?: string;
+  /** Configured settings for subsequent turns; never execution telemetry. */
+  model?: string;
+  effort?: string;
+  /** Ephemeral revision bound to connectionId. Absent on older hosts. */
+  settingsRevision?: number;
+  canSetSettings?: boolean;
+  settingsDelivery?: 'confirmed' | 'unknown';
   canSend: boolean;
   canAnswer: boolean;
   requests: ObservedCodexInputRequest[];
@@ -79,6 +88,14 @@ export interface ObservedCodexMessageInput {
   text: string;
   /** Required for steering the exact current turn; absent only for an idle thread. */
   activeTurnId?: string;
+}
+
+/** Narrow native thread settings only; no permissions or turn execution. */
+export interface ObservedCodexSettingsInput {
+  connectionId: string;
+  settingsRevision: number;
+  model?: string;
+  effort?: Effort;
 }
 
 export interface ObservedCodexAnswerInput {

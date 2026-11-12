@@ -45,6 +45,25 @@ async function settle(window: BrowserWindow): Promise<void> {
   await delay(100);
 }
 
+/** Record the hidden smoke window's actual buffer, separately from performance claims. */
+async function officeRenderSnapshot(window: BrowserWindow): Promise<Record<string, unknown>> {
+  await waitFor(window, "!document.querySelector('.office-loading')", 10_000);
+  await settle(window);
+  // Let initial uploads and a fresh FPS measurement finish before capturing.
+  await delay(3000);
+  return window.webContents.executeJavaScript(`(() => {
+    const canvas = document.querySelector('.office-stage canvas');
+    const rect = canvas?.getBoundingClientRect();
+    return { view: document.querySelector('.topbar-views button[aria-pressed="true"]')?.getAttribute('data-view'),
+      devicePixelRatio, cssWidth: rect?.width ?? null, cssHeight: rect?.height ?? null,
+      bufferWidth: canvas?.width ?? null, bufferHeight: canvas?.height ?? null,
+      pixelRatio: rect?.width ? canvas.width / rect.width : null,
+      frameRate: document.querySelector('.office-render-stats')?.textContent ?? null,
+      loading: Boolean(document.querySelector('.office-loading')),
+      interrupted: Boolean(document.querySelector('.office-render-recovery')) };
+  })()`);
+}
+
 type Theme = 'light' | 'dark';
 type Material = 'standard' | 'liquid-glass';
 const SHOTS: [Page, Theme, Material, number, number][] = [
@@ -143,7 +162,7 @@ export async function runSmokeTest(window: BrowserWindow, screenshotDir = proces
   }
   const officeOpened = rendered && await open(window, 'office');
   const officeRendered = officeOpened && await waitFor(window, `Boolean(document.querySelector('.office-stage canvas') || document.querySelector('.office-stage [role="alert"]'))`);
-  const officeReady = `Boolean(document.querySelector('.office-stage canvas')) && !document.querySelector('.office-loading:not(.done)') && !document.querySelector('.office-stage [role="alert"]')`;
+  const officeReady = `Boolean(document.querySelector('.office-stage canvas')) && !document.querySelector('.office-loading') && !document.querySelector('.office-stage [role="alert"]')`;
   // Software WebGL and hosted macOS runners need minutes for the first shaders and models.
   const sceneReady = officeRendered && await waitFor(window, officeReady, 120_000);
   const office = officeOpened ? await window.webContents.executeJavaScript(`({
@@ -155,6 +174,7 @@ export async function runSmokeTest(window: BrowserWindow, screenshotDir = proces
     loading: document.querySelector('.office-loading:not(.done) [role="progressbar"]')?.getAttribute('aria-valuenow') ?? null,
   })`) as Record<string, unknown> : {};
   const floorViews: boolean[] = [];
+  const officeRendering: Record<string, unknown>[] = sceneReady ? [await officeRenderSnapshot(window)] : [];
   if (screenshotDir && officeOpened) {
     await waitFor(window, officeReady, 30_000);
     const file = path.join(screenshotDir, 'office-desktop.png');
@@ -175,6 +195,7 @@ export async function runSmokeTest(window: BrowserWindow, screenshotDir = proces
       })()`) as boolean;
       await settle(window);
       floorViews.push(manualCamera && chosen && await waitFor(window, `document.querySelector('.topbar-office button[data-view="${floor}"]')?.getAttribute('aria-pressed') === 'true'`));
+      if (chosen) officeRendering.push(await officeRenderSnapshot(window));
       if (screenshotDir && chosen) {
         const file = path.join(screenshotDir, `office-f${floor}-desktop.png`);
         await writeFile(file, (await window.webContents.capturePage()).toPNG());
@@ -194,6 +215,6 @@ export async function runSmokeTest(window: BrowserWindow, screenshotDir = proces
   const ok = rendered && report.desktopBridge === true && report.nodeExposed === false && String(report.host).startsWith('Desktop')
     && String(report.splashVideo).startsWith('canplay') && String(report.splashRange).startsWith('206 video/mp4')
     && officeRendered && sceneReady && modelErrors.length === 0 && office.route === 'page' && office.separateFrame === false && settingsOpened && floorViews.length === 3 && floorViews.every(Boolean);
-  console.log(JSON.stringify({ ok, rendered, ...report, office, sceneReady, modelErrors, textureDiagnostics, rendererErrors, floorViews, settingsOpened, diagnostics, screenshots }, null, 2));
+  console.log(JSON.stringify({ ok, rendered, ...report, office, sceneReady, officeRendering, modelErrors, textureDiagnostics, rendererErrors, floorViews, settingsOpened, diagnostics, screenshots }, null, 2));
   return ok ? 0 : 1;
 }

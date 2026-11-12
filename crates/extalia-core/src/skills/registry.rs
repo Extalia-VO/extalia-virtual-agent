@@ -43,6 +43,7 @@ mod preflight;
 mod routing;
 mod scanning;
 mod snapshot;
+mod sources;
 pub use preflight::RegistryPreflightRequest;
 pub use routing::RegistryRoutingRequest;
 pub use scanning::PreparedInspection;
@@ -192,10 +193,26 @@ impl<'s> SkillRegistry<'s> {
         source_ref: &str,
         now_ms: i64,
     ) -> Result<ImportReceipt, SkillError> {
+        self.import_expected(source, origin, source_ref, now_ms, None)
+    }
+
+    /// Bind an explicitly reviewed package to its sealed content before any
+    /// registry revision or inspection is admitted. Existing imports remain unpinned.
+    pub fn import_expected(
+        &mut self,
+        source: &Path,
+        origin: Origin,
+        source_ref: &str,
+        now_ms: i64,
+        expected_tree_sha256: Option<&str>,
+    ) -> Result<ImportReceipt, SkillError> {
         if source_ref.len() > LONG_TEXT {
             return Err(SkillError::Denied("source_ref_too_long"));
         }
         let tree = self.objects.stage(source, &self.limits)?;
+        if expected_tree_sha256.is_some_and(|expected| expected != tree.sha256) {
+            return Err(SkillError::Denied("import_tree_changed"));
+        }
         let skill_md_entry = tree
             .file(SKILL_FILE)
             .ok_or_else(|| refused(Refusal::MissingSkillMd, None))?;
@@ -213,10 +230,13 @@ impl<'s> SkillRegistry<'s> {
         let profile = self.profile.as_str().to_owned();
 
         let tx = immediate(self.conn())?;
+        sources::check_package(&tx, &profile, &manifest.id, origin, source_ref)?;
         if let Some(existing) = load_revision(&tx, &profile, &revision_id).optional_found()? {
             if existing.package_id != manifest.id {
                 return Err(SkillError::Corrupt("revision package"));
             }
+            sources::record(&tx, &profile, &revision_id, origin, source_ref, &at)?;
+            tx.commit()?;
             return Ok(receipt(existing, false));
         }
         tx.execute(
@@ -243,6 +263,7 @@ impl<'s> SkillRegistry<'s> {
                 at
             ],
         )?;
+        sources::record(&tx, &profile, &revision_id, origin, source_ref, &at)?;
         record_state(
             &tx,
             &profile,

@@ -12,6 +12,7 @@ const base = Date.parse('2026-11-01T12:00:00.000Z');
 const at = (offset: number) => new Date(base + offset).toISOString();
 const line = (value: unknown) => `${JSON.stringify(value)}\n`;
 const prompt = (text: string, offset: number) => line({ timestamp: at(offset), type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text }] } });
+const reply = (text: string, offset: number) => line({ timestamp: at(offset), type: 'response_item', payload: { type: 'message', role: 'assistant', content: [{ type: 'output_text', text }] } });
 const call = (id: string, offset: number) => line({ timestamp: at(offset), type: 'response_item', payload: { type: 'function_call', name: 'exec_command', call_id: id, arguments: JSON.stringify({ cmd: 'pwd' }) } });
 const result = (id: string, offset: number) => line({ timestamp: at(offset), type: 'response_item', payload: { type: 'function_call_output', call_id: id, output: 'example' } });
 const realEvents = (events: readonly ExtaliaEvent[]) => events.filter(event => event.body.type !== 'session.updated');
@@ -120,6 +121,41 @@ describe('transcript fallback after Codex hooks', () => {
       await f.observer.refresh();
       expect(realEvents(f.updates)).toEqual([]);
       expect(f.observer.summaries().find(session => session.id === f.id('native-one'))?.observation?.watching).toBe(false);
+    } finally { await f.observer.close(); }
+  });
+
+  it('publishes an earlier assistant reply written before hook timestamps on poll, while SessionEnd blocks trailing replies until SessionStart', async () => {
+    const f = await fixture();
+    try {
+      await f.hook('native-one', 'UserPromptSubmit', { prompt: 'Explain the tools' });
+      vi.setSystemTime(base + 5_000);
+      await f.hook('native-one', 'PreToolUse', { tool_name: 'exec_command', tool_input: { cmd: 'pwd' }, tool_call_id: 'tool-before-reply' });
+      await f.hook('native-one', 'Stop');
+      f.updates.length = 0;
+
+      // Transcript reply timestamp precedes hook watermarks (e.g. text emitted before/during tool calls).
+      await appendFile(f.files.get('native-one')!, reply('Reply written before hooks', 1_000));
+      await f.observer.refresh();
+      expect(realEvents(f.updates).filter(event => event.body.type === 'model.completed')).toMatchObject([
+        { sessionId: f.id('native-one'), body: { type: 'model.completed', text: 'Reply written before hooks' } },
+      ]);
+
+      // SessionEnd fences the ended session against trailing replies until a real SessionStart.
+      vi.setSystemTime(base + 6_000);
+      await f.hook('native-one', 'SessionEnd');
+      f.updates.length = 0;
+      await appendFile(f.files.get('native-one')!, reply('Trailing reply after SessionEnd', 7_000));
+      await f.observer.refresh();
+      expect(realEvents(f.updates).some(event => event.body.type === 'model.completed')).toBe(false);
+
+      vi.setSystemTime(base + 8_000);
+      await f.hook('native-one', 'SessionStart');
+      f.updates.length = 0;
+      await appendFile(f.files.get('native-one')!, reply('Reply after SessionStart', 9_000));
+      await f.observer.refresh();
+      expect(realEvents(f.updates).filter(event => event.body.type === 'model.completed')).toMatchObject([
+        { sessionId: f.id('native-one'), body: { type: 'model.completed', text: 'Reply after SessionStart' } },
+      ]);
     } finally { await f.observer.close(); }
   });
 

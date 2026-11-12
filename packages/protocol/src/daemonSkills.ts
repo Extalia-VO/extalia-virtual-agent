@@ -198,7 +198,7 @@ export interface DaemonSkillOperations {
   'skill.preflight': { params: SkillPreflightInput; result: SkillPreflightReport };
   /** Stage a package from the import inbox into quarantine and run the installed inspector. */
   'skill.import': {
-    params: { origin: SkillImportOrigin; path: string; sourceRef?: string };
+    params: { origin: SkillImportOrigin; path: string; sourceRef?: string; /** Optional immutable preview pin, checked before registry insertion. */ expectedTreeSha256?: string };
     result: { packageId: string; revisionId: string; treeSha256: string; version: string; state: SkillRevisionState; stateReason?: string; created: boolean };
   };
   /** Explicit user request to scan an existing quarantined revision; never a details read. */
@@ -220,6 +220,10 @@ export interface DaemonSkillOperations {
       /** User-only literal preview; not an active skill read or model instruction. Never truncated. */
       instructions?: string;
       instructionsUnavailable?: boolean;
+      /** Append-only import provenance for this exact tree, not inherited package metadata. Older peers omit it. */
+      sources?: { origin: SkillImportOrigin; sourceRef: string; recordedAt: string }[];
+      sourcesTotal?: number;
+      sourcesOmitted?: number;
     };
   };
   /**

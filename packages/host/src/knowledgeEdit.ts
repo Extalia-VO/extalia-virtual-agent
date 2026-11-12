@@ -63,7 +63,7 @@ function validated<T>(read: () => T): T {
 type Params<O extends EditOp> = DaemonOperations[O]['params'];
 type Result<O extends EditOp> = DaemonOperations[O]['result'];
 
-function served(client: DaemonClient, op: EditOp): void {
+function served(client: Pick<DaemonClient, 'capabilities'>, op: EditOp): void {
   const ops = op === KNOWLEDGE_IMPORT_OP ? [op] : KNOWLEDGE_EDIT_OPS;
   if (!ops.every(item => client.capabilities.includes(item))) {
     throw new KnowledgeError(op === KNOWLEDGE_IMPORT_OP ? KNOWLEDGE_IMPORT_UNSUPPORTED : KNOWLEDGE_EDIT_UNSUPPORTED);

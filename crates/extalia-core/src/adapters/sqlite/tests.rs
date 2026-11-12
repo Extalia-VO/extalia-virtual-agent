@@ -114,7 +114,7 @@ fn creates_a_fresh_store_with_durable_pragmas() {
     let dir = TempDir::new();
     let store = CoreStore::open(&dir.store()).unwrap();
     assert_eq!(store.schema_version().unwrap(), CoreStore::LATEST);
-    assert_eq!(CoreStore::LATEST, 13);
+    assert_eq!(CoreStore::LATEST, 14);
     let conn = &store.conn;
     let pragma = |name: &str| -> String {
         conn.pragma_query_value(None, name, |row| row.get::<_, rusqlite::types::Value>(0))
@@ -165,8 +165,8 @@ fn creates_a_fresh_store_with_durable_pragmas() {
         )
         .unwrap();
     assert_eq!(
-        skill_tables, 22,
-        "schema 2 adds the skill registry, schema 4 reviews, inputs and built-ins"
+        skill_tables, 23,
+        "schema 2 adds skills, schema 4 reviews, and schema 14 revision sources"
     );
     let learning: Vec<String> = conn
         .prepare("SELECT name FROM sqlite_schema WHERE type = 'table' AND name LIKE 'learning%' ORDER BY name")
@@ -1115,4 +1115,36 @@ fn upgrades_schema_6_preserving_legacy_rows_without_inventing_execution_receipts
     assert!(dump(&store.conn, "execution_admissions").is_empty());
     assert!(dump(&store.conn, "execution_observations").is_empty());
     assert!(!backups(&dir.0).is_empty());
+}
+
+#[test]
+fn revision_source_migration_preserves_legacy_unknown_and_creates_backup() {
+    let dir = TempDir::new();
+    let store = CoreStore::open_with(&dir.store(), &MIGRATIONS[..13]).unwrap();
+    insert_mission(&store.conn, MISSION, "default").unwrap();
+    store.conn.execute("INSERT INTO skill_packages VALUES ('default','demo','imported','legacy-package-source','2026-01-01T00:00:00.000Z')",[]).unwrap();
+    store.conn.execute("INSERT INTO skill_revisions (profile_id,revision_id,package_id,version,tree_sha256,skill_md_sha256,manifest_json,manifest_inferred,risk_class,permission_digest,state,created_at,updated_at) VALUES ('default',?1,'demo','0.0.0',?2,?2,'{}',1,'declarative',?2,'quarantined','2026-01-01T00:00:00.000Z','2026-01-01T00:00:00.000Z')",params![format!("skr_{DIGEST}"),DIGEST]).unwrap();
+    store.close().unwrap();
+    let store = CoreStore::open(&dir.store()).unwrap();
+    assert_eq!(store.schema_version().unwrap(), 14);
+    assert_eq!(
+        store
+            .conn
+            .query_row("SELECT count(*) FROM skill_revision_sources", [], |r| r
+                .get::<_, i64>(0))
+            .unwrap(),
+        0
+    );
+    assert_eq!(
+        store
+            .conn
+            .query_row("SELECT count(*) FROM skill_revisions", [], |r| r
+                .get::<_, i64>(0))
+            .unwrap(),
+        1
+    );
+    let copies = backups(&dir.0);
+    assert_eq!(copies.len(), 1);
+    assert_eq!(version_of(&raw(&copies[0])), 13);
+    super::migrate::verify_schema(&store.conn, MIGRATIONS).unwrap();
 }

@@ -1,5 +1,6 @@
+import { ObservedInputCards } from '../observe/ObservedInputCards';
 import { sourceLabel } from '@extalia/core';
-import type { AgentHostApi, ApprovalDecisionInput, FileSystemCapability, HostState } from '@extalia/platform';
+import type { AgentHostApi, ApprovalDecisionInput, FileSystemCapability, HostState, SessionSummary } from '@extalia/platform';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { errorMessage } from '../host/remote';
 import type { Messages } from '../i18n';
@@ -7,9 +8,14 @@ import { Icon } from '../ui/Icon';
 import { Composer, type ComposerSend } from './Composer';
 import { ObservedCodexPromptComposer } from '../observe/ObservedCodexPromptComposer';
 import { supportsObservedPromptQueue } from '../observe/observedCodexPromptModel';
+import { ObservedSessionControl } from '../observe/ObservedSessionControl';
 import { attachmentPreviewLoader, sendPromptWithAttachments, uploadAttachments } from './attachments';
 import { resolveChat, type ChatSelection } from './selection';
 import { SessionList } from './SessionList';
+import { SessionMoveDialog } from './SessionMoveDialog';
+import { SessionHandoverDialog } from './SessionHandoverDialog';
+import { ObservedWorkspaceLinkButton } from '../observe/ObservedWorkspaceLinkDialog';
+import { sessionFileRoots } from './sessionFileScopes';
 import { projectActivity, projectTranscript } from './transcript';
 import { TranscriptView } from './TranscriptView';
 import { ConversationTabs } from './ChangedFilesView';
@@ -25,6 +31,8 @@ import { modelChoicesKey, sessionRuntime } from './sessionRuntime';
 import { WorkspaceRuntimeNotice } from './WorkspaceRuntimeNotice';
 import { ChatTeamControls } from './ChatTeamControls';
 import { useChatTeam } from './chatTeam';
+import { ChatSessionInfo } from './ChatSessionInfo';
+import './chatLayout.css';
 
 export function ChatPage({ t, language, agents, picker, state, onState, selection, onSelect, onOpenSettings, onReviewSkills, onOpenKnowledge }: {
   t: Messages;
@@ -44,11 +52,14 @@ export function ChatPage({ t, language, agents, picker, state, onState, selectio
   const { events, error: loadError, loading } = useSessionEvents(agents, session?.id);
   const sessionId = session?.id;
   const previewAttachment = useMemo(() => sessionId ? attachmentPreviewLoader(agents, sessionId) : undefined, [agents, sessionId]);
-  const items = useMemo(() => projectTranscript(events), [events]);
-  const changedFiles = useMemo(() => projectChangedFiles(events, session?.observation?.projectPath ?? workspace?.projectLocation), [events, session, workspace]);
+  const fileRoots = useMemo(() => sessionFileRoots(events, session?.workspaceFileScopes), [events, session?.workspaceFileScopes]);
+  const items = useMemo(() => projectTranscript(events, fileRoots), [events, fileRoots]);
+  const changedFiles = useMemo(() => projectChangedFiles(events, session?.observation?.projectPath ?? workspace?.projectLocation, fileRoots), [events, session, workspace, fileRoots]);
   const activity = useMemo(() => projectActivity(events), [events]);
   const [error, setError] = useState<string | null>(null);
   const [listOpen, setListOpen] = useState(false);
+  const [movingSession, setMovingSession] = useState<SessionSummary>();
+  const [handoverOpen, setHandoverOpen] = useState(false);
   const stick = useRef(true);
   const memoryDetails = useRef<HTMLDetailsElement>(null);
   const memoryDetailsId = useId();
@@ -135,17 +146,7 @@ export function ChatPage({ t, language, agents, picker, state, onState, selectio
   };
 
   return (
-    <div className={`chat ${listOpen ? 'list-open' : ''}`}>
-      <div className="chat-head">
-        <button type="button" className="button small sessions-toggle" aria-expanded={listOpen} aria-controls="chat-sessions" onClick={() => setListOpen(!listOpen)}>
-          <Icon name={listOpen ? 'close' : 'menu'} />{listOpen ? t.chat.hideSessions : t.chat.showSessions}
-        </button>
-        <h1 id="chat-title" className="chat-title">{session ? session.title || t.chat.untitled : t.chat.newSession}</h1>
-        {session?.continuedFrom && <span className="badge">{t.handoff.badge(sourceLabel(session.continuedFrom.sourceId))}</span>}
-        {session?.transient && <span className="badge warn" title={t.handoff.notSavedHint}>{t.handoff.notSaved}</span>}
-        <span className="chat-workspace" title={workspace.projectLocation}><Icon name="folder" />{workspace.name}</span>
-      </div>
-
+    <div className={`chat chat-session-page ${listOpen ? 'list-open' : ''}`}>
       <aside className="chat-side" id="chat-sessions" aria-label={t.chat.sessions}>
         <div className="field">
           <Select
@@ -166,28 +167,52 @@ export function ChatPage({ t, language, agents, picker, state, onState, selectio
         </button>
         <h2 className="side-heading">{t.chat.sessions}</h2>
         <SessionList t={t} sessions={sessions} activeId={session?.id} language={language}
-          onSelect={id => { onSelect({ workspaceId: workspace.id, sessionId: id }); setListOpen(false); }} onRename={rename} onDelete={remove} />
+          onSelect={id => { onSelect({ workspaceId: workspace.id, sessionId: id }); setListOpen(false); }} onRename={rename} onDelete={remove}
+          {...(agents.previewSessionMove && agents.moveSession ? { onMove: setMovingSession } : {})} />
       </aside>
 
-      <section className="chat-main" aria-labelledby="chat-title">
-        <ProjectSkillsNotice t={t} agents={agents} workspace={workspace} onReview={onReviewSkills} />
-        {loadError && <p className="form-error" role="alert"><Icon name="alert" />{t.chat.loadFailed} {loadError}</p>}
-        <WorkspaceRuntimeNotice t={t} state={state} workspace={workspace} session={session} onNewSession={() => {
-          onSelect({ workspaceId: workspace.id, sessionId: null }); setListOpen(false); focusComposer();
-        }} />
-        {!loading && items.length === 0 ? (
-          <div className="chat-empty">
-            <Icon name="chat" className="empty-icon" />
-            <h2>{t.chat.emptyTitle}</h2>
-            <p className="muted">{t.chat.emptyLead(workspace.name)}</p>
-          </div>
-        ) : (
-          <MessageFileProvider key={session?.id ?? 'new'} t={t} agents={agents} workspaces={state.workspaces} workspaceId={workspace.id} projectPath={session?.observation?.projectPath ?? workspace.projectLocation}>
-            <ConversationTabs t={t} language={language} files={changedFiles}>
+      <section className="chat-main chat-session-main" aria-labelledby="chat-title">
+        <MessageFileProvider key={session?.id ?? 'new'} t={t} agents={agents} workspaces={state.workspaces} workspaceId={workspace.id} projectPath={session?.observation?.projectPath ?? workspace.projectLocation}>
+          <ConversationTabs t={t} language={language} files={changedFiles} header={<div className="chat-head">
+            <button type="button" className="button small sessions-toggle" aria-expanded={listOpen} aria-controls="chat-sessions" onClick={() => setListOpen(!listOpen)}>
+              <Icon name={listOpen ? 'close' : 'menu'} />{listOpen ? t.chat.hideSessions : t.chat.showSessions}
+            </button>
+            <h1 id="chat-title" className="chat-title">{session ? session.title || t.chat.untitled : t.chat.newSession}</h1>
+            {session?.continuedFrom && <span className="badge">{t.handoff.badge(sourceLabel(session.continuedFrom.sourceId))}</span>}
+            {session?.transient && <span className="badge warn" title={t.handoff.notSavedHint}>{t.handoff.notSaved}</span>}
+            <span className="chat-workspace" title={workspace.projectLocation}><Icon name="folder" />{workspace.name}</span>
+            {session && agents.previewHandover && <button type="button" className="button small" onClick={() => setHandoverOpen(true)}>{t.sessionHandover.title}</button>}
+            {session?.control === 'observed' && <ObservedWorkspaceLinkButton agents={agents} session={session} state={state} t={t} onState={next => {
+              onState(next); const linked = next.sessions.find(item => item.id === session.id);
+              if (linked) onSelect({ workspaceId: linked.workspaceId, sessionId: linked.id });
+            }} />}
+          </div>}>
+            <ProjectSkillsNotice t={t} agents={agents} workspace={workspace} onReview={onReviewSkills} />
+            {loadError && <p className="form-error" role="alert"><Icon name="alert" />{t.chat.loadFailed} {loadError}</p>}
+            <WorkspaceRuntimeNotice t={t} state={state} workspace={workspace} session={session} onNewSession={() => {
+              onSelect({ workspaceId: workspace.id, sessionId: null }); setListOpen(false); focusComposer();
+            }} />
+            {!loading && items.length === 0 ? (
+              <div className="chat-empty">
+                <Icon name="chat" className="empty-icon" />
+                <h2>{t.chat.emptyTitle}</h2>
+                <p className="muted">{t.chat.emptyLead(workspace.name)}</p>
+              </div>
+            ) : (
               <TranscriptView t={t} items={items} language={language} onDecide={decide} previewAttachment={previewAttachment} approvalsEnabled={!readOnly} />
-            </ConversationTabs>
-          </MessageFileProvider>
-        )}
+            )}
+
+          </ConversationTabs>
+        </MessageFileProvider>
+
+        <aside className="chat-context-rail" aria-label={t.chat.sessionInfo.title}>
+          <ChatSessionInfo t={t} state={state} workspace={workspace} session={session} status={statusText} files={changedFiles} />
+          {memoryScope && <MemoryContextPanel key={memoryScope.key} t={t} language={language} id={memoryDetailsId} detailsRef={memoryDetails}
+            agents={agents} workspaceId={workspace.id} ownerKey={memoryScope.key} draftKey={memoryScope.draftKey}
+            workspaceName={workspace.name} connection={memoryScope.connection} context={memoryScope.context}
+            onOpenSettings={onOpenSettings} onOpenSkills={() => onReviewSkills(workspace.id)} onOpenKnowledge={onOpenKnowledge} />}
+          <ChatTeamControls t={t} agents={agents} state={state} workspace={workspace} session={session} running={running} control={teamControl} />
+        </aside>
 
         <div className="chat-footer">
           <p className={`chat-status ${running ? 'busy' : ''} ${waiting ? 'waiting' : ''}`} role="status" aria-live="polite">
@@ -196,19 +221,30 @@ export function ChatPage({ t, language, agents, picker, state, onState, selectio
             {statusText}
           </p>
           {error && <p className="form-error" role="alert"><Icon name="alert" />{error}</p>}
-          {memoryScope && <MemoryContextPanel key={memoryScope.key} t={t} language={language} id={memoryDetailsId} detailsRef={memoryDetails}
-            agents={agents} workspaceId={workspace.id} ownerKey={memoryScope.key} draftKey={memoryScope.draftKey}
-            workspaceName={workspace.name} connection={memoryScope.connection} context={memoryScope.context}
-            onOpenSettings={onOpenSettings} onOpenSkills={() => onReviewSkills(workspace.id)} onOpenKnowledge={onOpenKnowledge} />}
-          <ChatTeamControls t={t} agents={agents} state={state} workspace={workspace} session={session} running={running} control={teamControl} />
+          {session?.control === 'observed' && <ObservedInputCards t={t} sessionId={session.id} />}
+
           {session?.control === 'observed' && supportsObservedPromptQueue(session.observation?.sourceId)
             ? <ObservedCodexPromptComposer key={session.id} t={t} agents={agents} session={session} />
-            : <Composer t={t} agents={agents} session={session} workspaceId={workspace.id} hermes={sessionRuntime(workspace, session) === 'hermes'} modelScopeKey={modelChoicesKey(state, workspace, session)}
+            : session?.control === 'observed' && agents.observedControlStatus && agents.dispatchObservedControl
+              ? <ObservedSessionControl key={session.id} t={t} agents={agents} session={session} />
+              : <Composer t={t} agents={agents} session={session} workspaceId={workspace.id} hermes={sessionRuntime(workspace, session) === 'hermes'} modelScopeKey={modelChoicesKey(state, workspace, session)}
             running={running} waiting={waiting} readOnly={readOnly} stopping={activity.stopping}
             onOpenContext={memoryScope ? openMemoryContext : undefined} contextPanelId={memoryScope ? memoryDetailsId : undefined}
             onSend={send} onStop={() => { if (session) void guard(() => agents.cancel(session.id)); }} onSessionChanged={refreshState} />}
         </div>
       </section>
+      {movingSession && <SessionMoveDialog key={movingSession.id} t={t} agents={agents} session={movingSession} workspaces={state.workspaces}
+        onClose={() => setMovingSession(undefined)} onMoved={(next, workspaceId) => {
+          onState(next); onSelect({ workspaceId, sessionId: movingSession.id }); setMovingSession(undefined); setListOpen(false); focusComposer();
+        }} />}
+      {handoverOpen && session && <SessionHandoverDialog agents={agents} state={state} session={session} t={t.sessionHandover}
+        onClose={() => setHandoverOpen(false)} onApplied={receipt => {
+          if (receipt.state === 'native-ready') void guard(async () => {
+            const next = await agents.getState();
+            setHandoverOpen(false); onState(next);
+            if (receipt.targetSessionId) onSelect({ workspaceId: workspace.id, sessionId: receipt.targetSessionId });
+          });
+        }} />}
     </div>
   );
 }

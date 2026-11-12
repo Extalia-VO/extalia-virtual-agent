@@ -95,6 +95,10 @@ const REFUSALS: Record<string, string> = {
   'scanner-unavailable': 'No verified skill scanner is configured, so the skill stays quarantined.',
   wrong_state: 'The skill is not in a state that allows this. Reload the list and check its state.',
   digest_mismatch: 'The skill changed after it was shown. Review the current version before deciding.',
+  import_tree_changed: 'The package changed after preview. Prepare a new preview before importing.',
+  market_package_source_invalid: 'The marketplace source is not pinned to a valid repository commit and skill folder.',
+  market_package_source_conflict: 'Another source already owns this skill package name. Review the existing package instead of replacing its source.',
+  revision_source_limit: 'This revision has reached its source-record limit. Its existing bytes and source records are preserved.',
   permission_digest_mismatch: 'The declared permissions changed after they were shown. Review them again before approving.',
   approval_mismatch: 'That approval belongs to another revision. Approve this revision first.',
   approval_expired: 'The approval expired before activation. Approve the revision again.',
@@ -346,6 +350,28 @@ export class SkillRegistry {
       });
     } finally {
       await backend.process('skill.cleanup', { stageId: staged.stageId }).catch(() => undefined);
+    }
+  }
+
+  /** Import a Rust-owned marketplace stage, binding the exact reviewed bytes. */
+  async importPreparedMarket(staged: { path: string; treeSha256: string; sourceRef: string }): Promise<SkillActionResult> {
+    // This is an internal Rust staging receipt, never a renderer-selected folder.
+    if (!/^market-[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(staged.path)
+      || !/^[0-9a-f]{64}$/.test(staged.treeSha256)
+      || !staged.sourceRef.startsWith('github:') || staged.sourceRef.length > 512 || /\p{Cc}/u.test(staged.sourceRef)) {
+      throw new SkillRegistryError('Invalid marketplace staging receipt.');
+    }
+    let client: DaemonClient;
+    try { client = await this.client(); } catch (error) { throw unavailable(error instanceof DaemonUnavailableError ? error.code : 'not-served'); }
+    try {
+      const imported = await client.request('skill.import', {
+        origin: 'imported', path: staged.path, sourceRef: staged.sourceRef, expectedTreeSha256: staged.treeSha256,
+      }, SKILL_SCAN_DEADLINE_MS);
+      return this.action(imported);
+    } catch (error) {
+      if (error instanceof DaemonRequestError) throw refusal(error);
+      if (error instanceof DaemonUnavailableError) throw new SkillRegistryError('Import completion could not be confirmed. Inspect Grimoire before retrying.');
+      throw error;
     }
   }
 

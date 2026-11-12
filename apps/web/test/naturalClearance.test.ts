@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { BoxGeometry, Group, Mesh, MeshBasicMaterial, Vector3 } from 'three';
+import { BoxGeometry, Group, Mesh, MeshBasicMaterial, Scene, Vector3 } from 'three';
+import { ModelBatchController } from '../src/office/scene/ModelInstanceBatches';
 import { TEAM_POD_STRUCTURE_FOOTPRINT } from '../src/office/scene/interior/teamPodDesktopGeometry';
 import { WalkingClearance, walkingClearanceFor } from '../src/office/scene/movement/naturalClearance';
 import { getMovingOccupantsSnapshot, getNearbyMovingOccupantsSnapshot, trackMovingOccupant } from '../src/office/scene/interior/occupants/movingOccupants';
@@ -9,6 +10,30 @@ function cube(size: [number, number, number], position: [number, number, number]
   const mesh = new Mesh(new BoxGeometry(...size), new MeshBasicMaterial()); mesh.position.set(...position); return mesh;
 }
 describe('render-derived walking clearance', () => {
+  it('retains actual batch-owned chair collisions after metadata refresh and releases hidden sources', () => {
+    const scene = new Scene(), geometry = new BoxGeometry(.7, 1.1, .7), material = new MeshBasicMaterial();
+    const chairs = [0, 3].map(x => {
+      const group = new Group(), mesh = new Mesh(geometry, material);
+      group.position.set(x, 0, 0); group.userData = { interiorAuthored: true, officeSeat: true };
+      mesh.position.y = .55; mesh.userData.officeInstanceable = true;
+      group.add(mesh); scene.add(group); return mesh;
+    });
+    scene.updateMatrixWorld(true);
+    const controller = new ModelBatchController(scene), field = new WalkingClearance();
+    try {
+      controller.update(0);
+      expect(chairs[0]!.visible).toBe(false);
+      chairs.forEach(mesh => { mesh.userData = { officeInstanceable: true }; });
+      controller.update(16); field.rebuild([scene]);
+      expect(field.colliderCount).toBe(2);
+      expect(field.segmentClear([-1, 0, 0], [1, 0, 0])).toBe(false);
+      chairs[0]!.visible = false; controller.update(32); field.rebuild([scene]);
+      expect(field.colliderCount).toBe(1);
+      expect(field.segmentClear([-1, 0, 0], [1, 0, 0])).toBe(true);
+    } finally { controller.dispose(); }
+    expect(chairs[0]!.visible).toBe(false);
+    expect(chairs[1]!.visible).toBe(true);
+  });
   it('sweeps the body around transformed concave pod bays while preserving the solid structure and neighboring furniture', () => {
     for (const yaw of [0, Math.PI / 4, Math.PI / 2, Math.PI]) {
       const root = new Group(), pod = new Group(), field = new WalkingClearance();

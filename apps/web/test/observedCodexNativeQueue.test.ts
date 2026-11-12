@@ -135,13 +135,13 @@ it.each([
   expect(() => validateCodexNativeQueue(status(patch), id, threadId)).toThrow();
 });
 
-it.each(['en', 'id'] as const)('renders escaped plain text and metadata, read-only with honest snapshot copy (%s)', language => {
+it.each(['en', 'id'] as const)('renders safe clickable links and escaped markup with honest read-only snapshot copy (%s)', language => {
   const { control } = setup(); const t = MESSAGES[language];
   const source = status({ observedAt: '2026-11-09T00:00:00Z', items: [{ id: 'item', text: '<script>private()</script>\n[link](https://example.com/file)', nonTextItems: 2 }] });
   const html = renderToStaticMarkup(createElement(ObservedCodexNativeQueueContent, { t, control, view: { phase: 'ready', status: source, refreshing: false } }));
   expect(html).toContain(t.observedCodexNativeQueue.helper); expect(html).toContain('&lt;script&gt;');
-  expect(html).toContain('[link](https://example.com/file)'); expect(html).toContain(t.observedCodexNativeQueue.nonText.replace('{count}', '2'));
-  expect(html).not.toMatch(/<(?:script|a|img|textarea|input)\b/); expect(html.match(/<button/g)).toHaveLength(1);
+  expect(html).toContain('href="https://example.com/file"'); expect(html).toContain(t.observedCodexNativeQueue.nonText.replace('{count}', '2'));
+  expect(html).not.toMatch(/<(?:script|img|textarea|input)\b/); expect(html.match(/<button/g)).toHaveLength(1);
   expect(html).toContain('dateTime="2026-11-09T00:00:00Z"');
 });
 
@@ -159,9 +159,22 @@ it('masks ready contents synchronously when paused, and non-Codex/managed source
 it('renders ready empty differently from unavailable, private and unsupported', () => {
   const { control } = setup(); const t = MESSAGES.en;
   const empty = renderToStaticMarkup(createElement(ObservedCodexNativeQueueContent, { t, control, view: { phase: 'ready', status: status({ items: [] }), refreshing: false } }));
-  expect(empty).toContain(t.observedCodexNativeQueue.empty);
+  expect(empty).toBe('');
   for (const phase of ['unavailable', 'private', 'unsupported'] as const) {
     const html = renderToStaticMarkup(createElement(ObservedCodexNativeQueueContent, { t, control, view: { phase, refreshing: false } }));
     expect(html).not.toContain(t.observedCodexNativeQueue.empty); expect(html).toContain(t.observedCodexNativeQueue.states[phase]);
   }
+});
+
+it('validates passive attachment metadata and drops remote previews independently of the host', () => {
+  const safe = validateCodexNativeQueue(status({ items: [{ id: 'media', text: '', nonTextItems: 2, attachments: [
+    { kind: 'image', name: 'image.png', thumbnail: 'https://example.com/tracker.png' }, { kind: 'file', name: 'notes.md' },
+  ] }] }), id, threadId);
+  expect(safe.items[0]?.attachments).toEqual([{ kind: 'image', name: 'image.png' }, { kind: 'file', name: 'notes.md' }]);
+  for (const name of ['/tmp/private.png', '..\\private.png', 'bad\0name']) {
+    expect(() => validateCodexNativeQueue(status({ items: [{ id: 'media', text: '', nonTextItems: 1,
+      attachments: [{ kind: 'image', name }] }] }), id, threadId)).toThrow();
+  }
+  const privateStatus = validateCodexNativeQueue(status({ state: 'private', items: safe.items }), id, threadId);
+  expect(privateStatus.items).toEqual([]);
 });

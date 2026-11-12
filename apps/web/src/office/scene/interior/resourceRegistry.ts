@@ -543,7 +543,7 @@ const AUTHORED_RESOURCES: readonly SpatialResource[] = [
   deskResource("source-control.commit", "source-control", 1, -2.5, 10.7),
   deskResource("source-control.laptop", "source-control", 1, 0.85, 10.7),
   ...libraryShelfTargets,
-  withStagingOffset(deskResource("library.laptop", "library", 1, libraryDeskPosition[0], libraryDeskPosition[1]), [-1.2, 0]),
+  withStagingOffset(deskResource("library.laptop", "library", 1, libraryDeskPosition[0], libraryDeskPosition[1]), [-1.3, 0]),
   ...librarySofa,
   deskResource("operations.station-1", "operations", 1,
     SERVER_ROOM_BLUEPRINT.roomCenter[0] + SERVER_ROOM_BLUEPRINT.deskPosition[0],
@@ -574,7 +574,7 @@ const AUTHORED_RESOURCES: readonly SpatialResource[] = [
   ...executiveVipSofa,
   ...executiveVipArmchairs,
 
-  ...[-4.7, -1.6, 1.6, 4.7].map((x, index) => withStagingOffset(deskResource(`mission-control.station-${index + 1}`, "mission-control", 2, 2 + x, -8.55), [index === 3 ? 1.2 : -1.2, 0])),
+  ...[-4.7, -1.6, 1.6, 4.7].map((x, index) => withStagingOffset(deskResource(`mission-control.station-${index + 1}`, "mission-control", 2, 2 + x, -8.55), [index === 3 ? 1.3 : -1.3, 0])),
   deskResource("architecture.laptop", "architecture", 2, -15.8, -0.3),
   ...meetingResources("meeting-a"),
   ...meetingPresenterResources("meeting-a"),
@@ -589,21 +589,22 @@ const AUTHORED_RESOURCES: readonly SpatialResource[] = [
   ...studioExecutiveSeats,
   ...studioLoungeSofa,
   ...studioLoungeArmchairs,
-  ...[-10.35, -7.75].flatMap((deskZ, row) => [-3.55, -0.55, 3.05, 6.05].map((x, col) => {
+  ...[-11.6, -8.6].flatMap((deskZ, row) => [-3.55, -0.55, 3.05, 6.05].map((x, col) => {
     const index = row * 4 + col + 1;
     const seat = deskResource(`multi-engine.station-${index}`, "multi-engine", 3, x, deskZ);
-    if (index === 1) return withStagingOffset(seat, [1.2, 0]);
-    if (index === 2 || index === 4) return withStagingOffset(seat, [-1.2, 0]);
+    if (index === 1) return withStagingOffset(seat, [1.3, 0]);
+    if (index === 2 || index === 4) return withStagingOffset(seat, [-1.3, 0]);
     if (index === 5) return withStagingOffset(seat, [1.5, 0]);
-    if (index === 6 || index === 8) return withStagingOffset(seat, [1.2, 0]);
-    if (index === 7) return withStagingOffset(seat, [-1.25, 0]);
-    return index === 3 ? withStagingOffset(seat, [1.2, 0]) : seat;
+    if (index === 6 || index === 8) return withStagingOffset(seat, [1.3, 0]);
+    if (index === 7) return withStagingOffset(seat, [-1.3, 0]);
+    return index === 3 ? withStagingOffset(seat, [1.3, 0]) : seat;
   })),
   ...[-16.5, -14, -11.5].map((x, index) => deskResource(`sanctuary.terminal-${index + 1}`, "sanctuary", 3, x, -0.45)),
-  ...[-6.2, -1.8].flatMap((x, col) => [-2.3, 0.45].map((deskZ, row) => {
+  ...[-6.2, -1.8].flatMap((x, col) => [-2.6, 0.45].map((deskZ, row) => {
     const index = col * 2 + row + 1;
     return withStagingOffset(deskResource(`flex.station-${index}`, "flex", 3, x, deskZ),
-      [col === 0 ? 1.05 : -1.05, 0]);
+      // Clear the inflated desktop corner along the complete diagonal to the chair grip.
+      [col === 0 ? 1.30 : -1.30, 0]);
   })),
   deskResource("research.laptop-1", "research", 3, 4.0, -0.6),
   deskResource("research.laptop-2", "research", 3, 8.0, -0.6),

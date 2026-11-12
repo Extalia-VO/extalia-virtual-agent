@@ -14,6 +14,7 @@ describe('workspaceForProject paths', () => {
     const workspaces = [{ id: 'site', projectLocation: 'C:\\Users\\me\\site\\' }];
     expect(workspaceForProject(workspaces, 'C:\\Users\\me\\site\\src', value => value)).toBe('site');
     expect(workspaceForProject(workspaces, 'C:\\Users\\me\\site-two', value => value)).toBeUndefined();
+    expect(workspaceForProject(workspaces, 'C:\\Users\\me\\Site\\src', value => value)).toBeUndefined();
   });
 });
 
@@ -40,6 +41,13 @@ describe('workspaceForProject', () => {
     expect(workspaceForProject(workspaces, '/Work/Site')).toBeUndefined();
     expect(workspaceForProject(workspaces, undefined)).toBeUndefined();
     expect(workspaceForProject(workspaces, '')).toBeUndefined();
+  });
+  it('includes every selected project folder while retaining the deepest scoped match', () => {
+    const multiple = [{ id: 'shared', projectLocation: '/work/app', additionalProjectLocations: ['/work/library', '/work/tools'] },
+      { id: 'nested', projectLocation: '/work/library/private' }];
+    expect(workspaceForProject(multiple, '/work/library/src')).toBe('shared');
+    expect(workspaceForProject(multiple, '/work/library/private/src')).toBe('nested');
+    expect(workspaceForProject(multiple, '/work/library-other')).toBeUndefined();
   });
 });
 

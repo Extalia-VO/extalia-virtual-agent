@@ -94,6 +94,30 @@ it('keeps short paste native and sends an ordinary prompt without attachment opt
   expect(h.host.uploadAttachment).not.toHaveBeenCalled();
 });
 
+it('returns a new-session draft to the default workspace after leaving another workspace', async () => {
+  const h = harness(); h.props.workspaceId = 'workspace-b'; h.render();
+  h.type('Keep this draft');
+  delete h.props.workspaceId;
+  const picker = elements(h.render()).find(item => item.props['aria-label'] === MESSAGES.en.officeUx.dockWorkspace)!;
+  expect(picker.props.value).toBe('workspace-a');
+  expect(h.area().props.value).toBe('Keep this draft');
+  await h.send();
+  expect(h.host.createSession).toHaveBeenCalledExactlyOnceWith('workspace-a');
+  expect(h.host.sendPrompt).toHaveBeenCalledWith('created-a', 'Keep this draft');
+});
+
+it('keeps a targeted session in its source workspace when the active workspace returns to default', async () => {
+  const h = harness(); h.props.workspaceId = 'workspace-b'; h.props.targetSessionId = 'existing-b'; h.render();
+  delete h.props.workspaceId;
+  const picker = elements(h.render()).find(item => item.props['aria-label'] === MESSAGES.en.officeUx.dockWorkspace)!;
+  expect(picker.props.value).toBe('workspace-b');
+  h.type('Continue this session'); await h.send();
+  expect(h.host.createSession).not.toHaveBeenCalled();
+  expect(h.host.sendPrompt).toHaveBeenCalledWith('existing-b', 'Continue this session');
+  h.props.targetSessionId = undefined;
+  expect(elements(h.render()).find(item => item.props['aria-label'] === MESSAGES.en.officeUx.dockWorkspace)!.props.value).toBe('workspace-a');
+});
+
 it.each(['en', 'id'] as const)('imports the complete selected draft exactly and shows a removable chip in %s', async language => {
   const h = harness(language); h.type('beforeOLDafter');
   const incoming = 'こんにちは🌟\n'.repeat(2000);

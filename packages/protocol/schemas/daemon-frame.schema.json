@@ -370,6 +370,8 @@
                   },
                   "ref": {
                     "type": "string",
+                    "minLength": 64,
+                    "maxLength": 64,
                     "pattern": "^[0-9a-f]{64}$"
                   }
                 }
@@ -412,6 +414,178 @@
           "properties": {
             "type": {
               "const": "model.thinking"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "skills",
+            "characters",
+            "budgetCharacters"
+          ],
+          "$comment": "The reference validator additionally enforces unique skill names, characters <= budgetCharacters and loaded instruction totals <= characters.",
+          "properties": {
+            "type": {
+              "const": "skills.loaded"
+            },
+            "skills": {
+              "type": "array",
+              "maxItems": 8,
+              "uniqueItems": true,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "name",
+                  "source",
+                  "reason",
+                  "status",
+                  "characters"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "maxLength": 64,
+                    "pattern": "^[a-z0-9][a-z0-9-]{0,63}$",
+                    "allOf": [
+                      {
+                        "pattern": "^[^\\x00-\\x1f\\x7f]*$"
+                      }
+                    ]
+                  },
+                  "source": {
+                    "type": "string",
+                    "enum": [
+                      "builtin",
+                      "registry"
+                    ]
+                  },
+                  "reason": {
+                    "type": "string",
+                    "enum": [
+                      "default-memory",
+                      "configured-team",
+                      "explicit-request",
+                      "current-context",
+                      "recent-context",
+                      "dependency"
+                    ]
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "loaded",
+                      "budget",
+                      "unavailable",
+                      "not-configured"
+                    ]
+                  },
+                  "characters": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 24000
+                  },
+                  "intent": {
+                    "type": "string",
+                    "enum": [
+                      "planning",
+                      "debugging",
+                      "testing",
+                      "review",
+                      "security",
+                      "documentation",
+                      "design",
+                      "refactoring",
+                      "delivery"
+                    ]
+                  },
+                  "revisionId": {
+                    "type": "string",
+                    "minLength": 68,
+                    "maxLength": 68,
+                    "pattern": "^skr_[0-9a-f]{64}$"
+                  }
+                },
+                "allOf": [
+                  {
+                    "if": {
+                      "properties": {
+                        "status": {
+                          "const": "loaded"
+                        }
+                      },
+                      "required": [
+                        "status"
+                      ]
+                    },
+                    "then": {
+                      "properties": {
+                        "characters": {
+                          "minimum": 1
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "if": {
+                      "properties": {
+                        "status": {
+                          "not": {
+                            "const": "loaded"
+                          }
+                        }
+                      },
+                      "required": [
+                        "status"
+                      ]
+                    },
+                    "then": {
+                      "properties": {
+                        "characters": {
+                          "const": 0
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "if": {
+                      "properties": {
+                        "source": {
+                          "const": "builtin"
+                        }
+                      },
+                      "required": [
+                        "source"
+                      ]
+                    },
+                    "then": {
+                      "not": {
+                        "required": [
+                          "revisionId"
+                        ]
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            "characters": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 24000
+            },
+            "budgetCharacters": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 24000
+            },
+            "omitted": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 4096
             }
           }
         },
@@ -938,6 +1112,49 @@
             "output": {
               "type": "string",
               "maxLength": 200000
+            },
+            "attachments": {
+              "type": "array",
+              "maxItems": 10,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "name",
+                  "kind",
+                  "size"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "maxLength": 2000,
+                    "pattern": "^[^\\n\\r]*$",
+                    "allOf": [
+                      {
+                        "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+                      }
+                    ]
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "image",
+                      "text",
+                      "file"
+                    ]
+                  },
+                  "size": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "ref": {
+                    "type": "string",
+                    "minLength": 64,
+                    "maxLength": 64,
+                    "pattern": "^[0-9a-f]{64}$"
+                  }
+                }
+              }
             }
           }
         },
@@ -1836,7 +2053,7 @@
         "capabilities": {
           "type": "array",
           "minItems": 1,
-          "maxItems": 46,
+          "maxItems": 47,
           "uniqueItems": true,
           "items": {
             "$ref": "#/$defs/DaemonOp"
@@ -1866,7 +2083,7 @@
         "capabilities": {
           "type": "array",
           "minItems": 1,
-          "maxItems": 46,
+          "maxItems": 47,
           "uniqueItems": true,
           "items": {
             "$ref": "#/$defs/DaemonOp"
@@ -2302,6 +2519,1474 @@
     },
     "DaemonKnowledgeRollbackResult": {
       "$ref": "#/$defs/KnowledgeWriteResult"
+    },
+    "DaemonKnowledgeScopedParams": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "profileId",
+            "vaultRoot",
+            "op",
+            "params"
+          ],
+          "properties": {
+            "profileId": {
+              "type": "string",
+              "maxLength": 39,
+              "pattern": "^vp-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            },
+            "vaultRoot": {
+              "oneOf": [
+                {
+                  "type": "string",
+                  "maxLength": 4096,
+                  "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+                  "allOf": [
+                    {
+                      "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+                    }
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "op": {
+              "type": "string",
+              "enum": [
+                "knowledge.status"
+              ]
+            },
+            "params": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {}
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "profileId",
+            "vaultRoot",
+            "op",
+            "params"
+          ],
+          "properties": {
+            "profileId": {
+              "type": "string",
+              "maxLength": 39,
+              "pattern": "^vp-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            },
+            "vaultRoot": {
+              "oneOf": [
+                {
+                  "type": "string",
+                  "maxLength": 4096,
+                  "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+                  "allOf": [
+                    {
+                      "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+                    }
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "op": {
+              "type": "string",
+              "enum": [
+                "knowledge.sync"
+              ]
+            },
+            "params": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "mode"
+              ],
+              "properties": {
+                "mode": {
+                  "$ref": "#/$defs/KnowledgeSyncMode"
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "profileId",
+            "vaultRoot",
+            "op",
+            "params"
+          ],
+          "properties": {
+            "profileId": {
+              "type": "string",
+              "maxLength": 39,
+              "pattern": "^vp-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            },
+            "vaultRoot": {
+              "oneOf": [
+                {
+                  "type": "string",
+                  "maxLength": 4096,
+                  "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+                  "allOf": [
+                    {
+                      "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+                    }
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "op": {
+              "type": "string",
+              "enum": [
+                "knowledge.node"
+              ]
+            },
+            "params": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "nodeId": {
+                  "$ref": "#/$defs/KnowledgeNodeId"
+                },
+                "path": {
+                  "$ref": "#/$defs/KnowledgePath"
+                }
+              },
+              "oneOf": [
+                {
+                  "required": [
+                    "nodeId"
+                  ]
+                },
+                {
+                  "required": [
+                    "path"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "profileId",
+            "vaultRoot",
+            "op",
+            "params"
+          ],
+          "properties": {
+            "profileId": {
+              "type": "string",
+              "maxLength": 39,
+              "pattern": "^vp-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            },
+            "vaultRoot": {
+              "oneOf": [
+                {
+                  "type": "string",
+                  "maxLength": 4096,
+                  "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+                  "allOf": [
+                    {
+                      "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+                    }
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "op": {
+              "type": "string",
+              "enum": [
+                "knowledge.links"
+              ]
+            },
+            "params": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "nodeId"
+              ],
+              "properties": {
+                "nodeId": {
+                  "$ref": "#/$defs/KnowledgeNodeId"
+                },
+                "cursor": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "limit": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 200
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "profileId",
+            "vaultRoot",
+            "op",
+            "params"
+          ],
+          "properties": {
+            "profileId": {
+              "type": "string",
+              "maxLength": 39,
+              "pattern": "^vp-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            },
+            "vaultRoot": {
+              "oneOf": [
+                {
+                  "type": "string",
+                  "maxLength": 4096,
+                  "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+                  "allOf": [
+                    {
+                      "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+                    }
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "op": {
+              "type": "string",
+              "enum": [
+                "knowledge.backlinks"
+              ]
+            },
+            "params": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "nodeId"
+              ],
+              "properties": {
+                "nodeId": {
+                  "$ref": "#/$defs/KnowledgeNodeId"
+                },
+                "cursor": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "limit": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 200
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "profileId",
+            "vaultRoot",
+            "op",
+            "params"
+          ],
+          "properties": {
+            "profileId": {
+              "type": "string",
+              "maxLength": 39,
+              "pattern": "^vp-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            },
+            "vaultRoot": {
+              "oneOf": [
+                {
+                  "type": "string",
+                  "maxLength": 4096,
+                  "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+                  "allOf": [
+                    {
+                      "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+                    }
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "op": {
+              "type": "string",
+              "enum": [
+                "knowledge.search"
+              ]
+            },
+            "params": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "query"
+              ],
+              "properties": {
+                "query": {
+                  "type": "string",
+                  "maxLength": 200,
+                  "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+                  "allOf": [
+                    {
+                      "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+                    }
+                  ]
+                },
+                "limit": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 50
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "profileId",
+            "vaultRoot",
+            "op",
+            "params"
+          ],
+          "properties": {
+            "profileId": {
+              "type": "string",
+              "maxLength": 39,
+              "pattern": "^vp-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            },
+            "vaultRoot": {
+              "oneOf": [
+                {
+                  "type": "string",
+                  "maxLength": 4096,
+                  "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+                  "allOf": [
+                    {
+                      "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+                    }
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "op": {
+              "type": "string",
+              "enum": [
+                "knowledge.graph"
+              ]
+            },
+            "params": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "nodeId"
+              ],
+              "properties": {
+                "nodeId": {
+                  "$ref": "#/$defs/KnowledgeNodeId"
+                },
+                "depth": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 3
+                },
+                "limit": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 500
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "profileId",
+            "vaultRoot",
+            "op",
+            "params"
+          ],
+          "properties": {
+            "profileId": {
+              "type": "string",
+              "maxLength": 39,
+              "pattern": "^vp-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            },
+            "vaultRoot": {
+              "oneOf": [
+                {
+                  "type": "string",
+                  "maxLength": 4096,
+                  "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+                  "allOf": [
+                    {
+                      "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+                    }
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "op": {
+              "type": "string",
+              "enum": [
+                "knowledge.overview"
+              ]
+            },
+            "params": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "nodeLimit": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 2000
+                },
+                "edgeLimit": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 8000
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "profileId",
+            "vaultRoot",
+            "op",
+            "params"
+          ],
+          "properties": {
+            "profileId": {
+              "type": "string",
+              "maxLength": 39,
+              "pattern": "^vp-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            },
+            "vaultRoot": {
+              "oneOf": [
+                {
+                  "type": "string",
+                  "maxLength": 4096,
+                  "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+                  "allOf": [
+                    {
+                      "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+                    }
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "op": {
+              "type": "string",
+              "enum": [
+                "knowledge.read"
+              ]
+            },
+            "params": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "path"
+              ],
+              "properties": {
+                "path": {
+                  "$ref": "#/$defs/KnowledgePath"
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "profileId",
+            "vaultRoot",
+            "op",
+            "params"
+          ],
+          "properties": {
+            "profileId": {
+              "type": "string",
+              "maxLength": 39,
+              "pattern": "^vp-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            },
+            "vaultRoot": {
+              "oneOf": [
+                {
+                  "type": "string",
+                  "maxLength": 4096,
+                  "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+                  "allOf": [
+                    {
+                      "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+                    }
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "op": {
+              "type": "string",
+              "enum": [
+                "knowledge.write"
+              ]
+            },
+            "params": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "path",
+                "content",
+                "author"
+              ],
+              "properties": {
+                "path": {
+                  "$ref": "#/$defs/KnowledgePath"
+                },
+                "content": {
+                  "type": "string",
+                  "maxLength": 1048576
+                },
+                "expectedSha256": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/$defs/Sha256Digest"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "author": {
+                  "type": "string",
+                  "enum": [
+                    "user"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "profileId",
+            "vaultRoot",
+            "op",
+            "params"
+          ],
+          "properties": {
+            "profileId": {
+              "type": "string",
+              "maxLength": 39,
+              "pattern": "^vp-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            },
+            "vaultRoot": {
+              "oneOf": [
+                {
+                  "type": "string",
+                  "maxLength": 4096,
+                  "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+                  "allOf": [
+                    {
+                      "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+                    }
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "op": {
+              "type": "string",
+              "enum": [
+                "knowledge.history"
+              ]
+            },
+            "params": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "path"
+              ],
+              "properties": {
+                "path": {
+                  "$ref": "#/$defs/KnowledgePath"
+                },
+                "limit": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 50
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "profileId",
+            "vaultRoot",
+            "op",
+            "params"
+          ],
+          "properties": {
+            "profileId": {
+              "type": "string",
+              "maxLength": 39,
+              "pattern": "^vp-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            },
+            "vaultRoot": {
+              "oneOf": [
+                {
+                  "type": "string",
+                  "maxLength": 4096,
+                  "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+                  "allOf": [
+                    {
+                      "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+                    }
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "op": {
+              "type": "string",
+              "enum": [
+                "knowledge.rollback"
+              ]
+            },
+            "params": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "path",
+                "toSha256",
+                "expectedSha256"
+              ],
+              "properties": {
+                "path": {
+                  "$ref": "#/$defs/KnowledgePath"
+                },
+                "toSha256": {
+                  "$ref": "#/$defs/Sha256Digest"
+                },
+                "expectedSha256": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/$defs/Sha256Digest"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "profileId",
+            "vaultRoot",
+            "op",
+            "params"
+          ],
+          "properties": {
+            "profileId": {
+              "type": "string",
+              "maxLength": 39,
+              "pattern": "^vp-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            },
+            "vaultRoot": {
+              "oneOf": [
+                {
+                  "type": "string",
+                  "maxLength": 4096,
+                  "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+                  "allOf": [
+                    {
+                      "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+                    }
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "op": {
+              "type": "string",
+              "enum": [
+                "knowledge.importMemory"
+              ]
+            },
+            "params": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "workspaceId"
+              ],
+              "properties": {
+                "workspaceId": {
+                  "type": "string",
+                  "maxLength": 36,
+                  "pattern": "^(?:w_[0-9a-z]{1,11}[0-9a-f]{8}|[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$"
+                },
+                "dryRun": {
+                  "type": "boolean"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "DaemonKnowledgeScopedResult": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "op",
+            "result"
+          ],
+          "properties": {
+            "op": {
+              "type": "string",
+              "enum": [
+                "knowledge.status"
+              ]
+            },
+            "result": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "state",
+                "vaultRoot",
+                "vaultPresent",
+                "generation"
+              ],
+              "properties": {
+                "state": {
+                  "type": "string",
+                  "enum": [
+                    "ready",
+                    "unavailable"
+                  ]
+                },
+                "reason": {
+                  "$ref": "#/$defs/SkillReason"
+                },
+                "vaultRoot": {
+                  "type": "string",
+                  "maxLength": 135,
+                  "pattern": "^(?:vaults\\/[a-z0-9][a-z0-9-]{0,63}|custom:[^/\\\\\\x00-\\x1f\\x7f]+)$"
+                },
+                "vaultPresent": {
+                  "type": "boolean"
+                },
+                "schemaVersion": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
+                },
+                "generation": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "counts": {
+                  "$ref": "#/$defs/KnowledgeCounts"
+                },
+                "lastSync": {
+                  "$ref": "#/$defs/KnowledgeSyncSummary"
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "op",
+            "result"
+          ],
+          "properties": {
+            "op": {
+              "type": "string",
+              "enum": [
+                "knowledge.sync"
+              ]
+            },
+            "result": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "mode",
+                "at",
+                "generation",
+                "notes",
+                "added",
+                "updated",
+                "removed",
+                "unchanged",
+                "unresolvedLinks",
+                "renamed",
+                "renamedTotal",
+                "skipped",
+                "skippedTotal",
+                "vaultCreated"
+              ],
+              "properties": {
+                "mode": {
+                  "$ref": "#/$defs/KnowledgeSyncMode"
+                },
+                "at": {
+                  "$ref": "#/$defs/UtcTimestamp"
+                },
+                "generation": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "notes": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "added": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "updated": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "removed": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "unchanged": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "unresolvedLinks": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "renamed": {
+                  "type": "array",
+                  "maxItems": 100,
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "from",
+                      "to"
+                    ],
+                    "properties": {
+                      "from": {
+                        "$ref": "#/$defs/KnowledgePath"
+                      },
+                      "to": {
+                        "$ref": "#/$defs/KnowledgePath"
+                      }
+                    }
+                  }
+                },
+                "renamedTotal": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "skipped": {
+                  "type": "array",
+                  "maxItems": 100,
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "path",
+                      "reason"
+                    ],
+                    "properties": {
+                      "path": {
+                        "$ref": "#/$defs/KnowledgePath"
+                      },
+                      "reason": {
+                        "type": "string",
+                        "enum": [
+                          "symlink",
+                          "special_file",
+                          "hard_link",
+                          "invalid_name",
+                          "too_deep",
+                          "too_large",
+                          "not_utf8",
+                          "invalid_front_matter",
+                          "profile_mismatch",
+                          "duplicate_id"
+                        ]
+                      }
+                    }
+                  }
+                },
+                "skippedTotal": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "vaultCreated": {
+                  "type": "boolean"
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "op",
+            "result"
+          ],
+          "properties": {
+            "op": {
+              "type": "string",
+              "enum": [
+                "knowledge.node"
+              ]
+            },
+            "result": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "generation",
+                "node",
+                "bodyStatus",
+                "bodyTruncated"
+              ],
+              "properties": {
+                "generation": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "node": {
+                  "$ref": "#/$defs/KnowledgeNode"
+                },
+                "body": {
+                  "type": "string",
+                  "maxLength": 262144,
+                  "pattern": "^[^\\x00-\\x08\\x0b\\x0c\\x0e-\\x1f\\x7f]*$"
+                },
+                "bodyStatus": {
+                  "type": "string",
+                  "enum": [
+                    "current",
+                    "changed",
+                    "unavailable"
+                  ]
+                },
+                "bodyTruncated": {
+                  "type": "boolean"
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "op",
+            "result"
+          ],
+          "properties": {
+            "op": {
+              "type": "string",
+              "enum": [
+                "knowledge.links"
+              ]
+            },
+            "result": {
+              "$ref": "#/$defs/KnowledgeLinkPage"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "op",
+            "result"
+          ],
+          "properties": {
+            "op": {
+              "type": "string",
+              "enum": [
+                "knowledge.backlinks"
+              ]
+            },
+            "result": {
+              "$ref": "#/$defs/KnowledgeLinkPage"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "op",
+            "result"
+          ],
+          "properties": {
+            "op": {
+              "type": "string",
+              "enum": [
+                "knowledge.search"
+              ]
+            },
+            "result": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "generation",
+                "hits"
+              ],
+              "properties": {
+                "generation": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "hits": {
+                  "type": "array",
+                  "maxItems": 50,
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "nodeId",
+                      "path",
+                      "title"
+                    ],
+                    "properties": {
+                      "nodeId": {
+                        "$ref": "#/$defs/KnowledgeNodeId"
+                      },
+                      "path": {
+                        "$ref": "#/$defs/KnowledgePath"
+                      },
+                      "title": {
+                        "type": "string",
+                        "maxLength": 512,
+                        "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+                        "allOf": [
+                          {
+                            "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+                          }
+                        ]
+                      },
+                      "snippet": {
+                        "type": "string",
+                        "maxLength": 300,
+                        "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+                        "allOf": [
+                          {
+                            "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "op",
+            "result"
+          ],
+          "properties": {
+            "op": {
+              "type": "string",
+              "enum": [
+                "knowledge.graph"
+              ]
+            },
+            "result": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "generation",
+                "rootNodeId",
+                "depth",
+                "nodes",
+                "edges",
+                "truncated"
+              ],
+              "properties": {
+                "generation": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "rootNodeId": {
+                  "$ref": "#/$defs/KnowledgeNodeId"
+                },
+                "depth": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 3
+                },
+                "nodes": {
+                  "type": "array",
+                  "minItems": 1,
+                  "maxItems": 500,
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "nodeId",
+                      "title"
+                    ],
+                    "properties": {
+                      "nodeId": {
+                        "$ref": "#/$defs/KnowledgeNodeId"
+                      },
+                      "title": {
+                        "type": "string",
+                        "maxLength": 512,
+                        "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+                        "allOf": [
+                          {
+                            "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+                          }
+                        ]
+                      }
+                    }
+                  }
+                },
+                "edges": {
+                  "type": "array",
+                  "maxItems": 2000,
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "source",
+                      "target",
+                      "edgeType"
+                    ],
+                    "properties": {
+                      "source": {
+                        "$ref": "#/$defs/KnowledgeNodeId"
+                      },
+                      "target": {
+                        "$ref": "#/$defs/KnowledgeNodeId"
+                      },
+                      "edgeType": {
+                        "$ref": "#/$defs/KnowledgeEdgeType"
+                      }
+                    }
+                  }
+                },
+                "truncated": {
+                  "type": "boolean"
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "op",
+            "result"
+          ],
+          "properties": {
+            "op": {
+              "type": "string",
+              "enum": [
+                "knowledge.overview"
+              ]
+            },
+            "result": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "generation",
+                "totalNodes",
+                "totalEdges",
+                "truncated",
+                "nodes",
+                "edges"
+              ],
+              "properties": {
+                "generation": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "totalNodes": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "totalEdges": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "truncated": {
+                  "type": "boolean"
+                },
+                "nodes": {
+                  "type": "array",
+                  "maxItems": 2000,
+                  "items": {
+                    "$ref": "#/$defs/KnowledgeOverviewNode"
+                  }
+                },
+                "edges": {
+                  "type": "array",
+                  "maxItems": 8000,
+                  "items": {
+                    "$ref": "#/$defs/KnowledgeOverviewEdge"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "op",
+            "result"
+          ],
+          "properties": {
+            "op": {
+              "type": "string",
+              "enum": [
+                "knowledge.read"
+              ]
+            },
+            "result": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "path",
+                "sha256",
+                "managed",
+                "body",
+                "truncated"
+              ],
+              "properties": {
+                "path": {
+                  "$ref": "#/$defs/KnowledgePath"
+                },
+                "sha256": {
+                  "$ref": "#/$defs/Sha256Digest"
+                },
+                "managed": {
+                  "type": "boolean"
+                },
+                "body": {
+                  "type": "string",
+                  "maxLength": 262144
+                },
+                "truncated": {
+                  "type": "boolean"
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "op",
+            "result"
+          ],
+          "properties": {
+            "op": {
+              "type": "string",
+              "enum": [
+                "knowledge.write"
+              ]
+            },
+            "result": {
+              "$ref": "#/$defs/KnowledgeWriteResult"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "op",
+            "result"
+          ],
+          "properties": {
+            "op": {
+              "type": "string",
+              "enum": [
+                "knowledge.history"
+              ]
+            },
+            "result": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "path",
+                "entries"
+              ],
+              "properties": {
+                "path": {
+                  "$ref": "#/$defs/KnowledgePath"
+                },
+                "entries": {
+                  "type": "array",
+                  "maxItems": 50,
+                  "items": {
+                    "$ref": "#/$defs/KnowledgeHistoryEntry"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "op",
+            "result"
+          ],
+          "properties": {
+            "op": {
+              "type": "string",
+              "enum": [
+                "knowledge.rollback"
+              ]
+            },
+            "result": {
+              "$ref": "#/$defs/KnowledgeWriteResult"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "op",
+            "result"
+          ],
+          "properties": {
+            "op": {
+              "type": "string",
+              "enum": [
+                "knowledge.importMemory"
+              ]
+            },
+            "result": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "notes",
+                "counts"
+              ],
+              "properties": {
+                "notes": {
+                  "type": "array",
+                  "maxItems": 500,
+                  "items": {
+                    "$ref": "#/$defs/KnowledgeImportedNote"
+                  }
+                },
+                "counts": {
+                  "$ref": "#/$defs/KnowledgeImportCounts"
+                },
+                "truncated": {
+                  "type": "boolean"
+                }
+              }
+            }
+          }
+        }
+      ]
     },
     "DaemonKnowledgeSearchParams": {
       "type": "object",
@@ -7481,6 +9166,7 @@
         "knowledge.backlinks",
         "knowledge.search",
         "knowledge.graph",
+        "knowledge.scoped",
         "knowledge.overview",
         "knowledge.read",
         "knowledge.write",
@@ -9725,6 +11411,39 @@
               "$ref": "#/$defs/Uuid"
             },
             "op": {
+              "const": "knowledge.scoped"
+            },
+            "deadlineMs": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 600000
+            },
+            "params": {
+              "$ref": "#/$defs/DaemonKnowledgeScopedParams"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "kind",
+            "requestId",
+            "op",
+            "params"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "kind": {
+              "const": "request"
+            },
+            "requestId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "op": {
               "const": "knowledge.overview"
             },
             "deadlineMs": {
@@ -11052,6 +12771,34 @@
               "$ref": "#/$defs/Uuid"
             },
             "op": {
+              "const": "knowledge.scoped"
+            },
+            "result": {
+              "$ref": "#/$defs/DaemonKnowledgeScopedResult"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "kind",
+            "requestId",
+            "op",
+            "result"
+          ],
+          "properties": {
+            "schemaVersion": {
+              "const": 1
+            },
+            "kind": {
+              "const": "response"
+            },
+            "requestId": {
+              "$ref": "#/$defs/Uuid"
+            },
+            "op": {
               "const": "knowledge.overview"
             },
             "result": {
@@ -11373,6 +13120,9 @@
               "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
             }
           ]
+        },
+        "expectedTreeSha256": {
+          "$ref": "#/$defs/Sha256Digest"
         }
       }
     },
@@ -11479,6 +13229,53 @@
         "instructionsUnavailable": {
           "type": "boolean"
         },
+        "sources": {
+          "type": "array",
+          "maxItems": 20,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "origin",
+              "sourceRef",
+              "recordedAt"
+            ],
+            "properties": {
+              "origin": {
+                "type": "string",
+                "enum": [
+                  "user",
+                  "workspace",
+                  "imported",
+                  "generated"
+                ]
+              },
+              "sourceRef": {
+                "type": "string",
+                "maxLength": 512,
+                "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+                "allOf": [
+                  {
+                    "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+                  }
+                ]
+              },
+              "recordedAt": {
+                "$ref": "#/$defs/UtcTimestamp"
+              }
+            }
+          }
+        },
+        "sourcesTotal": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 256
+        },
+        "sourcesOmitted": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 256
+        },
         "inspections": {
           "type": "array",
           "maxItems": 20,
@@ -11507,6 +13304,20 @@
             "$ref": "#/$defs/SkillConsentInput"
           }
         }
+      },
+      "dependentRequired": {
+        "sources": [
+          "sourcesTotal",
+          "sourcesOmitted"
+        ],
+        "sourcesTotal": [
+          "sources",
+          "sourcesOmitted"
+        ],
+        "sourcesOmitted": [
+          "sources",
+          "sourcesTotal"
+        ]
       }
     },
     "DaemonSkillListParams": {

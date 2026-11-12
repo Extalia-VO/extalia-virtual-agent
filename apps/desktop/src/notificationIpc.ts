@@ -9,9 +9,8 @@ export interface NotificationOptions {
 }
 
 /**
- * Native notifications for approval requests. A click focuses the window that
- * raised it and tells the renderer to open the approval inbox; nothing else
- * travels back. Smoke tests never show system popups.
+ * A click focuses the trusted window that raised the notification and returns
+ * only its validated navigation target. Smoke tests never show system popups.
  */
 export function registerNotifications({ smokeTest, devServer }: NotificationOptions): void {
   ipcMain.handle(IPC.notify, (event, value: unknown) => reply(() => {
@@ -24,7 +23,7 @@ export function registerNotifications({ smokeTest, devServer }: NotificationOpti
       if (owner.isMinimized()) owner.restore();
       owner.show();
       owner.focus();
-      owner.webContents.send(IPC.notificationActivate);
+      owner.webContents.send(IPC.notificationActivate, notification.target);
     });
     native.show();
   }));

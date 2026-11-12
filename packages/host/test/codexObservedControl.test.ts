@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
-  CodexObservedControl, createCodexObservedRpc,
+  CodexObservedControl, CodexObservedRpcError, createCodexObservedRpc,
   type CodexObservedRpc, type CodexObservedRpcOptions,
 } from '../src/codexObservedControl.js';
 
@@ -42,7 +42,7 @@ const thread = (status = 'active', id = 'native-thread', cwd = '/workspace') => 
 async function fixture(options: { status?: string; wrongThread?: boolean; wrongCwd?: boolean; resume?: ReturnType<typeof thread>; turnsPage?: unknown; loadedIds?: string[]; factoryGate?: Promise<void>; onActivity?: () => void } = {}) {
   const socketPath = await socket();
   let callbacks!: CodexObservedRpcOptions;
-  const request = vi.fn(async (method: string): Promise<unknown> => {
+  const request = vi.fn(async (method: string, _params?: Record<string, unknown>): Promise<unknown> => {
     if (method === 'thread/loaded/list') return { data: options.loadedIds ?? ['native-thread'] };
     if (method === 'thread/read') return { thread: thread(options.status, options.wrongThread ? 'different-thread' : undefined, options.wrongCwd ? '/elsewhere' : undefined) };
     if (method === 'thread/turns/list') return options.turnsPage ?? { data: [] };
@@ -87,7 +87,7 @@ describe.skipIf(process.platform === 'win32')('same-server observed Codex contro
     expect(state).toMatchObject({ sessionId: 'observed-session', state: 'connected', threadId: 'native-thread', activeTurnId: 'turn-1', canSend: true, canAnswer: false, requests: [] });
     expect(f.request.mock.calls).toEqual([
       ['initialize', { clientInfo: { name: 'extalia_observer', version: '1' }, capabilities: { experimentalApi: true } }],
-      ['thread/loaded/list', { limit: 100 }], ['thread/read', { threadId: 'native-thread', includeTurns: false }],
+      ['thread/loaded/list', { limit: 100 }], ['extalia/observed/settings/capabilityProbe', {}], ['thread/read', { threadId: 'native-thread', includeTurns: false }],
       ['thread/resume', { threadId: 'native-thread', excludeTurns: true }],
     ]);
     expect(f.rpc.notify).toHaveBeenCalledWith('initialized', {});
@@ -808,5 +808,159 @@ describe.skipIf(process.platform === 'win32')('observed native activity invalida
     expect(onActivity).toHaveBeenCalledOnce();
     f.emit({ method: 'turn/started', params: { threadId: 'native-thread', turn: { id: 'turn-new' } } });
     expect(onActivity).toHaveBeenCalledOnce();
+  });
+});
+
+const settingsProbe = 'extalia/observed/settings/capabilityProbe';
+const settingsInventory = { code: -32600, message: `Invalid request: unknown variant \`${settingsProbe}\`, expected one of \`initialize\`, \`thread/read\`, \`thread/settings/update\`` };
+async function settingsFixture(supported = true) {
+  const f = await fixture();
+  let settings = { model: 'gpt-example', reasoningEffort: 'high' };
+  const original = f.request.getMockImplementation()!;
+  vi.mocked(f.rpc.request).mockImplementation(async (method, params) => {
+    if (method === settingsProbe) throw supported ? new CodexObservedRpcError(settingsInventory) : new Error('Unsupported');
+    if (method === 'thread/read' || method === 'thread/resume') return { thread: { ...thread(), ...settings } };
+    if (method === 'thread/settings/update') {
+      settings = { model: typeof params.model === 'string' ? params.model : settings.model, reasoningEffort: typeof params.effort === 'string' ? params.effort : settings.reasoningEffort };
+      f.emit({ method: 'thread/settings/updated', params: { threadId: 'native-thread', threadSettings: { model: settings.model, effort: settings.reasoningEffort } } });
+      return {};
+    }
+    return original(method);
+  });
+  const state = await f.connect();
+  const input = () => ({ connectionId: state.connectionId!, settingsRevision: f.control.status().settingsRevision!, model: 'gpt-next', effort: 'max' as const });
+  return { ...f, state, input, set: (model: string, reasoningEffort = 'high') => { settings = { model, reasoningEffort }; } };
+}
+
+describe('native Codex settings capability evidence', () => {
+  it('retains only the exact positive dispatch inventory without exposing raw error text', () => {
+    const error = new CodexObservedRpcError(settingsInventory);
+    expect(error.supportsThreadSettingsUpdate).toBe(true);
+    expect(error.message).toBe('Codex rejected the request.');
+    expect(JSON.stringify(error)).not.toContain('Invalid request');
+  });
+  it('accepts the underscore methods in the full installed Codex 0.167.1 dispatch inventory', () => {
+    // These are all three methods outside the original alphanumeric/slash grammar
+    // observed in the isolated server's complete 183-method rejection inventory.
+    const nativeExceptions = ['thread/increment_elicitation', 'thread/decrement_elicitation', 'thread/inject_items'];
+    const error = new CodexObservedRpcError({ ...settingsInventory, message: settingsInventory.message + ', ' + nativeExceptions.map(method => `\`${method}\``).join(', ') });
+    expect(error.supportsThreadSettingsUpdate).toBe(true);
+  });
+  it.each([
+    {}, { code: -32601, message: settingsInventory.message },
+    { ...settingsInventory, message: 'Invalid params: model unsupported' },
+    { ...settingsInventory, message: settingsInventory.message.replace(settingsProbe, 'some/other/probe') },
+    { ...settingsInventory, message: settingsInventory.message.replace('`thread/settings/update`', '`thread/settings/unsupported`') },
+    { ...settingsInventory, message: settingsInventory.message + ' arbitrary diagnostics' },
+  ])('does not infer setter support from other errors: %o', value => {
+    expect(new CodexObservedRpcError(value).supportsThreadSettingsUpdate).toBe(false);
+  });
+  it('preserves verified capability evidence through the actual framed RPC transport', async () => {
+    const bin = await webSocketProxy({ onMessage: `send({ id: message.id, error: ${JSON.stringify(settingsInventory)} });` });
+    const rpc = await createCodexObservedRpc(rpcOptions(bin));
+    try { await expect(rpc.request(settingsProbe, {})).rejects.toMatchObject({ supportsThreadSettingsUpdate: true, message: 'Codex rejected the request.' }); }
+    finally { await rpc.close(); }
+  });
+});
+
+describe.skipIf(process.platform === 'win32')('revision-bound observed Codex native settings', () => {
+  it('keeps actual settings read-only without positive server support', async () => {
+    const f = await settingsFixture(false);
+    expect(f.state).toMatchObject({ model: 'gpt-example', effort: 'high', canSetSettings: false });
+    await expect(f.control.updateSettings(f.input())).rejects.toThrow('unavailable');
+    expect(f.request).not.toHaveBeenCalledWith('thread/settings/update', expect.anything());
+  });
+  it('updates only native model and effort on the exact loaded thread and confirms readback', async () => {
+    const f = await settingsFixture();
+    const result = await f.control.updateSettings(f.input());
+    expect(result).toMatchObject({ model: 'gpt-next', effort: 'max', canSetSettings: true, settingsDelivery: 'confirmed', activeTurnId: 'turn-1', connectionId: f.state.connectionId });
+    expect(result.settingsRevision).toBeGreaterThan(f.state.settingsRevision!);
+    expect(f.request).toHaveBeenCalledWith('thread/settings/update', { threadId: 'native-thread', model: 'gpt-next', effort: 'max' });
+    expect(f.request.mock.calls.some(([method]) => ['turn/start', 'turn/settings/update', 'thread/start', 'thread/fork'].includes(method))).toBe(false);
+    expect(f.factory).toHaveBeenCalledOnce();
+  });
+  it('preserves omitted native settings fields rather than sending defaults', async () => {
+    const f = await settingsFixture();
+    const { effort: _effort, ...input } = f.input();
+    await f.control.updateSettings(input);
+    expect(f.request).toHaveBeenCalledWith('thread/settings/update', { threadId: 'native-thread', model: 'gpt-next' });
+    expect(f.control.status().effort).toBe('high');
+  });
+  it.each([
+    { model: '--invalid' }, { model: 'a'.repeat(201) }, { effort: 'ultra' },
+    { approvalPolicy: 'never' }, { sandboxPolicy: { type: 'dangerFullAccess' } },
+    { permissions: 'danger-full-access' }, { cwd: '/different' },
+  ])('rejects unsupported inputs and policy fields before any mutation: %o', async extra => {
+    const f = await settingsFixture();
+    await expect(f.control.updateSettings({ ...f.input(), ...extra } as Parameters<typeof f.control.updateSettings>[0])).rejects.toThrow('valid');
+    expect(f.request).not.toHaveBeenCalledWith('thread/settings/update', expect.anything());
+  });
+  it('rejects stale connection and stale revision before mutation', async () => {
+    const f = await settingsFixture(), input = f.input();
+    await expect(f.control.updateSettings({ ...input, connectionId: 'stale' })).rejects.toThrow('Stale');
+    f.emit({ method: 'thread/settings/updated', params: { threadId: 'native-thread', threadSettings: { model: 'gpt-external', effort: 'medium' } } });
+    await expect(f.control.updateSettings(input)).rejects.toThrow('changed');
+    expect(f.request).not.toHaveBeenCalledWith('thread/settings/update', expect.anything());
+    expect(f.control.status()).toMatchObject({ model: 'gpt-external', effort: 'medium' });
+  });
+  it('rejects a fresh settings change discovered during exact-thread preflight', async () => {
+    const f = await settingsFixture(), input = f.input();
+    f.set('gpt-external', 'medium');
+    await expect(f.control.updateSettings(input)).rejects.toThrow('changed');
+    expect(f.request).not.toHaveBeenCalledWith('thread/settings/update', expect.anything());
+    expect(f.control.status()).toMatchObject({ model: 'gpt-external', effort: 'medium' });
+  });
+  it('does not overwrite a newer native notification with a delayed preflight read', async () => {
+    const f = await settingsFixture(), input = f.input();
+    const fallback = f.request.getMockImplementation()!;
+    vi.mocked(f.rpc.request).mockImplementation(async (method, params) => {
+      if (method === 'thread/read') {
+        f.emit({ method: 'thread/settings/updated', params: { threadId: 'native-thread', threadSettings: { model: 'gpt-newer', effort: 'max' } } });
+        return { thread: { ...thread(), model: 'gpt-example', reasoningEffort: 'high' } };
+      }
+      return fallback(method, params);
+    });
+    await expect(f.control.updateSettings(input)).rejects.toThrow('changed');
+    expect(f.control.status().model).toBe('gpt-newer');
+    expect(f.request).not.toHaveBeenCalledWith('thread/settings/update', expect.anything());
+  });
+  it('refuses an unloaded original thread without recreating it', async () => {
+    const f = await settingsFixture(); f.request.mockResolvedValueOnce({ data: [] });
+    await expect(f.control.updateSettings(f.input())).rejects.toThrow('no longer loaded');
+    expect(f.request).not.toHaveBeenCalledWith('thread/settings/update', expect.anything());
+  });
+  it.each([
+    { ...thread('notLoaded'), model: 'gpt-example', reasoningEffort: 'high' },
+    { ...thread('active', 'other-thread'), model: 'gpt-example', reasoningEffort: 'high' },
+    { ...thread('active', 'native-thread', '/different'), model: 'gpt-example', reasoningEffort: 'high' },
+  ])('refuses stale loaded inventory or mismatched fresh identity: %o', async value => {
+    const f = await settingsFixture(), original = f.request.getMockImplementation()!;
+    vi.mocked(f.rpc.request).mockImplementation(async (method, params) => method === 'thread/read' ? { thread: value } : original(method, params));
+    await expect(f.control.updateSettings(f.input())).rejects.toThrow();
+    expect(f.request).not.toHaveBeenCalledWith('thread/settings/update', expect.anything());
+  });
+  it('invalidates a replaced socket before native settings dispatch', async () => {
+    const f = await settingsFixture(); await rm(f.socketPath); await socket(path.dirname(f.socketPath));
+    await expect(f.control.updateSettings(f.input())).rejects.toThrow('no longer trusted');
+    expect(f.control.status().state).toBe('disconnected');
+    expect(f.request).not.toHaveBeenCalledWith('thread/settings/update', expect.anything());
+  });
+  it('treats an acknowledgement without matching native readback as unknown and blocks retries', async () => {
+    const f = await settingsFixture(), original = f.request.getMockImplementation()!;
+    vi.mocked(f.rpc.request).mockImplementation(async (method, params) => method === 'thread/settings/update' ? {} : original(method, params));
+    await expect(f.control.updateSettings(f.input())).rejects.toThrow('did not confirm');
+    expect(f.control.status()).toMatchObject({ model: 'gpt-example', effort: 'high', settingsDelivery: 'unknown', canSetSettings: false, problem: expect.stringContaining('Reconnect') });
+    await expect(f.control.updateSettings(f.input())).rejects.toThrow('unavailable');
+    expect(f.request.mock.calls.filter(([method]) => method === 'thread/settings/update')).toHaveLength(1);
+  });
+  it('never projects a late settings receipt after disconnect', async () => {
+    const f = await settingsFixture(), original = f.request.getMockImplementation()!;
+    vi.mocked(f.rpc.request).mockImplementation(async (method, params) => {
+      if (method === 'thread/settings/update') { f.disconnect(); return {}; }
+      return original(method, params);
+    });
+    await expect(f.control.updateSettings(f.input())).rejects.toThrow('Stale');
+    f.emit({ method: 'thread/settings/updated', params: { threadId: 'native-thread', threadSettings: { model: 'gpt-next', effort: 'max' } } });
+    expect(f.control.status()).toMatchObject({ state: 'unavailable', model: undefined, effort: undefined, canSetSettings: false });
   });
 });

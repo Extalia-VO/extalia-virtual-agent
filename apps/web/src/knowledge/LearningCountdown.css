@@ -1,0 +1,62 @@
+.learning-countdown {
+  position: fixed;
+  z-index: 70;
+  right: 24px;
+  bottom: 24px;
+  width: min(390px, calc(100vw - 48px));
+  max-height: min(520px, 58vh);
+  overflow: auto;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface-solid);
+  color: var(--text);
+  box-shadow: var(--shadow), 0 12px 40px rgb(0 0 0 / 12%);
+}
+.learning-countdown-heading,
+.learning-countdown-job-heading,
+.learning-countdown-actions { display: flex; align-items: center; gap: 9px; }
+.learning-countdown-heading > .icon { color: var(--accent); flex: 0 0 auto; }
+.learning-countdown-help { margin: 6px 0 12px; }
+.learning-countdown-jobs { list-style: none; margin: 0; padding: 0; }
+.learning-countdown-job { border-top: 1px solid var(--line); padding: 12px 0 0; }
+.learning-countdown-job + .learning-countdown-job { margin-top: 12px; }
+.learning-countdown-scope { margin: 4px 0; overflow-wrap: anywhere; }
+.learning-countdown-quiet { margin: 0 0 10px; }
+.learning-countdown-job-heading > .icon { flex: 0 0 auto; color: var(--accent); }
+.learning-countdown-job-heading > strong { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.learning-countdown-job-heading > .icon-button { flex: 0 0 auto; }
+.learning-countdown-profile { flex: 1; min-width: 0; overflow-wrap: anywhere; font-weight: 600; }
+.learning-countdown-clock { flex: 0 0 auto; color: var(--accent); font-variant-numeric: tabular-nums; font-weight: 650; }
+.learning-countdown-status { margin: 5px 0 9px; }
+.learning-countdown-job[data-state='failed'] .learning-countdown-status { color: var(--error); }
+.learning-countdown-actions { flex-wrap: wrap; justify-content: flex-end; }
+.learning-countdown-result { margin: 8px 0; padding-left: 9px; border-left: 2px solid var(--line); }
+.learning-countdown-result[data-saved] { border-color: var(--accent); }
+.learning-countdown-result p { margin: 4px 0; }
+.learning-countdown-receipt { margin-top: 12px; padding: 10px; border: 1px solid var(--line); border-radius: 10px; }
+.learning-countdown-receipt:first-child { margin-top: 0; }
+.learning-countdown-receipt p { margin: 5px 0; }
+.learning-countdown-skill-name { font-weight: 600; overflow-wrap: anywhere; }
+.learning-countdown-skill-state { display: block; margin-top: 4px; }
+.learning-countdown-receipt[data-flash] { animation: learning-saved-notice 1400ms ease-out both; }
+@keyframes learning-saved-notice {
+  0%, 25% { border-color: var(--accent); background: var(--accent-soft); }
+  100% { border-color: var(--line); background: transparent; }
+}
+.learning-countdown .form-error { margin: 10px 0 0; overflow-wrap: anywhere; }
+.office-learning-slot { min-width: 0; }
+.learning-countdown.is-embedded {
+  position: static; z-index: auto; width: auto; max-height: min(290px, 35dvh);
+  margin: 0 0 10px; padding: 11px; border-radius: 12px; box-shadow: none;
+  overscroll-behavior: contain;
+}
+.learning-countdown.is-embedded .learning-countdown-help { margin-bottom: 8px; }
+@media (max-width: 600px) {
+  .learning-countdown { right: 12px; bottom: 12px; width: calc(100vw - 24px); max-height: 48vh; padding: 13px; }
+  .learning-countdown-actions > button { flex: 1 1 auto; }
+  .learning-countdown.is-embedded { width: auto; max-height: min(250px, 32dvh); padding: 10px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .learning-countdown-receipt[data-flash] { animation: none; }
+}

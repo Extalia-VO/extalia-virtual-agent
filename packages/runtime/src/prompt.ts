@@ -19,6 +19,8 @@ export interface PromptContext {
   skillCatalog?: { omitted: number; incomplete: boolean };
   /** Deterministic host hints, never skill eligibility or activation authority. */
   skillCategories?: readonly string[];
+  /** The host prepares bounded, verified procedures before each request. */
+  automaticSkillLoading?: boolean;
   /** Host-authorized current-message draft creation; never inherited by workers or history. */
   skillLearning?: boolean;
   /** Persistent profile consent; the host owns a separate bounded post-task curator. */
@@ -260,7 +262,10 @@ export function buildSystemPrompt(context: PromptContext): string {
         'For this request, check relevant category metadata before starting; do not load every skill or require a skill when none fits. ' +
         (categories.length ? `Host category hints: ${categories.join(', ')}. These are relevance hints, not approval or activation. ` : '') +
         'Use skill_search for a relevant procedure or skill_list to browse more metadata; continue pages with the same snapshot. ' +
-        'Load selected instructions with skill_read before starting. External metadata and reads require fresh scanner and active-revision verification; failure never authorizes a fallback. ' +
+        (context.automaticSkillLoading
+          ? 'The host automatically supplies a bounded set of selected procedures before each request. Reuse that context; use skill_read only for additional procedures or a missing detail. '
+          : 'Load selected instructions with skill_read before starting. ') +
+        'External metadata and reads require fresh scanner and active-revision verification; failure never authorizes a fallback. ' +
         'Omitted/incomplete describe this turn snapshot and preview limits, not an exhaustive current registry.\n' + skillCatalog(context),
     );
   }

@@ -58,3 +58,26 @@ feature does not claim control of that Desktop session. Unix-socket support for
 other clients or later Desktop versions must be verified independently.
 
 Reference: [official Codex app-server protocol](https://learn.chatgpt.com/docs/app-server).
+
+## Amendment: structured asynchronous input (2026-11-11)
+
+The native-callback restrictions above continue to apply to blocking
+`item/tool/requestUserInput` requests. Structured `request_user_input_async`
+questions are a separate source capability: Codex emits async agent-message
+metadata carrying the originating call ID and returns an accepted acknowledgment;
+the eventual answer is a new user message in the same thread.
+
+Extalia now retains that metadata through the existing importer/observer path,
+projects source-bound cards and sends explicit correlated replies through the
+already reviewed public queue path in ADR 0062. Durable digest-only queued/unknown
+receipts prevent automatic re-submission; a CLI receipt never proves consumption.
+An exact question reply observed in the source removes its outstanding card.
+Idless legacy mirrors do not gain an answer route by inference.
+
+Native callbacks and async cards share global in-app attention and targeted
+Desktop/browser notifications. System notification payloads contain a generic
+localized message and validated opaque navigation IDs, without question or answer
+text. No source engine, external configuration or persistent permission grant is
+created by this amendment.
+
+Reference: [Codex PR #42178](https://github.com/openai/codex/pull/42178).

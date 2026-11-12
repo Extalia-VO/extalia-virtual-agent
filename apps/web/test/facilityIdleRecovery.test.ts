@@ -5,6 +5,7 @@ import { FACILITY_NPCS, type FacilityNpcDefinition } from '../src/office/scene/m
 import { HospitalityState } from '../src/office/scene/movement/hospitality';
 import { createMover, placeSeated, routeFrom, type ElevatorAccess, type Mover } from '../src/office/scene/movement/mover';
 import { officeNavigation, seatStageId } from '../src/office/scene/movement/navGraph';
+import { elevatorWaitingPosition } from '../src/office/scene/movement/elevatorMovement';
 
 const navigation = officeNavigation();
 const elevators: ElevatorAccess = { request() {}, waitingSlot: () => 0, canBoard: () => false, standingPosition: () => null,
@@ -103,13 +104,28 @@ describe('facility idle route recovery', () => {
     routeFrom(mover, seatStageId(definition.homeResourceId), { kind: 'seat', seat: destination }, h.env, false);
     mover.phase = 'waiting';
     mover.trip = { id: 'A', from: 1, to: 3, exit: [...destination.staging], landing: [...mover.position], stage: 'approach', requested: true, exited: false };
-    const position = [...mover.position];
+    const trip = mover.trip, landing = [...trip.landing];
+    const waiting = elevatorWaitingPosition(trip.landing, elevators.door(trip.id), 0);
     try {
-      h.run(180);
+      let previous = [...mover.position], maxStep = 0;
+      h.run(5, () => {
+        maxStep = Math.max(maxStep, Math.hypot(...mover.position.map((value, axis) => value - previous[axis]!)));
+        previous = [...mover.position];
+      });
+      expect(maxStep).toBeGreaterThan(0); expect(maxStep).toBeLessThan(.2);
+      expect(mover.position).toEqual(waiting);
+      expect(Math.hypot(mover.position[0] - landing[0]!, mover.position[2] - landing[2]!)).toBeCloseTo(1);
+      expect(Math.abs(mover.position[2] - landing[2]!)).toBeGreaterThanOrEqual(1);
+      const position = [...mover.position];
+      h.run(180, () => {
+        expect(mover.position).toEqual(position);
+        expect(mover.phase).toBe('waiting'); expect(mover.trip).toBe(trip); expect(mover.recovery.attempts).toBe(0);
+      });
       expect(h.npc.brain.state).toBe('RECREATION');
       expect(h.npc.brain.destination).toBe(destination.seatId);
       expect(mover.phase).toBe('waiting');
       expect(mover.trip?.id).toBe('A');
+      expect(mover.trip).toBe(trip);
       expect(mover.position).toEqual(position);
       expect(mover.recovery.attempts).toBe(0);
     } finally { h.director.dispose(); }

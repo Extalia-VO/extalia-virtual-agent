@@ -1,12 +1,29 @@
 import { execFile } from 'node:child_process';
+import type * as childProcess from 'node:child_process';
 import { chmod, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { promisify } from 'node:util';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { gitDiff, gitRepositories, gitStatus, type GitOptions } from '../src/inspect.js';
 import { createAgentHost } from '../src/service.js';
 import { useTempDirs } from './helpers.js';
+
+const nodeFixtures = vi.hoisted(() => new Set<string>());
+vi.mock('node:child_process', async importOriginal => {
+  const actual = await importOriginal<typeof childProcess>();
+  const { promisify: toPromise } = await import('node:util');
+  const route = (file: string, args: unknown[]) => nodeFixtures.has(file)
+    ? [process.execPath, [file, ...(args[0] as string[])], ...args.slice(1)] : [file, ...args];
+  const routedExecFile = (file: string, ...args: unknown[]) => Reflect.apply(actual.execFile, undefined, route(file, args));
+  const originalAsync = toPromise(actual.execFile);
+  // Preserve execFile's stdout/stderr promise contract for the real Git setup.
+  Object.defineProperty(routedExecFile, toPromise.custom, {
+    value: (file: string, ...args: unknown[]) => Reflect.apply(originalAsync, undefined, route(file, args)),
+  });
+  return { ...actual, execFile: routedExecFile };
+});
+afterEach(() => { nodeFixtures.clear(); });
 
 const run = promisify(execFile);
 const temp = useTempDirs();
@@ -95,6 +112,7 @@ describe.skipIf(!hasGit)('nested Git repository discovery and scoped reading', {
       const nested = await makeRepo('apps/frontend'); const binary = path.join(binaries, `${command}.mjs`);
       await writeFile(binary, `#!/usr/bin/env node\nimport { rmSync } from 'node:fs';\nimport { execFileSync } from 'node:child_process';\nconst args = process.argv.slice(2);\nif (args.includes(${JSON.stringify(command)})) rmSync(${JSON.stringify(path.join(nested, '.git'))}, { recursive: true, force: true });\ntry { process.stdout.write(execFileSync('git', args, { env: process.env, maxBuffer: 1048576 })); } catch (error) { process.stderr.write(error.stderr ?? ''); process.exit(error.status ?? 1); }\n`);
       await chmod(binary, 0o755);
+      nodeFixtures.add(binary);
       const selected = { ...options, binary };
       const operation = command === 'status' ? gitStatus(workspace, selected, 'apps/frontend') : gitDiff(workspace, undefined, selected, 'apps/frontend');
       await expect(operation).rejects.toThrow(/Git could not read this repository/);

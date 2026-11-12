@@ -151,13 +151,16 @@ export class ObservedCodexQueueService {
     const operation = this.work.get(id);
     if (operation && (!source?.watching || !same(this.bindings.get(id), binding))) this.seal(id);
     let problem = this.reason(id, source, binding);
-    if (!problem && !await this.binary()) problem = 'Codex CLI with queue support was not found.';
+    const binaryAvailable = source?.watching && binding && !this.closed ? Boolean(await this.binary()) : false;
+    if (!problem && !binaryAvailable) problem = 'Codex CLI with queue support was not found.';
     // Discovery is read-only but can yield while pause, shutdown or source replacement occurs.
     ({ source, binding } = this.target(id));
     if (operation && (!source?.watching || !same(this.bindings.get(id), binding))) this.seal(id);
     problem = this.reason(id, source, binding) ?? problem;
     const busy = this.work.has(id);
     return { sessionId: id, ...(binding ? { threadId: binding.threadId } : {}), enabled: same(this.bindings.get(id), binding),
+      canEnable: binaryAvailable && !!source?.watching && !!binding && !this.closed && !this.persistenceFailed && !this.cleanupFailures.has(id)
+        && !this.blocked.has(id) && !busy && (!this.bindings.has(id) || same(this.bindings.get(id), binding)) && this.delivery.get(id) !== 'unknown',
       canQueue: !problem && !busy, ...(busy ? { busy: true } : {}),
       ...(same(this.bindings.get(id), binding) && this.delivery.has(id) ? { delivery: this.delivery.get(id) } : {}),
       ...(same(this.bindings.get(id), binding) && this.delivery.get(id) === 'queued' && this.messageIds.has(id) ? { messageId: this.messageIds.get(id) } : {}),

@@ -27,6 +27,7 @@ export interface TeamMeetingOptions {
   emitWorkerEvent: DelegationOptions['emit'];
   onWorkerStarted?: DelegationOptions['onWorkerStarted'];
   onWorkerSettled?: DelegationOptions['onWorkerSettled'];
+  prepareWorkerRequest?: DelegationOptions['prepareWorkerRequest'];
   /** Optional profile-scoped exporter, supplied by the host; never a worker tool. */
   onMinutes?(record: NativeMeetingMinutes): Promise<string | undefined>;
   newId?: () => string;
@@ -121,6 +122,7 @@ export function createConductTeamMeetingTool(options: TeamMeetingOptions): ToolD
         },
         emit: options.emitWorkerEvent,
         onWorkerStarted: options.onWorkerStarted, onWorkerSettled: options.onWorkerSettled,
+        prepareWorkerRequest: options.prepareWorkerRequest,
         onWorkerResult: (agentId, outcome, text) => {
           if (outcome === 'completed' && text.trim()) answers.set(agentId, text.slice(0, contributionLimit));
         },

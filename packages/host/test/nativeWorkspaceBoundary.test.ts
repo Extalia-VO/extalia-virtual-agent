@@ -2,17 +2,18 @@ import { createAgentHost } from '../src/service.js';
 import { mkdir, readFile, realpath, symlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { Workspace, WorkspaceCrossAccess } from '@extalia/core';
+import type { AgentTeam, Workspace, WorkspaceCrossAccess } from '@extalia/core';
 import type { ExtaliaEvent } from '@extalia/protocol';
 import { type AgentHostRuntime } from '../src/service.js';
 import { useTempDirs } from './helpers.js';
 import { SessionStore } from '../src/sessions.js';
+import { workspaceBoundaryKey, workspaceSessionBoundaryKey } from '../src/workspaceBoundary.js';
 
 const temp = useTempDirs();
 const runtimes: AgentHostRuntime[] = [];
 afterEach(async () => { vi.restoreAllMocks(); while (runtimes.length) await runtimes.pop()!.close(); });
 type Call = { name: string; args: Record<string, unknown> };
-type Body = { messages: { role: string; content: string; tool_call_id?: string }[]; tools?: { function: { name: string } }[] };
+type Body = { model: string; messages: { role: string; content: string; tool_call_id?: string }[]; tools?: { function: { name: string } }[] };
 function reply(calls: Call[] = []): Response {
   const delta = calls.length ? { tool_calls: calls.map((call, index) => ({ index, id: `call-${index}`, function: { name: call.name, arguments: JSON.stringify(call.args) } })) } : { content: 'Done' };
   return new Response(`data: ${JSON.stringify({ choices: [{ delta, finish_reason: calls.length ? 'tool_calls' : 'stop' }] })}\n\ndata: [DONE]\n\n`, { headers: { 'content-type': 'text/event-stream' } });
@@ -45,6 +46,126 @@ async function setup(script: (body: Body) => Response | Promise<Response> = () =
 }
 
 describe('Native host workspace boundary composition', () => {
+  it('continues the same conversation after saving and editing its team and presentation settings', async () => {
+    const ctx = await setup();
+    const session = await ctx.host.createSession(ctx.alpha.id);
+    const store = new SessionStore(path.join(ctx.root, 'data', 'sessions'));
+    await ctx.host.sendPrompt(session.id, 'Original conversation marker'); await settled(ctx.runtime);
+    const original = await store.get(session.id);
+    let team: AgentTeam = { enabled: true, allowedModels: ['model', 'alternate-model'], goal: 'Initial goal',
+      members: [{ id: 'member-one', name: 'Test Member', role: 'Reviewer', models: ['model'], soul: 'Be precise' }] };
+    await ctx.host.saveWorkspaceTeam(ctx.alpha.id, team);
+    expect(await ctx.host.getSessionTeam(session.id)).toBeUndefined();
+    const edits = [
+      () => ctx.host.saveSessionTeam(session.id, team),
+      () => ctx.host.saveSessionTeam(session.id, team = { ...team, members: [...team.members, { id: 'member-two', name: 'Second Member', role: 'Researcher', models: ['model'] }] }),
+      () => ctx.host.saveSessionTeam(session.id, team = { ...team, goal: 'Updated goal', members: [{ ...team.members[0]!, name: 'Renamed Member', soul: 'Check every assumption', models: ['alternate-model'] }] }),
+      () => ctx.host.setSessionOptions(session.id, { model: 'alternate-model' }),
+      () => ctx.host.renameSession(session.id, 'Renamed conversation'),
+      () => ctx.save(ctx.alpha, { name: 'Renamed workspace' }),
+    ];
+    for (const [index, edit] of edits.entries()) {
+      await edit();
+      await ctx.host.sendPrompt(session.id, `Continue after edit ${index}`); await settled(ctx.runtime);
+      expect(ctx.bodies.at(-1)!.messages.some(message => message.content === 'Original conversation marker')).toBe(true);
+    }
+    expect(ctx.bodies).toHaveLength(edits.length + 1);
+    expect(ctx.bodies.at(-1)!.model).toBe('alternate-model');
+    expect(ctx.bodies.at(-1)!.messages[0]!.content).toContain('Updated goal');
+    expect(ctx.bodies.at(-1)!.messages[0]!.content).toContain('Renamed Member');
+    expect((await ctx.host.getSessionTeam(session.id))?.members[0]).toMatchObject({ soul: 'Check every assumption', models: ['alternate-model'] });
+    expect(ctx.events.filter(event => event.sessionId === session.id && event.body.type === 'turn.completed')).toHaveLength(edits.length + 1);
+    expect(await store.get(session.id)).toMatchObject({ id: session.id, createdAt: original!.createdAt, workspaceBoundary: original!.workspaceBoundary });
+    expect(await store.readMessages(session.id)).toHaveLength((edits.length + 1) * 2);
+  });
+
+  it.each([['read-only', 'isolated'], ['isolated', 'read-only']] as const)(
+    'keeps history after inaccessible workspace creation, folder edits and deletion with source %s / destination %s', async (source, destination) => {
+    const ctx = await setup(undefined, [source, destination]);
+    const session = await ctx.host.createSession(ctx.alpha.id);
+    await ctx.host.sendPrompt(session.id, 'Preserve this history'); await settled(ctx.runtime);
+    const folder = path.join(ctx.root, 'gamma'); await mkdir(folder);
+    const created = await ctx.host.saveWorkspace({ name: 'Gamma', projectLocation: folder, connectionId: ctx.connectionId,
+      crossWorkspaceAccess: 'isolated', permissions: { fileWrite: 'ask', commands: 'ask' } });
+    const gamma = created.workspaces.find(workspace => workspace.name === 'Gamma')!;
+    await ctx.host.sendPrompt(session.id, 'After creation'); await settled(ctx.runtime);
+    const moved = path.join(ctx.root, 'beta-moved'); await mkdir(moved);
+    await ctx.save(ctx.beta, { projectLocation: moved });
+    await ctx.host.sendPrompt(session.id, 'After unrelated folder edit'); await settled(ctx.runtime);
+    await ctx.host.deleteWorkspace(gamma.id);
+    await ctx.host.sendPrompt(session.id, 'After deletion'); await settled(ctx.runtime);
+    expect(ctx.bodies).toHaveLength(4);
+    expect(ctx.bodies.at(-1)!.messages.some(message => message.content === 'Preserve this history')).toBe(true);
+  });
+
+  it('canonicalizes registered folder aliases without invalidating conversation history', async () => {
+    const ctx = await setup();
+    const session = await ctx.host.createSession(ctx.alpha.id);
+    await ctx.host.sendPrompt(session.id, 'Canonical history'); await settled(ctx.runtime);
+    const alias = path.join(ctx.root, 'beta-alias'); await symlink(ctx.foreign, alias, 'dir');
+    await ctx.save(ctx.beta, { projectLocation: alias });
+    await ctx.host.sendPrompt(session.id, 'Continue through the alias'); await settled(ctx.runtime);
+    expect(ctx.bodies).toHaveLength(2);
+  });
+
+  it.each(['own-root', 'own-additional-root', 'readable-root', 'readable-policy', 'denied-descendant', 'denied-ancestor'] as const)(
+    'refuses history replay after an effective %s change before provider admission', async kind => {
+      const ctx = await setup(undefined, ['read-only', kind.startsWith('denied') ? 'isolated' : 'read-only']);
+      const session = await ctx.host.createSession(ctx.alpha.id);
+      await ctx.host.sendPrompt(session.id, 'Earlier permitted context'); await settled(ctx.runtime);
+      const store = new SessionStore(path.join(ctx.root, 'data', 'sessions'));
+      const history = await store.readMessages(session.id);
+      const folder = path.join(ctx.root, 'new-folder'); await mkdir(folder);
+      if (kind === 'own-root') await ctx.save(ctx.alpha, { projectLocation: folder });
+      if (kind === 'own-additional-root') await ctx.save(ctx.alpha, { additionalProjectLocations: [folder] });
+      if (kind === 'readable-root') await ctx.save(ctx.beta, { projectLocation: folder });
+      if (kind === 'readable-policy') await ctx.save(ctx.beta, { crossWorkspaceAccess: 'read-write' });
+      if (kind === 'denied-descendant') {
+        const nested = path.join(ctx.primary, 'private'); await mkdir(nested);
+        await ctx.save(ctx.beta, { projectLocation: nested });
+      }
+      if (kind === 'denied-ancestor') await ctx.save(ctx.beta, { projectLocation: ctx.root });
+      await expect(ctx.host.sendPrompt(session.id, 'Never replay older grants')).rejects.toThrow(/new Native session/);
+      expect(ctx.bodies).toHaveLength(1);
+      expect(await store.readMessages(session.id)).toEqual(history);
+    });
+
+  it('migrates a legacy global history fingerprint only when its current complete grants match', async () => {
+    const ctx = await setup();
+    const session = await ctx.host.createSession(ctx.alpha.id);
+    await ctx.host.sendPrompt(session.id, 'Legacy conversation'); await settled(ctx.runtime);
+    const store = new SessionStore(path.join(ctx.root, 'data', 'sessions'));
+    const workspaces = (await ctx.host.getState()).workspaces;
+    await store.update(session.id, { workspaceBoundary: workspaceBoundaryKey(workspaces) });
+    await ctx.host.sendPrompt(session.id, 'Migrate matching grants'); await settled(ctx.runtime);
+    expect((await store.get(session.id))?.workspaceBoundary).toBe(workspaceSessionBoundaryKey(ctx.alpha.id, workspaces));
+    expect(ctx.bodies.at(-1)!.messages.some(message => message.content === 'Legacy conversation')).toBe(true);
+  });
+
+  it('refuses mismatching legacy history even when only a disjoint isolated workspace changed', async () => {
+    const ctx = await setup(undefined, ['read-only', 'isolated']);
+    const session = await ctx.host.createSession(ctx.alpha.id);
+    await ctx.host.sendPrompt(session.id, 'Legacy conversation'); await settled(ctx.runtime);
+    const store = new SessionStore(path.join(ctx.root, 'data', 'sessions'));
+    const legacy = workspaceBoundaryKey((await ctx.host.getState()).workspaces);
+    await store.update(session.id, { workspaceBoundary: legacy });
+    const folder = path.join(ctx.root, 'beta-moved'); await mkdir(folder);
+    await ctx.save(ctx.beta, { projectLocation: folder });
+    await expect(ctx.host.sendPrompt(session.id, 'Cannot prove historical grants')).rejects.toThrow(/new Native session/);
+    expect(ctx.bodies).toHaveLength(1);
+    expect((await store.get(session.id))?.workspaceBoundary).toBe(legacy);
+  });
+
+  it('adopts current grants for an empty legacy session without replaying history', async () => {
+    const ctx = await setup();
+    const session = await ctx.host.createSession(ctx.alpha.id);
+    const store = new SessionStore(path.join(ctx.root, 'data', 'sessions'));
+    await store.update(session.id, { workspaceBoundary: 'old-global-fingerprint' });
+    await ctx.host.sendPrompt(session.id, 'First conversation'); await settled(ctx.runtime);
+    expect((await store.get(session.id))?.workspaceBoundary).toBe(workspaceSessionBoundaryKey(ctx.alpha.id, (await ctx.host.getState()).workspaces));
+    expect(ctx.bodies).toHaveLength(1);
+  });
+
   it('persists multiple folders and rejects canonical duplicates without changing the saved workspace', async () => {
     const ctx = await setup();
     expect(ctx.alpha.additionalProjectLocations).toEqual([await realpath(ctx.extra)]);

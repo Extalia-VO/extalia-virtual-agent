@@ -56,7 +56,8 @@ use crate::wire::{
 };
 
 /// Knowledge operations served with a data directory, advertised in the `hello` result.
-pub const CAPABILITIES: [Op; 13] = [
+pub const CAPABILITIES: [Op; 14] = [
+    Op::KnowledgeScoped,
     Op::KnowledgeStatus,
     Op::KnowledgeSync,
     Op::KnowledgeNode,
@@ -98,6 +99,7 @@ pub type KnowledgeRefusal = (ErrorCode, Option<&'static str>);
 
 /// The knowledge index of the daemon's profile.
 pub struct Knowledge {
+    scopes: Vec<(String, Option<String>, Box<Knowledge>)>,
     data_dir: PathBuf,
     profile: ProfileId,
     limits: VaultLimits,
@@ -159,6 +161,7 @@ impl Knowledge {
     /// The same with other vault limits (tests).
     pub fn with_limits(data_dir: &Path, profile: &str, limits: VaultLimits) -> Self {
         Self {
+            scopes: Vec::new(),
             data_dir: data_dir.to_owned(),
             profile: ProfileId::parse(profile).expect("valid profile id"),
             limits,
@@ -354,6 +357,51 @@ impl Knowledge {
 
     fn dispatch(&mut self, request: &KnowledgeRequest) -> Result<Value, KnowledgeRefusal> {
         match request {
+            KnowledgeRequest::Scoped {
+                profile_id,
+                vault_root,
+                request,
+            } => {
+                if !crate::wire::is_scoped_knowledge_profile(profile_id)
+                    || profile_id == self.profile.as_str()
+                    || matches!(request.as_ref(), KnowledgeRequest::Scoped { .. })
+                {
+                    return Err((ErrorCode::InvalidRequest, Some("invalid_scope")));
+                }
+                // One worker owns every index; drop a replaced/evicted scope before opening
+                // another handle. New cache entries rebuild derived data before exposing it.
+                let mut existing = self
+                    .scopes
+                    .iter()
+                    .position(|(id, _, _)| id == profile_id)
+                    .map(|index| self.scopes.remove(index));
+                if existing
+                    .as_ref()
+                    .is_some_and(|(_, root, _)| root != vault_root)
+                {
+                    existing = None;
+                }
+                let mut scope = if let Some((_, _, scope)) = existing {
+                    scope
+                } else {
+                    if self.scopes.len() >= 8 {
+                        self.scopes.remove(0);
+                    }
+                    let mut scope = Box::new(
+                        Knowledge::with_limits(&self.data_dir, profile_id, self.limits)
+                            .with_home_dir(self.home.clone()),
+                    );
+                    if let Some(root) = vault_root {
+                        scope = Box::new(scope.with_vault_root(PathBuf::from(root)));
+                    }
+                    scope.sync(KnowledgeSyncMode::Rebuild).map_err(refuse)?;
+                    scope
+                };
+                let result = scope.dispatch(request);
+                self.scopes
+                    .push((profile_id.clone(), vault_root.clone(), scope));
+                result.map(|result| json!({ "op": request.op().as_str(), "result": result }))
+            }
             KnowledgeRequest::Status => Ok(self.status()),
             KnowledgeRequest::Sync { mode } => {
                 if let Some(hook) = &self.sync_hook {

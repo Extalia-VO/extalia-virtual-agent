@@ -5,6 +5,7 @@ of an existing record, number it sequentially and link it from the table.
 
 | ADR | Decision | Status |
 | --- | --- | --- |
+| [0073](0073-automatic-native-skill-context.md) | Bounded automatic Native skill context and truthful preparation receipts | Implemented and verified locally v0.4.260 |
 | [0067](0067-rust-owned-learning-and-profile-artifacts.md) | Rust curator jobs, model-result processing, admission receipts and profile artifact publication | Implemented locally on Unix; Windows artifact support unavailable |
 | [0066](0066-profile-automatic-post-task-learning.md) | Persistent profile consent, bounded post-task curator, inspected candidates and immutable vault notes | Implemented locally |
 | [0065](0065-event-driven-team-meetings-and-profile-vaults.md) | Evidence-backed meeting events, rendered room occupancy and one vault per workspace profile | Proposed; implemented locally |
@@ -112,3 +113,12 @@ implementation.
 - [0071: Measured completion placement and development-only native experiments](0071-rust-openai-completion-and-resource-evidence.md)
 - [0070: Rust-owned OpenAI-compatible model discovery](0070-rust-provider-model-discovery.md)
 - [0072: Capability-bound observed control and cooperative inboxes](0072-observed-control-hub-and-cooperative-inboxes.md)
+
+- [0074: Deferred learning and workspace-bound Knowledge](0074-deferred-learning-and-workspace-knowledge.md)
+- [0075: Idle team knowledge and Office source context](0075-idle-team-knowledge-and-office-context.md)
+
+- [0076: Reviewed cross-agent work continuity](0076-cross-agent-work-continuity.md)
+
+- [0077: Independently refreshed skill marketplace](0077-live-skill-marketplace.md)
+
+- [0078: Observed workspace association](0078-observed-workspace-association.md)

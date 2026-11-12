@@ -415,6 +415,8 @@ fn planned_tasks_schema_10_history_remains_explicitly_unavailable_without_backfi
     conn.execute_batch("DROP TRIGGER mission_planned_tasks_no_update; DROP TRIGGER mission_planned_tasks_no_delete; DROP TRIGGER mission_planned_tasks_no_replace; DROP TRIGGER mission_planned_tasks_scope; DROP TABLE mission_planned_tasks;").unwrap();
     conn.execute_batch("DROP TRIGGER planning_resource_claims_cross_kind; DROP TRIGGER preparation_resource_claims_cross_kind; DROP TABLE preparation_resource_claims; DROP TABLE preparation_observations; DROP TABLE preparation_admissions;").unwrap();
     conn.execute_batch("DROP TABLE planning_resource_claims; DROP TABLE planning_observations; DROP TABLE planning_admissions;").unwrap();
+    conn.execute_batch("DROP TABLE skill_revision_sources;")
+        .unwrap();
     conn.pragma_update(None, "user_version", 10).unwrap();
     super::migrate::verify_schema(&conn, &MIGRATIONS[..10]).unwrap();
     drop(conn);
@@ -438,7 +440,7 @@ fn planned_tasks_schema_10_history_remains_explicitly_unavailable_without_backfi
     assert!(matches!(
         CoreStore::open_with(&dir.store(), &MIGRATIONS[..10]),
         Err(StoreError::NewerSchema {
-            found: 13,
+            found: 14,
             supported: 10
         })
     ));

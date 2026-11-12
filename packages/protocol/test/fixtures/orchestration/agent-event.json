@@ -500,6 +500,194 @@
           "state": "unknown"
         }
       }
+    },
+    {
+      "name": "tool image metadata with private reference",
+      "valid": true,
+      "value": {
+        "schemaVersion": 1,
+        "id": "00000000-0000-4000-8000-000000000013",
+        "workspaceId": "00000000-0000-4000-8000-000000000001",
+        "sessionId": "00000000-0000-4000-8000-000000000014",
+        "missionId": "00000000-0000-4000-8000-000000000002",
+        "taskId": "00000000-0000-4000-8000-000000000005",
+        "agentId": "00000000-0000-4000-8000-000000000003",
+        "source": {
+          "runtime": "extalia",
+          "channel": "system"
+        },
+        "sourceTimestamp": "2026-01-01T00:00:00.000Z",
+        "observedAt": "2026-01-01T00:01:00.000Z",
+        "sequence": 1,
+        "confidence": "observed",
+        "body": {
+          "type": "tool.completed",
+          "toolCallId": "image-call",
+          "tool": "view_image",
+          "kind": "read",
+          "label": "Viewed an image",
+          "ok": true,
+          "attachments": [
+            {
+              "name": "screenshot.png",
+              "kind": "image",
+              "size": 2048,
+              "ref": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "tool image raw bytes",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "id": "00000000-0000-4000-8000-000000000013",
+        "workspaceId": "00000000-0000-4000-8000-000000000001",
+        "sessionId": "00000000-0000-4000-8000-000000000014",
+        "missionId": "00000000-0000-4000-8000-000000000002",
+        "taskId": "00000000-0000-4000-8000-000000000005",
+        "agentId": "00000000-0000-4000-8000-000000000003",
+        "source": {
+          "runtime": "extalia",
+          "channel": "system"
+        },
+        "sourceTimestamp": "2026-01-01T00:00:00.000Z",
+        "observedAt": "2026-01-01T00:01:00.000Z",
+        "sequence": 1,
+        "confidence": "observed",
+        "body": {
+          "type": "tool.completed",
+          "toolCallId": "image-call",
+          "tool": "view_image",
+          "kind": "read",
+          "label": "Viewed an image",
+          "ok": true,
+          "attachments": [
+            {
+              "name": "screenshot.png",
+              "kind": "image",
+              "size": 2048,
+              "ref": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "data": "AAAA"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "tool image remote url",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "id": "00000000-0000-4000-8000-000000000013",
+        "workspaceId": "00000000-0000-4000-8000-000000000001",
+        "sessionId": "00000000-0000-4000-8000-000000000014",
+        "missionId": "00000000-0000-4000-8000-000000000002",
+        "taskId": "00000000-0000-4000-8000-000000000005",
+        "agentId": "00000000-0000-4000-8000-000000000003",
+        "source": {
+          "runtime": "extalia",
+          "channel": "system"
+        },
+        "sourceTimestamp": "2026-01-01T00:00:00.000Z",
+        "observedAt": "2026-01-01T00:01:00.000Z",
+        "sequence": 1,
+        "confidence": "observed",
+        "body": {
+          "type": "tool.completed",
+          "toolCallId": "image-call",
+          "tool": "view_image",
+          "kind": "read",
+          "label": "Viewed an image",
+          "ok": true,
+          "attachments": [
+            {
+              "name": "screenshot.png",
+              "kind": "image",
+              "size": 2048,
+              "ref": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "url": "https://example.com/image.png"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "tool image local path",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "id": "00000000-0000-4000-8000-000000000013",
+        "workspaceId": "00000000-0000-4000-8000-000000000001",
+        "sessionId": "00000000-0000-4000-8000-000000000014",
+        "missionId": "00000000-0000-4000-8000-000000000002",
+        "taskId": "00000000-0000-4000-8000-000000000005",
+        "agentId": "00000000-0000-4000-8000-000000000003",
+        "source": {
+          "runtime": "extalia",
+          "channel": "system"
+        },
+        "sourceTimestamp": "2026-01-01T00:00:00.000Z",
+        "observedAt": "2026-01-01T00:01:00.000Z",
+        "sequence": 1,
+        "confidence": "observed",
+        "body": {
+          "type": "tool.completed",
+          "toolCallId": "image-call",
+          "tool": "view_image",
+          "kind": "read",
+          "label": "Viewed an image",
+          "ok": true,
+          "attachments": [
+            {
+              "name": "screenshot.png",
+              "kind": "image",
+              "size": 2048,
+              "ref": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "path": "/tmp/image.png"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "tool image reference newline",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "id": "00000000-0000-4000-8000-000000000013",
+        "workspaceId": "00000000-0000-4000-8000-000000000001",
+        "sessionId": "00000000-0000-4000-8000-000000000014",
+        "missionId": "00000000-0000-4000-8000-000000000002",
+        "taskId": "00000000-0000-4000-8000-000000000005",
+        "agentId": "00000000-0000-4000-8000-000000000003",
+        "source": {
+          "runtime": "extalia",
+          "channel": "system"
+        },
+        "sourceTimestamp": "2026-01-01T00:00:00.000Z",
+        "observedAt": "2026-01-01T00:01:00.000Z",
+        "sequence": 1,
+        "confidence": "observed",
+        "body": {
+          "type": "tool.completed",
+          "toolCallId": "image-call",
+          "tool": "view_image",
+          "kind": "read",
+          "label": "Viewed an image",
+          "ok": true,
+          "attachments": [
+            {
+              "name": "screenshot.png",
+              "kind": "image",
+              "size": 2048,
+              "ref": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n"
+            }
+          ]
+        }
+      }
     }
   ]
 }

@@ -1,4 +1,5 @@
 import type { Point3 } from '../layout';
+import type { EncounterMemory } from './encounterRecovery';
 import type { WalkableSegment, WalkingNeighbor } from './naturalWalking';
 
 /** Recovery is bounded per destination, including unsuccessful attempts. */
@@ -29,11 +30,18 @@ interface TransitWatch {
   observation: ElevatorProgress | null;
 }
 export interface MovementRecoveryState {
+  /** Same-peer memory survives sampled legs, local retreats and ordinary replans. */
+  encounter: EncounterMemory | null;
+  encounterSearches: number;
+  encounterBodies: string;
   transit: TransitWatch;
   /** Completed fixed-seat exit whose onward graph route was unavailable. */
   departure: string | null;
   avoidedElevators: ('A' | 'B')[];
   avoidedEdges: string[];
+  /** Congested portals left by a continuous detour; retained until the destination changes. */
+  avoidedDoors: string[];
+  doorProbeIn: number;
   stairRetreat: string[];
   anchor: Point3;
   signature: string;
@@ -45,12 +53,14 @@ export interface MovementRecoveryState {
   yielding: { neighbor: string; origin: Point3; direction: readonly [number, number]; waited: number } | null;
 }
 export function createMovementRecovery(position: Readonly<Point3>): MovementRecoveryState {
-  return { transit: { key: '', elapsed: 0, frozen: 0, missing: 0, observation: null }, departure: null, avoidedElevators: [], avoidedEdges: [], stairRetreat: [], anchor: [...position], signature: '', leaf: 0, stalled: 0, attempts: 0, goal: null, remaining: Infinity, yielding: null };
+  return { encounter: null, encounterSearches: 0, encounterBodies: '', transit: { key: '', elapsed: 0, frozen: 0, missing: 0, observation: null }, departure: null, avoidedElevators: [], avoidedEdges: [], avoidedDoors: [], doorProbeIn: 0, stairRetreat: [], anchor: [...position], signature: '', leaf: 0, stalled: 0, attempts: 0, goal: null, remaining: Infinity, yielding: null };
 }
 export function recoveryGoal(state: MovementRecoveryState, goal: string): void {
   if (state.goal === goal) return;
+  state.encounter = null; state.encounterSearches = 0; state.encounterBodies = '';
   state.goal = goal; state.attempts = 0; state.stalled = 0; state.signature = '';
-  state.yielding = null; state.avoidedElevators = []; state.avoidedEdges = []; state.stairRetreat = [];
+  state.yielding = null; state.avoidedElevators = []; state.avoidedEdges = []; state.avoidedDoors = []; state.stairRetreat = [];
+  state.doorProbeIn = 0;
   resetTransitWatch(state);
 }
 
@@ -88,6 +98,11 @@ export function recoverySegmentClear(id: string, from: Readonly<Point3>, to: Rea
 export function recoveryDetour(position: Readonly<Point3>, target: Readonly<Point3>, clear: (from: Readonly<Point3>, to: Readonly<Point3>) => boolean): Point3 | null {
   const dx = target[0] - position[0], dz = target[2] - position[2], length = Math.hypot(dx, dz);
   if (length < 0.1) return null;
+  for (const middle of [[position[0], position[1], target[2]], [target[0], position[1], position[2]]] as Point3[]) {
+    if (Math.hypot(middle[0] - position[0], middle[2] - position[2]) > .05
+      && Math.hypot(middle[0] - target[0], middle[2] - target[2]) > .05
+      && clear(position, middle) && clear(middle, target)) return middle;
+  }
   for (const lateral of [0.85, -0.85, 1.3, -1.3, 1.8, -1.8]) {
     const middle: Point3 = [position[0] + dz / length * lateral, position[1], position[2] - dx / length * lateral];
     if (clear(position, middle) && clear(middle, target)) return middle;

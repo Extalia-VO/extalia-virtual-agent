@@ -206,7 +206,7 @@ describe('Hermes dashboard read source (D3)', () => {
 
 describe('MCP reporting (Phase E) and labelsOnly privacy option', () => {
   it('exposes report_intent and report_handoff MCP tool definitions and normalizes their payloads', () => {
-    expect(EXTALIA_MCP_TOOLS.map(t => t.name)).toEqual(['poll_inbox', 'report_followups', 'report_meeting', 'await_reply', 'report_intent', 'report_handoff']);
+    expect(EXTALIA_MCP_TOOLS.map(t => t.name)).toEqual(['extalia_continuity_status', 'extalia_continuity_read', 'poll_inbox', 'report_followups', 'report_meeting', 'await_reply', 'report_intent', 'report_handoff']);
     expect(EXTALIA_MCP_INSTRUCTION).toContain('report_intent');
     expect(EXTALIA_MCP_INSTRUCTION).toContain('report_handoff');
 
