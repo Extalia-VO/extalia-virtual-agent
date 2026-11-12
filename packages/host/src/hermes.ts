@@ -3,10 +3,12 @@ import type { HermesModelCatalog, RuntimeInfo } from '@extalia/platform';
 import type { EventBody } from '@extalia/protocol';
 import { HERMES_PROFILE_PATTERN, HermesAdapter, type HermesResult } from '@extalia/runtime';
 import { spawn, type ChildProcess } from 'node:child_process';
-import { constants as fsConstants } from 'node:fs';
-import { access, readFile, readdir } from 'node:fs/promises';
+import { readFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import { StringDecoder } from 'node:string_decoder';
+import { environmentValue, findExecutable } from './executableDiscovery.js';
+import { executableLaunchPlan } from './npmCommand.js';
+import { resolveHermesLocations } from './agentLocations.js';
 
 /**
  * Runs Hermes Agent as a managed runtime: one `hermes chat` process per
@@ -19,7 +21,7 @@ type Env = Readonly<Record<string, string | undefined>>;
 /** Variables Hermes needs to find its home, locale and tools. Extalia's own settings and secrets are never passed on. */
 const PASSED_VARIABLES = [
   'PATH', 'HOME', 'USER', 'LOGNAME', 'SHELL', 'LANG', 'LANGUAGE', 'LC_ALL', 'LC_CTYPE', 'LC_MESSAGES', 'TZ', 'TMPDIR', 'TEMP', 'TMP',
-  'HERMES_HOME', 'HERMES_MANAGED_DIR', 'DELEGATION_MAX_CONCURRENT_CHILDREN', 'XDG_CONFIG_HOME', 'XDG_DATA_HOME', 'XDG_CACHE_HOME', 'XDG_STATE_HOME', 'XDG_RUNTIME_DIR', 'DBUS_SESSION_BUS_ADDRESS',
+  'HERMES_HOME', 'HERMES_DATA_DIR_SUFFIX', 'HERMES_MANAGED_DIR', 'DELEGATION_MAX_CONCURRENT_CHILDREN', 'XDG_CONFIG_HOME', 'XDG_DATA_HOME', 'XDG_CACHE_HOME', 'XDG_STATE_HOME', 'XDG_RUNTIME_DIR', 'DBUS_SESSION_BUS_ADDRESS',
   'SYSTEMROOT', 'SYSTEMDRIVE', 'WINDIR', 'COMSPEC', 'PATHEXT', 'USERPROFILE', 'USERNAME', 'HOMEDRIVE', 'HOMEPATH', 'APPDATA', 'LOCALAPPDATA', 'PROGRAMDATA',
 ];
 export const HERMES_KILL_GRACE_MS = 3_000;
@@ -28,45 +30,42 @@ const NOISE_LIMIT = 4_000;
 const LINE_LIMIT = 8 * 1024 * 1024;
 const ERROR_LIMIT = 2_000;
 
-export function hermesEnvironment(env: Env): Record<string, string> {
+export function hermesEnvironment(env: Env, homeDirectory?: string, platform: NodeJS.Platform = process.platform): Record<string, string> {
   const result: Record<string, string> = {};
-  for (const name of PASSED_VARIABLES) if (env[name] !== undefined) result[name] = env[name]!;
+  for (const name of PASSED_VARIABLES) {
+    const value = environmentValue(env, name, platform);
+    if (value !== undefined) result[name] = value;
+  }
+  if (homeDirectory) result.HERMES_HOME = hermesRoot(env, homeDirectory, platform);
   // Plain, UTF-8 diagnostics: they become the error message of a failed turn.
   return { ...result, NO_COLOR: '1', PYTHONIOENCODING: 'utf-8' };
 }
 
-async function isExecutable(file: string): Promise<boolean> {
-  try { await access(file, fsConstants.X_OK); return true; } catch { return false; }
-}
-
-/**
- * `EXTALIA_HERMES_BIN`, else `hermes` on PATH, else the per-user install folder
- * (`~/.local/bin`), which apps started from the Dock or Start menu usually lack
- * on their PATH. Nothing is executed to find it.
- */
+/** Explicit override, PATH and bounded per-user CLI installation directories. */
 export async function findHermes(env: Env, homeDirectory?: string, platform: NodeJS.Platform = process.platform): Promise<string | undefined> {
-  const override = env.EXTALIA_HERMES_BIN?.trim();
-  if (override) return path.isAbsolute(override) && await isExecutable(override) ? override : undefined;
-  const names = platform === 'win32' ? ['hermes.exe', 'hermes'] : ['hermes'];
-  const directories = (env.PATH ?? '').split(platform === 'win32' ? ';' : ':').filter(item => path.isAbsolute(item));
-  if (homeDirectory && platform !== 'win32') {
-    directories.push(path.join(homeDirectory, '.local', 'bin'));
-    directories.push(path.join(homeDirectory, '.hermes', 'hermes-agent', 'venv', 'bin'));
-  }
-  for (const directory of directories) {
-    for (const name of names) {
-      const candidate = path.join(directory, name);
-      if (await isExecutable(candidate)) return candidate;
-    }
-  }
-  return undefined;
+  if (homeDirectory && resolveHermesLocations({ env, homeDirectory, platform }).problem) return undefined;
+  return findExecutable('hermes', { env, platform, ...(homeDirectory ? { homeDirectory } : {}),
+    override: environmentValue(env, 'EXTALIA_HERMES_BIN', platform) });
 }
 
-/** Hermes' root home: `HERMES_HOME` (or its root when it names a profile), else `~/.hermes`. */
-export function hermesRoot(env: Env, homeDirectory: string): string {
-  const configured = env.HERMES_HOME?.trim();
-  if (!configured) return path.join(homeDirectory, '.hermes');
-  return path.basename(path.dirname(configured)) === 'profiles' ? path.dirname(path.dirname(configured)) : configured;
+/** Installation root shared with Connect and transcript discovery. */
+export function hermesRoot(env: Env, homeDirectory: string, platform: NodeJS.Platform = process.platform): string {
+  const selected = resolveHermesLocations({ env, homeDirectory, platform });
+  if (selected.problem) throw new Error(selected.problem);
+  return selected.rootHome;
+}
+
+/** An explicit profile home is authoritative; it is not Hermes' mutable sticky profile choice. */
+export function hermesProfile(env: Env, homeDirectory: string, profile: string): string {
+  if (!homeDirectory && !environmentValue(env, 'HERMES_HOME', process.platform)) {
+    if (!HERMES_PROFILE_PATTERN.test(profile)) throw new Error('Unknown Hermes profile.');
+    return profile;
+  }
+  const selected = resolveHermesLocations({ env, homeDirectory });
+  if (selected.problem) throw new Error(selected.problem);
+  const effective = profile === 'default' ? selected.namedProfile ?? profile : profile;
+  if (!HERMES_PROFILE_PATTERN.test(effective)) throw new Error('Unknown Hermes profile.');
+  return effective;
 }
 
 /** `default` plus the profile directory names; no profile file is opened. */
@@ -117,7 +116,8 @@ interface HermesModelConfig {
 async function readHermesModelConfig(env: Env, homeDirectory: string, profile: string): Promise<HermesModelConfig | undefined> {
   if (profile !== 'default' && !HERMES_PROFILE_PATTERN.test(profile)) throw new Error('Unknown Hermes profile.');
   const root = hermesRoot(env, homeDirectory);
-  const profileHome = profile === 'default' ? root : path.join(root, 'profiles', profile);
+  const effective = hermesProfile(env, homeDirectory, profile);
+  const profileHome = effective === 'default' ? root : path.join(root, 'profiles', effective);
   let text: string;
   try { text = await readFile(path.join(profileHome, 'config.yaml'), 'utf8'); } catch { return undefined; }
   const block = parseHermesModelBlock(text);
@@ -247,10 +247,12 @@ export async function hermesDefaultModel(env: Env, homeDirectory: string, profil
 }
 
 export async function discoverRuntimes(env: Env, homeDirectory: string): Promise<RuntimeInfo[]> {
-  const executable = await findHermes(env, homeDirectory);
+  const location = resolveHermesLocations({ env, homeDirectory });
+  const executable = location.problem ? undefined : await findHermes(env, homeDirectory);
+  const available = Boolean(executable && await executableLaunchPlan(executable, [], { env, homeDirectory }).then(() => true, () => false));
   return [
     { id: 'extalia-native', available: true, profiles: [] },
-    { id: 'hermes', available: Boolean(executable), profiles: executable ? await hermesProfiles(env, homeDirectory) : [] },
+    { id: 'hermes', available, profiles: available ? await hermesProfiles(env, homeDirectory) : [] },
   ];
 }
 
@@ -263,17 +265,17 @@ const reasoningSupport = new Map<string, Promise<boolean>>();
 export function hermesSupportsReasoning(executable: string, env: Env, timeoutMs = 5_000): Promise<boolean> {
   let known = reasoningSupport.get(executable);
   if (!known) {
-    known = new Promise<boolean>(resolve => {
+    known = executableLaunchPlan(executable, ['chat', '--help'], { env }).then(launch => new Promise<boolean>(resolve => {
       let output = '';
       let child: ChildProcess;
       try {
-        child = spawn(executable, ['chat', '--help'], { env: hermesEnvironment(env), shell: false, stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true, timeout: timeoutMs });
+        child = spawn(launch.command, launch.args, { env: hermesEnvironment(env), shell: false, stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true, timeout: timeoutMs });
       } catch { resolve(false); return; }
       child.stdout?.setEncoding('utf8');
       child.stdout?.on('data', (chunk: string) => { if (output.length < 64_000) output += chunk; });
       child.on('error', () => resolve(false));
       child.on('close', () => resolve(/(^|[\s[])--reasoning\b/m.test(output)));
-    });
+    })).catch(() => false);
     reasoningSupport.set(executable, known);
     // A failed probe (for example a timeout) is tried again next time.
     void known.then(supported => { if (!supported) setTimeout(() => { if (reasoningSupport.get(executable) === known) reasoningSupport.delete(executable); }, 60_000).unref(); });
@@ -283,6 +285,7 @@ export function hermesSupportsReasoning(executable: string, env: Env, timeoutMs 
 
 export interface HermesTurnOptions {
   executable: string;
+  homeDirectory?: string;
   cwd: string;
   prompt: string;
   profile: string;
@@ -338,7 +341,8 @@ export async function runHermesTurn(options: HermesTurnOptions): Promise<HermesT
   const { emit, signal } = options;
   const adapter = new HermesAdapter();
   const plan = adapter.plan({
-    cwd: options.cwd, prompt: options.prompt, profile: options.profile, yolo: options.yolo,
+    cwd: options.cwd, prompt: options.prompt,
+    profile: hermesProfile(options.env, options.homeDirectory ?? options.env.HOME ?? options.env.USERPROFILE ?? '', options.profile), yolo: options.yolo,
     ...(options.model ? { model: options.model } : {}),
     ...(options.reasoning ? { reasoning: options.reasoning } : {}),
     ...(options.resumeSessionId ? { resumeSessionId: options.resumeSessionId } : {}),
@@ -351,10 +355,12 @@ export async function runHermesTurn(options: HermesTurnOptions): Promise<HermesT
   };
   if (signal.aborted) { finish('cancelled'); return { outcome: 'cancelled' }; }
 
+  const launch = await executableLaunchPlan(options.executable, plan.args, { env: options.env, ...(options.homeDirectory ? { homeDirectory: options.homeDirectory } : {}) });
+  if (signal.aborted) { finish('cancelled'); return { outcome: 'cancelled' }; }
   emit({ type: 'agent.state', state: 'working', summary: 'Hermes Agent' });
-  const child = spawn(options.executable, plan.args, {
+  const child = spawn(launch.command, launch.args, {
     cwd: options.cwd,
-    env: hermesEnvironment(options.env),
+    env: hermesEnvironment(options.env, options.homeDirectory),
     shell: false,
     // Its own process group, so a stop can reach everything Hermes started.
     detached: process.platform !== 'win32',

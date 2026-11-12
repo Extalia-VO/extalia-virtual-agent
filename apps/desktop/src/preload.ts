@@ -14,7 +14,7 @@ function listen<T>(channel: string, listener: (payload: T) => void): () => void 
 // Only these functions cross the bridge; no Node or Electron objects reach the renderer.
 const api: DesktopHostApi = {
   info: () => ipcRenderer.invoke(IPC.hostInfo),
-  selectDirectory: () => ipcRenderer.invoke(IPC.selectDirectory),
+  selectDirectory: options => ipcRenderer.invoke(IPC.selectDirectory, options),
   agents: {
     call: (method, args) => invoke(IPC.agents, method, args),
     onEvent: listener => listen(IPC.agentEvent, listener),

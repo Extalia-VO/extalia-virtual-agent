@@ -21,7 +21,7 @@ export const INSTALLER_COPY = {
   macInstallTitle: 'Drag. Drop. Get started.',
   macInstallDescription: 'Drag Extalia to Applications, or open it for guided setup.',
   macDragHint: 'drag to install',
-  macFooter: 'Your projects and settings stay in your Extalia profile.',
+  macFooter: 'Your Extalia profile and project folders are kept separately from the app.',
   guideName: 'Installation Guide.txt',
   guideTitle: 'Install Extalia for macOS',
   guideSteps: '1. Open Extalia.app, then select Install Extalia in the guided installer. Alternatively, drag Extalia.app to Applications.\n2. Open Extalia from Applications.\n3. Choose your workspace and connect an agent or model provider.\n4. Eject this disk image when installation is complete.',
@@ -94,6 +94,7 @@ type Runtime = 'extalia-native' | 'hermes';
 const NPM_INSTALL = 'npm i -g extalia-vo';
 
 const en = {
+  directoryPicker: { folder: 'Choose a folder', project: 'Choose a project folder', vault: 'Choose a Knowledge vault folder', skill: 'Choose a skill folder' },
   observedWorkspaceLink: {
     title: 'Link observed workspace', close: 'Close workspace link', description: 'Choose the existing Extalia workspace for this observed project.',
     scopeHint: 'The source app keeps its project folder. This association does not grant file access, move files or change connections.',
@@ -1695,6 +1696,9 @@ const en = {
     actions: (title: string) => `Actions for ${title}`,
     rename: 'Rename', renameLabel: 'Session title',
     move: {
+      changedFolders: 'Project folders or access changed. Review the current folders to continue this conversation. Your history and draft are kept.',
+      reviewCurrent: 'Review folder access', reviewUnavailable: 'Open this session in an updated Extalia host to review its workspace access.',
+      reviewWait: 'Finish or stop this session before reviewing its folder access.',
       title: 'Move / review workspace', destination: 'Destination workspace', review: 'Review destination', reviewing: 'Reviewing…',
       description: 'Keep this Native conversation, team and model in the selected workspace. You can also review the current workspace after folder access changes.',
       folders: 'Folders available after applying', readOnly: 'Read only', readWrite: 'Read and write', crossAccess: 'Cross-workspace access',
@@ -2507,6 +2511,7 @@ const en = {
 export type Messages = typeof en;
 
 const id: Messages = {
+  directoryPicker: { folder: 'Pilih folder', project: 'Pilih folder project', vault: 'Pilih folder vault Knowledge', skill: 'Pilih folder skill' },
   observedWorkspaceLink: {
     title: 'Tautkan workspace Observe', close: 'Tutup tautan workspace', description: 'Pilih workspace Extalia yang sudah ada untuk project yang diamati ini.',
     scopeHint: 'Folder project aplikasi asal tetap sama. Tautan ini tidak memberi akses file, memindahkan file, atau mengubah koneksi.',
@@ -4103,6 +4108,9 @@ const id: Messages = {
     actions: (title: string) => `Aksi untuk ${title}`,
     rename: 'Ganti nama', renameLabel: 'Judul session',
     move: {
+      changedFolders: 'Folder proyek atau akses berubah. Tinjau folder saat ini untuk melanjutkan percakapan. Riwayat dan draf Anda tetap tersimpan.',
+      reviewCurrent: 'Tinjau akses folder', reviewUnavailable: 'Buka session ini pada host Extalia terbaru untuk meninjau akses workspace.',
+      reviewWait: 'Selesaikan atau hentikan session ini sebelum meninjau akses foldernya.',
       title: 'Pindah / tinjau workspace', destination: 'Workspace tujuan', review: 'Tinjau tujuan', reviewing: 'Meninjau…',
       description: 'Pertahankan percakapan Native, tim, dan model di workspace pilihan. Anda juga dapat meninjau workspace saat ini setelah akses folder berubah.',
       folders: 'Folder yang tersedia setelah diterapkan', readOnly: 'Hanya baca', readWrite: 'Baca dan tulis', crossAccess: 'Akses antarworkspace',

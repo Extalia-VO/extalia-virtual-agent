@@ -8,6 +8,8 @@ export interface ScheduledLearningInput {
   profileId: string;
   profileName: string;
   sessionId: string;
+  /** The host proved this non-default profile belongs only to its isolated workspace. */
+  independent?: boolean;
   kind?: 'learning' | 'knowledge-meeting';
   workspaceName?: string;
   sessionName?: string;
@@ -57,7 +59,7 @@ function skillNotice(value: unknown): value is LearningSkillNotice {
   return (value.label === undefined || text(value.label, 200)) && (value.partial === undefined || typeof value.partial === 'boolean');
 }
 
-/** Connection-scoped admission queue. Nothing starts a Rust job or acquires a vault pin while waiting. */
+/** Profile-aware admission queue. Nothing starts a Rust job or acquires a vault pin while waiting. */
 export class LearningSchedule {
   private readonly entries = new Map<string, Entry>();
   /** Recent IDs only; durable publication receipts remain owned by Rust. */
@@ -68,6 +70,7 @@ export class LearningSchedule {
   private timerGeneration = 0;
   private generation = 0;
   private foregroundHolds = 0;
+  private readonly profileForegroundHolds = new Map<string, number>();
   private active?: Active;
   private reconciling = false;
   private wakeAgain = false;
@@ -178,7 +181,7 @@ export class LearningSchedule {
       for (const entry of this.entries.values()) {
         if (entry.view.state !== 'scheduled') continue;
         let ready: boolean;
-        try { ready = !this.foregroundHolds && entry.input!.ready(); }
+        try { ready = !this.held(entry) && entry.input!.ready(); }
         catch { this.terminal(entry, 'failed', 'failed'); continue; }
         if (!ready) {
           if (!entry.view.waitingForIdle) { this.waitForIdle(entry, true); this.changed(); }
@@ -198,23 +201,33 @@ export class LearningSchedule {
 
   /**
    * Foreground ownership must be reserved before calling. Fence timers before
-   * the first await, abort the active executor, and await its actual effects.
+   * the first await, abort the conflicting executor, and await its actual effects.
+   * A profile scope leaves independent other profiles' deadlines and work intact.
+   * Unproven/shared jobs retain the global foreground conflict boundary.
    */
-  async yieldForForeground(): Promise<void> {
+  async yieldForForeground(profileId?: string): Promise<void> {
     if (this.closed) throw new Error('The learning schedule is closing.');
-    this.foregroundHolds++; this.generation++; this.stopTimer();
+    if (profileId === undefined) { this.foregroundHolds++; this.generation++; }
+    else this.profileForegroundHolds.set(profileId, (this.profileForegroundHolds.get(profileId) ?? 0) + 1);
+    this.stopTimer();
     let changed = false;
-    for (const entry of this.entries.values()) if (entry.view.state === 'scheduled') {
+    for (const entry of this.entries.values()) if (entry.view.state === 'scheduled' && this.conflicts(entry, profileId)) {
       this.waitForIdle(entry, true); changed = true;
     }
-    const active = this.active;
+    const active = this.active && this.conflicts(this.active.entry, profileId) ? this.active : undefined;
     if (active) { active.interruption = 'busy'; active.controller.abort(); }
     if (changed) this.changed();
+    this.arm();
     try {
       await active?.done;
       if (this.closed) throw new Error('The learning schedule is closing.');
     } finally {
-      this.foregroundHolds--;
+      if (profileId === undefined) this.foregroundHolds--;
+      else {
+        const remaining = this.profileForegroundHolds.get(profileId)! - 1;
+        if (remaining) this.profileForegroundHolds.set(profileId, remaining);
+        else this.profileForegroundHolds.delete(profileId);
+      }
       this.wake();
     }
   }
@@ -270,13 +283,22 @@ export class LearningSchedule {
     if (resetImmediate) entry.immediate = false;
   }
 
+  private held(entry: Entry): boolean {
+    return this.foregroundHolds > 0 || this.profileForegroundHolds.has(entry.view.profileId)
+      || this.profileForegroundHolds.size > 0 && entry.input?.independent !== true;
+  }
+
+  private conflicts(entry: Entry, profileId?: string): boolean {
+    return profileId === undefined || entry.view.profileId === profileId || entry.input?.independent !== true;
+  }
+
   private dispatch(): void {
     if (this.closed || this.active || this.foregroundHolds) return;
     const due = [...this.entries.values()].filter(entry => entry.view.state === 'scheduled' && !entry.view.waitingForIdle && Date.parse(entry.view.dueAt) <= this.now());
     for (const entry of due) {
       const input = entry.input!;
       let ready: boolean;
-      try { ready = input.ready(); } catch { this.terminal(entry, 'failed', 'failed'); continue; }
+      try { ready = !this.held(entry) && input.ready(); } catch { this.terminal(entry, 'failed', 'failed'); continue; }
       if (!ready) { this.waitForIdle(entry, true); this.changed(); continue; }
       const controller = new AbortController();
       const active: Active = { entry, controller, done: Promise.resolve(), generation: this.generation, entered: false };
@@ -286,7 +308,7 @@ export class LearningSchedule {
           if (controller.signal.aborted || active.generation !== this.generation) { this.interrupted(active); return; }
           if (!await input.validate()) { this.terminal(entry, 'cancelled', 'changed'); return; }
           if (controller.signal.aborted || active.generation !== this.generation) { this.interrupted(active); return; }
-          if (!input.ready() || this.foregroundHolds) { this.waitForIdle(entry, true); this.changed(); return; }
+          if (this.held(entry) || !input.ready()) { this.waitForIdle(entry, true); this.changed(); return; }
           active.entered = true;
           await input.execute(controller.signal);
           if (controller.signal.aborted) this.interrupted(active);

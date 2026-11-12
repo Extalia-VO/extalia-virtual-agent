@@ -11,7 +11,13 @@ Read in order:
 6. [`technical-blueprint-v1.1.1.md`](technical-blueprint-v1.1.1.md) — frameworks, ports/adapters, Rust control plane, Python worker protocol, schemas, phased coding order, extensibility.
 7. [`implementation-handoff-v1.1.1.md`](implementation-handoff-v1.1.1.md) — read-only audit pass first, hard constraints, report template.
 
-Status: **specification completed; implementation not started by this deliverable**. Scanner CLI/JSON format must be validated against the pinned official NVIDIA SkillSpector release during implementation.
+Status of the imported deliverable: **specification completed**. The text below
+is a preserved planning baseline, not today's implementation status. As of
+v0.4.288, Native, skills, Knowledge and a platform-scoped pinned SkillSpector
+integration have implementation evidence; their remaining acceptance gates are
+tracked in the [current gap map](../prd-v1.1-gap-map.md) and
+[PRD directory](../README.md). Do not infer that implementation has not started
+from this historical pack or that scanner support covers every platform.
 
 ## Repository copy
 

@@ -16,7 +16,7 @@ export class NativeMemoryService {
     checkOpen(): void;
     checkAdmission?(): void;
     /** Pending ownership is reserved before awaiting foreground maintenance drain. */
-    beforeForeground?(): Promise<void> | void;
+    beforeForeground?(workspaceId: string): Promise<void> | void;
     onIdle?(): void;
   }) {}
 
@@ -34,7 +34,7 @@ export class NativeMemoryService {
     // Resolving the store validates membership in the current profile before any file access.
     const store = this.options.store(workspaceId);
     const work = Promise.resolve().then(async () => {
-      await this.options.beforeForeground?.();
+      await this.options.beforeForeground?.(workspaceId);
       return action(store);
     }).finally(() => {
       this.pending.delete(work);

@@ -2,6 +2,13 @@
 
 Status: accepted, 2026-11-11. Extends ADRs 0073 and 0074.
 
+Current refinement (v0.4.291): only conflicting foreground work pauses or
+preempts maintenance for a unique non-default isolated vault profile. Known
+foreground work in other profiles may coexist. Shared/default jobs keep the
+global rule below; configuration changes, unknown execution ownership and the
+single-curator resource limit remain. Vault isolation does not create a private
+Skills registry. See [automatic learning](../getting-started/automatic-learning.md).
+
 ## Problem
 
 A snoozed learning deadline could expire while foreground workers were still

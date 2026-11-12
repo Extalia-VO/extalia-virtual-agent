@@ -1,3 +1,4 @@
+import { executableLaunchPlan } from './npmCommand.js';
 import { spawn } from 'node:child_process';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { lstat, realpath } from 'node:fs/promises';
@@ -67,7 +68,8 @@ export interface CodexObservedControlOptions {
 
 /** One owned byte proxy to an existing Unix WebSocket server; never an engine. */
 export const createCodexObservedRpc: CodexObservedRpcFactory = async (options) => {
-  const child = spawn(options.bin, ['app-server', 'proxy', '--sock', options.socketPath], {
+  const launch = await executableLaunchPlan(options.bin, ['app-server', 'proxy', '--sock', options.socketPath], { env: options.env });
+  const child = spawn(launch.command, launch.args, {
     env: options.env, stdio: ['pipe', 'pipe', 'ignore'], windowsHide: true,
   });
   const key = randomBytes(16).toString('base64');

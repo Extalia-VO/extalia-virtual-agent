@@ -1,3 +1,4 @@
+import { executableLaunchPlan } from './npmCommand.js';
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { safeQueueThumbnail } from '@extalia/core';
@@ -96,10 +97,13 @@ export async function readCodexNativeQueue(options: CodexNativeQueueOptions, lim
     || !bounded(options.codexHome, 4096) || !path.isAbsolute(options.codexHome)
     || options.cwd !== undefined && (!bounded(options.cwd, 4096) || !path.isAbsolute(options.cwd))
     || !options.env || !Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > TIMEOUT_MS || options.signal?.aborted) throw new CodexNativeQueueError();
+  let launch;
+  try { launch = await executableLaunchPlan(options.bin, ['app-server', '--listen', 'stdio://'], { env: options.env }); } catch { throw new CodexNativeQueueError(); }
+  if (options.signal?.aborted) throw new CodexNativeQueueError();
   return new Promise((resolve, reject) => {
     let child: ReturnType<typeof spawn>;
     try {
-      child = spawn(options.bin, ['app-server', '--listen', 'stdio://'], {
+      child = spawn(launch.command, launch.args, {
         env: { ...options.env, CODEX_HOME: options.codexHome }, cwd: options.cwd ?? options.codexHome,
         stdio: ['pipe', 'pipe', 'pipe'], shell: false, windowsHide: true,
       });

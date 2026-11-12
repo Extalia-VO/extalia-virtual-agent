@@ -1,8 +1,9 @@
-import { normalizeAutomaticLearningPolicy, type AgentHostApi, type SaveVaultProfileInput, type VaultProfile, type VaultProfilesCatalog } from '@extalia/platform';
-import { useEffect, useState } from 'react';
+import { normalizeAutomaticLearningPolicy, type AgentHostApi, type FileSystemCapability, type SaveVaultProfileInput, type VaultProfile, type VaultProfilesCatalog } from '@extalia/platform';
+import { useEffect, useState, type ReactNode } from 'react';
 import type { Messages } from '../../i18n';
 import { errorMessage } from '../../host/remote';
 import { isUnsupportedMessage } from '../../knowledge/knowledgeModel';
+import { DirectoryPickerButton } from '../../setup/DirectoryPickerButton';
 
 export type VaultProfileDraft = Omit<SaveVaultProfileInput, 'expectedRevision'>;
 export const vaultProfileDraft = (profile: VaultProfile): VaultProfileDraft => ({ id: profile.id, name: profile.name,
@@ -11,9 +12,10 @@ export function toggleVaultWorkspace(draft: VaultProfileDraft, workspaceId: stri
   return { ...draft, workspaceIds: draft.workspaceIds.includes(workspaceId) ? draft.workspaceIds.filter(id => id !== workspaceId) : [...draft.workspaceIds, workspaceId] };
 }
 
-export function VaultProfilesView({ t, catalog, draft, busy, error, notice, onDraft, onSelect, onNew, onSave, onRefresh }: {
+export function VaultProfilesView({ t, catalog, draft, busy, error, notice, onDraft, onSelect, onNew, onSave, onRefresh, folderPicker }: {
   t: Messages; catalog: VaultProfilesCatalog; draft: VaultProfileDraft; busy: boolean; error?: string | undefined; notice?: string | undefined;
   onDraft(draft: VaultProfileDraft): void; onSelect(profile: VaultProfile): void; onNew(): void; onSave(): void; onRefresh(): void;
+  folderPicker?: ReactNode;
 }) {
   const p = t.vaultProfiles;
   const indexed = draft.id === catalog.defaultProfileId;
@@ -32,6 +34,7 @@ export function VaultProfilesView({ t, catalog, draft, busy, error, notice, onDr
       <label className="field"><span>{p.name}</span><input type="text" maxLength={120} value={draft.name} disabled={busy} onChange={event => onDraft({ ...draft, name: event.target.value })} /></label>
       <label className="field"><span>{p.root}</span><input type="text" maxLength={4096} spellCheck={false} autoComplete="off" disabled={busy || indexed}
         placeholder={p.managed} value={indexed ? selected?.root ?? '' : draft.vaultRoot ?? ''} onChange={event => onDraft({ ...draft, vaultRoot: event.target.value.trim() ? event.target.value : null })} /></label>
+      {!indexed && folderPicker}
       <p className="muted small">{indexed ? p.indexedHint : p.folderHint}</p>
       <label><input type="checkbox" checked={draft.minutesEnabled} disabled={busy} onChange={event => onDraft({ ...draft, minutesEnabled: event.target.checked })} /> {p.minutes}</label>
       <p className="muted small">{p.minutesHint}</p>
@@ -55,7 +58,7 @@ export function VaultProfilesView({ t, catalog, draft, busy, error, notice, onDr
   </section>;
 }
 
-export function VaultProfilesSection({ t, agents, locked, changed }: { t: Messages; agents: AgentHostApi; locked?: boolean | undefined; changed?: number | undefined }) {
+export function VaultProfilesSection({ t, agents, picker, locked, changed }: { t: Messages; agents: AgentHostApi; picker?: FileSystemCapability | undefined; locked?: boolean | undefined; changed?: number | undefined }) {
   const [catalog, setCatalog] = useState<VaultProfilesCatalog>();
   const [draft, setDraft] = useState<VaultProfileDraft>();
   const [busy, setBusy] = useState(false);
@@ -87,6 +90,10 @@ export function VaultProfilesSection({ t, agents, locked, changed }: { t: Messag
     } catch (failure) { setError(errorMessage(failure)); } finally { setBusy(false); }
   };
   return <VaultProfilesView t={t} catalog={catalog} draft={draft} busy={busy || !!locked} error={error} notice={notice} onDraft={setDraft}
+    folderPicker={<DirectoryPickerButton t={t} agents={agents} picker={picker} purpose="knowledge-vault" title={t.directoryPicker.vault}
+      label={t.knowledgeVault.choose} disabled={busy || !!locked} scopeKey={`${catalog.revision}:${draft.id ?? 'new'}`}
+      initialPath={draft.vaultRoot ?? catalog.profiles.find(profile => profile.id === draft.id)?.root}
+      onSelected={vaultRoot => setDraft(current => current ? { ...current, vaultRoot } : current)} />}
     onSelect={profile => { setDraft(vaultProfileDraft(profile)); setNotice(undefined); }}
     onNew={() => { setDraft({ name: '', vaultRoot: null, workspaceIds: [], minutesEnabled: true, automaticLearning: { enabled: true, skills: true, notes: true } }); setNotice(undefined); }}
     onSave={() => void save()} onRefresh={() => setRefresh(value => value + 1)} />;

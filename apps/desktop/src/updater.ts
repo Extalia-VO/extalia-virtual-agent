@@ -1,9 +1,10 @@
-import type { UpdateChannel } from '@extalia/platform';
+import { resolveDataDirectory, type UpdateChannel } from '@extalia/platform';
 import { BrowserWindow, app, ipcMain, type IpcMainInvokeEvent } from 'electron';
-import { autoUpdater } from 'electron-updater';
 import { readFileSync } from 'node:fs';
+import { homedir } from 'node:os';
 import path from 'node:path';
 import { IPC, reply } from './ipc';
+import { createProfileUpdater } from './updaterStorage';
 import { authorizeLinuxInstallerUpdate, isLinuxInstallerAppImage } from './linuxInstallerUpdate';
 import { UpdatePolicy, supportsPackagedUpdates, updateChannel, type UpdateDriver, type UpdaterEvent, type WorkState } from './updatePolicy';
 
@@ -18,6 +19,8 @@ export interface UpdaterOptions {
 
 /** GitHub Releases through electron-updater; only packaged builds have an update feed (app-update.yml). */
 function connectAutoUpdater(channel: UpdateChannel, handle: (event: UpdaterEvent) => void): UpdateDriver {
+  const autoUpdater = createProfileUpdater({ app, platform: process.platform, resourcesPath: process.resourcesPath,
+    dataDirectory: path.resolve(resolveDataDirectory({ platform: process.platform, env: process.env, homeDirectory: homedir() })) });
   // Checking a release feed is not consent to download or replace the app.
   autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = false;

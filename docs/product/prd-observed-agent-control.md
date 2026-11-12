@@ -2,9 +2,9 @@
 
 | | |
 | --- | --- |
-| Status | Locally verified in 0.4.248; integration review and real-provider acceptance pending; not merged or released |
+| Status | Foundation implemented and released in v0.4.288; real-provider/version/platform acceptance remains open |
 | Product | Extalia Virtual Office, one app across Web and Desktop |
-| Scope date | 2026-11-10 |
+| Scope date | 2026-11-10; status reconciled 2026-11-12 against v0.4.288 |
 | GitHub | [Epic #76](https://github.com/Extalia-VO/extalia-virtual-agent/issues/76), [Observe v1 milestone](https://github.com/Extalia-VO/extalia-virtual-agent/milestone/9) |
 | Related | [App flow and live agents](prd-app-flow-and-live-agents.md), [observed replies](../getting-started/observed-replies.md), [ADR 0061](../adr/0061-observed-reply-channels.md) |
 
@@ -57,11 +57,13 @@ message content remain memory-only in Extalia.
 
 ## 4. Current foundation and provider scope
 
-The local foundation defines a common route/capability/receipt contract,
+The released foundation defines a common route/capability/receipt contract,
 capability IDs fenced to a source binding, explicit dispatch, and existing
 transport drivers. It also adds a bounded loopback cooperative inbox and a
-single-poll CLI client. The combined project gate passed at 0.4.248;
-this is not a merged, released or real-provider-certified feature.
+single-poll CLI client. The original combined project gate passed at 0.4.248;
+the foundation subsequently merged and shipped with v0.4.288. Publication does
+not establish real-provider/version/platform certification. The dated evidence
+in §7 remains historical, with current release evidence linked separately.
 
 | Route | Evidence and allowed effect | Limit |
 | --- | --- | --- |
@@ -72,9 +74,11 @@ this is not a merged, released or real-provider-certified feature.
 | Cooperative inbox | Explicit token-paired CLI/MCP consumer | Queue admission only; consumer may not be the claimed native source |
 
 Transcript/hook/MCP observation for Claude Code, Gemini CLI, Antigravity, and
-other clients does not imply native control. Provider-specific native control
-and cross-platform certification are a later phase. Any owned PTY or ACP-style
-managed CLI launch is future feasibility work, outside Observe and not
+other clients does not imply native control. Later source-specific prompt adapters
+and model/attachment controls are recorded in the [app-flow tracker](prd-app-flow-and-live-agents.md#11-status-tracker)
+(C10–C12); they do not create universal native attachment or approval authority.
+Real-provider and cross-platform certification remain separate acceptance work.
+Any owned PTY or ACP-style managed CLI launch is future feasibility work, outside Observe and not
 implemented here.
 
 ## 5. Requirements and acceptance criteria
@@ -139,7 +143,7 @@ The foundation and compatibility work use [Observe v1: Capability-bound agent me
 | Issue | Work | Acceptance / dependency |
 | --- | --- | --- |
 | [OV-00 Epic](https://github.com/Extalia-VO/extalia-virtual-agent/issues/76) | Track Observe expansion and acceptance criteria | Links the scoped issues below; no separate duplicate feature promise |
-| [OV-01 Capability facade](https://github.com/Extalia-VO/extalia-virtual-agent/issues/77) | Platform/host capability discovery, dispatch and conservative transport receipts | OV-AC01–04; locally verified foundation, integration review pending |
+| [OV-01 Capability facade](https://github.com/Extalia-VO/extalia-virtual-agent/issues/77) | Platform/host capability discovery, dispatch and conservative transport receipts | OV-AC01–04; foundation shipped in v0.4.288, independent acceptance still tracked |
 | [OV-02 Cooperative inbox](https://github.com/Extalia-VO/extalia-virtual-agent/issues/78) | Finish setup/poll/ack/close UX and operational copy | OV-AC05–08; exact bounded receipt semantics |
 | [OV-03 Surface integration](https://github.com/Extalia-VO/extalia-virtual-agent/issues/79) | Ensure selected observed character and Observe use one source of capability truth | OV-AC01–03; no arbitrary CLI-launch language |
 | [OV-04 Compatibility certification](https://github.com/Extalia-VO/extalia-virtual-agent/issues/80) | Verify named provider transports and supported versions on each claimed platform | OV-AC09; separate evidence for installed CLI, observation, native attach, and cooperative tool |
@@ -177,8 +181,19 @@ working tree based on `c98ec51`, not a published release.
 The hook-only fixture has no native transcript; its existing optional history
 request is unavailable. The activity and message controls were checked without
 claiming a complete source transcript or a clean browser console for that fixture.
-No real provider configuration or user profile was modified. Issues #77–79 stay
-open until review/integration; #80 tracks real-provider/platform certification.
+No real provider configuration or user profile was modified by that historical
+verification. At the v0.4.288 reconciliation, source integration and publication
+are complete; issues #77–79 retain their independent acceptance tracking, and
+#80 retains real-provider/platform certification. Publication alone does not
+close these acceptance issues.
+
+### Release reconciliation — 2026-11-12
+
+The [v0.4.288 release](../release/v0.4.288.md) records the merged source, all twelve
+Release jobs passing, packaged checks and isolated npm installation verification.
+[Release issue #91](https://github.com/Extalia-VO/extalia-virtual-agent/issues/91)
+records completed publication. These verify the distributed baseline; they do
+not replace the named live-provider/platform evidence required by OV-AC09.
 
 ## 8. Reference and adaptation
 

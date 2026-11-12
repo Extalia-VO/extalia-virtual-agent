@@ -12,9 +12,9 @@ Security boundaries come before autonomous capabilities (PRD §25).
 | | Other registered workspace edits | Both sides must allow read/write; approvals still apply |
 | | Unregistered folders | Deny |
 | Terminal | Native command without verified isolated executor | Unavailable |
-| Git | Commit | Allow |
-| | Push | Ask |
-| Network | External requests | Ask |
+| Git views | Repository inspection | Read-only; no generic commit/push action |
+| Mission changes | Integration test/apply | Blocked until a verified isolated executor exists |
+| Network | Provider/catalog/scanner requests | Capability-specific contracts; no generic network sandbox |
 | Secrets | Read credentials | Deny |
 
 Security policy overrides user, project and agent instructions.
@@ -29,8 +29,9 @@ Security policy overrides user, project and agent instructions.
   a verified workspace-isolated executor. Lower-level command utilities retain
   explicit caller control, process groups, environment filtering and redacted
   output; these mechanisms alone do not establish filesystem isolation.
-- File edits and commands ask for approval unless the workspace allows them;
-  approvals can cover one action or the rest of the session.
+- File edits ask for approval unless the workspace allows them; supported
+  approvals can cover one action or the rest of the session. Command policy does
+  not override the unavailable isolated-executor gate.
 - A session's permission mode narrows or widens that policy for the session:
   `ask` asks before every edit and command, `accept-edits` allows edits inside
   the workspace (commands still follow the workspace), `plan` offers no edit or
@@ -54,7 +55,9 @@ authoritative registry reads bound to the active revision, scanner identity,
 policy and file digest. Legacy user/project inventory and hash consent are
 review input only. There is no caller-supplied `verified` switch or cached-body
 fallback. Missing, unavailable, incomplete, failed or stale scanner evidence
-denies external offerings; the production scanner adapter remains unavailable.
+denies external offerings. The pinned production scanner adapter has macOS 14+
+ARM64 evidence under [ADR 0068](../adr/0068-pinned-skillspector-inspection.md);
+other scanner platforms remain unavailable/fail-closed.
 Exact canonical shipped built-ins remain a separate first-party source, not an
 external-scan attestation. Name/source impersonation cannot establish that source.
 

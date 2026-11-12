@@ -8,6 +8,55 @@ Roadmap: [#38](https://github.com/Extalia-VO/extalia-virtual-agent/issues/38).
 Source: [audit](../product/prd-v2-audit.md) and
 [staged plan](../product/prd-v2-development-plan.md).
 
+## Current implementation and release checkpoint
+
+### GitHub reconciliation — 2026-11-13
+
+Maintenance integration [#93](https://github.com/Extalia-VO/extalia-virtual-agent/issues/93)
+collects the locally verified v0.4.289–294 profile storage, workspace recovery,
+isolated Knowledge scheduling, native folder selection, discovery and documentation
+updates. Main integration and package publication are separate steps. npm `latest`
+is v0.4.288; GitHub's newer Desktop beta is the v0.4.288 prerelease, while its
+stable/latest release still points to v0.4.227. README uses the release list and
+keeps npm installation separate from Desktop downloads.
+
+Live milestone checkpoints for v0.4, v0.5, v0.6 and Observe were reconciled, preserving
+their titles, dates and open state. PR #85 was merged on 2026-11-10; earlier
+"unmerged/unpublished" milestone notes no longer describe its status. Issues
+#14, #38–40, #48, #54–55, #57, #59 and #60 now link the current scoped evidence and
+retain their unchecked acceptance gates. In particular, pinned SkillSpector/Python
+is verified on macOS 14+ ARM64; other scanner targets and general Python execution
+remain open. No broad epic or v0.5 release gate was closed by this reconciliation.
+
+### Historical documentation checkpoint — 2026-11-12
+
+Reconciled 2026-11-12 at **v0.4.288**. The issue/label/dependency inventory below
+is the original 2026-10-29 planning snapshot, not a fresh query of all live issue
+states. This documentation update makes no GitHub issue, label or milestone
+changes. Current implementation is mapped in the
+[requirement checkpoint](../product/prd-v2-acceptance-map.md#current-implementation-checkpoint)
+and [remaining work](../product/prd-remaining-work.md).
+
+- The [v0.4.288 Desktop/Web/npm preview](v0.4.288.md) is a scoped release, distinct
+  from the retained [v0.5 acceptance gate #60](https://github.com/Extalia-VO/extalia-virtual-agent/issues/60).
+  A released 0.4 package does not automatically accept V2 work packages.
+- Skills/Knowledge/meetings/curation/marketplace and observed control/handover now
+  have implemented slices. Historical “missing scanner/learning/graph” statements
+  are not current backlog. Full resolver/evaluation, cross-platform scanner,
+  ACL/provenance and real multi-app acceptance remain explicit.
+- V2-03/04/05/06 still govern complete ownership/fencing, physical reconciliation,
+  effect-time grants and accepted evidence. Do not close these from contract,
+  local-drain, load-receipt or UI evidence alone.
+- ADR 0071 makes backend placement evidence-based. Retaining production
+  TypeScript completion after measured Rust/Python comparisons is a decision,
+  not a missed language-migration deadline. The specific bundled Python scanner
+  is implemented on macOS 14+ ARM64; a general Python executor is not.
+
+Before synchronizing GitHub statuses, read back each issue and reconcile its own
+acceptance checklist with exact evidence. Do not infer closure from the numbers
+of tests, commits or closed predecessor issues. Preserve later work and reviewed
+scope exceptions when updating issue metadata.
+
 ## Version domains and milestones
 
 - PRD `2.0.0-draft` identifies a document, not application `v2.0`.

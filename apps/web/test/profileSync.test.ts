@@ -6,25 +6,26 @@ import { createProfileSaver, mergeProfilePreferences, profileChanges, toProfileP
 const local: Preferences = { theme: 'light', material: 'standard', language: 'en', sidebar: 'expanded', font: 'inter' };
 
 describe('profile preference merge', () => {
-  it('takes every known profile value and keeps local values for fields the profile lacks', () => {
+  it('takes known host values and defaults for fields missing from the host', () => {
     const merged = mergeProfilePreferences(local, { language: 'id', theme: 'dark' });
-    expect(merged.preferences).toEqual({ ...local, language: 'id', theme: 'dark' });
-    // Missing fields are not treated as saved, so the device's values are saved back.
-    expect(merged.synced).toEqual({ language: 'id', theme: 'dark' });
-    expect(profileChanges(merged.synced, merged.preferences)).toEqual({ material: 'standard', sidebar: 'expanded', font: 'inter' });
+    expect(merged.preferences).toEqual({ ...DEFAULT_PREFERENCES, language: 'id', theme: 'dark' });
+    expect(merged.synced).toEqual(toProfilePreferences(merged.preferences));
+    expect(profileChanges(merged.synced, merged.preferences)).toEqual({});
   });
 
-  it('seeds an empty profile from this device', () => {
-    const merged = mergeProfilePreferences(local, {});
-    expect(merged.preferences).toEqual(local);
-    expect(profileChanges(merged.synced, merged.preferences)).toEqual(toProfilePreferences(local));
+  it('returns first-install defaults instead of restoring an old browser mirror into a deleted profile', () => {
+    const previous: Preferences = { theme: 'dark', material: 'standard', language: 'id', sidebar: 'compact', font: 'inter' };
+    const merged = mergeProfilePreferences(previous, {});
+    expect(merged.preferences).toEqual(DEFAULT_PREFERENCES);
+    expect(profileChanges(merged.synced, merged.preferences)).toEqual({});
+    expect(profileChanges(merged.synced, { ...merged.preferences, language: 'id' })).toEqual({ language: 'id' });
   });
 
-  it('keeps local values for profile values this client does not know, without overwriting them', () => {
+  it('keeps display fallbacks for unknown newer host values without overwriting them', () => {
     const merged = mergeProfilePreferences(local, { material: 'plasma-glass', font: 'comic', language: 'id' });
-    expect(merged.preferences).toEqual({ ...local, language: 'id' });
-    expect(merged.synced).toEqual({ material: 'standard', font: 'inter', language: 'id' });
-    expect(profileChanges(merged.synced, merged.preferences)).toEqual({ theme: 'light', sidebar: 'expanded' });
+    expect(merged.preferences).toEqual({ ...DEFAULT_PREFERENCES, material: local.material, font: local.font, language: 'id' });
+    expect(merged.synced).toEqual(toProfilePreferences(merged.preferences));
+    expect(profileChanges(merged.synced, merged.preferences)).toEqual({});
   });
 
   it('changes nothing when the profile already matches', () => {
@@ -72,4 +73,17 @@ describe('profile saver', () => {
     expect(calls[2]).toEqual({ preferences: { language: 'id', sidebar: 'compact' } });
     warn.mockRestore();
   });
+
+  it('drops queued saves on host detachment and never flushes a stale profile during cleanup', async () => {
+    const save = vi.fn(async () => ({ schema: 'extalia.profile.v1' as const, preferences: {}, updatedAt: '2026-10-01T00:00:00.000Z' }));
+    const saver = createProfileSaver(save, 400);
+    saver.markSynced(toProfilePreferences(DEFAULT_PREFERENCES));
+    saver.schedule({ ...DEFAULT_PREFERENCES, theme: 'dark' });
+    saver.dispose();
+    await saver.flush();
+    saver.schedule({ ...DEFAULT_PREFERENCES, language: 'id' });
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(save).not.toHaveBeenCalled();
+  });
+
 });

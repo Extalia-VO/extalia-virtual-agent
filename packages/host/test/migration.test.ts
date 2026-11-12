@@ -185,7 +185,7 @@ describe('legacy data migration', () => {
 });
 
 describe('agent host and the default data folder', () => {
-  it('migrates into the default folder on start, keeps connections, and asks for the new welcome setup once', async () => {
+  it('starts empty without reading or restoring a retired default profile', async () => {
     const home = await temp('extalia-host-home-');
     const env = { EXTALIA_SECRET_STORE: 'memory', PATH: process.env.PATH };
     const legacy = legacyDataDirectories({ platform: process.platform, env, homeDirectory: home })[0]!;
@@ -198,9 +198,14 @@ describe('agent host and the default data folder', () => {
       const state = await runtime.host.getState();
       expect(state.dataDirectory).toBe(path.join(home, '.extalia-vo'));
       expect(state.storage.dataDirectory).toBe(path.join(home, '.extalia-vo'));
-      expect(state.connections.map(item => item.id)).toEqual(['c_1']);
+      expect(state.connections).toEqual([]);
+      expect(state.workspaces).toEqual([]);
+      expect(state.sessions).toEqual([]);
+      expect(state.library).toEqual([]);
       expect(state.setupComplete).toBe(false);
-      expect(await readMigrationMarker(state.dataDirectory)).toMatchObject({ from: legacy });
+      expect(await readMigrationMarker(state.dataDirectory)).toBeUndefined();
+      expect(await exists(path.join(legacy, MIGRATION_NOTE))).toBe(false);
+      expect(JSON.parse(await readFile(path.join(legacy, 'config', 'extalia.json'), 'utf8')).connections).toEqual([connection]);
       expect(await runtime.host.completeSetup('observe')).toMatchObject({ setupComplete: true });
     } finally { await runtime.close(); }
   });

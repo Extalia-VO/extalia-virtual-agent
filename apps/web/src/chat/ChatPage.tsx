@@ -13,6 +13,8 @@ import { attachmentPreviewLoader, sendPromptWithAttachments, uploadAttachments }
 import { resolveChat, type ChatSelection } from './selection';
 import { SessionList } from './SessionList';
 import { SessionMoveDialog } from './SessionMoveDialog';
+import { SessionWorkspaceReview } from './SessionWorkspaceReview';
+import { useWorkspaceReviewRecovery } from './workspaceReviewRecovery';
 import { SessionHandoverDialog } from './SessionHandoverDialog';
 import { ObservedWorkspaceLinkButton } from '../observe/ObservedWorkspaceLinkDialog';
 import { sessionFileRoots } from './sessionFileScopes';
@@ -64,6 +66,7 @@ export function ChatPage({ t, language, agents, picker, state, onState, selectio
   const memoryDetails = useRef<HTMLDetailsElement>(null);
   const memoryDetailsId = useId();
   const teamControl = useChatTeam({ agents, state, workspace, session, onState });
+  const workspaceReview = useWorkspaceReviewRecovery({ agents, session, onState });
 
   useEffect(() => {
     const onScroll = () => {
@@ -120,15 +123,17 @@ export function ChatPage({ t, language, agents, picker, state, onState, selectio
   }
 
   // v0.0.49: the session is created first (with the chosen model, effort and permission mode), then the files upload, then the prompt goes.
-  const send = ({ text, choice, attachments, patch, learnSkill, bindSession }: ComposerSend) => guard(async () => {
+  const send = ({ text, choice, attachments, patch, learnSkill, bindSession }: ComposerSend) => workspaceReview.required ? Promise.resolve(false) : guard(async () => {
     if (teamControl.isUpdating() || teamControl.open) throw new Error(t.chat.team.updating);
     let id = session?.id;
     if (!id) {
       id = await createComposerSession({ agents, workspaceId: workspace.id, choice,
         ...(teamControl.supported ? { team: teamControl.team ?? null } : {}), bindSession, onState, onSelect, interrupted: t.chat.turnInterrupted });
     }
-    const ids = await uploadAttachments(agents, id, attachments, patch);
-    await sendPromptWithAttachments(agents, id, text, ids, learnSkill);
+    try {
+      const ids = await uploadAttachments(agents, id, attachments, patch);
+      await sendPromptWithAttachments(agents, id, text, ids, learnSkill);
+    } catch (failure) { await workspaceReview.recover(failure); throw failure; }
   });
   const refreshState = () => { void agents.getState().then(onState).catch(() => undefined); };
 
@@ -220,6 +225,9 @@ export function ChatPage({ t, language, agents, picker, state, onState, selectio
             {waiting && <Icon name="shield" />}
             {statusText}
           </p>
+          <SessionWorkspaceReview t={t} agents={agents} state={state} session={session} required={workspaceReview.required} onReviewed={next => {
+            workspaceReview.clear(); setError(null); onState(next); focusComposer();
+          }} />
           {error && <p className="form-error" role="alert"><Icon name="alert" />{error}</p>}
           {session?.control === 'observed' && <ObservedInputCards t={t} sessionId={session.id} />}
 
@@ -228,14 +236,15 @@ export function ChatPage({ t, language, agents, picker, state, onState, selectio
             : session?.control === 'observed' && agents.observedControlStatus && agents.dispatchObservedControl
               ? <ObservedSessionControl key={session.id} t={t} agents={agents} session={session} />
               : <Composer t={t} agents={agents} session={session} workspaceId={workspace.id} hermes={sessionRuntime(workspace, session) === 'hermes'} modelScopeKey={modelChoicesKey(state, workspace, session)}
-            running={running} waiting={waiting} readOnly={readOnly} stopping={activity.stopping}
+            running={running} waiting={waiting} readOnly={readOnly} stopping={activity.stopping} sendBlocked={workspaceReview.required}
             onOpenContext={memoryScope ? openMemoryContext : undefined} contextPanelId={memoryScope ? memoryDetailsId : undefined}
             onSend={send} onStop={() => { if (session) void guard(() => agents.cancel(session.id)); }} onSessionChanged={refreshState} />}
         </div>
       </section>
       {movingSession && <SessionMoveDialog key={movingSession.id} t={t} agents={agents} session={movingSession} workspaces={state.workspaces}
         onClose={() => setMovingSession(undefined)} onMoved={(next, workspaceId) => {
-          onState(next); onSelect({ workspaceId, sessionId: movingSession.id }); setMovingSession(undefined); setListOpen(false); focusComposer();
+          if (movingSession.id === session?.id) workspaceReview.clear();
+          setError(null); onState(next); onSelect({ workspaceId, sessionId: movingSession.id }); setMovingSession(undefined); setListOpen(false); focusComposer();
         }} />}
       {handoverOpen && session && <SessionHandoverDialog agents={agents} state={state} session={session} t={t.sessionHandover}
         onClose={() => setHandoverOpen(false)} onApplied={receipt => {

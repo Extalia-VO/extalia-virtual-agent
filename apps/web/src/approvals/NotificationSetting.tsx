@@ -1,8 +1,9 @@
 import type { NotificationCapability } from '@extalia/platform';
-import { useState } from 'react';
+import { useState, useSyncExternalStore } from 'react';
 import type { Messages } from '../i18n';
 import { browserNotificationPermission } from './browserNotifications';
 import { approvalNotificationsEnabled, saveApprovalNotifications } from './notify';
+import { subscribeProfileClientState } from '../profileClientState';
 
 /**
  * Settings toggle for approval notifications. Turning it on in the browser asks
@@ -10,7 +11,7 @@ import { approvalNotificationsEnabled, saveApprovalNotifications } from './notif
  */
 export function ApprovalNotificationSetting({ t, hostKind, notifier }: { t: Messages; hostKind: 'desktop' | 'web'; notifier?: NotificationCapability | undefined }) {
   const copy = t.approvalInbox.settings;
-  const [enabled, setEnabled] = useState(() => approvalNotificationsEnabled(hostKind));
+  const enabled = useSyncExternalStore(subscribeProfileClientState, () => approvalNotificationsEnabled(hostKind), () => hostKind === 'desktop');
   const [note, setNote] = useState<string>();
   const unsupported = !notifier;
 
@@ -18,7 +19,6 @@ export function ApprovalNotificationSetting({ t, hostKind, notifier }: { t: Mess
     setNote(undefined);
     if (enabled) {
       saveApprovalNotifications(false);
-      setEnabled(false);
       return;
     }
     if (hostKind === 'web') {
@@ -33,7 +33,6 @@ export function ApprovalNotificationSetting({ t, hostKind, notifier }: { t: Mess
       }
     }
     saveApprovalNotifications(true);
-    setEnabled(true);
   };
 
   return <div className="approval-notify-setting">

@@ -56,8 +56,10 @@ it never launches a separate agent host or connects directly to a provider.
 The campus and furnished floors are adapted from the existing Virtual Office.
 New visual improvements belong in this repository; see
 [Office development](../design/office-development.md). Per-character
-appearance is saved in the host and shared by Web and Desktop; avatar walking and
-navigation remain later scene milestones.
+appearance is saved in the host and shared by Web and Desktop. Avatar walking,
+door/chair interaction and cross-floor navigation have implemented paths;
+remaining crowd/performance acceptance is listed in the
+[Office module](../modules/office.md).
 
 Backend placement follows [ADR 0071](../adr/0071-rust-openai-completion-and-resource-evidence.md): choose Rust, supervised Python or TypeScript from measured resource/latency tradeoffs and output compatibility. Retain TypeScript where migration adds latency without worthwhile memory or responsiveness benefits; React stays presentation-only. This supersedes the mandatory zero-TypeScript destination in [ADR 0069](../adr/0069-ui-only-typescript-and-backend-ownership.md), while retaining its source ownership inventory. A pure parser or scheduler remains backend work even without Node imports. Earlier [ADR 0053](../adr/0053-evidence-based-native-process-partition.md) permission, parity and settlement gates still apply.
 
@@ -70,8 +72,12 @@ admission lane so queue wait does not consume wire execution deadlines.
 
 [Idle team knowledge](../adr/0075-idle-team-knowledge-and-office-context.md)
 extends that same timer owner with real team discussions and acknowledged artifact
-results. New foreground work fences maintenance and drains its entered effects;
-the full chosen quiet interval restarts after actual foreground settlement.
+results. Conflicting foreground work fences maintenance and drains its entered effects;
+the full chosen quiet interval restarts after actual conflicting foreground
+settlement. Unique non-default isolated vault profiles can curate alongside known
+foreground work in other profiles. Shared/default maintenance and uncertain
+execution ownership retain conservative guards; one curator runs at a time.
+Skills remain a shared, scanner-gated user library, separate from vault isolation.
 Office portals the shared countdown above its prompt while keeping source-context
 selection independent from the global character board and automatic camera.
 

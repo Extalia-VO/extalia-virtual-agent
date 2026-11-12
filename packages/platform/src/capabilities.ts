@@ -17,9 +17,18 @@ export interface DirectorySelection {
   path?: string;
 }
 
+export interface DirectoryPickerOptions {
+  /** Localized dialog title. Omission uses the operating system's native label. */
+  title?: string;
+  /** Preferred existing absolute directory; unsupported/invalid locations use the OS home folder. */
+  initialPath?: string;
+  /** Skills select existing packages; other choices may offer native folder creation. */
+  purpose?: 'project' | 'knowledge-vault' | 'skill' | 'export';
+}
+
 export interface FileSystemCapability {
   /** Ask the user to choose a folder. Resolves to null when the user cancels. */
-  selectDirectory(): Promise<DirectorySelection | null>;
+  selectDirectory(options?: DirectoryPickerOptions): Promise<DirectorySelection | null>;
 }
 
 export interface TerminalCapability {
@@ -157,7 +166,7 @@ export interface Platform {
  */
 export interface DesktopHostApi {
   info(): Promise<HostInfo>;
-  selectDirectory(): Promise<DirectorySelection | null>;
+  selectDirectory(options?: DirectoryPickerOptions): Promise<DirectorySelection | null>;
   agents: {
     call(method: AgentHostMethod, args: unknown[]): Promise<unknown>;
     onEvent(listener: (event: ExtaliaEvent) => void): () => void;

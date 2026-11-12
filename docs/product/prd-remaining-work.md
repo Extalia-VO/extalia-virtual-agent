@@ -1,6 +1,32 @@
-# Remaining PRD Work: Handover First
+# Remaining PRD work and implementation status
 
 This is a focused execution map of work that is still open or only partly accepted in the product PRDs. The canonical requirements and acceptance plans remain in the linked source documents; this note does not close their gates.
+
+## Checkpoint: 2026-11-12 / v0.4.288
+
+This is the current execution summary. Requirement-level traceability lives in the
+[v1.1 gap map](prd-v1.1-gap-map.md) and
+[v2 current checkpoint](prd-v2-acceptance-map.md#current-implementation-checkpoint).
+“Implemented” below means the named slice exists with scoped supporting evidence;
+it does not mean the complete parent PRD or a release milestone is accepted.
+This update reviews source and existing evidence, without rerunning live acceptance.
+
+| Module | Implemented slices | Not yet complete |
+| --- | --- | --- |
+| Shell, setup, Chat/Observe | Shared Web/Desktop UI, optional initial workspace, model-test-first setup, common rich messages/attachments/questions/approvals | Complete offline/corrupt-profile, assistive-technology and certified app-version matrix |
+| Native orchestration | API agent, configured teams/delegates, DAG, budgets, durable checkpoints/leases and recovery inspection | Complete child/writer ownership, physical reconciliation, effect-time grants, evidence acceptance, durable dispatch/replay |
+| Skills / Grimoire | Built-ins/categories, import/library/security lifecycle, explicit prompt learning, managed auto-loading receipts and live marketplace | Authoritative dependency/compatibility dispatch, general evaluation/quality promotion and full marketplace metadata |
+| Scanner / Python | Pinned SkillSpector and bundled Python execution on macOS 14+ ARM64, separate review/approval/activation | Intel macOS/Windows/Linux scanner confinement; general Python executor; scan is not quality evaluation |
+| Knowledge / Obsidian | Markdown vault, wikilinks/backlinks, index/search, CAS/history, interactive 2D/3D graph, workspace vault profiles | Complete cross-profile ACL/sharing, claim provenance, conflict reconciliation and V2-17A acceptance |
+| Learning / meetings | Profile records, explicit/inactive generated candidates, deferred curation, team knowledge meetings, saved-artifact notices | General isolated evaluation, measured improvement/promotion/rollback; Windows artifact staging unavailable |
+| Cross-agent continuity | Durable handover ledger, reviewed packet, exact source archives and supported delivery receipts | Real Codex → Gemini → Claude → Codex chain, compaction/failure/long-duration acceptance and broader external Knowledge context |
+| Office | Licensed Blender scene assets, movement/facility interactions, follow/camera and adaptive recovery | Declared-hardware whole-app FPS/RSS, remaining asset reductions and full furnished-scene acceptance |
+| Git / files / workspaces | Folder boundaries, nested read-only Git discovery, isolated write-task worktrees and integration inspection/proposals | Production test/apply blocked pending isolated executor; complete Rust writer fencing and live write-worker acceptance |
+| Release / ecosystem | v0.4.288 Desktop/Web/npm preview and scoped CI/package evidence | v0.5 gate #60; stable signing/notarization, full restore, general schedules, public SDK/plugin isolation and new workers/engines |
+
+No overall completion percentage is inferred. A complete v0.5 claim still requires
+its [release gate](https://github.com/Extalia-VO/extalia-virtual-agent/issues/60),
+not simply implementation volume or a successful v0.4 publication.
 
 ## Priority 0: continuous work handover
 
@@ -70,19 +96,19 @@ The app-flow status tracker is the live list; the main open or partial product s
 | Office experience | Renderer quality recovery, movement and social rendezvous work | Continue current tracker items and verify furnished rooms/floors and real Web/Desktop workload separately; do not infer whole-app low-end performance from resolution scaling alone. |
 | Low-resource assets | Adaptive render resolution and staged character arrivals | Optimize inventoried large GLB assets only with visual/geometry review; test representative low-spec hardware and memory/FPS under realistic office load. |
 | Native orchestration | Durable checkpoint, lease, queue, approval and mission UI foundations | Complete remaining V1 mission acceptance: live permitted-provider/worker evidence, physical settlement and writer fencing, terminal reconciliation, effect-time approvals, child membership, replay and recovery. |
-| Skills and learning | Local Grimoire, pinned SkillSpector preview on supported targets, automatic curator and workspace vaults | Finish cross-platform scanner/package evidence, secure dependency resolver and runtime skill routing. Knowledge meetings and saved notes passed live acceptance. A temporary host with a scripted provider and pinned macOS ARM64 scanner also saved an inactive candidate and note, retained them after restart, and displayed the actual saved-skill receipt in the Office prompt components in EN/ID. Physical room movement remains unverified by that component run. |
+| Skills and learning | Local Grimoire, pinned SkillSpector preview on supported targets, automatic curator and workspace vaults | Finish cross-platform scanner/package evidence, authoritative dependency/resolver dispatch and canonical mission/external skill-context integration. Managed Chat, ordinary delegates and meetings already have bounded automatic skill loading (ADR 0073). Knowledge meetings and saved notes passed live acceptance. A temporary host with a scripted provider and pinned macOS ARM64 scanner also saved an inactive candidate and note, retained them after restart, and displayed the actual saved-skill receipt in the Office prompt components in EN/ID. Physical room movement remains unverified by that component run. |
 | Provider and runtime claims | API/local-first setup and several Observe adapters | Keep catalog discovery distinct from real inference/tool capability. Certify only named provider, app version, OS, account/mode and control route actually tested. |
-| Release and ecosystem | Existing updater, Bridge and platform CI | Reconcile pending dependency/review/platform gates; finish per-platform signing, provenance, Bridge security cases and package smoke before claims or publication. |
+| Release and ecosystem | Existing updater, Bridge and platform CI | Reconcile pending dependency/review/platform gates; finish stable signing/notarization, complete provenance/Bridge security cases and any additional package smoke required by a broader claim. Existing preview publication does not certify those later gates. |
 
 See [v1.1 gap map](prd-v1.1-gap-map.md) for partial requirements and [V2 acceptance map](prd-v2-acceptance-map.md) for staged contracts, Bridge gates and the distinction between planned acceptance and runnable evidence. V2 is not blanket authorization to enable engine switching, executable plugins, production dispatch or broader grants.
 
 ## Recommended execution order
 
-1. Complete handover record, ledger and repeated-transfer acceptance before broadening external context access.
+1. Preserve the implemented handover record/ledger and complete real repeated-transfer acceptance before broadening external context access.
 2. Add external Knowledge retrieval only behind explicit workspace/project bindings and the verified capabilities of each receiver.
-3. Build the Grimoire marketplace against a local fixture service, retaining quarantine, scanner, approval and immutable revisions.
+3. Extend the implemented Grimoire marketplace with richer category/compatibility metadata and finish its end-to-end activation/update/rollback acceptance; retain fixture coverage, quarantine and immutable revisions.
 4. Continue the app-flow tracker’s active Office and Native acceptance slices; pick general schedules or larger V1/V2 work only after checking their dependencies and acceptance gates.
-5. Reconcile the old tracker entries with current source and platform evidence. Some historical rows still describe earlier versions or pending gates; do not treat a stale status as proof of current failure or current completion.
+5. Use the dated current checkpoint and retain historical evidence labels. Select the next V2-03/04/05/06 execution-authority increment only after its dependencies are clear; do not treat a stale status or a passing UI fixture as full acceptance.
 
 ## Verification note
 

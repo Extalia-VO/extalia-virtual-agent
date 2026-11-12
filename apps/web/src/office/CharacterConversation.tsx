@@ -42,6 +42,8 @@ const emptyControlView: ObservedSessionControlView = { phase: 'loading', draft: 
 const getEmptyControlView = () => emptyControlView;
 import { modelChoicesKey, sessionRuntime } from '../chat/sessionRuntime';
 import { WorkspaceRuntimeNotice } from '../chat/WorkspaceRuntimeNotice';
+import { SessionWorkspaceReview } from '../chat/SessionWorkspaceReview';
+import { useWorkspaceReviewRecovery } from '../chat/workspaceReviewRecovery';
 import './characterConversationLayout.css';
 
 const TOOLS_MEDIA = '(min-width: 1100px)';
@@ -107,6 +109,7 @@ export function CharacterConversation({ t, language, agents, state, session, age
   onToolsStateChange?: ((state: CharacterConversationToolsState) => void) | undefined;
   onHandoverReady?: ((session: SessionSummary) => void) | undefined;
 }) {
+  const workspaceReview = useWorkspaceReviewRecovery({ agents, session, onState });
   const inputContext = useObservedInputs();
   const inputEntry = inputContext?.view.entries[session.id];
   const inlineQuestions = inputEntry?.phase === 'ready' || inputEntry?.phase === 'private' || !!inputEntry?.requests.some(request => request.origin === 'codex-native');
@@ -220,9 +223,11 @@ export function CharacterConversation({ t, language, agents, state, session, age
   }
 
   const refreshState = () => { void agents.getState().then(onState).catch(() => undefined); };
-  const send = ({ text, attachments, patch, learnSkill }: ComposerSend) => readOnly ? Promise.resolve(false) : guard(async () => {
-    const ids = await uploadAttachments(agents, session.id, attachments, patch);
-    await sendPromptWithAttachments(agents, session.id, text, ids, learnSkill);
+  const send = ({ text, attachments, patch, learnSkill }: ComposerSend) => readOnly || workspaceReview.required ? Promise.resolve(false) : guard(async () => {
+    try {
+      const ids = await uploadAttachments(agents, session.id, attachments, patch);
+      await sendPromptWithAttachments(agents, session.id, text, ids, learnSkill);
+    } catch (failure) { await workspaceReview.recover(failure); throw failure; }
     refreshState();
   });
   const decide = async (approvalId: string, decision: ApprovalDecisionInput) => {
@@ -280,13 +285,17 @@ export function CharacterConversation({ t, language, agents, state, session, age
         <p className={`chat-status ${running ? 'busy' : ''} ${waiting ? 'waiting' : ''}`} role="status" aria-live="polite">
           {running && !waiting && <span className="pulse" aria-hidden="true" />}{waiting && <Icon name="shield" />}{status}
         </p>
+        {!readOnly && <SessionWorkspaceReview t={t} agents={agents} state={state} session={session} required={workspaceReview.required} onReviewed={next => {
+          workspaceReview.clear(); setError(null); onState(next);
+          requestAnimationFrame(() => scroller.current?.closest('.character-conversation')?.querySelector<HTMLTextAreaElement>('textarea:not(:disabled)')?.focus());
+        }} />}
         {error && <p className="form-error" role="alert"><Icon name="alert" />{error}</p>}
         {!isWorker && !readOnlyReason && session.control === 'observed' && supportsObservedPromptQueue(session.observation?.sourceId) &&
           <ObservedCodexPromptComposer key={session.id} t={t} agents={agents} session={session} showNativeQueue={false} />}
         {!isWorker && !readOnlyReason && session.control === 'observed' && !supportsObservedPromptQueue(session.observation?.sourceId) && controlHub &&
           <ObservedSessionControl key={`control:${session.id}`} t={t} agents={agents} session={session} compact onOpenTools={() => setToolsChoice({ wide, open: true })} />}
         {!readOnly && <Composer t={t} agents={agents} session={session} workspaceId={session.workspaceId}
-          hermes={sessionRuntime(workspace, session) === 'hermes'} modelScopeKey={modelChoicesKey(state, workspace, session)} running={running} waiting={waiting} readOnly={false} stopping={activity.stopping}
+          hermes={sessionRuntime(workspace, session) === 'hermes'} modelScopeKey={modelChoicesKey(state, workspace, session)} running={running} waiting={waiting} readOnly={false} stopping={activity.stopping} sendBlocked={workspaceReview.required}
           onSend={send} onStop={() => { void guard(async () => { await agents.cancel(session.id); refreshState(); }); }} onSessionChanged={refreshState} />}
         {!isWorker && !readOnlyReason && session.control === 'observed' && !supportsObservedPromptQueue(session.observation?.sourceId) &&
           <PromptSuggestions t={t} agents={agents} session={session} copyOnly />}

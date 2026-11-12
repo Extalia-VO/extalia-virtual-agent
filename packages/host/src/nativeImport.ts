@@ -8,6 +8,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { closeSync, existsSync, fstatSync, openSync, readdirSync, readSync, realpathSync, statSync, type Dirent } from 'node:fs';
 import { basename, dirname, isAbsolute, join, relative, sep } from 'node:path';
 import type * as Sqlite from 'node:sqlite';
+import { resolveAgentLocations } from './agentLocations.js';
 
 /**
  * Read-only discovery of native agent histories in their known locations.
@@ -165,6 +166,7 @@ function sessionQuery(db: Database): { fields: string; id: string; order: string
 export interface NativeImportOptions {
   homeDirectory: string;
   env: Readonly<Record<string, string | undefined>>;
+  platform?: NodeJS.Platform;
   now?: () => number;
 }
 
@@ -234,23 +236,27 @@ export class NativeImportService {
   }
 
   private knownLocations(): Location[] {
-    const { env, homeDirectory: home } = this.options;
+    const roots = resolveAgentLocations(this.options);
     const locations: Location[] = [];
     const add = (sourceId: Location['sourceId'], label: string, root: string, path: string, kind: Kind, format: string, profile?: string, note?: string) => {
+      const app = sourceId === 'claude-code' ? 'claude' : sourceId === 'gemini-cli' ? 'gemini'
+        : sourceId.startsWith('antigravity') ? 'antigravity' : sourceId === 'hermes' ? 'hermes' : 'codex';
+      const problem = roots.problems?.[app];
       let available = false;
-      try { contained(root, path); available = statSync(path).isDirectory() || (kind === 'hermes' && statSync(path).isFile()); } catch { /* missing or unsafe */ }
-      let supported = kind !== 'binary' && kind !== 'unavailable';
+      if (!problem) try { contained(root, path); available = statSync(path).isDirectory() || (kind === 'hermes' && statSync(path).isFile()); } catch { /* missing or unsafe */ }
+      let supported = !problem && kind !== 'binary' && kind !== 'unavailable';
       if (kind === 'hermes' && !this.sqlite) { supported = false; note = 'Reading Hermes history needs Node.js 22.13 or newer.'; }
-      locations.push({ id: `loc-${digest(`${sourceId}:${profile ?? ''}:${path}`).slice(0, 20)}`, sourceId, label, root, path, kind, format, available, supported, ...(profile ? { profile } : {}), ...(note ? { note } : {}) });
+      locations.push({ id: `loc-${digest(`${sourceId}:${profile ?? ''}:${path}`).slice(0, 20)}`, sourceId, label, root, path, kind: problem ? 'unavailable' : kind, format, available, supported, ...(profile ? { profile } : {}), ...((problem ?? note) ? { note: problem ?? note } : {}) });
     };
-    const codex = env.CODEX_HOME || join(home, '.codex');
+    const codex = roots.codexHome;
     add('codex', 'Codex', codex, join(codex, 'sessions'), 'codex', 'JSONL');
     add('codex', 'Codex (archived)', codex, join(codex, 'archived_sessions'), 'codex', 'JSONL');
-    const claude = env.CLAUDE_CONFIG_DIR || join(home, '.claude');
+    const claude = roots.claudeHome;
     add('claude-code', 'Claude Code', claude, join(claude, 'projects'), 'claude', 'JSONL');
-    const hermes = env.HERMES_HOME || join(home, '.hermes');
-    add('hermes', 'Hermes Agent', hermes, join(hermes, 'state.db'), 'hermes', 'SQLite', 'default');
-    try {
+    const hermes = roots.hermes.selectedHome;
+    add('hermes', 'Hermes Agent', hermes, join(hermes, 'state.db'), 'hermes', 'SQLite', roots.hermes.namedProfile ?? 'default');
+    // An explicit named profile selects that profile only, never its siblings.
+    if (!roots.problems?.hermes && !roots.hermes.namedProfile) try {
       const profiles = join(hermes, 'profiles');
       contained(hermes, profiles);
       for (const entry of readdirSync(profiles, { withFileTypes: true }).slice(0, 100)) {
@@ -260,11 +266,11 @@ export class NativeImportService {
         add('hermes', 'Hermes Agent', hermes, join(profileRoot, 'state.db'), 'hermes', 'SQLite', entry.name);
       }
     } catch { /* no profiles */ }
-    const gemini = join(home, '.gemini');
+    const gemini = roots.geminiHome;
     add('gemini-cli', 'Gemini CLI', gemini, join(gemini, 'tmp'), 'gemini', 'JSON / JSONL');
-    const sandbox = join(home, '.cache', '.gemini');
-    if (existsSync(join(sandbox, 'tmp'))) add('gemini-cli', 'Gemini CLI (sandbox)', sandbox, join(sandbox, 'tmp'), 'gemini', 'JSON / JSONL');
-    const antigravity = join(gemini, 'antigravity');
+    const sandbox = roots.geminiSandboxHome;
+    if (!roots.problems?.gemini && existsSync(join(sandbox, 'tmp'))) add('gemini-cli', 'Gemini CLI (sandbox)', sandbox, join(sandbox, 'tmp'), 'gemini', 'JSON / JSONL');
+    const antigravity = roots.antigravityHome;
     add('antigravity', 'Antigravity', antigravity, join(antigravity, 'brain'), 'antigravity', 'JSONL');
     add('antigravity-ide', 'Antigravity IDE', antigravity, join(antigravity, 'conversations'), 'binary', 'Protocol Buffers', undefined, 'Conversations are detected, but this version cannot read their binary format.');
     locations.push({ id: 'loc-antigravity-cli', sourceId: 'antigravity-cli', label: 'Antigravity CLI', root: '', path: '', kind: 'unavailable', available: false, supported: false, format: 'Unknown', note: 'No verified history format or location is known yet.' });
@@ -452,7 +458,8 @@ export class NativeImportService {
       }
     } catch { /* optional */ }
     const folderId = basename(projectFolder);
-    for (const root of [location.root, join(this.options.homeDirectory, '.gemini')]) {
+    const roots = resolveAgentLocations(this.options);
+    for (const root of [location.root, ...(!roots.problems?.gemini ? [roots.geminiHome] : [])]) {
       try {
         const registryPath = join(root, 'projects.json');
         if (identity(contained(root, registryPath)).size > 1024 * 1024) continue;

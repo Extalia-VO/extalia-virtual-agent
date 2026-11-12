@@ -121,6 +121,22 @@ describe('one busy-session composer', () => {
     expect(h.props.onSend).not.toHaveBeenCalled();
     expect(elements(h.render()).find(node => node.type === 'textarea')!.props.value).toBe('');
   });
+  it('holds queue submission for workspace review while retaining an editable draft and Stop', async () => {
+    const h = queuedComposer(); await vi.advanceTimersByTimeAsync(0);
+    h.props.sendBlocked = true;
+    h.type('Keep this pending draft');
+    const input = elements(h.render()).find(node => node.type === 'textarea')!;
+    expect(input.props.disabled).toBe(false);
+    expect(input.props.placeholder).not.toBe(MESSAGES.en.chat.placeholderObserved);
+    h.submit(); await vi.advanceTimersByTimeAsync(0);
+    expect(h.changeQueue).not.toHaveBeenCalled();
+    expect(h.props.onSend).not.toHaveBeenCalled();
+    expect(elements(h.render()).find(node => node.type === 'textarea')!.props.value).toBe('Keep this pending draft');
+    expect(elements(h.render()).some(node => node.type === 'button' && node.props.onClick === h.props.onStop)).toBe(true);
+    h.props.sendBlocked = false;
+    h.submit(); await vi.advanceTimersByTimeAsync(0);
+    expect(h.changeQueue).toHaveBeenCalledExactlyOnceWith('session', { action: 'add', text: 'Keep this pending draft', start: true, revision: 'r1' });
+  });
   it('retains the main draft when queue delivery is uncertain', async () => {
     const h = queuedComposer(true); await vi.advanceTimersByTimeAsync(0);
     h.type('Follow up'); h.submit(); await vi.advanceTimersByTimeAsync(0);
@@ -138,6 +154,29 @@ describe('one busy-session composer', () => {
     h.type('Follow up'); h.submit(); await vi.advanceTimersByTimeAsync(0);
     expect(h.changeQueue).toHaveBeenCalledTimes(1);
     expect(h.props.onSend).not.toHaveBeenCalled();
+  });
+});
+
+describe('workspace-review send hold', () => {
+  it('retains text and attached files until explicit review permits sending', async () => {
+    const h = harness();
+    h.props.agents.uploadAttachment = vi.fn();
+    h.type('Continue in the new folder');
+    const file = new File(['Keep this attachment'], 'example.txt', { type: 'text/plain' });
+    const input = elements(h.render()).find(node => node.type === 'input' && node.props.type === 'file')!;
+    (input.props.onChange as (event: unknown) => void)({ target: { files: [file], value: '' } });
+    h.props.sendBlocked = true;
+    h.submit(); await Promise.resolve();
+    const tree = h.render();
+    expect(elements(tree).find(node => node.type === 'textarea')!.props.disabled).toBe(false);
+    expect(elements(tree).find(node => node.type === 'textarea')!.props.value).toBe('Continue in the new folder');
+    expect(text(tree)).toContain('example.txt');
+    expect(h.props.onSend).not.toHaveBeenCalled();
+    expect(h.props.agents.uploadAttachment).not.toHaveBeenCalled();
+    h.props.sendBlocked = false;
+    h.submit();
+    await vi.waitFor(() => expect(h.props.onSend).toHaveBeenCalledOnce());
+    expect(h.props.onSend).toHaveBeenCalledWith(expect.objectContaining({ text: 'Continue in the new folder', attachments: [expect.objectContaining({ name: 'example.txt', file })] }));
   });
 });
 

@@ -79,14 +79,18 @@ if [ "$yes" -eq 0 ]; then
   fi
   case "$ui" in
     zenity)
-      prefix=$(zenity --entry --title="$title" --text="$destination_label" --entry-text="$prefix") || cancel
+      prefix=$(zenity --file-selection --directory --title="$destination_label" --filename="$prefix/") || cancel
       zenity --question --no-markup --title="$title" --text="$welcome\n\n$prefix" --ok-label="$install_label" --cancel-label="$cancel_label" || cancel ;;
     kdialog)
-      prefix=$(kdialog --title "$title" --inputbox "$destination_label" "$prefix") || cancel
+      prefix=$(kdialog --title "$destination_label" --getexistingdirectory "$prefix") || cancel
       kdialog --title "$title" --yesno "$welcome\n\n$prefix" || cancel ;;
     terminal)
       [ -t 0 ] || die "$no_dialog"
-      printf '%s\n%s\n%s %s\n' "$title" "$welcome" "$destination_label:" "$prefix"
+      printf '%s\n%s\n' "$title" "$welcome"
+      printf '%s [%s]: ' "$destination_label" "$prefix"
+      IFS= read -r selected || cancel
+      [ -z "$selected" ] || prefix=$selected
+      printf '%s\n' "$prefix"
       printf '%s ' "$confirm_label"; IFS= read -r answer || cancel
       case "$answer" in y|Y|yes|YES) ;; *) cancel ;; esac ;;
   esac
@@ -102,8 +106,19 @@ owned_file() { [ -f "$1" ] && [ ! -L "$1" ] && [ -O "$1" ]; }
 old=0
 validate_existing() {
   local marker old_app old_icon old_desktop entry current_app pending_marker pending_base pending_current pending_next pending_size pending_count=0 count=0
+  old=0
   if [ -e "$prefix" ]; then
-    [ -d "$prefix" ] && [ -O "$prefix" ] && owned_file "$manifest" || return 1
+    [ -d "$prefix" ] && [ -O "$prefix" ] || return 1
+    if [ ! -e "$manifest" ] && [ ! -L "$manifest" ]; then
+      # Native folder choosers may create the selected destination. Adopt only
+      # an empty owned directory; keep its inode for rollback until commit.
+      shopt -s nullglob dotglob
+      for entry in "$prefix"/*; do count=$((count + 1)); done
+      shopt -u nullglob dotglob
+      [ "$count" -eq 0 ] && [ ! -e "$desktop" ] && [ ! -L "$desktop" ] || return 1
+      old=2; return 0
+    fi
+    owned_file "$manifest" || return 1
     [ "$(wc -l < "$manifest" | tr -d ' ')" = 4 ] || return 1
     { IFS= read -r marker; IFS= read -r old_app; IFS= read -r old_icon; IFS= read -r old_desktop; } < "$manifest"
     [ "$marker" = extalia-linux-installer-v1 ] || return 1
@@ -176,7 +191,7 @@ move_exact() {
   else mv -n -- "$source" "$target" || return 1; fi
   [ ! -e "$source" ] && [ ! -L "$source" ] && [ "$(file_identity "$target")" = "$identity" ]
 }
-stage=; previous=; desktop_stage=; desktop_previous=; lock=; installed=0; desktop_installed=0; committed=0
+stage=; previous=; desktop_stage=; desktop_previous=; lock=; installed=0; desktop_installed=0; committed=0; previous_empty=0
 cleanup() {
   local status=$?
   trap - EXIT HUP INT TERM
@@ -226,13 +241,22 @@ chmod 644 "$desktop_stage"
 printf 'extalia-linux-installer-v1\n%s\n%s\n%s\n' "$app_hash" "$icon_hash" "$(file_digest "$desktop_stage")" > "$stage/.extalia-installer"
 safe_path "$prefix" && safe_path "$desktop" && validate_existing || die "$unsafe"
 check_running
-if [ "$old" -eq 1 ]; then
+if [ "$old" -ne 0 ]; then
+  [ "$old" -ne 2 ] || previous_empty=1
   previous="$stage.previous"; move_exact "$prefix" "$previous"
+fi
+if [ "$old" -eq 1 ]; then
   desktop_previous="$desktop_stage.previous"; move_exact "$desktop" "$desktop_previous"
 fi
 move_exact "$stage" "$prefix"; installed=1; stage=
 move_exact "$desktop_stage" "$desktop"; desktop_installed=1; desktop_stage=
 safe_path "$prefix" && safe_path "$desktop" && validate_existing || die "$unsafe"
+if [ "$previous_empty" -eq 1 ]; then
+  # A concurrent writer may have added a file after the empty-folder check.
+  # Refuse and restore that directory rather than recursively deleting it.
+  rmdir -- "$previous" || die "$unsafe"
+  previous=
+fi
 committed=1
 [ -z "$previous" ] || rm -rf -- "$previous"
 [ -z "$desktop_previous" ] || rm -f -- "$desktop_previous"

@@ -3,6 +3,7 @@ import { isValidElement, type ReactElement, type ReactNode } from 'react';
 import type { AgentHostApi, HostState, SessionSummary } from '@extalia/platform';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { OfficePromptDock } from '../src/office/OfficePromptDock';
+import { SessionWorkspaceReview } from '../src/chat/SessionWorkspaceReview';
 import { MESSAGES } from '../src/i18n';
 
 // Exercise the real dock handlers; effects retain their cleanup on navigation.
@@ -77,7 +78,8 @@ function harness(language: 'en' | 'id' = 'en') {
   const sendButton = () => elements(render()).find(item => String(item.props.className).includes('office-prompt-send'))!;
   const send = async () => { (sendButton().props.onClick as () => void)(); await settle(); render(); };
   const chips = () => elements(render()).filter(item => item.type === 'li' && String(item.props.className).includes('composer-chip'));
-  return { host, props, render, area, type, paste, sendButton, send, chips };
+  const review = () => elements(render()).find(item => item.type === SessionWorkspaceReview)!;
+  return { host, props, render, area, type, paste, sendButton, send, chips, review };
 }
 
 beforeEach(() => {
@@ -238,4 +240,102 @@ it('continues the send when its own session model update is published', async ()
   h.props.state = { ...h.props.state, sessions: h.props.state.sessions.map(item => item.id === 'existing-a' ? { ...item, options: { model: 'example-model' } } : item) };
   h.render(); updated.resolve(); await settle(); h.render();
   expect(h.host.sendPrompt).toHaveBeenCalledOnce();
+});
+
+const changedFolders = 'Workspace folders or access boundaries changed. Review this session’s workspace from session actions to keep its history under the current access, or start a new Native session.';
+function requireReview(h: ReturnType<typeof harness>) {
+  h.props.state = { ...h.props.state, sessions: h.props.state.sessions.map(item => item.id === 'existing-a' ? { ...item, workspaceReviewRequired: true } : item) };
+  h.render();
+}
+
+it.each(['en', 'id'] as const)('keeps explicit folder review outside compact folds and blocks uploads, Send and Enter in %s', async language => {
+  const h = harness(language); h.props.targetSessionId = 'existing-a'; h.props.compact = true;
+  requireReview(h);
+  const tree = h.render();
+  expect(elements(tree)[0]!.props['data-open']).toBe(true);
+  const form = elements(tree).find(item => item.props.role === 'group')!;
+  expect((form.props.children as ReactNode[]).some(item => isValidElement(item) && item.type === SessionWorkspaceReview)).toBe(true);
+  expect(h.review().props).toMatchObject({ required: true, session: expect.objectContaining({ id: 'existing-a' }), t: MESSAGES[language] });
+  h.paste('Keep the imported draft. '.repeat(500)); h.type('Keep this message too.');
+  expect(h.area().props.disabled).toBe(false);
+  expect(h.sendButton().props.disabled).toBe(true);
+  await h.send();
+  const preventDefault = vi.fn();
+  (h.area().props.onKeyDown as (event: unknown) => void)({ key: 'Enter', shiftKey: false, nativeEvent: { isComposing: false }, preventDefault });
+  await settle(); h.render();
+  expect(preventDefault).toHaveBeenCalledOnce();
+  expect(h.host.uploadAttachment).not.toHaveBeenCalled(); expect(h.host.sendPrompt).not.toHaveBeenCalled();
+  expect(h.host.createSession).not.toHaveBeenCalled(); expect(h.chips()).toHaveLength(1);
+  expect(h.area().props.value).toBe('Keep this message too.');
+});
+
+it('recovers a rejected existing-session send even without a summary flag and retains text and uploaded IDs until explicit review', async () => {
+  const h = harness(); h.props.targetSessionId = 'existing-a';
+  h.host.sendPrompt.mockRejectedValueOnce(new Error(changedFolders));
+  h.paste('Retain this imported attachment. '.repeat(400)); h.type('Retain this draft.');
+  await h.send();
+  expect(h.host.sendPrompt).toHaveBeenCalledOnce(); expect(h.host.uploadAttachment).toHaveBeenCalledOnce();
+  expect(h.host.getState).toHaveBeenCalledOnce(); expect(h.props.onState).toHaveBeenCalledWith(h.props.state);
+  expect(h.review().props.required).toBe(true); expect(h.sendButton().props.disabled).toBe(true);
+  expect(h.area().props.value).toBe('Retain this draft.'); expect(h.chips()).toHaveLength(1);
+  expect(contents(h.render())).toContain(changedFolders);
+  (h.review().props.onReviewed as (next: HostState) => void)(h.props.state); h.render();
+  expect(h.review().props.required).toBe(false); expect(h.sendButton().props.disabled).toBe(false);
+  expect(contents(h.render())).not.toContain(changedFolders);
+  expect(h.host.sendPrompt).toHaveBeenCalledOnce();
+  await h.send();
+  expect(h.host.uploadAttachment).toHaveBeenCalledOnce(); expect(h.host.sendPrompt).toHaveBeenCalledTimes(2);
+  expect(h.host.sendPrompt.mock.calls[0]).toEqual(h.host.sendPrompt.mock.calls[1]);
+});
+
+it('leaves an ordinary existing-session failure available without offering folder consent', async () => {
+  const h = harness(); h.props.targetSessionId = 'existing-a'; h.type('Keep the ordinary failure draft.');
+  h.host.sendPrompt.mockRejectedValueOnce(new Error('The connection is unavailable.'));
+  await h.send();
+  expect(h.host.getState).not.toHaveBeenCalled(); expect(h.review().props.required).toBe(false);
+  expect(contents(h.render())).toContain('The connection is unavailable.');
+  expect(h.area().props.value).toBe('Keep the ordinary failure draft.');
+});
+
+it.each(['target', 'workspace'] as const)('ignores a folder-change send failure after %s changes away and back', async navigation => {
+  const h = harness(); h.props.targetSessionId = 'existing-a'; h.type('Preserve this context draft.');
+  let reject!: (failure: Error) => void;
+  const pending = new Promise<undefined>((_resolve, fail) => { reject = fail; });
+  h.host.sendPrompt.mockImplementationOnce(() => pending); await h.send();
+  if (navigation === 'target') h.props.targetSessionId = 'existing-b'; else h.props.workspaceId = 'workspace-b'; h.render();
+  if (navigation === 'target') h.props.targetSessionId = 'existing-a'; else h.props.workspaceId = workspace.id; h.render();
+  reject(new Error(changedFolders)); await settle(); h.render();
+  expect(h.host.getState).not.toHaveBeenCalled(); expect(h.props.onState).not.toHaveBeenCalled();
+  expect(h.review().props.required).toBe(false); expect(contents(h.render())).not.toContain(changedFolders);
+  expect(h.host.sendPrompt).toHaveBeenCalledOnce(); expect(h.area().props.value).toBe('Preserve this context draft.');
+});
+
+it('ignores a late recovery refresh after the target changes', async () => {
+  const h = harness(); h.props.targetSessionId = 'existing-a'; h.type('Retain after navigation.');
+  const refresh = deferred<HostState>();
+  h.host.sendPrompt.mockRejectedValueOnce(new Error(changedFolders)); h.host.getState.mockImplementationOnce(() => refresh.promise);
+  await h.send(); expect(h.host.getState).toHaveBeenCalledOnce();
+  h.props.targetSessionId = 'existing-b'; h.render();
+  refresh.resolve(h.props.state); await settle(); h.render();
+  expect(h.props.onState).not.toHaveBeenCalled(); expect(h.review().props.required).toBe(false);
+  expect(h.area().props.value).toBe('Retain after navigation.');
+});
+
+it.each(['options', 'upload'] as const)('stops delivery when the host requests review during an in-flight %s', async phase => {
+  const h = harness(); h.props.targetSessionId = 'existing-a'; h.paste('Retain this attachment. '.repeat(500));
+  const release = deferred<void>(), upload = deferred<Awaited<ReturnType<typeof h.host.uploadAttachment>>>();
+  if (phase === 'options') {
+    Object.assign(h.props.agents, { modelChoices: vi.fn(async () => ({ models: [], efforts: [] })), setSessionOptions: vi.fn(() => release.promise) });
+    const picker = elements(h.render()).find(item => item.props.id === 'test-office-dock-model')!;
+    (picker.props.onChange as (value: string) => void)('example-model');
+  } else h.host.uploadAttachment.mockImplementationOnce(() => upload.promise);
+  await h.send(); requireReview(h);
+  if (phase === 'options') release.resolve();
+  else {
+    const input = h.host.uploadAttachment.mock.calls[0]![1];
+    upload.resolve({ id: 'retained-upload', name: input.name, mimeType: input.mimeType, size: 1, kind: 'text' });
+  }
+  await settle(); h.render();
+  expect(h.host.sendPrompt).not.toHaveBeenCalled(); expect(h.chips()).toHaveLength(1); expect(h.review().props.required).toBe(true);
+  if (phase === 'options') expect(h.host.uploadAttachment).not.toHaveBeenCalled();
 });

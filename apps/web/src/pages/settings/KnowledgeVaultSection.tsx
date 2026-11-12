@@ -1,10 +1,11 @@
 import type { AgentHostApi, FileSystemCapability, KnowledgeVaultSettings } from '@extalia/platform';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { errorMessage } from '../../host/remote';
 import type { Messages } from '../../i18n';
 import { isUnsupportedMessage } from '../../knowledge/knowledgeModel';
 import { Icon } from '../../ui/Icon';
 import { VaultProfilesSection } from './VaultProfilesSection';
+import { DirectoryPickerButton } from '../../setup/DirectoryPickerButton';
 
 type VaultApi = Required<Pick<AgentHostApi, 'knowledgeSettings' | 'setKnowledgeVaultRoot'>>;
 
@@ -14,7 +15,7 @@ export function vaultSettingsPresent(agents: Partial<AgentHostApi> | undefined):
 }
 
 /** The section as shown: current vault, safety note, default / choose actions. Pure, for tests. */
-export function KnowledgeVaultView({ t, settings, busy, error, notice, canPick, path, onPath, onDefault, onChoose, onApply }: {
+export function KnowledgeVaultView({ t, settings, busy, error, notice, canPick, path, onPath, onDefault, onChoose, onApply, folderPicker }: {
   t: Messages;
   settings: KnowledgeVaultSettings;
   busy: boolean;
@@ -27,6 +28,7 @@ export function KnowledgeVaultView({ t, settings, busy, error, notice, canPick, 
   onDefault: () => void;
   onChoose: () => void;
   onApply: () => void;
+  folderPicker?: ReactNode;
 }) {
   const k = t.knowledgeVault;
   return (
@@ -45,7 +47,7 @@ export function KnowledgeVaultView({ t, settings, busy, error, notice, canPick, 
       <p className="muted small">{k.watch[settings.watch]}</p>
       {canPick ? (
         <div className="actions">
-          <button type="button" className="button small" disabled={busy} onClick={onChoose}><Icon name="folder" />{k.choose}</button>
+          {folderPicker ?? <button type="button" className="button small" disabled={busy} onClick={onChoose}><Icon name="folder" />{k.choose}</button>}
           <button type="button" className="button small" disabled={busy || settings.kind === 'default'} onClick={onDefault}>{k.useDefault}</button>
         </div>
       ) : (
@@ -112,18 +114,11 @@ function VaultSection({ t, agents, picker, onChanged, locked }: SectionProps) {
       setNotice(t.knowledgeVault.switched); onChanged?.();
     } catch (failure) { if (live.current) setError(errorMessage(failure)); } finally { if (live.current) setBusy(false); }
   };
-  const choose = async () => {
-    if (busy || locked || !live.current) return;
-    setBusy(true);
-    let selection;
-    try { selection = await picker?.selectDirectory(); } catch (failure) { if (live.current) setError(errorMessage(failure)); return; }
-    finally { if (live.current) setBusy(false); }
-    if (live.current && selection?.path) await apply(selection.path);
-  };
-
   return (
-    <><KnowledgeVaultView t={t} settings={settings} busy={busy || Boolean(locked)} error={error} notice={notice} canPick={Boolean(picker)} path={path} onPath={setPath}
-      onDefault={() => void apply(null)} onChoose={() => void choose()} onApply={() => void apply(path.trim())} />
-      <VaultProfilesSection t={t} agents={agents} locked={busy || locked} changed={profileRefresh} /></>
+    <><KnowledgeVaultView t={t} settings={settings} busy={busy || Boolean(locked)} error={error} notice={notice} canPick={Boolean(picker) || typeof agents.browseDirectories === 'function'} path={path} onPath={setPath}
+      onDefault={() => void apply(null)} onChoose={() => undefined} onApply={() => void apply(path.trim())}
+      folderPicker={<DirectoryPickerButton t={t} agents={agents} picker={picker} purpose="knowledge-vault" title={t.directoryPicker.vault}
+        label={t.knowledgeVault.choose} initialPath={path} disabled={busy || Boolean(locked)} onSelected={apply} />} />
+      <VaultProfilesSection t={t} agents={agents} picker={picker} locked={busy || locked} changed={profileRefresh} /></>
   );
 }

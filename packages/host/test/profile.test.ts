@@ -94,3 +94,28 @@ describe('agent host profile API and welcome setup version', () => {
     } finally { await runtime.close(); }
   });
 });
+
+
+describe('host-owned interface state', () => {
+  it('persists known settings, merges concurrent patches and supports removing values', async () => {
+    const config = path.join(await temp(), 'config');
+    const store = createProfileStore(config);
+    await Promise.all([
+      store.save({ clientState: { lastWorkspaceId: 'w_example', officeLights: 'off' } }),
+      store.save({ clientState: { earlierOpen: '1', approvalNotifications: 'off' } }),
+      store.save({ preferences: { language: 'id' } }),
+    ]);
+    expect(await store.get()).toMatchObject({ preferences: { language: 'id' }, clientState: {
+      lastWorkspaceId: 'w_example', officeLights: 'off', earlierOpen: '1', approvalNotifications: 'off',
+    } });
+    await store.save({ clientState: { lastWorkspaceId: null, earlierOpen: null } });
+    expect((await store.get()).clientState).toEqual({ officeLights: 'off', approvalNotifications: 'off' });
+    const before = await readFile(path.join(config, 'profile.json'), 'utf8');
+    for (const clientState of [{ unknown: 'value' }, { officeLights: 'invalid' }, { lastWorkspaceId: '../outside' }, { earlierOpen: 'yes' }, { approvalNotifications: 1 }]) {
+      await expect(store.save({ clientState })).rejects.toThrow(/interface state/);
+      expect(await readFile(path.join(config, 'profile.json'), 'utf8')).toBe(before);
+    }
+    await store.save({ clientState: { officeLights: null, approvalNotifications: null } });
+    expect((await store.get()).clientState).toBeUndefined();
+  });
+});

@@ -126,7 +126,7 @@ export function WorkspaceForm({ t, agents, picker, draft, onChange, connections,
     const request = folderRequests.begin();
     if (!picker) { setBrowsing('primary'); return; }
     try {
-      const selection = await picker.selectDirectory();
+      const selection = await picker.selectDirectory({ purpose: 'project', title: t.directoryPicker.project, initialPath: (draft.folder?.path || draft.folderInput) });
       if (!folderRequests.current(request)) return;
       if (selection?.path) await check(selection.path);
       else if (selection) setBrowsing('primary');
@@ -163,7 +163,7 @@ export function WorkspaceForm({ t, agents, picker, draft, onChange, connections,
     if (!picker) { setBrowsing('additional'); return; }
     setCheckingAdditional(true);
     try {
-      const selection = await picker.selectDirectory();
+      const selection = await picker.selectDirectory({ purpose: 'project', title: t.directoryPicker.project, initialPath: additionalFolderInput || (draft.folder?.path || draft.folderInput) });
       if (request !== additionalRequest.current) return;
       if (selection?.path) await checkAdditional(selection.path, request);
       else if (selection) setBrowsing('additional');

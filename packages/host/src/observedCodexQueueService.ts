@@ -3,7 +3,7 @@ import { open } from 'node:fs/promises';
 import path from 'node:path';
 import type { ObservedCodexQueueMessageInput, ObservedCodexQueueStatus } from '@extalia/platform';
 import { queueCodexMessage, type CodexQueueOptions, type CodexQueueResult } from './codexQueue.js';
-import { findOnPath, isExecutable } from './connect/util.js';
+import { environmentValue, findExecutable } from './executableDiscovery.js';
 import { isNotFound, writeJsonAtomic } from './jsonStore.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -27,6 +27,7 @@ interface Binding {
 }
 interface Operation { generation: number; abort: AbortController; done: Promise<void>; submitted?: Binding }
 interface Options {
+  homeDirectory?: string;
   dataDirectory: string;
   env: Readonly<Record<string, string | undefined>>;
   target(id: string): ObservedCodexQueueTarget | undefined;
@@ -131,8 +132,8 @@ export class ObservedCodexQueueService {
     return pending;
   }
   private async binary(): Promise<string | undefined> {
-    const override = this.options.env.EXTALIA_CODEX_BIN;
-    return override ? await isExecutable(override) ? override : undefined : findOnPath('codex', this.options.env, process.platform);
+    return findExecutable('codex', { env: this.options.env, platform: process.platform, homeDirectory: this.options.homeDirectory,
+      override: environmentValue(this.options.env, 'EXTALIA_CODEX_BIN', process.platform) });
   }
   private reason(id: string, source: ObservedCodexQueueTarget | undefined, binding: Binding | undefined): string | undefined {
     if (this.closed) return 'The Extalia host is closed.';

@@ -8,7 +8,7 @@ const mocks = vi.hoisted(() => ({
   authorize: vi.fn(), owned: vi.fn(), ipc: vi.fn(),
   updater: { autoDownload: false, autoInstallOnAppQuit: false, allowPrerelease: false, on: vi.fn(), checkForUpdates: vi.fn(), downloadUpdate: vi.fn(), quitAndInstall: vi.fn() },
 }));
-vi.mock('electron-updater', () => ({ autoUpdater: mocks.updater }));
+vi.mock('../src/updaterStorage', () => ({ createProfileUpdater: () => mocks.updater }));
 vi.mock('../src/linuxInstallerUpdate', () => ({ authorizeLinuxInstallerUpdate: mocks.authorize, isLinuxInstallerAppImage: mocks.owned }));
 vi.mock('electron', () => ({
   BrowserWindow: { getAllWindows: () => [] },
