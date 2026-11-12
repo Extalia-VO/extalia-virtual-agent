@@ -22,7 +22,7 @@
 > **Next-gen spatial workspace & mission control for autonomous AI agents.**  
 > Extalia turns invisible autonomous AI agent workflows into a **living 3D virtual office** while giving engineers conventional views (Chat, Console, Tasks, Files, Git, Terminal, and Memory) for real development.
 
-> **Status: beta development.** Published Desktop/Web and npm builds are listed on the [release page](https://github.com/Extalia-VO/extalia-virtual-agent/releases/latest); release verification is tracked in [#67](https://github.com/Extalia-VO/extalia-virtual-agent/issues/67). Native Chat and subagent teams, agent-app observation, shared Desktop/Web UI, a furnished 3D campus, built-in skill guidance, progressive workspace memory and an Obsidian-compatible graph are implemented in this source tree. The opt-in Rust core adds durable planning and recovery evidence. Production SkillSpector/Python workers, complete effect-time ACLs and automatic learning activation remain unfinished; see the [PRD tracker](docs/product/prd-app-flow-and-live-agents.md#11-status-tracker).
+> **Status: beta development.** Published Desktop/Web and npm builds are listed on the [release page](https://github.com/Extalia-VO/extalia-virtual-agent/releases); v0.4.288 release verification is tracked in [#91](https://github.com/Extalia-VO/extalia-virtual-agent/issues/91). Native Chat and subagent teams, agent-app observation, shared Desktop/Web UI, a furnished 3D campus, built-in skill guidance, progressive workspace memory and an Obsidian-compatible graph are implemented in this source tree. The opt-in Rust core adds durable planning and recovery evidence. Pinned SkillSpector inspection with bundled Python is implemented for macOS 14+ ARM64; other scanner targets, complete effect-time ACLs and the broader v0.5 gates remain unfinished. Deferred Native learning respects workspace consent and never automatically activates candidates; see the [PRD tracker](docs/product/prd-app-flow-and-live-agents.md#11-status-tracker).
 
 ---
 
@@ -34,7 +34,7 @@ Most AI coding agents work in a black-box terminal. Extalia combines deep autono
 - 🤖 **Multi-Engine Freedom**: Drive autonomous teams with Extalia Native and Hermes Agent, or non-intrusively observe your existing CLI tools (Claude Code, OpenAI Codex, Gemini CLI, Google Antigravity).
 - 🔀 **Heterogeneous Model Routing**: Assign distinct models per role (e.g. Claude Opus for principal architecture, Sonnet for backend/frontend, GPT-4o/Gemini Flash for QA & linting).
 - ⚡ **Rust Control Plane**: A bundled stdio sidecar (`extalia-daemon`) with SQLite WAL checkpointing, leases, heartbeats and retained recovery evidence; unresolved work is not treated as safely finished.
-- 🧠 **Skills & Knowledge**: Built-in recall and concise-response guidance, bounded workspace memory and a 3D Obsidian-compatible graph with folder/tag/time filters. Explicit prompt learning creates a quarantined candidate, not an automatically activated skill.
+- 🧠 **Skills & Knowledge**: Built-in guidance, a live Grimoire marketplace, bounded workspace memory and an Obsidian-compatible graph. Reviewed imports and deferred Native learning keep inspection, user approval and activation separate.
 - 🔒 **Local-First Privacy**: Credentials use the configured local secret store; sensitive text is masked during supported ingestion and export paths. Agent actions retain their configured permissions.
 
 ---
@@ -97,17 +97,23 @@ npm install -g extalia-vo@latest
 extalia
 ```
 
-The npm command installs the latest **published** package, which can precede the source changes described above. The v0.4.227 download links below become available when its validated GitHub release is published. See the [release page](https://github.com/Extalia-VO/extalia-virtual-agent/releases) for currently available versions:
+The npm command installs the latest **published** package. During v0.4.288 release
+preparation, npm `latest` remains v0.4.227. The v0.4.288 Desktop/Web archives and
+npm packages below are **planned; validation and publication are pending**.
+Use the [release page](https://github.com/Extalia-VO/extalia-virtual-agent/releases)
+for available downloads; the filenames below are not availability claims. See
+[the v0.4.288 release notes](docs/release/v0.4.288.md) for changes since v0.4.227.
 
-| Platform | Package | Architecture | Direct Download |
+| Platform | Package | Architecture | Planned v0.4.288 filename |
 | :--- | :--- | :--- | :--- |
-| **macOS** | Disk Image (DMG) | Apple Silicon (arm64) | [Extalia-0.4.227-mac-arm64.dmg](https://github.com/Extalia-VO/extalia-virtual-agent/releases/download/v0.4.227/Extalia-0.4.227-mac-arm64.dmg) · [ZIP](https://github.com/Extalia-VO/extalia-virtual-agent/releases/download/v0.4.227/Extalia-0.4.227-mac-arm64.zip) |
-| **macOS** | Disk Image (DMG) | Intel (x64) | [Extalia-0.4.227-mac-x64.dmg](https://github.com/Extalia-VO/extalia-virtual-agent/releases/download/v0.4.227/Extalia-0.4.227-mac-x64.dmg) · [ZIP](https://github.com/Extalia-VO/extalia-virtual-agent/releases/download/v0.4.227/Extalia-0.4.227-mac-x64.zip) |
-| **Linux** | Universal AppImage | x64 | [Extalia-0.4.227-linux-x86_64.AppImage](https://github.com/Extalia-VO/extalia-virtual-agent/releases/download/v0.4.227/Extalia-0.4.227-linux-x86_64.AppImage) |
-| **Linux** | Debian / Ubuntu Package | x64 | [Extalia-0.4.227-linux-amd64.deb](https://github.com/Extalia-VO/extalia-virtual-agent/releases/download/v0.4.227/Extalia-0.4.227-linux-amd64.deb) |
-| **Windows** | Desktop installer | x64 | [Extalia-0.4.227-win-x64-setup.exe](https://github.com/Extalia-VO/extalia-virtual-agent/releases/download/v0.4.227/Extalia-0.4.227-win-x64-setup.exe) |
-| **Web** | Static Web Client | Universal | [Extalia-0.4.227-web.zip](https://github.com/Extalia-VO/extalia-virtual-agent/releases/download/v0.4.227/Extalia-0.4.227-web.zip) |
-| **CLI** | Local Web Bridge | Universal | [extalia-vo-0.4.227.tgz](https://github.com/Extalia-VO/extalia-virtual-agent/releases/download/v0.4.227/extalia-vo-0.4.227.tgz) |
+| **macOS** | DMG / ZIP | Apple Silicon (arm64) | `Extalia-0.4.288-mac-arm64.dmg` · `Extalia-0.4.288-mac-arm64.zip` |
+| **macOS** | DMG / ZIP | Intel (x64) | `Extalia-0.4.288-mac-x64.dmg` · `Extalia-0.4.288-mac-x64.zip` |
+| **Linux** | AppImage | x64 | `Extalia-0.4.288-linux-x86_64.AppImage` |
+| **Linux** | Debian / Ubuntu package | x64 | `Extalia-0.4.288-linux-amd64.deb` |
+| **Linux** | Per-user setup | x64 | `Extalia-0.4.288-linux-x64-setup.run` |
+| **Windows** | Desktop installer | x64 | `Extalia-0.4.288-win-x64-setup.exe` |
+| **Web** | Static client | Universal | `Extalia-0.4.288-web.zip` |
+| **CLI** | Local Web Bridge | Universal | `extalia-vo-0.4.288.tgz` |
 
 Free macOS previews use verified ad-hoc signatures and are **not Apple-notarized**.
 They may show an unidentified-developer warning. If you trust the official
@@ -121,18 +127,18 @@ xattr -dr com.apple.quarantine /Applications/Extalia.app
 Previews update by manual download. See
 [macOS release modes](docs/release/packaging.md#macos-release-modes).
 
-Check downloaded files against [SHA256SUMS.txt](https://github.com/Extalia-VO/extalia-virtual-agent/releases/download/v0.4.227/SHA256SUMS.txt) on the release page. The static
+After publication, check downloaded files against `SHA256SUMS.txt` on the matching release page. The static
 Web ZIP contains the client; running agents still requires the local Bridge or
 Desktop host. npm installs the Bridge, client and matching daemon together.
 
-The bundled GLB inventory is about **400 MiB before archive compression**, so
+The bundled inventory has **133 registered GLBs, about 145 MiB before archive compression**, so
 downloads and first-time asset loading can take time. Source code is MIT;
 third-party scene assets have their own licenses, including five non-commercial
 vehicles. The commercial-assets switch changes runtime selection, not packaged
 files. Read the [asset notices](apps/web/public-assets/THIRD_PARTY_NOTICES.md)
 before reuse or commercial distribution.
 
-The opt-in Rust store upgrades through schema 12. Older binaries cannot open a
+The opt-in Rust store upgrades through schema 14. Older binaries cannot open a
 newer schema; retain a backup of your local profile before attempting a downgrade.
 
 ---
@@ -141,7 +147,7 @@ newer schema; retain a backup of your local profile before attempting a downgrad
 
 | Managed sessions | Observed sessions |
 | --- | --- |
-| Extalia drives an agent **runtime** such as Hermes Agent. The runtime uses the **provider or router** you choose (OpenAI-compatible endpoints, 9Router, OmniRouter, Ollama, …). You prompt and steer from Extalia. | Agents keep running in **their own apps** (Codex, Claude Code, Gemini CLI, Antigravity). Extalia reads their session logs read-only, receives events from hooks installed once with your approval (`extalia connect`), and visualizes the work. Prompting stays in the agent's app. |
+| Extalia drives an agent **runtime** such as Hermes Agent. The runtime uses the **provider or router** you choose (OpenAI-compatible endpoints, 9Router, OmniRouter, Ollama, …). You prompt and steer from Extalia. | Agents keep running in **their own apps** (Codex, Claude Code, Gemini CLI, Antigravity). Extalia reads their session logs read-only, receives events from hooks installed once with your approval (`extalia connect`), and visualizes the work. Verified native controls or an explicitly paired cooperative inbox can send to supported existing conversations; other routes use a manual handover packet. |
 
 Both modes emit the same Extalia Protocol events, so every view and the office treat them alike. See [Runtimes, providers and observed agents](docs/architecture/runtime-adapters.md).
 
@@ -214,12 +220,12 @@ What works today:
 
 - **An agent with only an API key or router**: Extalia Native reads, searches and edits your project and runs commands with your approval, through OpenAI, Anthropic, OpenRouter, 9Router, OmniRoute, Ollama or any OpenAI-compatible endpoint.
 - **Orchestration** (on by default): the agent hands read-only research to worker agents on Complex / Standard / Quick models you choose.
-- **Memory and skills** per connection: Extalia's own, the provider's (OmniRoute), or off; nine built-in skills plus your own.
+- **Memory and skills** per connection: Extalia's own, the provider's (OmniRoute), or off; built-in guidance plus reviewed user skills.
 - **Native history import** from Codex, Claude Code, Hermes Agent and Gemini CLI, read-only, with preview.
-- **Continue in Extalia**: when Codex or Claude Code runs out of quota, continue an imported or observed conversation in a new Extalia session; the original request and recent messages are carried over and the source is never changed.
+- **Reviewed work handover**: retain a Native session when changing model connections, or transfer reviewed working notes and source evidence to an existing observed conversation through a verified route or manual packet. Native workspace moves preview destination access; observed project associations require review. See [cross-agent handover](docs/getting-started/cross-agent-handover.md).
 - **History per connection**: turn session history off for a connection and its new sessions stay in memory only.
 - **Live agent-app hooks and MCP server**: one-step connection via `extalia connect` (Codex, Claude Code, Gemini CLI, Hermes, and Antigravity) with zero-config auto-connect on startup; loopback stdio JSON-RPC MCP server (`extalia mcp`) for intent and handoff reporting.
-- **Desktop** (auto-update from GitHub Releases) and **Web** through `npm i -g extalia-vo` → `extalia` (updates through npm).
+- **Desktop** through validated GitHub Releases (free macOS previews update by manual download) and **Web** through `npm i -g extalia-vo` → `extalia` (updates through npm).
 - **One profile for Web and Desktop** in `~/.extalia-vo` (`%USERPROFILE%\.extalia-vo` on Windows; `EXTALIA_HOME` overrides it): connections, workspaces, sessions and interface preferences. Data from the folder used up to 0.0.20 is copied there once; the old folder is kept.
 - **Extalia Protocol v0** with strict validation, English and Indonesian UI, light, dark (Royal Charcoal) and liquid-glass themes.
 
@@ -270,7 +276,7 @@ Development is tracked across iterative public milestones aligned with Master PR
 - **🚀 v0.4.0-beta: Subagents & Project Orchestration** *(Active Milestone)*
   Subagent lifecycle manager, dynamic 3D office seating, task-based spatial dispatch, dual-mode prompt dock, and multi-agent coordination.
 - **🔮 v0.5.0-beta: Durable Control & Knowledge Vault** *(Under Development)*
-  Durable planner/worker ownership, effect-time permissions and knowledge access. Current builds include bounded graph views and fail-closed skill quarantine; production scanner/Python workers and complete ACL enforcement remain open.
+  Durable planner/worker ownership, effect-time permissions and knowledge access. Current source includes bounded graph views, fail-closed skill inspection and a pinned scanner/Python bundle for macOS 14+ ARM64. Cross-platform scanner support, general Python workers and complete ACL enforcement remain open.
 - **🔮 v0.6.0-beta: Evolve & Autonomous Learning** *(Under Development)*
   Experience capture, disposable sandbox evaluation in git worktrees, hybrid learning activation, and Evolve Learning Center.
 - **🎯 v1.0.0-ga: Extension SDK & Production Release**
