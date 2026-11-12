@@ -2,6 +2,10 @@
 
 Status: accepted, 2026-11-11. Extends ADRs 0024, 0066 and 0067; placement follows ADR 0071.
 
+The quiet-period reset and foreground/curator overlap rules are extended by
+[ADR 0075](0075-idle-team-knowledge-and-office-context.md): new work now waits for
+actual maintenance settlement, then the full selected delay restarts after idle.
+
 ## Problem
 
 Learning previously blocked source completion. Additional vault profiles were

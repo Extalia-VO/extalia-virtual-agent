@@ -44,9 +44,25 @@ export function normalizeIgnoreFolders(value: unknown): string[] {
   }
   return folders;
 }
+interface ObservationWorkspaceLink {
+  workspaceId: string; sourceFingerprint: string; projectCanonicalPath: string; root: string;
+}
+/** Association metadata is not authority to read a path. The host validates real containment. */
+function validWorkspaceLink(value: unknown): value is ObservationWorkspaceLink {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const link = value as Record<string, unknown>;
+  const absolute = (value: unknown): value is string => typeof value === 'string' && value.length <= 4096
+    && !/\p{Cc}/u.test(value) && path.isAbsolute(value) && path.normalize(value) === value;
+  return Object.keys(link).length === 4 && Object.keys(link).every(key => ['workspaceId', 'sourceFingerprint', 'projectCanonicalPath', 'root'].includes(key))
+    && typeof link.workspaceId === 'string' && /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(link.workspaceId)
+    && typeof link.sourceFingerprint === 'string' && /^[a-f0-9]{64}$/.test(link.sourceFingerprint)
+    && absolute(link.projectCanonicalPath) && absolute(link.root);
+}
 interface ObservationRecord {
   id: string; title: string; reference: NativeObservationRef; watching: boolean;
   createdAt: string; lastActiveAt: string; projectPath?: string;
+  /** Explicit workspace association, tied to the source identity at the user's review. */
+  workspaceLink?: ObservationWorkspaceLink;
   /** Added by automatic discovery; subject to the LRU limit. */
   auto?: boolean;
   /** Registered or fed by an agent app's hooks. A hook-only record has an empty `reference.path`. */
@@ -313,6 +329,9 @@ export class Observations {
       if (!item || typeof item !== 'object') throw new Error('Invalid observer record.');
       const record = item as ObservationRecord;
       checkSessionId(record.id);
+      if (record.workspaceLink !== undefined && !validWorkspaceLink(record.workspaceLink)) {
+        throw new Error('The observed workspace association is invalid. Existing data was preserved.');
+      }
       if (record.hook !== undefined && !isHookApp(record.hook?.app)) delete record.hook;
       const identity = normalizeAgentIdentity(record.agentName, record.agentGender);
       delete record.agentName; delete record.agentGender;
@@ -541,6 +560,9 @@ export class Observations {
         ...normalizeAgentIdentity(record.agentName, record.agentGender), ...(model ? { model } : {}), ...(record.modelAt ? { modelAt: record.modelAt } : {}),
         ...((EFFORTS as readonly unknown[]).includes(record.effort) ? { effort: record.effort } : {}), ...(record.effortAt ? { effortAt: record.effortAt } : {}),
         observation: { sourceId: record.reference.sourceId, nativeSessionId: safeLabel(record.reference.nativeSessionId, 200), watching: record.watching, status: live.status, channel,
+          ...(record.workspaceLink ? { workspaceLink: { workspaceId: record.workspaceLink.workspaceId,
+            sourceMatches: record.workspaceLink.sourceFingerprint === this.controlTarget(record.id)?.fingerprint,
+            projectCanonicalPath: record.workspaceLink.projectCanonicalPath, root: record.workspaceLink.root } } : {}),
           ...(record.projectPath ? { projectPath: record.projectPath } : {}), ...(live.lastCheckedAt ? { lastCheckedAt: live.lastCheckedAt } : {}), ...(live.error ? { error: live.error } : {}),
           ...(live.lastEventAt ? { lastEventAt: live.lastEventAt } : {}), ...(record.auto ? { auto: true } : {}), ...(live.hook || record.hook ? { hook: true } : {}) },
         ...(record.context ? { context: record.context } : {}) };
@@ -636,7 +658,7 @@ export class Observations {
   private notify(record: ObservationRecord) {
     const live = this.live.get(record.id)!;
     this.emit(createEvent({ sessionId: record.id, source: { runtime: record.reference.sourceId, channel: 'transcript', adapter: 'native-transcript' },
-      body: { type: 'session.updated', revision: digest([live.revision, live.eventRevision, live.lastEventAt, live.eventIds?.size, live.status, record.watching, record.title, this.labelsOnly()]), messageCount: live.snapshot?.messages.length ?? 0 } }));
+      body: { type: 'session.updated', revision: digest([live.revision, live.eventRevision, live.lastEventAt, live.eventIds?.size, live.status, record.watching, record.title, this.labelsOnly(), record.workspaceLink]), messageCount: live.snapshot?.messages.length ?? 0 } }));
   }
   private publish(events: readonly ExtaliaEvent[]) {
     for (const event of events) { try { this.emit(event); } catch { /* a disconnected listener must not stop polling */ } }
@@ -1001,6 +1023,29 @@ export class Observations {
       }
       if (added) await this.saveSettings();
     }).then(async () => { await this.refresh(); });
+  }
+  /** Trusted host mutation: physical containment, workspace existence and continuity are checked by the caller. */
+  setWorkspaceLink(id: string, expectedSourceFingerprint: string, link: { workspaceId: string; projectCanonicalPath: string; root: string } | null): Promise<void> {
+    return this.serialize(async () => {
+      const record = this.records.find(item => item.id === id);
+      if (!record || typeof expectedSourceFingerprint !== 'string' || !/^[a-f0-9]{64}$/.test(expectedSourceFingerprint)
+        || this.controlTarget(id)?.fingerprint !== expectedSourceFingerprint) throw new Error('The observed source changed. Review its workspace association again.');
+      if (link !== null && (!link || typeof link !== 'object' || Array.isArray(link)
+        || Object.keys(link).length !== 3 || Object.keys(link).some(key => !['workspaceId', 'projectCanonicalPath', 'root'].includes(key)))) throw new Error('Invalid observed workspace association.');
+      const next = link === null ? undefined : { ...link, sourceFingerprint: expectedSourceFingerprint };
+      if (next !== undefined && !validWorkspaceLink(next)) throw new Error('Invalid observed workspace association.');
+      const previous = record.workspaceLink;
+      if (next) record.workspaceLink = next; else delete record.workspaceLink;
+      try { await this.save(); }
+      catch (error) {
+        // Restore only this failed mutation, never a later source/record replacement.
+        if (this.records.includes(record) && record.workspaceLink === next) {
+          if (previous) record.workspaceLink = previous; else delete record.workspaceLink;
+        }
+        throw error;
+      }
+      this.invalidateControl(record); this.notify(record);
+    });
   }
   setWatching(id: string, watching: boolean): Promise<void> {
     return this.serialize(async () => {

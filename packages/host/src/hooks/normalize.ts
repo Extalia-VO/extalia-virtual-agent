@@ -1,4 +1,4 @@
-import { EFFORTS, safeLabel, safeText, stopReasonOf, type Effort, type StopReason } from '@extalia/core';
+import { EFFORTS, literalProjectPath, safeLabel, safeText, stopReasonOf, type Effort, type StopReason } from '@extalia/core';
 import { commandHead, explicitToolFailure, extractWrittenFiles, outputText, statedSuccess, stepOutput, toolHints } from '@extalia/importers';
 import { AGENT_APP_IDS, type AgentAppId } from '@extalia/platform';
 import { createEvent, type AgentPhase, type EventBody, type EventSource, type ExtaliaEvent } from '@extalia/protocol';
@@ -87,8 +87,8 @@ function reportedSettings(payload: Row): Pick<NormalizedHook, 'effort' | 'effort
 
 /** An absolute, single-line path of bounded length; anything else is dropped. */
 function pathField(value: unknown): string | undefined {
-  const text = str(value).trim();
-  if (!text || text.length > 2000 || /[\0\r\n]/.test(text)) return undefined;
+  const text = literalProjectPath(value);
+  if (!text) return undefined;
   return /^(?:\/|[A-Za-z]:[\\/]|\\\\)/.test(text) ? text : undefined;
 }
 

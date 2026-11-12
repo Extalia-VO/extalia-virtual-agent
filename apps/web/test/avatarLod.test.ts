@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Group, Mesh, PerspectiveCamera } from 'three';
-import { createLodState, lodStep, lodTier, screenHeightPixels, setCastShadows } from '../src/office/scene/avatars/avatarLod';
+import { beginAvatarPose, createLodState, lodStep, lodTier, screenHeightPixels, setCastShadows } from '../src/office/scene/avatars/avatarLod';
 import { HUMANOID_HEAD_ELONGATION, createHumanoidRigProfile } from '../src/office/scene/avatars/rig';
 
 describe('avatar level of detail', () => {
@@ -31,6 +31,39 @@ describe('avatar level of detail', () => {
     const far = screenHeightPixels(figure, camera, 900);
     camera.position.set(0, 1.6, 3);
     expect(screenHeightPixels(figure, camera, 900)).toBeGreaterThan(far * 2.5);
+  });
+
+  it.each([0, 1, 2] as const)('refreshes a revealed tier-%i figure immediately without replaying hidden time', tier => {
+    const floor = new Group(), actor = new Group(), body = new Group();
+    floor.add(actor); actor.add(body);
+    const state = createLodState();
+    expect(beginAvatarPose(state, body)).toBe(true);
+    expect(lodStep(state, tier, .01)).toBeCloseTo(.01);
+    // Leave an ordinary skipped frame pending before hiding the floor.
+    if (tier !== 0) expect(lodStep(state, tier, .02)).toBeNull();
+    floor.visible = false;
+    for (let frame = 0; frame < 1000; frame++) expect(beginAvatarPose(state, body)).toBe(false);
+    expect(body.visible).toBe(true);
+    expect(state.pending).toBe(0);
+    floor.visible = true;
+    expect(beginAvatarPose(state, body)).toBe(true);
+    expect(lodStep(state, tier, .015)).toBeCloseTo(.015);
+    expect(state.tier).toBe(tier);
+  });
+
+  it('handles a detached ref and the body or actor becoming hidden independently of the floor', () => {
+    const floor = new Group(), actor = new Group(), body = new Group();
+    floor.add(actor); actor.add(body);
+    const state = createLodState();
+    expect(beginAvatarPose(state, null)).toBe(false);
+    expect(beginAvatarPose(state, body)).toBe(true);
+    actor.visible = false;
+    expect(beginAvatarPose(state, body)).toBe(false);
+    actor.visible = true; body.visible = false;
+    expect(beginAvatarPose(state, body)).toBe(false);
+    body.visible = true;
+    expect(beginAvatarPose(state, body)).toBe(true);
+    expect(lodStep(state, 2, .016)).toBeCloseTo(.016);
   });
 
   it('drops shadows and restores each mesh to its own setting', () => {

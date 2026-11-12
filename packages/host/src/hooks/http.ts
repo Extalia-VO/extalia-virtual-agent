@@ -66,6 +66,7 @@ export interface HookRequestOptions {
   deliver(app: HookApp, payload: Record<string, unknown>): void;
   /** Optional session-bound inbox poll handler for authenticated `extalia mcp` requests. */
   pollInbox?(app: HookApp, payload: Record<string, unknown>, response: ServerResponse): Promise<void>;
+  readContinuity?(app: HookApp, payload: Record<string, unknown>, response: ServerResponse): Promise<void>;
   limiter: HookRateLimiter;
   maxBodyBytes?: number;
 }
@@ -140,6 +141,10 @@ export async function handleHookRequest(request: IncomingMessage, response: Serv
     try { payload = JSON.parse(body.toString('utf8')); } catch { payload = undefined; }
     if (payload && typeof payload === 'object' && !Array.isArray(payload)) {
       const record = payload as Record<string, unknown>;
+      if (record.operation === 'continuity' && options.readContinuity) {
+        await options.readContinuity(app, record, response);
+        return;
+      }
       if (record.operation === 'poll' && typeof record.session_id === 'string' && record.hook_event_name === undefined && record.event === undefined && options.pollInbox) {
         await options.pollInbox(app, record, response);
         return;

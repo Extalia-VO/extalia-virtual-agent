@@ -30,8 +30,10 @@ export const RENDER_BUDGET_LEVELS: readonly RenderBudgetLevel[] = [
 ];
 
 export const TARGET_FPS = 40;
+/** Begin sharp, then let measured load reduce the drawing buffer if necessary. */
+export const INITIAL_RENDER_BUDGET_LEVEL = 2;
 
-let level = RENDER_BUDGET_LEVELS.length - 1;
+let level = INITIAL_RENDER_BUDGET_LEVEL;
 const listeners = new Set<() => void>();
 
 export function getRenderBudgetLevel(): number { return level; }
@@ -65,34 +67,49 @@ export interface BudgetController {
   level: number;
   slow: number;
   fast: number;
-  /** Times each level was abandoned for being too slow. */
+  /** Saturating failure count per level, used only for bounded retry backoff. */
   failures: number[];
+  /** Foreground measurement windows only: hidden time never expires a retry delay. */
+  windows: number;
+  retryAfter: number[];
+  stable: number;
 }
 
 export function createBudgetController(): BudgetController {
-  return { level: RENDER_BUDGET_LEVELS.length - 1, slow: 0, fast: 0, failures: RENDER_BUDGET_LEVELS.map(() => 0) };
+  return { level: INITIAL_RENDER_BUDGET_LEVEL, slow: 0, fast: 0, stable: 0, windows: 0,
+    failures: RENDER_BUDGET_LEVELS.map(() => 0), retryAfter: RENDER_BUDGET_LEVELS.map(() => 0) };
 }
 
 /** Windows (about one second each) of sustained headroom before trying the level above again. */
-export const RECOVERY_WINDOWS = 12;
+export const RECOVERY_WINDOWS = 6;
+/** Also probe higher quality on a stable, frame-capped display without requiring 57/60 Hz. */
+export const PROBE_WINDOWS = 30;
+export const MAX_RETRY_WINDOWS = 120;
 
 /**
  * Feed one measurement window (about one second). A window slower than the target (mean frame time
  * over 25 ms) steps down a level at once; two windows in a row under the target + 5 fps headroom also
- * step down. Recovery is careful: twelve smooth windows (≥ 57 fps) step back up, unless that level has
- * already proved too slow twice. Returns the level to use.
+ * step down. Six windows with headroom (≥ 48 fps), or thirty stable windows (≥ 40 fps), try
+ * one sharper level. Failed levels cool down for 15/30/60/120 foreground windows, never
+ * permanently locking out recovery after a heavy scene, resize or temporary load.
  */
 export function updateBudget(controller: BudgetController, { fps }: BudgetSample): number {
   const max = RENDER_BUDGET_LEVELS.length - 1;
+  if (!Number.isFinite(fps) || fps <= 0) return controller.level;
+  controller.windows += 1;
   controller.slow = fps < TARGET_FPS + 5 ? controller.slow + 1 : 0;
-  controller.fast = fps >= 57 ? controller.fast + 1 : 0;
+  controller.fast = fps >= 48 ? controller.fast + 1 : 0;
+  controller.stable = fps >= TARGET_FPS ? controller.stable + 1 : 0;
   if ((fps < TARGET_FPS || controller.slow >= 2) && controller.level < max) {
-    controller.failures[controller.level] = (controller.failures[controller.level] ?? 0) + 1;
+    const failures = Math.min(4, (controller.failures[controller.level] ?? 0) + 1);
+    controller.failures[controller.level] = failures;
+    controller.retryAfter[controller.level] = controller.windows + Math.min(MAX_RETRY_WINDOWS, 15 * 2 ** (failures - 1));
     controller.level += 1;
-    controller.slow = 0; controller.fast = 0;
-  } else if (controller.fast >= RECOVERY_WINDOWS && controller.level > 0 && (controller.failures[controller.level - 1] ?? 0) < 2) {
+    controller.slow = 0; controller.fast = 0; controller.stable = 0;
+  } else if ((controller.fast >= RECOVERY_WINDOWS || controller.stable >= PROBE_WINDOWS)
+    && controller.level > 0 && controller.windows >= controller.retryAfter[controller.level - 1]!) {
     controller.level -= 1;
-    controller.slow = 0; controller.fast = 0;
+    controller.slow = 0; controller.fast = 0; controller.stable = 0;
   }
   return controller.level;
 }
@@ -105,10 +122,12 @@ export interface RenderFrameSampler {
   last: number;
   /** Longest frame interval (seconds) in the current window. */
   longest: number;
+  /** Unfiltered throughput for the visible FPS readout (includes one-off hitches). */
+  rawFps: number | null;
 }
 
 export function createRenderFrameSampler(warmupSeconds = 3): RenderFrameSampler {
-  return { seconds: 0, frames: 0, warmup: warmupSeconds, last: 0, longest: 0 };
+  return { seconds: 0, frames: 0, warmup: warmupSeconds, last: 0, longest: 0, rawFps: null };
 }
 
 /** Windows with at least this many frames ignore their single longest frame (a one-off hitch). */
@@ -122,6 +141,7 @@ export function resetRenderFrameSampler(sampler: RenderFrameSampler): void {
   sampler.seconds = 0;
   sampler.frames = 0;
   sampler.longest = 0;
+  sampler.rawFps = null;
   sampler.last = 0;
   sampler.warmup = Math.max(sampler.warmup, 1);
 }
@@ -155,6 +175,7 @@ export function sampleRenderFrame(sampler: RenderFrameSampler, nowMs: number, vi
   // ran smoothly leaves it out, so it cannot cost a level that would then take seconds to win back.
   // Stalls in short windows (few frames) and repeated slow frames still count in full.
   const hitch = sampler.frames >= HITCH_MIN_FRAMES ? sampler.longest : 0;
+  sampler.rawFps = sampler.frames / sampler.seconds;
   const fps = (sampler.frames - (hitch ? 1 : 0)) / Math.max(1e-6, sampler.seconds - hitch);
   sampler.seconds = 0;
   sampler.frames = 0;

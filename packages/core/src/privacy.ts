@@ -51,6 +51,12 @@ export function safeText(input: unknown, limit = 20_000): string {
   return clip(redact(String(input ?? '').replace(/\r\n/g, '\n')), limit);
 }
 
+/** Paths are identities: omit unsafe/redacted/oversized values instead of changing their location. */
+export function literalProjectPath(input: unknown, limit = 2000): string | undefined {
+  if (typeof input !== 'string' || !input.trim() || input.length > limit || /\p{Cc}/u.test(input)) return undefined;
+  return safeText(input, limit) === input ? input : undefined;
+}
+
 const CREDENTIAL_KEYS = new Set(['apikey', 'secret', 'password', 'token', 'credentials', 'authorization', 'bearer', 'privatekey', 'accesstoken', 'refreshtoken', 'clientsecret']);
 
 /** True for object keys that conventionally hold credentials (`api_key`, `accessToken`, …). */

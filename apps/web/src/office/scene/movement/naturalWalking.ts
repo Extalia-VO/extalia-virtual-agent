@@ -10,6 +10,14 @@ export interface WalkingNeighbor {
   readonly velocity: Readonly<Point3>;
   /** Optional current travel intent; stationary bodies leave this absent. */
   readonly target?: Readonly<Point3>;
+  /** Forward route intent, independent of lateral recentering toward a sampled marker. */
+  readonly travelTarget?: Readonly<Point3>;
+  /** A physical door operator's advertised maneuver, independent of its last successful step. */
+  readonly travelDoor?: string;
+  /** Physical crossing queue, including a tail that has moved beyond the normal admission radius. */
+  readonly queueDoor?: { readonly id: string; readonly entrySide: 1 | -1 };
+  /** Scene-owned passing handshake; a parked peer must not trigger reciprocal retreat. */
+  readonly yieldingTo?: string;
 }
 /** A sampled curve leg, with progress measured along its centre line, not the displaced body. */
 export interface NaturalLeg {

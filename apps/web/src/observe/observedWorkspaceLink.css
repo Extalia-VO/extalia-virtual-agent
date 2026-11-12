@@ -1,0 +1,16 @@
+.observed-workspace-link-dialog { width: min(620px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); box-sizing: border-box; overflow: auto; overscroll-behavior: contain; padding: 24px; border: 1px solid var(--line); border-radius: 18px; background: var(--surface-solid); color: var(--text); }
+.observed-workspace-link-dialog::backdrop { background: rgb(8 10 14 / 55%); }
+.observed-workspace-link-dialog header { display: flex; gap: 12px; align-items: center; justify-content: space-between; }
+.observed-workspace-link-dialog h2 { margin: 0; font-size: 1.15rem; }
+.observed-workspace-link-dialog p, .observed-workspace-link-dialog code { overflow-wrap: anywhere; }
+.observed-workspace-link-dialog dl { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; }
+.observed-workspace-link-dialog dt { color: var(--muted); font-size: .85rem; }
+.observed-workspace-link-dialog dd { min-width: 0; margin: 0 0 8px; }
+.observed-workspace-link-dialog fieldset { min-width: 0; margin: 18px 0; padding: 12px; border: 1px solid var(--line); border-radius: 12px; }
+.observed-workspace-choice { display: flex; align-items: flex-start; gap: 10px; padding: 10px 0; cursor: pointer; }
+.observed-workspace-choice input { flex: none; margin-top: 4px; }
+.observed-workspace-choice > span { display: grid; min-width: 0; gap: 5px; }
+.observed-workspace-choice code { font-size: .78rem; }
+.observed-workspace-link-dialog footer { flex-wrap: wrap; justify-content: flex-end; gap: 10px; }
+.observed-workspace-link-button { flex: none; }
+@media (max-width: 600px) { .observed-workspace-link-dialog { width: calc(100vw - 20px); max-height: calc(100dvh - 20px); padding: 16px; } }

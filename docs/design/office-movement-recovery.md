@@ -4,6 +4,137 @@ Office movement is presentation state. Recovery keeps the same mover ID and
 reported agent/session; it does not restart a runtime, submit a prompt, recreate a
 session or change the assigned task.
 
+## Shared conversation destinations
+
+Idle colleagues choose a common authored place from both live positions. The
+planner compares reachable graph routes in both seat assignments, favours the
+participants' floor, and minimises the longer approach and arrival imbalance.
+Nearby sofa/armchair pairs receive a small preference over comparable standing
+places. It never creates a geometric midpoint through furniture or walls.
+Standing alternatives exist on all three floors, away from their main hall line.
+
+Both participants receive their own destination in the same decision. Physical
+seat holds, in-flight chair interactions, pending targets and leisure reservations
+exclude occupied places. New invitations wait until a colleague has finished
+operating a door, chair, lift or stairs. Existing navigation and body-clearance
+checks still own the entire walk and sit/stand choreography.
+
+The conversation starts only once both colleagues are physically at their paired
+places. Sofa conversations use seated talk/listen gestures without removing the
+authored sitting/leg pose. An early sofa arrival relaxes briefly; a first arrival
+waiting more than twelve seconds ends the shared plan, with a thirty-second
+invitation cooldown. Both can resume other activities through ordinary checked
+movement. Real work, meetings or departure cancel the reciprocal leisure visit;
+owned door/chair/lift cleanup remains with the mover until physically complete.
+
+A voluntary sit approach that makes no meaningful monitored progress for twelve
+seconds also ends the outing, including its reciprocal chat. The mover retraces
+its checked approach trail and returns to its desk before starting another
+outing. Completed sitting, food service and real work are not treated as blocked
+entry; door/lift ownership remains protected. This covers two blocked approaches
+even when neither participant has reached the conversation place yet.
+
+Mounted fitness seats retain their own equipment contact through the complete authored
+side dismount, then rejoin ordinary travel from that stage. A short generic
+backstep can still lie inside the inflated equipment frame. The controlled lane must
+match the named station and its explicit authored rider-root anchor, remain on the same floor and within
+12 cm of the authored segment, and progress outward (inward for mounting).
+Only that station's bounds are masked; foreign solids, body separation and slab
+support still apply. The next ordinary curve starts at the dismount stage.
+The rider-root marker lives outside replaceable model parts, so loading a GLB
+cannot remove the contact ownership used by procedural fallback furniture.
+Both strength-seat variants (cable-row and weight-bench) expose this same
+persistent root anchor. Every resource marked as equipment must provide it;
+otherwise a correctly protected departure cannot leave its own frame.
+Library decoration also leaves the complete opening/closing operator arc clear.
+
+Authored aisle edges must also clear the actual loaded furniture. Fitness traffic
+joins the eastern aisle through the southern center/east corridor instead of
+crossing the cable tower. A longer cable-row approach is intentional: the closer
+projection went through the tower posts.
+
+The treadmill frame merges its deck and uprights by material, making its mesh
+bounding box incorrectly fill the usable standing area. A concave authored
+outline replaces only that frame's bounds, preserving the console and rails
+while opening the real deck and rear entry. Belt, display, other furniture and
+body checks remain active. Both treadmill targets attach through a rear aisle;
+their standing stage remains their target, without a privileged contact shortcut.
+
+Ordinary graph planning checks every walking edge in a candidate route against
+the static furnished field, not just its first join. A clear first leg must not
+repeatedly lead to the same blocked later edge. A bounded planner removes blocked
+directed edges from a decision-local graph and tries authored alternatives. It
+does not permanently blacklist moved furniture or turn transient bodies into
+static obstacles. Door/connector endpoints, actual portal crossings, stairs,
+lifts and the contact legs appended after graph planning retain their existing
+controllers. In the Entertainment room, the shared aisle passes between the
+coffee table and upholstery fronts rather than through the armchair or across
+the second console player's sofa.
+
+Door waiting bays reserve both the leaf sweep and the operator's complete
+opening/closing body maneuver, including closure after a partial opening.
+The reservation constrains parking endpoints; an escape path still checks the
+actual current leaf, furniture and other bodies. Existing bays are revalidated.
+A waiter already too close to its own face of the door can recover the required
+apron depth through continuous outward steps; it cannot deepen the intrusion or
+cross the portal without its normal turn.
+
+Yielding uses a separate forward travel intent. A natural walker displaced from
+its centerline must advertise its upcoming route direction, rather than a tiny
+sideways recentering target. A blocked same-door FIFO head also exposes its live
+physical maneuver so waiters on either face can clear it while retaining their
+tickets. A genuine route turn refreshes a retained yield direction without
+discarding the original encounter origin or granting another character passage.
+
+A distant follower can join through a nearby registered tail on the same face
+of its next planned door. Admission requires a forward tail within 2.5 m and
+0.8 m laterally, a clear static corridor and no intervening portal. It does not
+reserve a later door through an earlier doorway. This extends a physical queue
+without widening its lateral lane or changing the normal admission radius.
+Operator-only membership is included in the reported queue count, so an unknown
+caller cannot receive an `ahead` position beyond that count.
+
+At a lift, a waiter whose reserved place is temporarily occupied can take a
+checked floor-side holding path for a nearby passenger with the actual boarding
+or exit token. The original queue request and waiting place remain intact. The
+temporary retreat never enters the shaft/cab, ignores no bodies or furniture,
+and settles at its holding point until ordinary approach becomes possible.
+This breaks mutual occupied-target waits without invoking transit relocation.
+
+Door acts explicitly register their active door. Across different door groups,
+one stable door-ID order governs both new and retained courtesy yields; followers
+inherit their group's priority while keeping that door's FIFO ticket order.
+Incidental enrollment by a neighboring portal does not establish active-door
+ownership. An invalid retained yield releases its cached retreat path so normal
+checked movement resumes. Finish/cancel/removal clear only the applicable intent.
+This prevents two neighboring queue heads from staying parked for each other.
+
+## Recurrent pedestrian encounters
+
+A moving body can still be stuck in a repeated retreat/rejoin loop. Alongside
+the stationary timer, an unchanged destination retains its best remaining
+distance and the identity of the nearby peer. Changing curve samples or
+revisiting an earlier position does not renew that progress floor. The crowd
+arbiter also recognises a close recurring encounter while both bodies move.
+
+Ordinary walking and crowd escapes share a stable passing order. A retreat
+retains its peer until that peer passes both the original encounter plane and
+the character's current feet, or physically leaves the corridor. Moving both
+bodies backwards together is not a completed handoff. Once the short escape
+finishes, this peer-specific hold releases the shared crowd initiative so other
+clusters can make room. A clear onward corridor can also end a stale hold;
+checking a tiny curve sample alone is insufficient.
+
+A delayed encounter can search a bounded local grid for a multi-turn route
+around furniture and bodies. Every point, edge and shortened chord requires
+floor support, static/body clearance and protected-portal checks. The route
+retains the next authored contact and all subsequent steps, and is not smoothed
+back into the blocked chord. Door, chair, stair and lift choreography keep their
+normal owners. There are at most three search probes for an unchanged local
+occupancy, separated by simulation-time retry intervals. Meaningfully changed
+body positions can re-arm that budget; timers alone cannot. New destinations
+clear the old encounter memory. Impossible passages remain blocked safely.
+
 ## Entrance deadlock
 
 Protected portal legs retain their authored line. Two opposing walkers can both
@@ -242,3 +373,32 @@ world Z −18.5/−15.5 with the connecting aisle at −16.3; the north Flex row
 desk approaches use sufficient corner clearance, and the library coffee table
 moves away from the pulled-chair corridor. These changes provide actual room
 for the existing choreography rather than exempting foreign desks or glass.
+
+## Physical closure responsibility
+
+Crossing tickets and closure responsibility are distinct. Completing a ticket,
+changing goals or cancelling an uncommitted follower cannot discard the previous
+passer's duty. Actual passage and a fresh operator physically beside the leaf can
+accept it; a distant future reservation cannot. A noncrossing closure service
+turn lets that owner physically return and close without removing or reordering
+other crossing tickets. Hand, body, leaf and foreign-portal checks still apply.
+The duty ends at a closed leaf, not when the close approach begins.
+
+Seat/exit, stair/lift and foreign-door boundaries resolve outstanding duties.
+The closer retains a checked exact return leg to the reached boundary before
+leaving for the handle, so closure cannot move the final destination to the
+handle-release position. A two-door future-ticket cycle closes both local doors
+before continuing, instead of waiting for the opposite actor indefinitely.
+
+A distant closer uses up to 64 nearby same-floor authored waypoints within 12 m
+to route around room furniture. It stores and physically consumes the outward
+path, rather than merely testing a direct handle chord. The return path is checked
+against the fully closed leaf and excludes foreign portals; it preserves the
+original aisle/boundary position. Blocked steps retry with current body clearance.
+The held Flex regression requires reaching the unchanged goal without a later
+allocation update rescuing it.
+
+A blocked pending destination also retries from actual feet through checked local
+bends and authored `:aisle` joins. Every bend and onward first leg must clear
+furniture, bodies and portal planes; normal door/stair routing remains in control.
+The ten-second retry does not reset the exhausted destination's attempt budget.

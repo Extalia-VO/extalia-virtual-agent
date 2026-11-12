@@ -2,11 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { BoxGeometry, Group, Mesh, MeshBasicMaterial } from 'three';
 import type { NavEdge, Waypoint } from '@extalia/office';
 import { DoorTraffic } from '../src/office/scene/interior/doorTraffic';
+import { isDeskChair } from '../src/office/scene/interior/deskChairs';
 import { gaitParameters } from '../src/office/scene/avatars/gait';
 import type { Point3 } from '../src/office/scene/layout';
 import { CrowdWatch } from '../src/office/scene/movement/crowdWatch';
-import { beginCrowdYield, createMover, crowdWatchActor, routeFrom, sendMover, stepMover, type ElevatorAccess, type MovementEnv } from '../src/office/scene/movement/mover';
-import { officeNavigation, type OfficeNavigation, type SeatApproach } from '../src/office/scene/movement/navGraph';
+import { beginCrowdYield, createMover, crowdWatchActor, placeSeated, routeFrom, sendMover, stepMover, type ElevatorAccess, type MovementEnv } from '../src/office/scene/movement/mover';
+import { officeNavigation, seatStageId, type OfficeNavigation, type SeatApproach } from '../src/office/scene/movement/navGraph';
 import { WalkingClearance } from '../src/office/scene/movement/naturalClearance';
 
 const elevators: ElevatorAccess = { request() {}, waitingSlot: () => null, canBoard: () => false, standingPosition: () => null,
@@ -177,5 +178,70 @@ describe('physical crowd initiative', () => {
     for (let frame = 0; frame < 450 && Math.hypot(mover.position[0] - target[0], mover.position[2] - target[2]) > .01; frame++) step();
     expect(mover.position).toEqual(target);
     if (phase === 'chairing') expect(mover.chair).toBe(chair);
+  });
+
+  it.each(['grip-walk', 'walk-out'] as const)('returns from outside the chair envelope before resuming a real %s script', beat => {
+    const authored = [...officeNavigation().seats.values()].find(seat => seat.floor === 1 && isDeskChair(seat.seatId))!;
+    const seat: SeatApproach = { ...authored, seat: [0, 0, 0], staging: [1.5, 0, -1.5], rotationY: 0 };
+    const stage = seatStageId(seat.seatId), exit: Point3 = [4, 0, -3];
+    const positions: [string, Point3][] = [[stage, [...seat.staging]], ['departure', exit]];
+    const navigation: OfficeNavigation = { ...officeNavigation(), waypoints: new Map(positions.map(([id, position]) => [id, { id, position, floorId: 'floor-1', kind: 'corridor' }])),
+      graph: { nodes: new Map(positions.map(([id, point]) => [id, { id, floorId: 'floor-1', pos: { x: point[0], y: point[2] } }])),
+        edges: new Map([[stage, [{ to: 'departure', cost: 4 }]], ['departure', [{ to: stage, cost: 4 }]]]) },
+      edges: [], seats: new Map([[seat.seatId, seat]]), aisles: new Map(), connectors: [], elevatorEdges: new Map(), entryId: 'departure' };
+    const controlled = (_seat: SeatApproach, from: Readonly<Point3>, to: Readonly<Point3>) => [from, to].every(point =>
+      Math.abs(point[0]) <= 1.55 && point[2] >= -1.61 && point[2] <= .05);
+    let blocker: Point3 | null = null;
+    const env: MovementEnv = { navigation, elevators, walkable: () => true, chairMotionClear: controlled,
+      nearbyWalkers: () => blocker ? [{ id: 'aisle-peer', position: blocker, velocity: [0, 0, 0] }] : [] };
+    const mover = createMover(`outside-chair-${beat}`, gaitParameters(), [...seat.staging], 0, false);
+    const departure = { kind: 'leave' as const, node: 'departure' };
+    if (beat === 'walk-out') { placeSeated(mover, seat, env); expect(sendMover(mover, departure, env)).toBe(true); }
+    else mover.goal = { kind: 'seat', seat };
+    const ready = () => mover.phase === 'chairing' && mover.chair?.beat === 0 && mover.chair.begun
+      && (beat === 'grip-walk' || mover.chair.path.length === 2) && mover.motion.reach.every(hand => hand.weight < .05);
+    for (let frame = 0; frame < 600 && !ready(); frame++) stepMover(mover, 1 / 30, env);
+    expect(ready()).toBe(true);
+    const chair = mover.chair!, origin: Point3 = [...mover.position], path = structuredClone(chair.path), goal = mover.goal;
+    if (beat === 'grip-walk') expect(sendMover(mover, departure, env)).toBe(true);
+    const pending = mover.pending;
+    expect(controlled(seat, origin, origin)).toBe(true);
+    // A hand still reaching for the resource must protect even a walking beat.
+    mover.motion.reach[0].weight = .1;
+    expect(crowdWatchActor(mover).eligible).toBe(false); expect(beginCrowdYield(mover, env)).toBe(false);
+    mover.motion.reach[0].weight = 0;
+    const target = chair.path[0]!, heading = Math.atan2(target[0] - origin[0], target[2] - origin[2]);
+    const insideExit: Point3 = [origin[0] + Math.sin(heading + Math.PI / 2) * .75, 0, origin[2] + Math.cos(heading + Math.PI / 2) * .75];
+    if (controlled(seat, insideExit, insideExit)) blocker = insideExit;
+    expect(beginCrowdYield(mover, env)).toBe(true);
+    expect(controlled(seat, mover.crowdYield!.point, mover.crowdYield!.point)).toBe(false);
+    let wasOutside = false;
+    const step = () => {
+      const before: Point3 = [...mover.position], phase = mover.phase, beforeBeat = mover.chair?.beat, kind = mover.chair?.kind;
+      stepMover(mover, 1 / 30, env);
+      const timedPose = phase === 'standing' || phase === 'chairing' && beforeBeat !== 0 && !(kind === 'sit' && beforeBeat === 4);
+      expect(Math.hypot(...mover.position.map((value, axis) => value - before[axis]!) as Point3), JSON.stringify({ phase, beforeBeat, next: mover.phase, at: mover.position })).toBeLessThan(timedPose ? .12 : .08);
+      expect(env.walkable!(before, mover.position, .29)).toBe(true);
+      if (blocker) expect(Math.hypot(mover.position[0] - blocker[0], mover.position[2] - blocker[2])).toBeGreaterThanOrEqual(.56 - 1e-6);
+      expect(mover.recovery.attempts).toBe(0);
+    };
+    for (let frame = 0; frame < 150 && mover.crowdYield; frame++) {
+      step(); wasOutside ||= !controlled(seat, mover.position, mover.position);
+      expect(mover.goal).toBe(goal); expect(mover.pending).toBe(pending);
+    }
+    expect(wasOutside).toBe(true); expect(mover.crowdYield).toBeNull(); expect(mover.chair).toBe(chair);
+    expect(controlled(seat, mover.position, mover.position)).toBe(false);
+    expect(chair.path).toEqual([origin, ...path]);
+    blocker = null;
+    let returned = false, completedSeat = beat === 'walk-out';
+    for (let frame = 0; frame < 1200 && mover.phase !== 'gone'; frame++) {
+      step();
+      returned ||= Math.hypot(mover.position[0] - origin[0], mover.position[2] - origin[2]) < .001;
+      if (mover.chair === chair && chair.path[0] !== origin && chair.path.length <= path.length) expect(returned).toBe(true);
+      completedSeat ||= Math.hypot(...mover.position) < .001 && mover.motion.sit > .99;
+    }
+    expect(returned).toBe(true); expect(completedSeat).toBe(true);
+    expect(mover.phase).toBe('gone'); expect(mover.position).toEqual(exit); expect(mover.goal).toEqual(departure);
+    expect(mover.chair).toBeNull(); expect(mover.pending).toBeNull();
   });
 });

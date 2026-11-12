@@ -4,6 +4,7 @@ import { errorMessage } from '../host/remote';
 import type { Messages } from '../i18n';
 import { Icon } from '../ui/Icon';
 import { Select } from '../ui/Select';
+import { SessionHandoverDialog } from '../chat/SessionHandoverDialog';
 
 const samePath = (a?: string, b?: string) => Boolean(a && b) && a!.replace(/[\\/]+$/, '') === b!.replace(/[\\/]+$/, '');
 
@@ -31,6 +32,18 @@ export function ContinueInExtalia({ t, agents, state, source, projectPath, onCon
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
   const chosen = usable.find(workspace => workspace.id === workspaceId) ?? suggested;
+  const observed = source.kind === 'observed' ? state.sessions.find(session => session.id === source.id && session.control === 'observed') : undefined;
+
+  // Existing observations use the reviewed canonical path; offline library imports retain their explicit snapshot workflow.
+  if (observed?.workspaceId && agents.sessionContinuity && agents.previewHandover && agents.applyHandover) return <div className="continue-panel">
+    <button type="button" className="button" aria-haspopup="dialog" onClick={() => setOpen(true)}><Icon name="chat" />{t.sessionHandover.title}</button>
+    {open && <SessionHandoverDialog agents={agents} state={state} session={observed} t={t.sessionHandover} initialKind="native"
+      onClose={() => setOpen(false)} onApplied={receipt => {
+        if (receipt.state === 'native-ready' && receipt.targetSessionId) {
+          setOpen(false); onContinued(receipt.targetSessionId, observed.workspaceId);
+        }
+      }} />}
+  </div>;
 
   const start = async () => {
     if (!chosen) return;

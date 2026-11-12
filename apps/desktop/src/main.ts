@@ -153,6 +153,8 @@ function createWindow(): BrowserWindow {
     minWidth: 900,
     minHeight: 600,
     show: false,
+    // Native fullscreen is selected before first show; diagnostic windows keep their capture size.
+    fullscreen: !smokeTest && !installerPreview,
     title: 'Extalia',
     backgroundColor: '#1e1f22',
     webPreferences: {

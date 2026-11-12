@@ -399,5 +399,66 @@ legitimate standing or scooting. Synthetic box-only chair tests do not establish
 that the complete furnished desk sequence works.
 
 Ignored local investigation artifacts are under `output/playwright/crowd-live`.
-Final lifecycle results and project validation remain pending until the corrected
-furnished-scene run completes; zero overlap alone is not an acceptance result.
+Final lifecycle acceptance requires exact admissions/exits, physical closure and
+stationary-goal progress in addition to zero overlap; results are recorded below.
+
+The corrected furnished layout passes a complete 59-desk preflight: every stage,
+controlled root contact, stand/scoot/grip trajectory and available full chair
+maneuver is clear. Both preferred side choices resolve to a valid maneuver;
+Knowledge uses its clear side around the existing coffee table. Library sofa
+entry/contact remains valid after moving its coffee table. The north Multi-Engine
+desktops retain a measured 0.035 m furniture-to-wall gap. The formerly blocked F3
+lift boarding segment also passes the real 5,164-collider field after deriving its
+join from the actual floor polygon rather than the building's outer bounding box.
+
+The full lifecycle runner additionally records actual admissions and retired
+actors, duplicate chair operators, full 3D frame displacements, non-arrival/exit
+opacity fades and recovery transitions. It cannot count a queued-but-never-spawned
+presence as a completed journey, or accept invisible relocation as recovery.
+
+
+### Accepted unchanged-source matrix (v0.4.276)
+
+All cases use the same final production movement source, actual furnished geometry,
+measured live body registry and controller-owned doors/lifts at 30 Hz. Four
+replacement workers are included in each case. No real agent/provider/profile is
+used.
+
+| Scenario | Desired roster | Admitted / exact exits | Last exit, simulation time |
+| --- | ---: | ---: | ---: |
+| Held office allocation, later reassignments disabled | 20 | 24 / 24 | 297.167 s |
+| Office, cyclic room/floor reassignment | 20 | 24 / 24 | 282.900 s |
+| Office, alternate ordering | 10 | 14 / 14 | 275.033 s |
+| Meeting rooms, cyclic reassignment and replacement | 20 | 24 / 24 | 301.500 s |
+
+All 86 admitted actors reach their exact exit; every case ends with all 26 doors
+closed and FIFO queues empty. Peak physical population is 24. Each case records
+zero overlap, missing-body/nearby-registry holes, registry drift, duplicate chair
+operators, unexpected opacity fades or 3D frame steps above 0.15 m. Minimum body
+separation is at least 0.56000 m; maximum full 3D step is 0.124991 m at 30 Hz,
+including cab motion. Normal arrival fades remain recorded separately. Recovery
+attempts and deliberate yielding are observed rather than required to be zero.
+
+The held case disables the scheduled 110/145-second task changes: all 20 workers
+must be seated at their assigned places, with closed doors and empty queues at
+160 seconds, before the ordinary final departure request at 220 seconds. It
+passes this assertion. The former standalone Flex closure hold exceeded 93
+seconds without another update; the corrected held run's maximum actionable
+stationary observation is 10.033 seconds. Slow hand/leaf progress is recorded
+separately from actual stationary feet.
+
+Ignored evidence: `output/playwright/crowd-live/accepted-*-results.json`,
+`accepted-held20-160.png`, geometry/held-goal diagnostics and the archived temporary
+harness. The fixture reports blocked development-HMR errors and React portal-root
+unmount warnings during furnishing setup; no clean-console or live-provider
+certification is claimed. Movement exceptions, missing assets and all measured
+safety failures are checked independently.
+
+Validation passes all 318 Web files / 3,037 tests, 227 adjacent door regressions,
+workspace typechecking, production Web/Desktop/CLI builds, version consistency
+and canonical hair checks. Full `pnpm check` was attempted twice at v0.4.276. It
+passes lint/boundaries/ownership/public-safety/schemas and types, then native
+compilers stop making progress at filesystem directory reads (sampled
+`rustc_session::filesearch → readdir → __getdirentries64`). Only the owned stalled
+verification processes were stopped and their exit was verified. Rust tests and
+the unified full-project gate are not claimed as passing.

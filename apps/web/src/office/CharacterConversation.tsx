@@ -1,4 +1,6 @@
 import { ObservedInputCards } from '../observe/ObservedInputCards';
+import { SessionHandoverDialog } from '../chat/SessionHandoverDialog';
+import { ObservedWorkspaceLinkButton } from '../observe/ObservedWorkspaceLinkDialog';
 import { useObservedInputs } from '../observe/ObservedInputProvider';
 import { ObservedCodexControls } from '../observe/ObservedCodexControls';
 import { ObservedCodexQueueControls } from '../observe/ObservedCodexQueueControls';
@@ -79,7 +81,7 @@ export interface CharacterConversationToolsState {
  * observed execution stays in its source app; Codex has a separate text sender. Tabs stay mounted, so switching
  * keeps the scroll position; the composer stays mounted, so it keeps the draft.
  */
-export function CharacterConversation({ t, language, agents, state, session, agent, onState, appearance, tab: controlledTab, onTab, readOnlyReason, onLocate, following = false, onToggleFollow, onSelectCharacter, onToolsStateChange }: {
+export function CharacterConversation({ t, language, agents, state, session, agent, onState, appearance, tab: controlledTab, onTab, readOnlyReason, onLocate, following = false, onToggleFollow, onSelectCharacter, onToolsStateChange, onHandoverReady }: {
   t: Messages;
   language: string;
   agents: AgentHostApi;
@@ -103,11 +105,13 @@ export function CharacterConversation({ t, language, agents, state, session, age
   onSelectCharacter?: ((characterId: string) => void) | undefined;
   /** Let the containing dialog size itself to the tools' actual layout state. */
   onToolsStateChange?: ((state: CharacterConversationToolsState) => void) | undefined;
+  onHandoverReady?: ((session: SessionSummary) => void) | undefined;
 }) {
   const inputContext = useObservedInputs();
   const inputEntry = inputContext?.view.entries[session.id];
   const inlineQuestions = inputEntry?.phase === 'ready' || inputEntry?.phase === 'private' || !!inputEntry?.requests.some(request => request.origin === 'codex-native');
   const [editing, setEditing] = useState(false);
+  const [handoverOpen, setHandoverOpen] = useState(false);
   const [ownTab, setOwnTab] = useState<ConversationTab>('messages');
   const tab = controlledTab ?? ownTab;
   const tabRef = useRef(onTab);
@@ -237,6 +241,8 @@ export function CharacterConversation({ t, language, agents, state, session, age
           {(['messages', 'activity', 'files'] as const).map(id => <button key={id} id={`${panelId(id)}-tab`} type="button" role="tab" aria-selected={tab === id && !editing} aria-controls={panelId(id)}
             onClick={() => { setTab(id); setEditing(false); }}>{c[id]}{id === 'activity' && team.length > 0 && <span className="badge">{team.length}</span>}{id === 'files' && files.length > 0 && <span className="badge">{files.length}</span>}</button>)}
         </div>
+        {!isWorker && !readOnlyReason && agents.previewHandover && <button type="button" className="button small" onClick={() => setHandoverOpen(true)}>{t.sessionHandover.title}</button>}
+        {!isWorker && !readOnlyReason && session.control === 'observed' && <ObservedWorkspaceLinkButton agents={agents} session={session} state={state} t={t} onState={onState} />}
         {hasTools && <button ref={toolsToggle} type="button" className="button small character-tools-toggle" aria-expanded={toolsOpen} aria-controls={`${ids}-tools`}
           aria-label={toolsOpen ? c.hideTools : c.showTools} title={toolsOpen ? c.hideTools : c.showTools}
           onClick={() => { if (toolsOpen) closeTools(); else setToolsChoice({ wide, open: true }); }}><Icon name="settings" />{c.tools}</button>}
@@ -311,6 +317,14 @@ export function CharacterConversation({ t, language, agents, state, session, age
         {workspace && !readOnly && <WorkspaceRuntimeNotice t={t} state={state} workspace={workspace} session={session} />}
         </div>
       </aside>}
+      {handoverOpen && !isWorker && !readOnlyReason && <SessionHandoverDialog agents={agents} state={state} session={session} t={t.sessionHandover}
+        onClose={() => setHandoverOpen(false)} onApplied={receipt => {
+          if (receipt.state === 'native-ready') void guard(async () => {
+            const next = await agents.getState(); setHandoverOpen(false); onState(next);
+            const destination = next.sessions.find(item => item.id === receipt.targetSessionId);
+            if (destination && destination.id !== session.id) onHandoverReady?.(destination);
+          });
+        }} />}
     </section>
   );
 }

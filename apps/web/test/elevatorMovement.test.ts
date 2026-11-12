@@ -1,10 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { BoxGeometry, Group, Mesh } from 'three';
 import { gaitParameters } from '../src/office/scene/avatars/gait';
 import { OFFICE_BUILDING, type Point3 } from '../src/office/scene/layout';
+import { createBuildingFootprintGeometry } from '../src/office/scene/interior/buildingFootprintGeometry';
 import { liveElevatorAccess } from '../src/office/scene/movement/elevatorAccess';
 import { elevatorMovementTarget, elevatorSegmentClear, elevatorWaitingPosition } from '../src/office/scene/movement/elevatorMovement';
 import { createMover, stepMover, type ElevatorAccess, type MovementEnv, type Mover } from '../src/office/scene/movement/mover';
 import { floorY, officeNavigation, type OfficeFloor } from '../src/office/scene/movement/navGraph';
+import { WalkingClearance } from '../src/office/scene/movement/naturalClearance';
 import { elevatorSnapshot, getElevatorGeometry, requestElevator, resetElevator, tickElevator, type ElevatorId } from '../src/office/scene/prefabs/architecture/elevatorController';
 
 const navigation = officeNavigation();
@@ -26,6 +29,16 @@ function environment(movers: readonly Mover[], elevators: ElevatorAccess = liveE
     .map(mover => ({ id: mover.id, position: mover.position, velocity: [0, 0, 0] as Point3, target: mover.target ?? undefined })) };
 }
 function reset() { for (const id of ['A', 'B'] as const) { resetElevator(id); tickElevator(100, id); } }
+function renderedSlabs() {
+  const root = new Group(), field = new WalkingClearance();
+  for (const floor of [1, 2, 3] as const) {
+    const geometry = createBuildingFootprintGeometry({ size: [OFFICE_BUILDING.width, OFFICE_BUILDING.depth], origin: [OFFICE_BUILDING.centerX, 0],
+      profile: floor === 3 ? 'upper' : 'lower', thickness: .1 })!;
+    const slab = new Mesh(geometry); slab.position.set(OFFICE_BUILDING.centerX, floorY(floor) - .1, 0); root.add(slab);
+  }
+  field.rebuild([root]);
+  return { root, field, dispose() { root.traverse(node => { if (node instanceof Mesh) node.geometry.dispose(); }); field.clear(); } };
+}
 beforeEach(reset);
 afterEach(reset);
 
@@ -51,6 +64,46 @@ describe('safe elevator landing and cabin movement', () => {
     expect(elevatorSegmentClear('A', threshold, [lift.x + 2, threshold[1], lift.z], walkable)).toBe(false);
     expect(elevatorSegmentClear('A', threshold, [lift.x, threshold[1], lift.z + 1.2], walkable)).toBe(false);
     expect(elevatorSegmentClear('A', threshold, [lift.x, threshold[1], getElevatorGeometry('B').z], walkable)).toBe(false);
+  });
+
+  it.each(['A', 'B'] as const)('joins the actual inscribed slab boundary to lift %s without bypassing a foreign solid', id => {
+    const h = renderedSlabs(), lift = getElevatorGeometry(id), from = landing(3, id), threshold: Point3 = [lift.doorX, floorY(3), lift.z];
+    try {
+      // Measured reproduction: the layout AABB extends7cm beyond the rendered slab.
+      const oldInset: Point3 = [OFFICE_BUILDING.east - .29 - .01, floorY(3), lift.z];
+      expect(h.field.segmentClear(from, oldInset, .29)).toBe(false);
+      expect(h.field.segmentClear(from, threshold, .29)).toBe(false);
+      expect(elevatorSegmentClear(id, from, threshold, h.field.segmentClear)).toBe(true);
+      const foreign = new Mesh(new BoxGeometry(.04, 1.5, .2));
+      foreign.position.set(24.9, floorY(3) + .8, lift.z); h.root.add(foreign); h.field.rebuild([h.root]);
+      expect(elevatorSegmentClear(id, from, threshold, h.field.segmentClear)).toBe(false);
+      h.root.remove(foreign); foreign.geometry.dispose(); h.field.rebuild([h.root]);
+      expect(elevatorSegmentClear(id, from, threshold, h.field.segmentClear)).toBe(true);
+    } finally { h.dispose(); }
+  });
+
+  it.each(['A', 'B'] as const)('boards and alights lift %s from the real F3 slab using its exclusive controller token', id => {
+    const h = renderedSlabs(), mover = passenger('physical-slab-rider', 3, 1, 0, id), trip = mover.trip!;
+    try {
+      requestElevator({ riderId: mover.id, from: 3, to: 1 }, id); tickElevator(100, id);
+      mover.phase = 'boarding'; trip.stage = 'door'; trip.requested = true;
+      mover.position.splice(0, 3, ...landing(3, id));
+      expect(liveElevatorAccess.canBoard(mover.id, id)).toBe(true);
+      const env = { ...environment([mover]), walkable: h.field.segmentClear };
+      const phaseOf = (): Mover['phase'] => mover.phase;
+      let rode = false, alighted = false;
+      for (let frame = 0; frame < 30 * 45 && phaseOf() !== 'gone'; frame++) {
+        tickElevator(1 / 30, id);
+        const before: Point3 = [...mover.position], phase = phaseOf();
+        stepMover(mover, 1 / 30, env);
+        if (phase !== 'riding') expect(Math.hypot(...mover.position.map((value, axis) => value - before[axis]!) as Point3)).toBeLessThan(.1);
+        rode ||= phaseOf() === 'riding'; alighted ||= phase === 'alighting' && mover.trip === null;
+        expect(mover.recovery.attempts).toBe(0);
+      }
+      expect(rode).toBe(true); expect(alighted).toBe(true); expect(mover.phase).toBe('gone');
+      expect(mover.position).toEqual([19, 0, getElevatorGeometry(id).z]);
+      expect(elevatorSnapshot(id).passengers).toEqual([]); expect(elevatorSnapshot(id).doors).toBe(0);
+    } finally { h.dispose(); }
   });
 
   it('routes a landing approach around physical waiting bodies instead of crossing them', () => {

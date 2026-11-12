@@ -1,4 +1,5 @@
 import type { Point3 } from '../layout';
+import type { EncounterMemory } from './encounterRecovery';
 import type { WalkableSegment, WalkingNeighbor } from './naturalWalking';
 
 /** Recovery is bounded per destination, including unsuccessful attempts. */
@@ -29,6 +30,10 @@ interface TransitWatch {
   observation: ElevatorProgress | null;
 }
 export interface MovementRecoveryState {
+  /** Same-peer memory survives sampled legs, local retreats and ordinary replans. */
+  encounter: EncounterMemory | null;
+  encounterSearches: number;
+  encounterBodies: string;
   transit: TransitWatch;
   /** Completed fixed-seat exit whose onward graph route was unavailable. */
   departure: string | null;
@@ -48,10 +53,11 @@ export interface MovementRecoveryState {
   yielding: { neighbor: string; origin: Point3; direction: readonly [number, number]; waited: number } | null;
 }
 export function createMovementRecovery(position: Readonly<Point3>): MovementRecoveryState {
-  return { transit: { key: '', elapsed: 0, frozen: 0, missing: 0, observation: null }, departure: null, avoidedElevators: [], avoidedEdges: [], avoidedDoors: [], doorProbeIn: 0, stairRetreat: [], anchor: [...position], signature: '', leaf: 0, stalled: 0, attempts: 0, goal: null, remaining: Infinity, yielding: null };
+  return { encounter: null, encounterSearches: 0, encounterBodies: '', transit: { key: '', elapsed: 0, frozen: 0, missing: 0, observation: null }, departure: null, avoidedElevators: [], avoidedEdges: [], avoidedDoors: [], doorProbeIn: 0, stairRetreat: [], anchor: [...position], signature: '', leaf: 0, stalled: 0, attempts: 0, goal: null, remaining: Infinity, yielding: null };
 }
 export function recoveryGoal(state: MovementRecoveryState, goal: string): void {
   if (state.goal === goal) return;
+  state.encounter = null; state.encounterSearches = 0; state.encounterBodies = '';
   state.goal = goal; state.attempts = 0; state.stalled = 0; state.signature = '';
   state.yielding = null; state.avoidedElevators = []; state.avoidedEdges = []; state.avoidedDoors = []; state.stairRetreat = [];
   state.doorProbeIn = 0;

@@ -1,3 +1,38 @@
+/** A real discussion and its independently acknowledged knowledge export. */
+export interface LearningMeetingResult {
+  outcome: 'completed' | 'cancelled' | 'failed' | 'unknown';
+  meetingId?: string;
+  knowledge: 'saved' | 'unavailable' | 'failed';
+  /** Present only after the exporter acknowledged the durable note. */
+  notePath?: string;
+  problem?: string;
+}
+
+/** A durable candidate receipt, never an activation or a model-authored success claim. */
+export interface LearningSkillNotice {
+  id: string;
+  profileId: string;
+  workspaceId: string;
+  sessionId: string;
+  runId: string;
+  createdAt: string;
+  kind: 'skill-candidate';
+  packageId: string;
+  revisionId: string;
+  state: string;
+  /** New/revised need registry history; an isolated receipt only proves saved. */
+  change: 'new' | 'revised' | 'saved';
+  activationPerformed: false;
+  label?: string;
+  /** A candidate was saved even though another part of learning did not complete. */
+  partial?: boolean;
+}
+
+export interface LearningScheduleResult {
+  meeting?: LearningMeetingResult;
+  skill?: LearningSkillNotice;
+}
+
 /** Host admission timers; learning execution and artifact publication remain Rust-owned. */
 export interface LearningScheduleJob {
   id: string;
@@ -5,10 +40,19 @@ export interface LearningScheduleJob {
   profileId: string;
   profileName: string;
   sessionId: string;
+  /** Absence on older hosts means ordinary post-task learning. */
+  kind?: 'learning' | 'knowledge-meeting';
+  workspaceName?: string;
+  sessionName?: string;
   state: 'scheduled' | 'running' | 'completed' | 'failed' | 'cancelled';
+  /** Effective only while waitingForIdle is false; the UI never dispatches on this deadline. */
   dueAt: string;
+  /** A full selected quiet interval starts once actual foreground work settles. */
+  waitingForIdle?: boolean;
   reason?: 'busy' | 'changed' | 'failed' | 'shutdown';
   createdAt: string;
+  /** Positive receipts survive a later executor, export or cleanup failure. */
+  result?: LearningScheduleResult;
 }
 
 export interface LearningScheduleSnapshot {

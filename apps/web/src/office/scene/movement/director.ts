@@ -10,14 +10,15 @@ import type { OfficeAgent } from '../../presence';
 import type { GaitParameters } from '../avatars/gait';
 import type { Point3 } from '../layout';
 import type { OfficeAgentAllocation } from '../interior/seating';
-import { beginCrowdYield, crowdWatchActor, createMover, placeSeated, remainingFloorRoute, routeFrom, sendMover, setPace, stepMover, type MovementEnv, type Mover, type MoverGoal } from './mover';
+import { beginCrowdYield, crowdWatchActor, createMover, doorTravelTarget, placeSeated, remainingFloorRoute, routeFrom, sendMover, setPace, stepMover, walkingTravelTarget, type MovementEnv, type Mover, type MoverGoal } from './mover';
 import { floorAt, planRoute, seatStageId, type OfficeFloor, type OfficeNavigation, type SeatApproach } from './navGraph';
 import { tripPace, type WalkMood } from './pace';
 import type { CharacterFloor, CharacterPositionSource } from './positionStore';
 import type { ActivityClip } from '../avatars/activityPose';
 import { deskChairMotion, isDeskChair, type DeskChairMotion } from '../interior/deskChairs';
-import { CHAT_SPOT_PAIRS, chatSpotIds, LEISURE_SPOTS, type LeisureKind, type LeisureSpotDefinition } from './leisureSpots';
-import { chatSpeaker, chooseLeisureKind, chooseSpot, createRoutine, lifeRandom, pickChatPartner, pickChatPlace, stepRoutine, TRAVEL_LIMIT_MS, visitMs, type Routine } from './idleRoutine';
+import { LEISURE_SPOTS, type LeisureKind, type LeisureSpotDefinition } from './leisureSpots';
+import { chatMeetingPlaces, chooseChatMeeting, type ChatMeetingPlace } from './chatRendezvous';
+import { chatSpeaker, chooseLeisureKind, chooseSpot, createRoutine, lifeRandom, pickChatPartner, stepRoutine, TRAVEL_LIMIT_MS, visitMs, type Routine } from './idleRoutine';
 import { deskClip, deskMode, isBusy } from './workClip';
 import { forgetSeated, setSeatedAt } from './deskPresence';
 import { CONSOLE_SEATS, hospitalityState, stoolTargetAngle, type HospitalityState } from './hospitality';
@@ -66,6 +67,10 @@ export function nearestPortal(navigation: OfficeNavigation, floor: OfficeFloor, 
 export const LIFE_DECISION_MS = 400;
 /** A character that just reached a place is not pulled away to chat for this long. */
 const CHAT_SETTLE_MS = 20_000;
+/** A delayed social encounter must not leave its first arrival standing indefinitely. */
+export const CHAT_GATHER_WAIT_MS = 12_000;
+export const LEISURE_SEAT_STALL_SECONDS = 12;
+const CHAT_RETRY_MS = 30_000;
 
 /** One stop of an idle character's walk-about. */
 export interface LeisureVisit {
@@ -79,6 +84,7 @@ export interface LeisureVisit {
   /** Chat partner and when both had arrived. */
   readonly partnerId?: string;
   chatSince?: number | null;
+  readonly conversation?: { placeId: string; side: 0 | 1; seated: boolean };
 }
 
 interface CharacterLife {
@@ -88,9 +94,9 @@ interface CharacterLife {
   /** Status/activity key and when it last changed (commands are typed, then watched). */
   activityKey: string;
   activitySince: number;
+  chatRetryAt: number;
 }
 
-const CHAT_PLACES = CHAT_SPOT_PAIRS.map(pair => ({ id: pair.id, floor: pair.floor, spots: chatSpotIds(pair) }));
 const SPOT_BY_ID = new Map(LEISURE_SPOTS.map(spot => [spot.id, spot]));
 const FURNITURE_SPOTS = LEISURE_SPOTS.filter(spot => spot.kind !== 'chat');
 /** Only authored Library seating can host skill work; shelving is never a seat. */
@@ -152,6 +158,7 @@ export class MovementDirector implements CharacterPositionSource {
   private readonly openedAt: number;
   /** Idle life per character (routine, current leisure visit). */
   private readonly lives = new Map<string, CharacterLife>();
+  private readonly chatPlaces: readonly ChatMeetingPlace[];
   /** Leisure spots taken, by spot id → character id. */
   private readonly reserved = new Map<string, string>();
   private sinceLife = Infinity;
@@ -167,7 +174,17 @@ export class MovementDirector implements CharacterPositionSource {
     private readonly hospitality: HospitalityState = hospitalityState,
     private readonly kiosk: OutdoorKioskState = outdoorKioskState) {
     this.openedAt = now();
-    this.stepEnv = { ...env, canUseSeat: (id, seat) => (!env.canUseSeat || env.canUseSeat(id, seat))
+    this.chatPlaces = chatMeetingPlaces(env.navigation);
+    this.stepEnv = { ...env,
+      nearbyWalkers: env.nearbyWalkers ? (id, position) => env.nearbyWalkers!(id, position).map(other => {
+        const mover = this.movers.get(other.id);
+        const doorTarget = mover && doorTravelTarget(mover, env.doors);
+        return mover ? { ...other, travelTarget: doorTarget ?? walkingTravelTarget(mover), travelDoor: doorTarget ? mover.door?.id : undefined,
+          queueDoor: mover.phase === 'doorwork' && mover.door?.beat === 'reserve' && mover.door.kind !== 'close'
+            ? { id: mover.door.id, entrySide: mover.door.entrySide } : undefined,
+          yieldingTo: mover.crowdYield?.peer ?? mover.recovery.yielding?.neighbor } : other;
+      }) : undefined,
+      canUseSeat: (id, seat) => (!env.canUseSeat || env.canUseSeat(id, seat))
       && !this.list.some(other => other.id !== id && other.phase !== 'gone' &&
         ((other.seat?.seatId === seat.seatId && ['seated', 'standing', 'sitting', 'chairing', 'seatwork'].includes(other.phase))
           || other.chair?.seat.seatId === seat.seatId || other.staticSeat?.seat.seatId === seat.seatId || other.seatExit?.seatId === seat.seatId)) };
@@ -315,6 +332,7 @@ export class MovementDirector implements CharacterPositionSource {
     forgetSeated(id);
     if (mover.trip) this.env.elevators.release(id, mover.trip.id);
     if (mover.door) this.env.doors?.cancel(mover.door.id, mover.id);
+    this.env.doors?.clearActiveDoor(mover.id);
     this.env.doors?.clearDuty(mover.id);
     this.env.trackWalker?.(id, null);
     this.env.trackBody?.(id, null);
@@ -506,7 +524,10 @@ export class MovementDirector implements CharacterPositionSource {
   tick(seconds: number): void {
     const now = this.now();
     // Publish every body before admissions or the first actor can query its peers.
-    for (const mover of this.list) this.env.trackBody?.(mover.id, mover.phase === 'gone' ? null : mover.position);
+    for (const mover of this.list) {
+      this.env.doors?.setActiveDoor(mover.id, mover.door?.id ?? null);
+      this.env.trackBody?.(mover.id, mover.phase === 'gone' ? null : mover.position);
+    }
     if (this.initialFramePending) {
       // Loading the scene may stall after update admitted the first pair. Give
       // that first rendered pair its own wave rather than mounting four at once.
@@ -553,7 +574,7 @@ export class MovementDirector implements CharacterPositionSource {
     const nominee = this.crowdDecision.initiative;
     if (!yielding && nominee) {
       const mover = this.movers.get(nominee.actorId);
-      if (!mover || !beginCrowdYield(mover, this.env)) this.crowdWatch.failed(nominee.actorId);
+      if (!mover || !beginCrowdYield(mover, this.stepEnv)) this.crowdWatch.failed(nominee.actorId);
     }
     for (let index = this.list.length - 1; index >= 0; index--) {
       const mover = this.list[index]!;
@@ -595,7 +616,7 @@ export class MovementDirector implements CharacterPositionSource {
   private lifeOf(id: string): CharacterLife {
     let life = this.lives.get(id);
     if (!life) {
-      life = { routine: createRoutine(id), visit: null, seed: Math.floor(lifeRandom(id, 0, 9) * 4294967296), activityKey: '', activitySince: this.now() };
+      life = { routine: createRoutine(id), visit: null, seed: Math.floor(lifeRandom(id, 0, 9) * 4294967296), activityKey: '', activitySince: this.now(), chatRetryAt: 0 };
       this.lives.set(id, life);
     }
     return life;
@@ -620,7 +641,7 @@ export class MovementDirector implements CharacterPositionSource {
     if (!life) return undefined;
     const visit = life.visit;
     return { phase: life.routine.phase, turn: life.routine.turn,
-      visit: visit ? { spotId: visit.spot.id, kind: visit.spot.kind, arrived: visit.arrivedAt !== null, ...(visit.partnerId ? { partnerId: visit.partnerId } : {}) } : null };
+      visit: visit ? { spotId: visit.spot.id, kind: visit.conversation ? 'chat' : visit.spot.kind, arrived: visit.arrivedAt !== null, ...(visit.partnerId ? { partnerId: visit.partnerId } : {}) } : null };
   }
 
   /** Release a character's leisure place; a chat partner's visit ends too. */
@@ -632,17 +653,35 @@ export class MovementDirector implements CharacterPositionSource {
     life.visit = null;
     this.hospitality.releaseActor(id);
     this.kiosk.release(id);
-    life.routine.lastKind = visit.spot.kind;
+    life.routine.lastKind = visit.conversation ? 'chat' : visit.spot.kind;
     life.routine.visits++;
     if (this.reserved.get(visit.spot.id) === id) this.reserved.delete(visit.spot.id);
     if (visit.partnerId) this.endVisit(visit.partnerId, ended);
   }
 
-  private beginVisit(id: string, spot: LeisureSpotDefinition, now: number, extra?: { partnerId: string; lengthMs: number }): boolean {
+  /** Abandon an optional stalled encounter through ordinary, owned departure paths. */
+  private abortLeisure(id: string, now: number): void {
+    const partner = this.lives.get(id)?.visit?.partnerId;
+    const participants = partner && this.lives.get(partner)?.visit?.partnerId === id ? [id, partner] : [id];
+    for (const participant of participants) {
+      const life = this.lives.get(participant);
+      if (!life) continue;
+      life.chatRetryAt = now + CHAT_RETRY_MS;
+      // Finish this outing rather than immediately choosing the same blocked place.
+      stepRoutine(life.routine, { now, busy: false, atDesk: false, allowed: false, scale: this.lifeScale });
+    }
+    this.endVisit(id);
+    for (const participant of participants) {
+      const agent = this.agents.get(participant);
+      this.toDesk(participant, Boolean(agent && isBusy(agent)));
+    }
+  }
+
+  private beginVisit(id: string, spot: LeisureSpotDefinition, now: number, extra?: { partnerId: string; lengthMs: number; conversation?: LeisureVisit['conversation'] }): boolean {
     const life = this.lifeOf(id), mover = this.movers.get(id), seat = this.env.navigation.seats.get(spot.id);
     if (!mover || !seat) return false;
     life.visit = { spot, startedAt: now, travelMs: 0, arrivedAt: null, lengthMs: extra?.lengthMs ?? visitMs(id, life.routine.turn, life.routine.visits, spot.kind) * this.lifeScale,
-      ...(extra ? { partnerId: extra.partnerId, chatSince: null } : {}) };
+      ...(extra ? { partnerId: extra.partnerId, chatSince: null, ...(extra.conversation ? { conversation: extra.conversation } : {}) } : {}) };
     this.reserved.set(spot.id, id);
     if (spot.kind === 'pantry') this.hospitality.request(id, spot.id);
     if (spot.id === 'outdoor.cafe-counter' && !this.kiosk.request(id, now)) {
@@ -657,11 +696,36 @@ export class MovementDirector implements CharacterPositionSource {
 
   /** Characters free to be asked for a chat: out on a walk-about and not chatting already. */
   private chatAvailable(id: string, now: number): boolean {
-    const life = this.lives.get(id), agent = this.agents.get(id);
-    if (!life || !agent || life.routine.phase !== 'outing' || isBusy(agent) || this.removalSince.has(id)) return false;
+    const life = this.lives.get(id), agent = this.agents.get(id), mover = this.movers.get(id);
+    if (!life || !agent || !mover || life.routine.phase !== 'outing' || isBusy(agent) || agent.meeting
+      || this.removalSince.has(id) || now < life.chatRetryAt || !this.readyForChat(mover)) return false;
     const visit = life.visit;
     // Free, still on the way somewhere (a colleague can stop them), or settled for a while — never mid-chat.
     return !visit || (!visit.partnerId && (visit.arrivedAt === null || now - visit.arrivedAt > CHAT_SETTLE_MS * this.lifeScale));
+  }
+
+  /** Finish physical chair/door/lift work before accepting an optional social invitation. */
+  private readyForChat(mover: Mover): boolean {
+    const step = mover.steps[mover.stepIndex];
+    return (mover.phase === 'seated' || (mover.phase === 'walking' && !(step?.kind === 'walk' && step.stairs)))
+      && !mover.trip && !mover.door && !mover.chair && !mover.staticSeat && !mover.seatExit && !mover.crowdYield;
+  }
+
+  /** Rank authored routes from live feet/seat exits rather than random floors or future desk targets. */
+  private chatRouteCost(mover: Mover, seatId: string): number | null {
+    const navigation = this.env.navigation;
+    const step = mover.steps[mover.stepIndex];
+    const anchors = mover.phase === 'seated' && mover.seat ? [seatStageId(mover.seat.seatId)]
+      : [mover.lastNode, step?.kind === 'walk' ? step.node : null];
+    let best = Infinity;
+    for (const anchor of anchors) {
+      if (!anchor) continue;
+      const point = navigation.waypoints.get(anchor)?.position;
+      if (!point || Math.abs(point[1] - mover.position[1]) > .1) continue;
+      const route = planRoute(anchor, seatStageId(seatId), navigation);
+      if (route) best = Math.min(best, route.cost + Math.hypot(point[0] - mover.position[0], point[2] - mover.position[2]));
+    }
+    return Number.isFinite(best) ? best : null;
   }
 
   /** Pick and start the next place of a walk-about; false when nothing fits (the character heads back). */
@@ -675,18 +739,32 @@ export class MovementDirector implements CharacterPositionSource {
     const candidates = this.list.map(other => ({ id: other.id, floor: floorAt(other.position[1]), available: this.chatAvailable(other.id, now) }));
     const partner = pickChatPartner({ id, floor, turn: life.routine.turn }, candidates);
     const partnerMover = partner ? this.movers.get(partner) : undefined;
-    const place = partnerMover ? pickChatPlace(CHAT_PLACES, reserved, [floor, floorAt(partnerMover.position[1])], { id, turn: life.routine.turn }) : null;
-    if (place) available.add('chat');
+    // Include physical holds and pending destinations, not just leisure reservations.
+    const occupied = new Set(reserved);
+    for (const other of this.list) if (other.phase !== 'gone') {
+      for (const seat of [other.seat, other.chair?.seat, other.staticSeat?.seat, other.seatExit,
+        other.pending?.kind === 'seat' ? other.pending.seat : null, other.goal?.kind === 'seat' ? other.goal.seat : null]) {
+        if (seat) occupied.add(seat.seatId);
+      }
+    }
+    if (partnerMover && this.readyForChat(mover) && now >= life.chatRetryAt
+      && this.chatPlaces.some(place => place.spots.every(spot => !occupied.has(spot)))) available.add('chat');
     for (let attempt = 0; attempt < 3; attempt++) {
       const kind = this.preferKind && available.has(this.preferKind) ? this.preferKind : chooseLeisureKind(life.routine, available);
       if (!kind) return false;
-      if (kind === 'chat' && partner && place) {
+      if (kind === 'chat' && partner && partnerMover) {
+        // Graph search is only needed after choosing an actual conversation.
+        const place = chooseChatMeeting(this.chatPlaces, occupied, [mover.position, partnerMover.position],
+          (index, seatId) => this.chatRouteCost(index === 0 ? mover : partnerMover, seatId));
+        if (!place) { available.delete('chat'); continue; }
         const lengthMs = visitMs(id, life.routine.turn, life.routine.visits, 'chat') * this.lifeScale;
         this.endVisit(partner);
         const [a, b] = place.spots;
-        if (this.beginVisit(id, SPOT_BY_ID.get(a)!, now, { partnerId: partner, lengthMs }) &&
-          this.beginVisit(partner, SPOT_BY_ID.get(b)!, now, { partnerId: id, lengthMs })) return true;
+        if (this.beginVisit(id, SPOT_BY_ID.get(a)!, now, { partnerId: partner, lengthMs, conversation: { placeId: place.id, side: 0, seated: place.seated } }) &&
+          this.beginVisit(partner, SPOT_BY_ID.get(b)!, now, { partnerId: id, lengthMs, conversation: { placeId: place.id, side: 1, seated: place.seated } })) return true;
         this.endVisit(id);
+        this.endVisit(partner);
+        this.toDesk(id, false); this.toDesk(partner, false);
         available.delete('chat');
         continue;
       }
@@ -745,6 +823,13 @@ export class MovementDirector implements CharacterPositionSource {
     if (visit && mover.seat?.seatId === visit.spot.id) {
       if (visit.spot.id === 'outdoor.cafe-counter') {
         return this.kiosk.snapshot()?.status === 'pickup' ? 'bar-serve' : 'look-around';
+      }
+      if (visit.conversation) {
+        if (visit.chatSince == null) return visit.conversation.seated ? 'lounge' : 'look-around';
+        const speaker = chatSpeaker(visit.chatSince, now, visit.conversation.placeId);
+        return visit.conversation.seated
+          ? speaker === visit.conversation.side ? 'seated-chat-talk' : 'seated-chat-listen'
+          : speaker === visit.conversation.side ? 'chat-talk' : 'chat-listen';
       }
       if (visit.spot.kind === 'pantry') {
         const service = this.hospitality.serviceFor(mover.id);
@@ -807,6 +892,14 @@ export class MovementDirector implements CharacterPositionSource {
         mover.motion.clip = this.clipOf(mover, life, agent, now);
         continue;
       }
+      if (allowed && !busy && life.visit?.arrivedAt === null && mover.phase === 'seatwork'
+        && mover.staticSeat?.kind === 'sit' && mover.monitor.reason === 'blocked-seat'
+        && mover.monitor.stationarySeconds >= LEISURE_SEAT_STALL_SECONDS) {
+        // A blocked optional sit approach is not an intentional conversation/service wait.
+        // sendMover retraces its checked trail before taking the new desk destination.
+        this.abortLeisure(id, now);
+        mover.motion.clip = 'none'; changed = true; continue;
+      }
       const atDestination = mover.phase === 'seated' && mover.seat?.seatId === destination.seatId;
       const expectedWait = life.visit && this.waitingForVisit(mover, life.visit);
       const intent = life.routine.phase === 'outing' && expectedWait && allowed && !busy ? 'out'
@@ -823,9 +916,23 @@ export class MovementDirector implements CharacterPositionSource {
             if (visit.spot.id.includes('.console-')) this.hospitality.arriveGame(id, now);
             if (visit.spot.id === 'outdoor.cafe-counter') this.kiosk.arrive(id, now);
           }
-          if (visit.partnerId && visit.chatSince === null && visit.arrivedAt !== null) {
+          if (visit.partnerId && visit.chatSince === null && arrived) {
             const other = this.lives.get(visit.partnerId)?.visit;
-            if (other?.arrivedAt !== null && other?.arrivedAt !== undefined) { visit.chatSince = now; other.chatSince = now; }
+            const partnerMover = this.movers.get(visit.partnerId);
+            if (other?.partnerId === id && other.arrivedAt !== null && partnerMover?.phase === 'seated'
+              && partnerMover.seat?.seatId === other.spot.id) { visit.chatSince = now; other.chatSince = now; }
+          }
+          if (visit.conversation && visit.partnerId && visit.chatSince == null) {
+            const otherLife = this.lives.get(visit.partnerId), other = otherLife?.visit;
+            const firstArrival = Math.min(visit.arrivedAt ?? Infinity, other?.arrivedAt ?? Infinity);
+            if (now - firstArrival >= CHAT_GATHER_WAIT_MS) {
+              // End the social plan, retaining owned door/chair/lift cleanup in sendMover.
+              // A delayed partner can continue another activity without keeping anyone waiting.
+              this.abortLeisure(id, now);
+              mover.motion.clip = 'none';
+              changed = true;
+              continue;
+            }
           }
           const since = visit.spot.kind === 'pantry' ? this.hospitality.serviceFor(id)?.deliveredAt ?? null : visit.partnerId ? visit.chatSince ?? null : visit.arrivedAt;
           const atKiosk = visit.spot.id === 'outdoor.cafe-counter';
@@ -864,6 +971,7 @@ export class MovementDirector implements CharacterPositionSource {
       forgetSeated(mover.id);
       if (mover.trip) this.env.elevators.release(mover.id, mover.trip.id);
       if (mover.door) this.env.doors?.cancel(mover.door.id, mover.id);
+      this.env.doors?.clearActiveDoor(mover.id);
       this.env.doors?.clearDuty(mover.id);
       this.env.trackWalker?.(mover.id, null);
       this.env.trackBody?.(mover.id, null);

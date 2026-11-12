@@ -17,6 +17,40 @@ function director(overrides: Partial<CameraDirectorInput> = {}) {
 }
 
 describe('office camera director', () => {
+  it('follows a genuine idle spawn with an idle dwell, without starting the regular tour early', () => {
+    const tick = director({ workingIds: [], idleIds: ['existing'], spawnedIds: [], currentFloor: 1, floorOf: () => 1 });
+    expect(tick({ now: 1_999, idleIds: ['existing', 'new'], newcomerIds: ['new'], spawnedIds: ['new'] }).command).toBeNull();
+    const arrival = tick({ now: 2_000 });
+    expect(arrival.command).toMatchObject({ phase: 'focus', targetId: 'new', mode: 'tour' });
+    expect(arrival.state.workingShot).toBe(false);
+    expect(arrival.state.dwellMs).toBe(20_000);
+    expect(tick({ now: 2_200, random: 1 }).command).toBe(arrival.command);
+    expect(tick({ now: 59_999 }).command).toBe(arrival.command);
+  });
+  it('does not upgrade an already framed idle spawn to a working visit', () => {
+    const tick = director({ workingIds: [], idleIds: ['new'], spawnedIds: [], currentFloor: 1, floorOf: () => 1 });
+    const idle = tick({ now: 60_000 });
+    const arrival = tick({ now: 60_200, newcomerIds: ['new'], spawnedIds: ['new'], random: 1 });
+    expect(arrival.command).toBe(idle.command);
+    expect(arrival.state.workingShot).toBe(false);
+    expect(arrival.state.dwellMs).toBe(idle.state.dwellMs);
+  });
+  it('keeps approval ownership and the manual grace ahead of an idle spawn', () => {
+    const tick = director({ workingIds: [], idleIds: ['idle-new'], attentionIds: ['requester'], newcomerIds: ['idle-new'], spawnedIds: ['idle-new'], currentFloor: 1, floorOf: () => 1 });
+    expect(tick({ now: 2_000 }).command?.targetId).toBe('requester');
+    tick({ now: 3_000, attentionIds: [] });
+    expect(tick({ now: 4_499 }).command?.targetId).toBe('requester');
+    expect(tick({ now: 4_500 }).command?.targetId).toBe('idle-new');
+    expect(tick({ now: 5_000, lastInteractionAt: 5_000 }).command).toBeNull();
+    tick({ now: 5_100, newcomerIds: [], spawnedIds: [] });
+    expect(tick({ now: 6_999, newcomerIds: ['idle-new'], spawnedIds: ['idle-new'] }).command).toBeNull();
+    expect(tick({ now: 7_000 }).command?.targetId).toBe('idle-new');
+  });
+  it('ignores idle spawn IDs that are absent from the admitted, positioned tour roster', () => {
+    const tick = director({ workingIds: [], idleIds: [], newcomerIds: ['unadmitted'], spawnedIds: ['unadmitted'] });
+    expect(tick({ now: 2_000 }).command).toBeNull();
+    expect(tick({ now: 60_000, reducedMotion: true, idleIds: ['unadmitted'] }).command).toBeNull();
+  });
   it('pans directly on the current floor, while different floors retain overview/travel/focus', () => {
     const floors: Record<string, number> = { 'agent-a': 1, 'agent-b': 1, 'agent-c': 2 };
     const tick = director({ currentFloor: 1, floorOf: id => floors[id], workingIds: Object.keys(floors) });

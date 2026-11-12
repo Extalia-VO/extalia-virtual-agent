@@ -26,10 +26,11 @@ async function fixture(body = `process.stdout.write('Queued message ${messageId}
   const bin = path.join(root, 'codex-fixture');
   const source = path.join(root, 'fixture.mjs');
   const capture = path.join(root, 'capture.json');
+  const ready = path.join(root, 'ready');
   await writeFile(source, `import { writeFileSync } from 'node:fs';\nwriteFileSync(process.env.CAPTURE, JSON.stringify({ args:process.argv.slice(2), home:process.env.HOME, codexHome:process.env.CODEX_HOME, pid:process.pid }));\n${body}\n`);
   // Run the actual Node child on every OS; only substitute the fixture launcher.
   fixtureSources.set(bin, source);
-  return { bin, capture, env: { HOME: root, CODEX_HOME: root, CAPTURE: capture }, threadId, text: 'hello' };
+  return { bin, capture, ready, env: { HOME: root, CODEX_HOME: root, CAPTURE: capture, READY: ready }, threadId, text: 'hello' };
 }
 
 describe('public Codex text queue', () => {
@@ -81,10 +82,10 @@ describe('public Codex text queue', () => {
     await expect(readFile(f.capture)).rejects.toMatchObject({ code: 'ENOENT' });
   });
   it('cancels an unresponsive owned child and confirms its exit', async () => {
-    const f = await fixture(`process.on('SIGTERM',()=>{}); setInterval(()=>{},1000);`);
+    const f = await fixture(`process.on('SIGTERM',()=>{}); writeFileSync(process.env.READY,'signal-handler-installed'); setInterval(()=>{},1000);`);
     const controller = new AbortController();
     const result = queueCodexMessage({ ...f, signal: controller.signal }).catch((error: unknown) => error);
-    await vi.waitFor(async () => expect(JSON.parse(await readFile(f.capture, 'utf8')).pid).toBeGreaterThan(0));
+    await vi.waitFor(async () => expect(await readFile(f.ready, 'utf8')).toBe('signal-handler-installed'));
     const kill = vi.spyOn(vi.mocked(childProcess.spawn).mock.results.at(-1)!.value, 'kill');
     controller.abort();
     expect(await result).toMatchObject({ state: 'unknown', cleanupUnconfirmed: false });

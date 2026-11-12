@@ -18,6 +18,7 @@ pub const MAX_LIST_LIMIT: usize = 100;
 pub const MAX_DETAIL_INSPECTIONS: usize = 20;
 pub const MAX_DETAIL_APPROVALS: usize = 20;
 pub const MAX_DETAIL_EVENTS: usize = 50;
+pub const MAX_DETAIL_SOURCES: usize = 20;
 
 /// A revision with its package origin, times and whether it is the package's active one.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -68,6 +69,14 @@ pub struct StateEvent {
     pub at: String,
 }
 
+/// Evidence recorded at import, without claiming license or publisher verification.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RevisionSource {
+    pub origin: String,
+    pub source_ref: String,
+    pub recorded_at: String,
+}
+
 /// Everything `skill.inspect` shows about one revision.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RevisionDetails {
@@ -77,6 +86,9 @@ pub struct RevisionDetails {
     pub inspections: Vec<InspectionRecord>,
     pub approvals: Vec<ApprovalRecord>,
     pub history: Vec<StateEvent>,
+    /// Latest import sources, oldest first. Zero means no recorded revision evidence.
+    pub sources: Vec<RevisionSource>,
+    pub sources_total: u64,
 }
 
 /// A W0 consent that matches a revision's stored `SKILL.md` (review input only).
@@ -276,12 +288,36 @@ impl SkillRegistry<'_> {
                 at,
             });
         }
+        let sources_total: u32 = conn.query_row(
+            "SELECT count(*) FROM skill_revision_sources WHERE profile_id=?1 AND revision_id=?2",
+            params![profile, revision_id],
+            |row| row.get(0),
+        )?;
+        let mut sources = conn
+            .prepare(
+                "SELECT origin, source_ref, recorded_at FROM skill_revision_sources
+             WHERE profile_id=?1 AND revision_id=?2 ORDER BY source_seq DESC LIMIT ?3",
+            )?
+            .query_map(
+                params![profile, revision_id, MAX_DETAIL_SOURCES as i64],
+                |row| {
+                    Ok(RevisionSource {
+                        origin: row.get(0)?,
+                        source_ref: row.get(1)?,
+                        recorded_at: row.get(2)?,
+                    })
+                },
+            )?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        sources.reverse();
         Ok(RevisionDetails {
             summary,
             files,
             inspections,
             approvals,
             history,
+            sources,
+            sources_total: u64::from(sources_total),
         })
     }
 

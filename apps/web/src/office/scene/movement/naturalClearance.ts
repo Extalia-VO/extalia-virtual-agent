@@ -82,12 +82,13 @@ export class WalkingClearance {
   private readonly supports = new Map<string, Bounds[]>();
   private readonly seats = new Map<Object3D, Bounds>();
   private readonly stationAnchors: { station: Object3D; anchor: Object3D }[] = [];
+  private readonly equipmentAnchors: { station: Object3D; anchor: Object3D }[] = [];
   private readonly contactPaths = new Map<number, readonly (readonly [XZ, XZ])[]>();
   private ready = false;
   revision = 0;
   colliderCount = 0;
   constructor(private readonly portals: () => readonly DoorAperture[] = () => []) {}
-  clear(): void { this.solids.clear(); this.supports.clear(); this.seats.clear(); this.stationAnchors.length = 0; this.ready = false; this.colliderCount = 0; this.revision++; }
+  clear(): void { this.solids.clear(); this.supports.clear(); this.seats.clear(); this.stationAnchors.length = 0; this.equipmentAnchors.length = 0; this.ready = false; this.colliderCount = 0; this.revision++; }
   rebuild(roots: readonly Object3D[]): void {
     this.clear();
     const box = new Box3();
@@ -99,6 +100,8 @@ export class WalkingClearance {
       const invisible = batchedVisibility === undefined ? !node.visible && data.officeBatchSource !== true : !batchedVisibility;
       if (invisible) return;
       const stationOwner = data.officeSeatStation === true ? node : station;
+      // Authored equipment contacts survive replacement of procedural meshes by GLB parts.
+      if (data.officeEquipmentSeat === true && stationOwner) this.equipmentAnchors.push({ station: stationOwner, anchor: node });
       const footprint = authoredFootprint(node);
       if (footprint) {
         if (stationOwner) footprint.stationOwner = stationOwner;
@@ -175,25 +178,37 @@ export class WalkingClearance {
     const owner = this.seatOwner(seat);
     return Boolean(owner) && this.segmentClearExcept(from, to, radius, owner);
   };
-  /** A meeting/guest chair may overlap only its authored rear departure lane. */
+  /** Meeting/guest chairs and mounted equipment retain only their authored departure lane. */
   seatExitClear = (seat: SeatApproach, from: Readonly<Point3>, to: Readonly<Point3>, radius = .29): boolean => {
-    if (!['meeting', 'guest'].includes(seat.seatStyle ?? '') || ![...seat.seat, ...seat.staging, seat.rotationY, ...from, ...to, radius].every(Number.isFinite)
+    const equipment = seat.equipment === true;
+    if ((!equipment && !['meeting', 'guest'].includes(seat.seatStyle ?? '')) || ![...seat.seat, ...seat.staging, seat.rotationY, ...from, ...to, radius].every(Number.isFinite)
       || Math.abs(seat.staging[1] - seat.seat[1]) > .05) return false;
     const dx = seat.staging[0] - seat.seat[0], dz = seat.staging[2] - seat.seat[2], length2 = dx * dx + dz * dz;
-    // Authoring must actually place the stage behind this chair, not beside it.
-    if (length2 < .01 || dx * Math.sin(seat.rotationY) + dz * Math.cos(seat.rotationY) >= -.05) return false;
+    // Equipment may dismount sideways; ordinary chair stages must remain rearward.
+    if (length2 < .01 || (!equipment && dx * Math.sin(seat.rotationY) + dz * Math.cos(seat.rotationY) >= -.05)) return false;
+    const epsilon = equipment ? 1e-6 : .01;
     const progress: number[] = [];
     for (const point of [from, to]) {
       const x = point[0] - seat.seat[0], z = point[2] - seat.seat[2], t = (x * dx + z * dz) / length2;
-      if (Math.abs(point[1] - seat.seat[1]) > .05 || t < -.01 || t > 1.01
+      if (Math.abs(point[1] - seat.seat[1]) > .05 || t < -epsilon || t > 1 + epsilon
         || Math.hypot(x - t * dx, z - t * dz) > .12) return false;
       progress.push(t);
     }
-    if (progress[1]! < progress[0]! - .01) return false;
+    if (progress[1]! < progress[0]! - epsilon) return false;
+    if (equipment) {
+      // A resource name alone cannot authorize frame contact. Require an explicit
+      // authored root anchor at this exact seat, independent of saddle mesh bounds.
+      const station = this.equipmentAnchors.find(({ station, anchor }) => {
+        const m = anchor.matrixWorld.elements;
+        return station.name === seat.seatId && Math.hypot(m[12]! - seat.seat[0], m[14]! - seat.seat[2]) <= .03
+          && Math.abs(m[13]! - seat.seat[1]) <= .02;
+      })?.station;
+      return Boolean(station) && this.segmentClearExcept(from, to, radius, station);
+    }
     const owner = this.seatOwner(seat);
     return Boolean(owner) && this.segmentClearExcept(from, to, radius, owner);
   };
-  /** The same rear lane may be entered inward, masking only its target chair. */
+  /** Enter the same authored lane inward, retaining its exact owned contact scope. */
   seatEntryClear = (seat: SeatApproach, from: Readonly<Point3>, to: Readonly<Point3>, radius = .29): boolean => {
     return this.seatExitClear(seat, to, from, radius);
   };
@@ -303,7 +318,7 @@ export class WalkingClearance {
     let hit = false;
     const seen = new Set<Bounds>();
     cells(query, cell => { if (hit) return; for (const box of this.solids.get(cell) ?? []) {
-      if (seen.has(box) || (ignore && box.seatOwner === ignore)) continue; seen.add(box);
+      if (seen.has(box) || (ignore && (box.seatOwner === ignore || box.stationOwner === ignore))) continue; seen.add(box);
       const bodyRadius = colliderRadius?.(box) ?? radius;
       if (box.maxY > query.minY && box.minY < query.maxY && intersects(from, to, box, bodyRadius)
         && (!box.footprint || footprintIntersects(from, to, box.footprint, bodyRadius))) { hit = true; break; }

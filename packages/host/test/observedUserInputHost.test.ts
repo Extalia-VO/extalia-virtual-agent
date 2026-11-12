@@ -16,13 +16,15 @@ it('projects questions from the existing observation read and revokes pause, pri
     + line({ type: 'response_item', payload: { type: 'function_call', name: 'request_user_input_async', call_id: 'call-one', arguments: JSON.stringify({ questions: [{ title: 'Which scope?', options: ['One', 'Two'] }] }) } })
     + line({ type: 'response_item', payload: { type: 'function_call_output', call_id: 'call-one', output: '{"accepted":true}' } });
   await writeFile(file, content);
-  const runtime = await createAgentHost({ kind: 'bridge', version: 'test', dataDirectory: data, homeDirectory: home, importHome: home, env: { EXTALIA_SECRET_STORE: 'memory', PATH: '' }, observationIntervalMs: 20 });
+  // This test owns refreshes so a background read cannot project the replacement before revocation is checked.
+  const runtime = await createAgentHost({ kind: 'bridge', version: 'test', dataDirectory: data, homeDirectory: home, importHome: home, env: { EXTALIA_SECRET_STORE: 'memory', PATH: '' }, observationIntervalMs: 60_000 });
   try {
     expect(AGENT_HOST_METHODS).toContain('observedUserInputStatus');
     expect(AGENT_HOST_METHODS).toContain('answerObservedUserInput');
     const scan = await runtime.host.scanImports(['codex']);
     const state = await runtime.host.observeImports(scan.scanId, [scan.sessions[0]!.id]);
     const id = state.sessions[0]!.id;
+    await runtime.host.setObservation(id, true);
     const initial = await runtime.host.observedUserInputStatus!(id);
     expect(initial).toMatchObject({ state: 'ready', requests: [{ origin: 'codex-async', state: 'pending', questions: [{ title: 'Which scope?', options: ['One', 'Two'], allowOther: true }] }] });
     expect(initial.requests[0]?.canAnswer).toBe(false); // No queue CLI exists in this synthetic home.
@@ -42,6 +44,12 @@ it('projects questions from the existing observation read and revokes pause, pri
     await writeFile(file, content);
     // Stable native thread id alone cannot preserve an answer handle after the file identity changes.
     expect((await runtime.host.observedUserInputStatus!(id)).requests).toEqual([]);
+    await runtime.host.setObservation(id, true);
+    const replacement = await runtime.host.observedUserInputStatus!(id);
+    expect(replacement.state).toBe('ready');
+    expect(replacement.requests).toHaveLength(1);
+    expect(replacement.requests[0]?.id).not.toBe(initial.requests[0]?.id);
+    expect(replacement.requests[0]?.questions).toEqual([expect.objectContaining({ title: 'Which scope?', options: ['One', 'Two'] })]);
     await runtime.host.setHookPrivacy({ labelsOnly: true });
     expect(await runtime.host.observedUserInputStatus!(id)).toEqual({ sessionId: id, state: 'private', requests: [] });
   } finally { await runtime.close(); }

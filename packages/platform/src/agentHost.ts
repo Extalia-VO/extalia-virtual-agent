@@ -1,4 +1,5 @@
 import type { ObservedUserInputStatus, ObservedUserInputAnswer } from './observedUserInput.js';
+import type { ObservedWorkspaceLinkStatus, ObservedWorkspaceLinkInput } from './observedWorkspaceLink.js';
 import { MODEL_SELECTION_GUIDE_METHODS, type ModelSelectionGuide, type ModelSelectionGuideInput } from './modelGuide.js';
 import type { NativeStatus } from './nativeStatus.js';
 import type { ObservedCodexStatus, ObservedCodexMessageInput, ObservedCodexAnswerInput, ObservedCodexApprovalAnswerInput, ObservedCodexSettingsInput } from './observedCodex.js';
@@ -37,6 +38,8 @@ import type {
 import type { KnowledgeVaultSettings } from './knowledgeVault.js';
 import type { LearningScheduleAction, LearningScheduleSnapshot } from './learningSchedule.js';
 import type { WorkspaceKnowledgeMethod } from './workspaceKnowledge.js';
+import type { SkillMarketSearchResult, SkillMarketPreviewInput, SkillMarketPreview } from './skillMarket.js';
+import type { ContinuityView, ContinuityReadInput, ContinuityReadPage, HandoverPreviewInput, HandoverPreview, HandoverApplyInput, HandoverReconcileInput, HandoverReceipt } from './handover.js';
 import { VAULT_PROFILE_HOST_METHODS, type VaultProfilesCatalog, type SaveVaultProfileInput } from './vaultProfiles.js';
 
 /**
@@ -268,6 +271,9 @@ export interface SessionSummary {
   context?: SessionContextUsage;
   observation?: {
     sourceId: string; nativeSessionId: string; projectPath?: string; watching: boolean; status: 'watching' | 'paused' | 'unavailable'; lastCheckedAt?: string; error?: string;
+    /** Server-derived link metadata; the private source fingerprint is never exposed. */
+    workspaceLink?: { workspaceId: string; sourceMatches: boolean; projectCanonicalPath: string; root: string };
+    workspaceLinkState?: ObservedWorkspaceLinkStatus['mode'];
     /** Time of the latest event read from the transcript. */
     lastEventAt?: string;
     /** Added by automatic discovery ("watch new sessions automatically"); retired to history when it falls out of the live LRU. */
@@ -814,6 +820,9 @@ export interface AgentHostApi {
   /** Selected native transcripts only; no credentials or agent configuration are read. */
   observeImports(scanId: string, candidateIds: string[]): Promise<HostState>;
   observationSession(id: string): Promise<PortableSession>;
+  /** Link an observed project only to a registered containing workspace; never changes source app folders or grants. */
+  observedWorkspaceLink?(sessionId: string): Promise<ObservedWorkspaceLinkStatus>;
+  setObservedWorkspaceLink?(sessionId: string, input: ObservedWorkspaceLinkInput): Promise<HostState>;
   /** Inspect an explicit same-server Codex attachment; never auto-connects or starts a server. */
   observedUserInputStatus?(sessionId: string): Promise<ObservedUserInputStatus>;
   answerObservedUserInput?(sessionId: string, input: ObservedUserInputAnswer): Promise<ObservedUserInputStatus>;
@@ -906,6 +915,14 @@ export interface AgentHostApi {
    * over as context; the source itself is not changed.
    */
   continueSession(source: ContinueSource, workspaceId: string): Promise<SessionSummary>;
+  /** Immutable source coverage and repeated cross-runtime handover lineage. Never attests to hidden harness context. */
+  sessionContinuity?(sessionId: string): Promise<ContinuityView>;
+  previewHandover?(sessionId: string, input: HandoverPreviewInput): Promise<HandoverPreview>;
+  /** Apply the exact reviewed capsule once. External acceptance is not model consumption. */
+  applyHandover?(sessionId: string, input: HandoverApplyInput): Promise<HandoverReceipt>;
+  readContinuity?(sessionId: string, input: ContinuityReadInput): Promise<ContinuityReadPage>;
+  /** Records explicit user inspection only; never retries delivery or clears runtime ownership. */
+  reconcileHandover?(sessionId: string, input: HandoverReconcileInput): Promise<HandoverReceipt>;
   renameSession(sessionId: string, title: string): Promise<HostState>;
   /** Review a Native session's destination, retaining its connection, team and conversation. Same-workspace review can adopt changed grants explicitly. */
   previewSessionMove?(sessionId: string, workspaceId: string): Promise<SessionMovePreview>;
@@ -1001,6 +1018,14 @@ export interface AgentHostApi {
   rescanSkill?(revisionId: string): Promise<SkillActionResult>;
   /** Copy a chosen folder (or a project skill) into the profile's import inbox and stage it in quarantine. */
   importSkill(source: SkillImportSource): Promise<SkillActionResult>;
+  /** Explicit public catalog lookup; never sends workspace files or chat context. */
+  skillMarketSearch?(query: string, refresh?: boolean): Promise<SkillMarketSearchResult>;
+  /** Download and pin a public package for literal user review, without importing or activating it. */
+  previewMarketSkill?(input: SkillMarketPreviewInput): Promise<SkillMarketPreview>;
+  /** Import the exact prepared package through the ordinary scanner/registry gates; never approves or activates. */
+  installMarketSkill?(reviewId: string): Promise<SkillActionResult>;
+  /** Release an unentered prepared package. Closing a preview does not cancel an admitted import. */
+  discardMarketSkillPreview?(reviewId: string): Promise<void>;
   /** Accept or reject a `review_required` revision as the local user (the daemon may not serve this yet). */
   reviewSkill(input: SkillReviewInput): Promise<SkillActionResult>;
   /** Approve exactly the package hash and permission digest shown; expires after `approvalTtlMs`. */
@@ -1120,8 +1145,9 @@ export interface AgentHostApi {
 export const AGENT_HOST_METHODS = [
   'getState', 'getProfile', 'saveProfile', 'saveConnection', 'deleteConnection', 'testConnection', 'checkFolder', 'browseDirectories', 'saveWorkspace', 'deleteWorkspace',
   'nativeStatus', 'refreshNativeStatus', 'setWorkspaceMissionConnections', 'planNativeMission', 'startNativeMission', 'cancelNativeMission', 'nativeMissionRun', 'listNativeMissions', 'refreshNativeMissionRecovery',
-  'completeSetup', 'createSession', 'setSessionOptions', 'modelChoices', 'teamModelChoices', 'getSessionTeam', 'saveSessionTeam', 'saveWorkspaceTeam', 'planTeam', 'continueSession', 'renameSession', 'previewSessionMove', 'moveSession', 'deleteSession', 'sessionEvents', 'sendPrompt', 'uploadAttachment', 'removeAttachment', 'attachmentPreview', 'resolveApproval', 'cancel',
+  'completeSetup', 'createSession', 'setSessionOptions', 'modelChoices', 'teamModelChoices', 'getSessionTeam', 'saveSessionTeam', 'saveWorkspaceTeam', 'planTeam', 'continueSession', 'renameSession', 'previewSessionMove', 'moveSession', 'sessionContinuity', 'previewHandover', 'applyHandover', 'readContinuity', 'reconcileHandover', 'deleteSession', 'sessionEvents', 'sendPrompt', 'uploadAttachment', 'removeAttachment', 'attachmentPreview', 'resolveApproval', 'cancel',
   'setWorkflow', 'observeImports', 'observationSession', 'setObservation', 'setAutoWatch',
+  'observedWorkspaceLink', 'setObservedWorkspaceLink',
   'observedUserInputStatus', 'answerObservedUserInput',
   'observedCodexStatus', 'connectObservedCodex', 'disconnectObservedCodex', 'sendObservedCodexMessage', 'updateObservedCodexSettings', 'answerObservedCodexInput',
   'answerObservedCodexApproval',
@@ -1139,6 +1165,7 @@ export const AGENT_HOST_METHODS = [
   ...NATIVE_MEMORY_METHODS,
   ...MODEL_SELECTION_GUIDE_METHODS,
   'skillRegistry', 'skillRegistryPage', 'preflightSkill', 'previewSkillRouting', 'inspectSkill', 'rescanSkill', 'importSkill', 'reviewSkill', 'approveSkill', 'activateSkill', 'deactivateSkill', 'rollbackSkill', 'revokeSkill', 'builtinSkills',
+  'skillMarketSearch', 'previewMarketSkill', 'installMarketSkill', 'discardMarketSkillPreview',
   'runtimes', 'hermesModels', 'characterAppearances', 'saveCharacterAppearance', 'hookIngest', 'setHookPrivacy',
   'agentAppConnections', 'planAgentAppConnect', 'applyAgentAppConnect', 'disconnectAgentApp', 'testAgentAppConnection', 'recoverAgentAppConnection',
   'listWorktrees', 'worktreeStatus', 'worktreeDiff', 'worktreeOrphans', 'removeWorktree', 'proposeIntegration', 'integrationProposals', 'applyIntegration',

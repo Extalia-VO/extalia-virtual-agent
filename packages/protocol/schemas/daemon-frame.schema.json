@@ -13120,6 +13120,9 @@
               "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
             }
           ]
+        },
+        "expectedTreeSha256": {
+          "$ref": "#/$defs/Sha256Digest"
         }
       }
     },
@@ -13226,6 +13229,53 @@
         "instructionsUnavailable": {
           "type": "boolean"
         },
+        "sources": {
+          "type": "array",
+          "maxItems": 20,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "origin",
+              "sourceRef",
+              "recordedAt"
+            ],
+            "properties": {
+              "origin": {
+                "type": "string",
+                "enum": [
+                  "user",
+                  "workspace",
+                  "imported",
+                  "generated"
+                ]
+              },
+              "sourceRef": {
+                "type": "string",
+                "maxLength": 512,
+                "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+                "allOf": [
+                  {
+                    "pattern": "[^\\x09-\\x0d\\x20\\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+                  }
+                ]
+              },
+              "recordedAt": {
+                "$ref": "#/$defs/UtcTimestamp"
+              }
+            }
+          }
+        },
+        "sourcesTotal": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 256
+        },
+        "sourcesOmitted": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 256
+        },
         "inspections": {
           "type": "array",
           "maxItems": 20,
@@ -13254,6 +13304,20 @@
             "$ref": "#/$defs/SkillConsentInput"
           }
         }
+      },
+      "dependentRequired": {
+        "sources": [
+          "sourcesTotal",
+          "sourcesOmitted"
+        ],
+        "sourcesTotal": [
+          "sources",
+          "sourcesOmitted"
+        ],
+        "sourcesOmitted": [
+          "sources",
+          "sourcesTotal"
+        ]
       }
     },
     "DaemonSkillListParams": {

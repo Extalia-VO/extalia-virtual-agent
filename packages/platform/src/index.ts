@@ -29,3 +29,6 @@ export * from './observedControl.js';
 export * from './observedInbox.js';
 export * from './observedUserInput.js';
 export * from './sessionMove.js';
+export * from './handover.js';
+export * from './skillMarket.js';
+export * from './observedWorkspaceLink.js';

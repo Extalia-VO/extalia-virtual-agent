@@ -10,7 +10,7 @@
 import {
   DAEMON_SKILL_APPROVAL_DEFAULT_TTL_MS, DAEMON_SKILL_LIMITS, SKILL_LIST_CURSOR_PATTERN, SKILL_PACKAGE_ID_PATTERN, SKILL_REVIEW_DECISIONS, SKILL_REVISION_ID_PATTERN,
   type SkillActivationResult, type SkillApprovalRecord, type SkillConsentInput as SkillConsentRecord, type SkillFileEntry, type SkillInspectionRecord,
-  type SkillReviewDecision, type SkillRevisionState, type SkillRevisionSummary, type SkillScannerReport, type SkillScannerStatus, type SkillStateEvent,
+  type SkillImportOrigin, type SkillReviewDecision, type SkillRevisionState, type SkillRevisionSummary, type SkillScannerReport, type SkillScannerStatus, type SkillStateEvent,
 } from '@extalia/protocol';
 import { SKILL_NAME_PATTERN } from './skills.js';
 
@@ -91,6 +91,10 @@ export interface SkillRevisionDetails {
   instructions?: string;
   /** A full preview was unavailable; no silently truncated body is returned. */
   instructionsUnavailable?: boolean;
+  /** Exact-revision import records. Absence means an older peer or an unrecorded legacy source. */
+  sources?: { origin: SkillImportOrigin; sourceRef: string; recordedAt: string }[];
+  sourcesTotal?: number;
+  sourcesOmitted?: number;
   files: SkillFileEntry[];
   inspections: SkillInspectionRecord[];
   approvals: SkillApprovalRecord[];

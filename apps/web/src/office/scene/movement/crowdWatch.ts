@@ -6,6 +6,8 @@ export interface CrowdWatchActor {
   readonly floor: number;
   readonly position: Readonly<Point3>;
   readonly target?: Readonly<Point3> | null;
+  /** Stable real destination; sampled avoidance targets are not a progress metric. */
+  readonly destination?: Readonly<Point3>;
   readonly movementIntent: boolean;
   readonly eligible: boolean;
   /** Waiting is valid, but an eligible waiter can still repair a physical overlap. */
@@ -17,6 +19,8 @@ export interface CrowdWatchGroup {
   readonly members: readonly string[];
   readonly overlapping: boolean;
   readonly seconds: number;
+  /** Persistent close encounter despite small back-and-forth motion. */
+  readonly recurring?: boolean;
 }
 
 export interface CrowdWatchInitiative {
@@ -61,6 +65,7 @@ function facing(a: CrowdWatchActor, b: CrowdWatchActor): boolean {
  * the original destination. This class never moves actors or changes routes.
  */
 export class CrowdWatch {
+  private readonly encounters = new Map<string, { age: number; first: number; second: number }>();
   private readonly tracked = new Map<string, TrackedActor>();
   private readonly retryAfter = new Map<string, number>();
   private readonly lastNominationAt = new Map<string, number>();
@@ -102,6 +107,7 @@ export class CrowdWatch {
     }
 
     const links = actors.map(() => [] as number[]);
+    const recurring = new Set<number>(), retainedEncounters = new Set<string>();
     const overlaps = new Set<number>();
     for (let a = 0; a < actors.length; a++) {
       for (let b = a + 1; b < actors.length; b++) {
@@ -109,41 +115,60 @@ export class CrowdWatch {
         if (first.floor !== second.floor) continue;
         const separation = distance(first.position, second.position);
         const overlap = separation < .56;
+        const encounterKey = JSON.stringify([first.id, second.id]);
+        let encounter = this.encounters.get(encounterKey);
+        const opposing = first.movementIntent && second.movementIntent && !first.intentionalWait && !second.intentionalWait
+          && (facing(first, second) || facing(second, first));
+        if (separation < 2.5 && (encounter || separation < 1.4 && opposing)) {
+          retainedEncounters.add(encounterKey);
+          const firstRemaining = first.destination || first.target ? distance(first.position, (first.destination ?? first.target)!) : Infinity;
+          const secondRemaining = second.destination || second.target ? distance(second.position, (second.destination ?? second.target)!) : Infinity;
+          if (!encounter) {
+            encounter = { age: 0, first: firstRemaining, second: secondRemaining };
+            this.encounters.set(encounterKey, encounter);
+          } else if (firstRemaining < encounter.first - .25 || secondRemaining < encounter.second - .25) {
+            encounter.first = Math.min(encounter.first, firstRemaining); encounter.second = Math.min(encounter.second, secondRemaining); encounter.age = 0;
+          } else encounter.age += dt;
+        }
+        const repeated = opposing && separation < 1.8 && (encounter?.age ?? 0) >= 12;
+        if (repeated) { recurring.add(a); recurring.add(b); }
         const blocked = separation < 1.4 && first.movementIntent && second.movementIntent
           && !first.intentionalWait && !second.intentionalWait
           && this.tracked.get(first.id)!.stationary >= STALL_SECONDS - 1e-9
           && this.tracked.get(second.id)!.stationary >= STALL_SECONDS - 1e-9
           && (facing(first, second) || facing(second, first)
             || separation < .85 && (!first.eligible || !second.eligible));
-        if (!overlap && !blocked) continue;
+        if (!overlap && !blocked && !repeated) continue;
         links[a]!.push(b); links[b]!.push(a);
         if (overlap) { overlaps.add(a); overlaps.add(b); }
       }
     }
+
+    for (const key of this.encounters.keys()) if (!retainedEncounters.has(key)) this.encounters.delete(key);
 
     const groups = new Map<string, CrowdWatchGroup>();
     const visited = new Set<number>();
     for (let index = 0; index < actors.length; index++) {
       if (visited.has(index) || !links[index]!.length) continue;
       const pending = [index], members: string[] = [];
-      let overlapping = false;
+      let overlapping = false, repeated = false;
       visited.add(index);
       while (pending.length) {
         const current = pending.pop()!;
         members.push(actors[current]!.id);
-        overlapping ||= overlaps.has(current);
+        overlapping ||= overlaps.has(current); repeated ||= recurring.has(current);
         for (const neighbor of links[current]!) if (!visited.has(neighbor)) { visited.add(neighbor); pending.push(neighbor); }
       }
       members.sort(order);
       const id = JSON.stringify(members);
-      groups.set(id, { id, members, overlapping, seconds: (this.groups.get(id)?.seconds ?? -dt) + dt });
+      groups.set(id, { id, members, overlapping, recurring: repeated, seconds: (this.groups.get(id)?.seconds ?? -dt) + dt });
     }
     this.groups = groups;
 
     if (this.active) {
       const actor = byId.get(this.active.actorId);
       const group = groups.get(this.active.groupId);
-      if (!actor || !group || !actor.eligible || (actor.intentionalWait && !group.overlapping) || this.tracked.get(actor.id)!.stationary < STALL_SECONDS - 1e-9) this.release();
+      if (!actor || !group || !actor.eligible || (actor.intentionalWait && !group.overlapping) || (!group.recurring && this.tracked.get(actor.id)!.stationary < STALL_SECONDS - 1e-9)) this.release();
       else if (this.active.remainingSeconds <= dt + 1e-9) this.failed(actor.id);
       else this.active = { ...this.active, remainingSeconds: this.active.remainingSeconds - dt };
     }
@@ -153,7 +178,7 @@ export class CrowdWatch {
       const candidates = [...groups.values()].filter(group => group.seconds >= SETTLE_SECONDS - 1e-9)
         .flatMap(group => group.members.map(id => ({ actor: byId.get(id)!, group })))
         .filter(({ actor, group }) => actor.eligible && (!actor.intentionalWait || group.overlapping)
-          && this.tracked.get(actor.id)!.stationary >= STALL_SECONDS - 1e-9
+          && (group.recurring || this.tracked.get(actor.id)!.stationary >= STALL_SECONDS - 1e-9)
           && this.now >= (this.retryAfter.get(actor.id) ?? 0) - 1e-9)
         .sort((a, b) => (this.lastNominationAt.get(a.actor.id) ?? -1) - (this.lastNominationAt.get(b.actor.id) ?? -1)
           || order(a.actor.id, b.actor.id));

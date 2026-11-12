@@ -5,6 +5,7 @@ import path from 'node:path';
 import { AGENT_HOST_METHODS, type ObservedControlStatus } from '@extalia/platform';
 import { afterEach, expect, it, vi } from 'vitest';
 import { createAgentHost } from '../src/service.js';
+import { AttachmentStore } from '../src/attachments.js';
 import { pollObservedInbox } from '../src/observedInboxClient.js';
 import { handleMcpJsonRpc } from '../src/hooks/mcp.js';
 import { useTempDirs } from './helpers.js';
@@ -387,6 +388,16 @@ it('discovers listed Codex models and configured Claude Code models for observed
 
 it('stages unique per-attachment files for observed prompts, avoids stale or duplicated tags, and cleans up on remove/delete', async () => {
   const f = await fixture();
+  let releaseFirstFinalization!: () => void;
+  const firstFinalization = new Promise<void>(resolve => { releaseFirstFinalization = resolve; });
+  const consumeAttachments = AttachmentStore.prototype.consume;
+  // The inbox can be consumed before attachment persistence and the queue's own receipt settle.
+  // Hold that real boundary once so the sequential-prompt test does not rely on fast local disk I/O.
+  const consume = vi.spyOn(AttachmentStore.prototype, 'consume').mockImplementationOnce(async function (this: AttachmentStore, sessionId, ids) {
+    await firstFinalization;
+    await consumeAttachments.call(this, sessionId, ids);
+  });
+  let firstInboxReceipt = true;
   const PNG_HEAD = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
   const pngA = Buffer.from([...PNG_HEAD, 1, 2, 3, 4]);
   const pngB = Buffer.from([...PNG_HEAD, 5, 6, 7, 8]);
@@ -442,6 +453,24 @@ it('stages unique per-attachment files for observed prompts, avoids stale or dup
         jsonrpc: '2.0', id: 11, method: 'tools/call',
         params: { name: 'poll_inbox', arguments: { session_id: nativeSessionId, ack: delivered.message!.messageId } },
       }, { extaliaHome: f.data, app: 'gemini' });
+      if (firstInboxReceipt) {
+        firstInboxReceipt = false;
+        await vi.waitFor(() => expect(consume).toHaveBeenCalledOnce());
+        const sending = await f.host.promptQueueStatus!(observed.id);
+        expect(sending.items).toHaveLength(1);
+        expect(sending.items[0]!.state).toBe('sending');
+        await expect(f.host.changePromptQueue!(observed.id, {
+          action: 'add', text: 'Must wait for the prior dispatch receipt', start: true, revision: sending.revision,
+        })).rejects.toThrow('Inspect and acknowledge the unknown receipt, or wait for sending, before starting.');
+        releaseFirstFinalization();
+      }
+      // MCP acknowledgement is independent of the sender's persisted dispatch receipt.
+      // Starting the next prompt requires the actual queue to settle, without acknowledging uncertainty.
+      await vi.waitFor(async () => {
+        const settled = await f.host.promptQueueStatus!(observed.id);
+        expect(settled.items.length).toBeGreaterThan(0);
+        expect(settled.items.every(item => item.state === 'sent')).toBe(true);
+      });
       return delivered.message!.text;
     };
 
@@ -484,6 +513,8 @@ it('stages unique per-attachment files for observed prompts, avoids stale or dup
     await f.host.deleteSession(observed.id);
     expect(existsSync(path.join(f.data, 'attachments', observed.id))).toBe(false);
   } finally {
+    releaseFirstFinalization();
+    consume.mockRestore();
     await f.runtime.close();
   }
 });

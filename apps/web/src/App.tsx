@@ -1,6 +1,6 @@
 import './navigation.css';
 import type { Platform } from '@extalia/platform';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { loadLandingMemory, navigationGroups, resolveLandingPage, resolveLandingWorkspace, saveLandingMemory } from './appMode';
 import { rememberResolvedTheme } from './boot/appearance';
 import { Splash } from './boot/Splash';
@@ -15,26 +15,16 @@ import { ApprovalProvider } from './approvals/ApprovalProvider';
 import { ApprovalInboxButton } from './approvals/ApprovalInbox';
 import { resolveChat, type ChatSelection } from './chat/selection';
 import { useHostState } from './host/useHostState';
-import { HostConnectionBanner } from './host/HostConnectionBanner';
+import { HostConnectionDialog } from './host/HostConnectionDialog';
+import { FullscreenButton } from './ui/FullscreenButton';
 import { showsOfficeControls } from './office/officeControls';
 import { OfficeTopbarControls } from './office/OfficeTopbarControls';
 import { MESSAGES, type PageId } from './i18n';
-import { HistoryPage } from './library/HistoryPage';
-import { KnowledgePage } from './knowledge/KnowledgePage';
 import { LearningCountdown } from './knowledge/LearningCountdown';
-import { ImportPage } from './library/ImportPage';
-import { DiagnosticsPage } from './pages/DiagnosticsPage';
-import { EventLogPage } from './pages/EventLogPage';
-import { FilesPage } from './pages/FilesPage';
-import { GitPage } from './pages/GitPage';
-import { SettingsPage } from './pages/SettingsPage';
 import type { SettingsSection } from './pages/settings/settingsSections';
-import { SkillsPage } from './skills/SkillsPage';
 import { useSkillsWaiting } from './skills/skillsModel';
 import { StartPage } from './pages/StartPage';
-import { ObserverPage } from './pages/ObserverPage';
 import { OfficePage } from './pages/OfficePage';
-import { MissionsPage } from './missions/MissionsPage';
 import { NativeStatusButton } from './native/NativeStatusButton';
 import { loadPreferences, savePreferences, type Preferences } from './preferences';
 import { useProfileSync } from './profileSync';
@@ -44,6 +34,20 @@ import { Icon, type IconName } from './ui/Icon';
 import { MessagesContext } from './ui/messages';
 import { UpdateBanner, useUpdateStatus } from './updates/Updates';
 import { UpdateAvailableDialog } from './updates/UpdateAvailableDialog';
+import { PageLoadBoundary } from './pages/PageLoadBoundary';
+
+// Keep landing, conversation and global supervision controls available without loading every page.
+const HistoryPage = lazy(() => import('./library/HistoryPage').then(module => ({ default: module.HistoryPage })));
+const KnowledgePage = lazy(() => import('./knowledge/KnowledgePage').then(module => ({ default: module.KnowledgePage })));
+const ImportPage = lazy(() => import('./library/ImportPage').then(module => ({ default: module.ImportPage })));
+const DiagnosticsPage = lazy(() => import('./pages/DiagnosticsPage').then(module => ({ default: module.DiagnosticsPage })));
+const EventLogPage = lazy(() => import('./pages/EventLogPage').then(module => ({ default: module.EventLogPage })));
+const FilesPage = lazy(() => import('./pages/FilesPage').then(module => ({ default: module.FilesPage })));
+const GitPage = lazy(() => import('./pages/GitPage').then(module => ({ default: module.GitPage })));
+const SettingsPage = lazy(() => import('./pages/SettingsPage').then(module => ({ default: module.SettingsPage })));
+const SkillsPage = lazy(() => import('./skills/SkillsPage').then(module => ({ default: module.SkillsPage })));
+const ObserverPage = lazy(() => import('./pages/ObserverPage').then(module => ({ default: module.ObserverPage })));
+const MissionsPage = lazy(() => import('./missions/MissionsPage').then(module => ({ default: module.MissionsPage })));
 
 const ICONS: Record<PageId, IconName> = { office: 'monitor', chat: 'chat', missions: 'mission', observe: 'diagnostics', files: 'files', git: 'git', knowledge: 'bulb', history: 'book', import: 'download', logs: 'logs', start: 'start', diagnostics: 'diagnostics', skills: 'spark', settings: 'settings' };
 
@@ -118,6 +122,7 @@ export function App({ platform }: { platform: Platform }) {
   const page: PageId = chosenPage ?? defaultPage;
   const [missionFocus, setMissionFocus] = useState<{ id?: string; token: number } | null>(null);
   const [selection, setSelectionState] = useState<ChatSelection>({});
+  const [officeLearningTarget, setOfficeLearningTarget] = useState<HTMLDivElement | null>(null);
   const inputFocusSequence = useRef(0);
   const [inputFocus, setInputFocus] = useState<{ sessionId: string; requestId?: string; token: number }>();
   const locateInput = useCallback((sessionId: string, requestId?: string) => {
@@ -188,8 +193,7 @@ export function App({ platform }: { platform: Platform }) {
     },
     onOpenSettings: () => openSettings(hostState?.connections.length ? 'workspaces' : 'connections'),
   };
-  const banner = <><UpdateBanner t={t} updater={updater} status={updateStatus} />
-    <HostConnectionBanner t={t} error={host.error} desktop={platform.info.kind === 'desktop'} onRetry={host.retry} /></>;
+  const banner = <UpdateBanner t={t} updater={updater} status={updateStatus} />;
 
   let body;
   if (splash) {
@@ -243,12 +247,14 @@ export function App({ platform }: { platform: Platform }) {
                 setMissionFocus(current => ({ id: missionId, token: (current?.token ?? 0) + 1 }));
                 setPage('missions');
               }} />}
+            {platform.info.kind !== 'desktop' && <FullscreenButton t={t} />}
             <span className="topbar-meta">{hostLabel} · v{platform.info.appVersion}</span>
           </header>
           <ObservedInputAlert t={t} />
           <main className={`content ${activePage === 'chat' ? 'content-chat' : activePage === 'office' ? 'content-office' : activePage === 'knowledge' ? 'content-knowledge' : ''}`} key={activePage}>
+            <PageLoadBoundary t={t}>
             {activePage === 'office' && <OfficePage key={sourceContext} t={t} language={preferences.language} agents={agents} hostDisconnected={Boolean(host.error)} state={hostState} onState={host.apply} workspaceId={chatWorkspaceId} inputFocus={inputFocus} onInputFocused={inputFocused}
-              onWorkspace={workspaceId => setSelection({ workspaceId })}
+              onWorkspace={(workspaceId, sessionId) => setSelection({ workspaceId, sessionId })} onLearningTarget={setOfficeLearningTarget}
               onOpenSession={session => { setSelection({ workspaceId: session.workspaceId, sessionId: session.id }); setPage(session.control === 'observed' ? 'observe' : 'chat'); }}
               onOpenMissions={hostState?.workspaces.length ? session => { if (session) setSelection({ workspaceId: session.workspaceId, sessionId: session.id }); setPage('missions'); } : undefined}
               onStartChat={() => setPage(!agents ? 'start' : 'chat')}
@@ -288,12 +294,13 @@ export function App({ platform }: { platform: Platform }) {
               <SkillsPage t={t} agents={agents} state={hostState} {...(hostState.host.kind === 'desktop' && platform.capabilities.filesystem ? { picker: platform.capabilities.filesystem } : {})}
                 {...(skillsFocus ? { focusWorkspaceId: skillsFocus } : {})} onFocusHandled={clearSkillsFocus} onChanged={bumpSkills} />
             )}
+            </PageLoadBoundary>
           </main>
         </div>
         <div className="toast-region" role="status" aria-live="polite">
           {toast && <p key={toast.id} className="toast"><Icon name="check" />{toast.text}</p>}
         </div>
-        {agents && hostState && <LearningCountdown key={sourceContext} agents={agents} t={t} />}
+        {agents && hostState && <LearningCountdown key={sourceContext} agents={agents} t={t} target={activePage === 'office' ? officeLearningTarget : null} />}
       </div>
     );
   }
@@ -302,6 +309,7 @@ export function App({ platform }: { platform: Platform }) {
     <ApprovalProvider t={t} hostKind={platform.info.kind} agents={agents} state={hostState} notifier={platform.capabilities.notifications}>
       <ObservedInputProvider t={t} hostKind={platform.info.kind} agents={agents} state={hostState} notifier={platform.capabilities.notifications} onLocate={locateInput}>{body}</ObservedInputProvider>
       <UpdateAvailableDialog t={t} updater={updater} status={updateStatus} enabled={!splash && platform.info.kind === 'desktop'} />
+      {hostState && <HostConnectionDialog t={t} error={host.error} desktop={platform.info.kind === 'desktop'} onRetry={host.retry} />}
     </ApprovalProvider>
   </MessagesContext>;
 }

@@ -967,7 +967,7 @@ fieldset > legend { padding: 0; margin-bottom: 6px; }
 .worker-run { margin-left: 34px; border-style: dashed; }
 .worker-run .worker-detail { margin-left: 34px; }
 /* Consecutive tool calls: a summary line and one card with a row per call (like a chat app's "Ran 6 commands"). */
-.tool-run { display: grid; gap: 6px; font-size: .9rem; }
+.tool-run { display: grid; grid-template-columns: minmax(0, 1fr); min-width: 0; gap: 6px; font-size: .9rem; }
 .tool-run-head { display: inline-flex; align-items: center; gap: 6px; justify-self: start; padding: 2px 0; border: 0; background: none; color: var(--muted); font: inherit; font-size: .86rem; cursor: pointer; }
 .tool-run-head:hover { color: var(--text); }
 .tool-run-head .pulse { width: 7px; height: 7px; }
@@ -4403,6 +4403,7 @@ button.mission-dag-card:hover { border-color: var(--accent); }
 /* ── Conversation: one reading view for Chat, Observe, History and the session dialog ── */
 .transcript { --reading: min(100%, 760px); justify-items: center; gap: 18px; padding-top: 12px; font-size: 15px; line-height: 1.68; }
 .transcript > .msg { position: relative; width: var(--reading); }
+.transcript > .msg > .visually-hidden { inset-inline-start: 0; }
 .character-conversation .transcript { gap: 18px; font-size: 14.5px; line-height: 1.66; }
 .session-dialog .character-tab-panel { padding-inline: 4px 10px; scrollbar-gutter: stable; }
 

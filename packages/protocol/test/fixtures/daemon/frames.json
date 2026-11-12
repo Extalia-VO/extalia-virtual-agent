@@ -12632,6 +12632,279 @@
         }
       },
       "code": "invalid_frame"
+    },
+    {
+      "name": "skill.import with preview pin",
+      "valid": true,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000100",
+        "op": "skill.import",
+        "params": {
+          "origin": "workspace",
+          "path": "demo",
+          "sourceRef": "workspace:00000000-0000-4000-8000-0000000000aa/.extalia/skills/demo",
+          "expectedTreeSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      }
+    },
+    {
+      "name": "skill.import with malformed preview pin",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "request",
+        "requestId": "00000000-0000-4000-8000-000000000100",
+        "op": "skill.import",
+        "params": {
+          "origin": "workspace",
+          "path": "demo",
+          "sourceRef": "workspace:00000000-0000-4000-8000-0000000000aa/.extalia/skills/demo",
+          "expectedTreeSha256": "not-a-digest"
+        }
+      },
+      "code": "invalid_request"
+    },
+    {
+      "name": "skill.inspect exact revision sources",
+      "valid": true,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "response",
+        "requestId": "00000000-0000-4000-8000-000000000100",
+        "op": "skill.inspect",
+        "result": {
+          "revision": {
+            "packageId": "demo",
+            "revisionId": "skr_3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
+            "origin": "workspace",
+            "version": "1.2.0",
+            "treeSha256": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
+            "skillMdSha256": "5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c",
+            "state": "quarantined",
+            "stateReason": "scanner-unavailable",
+            "riskClass": "tool_using",
+            "manifestInferred": false,
+            "permissionDigest": "9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d",
+            "permissions": [
+              {
+                "capability": "filesystem_read",
+                "scope": "src/**"
+              },
+              {
+                "capability": "network",
+                "scope": "api.example.com"
+              }
+            ],
+            "active": false,
+            "createdAt": "2026-10-22T10:00:00.000Z",
+            "updatedAt": "2026-10-22T10:00:01.000Z"
+          },
+          "manifest": "{\"categories\":[],\"id\":\"demo\",\"risk_class\":\"tool_using\",\"schema\":\"extalia.skill-manifest.v1\",\"version\":\"1.2.0\"}",
+          "files": [
+            {
+              "path": "SKILL.md",
+              "size": 120,
+              "sha256": "5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c",
+              "executable": false
+            },
+            {
+              "path": "scripts/run.sh",
+              "size": 42,
+              "sha256": "1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a",
+              "executable": true
+            }
+          ],
+          "inspections": [
+            {
+              "inspectionId": 1,
+              "scannerId": "unavailable",
+              "policyVersion": "extalia.skill-policy.v1",
+              "outcome": "scanner-unavailable",
+              "coverage": "none",
+              "startedAt": "2026-10-22T10:00:00.000Z",
+              "finishedAt": "2026-10-22T10:00:00.000Z"
+            },
+            {
+              "inspectionId": 2,
+              "scannerId": "skillspector",
+              "scannerPin": "0123abcd+sha256:feed",
+              "scannerVersion": "1.0.0",
+              "policyVersion": "extalia.skill-policy.v1",
+              "outcome": "completed",
+              "coverage": "complete",
+              "verdict": "medium",
+              "startedAt": "2026-10-22T10:01:00.000Z",
+              "finishedAt": "2026-10-22T10:01:02.000Z"
+            }
+          ],
+          "approvals": [
+            {
+              "approvalId": 7,
+              "kind": "user",
+              "approver": "user:local",
+              "status": "revoked",
+              "workspaceId": "00000000-0000-4000-8000-0000000000aa",
+              "permissionDigest": "9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d",
+              "createdAt": "2026-10-22T10:02:00.000Z",
+              "expiresAt": "2026-10-22T10:12:00.000Z",
+              "revokedAt": "2026-10-22T10:03:00.000Z"
+            }
+          ],
+          "history": [
+            {
+              "seq": 1,
+              "toState": "discovered",
+              "reason": "imported",
+              "at": "2026-10-22T10:00:00.000Z"
+            },
+            {
+              "seq": 2,
+              "fromState": "discovered",
+              "toState": "quarantined",
+              "reason": "awaiting-inspection",
+              "at": "2026-10-22T10:00:00.000Z"
+            }
+          ],
+          "consent": [
+            {
+              "path": "SKILL.md",
+              "sha256": "5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c",
+              "allowedAt": "2026-10-21T08:00:00.000Z"
+            }
+          ],
+          "sources": [
+            {
+              "origin": "imported",
+              "sourceRef": "github:example/skills@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#demo",
+              "recordedAt": "2026-11-12T00:00:00.000Z"
+            }
+          ],
+          "sourcesTotal": 1,
+          "sourcesOmitted": 0
+        }
+      }
+    },
+    {
+      "name": "skill.inspect incomplete source projection",
+      "valid": false,
+      "value": {
+        "schemaVersion": 1,
+        "kind": "response",
+        "requestId": "00000000-0000-4000-8000-000000000100",
+        "op": "skill.inspect",
+        "result": {
+          "revision": {
+            "packageId": "demo",
+            "revisionId": "skr_3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
+            "origin": "workspace",
+            "version": "1.2.0",
+            "treeSha256": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
+            "skillMdSha256": "5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c",
+            "state": "quarantined",
+            "stateReason": "scanner-unavailable",
+            "riskClass": "tool_using",
+            "manifestInferred": false,
+            "permissionDigest": "9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d",
+            "permissions": [
+              {
+                "capability": "filesystem_read",
+                "scope": "src/**"
+              },
+              {
+                "capability": "network",
+                "scope": "api.example.com"
+              }
+            ],
+            "active": false,
+            "createdAt": "2026-10-22T10:00:00.000Z",
+            "updatedAt": "2026-10-22T10:00:01.000Z"
+          },
+          "manifest": "{\"categories\":[],\"id\":\"demo\",\"risk_class\":\"tool_using\",\"schema\":\"extalia.skill-manifest.v1\",\"version\":\"1.2.0\"}",
+          "files": [
+            {
+              "path": "SKILL.md",
+              "size": 120,
+              "sha256": "5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c",
+              "executable": false
+            },
+            {
+              "path": "scripts/run.sh",
+              "size": 42,
+              "sha256": "1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a",
+              "executable": true
+            }
+          ],
+          "inspections": [
+            {
+              "inspectionId": 1,
+              "scannerId": "unavailable",
+              "policyVersion": "extalia.skill-policy.v1",
+              "outcome": "scanner-unavailable",
+              "coverage": "none",
+              "startedAt": "2026-10-22T10:00:00.000Z",
+              "finishedAt": "2026-10-22T10:00:00.000Z"
+            },
+            {
+              "inspectionId": 2,
+              "scannerId": "skillspector",
+              "scannerPin": "0123abcd+sha256:feed",
+              "scannerVersion": "1.0.0",
+              "policyVersion": "extalia.skill-policy.v1",
+              "outcome": "completed",
+              "coverage": "complete",
+              "verdict": "medium",
+              "startedAt": "2026-10-22T10:01:00.000Z",
+              "finishedAt": "2026-10-22T10:01:02.000Z"
+            }
+          ],
+          "approvals": [
+            {
+              "approvalId": 7,
+              "kind": "user",
+              "approver": "user:local",
+              "status": "revoked",
+              "workspaceId": "00000000-0000-4000-8000-0000000000aa",
+              "permissionDigest": "9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d",
+              "createdAt": "2026-10-22T10:02:00.000Z",
+              "expiresAt": "2026-10-22T10:12:00.000Z",
+              "revokedAt": "2026-10-22T10:03:00.000Z"
+            }
+          ],
+          "history": [
+            {
+              "seq": 1,
+              "toState": "discovered",
+              "reason": "imported",
+              "at": "2026-10-22T10:00:00.000Z"
+            },
+            {
+              "seq": 2,
+              "fromState": "discovered",
+              "toState": "quarantined",
+              "reason": "awaiting-inspection",
+              "at": "2026-10-22T10:00:00.000Z"
+            }
+          ],
+          "consent": [
+            {
+              "path": "SKILL.md",
+              "sha256": "5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c",
+              "allowedAt": "2026-10-21T08:00:00.000Z"
+            }
+          ],
+          "sources": [
+            {
+              "origin": "imported",
+              "sourceRef": "github:example/skills@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#demo",
+              "recordedAt": "2026-11-12T00:00:00.000Z"
+            }
+          ],
+          "sourcesTotal": 1
+        }
+      },
+      "code": "invalid_frame"
     }
   ]
 }

@@ -1,6 +1,6 @@
 import { codexUserInputEvidence, type CodexUserInputEvidence } from './codexUserInput.js';
 import {
-  EFFORTS, PORTABLE_SESSION_FORMAT, decodePortableSession, safeLabel, safeText, stopReasonOf,
+  EFFORTS, PORTABLE_SESSION_FORMAT, decodePortableSession, literalProjectPath, safeLabel, safeText, stopReasonOf,
   type Effort, type ImportMode, type MessageRole, type PortableSession,
 } from '@extalia/core';
 import { MAX_STEP_ATTACHMENTS, StepList, codexEventAttachments, explicitToolFailure, extractWrittenFiles, imageAttachment, outputText, promptAttachments, statedSuccess, stepOutput, stepTime, toolHints, toolResultAttachments, toolImageOutputText, type StepAttachment, type TranscriptContext, type TranscriptStatus, type TranscriptStep } from './steps.js';
@@ -189,7 +189,11 @@ function finish(context: ParseContext, id: unknown, drafts: Draft[], diagnostics
 
   const profile = context.profile || 'default';
   const sourceSessionId = context.sourceId === 'hermes' && profile !== 'default' ? `profile:${encodeURIComponent(profile)}:${nativeId}` : nativeId;
-  const projectLocation = safeText(context.projectPath || str(metadata.path), 2000).trim();
+  const reportedProject = context.projectPath || str(metadata.path);
+  // A filesystem path is an identity, not a display label. Trimming, redacting
+  // or clipping it can turn a sibling directory into an authorized project.
+  const projectLocation = literalProjectPath(reportedProject);
+  if (reportedProject && !projectLocation) diagnostics.push('The project folder could not be preserved as a literal safe path and was omitted.');
   const firstUser = messages.find(message => message.role === 'user' && !isInjectedContext(message.content) && safeLabel(message.content, 160))?.content;
   const exportedAt = new Date(toEpochMs(context.exportedAt) ?? Date.now()).toISOString();
   const provider = PROVIDERS[context.sourceId];

@@ -31,6 +31,7 @@ export interface HookIngestOptions {
   now?: () => number;
   permissionHandler?(request: IncomingMessage, response: ServerResponse): Promise<void>;
   pollInbox?(app: HookApp, payload: Record<string, unknown>, response: ServerResponse): Promise<void>;
+  readContinuity?(app: HookApp, payload: Record<string, unknown>, response: ServerResponse): Promise<void>;
 }
 
 export async function createHookIngest(options: HookIngestOptions): Promise<HookIngest> {
@@ -57,6 +58,7 @@ export async function createHookIngest(options: HookIngestOptions): Promise<Hook
     verifyToken: given => current(secret => secretMatches(secret, given)),
     verifySignature: (body, header) => current(secret => signatureMatches(secret, body, header)),
     ...(options.pollInbox ? { pollInbox: options.pollInbox } : {}),
+    ...(options.readContinuity ? { readContinuity: options.readContinuity } : {}),
     deliver(app, payload) {
       const hook = normalizeHook(app, payload, { labelsOnly: isLabelsOnly() });
       const synthetic = payload.extalia_test === true || hook?.sessionId === 'extalia-connect-test' || hook?.event === 'ExtaliaConnectTest';

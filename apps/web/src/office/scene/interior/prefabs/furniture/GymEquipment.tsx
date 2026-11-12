@@ -49,7 +49,11 @@ export function Treadmill({ position = [0, 0, 0], rotationY = 0, resourceId }: E
     const state = fitnessMechanism(resourceId);
     if (state) belt.current?.children.forEach((stripe, i) => { stripe.position.z = treadmillStripePosition(i, state.travel); });
   });
+  // A merged frame mesh contains both deck and uprights. Keep the real rails
+  // and console solid while opening only the frame's authored rear-access lane.
   return <group name={resourceId} position={position} rotation={[0, rotationY, 0]} userData={{ officeSeatStation: true }}>
+    <group userData={{ officeCollisionFootprint: { minY: .3, maxY: 1.3,
+      points: [[-.7, -.975], [.7, -.975], [.7, .37], [.58, .37], [.58, -.5], [-.58, -.5], [-.58, .37], [-.7, .37]] } }}>
     <InteriorPart model="treadmill-frame">
     <mesh position={[0, 0.1, 0]} receiveShadow><boxGeometry args={[1.4, 0.03, 1.95]} /><meshStandardMaterial {...STEEL} /></mesh>
     {[-1, 1].map(side => <group key={side}>
@@ -60,6 +64,7 @@ export function Treadmill({ position = [0, 0, 0], rotationY = 0, resourceId }: E
       <mesh castShadow><boxGeometry args={[0.81, 0.29, 0.08]} /><meshStandardMaterial {...STEEL} /></mesh>
     </group>
     </InteriorPart>
+    </group>
     <InteriorPart model="treadmill-belt">
     <mesh position={[0, FITNESS_BLUEPRINT.treadmillDeckHeight - 0.006, 0]} receiveShadow><boxGeometry args={[1.08, 0.012, 1.78]} /><meshStandardMaterial color="#171f22" roughness={0.94} /></mesh>
     </InteriorPart>
@@ -86,6 +91,8 @@ export function ExerciseBike({ position = [0, 0, 0], rotationY = 0, resourceId }
     });
   });
   return <group name={resourceId} position={position} rotation={[0, rotationY, 0]} userData={{ officeSeatStation: true }}>
+    {/* Keep the authored rider root when a loaded bike frame replaces its procedural saddle. */}
+    <group position={[0, 0, FITNESS_BLUEPRINT.bikeSeat[1]]} userData={{ officeEquipmentSeat: true }} />
     <InteriorPart model="bike-frame">
     {[-0.45, 0.45].map(z => <mesh key={z} castShadow position={[0, 0.06, z]}><boxGeometry args={[0.62, 0.1, 0.12]} /><meshStandardMaterial {...STEEL} /></mesh>)}
     <mesh castShadow position={[0, 0.39, 0]} rotation={[0, 0, Math.PI / 2]}><cylinderGeometry args={[0.32, 0.32, 0.22, 24]} /><meshStandardMaterial {...STEEL} /></mesh>
@@ -139,6 +146,8 @@ export function StrengthSeat({ position = [0, 0, 0], rotationY = 0, resourceId, 
     }
   });
   return <group name={resourceId} position={position} rotation={[0, rotationY, 0]} userData={{ officeSeatStation: true }}>
+    {/* Authored body contact survives replacement of either strength-seat model. */}
+    <group position={[FITNESS_BLUEPRINT.strengthSeat[0], 0, FITNESS_BLUEPRINT.strengthSeat[1]]} userData={{ officeEquipmentSeat: true }} />
     <InteriorPart model={cable ? "cable-seat" : "strength-bench"}>
     <mesh castShadow position={[0, 0.1, 0]}><boxGeometry args={[0.95, 0.12, 1.05]} /><meshStandardMaterial {...STEEL} /></mesh>
     <mesh castShadow position={[0, 0.29, 0]}><boxGeometry args={[0.08, 0.38, 0.09]} /><meshStandardMaterial {...STEEL} /></mesh>

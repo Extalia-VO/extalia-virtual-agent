@@ -349,6 +349,18 @@ export function SkillDetails({ t, detail, workspaceNames }: { t: Messages; detai
     <div className="skill-details">
       {detail.instructions !== undefined && <details><summary>{s.instructions}</summary><pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', maxHeight: 320, overflow: 'auto' }}>{detail.instructions}</pre><p className="muted small">{s.instructionsHint}</p></details>}
       {detail.instructionsUnavailable && <p className="muted small">{s.instructionsUnavailable}</p>}
+      {detail.revision.origin !== 'builtin' && <section aria-label={s.recordedSources}>
+        <h4>{s.recordedSources}</h4>
+        {detail.sources?.length ? <>
+          <p className="muted small">{s.sourceCounts(detail.sources.length, detail.sourcesTotal ?? detail.sources.length)}</p>
+          <ul className="skill-detail-list">{detail.sources.map(source => <li key={`${source.origin}:${source.sourceRef}`} className="small">
+            <span>{s.origins[source.origin]} · {when(source.recordedAt)}</span>
+            <code style={{ display: 'block', overflowWrap: 'anywhere' }}>{source.sourceRef}</code>
+          </li>)}</ul>
+          {detail.sourcesOmitted !== undefined && detail.sourcesOmitted > 0 && <p className="note small">{s.sourcesOmitted(detail.sourcesOmitted)}</p>}
+        </> : <p className="muted small">{s.sourcesUnknown}</p>}
+        <p className="muted small">{s.sourceEvidenceHint}</p>
+      </section>}
       {detail.consent.map((consent, index) => (
         // W0 consent is review input only: shown with the project it came from, never as an approval.
         <p key={`${consent.workspaceId ?? ''}:${consent.sha256}:${index}`} className="small note" title={s.consentTitle}>

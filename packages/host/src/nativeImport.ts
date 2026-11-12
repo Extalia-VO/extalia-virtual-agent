@@ -1,4 +1,4 @@
-import { safeLabel, safeText, type ImportMode, type PortableSession } from '@extalia/core';
+import { literalProjectPath, safeLabel, safeText, type ImportMode, type PortableSession } from '@extalia/core';
 import {
   codexThreadSpawn, mergeSubagentSteps, parseAntigravity, parseClaude, parseCodex, parseGemini, parseHermes,
   type CodexThreadSpawn, type NativeParseResult, type NativeSourceId, type ParseContext, type SubagentTranscript, type TranscriptContext, type TranscriptStep,
@@ -427,14 +427,14 @@ export class NativeImportService {
     const antigravityId = location.kind === 'antigravity' ? basename(join(path, '..', '..', '..')) : undefined;
     // A Codex sub-agent thread names its root in `session_id`; its own id is the thread id.
     const nativeSessionId = (location.kind === 'codex' ? text(meta.id) : antigravityId) ?? text(meta.sessionId) ?? text(meta.session_id) ?? text(meta.id) ?? basename(path).replace(/\.(jsonl?|pb)$/, '');
-    const rawProject = text(meta.cwd) ?? text(meta.projectPath) ?? (location.kind === 'gemini' ? this.geminiProject(location, path) : undefined);
+    const rawProject = literalProjectPath(meta.cwd) ?? literalProjectPath(meta.projectPath) ?? (location.kind === 'gemini' ? this.geminiProject(location, path) : undefined);
     const mutableTime = location.kind === 'gemini' ? Date.parse(isoDate(meta.lastUpdated, fileIdentity.mtime)) : fileIdentity.mtime;
     const candidate: ImportCandidate = {
       id: randomUUID(), sourceId: location.sourceId, locationId: location.id, sourceName: location.label, nativeSessionId,
       title: safeLabel(text(meta.title) ?? text(meta.summary) ?? `${location.label} · ${nativeSessionId.slice(0, 24)}`, 160),
       updatedAt: new Date(Math.max(fileIdentity.mtime, mutableTime)).toISOString(), format: location.format, supported: location.supported,
       ...(location.profile ? { profile: location.profile } : {}),
-      ...(rawProject ? { projectPath: safeText(rawProject, 2000) } : {}),
+      ...(rawProject ? { projectPath: rawProject } : {}),
       ...(location.note || large ? { note: large ? 'Larger than 25 MB: its latest activity can be observed, but it cannot be imported.' : location.note } : {}),
     };
     if (!same(fileIdentity, identity(contained(location.path, path)))) throw new Error('The session changed during the scan; scan again.');
@@ -447,8 +447,8 @@ export class NativeImportService {
     try {
       const marker = join(projectFolder, '.project_root');
       if (identity(contained(location.root, marker)).size <= 8192) {
-        const project = readBounded(location.root, marker, 8192).trim();
-        if (isAbsolute(project)) return project;
+        const project = literalProjectPath(readBounded(location.root, marker, 8192).replace(/\r?\n$/, ''));
+        if (project && isAbsolute(project)) return project;
       }
     } catch { /* optional */ }
     const folderId = basename(projectFolder);
@@ -459,7 +459,8 @@ export class NativeImportService {
         const registry = JSON.parse(readBounded(root, registryPath, 1024 * 1024)) as Row;
         if (!registry.projects || typeof registry.projects !== 'object' || Array.isArray(registry.projects)) continue;
         for (const [project, slug] of Object.entries(registry.projects as Row)) {
-          if (isAbsolute(project) && (slug === folderId || digest(project) === folderId)) return project;
+          const literal = literalProjectPath(project);
+          if (literal && isAbsolute(literal) && (slug === folderId || digest(literal) === folderId)) return literal;
         }
       } catch { /* a hash alone never becomes a path */ }
     }
@@ -486,7 +487,7 @@ export class NativeImportService {
         const nativeSessionId = text(row[query.id]);
         if (!nativeSessionId) { diagnostic(location, 'Ignored a Hermes session without an id.'); continue; }
         const fileIdentity = identity(contained(location.root, location.path));
-        const project = text(row.cwd) ?? text(row.project_path) ?? text(row.git_repo_root);
+        const project = literalProjectPath(row.cwd) ?? literalProjectPath(row.project_path) ?? literalProjectPath(row.git_repo_root);
         yield {
           location, path: location.path, identity: fileIdentity, titled: Boolean(text(row.title)), rowFingerprint: digest(JSON.stringify(row)),
           candidate: {
@@ -766,7 +767,7 @@ export class NativeImportService {
         const row = db.prepare(`SELECT ${query.fields} FROM sessions WHERE ${quoted(query.id)} = ?`).get(reference.nativeSessionId) as Row | undefined;
         if (!row) throw new Error('The selected native session no longer exists.');
         const info = identity(contained(location.root, location.path));
-        const project = text(row.cwd) ?? text(row.project_path) ?? text(row.git_repo_root);
+        const project = literalProjectPath(row.cwd) ?? literalProjectPath(row.project_path) ?? literalProjectPath(row.git_repo_root);
         ref = { location, path: location.path, identity: info, titled: Boolean(text(row.title)), rowFingerprint: digest(JSON.stringify(row)),
           candidate: { id: randomUUID(), sourceId: location.sourceId, locationId: location.id, sourceName: location.label,
             nativeSessionId: reference.nativeSessionId, title: safeLabel(text(row.title) ?? `${location.label} · ${reference.nativeSessionId.slice(0, 24)}`, 160),
@@ -990,7 +991,7 @@ export class NativeImportService {
       const payload = (row?.payload && typeof row.payload === 'object' ? row.payload : {}) as Row;
       const id = text(payload.id);
       if (row?.type !== 'session_meta' || !id) return undefined;
-      const spawn = codexThreadSpawn(payload), cwd = text(payload.cwd), startMs = Date.parse(String(payload.timestamp ?? row.timestamp ?? ''));
+      const spawn = codexThreadSpawn(payload), cwd = literalProjectPath(payload.cwd), startMs = Date.parse(String(payload.timestamp ?? row.timestamp ?? ''));
       const header: ThreadHeader = { ino, id: safeLabel(id, 200), ...(spawn ? { spawn } : {}), ...(cwd ? { cwd: safeText(cwd, 2000) } : {}), ...(Number.isFinite(startMs) ? { startMs } : {}) };
       this.threadHeaders.set(path, header);
       if (this.threadHeaders.size > MAX_FILES) this.threadHeaders.delete(this.threadHeaders.keys().next().value!);

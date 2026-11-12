@@ -155,10 +155,10 @@ describe('bounded movement recovery', () => {
     expect(recoverySegmentClear('walker', [0, 0, 0], [0, 0, 1], () => false, body)).toBe(false);
   });
 
-  it('releases owned interactions and walks to a safe aisle while honoring the pending goal', () => {
+  it('releases transient interactions, closes its physical door and honors the pending goal', () => {
     const door: DoorInfo = { center: [0, 0, 0], floor: 1, yaw: 0, clearWidth: 1.2, height: 2.5, openAngle: -Math.PI / 2, sliding: false };
     const doors = new DoorTraffic({ forEachDoor: visit => visit('door', door), forEachWalker() {} }, () => 0);
-    vi.spyOn(doors, 'clearForSwing').mockReturnValue(false);
+    const swing = vi.spyOn(doors, 'clearForSwing').mockReturnValue(false);
     const release = vi.fn();
     const trackWalker = vi.fn(), trackBody = vi.fn();
     const env: MovementEnv = { navigation: navigation([[1, 0, 1.3], [3, 0, 1.3], [3, 0, 2.5]]), elevators: { ...elevators, release }, doors, walkable: () => true, nearbyWalkers: () => [], trackWalker, trackBody };
@@ -178,9 +178,12 @@ describe('bounded movement recovery', () => {
     expect(mover.goal).toBe(pending); expect(mover.pending).toBe(pending);
     expect(mover.trip).toBeNull(); expect(mover.door).toBeNull();
     expect(release).toHaveBeenCalledWith(mover.id, 'A');
-    expect(doors.duty(mover.id)).toBeNull(); expect(doors.claim('door', 'next')).toBe(true);
+    expect(doors.duty(mover.id)?.id).toBe('door');
+    expect(doors.claim('door', 'next')).toBe(true);
+    doors.release('door', 'next'); // Release the probe's hand reservation.
+    swing.mockReturnValue(true); // The physical obstruction has cleared.
     expect(mover.opacity).toBe(1);
-    for (let frame = 0; frame < 200 && (mover.phase as string) !== 'gone'; frame++) {
+    for (let frame = 0; frame < 30 * 30 && (mover.phase as string) !== 'gone'; frame++) {
       const before: Point3 = [...mover.position];
       stepMover(mover, 1 / 30, env);
       expect(Math.hypot(...mover.position.map((value, axis) => value - before[axis]!) as Point3)).toBeLessThan(.08);
@@ -188,6 +191,8 @@ describe('bounded movement recovery', () => {
     }
     expect(mover.phase).toBe('gone');
     expect(mover.position).toEqual([3, 0, 2.5]);
+    expect(doors.amount('door')).toBe(0);
+    expect(doors.duty(mover.id)).toBeNull();
     expect(trackWalker.mock.calls.some(([id, position]) => id === mover.id && position !== null)).toBe(true);
   });
 

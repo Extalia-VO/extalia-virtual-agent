@@ -27,6 +27,8 @@ export interface SessionRecord {
   agentGender?: MemberGender;
   /** The lead's context in use after its latest turn (v0.0.48); an invalid stored record is ignored on read. */
   context?: SessionContextUsage;
+  /** The host has prepared reviewed handover context; unrelated sessions do not load the continuity archive. */
+  continuity?: boolean;
   /** Host-owned snapshot of workspace folder/cross-access grants used by model history. */
   workspaceBoundary?: string;
   /** Explicit user review allowing this conversation's context under these exact grants. */

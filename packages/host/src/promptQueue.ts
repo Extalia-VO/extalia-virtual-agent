@@ -231,6 +231,8 @@ export class PromptQueues {
   get isBusy(): boolean { return [...this.work.values()].some(operation => !operation.retired && operation.itemId !== undefined); }
   /** Local admission guard for optional post-task work; never discovers or dispatches a source. */
   hasUnfinished(id: string): boolean { return this.queues.get(id)?.items.some(item => item.state !== 'sent') ?? false; }
+  /** Pending, paused and uncertain delivery still belong to foreground work. */
+  get hasUnfinishedWork(): boolean { return [...this.queues.values()].some(queue => queue.items.some(item => item.state !== 'sent')); }
   /** Serialize a reviewed session move against enqueue/dispatch; only completed receipts can follow it. */
   withIdleSession<T>(id: string, action: () => Promise<T>): Promise<T> {
     return this.serial(async () => {

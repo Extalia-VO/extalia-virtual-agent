@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { BoxGeometry, Group, InstancedMesh, Matrix4, Mesh, MeshBasicMaterial, OrthographicCamera, Raycaster, Vector2, Vector3 } from 'three';
-import { isSceneObjectVisible, visibleSceneHits } from '../src/office/scene/officePointerEvents';
+import { isSceneObjectVisible, visibleCharacterRaycast, visibleSceneHits } from '../src/office/scene/officePointerEvents';
 
 function pickVolume(id: string) {
   const mesh = new Mesh(new BoxGeometry(1.1, 1.5, 1.1), new MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false }));
@@ -93,5 +93,30 @@ describe('Office pointer visibility', () => {
     expect(raw.length).toBeGreaterThan(0);
     expect(visibleSceneHits(raw)).toEqual([]);
     expect(visibleSceneHits([])).toEqual([]);
+  });
+
+  it('skips hidden character geometry before raycasting and refreshes correctly on a floor switch', () => {
+    const h = stackedFloors();
+    h.visibleFloor.raycast = visibleCharacterRaycast;
+    h.hiddenFloor.raycast = visibleCharacterRaycast;
+    const visibleCast = vi.spyOn(h.visible, 'raycast'), hiddenCast = vi.spyOn(h.hidden, 'raycast');
+    expect(selectedId(h.raycaster.intersectObject(h.scene, true))).toBe('actor-visible');
+    expect(visibleCast).toHaveBeenCalledOnce();
+    expect(hiddenCast).not.toHaveBeenCalled();
+    visibleCast.mockClear(); hiddenCast.mockClear();
+    h.visibleFloor.visible = false; h.hiddenFloor.visible = true;
+    expect(selectedId(h.raycaster.intersectObject(h.scene, true))).toBe('actor-hidden');
+    expect(visibleCast).not.toHaveBeenCalled();
+    expect(hiddenCast).toHaveBeenCalledOnce();
+  });
+
+  it('retains the final visibility filter for a directly registered transparent pick volume', () => {
+    const h = stackedFloors();
+    h.visibleFloor.raycast = visibleCharacterRaycast;
+    h.hiddenFloor.raycast = visibleCharacterRaycast;
+    // R3F can register the hover pick volume independently of its clickable group.
+    const raw = h.raycaster.intersectObjects([h.scene, h.hidden], true);
+    expect(raw[0]?.object).toBe(h.hidden);
+    expect(selectedId(raw)).toBe('actor-visible');
   });
 });

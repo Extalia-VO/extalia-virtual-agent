@@ -102,7 +102,9 @@ describe('office walking graph', () => {
         continue;
       }
       const attach = navigation.waypoints.get(`seat:${seat.seatId}:aisle`)!.position;
-      expect(Math.hypot(attach[0] - seat.staging[0], attach[2] - seat.staging[2]), seat.seatId).toBeLessThan(2.6);
+      // Mounted equipment needs room to approach around its frame; physical
+      // capsule clearance is also checked against the authored equipment parts.
+      expect(Math.hypot(attach[0] - seat.staging[0], attach[2] - seat.staging[2]), seat.seatId).toBeLessThan(seat.equipment ? 3.6 : 2.6);
       const room = OFFICE_ROOMS.find(entry => entry.id === seat.roomId)!;
       expect(Math.abs(seat.staging[0] - room.center[0])).toBeLessThanOrEqual(room.size[0] / 2);
       expect(Math.abs(seat.staging[2] - room.center[2])).toBeLessThanOrEqual(room.size[1] / 2);

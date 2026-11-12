@@ -1,7 +1,31 @@
 import { describe, expect, it } from 'vitest';
 import { createCameraNewcomers } from '../src/office/cameraNewcomers';
 
-describe('newly working camera subjects', () => {
+describe('newly admitted and activated camera subjects', () => {
+  it('announces a newly admitted idle character only after its live position is ready', () => {
+    const roster = createCameraNewcomers();
+    expect(roster.update([], () => true, 0, true, ['idle-existing'])).toEqual([]);
+    expect(roster.update([], id => id === 'idle-existing', 100, true, ['idle-existing', 'idle-new'])).toEqual([]);
+    expect(roster.spawnedIds()).toEqual(['idle-new']);
+    expect(roster.update([], () => true, 200, true, ['idle-existing', 'idle-new'])).toEqual(['idle-new']);
+    expect(roster.update([], () => true, 300, true, ['idle-existing'])).toEqual([]);
+    expect(roster.spawnedIds()).toEqual([]);
+  });
+  it('does not announce work from an off-shift or unadmitted character', () => {
+    const roster = createCameraNewcomers();
+    roster.update([], () => true, 0, true, ['admitted']);
+    expect(roster.update(['queued'], () => true, 100, true, ['admitted'])).toEqual([]);
+    expect(roster.spawnedIds()).toEqual([]);
+    expect(roster.update(['queued'], () => true, 200, true, ['admitted', 'queued'])).toEqual(['queued']);
+  });
+  it('expires idle spawns and baselines the roster again after automatic camera is disabled', () => {
+    const roster = createCameraNewcomers();
+    roster.update([], () => true, 0, true, []);
+    expect(roster.update([], () => true, 100, true, ['idle'])).toEqual(['idle']);
+    expect(roster.update([], () => true, 30_101, true, ['idle'])).toEqual([]);
+    roster.update([], () => true, 31_000, false, ['idle']);
+    expect(roster.update([], () => true, 32_000, true, ['idle'])).toEqual([]);
+  });
   it('separates genuine roster additions from an existing idle agent restarting work', () => {
     const roster = createCameraNewcomers();
     roster.update(['lead'], () => true, 0, true, ['lead', 'idle']);

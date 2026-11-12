@@ -67,10 +67,23 @@ const scanner = def('SkillScannerReport', object({
 const activation = def('SkillActivationResult', object({ packageId: packageId.ref, revisionId: revisionId.ref, approvalId: positive, activatedAt: timestamp, indexGeneration: count }));
 const decision = enumeration(SKILL_REVIEW_DECISIONS);
 
+/** Older daemons omit provenance; a newer reply must send the complete bounded projection. */
+function withImportSources(base: Rule): Rule {
+  const fields = ['sources', 'sourcesTotal', 'sourcesOmitted'];
+  return rule((value, path, errors) => {
+    base.check(value, path, errors);
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return;
+    const record = value as Record<string, unknown>;
+    if (fields.some(key => Object.hasOwn(record, key))) {
+      for (const key of fields) if (!Object.hasOwn(record, key)) fail(`${path}.${key}`, 'expected complete source provenance', errors);
+    }
+  }, { ...base.schema, dependentRequired: Object.fromEntries(fields.map(key => [key, fields.filter(other => other !== key)])) });
+}
+
 export const SKILL_PARAMS: Record<DaemonSkillOp, Rule> = {
   'skill.preflight': skillPreflightParams,
   'skill.routingPreview': skillRoutingParams,
-  'skill.import': object({ origin: enumeration(SKILL_IMPORT_ORIGINS), path: skillPath.ref, sourceRef: optional(text(DAEMON_SKILL_LIMITS.sourceRef)) }),
+  'skill.import': object({ origin: enumeration(SKILL_IMPORT_ORIGINS), path: skillPath.ref, sourceRef: optional(text(DAEMON_SKILL_LIMITS.sourceRef)), expectedTreeSha256: optional(digest) }),
   'skill.list': object({
     cursor: optional(matching(SKILL_LIST_CURSOR_PATTERN, 'expected a cursor from a previous page')),
     limit: optional(number(1, true, DAEMON_SKILL_LIST_MAX_LIMIT)), packageId: optional(packageId.ref),
@@ -99,12 +112,14 @@ export const SKILL_RESULTS: Record<DaemonSkillOp, Rule> = {
     revisions: array(summary.ref, false, 0, DAEMON_SKILL_LIST_MAX_LIMIT),
     nextCursor: optional(matching(SKILL_LIST_CURSOR_PATTERN, 'expected a cursor')), indexGeneration: count,
   }),
-  'skill.inspect': object({
+  'skill.inspect': withImportSources(object({
     revision: summary.ref, manifest: text(DAEMON_SKILL_LIMITS.manifest), files: array(file.ref, false, 0, DAEMON_SKILL_LIMITS.files),
     instructions: optional(multiline(65_536, true)), instructionsUnavailable: optional(boolean),
+    sources: optional(array(object({ origin: enumeration(SKILL_IMPORT_ORIGINS), sourceRef: text(DAEMON_SKILL_LIMITS.sourceRef), recordedAt: timestamp }), false, 0, 20)),
+    sourcesTotal: optional(number(0, true, 256)), sourcesOmitted: optional(number(0, true, 256)),
     inspections: array(inspection.ref, false, 0, DAEMON_SKILL_LIMITS.inspections), approvals: array(approval.ref, false, 0, DAEMON_SKILL_LIMITS.approvals),
     history: array(event.ref, false, 0, DAEMON_SKILL_LIMITS.history), consent: array(consent.ref, false, 0, DAEMON_SKILL_LIMITS.consent),
-  }),
+  })),
   'skill.review': object({ revisionId: revisionId.ref, decision, state: state.ref, stateReason: optional(skillReason.ref), reviewId: optional(positive) }),
   'skill.approve': object({ approvalId: positive, revisionId: revisionId.ref, state: state.ref, expiresAt: timestamp }),
   'skill.activate': activation.ref,

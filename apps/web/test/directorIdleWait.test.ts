@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { OfficeAgent } from '../src/office/presence';
 import { gaitParameters } from '../src/office/scene/avatars/gait';
 import { getOfficeSeats, type OfficeAgentAllocation } from '../src/office/scene/interior/seating';
-import { MovementDirector } from '../src/office/scene/movement/director';
+import { CHAT_GATHER_WAIT_MS, MovementDirector } from '../src/office/scene/movement/director';
 import { HospitalityState } from '../src/office/scene/movement/hospitality';
 import { OutdoorKioskState } from '../src/office/scene/movement/outdoorKiosk';
 import { placeSeated, routeFrom, type ElevatorAccess, type MovementEnv } from '../src/office/scene/movement/mover';
@@ -95,7 +95,7 @@ describe('idle visit deadlines respect intent', () => {
     } finally { h.director.dispose(); }
   });
 
-  it('keeps a reciprocal chat waiting for its lift-bound partner and finishes a reached standing chat normally', () => {
+  it('ends a delayed social gathering instead of leaving the first arrival waiting indefinitely', () => {
     const h = harness('managed', .01, true);
     const a = h.director.list[0]!, b = h.director.list[1]!;
     for (let second = 0; second < 300 && !h.director.lifeState(a.id)?.visit?.partnerId; second++) h.run(1);
@@ -104,12 +104,14 @@ describe('idle visit deadlines respect intent', () => {
     placeSeated(a, navigation.seats.get(visitA.spotId)!, h.env);
     waitInLift(h, 1);
     try {
-      h.run(190);
+      h.run(CHAT_GATHER_WAIT_MS / 1000 - 1);
       expect(h.director.lifeState(a.id)?.visit?.spotId).toBe(visitA.spotId);
-      expect(a.motion.clip).toBe('look-around');
-      placeSeated(b, navigation.seats.get(visitB.spotId)!, h.env);
+      expect(a.motion.clip).toBe(navigation.seats.get(visitA.spotId)!.standing ? 'look-around' : 'lounge');
       h.run(2);
       expect(h.director.lifeState(a.id)?.visit?.spotId).not.toBe(visitA.spotId);
+      expect(h.director.lifeState(b.id)?.visit?.spotId).not.toBe(visitB.spotId);
+      expect(h.director.lifeState(a.id)?.visit?.partnerId).toBeUndefined();
+      expect(h.director.lifeState(b.id)?.visit?.partnerId).toBeUndefined();
     } finally { h.director.dispose(); }
   });
 });

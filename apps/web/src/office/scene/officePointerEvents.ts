@@ -7,6 +7,11 @@ export function isSceneObjectVisible(object: Object3D): boolean {
   return true;
 }
 
+/** Three's false return stops descendant raycasts before touching hidden rigs. */
+export function visibleCharacterRaycast(this: Object3D): false | undefined {
+  return isSceneObjectVisible(this) ? undefined : false;
+}
+
 /** Three raycasts hidden subtrees too; discard them before pointer events bubble. */
 export function visibleSceneHits(hits: Intersection[]): Intersection[] {
   return hits.filter(hit => isSceneObjectVisible(hit.object));

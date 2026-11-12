@@ -1,6 +1,6 @@
 import type { Point3 } from '../layout';
-import { doorAxes, doorLeafDistance, doorPoint, type DoorInfo } from '../interior/doorTraffic';
-import { DOOR_BODY_CLEARANCE } from './doorChoreography';
+import { doorAxes, doorLeafDistance, doorLeafPoint, doorPoint, type DoorInfo } from '../interior/doorTraffic';
+import { DOOR_BODY_CLEARANCE, DOOR_GRIP_OFFSET, doorClosePosition, doorOpenPosition, doorSwingSide } from './doorChoreography';
 import { staticSeatNeighborsClear } from './staticSeating';
 import type { WalkableSegment, WalkingNeighbor } from './naturalWalking';
 import type { OfficeNavigation, RouteStep } from './navGraph';
@@ -8,7 +8,12 @@ import type { OfficeNavigation, RouteStep } from './navGraph';
 /** Waiting never crosses the wall plane, the leaf, furniture, or another body. */
 export function waitingSegmentClear(id: string, door: Readonly<DoorInfo>, amount: number, side: 1 | -1,
   from: Readonly<Point3>, to: Readonly<Point3>, walkable: WalkableSegment | undefined, neighbors: readonly WalkingNeighbor[], minimumThrough = DOOR_BODY_CLEARANCE): boolean {
-  if (doorAxes(door, to).through * side < minimumThrough - 1e-6 || (walkable && !walkable(from, to, .29))
+  const fromDepth = doorAxes(door, from).through * side, toDepth = doorAxes(door, to).through * side;
+  // A displaced waiter already inside the apron must regain its depth by
+  // continuous outward steps. Requiring the full margin on its first step
+  // pins it in the threshold. Never permit a retreat through the wall plane.
+  const requiredDepth = fromDepth >= 0 && fromDepth < minimumThrough ? fromDepth : minimumThrough;
+  if (toDepth < requiredDepth - 1e-6 || (walkable && !walkable(from, to, .29))
     || !staticSeatNeighborsClear(id, from, to, neighbors)) return false;
   if (door.sliding) return true;
   const minimum = Math.min(DOOR_BODY_CLEARANCE, doorLeafDistance(door, amount, from));
@@ -78,14 +83,40 @@ export function doorApproachPath(id: string, door: Readonly<DoorInfo>, amount: n
   return target ? { index: target.index, path } : null;
 }
 
-/** Compact waits must stay clear even after the operator swings the whole leaf. */
-function futureSwingClear(door: Readonly<DoorInfo>, point: Point3): boolean {
+const operatorSweeps = new WeakMap<Readonly<DoorInfo>, { points: readonly Point3[]; tips: readonly Point3[]; margin: number; tipMargin: number; radius: number }>();
+/** Parking reserves the leaf and the operator's feet; travel still checks only current geometry. */
+export function doorParkingClear(door: Readonly<DoorInfo>, point: Readonly<Point3>): boolean {
   if (door.sliding) return true;
   // Distance to the leaf is Lipschitz in its angular motion. This margin bounds
   // the unsampled half-interval, rather than assuming a 90-degree opening.
   const count = 16, margin = door.clearWidth * Math.abs(door.openAngle) / (2 * count);
   for (let i = 0; i <= count; i++) if (doorLeafDistance(door, i / count, point) < DOOR_BODY_CLEARANCE + margin) return false;
-  return true;
+  let sweep = operatorSweeps.get(door);
+  if (!sweep) {
+    const samples = 96, points: Point3[] = [], tips: Point3[] = [];
+    for (let i = 0; i <= samples; i++) tips.push(doorLeafPoint(door, i / samples, door.clearWidth, 0, [0, 0, 0]));
+    for (const side of [-1, 1] as const) {
+      // The pulling sidestep is exactly linear up to ten degrees, then fixed.
+      const stop = Math.min(1, (Math.PI / 18) / Math.max(1e-6, Math.abs(door.openAngle)));
+      for (let i = 0; i <= samples; i++) {
+        points.push(doorOpenPosition(door, (side === doorSwingSide(door) ? stop : 1) * i / samples, side, [0, 0, 0]),
+          doorClosePosition(door, i / samples, side, [0, 0, 0]),
+          doorClosePosition(door, i / samples, side, [0, 0, 0], 1));
+      }
+    }
+    // Bound half a sample of rotating stance, smooth handle extension and tip rounding.
+    sweep = { points, tips, margin: ((3 * door.clearWidth + DOOR_GRIP_OFFSET) * Math.abs(door.openAngle)
+      + DOOR_GRIP_OFFSET * Math.PI) / (2 * samples),
+      tipMargin: door.clearWidth * Math.abs(door.openAngle) / (2 * samples),
+      radius: Math.max(...points.map(body => Math.hypot(body[0] - door.center[0], body[2] - door.center[2])),
+        ...tips.map(tip => Math.hypot(tip[0] - door.center[0], tip[2] - door.center[2]) + DOOR_GRIP_OFFSET)) };
+    operatorSweeps.set(door, sweep);
+  }
+  if (Math.hypot(point[0] - door.center[0], point[2] - door.center[2]) > sweep.radius + .56 + sweep.margin) return true;
+  // Entry-side closing can start at any partial opening. Its rounded stance
+  // stays within .42 m of the leaf tip, regardless of that starting fraction.
+  return sweep.tips.every(tip => Math.hypot(tip[0] - point[0], tip[2] - point[2]) >= DOOR_GRIP_OFFSET + .56 + sweep.tipMargin)
+    && sweep.points.every(body => Math.hypot(body[0] - point[0], body[2] - point[2]) >= .56 + sweep.margin);
 }
 
 /** Small visibility graph finds a real same-face pocket, including narrower corridors. */
@@ -94,7 +125,8 @@ export function doorWaitingPath(id: string, door: Readonly<DoorInfo>, amount: nu
   const at = doorAxes(door, from), target = doorAxes(door, preferred);
   const depth = Math.max(door.clearWidth + .9, target.through * side);
   const acrosses = [target.across, -target.across, Math.sign(target.across || 1) * .72, -Math.sign(target.across || 1) * .72];
-  const targets = acrosses.map(across => doorPoint(door, across, side * depth, [0, 0, 0])).filter(parkingClear);
+  const targets = acrosses.map(across => doorPoint(door, across, side * depth, [0, 0, 0]))
+    .filter(point => parkingClear(point) && doorParkingClear(door, point));
   const points: Point3[] = [[...from], ...targets];
   for (const through of [depth, depth + .8, Math.max(depth, at.through * side)]) {
     for (const across of [at.across, 0, ...acrosses]) points.push(doorPoint(door, across, side * through, [0, 0, 0]));
@@ -105,20 +137,21 @@ export function doorWaitingPath(id: string, door: Readonly<DoorInfo>, amount: nu
   // A shallow corridor may have no space at width+.9 depth. Only then use
   // lateral pockets beyond the jamb; the centre of the passage is never a goal.
   const compact: Point3[] = [];
-  for (const through of [.8, 1.2, 1.6, 2]) for (const across of acrosses.slice(0, 2)) {
+  const compactAcrosses = [...acrosses.slice(0, 2), door.clearWidth / 2 + 1.05, -door.clearWidth / 2 - 1.05];
+  for (const through of [.8, 1.2, 1.6, 2]) for (const across of compactAcrosses) {
     if (through >= depth || Math.abs(across) < door.clearWidth / 2 + DOOR_BODY_CLEARANCE + .1) continue;
     const point = doorPoint(door, across, side * through, [0, 0, 0]);
-    if (parkingClear(point) && futureSwingClear(door, point)) compact.push(point);
+    if (parkingClear(point) && doorParkingClear(door, point)) compact.push(point);
   }
   // Give a released walker its aisle without giving up the waiting ticket.
   // Local side pockets also fit rooms where the usual deep columns hit furniture.
   if (localYield) for (const gap of [.8, 1.2, 1.6]) for (const [x, z] of [[-gap, 0], [gap, 0], [0, -gap], [0, gap], [-gap, gap], [gap, -gap], [-gap, -gap], [gap, gap]]) {
     const point: Point3 = [from[0] + x!, from[1], from[2] + z!];
-    if (parkingClear(point) && futureSwingClear(door, point)) compact.push(point);
+    if (parkingClear(point) && doorParkingClear(door, point)) compact.push(point);
   }
   const bends: Point3[] = [];
   for (const through of [.8, 1.2, 1.6, 2, Math.max(.8, at.through * side)]) {
-    for (const across of [at.across, 0, ...acrosses.slice(0, 2)]) bends.push(doorPoint(door, across, side * through, [0, 0, 0]));
+    for (const across of [at.across, 0, ...compactAcrosses]) bends.push(doorPoint(door, across, side * through, [0, 0, 0]));
   }
   if (localYield && navigation) {
     // A desk aisle may have no lateral pocket until its next authored bay.
@@ -133,7 +166,7 @@ export function doorWaitingPath(id: string, door: Readonly<DoorInfo>, amount: nu
     for (const point of authored) {
       const vacant = neighbors.every(other => other.id === id || Math.abs(other.position[1] - point[1]) > .8
         || Math.hypot(other.position[0] - point[0], other.position[2] - point[2]) >= .56);
-      if (vacant && parkingClear(point) && futureSwingClear(door, point) && clear(point, point)) compact.push(point);
+      if (vacant && parkingClear(point) && doorParkingClear(door, point) && clear(point, point)) compact.push(point);
       bends.push(point, [point[0], from[1], from[2]], [from[0], from[1], point[2]]);
     }
   }

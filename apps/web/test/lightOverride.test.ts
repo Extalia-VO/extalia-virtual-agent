@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DAYLIGHT_INTERIOR_LEVEL, LIGHT_OVERRIDE_STORAGE_KEY, loadLightOverride, resolveInteriorLights, saveLightOverride } from '../src/office/scene/environment/lightOverride';
-import { createBudgetController, createRenderFrameSampler, getRenderBudget, getRenderBudgetLevel, RECOVERY_WINDOWS, RENDER_BUDGET_LEVELS, budgetPixelRatio, resetRenderFrameSampler, sampleRenderFrame, setRenderBudgetLevel, updateBudget } from '../src/office/scene/environment/renderBudget';
+import { createBudgetController, createRenderFrameSampler, getRenderBudget, getRenderBudgetLevel, INITIAL_RENDER_BUDGET_LEVEL, MAX_RETRY_WINDOWS, PROBE_WINDOWS, RECOVERY_WINDOWS, RENDER_BUDGET_LEVELS, budgetPixelRatio, resetRenderFrameSampler, sampleRenderFrame, setRenderBudgetLevel, updateBudget } from '../src/office/scene/environment/renderBudget';
 
 function memoryStorage(initial: Record<string, string> = {}) {
   const values = new Map(Object.entries(initial));
@@ -47,14 +47,14 @@ describe('lights override', () => {
 });
 
 describe('adaptive render budget', () => {
-  it('starts the shared budget and controller at 480p, then requires headroom for every recovery step', () => {
+  it('starts at 1080p and recovers one resolution step at a time with sustained headroom', () => {
     expect(RENDER_BUDGET_LEVELS.map(budget => budget.resolutionHeight)).toEqual([2160, 1440, 1080, 720, 480]);
     const controller = createBudgetController();
     const lowest = RENDER_BUDGET_LEVELS.length - 1;
-    expect(getRenderBudgetLevel()).toBe(lowest);
-    expect(getRenderBudget().resolutionHeight).toBe(480);
-    expect(controller.level).toBe(lowest);
-    for (let next = lowest - 1; next >= 0; next--) {
+    expect(getRenderBudgetLevel()).toBe(INITIAL_RENDER_BUDGET_LEVEL);
+    expect(getRenderBudget().resolutionHeight).toBe(1080);
+    expect(controller.level).toBe(INITIAL_RENDER_BUDGET_LEVEL);
+    for (let next = INITIAL_RENDER_BUDGET_LEVEL - 1; next >= 0; next--) {
       for (let i = 0; i < RECOVERY_WINDOWS - 1; i++) expect(updateBudget(controller, { fps: 57 })).toBe(next + 1);
       expect(updateBudget(controller, { fps: 57 })).toBe(next);
     }
@@ -137,6 +137,7 @@ describe('adaptive render budget', () => {
     };
     // 300 ms compile stall followed by 60 fps frames.
     expect(windowFps(i => (i === 0 ? 300 : 1000 / 60))).toBeGreaterThan(55);
+    expect(sampler.rawFps).toBeLessThan(50); // the user sees the hitch in actual throughput
     // 30 ms frames throughout (33 fps) stay slow.
     expect(windowFps(() => 30)).toBeLessThan(40);
   });
@@ -148,28 +149,50 @@ describe('adaptive render budget', () => {
     expect(updateBudget(controller, { fps: 42 })).toBe(1);
     expect(updateBudget(controller, { fps: 42 })).toBe(2);
     expect(updateBudget(controller, { fps: 50 })).toBe(2);
-    for (let i = 0; i < RECOVERY_WINDOWS - 1; i++) expect(updateBudget(controller, { fps: 60 })).toBe(2);
+    // Level 1 failed, so its retry delay outlasts the normal six-window recovery.
+    while (controller.windows < controller.retryAfter[1]! - 1) expect(updateBudget(controller, { fps: 60 })).toBe(2);
     expect(updateBudget(controller, { fps: 60 })).toBe(1);
     // One slow second interrupts recovery.
     for (let i = 0; i < RECOVERY_WINDOWS - 1; i++) updateBudget(controller, { fps: 60 });
-    updateBudget(controller, { fps: 50 });
+    updateBudget(controller, { fps: 46 });
     expect(updateBudget(controller, { fps: 60 })).toBe(1);
   });
 
-  it('stays at the lowest level and does not retry a level that failed twice', () => {
+  it('backs off repeated failed probes but always retries after load clears', () => {
     const controller = createBudgetController();
     for (let i = 0; i < 20; i++) updateBudget(controller, { fps: 10 });
     expect(controller.level).toBe(RENDER_BUDGET_LEVELS.length - 1);
-    const settled = createBudgetController();
-    settled.level = 0;
-    for (let round = 0; round < 2; round++) {
-      updateBudget(settled, { fps: 20 });
-      for (let i = 0; i < RECOVERY_WINDOWS; i++) updateBudget(settled, { fps: 60 });
+    const settled = createBudgetController(); settled.level = 0;
+    for (let round = 0; round < 7; round++) {
+      expect(updateBudget(settled, { fps: 20 })).toBe(1);
+      const delay = settled.retryAfter[0]! - settled.windows;
+      expect(delay).toBe(Math.min(MAX_RETRY_WINDOWS, 15 * 2 ** Math.min(3, round)));
+      for (let i = 0; i < delay - 1; i++) expect(updateBudget(settled, { fps: 60 })).toBe(1);
+      expect(updateBudget(settled, { fps: 60 })).toBe(0);
     }
-    // Level 0 failed twice, so recovering from a later slowdown settles at level 1, never 0.
-    updateBudget(settled, { fps: 20 });
-    for (let i = 0; i < 2 * RECOVERY_WINDOWS; i++) updateBudget(settled, { fps: 60 });
-    expect(settled.level).toBe(1);
+    for (let i = 0; i < 200; i++) expect(updateBudget(settled, { fps: 60 })).toBe(0);
+  });
+
+  it('probes on stable 45 fps displays, rolls back a costly probe and ignores invalid samples', () => {
+    const controller = createBudgetController(); controller.level = 4;
+    for (let i = 0; i < PROBE_WINDOWS - 1; i++) expect(updateBudget(controller, { fps: 45 })).toBe(4);
+    expect(updateBudget(controller, { fps: 45 })).toBe(3);
+    expect(updateBudget(controller, { fps: 25 })).toBe(4);
+    const snapshot = structuredClone(controller);
+    for (const fps of [NaN, Infinity, -Infinity, 0, -5]) updateBudget(controller, { fps });
+    expect(controller).toEqual(snapshot);
+    for (let i = 0; i < PROBE_WINDOWS; i++) updateBudget(controller, { fps: 45 });
+    expect(controller.level).toBe(3);
+  });
+
+  it('recovers from sustained load all the way back to the sharpest tier without oscillating on marginal load', () => {
+    const controller = createBudgetController();
+    for (let i = 0; i < 60; i++) updateBudget(controller, { fps: 18 });
+    expect(controller.level).toBe(4);
+    for (let i = 0; i < 60; i++) updateBudget(controller, { fps: 60 });
+    expect(controller.level).toBe(0);
+    for (let i = 0; i < 300; i++) updateBudget(controller, { fps: i % 2 ? 46 : 39 });
+    expect(controller.level).toBe(4);
   });
 
   it('fits every resolution step to physical landscape and portrait canvas dimensions', () => {

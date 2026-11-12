@@ -34,13 +34,16 @@ export function ChangedFilesView({ t, language, files }: { t: Messages; language
 }
 
 /** Messages and Files over one conversation. Messages stay mounted, so switching keeps the scroll position. */
-export function ConversationTabs({ t, language, files, children }: { t: Messages; language: string; files: readonly ChangedFile[]; children: ReactNode }) {
+export function ConversationTabs({ t, language, files, children, header }: { t: Messages; language: string; files: readonly ChangedFile[]; children: ReactNode; header?: ReactNode }) {
   const [tab, setTab] = useState<'messages' | 'files'>('messages');
   const c = t.characterConsole;
   return <>
-    <div className="character-tabs conversation-tabs" role="tablist" aria-label={c.messages}>
-      <button type="button" role="tab" aria-selected={tab === 'messages'} onClick={() => setTab('messages')}>{c.messages}</button>
-      <button type="button" role="tab" aria-selected={tab === 'files'} onClick={() => setTab('files')}>{c.files}{files.length > 0 && <span className="badge">{files.length}</span>}</button>
+    <div className="conversation-header">
+      {header}
+      <div className="character-tabs conversation-tabs" role="tablist" aria-label={c.messages}>
+        <button type="button" role="tab" aria-selected={tab === 'messages'} onClick={() => setTab('messages')}>{c.messages}</button>
+        <button type="button" role="tab" aria-selected={tab === 'files'} onClick={() => setTab('files')}>{c.files}{files.length > 0 && <span className="badge">{files.length}</span>}</button>
+      </div>
     </div>
     <div className="conversation-panel" role="tabpanel" hidden={tab !== 'messages'}>{children}</div>
     {tab === 'files' && <div className="conversation-files" role="tabpanel"><ChangedFilesView t={t} language={language} files={files} /></div>}

@@ -68,6 +68,13 @@ vault profile, and scoped Knowledge requests reuse the daemon's dedicated index
 thread with an eight-profile LRU. All default/scoped Knowledge requests share a host
 admission lane so queue wait does not consume wire execution deadlines.
 
+[Idle team knowledge](../adr/0075-idle-team-knowledge-and-office-context.md)
+extends that same timer owner with real team discussions and acknowledged artifact
+results. New foreground work fences maintenance and drains its entered effects;
+the full chosen quiet interval restarts after actual foreground settlement.
+Office portals the shared countdown above its prompt while keeping source-context
+selection independent from the global character board and automatic camera.
+
 The skill registry uses that same lazy profile daemon independently of mission
 backend selection. [Pinned SkillSpector inspection](../adr/0068-pinned-skillspector-inspection.md)
 runs in a separate bounded Rust-owned worker, with a bundled Python/scanner
@@ -100,6 +107,16 @@ protocol ← core ← platform ← apps (web, desktop, cli)
   it runs in.
 
 `pnpm lint` enforces these rules.
+
+[Cross-agent work continuity](../adr/0076-cross-agent-work-continuity.md) keeps a
+canonical work record across reviewed Native connection changes and existing
+observed endpoints. Immutable source archives, user-reviewed notes and honest
+transport receipts remain distinct from hidden harness context. Existing Native
+sessions keep their ID; observed app IDs remain separate aliases. Scoped external
+MCP readers expose only the notes/snapshots pinned by an explicit handover,
+with expiring hash-only grants, live privacy checks and no future-work access.
+Native agents receive bounded read tools only after handover. Old generated
+capsules are replaced in model history without deleting conversation events.
 
 Saved native mission checkpoints and canonical native control events use
 host-owned SQLite WAL under the profile lock, with one-time import of legacy

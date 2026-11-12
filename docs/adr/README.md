@@ -115,3 +115,10 @@ implementation.
 - [0072: Capability-bound observed control and cooperative inboxes](0072-observed-control-hub-and-cooperative-inboxes.md)
 
 - [0074: Deferred learning and workspace-bound Knowledge](0074-deferred-learning-and-workspace-knowledge.md)
+- [0075: Idle team knowledge and Office source context](0075-idle-team-knowledge-and-office-context.md)
+
+- [0076: Reviewed cross-agent work continuity](0076-cross-agent-work-continuity.md)
+
+- [0077: Independently refreshed skill marketplace](0077-live-skill-marketplace.md)
+
+- [0078: Observed workspace association](0078-observed-workspace-association.md)

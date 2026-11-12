@@ -38,10 +38,10 @@ use extalia_daemon::skills::Skills;
 
 #[cfg(not(feature = "provider-experiments"))]
 const USAGE: &str = "usage: extalia-daemon [--data-dir <absolute directory>] [--profile <profile id>] \
-     [--vault-root <absolute directory>] | extalia-daemon --provider-models";
+     [--vault-root <absolute directory>] | extalia-daemon --provider-models | extalia-daemon --skill-market";
 #[cfg(feature = "provider-experiments")]
 const USAGE: &str = "usage: extalia-daemon [--data-dir <absolute directory>] [--profile <profile id>] \
-     [--vault-root <absolute directory>] | extalia-daemon --provider-models | extalia-daemon --provider-complete | extalia-daemon --provider-worker <UUID>";
+     [--vault-root <absolute directory>] | extalia-daemon --provider-models | extalia-daemon --skill-market | extalia-daemon --provider-complete | extalia-daemon --provider-worker <UUID>";
 
 #[derive(Debug, Default)]
 struct Args {
@@ -177,6 +177,12 @@ fn main() -> ExitCode {
             io::stdin().lock(),
             io::stdout().lock(),
         ));
+    }
+    if arguments.iter().any(|arg| arg == "--skill-market") {
+        if arguments.len() != 1 {
+            return ExitCode::from(2);
+        }
+        return ExitCode::from(extalia_daemon::skill_market::run_stdio());
     }
     let Ok(args) = parse_args(arguments.into_iter()) else {
         eprintln!("{USAGE}");

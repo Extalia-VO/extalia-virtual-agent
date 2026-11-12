@@ -11,7 +11,10 @@ const elevators: ElevatorAccess = { request() {}, waitingSlot: () => null, canBo
 function fixture(blockForward = false) {
   let now = 0;
   const door: DoorInfo = { floor: 1, center: [0, 0, 0], yaw: 0, clearWidth: 1.6, height: 2.55, openAngle: Math.PI / 2, sliding: false };
-  const doors = new DoorTraffic({ forEachDoor: visit => visit('door', door), forEachWalker() {} }, () => now);
+  const doors = new DoorTraffic({ forEachDoor: visit => visit('door', door), forEachWalker: visit => {
+    // A real local follower permits handoff; its unclaimed ticket goes stale after three seconds.
+    visit({ id: 'tail', position: [0, 0, 3], target: [0, 0, 0], updatedAt: 0 });
+  } }, () => now);
   const mover = createMover('head', gaitParameters(), [0, 0, -1.1], 0, false);
   const goal = { kind: 'leave' as const, node: 'goal' };
   mover.goal = goal; mover.phase = 'doorwork';
@@ -38,8 +41,9 @@ describe('compact doorway handoff into a turning aisle', () => {
     const h = fixture(); h.tick();
     expect(h.mover.phase).toBe('walking');
     expect(h.doors.queueStatus('door', 'tail')).toMatchObject({ head: 'tail', ahead: 0, count: 1 });
-    for (let i = 0; i < 180 && (h.mover.phase as string) !== 'gone'; i++) h.tick();
+    for (let i = 0; i < 900 && (h.mover.phase as string) !== 'gone'; i++) h.tick();
     expect(h.mover.phase).toBe('gone'); expect(h.mover.position).toEqual([3, 0, -1.1]);
+    expect(h.doors.amount('door')).toBe(0);
   });
 
   it('retains the crossing ticket when the forward aisle is closed and far apron is occupied', () => {

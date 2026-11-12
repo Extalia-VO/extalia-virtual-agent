@@ -16,6 +16,149 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.287] - 2026-11-12
+
+- Show package version, risk, requested permissions and runtime declarations in
+  Grimoire previews. Resolve metadata from the pinned bytes in Rust and reject
+  invalid manifests before preparing an import.
+
+## [0.4.286] - 2026-11-12
+
+- Associate observed conversations with an existing workspace from Chat or
+  the lead character. Keep equal-depth matches unresolved until selected,
+  recheck physical folder identity, and preserve the scope of existing handovers.
+
+## [0.4.285] - 2026-11-11
+
+- Check complete furnished walking routes and choose bounded authored alternatives
+  before entering a blocked later aisle. Correct the Entertainment seating aisle,
+  preserve exact destinations and retain normal door, chair and lift ownership.
+- Reserve door-leaf and operator maneuvers when finding waiting places, allow
+  checked outward recovery from a crowded apron and extend distant queues only
+  through nearby aligned tickets. Refresh genuine travel direction during yields
+  without discarding the original passing responsibility.
+- Let newly admitted idle colleagues receive automatic camera attention, keep
+  passive hover from cancelling the tour and show an explicit manual Following
+  control with a Stop action. Preserve the slower contextual focus intervals.
+- Skip invisible character pose work and recursive model raycasts while keeping
+  movement simulation active. Reveal the current pose immediately and preserve
+  visible picking order. Release cloned skeleton textures and private final
+  wardrobe geometry without disposing shared model assets.
+- Recover interrupted Office graphics and failed engine downloads through fresh
+  attempts. Preserve prompt drafts and attachment chips across explicit scene
+  restarts, wait for healthy restored frames and reset interrupted FPS samples.
+- Keep the existing front paving, entrance route, lamps and benches visible in
+  the F1 cutaway so arriving colleagues have outdoor context. Share one mounted
+  front area with Building view while keeping it hidden on F2 and F3.
+
+## [0.4.284] - 2026-11-11
+
+- Load eleven secondary pages on demand while keeping Office, Chat, navigation,
+  approvals and observed-input alerts available. Add localized page loading and
+  explicit recovery after a failed download. The same-feature production build
+  reduces the initial static JavaScript gzip transfer by 11.35%; device memory
+  and FPS remain separate measurements.
+- Keep long tool commands and output within narrow Chat layouts, including the
+  hidden sender label, without clipping content or masking page overflow.
+- Extend controlled handover acceptance through repeated observed/Native hops,
+  original archive paging, destination-bound grants and Native endpoint reuse.
+
+## [0.4.283] - 2026-11-11
+
+- Add a live Grimoire marketplace that refreshes independently of application
+  releases: explicit public search, cached/offline results, immutable GitHub
+  previews and exact-package imports through the existing security review flow.
+  Rust owns HTTP, bounded file downloads, hashes and staging; no upstream
+  installer runs and imports never approve or activate a skill.
+- Preserve reviewed package pins across host admission and immutable registry
+  staging, serialize marketplace operations and retain uncertain receipts without
+  automatic retries. Add responsive English/Indonesian review controls and pinned
+  source links.
+- Record append-only import sources for each exact skill revision, including
+  unchanged bytes seen at later commits. Reject cross-source package-name
+  collisions and disclose legacy unknowns and omitted retained records. CoreStore
+  schema 14 uses the existing automatic pre-migration backup; older binaries
+  refuse the upgraded store.
+
+## [0.4.282] - 2026-11-11
+
+- Add reviewed cross-agent work handover with one canonical continuity record,
+  attributed source/model/context coverage, editable working notes, immutable
+  evidence pages and a persistent transfer trail. Native connection changes keep
+  their session/history; returning from Observe reuses the prepared Native
+  endpoint. Existing external conversations use verified control routes or an
+  explicit manual packet, with honest queued/submitted/unknown receipts.
+- Let a reviewed external destination page pinned original archives through the
+  Extalia MCP server, using expiring destination-bound grants stored as hashes.
+  Preserve labels-only/workspace/history-off privacy, revoke grants on pause or
+  removal, and require deliberate inspection after uncertain delivery without
+  resending or clearing worker ownership. Bound repeated context by replacing
+  prior host-generated capsules and filtering exact delivered packet echoes.
+- Associate observed projects with every selected workspace folder, including
+  secondary roots, and document the remaining PRD work and handover limits.
+
+## [0.4.281] - 2026-11-11
+
+### Fixed
+
+- Detect repeated encounters between Office characters even when both keep moving back and forth. Keep a consistent passing turn until the other character has cleared the aisle, and find a checked multi-turn bypass around desks and shelves while preserving the original destination and door, chair and lift ownership.
+- Register persistent equipment contact anchors for the cable-row and weight-bench seats so their users can finish the controlled dismount and clear the incoming character's path.
+- Route fitness traffic around the cable tower and approach treadmill decks from the rear. Keep treadmill rails and consoles solid without treating the usable deck as a filled collision box.
+
+## [0.4.280] - 2026-11-11
+
+### Added
+
+- Add a fullscreen control to the Web toolbar and open ordinary Desktop windows in native fullscreen from launch.
+
+### Fixed
+
+- Show a persistent connection-lost dialog when the foreground Web service stops. Automatically reconnect after a manual service restart, refresh rotated Bridge credentials without reloading the page, and dismiss the dialog only after a fresh host snapshot succeeds. Preserve the current view and drafts without replaying user actions.
+- Coalesce repeated CLI stop signals, close hosts that finish starting during shutdown, and cancel update relaunch when Ctrl+C requests a stop.
+
+## [0.4.279] - 2026-11-11
+
+### Improved
+
+- Bring both idle colleagues toward a shared conversation place chosen from their actual routes. Prefer nearby sofa seating, animate seated talk/listen gestures, and stop delayed gatherings or blocked optional sit approaches instead of leaving a character waiting indefinitely. Real work still takes priority.
+
+### Fixed
+
+- Keep fitness-seat contact ownership when replacement models load, finish the full checked dismount before ordinary walking, and move the Library lamp away from the door operator's sweep.
+- Let lift waiters step aside for the passenger with the boarding or exit turn without changing reservations. Prevent neighboring door queues from yielding to each other indefinitely while preserving each queue's FIFO order.
+
+## [0.4.278] - 2026-11-11
+
+### Added
+
+- Integrate deferred Native knowledge meetings with the saved team, per-member skill context and acknowledged Obsidian minutes. Surface meeting countdowns and durable skill-candidate receipts above the Office prompt through one shared notification controller.
+
+### Fixed
+
+- Restart the full chosen learning delay after foreground work, including quick human memory operations, and drain active maintenance before user work proceeds. Retain acknowledged partial results without replaying uncertain jobs.
+- Bound and redact meeting source context from only the completed task before queueing and provider requests.
+- Select a character's source session/workspace while keeping the Office board global and automatic camera attention visual. Restore the default prompt workspace when its toolbar choice is cleared.
+
+## [0.4.277] - 2026-11-11
+
+### Improved
+
+- Start the shared Web/Desktop Office near 1080p and recover toward sharper native-display tiers when frame throughput permits. Retry previously slow tiers with bounded cooldowns instead of permanently locking quality after two failures; retain prompt slowdown protection and the native-DPR/4K pixel limits.
+- Show a small, passive live FPS readout at the Office's top-left. Measure real foreground throughput including hitches, clear stale values on visibility changes, and update the badge independently of scene rendering.
+
+## [0.4.276] - 2026-11-11
+
+### Fixed
+
+- Complete physical door cleanup through changing/cancelled queues without reordering crossing tickets. Retain closure responsibility, allow a checked closing service turn, transfer to a real nearby operator, and resume the exact original seat/exit/transit position after closing. Retained closers use authored room aisles around furniture and a rejoin checked with the leaf fully closed.
+- Recover blocked pending Office destinations through checked local bends and authored aisle joins. Periodic retries preserve the pending goal and recovery budget while bodies, furniture or door portals block an escape.
+
+## [0.4.275] - 2026-11-11
+
+### Improved
+
+- Keep the Chat title and Messages/Files tabs visible while scrolling long conversations. Use a responsive right sidebar on laptop and desktop for session status, model/effort, working folder, recent file changes, memory/context and team controls; keep one mounted set of controls inline on narrow screens.
+
 ### Fixed
 
 - Keep every visible Office body in collision and door-swing checks, including targetless door work, lift waits and departure fades. Guard chair/door root motion against current bodies before advancing poses, and separate lift queues from passenger exit lanes.

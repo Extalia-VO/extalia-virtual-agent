@@ -113,7 +113,9 @@ const FLOOR_PLANS: Readonly<Record<OfficeFloor, FloorPlan>> = {
       ['lounge-dining-lane', 18.9, 7.9, 'approach'], ['lounge-dining-east', 23.5, 7.9, 'approach'],
       // v0.0.38 idle life: the entertainment room (TV, arcade, foosball) off the south corridor, and the forecourt garden benches.
       ['corridor-entertainment', 18.7, 10], ['entertainment-door', 18.7, 11.4, 'door'], ['entertainment-inside', 18.7, 12.3, 'door'],
-      ['entertainment-east', 19.6, 13.9, 'approach'], ['entertainment-games', entertainmentGameX, 13.9, 'approach'], ['entertainment-south', 19.6, 16, 'approach'], ['entertainment-west', 16.2, 16, 'approach'],
+      // Pass between the coffee table and the upholstery fronts, never through
+      // the armchair or diagonally across the sofa to its second console seat.
+      ['entertainment-east', 19.6, 13.9, 'approach'], ['entertainment-games', entertainmentGameX, 13.9, 'approach'], ['entertainment-south', 19.6, 15.3, 'approach'], ['entertainment-west', 13.6, 15.3, 'approach'],
       ['forecourt-west', -7.6, -24.1, 'approach'], ['forecourt-east', 7.6, -24.1, 'approach'],
       ['forecourt-front', 0, -28.5, 'approach'], ['forecourt-front-west', -13, -28.5, 'approach'], ['forecourt-front-east', 13, -28.5, 'approach'],
       // Perimeter promenades stay outside the facade, shafts and planted strips.
@@ -227,6 +229,7 @@ const FLOOR_PLANS: Readonly<Record<OfficeFloor, FloorPlan>> = {
       ['fitness-hall', 15, 4.4], ['fitness-door', 15, 5.7, 'door'], ['fitness-inside', 15, 6.6, 'door'],
       ['fitness-mid', 15, 9, 'approach'], ['fitness-west', 7.6, 9, 'approach'], ['fitness-east-lane', 23.2, 9.3, 'approach'],
       ['fitness-center', 15, 11.1, 'approach'], ['fitness-east', 20.7, 11.1, 'approach'],
+      ['fitness-rear-west', 6.7, 12.2, 'approach'], ['fitness-rear-east', 10.5, 12.2, 'approach'],
     ],
     links: [
       ['stairs-north', 'stairs-south'], ['stair-hall', 'stairs-north'], ['stair-hall', 'stairs-south'], ['stair-hall', 'north-hall'],
@@ -247,7 +250,8 @@ const FLOOR_PLANS: Readonly<Record<OfficeFloor, FloorPlan>> = {
       research: research.aisles,
       'executive-studio': [['studio-inside', 'studio-aisle-west']],
       'rooftop-terrace': [['terrace-inside', 'terrace-east'], ['terrace-east', 'terrace-far-east'], ['terrace-inside', 'terrace-west'], ['terrace-west', 'terrace-far-west']],
-      fitness: [['fitness-inside', 'fitness-mid'], ['fitness-mid', 'fitness-center'], ['fitness-center', 'fitness-east'], ['fitness-mid', 'fitness-west'], ['fitness-mid', 'fitness-east-lane']],
+      fitness: [['fitness-inside', 'fitness-mid'], ['fitness-mid', 'fitness-center'], ['fitness-center', 'fitness-east'], ['fitness-mid', 'fitness-west'], ['fitness-east', 'fitness-east-lane'],
+        ['fitness-center', 'fitness-rear-east'], ['fitness-rear-east', 'fitness-rear-west']],
     },
   },
 };
@@ -286,6 +290,8 @@ export interface SeatApproach {
   readonly seatHeight: number;
   /** Fixed upholstered/outdoor seats use front entry rather than desk-chair handling. */
   readonly seatStyle?: SeatStyle;
+  /** A fitness saddle uses its authored side dismount lane through its own equipment. */
+  readonly equipment?: boolean;
   /** Cushion front edge, in metres forward from the character root. */
   readonly seatFront?: number;
   /** Standing point beside or behind the chair where sitting starts and standing ends. */
@@ -314,6 +320,7 @@ export function seatApproach(resource: SpatialResource): SeatApproach {
   return {
     seatId: resource.id, roomId: resource.roomId, floor: resource.floor, seat: [p[0], p[1], p[2]], rotationY: yaw,
     seatStyle: interaction.seatStyle,
+    ...(resource.kind === 'fitness-station' && interaction.seatStyle === 'office' ? { equipment: true } : {}),
     seatHeight: interaction.seatHeight, ...(interaction.seatFront !== undefined ? { seatFront: interaction.seatFront } : {}), staging, sitMs: interaction.sitDurationMs || 850, standMs: interaction.standDurationMs || 760,
   };
 }

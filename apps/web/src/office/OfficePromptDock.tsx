@@ -89,7 +89,7 @@ function useStageReserve(element: RefObject<HTMLElement | null>) {
  * the workspace), with an optional model and effort for that turn and the next.
  * `compact` keeps only the field until the dock is focused or has text; then workspace, target, team, model and effort appear.
  */
-export function OfficePromptDock({ t, agents, state, workspaceId, compact = false, targetSessionId, note, onTarget, onState, onStarted, onOpenSettings, officeNames, savedLooks }: {
+export function OfficePromptDock({ t, agents, state, workspaceId, compact = false, targetSessionId, note, onTarget, onState, onStarted, onOpenSettings, officeNames, savedLooks, onLearningTarget }: {
   t: Messages; agents: AgentHostApi; state: HostState; workspaceId?: string; compact?: boolean;
   /** v0.0.30: every name in the office, so generated team names stay unique. */
   officeNames?: ReadonlySet<string> | undefined;
@@ -101,6 +101,8 @@ export function OfficePromptDock({ t, agents, state, workspaceId, compact = fals
   note?: string | undefined;
   onTarget(sessionId: string | undefined): void;
   onState(state: HostState): void; onStarted(sessionId: string): void; onOpenSettings(): void;
+  /** The shared learning owner portals its view here; the dock measures the resulting height. */
+  onLearningTarget?: (target: HTMLDivElement | null) => void;
 }) {
   const c = t.officeUx.composer;
   const id = useId();
@@ -144,12 +146,12 @@ export function OfficePromptDock({ t, agents, state, workspaceId, compact = fals
     entrancePlayed = true;
     return !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   });
-  // Follow the Office project filter when it changes (state adjusted during render, not in an effect).
+  // Follow the active workspace without filtering the Office roster.
   const [filter, setFilter] = useState(workspaceId);
-  if (filter !== workspaceId) { setFilter(workspaceId); if (workspaceId) setChosen(workspaceId); }
+  if (filter !== workspaceId) { setFilter(workspaceId); setChosen(workspaceId ?? state.workspaces[0]?.id ?? ''); }
 
   const target = targetSessionId ? state.sessions.find(item => item.id === targetSessionId && item.control === 'managed') : undefined;
-  // A targeted session decides the workspace; otherwise the dock's own choice (or the Office filter).
+  // A targeted session decides the workspace; otherwise the dock's own choice (or active Office workspace).
   const workspace = state.workspaces.find(item => item.id === (target?.workspaceId ?? chosen)) ?? state.workspaces[0];
   const targets = workspaceTargets(state.sessions, workspace?.id);
   if (target && !targets.some(item => item.id === target.id)) targets.unshift(target);
@@ -285,7 +287,8 @@ export function OfficePromptDock({ t, agents, state, workspaceId, compact = fals
   const label = busy ? (target ? c.sending : t.officeUx.dockStarting) : target ? c.send : t.officeUx.dockSend;
   return <section ref={root} className={`office-prompt-dock${compact ? ' is-compact' : ''}`} aria-label={t.officeUx.dockTitle}
     data-entrance={entering || undefined} data-open={open || undefined} data-target={target ? 'session' : 'new'}
-    onFocus={() => setEngaged(true)} onBlur={settle}>
+    onFocus={event => { if (!(event.target as HTMLElement).closest('.learning-countdown')) setEngaged(true); }} onBlur={settle}>
+    <div className="office-learning-slot" ref={onLearningTarget} />
     {!workspace ? <div className="office-prompt-empty"><p>{t.officeUx.dockNoWorkspace}</p><button type="button" className="button" onClick={onOpenSettings}>{t.officeUx.dockOpenSettings}</button></div> :
       // Not a <form>: Radix selects inside forms add hidden native selects whose change events can reset a just-added target.
       <div className="office-prompt-form" role="group" aria-label={t.officeUx.dockTitle}>

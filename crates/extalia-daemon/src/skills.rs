@@ -254,6 +254,7 @@ impl Skills {
             origin,
             path,
             source_ref,
+            expected_tree_sha256,
         } = request
         else {
             let context = self.context();
@@ -284,11 +285,12 @@ impl Skills {
             }
             let mut registry = self.registry(missions.store_mut());
             let receipt = registry
-                .import(
+                .import_expected(
                     &source,
                     *origin,
                     source_ref.as_deref().unwrap_or(path),
                     now_millis(),
+                    expected_tree_sha256.as_deref(),
                 )
                 .map_err(|error| refusal(&error))?;
             let prepared = if receipt.state == RevisionState::Quarantined {
@@ -404,14 +406,16 @@ impl Skills {
                 origin,
                 path,
                 source_ref,
+                expected_tree_sha256,
             } => {
                 let source = self.resolve_import(path)?;
                 let mut registry = self.registry(store);
-                let mut receipt = registry.import(
+                let mut receipt = registry.import_expected(
                     &source,
                     *origin,
                     source_ref.as_deref().unwrap_or(path),
                     now,
+                    expected_tree_sha256.as_deref(),
                 )?;
                 if receipt.state == RevisionState::Quarantined {
                     let inspected = registry.inspect(
@@ -723,6 +727,7 @@ impl Skills {
                     "approvals": [],
                     "history": [],
                     "consent": [],
+                    "sources": [], "sourcesTotal": 0, "sourcesOmitted": 0,
                 }));
             }
             other => other?,
@@ -926,6 +931,11 @@ fn details_value(details: &RevisionDetails) -> Value {
         "approvals": approvals,
         "history": history,
         "consent": [],
+        "sources": details.sources.iter().map(|source| json!({
+            "origin": source.origin, "sourceRef": source.source_ref, "recordedAt": source.recorded_at,
+        })).collect::<Vec<_>>(),
+        "sourcesTotal": details.sources_total,
+        "sourcesOmitted": details.sources_total.saturating_sub(details.sources.len() as u64),
     })
 }
 

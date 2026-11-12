@@ -1,5 +1,5 @@
 import { DESKTOP_HOST_GLOBAL, type DesktopHostApi, type HostInfo, type Platform, type PlatformCapabilities, type RestartCapability } from '@extalia/platform';
-import { bridgeAgentHost, bridgeUpdater, readBridgeToken } from './host/bridgeHost';
+import { bridgeAgentHost, bridgeUpdater, createBridgeConnection, readBridgeToken } from './host/bridgeHost';
 import { browserNotifications } from './approvals/browserNotifications';
 import { desktopAgentHost, desktopNotifications, desktopRestart, desktopUpdater } from './host/desktopHost';
 
@@ -71,7 +71,8 @@ export async function resolvePlatform(): Promise<Platform> {
   const info: HostInfo = { kind: 'web', appVersion: __APP_VERSION__, os: browserOs() };
   const token = readBridgeToken(document);
   if (token) {
-    return { info, capabilities: { ...browserCapabilities(), agents: bridgeAgentHost(token), updater: bridgeUpdater(token), restart: reloadPage } };
+    const connection = createBridgeConnection(token);
+    return { info, capabilities: { ...browserCapabilities(), agents: bridgeAgentHost(connection), updater: bridgeUpdater(connection), restart: reloadPage } };
   }
   return { info, capabilities: { ...browserCapabilities(), restart: reloadPage } };
 }

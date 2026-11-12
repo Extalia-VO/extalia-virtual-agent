@@ -2,6 +2,7 @@ import { QA_HOOKS } from '../qaHooks';
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { budgetPixelRatio, createBudgetController, createRenderFrameSampler, getRenderBudget, getRenderBudgetLevel, RENDER_BUDGET_LEVELS, resetRenderFrameSampler, sampleRenderFrame, setRenderBudgetLevel, subscribeRenderBudget, updateBudget } from './renderBudget';
+import { publishOfficeFps } from './renderStats';
 
 type BudgetWindow = Window & {
   __EXTALIA_RENDER_BUDGET__?: unknown;
@@ -48,7 +49,7 @@ export function useBudgetPixelRatio(canvas: HTMLCanvasElement | null): number {
 }
 
 /**
- * Targets 40 fps: starts with a small drawing buffer, measures one-second windows after warm-up and moves
+ * Targets 40 fps: starts near 1080p, measures one-second windows after warm-up and moves
  * between budget levels (pixel ratio, live beams, shadow detail) with hysteresis.
  */
 export function AdaptiveRenderBudget() {
@@ -83,16 +84,28 @@ export function AdaptiveRenderBudget() {
   }, []);
 
   useEffect(() => {
-    const resetAfterVisibilityChange = () => resetRenderFrameSampler(sample.current.sampler);
+    publishOfficeFps(null);
+    const resetAfterVisibilityChange = () => {
+      resetRenderFrameSampler(sample.current.sampler);
+      publishOfficeFps(null);
+    };
     document.addEventListener('visibilitychange', resetAfterVisibilityChange);
-    return () => document.removeEventListener('visibilitychange', resetAfterVisibilityChange);
-  }, []);
+    gl.domElement.addEventListener('webglcontextlost', resetAfterVisibilityChange);
+    gl.domElement.addEventListener('webglcontextrestored', resetAfterVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', resetAfterVisibilityChange);
+      gl.domElement.removeEventListener('webglcontextlost', resetAfterVisibilityChange);
+      gl.domElement.removeEventListener('webglcontextrestored', resetAfterVisibilityChange);
+      publishOfficeFps(null);
+    };
+  }, [gl]);
 
   useFrame(() => {
     const data = sample.current;
     const fps = sampleRenderFrame(data.sampler, performance.now(), !document.hidden);
     if (fps === null) return;
     data.fps = fps;
+    publishOfficeFps(data.sampler.rawFps);
     if (!data.pinned) {
       const before = getRenderBudgetLevel();
       const next = updateBudget(data.controller, { fps: data.fps });
@@ -101,7 +114,8 @@ export function AdaptiveRenderBudget() {
     if (QA_HOOKS) {
       const budget = getRenderBudget();
       (window as BudgetWindow).__EXTALIA_RENDER_BUDGET__ = {
-        level: getRenderBudgetLevel(), levels: RENDER_BUDGET_LEVELS.length, fps: Math.round(data.fps * 10) / 10,
+        level: getRenderBudgetLevel(), levels: RENDER_BUDGET_LEVELS.length, fps: Math.round((data.sampler.rawFps ?? fps) * 10) / 10,
+        budgetFps: Math.round(data.fps * 10) / 10,
         pixelRatio: gl.getPixelRatio(), liveBeams: budget.liveBeams, shadowMapSize: budget.shadowMapSize,
         resolutionHeight: budget.resolutionHeight, canvasWidth: gl.domElement.width, canvasHeight: gl.domElement.height,
         drawCalls: gl.info.render.calls, triangles: gl.info.render.triangles, pinned: data.pinned,

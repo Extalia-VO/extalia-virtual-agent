@@ -8,7 +8,7 @@ import { avatarVisual, characterAppearance, characterRig, lookSeed, presentation
 import { gaitParameters, idlePose } from './gait';
 import { useLookVersion } from './useLookVersion';
 import { createWalkPose, writeWalkPose, type CharacterMotion, type WalkPose } from '../movement/walkCycle';
-import { createClipDriver, stepClipDriver, type ClipDriver } from './activityPose';
+import { blendActivityPose, createClipDriver, stepClipDriver, type ClipDriver } from './activityPose';
 import { createArmPoleSolution, solveArmPole } from './armPole';
 import { solveArm3D, wristAngle, type Arm3DSolution } from './armIk';
 import { createSeatedLegPose, floorSeatedKnee, seatedLegPose, supportedThigh } from './seatedPose';
@@ -30,7 +30,8 @@ import { sourceHairAsset } from './hairAssets';
 import { sourceAvatarUrls } from './sourceAssets';
 import { bindCharacterExpression, createFacialPose, expressionStateForAgent, expressionTimeSeconds, resolveCharacterExpression, writeFacialPose, type CharacterExpressionState } from './facialExpression';
 import { HUMANOID_ARM_RADIUS, HUMANOID_HEAD_ELONGATION, HUMANOID_LEG_RADIUS } from './rig';
-import { createLodState, lodStep, lodTier, screenHeightPixels, setCastShadows } from './avatarLod';
+import { beginAvatarPose, createLodState, lodStep, lodTier, screenHeightPixels, setCastShadows } from './avatarLod';
+import { visibleCharacterRaycast } from '../officePointerEvents';
 
 export type { CharacterAppearance } from './appearance';
 
@@ -108,7 +109,8 @@ function CharacterMesh({ visual, seated, typing, reducedMotion, motion, desk, re
   // Level of detail: the same body, posed less often and without shadows when small on screen.
   const lod = useRef(createLodState());
   useFrame(({ clock, camera, size }, frameDelta) => {
-    for (let ancestor = body.current; ancestor; ancestor = ancestor.parent as Group | null) if (!ancestor.visible) return;
+    const revealed = !lod.current.visible;
+    if (!beginAvatarPose(lod.current, body.current)) return;
     let delta = frameDelta;
     if (body.current) {
       const tier = lodTier(screenHeightPixels(body.current, camera, size.height), lod.current.tier);
@@ -139,6 +141,7 @@ function CharacterMesh({ visual, seated, typing, reducedMotion, motion, desk, re
     const clip = reducedMotion && (rawClip === 'sip' || rawClip === 'phone') ? 'desk-idle' : rawClip;
     const activityTime = atFitness ? (equipment?.phase ?? 0) / 3.4 : time;
     const act = stepClipDriver(clipDriver.current ??= createClipDriver(), clip, activityTime, delta, sit, walk, 0, rig.motion.gestureAmount);
+    if (revealed) blendActivityPose(clipDriver.current.shown, clipDriver.current.target, 1);
     const keys = typing && clip === 'none' && !reducedMotion;
     // Hand goals at the desk (wrist targets and IK strength), glided between clips.
     const goals = handGoals.current ??= { shown: createHandGoals(), target: createHandGoals() };
@@ -149,7 +152,7 @@ function CharacterMesh({ visual, seated, typing, reducedMotion, motion, desk, re
         if (goal) { goals.target.target[index] = goal; goals.target.weight[index] = 1; }
       }
     }
-    blendHandGoals(goals.shown, goals.target, 1 - Math.exp(-Math.max(0, delta) * 5));
+    blendHandGoals(goals.shown, goals.target, revealed ? 1 : 1 - Math.exp(-Math.max(0, delta) * 5));
     const idle = 1 - walk;
     const sway = rig.motion.swayAmount;
     const shift = (pose.pelvisShift * sway * idle + stride.pelvisShift) / rig.scale[0];
@@ -350,7 +353,7 @@ export function OfficeCharacter({ agent, position, rotationY = 0, seated = false
   const expressionState = expressionStateForAgent(agent);
   useEffect(() => bindCharacterExpression(agent.id, { state: expressionState, motion }), [agent.id, expressionState, motion]);
   const pick = (event: ThreeEvent<MouseEvent>) => { event.stopPropagation(); onSelect(agent.id); };
-  return <group position={position} rotation={[0, rotationY, 0]} onClick={pick}>
+  return <group position={position} rotation={[0, rotationY, 0]} onClick={pick} raycast={visibleCharacterRaycast}>
     <CharacterBody id={lookSeed(agent.id, agent.look)} appearance={appearance} presentation={agent.look?.presentation} seated={seated} typing={typing} seatHeight={seatHeight} seatFront={seatFront} reducedMotion={reducedMotion} motion={motion} desk={desk} resourceId={resourceId} expressionId={agent.id} expressionState={expressionState} />
     {/* Invisible pick volume: clicks select, and R3F's own pointer raycast reveals the tag on hover (frontmost character only). */}
     <mesh position={[0, seated ? 0.7 : 0.9, seated ? 0.16 : 0]}

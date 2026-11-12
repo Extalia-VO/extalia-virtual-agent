@@ -26,6 +26,8 @@ export const DOOR_NEAR_M = 1.2;
 export const APPROACH_RANGE_M = 4;
 /** An approaching walker's next waypoint is this close to the door. */
 export const APPROACH_TARGET_M = 3;
+/** A real FIFO head can be parked in the authored 4.4 m side bay while its predecessor clears. */
+const LOCAL_HANDOFF_RANGE_M = 6;
 /** A walker's tracked position is trusted for this long after its last update. */
 export const TRACK_FRESH_MS = 3000;
 /** A sliding door stays open this long after the last walker near it. */
@@ -89,6 +91,8 @@ interface DoorState {
   amount: number;
   /** The walker whose hand is on a hinged leaf. */
   operator: string | null;
+  /** A retained last passer may close as a service operation before future crossings. */
+  closer: string | null;
   /** Sliding leaves: open until this time (ms) after the last walker near them. */
   holdUntil: number;
 }
@@ -146,15 +150,38 @@ export function doorLeafDistance(door: Readonly<DoorInfo>, amount: number, point
 
 export class DoorTraffic {
   private readonly amounts = new Map<string, DoorState>();
-  private readonly duties = new Map<string, DoorHit>();
+  /** Physical passage, rather than a promised future ticket, owns each closure. */
+  private readonly duties = new Map<string, DoorHit & { walkerId: string }>();
   private readonly queues = new Map<string, DoorQueueState>();
+  /** The mover's current physical door act, independent of incidental approach tickets. */
+  private readonly activeDoors = new Map<string, string>();
 
   constructor(private readonly source: DoorSource, private readonly now: () => number) {}
+
+  setActiveDoor(walkerId: string, doorId: string | null): void {
+    if (doorId === null) this.activeDoors.delete(walkerId);
+    else this.activeDoors.set(walkerId, doorId);
+  }
+
+  /** Old act cleanup cannot erase a newer physical door intention. */
+  clearActiveDoor(walkerId: string, expectedDoorId?: string): void {
+    if (expectedDoorId === undefined || this.activeDoors.get(walkerId) === expectedDoorId) this.activeDoors.delete(walkerId);
+  }
+
+  /**
+   * A total order between registered door groups prevents reciprocal yielding.
+   * Every follower inherits its own door's priority; local FIFO and physical
+   * passed-head rules remain authoritative for same-door or unregistered peers.
+   */
+  mayYieldTo(activeDoorId: string, peerId: string): boolean {
+    const peerDoor = this.activeDoors.get(peerId);
+    return peerDoor === undefined || peerDoor === activeDoorId || activeDoorId > peerDoor;
+  }
 
   private state(id: string): DoorState {
     let state = this.amounts.get(id);
     if (!state) {
-      state = { amount: 0, operator: null, holdUntil: -Infinity };
+      state = { amount: 0, operator: null, closer: null, holdUntil: -Infinity };
       this.amounts.set(id, state);
     }
     return state;
@@ -174,13 +201,16 @@ export class DoorTraffic {
   queueStatus(id: string, walkerId = ''): DoorQueueStatus {
     const queue = this.queues.get(id);
     if (queue) this.pruneQueue(id, queue);
-    const head = queue?.tickets[0]?.id ?? this.amounts.get(id)?.operator ?? null;
+    const closer = this.amounts.get(id)?.closer;
+    const head = closer ?? queue?.tickets[0]?.id ?? this.amounts.get(id)?.operator ?? null;
     let headPosition: Point3 | null = null;
     if (head) this.source.forEachWalker(walker => {
       if (walker.id === head && this.now() - walker.updatedAt <= TRACK_FRESH_MS) headPosition = [...walker.position];
     });
     const index = queue?.tickets.findIndex(ticket => ticket.id === walkerId) ?? -1;
-    return { head, ahead: index < 0 ? queue?.tickets.length ?? 0 : index, count: queue?.tickets.length ?? (head ? 1 : 0), headPosition };
+    const count = (queue?.tickets.length ?? 0) + (closer ? 1 : 0);
+    const reportedCount = count || (head ? 1 : 0);
+    return { head, ahead: closer === walkerId ? 0 : index < 0 ? reportedCount : index + (closer ? 1 : 0), count: reportedCount, headPosition };
   }
 
   private pruneQueue(id: string, queue: DoorQueueState): void {
@@ -199,7 +229,6 @@ export class DoorTraffic {
     if (retained.length !== queue.tickets.length) {
       for (const ticket of queue.tickets) if (!retained.includes(ticket)) {
         this.release(id, ticket.id);
-        this.duties.delete(ticket.id);
       }
       queue.tickets = retained;
     }
@@ -215,6 +244,7 @@ export class DoorTraffic {
     let queue = this.queues.get(id);
     if (!queue) { queue = { door, tickets: [], departed: new Map() }; this.queues.set(id, queue); }
     queue.door = door;
+    if (this.amounts.get(id)?.closer === walkerId) return { granted: true, index: 0, position: null };
     const now = this.now();
     const existing = queue.tickets.find(ticket => ticket.id === walkerId);
     if (existing) { existing.refreshedAt = now; existing.external = false; }
@@ -223,7 +253,7 @@ export class DoorTraffic {
     // A close-duty actor may already own the handle before another actor
     // creates the physical queue. Preserve that in-flight maneuver at its head.
     const reserved = this.amounts.get(id)?.operator;
-    if (reserved && !queue.tickets.some(ticket => ticket.id === reserved)) {
+    if (reserved && this.amounts.get(id)?.closer !== reserved && !queue.tickets.some(ticket => ticket.id === reserved)) {
       queue.tickets.unshift({ id: reserved, side: entrySide, refreshedAt: now, external: true });
     }
     const candidates = this.approachers(door, walkerId).filter(walker => !queue!.departed.has(walker.id))
@@ -260,19 +290,50 @@ export class DoorTraffic {
 
   hasWaiting(id: string, excludeId = ''): boolean { return this.hasQueued(id, excludeId); }
 
+  /** A handoff needs the actual next FIFO head, on its entry face, physically nearby. */
+  localSuccessor(id: string, excludeId: string): string | null {
+    const queue = this.queues.get(id);
+    if (!queue) return null;
+    this.pruneQueue(id, queue);
+    const ticket = queue.tickets.find(candidate => candidate.id !== excludeId);
+    if (!ticket || [...this.duties.values()].some(hit => hit.walkerId === ticket.id && hit.id !== id)) return null;
+    let local = false;
+    this.source.forEachWalker(walker => {
+      if (walker.id !== ticket.id || this.now() - walker.updatedAt > TRACK_FRESH_MS || Math.abs(walker.position[1] - queue.door.center[1]) > .05) return;
+      const at = doorAxes(queue.door, walker.position);
+      if (at.through * ticket.side >= .29 && Math.hypot(at.through, at.across) <= LOCAL_HANDOFF_RANGE_M) local = true;
+    });
+    return local ? ticket.id : null;
+  }
+
+  /** Closing is not a crossing: reserve the leaf without reordering its FIFO. */
+  claimClosure(id: string, walkerId: string): boolean {
+    const state = this.state(id);
+    if (this.duties.get(id)?.walkerId !== walkerId || (state.operator !== null && state.operator !== walkerId)) return false;
+    state.operator = walkerId; state.closer = walkerId; return true;
+  }
+
+  closing(id: string, walkerId: string): boolean { return this.amounts.get(id)?.closer === walkerId; }
+
   /** Call after reaching a clear exit (and after closing, for the last passer). */
   finishPass(id: string, walkerId: string): void {
+    this.clearActiveDoor(walkerId, id);
+    if (this.closing(id, walkerId)) { this.release(id, walkerId); return; }
     const queue = this.queues.get(id);
     if (queue) {
       queue.tickets = queue.tickets.filter(ticket => ticket.id !== walkerId);
       queue.departed.set(walkerId, this.now());
     }
     this.release(id, walkerId);
-    this.duties.delete(walkerId);
   }
 
   /** Abandoning a route releases both passage and leaf ownership. */
   cancel(id: string, walkerId: string): void { this.finishPass(id, walkerId); }
+
+  /** Transfer closing responsibility only after a body actually passed this leaf. */
+  passed(id: string, door: Readonly<DoorInfo>, walkerId: string): void {
+    if (!door.sliding && this.amount(id) > .05) this.duties.set(id, { id, door, walkerId });
+  }
 
   /** Walkers heading toward a door (not counting `excludeId`). */
   approachers(door: Readonly<DoorInfo>, excludeId: string): WalkerInfo[] {
@@ -346,6 +407,7 @@ export class DoorTraffic {
   /** Reserve the whole maneuver, including walking round the open leaf. */
   claim(id: string, walkerId: string): boolean {
     const state = this.state(id);
+    if (state.closer === walkerId) return true;
     const queue = this.queues.get(id);
     if (queue) {
       this.pruneQueue(id, queue);
@@ -353,7 +415,19 @@ export class DoorTraffic {
     }
     if (state.operator !== null && state.operator !== walkerId) return false;
     state.operator = walkerId;
+    this.acceptClosure(id, walkerId);
     return true;
+  }
+
+  /** A real operator beside the leaf accepts its predecessor's physical duty. */
+  private acceptClosure(id: string, walkerId: string): void {
+    const state = this.state(id), obligation = this.duties.get(id);
+    const door = this.queues.get(id)?.door ?? obligation?.door;
+    if (!door || state.closer === walkerId || obligation?.walkerId === walkerId) return;
+    this.source.forEachWalker(walker => {
+      if (walker.id === walkerId && this.now() - walker.updatedAt <= TRACK_FRESH_MS && Math.abs(walker.position[1] - door.center[1]) <= .05
+        && doorLeafDistance(door, state.amount, walker.position) <= .9) this.passed(id, door, walkerId);
+    });
   }
 
   /** Do not sweep a leaf through a waiting or passing character. */
@@ -379,14 +453,16 @@ export class DoorTraffic {
     const queue = this.queues.get(id);
     if (queue) {
       this.pruneQueue(id, queue);
-      if (queue.tickets.length && queue.tickets[0]!.id !== walkerId) return state.amount;
+      if (state.closer !== walkerId && queue.tickets.length && queue.tickets[0]!.id !== walkerId) return state.amount;
     }
-    if (target === 0 && (this.hasQueued(id, walkerId) || queue && this.approachers(queue.door, walkerId).length > 0)) return state.amount;
+    if (target === 0 && state.closer !== walkerId && (this.hasQueued(id, walkerId) || queue && this.approachers(queue.door, walkerId).length > 0)) return state.amount;
     state.operator = walkerId;
     const step = DOOR_SWING_RATE * Math.max(0, seconds);
     const next = clamp01(target > state.amount ? Math.min(target, state.amount + step) : Math.max(target, state.amount - step));
     // Foot-limited swings may leave a rounding residue at their exact endpoint.
     state.amount = Math.abs(next - target) < 1e-9 ? target : next;
+    this.acceptClosure(id, walkerId);
+    if (state.amount === 0) this.duties.delete(id);
     return state.amount;
   }
 
@@ -394,6 +470,7 @@ export class DoorTraffic {
   release(id: string, walkerId: string): void {
     const state = this.state(id);
     if (state.operator === walkerId) state.operator = null;
+    if (state.closer === walkerId) state.closer = null;
   }
 
   /**
@@ -409,15 +486,20 @@ export class DoorTraffic {
       const t = fromPlane / (fromPlane - toPlane);
       const across = a.across + (b.across - a.across) * t;
       if (Math.abs(across) > door.clearWidth / 2 + 0.25 || this.amount(id) <= 0.05) return;
-      if (!this.hasQueued(id, walkerId) && this.approachers(door, walkerId).length === 0) this.duties.set(walkerId, { id, door });
+      this.passed(id, door, walkerId);
     });
   }
 
   /** The door this walker must close behind it (the last one through), if any. */
-  duty(walkerId: string): DoorHit | null { return this.duties.get(walkerId) ?? null; }
+  duty(walkerId: string): DoorHit | null {
+    for (const hit of this.duties.values()) if (hit.walkerId === walkerId && this.amount(hit.id) > .05) return { id: hit.id, door: hit.door };
+    return null;
+  }
 
   /** Close duty done, cancelled or abandoned. */
-  clearDuty(walkerId: string): void { this.duties.delete(walkerId); }
+  clearDuty(walkerId: string, doorId?: string): void {
+    for (const [id, hit] of this.duties) if (hit.walkerId === walkerId && (doorId === undefined || doorId === id)) this.duties.delete(id);
+  }
 
   /**
    * One frame of a sliding leaf: open while a walker is approaching or near,

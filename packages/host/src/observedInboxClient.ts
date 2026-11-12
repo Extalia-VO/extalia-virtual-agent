@@ -11,11 +11,12 @@ const PATH = /^\/inbox\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]
 const TOKEN = /^[0-9a-f]{64}$/i;
 const directAgent = new http.Agent({ keepAlive: false });
 
-function directLoopbackPost(
+export function directLoopbackPost(
   urlStr: string,
   headers: Record<string, string>,
   body: string,
   signal: AbortSignal,
+  maxBytes = 100_000,
 ): Promise<{ status: number; ok: boolean; headers: { get(name: string): string | null }; bodyBytes: Uint8Array }> {
   return new Promise((resolve, reject) => {
     if (signal.aborted) {
@@ -51,7 +52,7 @@ function directLoopbackPost(
       };
 
       const length = responseHeaders.get('content-length');
-      if (length !== null && (!/^\d+$/.test(length) || Number(length) > 100_000)) {
+      if (length !== null && (!/^\d+$/.test(length) || Number(length) > maxBytes)) {
         req.destroy();
         return resolve({
           status,
@@ -66,7 +67,7 @@ function directLoopbackPost(
 
       res.on('data', (chunk: Buffer) => {
         size += chunk.length;
-        if (size > 100_000) {
+        if (size > maxBytes) {
           req.destroy();
           return resolve({
             status,
