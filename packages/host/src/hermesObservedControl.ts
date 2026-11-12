@@ -1,3 +1,4 @@
+import { executableLaunchPlan } from './npmCommand.js';
 import { execFile } from 'node:child_process';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { connect as connectSocket } from 'node:net';
@@ -42,11 +43,13 @@ export interface HermesObservedControlOptions {
 }
 
 /** Public discover-only bootstrap. No owner creation, recovery, transcript or profile reads. */
-function attach(options: HermesObservedRpcOptions): Promise<Row> {
+async function attach(options: HermesObservedRpcOptions): Promise<Row> {
   if (options.profile && !/^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/.test(options.profile)) return Promise.reject(new Error('Choose a valid Hermes profile.'));
   const args = [...(options.profile ? ['-p', options.profile] : []), 'gateway', 'attach', '--json'];
+  const launch = await executableLaunchPlan(options.bin, args, { env: options.env });
+  options.signal.throwIfAborted();
   return new Promise((resolve, reject) => {
-    execFile(options.bin, args, {
+    execFile(launch.command, launch.args, {
       env: hermesEnvironment(options.env ?? process.env), signal: options.signal,
       timeout: RPC_TIMEOUT, maxBuffer: 65_536, killSignal: 'SIGKILL', encoding: 'utf8', windowsHide: true,
     }, (error, stdout) => {

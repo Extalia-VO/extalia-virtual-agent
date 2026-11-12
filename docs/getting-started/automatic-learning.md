@@ -32,10 +32,15 @@ The source prompt finishes before a **60-second countdown** begins. A shared
 notification shows the project, session, profile and remaining time. In the 3D
 Office it appears immediately above the main prompt; on other pages it remains a
 global notice. **Run now** brings the deadline forward; **Snooze 10 min** postpones
-it. With no click it starts automatically after the deadline, once the host is idle.
-New work pauses pending countdowns. After the lead, workers and unfinished prompt
-queue have settled, the **full selected delay starts again**: ten minutes after
-idle if you chose Snooze, or sixty seconds otherwise. A busy notice has no active
+it. With no click it starts automatically after the deadline, once its required
+work scope is idle.
+Conflicting work pauses pending countdowns. For an isolated workspace with a
+unique non-default vault profile, known prompts, workers, planning, memory and
+queued messages in other profiles do not pause or interrupt its updates. Shared
+and default profiles retain the host-wide idle rule. After the conflicting lead,
+workers and unfinished prompt queue have settled, the **full selected delay
+starts again**: ten minutes after idle if you chose Snooze, or sixty seconds
+otherwise. A busy notice has no active
 clock, and Run now cannot override a running task or its queued successor.
 Tasks without successful current-turn tool evidence skip learning without an extra
 model request. Plan mode, paused teams, explicit skill-learning prompts, unsaved
@@ -47,10 +52,21 @@ it does not store conversation history or attachments. Rust filters and redacts
 these again before inference. Queue capacity and failed updates are reported,
 without retrying uncertain writes or imports automatically. Learning errors do not
 turn a successful source prompt into a failed task. New prompts take priority:
-Extalia cancels active maintenance and waits for its actual provider and file
-operations to settle before the new prompt proceeds. Cancellation does not imply
-that an external provider has already stopped. Changing connection/profile
-settings also waits for settlement.
+Extalia cancels conflicting active maintenance and waits for its actual provider
+and file operations to settle before the new prompt proceeds. A known foreground
+operation in another profile can proceed alongside isolated maintenance.
+Cancellation does not imply that an external provider has already stopped. Changing connection/profile
+settings also waits for settlement. Unknown execution ownership, unresolved
+missions/preparations, handovers and shared configuration mutations retain their
+conservative guards. Shared registry and persistence operations retain their
+existing admission and settlement checks; no writes or provider effects are
+replayed to obtain concurrency. One maintenance job still runs at a time.
+
+Knowledge notes and indexes remain scoped to the selected vault profile. Skills
+are a shared user library, not a private library per vault: a curator only adds a
+source-bound candidate. Mandatory scanner inspection, explicit review/approval
+and activation remain separate. An isolated vault never grants another workspace
+access to its notes or activates a generated skill automatically.
 
 ## Team meetings for project knowledge
 
@@ -62,7 +78,7 @@ It can capture text-based project decisions even when the source did not use a
 file tool. Extalia keeps one pending meeting per workspace and updates its source
 to the latest completed task while preserving your chosen snooze.
 
-The notice identifies an upcoming meeting, waits while user work is active, and
+The notice identifies an upcoming meeting, waits while conflicting user work is active, and
 offers Run now or Snooze. Its countdown starts automatically after idle. Actual
 meeting events drive the Office characters; the notification reports a saved
 knowledge note only after the exporter confirms it. A cancelled or failed

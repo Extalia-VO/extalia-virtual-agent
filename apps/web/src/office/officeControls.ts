@@ -1,12 +1,13 @@
 import { create } from 'zustand';
 import type { PageId } from '../i18n';
+import { subscribeProfileClientState } from '../profileClientState';
 import type { FurnishedOfficeView } from './scene/FurnishedFloors';
 import { loadLightOverride, saveLightOverride, type LightOverride } from './scene/environment/lightOverride';
 
 /**
  * Office floor view, lights and camera: one source shared by the App top bar
  * (which draws the controls) and the Office page / scene (which follow them).
- * View and camera choices last for this app session; lights are remembered per device.
+ * View and camera choices last for this app session; lights follow the host profile.
  */
 export interface OfficeControlsState {
   view: FurnishedOfficeView;
@@ -30,6 +31,13 @@ export const useOfficeControls = create<OfficeControlsState>()(set => ({
   setLightOverride: mode => { saveLightOverride(mode); set({ lightOverride: mode }); },
   setAutoCamera: autoCamera => set({ autoCamera }),
 }));
+
+// A freshly loaded/reset host overrides any pre-paint browser mirror without
+// saving it back. Existing consumers all observe this same store.
+subscribeProfileClientState(() => {
+  const mode = loadLightOverride();
+  if (useOfficeControls.getState().lightOverride !== mode) useOfficeControls.setState({ lightOverride: mode });
+});
 
 export const OFFICE_VIEWS: readonly FurnishedOfficeView[] = ['campus', 1, 2, 3, 'stack'];
 

@@ -16,6 +16,91 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Documentation
+
+- Rebuild the README around npm installation, Desktop downloads and clear Native,
+  Hermes and Observe capabilities. Remove Web/CLI archive links and place macOS
+  unidentified-developer opening instructions beside the Mac downloads.
+- Reconcile module/PRD navigation and GitHub milestone/issue checkpoints while
+  preserving unfinished acceptance gates and distinguishing source from releases.
+
+## [0.4.294] - 2026-11-12
+
+### Fixed
+
+- Offer folder-access review after Native sends are rejected while Chat or the
+  character dialog still has an older session summary. Refresh status without
+  retrying the message, preserve drafts and ignore responses from an old session.
+- Add the same explicit recovery to the Office prompt dock, including compact
+  mode. Hold Send/Enter and delivery preparation until review is accepted; retain
+  draft text and uploaded attachment references without automatic replay.
+
+## [0.4.293] - 2026-11-12
+
+### Fixed
+
+- Align Connect, observed history and managed Hermes with its official Windows
+  installation folder, explicit homes and named profiles. Keep installations
+  separate, reject invalid roots and preserve undo when the selected folder changes.
+- Discover agent CLIs and standalone Node in common GUI package-manager locations
+  across operating systems. Launch supported Windows npm commands through Node
+  without a shell; report unsupported wrappers instead of silently failing.
+- Use the same custom configuration roots for all agent integrations, including
+  Gemini's base-home override, and honor the host's supplied home consistently.
+
+## [0.4.292] - 2026-11-12
+
+### Fixed
+
+- Use validated, parented OS-native Desktop folder dialogs with localized titles
+  and current-folder hints across projects, Knowledge vaults and skill imports.
+  Add folder selection to per-profile vault settings and Bridge vault/skill
+  imports; avoid a redundant browser picker whose handle cannot reveal a host path.
+- Use native Zenity/KDialog destination choosers in Linux setup, allow terminal
+  destination changes and safely restore an adopted empty folder after failure.
+  Correct the Mac installer profile/project explanation and refresh its artwork.
+
+## [0.4.291] - 2026-11-12
+
+### Fixed
+
+- Let automatic Knowledge curation and team reviews for unique non-default
+  isolated vault profiles run alongside known Native workers, planning, memory
+  and queued work in other profiles. Preserve same-profile preemption and physical
+  drain, default/shared idle rules, unknown-ownership guards and scanner-gated
+  inactive skill proposals in the shared user library.
+
+## [0.4.290] - 2026-11-12
+
+### Fixed
+
+- Show a direct folder-access review beside Native Chat and Office messages
+  after project folders are replaced, added or removed. Keep drafts, attachments
+  and conversation history while holding sends and queued dispatch until review.
+- Reject stale review confirmations and late UI responses; retain Native sessions
+  when their workspace default changes runtime. Nested review dialogs preserve
+  the Office conversation when closed with Escape.
+
+## [0.4.289] - 2026-11-12
+
+### Fixed
+
+- Treat a removed profile as a fresh installation instead of restoring retired
+  data or stale browser preferences. Keep setup, workspace registrations, chat
+  and observation/import records under the active Extalia root while project
+  files remain in user-selected folders.
+- Store Desktop browser data, logs, crash dumps and update staging under that
+  same root. Save last-workspace, Office lights, notification and panel choices
+  in the host profile; rehydrate them when a Web client reconnects to a new host.
+
+### Documentation
+
+- Organize guides, architecture, design, release notes and PRD evidence through six
+  module hubs. Reconcile v0.4.288 implemented, partial and outstanding requirements;
+  preserve historical test scope and keep v0.5 acceptance separate from publication.
+- Correct stale folder-setup, observed-control, scanner/Python, public-asset and
+  Office navigation guidance without changing runtime behavior or package versions.
+
 ## [0.4.288] - 2026-11-12
 
 - Refresh Desktop/Web/npm release guidance, exact download names, scanner platform limits and the verified 133-model asset footprint. Keep v0.5 acceptance and real-provider certification separate from source integration and packaging checks.

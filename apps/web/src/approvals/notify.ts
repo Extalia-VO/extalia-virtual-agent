@@ -1,4 +1,5 @@
 import { approvalKey, type PendingApproval } from './model';
+import { profileClientStateStorage } from '../profileClientState';
 
 /**
  * Notification rules for approval requests (v0.0.48). Pure: the provider feeds
@@ -10,10 +11,10 @@ import { approvalKey, type PendingApproval } from './model';
 
 const STORAGE_KEY = 'extalia.approvalNotifications';
 
-/** Per-device choice. Desktop shows native notifications by default; the browser needs an explicit opt-in and a permission. */
+/** Profile choice (device-only without a host). Desktop shows native notifications by default; the browser needs an explicit opt-in and a permission. */
 export function approvalNotificationsEnabled(hostKind: 'desktop' | 'web'): boolean {
   try {
-    const stored = localStorage.getItem(STORAGE_KEY);
+    const stored = profileClientStateStorage.getItem(STORAGE_KEY);
     if (stored === 'on') return true;
     if (stored === 'off') return false;
   } catch {
@@ -24,7 +25,7 @@ export function approvalNotificationsEnabled(hostKind: 'desktop' | 'web'): boole
 
 export function saveApprovalNotifications(enabled: boolean): void {
   try {
-    localStorage.setItem(STORAGE_KEY, enabled ? 'on' : 'off');
+    profileClientStateStorage.setItem(STORAGE_KEY, enabled ? 'on' : 'off');
   } catch {
     // Without storage the choice lasts for this page only.
   }

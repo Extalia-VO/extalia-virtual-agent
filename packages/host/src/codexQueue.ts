@@ -1,3 +1,4 @@
+import { executableLaunchPlan } from './npmCommand.js';
 import { spawn } from 'node:child_process';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -37,10 +38,13 @@ export async function queueCodexMessage(
   if (!Number.isSafeInteger(timeout) || timeout < 1 || timeout > TIMEOUT) throw new Error('Invalid Codex queue timeout.');
   if (options.signal?.aborted) throw new CodexQueueError('Codex queue cancelled before submission.');
 
+  let launch;
+  try { launch = await executableLaunchPlan(options.bin, ['queue', '--thread', options.threadId, '--message', options.text], { env: options.env }); } catch { throw new CodexQueueError(); }
+  if (options.signal?.aborted) throw new CodexQueueError('Codex queue cancelled before submission.');
   return new Promise<CodexQueueResult>((resolve, reject) => {
     let child: ReturnType<typeof spawn>;
     try {
-      child = spawn(options.bin, ['queue', '--thread', options.threadId, '--message', options.text], {
+      child = spawn(launch.command, launch.args, {
         env: options.env, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true, shell: false,
       });
     } catch { reject(new CodexQueueError()); return; }

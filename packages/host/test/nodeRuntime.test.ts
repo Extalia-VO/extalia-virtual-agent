@@ -30,7 +30,7 @@ describe('Node discovery for GUI hook commands', () => {
   }
 
   it('prefers an absolute PATH executable to known GUI locations and skips relative PATH entries', async () => {
-    const expected = await node(path.join(root, 'path-bin', 'node'));
+    const expected = await node(path.join(root, 'path-bin', process.platform === 'win32' ? 'node.exe' : 'node'));
     await node(path.join(home, '.local', 'bin', 'node'));
     expect(await resolveNodePath(options({ platform: process.platform, env: { PATH: ['relative', path.dirname(expected)].join(path.delimiter), PATHEXT: '' } }))).toBe(expected);
   });
@@ -80,13 +80,23 @@ describe('Node discovery for GUI hook commands', () => {
     expect(await resolveNodePath(options({ electron: false, execPath }))).toBe(execPath);
   });
 
-  it('does not inspect macOS fallback locations on another platform', async () => {
-    await node(path.join(home, '.local', 'bin', 'node'));
+  it('finds Windows GUI Node with case-insensitive environment keys and refuses a cmd wrapper as standalone Node', async () => {
+    const expected = String.raw`C:\Program Files\nodejs\node.exe`;
+    expect(await resolveNodePath(options({ platform: 'win32', execPath: String.raw`C:\Apps\Extalia.exe`, homeDirectory: undefined,
+      env: { ProgramFiles: String.raw`C:\Program Files`, Path: String.raw`C:\npm` }, executable: async file => file === expected }))).toBe(expected);
+    expect(await resolveNodePath(options({ platform: 'win32', execPath: String.raw`C:\Apps\Extalia.exe`, homeDirectory: undefined,
+      env: { Path: String.raw`C:\npm`, PathExt: '.CMD' }, executable: async file => file === String.raw`C:\npm\node.cmd` }))).toBeUndefined();
+  });
+
+  it('finds Linux GUI Node in its user bin while leaving macOS-only installations out', async () => {
+    await node(path.join(home, 'Library', 'Application Support', 'Herd', 'config', 'nvm', 'versions', 'node', 'v24.1.0', 'bin', 'node'));
     expect(await resolveNodePath(options({ platform: 'linux' }))).toBeUndefined();
+    const expected = await node(path.join(home, '.local', 'bin', 'node'));
+    expect(await resolveNodePath(options({ platform: 'linux' }))).toBe(expected);
   });
 
   it('rejects the Electron executable when it is also a PATH candidate', async () => {
-    const execPath = await node(path.join(root, 'node'));
+    const execPath = await node(path.join(root, process.platform === 'win32' ? 'node.exe' : 'node'));
     expect(await resolveNodePath(options({ platform: process.platform, execPath, env: { PATH: root, PATHEXT: '' } }))).toBeUndefined();
   });
 

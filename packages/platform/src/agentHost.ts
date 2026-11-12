@@ -231,6 +231,8 @@ export interface SessionContextUsage {
 export interface SessionSummary {
   id: string;
   workspaceId: string;
+  /** Native folder/access grants differ from this session's recorded context; offer an explicit workspace review. */
+  workspaceReviewRequired?: boolean;
   /** Historical file references retain their source root after explicit Native workspace moves. */
   workspaceFileScopes?: SessionWorkspaceFileScope[];
   connectionId: string;
@@ -374,11 +376,20 @@ export interface ProfilePreferences {
   sidebar?: string;
 }
 
+/** Host-owned UI state. Browser storage is a disposable mirror, never its authority. */
+export interface ProfileClientState {
+  lastWorkspaceId?: string;
+  officeLights?: 'auto' | 'on' | 'off';
+  approvalNotifications?: 'on' | 'off';
+  earlierOpen?: '0' | '1';
+}
+
 /** `<dataDirectory>/config/profile.json`: who uses Extalia here and how the interface looks. */
 export interface UserProfile {
   schema: 'extalia.profile.v1';
   displayName?: string;
   preferences: ProfilePreferences;
+  clientState?: ProfileClientState;
   /** ISO time of the last save; the Unix epoch when the profile was never saved. */
   updatedAt: string;
 }
@@ -387,6 +398,7 @@ export interface UserProfile {
 export interface UserProfilePatch {
   displayName?: string | null;
   preferences?: { [K in keyof ProfilePreferences]?: ProfilePreferences[K] | null };
+  clientState?: { [K in keyof ProfileClientState]?: ProfileClientState[K] | null };
 }
 
 /**
@@ -416,7 +428,7 @@ export interface HostState {
   /** Imported and linked conversations from other agents. */
   library: LibrarySessionSummary[];
   storage: { dataDirectory: string; secretStore: SecretStoreKind };
-  host: { kind: 'desktop' | 'bridge'; version: string };
+  host: { kind: 'desktop' | 'bridge'; version: string; /** Fresh for each host process, so reconnected clients discard old profile caches. */ instanceId?: string };
   /** Present only when the Rust native core is selected. */
   nativeCore?: NativeCoreStatus;
 }

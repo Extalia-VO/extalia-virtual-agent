@@ -4,7 +4,35 @@ Audit date: 2026-11-08. Starting baseline: v0.4.186. The owner requested local
 implementation through 06:00 WIB. This report records product gaps and evidence;
 it does not redefine the PRD or claim completion from UI appearance alone.
 
-## Current incremental checkpoint (2026-11-09)
+## Current reconciliation (v0.4.288, 2026-11-12)
+
+The dated checkpoint and baseline below are historical. Current module summaries
+are [Native agent](../modules/native-agent.md), [Skills](../modules/skills.md)
+and [Knowledge/memory](../modules/knowledge-memory.md); release acceptance remains
+in the [PRD acceptance map](prd-v2-acceptance-map.md).
+
+[ADR 0071](../adr/0071-rust-openai-completion-and-resource-evidence.md)
+supersedes ADR 0069's mandatory language destination. Production completion and
+ordinary turn/delegation processing remain TypeScript after measurement. This is
+an accepted placement, not an unfinished quota to migrate all backend code.
+Rust retains canonical mission policy/stores, Knowledge, skill revisions,
+marketplace processing, model discovery and learning artifacts. The supervised
+Python/SkillSpector 2.13.4 path has actual macOS 14+ ARM64 evidence and is shipped
+in supported packages; a general Python worker remains unimplemented. Windows
+learning/artifact staging and Intel macOS/Windows/Linux scanner execution remain
+unavailable, independently of published platform installers.
+
+Since the earlier checkpoint, Native Chat has automatic bounded skill preparation,
+deferred learning and two-round team knowledge reviews. The marketplace imports
+immutable public GitHub revisions through the existing scanner/approval boundary.
+The Knowledge graph has 2D/3D, elastic return, focus and Explore interactions.
+These functional increments do not close complete descendant ownership, writer
+fencing, physical reconciliation, exact effect-time approval or accepted-evidence
+release gates. Explicit reviewed handover now exists under ADR 0076, while
+automatic history compaction and cross-store conflict acceptance remain separate.
+No overall completion percentage or new paid-provider result is inferred here.
+
+## Historical incremental checkpoint (2026-11-09)
 
 The table and v0.4.187–188 results below are historical evidence. Current status
 is recorded in the [PRD tracker](prd-app-flow-and-live-agents.md#11-status-tracker).

@@ -41,6 +41,7 @@ import { useOfficeOverlay } from '../office/overlay/useOfficeOverlay';
 import type { FocusPoint } from '../office/scene/cameraFocus';
 import { useOfficeControls } from '../office/officeControls';
 import { usePreferencesStore } from '../preferences';
+import { profileClientStateStorage, subscribeProfileClientState } from '../profileClientState';
 import { Icon } from '../ui/Icon';
 import { OriginChip } from '../ui/OriginMark';
 import { Select } from '../ui/Select';
@@ -54,10 +55,10 @@ import type { OfficeContextState } from '../office/contextRecovery';
 
 const loadOfficeCanvas = () => import('../office/scene/OfficeCanvas');
 const MAX_SESSIONS = 24;
-/** v0.0.43: whether the board's "Earlier" group is open, remembered per device (a convenience: storage may be unavailable). */
+/** v0.0.43: whether the board's "Earlier" group is open, remembered in the host profile (device-only without a host). */
 const EARLIER_OPEN_KEY = 'extalia.office.earlierOpen';
-const readEarlierOpen = () => { try { return window.localStorage.getItem(EARLIER_OPEN_KEY) === '1'; } catch { return false; } };
-const writeEarlierOpen = (open: boolean) => { try { window.localStorage.setItem(EARLIER_OPEN_KEY, open ? '1' : '0'); } catch { /* not remembered */ } };
+const readEarlierOpen = () => { try { return profileClientStateStorage.getItem(EARLIER_OPEN_KEY) === '1'; } catch { return false; } };
+const writeEarlierOpen = (open: boolean) => { try { profileClientStateStorage.setItem(EARLIER_OPEN_KEY, open ? '1' : '0'); } catch { /* not remembered */ } };
 class SceneBoundary extends Component<{ children: ReactNode; fallback: ReactNode; onFailure(): void }, { failed: boolean }> {
   override state = { failed: false };
   static getDerivedStateFromError() { return { failed: true }; }
@@ -119,6 +120,14 @@ export function OfficePage({ t, language, agents, hostDisconnected = false, stat
     const open = readEarlierOpen();
     return { open, mounted: open };
   });
+  useEffect(() => {
+    const refresh = () => {
+      const open = readEarlierOpen();
+      setEarlier(current => current.open === open ? current : { open, mounted: open || current.mounted });
+    };
+    refresh();
+    return subscribeProfileClientState(refresh);
+  }, []);
   const earlierOpen = earlier.open;
   const showEarlier = (open: boolean) => {
     setEarlier(current => ({ open, mounted: open || current.mounted }));

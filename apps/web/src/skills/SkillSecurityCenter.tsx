@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { errorMessage } from '../host/remote';
 import type { Messages } from '../i18n';
 import { Icon } from '../ui/Icon';
+import { DirectoryPickerButton } from '../setup/DirectoryPickerButton';
 import { SkillPreflightPanel } from './SkillPreflightPanel';
 import { SkillRoutingPanel } from './SkillRoutingPanel';
 import { skillHostKey, skillPreflightContext } from './skillPreflightContext';
@@ -432,10 +433,6 @@ function SkillImportPanel({ t, kind, busy, picker, agents, workspaces, onImport,
   }, [agents, kind, workspaceId]);
   const names = skills?.workspaceId === workspaceId && skills.report ? [...skills.report.allowed, ...skills.report.pending].map(skill => skill.name).sort() : [];
   const chosen = names.includes(name) ? name : names[0] ?? '';
-  const choose = async () => {
-    const selection = await picker?.selectDirectory().catch(() => null);
-    if (selection?.path) setFolder(selection.path);
-  };
   return (
     <form className="skill-import" onSubmit={event => {
       event.preventDefault();
@@ -448,7 +445,8 @@ function SkillImportPanel({ t, kind, busy, picker, agents, workspaces, onImport,
           <span>{s.folderLabel}</span>
           <span className="skill-import-row">
             <input type="text" value={folder} placeholder={s.folderPlaceholder} spellCheck={false} autoComplete="off" onChange={event => setFolder(event.target.value)} />
-            {picker && <button type="button" className="button small" disabled={busy} onClick={() => void choose()}><Icon name="folder" />{s.browse}</button>}
+            {(picker || typeof agents.browseDirectories === 'function') && <DirectoryPickerButton t={t} agents={agents} picker={picker} purpose="skill"
+              title={t.directoryPicker.skill} label={s.browse} initialPath={folder} disabled={busy} onSelected={setFolder} />}
           </span>
         </label>
       ) : !workspaces.length ? <p className="small muted">{s.noProjects}</p> : (

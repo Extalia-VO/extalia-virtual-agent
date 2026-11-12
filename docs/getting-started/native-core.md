@@ -1,10 +1,16 @@
 # Native core (preview)
 
+Current scope reviewed against v0.4.288 on 2026-11-12. See the
+[Native agent module](../modules/native-agent.md) for capabilities, source links
+and remaining acceptance gates.
+
 The Rust backend preference for new saved missions is an optional preview and
 is off by default. It does not choose the implementation language for every
 feature: Knowledge, the skill registry, learning artifacts and OpenAI-compatible
-model discovery use Rust independently of that preference. The remaining
-TypeScript backend is migration work, not the final language destination.
+model discovery use Rust independently of that preference. Backend placement
+follows measured whole-workload efficiency and compatible results, not a required
+language migration. TypeScript remains the production completion path under
+[ADR 0071](../adr/0071-rust-openai-completion-and-resource-evidence.md).
 
 ## What it is
 
@@ -105,9 +111,13 @@ back to the default; Extalia does not fall back to another folder.
 The Desktop app bundles `extalia-daemon` for macOS (arm64 and x64), Windows x64
 and Linux x64. You do not need Rust, Python or Node.js to use it.
 
-The `extalia` command gets the daemon from per-platform npm packages. Release CI
-builds those packages, but they are not published yet, so a CLI install cannot
-get the daemon from npm yet.
+The `extalia` command gets the matching daemon from per-platform npm packages.
+The v0.4.288 application and all five daemon packages are published for macOS
+ARM64/Intel, Linux ARM64/x64 and Windows x64. The CLI requires the supported
+Node.js version; unlike Desktop it does not bundle Node.js. See the
+[release installation guide](../release/v0.4.288.md#install-or-update) for
+installation and platform limitations. Scanner execution remains limited to the
+verified macOS 14+ ARM64 bundle; package availability does not remove that limit.
 
 ## When the daemon is unavailable
 

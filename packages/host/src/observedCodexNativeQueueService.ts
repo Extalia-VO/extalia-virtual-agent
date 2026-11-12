@@ -1,10 +1,11 @@
 import path from 'node:path';
 import type { ObservedCodexNativeQueueStatus } from '@extalia/platform';
 import { CodexNativeQueueError, readCodexNativeQueue, type CodexNativeQueueResult } from './codexNativeQueue.js';
-import { findOnPath, isExecutable } from './connect/util.js';
+import { environmentValue, findExecutable } from './executableDiscovery.js';
 import type { ObservedCodexQueueTarget } from './observedCodexQueueService.js';
 
 interface Options {
+  homeDirectory?: string;
   env: Readonly<Record<string, string | undefined>>;
   target(id: string): ObservedCodexQueueTarget | undefined;
   labelsOnly(): boolean;
@@ -70,8 +71,8 @@ export class ObservedCodexNativeQueueService {
       if (this.reads.size >= 2) return this.unavailable(id);
       const abort = new AbortController();
       reading = { abort, ids: new Set([id]), done: Promise.resolve().then(async () => {
-        const override = this.options.env.EXTALIA_CODEX_BIN;
-        const bin = override ? await isExecutable(override) ? override : undefined : await findOnPath('codex', this.options.env, process.platform);
+        const bin = await findExecutable('codex', { env: this.options.env, platform: process.platform, homeDirectory: this.options.homeDirectory,
+          override: environmentValue(this.options.env, 'EXTALIA_CODEX_BIN', process.platform) });
         if (!bin || abort.signal.aborted || !this.current(id, key, generation, privacy)) throw new CodexNativeQueueError();
         return (this.options.read ?? readCodexNativeQueue)({ bin, codexHome: source.codexHome, env: this.options.env,
           ...(source.cwd ? { cwd: source.cwd } : {}), threadId: source.threadId, signal: abort.signal });

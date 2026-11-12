@@ -81,7 +81,8 @@ describe('selected Hermes profile delegation limits', () => {
     const { env, home, root } = await fixture({ 'config.yaml': 'delegation: { oneshot_max_children: 6, model: vendor/default-worker }\n', '.env': 'DELEGATION_MAX_CONCURRENT_CHILDREN=8\n', 'profiles/lab/config.yaml': 'model: vendor/lab-lead\n' });
     expect(await hermesDelegationLimits(env, home, 'lab')).toMatchObject({ profile: 'lab', oneshotMaxChildren: 2, maxConcurrentChildren: 10, workerModel: 'vendor/lab-lead' });
     const selected = { ...env, HERMES_HOME: path.join(root, 'profiles', 'lab') };
-    expect(await hermesDelegationLimits(selected, home, 'default')).toMatchObject({ maxTeamMembers: 6, workerModel: 'vendor/default-worker' });
+    // An explicit profile-valued home remains selected for the environment default.
+    expect(await hermesDelegationLimits(selected, home, 'default')).toMatchObject({ maxTeamMembers: 2, workerModel: 'vendor/lab-lead' });
     expect(await hermesDelegationLimits(selected, home, 'lab')).toMatchObject({ maxTeamMembers: 2, workerModel: 'vendor/lab-lead' });
   });
 

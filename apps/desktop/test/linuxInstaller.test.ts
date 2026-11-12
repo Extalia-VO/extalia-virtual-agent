@@ -33,7 +33,7 @@ async function dialog(f: Awaited<ReturnType<typeof fixture>>, kind: 'zenity' | '
 printf '%s\\n' "$*" >> "$EXTALIA_TEST_LOG"
 for argument in "$@"; do
   case "$argument" in
-    --entry|--inputbox) printf '%s\\n' "$EXTALIA_TEST_PREFIX"; exit 0 ;;
+    --file-selection|--getexistingdirectory) printf '%s\\n' "$EXTALIA_TEST_PREFIX"; exit 0 ;;
     --question|--yesno) exit "${'$'}{EXTALIA_TEST_CANCEL:-0}" ;;
     --list|--checklist) if [ "${'$'}{EXTALIA_TEST_SELECT:-0}" = 1 ]; then ${kind === 'zenity' ? `printf '%s\\n' "${'$'}{!#}"` : 'echo launch'}; fi; exit 0 ;;
   esac
@@ -86,6 +86,37 @@ describe.skipIf(process.platform === 'win32' || process.getuid?.() === 0)('Linux
     expect(desktop).toContain('Name=Extalia\n'); expect(desktop).toContain('X-Extalia-Version=1.2.3');
     await absent(f.env.EXTALIA_TEST_LAUNCH);
     expect((await readdir(f.data)).sort()).toEqual(['Extalia with spaces', 'applications']);
+  });
+  it.each(['zenity', 'kdialog'] as const)('installs into an empty owned directory selected by %s', async kind => {
+    const f = await fixture(); await mkdir(f.prefix, { recursive: true }); await dialog(f, kind);
+    const result = f.run([], { DISPLAY: ':synthetic' });
+    expect(result.stderr).toBe(''); expect(result.status).toBe(0);
+    expect(await readFile(path.join(f.prefix, 'app.AppImage'))).toEqual(await readFile(f.appImage));
+    expect(await readFile(f.desktop, 'utf8')).toContain(`Exec="${f.prefix}/app.AppImage"`);
+    expect((await readdir(f.data)).sort()).toEqual(['Extalia with spaces', 'applications']);
+    await absent(f.env.EXTALIA_TEST_LAUNCH);
+  });
+  it('restores the original empty destination when its new launcher swap fails', async () => {
+    const f = await fixture(); await mkdir(f.prefix, { recursive: true });
+    const original = await stat(f.prefix);
+    const shim = path.join(f.bin, 'mv');
+    await writeFile(shim, '#!/bin/bash\nif [ "${!#}" = "$EXTALIA_TEST_DESKTOP" ]; then exit 1; fi\nexec /bin/mv "$@"\n'); await chmod(shim, 0o755);
+    const result = f.run(undefined, { EXTALIA_TEST_DESKTOP: f.desktop });
+    expect(result.status).toBe(1);
+    expect(await readdir(f.prefix)).toEqual([]);
+    expect((await stat(f.prefix)).ino).toBe(original.ino);
+    await absent(f.desktop); await absent(f.env.EXTALIA_TEST_LAUNCH);
+  });
+  it('restores unexpected files added to an adopted empty destination before commit', async () => {
+    const f = await fixture(); await mkdir(f.prefix, { recursive: true });
+    const original = await stat(f.prefix), shim = path.join(f.bin, 'mv');
+    await writeFile(shim, '#!/bin/bash\ntarget="${!#}"\n/bin/mv "$@" || exit\ncase "$target" in *.extalia-stage.*.previous) printf preserved > "$target/concurrent-note" ;; esac\n'); await chmod(shim, 0o755);
+    const result = f.run();
+    expect(result.status).toBe(1);
+    expect(await readFile(path.join(f.prefix, 'concurrent-note'), 'utf8')).toBe('preserved');
+    expect((await stat(f.prefix)).ino).toBe(original.ino);
+    expect(await readdir(f.prefix)).toEqual(['concurrent-note']);
+    await absent(f.desktop); await absent(f.env.EXTALIA_TEST_LAUNCH);
   });
   it('upgrades only unchanged owned files and preserves a modified installation', async () => {
     const f = await fixture(); expect(f.run().status).toBe(0);
@@ -241,7 +272,7 @@ check_running
     const f = await fixture(); await dialog(f, 'zenity');
     const cancel = f.run([], { DISPLAY: ':synthetic', EXTALIA_TEST_CANCEL: '1' }); expect(cancel.status).toBe(0); expect(cancel.stdout).toContain('cancelled'); expect(await readdir(f.home)).toEqual([]);
     const install = f.run([], { DISPLAY: ':synthetic' }); expect(install.status).toBe(0); await absent(f.env.EXTALIA_TEST_LAUNCH);
-    const dialogs = await readFile(f.env.EXTALIA_TEST_LOG, 'utf8'); expect(dialogs).toContain('--question'); expect(dialogs).toContain('--column=Action FALSE ');
+    const dialogs = await readFile(f.env.EXTALIA_TEST_LOG, 'utf8'); expect(dialogs).toContain('--file-selection --directory'); expect(dialogs).not.toContain('--entry'); expect(dialogs).toContain('--question'); expect(dialogs).toContain('--column=Action FALSE ');
   });
   it('launches its verified fake payload only after an explicit checked finish choice', async () => {
     const f = await fixture(); await dialog(f, 'zenity');
@@ -255,20 +286,20 @@ check_running
       try { const executable = execFileSync('which', [name], { encoding: 'utf8' }).trim(); if (executable) await symlink(executable, path.join(f.bin, name)); } catch { /* sha256sum or shasum can be absent. */ }
     }
     const result = f.run([], { DISPLAY: ':synthetic', PATH: f.bin }); expect(result.stderr).toBe(''); expect(result.status).toBe(0);
-    expect(await readFile(f.env.EXTALIA_TEST_LOG, 'utf8')).toMatch(/launch .+ off/); await absent(f.env.EXTALIA_TEST_LAUNCH);
+    expect(await readFile(f.env.EXTALIA_TEST_LOG, 'utf8')).toContain('--getexistingdirectory'); expect(await readFile(f.env.EXTALIA_TEST_LOG, 'utf8')).not.toContain('--inputbox'); expect(await readFile(f.env.EXTALIA_TEST_LOG, 'utf8')).toMatch(/launch .+ off/); await absent(f.env.EXTALIA_TEST_LAUNCH);
   });
   it('forces terminal interaction with --cli and refuses a noninteractive implicit install', async () => {
     const f = await fixture(); await dialog(f, 'zenity');
     const result = f.run(['--cli'], { DISPLAY: ':synthetic' }); expect(result.status).toBe(1); expect(result.stderr).toContain('terminal'); await absent(f.env.EXTALIA_TEST_LOG); expect(await readdir(f.home)).toEqual([]);
   });
-  it.skipIf(spawnSync('python3', ['--version']).status !== 0)('installs through an English terminal and leaves launch declined', async () => {
+  it.skipIf(spawnSync('python3', ['--version']).status !== 0).each([false, true])('installs through an English terminal with an editable destination (custom: %s) and leaves launch declined', async custom => {
     const f = await fixture();
     // Python only supplies a PTY in this optional test; the installer needs Bash and core utilities.
     const python = `import os, pty, select, subprocess, sys, time
 master, slave = pty.openpty()
 child = subprocess.Popen(['/bin/bash', sys.argv[1], '--cli', '--prefix', sys.argv[2]], stdin=slave, stdout=slave, stderr=slave)
 os.close(slave)
-os.write(master, b'y\\nn\\n')
+os.write(master, os.fsencode(sys.argv[3]) + b'\\ny\\nn\\n')
 output = b''
 deadline = time.monotonic() + 8
 try:
@@ -292,8 +323,10 @@ finally:
 sys.stdout.buffer.write(output)
 sys.exit(code)
 `;
-    const result = spawnSync('python3', ['-c', python, f.output, f.prefix], { env: f.env, encoding: 'utf8', timeout: 10_000 });
+    const destination = custom ? path.join(f.data, 'Selected terminal destination') : f.prefix;
+    const result = spawnSync('python3', ['-c', python, f.output, f.prefix, custom ? destination : ''], { env: f.env, encoding: 'utf8', timeout: 10_000 });
     expect(result.stderr).toBe(''); expect(result.status).toBe(0); expect(result.stdout).toContain('Extalia Setup'); expect(result.stdout).toContain('[y/N]');
-    expect(await readFile(path.join(f.prefix, 'app.AppImage'))).toEqual(await readFile(f.appImage)); await absent(f.env.EXTALIA_TEST_LAUNCH);
+    expect(await readFile(path.join(destination, 'app.AppImage'))).toEqual(await readFile(f.appImage)); await absent(f.env.EXTALIA_TEST_LAUNCH);
+    if (custom) await absent(f.prefix);
   });
 });

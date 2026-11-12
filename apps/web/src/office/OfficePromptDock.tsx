@@ -13,6 +13,8 @@ import { TeamSetupDialog } from './TeamSetupDialog';
 import { modelChoicesKey, sessionRuntime } from '../chat/sessionRuntime';
 import { formatBytes, sendPromptWithAttachments, uploadAttachments, type PendingAttachment } from '../chat/attachments';
 import { LONG_PASTE_THRESHOLD, MESSAGE_TEXT_LIMIT, longTextFiles, pastedValue } from '../chat/longTextPaste';
+import { SessionWorkspaceReview } from '../chat/SessionWorkspaceReview';
+import { useWorkspaceReviewRecovery } from '../chat/workspaceReviewRecovery';
 
 /** Hosts before v0.0.27 lack per-session model/effort; everything here is feature-detected so they keep working. */
 interface OptionsHost {
@@ -151,6 +153,9 @@ export function OfficePromptDock({ t, agents, state, workspaceId, compact = fals
   if (filter !== workspaceId) { setFilter(workspaceId); setChosen(workspaceId ?? state.workspaces[0]?.id ?? ''); }
 
   const target = targetSessionId ? state.sessions.find(item => item.id === targetSessionId && item.control === 'managed') : undefined;
+  const { required: workspaceReviewRequired, recover: recoverWorkspaceReview, clear: clearWorkspaceReview } = useWorkspaceReviewRecovery({ agents, onState, session: target });
+  const reviewRequired = useRef(workspaceReviewRequired);
+  useLayoutEffect(() => { reviewRequired.current = workspaceReviewRequired; }, [workspaceReviewRequired]);
   // A targeted session decides the workspace; otherwise the dock's own choice (or active Office workspace).
   const workspace = state.workspaces.find(item => item.id === (target?.workspaceId ?? chosen)) ?? state.workspaces[0];
   const targets = workspaceTargets(state.sessions, workspace?.id);
@@ -228,7 +233,7 @@ export function OfficePromptDock({ t, agents, state, workspaceId, compact = fals
   }
 
   async function send() {
-    if (!workspace || busy || sending.current || !prompt || prompt.length > MESSAGE_TEXT_LIMIT || targetBusy) return;
+    if (!workspace || busy || sending.current || !prompt || prompt.length > MESSAGE_TEXT_LIMIT || targetBusy || workspaceReviewRequired) return;
     const sentContext = context;
     const owns = () => currentContext.current === sentContext;
     const sent = chipsRef.current;
@@ -259,11 +264,11 @@ export function OfficePromptDock({ t, agents, state, workspaceId, compact = fals
         if (!owns()) return;
         binding.current = { context: sentContext, sessionId };
       }
-      if (!owns()) return;
+      if (!owns() || reviewRequired.current) return;
       const ids = await uploadAttachments(agents, sessionId, sent, (key, change) => {
         if (owns()) setChips(current => current.map(chip => chip.key === key ? { ...chip, ...change } : chip));
       });
-      if (!owns()) return;
+      if (!owns() || reviewRequired.current) return;
       await sendPromptWithAttachments(agents, sessionId, prompt, ids);
       const sentKeys = new Set(sent.map(chip => chip.key));
       setChips(current => current.filter(chip => !sentKeys.has(chip.key)));
@@ -276,12 +281,17 @@ export function OfficePromptDock({ t, agents, state, workspaceId, compact = fals
       // The next prompt continues the conversation that was just started; the chip says so and can be cleared.
       onTarget(sessionId);
       onStarted(sessionId);
-    } catch (failure) { if (owns()) setError(errorMessage(failure)); }
+    } catch (failure) {
+      if (owns()) {
+        setError(errorMessage(failure));
+        await recoverWorkspaceReview(failure);
+      }
+    }
     finally { sending.current = false; setBusy(false); }
   }
   const specNames = preview ? preview.names.map(name => name || t.teamSpec.unnamed).join(', ') : '';
 
-  const open = !compact || engaged || Boolean(text) || chips.length > 0 || Boolean(error);
+  const open = !compact || engaged || Boolean(text) || chips.length > 0 || Boolean(error) || workspaceReviewRequired;
   const hint = targetBusy ? c.busy : note ?? (target ? c.hintContinue(titleOf(target)) : teamStatus?.enabled ? `${c.hintNew} ${t.team.pending}` : c.hintNew);
   const teamLabel = target ? t.team.openLabel(titleOf(target)) : defaults && workspace ? t.team.openDefault(workspace.name) : t.team.openNew;
   const label = busy ? (target ? c.sending : t.officeUx.dockStarting) : target ? c.send : t.officeUx.dockSend;
@@ -303,13 +313,15 @@ export function OfficePromptDock({ t, agents, state, workspaceId, compact = fals
           </div>
         </div>
         </div></div>
+        <SessionWorkspaceReview t={t} agents={agents} state={state} session={target} required={workspaceReviewRequired}
+          onReviewed={next => { clearWorkspaceReview(); setError(undefined); onState(next); area.current?.focus(); }} />
         <div className="office-prompt-input">
           <textarea ref={area} id={`${id}-prompt`} aria-label={target ? c.targetAgent(titleOf(target)) : t.officeUx.dockPlaceholder} aria-describedby={`${id}-hint`}
             placeholder={target ? c.cardPlaceholder(titleOf(target)) : t.officeUx.dockPlaceholder}
             value={text} disabled={busy} rows={1}
             onPaste={onPaste} onChange={event => setText(event.target.value)}
             onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void send(); } }} />
-          <button type="button" onClick={() => void send()} className="button primary office-prompt-send" disabled={busy || !prompt || prompt.length > MESSAGE_TEXT_LIMIT || targetBusy} aria-label={label} title={c.shortcut}>
+          <button type="button" onClick={() => void send()} className="button primary office-prompt-send" disabled={busy || !prompt || prompt.length > MESSAGE_TEXT_LIMIT || targetBusy || workspaceReviewRequired} aria-label={label} title={c.shortcut}>
             <Icon name={busy ? 'refresh' : 'send'} className={busy ? 'spin' : ''} /><span>{label}</span>
           </button>
         </div>

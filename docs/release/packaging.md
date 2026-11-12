@@ -82,7 +82,10 @@ stays English independently of the app language.
   selection, desktop/Start menu shortcuts and an explicit finish/launch choice.
   Existing profile preservation and updater behavior remain in place.
 - **Linux x64:** the release also contains `Extalia-VERSION-linux-x64-setup.run`,
-  an offline per-user wizard using Zenity, KDialog or terminal prompts. Run it with
+  an offline per-user wizard using native Zenity/KDialog folder choosers or terminal
+  prompts. The terminal offers the default destination or an editable path.
+  An existing empty user-owned destination is accepted; failed installation
+  restores it, including unexpected files added before commit. Run it with
   `bash Extalia-VERSION-linux-x64-setup.run`; `--cli` forces terminal mode and
   `--yes` installs without prompting or launching. It installs the bundled
   AppImage, icon and application-menu entry without sudo, rejects unsafe/overlapping
@@ -91,6 +94,8 @@ stays English independently of the app language.
   AppImage runtime dependencies still apply. Downloaded updater payloads need a
   private, verified handoff receipt before the managed AppImage can be replaced;
   manual setup accepts verified updater replacements and preserves profile data.
+  The `.run` has no uninstall command; removal remains manual. Debian package
+  installation/removal follows the distribution package manager.
 
 `pnpm --filter @extalia/desktop build` copies the local photographs and bundles
 installer-only code. `pnpm --filter @extalia/desktop installer:art` regenerates the
@@ -111,6 +116,18 @@ preview status. Native installation is tested with substituted operations and
 temporary directories; native Windows/Linux desktop validation belongs on their
 respective release runners. These features do not change signing, notarization,
 architecture checks or release publication gates.
+
+Local audit v0.4.292 (2026-11-12): the real isolated macOS Electron installer
+preview and Desktop startup smoke pass, including installer photographs, keyboard
+controls, reduced motion, preserved preview-only installation, all floor views
+and no renderer/model errors. Four browser cases check actual folder components
+with synthetic native pickers or authenticated-host browsing in EN/light desktop
+and ID/dark phone views. Full repository checks pass (9,312 TypeScript tests,
+58 prerequisite skips; 576 Rust tests and builds); sixteen additional
+picker regressions pass. Linux shell/PTY installation and rollback tests run in
+temporary macOS homes with mocked Zenity/KDialog, and Windows evidence covers NSIS
+configuration/templates. This does not certify a native Windows/Linux GUI install
+or a new DMG release; no real user profile or installed app was changed.
 
 ## macOS release modes
 
@@ -156,14 +173,17 @@ developer. Removing that warning requires a Developer ID signed and notarized bu
 
 ## Shared public scene assets
 
-The 2026-10-31 snapshot of `apps/web/public-assets/models.json` registers **106
-models**, totaling **417,978,116 GLB bytes** (about 399 MiB before packaging
-compression): 17 project-authored scene models, 12 retained body/hair exports,
-32 fitted outfits/wardrobe pieces and 45 campus vehicles. Declared-license counts
-are MIT 17, RenderHub Extended Use 23, CC-BY-4.0 57, CC-BY-NC-SA-4.0 4,
-CC-BY-NC-4.0 1 and Sketchfab Standard 4. No unverified-license vehicle is currently
-registered. These classifications and validation are technical inventory records,
-not a blanket grant of commercial or redistribution rights.
+The **v0.4.288** snapshot of `apps/web/public-assets/models.json`, reconciled on
+2026-11-12, registers **133 models**, totaling **152,104,948 GLB bytes** (about
+145 MiB before packaging compression): 18 project-authored scene models,
+12 retained body/hair exports, 8 additional detailed hairs, 32 fitted
+outfits/wardrobe pieces, 45 campus vehicles and 18 plants/trees. Declared-license
+counts are MIT 18, RenderHub Extended Use 49, CC-BY-4.0 57, CC-BY-NC-SA-4.0 4,
+CC-BY-NC-4.0 1 and Sketchfab Standard 4. These classifications and validation are
+technical inventory records, not a blanket grant of commercial or redistribution
+rights. The earlier 2026-10-31 inventory (106 models / 417,978,116 bytes) preceded
+later greenery additions and texture/vehicle optimizations; it is not the current
+package-size estimate. Asset bytes do not measure decoded memory or startup time.
 
 Two physical body files serve the four existing appearance variants; ten detailed
 hair exports retain the original fallback. Fitted original garments and staff

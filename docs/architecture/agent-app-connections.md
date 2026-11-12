@@ -5,6 +5,41 @@ The shared connector serves Web, Desktop and CLI for Codex, Claude Code,
 Gemini CLI, Antigravity and Hermes. Tested formats and installed-version warnings
 remain in `connect/service.ts`; synthetic tests do not certify a newer vendor.
 
+## Cross-platform discovery (local v0.4.293)
+
+Connect, transcript observation and managed Hermes configuration/model/delegation
+readers share one location resolver. On Windows, Hermes uses
+`%LOCALAPPDATA%\hermes`, or `<supplied home>\AppData\Local\hermes` when that variable
+is absent. An existing `<supplied home>\.hermes` is selected only when the native
+directory is absent; the two installations are never merged. This follows the
+[official Hermes installation layout](https://github.com/NousResearch/hermes-agent/blob/main/website/docs/getting-started/installation.md#install-layout).
+An explicit `HERMES_HOME` is authoritative, including a named profile. Observation
+retains that profile's identity without enrolling sibling installations; managed
+Hermes's `default` selection resolves the explicitly chosen named profile.
+
+`CODEX_HOME`, `CLAUDE_CONFIG_DIR`, `ANTIGRAVITY_HOME` and
+`ANTIGRAVITY_CONFIG_DIR` retain their separate application scopes. Gemini's
+`GEMINI_CLI_HOME` is a base home: settings and ordinary history live below its
+`.gemini` directory, with sandbox history below `.cache/.gemini`. See Google's
+[home resolution](https://github.com/google-gemini/gemini-cli/blob/main/packages/core/src/utils/paths.ts)
+and [storage paths](https://github.com/google-gemini/gemini-cli/blob/main/packages/core/src/config/storage.ts).
+Relative roots and unresolved environment references produce per-app diagnostics;
+they never become working-directory-relative configuration/history reads or a
+fallback to another installation. Other apps remain discoverable.
+
+GUI launches also inspect bounded known package-manager executable directories
+when shell `PATH` is incomplete. Discovery reads filesystem metadata without
+running shell startup files. Standard npm Node `.cmd` launchers are resolved to
+their Node/script targets without invoking a shell; pinned upstream `cmd-shim`
+7.0.0 and 9.0.2 fixtures establish the supported wrapper shapes. Unknown wrappers
+are refused. This does not certify an arbitrary npm package named Hermes.
+
+Changing roots requires undoing the recorded connection before reconnecting.
+Changed previews are refused. A stale or invalid current root leaves Disconnect
+available for the recorded configuration, with the existing backup/undo checks.
+Evidence is local temporary-home integration and simulated platform tests; it is
+not native Windows vendor or installer certification.
+
 ## Preview, apply and undo
 
 The host returns a preview fingerprint covering configuration paths/targets,

@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, readdir, realpath, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { AgentTeam, Workspace, WorkspaceCrossAccess } from '@extalia/core';
@@ -134,6 +134,156 @@ describe('reviewed Native session moves', () => {
     await expect(readFile(path.join(ctx.alpha.projectLocation!, 'after.txt'))).rejects.toMatchObject({ code: 'ENOENT' });
     expect((await ctx.store.readMessages(session.id)).slice(0, messages.length)).toEqual(messages);
     expect(await ctx.host.getSessionTeam(session.id)).toEqual(original.team);
+  });
+
+  it.each(['replace-primary', 'add-folder', 'remove-folder', 'promote-folder', 'physical-primary-move', 'change-access'] as const)(
+    'reviews %s in the same conversation and applies only the current folder grants', async change => {
+      let calls: Call[] = [{ name: 'read_file', args: { path: 'marker.txt' } }];
+      const ctx = await setup({ modes: ['isolated', 'isolated'], script: body => currentToolResults(body) ? reply() : reply(calls) });
+      const primary = ctx.alpha.projectLocation!, extra = ctx.alpha.additionalProjectLocations![0]!;
+      await writeFile(path.join(primary, 'marker.txt'), 'Original primary marker');
+      await writeFile(path.join(extra, 'marker.txt'), 'Original extra marker');
+      const session = await ctx.host.createSession(ctx.alpha.id);
+      expect(session.workspaceReviewRequired).not.toBe(true);
+      await ctx.host.sendPrompt(session.id, 'Retain the original conversation'); await settled(ctx.runtime);
+      const original = (await ctx.store.get(session.id))!;
+      const history = await ctx.store.readMessages(session.id), events = await ctx.host.sessionEvents(session.id);
+      const stale = await ctx.host.previewSessionMove!(session.id, ctx.alpha.id);
+      let patch: Partial<Workspace>, expected: string;
+      let deniedPath: string | undefined;
+      if (change === 'replace-primary' || change === 'physical-primary-move') {
+        const replacement = path.join(ctx.root, 'replacement');
+        if (change === 'physical-primary-move') await rename(primary, replacement);
+        else { await mkdir(replacement); await writeFile(path.join(replacement, 'marker.txt'), 'Replacement primary marker'); }
+        patch = { projectLocation: replacement };
+        expected = change === 'physical-primary-move' ? 'Original primary marker' : 'Replacement primary marker';
+        deniedPath = path.join(primary, 'marker.txt');
+      } else if (change === 'add-folder') {
+        const addition = path.join(ctx.root, 'addition'); await mkdir(addition);
+        await writeFile(path.join(addition, 'marker.txt'), 'New additional marker');
+        patch = { additionalProjectLocations: [extra, addition] }; expected = 'Original primary marker';
+        calls.push({ name: 'read_file', args: { path: path.join(await realpath(addition), 'marker.txt') } });
+      } else if (change === 'remove-folder') {
+        patch = { additionalProjectLocations: [] }; expected = 'Original primary marker';
+        deniedPath = path.join(extra, 'marker.txt');
+      } else if (change === 'promote-folder') {
+        patch = { projectLocation: extra, additionalProjectLocations: [primary] }; expected = 'Original extra marker';
+      } else {
+        patch = { crossWorkspaceAccess: 'read-only' }; expected = 'Original primary marker';
+      }
+      const changed = await ctx.save(ctx.alpha, patch);
+      expect(changed.sessions.find(item => item.id === session.id)?.workspaceReviewRequired).toBe(true);
+      const requests = ctx.requests.length;
+      await expect(ctx.host.moveSession!(session.id, { workspaceId: ctx.alpha.id, reviewId: stale.reviewId })).rejects.toThrow(/Review the destination again/);
+      await expect(ctx.host.sendPrompt(session.id, 'Not yet reviewed')).rejects.toThrow(/Workspace folders or access boundaries changed/);
+      expect(ctx.requests).toHaveLength(requests);
+      const review = await ctx.host.previewSessionMove!(session.id, ctx.alpha.id);
+      const resumed = await ctx.host.moveSession!(session.id, { workspaceId: ctx.alpha.id, reviewId: review.reviewId });
+      expect(resumed.sessions.find(item => item.id === session.id)?.workspaceReviewRequired).not.toBe(true);
+      const record = (await ctx.store.get(session.id))!;
+      expect(record).toMatchObject({ id: original.id, workspaceId: original.workspaceId, connectionId: original.connectionId,
+        createdAt: original.createdAt, agentName: original.agentName, workspaceBoundary: workspaceSessionBoundaryKey(ctx.alpha.id, resumed.workspaces) });
+      expect(await ctx.store.readMessages(session.id)).toEqual(history);
+      expect(await ctx.host.sessionEvents(session.id)).toEqual(events);
+      expect(ctx.requests).toHaveLength(requests);
+      calls = [{ name: 'workspace_folders', args: {} }, ...calls,
+        ...(deniedPath ? [{ name: 'read_file', args: { path: deniedPath } }] : [])];
+      await ctx.host.sendPrompt(session.id, 'Continue with the reviewed folders'); await settled(ctx.runtime);
+      const results = currentToolResults(ctx.bodies.at(-1)!);
+      expect(results).toContain(expected);
+      if (change === 'add-folder') expect(results).toContain('New additional marker');
+      if (change === 'remove-folder') expect(results).not.toContain('Original extra marker');
+      if (change === 'replace-primary') expect(results).not.toContain('Original primary marker');
+      expect((await ctx.store.readMessages(session.id)).slice(0, history.length)).toEqual(history);
+      if (change !== 'physical-primary-move') expect(await readFile(path.join(primary, 'marker.txt'), 'utf8')).toBe('Original primary marker');
+      expect(await readFile(path.join(extra, 'marker.txt'), 'utf8')).toBe('Original extra marker');
+      await ctx.restart();
+      expect((await ctx.host.getState()).sessions.find(item => item.id === session.id)?.workspaceReviewRequired).not.toBe(true);
+    });
+
+  it('keeps a pre-change queued draft paused until explicitly removed before reviewing access', async () => {
+    const ctx = await setup({ modes: ['isolated', 'isolated'] });
+    const session = await ctx.host.createSession(ctx.alpha.id);
+    await ctx.host.sendPrompt(session.id, 'Existing conversation'); await settled(ctx.runtime);
+    const initial = await ctx.host.promptQueueStatus!(session.id);
+    await ctx.host.changePromptQueue!(session.id, { revision: initial.revision, action: 'add', text: 'Do not silently retarget this queued draft' });
+    const messages = await ctx.store.readMessages(session.id), requests = ctx.requests.length;
+    await ctx.save(ctx.alpha, { additionalProjectLocations: [] });
+    const queue = await ctx.host.promptQueueStatus!(session.id);
+    expect(queue).toMatchObject({ supported: false, paused: true, items: [{ state: 'pending', text: 'Do not silently retarget this queued draft' }] });
+    await expect(ctx.host.previewSessionMove!(session.id, ctx.alpha.id)).rejects.toThrow(/pending prompts|uncertain deliveries/);
+    expect(ctx.requests).toHaveLength(requests);
+    await ctx.host.changePromptQueue!(session.id, { revision: queue.revision, action: 'delete', itemId: queue.items[0]!.id });
+    const review = await ctx.host.previewSessionMove!(session.id, ctx.alpha.id);
+    const next = await ctx.host.moveSession!(session.id, { workspaceId: ctx.alpha.id, reviewId: review.reviewId });
+    expect(next.sessions.find(item => item.id === session.id)?.workspaceReviewRequired).not.toBe(true);
+    expect(await ctx.store.readMessages(session.id)).toEqual(messages);
+    expect(ctx.requests).toHaveLength(requests);
+  });
+
+  it.each(['scoped', 'legacy-global', 'missing'] as const)('reports persisted folder review after restart for a %s boundary and resumes only after explicit review', async kind => {
+    const ctx = await setup({ modes: ['isolated', 'isolated'], script: body => currentToolResults(body) ? reply()
+      : reply([{ name: 'read_file', args: { path: 'marker.txt' } }]) });
+    await writeFile(path.join(ctx.alpha.projectLocation!, 'marker.txt'), 'Original folder evidence');
+    const session = await ctx.host.createSession(ctx.alpha.id);
+    await ctx.host.sendPrompt(session.id, 'Retain this original conversation'); await settled(ctx.runtime);
+    const staleState = await ctx.host.getState();
+    expect(staleState.sessions.find(item => item.id === session.id)?.workspaceReviewRequired).not.toBe(true);
+    const legacy = workspaceBoundaryKey(staleState.workspaces);
+    const history = await ctx.store.readMessages(session.id), events = await ctx.host.sessionEvents(session.id);
+    const replacement = path.join(ctx.root, 'replacement-after-restart'); await mkdir(replacement);
+    await writeFile(path.join(replacement, 'marker.txt'), 'Current reviewed folder evidence');
+    await ctx.save(ctx.alpha, { projectLocation: replacement });
+    await ctx.restart(async () => {
+      if (kind === 'legacy-global') await ctx.store.update(session.id, { workspaceBoundary: legacy });
+      if (kind === 'missing') {
+        const file = path.join(ctx.root, 'data', 'sessions', 'index.json');
+        const index = JSON.parse(await readFile(file, 'utf8')) as { id: string; workspaceBoundary?: string }[];
+        delete index.find(item => item.id === session.id)!.workspaceBoundary;
+        await writeFile(file, JSON.stringify(index));
+      }
+    });
+    const current = await ctx.host.getState();
+    expect(current.sessions.find(item => item.id === session.id)).toMatchObject({ workspaceId: ctx.alpha.id, workspaceReviewRequired: true });
+    const requests = ctx.requests.length;
+    await expect(ctx.host.sendPrompt(session.id, 'Do not replay before review')).rejects.toThrow(/Workspace folders or access boundaries changed/);
+    expect(ctx.requests).toHaveLength(requests);
+    expect(await ctx.store.readMessages(session.id)).toEqual(history);
+    expect(await ctx.host.sessionEvents(session.id)).toEqual(events);
+    // A renderer holding an older snapshot must refresh/recover on rejection;
+    // the actual fresh host summary exposes the same boundary refusal.
+    expect(staleState.sessions.find(item => item.id === session.id)?.workspaceReviewRequired).not.toBe(true);
+    expect((await ctx.host.getState()).sessions.find(item => item.id === session.id)?.workspaceReviewRequired).toBe(true);
+    const preview = await ctx.host.previewSessionMove!(session.id, ctx.alpha.id);
+    const reviewed = await ctx.host.moveSession!(session.id, { workspaceId: ctx.alpha.id, reviewId: preview.reviewId });
+    expect(reviewed.sessions.find(item => item.id === session.id)?.workspaceReviewRequired).not.toBe(true);
+    expect(await ctx.store.readMessages(session.id)).toEqual(history);
+    expect(await ctx.host.sessionEvents(session.id)).toEqual(events);
+    expect(ctx.requests).toHaveLength(requests);
+    await ctx.host.sendPrompt(session.id, 'Resume after explicit review'); await settled(ctx.runtime);
+    expect(currentToolResults(ctx.bodies.at(-1)!)).toContain('Current reviewed folder evidence');
+    expect((await ctx.store.readMessages(session.id)).slice(0, history.length)).toEqual(history);
+    expect(await readFile(path.join(ctx.alpha.projectLocation!, 'marker.txt'), 'utf8')).toBe('Original folder evidence');
+  });
+
+  it('reviews the same Native session after its workspace default becomes Hermes and folders change', async () => {
+    const ctx = await setup({ modes: ['isolated', 'isolated'] });
+    const session = await ctx.host.createSession(ctx.alpha.id);
+    await ctx.host.sendPrompt(session.id, 'Keep the original Native conversation'); await settled(ctx.runtime);
+    const history = await ctx.store.readMessages(session.id);
+    const replacement = path.join(ctx.root, 'replacement'); await mkdir(replacement);
+    const changed = await ctx.save(ctx.alpha, { projectLocation: replacement, runtimeId: 'hermes', runtimeProfileId: 'default' });
+    expect(changed.sessions.find(item => item.id === session.id)?.workspaceReviewRequired).toBe(true);
+    const review = await ctx.host.previewSessionMove!(session.id, ctx.alpha.id);
+    const next = await ctx.host.moveSession!(session.id, { workspaceId: ctx.alpha.id, reviewId: review.reviewId });
+    expect(next.sessions.find(item => item.id === session.id)).toMatchObject({ id: session.id, connectionId: ctx.connectionId });
+    expect(next.sessions.find(item => item.id === session.id)?.runtime).toBeUndefined();
+    expect(next.sessions.find(item => item.id === session.id)?.workspaceReviewRequired).not.toBe(true);
+    expect(await ctx.store.readMessages(session.id)).toEqual(history);
+    await ctx.host.sendPrompt(session.id, 'Continue with the existing Native connection'); await settled(ctx.runtime);
+    expect(ctx.bodies.at(-1)!.messages.some(message => message.content === 'Keep the original Native conversation')).toBe(true);
+    const beta = await ctx.host.createSession(ctx.beta.id);
+    await expect(ctx.host.previewSessionMove!(beta.id, ctx.alpha.id)).rejects.toThrow(/Extalia Native workspace/);
   });
 
   it('previews effective read-only access to both source folders without transferring files', async () => {
@@ -399,10 +549,12 @@ describe('reviewed Native session moves', () => {
     const preview = await ctx.host.previewSessionMove!(session.id, ctx.beta.id);
     await ctx.host.moveSession!(session.id, { workspaceId: ctx.beta.id, reviewId: preview.reviewId });
     await ctx.store.update(session.id, { reviewedContextBoundary: undefined });
+    expect((await ctx.host.getState()).sessions.find(item => item.id === session.id)?.workspaceReviewRequired).toBe(true);
     await expect(ctx.host.sendPrompt(session.id, 'Imported history without its review')).rejects.toThrow(/fresh session|explicit review/);
     expect(ctx.bodies).toEqual([]);
     const reviewedAgain = await ctx.host.previewSessionMove!(session.id, ctx.beta.id);
-    await ctx.host.moveSession!(session.id, { workspaceId: ctx.beta.id, reviewId: reviewedAgain.reviewId });
+    const reviewedState = await ctx.host.moveSession!(session.id, { workspaceId: ctx.beta.id, reviewId: reviewedAgain.reviewId });
+    expect(reviewedState.sessions.find(item => item.id === session.id)?.workspaceReviewRequired).not.toBe(true);
     await ctx.host.sendPrompt(session.id, 'Use explicitly reviewed context'); await settled(ctx.runtime);
     expect(ctx.bodies.at(-1)!.messages.some(message => message.content === 'Imported context marker')).toBe(true);
     expect((await ctx.store.get(session.id))!.continuedFrom).toEqual(session.continuedFrom);

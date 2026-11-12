@@ -134,7 +134,7 @@ export function AgentSessionDialog({ t, language, agents, state, onState, sessio
     const onKey = (event: KeyboardEvent) => {
       if (host.hasAttribute('inert')) return;
       if (document.querySelector('[data-message-file-preview], .attachment-viewer')) return;
-      if (dialog.current?.querySelector('dialog.session-handover-dialog[open], dialog.observed-workspace-link-dialog[open]')) return;
+      if (dialog.current?.querySelector('dialog.session-handover-dialog[open], dialog.observed-workspace-link-dialog[open], dialog.session-move-dialog[open]')) return;
       if (event.key === 'Escape') {
         if (document.querySelector('[role="listbox"]')) return;
         const drawer = dialog.current?.querySelector<HTMLElement>('[data-conversation-drawer="true"]:not([hidden])');

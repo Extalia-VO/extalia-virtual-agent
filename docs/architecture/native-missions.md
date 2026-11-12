@@ -1,7 +1,10 @@
 # Native missions in the session host
 
-The programmatic mission API runs a fixed graph of read-only native tasks in an
-existing managed session. Desktop IPC and the authenticated Bridge carry the
+The programmatic mission API runs a fixed graph of Native tasks in an existing
+managed session. Tasks are read-only by default; explicit write-capable tasks
+receive scoped file tools in their own isolated Git worktrees. Production
+integration proposals cannot pass the unrun test gate or Apply; see
+[Mission changes](../getting-started/mission-changes.md). Desktop IPC and the authenticated Bridge carry the
 same `AgentHostApi` methods. The renderer never constructs providers or receives
 credentials. See [ADR 0009](../adr/0009-native-missions-in-session-host.md).
 
@@ -65,10 +68,11 @@ Worker turn steps default to 8 and are capped at 20. Bridge requests also retain
 the existing 1 MiB transport limit. Model identities must match configured names;
 model aliases and router-auto behavior are not silently substituted.
 
-The host supplies only workspace-bounded file read/list/search tools. A task
-receives bounded predecessor output explicitly marked unverified and untrusted,
-with truncation indicated. No write, command, memory, skill or delegation tool is
-available. A model answer is not artifact/test evidence. Lead planning
+The host supplies workspace-bounded file read/list/search tools by default.
+Explicit `access: "write"` tasks instead receive file tools rooted in their
+isolated worktree. A task receives bounded predecessor output explicitly marked
+unverified and untrusted, with truncation indicated. Command, memory, skill and
+delegation tools are not available through this mission path. A model answer is not artifact/test evidence. Lead planning
 (`planNativeMission`) only proposes tasks over workspace-allowed connection/model
 pairs; the plan's tasks pass `normalizeHostMissionRequest` and must still be
 launched explicitly. Real-cloud certification remains open.
@@ -216,7 +220,10 @@ consumer is enabled, and legacy permission behavior is unchanged.
 
 Full gate 3.3 still needs physical-settlement reconciliation. Execution-time
 scoped approvals (3.4) and Rust-owned worktree
-fencing remain open. The Python worker and its embedded CPython distribution
-are not implemented; Python is not required for the current chat or mission loop.
+fencing remain open. Generic Python workload execution is not implemented.
+The separate [pinned SkillSpector worker](../adr/0068-pinned-skillspector-inspection.md)
+and its embedded CPython distribution have macOS 14+ ARM64 evidence; that
+integration does not provide a general mission executor. A user-installed Python
+is not required for the current chat or mission loop.
 
 Saved Rust mission starts now acquire a separate [preparation receipt](../adr/0052-durable-mission-preparation-lifetime.md) before credential or worktree preparation. The write-ahead host scope guard survives ambiguous admission, restart and changes to the backend selected for new work. Preparation observes only its local completion after recorded handoff or definite pre-execution failure and cleanup; it cannot reconcile uncertain execution. Entered worktree writes drain before profile-lock release, even after the general shutdown deadline. Default TypeScript and history-off paths do not acquire these receipts.

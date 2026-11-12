@@ -908,6 +908,15 @@ function createMockAgents(options: MockOptions): AgentHostApi {
         if (field === 'language' ? value !== 'en' && value !== 'id' : !/^[a-z0-9][a-z0-9-]{0,39}$/.test(String(value))) throw new Error(`The ${key} preference is not valid.`);
         (next.preferences as Record<string, string>)[field] = String(value);
       }
+      if (patch.clientState !== undefined) {
+        const client = { ...profile.clientState };
+        for (const [key, value] of Object.entries(patch.clientState)) {
+          if (!['lastWorkspaceId', 'officeLights', 'approvalNotifications', 'earlierOpen'].includes(key)) throw new Error('Unknown interface state.');
+          if (value === null || value === undefined) delete (client as Record<string, unknown>)[key];
+          else (client as Record<string, unknown>)[key] = value;
+        }
+        if (Object.keys(client).length) next.clientState = client; else delete next.clientState;
+      }
       profile = next;
       return structuredClone(profile);
     },

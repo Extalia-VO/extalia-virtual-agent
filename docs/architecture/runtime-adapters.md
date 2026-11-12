@@ -8,8 +8,8 @@ them the same way, but what Extalia is allowed to do differs.
 | --- | --- | --- |
 | Who runs the agent | Extalia starts and drives it | The agent's own app (CLI, desktop app, IDE) |
 | Examples | Extalia Native (any API key or router); Hermes Agent | Codex CLI/Desktop, Claude Code, Gemini CLI, Antigravity |
-| Prompting from Extalia | Yes | No. Prompts are typed in the agent's own app |
-| Steer, pause, cancel | Where the runtime supports it | No |
+| Prompting from Extalia | Yes | Only through a verified source-bound native route, source queue or paired cooperative channel |
+| Steer, pause, cancel | Where the runtime supports it | Only the exact actions advertised by the selected source/transport; no universal control |
 | `session.started.control` | `managed` | `observed` |
 | Event channel | `stream` | `transcript`, `hook`, `mcp` |
 
@@ -36,9 +36,9 @@ Extalia ──► Runtime adapter ──► Runtime (e.g. Hermes Agent) ──�
 
 A provider alone gives model completions, not an agent with tools. When the
 user only has an API key or a router, Extalia's own runtime, **Extalia Native**,
-supplies the agent loop and the tools (read, search, write and edit files; run
-commands), all inside the workspace boundary and subject to the workspace
-permissions ([ADR 0005](../adr/0005-extalia-native-runtime.md)). External
+supplies the agent loop and scoped read, search, write and edit tools. Native
+terminal commands remain unavailable until a verified workspace-isolated executor
+exists; file tools remain subject to workspace permissions ([ADR 0005](../adr/0005-extalia-native-runtime.md)). External
 runtimes such as Hermes Agent keep their own loop and are connected through
 adapters.
 

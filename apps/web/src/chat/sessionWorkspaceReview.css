@@ -1,0 +1,6 @@
+.session-workspace-review { display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); color: var(--text); }
+.session-workspace-review > .icon { flex: none; margin-top: 3px; }
+.session-workspace-review > div { min-width: 0; }
+.session-workspace-review p { margin: 0 0 8px; overflow-wrap: anywhere; }
+.session-workspace-review p:last-child { margin-bottom: 0; }
+.session-workspace-review .button { white-space: normal; text-align: start; }

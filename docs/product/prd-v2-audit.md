@@ -11,6 +11,42 @@ konfigurasi aplikasi lain, mengaktifkan integrasi, atau memublikasikan rilis.
 
 Rencana tindak lanjut: [pengembangan bertahap](prd-v2-development-plan.md).
 
+## Rekonsiliasi saat ini: v0.4.288 (2026-11-12)
+
+**Bagian bernomor 1–8 mempertahankan audit historis v0.4.122**, termasuk istilah
+“belum”, temuan vendor dan angka tes pada tanggal asalnya. Jangan membaca tabel
+historis sebagai inventaris kemampuan v0.4.288. Status sekarang ada di
+[checkpoint seluruh FR](prd-v2-acceptance-map.md#current-implementation-checkpoint),
+[gap map v1.1](prd-v1.1-gap-map.md) dan [rencana bertahap](prd-v2-development-plan.md).
+
+Perubahan material sejak audit asal:
+
+- Mandatory external skill ingress tidak lagi memiliki fallback unscanned
+  (ADR 0049). SkillSpector 2.13.4 dan CPython 3.13.18 benar-benar dibundel dan
+  dijalankan pada macOS 14+ ARM64 (ADR 0068); scanner platform lain tetap unavailable.
+- Category catalog, bounded automatic Native skill context, receipts dan live
+  marketplace sudah ada (ADRs 0073/0077). Resolver/compatibility dispatch lengkap
+  dan evaluation sandbox belum selesai.
+- Knowledge/Obsidian-compatible Markdown, CAS/history, 2D/3D graph, stable workspace
+  vault profiles, team meetings, deferred curation serta saved notes/candidates
+  sudah tersedia (ADRs 0065–0067/0074–0075); bukan hanya kontrak learning. Full
+  ACL/provenance, kualitas/evaluasi dan Windows artifact staging masih terbatas.
+- Observed controls/queues/cooperative inboxes, reviewed cross-agent handover
+  dan explicit observed workspace association sudah diimplementasikan
+  (ADRs 0060–0064/0072/0076/0078). Delivery receipt tidak membuktikan model membaca
+  instruksi, pekerjaan selesai atau physical settlement.
+- ADR 0036 menyelesaikan adopsi kompatibel tanpa reset repository/framework/versi.
+  ADR 0071 memilih completion produksi TypeScript setelah pengukuran prototipe
+  Rust/Python; migrasi bahasa menyeluruh bukan gate produk.
+- v0.4.288 sudah memiliki rilis preview Desktop/Web/npm dan bukti CI/package
+  tersendiri. Rilis tersebut tidak menyelesaikan full v0.5 gate #60, general Python
+  executor, writer fencing, reconciliation, exact effect-time approval atau
+  accepted-evidence dependency gates.
+
+Rekonsiliasi ini membaca sumber/tes dan bukti historis yang sudah dicatat; tidak
+mengulangi PoC vendor, scanner, installer, benchmark atau full acceptance.
+[Catatan rilis](../release/v0.4.288.md) membatasi klaim platform yang dipublikasikan.
+
 ## 1. Kesimpulan
 
 Extalia sudah memiliki fondasi yang cukup besar untuk dikembangkan secara

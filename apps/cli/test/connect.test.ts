@@ -60,15 +60,15 @@ describe('extalia connect / disconnect / connections CLI and Bridge hook route',
     const err: string[] = [];
     const env = { EXTALIA_HOME: extaliaHome };
     const service = createConnectService({
-      platform: 'linux',
+      platform: process.platform,
       env,
       homeDirectory,
       extaliaHome,
       nodePath: process.execPath,
-      findBinary: async name => `/usr/local/bin/${name}`,
+      findBinary: async name => path.join(homeDirectory, 'bin', `${name}${process.platform === 'win32' ? '.exe' : ''}`),
       run: async bin => ({
         code: 0,
-        stdout: bin.endsWith('codex') ? 'codex-cli 0.161.0\n' : '2.1.12 (Claude Code)\n',
+        stdout: path.basename(bin, path.extname(bin)) === 'codex' ? 'codex-cli 0.161.0\n' : '2.1.12 (Claude Code)\n',
         stderr: '',
       }),
       fetch: async () => new Response(null, { status: 204 }),
@@ -86,7 +86,7 @@ describe('extalia connect / disconnect / connections CLI and Bridge hook route',
       err: line => err.push(line),
       readFile: file => readFile(file, 'utf8'),
       exists: file => access(file).then(() => true, () => false),
-      platform: 'linux',
+      platform: process.platform,
       arch: 'x64',
       nodeVersion: 'v24.1.0',
       env,
@@ -289,7 +289,10 @@ describe('extalia connect / disconnect / connections CLI and Bridge hook route',
 
     const hermesIo = makeHost();
     expect(await run(['connect', 'hermes', '--yes', '--port', '4317'], hermesIo.value)).toBe(0);
-    const hermesConfig = await readFile(path.join(homeDirectory, '.hermes', 'config.yaml'), 'utf8');
+    const hermesRoot = process.platform === 'win32'
+      ? path.join(homeDirectory, 'AppData', 'Local', 'hermes')
+      : path.join(homeDirectory, '.hermes');
+    const hermesConfig = await readFile(path.join(hermesRoot, 'config.yaml'), 'utf8');
     expect(hermesConfig).toContain('http://127.0.0.1:4317/api/hooks/hermes');
     expect(hermesConfig).toContain('pre_tool_call');
   });

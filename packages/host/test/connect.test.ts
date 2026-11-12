@@ -11,6 +11,7 @@ import {
 } from '../src/index.js';
 import type { CodexRpc } from '../src/connect/codexAppServer.js';
 import { hermesSignature } from '../src/hooks/http.js';
+import { quoteArgument } from '../src/connect/util.js';
 
 function runForwarder(script: string, app: string, stdinBody: string, event?: string): Promise<{ code: number | null; stdout: string; stderr: string }> {
   return new Promise(resolve => {
@@ -49,8 +50,8 @@ describe('Connect service and hook forwarder', () => {
 
   function makeService(overrides: Partial<ConnectContext> = {}): ConnectService {
     return createConnectService({
-      platform: 'linux',
-      env: { EXTALIA_HOME: extaliaHome },
+      platform: process.platform,
+      env: { EXTALIA_HOME: extaliaHome, HERMES_HOME: path.join(homeDirectory, '.hermes') },
       homeDirectory,
       extaliaHome,
       nodePath: process.execPath,
@@ -236,7 +237,7 @@ describe('Connect service and hook forwarder', () => {
                 key: 'user:session_start:0:0',
                 eventName: 'session_start',
                 handlerType: 'command',
-                command: `${process.execPath} ${forwarderPath(extaliaHome)} codex`,
+                command: `${quoteArgument(process.execPath, process.platform)} ${quoteArgument(forwarderPath(extaliaHome), process.platform)} codex`,
                 currentHash: 'hash-123',
                 trustStatus: trustedInMock ? 'trusted' : 'untrusted',
                 sourcePath: configPath,

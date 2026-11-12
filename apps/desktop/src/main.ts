@@ -2,12 +2,14 @@ import type { DirectorySelection, HostInfo } from '@extalia/platform';
 import { BrowserWindow, app, dialog, ipcMain, net, protocol, shell, type IpcMainInvokeEvent } from 'electron';
 import { createReadStream, mkdirSync, mkdtempSync } from 'node:fs';
 import { stat } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import path from 'node:path';
 import { Readable } from 'node:stream';
 import { pathToFileURL } from 'node:url';
 import { startAgents } from './agentsIpc';
 import { IPC } from './ipc';
+import { desktopProfilePaths } from './profilePaths';
+import { selectNativeDirectory } from './directoryPicker';
 import { shouldShowInstaller } from './installer/policy';
 import { createInstallerWindow } from './installer/window';
 import { registerNotifications } from './notificationIpc';
@@ -69,11 +71,21 @@ if (smokeTest || installerPreview) {
   process.env.HERMES_HOME = path.join(smokeHomeDirectory, '.hermes');
   process.env.EXTALIA_HOME = smokeDataDirectory;
   process.env.EXTALIA_SECRET_STORE = 'memory';
-} else if (app.isPackaged && !installerBoot) {
-  // Chromium's own profile (caches, local storage) stays in the system's application-data folder.
-  // Extalia's data lives in ~/.extalia-vo (EXTALIA_HOME overrides it), shared with the Web Bridge;
-  // the agent host copies data from the pre-0.0.21 folder <appData>/Extalia there once.
-  app.setPath('userData', path.join(app.getPath('appData'), 'Extalia Desktop'));
+} else if (!installerBoot) {
+  // Set both paths before Chromium starts, for development and packaged apps.
+  // Deleting the shared Extalia root must also forget this app's browser mirror.
+  // Do not copy an old OS application-data profile back into a fresh installation.
+  const profile = desktopProfilePaths({ platform: process.platform, env: process.env, homeDirectory: homedir() });
+  mkdirSync(profile.userData, { recursive: true, mode: 0o700 });
+  app.setPath('userData', profile.userData);
+  app.setPath('sessionData', profile.sessionData);
+}
+// Chromium logs/crash dumps use the selected application profile too. Installer
+// and smoke launches already selected disposable profiles above.
+for (const name of ['logs', 'crashDumps'] as const) {
+  const directory = path.join(app.getPath('userData'), name);
+  mkdirSync(directory, { recursive: true, mode: 0o700 });
+  app.setPath(name, directory);
 }
 const devServer = parseDevServerUrl(process.env.EXTALIA_WEB_URL);
 if (process.env.EXTALIA_WEB_URL && !devServer) console.warn('EXTALIA_WEB_URL ignored: only http:// loopback addresses are allowed.');
@@ -136,13 +148,10 @@ function registerIpc(): void {
     if (!trusted(event)) throw new Error('Untrusted sender.');
     return hostInfo();
   });
-  ipcMain.handle(IPC.selectDirectory, async (event): Promise<DirectorySelection | null> => {
+  ipcMain.handle(IPC.selectDirectory, async (event, options: unknown): Promise<DirectorySelection | null> => {
     if (!trusted(event)) throw new Error('Untrusted sender.');
     const owner = BrowserWindow.fromWebContents(event.sender);
-    const options = { title: 'Choose a project folder', properties: ['openDirectory', 'createDirectory'] as ('openDirectory' | 'createDirectory')[] };
-    const result = owner ? await dialog.showOpenDialog(owner, options) : await dialog.showOpenDialog(options);
-    const selected = result.canceled ? undefined : result.filePaths[0];
-    return selected ? { name: path.basename(selected), path: selected } : null;
+    return selectNativeDirectory(owner, options, { homeDirectory: app.getPath('home'), dialog });
   });
 }
 

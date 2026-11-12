@@ -31,7 +31,7 @@ Liquid glass rules:
   animates.
 - `prefers-reduced-transparency: reduce` switches every glass surface to an
   opaque one; `prefers-reduced-motion: reduce` removes entrance animations.
-- Backdrop blur costs GPU time. Over the eventual 3D office (final integration milestone) the renderer's
+- Backdrop blur costs GPU time. Over the integrated 3D Office the renderer's
   quality presets may disable it automatically on slow devices.
 
 ## Liquid Glass Pro

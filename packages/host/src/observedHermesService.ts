@@ -1,9 +1,11 @@
 import type { HermesObservedAnswerInput, HermesObservedMessageInput, HermesObservedStatus } from '@extalia/platform';
 import { HermesObservedControl, type HermesObservedRpcFactory } from './hermesObservedControl.js';
-import { findOnPath, isExecutable } from './connect/util.js';
+import { findHermes, hermesEnvironment } from './hermes.js';
+import { resolveHermesLocations } from './agentLocations.js';
+import { environmentValue } from './executableDiscovery.js';
 
 interface Target { app: string; nativeSessionId: string; watching: boolean }
-interface Options { target(id: string): Target | undefined; env: Readonly<Record<string, string | undefined>>; rpcFactory?: HermesObservedRpcFactory }
+interface Options { target(id: string): Target | undefined; env: Readonly<Record<string, string | undefined>>; homeDirectory?: string; rpcFactory?: HermesObservedRpcFactory }
 
 /** Registry authorizes only the host's watched Hermes source and never starts a gateway. */
 export class ObservedHermesService {
@@ -56,11 +58,14 @@ export class ObservedHermesService {
       if (this.cleanupFailures.has(id)) throw new Error('Hermes connection cleanup could not be confirmed.');
       if (profile !== undefined && (typeof profile !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/.test(profile))) throw new Error('Choose a valid Hermes profile.');
       const previous = this.controls.get(id); this.controls.delete(id); if (previous) await this.stop(id, previous.control);
-      const override = this.options.env.EXTALIA_HERMES_BIN;
-      const bin = override && await isExecutable(override) ? override : !override ? await findOnPath('hermes', this.options.env, process.platform) : undefined;
+      const home = this.options.homeDirectory ?? this.options.env.HOME ?? this.options.env.USERPROFILE ?? '';
+      const location = home || environmentValue(this.options.env, 'HERMES_HOME', process.platform)
+        ? resolveHermesLocations({ env: this.options.env, homeDirectory: home }) : undefined;
+      if (location?.problem) return this.unavailable(id, location.problem);
+      const bin = await findHermes(this.options.env, this.options.homeDirectory);
       if (!bin) return this.unavailable(id, 'Hermes with the public gateway attach command was not found.');
       if (this.closed || this.blocked.has(id) || generation !== (this.generations.get(id) ?? 0) || this.target(id)?.nativeSessionId !== target.nativeSessionId || !this.target(id)?.watching) throw new Error('The observed Hermes session changed.');
-      const control = new HermesObservedControl({ sessionId: id, nativeSessionId: target.nativeSessionId, bin, env: { ...this.options.env }, ...(profile ? { profile } : {}), ...(this.options.rpcFactory ? { rpcFactory: this.options.rpcFactory } : {}) });
+      const control = new HermesObservedControl({ sessionId: id, nativeSessionId: target.nativeSessionId, bin, env: { ...hermesEnvironment(this.options.env), ...(location ? { HERMES_HOME: location.selectedHome } : {}) }, ...(profile ? { profile } : {}), ...(this.options.rpcFactory ? { rpcFactory: this.options.rpcFactory } : {}) });
       this.controls.set(id, { nativeId: target.nativeSessionId, control });
       try {
         const status = await control.connect();

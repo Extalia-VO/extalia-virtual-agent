@@ -214,6 +214,101 @@ describe('learning admission schedule', () => {
     await queue.close();
   });
 
+  it('does not abort or await another profile\'s entered work when scoped foreground starts', async () => {
+    const finish = deferred<void>();
+    let signal!: AbortSignal;
+    const queue = new LearningSchedule();
+    const task = entry('unrelated-curator', { independent: true, execute: async value => { signal = value; await finish.promise; } });
+    queue.schedule(task);
+    await vi.advanceTimersByTimeAsync(60_000);
+    await queue.yieldForForeground('profile-b');
+    expect(signal.aborted).toBe(false);
+    expect(queue.isBusy).toBe(true);
+    expect(queue.snapshot().jobs[0]!.state).toBe('running');
+    finish.resolve(); await vi.advanceTimersByTimeAsync(0);
+    expect(queue.snapshot().jobs[0]!.state).toBe('completed');
+    await queue.close();
+  });
+
+  it('keeps unrelated asynchronous validation valid across a scoped foreground yield', async () => {
+    const validation = deferred<boolean>();
+    const queue = new LearningSchedule();
+    const task = entry('unrelated-validation', { independent: true, validate: () => validation.promise });
+    queue.schedule(task); await vi.advanceTimersByTimeAsync(60_000);
+    await queue.yieldForForeground('profile-b');
+    validation.resolve(true); await vi.advanceTimersByTimeAsync(0);
+    expect(task.execute).toHaveBeenCalledTimes(1);
+    expect(queue.snapshot().jobs[0]!.state).toBe('completed');
+    await queue.close();
+  });
+
+  it.each([undefined, false])('still aborts and drains an unproven other profile (independent: %s)', async independent => {
+    const finish = deferred<void>();
+    let signal!: AbortSignal;
+    const queue = new LearningSchedule();
+    const task = entry('shared-curator', { independent, execute: async value => { signal = value; await finish.promise; } });
+    queue.schedule(task); await vi.advanceTimersByTimeAsync(60_000);
+    let yielded = false;
+    const yielding = queue.yieldForForeground('profile-b').then(() => { yielded = true; });
+    expect(signal.aborted).toBe(true);
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(yielded).toBe(false); expect(queue.isBusy).toBe(true);
+    const shared = entry('new-shared', { profileId: 'profile-c', workspaceId: 'workspace-c' });
+    const isolated = entry('new-independent', { independent: true, profileId: 'profile-d', workspaceId: 'workspace-d' });
+    queue.schedule(shared); queue.schedule(isolated);
+    finish.resolve(); await yielding;
+    expect(queue.snapshot().jobs.find(job => job.id === task.id)).toMatchObject({ state: 'cancelled', reason: 'busy' });
+    await vi.advanceTimersByTimeAsync(59_999);
+    expect(shared.execute).not.toHaveBeenCalled(); expect(isolated.execute).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(shared.execute).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1); expect(isolated.execute).toHaveBeenCalledTimes(1);
+    await queue.close();
+  });
+
+  it.each(['profile-a', undefined])('drains same-profile work for foreground scope %s without changing other deadlines', async scope => {
+    const finish = deferred<void>();
+    let signal!: AbortSignal;
+    const queue = new LearningSchedule();
+    const active = entry('same-profile', { execute: async value => { signal = value; await finish.promise; } });
+    const other = entry('other-profile', { independent: true, profileId: 'profile-b', workspaceId: 'workspace-b' });
+    queue.schedule(active); queue.schedule(other);
+    queue.act({ id: other.id, revision: queue.snapshot().revision, action: 'snooze' });
+    const otherDeadline = queue.snapshot().jobs.find(job => job.id === other.id)!.dueAt;
+    await vi.advanceTimersByTimeAsync(60_000);
+    let yielded = false;
+    const yielding = queue.yieldForForeground(scope).then(() => { yielded = true; });
+    expect(signal.aborted).toBe(true);
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(yielded).toBe(false); expect(queue.isBusy).toBe(true);
+    if (scope) expect(queue.snapshot().jobs.find(job => job.id === other.id)).toMatchObject({ dueAt: otherDeadline, waitingForIdle: false });
+    else expect(queue.snapshot().jobs.find(job => job.id === other.id)!.waitingForIdle).toBe(true);
+    finish.resolve(); await yielding;
+    expect(queue.snapshot().jobs.find(job => job.id === active.id)).toMatchObject({ state: 'cancelled', reason: 'busy' });
+    if (scope) expect(queue.snapshot().jobs.find(job => job.id === other.id)!.dueAt).toBe(otherDeadline);
+    await queue.close();
+  });
+
+  it('preserves another profile\'s quiet interval and dispatches it past an earlier blocked entry', async () => {
+    let ownReady = true;
+    const queue = new LearningSchedule();
+    const own = entry('own-first', { ready: () => ownReady });
+    const other = entry('other-second', { independent: true, profileId: 'profile-b', workspaceId: 'workspace-b' });
+    queue.schedule(own); queue.schedule(other);
+    const deadline = queue.snapshot().jobs.find(job => job.id === other.id)!.dueAt;
+    await vi.advanceTimersByTimeAsync(40_000);
+    ownReady = false; await queue.yieldForForeground('profile-a');
+    expect(queue.snapshot().jobs.find(job => job.id === other.id)).toMatchObject({ dueAt: deadline, waitingForIdle: false });
+    expect(queue.snapshot().jobs.find(job => job.id === own.id)!.waitingForIdle).toBe(true);
+    await vi.advanceTimersByTimeAsync(19_999); expect(other.execute).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1); expect(other.execute).toHaveBeenCalledTimes(1);
+    expect(own.execute).not.toHaveBeenCalled();
+    ownReady = true; queue.wake();
+    await vi.advanceTimersByTimeAsync(59_999); expect(own.execute).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1); expect(own.execute).toHaveBeenCalledTimes(1);
+    await queue.close();
+  });
+
   it('fences asynchronous validation on foreground admission and resumes only an unentered source', async () => {
     let ready = true;
     const validation = deferred<boolean>();

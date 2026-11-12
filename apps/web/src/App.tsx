@@ -28,6 +28,7 @@ import { OfficePage } from './pages/OfficePage';
 import { NativeStatusButton } from './native/NativeStatusButton';
 import { loadPreferences, savePreferences, type Preferences } from './preferences';
 import { useProfileSync } from './profileSync';
+import { subscribeProfileClientState } from './profileClientState';
 import { SetupWizard } from './setup/SetupWizard';
 import { Brand } from './ui/Brand';
 import { Icon, type IconName } from './ui/Icon';
@@ -113,8 +114,13 @@ export function App({ platform }: { platform: Platform }) {
   const sourceContext = hostState ? JSON.stringify([hostState.profile.id, hostState.dataDirectory ?? hostState.storage.dataDirectory]) : undefined;
   // Splash → setup gate → shell; see boot/bootState.ts.
   const { boot, splash, retry: retryBoot } = useBoot(Boolean(agents), host);
-  // The workspace last used on this device; the page itself is never remembered.
+  // The host owns remembered workspace selection; browser storage is only a mirror.
   const [stored, setStored] = useState(loadLandingMemory);
+  useEffect(() => {
+    const refresh = () => setStored(loadLandingMemory());
+    refresh();
+    return subscribeProfileClientState(refresh);
+  }, []);
   const workflow = hostState?.workflow ?? 'managed';
   // Every launch and the end of setup land in the 3D Office (Get started without an agent host).
   const defaultPage: PageId = resolveLandingPage({ agents: Boolean(agents) });
@@ -183,7 +189,7 @@ export function App({ platform }: { platform: Platform }) {
 
   const update = (next: Preferences) => { setPreferences(next); savePreferences(next); };
   // With an agent host, preferences follow the shared Extalia profile (Web and Desktop); localStorage mirrors it.
-  useProfileSync(agents, preferences, update);
+  useProfileSync(hostState ? agents : undefined, preferences, update, hostState ? JSON.stringify([hostState.dataDirectory, hostState.host.instanceId]) : undefined);
   // A conversation continued from another agent opens in Chat.
   const continued = {
     onContinued: (sessionId: string, workspaceId: string) => {

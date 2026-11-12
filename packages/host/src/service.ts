@@ -75,7 +75,6 @@ import { InspectError, gitDiff, gitRepositories, gitStatus, listFiles, readWorks
 import { readJson, writeJsonAtomic } from './jsonStore.js';
 import { acquireHostLock } from './lock.js';
 import { HostPersistenceGate } from './hostPersistenceGate.js';
-import { migrateLegacyDataDirectory } from './migration.js';
 import { createProfileStore } from './profile.js';
 import { pinMeetingNotes } from './meetingNotes.js';
 import { pinLearningNotes } from './learningNotes.js';
@@ -92,6 +91,7 @@ import { PlanningOwnership, type OwnedPlanning } from './planningOwnership.js';
 import { PreparationOwnership, type OwnedPreparation } from './preparationOwnership.js';
 import { MissionRecords, prepareMission, projectMissionEvent, finishMission, runNativeMission } from './mission.js';
 import { MemoryStore, createMemoryTools } from './memory.js';
+import { resolveAgentLocations } from './agentLocations.js';
 import { NativeImportService } from './nativeImport.js';
 import { DEFAULT_IGNORE_FOLDERS, Observations } from './observations.js';
 import { mapObservedWorkspaces, observedWorkspaceResolution, projectCanonicalPath } from './observedWorkspace.js';
@@ -225,6 +225,8 @@ interface HostConfig {
 }
 
 interface Run {
+  /** Known foreground workspace, including managed external runtimes and preparation. */
+  workspaceId?: string;
   steering?: NativeTurnSteering;
   /** The prompt event and (for Native) text-only history prefix are durable. */
   accepted?: boolean;
@@ -399,15 +401,13 @@ function toModelHistory(raw: unknown[]): ModelMessage[] {
 }
 
 export async function createAgentHost(options: AgentHostOptions): Promise<AgentHostRuntime> {
+  const instanceId = randomUUID();
   const env = options.env ?? process.env;
   const homeDirectory = options.homeDirectory ?? homedir();
   const defaultDirectory = resolveDataDirectory({ platform: process.platform, env, homeDirectory });
-  const dataDirectory = options.dataDirectory ?? defaultDirectory;
-  // Data from the pre-0.0.21 location is copied once into the default profile folder (never into an explicit one).
-  if (!env.EXTALIA_HOME?.trim() && path.resolve(dataDirectory) === path.resolve(defaultDirectory)) {
-    await migrateLegacyDataDirectory({ target: dataDirectory, platform: process.platform, env, homeDirectory })
-      .catch((error: unknown) => console.warn(`Extalia could not copy data from its previous folder: ${error instanceof Error ? error.message : String(error)}`));
-  }
+  const dataDirectory = path.resolve(options.dataDirectory ?? defaultDirectory);
+  // A missing profile is a fresh installation, including after the owner deletes
+  // it. Never silently refill it from a retired application-data directory.
   const layout = dataLayout(dataDirectory);
   await ensureLayout(layout);
   const lock = await acquireHostLock(layout.state, options.kind);
@@ -527,7 +527,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     readMessages: id => storeOf(id).readMessages(id),
     writeMessages: (id, messages) => persistence.run(() => storeOf(id).writeMessages(id, messages)),
   };
-  const nativeImport = await NativeImportService.create({ homeDirectory: options.importHome ?? homedir(), env });
+  const nativeImport = await NativeImportService.create({ homeDirectory: options.importHome ?? homeDirectory, env });
   const libraryFile = path.join(layout.state, 'library.json');
   let library = await loadLibrary(libraryFile);
   const saveLibrary = () => persistence.run(() => writeJsonAtomic(libraryFile, library, { mode: 0o600 }));
@@ -547,6 +547,8 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     for (const listener of [...idleListeners]) { try { listener(); } catch { /* disconnected observer */ } }
   }
   let promptQueues: PromptQueues | undefined = undefined;
+  /** Host-resolved associations only; unknown restored queues retain a conservative hold. */
+  const queueWorkspaces = new Map<string, string>();
   const nativeWorkers = new Map<string, NativeStatusWorker>();
   const learningSchedule = new LearningSchedule({ onChange: () => {
     if (!closing && !learningSchedule.isBusy && !runs.size && !persistence.isBusy && !workspaceContextReaders
@@ -556,6 +558,19 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
   let nativeStatusRefresh: Promise<NativeStatus> | undefined;
   let workspaceBoundaryMutations = 0;
   let workspaceContextReaders = 0;
+  const workspaceReaders = new Map<string, number>();
+  const reserveWorkspaceReader = (workspaceId: string): (() => void) => {
+    workspaceContextReaders++;
+    workspaceReaders.set(workspaceId, (workspaceReaders.get(workspaceId) ?? 0) + 1);
+    return () => {
+      workspaceContextReaders--;
+      const remaining = workspaceReaders.get(workspaceId)! - 1;
+      if (remaining) workspaceReaders.set(workspaceId, remaining); else workspaceReaders.delete(workspaceId);
+    };
+  };
+  const yieldLearningForWorkspace = (workspaceId?: string) => learningSchedule.yieldForForeground(
+    config.workspaces.find(workspace => workspace.id === workspaceId)?.profileId,
+  );
   const assertNativeBoundaryAvailable = () => { if (workspaceBoundaryMutations) throw userError('Workspace settings are changing. Wait for them to finish before starting Native work.'); };
   const nativeMemory = new NativeMemoryService({
     store: workspaceId => {
@@ -563,7 +578,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     },
     checkOpen: () => { if (closing) throw userError('The host is shutting down.'); },
     checkAdmission: assertNativeBoundaryAvailable,
-    beforeForeground: () => learningSchedule.yieldForForeground(),
+    beforeForeground: workspaceId => yieldLearningForWorkspace(workspaceId),
     onIdle: () => {
       if (!closing) learningSchedule.wake();
       if (!closing && !persistence.isBusy && !runs.size && !nativeStatusRefresh && !nativeMemory.isBusy() && !learningSchedule.isBusy && !promptQueues?.isBusy) notifyIdleListeners();
@@ -725,20 +740,20 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     // Hermes sessions that Extalia runs itself are managed sessions, not outside activity.
     skip: async reference => reference.sourceId === 'hermes' && (await sessions.list()).some(record => record.runtime?.sessionId === reference.nativeSessionId),
     ...(options.fetch ? { fetch: options.fetch as typeof fetch } : {}),
-    homeDirectory: options.importHome ?? homedir(),
+    homeDirectory: options.importHome ?? homeDirectory,
     // Observed leads get names no managed lead or team member uses.
     takenNames: () => managedNames(),
     onFollowups: (id, prompts) => { if (!closing) followupSuggestions.report(id, prompts); },
   }).catch(error => { missions.close(); throw error; });
-  const observedCodex = new ObservedCodexService({ target: id => observations.codexControlTarget(id), env,
+  const observedCodex = new ObservedCodexService({ target: id => observations.codexControlTarget(id), env, homeDirectory: options.importHome ?? homeDirectory,
     onActivity: id => { if (!closing) followupSuggestions.invalidate(id); },
     ...(options.observedCodexRpc ? { rpcFactory: options.observedCodexRpc } : {}) });
   observedCodex.setSuggestionsPrivacy(observations.labelsOnly());
-  const observedCodexNativeQueue = new ObservedCodexNativeQueueService({ env,
+  const observedCodexNativeQueue = new ObservedCodexNativeQueueService({ env, homeDirectory: options.importHome ?? homeDirectory,
     target: id => observations.codexQueueTarget(id), labelsOnly: () => observations.labelsOnly(),
     ...(options.observedCodexNativeQueueRead ? { read: options.observedCodexNativeQueueRead } : {}),
   });
-  const observedCodexQueue = await ObservedCodexQueueService.create({ dataDirectory, env, target: id => observations.codexQueueTarget(id) })
+  const observedCodexQueue = await ObservedCodexQueueService.create({ dataDirectory, env, homeDirectory: options.importHome ?? homeDirectory, target: id => observations.codexQueueTarget(id) })
     .catch(async error => { await observations.close(); await observedCodex.close(); throw error; });
   const observedUserInput = await ObservedUserInputService.create({ dataDirectory,
     target: id => observations.codexQueueTarget(id), evidence: id => observations.codexUserInput(id),
@@ -754,7 +769,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
   const pendingManualReplies = new Set<string>();
   const observedReplies = new ObservedReplyChannels({ target: id => blockedReplyIds.has(id) ? undefined
     : manualReplyIds.has(id) ? { app: 'manual-tool', nativeSessionId: id, watching: true } : observations.replyTarget(id) });
-  const observedHermes = new ObservedHermesService({ target: id => observations.replyTarget(id), env, ...(options.observedHermesRpc ? { rpcFactory: options.observedHermesRpc } : {}) });
+  const observedHermes = new ObservedHermesService({ target: id => observations.replyTarget(id), env, homeDirectory: options.importHome ?? homeDirectory, ...(options.observedHermesRpc ? { rpcFactory: options.observedHermesRpc } : {}) });
   const observedControlTarget = (id: string) => {
     if (closing || blockedReplyIds.has(id)) return undefined;
     if (manualInboxIds.has(id) || manualReplyIds.has(id)) return {
@@ -781,8 +796,10 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
   };
   const discoverAntigravityDaemons = async (): Promise<Array<{ lsAddress: string; csrfToken: string; alive: boolean; mtimeMs: number }>> => {
     const importHome = options.importHome ?? homeDirectory;
-    const geminiRoot = env.GEMINI_CLI_HOME?.trim() || path.join(importHome, '.gemini');
-    const antigravityRoot = env.ANTIGRAVITY_HOME?.trim() || path.join(geminiRoot, 'antigravity');
+    const roots = resolveAgentLocations({ env, homeDirectory: importHome });
+    if (roots.problems?.antigravity) return [];
+    const geminiRoot = path.join(importHome, '.gemini');
+    const antigravityRoot = roots.antigravityHome;
     const daemonDirs = [path.join(antigravityRoot, 'daemon'), path.join(geminiRoot, 'antigravity-ide', 'daemon')];
     const discovered: Array<{ lsAddress: string; csrfToken: string; alive: boolean; mtimeMs: number }> = [];
     for (const dir of daemonDirs) {
@@ -812,7 +829,12 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     const observedSummary = observations.summaries().find(item => item.id === sessionId);
     const sessionModel = activeModel ?? (isModelId(observedSummary?.model?.trim()) ? observedSummary.model.trim() : undefined);
     const importHome = options.importHome ?? homeDirectory;
-    const geminiRoot = env.GEMINI_CLI_HOME?.trim() || path.join(importHome, '.gemini');
+    const roots = resolveAgentLocations({ env, homeDirectory: importHome });
+    const problem = sourceId === 'codex' ? roots.problems?.codex : sourceId === 'claude-code' ? roots.problems?.claude
+      : sourceId === 'gemini-cli' ? roots.problems?.gemini : sourceId === 'antigravity' ? roots.problems?.antigravity
+        : sourceId === 'hermes' ? roots.problems?.hermes : undefined;
+    if (problem) throw userError(problem);
+    const geminiRoot = roots.geminiHome;
     if (sourceId === 'antigravity') {
       const daemons = await discoverAntigravityDaemons();
       if (env.ANTIGRAVITY_LS_ADDRESS?.trim() && env.ANTIGRAVITY_CSRF_TOKEN?.trim()) {
@@ -895,7 +917,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       };
     }
     if (sourceId === 'codex') {
-      const codexRoot = (observations.codexQueueTarget(sessionId)?.codexHome ?? env.CODEX_HOME?.trim()) || path.join(importHome, '.codex');
+      const codexRoot = observations.codexQueueTarget(sessionId)?.codexHome ?? roots.codexHome;
       let configuredDefault: string | undefined;
       let configuredEffort: Effort | undefined;
       const reasoning = new Map<string, Effort[]>();
@@ -942,7 +964,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       };
     }
     if (sourceId === 'claude-code') {
-      const claudeRoot = env.CLAUDE_CONFIG_DIR?.trim() || path.join(importHome, '.claude');
+      const claudeRoot = roots.claudeHome;
       let configuredDefault: string | undefined;
       const configuredModels: string[] = [];
       const envModels: string[] = [];
@@ -1083,8 +1105,10 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
   const sendAntigravityAgentApiMessage = async (nativeSessionId: string, text: string): Promise<boolean> => {
     if (!nativeSessionId || !text.trim()) return false;
     const importHome = options.importHome ?? homeDirectory;
-    const geminiRoot = env.GEMINI_CLI_HOME?.trim() || path.join(importHome, '.gemini');
-    const antigravityRoot = env.ANTIGRAVITY_HOME?.trim() || path.join(geminiRoot, 'antigravity');
+    const roots = resolveAgentLocations({ env, homeDirectory: importHome });
+    if (roots.problems?.antigravity) return false;
+    const geminiRoot = path.join(importHome, '.gemini');
+    const antigravityRoot = roots.antigravityHome;
     const candidates = [
       env.EXTALIA_ANTIGRAVITY_AGENTAPI_BIN?.trim(),
       ...(process.platform === 'win32'
@@ -1354,7 +1378,10 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       }
       const record = await sessions.get(id).catch(() => undefined);
       if (!record || !config.workspaces.some(item => item.id === record.workspaceId)) return undefined;
-      let ready = !runs.has(id);
+      queueWorkspaces.set(id, record.workspaceId);
+      // Queued prompts must not reach the provider while a Native session is
+      // waiting for explicit review of changed folder/history access.
+      let ready = !runs.has(id) && !sessionNeedsWorkspaceReview(record);
       const run = runs.get(id);
       const steering = !record.runtime && run?.native?.kind === 'chat' && run.steering?.available && !run.controller.signal.aborted
         ? { identity: run.native.id, send: (text: string): Promise<'sent' | 'unknown'> => {
@@ -1434,13 +1461,25 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     return extra.strict ? next : safe;
   }
 
+  function sessionNeedsWorkspaceReview(record: SessionRecord): boolean {
+    if (record.runtime) return false;
+    const workspace = config.workspaces.find(item => item.id === record.workspaceId);
+    if (!workspace) return false;
+    return !workspaceBoundaryMatches(record.workspaceBoundary, record.workspaceId, config.workspaces)
+      || Boolean(record.continuedFrom && workspaceCrossAccess(workspace) === 'isolated'
+        && record.reviewedContextBoundary !== workspaceSessionBoundaryKey(workspace.id, config.workspaces));
+  }
+
   function summary(record: SessionRecord): SessionSummary {
+    queueWorkspaces.set(record.id, record.workspaceId);
     const run = runs.get(record.id);
     const { options: _stored, team: _team, agentName: _name, agentGender: _gender, context: storedContext, ...rest } = record;
     const sessionOptions = storedOptions(record);
     const team = storedTeam(record);
+    const workspaceReviewRequired = sessionNeedsWorkspaceReview(record);
     return {
       ...rest, control: 'managed', running: Boolean(run),
+      ...(workspaceReviewRequired ? { workspaceReviewRequired: true } : {}),
       ...normalizeAgentIdentity(record.agentName, record.agentGender),
       ...(Object.keys(sessionOptions).length ? { options: sessionOptions } : {}),
       ...(team ? { team: { enabled: team.enabled, size: team.members.length, ...(team.updatedAt ? { updatedAt: team.updatedAt } : {}) } } : {}),
@@ -1545,7 +1584,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     // Reserved first, so a second prompt sent meanwhile is refused instead of starting another process.
     const controller = new AbortController();
     let settleRun!: () => void;
-    const run: Run = { controller, done: new Promise<void>(resolve => { settleRun = resolve; }) };
+    const run: Run = { workspaceId: workspace.id, controller, done: new Promise<void>(resolve => { settleRun = resolve; }) };
     knowledgeVault.assertStable();
     runs.set(record.id, run);
     let executable: string | undefined, text: string, reasoning: Effort | undefined;
@@ -1555,7 +1594,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     let delegationLimits: Awaited<ReturnType<typeof hermesDelegationLimits>>;
     let attachmentDirectory: string | undefined;
     try {
-      await learningSchedule.yieldForForeground();
+      await yieldLearningForWorkspace(workspace.id);
       // A team written into the prompt (subagent blocks) becomes the session's team, as on Extalia Native.
       spec = parseTeamSpec(prompt);
       if (spec) {
@@ -1568,7 +1607,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       try { assertHermesTeamCapacity(team, delegationLimits); } catch (error) { throw userError(error instanceof Error ? error.message : 'This Hermes team is too large.'); }
       // One fresh selected-profile snapshot admits the prompt roster before it can be persisted.
       if (spec && team) team = storedTeam(await sessions.update(record.id, { team: { ...team, updatedAt: now() } }, { expectedTeam: record.team }));
-      executable = await findHermes(env, options.importHome ?? homedir());
+      executable = await findHermes(env, options.importHome ?? homeDirectory);
       if (!executable) throw userError('Hermes Agent was not found. Install it, or set EXTALIA_HERMES_BIN to the full path of the hermes command.');
       // `--reasoning` is passed only to Hermes versions that list it; older ones would refuse the whole command.
       if (sessionOptions.effort && await hermesSupportsReasoning(executable, env)) reasoning = sessionOptions.effort;
@@ -1605,7 +1644,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     void (async () => {
       try {
         const result = await runHermesTurn({
-          executable, cwd: root, prompt: text, profile: runtime.profile, env, signal: controller.signal, emit,
+          executable, cwd: root, prompt: text, profile: runtime.profile, env, homeDirectory: options.importHome ?? homeDirectory, signal: controller.signal, emit,
           // Hermes cannot ask Extalia; its approvals are bypassed only where the workspace allows everything anyway.
           yolo: permissions.fileWrite === 'allow' && permissions.commands === 'allow',
           ...(model ? { model } : {}),
@@ -1647,7 +1686,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       sessions: [...(await sessions.list()).map(summary), ...mapObservedWorkspaces(observations.summaries(), config.workspaces)].sort((a, b) => b.lastActiveAt.localeCompare(a.lastActiveAt)),
       library: librarySummaries(),
       storage: { dataDirectory, secretStore: secrets.kind },
-      host: { kind: options.kind, version: options.version },
+      host: { kind: options.kind, version: options.version, instanceId },
       ...(daemon ? { nativeCore: { core: 'rust' as const, daemon: daemon.status().state, ...(daemon.status().lastError ? { lastError: daemon.status().lastError } : {}) } } : {}),
     };
   }
@@ -1672,7 +1711,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
   }
 
   async function readHermesLimits(workspace: Workspace, leadModel?: string) {
-    try { return await hermesDelegationLimits(env, options.importHome ?? homedir(), workspace.runtimeProfileId ?? 'default', leadModel ?? workspace.runtimeModel); }
+    try { return await hermesDelegationLimits(env, options.importHome ?? homeDirectory, workspace.runtimeProfileId ?? 'default', leadModel ?? workspace.runtimeModel); }
     catch (error) { throw userError(error instanceof Error ? error.message : 'The Hermes profile delegation limits cannot be read.'); }
   }
 
@@ -1812,7 +1851,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     const record = await sessions.get(sessionId);
     if (!record || record.runtime) throw userError('Only Extalia Native sessions can change workspace here. External runtimes keep their original session directory.');
     const source = findWorkspace(record.workspaceId), destination = findWorkspace(workspaceId);
-    if (workspaceRuntime(destination) !== 'extalia-native' || !destination.projectLocation) throw userError('Choose an Extalia Native workspace with a project folder.');
+    if (!destination.projectLocation || destination.id !== record.workspaceId && workspaceRuntime(destination) !== 'extalia-native') throw userError('Choose an Extalia Native workspace with a project folder.');
     nativeOwnership.assertWorkspaceClear(source.id);
     nativeOwnership.assertWorkspaceClear(destination.id);
     const effective = sessionWorkspace(destination, record);
@@ -1835,7 +1874,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
   /** Efforts the selected runtime honours: Anthropic Messages endpoints, and Hermes versions with `--reasoning`. */
   async function effortsFor(workspace: Workspace): Promise<Effort[]> {
     if (workspaceRuntime(workspace) === 'hermes') {
-      const executable = await findHermes(env, options.importHome ?? homedir());
+      const executable = await findHermes(env, options.importHome ?? homeDirectory);
       return executable && await hermesSupportsReasoning(executable, env) ? [...EFFORTS] : [];
     }
     if (!workspace.providerProfileId) return [];
@@ -1860,7 +1899,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
   async function checkFolder(requested: string): Promise<FolderCheck> {
     const raw = requested.trim();
     if (!raw) return { ok: false, error: 'Enter the project folder.' };
-    const expanded = raw === '~' ? homedir() : raw.startsWith('~/') || raw.startsWith('~\\') ? path.join(homedir(), raw.slice(2)) : raw;
+    const expanded = raw === '~' ? homeDirectory : raw.startsWith('~/') || raw.startsWith('~\\') ? path.join(homeDirectory, raw.slice(2)) : raw;
     if (!path.isAbsolute(expanded)) return { ok: false, error: 'Use a full path, for example /Users/<name>/projects/site.' };
     try {
       const resolved = await realpath(expanded);
@@ -1907,8 +1946,28 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     if (!closing && !persistence.isBusy && !runs.size && !nativeStatusRefresh && !nativeMemory.isBusy() && !learningSchedule.isBusy && !promptQueues?.isBusy) notifyIdleListeners();
   }
 
-  /** Admission uses actual host lifetimes, never avatar state or only the source session. */
-  function learningReady(): boolean {
+  /** Independent maintenance needs a unique non-default vault, never just a different session. */
+  function independentLearning(workspaceId: string, profileId: string): boolean {
+    const workspace = config.workspaces.find(item => item.id === workspaceId);
+    return Boolean(workspace && workspaceCrossAccess(workspace) === 'isolated' && workspace.profileId === profileId
+      && profileId !== config.profile.id && config.workspaces.filter(item => item.profileId === profileId).length === 1);
+  }
+
+  /** Unknown ownership and settings mutations remain global; known foreground work follows its profile. */
+  function learningReady(workspaceId?: string, profileId?: string): boolean {
+    if (workspaceId && profileId && independentLearning(workspaceId, profileId)) {
+      const conflicts = (id?: string) => !id || !config.workspaces.some(item => item.id === id && item.profileId !== profileId);
+      const scopedReaders = [...workspaceReaders.values()].reduce((sum, count) => sum + count, 0);
+      return !closing && !observedWorkspaceChange && !continuityWork && !workspaceBoundaryMutations
+        && workspaceContextReaders === scopedReaders && ![...workspaceReaders.keys()].some(conflicts)
+        && ![...runs.values()].some(run => conflicts(run.native?.workspaceId ?? run.workspaceId))
+        && ![...nativeWorkers.values()].some(worker => conflicts(worker.workspaceId))
+        && !config.workspaces.some(item => item.profileId === profileId && nativeMemory.isBusy(item.id))
+        && !connectionChanges.size && !registryWork && !persistence.isBusy && !nativeStatusRefresh
+        && !followupSuggestions.pendingCount && !promptQueues?.hasUnfinishedWorkMatching(id =>
+          !observations.has(id) && conflicts(queueWorkspaces.get(id)))
+        && !nativeOwnership.hasUnresolved() && !missions.hasUnresolved() && !missionRecovery.isInspecting();
+    }
     return !closing && !observedWorkspaceChange && !continuityWork && !runs.size && !nativeWorkers.size && !workspaceBoundaryMutations && !workspaceContextReaders
       && !connectionChanges.size && !registryWork && !persistence.isBusy && !nativeMemory.isBusy() && !nativeStatusRefresh
       && !followupSuggestions.pendingCount && !promptQueues?.isBusy && !promptQueues?.hasUnfinishedWork
@@ -1937,7 +1996,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       if (sessionOptions.permissionMode === 'plan' || !workspaceBoundaryMatches(record.workspaceBoundary, workspace.id, config.workspaces)
         || boundary !== job.boundary || knowledgeSessionIdentity(record) !== job.sessionIdentity) throw new Error('The session no longer permits this knowledge update.');
       const connectionIds = [...new Set([record.connectionId, ...(team.connections ?? []).map(grant => grant.connectionId)])];
-      clearMissionResources(connectionIds);
+      clearMissionResources(connectionIds, undefined, workspace.id);
       const connections = new Map(connectionIds.map(id => [id, structuredClone(findConnection(id))]));
       if ([...connections.values()].some(connection => !keepsHistory(connection))) throw new Error('Automatic knowledge meetings require saved history.');
       const profile = await vaultProfiles.policyFor(workspace.id);
@@ -2121,11 +2180,17 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     connectionChanges.add(id);
     try { return await change(); } finally { connectionChanges.delete(id); }
   }
-  function clearMissionResources(connectionIds: string[], exceptSession?: string): void {
+  function clearMissionResources(connectionIds: string[], exceptSession?: string, learningWorkspaceId?: string): void {
     if (connectionIds.some(id => connectionChanges.has(id))) throw userError('A selected connection is being updated. Try again when it finishes.');
     nativeOwnership.assertClear(undefined, connectionIds);
     missions.assertConnectionsClear(connectionIds, exceptSession);
-    for (const [sessionId, run] of runs) if (sessionId !== exceptSession && run.connectionIds?.some(id => connectionIds.includes(id))) throw userError('A selected connection is still working in another session.');
+    const learningWorkspace = config.workspaces.find(item => item.id === learningWorkspaceId);
+    for (const [sessionId, run] of runs) if (sessionId !== exceptSession && run.connectionIds?.some(id => connectionIds.includes(id))) {
+      const runWorkspace = config.workspaces.find(item => item.id === (run.native?.workspaceId ?? run.workspaceId));
+      if (learningWorkspace && independentLearning(learningWorkspace.id, learningWorkspace.profileId)
+        && runWorkspace && runWorkspace.profileId !== learningWorkspace.profileId) continue;
+      throw userError('A selected connection is still working in another session.');
+    }
   }
 
   let connectService: Promise<ConnectService> | undefined;
@@ -2801,7 +2866,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       const efforts = await effortsFor(workspace);
       if (workspaceRuntime(workspace) === 'hermes') {
         const hermesDelegation = await readHermesLimits(workspace, sessionModel);
-        const catalog = await hermesModelCatalog(env, options.importHome ?? homedir(), workspace.runtimeProfileId ?? 'default', options.fetch as typeof fetch | undefined);
+        const catalog = await hermesModelCatalog(env, options.importHome ?? homeDirectory, workspace.runtimeProfileId ?? 'default', options.fetch as typeof fetch | undefined);
         const defaultModel = workspace.runtimeModel || catalog.defaultModel;
         return { runtime: 'hermes', ...(defaultModel ? { defaultModel } : {}), models: cleanModels(catalog.models), efforts, permissionModes: [...HERMES_PERMISSION_MODES], hermesDelegation };
       }
@@ -2857,9 +2922,9 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     async planTeam(workspaceId, raw, sessionId): Promise<TeamPlan> {
       assertHostOpen();
       assertNativeBoundaryAvailable();
-      workspaceContextReaders++;
+      const releaseReader = reserveWorkspaceReader(workspaceId);
       try {
-      await learningSchedule.yieldForForeground();
+      await yieldLearningForWorkspace(workspaceId);
       if (typeof workspaceId !== 'string') throw userError('Choose a workspace.');
       let workspace = findWorkspace(workspaceId);
       let sessionModel: string | undefined;
@@ -2878,7 +2943,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       if (hermesLimits) assertSharedHermesRouting(hermesLimits);
       if (hermesLimits && (request.count > hermesLimits.maxTeamMembers || (request.members?.length ?? 0) > hermesLimits.maxTeamMembers)) throw userError(`The active Hermes profile supports at most ${hermesLimits.maxTeamMembers} team members per one-shot turn in Extalia.`);
       if (!hermes && workspace.providerProfileId) nativeOwnership.assertClear(undefined, [workspace.providerProfileId]);
-      const home = options.importHome ?? homedir();
+      const home = options.importHome ?? homeDirectory;
       // Without a goal the plan is a general team for the workspace, based on its name and recent sessions.
       const records = await sessions.list();
       const recentTitles = (workspaceCrossAccess(workspace) === 'isolated' ? [] : records).filter(record => record.workspaceId === workspace.id && record.title !== NEW_SESSION_TITLE && workspaceBoundaryMatches(record.workspaceBoundary, workspace.id, config.workspaces))
@@ -2943,7 +3008,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
         return fromReply(result.text);
       } catch (error) { return failed(error); }
       } finally {
-        workspaceContextReaders--;
+        releaseReader();
         if (!closing) learningSchedule.wake();
         if (!closing && !workspaceContextReaders && !persistence.isBusy && !runs.size && !nativeStatusRefresh && !nativeMemory.isBusy() && !learningSchedule.isBusy && !promptQueues?.isBusy) notifyIdleListeners();
       }
@@ -3127,8 +3192,9 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
         releaseRun();
       };
       try {
-        await learningSchedule.yieldForForeground();
         const record = await sessions.get(sessionId).catch(() => undefined);
+        run.workspaceId = record?.workspaceId;
+        await yieldLearningForWorkspace(record?.workspaceId);
         if (controller.signal.aborted || closing) throw userError('Mission planning was cancelled before preparation finished.');
         if (!record) throw userError('That session no longer exists.');
         if (record.runtime) throw userError('Hermes Agent sessions cannot run native missions. Start an Extalia Native session.');
@@ -3293,8 +3359,9 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       const worktreesCreated: { id: string; alias: string; taskId: string }[] = [];
       let writeMission: string | undefined;
       try {
-        await learningSchedule.yieldForForeground();
         const record = await sessions.get(sessionId);
+        run.workspaceId = record?.workspaceId;
+        await yieldLearningForWorkspace(record?.workspaceId);
         if (!record || record.runtime) throw userError('Native missions need an existing Extalia Native session.');
         const workspace = structuredClone(findWorkspace(record.workspaceId));
         if (workspaceRuntime(workspace) !== 'extalia-native' || !workspace.projectLocation) throw userError('Native missions need an Extalia Native workspace with a project folder.');
@@ -3674,7 +3741,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       if (run.native) assertNativeBoundaryAvailable();
       runs.set(sessionId, run);
       try {
-        await learningSchedule.yieldForForeground();
+        await yieldLearningForWorkspace(workspace.id);
         const boundary = workspaceSessionBoundaryKey(workspace.id, config.workspaces);
         followupSuggestions.invalidate(sessionId);
         const learningProfile = await vaultProfiles.policyFor(workspace.id).catch(() => undefined);
@@ -3928,7 +3995,8 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
           const sessionName = record.title === NEW_SESSION_TITLE ? prompt.replace(/\s+/g, ' ').slice(0, 60) : record.title;
           const admitted = !hasAutomaticLearningEvidence(result, turnEvidence) || learningSchedule.schedule({ id: learningRunId, kind: 'learning', workspaceId: workspace.id, workspaceName: workspace.name,
             profileId: learningProfile.profileId, profileName, sessionId, sessionName, execute: signal => automaticLearning(evidence, signal),
-            validate: learningCurrent, ready: learningReady,
+            independent: independentLearning(workspace.id, learningProfile.profileId),
+            validate: learningCurrent, ready: () => learningReady(workspace.id, learningProfile.profileId),
           });
           const vaultSettings = config.vaultProfiles?.profiles.find(item => item.id === learningProfile.profileId);
           if (liveTeam?.enabled && liveTeam.members.length && learningProfile.policy.notes && vaultSettings?.minutesEnabled !== false) {
@@ -3941,7 +4009,9 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
               sourceContext: `user: ${safeText(prompt, 500)}\nassistant: ${safeText(sourceAnswer, 575)}`,
             };
             const meetingAdmitted = learningSchedule.schedule({ id: meeting.id, kind: 'knowledge-meeting', workspaceId: workspace.id, workspaceName: workspace.name,
-              sessionId, sessionName, profileId: learningProfile.profileId, profileName, ready: learningReady,
+              sessionId, sessionName, profileId: learningProfile.profileId, profileName,
+              independent: independentLearning(workspace.id, learningProfile.profileId),
+              ready: () => learningReady(workspace.id, learningProfile.profileId),
               validate: async () => {
                 if (!await learningCurrent()) return false;
                 const current = await sessions.get(sessionId);
@@ -4339,12 +4409,12 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     builtinSkills: async () => normalizeBuiltinSkills(BUILTIN_SKILLS.map(({ name, description, category, body }) => ({ name, description, category, body }))),
 
     async runtimes() {
-      return discoverRuntimes(env, options.importHome ?? homedir());
+      return discoverRuntimes(env, options.importHome ?? homeDirectory);
     },
 
     async hermesModels(profile) {
       if (typeof profile !== 'string') throw new Error('Unknown Hermes profile.');
-      return hermesModelCatalog(env, options.importHome ?? homedir(), profile, options.fetch as typeof fetch | undefined);
+      return hermesModelCatalog(env, options.importHome ?? homeDirectory, profile, options.fetch as typeof fetch | undefined);
     },
 
     characterAppearances,
@@ -4530,7 +4600,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
         });
       }
       assertNativeBoundaryAvailable();
-      workspaceContextReaders++;
+      const releaseReader = reserveWorkspaceReader(workspaceId);
       try {
         const target = await vaultProfiles.knowledgeTarget(workspaceId);
         if (target.profileId === config.profile.id) {
@@ -4544,7 +4614,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
           obsidian: (await lstat(path.join(target.root, '.obsidian')).catch(() => undefined))?.isDirectory() ?? false, watch: 'off',
         } satisfies KnowledgeVaultSettings;
         return await workspaceKnowledge.call(target, request.method, request.args);
-      } finally { workspaceContextReaders--; }
+      } finally { releaseReader(); }
     },
   } satisfies Pick<Required<AgentHostApi>, 'workspaceKnowledge'>);
   refreshWorkspaceKnowledge = async workspaceId => {

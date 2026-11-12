@@ -1,5 +1,9 @@
 # Office development and character roadmap
 
+Current behavior reconciled against v0.4.288 on 2026-11-12. Dated verification
+paragraphs retain their original scope; see the [module status](../modules/office.md)
+for implementation boundaries and remaining acceptance.
+
 ## One application and one source of truth
 
 Extalia Virtual Agent is the development home for the Office renderer, characters,
@@ -187,8 +191,8 @@ sessions when listing.
 | Hair | Shipped: distinct preset cuts plus explicit choice of every style |
 | Clothing | Shipped: shirt, blouse, knit, turtleneck; trousers, skirt, dress; outfit layers and colors |
 | Accessories | Shipped: glasses, watches, earrings, bags, tie, badge, headphones; bags are carried standing and set beside the seat |
-| Movement | Shipped (MVP): gait parameters drive the idle weight shift, seated sway and the walk cycle (stride, cadence, arm swing, hip sway and roll; speed = stride × cadence). New presences walk in from the entrance (a worker from beside its lead), sit down at their desk; removed presences stand up and walk out (a worker back to its lead). Routes follow an authored waypoint graph with A* through doorways, the indoor stair lanes and both glass elevators. Reduced motion places and removes characters at their seats. No collision avoidance between walkers yet |
-| Consistency | Seated poses follow each resource’s cushion height and front edge; idle, typing and walking share the procedural and local source-model characters, with sit/stand blending |
+| Movement | Shipped (MVP): gait parameters drive the idle weight shift, seated sway and the walk cycle (stride, cadence, arm swing, hip sway and roll; speed = stride × cadence). New presences walk in from the entrance (a worker from beside its lead), sit down at their desk; removed presences stand up and walk out (a worker back to its lead). Routes follow an authored waypoint graph with A* through doorways, the indoor stair lanes and both glass elevators. Reduced motion places and removes characters at their seats. Natural curve/lane variation, short-horizon passing and crowd recovery now supplement authored graph routes; portal/contact controllers retain exact constraints |
+| Consistency | Seated poses follow each resource’s cushion height and front edge; idle, typing and walking share the procedural fallback and registered source-model characters, with sit/stand blending |
 | Preferences | Shipped: stored per character in the host and shared by Web and Desktop; reduced motion stops idle sway |
 
 Extend the shared character implementation here so both Web and Desktop
@@ -196,20 +200,26 @@ receive each improvement together.
 
 ### Character models and assets
 
-The public build draws every character procedurally; this is the supported
-default and what CI exercises. Source-derived GLB models are local-only: put them
-in the git-ignored `apps/web/local-assets/avatars/` folder (layout in
-`apps/web/src/office/scene/avatars/README.md`) and they replace the procedural
-character on that machine. Without the folder, builds, tests and `pnpm check`
-still pass. `pnpm lint` rejects any tracked, staged or non-ignored `.glb`,
-`.gltf` or `.fbx` file. A third-party model needs a license that allows
-redistribution before it can be committed, together with its attribution and
-license text.
+The public build includes licensed Blender-retargeted body/hair models and fitted
+wardrobe pieces registered in `apps/web/public-assets/models.json`. Source URL
+selection prefers these public assets; procedural characters remain fallbacks
+for unavailable or failed source loading. Unknown local files are excluded from
+ordinary production builds. Explicit `--mode local-assets` development can add
+private fallback models, but is not a public packaging mode.
+
+The current inventory contains 133 GLBs totaling 152,104,948 bytes (about 145 MiB
+before compression), including furniture, architecture, avatars, vehicles and
+greenery. These are asset bytes, not startup or runtime memory measurements.
+The [public inventory](../../apps/web/public-assets/README.md) and notices retain
+per-component licenses. Project-authored MIT scene models and separately licensed
+avatar exports follow different provenance; a free download alone never proves
+redistribution permission. Newly distributed models require reviewed license
+records, hashes and the existing public asset validation.
 
 ### Avatar spawn and loading
 
-`CharacterBody` separates source loading from source failure. When both local
-URLs exist, its Suspense boundary waits without a procedural body placeholder;
+`CharacterBody` separates source loading from source failure. When the selected
+source body/hair URLs exist, its Suspense boundary waits without a procedural body placeholder;
 `SourceAvatarBoundary` still renders the procedural fallback on a failed load.
 Missing source URLs select that fallback immediately. The selected body/hair
 preloads start together and use the renderer's separate URL cache entries, so
@@ -294,8 +304,9 @@ device) overrides the interior only. Auto switches the lights on after dusk
 lighting outside. Lit windows follow the interior lights.
 
 An adaptive render budget (`office/scene/environment/renderBudget.ts`) targets
-40 fps. Each application load begins at a 480-pixel physical short edge, then
-can recover through 720, 1080, 1440 and 2160 pixels. These are video-style
+40 fps. Each application load begins at a 1080-pixel physical short-edge
+ceiling, can fall back through 720 and 480 pixels, and can recover through
+1440 and 2160 pixels. These are video-style
 resolution ceilings, not fixed 16:9 canvases: the Office keeps its actual aspect
 ratio. DPR never exceeds the display's native ratio or 2, and total pixels stay
 within 3840 × 2160 even on ultrawide displays. Resizing the Office recalculates
@@ -303,10 +314,11 @@ the budget from its CSS dimensions; DOM text and controls remain native-sharp.
 
 After a three-second sampling warm-up, one-second windows below 40 fps lower
 quality immediately; two consecutive windows below 45 fps also lower it.
-Twelve windows at 57 fps or better allow one recovery step, with an extra
-settling interval after each change. A tier that failed twice is not retried
-in that controller lifetime. Hidden-tab time is excluded. Remounting the scene
-within the application keeps the settled tier. The first two tiers (480/720)
+Six windows at 48 fps or better, or thirty stable windows at 40 fps or better,
+allow one recovery probe, with an extra settling interval after each change.
+Failed tiers cool down for 15/30/60/120 foreground windows, capped at 120;
+recovery is not permanently disabled after a heavy scene. Hidden-tab time is
+excluded. Remounting the scene within the application keeps the settled tier. The first two tiers (480/720)
 share cheap lighting, shadows and traffic; higher tiers restore detail. Baked
 light pools are never reduced. This responds to foreground render throughput,
 not network speed, and cannot guarantee 40 fps when geometry or CPU work is the

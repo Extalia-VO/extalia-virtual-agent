@@ -25,7 +25,7 @@ function response(text: string, read = false) {
 }
 const idle = async (runtime: AgentHostRuntime) => { await vi.waitFor(() => expect(runtime.isBusy()).toBe(false), { timeout: 5_000, interval: 5 }); };
 
-async function fixture(options: { lead?(prompt: string): Promise<void>; sourceReply?(prompt: string): string; meeting?(): Promise<void>; workerSkills?: 'off' | 'extalia'; exportFailure?: boolean } = {}) {
+async function fixture(options: { lead?(prompt: string): Promise<void>; sourceReply?(prompt: string): string; meeting?(): Promise<void>; workerSkills?: 'off' | 'extalia'; isolated?: boolean; sharedConnection?: boolean; exportFailure?: boolean } = {}) {
   const root = await temp('extalia-knowledge-meeting-'), data = path.join(root, 'data'), home = path.join(root, 'home');
   const project = path.join(root, 'project'), otherProject = path.join(root, 'other-project');
   await Promise.all([home, project, otherProject].map(folder => mkdir(folder)));
@@ -60,8 +60,9 @@ async function fixture(options: { lead?(prompt: string): Promise<void>; sourceRe
   runtimes.push(runtime);
   const host = runtime.host; host.subscribe(event => events.push(event));
   const connection = (await host.saveConnection({ name: 'Fixture lead', preset: 'custom', api: 'openai-chat', baseUrl: 'https://example.com/v1', model: 'fixture-model', credential: { kind: 'none' }, features: { memory: 'off', skills: options.workerSkills ? 'extalia' : 'off', history: true }, orchestration: { enabled: false, maxDelegations: 0, tiers: {} } })).connections[0]!;
-  const workspace = (await host.saveWorkspace({ name: 'Source project', projectLocation: project, connectionId: connection.id, permissions: { fileWrite: 'ask', commands: 'ask' } })).workspaces[0]!;
-  const otherWorkspace = (await host.saveWorkspace({ name: 'Other project', projectLocation: otherProject, connectionId: connection.id, permissions: { fileWrite: 'ask', commands: 'ask' } })).workspaces.find(item => item.id !== workspace.id)!;
+  const workspace = (await host.saveWorkspace({ name: 'Source project', projectLocation: project, connectionId: connection.id, ...(options.isolated ? { crossWorkspaceAccess: 'isolated' } : {}), permissions: { fileWrite: 'ask', commands: 'ask' } })).workspaces[0]!;
+  const otherConnection = options.isolated && !options.sharedConnection ? (await host.saveConnection({ name: 'Other profile connection', preset: 'custom', api: 'openai-chat', baseUrl: 'https://other.example/v1', model: 'fixture-model', credential: { kind: 'none' }, features: { memory: 'off', skills: 'off', history: true } })).connections.find(item => item.name === 'Other profile connection')! : connection;
+  const otherWorkspace = (await host.saveWorkspace({ name: 'Other project', projectLocation: otherProject, connectionId: otherConnection.id, permissions: { fileWrite: 'ask', commands: 'ask' } })).workspaces.find(item => item.id !== workspace.id)!;
   const before = await host.listVaultProfiles!();
   const catalog = await host.saveVaultProfile!({ name: 'Knowledge fixture', vaultRoot: null, workspaceIds: [workspace.id], minutesEnabled: true,
     automaticLearning: { enabled: true, skills: false, notes: true }, expectedRevision: before.revision });
@@ -178,9 +179,9 @@ describe('native knowledge meetings through the deferred host scheduler', () => 
     } finally { release.resolve(); }
   });
 
-  it('drains an abort-ignoring meeting before a human memory write enters', async () => {
+  it.each([false, true])('drains an abort-ignoring meeting before a same-profile human memory write enters (isolated: %s)', async isolated => {
     const entered = deferred(), release = deferred();
-    const f = await fixture({ meeting: async () => { entered.resolve(); await release.promise; } });
+    const f = await fixture({ isolated, meeting: async () => { entered.resolve(); await release.promise; } });
     try {
       await f.host.sendPrompt(f.session.id, 'Record the current project decision.');
       await idle(f.runtime); await f.waitForJob('scheduled', false);
@@ -196,6 +197,82 @@ describe('native knowledge meetings through the deferred host scheduler', () => 
       expect(f.requests.filter(request => request.meeting)).toHaveLength(1);
       expect(await f.host.nativeMemoryRead!(f.workspace.id, 'confirmed-decision')).toMatchObject({ status: 'found', note: { text: 'Human-confirmed note.' } });
     } finally { release.resolve(); }
+  });
+
+  it.each([false, true])('saves an isolated-profile Knowledge meeting while a different profile prompt remains physically active (shared connection: %s)', async sharedConnection => {
+    const entered = deferred(), release = deferred();
+    const foreignPrompt = 'Hold unrelated profile work.';
+    const f = await fixture({ isolated: true, sharedConnection, lead: async prompt => { if (prompt === foreignPrompt) { entered.resolve(); await release.promise; } } });
+    try {
+      await f.host.sendPrompt(f.session.id, 'Record the source project validation decision.'); await idle(f.runtime); await f.waitForJob('scheduled', false);
+      await f.host.sendPrompt(f.otherSession.id, foreignPrompt); await entered.promise;
+      await f.action('run-now');
+      const completed = await f.waitForJob('completed');
+      expect(completed.result?.meeting).toMatchObject({ outcome: 'completed', knowledge: 'saved' });
+      expect((await f.host.getState()).sessions.find(item => item.id === f.otherSession.id)?.running).toBe(true);
+      expect(f.exports).toHaveLength(1);
+      expect(f.exports[0]!.path.startsWith(path.join(f.profile.root, 'Meetings', f.workspace.id))).toBe(true);
+      expect(await readFile(f.exports[0]!.path, 'utf8')).toContain('Actual reviewer finding 2.');
+      expect(f.requests.filter(request => request.meeting)).toHaveLength(2);
+      expect(f.requests.filter(request => request.meeting).every(request => !request.signal?.aborted)).toBe(true);
+      expect(JSON.stringify(f.requests.filter(request => request.meeting))).not.toContain(foreignPrompt);
+      expect(f.events.filter(event => event.sessionId === f.otherSession.id && event.body.type === 'turn.completed')).toEqual([]);
+    } finally { release.resolve(); await idle(f.runtime); }
+  });
+
+  it.each(['same', 'other'] as const)('isolated Knowledge meetings respect only the %s-profile paused pending queue', async scope => {
+    const f = await fixture({ isolated: true });
+    const queueSession = scope === 'same' ? f.session.id : f.otherSession.id;
+    const text = `Paused ${scope}-profile draft must never be submitted by a meeting.`;
+    const clearDraft = async () => {
+      const queue = await f.host.promptQueueStatus!(queueSession);
+      const item = queue.items.find(item => item.text === text && item.state === 'pending');
+      if (item) await f.host.changePromptQueue!(queueSession, { revision: queue.revision, action: 'delete', itemId: item.id });
+    };
+    try {
+      await f.host.sendPrompt(f.session.id, 'Record the validation decision before checking profile queue ownership.'); await idle(f.runtime); await f.waitForJob('scheduled', false);
+      const initial = await f.host.promptQueueStatus!(queueSession);
+      await f.host.changePromptQueue!(queueSession, { revision: initial.revision, action: 'add', text });
+      expect(await f.host.promptQueueStatus!(queueSession)).toMatchObject({ paused: true, items: [expect.objectContaining({ text, state: 'pending' })] });
+      await f.action('run-now');
+      if (scope === 'same') {
+        expect(await f.waitForJob('scheduled', true)).toMatchObject({ reason: 'busy' });
+        expect(f.requests.some(request => request.meeting)).toBe(false);
+        expect(f.exports).toEqual([]);
+        await clearDraft(); await f.action('run-now');
+      }
+      await f.waitForJob('completed'); await idle(f.runtime);
+      expect(f.exports).toHaveLength(1);
+      if (scope === 'other') expect(await f.host.promptQueueStatus!(queueSession)).toMatchObject({ paused: true, items: [expect.objectContaining({ text, state: 'pending' })] });
+      expect(f.events.some(event => event.body.type === 'prompt.submitted' && event.body.text === text)).toBe(false);
+    } finally { await clearDraft(); }
+  });
+
+  it.each(['prompt', 'planning', 'memory'] as const)('keeps an isolated Knowledge meeting active when another profile starts %s', async mode => {
+    const entered = deferred(), release = deferred();
+    const f = await fixture({ isolated: true, meeting: async () => { entered.resolve(); await release.promise; } });
+    let next: Promise<unknown> | undefined;
+    try {
+      await f.host.sendPrompt(f.session.id, 'Record the source project decision.'); await idle(f.runtime); await f.waitForJob('scheduled', false);
+      await f.action('run-now'); await entered.promise;
+      const meetingRequest = f.requests.find(request => request.meeting)!;
+      let returned = false;
+      const pending = mode === 'prompt' ? f.host.sendPrompt(f.otherSession.id, 'Finish another profile task.')
+        : mode === 'planning' ? f.host.planTeam(f.otherWorkspace.id, { count: 1, goal: 'Plan the other project.', allowedModels: ['fixture-model'] }, f.otherSession.id)
+          : f.host.nativeMemoryWrite!(f.otherWorkspace.id, { name: 'other-decision', content: 'Other profile private note.', expectedRevision: null });
+      next = pending.then(result => { returned = true; return result; });
+      await vi.waitFor(() => expect(returned).toBe(true), { timeout: 5_000, interval: 5 });
+      const result = await next;
+      if (mode === 'planning') expect(result).toMatchObject({ source: 'model' });
+      if (mode === 'memory') expect(result).toMatchObject({ status: 'saved' });
+      expect(meetingRequest.signal?.aborted).toBe(false);
+      expect((await f.job())?.state).toBe('running');
+      expect(f.exports).toEqual([]);
+      release.resolve(); await f.waitForJob('completed'); await idle(f.runtime);
+      expect(f.requests.filter(request => request.meeting)).toHaveLength(2);
+      expect(f.exports).toHaveLength(1);
+      expect(JSON.stringify(f.requests.filter(request => request.meeting))).not.toContain('Other profile private note.');
+    } finally { release.resolve(); await next; }
   });
 
   it('keeps Run now behind a busy prompt and its queued successor', async () => {

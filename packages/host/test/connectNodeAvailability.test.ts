@@ -27,7 +27,7 @@ describe('agent-app Node prerequisites', () => {
 
   function context(overrides: Partial<ConnectContext> = {}): ConnectContext {
     return {
-      platform: 'linux', env: { PATH: '', EXTALIA_HOME: extaliaHome }, homeDirectory, extaliaHome,
+      platform: process.platform, env: { PATH: '', EXTALIA_HOME: extaliaHome, HERMES_HOME: path.join(homeDirectory, '.hermes') }, homeDirectory, extaliaHome,
       findBinary: async () => undefined, managedClaudeSettings: [],
       fetch: async () => new Response(null, { status: 204 }), ...overrides,
     };
@@ -41,7 +41,8 @@ describe('agent-app Node prerequisites', () => {
     return { file, before };
   }
 
-  for (const platform of ['linux', 'darwin', 'win32']) {
+  // These tests write real temporary files; the CI OS matrix supplies all three native path/quoting modes.
+  for (const platform of [process.platform]) {
     it(`keeps Hermes preview/apply/test/status/undo independent of Node (${platform})`, async () => {
       const primary = await original('hermes');
       const profile = path.join(homeDirectory, '.hermes', 'profiles', 'team', 'config.yaml');

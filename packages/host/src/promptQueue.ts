@@ -233,6 +233,12 @@ export class PromptQueues {
   hasUnfinished(id: string): boolean { return this.queues.get(id)?.items.some(item => item.state !== 'sent') ?? false; }
   /** Pending, paused and uncertain delivery still belong to foreground work. */
   get hasUnfinishedWork(): boolean { return [...this.queues.values()].some(queue => queue.items.some(item => item.state !== 'sent')); }
+  /** Read-only scoped ownership check; exposes session IDs only and never inspects or dispatches a source. */
+  hasUnfinishedWorkMatching(predicate: (sessionId: string) => boolean): boolean {
+    for (const [id, queue] of this.queues) if (queue.items.some(item => item.state !== 'sent') && predicate(id)) return true;
+    for (const [id, operation] of this.work) if (!operation.retired && operation.itemId !== undefined && predicate(id)) return true;
+    return false;
+  }
   /** Serialize a reviewed session move against enqueue/dispatch; only completed receipts can follow it. */
   withIdleSession<T>(id: string, action: () => Promise<T>): Promise<T> {
     return this.serial(async () => {

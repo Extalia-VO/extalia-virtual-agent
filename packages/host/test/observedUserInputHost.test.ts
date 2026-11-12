@@ -17,7 +17,8 @@ it('projects questions from the existing observation read and revokes pause, pri
     + line({ type: 'response_item', payload: { type: 'function_call_output', call_id: 'call-one', output: '{"accepted":true}' } });
   await writeFile(file, content);
   // This test owns refreshes so a background read cannot project the replacement before revocation is checked.
-  const runtime = await createAgentHost({ kind: 'bridge', version: 'test', dataDirectory: data, homeDirectory: home, importHome: home, env: { EXTALIA_SECRET_STORE: 'memory', PATH: '' }, observationIntervalMs: 60_000 });
+  const runtime = await createAgentHost({ kind: 'bridge', version: 'test', dataDirectory: data, homeDirectory: home, importHome: home,
+    env: { EXTALIA_SECRET_STORE: 'memory', PATH: '', EXTALIA_CODEX_BIN: path.join(root, 'missing-codex') }, observationIntervalMs: 60_000 });
   try {
     expect(AGENT_HOST_METHODS).toContain('observedUserInputStatus');
     expect(AGENT_HOST_METHODS).toContain('answerObservedUserInput');
@@ -27,7 +28,7 @@ it('projects questions from the existing observation read and revokes pause, pri
     await runtime.host.setObservation(id, true);
     const initial = await runtime.host.observedUserInputStatus!(id);
     expect(initial).toMatchObject({ state: 'ready', requests: [{ origin: 'codex-async', state: 'pending', questions: [{ title: 'Which scope?', options: ['One', 'Two'], allowOther: true }] }] });
-    expect(initial.requests[0]?.canAnswer).toBe(false); // No queue CLI exists in this synthetic home.
+    expect(initial.requests[0]?.canAnswer).toBe(false); // Explicit missing CLI excludes GUI/system installation fallbacks.
     await runtime.host.setObservation(id, false);
     expect((await runtime.host.observedUserInputStatus!(id)).state).toBe('unavailable');
     await runtime.host.setObservation(id, true);

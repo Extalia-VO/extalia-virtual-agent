@@ -29,6 +29,55 @@ async function make(overrides: Partial<Parameters<typeof PromptQueues.create>[0]
 afterEach(async () => { await Promise.all(cleanups.splice(0).map(cleanup => cleanup())); });
 
 describe('PromptQueues', () => {
+  it('scopes paused drafts and uncertain delivery by session without starting or changing either queue', async () => {
+    const calls: string[] = [];
+    const fixture = await make({ pollIntervalMs: 0, dispatch: async id => { calls.push(id); return 'unknown'; } });
+    const paused = await fixture.change({ action: 'add', text: 'paused first workspace' });
+    fixture.target.ready = true;
+    await fixture.change({ action: 'add', text: 'uncertain second workspace', start: true }, 'session-2');
+    await waitFor(async () => (await fixture.queues.status('session-2')).items[0]?.state === 'unknown');
+    await waitFor(() => !fixture.queues.isBusy);
+    const unknown = await fixture.queues.status('session-2');
+    const before = await readFile(path.join(fixture.root, 'state', 'prompt-queues.json'), 'utf8');
+    expect(paused.paused).toBe(true);
+    expect(unknown.paused).toBe(true);
+    expect(fixture.queues.hasUnfinishedWorkMatching(id => id === 'session-1')).toBe(true);
+    expect(fixture.queues.hasUnfinishedWorkMatching(id => id === 'session-2')).toBe(true);
+    expect(fixture.queues.hasUnfinishedWorkMatching(id => id === 'session-other')).toBe(false);
+    expect(fixture.queues.hasUnfinishedWorkMatching(() => false)).toBe(false);
+    expect(calls).toEqual(['session-2']);
+    expect(await readFile(path.join(fixture.root, 'state', 'prompt-queues.json'), 'utf8')).toBe(before);
+    const unchanged = await fixture.queues.status('session-1');
+    expect(unchanged).toEqual(paused);
+    expect(await fixture.queues.status('session-2')).toEqual(unknown);
+  });
+
+  it('includes an actual reserved send through receipt persistence, then excludes only the settled sent receipt', async () => {
+    let entered = false, release!: () => void, holdReceipt = false;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    const fixture = await make({ pollIntervalMs: 0, persist: async write => {
+      const result = await write();
+      if (holdReceipt && JSON.parse(await readFile(path.join(fixture.root, 'state', 'prompt-queues.json'), 'utf8')).queues[0]?.items[0]?.state === 'sent') {
+        entered = true; await gate;
+      }
+      return result;
+    } });
+    await fixture.change({ action: 'add', text: 'one reserved dispatch' });
+    fixture.target.ready = true; holdReceipt = true;
+    await fixture.change({ action: 'pause', paused: false });
+    await waitFor(() => { fixture.queues.wake('session-1'); return entered; });
+    expect(fixture.queues.hasUnfinishedWork).toBe(false);
+    expect(fixture.queues.isBusy).toBe(true);
+    expect(fixture.queues.hasUnfinishedWorkMatching(id => id === 'session-1')).toBe(true);
+    expect(fixture.queues.hasUnfinishedWorkMatching(id => id === 'session-2')).toBe(false);
+    release();
+    await waitFor(() => !fixture.queues.isBusy);
+    const completed = await fixture.queues.status('session-1');
+    expect(completed.items[0]!.state).toBe('sent');
+    expect(fixture.queues.hasUnfinishedWorkMatching(() => true)).toBe(false);
+    expect(fixture.calls).toEqual([{ id: 'session-1', text: 'one reserved dispatch' }]);
+  });
+
   it('atomically starts an explicit composer addition and refuses it without adding behind uncertainty', async () => {
     const fixture = await make({ dispatch: async () => 'unknown' });
     fixture.target.ready = true;

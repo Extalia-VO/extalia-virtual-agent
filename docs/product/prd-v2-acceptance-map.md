@@ -24,6 +24,77 @@ inside V2-02. They do not establish
 all T1 mappings, authoritative acceptance/record resolution, transition admission,
 delegation or runtime activation. AR-01–04 remain open beyond these bounded tests.
 
+## Current implementation checkpoint
+
+Reconciled **2026-11-12, v0.4.288** against checked-in source, test assertions and
+existing dated evidence. This is a documentation audit, not a fresh live-provider,
+scanner, installer or hardware run. The original 2026-10-29 requirement/suite
+mapping below is retained. [Release notes](../release/v0.4.288.md) describe the
+distributed preview; [remaining work](prd-remaining-work.md) orders follow-up.
+
+- **Implemented slice**: named functionality is present with supporting tests or
+  recorded evidence; it does not certify the entire FR or every platform.
+- **Partial**: implemented foundations plus explicit unfulfilled obligations.
+- **Planned**: no production implementation of the named v2 expansion established.
+- **Acceptance open**: evidence needed before the complete requirement/release gate
+  can be marked done. Planned AR identifiers alone never count as passing tests.
+
+| FR | Current implementation / evidence | Unfinished acceptance or expansion |
+| --- | --- | --- |
+| 001 | Partial: profile-scoped core/index and stable workspace vault profiles; ADRs 0024/0074 | Complete profile manager, ACL/sharing and simultaneous-profile cases |
+| 002 | Implemented slice: workspace folders, explicit moves and observed association; ADRs 0059/0076/0078 | v2 engine generation, trust/migration and switch authority |
+| 003 | Partial: Native/Hermes selection and capability contracts | Formal multi-engine registry and safe switch/reconciliation |
+| 004 | Implemented slice: Native API Chat, teams and mission coordinator | Complete provider-free v2 vertical slice and durable authority gates |
+| 005 | Partial: additive engine/state/identity/delegation contracts in protocol | Authoritative runtime translator/receipt and lifecycle conformance |
+| 006 | Partial: worker capability/intent contracts | Production worker seam with complete lifecycle/auth/ownership proof |
+| 007 | Acceptance open: scripted-provider and existing Native executor evidence | One permitted external worker certified by actual version/account/mode |
+| 008 | Implemented slice: DAG planning, budgets, leases and mission UI | Accepted evidence/waiver before dependency release (V2-06) |
+| 009 | Partial: durable mission checkpoints/leases and provisional reservations | Canonical jobs, command intents/receipts, replay-safe dispatch/outbox |
+| 010 | Partial: existing tool policy, pending action intents and exact skill approvals | Durable effect-time actor/target/arguments/expiry/revocation authority |
+| 011 | Implemented slice: managed/imported/observed history and canonical handover ledger; ADR 0076 | Unified v2 ownership/index and complete registry/restore acceptance |
+| 012 | Implemented slice: Extalia Protocol, generated schemas, durable mission journal | Workspace inbox/outbox/cursors and authoritative v2 runtime mapping |
+| 013 | Implemented slice: shared Chat/Observe/Missions/Files/Git/Knowledge/Grimoire | Complete no-WebGL primary-action and accessibility certification |
+| 014 | Implemented slice: shared event-driven Office, freshness, hierarchy and follow | Canonical instance/generation mapping and full v2 acceptance |
+| 015 | Implemented slice: source-safe parsers/import and retained source archives | Complete per-source version/revision/tombstone acceptance |
+| 016 | Implemented slice: authenticated loopback Bridge with Host/Origin defenses | Full installation pairing/per-client scope/revoke cases BRG-01–10 |
+| 017 | Partial: redacted portable sessions and retained handover archives | Consistent selected mission/evidence/settings export snapshot |
+| 018 | Implemented slice: public-safety checks, provenance inventory and release checksums | Full source-history/SBOM/provenance review; no repository rewrite mandate |
+| 019 | Implemented slice: existing Hermes runtime, hooks and observer | Formal engine lifecycle/profile switch acceptance |
+| 020 | Planned: OpenClaw engine | Gateway policy, lifecycle, scopes, reconnect and reconciliation |
+| 021 | Implemented slice: observed Codex control routes; ADRs 0060–0064 | Dedicated managed v2 worker and version/mode certification; hook trust is separate |
+| 022 | Implemented slice: Claude Code observer/hooks and capability-bound messaging | Managed CLI/SDK worker with independent auth/policy/ownership acceptance |
+| 023 | Implemented slice: categorized catalog, immutable revisions, managed automatic loading and marketplace; ADRs 0073/0077 | Authoritative dependency/compatibility integration and full dispatch parity |
+| 024 | Implemented slice: real pinned SkillSpector 2.13.4/bundled Python on macOS 14+ ARM64; ADR 0068 | Intel macOS/Windows/Linux isolation and code/tool evaluation; scan never activates |
+| 025 | Implemented slice: isolated write-task worktrees, inspection/proposals and digest-bound validation | Production test gate is not run and Apply refuses; isolated executor, Rust writer fencing, complete physical ownership and reconciliation remain open |
+| 026 | Implemented slice: editable 2D/3D Markdown Knowledge, team meetings and scoped curation; ADRs 0065–0067/0074–0075 | V2-17A ACL/CAS/provenance acceptance, cross-store conflict and quality evaluation |
+| 027 | Implemented slice: saved teams, connection-owned delegates and Office hierarchy | Complete child membership, engine-qualified authority and routing |
+| 028 | Implemented slice: transcripts/hooks/MCP, freshness and observed association; ADR 0078 | Source/version/mode certification and full failure matrix |
+| 029 | Implemented slice: pending prompts, supported steer/control routes and cooperative inbox receipts; ADRs 0064/0072 | Per-route real-app acceptance; submitted/queued never means applied or settled |
+| 030 | Partial: capability restrictions and explicit unavailable control routes | Complete backend per-surface/account entitlement registry before new workers |
+| 031 | Partial: existing platform notifications | Scoped optional channel adapter and identity/replay acceptance |
+| 032 | Planned: public extension SDK | Versioned public contracts/compliance and permission isolation |
+| 033 | Implemented slice: updater, guarded restart, cross-platform preview artifacts | Full signing/notarization/channel/rollback and clean-machine matrix |
+| 034 | Implemented slice: Gemini/Antigravity import, hooks, source-bound messaging | Independent managed-surface policy/version evidence; no blanket wrapper clearance |
+| 035 | Planned: Kiro managed worker | ACP version/mode, entitlement, cancellation and lifecycle proof |
+| 036 | Implemented slice: licensed campus/interior/avatars and interactive facilities | Profile/building/room designer and representative hardware acceptance |
+| 037 | Partial: session interchange | Full multi-store restore dry run, migration/conflicts and rollback |
+| 038 | Planned: executable plugin host | Out-of-process isolation/broker before executable activation |
+| 039 | Implemented slice: token/task/time/concurrency budgets and reported cache usage | Fine cost/pricing provenance, full failure accounting and inherited caps |
+| 040 | Implemented slice: EN/ID UI and preserved user text | Complete localization/accessibility audit and optional language packs |
+
+All 18 NFRs below retain **acceptance open** for their complete declared scope.
+Existing CI, release artifacts, security tests and benchmark snapshots support
+bounded assertions; they do not prove pilot scale, all-platform scanner support,
+whole-app FPS/RSS, complete accessibility, broad provider entitlement or full
+restore. ADR 0071 keeps production completion in TypeScript after measured Rust
+and Python prototypes; a language migration is not an outstanding acceptance
+requirement by itself. The generic Python executor remains planned, independently
+of the implemented specific SkillSpector worker.
+
+The v0.4.288 release closes its scoped publication work, not V2-03/04/05/06 or the
+[v0.5 gate #60](https://github.com/Extalia-VO/extalia-virtual-agent/issues/60).
+Do not calculate completion percentages from this table or test counts.
+
 ## Source integrity and applicability
 
 The incoming archive contains 10 Markdown documents. Audit source digest:

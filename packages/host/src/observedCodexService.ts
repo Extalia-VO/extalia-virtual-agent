@@ -1,11 +1,12 @@
 import type { ObservedCodexAnswerInput, ObservedCodexMessageInput, ObservedCodexSettingsInput, ObservedCodexStatus, ObservedCodexApprovalAnswerInput, PromptSuggestionsStatus } from '@extalia/platform';
 import { CodexObservedControl, type CodexObservedRpcFactory } from './codexObservedControl.js';
-import { findOnPath, isExecutable } from './connect/util.js';
+import { environmentValue, findExecutable } from './executableDiscovery.js';
 
 interface SourceBinding { threadId: string; cwd?: string; watching: boolean }
 interface Options {
   target(id: string): SourceBinding | undefined;
   env: Readonly<Record<string, string | undefined>>;
+  homeDirectory?: string;
   rpcFactory?: CodexObservedRpcFactory;
   onActivity?: (sessionId: string) => void;
 }
@@ -97,8 +98,8 @@ export class ObservedCodexService {
       const previous = this.controls.get(id);
       this.controls.delete(id);
       if (previous) await this.stop(id, previous.control);
-      const override = this.options.env.EXTALIA_CODEX_BIN;
-      const bin = override && await isExecutable(override) ? override : !override ? await findOnPath('codex', this.options.env, process.platform) : undefined;
+      const bin = await findExecutable('codex', { env: this.options.env, platform: process.platform,
+        homeDirectory: this.options.homeDirectory, override: environmentValue(this.options.env, 'EXTALIA_CODEX_BIN', process.platform) });
       if (!bin) return this.unavailable(id, 'Codex CLI with app-server proxy support was not found.');
       if (this.closed || this.blocked.has(id) || this.fingerprint(this.target(id) ?? { threadId: '', watching: false }) !== fingerprint || !this.target(id)?.watching) throw new Error('The observed source changed. Connect again.');
       const control = new CodexObservedControl({

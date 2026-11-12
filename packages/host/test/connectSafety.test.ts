@@ -22,7 +22,7 @@ describe('Agent app configuration safety', () => {
 
   function makeService(env: ConnectContext['env']) {
     return createConnectService({
-      platform: 'linux', env: { EXTALIA_HOME: extaliaHome, ...env }, homeDirectory, extaliaHome,
+      platform: process.platform, env: { EXTALIA_HOME: extaliaHome, HERMES_HOME: path.join(homeDirectory, '.hermes'), ...env }, homeDirectory, extaliaHome,
       nodePath: process.execPath, findBinary: async () => undefined, managedClaudeSettings: [],
       fetch: async () => new Response(null, { status: 204 }),
     });
@@ -31,7 +31,7 @@ describe('Agent app configuration safety', () => {
   const roots: Record<AgentAppId, { variable: string; filename: string; original: (label: string) => string }> = {
     codex: { variable: 'CODEX_HOME', filename: 'config.toml', original: label => `model = "${label}"\n` },
     claude: { variable: 'CLAUDE_CONFIG_DIR', filename: 'settings.json', original: label => `{"theme":"${label}"}\n` },
-    gemini: { variable: 'GEMINI_CLI_HOME', filename: 'settings.json', original: label => `{"theme":"${label}"}\n` },
+    gemini: { variable: 'GEMINI_CLI_HOME', filename: path.join('.gemini', 'settings.json'), original: label => `{"theme":"${label}"}\n` },
     antigravity: { variable: 'ANTIGRAVITY_CONFIG_DIR', filename: 'hooks.json', original: label => `{"theme":"${label}"}\n` },
     hermes: { variable: 'HERMES_HOME', filename: 'config.yaml', original: label => `model: ${label}\n` },
   };
@@ -44,12 +44,15 @@ describe('Agent app configuration safety', () => {
     await mkdir(second);
     const firstFile = path.join(first, filename);
     const secondFile = path.join(second, filename);
+    await mkdir(path.dirname(firstFile), { recursive: true });
+    await mkdir(path.dirname(secondFile), { recursive: true });
     await writeFile(firstFile, original('first'));
     await writeFile(secondFile, original('second'));
     const firstService = makeService({ [variable]: first });
     await firstService.apply(app);
 
     const firstConnected = await readFile(firstFile, 'utf8');
+    expect(firstConnected).not.toBe(original('first'));
     const manifestFile = path.join(extaliaHome, 'connect', 'manifest.json');
     const manifest = await readFile(manifestFile, 'utf8');
     const tokenFile = path.join(extaliaHome, 'hooks', 'token');

@@ -1,8 +1,9 @@
 import type { PageId } from './i18n';
+import { profileClientStateStorage } from './profileClientState';
 
 export type Workflow = 'managed' | 'observe';
 
-/** Per-device landing memory: only the last-used workspace. The page is never remembered. */
+/** Profile-backed landing memory: only the last-used workspace. The page is never remembered. */
 export const LANDING_STORAGE_KEY = 'extalia.landing.v2';
 /** v0.0.19 and earlier stored `{ mode, workspaceId }` here; read once to carry the workspace over, then removed. */
 export const LEGACY_MODE_STORAGE_KEY = 'extalia.mode.v1';
@@ -85,10 +86,10 @@ export function parseLandingMemory(raw: string | null): LandingMemory {
 }
 
 type LandingStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
-const deviceStorage = (): LandingStorage | undefined => (typeof localStorage !== 'undefined' ? localStorage : undefined);
+const deviceStorage = (): LandingStorage => profileClientStateStorage;
 
 /**
- * Per-device storage; every access is guarded (private mode, blocked storage, tests).
+ * Host-backed storage, or device storage without a host; every access is guarded.
  * The legacy mode record is migrated once: its workspace is kept, its mode dropped,
  * and only that one key is removed, so other interface preferences stay intact.
  */

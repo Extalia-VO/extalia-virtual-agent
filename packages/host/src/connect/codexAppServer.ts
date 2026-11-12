@@ -1,3 +1,4 @@
+import { executableLaunchPlan } from '../npmCommand.js';
 import { spawn } from 'node:child_process';
 import { realpath } from 'node:fs/promises';
 import type { AgentAppTrustStatus } from '@extalia/platform';
@@ -19,7 +20,8 @@ export type CodexRpcFactory = (options: { bin: string; codexHome: string; env: E
 const REQUEST_TIMEOUT_MS = 15_000;
 
 export const spawnCodexAppServer: CodexRpcFactory = async ({ bin, codexHome, env, cwd }) => {
-  const child = spawn(bin, ['app-server'], { cwd, env: { ...env, CODEX_HOME: codexHome } as NodeJS.ProcessEnv, stdio: ['pipe', 'pipe', 'ignore'] });
+  const launch = await executableLaunchPlan(bin, ['app-server'], { env });
+  const child = spawn(launch.command, launch.args, { cwd, env: { ...env, CODEX_HOME: codexHome } as NodeJS.ProcessEnv, stdio: ['pipe', 'pipe', 'ignore'] });
   let buffer = '';
   let nextId = 0;
   let dead: Error | undefined;

@@ -76,7 +76,7 @@ class ComposerSubmission {
  * Right: permission mode, model and effort, the context ring and Send. Enter sends, Shift+Enter adds a line.
  * The choices apply to the session at once (`setSessionOptions`); before the first message they travel with it.
  */
-export function Composer({ t, agents, session, workspaceId, hermes, modelScopeKey, running, waiting, readOnly, stopping, onSend, onStop, onSessionChanged, onOpenContext, contextPanelId }: {
+export function Composer({ t, agents, session, workspaceId, hermes, modelScopeKey, running, waiting, readOnly, stopping, sendBlocked = false, onSend, onStop, onSessionChanged, onOpenContext, contextPanelId }: {
   t: Messages;
   agents: AgentHostApi;
   /** The session the message goes to; absent on the Chat page before its first message. */
@@ -90,6 +90,8 @@ export function Composer({ t, agents, session, workspaceId, hermes, modelScopeKe
   waiting: boolean;
   readOnly: boolean;
   stopping: boolean;
+  /** Hold submission/queueing while retaining the editable draft and attachment chips. */
+  sendBlocked?: boolean;
   onSend: (request: ComposerSend) => Promise<boolean>;
   onStop: () => void;
   /** After a choice was saved, so the host state (and the session's options) reload. */
@@ -134,7 +136,7 @@ export function Composer({ t, agents, session, workspaceId, hermes, modelScopeKe
   const pickersEnabled = !readOnly && !running && !session?.running && !sending;
   const imported = chips.filter(chip => chip.key.startsWith('pasted-prompt-'));
   const promptText = [imported.length ? t.composer.longTextPrompt(imported.map(chip => chip.name).join(', ')) : '', text.trim()].filter(Boolean).join('\n\n');
-  const canSend = !disabled && queueChecked && (!queueing || queueAvailable && !queue.locked && !queue.view.busy
+  const canSend = !sendBlocked && !disabled && queueChecked && (!queueing || queueAvailable && !queue.locked && !queue.view.busy
     && !queue.view.status?.items.some(item => item.state === 'unknown')) && !sending && retainedDraft.delivery !== 'unknown' && (text.trim().length > 0 || chips.length > 0)
     && promptText.length <= MESSAGE_TEXT_LIMIT && !chips.some(chip => chip.status === 'uploading');
 
@@ -448,7 +450,7 @@ export function Composer({ t, agents, session, workspaceId, hermes, modelScopeKe
     </form>
     <PromptSuggestions t={t} agents={agents} session={session} workspaceId={workspaceId}
       copyOnly={session?.control === 'observed' && !supportsObservedPromptQueue(session.observation?.sourceId)}
-      disabled={readOnly && session?.control !== 'observed' || running || waiting} />
+      disabled={sendBlocked || readOnly && session?.control !== 'observed' || running || waiting} />
     </>
   );
 }
