@@ -18,6 +18,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [0.4.288] - 2026-11-12
 
+- Refresh Desktop/Web/npm release guidance, exact download names, scanner platform limits and the verified 133-model asset footprint. Keep v0.5 acceptance and real-provider certification separate from source integration and packaging checks.
+
 ### Fixed
 
 - Verify Native session destination folders structurally across Windows and Unix path encodings. Synchronize cooperative inbox revocation tests with actual request admission so delayed connections cannot invalidate the intended stale-pairing checks. Keep marketplace file validation compatible with strict Windows Clippy checks while preserving linked-file rejection.

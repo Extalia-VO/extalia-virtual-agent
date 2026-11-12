@@ -13,6 +13,8 @@ Requires Node.js 22.13 or newer (Node 23 needs 23.4+).
 npm i -g extalia-vo@latest
 ```
 
+This package contains Extalia v0.4.288. See the [release notes](https://github.com/Extalia-VO/extalia-virtual-agent/releases/tag/v0.4.288) for the update.
+
 Install the application package `extalia-vo`; its matching daemon is installed
 automatically. The `@extalia/daemon-*` packages are internal platform binaries
 and do not provide the `extalia` command or web UI.
@@ -89,11 +91,33 @@ runtime commercial-assets switch does not remove their files from this package.
 
 Built-in skills and progressive workspace memory are available in Native Chat.
 With Extalia skills enabled and the opt-in Rust registry, choose **Learn as
-skill** for a message or begin it with `/learn-skill` to propose one generated
-candidate. It is stored in Skills with provenance and mandatory inspection;
-approval and activation remain separate. Production SkillSpector/Python workers
-are not bundled or ready, so external/generated candidates remain quarantined.
-An ordinary answer or source URL alone is not a saved or verified skill.
+skill** for a message or begin it with `/learn-skill` to propose a candidate.
+Grimoire adds public marketplace search, pinned package previews and reviewed
+imports. Imported or generated candidates require inspection, separate user
+approval and activation; a search result or source URL is not a verified skill.
 
-The Web client also includes bounded Obsidian-compatible graph views and filters.
-These do not establish complete effect-time vault/agent ACL enforcement.
+The supported scanner target is **macOS 14+ ARM64**, using pinned SkillSpector
+2.13.4 and bundled Python paired with the daemon. The platform package pairs the scanner with the matching daemon. Intel macOS, Windows and Linux report scanner
+execution unavailable; incomplete, unavailable or malicious inspections do not
+make a candidate available to agents. Eligible instruction-only packages can be
+approved and activated after complete inspection. Code/tool packages retain
+additional evaluation requirements.
+
+Saved Native tasks can schedule deferred learning and team knowledge reviews
+under the workspace vault policy, with Run now/Snooze controls and foreground
+work taking priority. The learning/artifact backend supports macOS and Linux;
+Windows reports automatic curation and note/skill staging unavailable. Candidates
+are never automatically activated. Existing Knowledge indexing is a separate
+capability.
+
+The Web client also includes reviewed cross-agent handover, Native workspace
+moves and observed project association. Messaging uses only verified original
+conversation routes or an explicitly paired cooperative inbox; manual packets
+cover unsupported routes. Queued/submitted receipts do not prove model execution.
+
+Office updates improve furnished routes, door/lift traffic, automatic camera
+attention, graphics recovery and avatar resource cleanup. Secondary pages load
+on demand. These changes do not establish device-specific FPS or memory claims.
+
+Bounded Obsidian-compatible graph views and filters do not establish complete
+effect-time vault/agent ACL enforcement or completion of the v0.5 product gates.
