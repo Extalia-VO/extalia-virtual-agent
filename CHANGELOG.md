@@ -16,6 +16,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.288] - 2026-11-12
+
+### Fixed
+
+- Verify Native session destination folders structurally across Windows and Unix path encodings. Synchronize cooperative inbox revocation tests with actual request admission so delayed connections cannot invalidate the intended stale-pairing checks.
+
 ## [0.4.287] - 2026-11-12
 
 - Show package version, risk, requested permissions and runtime declarations in

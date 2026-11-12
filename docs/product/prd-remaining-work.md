@@ -95,4 +95,3 @@ both after restart. A browser harness mounted the actual Office prompt and
 learning notice components, invoked the real scheduler and displayed its receipt
 above the prompt in English/light and Indonesian/dark at 390 pixels. Dismissal
 survived polling. The browser harness omitted the 3D canvas and installed Desktop.
-

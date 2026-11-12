@@ -125,7 +125,10 @@ describe('reviewed Native session moves', () => {
     expect(results).toContain('Destination folder evidence');
     expect(results).toContain('workspace access policy');
     expect(results).not.toContain('Source folder evidence');
-    expect(results).toContain(ctx.beta.projectLocation);
+    const folderResult = ctx.bodies.at(-1)!.messages.filter(message => message.role === 'tool').at(-1)!;
+    expect(JSON.parse(folderResult.content)).toEqual([
+      { workspaceId: ctx.beta.id, path: ctx.beta.projectLocation, primary: true, access: 'read-write' },
+    ]);
     expect(await readFile(path.join(ctx.alpha.projectLocation!, 'before.txt'), 'utf8')).toBe('Source write');
     expect(await readFile(path.join(ctx.beta.projectLocation!, 'after.txt'), 'utf8')).toBe('Destination write');
     await expect(readFile(path.join(ctx.alpha.projectLocation!, 'after.txt'))).rejects.toMatchObject({ code: 'ENOENT' });

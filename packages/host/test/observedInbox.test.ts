@@ -179,7 +179,9 @@ describe('cooperative observed inbox transport', () => {
       const req = httpRequest(a.url!, { method: 'POST', headers: { authorization: `Bearer ${a.token}`, 'content-type': 'application/json' } }, res => { res.resume(); res.on('end', () => resolve(res.statusCode!)); });
       req.write('{'); finish = () => req.end('"operation":"poll","waitMs":25000}');
     });
-    await new Promise(resolve => setTimeout(resolve, 10)); broker.drop('a'); finish();
+    // The handler must capture this pairing before revocation, while the body is incomplete.
+    await waitFor(() => (broker as unknown as { activeRequests: number }).activeRequests === 1);
+    broker.drop('a'); finish();
     expect(await response).toBe(410); expect(broker.status('a').polling).toBe(false);
   });
   it('does not revoke a replacement pairing when a stale poll finishes arriving', async () => {
@@ -189,7 +191,7 @@ describe('cooperative observed inbox transport', () => {
       const req = httpRequest(a.url!, { method: 'POST', headers: { authorization: `Bearer ${a.token}`, 'content-type': 'application/json' } }, res => { res.resume(); res.on('end', () => resolve(res.statusCode!)); });
       req.write('{'); finish = () => req.end('"operation":"poll","waitMs":25000}');
     });
-    await new Promise(resolve => setTimeout(resolve, 10));
+    await waitFor(() => (broker as unknown as { activeRequests: number }).activeRequests === 1);
     const fresh = await broker.create('a');
     finish();
     expect(await oldResponse).toBe(410);
