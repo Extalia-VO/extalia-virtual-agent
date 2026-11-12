@@ -97,23 +97,24 @@ npm install -g extalia-vo@latest
 extalia
 ```
 
-The npm command installs the latest **published** package. During v0.4.288 release
-preparation, npm `latest` remains v0.4.227. The v0.4.288 Desktop/Web archives and
-npm packages below are **planned; validation and publication are pending**.
-Use the [release page](https://github.com/Extalia-VO/extalia-virtual-agent/releases)
-for available downloads; the filenames below are not availability claims. See
-[the v0.4.288 release notes](docs/release/v0.4.288.md) for changes since v0.4.227.
+The npm command installs the latest **published** package, which may precede
+a Desktop release while registry processing finishes. Run `extalia version` to
+check your installation, or inspect the [npm versions](https://www.npmjs.com/package/extalia-vo?activeTab=versions).
+Desktop/Web downloads are listed in the [v0.4.288 release](https://github.com/Extalia-VO/extalia-virtual-agent/releases/tag/v0.4.288).
+See [the release notes](docs/release/v0.4.288.md) for changes since v0.4.227;
+[issue #91](https://github.com/Extalia-VO/extalia-virtual-agent/issues/91) records
+publication and registry verification.
 
-| Platform | Package | Architecture | Planned v0.4.288 filename |
+| Platform | Package | Architecture | Download |
 | :--- | :--- | :--- | :--- |
-| **macOS** | DMG / ZIP | Apple Silicon (arm64) | `Extalia-0.4.288-mac-arm64.dmg` · `Extalia-0.4.288-mac-arm64.zip` |
-| **macOS** | DMG / ZIP | Intel (x64) | `Extalia-0.4.288-mac-x64.dmg` · `Extalia-0.4.288-mac-x64.zip` |
-| **Linux** | AppImage | x64 | `Extalia-0.4.288-linux-x86_64.AppImage` |
-| **Linux** | Debian / Ubuntu package | x64 | `Extalia-0.4.288-linux-amd64.deb` |
-| **Linux** | Per-user setup | x64 | `Extalia-0.4.288-linux-x64-setup.run` |
-| **Windows** | Desktop installer | x64 | `Extalia-0.4.288-win-x64-setup.exe` |
-| **Web** | Static client | Universal | `Extalia-0.4.288-web.zip` |
-| **CLI** | Local Web Bridge | Universal | `extalia-vo-0.4.288.tgz` |
+| **macOS** | DMG / ZIP | Apple Silicon (arm64) | [Extalia-0.4.288-mac-arm64.dmg](https://github.com/Extalia-VO/extalia-virtual-agent/releases/download/v0.4.288/Extalia-0.4.288-mac-arm64.dmg) · [Extalia-0.4.288-mac-arm64.zip](https://github.com/Extalia-VO/extalia-virtual-agent/releases/download/v0.4.288/Extalia-0.4.288-mac-arm64.zip) |
+| **macOS** | DMG / ZIP | Intel (x64) | [Extalia-0.4.288-mac-x64.dmg](https://github.com/Extalia-VO/extalia-virtual-agent/releases/download/v0.4.288/Extalia-0.4.288-mac-x64.dmg) · [Extalia-0.4.288-mac-x64.zip](https://github.com/Extalia-VO/extalia-virtual-agent/releases/download/v0.4.288/Extalia-0.4.288-mac-x64.zip) |
+| **Linux** | AppImage | x64 | [Extalia-0.4.288-linux-x86_64.AppImage](https://github.com/Extalia-VO/extalia-virtual-agent/releases/download/v0.4.288/Extalia-0.4.288-linux-x86_64.AppImage) |
+| **Linux** | Debian / Ubuntu package | x64 | [Extalia-0.4.288-linux-amd64.deb](https://github.com/Extalia-VO/extalia-virtual-agent/releases/download/v0.4.288/Extalia-0.4.288-linux-amd64.deb) |
+| **Linux** | Per-user setup | x64 | [Extalia-0.4.288-linux-x64-setup.run](https://github.com/Extalia-VO/extalia-virtual-agent/releases/download/v0.4.288/Extalia-0.4.288-linux-x64-setup.run) |
+| **Windows** | Desktop installer | x64 | [Extalia-0.4.288-win-x64-setup.exe](https://github.com/Extalia-VO/extalia-virtual-agent/releases/download/v0.4.288/Extalia-0.4.288-win-x64-setup.exe) |
+| **Web** | Static client | Universal | [Extalia-0.4.288-web.zip](https://github.com/Extalia-VO/extalia-virtual-agent/releases/download/v0.4.288/Extalia-0.4.288-web.zip) |
+| **CLI** | Local Web Bridge | Universal | [extalia-vo-0.4.288.tgz](https://github.com/Extalia-VO/extalia-virtual-agent/releases/download/v0.4.288/extalia-vo-0.4.288.tgz) |
 
 Free macOS previews use verified ad-hoc signatures and are **not Apple-notarized**.
 They may show an unidentified-developer warning. If you trust the official
@@ -127,7 +128,7 @@ xattr -dr com.apple.quarantine /Applications/Extalia.app
 Previews update by manual download. See
 [macOS release modes](docs/release/packaging.md#macos-release-modes).
 
-After publication, check downloaded files against `SHA256SUMS.txt` on the matching release page. The static
+Check downloaded files against [SHA256SUMS.txt](https://github.com/Extalia-VO/extalia-virtual-agent/releases/download/v0.4.288/SHA256SUMS.txt) on the matching release page. The static
 Web ZIP contains the client; running agents still requires the local Bridge or
 Desktop host. npm installs the Bridge, client and matching daemon together.
 

@@ -13,10 +13,7 @@ Requires Node.js 22.13 or newer (Node 23 needs 23.4+).
 npm i -g extalia-vo@latest
 ```
 
-During v0.4.288 release preparation, npm `latest` remains v0.4.227. The new
-package is pending validation and publication; `@latest` installs the currently
-published version. See the [v0.4.288 release notes](https://github.com/Extalia-VO/extalia-virtual-agent/blob/main/docs/release/v0.4.288.md)
-for the planned update.
+This package contains Extalia v0.4.288. See the [release notes](https://github.com/Extalia-VO/extalia-virtual-agent/releases/tag/v0.4.288) for the update.
 
 Install the application package `extalia-vo`; its matching daemon is installed
 automatically. The `@extalia/daemon-*` packages are internal platform binaries
@@ -100,8 +97,7 @@ imports. Imported or generated candidates require inspection, separate user
 approval and activation; a search result or source URL is not a verified skill.
 
 The supported scanner target is **macOS 14+ ARM64**, using pinned SkillSpector
-2.13.4 and bundled Python paired with the daemon. Its v0.4.288 package still
-requires release validation. Intel macOS, Windows and Linux report scanner
+2.13.4 and bundled Python paired with the daemon. The platform package pairs the scanner with the matching daemon. Intel macOS, Windows and Linux report scanner
 execution unavailable; incomplete, unavailable or malicious inspections do not
 make a candidate available to agents. Eligible instruction-only packages can be
 approved and activated after complete inspection. Code/tool packages retain
