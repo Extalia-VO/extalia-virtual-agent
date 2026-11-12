@@ -45,10 +45,10 @@ impl Directory {
         #[cfg(not(unix))]
         let file = {
             let path = self.path.join("operation.lock");
-            if let Ok(metadata) = fs::symlink_metadata(&path) {
-                if !metadata.is_file() || linked(&metadata) {
-                    return Err(fail("storage"));
-                }
+            if let Ok(metadata) = fs::symlink_metadata(&path)
+                && (!metadata.is_file() || linked(&metadata))
+            {
+                return Err(fail("storage"));
             }
             let mut options = fs::OpenOptions::new();
             options.read(true).write(true).create(true).truncate(false);

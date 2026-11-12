@@ -20,7 +20,7 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
-- Verify Native session destination folders structurally across Windows and Unix path encodings. Synchronize cooperative inbox revocation tests with actual request admission so delayed connections cannot invalidate the intended stale-pairing checks.
+- Verify Native session destination folders structurally across Windows and Unix path encodings. Synchronize cooperative inbox revocation tests with actual request admission so delayed connections cannot invalidate the intended stale-pairing checks. Keep marketplace file validation compatible with strict Windows Clippy checks while preserving linked-file rejection.
 
 ## [0.4.287] - 2026-11-12
 
