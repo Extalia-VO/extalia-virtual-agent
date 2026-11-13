@@ -436,6 +436,19 @@ animations. Retain an npm option and macOS opening guidance beside downloads;
 move detailed npm setup below the feature showcase. Existing media and runtime
 versions remain unchanged; this is a documentation-only layout refinement.
 
+README brand/tour revision (Codex GPT orchestration, 2026-11-13,
+[#104](https://github.com/Extalia-VO/extalia-virtual-agent/issues/104)): the latest
+owner-selected opening is centered Extalia logo → centered badges → product
+title/introduction → campus camera tour → platform downloads → separate feature
+previews. Introduction names Codex, Claude Code, Antigravity, Hermes and other
+supported agents in that order, then highlights Office, Knowledge, skills and
+Native teams without implying control of every outside app.
+Within downloads, put the npm installation/start script first, then
+the Desktop installer list, followed by visible trusted-macOS-preview quarantine
+removal and launch commands. Re-record the real campus from front-right to front-left and back to
+front-right, keeping live traffic visible and using isolated capture data only.
+Documentation/media scope; no runtime version bump or package publication.
+
 | Id | Item | Status | Notes |
 | --- | --- | --- | --- |
 | I-CROSS-PLATFORM-DISCOVERY | Align installed executables and agent configuration roots across operating systems | Verified locally v0.4.293 (Codex GPT orchestration, 2026-11-12) | Shared Connect/history/runtime roots: official Windows Hermes home, legacy fallback without merging, authoritative overrides, explicit named-profile identity/model/delegation/launch coherence and Gemini base-home semantics. Bounded GUI executable discovery and no-shell standard npm Node launchers use pinned upstream cmd-shim 7.0.0/9.0.2 fixtures; unsupported wrappers report diagnostics. Invalid roots fail per app; changed roots retain recorded-config Disconnect and leave other installations untouched. Sol helper/integration work, Luna read-only review, parent runtime/control/queue integration. Full pnpm check passed: 679 TS suites/9,383 tests, eight suites/58 tests skipped, 576 Rust tests and all builds. Temporary homes only; native Windows vendor/installer execution and arbitrary npm Hermes distributions remain unverified. No real config change, commit or publish. See [connection architecture](../architecture/agent-app-connections.md#cross-platform-discovery-local-v04293). |
