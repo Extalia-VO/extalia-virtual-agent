@@ -1,17 +1,48 @@
-![Extalia campus with moving traffic](docs/images/campus-traffic.webp)
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/brand/extalia-logo-dark.png">
+    <img src="docs/brand/extalia-logo-light.png" alt="Extalia Virtual Agent" width="560">
+  </picture>
+</p>
 
-# Download Extalia
+<p align="center">
+  <a href="https://www.npmjs.com/package/extalia-vo"><img src="https://img.shields.io/npm/v/extalia-vo" alt="npm version"></a>
+  <a href="https://github.com/Extalia-VO/extalia-virtual-agent/actions"><img src="https://github.com/Extalia-VO/extalia-virtual-agent/actions/workflows/ci.yml/badge.svg" alt="CI status"></a>
+  <a href="https://github.com/Extalia-VO/extalia-virtual-agent/stargazers"><img src="https://img.shields.io/github/stars/Extalia-VO/extalia-virtual-agent?style=flat&amp;color=58a6ff" alt="GitHub stars"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License: MIT"></a>
+  <a href="#download-extalia"><img src="https://img.shields.io/badge/platforms-macOS%20%7C%20Windows%20%7C%20Linux%20%7C%20Web-596778" alt="Platforms: macOS, Windows, Linux and Web"></a>
+</p>
+
+<h1 align="center">Extalia Virtual Agent</h1>
+
+<p align="center">
+  An open-source workspace for <strong>Codex, Claude Code, Antigravity, Hermes</strong> and other supported AI agents.<br>
+  Follow their work in a living 3D office, connect your knowledge and organize reusable skills.<br>
+  Build Extalia Native teams with the models you choose.
+</p>
+
+![Extalia campus camera tour from front-right to front-left and back, with moving traffic](docs/images/campus-traffic.webp)
+
+## Download Extalia
+
+### Install through npm
+
+Install the Web app and local Bridge from a terminal:
+
+```bash
+npm install -g extalia-vo@latest
+extalia
+```
+
+Requires Node.js **22.13+ on the 22.x line**, or **23.4+ on newer lines**.
+See [first launch and setup](#first-launch-and-setup) for the next steps.
+
+### Desktop installers
 
 | macOS | Windows | Linux |
 | --- | --- | --- |
 | [**Download for Mac**](https://github.com/Extalia-VO/extalia-virtual-agent/releases) | [**Download for Windows**](https://github.com/Extalia-VO/extalia-virtual-agent/releases) | [**Download for Linux**](https://github.com/Extalia-VO/extalia-virtual-agent/releases) |
 | Apple Silicon / Intel · DMG or ZIP | x64 · Setup EXE | x64 · AppImage, DEB or per-user setup |
-
-[![CI](https://github.com/Extalia-VO/extalia-virtual-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/Extalia-VO/extalia-virtual-agent/actions) [![npm](https://img.shields.io/npm/v/extalia-vo)](https://www.npmjs.com/package/extalia-vo) [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-
-**Prefer npm?** Run `npm install -g extalia-vo@latest`, then `extalia`.
-See [npm installation and first launch](#install-through-npm) for requirements
-and setup.
 
 Choose the release and architecture from the linked assets. **Beta previews**
 are marked as prereleases and are separate from npm's `latest` tag. Source on
@@ -24,29 +55,21 @@ you trust, try opening it once, then use **System Settings → Privacy & Securit
 Open Anyway** and confirm the launch. These previews use manual replacement
 updates; see [macOS release modes](docs/release/packaging.md#macos-release-modes).
 
-<details>
-<summary>Optional Terminal step for a trusted official macOS preview</summary>
-
-If the quarantine warning persists after the normal opening steps, you can
-remove quarantine from the installed application:
+If macOS still blocks an **official preview you trust**, remove quarantine from
+the installed copy and open it from a terminal:
 
 ```bash
 xattr -dr com.apple.quarantine /Applications/Extalia.app
+open /Applications/Extalia.app
 ```
 
 This applies only to that copy of Extalia. It does not notarize the app or verify
 its origin; use it only after confirming you trust the official download.
 
-</details>
-
 See [Platform and releases](docs/modules/platform-release.md) for packaging,
 updates and platform-specific limits.
 
 ## Your agents in a shared 3D office
-
-An open-source workspace for running AI agents and following their work in Chat
-or a shared 3D office. Use Extalia Native with your own model connection, manage
-Hermes Agent sessions, or observe agents running in their existing apps.
 
 Teams can delegate scoped work to workers and bring their findings back to the
 lead agent. The Office makes that activity visible as the work happens:
@@ -143,16 +166,9 @@ are never activated automatically. Windows learning artifact staging and broader
 learning-quality acceptance remain unfinished. See
 [Knowledge and memory](docs/modules/knowledge-memory.md).
 
-## Install through npm
+## First launch and setup
 
-Requires Node.js **22.13+ on the 22.x line**, or **23.4+ on newer lines**.
-
-```bash
-npm install -g extalia-vo@latest
-extalia
-```
-
-The command starts the local Bridge and opens the Web app at
+The `extalia` command starts the local Bridge and opens the Web app at
 `http://127.0.0.1:4310/`. The app, public scene assets and matching platform
 daemon are installed together. Install `extalia-vo`, rather than an individual
 `@extalia/daemon-*` package. Contributors use pnpm inside this repository;

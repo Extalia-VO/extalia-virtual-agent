@@ -18,6 +18,11 @@ All notable changes to this project are documented here. The format follows
 
 ### Documentation
 
+- Restore the README's centered Extalia logo, badges, title and introduction
+  before the campus preview. Add a smooth front-right → front-left → front-right
+  camera tour, keeping downloads below the building and feature previews separate.
+  Show the npm installation script before Desktop installers, with visible macOS
+  quarantine-removal and launch commands beside the downloads.
 - Put macOS, Windows and Linux downloads directly below the animated campus in
   the README, followed by the separate animated feature previews. Keep npm as a
   compact installation option and move detailed setup below the feature tour.
