@@ -1,3 +1,5 @@
+![Extalia campus with moving traffic](docs/images/campus-traffic.webp)
+
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/brand/extalia-logo-dark.png">
@@ -10,6 +12,15 @@
 An open-source workspace for running AI agents and following their work in Chat
 or a shared 3D office. Use Extalia Native with your own model connection, manage
 Hermes Agent sessions, or observe agents running in their existing apps.
+
+Teams can delegate scoped work to workers and bring their findings back to the
+lead agent. The Office makes that activity visible as the work happens:
+
+<p align="center">
+  <img src="docs/images/extalia-deligating-teams.webp" alt="Animated demo of team delegation and live progress in the Extalia 3D office" width="100%">
+  <br>
+  <sub><b>One lead. Multiple workers. Progress you can follow.</b></sub>
+</p>
 
 [![CI](https://github.com/Extalia-VO/extalia-virtual-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/Extalia-VO/extalia-virtual-agent/actions)
 [![npm](https://img.shields.io/npm/v/extalia-vo)](https://www.npmjs.com/package/extalia-vo)
@@ -115,7 +126,14 @@ Finding an installed CLI or receiving a hook does not prove control capabilities
 See [runtime adapters](docs/architecture/runtime-adapters.md) and
 [observed replies](docs/getting-started/observed-replies.md).
 
-![Extalia 3D office and campus](docs/images/campus-building.png)
+### Follow work across projects
+
+Bring supported outside agents into one Observe view. Switch between projects,
+read their conversations and inspect tool activity while the source apps keep
+working. The preview below uses demonstration projects and simulated activity
+from Codex, Antigravity and Claude Code.
+
+![Observe: working agents across demonstration projects](docs/images/observe-session.webp)
 
 ### Connect an outside agent
 
@@ -133,15 +151,20 @@ configuration backups and an undo command; it does not silently inject hooks at
 startup. Source-app restart or hook approval may still be required. See
 [connection safety and verification](docs/architecture/agent-app-connections.md).
 
-![Managed conversations and team controls in the Office](docs/images/prompt-native.png)
-
 ## Skills, Knowledge and memory
+
+### Browse your Grimoire
 
 **Skills** has built-in procedures, categories, search, reviewed folder/project
 imports and public marketplace previews. Built-ins include memory and team
 workflow guidance plus opt-in Caveman-style concise replies. Explicit **Learn as
 skill** requests and eligible post-task learning can propose candidates into the
 user library; ordinary document reading does not automatically install a skill.
+
+Turn to the next shelf, hover over a book for a preview, then open it and slide
+through its pages. These books contain demonstration skill content.
+
+![Skills Grimoire: change shelf pages, preview books and turn an opened book's pages](docs/images/skills-grimoire.webp)
 
 External and generated candidates stay separate from active skills. Their exact
 revision needs inspection, user review, applicable approval and activation.
@@ -150,10 +173,19 @@ for **macOS 14+ ARM64**. Other scanner platforms remain unavailable and external
 candidates fail closed. A clean scan does not prove quality, grant permissions
 or activate a skill. See [Skills](docs/modules/skills.md).
 
+### Explore connected Knowledge
+
 **Knowledge** indexes a selected Markdown/Obsidian-compatible vault with search,
 links, aliases and backlinks. Explore it through 2D/3D graphs with filters, focus
 and elastic node dragging, or use the list view. Graph layout changes do not
 rewrite notes or links. Obsidian itself is not required or installed by Extalia.
+
+This demonstration vault has **1,600 notes and 4,427 links**. Rotate the graph,
+click a node to read its note, or drag a node and let it return to the layout.
+
+![Knowledge: explore 1,600 demo notes, open a node's detail and drag a node](docs/images/knowledge-graph.webp)
+
+### Keep useful workspace memory
 
 **Workspace memory** supplies bounded relevant summaries and paged reads for
 Native conversations. It is distinct from the vault index and conversation
