@@ -428,6 +428,14 @@ for Codex, Antigravity and Claude Code, without implying live app verification.
 Documentation-only; no runtime version bump or package publication. These
 recordings do not close feature, scalability or release acceptance gates.
 
+README layout revision (Codex, 2026-11-13,
+[#102](https://github.com/Extalia-VO/extalia-virtual-agent/issues/102)): supersede
+the introduction-first arrangement above with animated campus → compact macOS,
+Windows and Linux download table → feature explanations with their separate
+animations. Retain an npm option and macOS opening guidance beside downloads;
+move detailed npm setup below the feature showcase. Existing media and runtime
+versions remain unchanged; this is a documentation-only layout refinement.
+
 | Id | Item | Status | Notes |
 | --- | --- | --- | --- |
 | I-CROSS-PLATFORM-DISCOVERY | Align installed executables and agent configuration roots across operating systems | Verified locally v0.4.293 (Codex GPT orchestration, 2026-11-12) | Shared Connect/history/runtime roots: official Windows Hermes home, legacy fallback without merging, authoritative overrides, explicit named-profile identity/model/delegation/launch coherence and Gemini base-home semantics. Bounded GUI executable discovery and no-shell standard npm Node launchers use pinned upstream cmd-shim 7.0.0/9.0.2 fixtures; unsupported wrappers report diagnostics. Invalid roots fail per app; changed roots retain recorded-config Disconnect and leave other installations untouched. Sol helper/integration work, Luna read-only review, parent runtime/control/queue integration. Full pnpm check passed: 679 TS suites/9,383 tests, eight suites/58 tests skipped, 576 Rust tests and all builds. Temporary homes only; native Windows vendor/installer execution and arbitrary npm Hermes distributions remain unverified. No real config change, commit or publish. See [connection architecture](../architecture/agent-app-connections.md#cross-platform-discovery-local-v04293). |

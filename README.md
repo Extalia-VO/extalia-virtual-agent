@@ -1,85 +1,22 @@
 ![Extalia campus with moving traffic](docs/images/campus-traffic.webp)
 
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/brand/extalia-logo-dark.png">
-    <img src="docs/brand/extalia-logo-light.png" alt="Extalia" width="460">
-  </picture>
-</p>
+# Download Extalia
 
-# Extalia
+| macOS | Windows | Linux |
+| --- | --- | --- |
+| [**Download for Mac**](https://github.com/Extalia-VO/extalia-virtual-agent/releases) | [**Download for Windows**](https://github.com/Extalia-VO/extalia-virtual-agent/releases) | [**Download for Linux**](https://github.com/Extalia-VO/extalia-virtual-agent/releases) |
+| Apple Silicon / Intel · DMG or ZIP | x64 · Setup EXE | x64 · AppImage, DEB or per-user setup |
 
-An open-source workspace for running AI agents and following their work in Chat
-or a shared 3D office. Use Extalia Native with your own model connection, manage
-Hermes Agent sessions, or observe agents running in their existing apps.
+[![CI](https://github.com/Extalia-VO/extalia-virtual-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/Extalia-VO/extalia-virtual-agent/actions) [![npm](https://img.shields.io/npm/v/extalia-vo)](https://www.npmjs.com/package/extalia-vo) [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-Teams can delegate scoped work to workers and bring their findings back to the
-lead agent. The Office makes that activity visible as the work happens:
+**Prefer npm?** Run `npm install -g extalia-vo@latest`, then `extalia`.
+See [npm installation and first launch](#install-through-npm) for requirements
+and setup.
 
-<p align="center">
-  <img src="docs/images/extalia-deligating-teams.webp" alt="Animated demo of team delegation and live progress in the Extalia 3D office" width="100%">
-  <br>
-  <sub><b>One lead. Multiple workers. Progress you can follow.</b></sub>
-</p>
-
-[![CI](https://github.com/Extalia-VO/extalia-virtual-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/Extalia-VO/extalia-virtual-agent/actions)
-[![npm](https://img.shields.io/npm/v/extalia-vo)](https://www.npmjs.com/package/extalia-vo)
-[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-
-**Beta software.** This README describes the current source. Published npm
-packages and Desktop downloads may have different versions and may not yet
-include every change on `main`. Check your installed version and the matching
-[release notes](https://github.com/Extalia-VO/extalia-virtual-agent/releases).
-The [v0.5 acceptance gate](https://github.com/Extalia-VO/extalia-virtual-agent/issues/60)
-is still open.
-
-## Install through npm
-
-Requires Node.js **22.13+ on the 22.x line**, or **23.4+ on newer lines**.
-
-```bash
-npm install -g extalia-vo@latest
-extalia
-```
-
-The command starts the local Bridge and opens the Web app at
-`http://127.0.0.1:4310/`. The app, public scene assets and matching platform
-daemon are installed together. Install `extalia-vo`, rather than an individual
-`@extalia/daemon-*` package. Contributors use pnpm inside this repository;
-keep the global npm application install outside its dependency tree.
-
-On first launch:
-
-1. Choose **Extalia Native**, configure your model service or local router,
-   and **test the connection before selecting a model**. Hermes Agent is an
-   optional installed runtime.
-2. Choose a project folder, or skip and add a workspace from Chat or Settings
-   later. Desktop uses the operating system's folder dialog; Web browses folders
-   on the Bridge computer.
-3. Start a conversation or configure a team. Worker findings return to the lead;
-   the Office presents the same session activity as the conventional views.
-
-```bash
-extalia version        # show the installed version
-extalia doctor         # inspect host and data-directory diagnostics
-extalia update         # update the npm installation
-```
-
-Press **Ctrl+C** in the terminal to stop the Bridge. Desktop and the Bridge
-share one data root; stop one before starting the other. See
-[Getting started](docs/getting-started/README.md) for setup and troubleshooting.
-
-## Desktop downloads
-
-Choose the release and architecture from the official
-[GitHub Releases page](https://github.com/Extalia-VO/extalia-virtual-agent/releases).
-Previews are marked as prereleases; they are separate from the npm `latest` tag.
-Use the checksum file attached to the same release when verifying an installer.
-
-### macOS: Apple Silicon and Intel
-
-[Download the macOS DMG or ZIP](https://github.com/Extalia-VO/extalia-virtual-agent/releases),
-then move **Extalia.app** into **Applications**.
+Choose the release and architecture from the linked assets. **Beta previews**
+are marked as prereleases and are separate from npm's `latest` tag. Source on
+`main` may be newer than the published downloads; check the matching release
+notes and checksum file. On Mac, move **Extalia.app** into **Applications**.
 
 **Free macOS previews are ad-hoc signed and are not Apple-notarized.** macOS may
 show an unidentified-developer or verification warning. For an official download
@@ -102,15 +39,23 @@ its origin; use it only after confirming you trust the official download.
 
 </details>
 
-### Windows and Linux
-
-- **Windows x64:** choose the Desktop setup executable from the
-  [release assets](https://github.com/Extalia-VO/extalia-virtual-agent/releases).
-- **Linux x64:** choose an AppImage, Debian/Ubuntu package or per-user setup from
-  the [release assets](https://github.com/Extalia-VO/extalia-virtual-agent/releases).
-
 See [Platform and releases](docs/modules/platform-release.md) for packaging,
-update behavior and platform-specific limits.
+updates and platform-specific limits.
+
+## Your agents in a shared 3D office
+
+An open-source workspace for running AI agents and following their work in Chat
+or a shared 3D office. Use Extalia Native with your own model connection, manage
+Hermes Agent sessions, or observe agents running in their existing apps.
+
+Teams can delegate scoped work to workers and bring their findings back to the
+lead agent. The Office makes that activity visible as the work happens:
+
+<p align="center">
+  <img src="docs/images/extalia-deligating-teams.webp" alt="Animated demo of team delegation and live progress in the Extalia 3D office" width="100%">
+  <br>
+  <sub><b>One lead. Multiple workers. Progress you can follow.</b></sub>
+</p>
 
 ## Choose how agents work
 
@@ -197,6 +142,42 @@ or unresolved ownership operations can still require waiting. Generated skills
 are never activated automatically. Windows learning artifact staging and broader
 learning-quality acceptance remain unfinished. See
 [Knowledge and memory](docs/modules/knowledge-memory.md).
+
+## Install through npm
+
+Requires Node.js **22.13+ on the 22.x line**, or **23.4+ on newer lines**.
+
+```bash
+npm install -g extalia-vo@latest
+extalia
+```
+
+The command starts the local Bridge and opens the Web app at
+`http://127.0.0.1:4310/`. The app, public scene assets and matching platform
+daemon are installed together. Install `extalia-vo`, rather than an individual
+`@extalia/daemon-*` package. Contributors use pnpm inside this repository;
+keep the global npm application install outside its dependency tree.
+
+On first launch:
+
+1. Choose **Extalia Native**, configure your model service or local router,
+   and **test the connection before selecting a model**. Hermes Agent is an
+   optional installed runtime.
+2. Choose a project folder, or skip and add a workspace from Chat or Settings
+   later. Desktop uses the operating system's folder dialog; Web browses folders
+   on the Bridge computer.
+3. Start a conversation or configure a team. Worker findings return to the lead;
+   the Office presents the same session activity as the conventional views.
+
+```bash
+extalia version        # show the installed version
+extalia doctor         # inspect host and data-directory diagnostics
+extalia update         # update the npm installation
+```
+
+Press **Ctrl+C** in the terminal to stop the Bridge. Desktop and the Bridge
+share one data root; stop one before starting the other. See
+[Getting started](docs/getting-started/README.md) for setup and troubleshooting.
 
 ## Workspaces and your data
 
