@@ -409,13 +409,17 @@ re-running every historical browser, vendor, hardware or long-duration experimen
 
 ### Versioned implementation entries
 
-Current integration: [#93](https://github.com/Extalia-VO/extalia-virtual-agent/issues/93)
-(prepared for PR review, Codex GPT orchestration, 2026-11-13): README refreshed,
-ten issue/four milestone checkpoints reconciled, and the reviewed v0.4.289–294
-maintenance batch passes `pnpm check` (9,405 TS and 576 Rust tests, all builds).
-Required remote CI and approving review remain before main integration. Broader
-release gates stay open; unrelated dirty worktrees are preserved. This
-documentation-only update does not add a runtime version bump or publish packages.
+Maintenance integration [#93](https://github.com/Extalia-VO/extalia-virtual-agent/issues/93)
+merged through [PR #94](https://github.com/Extalia-VO/extalia-virtual-agent/pull/94)
+as `74706ec` on 2026-11-13. The final local gate passed 9,399 TS and 576 Rust
+tests plus all builds; all ten required remote CI checks passed. An unchanged
+Ubuntu SIGINT timing test needed one failed-job rerun, recorded in the PR.
+Ten issue/four milestone checkpoints were reconciled; broader release gates
+stay open and unrelated dirty worktrees remain preserved.
+
+README preview follow-up (Codex, 2026-11-13): campus building first, a brief
+introduction, then the animated team-delegation WebP before installation/download details. Documentation-only;
+no runtime version bump or package publication.
 
 | Id | Item | Status | Notes |
 | --- | --- | --- | --- |

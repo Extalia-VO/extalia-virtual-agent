@@ -1,3 +1,5 @@
+![Extalia 3D office and campus](docs/images/campus-building.png)
+
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/brand/extalia-logo-dark.png">
@@ -10,6 +12,15 @@
 An open-source workspace for running AI agents and following their work in Chat
 or a shared 3D office. Use Extalia Native with your own model connection, manage
 Hermes Agent sessions, or observe agents running in their existing apps.
+
+Teams can delegate scoped work to workers and bring their findings back to the
+lead agent. The Office makes that activity visible as the work happens:
+
+<p align="center">
+  <img src="docs/images/extalia-deligating-teams.webp" alt="Animated demo of team delegation and live progress in the Extalia 3D office" width="100%">
+  <br>
+  <sub><b>One lead. Multiple workers. Progress you can follow.</b></sub>
+</p>
 
 [![CI](https://github.com/Extalia-VO/extalia-virtual-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/Extalia-VO/extalia-virtual-agent/actions)
 [![npm](https://img.shields.io/npm/v/extalia-vo)](https://www.npmjs.com/package/extalia-vo)
@@ -114,8 +125,6 @@ not mean inference is local; use a local model service if that is your intent.
 Finding an installed CLI or receiving a hook does not prove control capabilities.
 See [runtime adapters](docs/architecture/runtime-adapters.md) and
 [observed replies](docs/getting-started/observed-replies.md).
-
-![Extalia 3D office and campus](docs/images/campus-building.png)
 
 ### Connect an outside agent
 

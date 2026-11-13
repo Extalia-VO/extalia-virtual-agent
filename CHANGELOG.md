@@ -18,6 +18,8 @@ All notable changes to this project are documented here. The format follows
 
 ### Documentation
 
+- Lead the README with the campus building, a short introduction and the animated
+  team-delegation WebP, ahead of installation and download details.
 - Rebuild the README around npm installation, Desktop downloads and clear Native,
   Hermes and Observe capabilities. Remove Web/CLI archive links and place macOS
   unidentified-developer opening instructions beside the Mac downloads.
