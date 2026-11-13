@@ -18,6 +18,9 @@ All notable changes to this project are documented here. The format follows
 
 ### Documentation
 
+- Put macOS, Windows and Linux downloads directly below the animated campus in
+  the README, followed by the separate animated feature previews. Keep npm as a
+  compact installation option and move detailed setup below the feature tour.
 - Lead the README with animated campus traffic and the existing team-delegation
   WebP. Give Observe, the Skills Grimoire and a 1,600-note Knowledge graph their
   own animated previews, captured from real views with isolated demonstration
