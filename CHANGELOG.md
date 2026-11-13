@@ -18,8 +18,10 @@ All notable changes to this project are documented here. The format follows
 
 ### Documentation
 
-- Lead the README with the campus building, a short introduction and the animated
-  team-delegation WebP, ahead of installation and download details.
+- Lead the README with animated campus traffic and the existing team-delegation
+  WebP. Give Observe, the Skills Grimoire and a 1,600-note Knowledge graph their
+  own animated previews, captured from real views with isolated demonstration
+  data, including book browsing and node-detail interactions.
 - Rebuild the README around npm installation, Desktop downloads and clear Native,
   Hermes and Observe capabilities. Remove Web/CLI archive links and place macOS
   unidentified-developer opening instructions beside the Mac downloads.

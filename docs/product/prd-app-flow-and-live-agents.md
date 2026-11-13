@@ -417,9 +417,16 @@ Ubuntu SIGINT timing test needed one failed-job rerun, recorded in the PR.
 Ten issue/four milestone checkpoints were reconciled; broader release gates
 stay open and unrelated dirty worktrees remain preserved.
 
-README preview follow-up (Codex, 2026-11-13): campus building first, a brief
-introduction, then the animated team-delegation WebP before installation/download details. Documentation-only;
-no runtime version bump or package publication.
+README preview follow-up (Codex GPT orchestration, 2026-11-13): animated campus
+traffic first, a brief introduction, then the existing team-delegation WebP
+before installation/download details. Observe, Skills Grimoire and Knowledge
+each have a separate feature preview using isolated demonstration data and real
+UI components. Knowledge demonstrates 1,600 nodes, canvas selection/note details
+and elastic dragging; Skills demonstrates shelf pagination, book hover/opening
+and page turns. Observe uses simulated working sessions across sample projects
+for Codex, Antigravity and Claude Code, without implying live app verification.
+Documentation-only; no runtime version bump or package publication. These
+recordings do not close feature, scalability or release acceptance gates.
 
 | Id | Item | Status | Notes |
 | --- | --- | --- | --- |
