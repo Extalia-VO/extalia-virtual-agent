@@ -181,7 +181,16 @@ pub(super) fn learning_markdown(v: &Value) -> Result<String> {
     if evidence.iter().any(|e| !seen.insert(s(e, "id"))) {
         return Err(refuse("invalid_note"));
     }
-    let mut rows = vec!["---".into(), "type: generated-learning".into()];
+    let mut rows = vec![
+        "---".into(),
+        "type: generated-learning".into(),
+        "kind: learning".into(),
+        if v.get("skill").is_some() {
+            "tags: [learning, automatic-learning, skill-candidate]".into()
+        } else {
+            "tags: [learning, automatic-learning]".into()
+        },
+    ];
     for (key, field) in [
         ("profile", "profileId"),
         ("policy_revision", "revision"),
@@ -222,7 +231,12 @@ pub(super) fn meeting_markdown(v: &Value, p: &Value) -> Result<String> {
     {
         return Err(refuse("unknown_participant"));
     }
-    let mut rows = vec!["---".into(), "type: meeting".into()];
+    let mut rows = vec![
+        "---".into(),
+        "type: meeting".into(),
+        "kind: meeting".into(),
+        "tags: [meeting, team-knowledge]".into(),
+    ];
     for (key, field) in [
         ("profile", "profileId"),
         ("workspace", "workspaceId"),

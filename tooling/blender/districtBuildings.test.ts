@@ -11,12 +11,13 @@ type Scene = Awaited<ReturnType<InstanceType<typeof GLTFLoader>["parseAsync"]>>[
 
 const localFile = new URL("../../apps/web/local-assets/landscape/district-buildings.glb", import.meta.url);
 const manifestFile = new URL("../../apps/web/local-assets/landscape/district-buildings.manifest.json", import.meta.url);
+const publicFile = new URL("../../apps/web/public-assets/landscape/district-buildings.glb", import.meta.url);
 const materialName = (object: unknown) => {
   if (!(object instanceof Mesh)) return undefined;
   return Array.isArray(object.material) ? object.material[0]?.name : object.material.name;
 };
 
-describe.skipIf(!existsSync(localFile))("actual local Blender surrounding district buildings library", () => {
+describe("Blender surrounding district buildings library", () => {
   let scene: Scene;
   const asset = (name: string) => {
     const root = scene.getObjectByName(name);
@@ -26,11 +27,11 @@ describe.skipIf(!existsSync(localFile))("actual local Blender surrounding distri
   const bounds = (name: string) => new Box3().setFromObject(asset(name));
 
   beforeAll(async () => {
-    scene = (await new GLTFLoader().parseAsync(new Uint8Array(readFileSync(localFile)).buffer, "")).scene;
+    scene = (await new GLTFLoader().parseAsync(new Uint8Array(readFileSync(existsSync(localFile) ? localFile : publicFile)).buffer, "")).scene;
     scene.updateWorldMatrix(true, true);
   });
 
-  it("exports all 12 district buildings at origin within the 35k triangle budget", () => {
+  it.skipIf(!existsSync(manifestFile))("exports all 12 district buildings at origin within the 35k triangle budget", () => {
     const manifest = JSON.parse(readFileSync(manifestFile, "utf8"));
     expect(Object.keys(manifest.groups)).toHaveLength(DISTRICT_BUILDINGS.length);
     let triangles = 0;
@@ -58,7 +59,7 @@ describe.skipIf(!existsSync(localFile))("actual local Blender surrounding distri
     expect(triangles).toBeLessThanOrEqual(35_000);
   });
 
-  it("adds real overview-facing window relief and recessed lobby glazing to every nearby building", () => {
+  it.skipIf(!existsSync(manifestFile))("adds real overview-facing window relief and recessed lobby glazing to every nearby building", () => {
     const manifest = JSON.parse(readFileSync(manifestFile, "utf8"));
     for (let i = 0; i < DISTRICT_BUILDINGS.length; i++) {
       const name = `district-${i}`;
@@ -82,27 +83,22 @@ describe.skipIf(!existsSync(localFile))("actual local Blender surrounding distri
     expect(materialName(paneRay.intersectObject(root, true)[0]!.object)).toBe("District facade glazing");
   });
 
-  it("bakes all 12 buildings into 4 world-space role geometries with per-building window-shader seeds", () => {
+  it("retains each building's window seed and separate cullable bounds", () => {
     const batch = bakeDistrictModelBatch(scene);
     expect(batch).not.toBeNull();
     try {
-      expect(batch!.facade.getAttribute("aSeed")).toBeDefined();
-      expect(batch!.facade.getAttribute("color")).toBeDefined();
-      expect(batch!.solid.getAttribute("color")).toBeDefined();
-      expect(batch!.crown.getAttribute("color")).toBeDefined();
-      expect(batch!.foliage.getAttribute("color")).toBeDefined();
-
-      const seedAttr = batch!.facade.getAttribute("aSeed");
-      const uniqueSeeds = new Set<number>();
-      for (let i = 0; i < seedAttr.count; i++) {
-        uniqueSeeds.add(Math.round(seedAttr.getX(i) * 10) / 10);
-      }
-      expect(uniqueSeeds.size).toBe(DISTRICT_BUILDINGS.length);
+      expect(batch).toHaveLength(DISTRICT_BUILDINGS.length);
+      batch!.forEach((chunk, index) => {
+        const seed = chunk.facade.getAttribute("aSeed");
+        expect(seed.getX(0)).toBeCloseTo(101 + index * 3.7);
+        expect(seed.getX(seed.count - 1)).toBeCloseTo(seed.getX(0));
+        for (const geometry of Object.values(chunk)) if (geometry) {
+          expect(geometry.getAttribute("color")).toBeDefined();
+          expect(geometry.boundingSphere!.center.distanceTo(new Vector3(DISTRICT_BUILDINGS[index]!.x, 0, DISTRICT_BUILDINGS[index]!.z))).toBeLessThan(125);
+        }
+      });
     } finally {
-      batch?.facade.dispose();
-      batch?.solid.dispose();
-      batch?.crown.dispose();
-      batch?.foliage.dispose();
+      for (const chunk of batch ?? []) for (const geometry of Object.values(chunk)) geometry?.dispose();
     }
   });
 

@@ -45,8 +45,8 @@ export type ObservedAutomaticLearningOptions = Omit<AutomaticLearningOptions, 'r
 
 /** General workspace file/search/web/memory tools never enter the curator. Rust enforces its own allowlist and read count. */
 export function automaticLearningTools(tools: readonly AnyTool[]): AnyTool[] {
-  return tools.filter(tool => tool.access === 'read' && (tool.kind === 'knowledge' || tool.kind === 'read' || tool.kind === 'search')
-    && (/^knowledge_[a-z_]+$/.test(tool.name) || ['skill_read', 'skill_search', 'skill_list'].includes(tool.name))
+  return tools.filter(tool => ((tool.access === 'read' && (tool.kind === 'knowledge' || tool.kind === 'read' || tool.kind === 'search') && /^knowledge_[a-z_]+$/.test(tool.name))
+      || ((tool.access === 'read' || tool.access === 'meta') && tool.kind === 'knowledge' && ['skill_read', 'skill_search', 'skill_list'].includes(tool.name)))
     && !/write|edit|command|execute|shell|terminal|propose|delegat|manage|meeting|submit|delete|remove|rollback|import|sync/.test(tool.name));
 }
 export function hasAutomaticLearningEvidence(result: TurnResult, evidence: readonly ToolResultEntry[]): boolean {

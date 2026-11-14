@@ -28,11 +28,14 @@ export function learningSourceUrls(prompt: string): string[] {
 /** A direct learning request, rather than instructions quoted by a document or model. */
 export function requestsSkillLearning(prompt: string): boolean {
   const first = prompt.trim().split(/[\r\n]/u, 1)[0]!.slice(0, 1_000);
+  const directCommand = /^\/learn(?:-skill)?\s+\S/u.test(first);
   const prefix = '(?:(?:please|tolong|mohon|silakan|silahkan)\\s+|(?:can|could|would)\\s+you\\s+|bisa(?:kah)?(?:\\s+(?:kamu|anda))?\\s+)?';
   const directLearning = new RegExp(`^${prefix}(?:learn|study|pelajari|belajarlah)\\b`, 'iu').test(first);
-  const directSave = new RegExp(`^${prefix}(?:create|save|add|update|buat(?:kan)?|simpan|tambahkan|perbarui)\\s+(?:(?:a|an|new|user|my|sebuah|satu)\\s+){0,3}skills?\\b`, 'iu').test(first);
-  if (!directSave && !directLearning) return false;
+  const target = '(?:this(?:\\s+(?:procedure|workflow|guide|pattern|method))?|it|ini|prosedur\\s+ini|langkah\\s+ini|cara\\s+ini)';
+  const directSave = new RegExp(`^${prefix}(?:create|save|add|update|buat(?:kan)?|simpan|tambahkan|perbarui)\\s+(?:${target}\\s+(?:as|into|sebagai|menjadi)\\s+)?(?:(?:a|an|new|reusable|user|my|sebuah|satu)\\s+){0,3}skills?\\b`, 'iu').test(first)
+    || new RegExp(`^${prefix}(?:turn|convert|extract|distill|jadikan|ubah)\\s+(?:${target}\\s+)?(?:into|as|to|from\\s+this|menjadi|sebagai|ke)\\s+(?:(?:a|an|new|reusable|user|my|sebuah|satu)\\s+){0,3}skills?\\b`, 'iu').test(first);
+  if (!directCommand && !directSave && !directLearning) return false;
   // Respect an explicit instruction to keep the current material out of the library.
   if (excludesSkillLearning(prompt)) return false;
-  return directSave || /\bskills?\b/iu.test(first) || hasLearningSourceLink(prompt);
+  return directCommand || directSave || /\bskills?\b/iu.test(first) || hasLearningSourceLink(prompt);
 }

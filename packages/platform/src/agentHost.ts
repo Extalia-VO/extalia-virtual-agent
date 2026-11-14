@@ -46,6 +46,7 @@ import type { WorkspaceKnowledgeBinding, WorkspaceKnowledgeMethod } from './work
 import type { SkillMarketSearchResult, SkillMarketPreviewInput, SkillMarketPreview } from './skillMarket.js';
 import type { ContinuityView, ContinuityReadInput, ContinuityReadPage, HandoverPreviewInput, HandoverPreview, HandoverApplyInput, HandoverReconcileInput, HandoverReceipt } from './handover.js';
 import { VAULT_PROFILE_HOST_METHODS, type VaultProfilesCatalog, type SaveVaultProfileInput } from './vaultProfiles.js';
+import { GENERAL_SCHEDULE_HOST_METHODS, type GeneralScheduleCatalog, type SaveGeneralScheduleInput } from './schedules.js';
 
 /**
  * The agent host runs the Extalia Native runtime where files and commands are
@@ -1203,6 +1204,12 @@ export interface AgentHostApi extends ObservedMemoryApi {
   /** Bounded post-task learning, separate from the completed foreground invocation. */
   learningSchedule?(): Promise<LearningScheduleSnapshot>;
   changeLearningSchedule?(id: string, revision: string, action: LearningScheduleAction['action']): Promise<LearningScheduleSnapshot>;
+  /** User-created one-off and recurring prompt schedules with session creation/continuation and assigned agents. */
+  listSchedules?(): Promise<GeneralScheduleCatalog>;
+  saveSchedule?(input: SaveGeneralScheduleInput): Promise<GeneralScheduleCatalog>;
+  setScheduleEnabled?(id: string, enabled: boolean, expectedRevision?: number): Promise<GeneralScheduleCatalog>;
+  runScheduleNow?(id: string, expectedRevision?: number): Promise<GeneralScheduleCatalog>;
+  deleteSchedule?(id: string, expectedRevision?: number): Promise<GeneralScheduleCatalog>;
   /** Host resolves the registered vault; an optional expected binding only refuses stale callers. */
   workspaceKnowledge?(workspaceId: string, method: WorkspaceKnowledgeMethod, args: unknown[], expectedBinding?: WorkspaceKnowledgeBinding): Promise<unknown>;
   /** Live protocol events for every session. Returns an unsubscribe function. */
@@ -1215,6 +1222,7 @@ export const AGENT_HOST_METHODS = [
   'getStateSummary', 'getState', 'getProfile', 'saveProfile', 'saveConnection', 'deleteConnection', 'testConnection', 'checkFolder', 'browseDirectories', 'saveWorkspace', 'deleteWorkspace',
   'nativeStatus', 'refreshNativeStatus', 'setWorkspaceMissionConnections', 'planNativeMission', 'startNativeMission', 'cancelNativeMission', 'nativeMissionRun', 'listNativeMissions', 'refreshNativeMissionRecovery',
   ...OPERATING_PROFILE_HOST_METHODS,
+  ...GENERAL_SCHEDULE_HOST_METHODS,
   'completeSetup', 'createSession', 'setSessionOptions', 'modelChoices', 'teamModelChoices', 'getSessionTeam', 'saveSessionTeam', 'saveWorkspaceTeam', 'planTeam', 'continueSession', 'renameSession', 'previewSessionMove', 'moveSession', 'setSessionProjectRoot', 'sessionContinuity', 'handoverHarnesses', 'createHandoverDestination', 'previewHandover', 'applyHandover', 'readContinuity', 'reconcileHandover', 'deleteSession', 'sessionEvents', 'sendPrompt', 'uploadAttachment', 'removeAttachment', 'attachmentPreview', 'resolveApproval', 'cancel',
   'setWorkflow', 'observeImports', 'observationSession', 'markObservedRead', 'setObservation', 'setAutoWatch',
   'observedWorkspaceLink', 'setObservedWorkspaceLink',

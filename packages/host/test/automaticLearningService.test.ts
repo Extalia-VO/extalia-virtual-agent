@@ -447,6 +447,8 @@ describe.skipIf(process.platform === 'win32')('saved profile automatic learning 
       release.resolve(); await settledLearning(f);
       const learned = (await f.host.learningSchedule!()).jobs[0]!;
       expect(learned.state).toBe('completed');
+      const curatorTools = f.requests.find(curator)?.tools?.map(item => item.function.name) ?? [];
+      expect(curatorTools).toEqual(expect.arrayContaining(['knowledge_search', 'knowledge_read', 'skill_read', 'skill_list', 'skill_search', 'submit_learning']));
       expect(learned.result?.skill).toMatchObject({ kind: 'skill-candidate', profileId: f.profile.id, workspaceId: f.workspace.id, sessionId: f.session.id, activationPerformed: false });
       expect(learned.result?.skill?.state).not.toBe('active');
       expect(await noteFiles(f.profile.root, f.workspace.id)).toHaveLength(1);

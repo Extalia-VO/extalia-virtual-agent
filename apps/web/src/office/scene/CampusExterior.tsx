@@ -529,11 +529,14 @@ function SquareParasol({ position, canopy = "#e7e2d4" }: { position: [number, nu
 /** Pickup stays at the physical counter; only settled guests can start preparation. */
 function KioskPickupDisplay() {
   const cup = useRef<Mesh>(null), indicator = useRef<MeshStandardMaterial>(null);
+  const lastStatus = useRef<string | undefined>("__unset__");
   useFrame(() => {
-    const state = outdoorKioskState.snapshot();
-    if (cup.current) cup.current.visible = state?.status === "pickup";
+    const status = outdoorKioskState.snapshot()?.status;
+    if (status === lastStatus.current) return;
+    lastStatus.current = status;
+    if (cup.current) cup.current.visible = status === "pickup";
     if (indicator.current) {
-      indicator.current.color.set(state?.status === "pickup" ? "#90e6b5" : state?.status === "preparing" ? "#e6ba72" : "#43685e");
+      indicator.current.color.set(status === "pickup" ? "#90e6b5" : status === "preparing" ? "#e6ba72" : "#43685e");
       indicator.current.emissive.copy(indicator.current.color);
     }
   });

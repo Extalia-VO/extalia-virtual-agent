@@ -674,6 +674,28 @@ function unquoteArg(value: unknown): string {
   return text;
 }
 
+/** Close an open fenced code block before an Antigravity compact-log `<truncated N bytes>` marker so following Markdown is not swallowed. */
+function repairAntigravityTruncatedMarkdown(text: string): string {
+  if (!text.includes('<truncated ')) return text;
+  const lines = text.split('\n');
+  const out: string[] = [];
+  let openFence: string | undefined;
+  for (const line of lines) {
+    const fence = /^ {0,3}(`{3,}|~{3,})/.exec(line);
+    if (fence) {
+      const marker = fence[1]!;
+      if (!openFence) openFence = marker;
+      else if (marker[0] === openFence[0] && marker.length >= openFence.length && /^ {0,3}(?:`{3,}|~{3,})\s*$/.test(line)) openFence = undefined;
+    }
+    if (openFence && /^<truncated \d+ bytes>$/.test(line.trim())) {
+      out.push(openFence);
+      openFence = undefined;
+    }
+    out.push(line);
+  }
+  return out.join('\n');
+}
+
 /** Antigravity brain transcript JSONL (`~/.gemini/antigravity/brain/<id>/.system_generated/logs/transcript.jsonl`). */
 export function parseAntigravity(text: string, context: ParseContext): NativeParseResult {
   const diagnostics: string[] = [], rows = records(text, diagnostics);
@@ -690,9 +712,11 @@ export function parseAntigravity(text: string, context: ParseContext): NativePar
     if (startAt === undefined && (row.created_at ?? row.timestamp)) startAt = row.created_at ?? row.timestamp;
     const base = { pos, ...(at ? { at } : {}) };
     const type = str(row.type);
-    const rawContent = Array.isArray(row.content)
-      ? row.content.map(item => str(item)).filter(Boolean).join('\n')
-      : str(row.content);
+    const rawContent = repairAntigravityTruncatedMarkdown(
+      Array.isArray(row.content)
+        ? row.content.map(item => str(item)).filter(Boolean).join('\n')
+        : str(row.content),
+    );
     const rowModel = safeLabel(str(row.model ?? row.modelName), 120);
     if (rowModel && !/^(?:none|auto)$/i.test(rowModel)) model = rowModel;
 

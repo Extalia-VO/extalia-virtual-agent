@@ -23,6 +23,7 @@ import { OverviewDetail } from './environment/OverviewDetail';
 import { QA_HOOKS } from './qaHooks';
 import { ModelInstanceBatches } from './ModelInstanceBatches';
 import { CampusNightLighting } from './environment/CampusNightLighting';
+import { HiddenSceneTransforms } from './environment/HiddenSceneTransforms';
 import { FurnishedFloors, type FurnishedOfficeView } from './FurnishedFloors';
 import type { OfficeAgentAllocation } from './interior/seating';
 import { useOfficeAllocations } from './interior/useOfficeAllocations';
@@ -110,6 +111,8 @@ export default function OfficeCanvas({ automaticShot, view, viewRequest, languag
   const ownAllocations = useOfficeAllocations(agents);
   const allocations = givenAllocations ?? ownAllocations;
   const director = useMovementDirector();
+  const benchmarkRoster = useCallback(() => director.list, [director]);
+  const admittedIdentity = useMemo(() => JSON.stringify(agents.map(agent => agent.id).sort()), [agents]);
   const facility = useFacilityDirector(director);
   // Agents and facility staff share one live position source (camera locate/follow, character card, page floor lookups).
   const live = useMemo(() => combinePositionSources(director, facility), [director, facility]);
@@ -127,19 +130,20 @@ export default function OfficeCanvas({ automaticShot, view, viewRequest, languag
   }, [onContextState]);
   const dpr = useBudgetPixelRatio(canvas);
   const text = MESSAGES[language].officeUx;
-  return <div style={{ position: 'relative', width: '100%', height: '100%' }}><Canvas ref={setCanvas} events={officePointerEvents} frameloop={context === 'lost' ? 'never' : 'always'} orthographic camera={initialCamera} dpr={dpr} shadows="percentage" gl={{ antialias: false, powerPreference: 'high-performance' }} style={{ width: '100%', height: '100%' }} onPointerMissed={onMiss}>
+  return <div style={{ position: 'relative', width: '100%', height: '100%' }}><Canvas ref={setCanvas} events={officePointerEvents} frameloop={context === 'lost' ? 'never' : 'always'} orthographic camera={initialCamera} dpr={dpr} shadows gl={{ antialias: false, powerPreference: 'high-performance' }} style={{ width: '100%', height: '100%' }} onPointerMissed={onMiss}>
     <OfficeContextLifecycle onState={contextChanged} />
     <CanvasContinuity />
+    <HiddenSceneTransforms />
     <ModelInstanceBatches />
     <SceneEnvironment dark={dark} reducedMotion={reducedMotion} lightOverride={lightOverride} followSun={followSun}>
       <SceneReadiness onScene={onScene} onReady={onReady} />
-      {/* Sky, fog and sun/moon follow the solar environment; adaptive resolution targets a 30 fps floor. */}
+      {/* Sky, fog and sun/moon follow the solar environment; measured resolution trials pursue 60 fps without a frame-rate ceiling. */}
       <SceneLighting />
-      <AdaptiveRenderBudget />
-      {QA_HOOKS && <SceneBenchProbe />}
-      <OverviewDetail campus={view === 'campus'} />
+      <AdaptiveRenderBudget view={view} admittedIdentity={admittedIdentity} roster={benchmarkRoster} />
+      {QA_HOOKS && <SceneBenchProbe admitted={agents.length} roster={benchmarkRoster} />}
+      <OverviewDetail campus={view === 'campus'} stacked={view === 'stack'} />
       <CameraView automaticShot={automaticShot} automaticSeat={allocations.find(seat => seat.agentId === automaticShot?.targetId)?.position} view={view} viewRequest={viewRequest} focus={focus} focusId={selectedId} live={live} focusRequest={focusRequest} onFocusFinished={onFocusFinished} reducedMotion={reducedMotion} following={follow} focusPoint={focusPoint} onFollowEnd={onFollowEnd} onFollowFloor={onFollowFloor} />
-      <group visible={view === 'campus'} name="campus-site">
+      <group visible={view === 'campus'} name="campus-site" userData={{ officeSkipHiddenRenderTransforms: true }}>
         <CampusNeighborhood /><CampusRoofSignage />
         <StaticCampusBatch><CampusExterior frontContext={false} /></StaticCampusBatch>
         {/* The Blender building model when present locally; the three.js shell is its backup. */}
@@ -147,7 +151,7 @@ export default function OfficeCanvas({ automaticShot, view, viewRequest, languag
         <CampusRoofUtilities />
         <CampusNightLighting />
       </group>
-      <group visible={view === 'campus' || view === 1} name="campus-front-context">
+      <group visible={view === 'campus' || view === 1} name="campus-front-context" userData={{ officeSkipHiddenRenderTransforms: true }}>
         <StaticCampusBatch><CampusFrontContext /></StaticCampusBatch>
       </group>
       <NaturalWalkingClearance owner={director} />

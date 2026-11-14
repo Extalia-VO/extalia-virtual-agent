@@ -612,9 +612,9 @@
     {
       "path": "packages/host/src/automaticLearning.ts",
       "category": "legacy-backend",
-      "sha256": "943188648b0a1ea013c1bb0f03b794747df9017c95fd36b03ab9aade97408539",
+      "sha256": "f470a449949db0b5dc37d4079c26e46a7a93167ff8e377dcbbc75360fd111dc9",
       "loc": 258,
-      "bytes": 16313,
+      "bytes": 16402,
       "effectKinds": [
         "node-builtin",
         "runtime-call"
@@ -624,9 +624,9 @@
     {
       "path": "packages/host/src/builtinSkills.ts",
       "category": "legacy-backend",
-      "sha256": "2219b9a700b9f47f27c7029017c5de3d542284d6530414d044d6ab2db1f06285",
-      "loc": 175,
-      "bytes": 15027,
+      "sha256": "8143c4365aa7841e0e5135a4f8f7a9595c8727a55ff4542510b88757c7bd2735",
+      "loc": 189,
+      "bytes": 17116,
       "effectKinds": [],
       "unresolvedRuntimeImports": 0
     },
@@ -1345,9 +1345,9 @@
     {
       "path": "packages/host/src/nativeImport.ts",
       "category": "legacy-backend",
-      "sha256": "2e9eba70f601f3e96e5b4c24b9a5b779430fda9c36ff2a30248f95bc772825f0",
-      "loc": 1311,
-      "bytes": 85748,
+      "sha256": "b7a028a91799316eaee52ce6db670da18004a58484b569134e3e8c1ae66f63aa",
+      "loc": 1461,
+      "bytes": 92498,
       "effectKinds": [
         "node-builtin"
       ],
@@ -1356,9 +1356,9 @@
     {
       "path": "packages/host/src/nativeKnowledgeMeeting.ts",
       "category": "legacy-backend",
-      "sha256": "2551c34ad1e2d28e6ff7a2a5de526d16c60c0be6d8fe6e2200585dacbfe6a614",
+      "sha256": "d2ce3b6e04b67aa969ae7df07c2a80e65513152d294c9bac020836880b840028",
       "loc": 130,
-      "bytes": 7390,
+      "bytes": 7484,
       "effectKinds": [],
       "unresolvedRuntimeImports": 0
     },
@@ -1704,9 +1704,9 @@
     {
       "path": "packages/host/src/promptLearning.ts",
       "category": "legacy-backend",
-      "sha256": "fb64bfe67b19d8327da064fc523ef074cc47c3060b57d6160235d5b1707dce00",
-      "loc": 38,
-      "bytes": 2096,
+      "sha256": "a6e3177482d99df0c5a47683f5a572464f2fc54c02fc4962ccea2f6c826fd706",
+      "loc": 41,
+      "bytes": 2616,
       "effectKinds": [],
       "unresolvedRuntimeImports": 0
     },
@@ -1743,6 +1743,17 @@
       "unresolvedRuntimeImports": 0
     },
     {
+      "path": "packages/host/src/schedules.ts",
+      "category": "legacy-backend",
+      "sha256": "ef9f7c70513b51f747955b413fbf4622f229445b06bb53345116b114a0b11b0c",
+      "loc": 524,
+      "bytes": 22023,
+      "effectKinds": [
+        "node-builtin"
+      ],
+      "unresolvedRuntimeImports": 0
+    },
+    {
       "path": "packages/host/src/secrets.ts",
       "category": "legacy-backend",
       "sha256": "3a5690256ff7efe44b03d5820e87ec9057d71be4c5da7f83565d1757d2e97c53",
@@ -1757,9 +1768,9 @@
     {
       "path": "packages/host/src/service.ts",
       "category": "legacy-backend",
-      "sha256": "3045f0abfb53e99900fd455a63b0ed761ad1ffc10da6532d62d954c66195a4f1",
-      "loc": 5654,
-      "bytes": 387878,
+      "sha256": "6861def7ccd0fa4d4db277f0df14db450e56d90d9b93a986abbeec1191417d25",
+      "loc": 5800,
+      "bytes": 396500,
       "effectKinds": [
         "node-builtin",
         "runtime-call"
@@ -1842,9 +1853,9 @@
     {
       "path": "packages/host/src/skillLearning.ts",
       "category": "legacy-backend",
-      "sha256": "98ad660d44a6a391c6238399bbaa4501a8f9bdd07e0adf271b5223416f6efbee",
+      "sha256": "80c95c10917271c4b88ff9ccd1451a7f9f875bd936d4b32fcd44bc93ea827735",
       "loc": 104,
-      "bytes": 7979,
+      "bytes": 8245,
       "effectKinds": [],
       "unresolvedRuntimeImports": 0
     },
@@ -1891,9 +1902,9 @@
     {
       "path": "packages/host/src/skills.ts",
       "category": "legacy-backend",
-      "sha256": "994a9ccc25b37f1f93d268f38bc9efe7f34b302013e87a5a7ef097eebaecb2ad",
+      "sha256": "2bb144bf73e42a562e8e431a94acebe70c8088c13ff86f6447811ddded9e4fbd",
       "loc": 423,
-      "bytes": 28974,
+      "bytes": 29085,
       "effectKinds": [
         "node-builtin"
       ],
@@ -2117,16 +2128,16 @@
     {
       "path": "packages/importers/src/parsers.ts",
       "category": "legacy-backend",
-      "sha256": "417068ddc39b26b89eabd5146f5d79d173fe2e65efa4477b068ffd63235cc60a",
-      "loc": 769,
-      "bytes": 55900,
+      "sha256": "70ab51f7ecd3d47986c41131386b2797f3494e1387d496d8bd874c44a3f450d1",
+      "loc": 793,
+      "bytes": 56820,
       "effectKinds": [],
       "unresolvedRuntimeImports": 0
     },
     {
       "path": "packages/importers/src/steps.ts",
       "category": "legacy-backend",
-      "sha256": "c71029751ad8cda507463ff8673368d89f3470b54cd914ab7c43cc4b7b395875",
+      "sha256": "ea40e0197a564c02d941273e72d4ebcd3e9bd1e1301771f6844b8daa2fcb6db3",
       "loc": 514,
       "bytes": 29777,
       "effectKinds": [],
@@ -2144,9 +2155,9 @@
     {
       "path": "packages/platform/src/agentHost.ts",
       "category": "shared-backend-review",
-      "sha256": "afe2441beb994d856de392232fb26c9ef0fef8d9ec8c8af9b96b523a7e1d9223",
-      "loc": 1261,
-      "bytes": 75733,
+      "sha256": "afbd9d4f0e6d7ec18373f3b9e2818e8448ad05b164dc9b26e6daddc8b3ac60cf",
+      "loc": 1269,
+      "bytes": 76441,
       "effectKinds": [],
       "unresolvedRuntimeImports": 0
     },
@@ -2180,9 +2191,9 @@
     {
       "path": "packages/platform/src/index.ts",
       "category": "shared-backend-review",
-      "sha256": "324af06d6a3df28b9c84261ccb4493ae34529e27ed9c05ef7512ffdd9eaca37e",
-      "loc": 42,
-      "bytes": 1424,
+      "sha256": "a9b9f8b10afca545f5333f52afd6eea8f8b929903f8f0a1df793b71b1550efdd",
+      "loc": 43,
+      "bytes": 1456,
       "effectKinds": [],
       "unresolvedRuntimeImports": 0
     },
@@ -2300,6 +2311,15 @@
       "sha256": "8bbaf6c332bb0a916959285b515fdb4241abea43cc12eb49075ed17a78a51d2c",
       "loc": 23,
       "bytes": 909,
+      "effectKinds": [],
+      "unresolvedRuntimeImports": 0
+    },
+    {
+      "path": "packages/platform/src/schedules.ts",
+      "category": "shared-backend-review",
+      "sha256": "c8c0aec91f01955477261e4aadb1c5a42e1e299d9fad845b94feccb856325aee",
+      "loc": 375,
+      "bytes": 16767,
       "effectKinds": [],
       "unresolvedRuntimeImports": 0
     },
@@ -2925,7 +2945,7 @@
     {
       "path": "apps/web/src/App.tsx",
       "category": "ui",
-      "runtimeSignature": "be7b88c75fc1babe6d09f45f33f727bb6d63e00c7b3f2ba71ea631c3fd6ca2c5"
+      "runtimeSignature": "1eaefc2590aae05dea288e8a5c9174c7cd395698fffbcb9390951d89d96fea8c"
     },
     {
       "path": "apps/web/src/appMode.ts",
@@ -4143,6 +4163,16 @@
       "runtimeSignature": "84c76dc549d4b6c9d35b2e4ff48b47eb93d4a7ca5f808e178755a95b7d64f7d3"
     },
     {
+      "path": "apps/web/src/office/scene/avatars/avatarOutfitBatch.ts",
+      "category": "ui",
+      "runtimeSignature": "ce3ebf7670c5ed0bb87bb0317979d9de0f59cc141e4d46cca5dba7521d7d35fd"
+    },
+    {
+      "path": "apps/web/src/office/scene/avatars/avatarSkeletonSharing.ts",
+      "category": "ui",
+      "runtimeSignature": "0a144d1b52939ff20b1ace05314d2cfb962ed218c4eafd4072bd333f3a812da7"
+    },
+    {
       "path": "apps/web/src/office/scene/avatars/avatarTextures.ts",
       "category": "ui",
       "runtimeSignature": "84c76dc549d4b6c9d35b2e4ff48b47eb93d4a7ca5f808e178755a95b7d64f7d3"
@@ -4300,7 +4330,7 @@
     {
       "path": "apps/web/src/office/scene/avatars/SourceHumanoid.tsx",
       "category": "ui",
-      "runtimeSignature": "88acfa8c8a8fd9ba1cdd5b9134416b8cc3a680dfc59a323bfda822abc784b390"
+      "runtimeSignature": "7932c3e7c63a1d7bb83da32e0ab0de80b2e147adf79628bae9ff6c1520027b9a"
     },
     {
       "path": "apps/web/src/office/scene/avatars/sourceLimbWeights.ts",
@@ -4535,7 +4565,7 @@
     {
       "path": "apps/web/src/office/scene/environment/AdaptiveRenderBudget.tsx",
       "category": "ui",
-      "runtimeSignature": "dc5e3575cd2c6fe0600b2cfe89f04009f24c3762756547f2a199c4c16017cea0"
+      "runtimeSignature": "41712297b8da1eab7d4a8c98b0ded1aef2237e8e579d482f5440a10cb33f768d"
     },
     {
       "path": "apps/web/src/office/scene/environment/CampusNightLighting.tsx",
@@ -4544,6 +4574,11 @@
     },
     {
       "path": "apps/web/src/office/scene/environment/CanvasContinuity.tsx",
+      "category": "ui",
+      "runtimeSignature": "66cf3b7d6a1622f48495f1dcb8eeff2f9effd94d0d9adea04760ae3ec0e5190e"
+    },
+    {
+      "path": "apps/web/src/office/scene/environment/HiddenSceneTransforms.tsx",
       "category": "ui",
       "runtimeSignature": "66cf3b7d6a1622f48495f1dcb8eeff2f9effd94d0d9adea04760ae3ec0e5190e"
     },
@@ -4570,7 +4605,7 @@
     {
       "path": "apps/web/src/office/scene/environment/OverviewDetail.tsx",
       "category": "ui",
-      "runtimeSignature": "75ecf6319efbea0a72249b7d676e9b94f1af7bac1ba15c1dd7395d034b62de8d"
+      "runtimeSignature": "0a78ec65835bbf9c0b44e6586763a95a3c3cfe90859b4dddca148b86fe8ee6b4"
     },
     {
       "path": "apps/web/src/office/scene/environment/overviewLod.ts",
@@ -4605,7 +4640,7 @@
     {
       "path": "apps/web/src/office/scene/ExteriorPart.tsx",
       "category": "ui",
-      "runtimeSignature": "599572edac7ee4dea1fc120ec7c0f43f313cfe8f940937e98c27d3e0d1124beb"
+      "runtimeSignature": "e3ffa6adb88c029cd44666073b7bf7b2f814040bd7adc6fd59ce3860763d6c97"
     },
     {
       "path": "apps/web/src/office/scene/facadeElevation.ts",
@@ -4616,6 +4651,11 @@
       "path": "apps/web/src/office/scene/facadeSweep.ts",
       "category": "ui",
       "runtimeSignature": "84c76dc549d4b6c9d35b2e4ff48b47eb93d4a7ca5f808e178755a95b7d64f7d3"
+    },
+    {
+      "path": "apps/web/src/office/scene/fixedModelTransforms.ts",
+      "category": "ui",
+      "runtimeSignature": "6ed9a7347320bf697ce80e359a4af40c973b3017901fbbef103fa6ee1775c2e2"
     },
     {
       "path": "apps/web/src/office/scene/Floor1.tsx",
@@ -4750,7 +4790,7 @@
     {
       "path": "apps/web/src/office/scene/interior/InteriorPart.tsx",
       "category": "ui",
-      "runtimeSignature": "563e6f61927497036d5429497a823ad39191d163f343e484d3355af12c10dc47"
+      "runtimeSignature": "e136e61c48663ed84a7303d277dabb1a28fbb1914abfd46da3397399dbbbab56"
     },
     {
       "path": "apps/web/src/office/scene/interior/lighting/composeIrradiance.ts",
@@ -5135,7 +5175,7 @@
     {
       "path": "apps/web/src/office/scene/interior/TeamPodDesktop.tsx",
       "category": "ui",
-      "runtimeSignature": "c32646ebb285f2d6db6e06340303f5d1e1e1ac817472f5075cfe9117ef067338"
+      "runtimeSignature": "4f838b8505187ab644dde4b4a875f96f95e64c8e21a5919c6f47e5bef8078396"
     },
     {
       "path": "apps/web/src/office/scene/interior/teamPodDesktopGeometry.ts",
@@ -5150,7 +5190,7 @@
     {
       "path": "apps/web/src/office/scene/interior/WorkstationPart.tsx",
       "category": "ui",
-      "runtimeSignature": "0be2257c1e2d6ccfbbad3f4d30e2d151875e156a10d5adc0297f709481f1aca9"
+      "runtimeSignature": "00f0043f86e52093b5dc1be7d80589983bd9aff74199ec108b93d60dd3bb939c"
     },
     {
       "path": "apps/web/src/office/scene/interior/worldRegistry.ts",
@@ -5370,7 +5410,7 @@
     {
       "path": "apps/web/src/office/scene/OfficeCanvas.tsx",
       "category": "ui",
-      "runtimeSignature": "c688ed2c093931eef3445d5ac1da18e1d052b3bf9021fd72974eaeb67bf4106c"
+      "runtimeSignature": "6e314beca92f9a50b7e3ea08d830b5c466320821be4b6279a4ca8d4016f7d65e"
     },
     {
       "path": "apps/web/src/office/scene/officePointerEvents.ts",
@@ -5721,6 +5761,11 @@
       "path": "apps/web/src/restart/unsavedDrafts.ts",
       "category": "ui",
       "runtimeSignature": "0e46f63c0cf15d4cddf31deb8cac7832c0f46ad07a529657aa9bd66c5c5c5687"
+    },
+    {
+      "path": "apps/web/src/schedules/SchedulesPage.tsx",
+      "category": "ui",
+      "runtimeSignature": "aabd63719060b8f1c2a86e2e97b2bba0bcba40907b7f2d9f6e7461c01a2d98c4"
     },
     {
       "path": "apps/web/src/sessions/LocalProjectTree.tsx",

@@ -23,6 +23,29 @@ function expectMatrix(actual: Matrix4, expected: Matrix4) {
 }
 
 describe('loaded model shared-geometry instancing', () => {
+  it('reuses direct ancestry records without weak-map lookups and detects ancestor reparenting immediately', () => {
+    const h = fixture(128), shared = new Group(), hidden = new Group();
+    h.scene.add(shared, hidden); hidden.visible = false;
+    h.parents.forEach(parent => shared.add(parent));
+    h.update();
+    const visibility = (h.controller as unknown as { visibility: WeakMap<Group, unknown> }).visibility;
+    const lookup = vi.spyOn(visibility, 'get');
+    try {
+      h.update(16); h.update(32);
+      // Every source still validates its render state, but unchanged ancestry no
+      // longer performs a weak identity lookup per source on every frame.
+      expect(lookup).not.toHaveBeenCalled();
+      hidden.add(shared); h.update(48);
+      expect(h.batches()[0]!.count).toBe(0);
+      expect(lookup).toHaveBeenCalled();
+      h.scene.add(shared); h.update(64);
+      expect(h.batches()[0]!.count).toBe(128);
+      h.scene.remove(shared); h.update(80);
+      expect(h.batches()[0]!.count).toBe(0);
+      expect(h.sources.every(source => source.visible)).toBe(true);
+    } finally { lookup.mockRestore(); h.controller.dispose(); }
+  });
+
   it('reduces repeated opaque loaded parts to one draw using exact current world matrices', () => {
     const h = fixture(); h.update();
     expect(h.batches()).toHaveLength(1);

@@ -1,10 +1,11 @@
  
-import { useEffect, useMemo, useRef } from 'react';
-import { useFrame } from '@react-three/fiber';
+import { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
+import { useFrame, useThree } from '@react-three/fiber';
 import { useGLTF } from '@react-three/drei';
 import type { Group, Material, Mesh, Object3D } from 'three';
 import { Bone, Color, DoubleSide, Euler, Matrix4, MeshStandardMaterial, Quaternion, Skeleton, SkinnedMesh, Vector3 } from 'three';
 import { clone } from 'three/examples/jsm/utils/SkeletonUtils.js';
+import { shareAvatarSkeletons } from './avatarSkeletonSharing';
 import { resolveWardrobe, officeGarmentVisibility, OFFICE_WARDROBE_MESHES, SOURCE_WARDROBE_MESHES } from './AvatarWardrobe';
 import { SCAN_OUTFIT_MODEL, scanAccessorySlots, scanOutfitSlot } from './wardrobe';
 import { presentationPreset, type AvatarVisualConfig } from './appearance';
@@ -47,6 +48,7 @@ import { sourceTrouserLining } from './sourceTrouserLining';
 import { sourceNativeNeckline } from './sourceNativeNeckline';
 import { beginAvatarPose, createLodState, lodStep, lodTier, screenHeightPixels, setCastShadows, widenSkinnedBounds } from './avatarLod';
 import { disposeAvatarClone, ownAvatarCloneGeometry } from './avatarCloneResources';
+import { batchFittedOutfitMeshes } from './avatarOutfitBatch';
 import { createFacialPose, expressionTimeSeconds, resolveCharacterExpression, writeFacialPose, type CharacterExpressionState } from './facialExpression';
 import { attachSourceFaceExpressions, writeSourceFaceExpressions, type SourceFaceBinding } from './sourceFaceExpressions';
 
@@ -105,13 +107,19 @@ function attachOutfitModel(body: Group, outfit: Group, name = SCAN_OUTFIT_MODEL)
   outfit.traverse(child => { if ((child as SkinnedMesh).isSkinnedMesh) meshes.push(child as SkinnedMesh); });
   if (!host || meshes.some(source => source.skeleton.bones.some(bone => !bones.has(bone.name)))) return 0;
   let attached = 0;
+  const reboundSkeletons = new Map<Skeleton, Skeleton>();
   for (const source of meshes) {
     const joints = source.skeleton.bones.map(bone => bones.get(bone.name));
     if (!host || joints.some(bone => !bone)) continue;
     const mesh = new SkinnedMesh(source.geometry, Array.isArray(source.material) ? source.material.map(material => material.clone()) : source.material.clone());
     copyFittedMorphTargets(source, mesh);
     mesh.name = name;
-    mesh.bind(new Skeleton(joints as Bone[], source.skeleton.boneInverses.map(matrix => matrix.clone())), (scan ?? source).bindMatrix.clone());
+    let skeleton = reboundSkeletons.get(source.skeleton);
+    if (!skeleton) {
+      skeleton = new Skeleton(joints as Bone[], source.skeleton.boneInverses.map(matrix => matrix.clone()));
+      reboundSkeletons.set(source.skeleton, skeleton);
+    }
+    mesh.bind(skeleton, (scan ?? source).bindMatrix.clone());
     mesh.castShadow = mesh.receiveShadow = true;
     host.add(mesh);
     attached++;
@@ -129,6 +137,7 @@ export function SourceHumanoid({ visual, urls, pieces, seated, typing, reducedMo
   /** Desk the character sits at (the single desk without one). */
   desk?: DeskReach | undefined;
 }) {
+  const hostScene = useThree(state => state.scene);
   const female = presentationPreset(visual.presentation) === 'feminine';
   // Source packs are uncompressed: avoid Draco network downloads and an unused WebAssembly decoder.
   const gltf = useGLTF(urls.body, false, false);
@@ -146,6 +155,7 @@ export function SourceHumanoid({ visual, urls, pieces, seated, typing, reducedMo
       for (const material of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) cutOutHairCards(material);
       mesh.castShadow = mesh.receiveShadow = true;
     });
+    shareAvatarSkeletons(scene);
     scene.updateMatrixWorld(true);
     widenSkinnedBounds(scene);
     return { scene, bones };
@@ -204,7 +214,7 @@ export function SourceHumanoid({ visual, urls, pieces, seated, typing, reducedMo
     const bones = new Map<string, { bone: Bone; rest: Quaternion; world: Quaternion }>();
     scene.traverse(child => { if (child instanceof Bone) bones.set(child.name, { bone: child, rest: child.quaternion.clone(), world: inverse.clone().multiply(child.getWorldQuaternion(new Quaternion())) }); });
     const handCurls: { mesh: SkinnedMesh; targets: readonly [number, number] }[] = [];
-    const curlMeshes: SkinnedMesh[] = [];
+    let curlMeshes: SkinnedMesh[] = [];
     scene.traverse(child => { if ((child as SkinnedMesh).isSkinnedMesh) curlMeshes.push(child as SkinnedMesh); });
     if (originalFeatures.nativeNeckline) {
       const nativeNecks = curlMeshes.filter(mesh => mesh.name.replace(/_\d+$/, '') === 'BodyNeckline');
@@ -288,6 +298,15 @@ export function SourceHumanoid({ visual, urls, pieces, seated, typing, reducedMo
       fullOutfit: fittedOutfit && !originalFeatures.nativeFootwear,
       bottom: loadedParts.bottom === true && replacements.footwear === true,
     });
+    // Fit and measure each authored part first. Bind the animation correctives
+    // only after compatible pieces have joined their final draw mesh.
+    if (fittedOutfit && !mixing && !bottomLayer && !originalFeatures.ownHands) {
+      const merged = batchFittedOutfitMeshes(curlMeshes.filter(mesh => mesh.name === SCAN_OUTFIT_MODEL));
+      if (merged.length) {
+        curlMeshes = curlMeshes.filter(mesh => mesh.parent !== null);
+        for (const mesh of merged) widenSkinnedBounds(mesh);
+      }
+    }
     const curlLengths = sourceHandCurlLengths(curlMeshes);
     const faces: SourceFaceBinding[] = [];
     for (const mesh of curlMeshes) {
@@ -300,10 +319,24 @@ export function SourceHumanoid({ visual, urls, pieces, seated, typing, reducedMo
     // backing. That private input cannot be shared with another clone; own the
     // final uploaded result rather than its never-rendered intermediate.
     for (const mesh of privateGeometryMeshes) ownAvatarCloneGeometry(scene, mesh.geometry);
+    shareAvatarSkeletons(scene);
     return { scene, bones, handCurls, faces, seatedDrapes: seatedDrapeBindings(curlMeshes), walkDrapes: walkDrapeBindings(curlMeshes), shoulderCorrectives: shoulderCorrectiveBindings(curlMeshes, bones), standingHip: bones.get('hips')?.bone.position.y ?? 1.0064, footSoles, footwearSlot, nativeFootwear, ownNeckline: originalFeatures?.ownNeckline === true, ownEyewear: originalFeatures.ownEyewear === true,
       slots: new Set(curlMeshes.map(mesh => mesh.name.replace(/_\d+$/, ''))) };
   }, [gltf.scene, urls.body, urls.outfit, outfitGltf.scene, topPiece, bottomPiece, outerPiece, mixing, selectedOuter, female, visual.clothing?.parts?.bottom, visual.clothing?.model]);
   useEffect(() => () => disposeAvatarClone(model.scene), [model]);
+  // Compare appearance values rather than a rebuilt prop object's identity.
+  const compositionAppearance = JSON.stringify([visual.identityId, visual.presentation, visual.modelVariant, visual.stature,
+    visual.heightMeters, visual.hairVariant, visual.clothing, visual.accessories]);
+  useLayoutEffect(() => {
+    // Deep GLB readiness/replacement may not change shallow scene counts or GPU
+    // memory totals. Keep this epoch local to its Canvas, including portrait scenes.
+    const changed = () => {
+      const before = hostScene.userData.officeAvatarCompositionEpoch;
+      hostScene.userData.officeAvatarCompositionEpoch = (Number.isSafeInteger(before) ? before : 0) + 1;
+    };
+    changed();
+    return changed;
+  }, [hostScene, model, hairModel, compositionAppearance]);
   const rig = useMemo(() => createHumanoidRigProfile(visual.identityId, { stature: visual.stature }), [visual.identityId, visual.stature]);
   const wardrobe = useMemo(() => resolveWardrobe(visual, rig.seed), [visual, rig.seed]);
   const footSoles = wardrobeFootSoleProfile(model.footSoles, model.footwearSlot ?? scanOutfitSlot(wardrobe.outfit, model.slots, visual.clothing?.model), model.nativeFootwear);

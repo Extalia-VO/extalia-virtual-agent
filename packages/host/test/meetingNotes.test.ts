@@ -26,7 +26,10 @@ describe.skipIf(!HAS_DAEMON || process.platform === 'win32')('profile-bound meet
     for (const [vault, profileId, workspaceId] of [[one, 'profile-one', 'workspace-one'], [one, 'profile-one', 'workspace-two'], [two, 'profile-two', 'workspace-three']] as const) {
       const save = await pinMeetingNotes({ context: { workspaceId, sessionId: 'session-one' }, resolve: async () => ({ root: vault, profileId, revision: 'one' }) });
       const note = await save(minutes);
-      expect(await readFile(path.join(vault, note), 'utf8')).toContain(`profile: "${profileId}"`);
+      const content = await readFile(path.join(vault, note), 'utf8');
+      expect(content).toContain(`profile: "${profileId}"`);
+      expect(content).toContain('kind: meeting');
+      expect(content).toContain('tags: [meeting, team-knowledge]');
     }
     expect((await readdir(path.join(one, 'Meetings'))).sort()).toEqual(['workspace-one', 'workspace-two']);
     expect(await readdir(path.join(two, 'Meetings'))).toEqual(['workspace-three']);

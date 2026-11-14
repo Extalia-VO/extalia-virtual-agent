@@ -179,6 +179,25 @@ describe('Antigravity transcripts', () => {
       data: PNG,
     });
   });
+
+  it('preserves long (>20 KB) assistant replies in steps and closes unclosed code fences before compact-log truncation markers', () => {
+    const detailed = `## Bagian I: Skills\n### 1. Struktur Paket Skill di Disk\n\`\`\`text\nSKILL.md\n\`\`\`\n### 2. Standar Frontmatter\n${'Detail section line.\n'.repeat(1100)}## Bagian II: Knowledge & Obsidian\nComplete explanation.`;
+    expect(detailed.length).toBeGreaterThan(22_000);
+    const fullParsed = parseAntigravity(jsonl(
+      { step_index: 1, source: 'USER_EXPLICIT', type: 'USER_INPUT', status: 'DONE', created_at: T, content: '<USER_REQUEST>\nExplain skills and knowledge\n</USER_REQUEST>' },
+      { step_index: 2, source: 'MODEL', type: 'PLANNER_RESPONSE', status: 'DONE', created_at: T1, content: detailed },
+    ), { ...context('antigravity'), nativeSessionId: 'agy-long' });
+    const fullReply = fullParsed.steps?.find(s => s.type === 'reply');
+    expect(fullReply?.type === 'reply' ? fullReply.text : '').toContain('### 2. Standar Frontmatter');
+    expect(fullReply?.type === 'reply' ? fullReply.text : '').toContain('## Bagian II: Knowledge & Obsidian');
+
+    const compactOnly = parseAntigravity(jsonl(
+      { step_index: 1, source: 'USER_EXPLICIT', type: 'USER_INPUT', status: 'DONE', created_at: T, content: 'Explain skills' },
+      { step_index: 2, source: 'MODEL', type: 'PLANNER_RESPONSE', status: 'DONE', created_at: T1, truncated_fields: ['content'], content: '### 1. Struktur Paket\n```text\n├── SKILL.md\n\n<truncated 20525 bytes>\n\n## Bagian II: Obsidian\nVisible tail.' },
+    ), { ...context('antigravity'), nativeSessionId: 'agy-compact' });
+    const compactReply = compactOnly.steps?.find(s => s.type === 'reply');
+    expect(compactReply?.type === 'reply' ? compactReply.text : '').toContain('```\n<truncated 20525 bytes>');
+  });
 });
 
 describe('safety and limits', () => {

@@ -120,10 +120,11 @@ describe('campus vehicle and parking night lighting', () => {
     }
   });
 
-  it('limits real headlight spots to two, nearest to the camera, and none on the lowest render tier', () => {
+  it('limits real headlight spots to two, nearest to the camera, independently of resolution trials', () => {
     expect(HEADLIGHT_SPOT_BUDGET).toBe(2);
     expect(headlightSpotCount(RENDER_BUDGET_LEVELS[0]!.liveBeams, 1)).toBe(2);
-    expect(headlightSpotCount(RENDER_BUDGET_LEVELS.at(-1)!.liveBeams, 1)).toBe(0);
+    expect(headlightSpotCount(RENDER_BUDGET_LEVELS.at(-1)!.liveBeams, 1)).toBe(2);
+    expect(headlightSpotCount(0, 1)).toBe(0);
     expect(headlightSpotCount(6, 0)).toBe(0);
     const cars = [
       { id: 'far', x: 50, z: 0, visible: true }, { id: 'near', x: 2, z: 0, visible: true },

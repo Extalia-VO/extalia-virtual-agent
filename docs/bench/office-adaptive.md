@@ -9,11 +9,11 @@ agent execution, sessions and GLB files are unchanged.
 
 | Physical short-edge ceiling | Live fixture beams | Shadow map | Maximum traffic cars |
 | --- | --- | --- | --- |
-| 480 pixels, fallback | 0 | 512 | 6 |
-| 720 pixels | 0 | 512 | 6 |
+| 720 pixels, lowest trial | 6 | 1024 | 10 |
+| 900 pixels | 6 | 1024 | 10 |
 | 1080 pixels, initial tier | 6 | 1024 | 10 |
-| 1440 pixels | 6 | 1024 | 14 |
-| 2160 pixels | 6 | 1024 | 16 |
+| 1440 pixels | 6 | 1024 | 10 |
+| 2160 pixels | 6 | 1024 | 10 |
 
 The video-style names are approximate: a resizable Office is not necessarily
 16:9. The canvas keeps its aspect ratio, uses at most native DPR or 2, and
@@ -22,25 +22,35 @@ not be supersampled to claim 4K. DOM text and controls keep their native
 resolution. Higher quality is a ceiling, not a promise that every device can
 reach it.
 
-Three consecutive one-second windows below 30 fps reduce quality by one level.
-Exactly 30 fps holds. Six windows at or above 40 fps permit one upgrade;
-twelve consecutive windows above 30 fps also permit a probe on capped displays.
-The sampler warms up for three seconds and settles briefly after a change.
-Failed tiers retry after 15/30/60 foreground windows, capped at 60. Hidden time
-does not count; a remounted Office resumes its settled session tier.
+The controller pursues 60 FPS; it does not cap the frame loop or higher display
+refresh rates. Three stable slow foreground windows permit an adjacent resolution
+trial. The lower resolution survives only when three warmed candidate windows
+save both at least 10% and 2 ms per frame. Ineffective or unstable trials restore
+the confirmed resolution and wait 60 foreground windows before retrying.
+Lights, shadow settings, geometry detail and traffic remain fixed across these
+pixel-only trials. The old 480-pixel fallback has been removed.
+
+Six windows near 60 FPS can start a sharper-resolution trial. A periodic trial
+also checks whether sharpness can be restored when a CPU-bound scene remains
+below 60 FPS. An expensive restoration rolls back and waits 60 foreground
+windows. Camera, composition, size, visibility and context changes invalidate
+unproven comparisons. The sampler warms up for three seconds and settles briefly
+after each change. Hidden time does not count; a remounted Office resumes its
+settled session tier. Background CPU/GPU load can still affect comparisons;
+these trials are a conservative adaptation heuristic, not causal profiling.
 
 A small top-left FPS badge updates once per measurement window without rerendering
 the scene. It reports unfiltered rendered throughput, including hitches; the
-quality controller uses the lower of raw and filtered throughput. Three slow
-windows are required, so an isolated hitch cannot lower quality, while recurring
-stalls cannot be hidden by trimming their longest frame. Hidden/resumed and unmounted canvases clear the readout until fresh
+quality controller uses the lower of raw and filtered throughput. A single slow
+window cannot retain lower quality, while recurring stalls cannot be hidden by
+trimming their longest frame. Hidden/resumed and unmounted canvases clear the readout until fresh
 frames are measured. Desktop uses this same renderer and policy; normal Desktop
 launches have no separate quality cap or software-WebGL switch.
 
 Lower resolution reduces the size of the drawing buffer and fragment workload.
 It does not reduce decoded mesh/texture allocations, model download sizes,
 draw-call counts by itself, or the separate avatar portrait renderers. CPU-heavy
-scenes can still be slow at 480p. Actual renderer resource counts and browser
+scenes can still be slow after a large pixel reduction. Actual renderer resource counts and browser
 measurements must remain separate from whole Desktop memory claims.
 
 ## Hidden character poses and graphics recovery
@@ -81,6 +91,23 @@ a cleanup/render/cleanup replay. These are resource counts in that fixture,
 not bytes, a universal empty-scene budget or a measured application FPS gain.
 Repeated wardrobe geometry allocations are checked separately from textures.
 
+Within each owned source-avatar clone, meshes now share a skeleton only when
+their ordered live bone objects and every finite inverse-bind matrix match
+exactly. Fitted pieces reuse their compatible rebound skeleton. Different
+characters retain independent bones and pose state; geometry, materials, morph
+controls and each mesh's bind frame remain unchanged. Redundant privately owned
+bone textures are disposed without releasing textures retained by another mesh.
+This reduces pose-resource duplication; it does not merge avatar draw calls or
+by itself establish a useful FPS improvement.
+
+Compatible opaque surfaces from a fitted outfit also share a draw mesh when
+their material values, palette role, bind frame and morph layout agree. Each
+avatar still has its own pose and appearance. Repeated sets share immutable
+merged geometry buffers. Fixed furniture clones reuse world transforms when
+their placement is stable, and the renderer skips its transform traversal for
+hidden floor and campus roots. The surrounding district is batched per building
+so offscreen geometry can leave the draw list at any camera zoom.
+
 The Building view and F1 cutaway share one mounted front-arrival context. It
 reuses the existing paving, entrance walk, forecourt lamps and benches at their
 original positions; F2 and F3 hide it. This gives the front outdoor approach a
@@ -111,6 +138,9 @@ missing geometry or stopped frames; successful rendering alone does not prove
 the absence of a memory leak.
 
 ## Reproducible browser comparison
+
+See the [0.4.320 frame-cost measurements](office-frame-cost.md) for matched
+Building, single-floor, All Floors, crowd and drawing-buffer comparisons.
 
 Freeze the current source into a QA-enabled, minified production-React bundle
 before editing. The existing dirty source, rather than an older Git commit or
@@ -146,6 +176,10 @@ CSS dimensions do not change.
 
 The records below precede the 1080p startup and retry policy. They are evidence
 for the earlier allocation change, not a performance measurement of the current policy.
+Their artifacts do not record the selected floor or automatic-camera state.
+They therefore do not establish Building-view throughput: an automatic camera
+can follow a character into a floor view even when fixed coordinates were set.
+The current frame-cost driver explicitly selects and verifies each view.
 
 The [before record](office-adaptive-before.json) and [after record](office-adaptive-after.json)
 use Chrome 157 on macOS with a 1366 × 900 CSS viewport, native DPR 2, fourfold

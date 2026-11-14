@@ -46,7 +46,7 @@ export function Monitor({
     depth: 0.56
   };
   return (
-    <group position={position} rotation={[0, rotationY, 0]} userData={{ officeDeskDevice: "monitor", resourceId: resourceId ?? data.resourceId, slot }}>
+    <group position={position} rotation={[0, rotationY, 0]} userData={{ officeDeskDevice: "monitor", resourceId: resourceId ?? data.resourceId, slot, officeSmallDecor: slot > 1 }}>
       <SmartScreen position={[0, monitorPanelY(height), 0]} data={data} resourceId={resourceId} width={width} height={height}
         bezel={MONITOR.bezel} depth={MONITOR.depth} variant={variant}
         device={device} slot={slot} slots={slots} idleContent={idleContent} deskPool={pool} housingAsset="monitor-shell" />

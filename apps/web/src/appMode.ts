@@ -44,7 +44,7 @@ export function navigationGroups({ agents, workflow, canChat }: NavigationInput)
   ];
   const work: PageId[] = ['office'];
   if (chatAvailable({ agents, workflow, hasWorkspaces: canChat })) work.push('chat');
-  if (canChat) work.push('missions');
+  if (canChat) work.push('missions', 'schedules');
   work.push('observe');
   // Files and Git read a workspace's project folder, so they need one.
   if (canChat) work.push('files', 'git');

@@ -25,7 +25,7 @@ checked; they are not fresh acceptance results for every later scene change.
 | Shared campus/F1–F3/All floors, appearance and portraits | Implemented | Public registered Blender-derived assets have their own licenses; procedural fallbacks remain. No claim that every visible primitive is a Blender asset. |
 | Camera locate, live follow and request attention | Implemented | Explicit selection and manual zoom policies remain separate from automatic attention; phase-only external requests are coarse indicators. |
 | Natural route curves, speed variation, door/chair/seat/lift coordination and crowd recovery | Implemented with bounded controllers and regression coverage | Authored navigation, portal/contact constraints and physical checks remain; this is not arbitrary free-space navigation or a universal physics solver. |
-| Day/night fixtures, floor-bound lighting and adaptive drawing | Implemented | The 40 FPS value is a controller target, not an all-device guarantee. Broad hardware/long-duration acceptance remains open. |
+| Day/night fixtures, floor-bound lighting and adaptive drawing | Implemented | The controller targets 60 FPS and retains lower resolution only after a measured improvement. Full campus, crowd and physical-device throughput acceptance remains open. |
 | Canvas resize continuity and scene recovery | Implemented | Graphics-context failures and development reloads are distinct from the repaired resize clear; recovery must preserve application drafts. |
 | Facility, hospitality, fitness and leisure presentation | Implemented in authored interactions | Scene animations do not create new agent execution or prove an external action happened. |
 

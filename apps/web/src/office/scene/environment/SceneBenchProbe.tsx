@@ -6,6 +6,9 @@ import { overviewFlags } from './overviewLod';
 /** Renderer statistics for one measurement window (`__EXTALIA_BENCH__.measure`). */
 export interface BenchWindow {
   frames: number;
+  /** Actual Office render submissions, separate from the measuring RAF clock. */
+  renderedFrames: number;
+  renderedFps: number;
   seconds: number;
   /** Frames per second over the whole window. */
   fps: number;
@@ -33,6 +36,8 @@ export interface BenchWindow {
 type Point = [number, number, number];
 type BenchApi = {
   camera(target: Point, offset: Point, zoom: number): void;
+  cameraState(): { position: Point; zoom: number; near: number; far: number };
+  population(): { admitted: number; roster: number; arrived: number };
   measure(ms: number): Promise<BenchWindow>;
   /** Hide (false) or restore (true/undefined) every object whose name matches the pattern. */
   toggle(pattern: string, visible: boolean): number;
@@ -67,7 +72,7 @@ function visibleStats(root: Object3D) {
 }
 
 /** QA/benchmark probe (`QA_HOOKS` builds only): fixed cameras, frame statistics and subsystem toggles. */
-export function SceneBenchProbe() {
+export function SceneBenchProbe({ admitted = 0, roster }: { admitted?: number; roster?(): readonly { opacity: number }[] }) {
   const gl = useThree(state => state.gl);
   const scene = useThree(state => state.scene);
   const camera = useThree(state => state.camera);
@@ -103,6 +108,9 @@ export function SceneBenchProbe() {
       scene,
       flags: overviewFlags,
       pause(paused) { setFrameloop(paused ? 'never' : 'always'); },
+      cameraState() { return { position: camera.position.toArray() as Point, zoom: (camera as OrthographicCamera).zoom,
+        near: (camera as OrthographicCamera).near, far: (camera as OrthographicCamera).far }; },
+      population() { const current = roster?.() ?? []; return { admitted, roster: current.length, arrived: current.filter(entry => entry.opacity > 0).length }; },
       camera(target, offset, zoom) {
         camera.position.set(target[0] + offset[0], target[1] + offset[1], target[2] + offset[2]);
         (camera as OrthographicCamera | PerspectiveCamera).zoom = zoom;
@@ -134,6 +142,7 @@ export function SceneBenchProbe() {
             const seconds = intervals.reduce((sum, value) => sum + value, 0) / 1000;
             const round = (value: number, digits = 1) => Math.round(value * 10 ** digits) / 10 ** digits;
             resolve({ frames: intervals.length, seconds: round(seconds, 2), fps: round(intervals.length / seconds),
+              renderedFrames: live.renderMs.length, renderedFps: round(live.renderMs.length / Math.max(0.001, (now - started) / 1000)),
               medianFps: round(1000 / percentile(sorted, 0.5)), p5Fps: round(1000 / percentile(sorted, 0.95)),
               secondMedianFps: round(percentile(seconds2, 0.5)), secondP5Fps: round(seconds2[Math.floor((seconds2.length - 1) * 0.05)] ?? 0),
               renderMs: round(mean(live.renderMs), 2), gpuMs: live.gpu.length ? round(mean(live.gpu), 2) : null,
@@ -191,6 +200,6 @@ export function SceneBenchProbe() {
       for (const [object, was] of hidden) object.visible = was;
       delete (window as ProbeWindow).__EXTALIA_BENCH__;
     };
-  }, [gl, scene, camera, controls, setFrameloop]);
+  }, [gl, scene, camera, controls, setFrameloop, admitted, roster]);
   return null;
 }

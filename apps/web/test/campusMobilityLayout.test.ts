@@ -172,10 +172,10 @@ describe('campus mobility and pedestrian separation',()=>{
     const rush=carSeconds(8*60),midday=carSeconds(13*60),night=carSeconds(2*60);
     expect(rush).toBeGreaterThan(midday);expect(midday).toBeGreaterThan(night);expect(night).toBeGreaterThan(rush*.1);
   });
-  it('caps moving cars per render tier (fewer on lower tiers) and sizes each model batch for its peak',()=>{
-    expect(RENDER_BUDGET_LEVELS.map(level=>level.trafficCars)).toEqual([16,14,10,6,6]);
-    expect(MAX_TRAFFIC_CARS).toBe(16);
-    expect(trafficCarCap(99)).toBe(6);expect(trafficCarCap(-1)).toBe(16);
+  it('keeps moving-car workload fixed across resolution trials and sizes model batches for its peak',()=>{
+    expect(RENDER_BUDGET_LEVELS.map(level=>level.trafficCars)).toEqual([10,10,10,10,10]);
+    expect(MAX_TRAFFIC_CARS).toBe(10);
+    expect(trafficCarCap(99)).toBe(10);expect(trafficCarCap(-1)).toBe(10);
     for(const seed of seeds.slice(0,2)){
       const styles=dailyStyles(seed),bounds=trafficModelSlots(styles,MAX_TRAFFIC_CARS,MAX_LOT_CARS).slots;
       let previous=Infinity;

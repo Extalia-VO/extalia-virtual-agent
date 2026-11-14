@@ -25,6 +25,7 @@ export function officeRendererInfo() {
     drawingBuffer: { width: gl.drawingBufferWidth, height: gl.drawingBufferHeight },
     pixelRatio: renderer.getPixelRatio(), nativeDpr: window.devicePixelRatio,
     engine: canvas.getAttribute('data-engine'),
+    multiDraw: Boolean(gl.getExtension('WEBGL_multi_draw')),
     contextAttributes: gl.getContextAttributes(),
   };
 }

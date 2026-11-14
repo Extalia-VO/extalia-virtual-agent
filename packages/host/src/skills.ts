@@ -221,8 +221,8 @@ export async function readCatalogSkill(catalog: AgentSkillCatalog, name: string)
 const CATEGORY_TERMS: readonly [BuiltinSkillCategory, readonly string[]][] = [
   ['development', ['code', 'implement', 'implementation', 'build', 'bug', 'fix', 'debug', 'refactor', 'kode', 'buat', 'perbaiki', 'fitur']],
   ['quality', ['review', 'test', 'tests', 'testing', 'regression', 'validate', 'verification', 'uji', 'pengujian', 'tinjau']],
-  ['documentation', ['docs', 'documentation', 'readme', 'explain', 'describe', 'document', 'caveman', 'dokumentasi', 'jelaskan']],
-  ['planning', ['plan', 'planning', 'design', 'architecture', 'feature', 'orchestrator', 'team', 'delegate', 'memory', 'recall', 'rencana', 'arsitektur', 'tim', 'memori']],
+  ['documentation', ['docs', 'documentation', 'readme', 'explain', 'describe', 'document', 'caveman', 'knowledge', 'obsidian', 'vault', 'wiki', 'wikilinks', 'dokumentasi', 'jelaskan', 'pengetahuan', 'catatan']],
+  ['planning', ['plan', 'planning', 'design', 'architecture', 'feature', 'orchestrator', 'team', 'delegate', 'memory', 'recall', 'skill', 'learn', 'rencana', 'arsitektur', 'tim', 'memori', 'pelajari']],
   ['security', ['security', 'secure', 'vulnerability', 'injection', 'auth', 'authentication', 'authorization', 'secrets', 'keamanan', 'aman']],
   ['delivery', ['commit', 'release', 'publish', 'delivery', 'deploy', 'rilis', 'terbitkan']],
 ];

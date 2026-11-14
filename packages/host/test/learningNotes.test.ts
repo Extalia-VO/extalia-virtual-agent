@@ -46,7 +46,7 @@ describe.skipIf(!HAS_DAEMON || process.platform === 'win32')('immutable profile-
     const note = await save({ ...record, skill: { packageId: 'validate-input', revisionId: 'revision-one', state: 'quarantined', inspection: 'unavailable', created: true, activationPerformed: false, cancellationObserved: false } });
     expect(note).toBe('Learning/workspace-one/run-one.md');
     const body = await readFile(path.join(root, note), 'utf8');
-    for (const part of ['type: generated-learning', 'profile: "profile-one"', 'policy_revision: "revision-one"', 'session: "session-one"', 'run_id: "run-one"', record.promptSha256, record.evidence[0]!.content, 'User-library package:', 'no activation or profile-specific skill isolation']) expect(body).toContain(part);
+    for (const part of ['type: generated-learning', 'kind: learning', 'tags: [learning, automatic-learning, skill-candidate]', 'profile: "profile-one"', 'policy_revision: "revision-one"', 'session: "session-one"', 'run_id: "run-one"', record.promptSha256, record.evidence[0]!.content, 'User-library package:', 'no activation or profile-specific skill isolation']) expect(body).toContain(part);
     expect(authorize).toHaveBeenCalledTimes(2); expect(await readdir(root)).toEqual(['Learning']);
   });
 

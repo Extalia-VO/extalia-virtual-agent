@@ -52,8 +52,9 @@ const SettingsPage = lazy(() => import('./pages/SettingsPage').then(module => ({
 const SkillsPage = lazy(() => import('./skills/SkillsPage').then(module => ({ default: module.SkillsPage })));
 const ObserverPage = lazy(() => import('./pages/ObserverPage').then(module => ({ default: module.ObserverPage })));
 const MissionsPage = lazy(() => import('./missions/MissionsPage').then(module => ({ default: module.MissionsPage })));
+const SchedulesPage = lazy(() => import('./schedules/SchedulesPage').then(module => ({ default: module.SchedulesPage })));
 
-const ICONS: Record<PageId, IconName> = { office: 'monitor', chat: 'chat', missions: 'mission', observe: 'diagnostics', files: 'files', git: 'git', knowledge: 'bulb', history: 'book', import: 'download', logs: 'logs', start: 'start', diagnostics: 'diagnostics', skills: 'spark', settings: 'settings' };
+const ICONS: Record<PageId, IconName> = { office: 'monitor', chat: 'chat', missions: 'mission', schedules: 'clock', observe: 'diagnostics', files: 'files', git: 'git', knowledge: 'bulb', history: 'book', import: 'download', logs: 'logs', start: 'start', diagnostics: 'diagnostics', skills: 'spark', settings: 'settings' };
 
 type ViewTransition = { ready: Promise<void>; finished: Promise<void>; updateCallbackDone: Promise<void> };
 
@@ -284,6 +285,13 @@ export function App({ platform }: { platform: Platform }) {
                 onSelectWorkspace={workspaceId => { setMissionFocus(null); setSelection({ workspaceId }); }}
                 onSelectSession={(sessionId, workspaceId) => { setMissionFocus(null); setSelection({ workspaceId, sessionId }); }} onOpenChat={() => setPage('chat')} onOpenSettings={() => openSettings(hostState?.connections.length ? 'workspaces' : 'connections')}
                 onEditGate={workspaceId => { setGateFocus(workspaceId); openSettings('workspaces'); }} />
+            )}
+            {activePage === 'schedules' && agents && hostState && (
+              <SchedulesPage t={t} agents={agents} state={hostState} workspaceId={chatWorkspaceId}
+                onSelectWorkspace={workspaceId => setSelection({ workspaceId })}
+                onOpenSession={(sessionId, workspaceId) => { setSelection({ workspaceId, sessionId }); setPage('chat'); }}
+                onOpenSettings={() => openSettings(hostState?.connections.length ? 'workspaces' : 'connections')}
+                onState={host.apply} />
             )}
             {activePage === 'chat' && agents && hostState && (
               <ChatPage t={t} language={preferences.language} agents={agents} picker={hostState.host.kind === 'desktop' ? platform.capabilities.filesystem : undefined} state={hostState} onState={host.apply}

@@ -40,6 +40,9 @@ const DISCOVERY_COLD_PER_POLL = 400;
 const MAX_SUBAGENTS = 100;
 const MAX_SIDECAR_BYTES = 64 * 1024;
 const MAX_THREAD_INDEX_BYTES = 4 * 1024 * 1024;
+const MAX_FULL_TRANSCRIPT_SCAN_BYTES = 128 * 1024 * 1024;
+const MAX_FULL_LINE_BYTES = 4 * 1024 * 1024;
+const HYDRATED_CONTENT_LIMIT = 100_000;
 /** Codex rollout names carry local time; child threads are looked for from a day before their root started. */
 const THREAD_SLACK_MS = 26 * 60 * 60 * 1000;
 
@@ -92,6 +95,149 @@ function contained(root: string, path: string): string {
 
 function readBounded(root: string, path: string, max: number): string {
   return readBoundedBuffer(root, path, max).toString('utf8');
+}
+
+/**
+ * Antigravity writes a compact `transcript.jsonl` that replaces the middle of long
+ * `content` or `tool_calls` fields with `<truncated N bytes>` and records the field
+ * names in `truncated_fields`, while keeping the complete JSON row on the matching
+ * `step_index` line of the sibling `transcript_full.jsonl`. Recover conversational
+ * `content` (and truncated `tool_calls`) from `transcript_full.jsonl` without loading
+ * full `thinking` traces or huge tool outputs into memory.
+ */
+function hydrateAntigravityTranscript(root: string, transcriptPath: string, content: string): string {
+  if (!content.includes('"truncated_fields"') && !content.includes('<truncated ')) return content;
+  const lines = content.split('\n');
+  const needed = new Map<number, { indices: number[]; rows: Row[] }>();
+  for (let index = 0; index < lines.length; index++) {
+    const line = lines[index]!;
+    if (!line.includes('"truncated_fields"') && !line.includes('<truncated ')) continue;
+    try {
+      const row = JSON.parse(line) as Row;
+      const stepIndex = typeof row.step_index === 'number' && Number.isInteger(row.step_index) ? row.step_index : undefined;
+      if (stepIndex === undefined || (row.type !== 'USER_INPUT' && row.type !== 'PLANNER_RESPONSE')) continue;
+      const truncated = Array.isArray(row.truncated_fields) ? row.truncated_fields : [];
+      const contentTruncated = truncated.includes('content') || (typeof row.content === 'string' && /<truncated \d+ bytes>/.test(row.content));
+      const toolsTruncated = truncated.includes('tool_calls');
+      if (!contentTruncated && !toolsTruncated) continue;
+      const bucket = needed.get(stepIndex) ?? { indices: [], rows: [] };
+      bucket.indices.push(index);
+      bucket.rows.push(row);
+      needed.set(stepIndex, bucket);
+    } catch { /* partial line */ }
+  }
+  if (!needed.size) return content;
+
+  const fullPath = join(dirname(transcriptPath), 'transcript_full.jsonl');
+  if (!existsSync(fullPath)) return content;
+  let canonical: string;
+  try { canonical = contained(root, fullPath); } catch { return content; }
+  let fd: number;
+  try { fd = openSync(canonical, 'r'); } catch { return content; }
+  try {
+    const info = fstatSync(fd);
+    if (!info.isFile()) return content;
+    const scanLimit = Math.min(info.size, MAX_FULL_TRANSCRIPT_SCAN_BYTES);
+    const chunk = Buffer.alloc(256 * 1024);
+    let parts: Buffer[] = [];
+    let lineBytes = 0;
+    let lineOverflow = false;
+    let position = 0;
+
+    const processLineBuffer = (lineBuf: Buffer) => {
+      if (lineBuf.length === 0 || !needed.size) return;
+      const headLen = Math.min(lineBuf.length, 512);
+      const headMatch = /"step_index"\s*:\s*(\d+)/.exec(lineBuf.subarray(0, headLen).toString('utf8'));
+      if (headMatch && !needed.has(Number(headMatch[1]))) return;
+      const lineText = lineBuf.toString('utf8');
+      const stepMatch = headMatch ?? /"step_index"\s*:\s*(\d+)/.exec(lineText);
+      if (!stepMatch) return;
+      const stepIndex = Number(stepMatch[1]);
+      const bucket = needed.get(stepIndex);
+      if (!bucket) return;
+      try {
+        const fullRow = JSON.parse(lineText) as Row;
+        for (let i = 0; i < bucket.rows.length; i++) {
+          const compactRow = bucket.rows[i]!;
+          const lineIdx = bucket.indices[i]!;
+          if (typeof fullRow.content === 'string' && fullRow.content.length > 0) {
+            compactRow.content = fullRow.content.length > HYDRATED_CONTENT_LIMIT
+              ? fullRow.content.slice(0, HYDRATED_CONTENT_LIMIT)
+              : fullRow.content;
+          } else if (Array.isArray(fullRow.content)) {
+            compactRow.content = fullRow.content;
+          }
+          if (Array.isArray(fullRow.tool_calls) && Array.isArray(compactRow.truncated_fields) && compactRow.truncated_fields.includes('tool_calls')) {
+            compactRow.tool_calls = fullRow.tool_calls;
+          }
+          if (Array.isArray(compactRow.truncated_fields)) {
+            const remaining = compactRow.truncated_fields.filter(field => field !== 'content' && field !== 'tool_calls');
+            if (remaining.length) compactRow.truncated_fields = remaining;
+            else delete compactRow.truncated_fields;
+          }
+          lines[lineIdx] = JSON.stringify(compactRow);
+        }
+        needed.delete(stepIndex);
+      } catch { /* ignore malformed full line */ }
+    };
+
+    const flushLine = () => {
+      const chunks = parts;
+      const total = lineBytes;
+      const overflow = lineOverflow;
+      parts = [];
+      lineBytes = 0;
+      lineOverflow = false;
+      if (overflow || total === 0 || !needed.size) return;
+      processLineBuffer(chunks.length === 1 ? chunks[0]! : Buffer.concat(chunks, total));
+    };
+
+    while (position < scanLimit && needed.size > 0) {
+      const readLen = readSync(fd, chunk, 0, Math.min(chunk.length, scanLimit - position), position);
+      if (readLen <= 0) break;
+      position += readLen;
+      let start = 0;
+      for (let i = 0; i < readLen; i++) {
+        if (chunk[i] === 0x0a) {
+          const sliceLen = i - start;
+          if (parts.length === 0 && !lineOverflow) {
+            if (sliceLen > 0 && sliceLen <= MAX_FULL_LINE_BYTES) processLineBuffer(chunk.subarray(start, i));
+          } else {
+            if (!lineOverflow && sliceLen > 0) {
+              if (lineBytes + sliceLen <= MAX_FULL_LINE_BYTES) {
+                parts.push(Buffer.from(chunk.subarray(start, i)));
+                lineBytes += sliceLen;
+              } else {
+                lineOverflow = true;
+                parts = [];
+              }
+            }
+            flushLine();
+          }
+          if (!needed.size) break;
+          start = i + 1;
+        }
+      }
+      if (start < readLen && needed.size > 0) {
+        const tailLen = readLen - start;
+        if (!lineOverflow) {
+          if (lineBytes + tailLen <= MAX_FULL_LINE_BYTES) {
+            parts.push(Buffer.from(chunk.subarray(start, readLen)));
+            lineBytes += tailLen;
+          } else {
+            lineOverflow = true;
+            parts = [];
+          }
+        }
+      }
+    }
+    if (parts.length > 0 && needed.size > 0) flushLine();
+  } catch {
+    return content;
+  } finally {
+    try { closeSync(fd); } catch { /* ignore */ }
+  }
+  return lines.join('\n');
 }
 
 function readBoundedBuffer(root: string, path: string, max: number): Buffer {
@@ -860,7 +1006,7 @@ export class NativeImportService {
       return [canonical, info.dev, info.ino, info.size, info.mtimeNs, info.ctimeNs].map(String);
     };
     const stamps = [stamp(reference.path)];
-    if (location.kind === 'claude' || location.kind === 'codex') {
+    if (location.kind === 'claude' || location.kind === 'codex' || location.kind === 'antigravity') {
       for (const path of this.relatedFiles(location, reference)) { try { stamps.push(stamp(path)); } catch { /* removed meanwhile */ } }
     }
     if (location.kind === 'hermes') for (const suffix of ['-wal', '-journal', '-shm']) {
@@ -946,7 +1092,7 @@ export class NativeImportService {
             if (before.size > MAX_FILE_BYTES) throw new Error('The session is larger than the 25 MB read limit.');
             const content = readBounded(ref.location.path, ref.path, MAX_FILE_BYTES);
             if (!same(before, identity(contained(ref.location.path, ref.path)))) throw new Error('The session changed while reading; scan again.');
-            parsed = ref.location.kind === 'codex' ? parseCodex(content, context) : ref.location.kind === 'claude' ? parseClaude(content, context) : ref.location.kind === 'antigravity' ? parseAntigravity(content, context) : parseGemini(content, context);
+            parsed = ref.location.kind === 'codex' ? parseCodex(content, context) : ref.location.kind === 'claude' ? parseClaude(content, context) : ref.location.kind === 'antigravity' ? parseAntigravity(hydrateAntigravityTranscript(ref.location.path, ref.path, content), context) : parseGemini(content, context);
           }
         }
         for (const message of parsed.diagnostics) add(message);
@@ -995,7 +1141,7 @@ export class NativeImportService {
     });
     number(head, 0);
     if (tail) number(tail, tailBase);
-    const parse = (text: string, extra: Partial<ParseContext> = {}) => location.kind === 'codex' ? parseCodex(text, { ...context, ...extra }) : location.kind === 'antigravity' ? parseAntigravity(text, { ...context, ...extra }) : parseClaude(text, { ...context, ...extra });
+    const parse = (text: string, extra: Partial<ParseContext> = {}) => location.kind === 'codex' ? parseCodex(text, { ...context, ...extra }) : location.kind === 'antigravity' ? parseAntigravity(hydrateAntigravityTranscript(location.path, path, text), { ...context, ...extra }) : parseClaude(text, { ...context, ...extra });
     const headTitle = titleFromHead && !context.title ? parse(head).session?.title : undefined;
     const parsed = parse(head + tail, headTitle ? { title: headTitle } : {});
     for (const step of parsed.steps ?? []) step.pos = step.pos.replace(/^(L|A:\d+:)(\d+)/, (match, prefix: string, index: string) => numbers[Number(index)] !== undefined ? `${prefix}${numbers[Number(index)]}` : match);
@@ -1052,6 +1198,10 @@ export class NativeImportService {
       const index = join(location.root, 'session_index.jsonl');
       if (existsSync(index)) files.push(index);
       return files;
+    }
+    if (location.kind === 'antigravity') {
+      const full = join(dirname(reference.path), 'transcript_full.jsonl');
+      return existsSync(full) ? [full] : [];
     }
     return [];
   }

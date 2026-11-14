@@ -73,7 +73,7 @@ export interface TranscriptContext {
   compactions: number;
 }
 
-export const STEP_TEXT_LIMIT = 20_000;
+export const STEP_TEXT_LIMIT = 50_000;
 export const STEP_OUTPUT_LIMIT = 4_000;
 const MAX_STEPS = 20_000;
 

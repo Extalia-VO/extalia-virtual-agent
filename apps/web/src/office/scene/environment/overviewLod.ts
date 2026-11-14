@@ -13,7 +13,37 @@ import type { Material, Mesh, Object3D } from 'three';
 export const OVERVIEW_CULLED_LAYER = 30;
 
 /** Bounding-sphere radius in CSS pixels below which overview detail is culled, per render budget level. */
-export const OVERVIEW_CULL_RADIUS_PX: readonly number[] = [1.75, 1.75, 1.75, 2.25, 3];
+export const OVERVIEW_CULL_RADIUS_PX: readonly number[] = [1.75, 2, 2.5, 4.5, 6];
+
+/** Zoom threshold (CSS px per metre) required before small desk props and secondary monitors render. */
+export const DESK_CLOSEUP_ZOOM_ENTER = 28;
+export const DESK_CLOSEUP_ZOOM_EXIT = 24;
+
+/** Whether the camera is zoomed in close enough to read small desk items and secondary monitors. */
+export function deskCloseupZoom(pixelsPerMetreNow: number, wasCloseup: boolean): boolean {
+  return pixelsPerMetreNow >= (wasCloseup ? DESK_CLOSEUP_ZOOM_EXIT : DESK_CLOSEUP_ZOOM_ENTER);
+}
+
+export const SMALL_DECOR_MODELS: ReadonlySet<string> = new Set([
+  'letter-tray', 'file-holder', 'books', 'plant', 'photo', 'notebook',
+  'headphones', 'pen-cup', 'sticky-notes', 'desk-shelf', 'flower-vase',
+  'mouse', 'drink-cup', 'food-plate', 'decor-vignette', 'game-controller', 'dumbbell',
+]);
+
+/** True for small desk props (cups, books, small plants, organizers, mice) and secondary monitors (slot > 1). */
+export function isSmallDecorGroup(object: Object3D): boolean {
+  const data = object.userData;
+  if (data.officeSmallDecor === true) return true;
+  if (data.officeDeskDevice === 'monitor' && typeof data.slot === 'number' && data.slot > 1) return true;
+  if (typeof data.workstationAsset === 'string' && SMALL_DECOR_MODELS.has(data.workstationAsset)) return true;
+  if (typeof data.interiorModel === 'string' && SMALL_DECOR_MODELS.has(data.interiorModel)) return true;
+  return false;
+}
+
+/** Small desk props and secondary monitors hide whenever the camera is not zoomed in close, or when outside the zoomed-in frustum. */
+export function shouldCullSmallDecor(closeup: boolean, inFrustum: boolean): boolean {
+  return !closeup || !inFrustum;
+}
 
 /** Development/benchmark switches for A/B measurements (`__EXTALIA_BENCH__.flags`). */
 export const overviewFlags = { detailCull: true, interiorShadows: false, interiorLiveLights: false };

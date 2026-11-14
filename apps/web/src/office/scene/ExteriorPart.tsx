@@ -1,3 +1,4 @@
+import { useFixedModelTransforms } from "./fixedModelTransforms";
 import { useEffect, useMemo, useSyncExternalStore, type ReactNode } from "react";
 import {
   Box3,
@@ -351,6 +352,7 @@ export function ExteriorPart({
     () => (source ? createExteriorInstance(source, canopyColor) : null),
     [source, canopyColor]
   );
+  useFixedModelTransforms(instance?.root);
   useEffect(
     () => () => {
       instance?.owned.forEach((material) => material.dispose());

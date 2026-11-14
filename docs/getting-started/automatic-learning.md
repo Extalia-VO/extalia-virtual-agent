@@ -109,9 +109,11 @@ credentials, private-network addresses, query parameters, unusual ports and
 unsafe redirects, and does not install or execute anything. A failed or denied
 source read cannot justify a candidate that claims to summarize unseen content.
 This explicit request still follows workspace write approval, the saved profile
-policy, and the skill registry's inspection workflow. The legacy `/learn-skill`
-command remains available. A link mentioned without a clear request to learn from
+policy, and the skill registry's inspection workflow. Both `/learn` and the legacy `/learn-skill`
+command remain available, alongside natural phrasing such as “Turn this procedure into a skill” or “Jadikan prosedur ini sebagai skill.” A link mentioned without a clear request to learn from
 it does not authorize a skill proposal.
+
+When skill output is enabled for a post-task curator, the curator also receives read-only access to the workspace's active skill catalog (`skill_list`, `skill_search`, `skill_read`) alongside `knowledge_search` and `knowledge_read` so it can check existing skills before proposing a new or revised class-level candidate (`When to Use`, `Procedure`, `Pitfalls`, `Verification`) and cross-reference related vault notes with Obsidian `[[wikilinks]]`. Generated learning and meeting notes include `kind` and `tags` front matter indexed by the Knowledge Graph.
 
 The Office flashes a notification when a new immutable skill revision is actually
 saved. It distinguishes new and revised candidates only when registry history

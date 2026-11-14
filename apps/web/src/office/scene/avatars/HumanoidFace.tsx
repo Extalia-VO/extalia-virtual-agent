@@ -29,13 +29,18 @@ export function HumanoidFace({ radius, skin, hair, seed, accessories, reducedMot
     { lift: 0.19, thickness: 0.034, innerTilt: 0.02, tailTilt: 0.06, arch: 0.01 },
     { lift: 0.215, thickness: 0.024, innerTilt: 0.1, tailTilt: 0.3, arch: 0.06 }
   ][(seed >>> 3) % 3]!;
-  useFrame(() => {
-    // Hidden close-up details retain their phase without updating cosmetic bones.
-    for (let parent = eyes.current; parent; parent = parent.parent as Group | null) {
+  useFrame(({ camera, size }) => {
+    // Hidden or distant characters skip sub-pixel cosmetic facial bone updates.
+    const eyeGroup = eyes.current;
+    if (!eyeGroup) return;
+    for (let parent: Group | null = eyeGroup; parent; parent = parent.parent as Group | null) {
       if (!parent.visible) return;
     }
+    const proj = camera.projectionMatrix.elements;
+    const scaleY = proj[15] === 1 ? proj[5]! : proj[5]! / Math.max(0.5, camera.position.distanceTo(eyeGroup.matrixWorld ? ({ x: eyeGroup.matrixWorld.elements[12]!, y: eyeGroup.matrixWorld.elements[13]!, z: eyeGroup.matrixWorld.elements[14]! } as never) : camera.position));
+    if (size.height > 0 && 0.85 * size.height * scaleY < 60) return;
     const pose = writeFacialPose(facialPose, seed, expressionTimeSeconds(), resolveCharacterExpression(expressionId, expressionState, motion), reducedMotion);
-    if (eyes.current) eyes.current.scale.y = 1 - pose.blink * 0.96;
+    eyeGroup.scale.y = 1 - pose.blink * 0.96;
     for (const gaze of gazes.current) if (gaze) gaze.position.set(pose.gazeX * 0.035, pose.gazeY * 0.025, 0);
     for (const group of brows.current) if (group) { group.position.y = brow.lift - pose.brow * 0.07; group.rotation.z = -Math.sign(group.position.x) * pose.brow * 0.12; }
     if (jaw.current) jaw.current.position.y = -0.5 - pose.mouthOpen * 0.06;

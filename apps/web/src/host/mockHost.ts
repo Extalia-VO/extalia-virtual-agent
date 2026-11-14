@@ -36,6 +36,7 @@ const MOCK_HERMES_MODELS = [
  * builds with `?mock` in the URL; production builds never contain it.
  *
  * URL options: `mock=ready` starts after setup with sample sessions,
+ * `officeLoad=1..48` replaces them with that many synthetic working Native leads for Office load profiling,
  * `standby=1..32` replaces the Native sample turns with one idle configured team,
  * `host=desktop` behaves like the Desktop app (folder picker),
  * `update=available|ready|downloading` shows the update banner, and `hermes`
@@ -57,6 +58,8 @@ export interface MockOptions {
   meeting?: 'active' | 'completed' | 'cancelled';
   /** With `mock=ready`: one idle Native team, with no worker or turn events. */
   standby?: number;
+  /** With `mock=ready`: number of synthetic active Native leads for renderer profiling (1–48). */
+  officeLoad?: number;
   seed: 'setup' | 'ready';
   host: 'desktop' | 'bridge';
   update?: UpdateStatus['state'];
@@ -110,6 +113,7 @@ export function mockOptionsFromSearch(search: string): MockOptions {
     host: params.get('host') === 'desktop' ? 'desktop' : 'bridge',
     ...(update && (states as string[]).includes(update) ? { update: update as UpdateStatus['state'] } : {}),
     ...(/^(?:[1-9]|[12]\d|3[0-2])$/.test(params.get('standby') ?? '') ? { standby: Number(params.get('standby')) } : {}),
+    ...(/^(?:[1-9]|[1-3]\d|4[0-8])$/.test(params.get('officeLoad') ?? '') ? { officeLoad: Number(params.get('officeLoad')) } : {}),
     ...(params.has('hermes') ? { hermes: true } : {}),
     ...(/^\d{1,3}$/.test(params.get('hermesChildren') ?? '') ? { hermesChildren: Number(params.get('hermesChildren')) } : {}),
     ...(/^[1-9]\d{0,2}$/.test(params.get('hermesConcurrent') ?? '') ? { hermesConcurrent: Number(params.get('hermesConcurrent')) } : {}),
@@ -544,7 +548,21 @@ function createMockAgents(options: MockOptions): AgentHostApi {
     app.integrationGate = { command: 'npm test' };
     addWorkspace('docs-site', `${HOME}/docs-site`, 'connection-local', { fileWrite: 'allow', commands: 'ask' });
     const past = (minutesAgo: number) => { let offset = 0; return () => new Date(Date.now() - minutesAgo * 60_000 + (offset += 1_200)); };
-    if (options.standby) {
+    if (options.officeLoad) {
+      // OfficePage loads at most 24 sessions, so each synthetic lead can carry
+      // one protocol-level active child to profile up to 48 actual characters.
+      // No mock turn/provider work is started.
+      for (let index = 1; index <= options.officeLoad; index += 2) {
+        const lead = addSession(app, `Office render fixture ${index}`);
+        lead.running = true;
+        emit(lead.id, { type: 'agent.state', state: 'working', activity: 'think', summary: 'Office render fixture' });
+        if (index + 1 <= options.officeLoad) {
+          const workerId = nextId('render-worker');
+          emit(lead.id, { type: 'subagent.spawned', subagentId: workerId, label: `Render worker ${index + 1}`, role: 'Office render fixture', model: 'mock-model' });
+          emit(lead.id, { type: 'subagent.state', subagentId: workerId, state: 'working', summary: 'Office render fixture' });
+        }
+      }
+    } else if (options.standby) {
       const lead = addSession(app, 'Native standby team');
       const allowedModels = ['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-4-5'];
       const goal = 'General-purpose workspace team.';

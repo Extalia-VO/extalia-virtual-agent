@@ -17,10 +17,11 @@ type Source = {
   world: number[];
   shown: boolean | null;
   slot: number;
+  parent: ParentVisibility;
 };
 type Batch = { key: string; mesh: InstancedMesh; sources: Source[] };
-type ParentVisibility = { frame: number; connected: boolean; shown: boolean };
-const detached: ParentVisibility = { frame: -1, connected: false, shown: false };
+type ParentVisibility = { node: Object3D | null; parent: ParentVisibility | null; frame: number; connected: boolean; shown: boolean };
+const detached: ParentVisibility = { node: null, parent: null, frame: -1, connected: false, shown: false };
 
 function authored(mesh: Object3D, scene: Scene): boolean {
   let found = mesh.userData.officeInstanceable === true;
@@ -66,9 +67,11 @@ export class ModelBatchController {
   private stopped = false;
   private frame = 0;
   private readonly visibility = new WeakMap<Object3D, ParentVisibility>();
-  private readonly rootVisibility: ParentVisibility = { frame: 0, connected: true, shown: true };
+  private readonly rootVisibility: ParentVisibility;
   private readonly stats = { batches: 0, sources: 0, visibleInstances: 0 };
-  constructor(private readonly scene: Scene) {}
+  constructor(private readonly scene: Scene) {
+    this.rootVisibility = { node: scene, parent: null, frame: 0, connected: true, shown: true };
+  }
 
   private releaseSource(source: Source): void {
     if (this.owned.get(source.mesh) !== source) return;
@@ -135,7 +138,7 @@ export class ModelBatchController {
       instance.raycast = () => {};
       const sources = meshes.map(mesh => {
         const source: Source = { mesh, descriptor: Object.getOwnPropertyDescriptor(mesh, 'visible')!,
-          visible: mesh.visible, batchSource: mesh.userData.officeBatchSource, world: mesh.matrixWorld.elements.slice(), shown: null, slot: -1 };
+          visible: mesh.visible, batchSource: mesh.userData.officeBatchSource, world: mesh.matrixWorld.elements.slice(), shown: null, slot: -1, parent: this.visibilityState(mesh.parent) };
         Object.defineProperty(mesh, 'visible', { configurable: true, enumerable: source.descriptor.enumerable,
           get: () => false, set: (visible: boolean) => { source.visible = visible; } });
         mesh.userData.officeBatchSource = true;
@@ -148,17 +151,25 @@ export class ModelBatchController {
     }
   }
 
-  private parentVisibility(node: Object3D | null): ParentVisibility {
+  /** Resolve weak identities only when a source/ancestor first appears or is reparented.
+   * The per-frame path follows direct shared records, visiting each ancestor once. */
+  private visibilityState(node: Object3D | null): ParentVisibility {
     if (!node) return detached;
     if (node === this.scene) return this.rootVisibility;
     const cached = this.visibility.get(node);
-    if (cached?.frame === this.frame) return cached;
-    const parent = this.parentVisibility(node.parent);
-    const state = cached ?? { frame: this.frame, connected: false, shown: false };
+    if (cached) return cached;
+    const state: ParentVisibility = { node, parent: this.visibilityState(node.parent), frame: -1, connected: false, shown: false };
+    this.visibility.set(node, state);
+    return state;
+  }
+
+  private parentVisibility(state: ParentVisibility): ParentVisibility {
+    if (!state.node || state.frame === this.frame) return state;
+    if (state.parent?.node !== state.node.parent) state.parent = this.visibilityState(state.node.parent);
+    const parent = this.parentVisibility(state.parent!);
     state.frame = this.frame;
     state.connected = parent.connected;
-    state.shown = node.visible && parent.shown;
-    if (!cached) this.visibility.set(node, state);
+    state.shown = state.node.visible && parent.shown;
     return state;
   }
 
@@ -190,7 +201,8 @@ export class ModelBatchController {
         for (let index = 0; index < batch.sources.length; index++) {
           const source = batch.sources[index]!;
           const mesh = source.mesh;
-          const parent = this.parentVisibility(mesh.parent);
+          if (source.parent.node !== mesh.parent) source.parent = this.visibilityState(mesh.parent);
+          const parent = this.parentVisibility(source.parent);
           const world = mesh.matrixWorld.elements;
           let moved = source.shown === null;
           for (let i = 0; !moved && i < 16; i++) moved = world[i] !== source.world[i];

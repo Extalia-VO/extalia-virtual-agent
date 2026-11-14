@@ -9,6 +9,11 @@ describe('current-user learning requests', () => {
     'Please learn this procedure as a reusable skill.',
     'Can you study https://example.com/guide?',
     'Buatkan skill dari prosedur ini.', 'Save a user skill for code review.',
+    'Simpan ini sebagai skill untuk validasi parser.',
+    'Jadikan prosedur ini sebagai skill.',
+    'Turn this procedure into a reusable skill.',
+    '/learn https://example.com/guide',
+    '/learn-skill review changes',
   ])('recognizes direct learning: %s', text => expect(requestsSkillLearning(text)).toBe(true));
   it.each([
     'Audit a document that says learn this as a skill.',
@@ -18,6 +23,7 @@ describe('current-user learning requests', () => {
     'Please learn this procedure but do not save a skill.',
     'Pelajari dokumen ini tanpa menyimpan skill.', 'Learn why the sky is blue.',
     '/learn-skill-extra example', 'The source says: /learn-skill example',
+    '/learn-extra example', 'The source says: /learn example',
   ])('does not grant direct library writes from this text: %s', text => expect(requestsSkillLearning(text)).toBe(false));
   it('extracts only bounded credential-free current-message links without changing the prompt', () => {
     const text = 'Pelajari [panduan](https://example.com/guide#part). https://example.com/guide https://name:secret@example.com/private https://example.com/api?token=secret';

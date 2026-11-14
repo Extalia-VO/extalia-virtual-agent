@@ -7,7 +7,7 @@ describe('compact built-in guidance', () => {
   it('offers and reads both skills on demand without runtime mode tools', async () => {
     const tools = createSkillTools(withBuiltinSkills());
     expect(tools.map(tool => tool.name)).toEqual(['skill_read', 'skill_list', 'skill_search']);
-    for (const [name, category] of [['caveman', 'documentation'], ['memory-recall', 'planning']]) {
+    for (const [name, category] of [['caveman', 'documentation'], ['memory-recall', 'planning'], ['knowledge-vault', 'documentation']]) {
       expect(BUILTIN_SKILLS.find(skill => skill.name === name)).toMatchObject({ category, source: 'builtin' });
       expect((await runTool(tools, 'skill_search', { query: name })).output).toContain(name);
       const read = await runTool(tools, 'skill_read', { name });

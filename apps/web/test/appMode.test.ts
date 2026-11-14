@@ -36,7 +36,7 @@ describe('chat availability', () => {
 describe('navigation by purpose', () => {
   it('keeps primary managed work before collections, activity and system tools', () => {
     expect(navigationGroups({ agents: true, workflow: 'managed', canChat: true })).toEqual([
-      { section: 'work', pages: ['office', 'chat', 'missions', 'observe', 'files', 'git'] },
+      { section: 'work', pages: ['office', 'chat', 'missions', 'schedules', 'observe', 'files', 'git'] },
       { section: 'library', pages: ['knowledge', 'skills'] },
       { section: 'activity', pages: ['history', 'import', 'logs'] },
       { section: 'app', pages: ['settings', 'diagnostics'] },
@@ -74,7 +74,7 @@ describe('navigation by purpose', () => {
         for (const id of ['knowledge', 'skills', 'chat']) expect(pages.includes(id as typeof pages[number])).toBe(workflow === 'managed');
         expect(pages).not.toContain('start');
       } else expect(pages.sort()).toEqual(['diagnostics', 'logs', 'office', 'settings', 'start']);
-      for (const page of ['missions', 'files', 'git'] as const) expect(pages.includes(page)).toBe(agents && workflow === 'managed' && canChat);
+      for (const page of ['missions', 'schedules', 'files', 'git'] as const) expect(pages.includes(page)).toBe(agents && workflow === 'managed' && canChat);
     }
   });
 });

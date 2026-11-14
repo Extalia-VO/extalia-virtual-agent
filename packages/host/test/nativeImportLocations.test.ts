@@ -123,4 +123,67 @@ describe('connected-agent history roots in temporary homes', () => {
     expect(locations.find(item => item.sourceId === 'gemini-cli')).toMatchObject({ available: false, supported: false, note: expect.stringMatching(/unresolved/) });
     expect(source.scan().sessions).toMatchObject([{ nativeSessionId: 'valid-claude', sourceId: 'claude-code' }]);
   });
+
+  it('hydrates truncated Antigravity planner responses from sibling transcript_full.jsonl without leaking thinking', async () => {
+    const root = await temp(), home = path.join(root, 'home'), antigravity = path.join(root, 'antigravity');
+    const logs = path.join(antigravity, 'brain', 'conv-full-1', '.system_generated', 'logs');
+    await mkdir(home, { recursive: true });
+    await mkdir(logs, { recursive: true });
+    const fullContent = [
+      '## Bagian I: Cara Hermes Agent Membangun & Mengelola Skills',
+      '### 1. Struktur Paket Skill di Disk',
+      '```text',
+      '~/.hermes/skills/<category>/<skill-name>/',
+      '├── SKILL.md',
+      '├── references/',
+      '└── templates/',
+      '```',
+      '### 2. Standar Frontmatter, Validasi Keras & Linter (skill_manager_tool.py & skill_linter.py)',
+      'Detail validasi frontmatter dan linter.\n'.repeat(600),
+      '## Bagian II: Cara Hermes Membangun Knowledge Base & Integrasi Obsidian',
+      'Detail penuh Knowledge Base dan Obsidian.',
+    ].join('\n');
+    const compactContent = [
+      '## Bagian I: Cara Hermes Agent Membangun & Mengelola Skills',
+      '### 1. Struktur Paket Skill di Disk',
+      '```text',
+      '~/.hermes/skills/<category>/<skill-name>/',
+      '├── SKILL.md',
+      '',
+      '<truncated 20525 bytes>',
+      '',
+      'Detail penuh Knowledge Base dan Obsidian.',
+    ].join('\n');
+    const userRow = { step_index: 1, source: 'USER_EXPLICIT', type: 'USER_INPUT', status: 'DONE', created_at: stamp, content: '<USER_REQUEST>\nPelajari cara Hermes membangun skills dan knowledge/obsidian secara detail\n</USER_REQUEST>' };
+    await writeFile(path.join(logs, 'transcript.jsonl'), [
+      JSON.stringify(userRow),
+      JSON.stringify({ step_index: 2, source: 'MODEL', type: 'PLANNER_RESPONSE', status: 'DONE', created_at: stamp, content: compactContent, thinking: 'short-thinking\n<truncated 8000 bytes>', truncated_fields: ['content', 'thinking'] }),
+    ].join('\n') + '\n');
+    await writeFile(path.join(logs, 'transcript_full.jsonl'), [
+      JSON.stringify(userRow),
+      JSON.stringify({ step_index: 2, source: 'MODEL', type: 'PLANNER_RESPONSE', status: 'DONE', created_at: stamp, content: fullContent, thinking: 'private-full-thinking-never-exposed' }),
+    ].join('\n') + '\n');
+
+    const source = await NativeImportService.create({ homeDirectory: home, env: { ANTIGRAVITY_HOME: antigravity } });
+    const scan = source.scan();
+    const candidate = scan.sessions.find(item => item.nativeSessionId === 'conv-full-1');
+    expect(candidate).toBeDefined();
+    const preview = source.preview(scan.scanId, [candidate!.id]);
+    const assistantMsg = preview.sessions[0]?.session.messages.find(m => m.role === 'assistant');
+    expect(assistantMsg?.content).toContain('### 2. Standar Frontmatter, Validasi Keras & Linter (skill_manager_tool.py & skill_linter.py)');
+    expect(assistantMsg?.content).toContain('## Bagian II: Cara Hermes Membangun Knowledge Base & Integrasi Obsidian');
+    expect(assistantMsg?.content).not.toContain('<truncated 20525 bytes>');
+    expect(JSON.stringify(preview)).not.toContain('private-full-thinking-never-exposed');
+
+    const observed = source.readObservation({
+      locationId: candidate!.locationId,
+      sourceId: 'antigravity',
+      nativeSessionId: candidate!.nativeSessionId,
+      path: path.join(logs, 'transcript.jsonl'),
+    });
+    const replyStep = observed.steps.find(step => step.type === 'reply');
+    expect(replyStep?.type === 'reply' ? replyStep.text : '').toContain('### 2. Standar Frontmatter, Validasi Keras & Linter (skill_manager_tool.py & skill_linter.py)');
+    expect(replyStep?.type === 'reply' ? replyStep.text : '').toContain('## Bagian II: Cara Hermes Membangun Knowledge Base & Integrasi Obsidian');
+    expect(replyStep?.type === 'reply' ? replyStep.text : '').not.toContain('<truncated 20525 bytes>');
+  });
 });

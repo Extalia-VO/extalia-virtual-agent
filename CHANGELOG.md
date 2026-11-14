@@ -16,6 +16,30 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.323] - 2026-11-14
+
+- Hydrate truncated Antigravity `USER_INPUT` and `PLANNER_RESPONSE` transcript bodies from the sibling `transcript_full.jsonl` when `transcript.jsonl` records `truncated_fields` or `<truncated N bytes>` markers, raise `STEP_TEXT_LIMIT` to `50,000` characters to match `MESSAGE_LIMIT`, and close unclosed Markdown code fences before compact-log truncation markers when `transcript_full.jsonl` is unavailable so long multi-section responses render in full across Observe, Chat and History (`C13`).
+
+## [0.4.322] - 2026-11-14
+
+- Enhance automatic/self-learning development for Knowledge/Obsidian vaults and Skills (`N-AUTOMATIC-LEARNING`, `N-KNOWLEDGE-VAULT`, `N-SKILL-LEARNING`): wire verified read-only skill catalog tools (`skill_read`, `skill_list`, `skill_search`) into post-task and observed curators when skill learning is enabled so curators can avoid duplicates and align with existing skills; enrich the Rust curator prompt and `skill_propose` schema with class-level skill authoring standards (`When to Use`, `Procedure`, `Pitfalls`, `Verification`, trigger-first descriptions, and anti-incident-log rules) and Obsidian `[[wikilinks]]` cross-referencing; emit Knowledge-indexed `kind` and `tags` frontmatter in generated learning (`kind: learning`, `tags: [learning, automatic-learning, ...]`) and team meeting (`kind: meeting`, `tags: [meeting, team-knowledge]`) notes; add the built-in `knowledge-vault` skill and category keywords; and support `/learn` shorthand and broader English/Indonesian skill-extraction requests (`jadikan/simpan ... sebagai skill`, `turn/convert/extract ... into a skill`).
+
+## [0.4.321] - 2026-11-14
+
+- Complement the 60 FPS Office renderer pipeline (`O-RENDER-60FPS`) with hardware-filtered PCF shadows (`shadows`), distance and per-desk frustum culling for small desk props (`DeskAccessorySet`, `DeskOrganizerSet`, `CoffeeCup`, `MouseProp`) and secondary monitors (`slot > 1`) below close-up zoom (`< 28 px/m`), Stack-view sub-pixel detail and interior-furniture shadow culling, hidden/idle `useFrame` skips across campus skyline, grass, roof fans, server racks, gym mechanisms and distant avatar faces, and `detectInitialRenderBudgetLevel` GPU tier classification.
+- Added General Schedules (`Jadwal` / `Schedules`) across `@extalia/platform`, `@extalia/host`, and the web/desktop workspace UI (`N-GENERAL-SCHEDULES`): supports one-off, interval, and 5-field cron recurring prompts, session target modes (`create-and-reuse`, `existing`, `derive-from-session`, and `new-each-run`), lead/worker/subagent assignment (`workspace`, `solo`, or `custom`), missed-run policies (`skip` or `run-once`), live cron next-run preview, and pause/resume/run-now/edit/delete controls.
+
+## [0.4.320] - 2026-11-14
+
+- Target 60 FPS in the shared Office renderer without limiting the frame loop.
+  Keep lower resolutions only when measured frame time improves, and remove the
+  480-pixel fallback.
+- Reduce repeated transform work for fixed furnishings and hidden floors. Share
+  compatible avatar skeletons, batch matching fitted-outfit surfaces, and cull
+  surrounding buildings individually without reducing their mesh detail.
+- Skip inactive light pools and add reproducible day, night, crowd and resolution
+  benchmarks for the Office.
+
 ## [0.4.319] - 2026-11-14
 
 - Integrate the latest Native, workspace, Knowledge, Skills, Observe and Chat updates with optimized Office geometry and instance submissions. Preserve profile-scoped storage, reviewed workspace changes and existing Desktop folder dialogs across the combined code paths.
