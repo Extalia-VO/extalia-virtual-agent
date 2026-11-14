@@ -1,8 +1,8 @@
 {
   "name": "extalia",
-  "description": "Open-source spatial AI-agent workspace: orchestrate and observe agents through conventional views and a living 3D office.",
+  "description": "Open-source 3D virtual office for AI agents: orchestrate and observe coding agents through conventional views and a living 3D office.",
   "private": true,
-  "version": "0.4.323",
+  "version": "0.4.324",
   "license": "MIT",
   "type": "module",
   "packageManager": "pnpm@12.7.0",
@@ -41,7 +41,20 @@
   "directories": {
     "doc": "docs"
   },
-  "keywords": [],
+  "keywords": [
+    "virtual-office",
+    "3d-virtual-office",
+    "ai-virtual-office",
+    "ai-agents",
+    "multi-agent",
+    "agent-orchestration",
+    "claude-code",
+    "codex",
+    "gemini-cli",
+    "hermes-agent",
+    "threejs",
+    "obsidian"
+  ],
   "bugs": {
     "url": "https://github.com/Extalia-VO/extalia-virtual-agent/issues"
   },

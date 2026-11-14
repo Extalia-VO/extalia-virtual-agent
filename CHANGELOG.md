@@ -16,6 +16,10 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.324] - 2026-11-14
+
+- Refine [README.md](README.md), [package.json](package.json), [apps/cli/README.md](apps/cli/README.md), and [apps/cli/package.json](apps/cli/package.json) metadata for `extalia-vo` and GitHub discoverability: align headings and descriptions around "3D virtual office for AI agents", add `keywords`, `homepage`, and `bugs` to the CLI and root manifests, and replace the stale `v0.4.288` release link in the CLI README with the repository releases index.
+
 ## [0.4.323] - 2026-11-14
 
 - Hydrate truncated Antigravity `USER_INPUT` and `PLANNER_RESPONSE` transcript bodies from the sibling `transcript_full.jsonl` when `transcript.jsonl` records `truncated_fields` or `<truncated N bytes>` markers, raise `STEP_TEXT_LIMIT` to `50,000` characters to match `MESSAGE_LIMIT`, and close unclosed Markdown code fences before compact-log truncation markers when `transcript_full.jsonl` is unavailable so long multi-section responses render in full across Observe, Chat and History (`C13`).

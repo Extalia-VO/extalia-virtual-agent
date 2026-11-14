@@ -1,9 +1,18 @@
-# extalia-vo
+# Extalia (`extalia-vo`) — 3D Virtual Office for AI Agents
 
-The `extalia` command runs [Extalia](https://github.com/Extalia-VO/extalia-virtual-agent),
-the open-source spatial AI-agent workspace, on your computer. It starts a local
-Bridge that serves the Extalia web UI in your browser and runs agents on this
-machine, with your files and your model connections.
+`extalia-vo` runs [Extalia](https://github.com/Extalia-VO/extalia-virtual-agent), an
+open-source **3D virtual office and AI virtual office workspace** for **Codex,
+Claude Code, Gemini CLI, Antigravity, Hermes** and Extalia Native teams, on your
+computer. The `extalia` command starts a local Bridge that serves the Extalia web
+UI in your browser and runs or observes agents on this machine, with your files
+and your model connections.
+
+## What it includes
+
+- **3D Virtual Office**: Follow lead agents, delegated workers, and observed sessions in an interactive 3D campus alongside conventional chat and session views.
+- **Extalia Native & Managed Hermes**: Run model/tool teams with your configured providers or supervise an installed Hermes runtime.
+- **Observe existing coding agents**: Connect Codex, Claude Code, Gemini CLI, Antigravity, or Hermes via reviewed configuration changes (`extalia connect <agent> --dry-run`) and transcript observation.
+- **Skills & Knowledge**: Browse built-in and reviewed Grimoire skills, workspace memory, and 2D/3D Obsidian-compatible knowledge graphs.
 
 ## Install
 
@@ -13,7 +22,8 @@ Requires Node.js 22.13 or newer (Node 23 needs 23.4+).
 npm i -g extalia-vo@latest
 ```
 
-This package contains Extalia v0.4.288. See the [release notes](https://github.com/Extalia-VO/extalia-virtual-agent/releases/tag/v0.4.288) for the update.
+See the [GitHub releases](https://github.com/Extalia-VO/extalia-virtual-agent/releases)
+for release notes, checksums, and desktop installers.
 
 Install the application package `extalia-vo`; its matching daemon is installed
 automatically. The `@extalia/daemon-*` packages are internal platform binaries

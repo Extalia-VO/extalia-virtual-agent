@@ -1,15 +1,34 @@
 {
   "name": "extalia-vo",
-  "description": "Extalia on your computer: the extalia command starts a local Bridge that serves the Extalia web UI and runs agents on this machine.",
-  "version": "0.4.323",
+  "description": "Open-source 3D virtual office for AI agents — local Bridge and web workspace to coordinate Codex, Claude Code, Gemini CLI, Antigravity, and Hermes.",
+  "version": "0.4.324",
   "private": true,
   "license": "MIT",
   "type": "module",
+  "homepage": "https://github.com/Extalia-VO/extalia-virtual-agent#readme",
+  "bugs": {
+    "url": "https://github.com/Extalia-VO/extalia-virtual-agent/issues"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Extalia-VO/extalia-virtual-agent.git",
     "directory": "apps/cli"
   },
+  "keywords": [
+    "virtual-office",
+    "3d-virtual-office",
+    "ai-virtual-office",
+    "ai-agents",
+    "multi-agent",
+    "agent-orchestration",
+    "claude-code",
+    "codex",
+    "gemini-cli",
+    "hermes-agent",
+    "threejs",
+    "workspace",
+    "cli"
+  ],
   "engines": {
     "node": "^22.13.0 || >=23.4.0"
   },

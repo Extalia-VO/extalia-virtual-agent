@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/brand/extalia-logo-dark.png">
-    <img src="docs/brand/extalia-logo-light.png" alt="Extalia Virtual Agent" width="560">
+    <img src="docs/brand/extalia-logo-light.png" alt="Extalia — 3D Virtual Office for AI Agents" width="560">
   </picture>
 </p>
 
@@ -13,12 +13,12 @@
   <a href="#download-extalia"><img src="https://img.shields.io/badge/platforms-macOS%20%7C%20Windows%20%7C%20Linux%20%7C%20Web-596778" alt="Platforms: macOS, Windows, Linux and Web"></a>
 </p>
 
-<h1 align="center">Extalia Virtual Agent</h1>
+<h1 align="center">Extalia — 3D Virtual Office for AI Agents</h1>
 
 <p align="center">
-  An open-source workspace for <strong>Codex, Claude Code, Antigravity, Hermes</strong> and other supported AI agents.<br>
-  Follow their work in a living 3D office, connect your knowledge and organize reusable skills.<br>
-  Build Extalia Native teams with the models you choose.
+  An open-source <strong>3D virtual office</strong> and AI virtual office workspace for <strong>Codex, Claude Code, Gemini CLI, Antigravity, and Hermes</strong>.<br>
+  Follow their work in a shared 3D office, connect Obsidian-compatible knowledge, and organize reusable skills.<br>
+  Build Extalia Native teams with the models you choose, or observe existing coding agents locally.
 </p>
 
 ![Extalia campus camera tour from front-right to front-left and back, with moving traffic](docs/images/campus-traffic.webp)
