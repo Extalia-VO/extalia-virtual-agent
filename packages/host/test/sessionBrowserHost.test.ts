@@ -1,6 +1,7 @@
 import { mkdir, readFile, utimes, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { sessionBrowserProject } from '@extalia/platform';
 import { createAgentHost } from '../src/service.js';
 import { useTempDirs } from './helpers.js';
 
@@ -13,6 +14,7 @@ describe('host session browser transport surface', () => {
     await mkdir(sourceDirectory, { recursive: true });
     const sourcePath = path.join(sourceDirectory, 'rollout-fixture.jsonl');
     const projectPath = path.join(root, 'source-project');
+    const projectIdentity = sessionBrowserProject(projectPath)!;
     const source = [
       { type: 'session_meta', payload: { id: 'fixture-native', cwd: projectPath, timestamp: at } },
       { timestamp: at, type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'Observed original title' }] } },
@@ -42,14 +44,14 @@ describe('host session browser transport surface', () => {
       expect(compact.sessions).toEqual(full.sessions);
       expect((await host.getStateSummary!()).sessionBrowser?.libraryRevision).toBe(compact.sessionBrowser?.libraryRevision);
       const observedGroups = await host.sessionBrowserGroups!({ collection: 'observed', section: 'projects' });
-      expect(observedGroups.groups[0]).toMatchObject({ name: 'source-project', projectPath, sourceIds: ['codex'], count: 1 });
+      expect(observedGroups.groups[0]).toMatchObject({ id: projectIdentity.id, name: 'source-project', projectPath: projectIdentity.path, sourceIds: ['codex'], count: 1 });
       const harnesses = await host.sessionBrowserGroups!({ collection: 'library', section: 'harnesses', limit: 1 });
       expect(harnesses.groups[0]).toMatchObject({ sourceId: 'claude-code', count: 1 });
       expect(harnesses.totalGroups).toBe(2);
       expect(harnesses.groups[0]?.runningCount).toBeUndefined();
       expect((await host.sessionBrowserGroups!({ collection: 'library', section: 'harnesses', cursor: harnesses.nextCursor })).groups[0]?.sourceId).toBe('codex');
       const importedGroups = await host.sessionBrowserGroups!({ collection: 'library', section: 'projects', harness: 'codex' });
-      expect(importedGroups.groups[0]).toMatchObject({ name: 'source-project', projectPath, sourceIds: ['codex'], count: 1 });
+      expect(importedGroups.groups[0]).toMatchObject({ id: projectIdentity.id, name: 'source-project', projectPath: projectIdentity.path, sourceIds: ['codex'], count: 1 });
       const page = await host.sessionBrowserSessions!({ collection: 'library', groupId: importedGroups.groups[0]!.id, harness: 'codex', limit: 1 });
       expect(page.sessions[0]?.title).toBe('Observed original title');
       expect('messages' in page.sessions[0]!).toBe(false);

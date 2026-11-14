@@ -34,7 +34,8 @@ describe('read-only source project identities', () => {
     const root = await temp(), project = path.join(root, 'project'), src = path.join(project, 'src'), docs = path.join(project, 'docs'), sibling = path.join(root, 'project-other');
     await Promise.all([src, docs, sibling].map(folder => mkdir(folder, { recursive: true })));
     const identities = await new SessionProjectIdentities().resolve([await realpath(src), docs, sibling], [{ id: 'workspace', name: 'Example', projectLocation: project }]);
-    expect(identities.get(key(await realpath(src)))).toEqual({ id: key(await realpath(project)), name: 'project', path: await realpath(project) });
+    const projectIdentity = sessionBrowserProject(await realpath(project))!;
+    expect(identities.get(key(await realpath(src)))).toEqual({ id: projectIdentity.id, name: 'project', path: projectIdentity.path });
     expect(identities.get(key(docs))).toEqual(identities.get(key(await realpath(src))));
     expect(identities.has(key(sibling))).toBe(false);
   });

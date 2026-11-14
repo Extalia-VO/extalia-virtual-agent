@@ -1,4 +1,5 @@
-import { appendFile, mkdir, realpath, rename, rm, symlink, writeFile } from 'node:fs/promises';
+import { realpathSync } from 'node:fs';
+import { appendFile, mkdir, rename, rm, symlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { NativeImportService, type NativeObservationRef } from '../src/nativeImport.js';
@@ -11,7 +12,8 @@ const otherId = 'a8a2d0b1-3d5c-4e6f-a789-0123456789ab';
 const line = (value: unknown) => `${JSON.stringify(value)}\n`;
 
 async function fixture(family: 'codex' | 'claude' | 'gemini') {
-  const root = await temp(), home = path.join(root, 'home'), cwd = path.join(root, 'project');
+  // Match the source adapter's canonical spelling, including Windows short paths.
+  const root = realpathSync(await temp()), home = path.join(root, 'home'), cwd = path.join(root, 'project');
   const profilePath = path.join(home, `.${family}`);
   const sourceId = family === 'claude' ? 'claude-code' : family === 'gemini' ? 'gemini-cli' : 'codex';
   const folder = family === 'codex' ? path.join(profilePath, 'sessions') : family === 'claude' ? path.join(profilePath, 'projects', 'project') : path.join(profilePath, 'tmp', 'project', 'chats');
@@ -32,7 +34,7 @@ describe('official CLI resume source authority', () => {
   it.each(['codex', 'claude', 'gemini'] as const)('resolves %s identity and canonical directories from its own registered source', async family => {
     const f = await fixture(family);
     const target = f.source.cliResumeSource(f.reference);
-    expect(target).toMatchObject({ family, sourceId: f.sourceId, nativeSessionId: id, cwd: await realpath(f.cwd), profilePath: await realpath(f.profilePath) });
+    expect(target).toMatchObject({ family, sourceId: f.sourceId, nativeSessionId: id, cwd: realpathSync(f.cwd), profilePath: realpathSync(f.profilePath) });
     expect(target?.fingerprint).toMatch(/^[a-f0-9]{64}$/);
     expect(target?.revision).toMatch(/^[a-f0-9]{64}$/);
     expect(f.source.cliResumeSource({ ...f.reference, nativeSessionId: otherId })).toBeUndefined();
