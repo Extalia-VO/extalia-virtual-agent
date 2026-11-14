@@ -16,6 +16,10 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.325] - 2026-11-14
+
+- Align [apps/cli/README.md](apps/cli/README.md) with the GitHub README layout and embed absolute `raw.githubusercontent.com` visual previews (`campus-traffic.webp`, `extalia-deligating-teams.webp`, `observe-session.webp`, `skills-grimoire.webp`, `knowledge-graph.webp`) and logo so the `extalia-vo` npm page displays the live 3D virtual office and product demos.
+
 ## [0.4.324] - 2026-11-14
 
 - Refine [README.md](README.md), [package.json](package.json), [apps/cli/README.md](apps/cli/README.md), and [apps/cli/package.json](apps/cli/package.json) metadata for `extalia-vo` and GitHub discoverability: align headings and descriptions around "3D virtual office for AI agents", add `keywords`, `homepage`, and `bugs` to the CLI and root manifests, and replace the stale `v0.4.288` release link in the CLI README with the repository releases index.
