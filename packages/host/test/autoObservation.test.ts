@@ -189,8 +189,12 @@ describe('automatic discovery and live increments', () => {
       for (let index = 0; index < MAX_AUTO_OBSERVATIONS; index++) {
         await writeFile(path.join(f.folder, `rollout-more-${String(index).padStart(2, '0')}.jsonl`), meta(`native-more-${index}`) + prompt(`Task ${index}`, stamp(3000 + index * 100)));
       }
-      await vi.waitFor(async () => expect((await host.getState()).library).toHaveLength(1), { timeout: 5000, interval: 25 });
+      // Reasserting this existing opt-in awaits the serialized discovery/retirement
+      // pass after all fixture files close. The timer and live increments above
+      // remain automatic; this LRU assertion must not race a bulk disk-write poll.
+      await host.setAutoWatch(f.location.id, true);
       const state = await host.getState();
+      expect(state.library).toHaveLength(1);
       expect(state.sessions).toHaveLength(MAX_AUTO_OBSERVATIONS);
       expect(state.sessions.some(item => item.id === id)).toBe(false);
       expect(state.library[0]).toMatchObject({ sourceId: 'codex', importMode: 'linked', title: 'Live prompt' });
