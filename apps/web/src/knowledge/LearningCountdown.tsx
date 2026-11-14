@@ -1,4 +1,4 @@
-import type { AgentHostApi, LearningScheduleSnapshot } from '@extalia/platform';
+import { GLOBAL_OBSERVE_WORKSPACE_ID, type AgentHostApi, type LearningScheduleSnapshot } from '@extalia/platform';
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { Messages } from '../i18n';
@@ -42,7 +42,7 @@ export function LearningCountdownView({ t, snapshot, now, busyId, error, dismiss
 }) {
   const text = t.learningCountdown;
   const jobs = [...new Map(snapshot.jobs.map(job => [job.id, job])).values()];
-  const visible = jobs.filter(job => !dismissed.includes(job.id) && (job.state !== 'completed' || job.kind === 'knowledge-meeting'));
+  const visible = jobs.filter(job => !dismissed.includes(job.id) && (job.state !== 'completed' || job.kind === 'knowledge-meeting' || job.result?.knowledge?.status === 'saved'));
   // Artifact receipts are independent of execution state, including a later failure or cancellation.
   const receipts = [...new Map(jobs.flatMap(job => job.result?.skill && !dismissedSkills.includes(job.result.skill.id)
     ? [[job.result.skill.id, { job, notice: job.result.skill }] as const] : [])).values()];
@@ -61,6 +61,8 @@ export function LearningCountdownView({ t, snapshot, now, busyId, error, dismiss
         const due = Date.parse(job.dueAt) <= now;
         const status = running ? meeting ? text.meetingRunning : text.running : pending
           ? waiting ? meeting ? text.meetingWaiting : text.busy : due ? text.starting : meeting ? text.meetingScheduled : text.scheduled
+          : job.state === 'partial' ? text.partial
+          : job.state === 'completed' && !meeting ? text.completed
           : job.state === 'completed' ? job.result?.meeting?.outcome === 'completed' ? text.meetingCompleted
             : job.result?.meeting?.outcome === 'failed' ? text.failed
               : job.result?.meeting?.outcome === 'cancelled' ? text.cancelled : text.meetingUnconfirmed
@@ -77,6 +79,8 @@ export function LearningCountdownView({ t, snapshot, now, busyId, error, dismiss
             ? text.waitingCountdownUnknown : text.waitingCountdown(learningCountdownDuration(selectedDelay))}</p>}
           {pending && <p className="learning-countdown-quiet muted small">{text.quietPeriod}</p>}
           {job.result?.meeting && <MeetingResult t={t} job={job} />}
+          {job.result?.knowledge && <KnowledgeResult t={t} job={job} />}
+          {job.result?.problem && <p className="muted small">{text.problems[job.result.problem]}</p>}
           {!pending && !running && job.reason === 'changed' && <p className="muted small">{text.changed}</p>}
           {!pending && !running && job.reason === 'shutdown' && <p className="muted small">{text.interrupted}</p>}
           {!pending && !running && job.reason === 'busy' && <p className="muted small">{text.foregroundPriority}</p>}
@@ -93,18 +97,30 @@ export function LearningCountdownView({ t, snapshot, now, busyId, error, dismiss
 }
 
 function LearningScope({ t, job }: { t: Messages; job: Job }) {
-  return <p className="learning-countdown-scope muted small">{t.learningCountdown.project(job.workspaceName || job.workspaceId)}
+  return <p className="learning-countdown-scope muted small">{job.workspaceId === GLOBAL_OBSERVE_WORKSPACE_ID ? t.learningCountdown.globalObserve : t.learningCountdown.project(job.workspaceName || job.workspaceId)}
     <span aria-hidden="true"> · </span>{t.learningCountdown.session(job.sessionName || job.sessionId)}</p>;
+}
+
+function KnowledgeResult({ t, job }: { t: Messages; job: Job }) {
+  const result = job.result?.knowledge;
+  if (!result || result.status === 'skipped') return null;
+  return <div className="learning-countdown-result" data-saved={result.status === 'saved' || undefined} role="status">
+    <p className="small">{result.status === 'saved' ? t.learningCountdown.learningNoteSaved : t.learningCountdown.learningNoteFailed}</p>
+    {result.status === 'saved' && result.indexed === false && <p className="muted small">{t.learningCountdown.indexPending}</p>}
+    {result.status === 'saved' && (job.state === 'partial' || job.state === 'cancelled' || job.state === 'failed')
+      && <p className="muted small">{t.learningCountdown.knowledgePartial}</p>}
+  </div>;
 }
 
 function MeetingResult({ t, job }: { t: Messages; job: Job }) {
   const result = job.result?.meeting;
   if (!result) return null;
   const saved = result.knowledge === 'saved';
-  const incomplete = result.outcome !== 'completed' || job.state === 'failed' || job.state === 'cancelled';
+  const incomplete = result.outcome !== 'completed' || job.state === 'partial' || job.state === 'failed' || job.state === 'cancelled';
   return <div className="learning-countdown-result" data-saved={saved || undefined} role="status" aria-atomic="true">
     <p className="small">{saved ? t.learningCountdown.knowledgeSaved : result.knowledge === 'failed'
       ? t.learningCountdown.knowledgeFailed : t.learningCountdown.knowledgeUnavailable}</p>
+    {saved && result.indexed === false && <p className="muted small">{t.learningCountdown.indexPending}</p>}
     {saved && incomplete && <p className="muted small">{t.learningCountdown.knowledgePartial}</p>}
   </div>;
 }
@@ -124,7 +140,7 @@ function SkillSavedNotice({ t, job, notice, memory, onDismiss }: {
       <p className="learning-countdown-skill-name small">{notice.label || notice.packageId}</p>
       <LearningScope t={t} job={job} />
       <p className="muted small">{text.candidateReview}<span className="learning-countdown-skill-state">{t.skillCenter.states[notice.state] ?? text.reviewPending}</span></p>
-      {(notice.partial || job.state === 'failed' || job.state === 'cancelled') && <p className="muted small">{text.skillPartial}</p>}
+      {(notice.partial || job.state === 'partial' || job.state === 'failed' || job.state === 'cancelled') && <p className="muted small">{text.skillPartial}</p>}
     </div>
   </li>;
 }

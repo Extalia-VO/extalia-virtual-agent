@@ -45,11 +45,12 @@ const record = (value: unknown): value is Record<string, unknown> => !!value && 
 const text = (value: unknown, max = 256): value is string => typeof value === 'string' && value.length > 0 && value.length <= max && !/\p{Cc}/u.test(value);
 const keys = (value: Record<string, unknown>, required: string[], optional: string[] = []) => required.every(key => key in value) && Object.keys(value).every(key => required.includes(key) || optional.includes(key));
 function meetingResult(value: unknown): value is LearningMeetingResult {
-  if (!record(value) || !keys(value, ['outcome', 'knowledge'], ['meetingId', 'notePath', 'problem'])
+  if (!record(value) || !keys(value, ['outcome', 'knowledge'], ['meetingId', 'notePath', 'indexed', 'problem'])
     || !['completed', 'cancelled', 'failed', 'unknown'].includes(String(value.outcome))
     || !['saved', 'unavailable', 'failed'].includes(String(value.knowledge))) return false;
   if (value.meetingId !== undefined && !text(value.meetingId) || value.problem !== undefined && !text(value.problem, 1_000)) return false;
-  return value.knowledge === 'saved' ? text(value.notePath, 4_096) : value.notePath === undefined;
+  return (value.knowledge === 'saved' ? text(value.notePath, 4_096) : value.notePath === undefined)
+    && (value.indexed === undefined || value.knowledge === 'saved' && typeof value.indexed === 'boolean');
 }
 function skillNotice(value: unknown): value is LearningSkillNotice {
   if (!record(value) || !keys(value, ['id', 'profileId', 'workspaceId', 'sessionId', 'runId', 'createdAt', 'kind', 'packageId', 'revisionId', 'state', 'change', 'activationPerformed'], ['label', 'partial'])
@@ -57,6 +58,12 @@ function skillNotice(value: unknown): value is LearningSkillNotice {
     || !text(value.createdAt, 40) || !Number.isFinite(Date.parse(value.createdAt)) || value.kind !== 'skill-candidate'
     || value.activationPerformed !== false || !['new', 'revised', 'saved'].includes(String(value.change))) return false;
   return (value.label === undefined || text(value.label, 200)) && (value.partial === undefined || typeof value.partial === 'boolean');
+}
+
+function knowledgeResult(value: unknown): value is NonNullable<LearningScheduleResult['knowledge']> {
+  if (!record(value) || !keys(value, ['status'], ['path', 'indexed']) || !['saved', 'failed', 'skipped'].includes(String(value.status))) return false;
+  return (value.status === 'saved' ? text(value.path, 4096) : value.path === undefined)
+    && (value.indexed === undefined || value.status === 'saved' && typeof value.indexed === 'boolean');
 }
 
 /** Profile-aware admission queue. Nothing starts a Rust job or acquires a vault pin while waiting. */
@@ -141,14 +148,20 @@ export class LearningSchedule {
   recordResult(id: string, result: LearningScheduleResult): void {
     const entry = this.entries.get(id);
     if (!entry || this.active?.entry !== entry || !this.active.entered) throw new Error('That learning invocation is no longer recording results.');
-    if (!record(result) || !keys(result, [], ['meeting', 'skill']) || result.meeting === undefined && result.skill === undefined
-      || result.meeting !== undefined && !meetingResult(result.meeting) || result.skill !== undefined && !skillNotice(result.skill))
+    if (!record(result) || !keys(result, [], ['meeting', 'skill', 'knowledge', 'problem']) || Object.keys(result).length === 0
+      || result.meeting !== undefined && !meetingResult(result.meeting) || result.skill !== undefined && !skillNotice(result.skill)
+      || result.knowledge !== undefined && !knowledgeResult(result.knowledge)
+      || result.problem !== undefined && !['connection', 'provider', 'timeout', 'invalid-request', 'authority', 'publication'].includes(String(result.problem)))
       throw new Error('Invalid learning artifact receipt.');
     if (result.skill && (result.skill.workspaceId !== entry.view.workspaceId || result.skill.profileId !== entry.view.profileId || result.skill.sessionId !== entry.view.sessionId))
       throw new Error('The learning receipt belongs to another source.');
+    if (result.knowledge?.path && !result.knowledge.path.startsWith(`Learning/${entry.view.workspaceId}/`))
+      throw new Error('The Knowledge receipt belongs to another workspace.');
     entry.view.result = { ...entry.view.result,
       ...(result.meeting ? { meeting: structuredClone(result.meeting) } : {}),
       ...(result.skill ? { skill: structuredClone(result.skill) } : {}),
+      ...(result.knowledge ? { knowledge: structuredClone(result.knowledge) } : {}),
+      ...(result.problem ? { problem: result.problem as LearningScheduleResult['problem'] } : {}),
     };
     this.changed();
   }
@@ -246,7 +259,9 @@ export class LearningSchedule {
   }
 
   private terminal(entry: Entry, state: 'completed' | 'failed' | 'cancelled', reason?: LearningScheduleJob['reason']): void {
-    entry.view.state = state;
+    const partial = state === 'failed' && (entry.view.result?.knowledge?.status === 'saved' || entry.view.result?.skill
+      || entry.view.result?.meeting?.knowledge === 'saved');
+    entry.view.state = partial ? 'partial' : state;
     entry.view.waitingForIdle = false;
     if (reason) entry.view.reason = reason; else delete entry.view.reason;
     delete entry.input;

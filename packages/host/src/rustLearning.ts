@@ -15,9 +15,17 @@ export interface RustLearningJob {
   provenance: SkillProposalProvenance;
   contentSha256?: string;
   skillSha256?: string;
+  noteSha256?: string;
   reason?: string;
+  failure?: LearningFailure;
   usage?: Usage;
 }
+
+export interface LearningFailure {
+  stage: 'provider' | 'read' | 'authority' | 'activity';
+  code: 'unavailable' | 'timeout' | 'rate-limited' | 'invalid-request' | 'cancelled' | 'unknown';
+}
+export interface LearningArtifactReceipt { kind: 'note' | 'skill'; data: string }
 
 export type { ObservedMemoryScope, ObservedMemoryEntry, ObservedMemoryCoverage, ObservedMemoryEpisode, ObservedMemoryPage } from '@extalia/protocol';
 export interface RustLearningInputs {
@@ -32,13 +40,16 @@ export interface RustLearningInputs {
   'job.begin': {
     profileId: string; revision: string; workspaceId: string; sessionId: string; runId: string; promptSha256: string;
     policy: { enabled: boolean; skills: boolean; notes: boolean }; tools: readonly ToolSpec[]; timeoutMs?: number;
+    sourceContext?: { user: string; assistant: string };
   } & ({ intakeId: string; evidence?: never } | { evidence: readonly ToolResultEntry[]; intakeId?: never });
-  'job.advance': { jobId: string; effectId: string; completion: { kind: 'model'; result: ModelResult } | { kind: 'read'; ok: boolean; output: string } | { kind: 'failed' } };
+  'job.advance': { jobId: string; effectId: string; completion: { kind: 'model'; result: ModelResult } | { kind: 'read'; ok: boolean; output: string } | ({ kind: 'failed' } & Partial<LearningFailure>) };
   'job.cancel': { jobId: string };
   'job.settle': { jobId: string; effectId: string };
   'job.finish': { jobId: string };
   'job.release': { jobId: string };
   'receipt.claim': { profileId: string; contentSha256: string; runId: string };
+  'receipt.get': { profileId: string; contentSha256: string };
+  'receipt.record': { profileId: string; contentSha256: string; runId: string; receipt: LearningArtifactReceipt };
   'note.pin': { root: string; profileId: string; revision: string; workspaceId: string; sessionId: string; purpose: 'learning' | 'meeting' };
   'note.prepare': { pinId: string; record: unknown };
   'note.commit': { draftId: string };
@@ -67,6 +78,8 @@ interface ResultValues {
   'job.finish': { job: RustLearningJob };
   'job.release': Released;
   'receipt.claim': { claimed: boolean };
+  'receipt.get': { status: 'missing' | 'attempted' | 'recorded'; receipt?: LearningArtifactReceipt };
+  'receipt.record': { recorded: true; replayed: boolean };
   'note.pin': { pinId: string };
   'note.prepare': { draftId: string; path: string };
   'note.commit': { path: string };

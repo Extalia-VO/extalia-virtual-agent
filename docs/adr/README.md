@@ -109,3 +109,4 @@ Later decisions amend earlier records without deleting their historical evidence
 | [0084](0084-project-session-browser.md) | Source-project session browsing | Implemented and locally verified through v0.4.301 |
 | [0085](0085-native-session-project-roots.md) | Registered project folders for saved Native sessions | Accepted |
 | [0086](0086-native-user-skill-learning-sources.md) | Native user skill learning and bounded source reads | Accepted |
+| [0087](0087-bounded-self-learning-and-artifact-receipts.md) | Bounded Native/Observe learning, independent artifact confirmations and partial results | Accepted for implementation; final integration validation pending |

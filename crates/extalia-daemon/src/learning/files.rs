@@ -4,7 +4,7 @@ use std::fs::File;
 use std::io::{Read, Seek, Write};
 use std::sync::Arc;
 #[cfg(unix)]
-mod platform {
+pub(super) mod platform {
     use super::*;
     use rustix::fs::{AtFlags, Mode, OFlags, linkat, mkdirat, open, openat, unlinkat};
     use std::os::unix::fs::MetadataExt;
@@ -33,6 +33,40 @@ mod platform {
         openat(parent, name, flags() | OFlags::DIRECTORY, Mode::empty())
             .map(File::from)
             .map_err(|_| refuse("not_regular_directory"))
+    }
+    pub fn optional_child(parent: &File, name: &str) -> Result<Option<File>> {
+        match openat(parent, name, flags() | OFlags::DIRECTORY, Mode::empty()) {
+            Ok(file) => Ok(Some(File::from(file))),
+            Err(e) if e == rustix::io::Errno::NOENT => Ok(None),
+            Err(_) => Err(refuse("not_regular_directory")),
+        }
+    }
+    pub fn read(parent: &File, name: &str, max_bytes: usize) -> Result<Option<Vec<u8>>> {
+        let mut file = match openat(parent, name, flags(), Mode::empty()) {
+            Ok(file) => File::from(file),
+            Err(e) if e == rustix::io::Errno::NOENT => return Ok(None),
+            Err(_) => return Err(refuse("invalid_receipt_file")),
+        };
+        let before = file.metadata().map_err(io_fail)?;
+        if !before.is_file() || before.nlink() != 1 || before.len() > max_bytes as u64 {
+            return Err(refuse("invalid_receipt_file"));
+        }
+        let mut bytes = Vec::with_capacity(before.len() as usize);
+        (&mut file)
+            .take(max_bytes as u64 + 1)
+            .read_to_end(&mut bytes)
+            .map_err(io_fail)?;
+        let after = file.metadata().map_err(io_fail)?;
+        if bytes.len() as u64 != before.len()
+            || before.len() != after.len()
+            || before.mtime() != after.mtime()
+            || before.mtime_nsec() != after.mtime_nsec()
+            || before.ctime() != after.ctime()
+            || before.ctime_nsec() != after.ctime_nsec()
+        {
+            return Err(refuse("receipt_changed"));
+        }
+        Ok(Some(bytes))
     }
     pub fn new_child(parent: &File, name: &str) -> Result<File> {
         mkdirat(parent, name, Mode::from_raw_mode(0o700)).map_err(|e| {
@@ -141,7 +175,7 @@ mod platform {
     }
 }
 #[cfg(not(unix))]
-mod platform {
+pub(super) mod platform {
     use super::*;
     // Windows refuses until directory-handle/reparse-point publication is implemented.
     pub fn root(_: &Path) -> Result<File> {
@@ -151,6 +185,12 @@ mod platform {
         false
     }
     pub fn child(_: &File, _: &str, _: bool) -> Result<File> {
+        Err(refuse("platform_unavailable"))
+    }
+    pub fn optional_child(_: &File, _: &str) -> Result<Option<File>> {
+        Err(refuse("platform_unavailable"))
+    }
+    pub fn read(_: &File, _: &str, _: usize) -> Result<Option<Vec<u8>>> {
         Err(refuse("platform_unavailable"))
     }
     pub fn new_child(_: &File, _: &str) -> Result<File> {

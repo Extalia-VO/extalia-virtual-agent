@@ -25,6 +25,7 @@ import { SessionContinuity, type ContinuitySourceSnapshot } from './sessionConti
 import { handoverEvidence } from './handoverEvidence.js';
 import { collectHandoverWorkspaceContext } from './handoverWorkspaceContext.js';
 import { ObservedMemory, createObservedMemoryTools } from './observedMemory.js';
+import { observedLearningWorkspace, globalObservedConnection } from './observedLearningScope.js';
 import type { ObservedMemoryEpisode } from './rustLearning.js';
 import { createContinuityTools } from './continuityTools.js';
 import { replaceHandoverHistory } from './handoverHistory.js';
@@ -70,7 +71,7 @@ import {
   normalizeBuiltinSkills, normalizeSkillConsent, normalizeSkillNames, type SkillConsentInput, type WorkspaceSkills,
   normalizeIntegrationGate, normalizeLearningScheduleAction, normalizeWorkspaceKnowledgeRequest, type KnowledgeVaultSettings, type LearningMeetingResult,
   type KnowledgeNoteResult, type KnowledgeSearchResult, type WorkspaceKnowledgeBinding,
-  KNOWLEDGE_EVENT_SESSION_ID, normalizeKnowledgeVaultRoot, type NativeActiveRun, type NativeStatus, type NativeStatusRecheck, type NativeStatusWorker,
+  GLOBAL_OBSERVE_WORKSPACE_ID, KNOWLEDGE_EVENT_SESSION_ID, normalizeKnowledgeVaultRoot, type NativeActiveRun, type NativeStatus, type NativeStatusRecheck, type NativeStatusWorker,
   type ContinuityView, type HandoverTarget,
 } from '@extalia/platform';
 import { createEvent, type AgentEvent, type EventBody, type EventSource, type ExtaliaEvent } from '@extalia/protocol';
@@ -96,7 +97,7 @@ import { HostPersistenceGate } from './hostPersistenceGate.js';
 import { createProfileStore } from './profile.js';
 import { pinMeetingNotes } from './meetingNotes.js';
 import { pinLearningNotes } from './learningNotes.js';
-import { hasAutomaticLearningEvidence, runAutomaticLearning, runObservedAutomaticLearning } from './automaticLearning.js';
+import { hasAutomaticLearningEvidence, runAutomaticLearning, runObservedAutomaticLearning, type AutomaticLearningResult } from './automaticLearning.js';
 import { RustLearningBackend } from './rustLearning.js';
 import { createConnectService, resolveNodePath, type ConnectService } from './connect/index.js';
 import { isExecutable } from './connect/util.js';
@@ -778,30 +779,40 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
   const workspaceKnowledge = new WorkspaceKnowledge({ daemon: knowledgePort,
     workspaces: profileId => config.workspaces.filter(workspace => workspace.profileId === profileId).map(workspace => workspace.id),
   });
-  const knowledgeToolsFor = (workspaceId: string) => createNativeKnowledgeTools({ workspaceId,
+  const knowledgeToolsFor = (workspaceId?: string) => createNativeKnowledgeTools({ workspaceId: workspaceId ?? GLOBAL_OBSERVE_WORKSPACE_ID,
     resolve: () => vaultProfiles.knowledgeTarget(workspaceId),
     search: async (query, binding) => {
+      if (workspaceId === undefined) {
+        assertNativeBoundaryAvailable(); knowledgeVault.assertStable();
+        await host.knowledgeStatus!();
+        return host.searchKnowledge!(query);
+      }
       await host.workspaceKnowledge!(workspaceId, 'knowledgeStatus', [], binding);
       return await host.workspaceKnowledge!(workspaceId, 'searchKnowledge', [query], binding) as KnowledgeSearchResult;
     },
     read: async (notePath, binding) => {
+      if (workspaceId === undefined) {
+        assertNativeBoundaryAvailable(); knowledgeVault.assertStable();
+        await host.knowledgeStatus!();
+        return host.knowledgeNode!({ path: notePath });
+      }
       await host.workspaceKnowledge!(workspaceId, 'knowledgeStatus', [], binding);
       return await host.workspaceKnowledge!(workspaceId, 'knowledgeNode', [{ path: notePath }], binding) as KnowledgeNoteResult | null;
     },
   });
-  const curatorToolsFor = async (workspaceId: string, includeSkills: boolean): Promise<AnyTool[]> => {
+  const curatorToolsFor = async (workspaceId: string | undefined, includeSkills: boolean): Promise<AnyTool[]> => {
     const tools = [...await knowledgeToolsFor(workspaceId)];
     if (!includeSkills) return tools;
     let inventory: Awaited<ReturnType<SkillRegistry['activeCatalog']>>['skills'] = [];
     let incomplete = false;
     if (skillRegistry.enabled) {
-      const active = await withRegistry(() => skillRegistry.activeCatalog(workspaceId)).catch(() => ({ skills: [], incomplete: true }));
+      const active = await withRegistry(() => skillRegistry.activeCatalog(workspaceId ?? null)).catch(() => ({ skills: [], incomplete: true }));
       inventory = active.skills; incomplete = active.incomplete;
     }
     const catalog = await buildAgentSkillCatalog(inventory, { incomplete, relevantOnly: true,
       ...(skillRegistry.enabled ? {
-        reload: skill => withRegistry(() => skillRegistry.reload(skill, workspaceId)),
-        reloadMany: selected => withRegistry(() => skillRegistry.reloadMany(selected, workspaceId)),
+        reload: skill => withRegistry(() => skillRegistry.reload(skill, workspaceId ?? null)),
+        reloadMany: selected => withRegistry(() => skillRegistry.reloadMany(selected, workspaceId ?? null)),
       } : {}),
     });
     tools.push(...createSkillTools(catalog));
@@ -2307,7 +2318,8 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
   /** Admission uses actual host lifetimes, with independent work scoped to its proven vault profile. */
   function learningReady(workspaceId?: string, profileId?: string): boolean {
     if (workspaceId && profileId && independentLearning(workspaceId, profileId)) {
-      const conflicts = (id?: string) => !id || !config.workspaces.some(item => item.id === id && item.profileId !== profileId);
+      const conflicts = (id?: string) => id === GLOBAL_OBSERVE_WORKSPACE_ID ? profileId === config.profile.id
+        : !id || !config.workspaces.some(item => item.id === id && item.profileId !== profileId);
       const observedConflicts = (sessionId: string) => {
         const owner = observedLearningOwner.resolve?.(sessionId);
         return !owner || owner.profileId === profileId;
@@ -2336,33 +2348,59 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     if (closing || observedPrivacyChanges || observations.labelsOnly() || blockedReplyIds.has(id)) return undefined;
     const source = mapObservedWorkspaces(observations.summaries(), config.workspaces).find(item => item.id === id);
     const target = observations.controlTarget(id);
-    if (!source?.workspaceId || !target) return undefined;
-    const workspace = findWorkspace(source.workspaceId), profile = await vaultProfiles.policyFor(workspace.id);
-    const scope = { profileId: profile.profileId, workspaceId: workspace.id, sessionId: id, sourceId: target.sourceId, nativeSessionId: target.nativeSessionId,
-      boundary: continuityDigest([workspaceSessionBoundaryKey(workspace.id, config.workspaces), profile.profileId, target.sourceId, target.nativeSessionId, target.fingerprint]) };
+    if (!source || !target) return undefined;
+    const destination = observedLearningWorkspace(source, config.workspaces, config.profile.id);
+    if (!destination) return undefined;
+    const profile = await vaultProfiles.policyFor(destination.workspace?.id);
+    if (profile.profileId !== destination.profileId) return undefined;
+    const scope = { profileId: profile.profileId, workspaceId: destination.workspaceId, sessionId: id, sourceId: target.sourceId, nativeSessionId: target.nativeSessionId,
+      boundary: continuityDigest([destination.workspace ? workspaceSessionBoundaryKey(destination.workspace.id, config.workspaces) : GLOBAL_OBSERVE_WORKSPACE_ID,
+        profile.profileId, target.sourceId, target.nativeSessionId, target.fingerprint]) };
     const enabled = profile.policy.enabled && profile.policy.observed === true && target.watching && source.observation?.status === 'watching';
     const events = enabled ? observations.events(id) : [];
     return { scope, revision: continuityDigest([scope, events.map(event => event.id), source.running, source.pendingApprovalId]),
       events, running: source.running, pending: Boolean(source.pendingApprovalId), enabled };
   }
 
+  async function recordLearningOutcome(runId: string, workspaceId: string, learned: AutomaticLearningResult): Promise<void> {
+    const failure = learned.failure;
+    const problem = failure ? failure.stage === 'provider'
+      ? failure.code === 'timeout' ? 'timeout' as const : failure.code === 'invalid-request' ? 'invalid-request' as const : 'provider' as const
+      : 'authority' as const
+      : learned.outcome === 'partial' || learned.outcome === 'failed' ? 'publication' as const : undefined;
+    learningSchedule.recordResult(runId, { knowledge: { ...learned.note }, ...(problem ? { problem } : {}) });
+    if (learned.note.status === 'saved') {
+      const indexed = await refreshWorkspaceKnowledge?.(workspaceId).then(() => true, () => false) ?? false;
+      learningSchedule.recordResult(runId, { knowledge: { ...learned.note, indexed } });
+    }
+  }
+
   async function scheduleObservedLearning(episode: ObservedMemoryEpisode): Promise<void> {
     if (closing) return;
-    const workspace = findWorkspace(episode.scope.workspaceId), profile = await vaultProfiles.policyFor(workspace.id);
-    if (!profile.policy.enabled || profile.policy.observed !== true || (!profile.policy.skills && !profile.policy.notes) || !workspace.providerProfileId) return;
-    const connection = findConnection(workspace.providerProfileId), connectionSnapshot = JSON.stringify(connection);
+    const global = episode.scope.workspaceId === GLOBAL_OBSERVE_WORKSPACE_ID;
+    const workspace = global ? undefined : findWorkspace(episode.scope.workspaceId), workspaceId = episode.scope.workspaceId;
+    const profile = await vaultProfiles.policyFor(workspace?.id);
+    if (profile.profileId !== episode.scope.profileId || !profile.policy.enabled || profile.policy.observed !== true || (!profile.policy.skills && !profile.policy.notes)) return;
+    // A providerless registered Observe project captures evidence without
+    // scheduling model work. Global routing is a separate explicit destination.
+    if (workspace && !workspace.providerProfileId) return;
+    const selectConnection = () => workspace ? config.workspaces.find(item => item.id === workspace.id)?.providerProfileId
+      : globalObservedConnection(config.workspaces, config.profile.id, config.connections.filter(keepsHistory).map(item => item.id));
+    const connectionId = selectConnection();
+    const connection = connectionId ? findConnection(connectionId) : undefined, connectionSnapshot = JSON.stringify(connection);
     const runId = `observed-${episode.id}`;
     const current = async () => {
       const source = await observedMemorySource(episode.scope.sessionId);
-      const policy = await vaultProfiles.policyFor(workspace.id);
+      const policy = await vaultProfiles.policyFor(workspace?.id);
       return Boolean(source?.enabled && source.scope.boundary === episode.scope.boundary && source.scope.profileId === episode.scope.profileId
+        && source.scope.workspaceId === workspaceId && selectConnection() === connectionId
         && policy.revision === profile.revision && policy.policy.observed === true
-        && JSON.stringify(config.connections.find(item => item.id === connection.id)) === connectionSnapshot);
+        && JSON.stringify(config.connections.find(item => item.id === connectionId)) === connectionSnapshot);
     };
-    learningSchedule.schedule({ id: runId, kind: 'learning', workspaceId: workspace.id, workspaceName: workspace.name,
+    learningSchedule.schedule({ id: runId, kind: 'learning', workspaceId, ...(workspace ? { workspaceName: workspace.name } : {}),
       profileId: profile.profileId, profileName: config.vaultProfiles?.profiles.find(item => item.id === profile.profileId)?.name ?? config.profile.name,
       sessionId: episode.scope.sessionId, sessionName: sourceLabel(episode.scope.sourceId),
-      independent: independentLearning(workspace.id, profile.profileId), ready: () => learningReady(workspace.id, profile.profileId), validate: current,
+      independent: Boolean(workspace && independentLearning(workspace.id, profile.profileId)), ready: () => learningReady(workspaceId, profile.profileId), validate: current,
       execute: async signal => {
         const assertCurrent = async () => {
           if (signal.aborted || !await current()) throw new Error('Observed learning consent or scope changed.');
@@ -2370,15 +2408,20 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
           if (source?.running || source?.pending) throw new Error('The observed conversation resumed work.');
         };
         await assertCurrent();
+        if (!connection || !keepsHistory(connection)) {
+          learningSchedule.recordResult(runId, { problem: 'connection' });
+          throw new Error('Choose one saved default-profile learning connection with history enabled.');
+        }
         const { provider } = await providerFor(connection);
         const features = resolveFeatures(connection);
         const policy = { enabled: true, skills: profile.policy.skills && features.extaliaSkills && skillRegistry.enabled, notes: profile.policy.notes };
         let writer: Awaited<ReturnType<typeof pinLearningNotes>> | undefined;
-        const access = await createWorkspaceAccess({ workspaceId: workspace.id, workspaces: structuredClone(config.workspaces), protectedRoots: [layout.root] });
+        let notePreparationFailed = false;
+        const access = workspace ? await createWorkspaceAccess({ workspaceId, workspaces: structuredClone(config.workspaces), protectedRoots: [layout.root] }) : undefined;
         try {
           if (policy.notes) try {
-            writer = await pinLearningNotes({ backend: rustLearning, context: { sessionId: episode.scope.sessionId, workspaceId: workspace.id },
-              resolve: async () => { await assertCurrent(); return vaultProfiles.resolve(workspace.id, { purpose: 'learning', ensure: true }); },
+            writer = await pinLearningNotes({ backend: rustLearning, context: { sessionId: episode.scope.sessionId, workspaceId },
+              resolve: async () => { await assertCurrent(); return vaultProfiles.resolve(workspace?.id, { purpose: 'learning', ensure: true }); },
               authorize: async target => {
                 await assertCurrent(); checkAllowed(target, 'Observed learning notes', 'write');
                 if (isWithin(layout.root, target)) return;
@@ -2386,13 +2429,17 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
                   const canonical = await realpath(folder);
                   const fold = (value: string) => process.platform === 'darwin' || process.platform === 'win32' ? value.toLowerCase() : value;
                   if (!isWithin(fold(canonical), fold(target))) continue;
+                  if (!access || !workspace) throw new Error('Global observation grants no project filesystem access.');
                   await access.resolve(target, 'write');
                   if ((workspace.permissions ?? DEFAULT_PERMISSIONS).fileWrite !== 'allow') throw new Error('The project vault does not permit automatic note writes.');
                 }
               },
             });
-          } catch { policy.notes = false; }
-          if (!policy.skills && !policy.notes) throw new Error('No usable observed learning destination is enabled.');
+          } catch { policy.notes = false; notePreparationFailed = true; }
+          if (!policy.skills && !policy.notes) {
+            learningSchedule.recordResult(runId, { knowledge: { status: 'failed' }, problem: 'publication' });
+            throw new Error('No usable observed learning destination is enabled.');
+          }
           const emit = (body: EventBody, agentId: string) => {
             if (closing) return;
             const event = createEvent({ sessionId: episode.scope.sessionId, agentId,
@@ -2400,17 +2447,21 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
             for (const listener of listeners) { try { listener(event); } catch { /* Disconnected views never own curation. */ } }
           };
           const learned = await runObservedAutomaticLearning({ observed: { scope: episode.scope, episodeId: episode.id, revision: episode.revision },
-            profileId: profile.profileId, revision: profile.revision, sessionId: episode.scope.sessionId, workspaceId: workspace.id, runId,
-            promptSha256: episode.revision, policy, provider, tools: await curatorToolsFor(workspace.id, policy.skills), backend: rustLearning, signal, assertCurrent, emit,
+            profileId: profile.profileId, revision: profile.revision, sessionId: episode.scope.sessionId, workspaceId, runId,
+            promptSha256: episode.revision, policy, provider, tools: await curatorToolsFor(workspace?.id, policy.skills), backend: rustLearning, signal, assertCurrent, emit,
             proposeSkill: (input, provenance, cancellation) => withRegistry(() => skillRegistry.propose(input, provenance, cancellation)),
             ...(writer ? { writeNote: (record: Parameters<NonNullable<typeof writer>>[0], cancellation: AbortSignal) => persistence.run(() => writer!(record, cancellation)) } : {}),
-            onWorkerStarted: id => { nativeWorkers.set(id, { id, sessionId: episode.scope.sessionId, workspaceId: workspace.id, kind: 'delegated', state: 'running', active: true, evidence: 'local-invocation', label: 'Observed work curator' }); },
+            onWorkerStarted: id => { nativeWorkers.set(id, { id, sessionId: episode.scope.sessionId, workspaceId, kind: 'delegated', state: 'running', active: true, evidence: 'local-invocation', label: 'Observed work curator' }); },
             onWorkerSettled: id => { nativeWorkers.delete(id); },
           });
-          const notice = automaticLearningNotice(learned, { profileId: profile.profileId, workspaceId: workspace.id, sessionId: episode.scope.sessionId, runId, createdAt: now() });
+          if (notePreparationFailed) {
+            learned.note = { status: 'failed' };
+            learned.outcome = learned.skill.status === 'recorded' ? 'partial' : 'failed';
+          }
+          await recordLearningOutcome(runId, workspaceId, learned);
+          const notice = automaticLearningNotice(learned, { profileId: profile.profileId, workspaceId, sessionId: episode.scope.sessionId, runId, createdAt: now() });
           if (notice) learningSchedule.recordResult(runId, { skill: notice });
-          if (learned.note.status === 'saved') await refreshWorkspaceKnowledge?.(workspace.id).catch(() => undefined);
-          if (learned.outcome === 'failed' || learned.outcome === 'cancelled' || learned.note.status === 'failed' || learned.skill.status === 'unknown') throw new Error('Observed curation did not confirm all enabled outputs.');
+          if (learned.outcome === 'failed' || learned.outcome === 'partial' || learned.outcome === 'cancelled' || learned.note.status === 'failed' || learned.skill.status === 'unknown') throw new Error('Observed curation did not confirm all enabled outputs.');
         } finally { await writer?.close(); }
       },
     });
@@ -2499,12 +2550,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       if (refused) throw refused.reason;
       const providers = new Map(prepared.flatMap(result => result.status === 'fulfilled' ? [result.value] : []));
       const leadModels = [...new Set([leadConnection.model, ...team.allowedModels].filter(Boolean))];
-      const tools: AnyTool[] = [...createFileTools(root, { authority: access }).filter(tool => tool.access === 'read'), workspaceFoldersTool(access)];
-      tools.push(...await knowledgeToolsFor(workspace.id));
-      if ([...connections.values()].some(connection => resolveFeatures(connection).extaliaMemory)) {
-        const memory = new MemoryStore(workspaceMemoryDirectory(layout.workspaces, registeredWorkspace));
-        tools.push(...createMemoryTools(memory).filter(tool => tool.name !== 'memory_write'));
-      }
+      const tools: AnyTool[] = [...await knowledgeToolsFor(workspace.id)];
       let automaticSkillCatalog: AgentSkillCatalog | undefined;
       if ([...connections.values()].some(connection => resolveFeatures(connection).extaliaSkills)) {
         let inventory: Awaited<ReturnType<SkillRegistry['activeCatalog']>>['skills'] = [];
@@ -2521,25 +2567,10 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
         });
         tools.push(...createSkillTools(automaticSkillCatalog));
       }
-      const prepareWorkerRequest: DelegationOptions['prepareWorkerRequest'] = automaticSkillCatalog ? (member, agentId) => {
-        const selected = providers.get(member?.connectionId ?? record.connectionId);
-        if (!selected) throw new Error('This meeting connection was not approved.');
-        const prepare = createNativeSkillPreparation({ catalog: automaticSkillCatalog!, enabled: resolveFeatures(selected.connection).extaliaSkills,
-          worker: true, orchestrator: () => false, inputTokenLimit: selected.connection.inputTokenLimit,
-          assertCurrent: assertCurrentSync,
-          report: report => publish(record.id, { type: 'skills.loaded', ...report }, agentId, undefined, { strict: true }),
-        });
-        return async request => {
-          await assertCurrent();
-          const system = await prepare(request);
-          await assertCurrent();
-          return system;
-        };
-      } : undefined;
       await assertCurrent();
       result = await runNativeKnowledgeMeeting({
         workspace: { id: workspace.id, name: workspace.name, root }, sessionId: record.id, runId: job.runId,
-        sourceContext: job.sourceContext, signal, assertCurrent, prepareWorkerRequest,
+        sourceContext: job.sourceContext, signal, assertCurrent,
         ...(storedOperatingProfile(record) ? { operatingProfile: { purpose: storedOperatingProfile(record)?.purpose, personality: storedOperatingProfile(record)?.personality } } : {}),
         team: {
           members: team.members, rules: team.rules, leadModels,
@@ -2575,7 +2606,11 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     let reportingFailure: unknown;
     try {
       learningSchedule.recordResult(job.id, { meeting: result });
-      if (result.knowledge === 'saved') await refreshWorkspaceKnowledge?.(job.workspaceId).catch(() => undefined);
+      if (result.knowledge === 'saved') {
+        const indexed = await refreshWorkspaceKnowledge?.(job.workspaceId).then(() => true, () => false) ?? false;
+        result = { ...result, indexed };
+        learningSchedule.recordResult(job.id, { meeting: result });
+      }
     } catch (error) { reportingFailure = error; }
     // Abort alone is not settlement. Drain the actual note pin and strict event writer.
     const settled = await Promise.allSettled([writer?.close(), writeChains.get(job.sessionId)]);
@@ -4611,6 +4646,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
         const boundary = workspaceSessionBoundaryKey(workspace.id, config.workspaces);
         followupSuggestions.invalidate(sessionId);
         const learningProfile = await vaultProfiles.policyFor(workspace.id).catch(() => undefined);
+        if (learnSkill && !learningProfile) throw userError('The originating learning profile could not be confirmed. Nothing was saved.');
         const history = toModelHistory(await sessions.readMessages(sessionId));
         if (!workspaceBoundaryMatches(record.workspaceBoundary, workspace.id, config.workspaces) && history.length) throw userError('Workspace folders or access boundaries changed. Review this session’s workspace from session actions to keep its history under the current access, or start a new Native session.');
         if (workspaceCrossAccess(workspace) === 'isolated' && record.continuedFrom && record.reviewedContextBoundary !== boundary) throw userError('An isolated workspace needs a fresh session without imported conversation context, or an explicit review of this session’s workspace access.');
@@ -4750,7 +4786,14 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
         const sourceUrls = learningSourceUrls(prompt);
         const readSources = new Set<string>();
         if (learnSkill) tools.push(createSkillProposalTool({
-          provenance: { sessionId, workspaceId: workspace.id, promptSha256: createHash('sha256').update(prompt).digest('hex') },
+          provenance: { sessionId, workspaceId: workspace.id, profileId: learningProfile!.profileId, promptSha256: createHash('sha256').update(prompt).digest('hex') },
+          assertCurrent: async () => {
+            const current = await vaultProfiles.policyFor(workspace.id);
+            if (closing || controller.signal.aborted || workspaceSessionBoundaryKey(workspace.id, config.workspaces) !== boundary
+              || current.profileId !== learningProfile!.profileId || current.revision !== learningProfile!.revision) {
+              throw new Error('The originating learning profile changed.');
+            }
+          },
           authorize: input => {
             if (!hasLearningSourceLink(prompt)) return undefined;
             const attributed = learningSourceUrls((input.sourceUrls ?? []).join('\n'));
@@ -4789,7 +4832,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
         };
         // Profile consent authorizes only this bounded host curator, not arbitrary delegation.
         const learningEnabled = Boolean(learningProfile?.policy.enabled && (learningProfile.policy.notes || learningProfile.policy.skills && !skipSkillLearning) && !unsavedSessions.has(sessionId)
-          && permissionMode !== 'plan' && team?.enabled !== false && !learnSkill);
+          && permissionMode !== 'plan' && !learnSkill);
         const turnEvidence: ToolResultEntry[] = [];
         const learningPromptSha256 = createHash('sha256').update(prompt).digest('hex');
         const learningConnectionSnapshot = JSON.stringify(saved);
@@ -4801,18 +4844,18 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
           const currentSession = await sessions.get(sessionId);
           if (!currentSession || currentSession.workspaceId !== workspace.id || currentSession.connectionId !== record.connectionId
             || JSON.stringify({ options: currentSession.options, projectLocation: currentSession.projectLocation }) !== learningSessionSnapshot) return false;
-          if (currentSession.team?.enabled === false) return false;
           const current = await vaultProfiles.policyFor(workspace.id);
           return current.profileId === learningProfile?.profileId && current.revision === learningProfile.revision
             && JSON.stringify(current.policy) === JSON.stringify(learningProfile.policy);
         };
-        const automaticLearning = async (evidence: readonly ToolResultEntry[], signal: AbortSignal): Promise<void> => {
+        const automaticLearning = async (evidence: readonly ToolResultEntry[], sourceContext: { user: string; assistant: string }, signal: AbortSignal): Promise<void> => {
           const result: TurnResult = { outcome: 'completed', history: [], usage: {} };
-          if (!learningEnabled || !learningProfile || !hasAutomaticLearningEvidence(result, evidence)) return;
+          if (!learningEnabled || !learningProfile || !hasAutomaticLearningEvidence(result, evidence, sourceContext)) return;
           const assertCurrent = async () => {
             if (signal.aborted || !await learningCurrent()) throw new Error('The learning profile or consent changed.');
           };
           let writeNote: Awaited<ReturnType<typeof pinLearningNotes>> | undefined;
+          let notePreparationFailed = false;
           const policy = { ...learningProfile.policy, skills: !skipSkillLearning && learningProfile.policy.skills && features.extaliaSkills && skillRegistry.enabled };
           if (!policy.skills && !policy.notes) return;
           try {
@@ -4841,15 +4884,17 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
           }); writeNote = writer; } catch {
             // One unavailable output must not prevent another explicitly enabled destination.
             policy.notes = false;
+            notePreparationFailed = true;
           }
           if (!policy.skills && !policy.notes) {
+            learningSchedule.recordResult(learningRunId, { knowledge: { status: 'failed' }, problem: 'publication' });
             await publish(sessionId, { type: 'tool.completed', tool: 'automatic_learning', kind: 'knowledge', label: 'Completed-task learning unavailable', ok: false, output: 'No usable Rust learning destination is available. No curator model request was made.' }, 'primary', undefined, { strict: true });
             throw new Error('No usable learning destination.');
           }
           const toolCallId = `${learningRunId}-learning`;
           await publish(sessionId, { type: 'tool.started', toolCallId, tool: 'automatic_learning', kind: 'delegate', label: 'Curating completed-task learning' }, 'primary', undefined, { strict: true });
           const learned = await runAutomaticLearning({
-            result, currentTurnEvidence: evidence, ...learningProfile, policy,
+            result, currentTurnEvidence: evidence, sourceContext, ...learningProfile, policy,
             sessionId, workspaceId: workspace.id, runId: learningRunId,
             promptSha256: learningPromptSha256,
             backend: rustLearning,
@@ -4862,6 +4907,11 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
             onWorkerStarted: id => { nativeWorkers.set(id, { id, sessionId, workspaceId: workspace.id, kind: 'delegated', state: 'running', active: true, evidence: 'local-invocation', label: 'Learning curator' }); },
             onWorkerSettled: id => { nativeWorkers.delete(id); },
           });
+          if (notePreparationFailed) {
+            learned.note = { status: 'failed' };
+            learned.outcome = learned.skill.status === 'recorded' ? 'partial' : 'failed';
+          }
+          await recordLearningOutcome(learningRunId, workspace.id, learned);
           const notice = automaticLearningNotice(learned, { profileId: learningProfile.profileId, workspaceId: workspace.id,
             sessionId, runId: learningRunId, createdAt: now() });
           if (notice) {
@@ -4877,19 +4927,20 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
             }
           }
           await publish(sessionId, { type: 'tool.completed', toolCallId, tool: 'automatic_learning', kind: 'delegate', label: 'Completed-task learning', ok: (learned.outcome === 'completed' || learned.outcome === 'skipped') && learned.skill.status !== 'unknown' && learned.note.status !== 'failed', output: JSON.stringify(learned) }, 'primary', undefined, { strict: true });
-          if (learned.note.status === 'saved') await refreshWorkspaceKnowledge?.(workspace.id).catch(() => undefined);
-          if (learned.outcome === 'failed' || learned.outcome === 'cancelled' || learned.skill.status === 'unknown' || learned.note.status === 'failed') throw new Error('Learning did not confirm all enabled outputs.');
+          if (learned.outcome === 'failed' || learned.outcome === 'partial' || learned.outcome === 'cancelled' || learned.skill.status === 'unknown' || learned.note.status === 'failed') throw new Error('Learning did not confirm all enabled outputs.');
           } finally { await writeNote?.close(); }
         };
         const scheduleLearning = (result: TurnResult) => {
           if (!learningEnabled || !learningProfile || result.outcome !== 'completed') return;
           // Queue only a small evidence copy, never conversation history, images or the full tool-result array.
-          const evidence = turnEvidence.filter(item => !item.isError && item.content.trim()).slice(0, 10)
+          const evidence = turnEvidence.filter(item => !item.isError && item.content.trim()).slice(-10)
             .map(item => ({ ...item, content: item.content.slice(0, 2_000) }));
+          const sourceAnswer = result.history.slice(history.length + 1).filter(message => message.role === 'assistant').at(-1)?.text ?? '';
+          const sourceContext = { user: safeText(prompt, 2_000), assistant: safeText(sourceAnswer, 2_000) };
           const profileName = config.vaultProfiles?.profiles.find(item => item.id === learningProfile.profileId)?.name ?? config.profile.name;
           const sessionName = record.title === NEW_SESSION_TITLE ? prompt.replace(/\s+/g, ' ').slice(0, 60) : record.title;
-          const admitted = !hasAutomaticLearningEvidence(result, turnEvidence) || learningSchedule.schedule({ id: learningRunId, kind: 'learning', workspaceId: workspace.id, workspaceName: workspace.name,
-            profileId: learningProfile.profileId, profileName, sessionId, sessionName, execute: signal => automaticLearning(evidence, signal),
+          const admitted = !hasAutomaticLearningEvidence(result, turnEvidence, sourceContext) || learningSchedule.schedule({ id: learningRunId, kind: 'learning', workspaceId: workspace.id, workspaceName: workspace.name,
+            profileId: learningProfile.profileId, profileName, sessionId, sessionName, execute: signal => automaticLearning(evidence, sourceContext, signal),
             independent: independentLearning(workspace.id, learningProfile.profileId),
             validate: learningCurrent, ready: () => learningReady(workspace.id, learningProfile.profileId),
           });
@@ -4897,11 +4948,10 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
           if (liveTeam?.enabled && liveTeam.members.length && learningProfile.policy.notes && vaultSettings?.minutesEnabled !== false) {
             // The input history is an immutable prefix of this turn's result.
             // Exclude prior turns and tool/native payloads, redacting before either bound.
-            const sourceAnswer = result.history.slice(history.length + 1).filter(message => message.role === 'assistant').at(-1)?.text ?? '';
             const meeting: KnowledgeMeetingSource = { id: `knowledge-${learningRunId}`, runId: learningRunId, workspaceId: workspace.id,
               sessionId, profileId: learningProfile.profileId, profileRevision: learningProfile.revision, boundary,
               sessionIdentity: knowledgeSessionIdentity({ ...record, workspaceBoundary: boundary, team: expectedPersistedTeam }),
-              sourceContext: `user: ${safeText(prompt, 500)}\nassistant: ${safeText(sourceAnswer, 575)}`,
+              sourceContext: `user claim: ${safeText(prompt, 300)}\nassistant claim: ${safeText(sourceAnswer, 350)}\nRecent successful tool evidence: ${evidence.slice(-2).map(item => `${safeText(item.name, 40)}: ${safeText(item.content, 400)}`).join('\n')}`,
             };
             const meetingAdmitted = learningSchedule.schedule({ id: meeting.id, kind: 'knowledge-meeting', workspaceId: workspace.id, workspaceName: workspace.name,
               sessionId, sessionName, profileId: learningProfile.profileId, profileName,
@@ -5553,7 +5603,8 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     },
   } satisfies Pick<Required<AgentHostApi>, 'workspaceKnowledge'>);
   refreshWorkspaceKnowledge = async workspaceId => {
-    await host.workspaceKnowledge!(workspaceId, 'syncKnowledge', ['incremental']);
+    if (workspaceId === GLOBAL_OBSERVE_WORKSPACE_ID) await host.syncKnowledge!('incremental');
+    else await host.workspaceKnowledge!(workspaceId, 'syncKnowledge', ['incremental']);
     const event = createEvent({ sessionId: KNOWLEDGE_EVENT_SESSION_ID, source: { runtime: 'extalia-native', channel: 'system', adapter: 'knowledge' },
       body: { type: 'session.updated', revision: 'learning-updated', messageCount: 0 } });
     if (!closing) for (const listener of listeners) { try { listener(event); } catch { /* disconnected UI */ } }
@@ -5698,7 +5749,8 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
   } satisfies Pick<Required<AgentHostApi>, 'listVaultProfiles' | 'saveVaultProfile' | 'learningSchedule' | 'changeLearningSchedule' | 'listSchedules' | 'saveSchedule' | 'setScheduleEnabled' | 'runScheduleNow' | 'deleteSchedule'>);
 
   observedMemory = new ObservedMemory({ backend: rustLearning, source: observedMemorySource,
-    list: async workspaceId => mapObservedWorkspaces(observations.summaries(), config.workspaces).filter(source => source.workspaceId === workspaceId).map(source => source.id),
+    list: async workspaceId => mapObservedWorkspaces(observations.summaries(), config.workspaces)
+      .filter(source => observedLearningWorkspace(source, config.workspaces, config.profile.id)?.workspaceId === workspaceId).map(source => source.id),
     onEpisode: scheduleObservedLearning,
     onRevoked: scope => { void learningSchedule.yieldForForeground(scope.profileId).catch(() => undefined); },
     onWorkChange: () => { if (!closing) learningSchedule.wake(); },

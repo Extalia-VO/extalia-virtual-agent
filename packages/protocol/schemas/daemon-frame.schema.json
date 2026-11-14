@@ -4764,6 +4764,11 @@
                   "minLength": 64,
                   "maxLength": 64
                 },
+                "destinationRevision": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
                 "runId": {
                   "type": "string",
                   "minLength": 1,
@@ -4826,7 +4831,7 @@
                 "timeoutMs": {
                   "type": "integer",
                   "minimum": 1,
-                  "maximum": 45000
+                  "maximum": 120000
                 }
               }
             }
@@ -5671,6 +5676,101 @@
           ],
           "properties": {
             "action": {
+              "const": "receipt.get"
+            },
+            "input": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "profileId",
+                "contentSha256"
+              ],
+              "properties": {
+                "profileId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                },
+                "contentSha256": {
+                  "type": "string",
+                  "minLength": 64,
+                  "maxLength": 64
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "action",
+            "input"
+          ],
+          "properties": {
+            "action": {
+              "const": "receipt.record"
+            },
+            "input": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "profileId",
+                "contentSha256",
+                "runId",
+                "receipt"
+              ],
+              "properties": {
+                "profileId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                },
+                "contentSha256": {
+                  "type": "string",
+                  "minLength": 64,
+                  "maxLength": 64
+                },
+                "runId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                },
+                "receipt": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "kind",
+                    "data"
+                  ],
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "enum": [
+                        "note",
+                        "skill"
+                      ]
+                    },
+                    "data": {
+                      "type": "string",
+                      "minLength": 2,
+                      "maxLength": 8192
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "action",
+            "input"
+          ],
+          "properties": {
+            "action": {
               "const": "job.begin"
             },
             "input": {
@@ -5772,7 +5872,27 @@
                     "timeoutMs": {
                       "type": "integer",
                       "minimum": 1,
-                      "maximum": 45000
+                      "maximum": 120000
+                    },
+                    "sourceContext": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "user",
+                        "assistant"
+                      ],
+                      "properties": {
+                        "user": {
+                          "type": "string",
+                          "minLength": 0,
+                          "maxLength": 2000
+                        },
+                        "assistant": {
+                          "type": "string",
+                          "minLength": 0,
+                          "maxLength": 2000
+                        }
+                      }
                     },
                     "evidence": {
                       "type": "array",
@@ -5907,7 +6027,27 @@
                     "timeoutMs": {
                       "type": "integer",
                       "minimum": 1,
-                      "maximum": 45000
+                      "maximum": 120000
+                    },
+                    "sourceContext": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "user",
+                        "assistant"
+                      ],
+                      "properties": {
+                        "user": {
+                          "type": "string",
+                          "minLength": 0,
+                          "maxLength": 2000
+                        },
+                        "assistant": {
+                          "type": "string",
+                          "minLength": 0,
+                          "maxLength": 2000
+                        }
+                      }
                     },
                     "intakeId": {
                       "type": "string",
@@ -6113,6 +6253,26 @@
                       "properties": {
                         "kind": {
                           "const": "failed"
+                        },
+                        "stage": {
+                          "type": "string",
+                          "enum": [
+                            "provider",
+                            "read",
+                            "authority",
+                            "activity"
+                          ]
+                        },
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "unavailable",
+                            "timeout",
+                            "rate-limited",
+                            "invalid-request",
+                            "cancelled",
+                            "unknown"
+                          ]
                         }
                       }
                     }
@@ -7197,6 +7357,11 @@
                   "minLength": 64,
                   "maxLength": 64
                 },
+                "noteSha256": {
+                  "type": "string",
+                  "minLength": 64,
+                  "maxLength": 64
+                },
                 "skillSha256": {
                   "type": "string",
                   "minLength": 64,
@@ -7225,6 +7390,36 @@
                       "type": "integer",
                       "minimum": 0,
                       "maximum": 9007199254740991
+                    }
+                  }
+                },
+                "failure": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "stage",
+                    "code"
+                  ],
+                  "properties": {
+                    "stage": {
+                      "type": "string",
+                      "enum": [
+                        "provider",
+                        "read",
+                        "authority",
+                        "activity"
+                      ]
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "unavailable",
+                        "timeout",
+                        "rate-limited",
+                        "invalid-request",
+                        "cancelled",
+                        "unknown"
+                      ]
                     }
                   }
                 }
@@ -7552,6 +7747,69 @@
               "const": "receipt.claim"
             },
             "claimed": {
+              "type": "boolean"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "action",
+            "status"
+          ],
+          "properties": {
+            "action": {
+              "const": "receipt.get"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "missing",
+                "attempted",
+                "recorded"
+              ]
+            },
+            "receipt": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "kind",
+                "data"
+              ],
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "note",
+                    "skill"
+                  ]
+                },
+                "data": {
+                  "type": "string",
+                  "minLength": 2,
+                  "maxLength": 8192
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "action",
+            "recorded",
+            "replayed"
+          ],
+          "properties": {
+            "action": {
+              "const": "receipt.record"
+            },
+            "recorded": {
+              "const": true
+            },
+            "replayed": {
               "type": "boolean"
             }
           }
@@ -7979,6 +8237,11 @@
                   "minLength": 64,
                   "maxLength": 64
                 },
+                "noteSha256": {
+                  "type": "string",
+                  "minLength": 64,
+                  "maxLength": 64
+                },
                 "skillSha256": {
                   "type": "string",
                   "minLength": 64,
@@ -8007,6 +8270,36 @@
                       "type": "integer",
                       "minimum": 0,
                       "maximum": 9007199254740991
+                    }
+                  }
+                },
+                "failure": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "stage",
+                    "code"
+                  ],
+                  "properties": {
+                    "stage": {
+                      "type": "string",
+                      "enum": [
+                        "provider",
+                        "read",
+                        "authority",
+                        "activity"
+                      ]
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "unavailable",
+                        "timeout",
+                        "rate-limited",
+                        "invalid-request",
+                        "cancelled",
+                        "unknown"
+                      ]
                     }
                   }
                 }
@@ -8437,6 +8730,11 @@
                   "minLength": 64,
                   "maxLength": 64
                 },
+                "noteSha256": {
+                  "type": "string",
+                  "minLength": 64,
+                  "maxLength": 64
+                },
                 "skillSha256": {
                   "type": "string",
                   "minLength": 64,
@@ -8465,6 +8763,36 @@
                       "type": "integer",
                       "minimum": 0,
                       "maximum": 9007199254740991
+                    }
+                  }
+                },
+                "failure": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "stage",
+                    "code"
+                  ],
+                  "properties": {
+                    "stage": {
+                      "type": "string",
+                      "enum": [
+                        "provider",
+                        "read",
+                        "authority",
+                        "activity"
+                      ]
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "unavailable",
+                        "timeout",
+                        "rate-limited",
+                        "invalid-request",
+                        "cancelled",
+                        "unknown"
+                      ]
                     }
                   }
                 }
@@ -8895,6 +9223,11 @@
                   "minLength": 64,
                   "maxLength": 64
                 },
+                "noteSha256": {
+                  "type": "string",
+                  "minLength": 64,
+                  "maxLength": 64
+                },
                 "skillSha256": {
                   "type": "string",
                   "minLength": 64,
@@ -8923,6 +9256,36 @@
                       "type": "integer",
                       "minimum": 0,
                       "maximum": 9007199254740991
+                    }
+                  }
+                },
+                "failure": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "stage",
+                    "code"
+                  ],
+                  "properties": {
+                    "stage": {
+                      "type": "string",
+                      "enum": [
+                        "provider",
+                        "read",
+                        "authority",
+                        "activity"
+                      ]
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "unavailable",
+                        "timeout",
+                        "rate-limited",
+                        "invalid-request",
+                        "cancelled",
+                        "unknown"
+                      ]
                     }
                   }
                 }
@@ -9353,6 +9716,11 @@
                   "minLength": 64,
                   "maxLength": 64
                 },
+                "noteSha256": {
+                  "type": "string",
+                  "minLength": 64,
+                  "maxLength": 64
+                },
                 "skillSha256": {
                   "type": "string",
                   "minLength": 64,
@@ -9381,6 +9749,36 @@
                       "type": "integer",
                       "minimum": 0,
                       "maximum": 9007199254740991
+                    }
+                  }
+                },
+                "failure": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "stage",
+                    "code"
+                  ],
+                  "properties": {
+                    "stage": {
+                      "type": "string",
+                      "enum": [
+                        "provider",
+                        "read",
+                        "authority",
+                        "activity"
+                      ]
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "unavailable",
+                        "timeout",
+                        "rate-limited",
+                        "invalid-request",
+                        "cancelled",
+                        "unknown"
+                      ]
                     }
                   }
                 }
@@ -9811,6 +10209,11 @@
                   "minLength": 64,
                   "maxLength": 64
                 },
+                "noteSha256": {
+                  "type": "string",
+                  "minLength": 64,
+                  "maxLength": 64
+                },
                 "skillSha256": {
                   "type": "string",
                   "minLength": 64,
@@ -9839,6 +10242,36 @@
                       "type": "integer",
                       "minimum": 0,
                       "maximum": 9007199254740991
+                    }
+                  }
+                },
+                "failure": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "stage",
+                    "code"
+                  ],
+                  "properties": {
+                    "stage": {
+                      "type": "string",
+                      "enum": [
+                        "provider",
+                        "read",
+                        "authority",
+                        "activity"
+                      ]
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "unavailable",
+                        "timeout",
+                        "rate-limited",
+                        "invalid-request",
+                        "cancelled",
+                        "unknown"
+                      ]
                     }
                   }
                 }

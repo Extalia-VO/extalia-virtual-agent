@@ -477,11 +477,12 @@ export class SkillRegistry {
     return (await this.activeInventory(skill => skill)).skills;
   }
 
-  async activeCatalog(workspaceId?: string): Promise<{ skills: SkillReference[]; incomplete: boolean }> {
+  /** Undefined is management inventory; null is the global model scope. */
+  async activeCatalog(workspaceId?: string | null): Promise<{ skills: SkillReference[]; incomplete: boolean }> {
     return this.activeInventory(referenceSkill, workspaceId);
   }
 
-  private async activeInventory<T>(select: (skill: Skill) => T, workspaceId?: string): Promise<{ skills: T[]; incomplete: boolean }> {
+  private async activeInventory<T>(select: (skill: Skill) => T, workspaceId?: string | null): Promise<{ skills: T[]; incomplete: boolean }> {
     const client = await this.client();
     const { revisions, truncated } = await this.listAll(client, MAX_AGENT_REVISIONS);
     const skills: T[] = [];
@@ -503,9 +504,10 @@ export class SkillRegistry {
   }
 
   /** Fresh active-pointer authority: unscoped approvals are shared across workspaces.
-   * Explicitly scoped approvals remain scoped; scanner evidence and W0 consent are separate. */
-  private async approvedForWorkspace(client: DaemonClient, revision: SkillRevisionSummary, workspaceId: string): Promise<boolean> {
-    if (!SKILL_WORKSPACE_ID_PATTERN.test(workspaceId)) return false;
+   * Null requires global authority; explicitly scoped approvals remain scoped.
+   * Scanner evidence and W0 consent are separate. */
+  private async approvedForWorkspace(client: DaemonClient, revision: SkillRevisionSummary, workspaceId: string | null): Promise<boolean> {
+    if (workspaceId !== null && !SKILL_WORKSPACE_ID_PATTERN.test(workspaceId)) return false;
     try {
       // Do not pass workspaceId: skill.inspect's optional workspace parameter records consent review input.
       const details = await client.request('skill.inspect', { revisionId: revision.revisionId }, SKILL_REGISTRY_DEADLINE_MS);
@@ -527,12 +529,12 @@ export class SkillRegistry {
   }
 
   /** Re-read an offered skill when the model asks for it: still active, bytes verified by the daemon. */
-  async reload(skill: SkillIdentity, workspaceId?: string): Promise<Skill> {
+  async reload(skill: SkillIdentity, workspaceId?: string | null): Promise<Skill> {
     return (await this.reloadMany([skill], workspaceId))[0]!;
   }
 
   /** One fresh bounded active-index read per metadata page, never one per item. */
-  async reloadMany(skills: readonly SkillIdentity[], workspaceId?: string): Promise<Skill[]> {
+  async reloadMany(skills: readonly SkillIdentity[], workspaceId?: string | null): Promise<Skill[]> {
     if (!skills.length || skills.length > 10 || skills.some(skill => !skill.revisionId || !skill.sha256 || skill.source === 'builtin')) throw new Error('Invalid registry skill selection.');
     const client = await this.client();
     const { revisions } = await this.listAll(client, MAX_AGENT_REVISIONS);

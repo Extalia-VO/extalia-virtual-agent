@@ -115,6 +115,10 @@ describe('agent-app Node prerequisites', () => {
   it('keeps other app diagnostics available when one config cannot be read as a file', async () => {
     const unreadable = path.join(homeDirectory, ...CONFIGS.codex);
     await mkdir(unreadable, { recursive: true });
+    // Native directory-read errors may omit the path; check the diagnostic and location separately.
+    const readError: unknown = await readFile(unreadable, 'utf8').catch((error: unknown) => error);
+    if (!(readError instanceof Error)) throw new Error('The directory fixture unexpectedly returned file contents.');
+    expect(readError.message).not.toBe('');
     const service = createConnectService(context());
     await service.apply('hermes');
     const states = await service.connections();
@@ -122,7 +126,8 @@ describe('agent-app Node prerequisites', () => {
     expect(states.find(state => state.app === 'hermes')).toMatchObject({ nodeStatus: 'not-required', connected: true });
     const codex = states.find(state => state.app === 'codex');
     expect(codex).toMatchObject({ installed: true, connected: false });
-    expect(codex?.warnings.some(warning => warning.includes(unreadable))).toBe(true);
+    expect(codex?.configPath).toBe(unreadable);
+    expect(codex?.warnings).toContain(readError.message);
     await expect(service.plan('codex')).rejects.toThrow();
   });
 

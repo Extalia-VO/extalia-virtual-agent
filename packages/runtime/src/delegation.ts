@@ -62,6 +62,8 @@ export interface DelegationOptions {
   /** Actual final worker text, before presentation wrappers; never a synthetic success message. */
   onWorkerResult?(agentId: string, outcome: TurnOutcome, text: string): void;
   maxWorkerSteps?: number;
+  /** Optional final response reservation; ordinary delegation keeps its existing tool budget. */
+  reserveWorkerFinalResponse?: boolean;
   /** The session's subagent team, when it is enabled. */
   team?: DelegationTeam;
   /** Workspace permissions for write members' edits and commands (default: ask for both). */
@@ -292,6 +294,7 @@ export function createDelegationTool(options: DelegationOptions): ToolDefinition
       permissionMode: options.permissionMode,
       signal,
       maxSteps: options.maxWorkerSteps ?? (writer ? 40 : 25),
+      reserveFinalResponse: options.reserveWorkerFinalResponse,
       requestApproval: async request => (writer && options.requestApproval ? options.requestApproval(request, subagentId) : 'reject'),
       emit: body => {
         if (body.type === 'agent.state') {

@@ -37,7 +37,7 @@ fn structural_contract_refuses_privileged_fields_and_unbounded_data() {
         json!({"jobId":"job","effectId":"effect","completion":{"kind":"shell","command":"no"}})
     )));
     let mut v = begin();
-    v["timeoutMs"] = 45001.into();
+    v["timeoutMs"] = 120001.into();
     assert!(!crate::wire::learning::valid_params(&request(
         "job.begin",
         v
@@ -58,13 +58,12 @@ fn correlated_job_owns_submission_and_legacy_hashes() {
             ))
             .is_err()
     );
-    let captured = run(
+    let ready = run(
         &mut owner,
         "job.advance",
         json!({"jobId":jid,"effectId":eid,"completion":submitted()}),
     )["job"]
         .clone();
-    let ready=run(&mut owner,"job.advance",json!({"jobId":jid,"effectId":captured["effect"]["effectId"],"completion":{"kind":"model","result":{"text":"Done","toolCalls":[],"stop":"end"}}}))["job"].clone();
     assert_eq!(ready["status"], "ready");
     assert_eq!(
         ready["contentSha256"],
@@ -474,14 +473,25 @@ fn manual_folder_stage_has_bounded_secure_copy_and_owned_cleanup() {
     std::fs::remove_dir_all(root).unwrap();
 }
 #[test]
-fn oversized_model_input_and_six_step_cap_refuse_before_further_effects() {
+fn oversized_read_schemas_are_removed_and_six_step_cap_refuses_more_effects() {
     let root = temp();
     let mut owner = Learning::new(&root, "default");
-    let mut b = begin();
-    b["tools"] = json!([{"name":"knowledge_read","description":"Description","parameters":{"type":"object","description":"x".repeat(60000)}}]);
-    let job = run(&mut owner, "job.begin", b);
-    assert_eq!(job["job"]["status"], "failed");
-    assert!(job["job"].get("effect").is_none());
+    // The smaller schema reaches only the per-request threshold; the larger
+    // also exhausts a two-request reserve. Both can still submit without reads.
+    for length in [37000, 60000] {
+        let mut b = begin();
+        b["tools"] = json!([{"name":"knowledge_read","description":"Description","parameters":{"type":"object","description":"x".repeat(length)}}]);
+        let job = run(&mut owner, "job.begin", b);
+        assert_eq!(job["job"]["status"], "running");
+        assert_eq!(job["job"]["effect"]["tools"].as_array().unwrap().len(), 1);
+        assert_eq!(job["job"]["effect"]["tools"][0]["name"], "submit_learning");
+        assert!(
+            job["job"]["effect"]["system"]
+                .as_str()
+                .unwrap()
+                .contains("FINALIZATION REQUIRED")
+        );
+    }
     let mut job = run(&mut owner, "job.begin", begin())["job"].clone();
     for n in 0..6 {
         job=run(&mut owner,"job.advance",json!({"jobId":job["jobId"],"effectId":job["effect"]["effectId"],"completion":{"kind":"model","result":{"text":"","stop":"tool_use","toolCalls":[{"id":format!("call-{n}"),"name":"unavailable","input":{}}]}}}))["job"].clone();
@@ -589,7 +599,7 @@ fn eight_read_limit_does_not_admit_a_ninth_effect() {
     let mut b = begin();
     b["tools"] = json!([{"name":"knowledge_read","description":"Read a registered note","parameters":{"type":"object"}}]);
     let mut job = run(&mut owner, "job.begin", b)["job"].clone();
-    let calls:Vec<_>=(0..9).map(|n|json!({"id":format!("read-{n}"),"name":"knowledge_read","input":{"path":"note.md"}})).collect();
+    let calls:Vec<_>=(0..9).map(|n|json!({"id":format!("read-{n}"),"name":"knowledge_read","input":{"path":format!("note-{n}.md")}})).collect();
     job=run(&mut owner,"job.advance",json!({"jobId":job["jobId"],"effectId":job["effect"]["effectId"],"completion":{"kind":"model","result":{"text":"","toolCalls":calls,"stop":"tool_use"}}}))["job"].clone();
     for _ in 0..8 {
         assert_eq!(job["effect"]["kind"], "read");

@@ -16,6 +16,38 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.326] - 2026-11-14
+
+- Make post-task learning finish on one valid structured submission, with complete
+  provider-compatible skill schemas, attributed current-turn decisions and the
+  latest successful tool evidence. Separate analysis and publication deadlines;
+  bound aggregate input and indexed reads, and retain useful provider diagnostics.
+- Save Knowledge and generated skill candidates independently with durable
+  per-artifact confirmations. Preserve partial success, avoid replaying uncertain
+  effects and show saved notes separately from search-index refresh and meetings.
+- Let explicitly unbound, opted-in Observe conversations learn into the default
+  vault using one unambiguous saved model route. Invalid or ambiguous project
+  bindings never fall back; global skill reads require global activation approval.
+- Bound automatic Knowledge meetings to three saved members, one round and a
+  shared input budget, using indexed Knowledge/skill tools. Manual discussions
+  retain their existing limits. Solo Native sessions can learn without an active team.
+- Document the pinned Hermes comparison, implemented scope and remaining durable
+  queue, evaluation, platform and activation limits.
+- Incorporate the additional profile-pinned Native skill proposal changes:
+  revalidate profile consent and workspace scope immediately before staging,
+  preserve host-owned provenance and refuse stale proposals without retrying.
+- Reserve each meeting worker's last configured step for evidence-only synthesis,
+  including manual discussions. Refuse tool calls returned during that final
+  response without changing ordinary Native or delegation loop defaults.
+- Preserve evidence capture and recall for registered Observe workspaces without
+  a provider while deferring their curator until a model route is available.
+- Use explicit capture options when removing preview/camera event listeners, and
+  keep Git filter and unreadable-config test controls portable across runtime
+  diagnostic differences without weakening their safety assertions.
+- Preserve exact 64-bit Codex source identities and invalidate cached headers
+  after physical file replacement. Reject inconsistent resolution while keeping
+  append-only progress bound to the same Observe source.
+
 ## [0.4.325] - 2026-11-14
 
 - Align [apps/cli/README.md](apps/cli/README.md) with the GitHub README layout and embed absolute `raw.githubusercontent.com` visual previews (`campus-traffic.webp`, `extalia-deligating-teams.webp`, `observe-session.webp`, `skills-grimoire.webp`, `knowledge-graph.webp`) and logo so the `extalia-vo` npm page displays the live 3D virtual office and product demos.

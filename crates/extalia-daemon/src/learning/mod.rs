@@ -7,6 +7,9 @@ mod observed;
 #[cfg(all(test, unix))]
 mod observed_tests;
 #[cfg(all(test, unix))]
+mod receipt_tests;
+mod receipts;
+#[cfg(all(test, unix))]
 mod tests;
 mod text;
 use crate::wire::{ErrorCode, Op, ResponseResult};
@@ -168,6 +171,8 @@ impl Learning {
                 json!({"released":true})
             }
             "receipt.claim" => json!({"claimed":self.claim(input)?}),
+            "receipt.get" => self.get_receipt(input)?,
+            "receipt.record" => self.record_receipt(input)?,
             "job.begin" => {
                 self.data_handle()?;
                 if self.jobs.len() >= MAX_HANDLES {

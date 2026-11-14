@@ -6,11 +6,13 @@ export interface LearningEvidence { id: string; name: string; content: string }
 export interface LearningToolCall { id: string; name: string; input: Record<string, unknown>; inputError?: string }
 export interface LearningToolSpec { name: string; description: string; parameters: Record<string, unknown> }
 export interface LearningUsage { inputTokens?: number; outputTokens?: number; cachedInputTokens?: number }
+export interface LearningSourceContext { user: string; assistant: string }
+export interface LearningFailure { stage: 'provider' | 'read' | 'authority' | 'activity'; code: 'unavailable' | 'timeout' | 'rate-limited' | 'invalid-request' | 'cancelled' | 'unknown' }
 export type LearningMessage = { role: 'user'; text: string } | { role: 'assistant'; text: string; toolCalls: LearningToolCall[]; native?: { api: 'openai-chat' | 'openai-responses' | 'anthropic-messages'; content: unknown } } | { role: 'tool'; results: { toolCallId: string; name: string; content: string; isError: boolean }[] };
 export interface LearningModelResult { text: string; toolCalls: LearningToolCall[]; stop: 'end' | 'tool_use' | 'max_tokens' | 'refusal' | 'other'; model?: string; usage?: LearningUsage; promptTokens?: number; native?: { api: 'openai-chat' | 'openai-responses' | 'anthropic-messages'; content: unknown }; refusal?: string }
 export type LearningEffect = { effectId: string; kind: 'model'; system: string; messages: LearningMessage[]; tools: LearningToolSpec[] } | { effectId: string; kind: 'read'; callId: string; name: string; input: Record<string, unknown> };
 export interface LearningSubmission { title: string; lesson: string; evidenceIds: string[]; skill?: LearningProposal }
-export interface LearningJobState { jobId: string; status: 'running' | 'ready' | 'skipped' | 'failed' | 'cancelled' | 'completed'; effect?: LearningEffect; pendingEffectId?: string; submission?: LearningSubmission; evidence: LearningEvidence[]; provenance: LearningProvenance; contentSha256?: string; skillSha256?: string; reason?: string; usage?: LearningUsage }
+export interface LearningJobState { jobId: string; status: 'running' | 'ready' | 'skipped' | 'failed' | 'cancelled' | 'completed'; effect?: LearningEffect; pendingEffectId?: string; submission?: LearningSubmission; evidence: LearningEvidence[]; provenance: LearningProvenance; contentSha256?: string; noteSha256?: string; skillSha256?: string; reason?: string; usage?: LearningUsage; failure?: LearningFailure }
 export interface LearningNoteRecord { workspaceId: string; sessionId: string; profileId: string; revision: string; runId: string; promptSha256: string; title: string; lesson: string; evidence: LearningEvidence[]; skill?: { packageId: string; revisionId: string; state: string; stateReason?: string; created: boolean; inspection: 'recorded' | 'unavailable'; inspectionOutcome?: string; activationPerformed: false; cancellationObserved: boolean } }
 export interface LearningMeetingRecord { meetingId: string; topic: string; roomId?: string; startedAt: string; completedAt: string; outcome: 'completed' | 'failed' | 'cancelled'; participants: { agentId: string; name: string; role: string }[]; contributions: { agentId: string; round: number; text: string }[] }
 export interface ObservedMemoryScope { profileId: string; workspaceId: string; sessionId: string; sourceId: string; nativeSessionId: string; boundary: string }
@@ -23,7 +25,7 @@ export interface LearningActions {
   'observed.search': { input: { scope: ObservedMemoryScope; query: string; limit?: number }; result: { hits: { episode: ObservedMemoryEpisode; excerpt: string }[]; omitted: number } };
   'observed.read': { input: { scope: ObservedMemoryScope; episodeId: string; revision: string; offset?: number; limit?: number }; result: ObservedMemoryPage };
   'observed.revoke': { input: { scope: ObservedMemoryScope }; result: { removed: number } };
-  'observed.jobBegin': { input: { scope: ObservedMemoryScope; episodeId: string; revision: string; runId: string; promptSha256: string; policy: { enabled: boolean; skills: boolean; notes: boolean }; tools: LearningToolSpec[]; timeoutMs?: number }; result: { job: LearningJobState } };
+  'observed.jobBegin': { input: { scope: ObservedMemoryScope; episodeId: string; revision: string; destinationRevision?: string; runId: string; promptSha256: string; policy: { enabled: boolean; skills: boolean; notes: boolean }; tools: LearningToolSpec[]; timeoutMs?: number }; result: { job: LearningJobState } };
   'evidence.begin': { input: Record<string, never>; result: { intakeId: string } };
   'evidence.append': { input: { intakeId: string; toolCallId: string; name: string; isError: boolean; chunk: string; final: boolean }; result: { complete: boolean } };
   'evidence.release': { input: { intakeId: string }; result: { released: true } };
@@ -39,8 +41,10 @@ export interface LearningActions {
   'skill.stageFolder': { input: { root: string }; result: { stageId: string; path: string } };
   'skill.cleanup': { input: { stageId: string }; result: { released: true } };
   'receipt.claim': { input: { profileId: string; contentSha256: string; runId: string }; result: { claimed: boolean } };
-  'job.begin': { input: { profileId: string; revision: string; workspaceId: string; sessionId: string; runId: string; promptSha256: string; policy: { enabled: boolean; skills: boolean; notes: boolean }; tools: LearningToolSpec[]; timeoutMs?: number } & ({ evidence: { toolCallId: string; name: string; content: string; isError: boolean }[]; intakeId?: never } | { intakeId: string; evidence?: never }); result: { job: LearningJobState } };
-  'job.advance': { input: { jobId: string; effectId: string; completion: { kind: 'model'; result: LearningModelResult } | { kind: 'read'; ok: boolean; output: string } | { kind: 'failed' } }; result: { job: LearningJobState } };
+  'receipt.get': { input: { profileId: string; contentSha256: string }; result: { status: 'missing' | 'attempted' | 'recorded'; receipt?: { kind: 'note' | 'skill'; data: string } } };
+  'receipt.record': { input: { profileId: string; contentSha256: string; runId: string; receipt: { kind: 'note' | 'skill'; data: string } }; result: { recorded: true; replayed: boolean } };
+  'job.begin': { input: { profileId: string; revision: string; workspaceId: string; sessionId: string; runId: string; promptSha256: string; policy: { enabled: boolean; skills: boolean; notes: boolean }; tools: LearningToolSpec[]; timeoutMs?: number; sourceContext?: LearningSourceContext } & ({ evidence: { toolCallId: string; name: string; content: string; isError: boolean }[]; intakeId?: never } | { intakeId: string; evidence?: never }); result: { job: LearningJobState } };
+  'job.advance': { input: { jobId: string; effectId: string; completion: { kind: 'model'; result: LearningModelResult } | { kind: 'read'; ok: boolean; output: string } | ({ kind: 'failed' } & Partial<LearningFailure>) }; result: { job: LearningJobState } };
   'job.cancel': { input: { jobId: string }; result: { job: LearningJobState } };
   /** Only acknowledges that the host actually drained a cancelled effect; never infers physical settlement. */
   'job.settle': { input: { jobId: string; effectId: string }; result: { job: LearningJobState } };

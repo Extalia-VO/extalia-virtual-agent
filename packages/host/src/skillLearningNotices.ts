@@ -60,6 +60,6 @@ export function automaticLearningNotice(
     state: receipt.state,
     change: savedChange(receipt, origin.profileId, history),
     activationPerformed: false,
-    ...(result.outcome === 'failed' || result.outcome === 'cancelled' ? { partial: true } : {}),
+    ...(result.outcome === 'failed' || result.outcome === 'partial' || result.outcome === 'cancelled' ? { partial: true } : {}),
   };
 }

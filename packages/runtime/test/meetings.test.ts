@@ -50,6 +50,73 @@ function harness(script?: (id: string, request: ModelRequest) => Promise<ModelRe
 }
 
 describe('conduct_team_meeting', () => {
+  it('reserves bounded synthesis so an evidence-heavy participant can finish both manual rounds', async () => {
+    const h = harness((_id, request) => request.tools.length
+      ? { text: '', toolCalls: [{ id: `read-${request.messages.length}`, name: 'read_file', input: {} }], stop: 'tool_use' }
+      : reply('Attributed findings; remaining questions need more evidence.'), 1);
+    const result = await createConductTeamMeetingTool(h.options).run({ topic: 'Review evidence', members: ['member-0'] }, h.context);
+    expect(result.ok).toBe(true);
+    expect(h.requests).toHaveLength(12);
+    expect(h.requests.filter(({ request }) => !request.tools.length)).toHaveLength(2);
+    expect(h.requests[5]!.request.system).toContain('final bounded response');
+    expect(h.requests[0]!.request.messages[0]).toMatchObject({ role: 'user', text: expect.stringContaining('5 evidence steps') });
+    expect(h.minutes[0]).toMatchObject({ outcome: 'completed', contributions: [{ round: 1 }, { round: 2 }] });
+  });
+
+  it('does not execute tools or fabricate success when a participant ignores bounded synthesis', async () => {
+    let reads = 0;
+    const h = harness(() => ({ text: '', toolCalls: [{ id: `call-${reads}`, name: 'read_file', input: {} }], stop: 'tool_use' }), 1);
+    h.options.team.workerToolsForMember = () => [{ ...tool('read_file', 'read'), run: async () => { reads++; return { ok: true, output: 'evidence' }; } }];
+    const result = await createConductTeamMeetingTool(h.options).run({ topic: 'Review evidence', members: ['member-0'] }, h.context);
+    expect(result.ok).toBe(false);
+    expect(reads).toBe(5);
+    expect(h.requests).toHaveLength(6);
+    expect(h.minutes[0]?.outcome).toBe('failed');
+  });
+
+  it('reserves the last host-selected step and describes its actual one-round budget', async () => {
+    const h = harness((_id, request) => request.tools.length
+      ? { text: '', toolCalls: [{ id: `read-${request.messages.length}`, name: 'read_file', input: {} }], stop: 'tool_use' }
+      : reply('A bounded source-attributed finding.'), 1);
+    h.options.limits = { rounds: 1, maxWorkerSteps: 3 };
+    const result = await createConductTeamMeetingTool(h.options).run({ topic: 'Review supplied evidence', members: ['member-0'] }, h.context);
+    expect(result.ok).toBe(true);
+    expect(h.requests).toHaveLength(3);
+    expect(h.requests[0]!.request.messages[0]).toMatchObject({ role: 'user', text: expect.stringContaining('2 evidence steps') });
+    expect(h.requests[2]!.request.tools).toEqual([]);
+    expect(h.minutes[0]).toMatchObject({ outcome: 'completed', contributions: [{ round: 1 }] });
+  });
+
+  it('supports a host-selected one-round review without changing manual meeting defaults', async () => {
+    const h = harness();
+    h.options.limits = { rounds: 1, maxWorkerSteps: 3 };
+    const meeting = createConductTeamMeetingTool(h.options);
+    expect(meeting.description).toContain('One read-only round');
+    expect((await meeting.run({ topic: 'Review supplied evidence', members: ['member-0', 'member-1'] }, h.context)).ok).toBe(true);
+    expect(h.requests).toHaveLength(2);
+    expect(h.minutes[0]?.contributions).toHaveLength(2);
+    expect(h.minutes[0]?.contributions.every(item => item.round === 1)).toBe(true);
+    expect(h.requests.every(({ request }) => request.messages[0]?.role === 'user' && request.messages[0].text.includes('Round 1 of 1'))).toBe(true);
+  });
+
+  it('caps review worker steps using host options that model arguments cannot widen', async () => {
+    let calls = 0;
+    const h = harness(() => ({ text: '', stop: 'tool_use', toolCalls: [{ id: `read-${++calls}`, name: 'read_file', input: {} }] }), 1);
+    h.options.limits = { rounds: 1, maxWorkerSteps: 3 };
+    const meeting = createConductTeamMeetingTool(h.options);
+    expect(meeting.parameters.properties).not.toHaveProperty('limits');
+    expect((await meeting.run({ topic: 'Review', members: ['member-0'] }, h.context)).ok).toBe(false);
+    expect(h.requests).toHaveLength(3);
+    expect(h.minutes[0]?.outcome).toBe('failed');
+    expect(h.workers.size).toBe(0);
+  });
+
+  it.each([0, 7, Number.NaN, 1.5])('refuses invalid host worker step limit %s', maxWorkerSteps => {
+    const h = harness();
+    expect(() => createConductTeamMeetingTool({ ...h.options, limits: { maxWorkerSteps } })).toThrow('worker steps');
+    expect(h.requests).toEqual([]);
+  });
+
   it('prepares each participant independently in both rounds without widening discussion tools', async () => {
     const h = harness(), prepared: string[] = [];
     h.options.prepareWorkerRequest = (selected, agentId) => async request => {

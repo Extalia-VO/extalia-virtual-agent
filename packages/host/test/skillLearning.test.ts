@@ -150,6 +150,40 @@ describe.skipIf(process.platform === 'win32')('generated skill candidates from a
     expect(propose).toHaveBeenCalledExactlyOnceWith(input, provenance, expect.any(AbortSignal));
   });
 
+  it('pins provenance and revalidates host scope before persistence, with cancellation after the scope read', async () => {
+    const controller = new AbortController();
+    const original = { ...provenance, profileId: 'profile-one' };
+    const propose = vi.fn(async () => result);
+    const assertCurrent = vi.fn(async () => { controller.abort(); });
+    const tool = createSkillProposalTool({ provenance: original, assertCurrent, propose });
+    original.profileId = 'profile-two';
+    const response = await runTool([tool], 'skill_propose', input, controller.signal);
+    expect(response.ok).toBe(false); expect(response.output).toContain('Cancelled before');
+    expect(assertCurrent).toHaveBeenCalledTimes(1); expect(propose).not.toHaveBeenCalled();
+  });
+
+  it('fails closed on unavailable scope without exposing diagnostics or retrying the write', async () => {
+    const propose = vi.fn(async () => result);
+    const assertCurrent = vi.fn(async () => { throw new Error('private profile path'); });
+    const tool = createSkillProposalTool({ provenance: { ...provenance, profileId: 'profile-one' }, assertCurrent, propose });
+    const response = await runTool([tool], 'skill_propose', input);
+    expect(response.ok).toBe(false); expect(response.output).toContain('profile changed or could not be confirmed');
+    expect(response.output).not.toContain('private profile path');
+    expect((await runTool([tool], 'skill_propose', input)).ok).toBe(false);
+    expect(assertCurrent).toHaveBeenCalledTimes(1); expect(propose).not.toHaveBeenCalled();
+  });
+
+  it('submits the captured profile provenance after successful scope confirmation', async () => {
+    const original = { ...provenance, profileId: 'profile-one' };
+    const propose = vi.fn(async () => result);
+    const assertCurrent = vi.fn(async () => undefined);
+    const tool = createSkillProposalTool({ provenance: original, assertCurrent, propose });
+    original.profileId = 'profile-two';
+    expect((await runTool([tool], 'skill_propose', input)).ok).toBe(true);
+    expect(propose).toHaveBeenCalledWith(input, { ...provenance, profileId: 'profile-one' }, expect.any(AbortSignal));
+    expect(assertCurrent).toHaveBeenCalledTimes(1);
+  });
+
   it('does not retry an uncertain imported candidate automatically or expose transport exception text', async () => {
     const propose = vi.fn(async () => { throw new Error('sensitive transport diagnostics'); });
     const tool = createSkillProposalTool({ provenance, propose });

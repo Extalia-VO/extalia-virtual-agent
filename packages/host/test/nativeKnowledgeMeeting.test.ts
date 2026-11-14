@@ -1,6 +1,6 @@
 import type { TeamMember } from '@extalia/core';
 import type { EventBody } from '@extalia/protocol';
-import type { AnyTool, ModelRequest, ModelResult, NativeMeetingMinutes } from '@extalia/runtime';
+import { checkRequestBudget, ProviderError, type AnyTool, type ModelRequest, type ModelResult, type NativeMeetingMinutes } from '@extalia/runtime';
 import { describe, expect, it, vi } from 'vitest';
 import { runNativeKnowledgeMeeting, type NativeKnowledgeMeetingOptions } from '../src/nativeKnowledgeMeeting.js';
 
@@ -30,7 +30,9 @@ function harness(script?: (request: ModelRequest, member: TeamMember) => Promise
         expect(events.some(event => event.type === 'meeting.started')).toBe(true);
         return script ? script(request, member!) : reply(`${member!.id} verified finding ${requests.length}`);
       } }),
-      workerToolsForMember: () => [readTool('read_file', 'read'), readTool('memory_read', 'memory'), readTool('write_file', 'write'), readTool('run_command', 'execute')],
+      workerToolsForMember: () => [readTool('read_file', 'read'), readTool('search_files', 'read'), readTool('memory_read', 'memory'),
+        readTool('knowledge_search', 'read'), readTool('knowledge_read', 'read'), { ...readTool('skill_read', 'meta'), kind: 'knowledge' },
+        readTool('write_file', 'write'), readTool('run_command', 'execute')],
     },
     emit: async body => { events.push(body); },
     onWorkerStarted: id => { workers.add(id); }, onWorkerSettled: id => { workers.delete(id); },
@@ -40,6 +42,101 @@ function harness(script?: (request: ModelRequest, member: TeamMember) => Promise
 }
 
 describe('native knowledge meeting execution', () => {
+  it('selects at most three saved members for one review without preparing the rest of a large roster', async () => {
+    const h = harness(undefined, 13);
+    const prepared: string[] = [];
+    h.options.prepareWorkerRequest = (_member, agentId) => async request => { prepared.push(agentId); return request.system; };
+    expect(await runNativeKnowledgeMeeting(h.options)).toMatchObject({ outcome: 'completed', knowledge: 'saved' });
+    expect(h.requests).toHaveLength(3);
+    expect(prepared).toEqual(['member-0', 'member-1', 'member-2']);
+    expect(h.saved[0]?.participants.map(item => item.agentId)).toEqual(['primary', 'member-0', 'member-1', 'member-2']);
+    expect(h.saved[0]?.contributions).toHaveLength(3);
+    expect(h.saved[0]?.contributions.every(item => item.round === 1)).toBe(true);
+    expect(h.workers.size).toBe(0);
+  });
+
+  it('bounds actual reads and reserves each member final request for synthesis', async () => {
+    const counts = new Map<string, number>();
+    const read = vi.fn(async () => ({ ok: true, output: 'An indexed source finding.' }));
+    const h = harness(async (request, member) => {
+      const step = (counts.get(member.id) ?? 0) + 1; counts.set(member.id, step);
+      if (step === 3) {
+        expect(request.tools).toEqual([]);
+        expect(request.system).toContain('final automatic review request');
+        return reply('A bounded, attributed finding.');
+      }
+      return { text: '', stop: 'tool_use', toolCalls: Array.from({ length: 4 }, (_, index) => ({
+        id: `${member.id}-${step}-${index}`, name: 'knowledge_read', input: {},
+      })) };
+    }, 3);
+    h.options.team.workerToolsForMember = () => [{ ...readTool('knowledge_read', 'read'), run: read }];
+    expect(await runNativeKnowledgeMeeting(h.options)).toMatchObject({ outcome: 'completed', knowledge: 'saved' });
+    expect(h.requests).toHaveLength(9);
+    expect(read).toHaveBeenCalledTimes(6);
+    expect([...counts.values()]).toEqual([3, 3, 3]);
+    expect(h.saved[0]?.contributions).toHaveLength(3);
+  });
+
+  it('never executes a generic workspace search requested by a reviewer', async () => {
+    const search = vi.fn(async () => ({ ok: true, output: 'Should never run.' }));
+    let calls = 0;
+    const h = harness(async () => ++calls === 1
+      ? { text: '', stop: 'tool_use', toolCalls: [{ id: 'broad-search', name: 'search_files', input: {} }] }
+      : reply('No independent lookup was available; source claim remains unverified.'), 1);
+    h.options.team.workerToolsForMember = () => [{ ...readTool('search_files', 'read'), run: search }];
+    expect(await runNativeKnowledgeMeeting(h.options)).toMatchObject({ outcome: 'completed', knowledge: 'saved' });
+    expect(h.requests.every(request => request.tools.length === 0)).toBe(true);
+    expect(search).not.toHaveBeenCalled();
+    expect(h.requests).toHaveLength(2);
+  });
+
+  it('rejects an oversized prepared request before any provider entry', async () => {
+    const h = harness(undefined, 1);
+    h.options.prepareWorkerRequest = () => async request => `${request.system}\n${'x'.repeat(40_000)}`;
+    expect(await runNativeKnowledgeMeeting(h.options)).toMatchObject({ outcome: 'failed', knowledge: 'saved', problem: expect.stringContaining('request budget') });
+    expect(h.requests).toEqual([]);
+    expect(h.saved[0]?.contributions).toEqual([]);
+    expect(h.workers.size).toBe(0);
+  });
+
+  it('reserves shared input before concurrent calls and refuses another request that would exceed the aggregate', async () => {
+    const h = harness(async (_request, member) => ({ text: '', stop: 'tool_use', toolCalls: [{ id: `${member.id}-read`, name: 'knowledge_read', input: {} }] }), 3);
+    h.options.prepareWorkerRequest = () => async () => 'x'.repeat(27_500);
+    expect(await runNativeKnowledgeMeeting(h.options)).toMatchObject({ outcome: 'failed', knowledge: 'saved', problem: expect.stringContaining('request budget') });
+    expect(h.requests).toHaveLength(3);
+    const admittedInput = h.requests.reduce((sum, request) => sum + checkRequestBudget(request).pressure!.estimatedTokens, 0);
+    expect(admittedInput).toBeLessThanOrEqual(24_000);
+    expect(admittedInput).toBeGreaterThan(20_000);
+    expect(h.saved[0]?.contributions).toEqual([]);
+    expect(h.workers.size).toBe(0);
+  });
+
+  it('counts failed model fallbacks against the same member request budget', async () => {
+    const h = harness(undefined, 1);
+    h.options.team.members[0]!.models = ['first', 'second', 'third', 'fourth'];
+    const attempted: string[] = [];
+    h.options.team.providerForModel = model => ({ api: 'openai-chat', listModels: async () => [], complete: async () => {
+      attempted.push(model);
+      throw new ProviderError('Temporary endpoint limit.', 429, true);
+    } });
+    expect(await runNativeKnowledgeMeeting(h.options)).toMatchObject({ outcome: 'failed', knowledge: 'saved', problem: expect.stringContaining('request budget') });
+    expect(attempted).toEqual(['first', 'second', 'third']);
+    expect(h.saved[0]?.contributions).toEqual([]);
+    expect(h.workers.size).toBe(0);
+  });
+
+  it('refuses tool calls after the final synthesis request without entering another read', async () => {
+    const read = vi.fn(async () => ({ ok: true, output: 'Source data.' }));
+    let calls = 0;
+    const h = harness(async () => ({ text: '', stop: 'tool_use', toolCalls: [{ id: `read-${++calls}`, name: 'knowledge_read', input: {} }] }), 1);
+    h.options.team.workerToolsForMember = () => [{ ...readTool('knowledge_read', 'read'), run: read }];
+    expect(await runNativeKnowledgeMeeting(h.options)).toMatchObject({ outcome: 'failed', knowledge: 'saved', problem: expect.stringContaining('request budget') });
+    expect(h.requests).toHaveLength(3);
+    expect(h.requests[2]?.tools).toEqual([]);
+    expect(read).toHaveBeenCalledTimes(2);
+    expect(h.saved[0]?.contributions).toEqual([]);
+  });
+
   it('redacts externally supplied context before clipping provider, activity and minutes text', async () => {
     const h = harness(undefined, 1);
     const credential = 'synthetic-credential-'.repeat(80);
@@ -53,7 +150,7 @@ describe('native knowledge meeting execution', () => {
     }
   });
 
-  it('runs two actual read-only rounds and reports saved knowledge only after the minutes writer acknowledges', async () => {
+  it('runs one actual indexed review round and reports saved knowledge only after the minutes writer acknowledges', async () => {
     const h = harness();
     h.options.sourceContext = 'Older task evidence. '.repeat(200) + 'Latest verified finding: the project configuration is valid.';
     const writing = deferred<void>();
@@ -64,23 +161,20 @@ describe('native knowledge meeting execution', () => {
     await writing.promise;
     expect(returned).toBe(false);
     expect(h.events.some(event => event.type === 'meeting.completed')).toBe(false);
-    expect(h.requests).toHaveLength(4);
-    expect(h.saved[0]?.contributions).toHaveLength(4);
+    expect(h.requests).toHaveLength(2);
+    expect(h.saved[0]?.contributions).toHaveLength(2);
     expect(h.saved[0]?.topic.length).toBeLessThanOrEqual(2_000);
     expect(h.saved[0]?.topic).toContain('Source session: session-one; completed run: run-one.');
     expect(h.saved[0]?.topic).toContain('Latest verified finding: the project configuration is valid.');
-    for (const request of h.requests) expect(request.tools.map(tool => tool.name)).toEqual(['read_file', 'memory_read']);
-    for (const request of h.requests.slice(2)) {
-      expect(request.messages[0]).toMatchObject({ role: 'user', text: expect.stringContaining('member-0 verified finding 1') });
-      expect(request.messages[0]).toMatchObject({ text: expect.stringContaining('member-1 verified finding 2') });
-    }
+    for (const request of h.requests) expect(request.tools.map(tool => tool.name)).toEqual(['knowledge_search', 'knowledge_read', 'skill_read']);
+    expect(h.saved[0]?.contributions.every(contribution => contribution.round === 1)).toBe(true);
     persisted.resolve('Meetings/workspace-one/acknowledged.md');
     expect(await running).toEqual({ outcome: 'completed', knowledge: 'saved', meetingId: h.saved[0]!.meetingId, notePath: 'Meetings/workspace-one/acknowledged.md' });
     expect(h.workers.size).toBe(0);
     expect(h.events.at(-1)).toMatchObject({ type: 'meeting.completed', outcome: 'completed', notePath: 'Meetings/workspace-one/acknowledged.md' });
   });
 
-  it('forwards fresh participant skill preparation to both real rounds without widening read-only tools', async () => {
+  it('forwards fresh participant preparation before budgeting without widening indexed read tools', async () => {
     const h = harness();
     const prepared: string[] = [];
     const preparedSystems: string[] = [];
@@ -88,16 +182,16 @@ describe('native knowledge meeting execution', () => {
       expect(selected?.id).toBe(agentId);
       return async request => {
         prepared.push(agentId);
-        expect(request.tools.map(tool => tool.name)).toEqual(['read_file', 'memory_read']);
+        expect(request.tools.map(tool => tool.name)).toEqual(['knowledge_search', 'knowledge_read', 'skill_read']);
         const system = `${request.system}\nFresh skill context for ${agentId}; preparation ${prepared.length}.`;
         preparedSystems.push(system);
         return system;
       };
     };
     expect(await runNativeKnowledgeMeeting(h.options)).toMatchObject({ outcome: 'completed', knowledge: 'saved' });
-    expect(prepared).toEqual(['member-0', 'member-1', 'member-0', 'member-1']);
+    expect(prepared).toEqual(['member-0', 'member-1']);
     expect(h.requests.map(request => request.system)).toEqual(preparedSystems);
-    expect(h.requests).toHaveLength(4);
+    expect(h.requests).toHaveLength(2);
     expect(h.workers.size).toBe(0);
   });
 
@@ -111,7 +205,7 @@ describe('native knowledge meeting execution', () => {
     expect(result).toMatchObject({ outcome: 'completed', knowledge: mode === 'failed' ? 'failed' : 'unavailable' });
     expect(result.notePath).toBeUndefined();
     expect(result.problem).not.toContain('private exporter details');
-    expect(h.requests).toHaveLength(2);
+    expect(h.requests).toHaveLength(1);
     expect(h.events.at(-1)).toMatchObject({ type: 'meeting.completed', outcome: 'completed' });
     expect(h.events.at(-1)).not.toHaveProperty('notePath');
   });
@@ -144,17 +238,16 @@ describe('native knowledge meeting execution', () => {
     expect(blocked.events).toEqual([]);
 
     let current = true;
-    let calls = 0;
-    const h = harness(async () => { if (++calls === 2) current = false; return reply('Actual finding'); }, 1);
+    const h = harness(async () => { current = false; return reply('Actual finding'); }, 1);
     h.options.assertCurrent = () => { if (!current) throw new Error('Profile changed'); };
     expect(await runNativeKnowledgeMeeting(h.options)).toMatchObject({ outcome: 'completed', knowledge: 'failed' });
-    expect(h.requests).toHaveLength(2);
+    expect(h.requests).toHaveLength(1);
     expect(h.saved).toEqual([]);
   });
 
-  it('rechecks authority before the second round instead of reusing source-run permissions', async () => {
+  it('rechecks authority before indexed reads and later review requests', async () => {
     let current = true;
-    const h = harness(async () => { current = false; return reply('First-round finding'); }, 1);
+    const h = harness(async () => { current = false; return { text: '', stop: 'tool_use', toolCalls: [{ id: 'read-one', name: 'knowledge_read', input: {} }] }; }, 1);
     h.options.assertCurrent = () => { if (!current) throw new Error('Profile changed'); };
     expect(await runNativeKnowledgeMeeting(h.options)).toMatchObject({ outcome: 'cancelled', knowledge: 'failed' });
     expect(h.requests).toHaveLength(1);

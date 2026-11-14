@@ -34,6 +34,13 @@ fn plain(v: &str, multiline: bool) -> bool {
         .all(|c| (!c.is_control() || multiline && "\r\n\t".contains(c)) && !format_char(c))
 }
 pub(super) fn proposal(v: &Value) -> Result<Value> {
+    if v.as_object().is_none_or(|o| {
+        o.keys().any(|key| {
+            !["name", "description", "instructions", "sourceUrls"].contains(&key.as_str())
+        })
+    }) {
+        return Err(refuse("invalid_skill_proposal"));
+    }
     let name = s(v, "name");
     let description = s(v, "description");
     let instructions = s(v, "instructions");
@@ -59,7 +66,11 @@ pub(super) fn proposal(v: &Value) -> Result<Value> {
     let mut out =
         json!({"name":name,"description":trim(description),"instructions":trim(instructions)});
     if let Some(urls) = v.get("sourceUrls") {
-        for url in urls.as_array().ok_or(refuse("invalid_source_url"))? {
+        let urls = urls.as_array().ok_or(refuse("invalid_source_url"))?;
+        if urls.len() > 8 {
+            return Err(refuse("invalid_source_url"));
+        }
+        for url in urls {
             let url = url.as_str().ok_or(refuse("invalid_source_url"))?;
             let rest = url
                 .strip_prefix("https://")
@@ -76,7 +87,7 @@ pub(super) fn proposal(v: &Value) -> Result<Value> {
                 return Err(refuse("invalid_source_url"));
             }
         }
-        out["sourceUrls"] = urls.clone();
+        out["sourceUrls"] = json!(urls);
     }
     Ok(out)
 }
@@ -201,7 +212,33 @@ pub(super) fn learning_markdown(v: &Value) -> Result<String> {
     ] {
         rows.push(format!("{key}: {}", v[field]));
     }
-    rows.extend(["---".into(),"".into(),format!("# {}",s(v,"title")),"".into(),"Generated findings from a completed source turn. Evidence is limited to successful tool results captured in that invocation; these findings are not independently verified.".into(),"".into(),"## Lesson".into(),"".into(),s(v,"lesson").into(),"".into(),"## Current-turn evidence".into(),"".into()]);
+    let source_notice = if evidence
+        .iter()
+        .any(|e| s(e, "name").starts_with("observed_"))
+    {
+        "Generated findings from an observed source episode. Transcript claims are attributed to their original source; idle, reported completion and claimed tool outcomes are not independently verified."
+    } else if evidence
+        .iter()
+        .any(|e| s(e, "name").starts_with("conversation_"))
+    {
+        "Generated findings from bounded current-turn evidence and attributed conversation claims. User and assistant statements are not tool results or independent verification; these findings remain unverified."
+    } else {
+        "Generated findings from a completed source turn. Evidence is limited to successful tool results captured in that invocation; these findings are not independently verified."
+    };
+    rows.extend([
+        "---".into(),
+        "".into(),
+        format!("# {}", s(v, "title")),
+        "".into(),
+        source_notice.into(),
+        "".into(),
+        "## Lesson".into(),
+        "".into(),
+        s(v, "lesson").into(),
+        "".into(),
+        "## Current-turn evidence".into(),
+        "".into(),
+    ]);
     for e in evidence {
         rows.extend([
             format!("### {} · {}", s(e, "id"), s(e, "name")),

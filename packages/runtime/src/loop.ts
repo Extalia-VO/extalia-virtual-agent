@@ -48,6 +48,8 @@ export interface TurnOptions {
   checkPermission?(request: PermissionRequest): Promise<PermissionVerdict>;
   signal: AbortSignal;
   maxSteps?: number;
+  /** Reserve the last bounded request for a response without tools; never execute calls from it. */
+  reserveFinalResponse?: boolean;
   /** Optional estimated input ceiling: a positive safe integer, never inferred from a model name. */
   maxInputTokens?: number;
   /** Host-owned context refresh after steering, before every budget check/provider request. */
@@ -137,7 +139,8 @@ export async function runTurn(options: TurnOptions): Promise<TurnResult> {
     if (signal.aborted) return finish('cancelled', 'Stopped by the user.');
     await takeSteering('step');
     if (signal.aborted) return finish('cancelled', 'Stopped by the user.');
-    const specs = specsNow();
+    const finalResponse = options.reserveFinalResponse === true && step === maxSteps - 1;
+    const specs = finalResponse ? [] : specsNow();
     let system = options.system;
     try {
       if (options.prepareRequest) system = await options.prepareRequest({ system, messages: history, tools: specs, signal, requestScope });
@@ -149,6 +152,7 @@ export async function runTurn(options: TurnOptions): Promise<TurnResult> {
       }
       return finish('failed', 'The Native request context could not be prepared.');
     }
+    if (finalResponse) system += '\nThis is the final bounded response. No tools are available. Summarize only the evidence already gathered, state unresolved questions and failed reads explicitly, and do not claim unverified work is complete.';
     const budget = checkRequestBudget({ system, messages: history, tools: specs }, options.maxInputTokens);
     if (signal.aborted) return finish('cancelled', 'Stopped by the user.');
     requestPressure = budget.pressure;
@@ -195,6 +199,10 @@ export async function runTurn(options: TurnOptions): Promise<TurnResult> {
       // Tool input cut off at the output limit may parse as a valid but truncated object.
       history.push({ ...assistant, toolCalls: [] });
       return finish('failed', 'A tool call was cut off because the answer reached the output limit.');
+    }
+    if (finalResponse) {
+      history.push({ ...assistant, toolCalls: [] });
+      return finish('step-limit', 'The bounded synthesis requested more tools instead of returning findings. No additional tools were run.');
     }
     history.push(assistant);
 

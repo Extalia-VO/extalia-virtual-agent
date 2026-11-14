@@ -414,6 +414,10 @@ re-running every historical browser, vendor, hardware or long-duration experimen
 
 ### Versioned implementation entries
 
+| ID | Work | Status | Evidence / handoff |
+| --- | --- | --- | --- |
+| N-RELIABLE-SELF-LEARNING | Bounded profile/default learning, terminal submissions and independent artifact confirmations | Implemented; CI and live-provider acceptance tracked separately (2026-11-14) | v0.4.326 patch prepared on 68ff3b5, preserving Electron 45 and upstream documentation/metadata: provider-compatible terminal curator, attributed conversation evidence, default Observe scope, bounded meetings, per-artifact confirmations, merged explicit-proposal scope checks and exact Observe source identities. Earlier local validation passed lint/types/builds and 10,229 Vitest tests; 127 Vitest and two Rust fixtures require local Unix-socket permission. The draft PR records checks for its exact commit. See the reliable-self-learning PRD; live provider and release acceptance remain open. No live profile changes. |
+
 Maintenance integration [#93](https://github.com/Extalia-VO/extalia-virtual-agent/issues/93)
 merged through [PR #94](https://github.com/Extalia-VO/extalia-virtual-agent/pull/94)
 as `74706ec` on 2026-11-13. The final local gate passed 9,399 TS and 576 Rust

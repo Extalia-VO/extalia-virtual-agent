@@ -5,7 +5,7 @@ import {
 } from '@extalia/importers';
 import type { ImportCandidate, ImportDiagnostic, ImportLocation, ImportScan } from '@extalia/platform';
 import { createHash, randomUUID } from 'node:crypto';
-import { closeSync, existsSync, fstatSync, lstatSync, openSync, readdirSync, readSync, realpathSync, statSync, type Dirent } from 'node:fs';
+import { closeSync, existsSync, fstatSync, lstatSync, openSync, readdirSync, readSync, realpathSync, statSync, type BigIntStats, type Dirent } from 'node:fs';
 import { basename, dirname, isAbsolute, join, relative, sep } from 'node:path';
 import type * as Sqlite from 'node:sqlite';
 import { resolveAgentLocations } from './agentLocations.js';
@@ -53,7 +53,7 @@ interface FileIdentity { size: number; mtime: number; ino: number }
 /** `titled` is false when the candidate title is only a placeholder; imports then use the first prompt. */
 interface Ref { location: Location; path: string; candidate: ImportCandidate; identity: FileIdentity; titled: boolean; rowFingerprint?: string; spawn?: CodexThreadSpawn }
 /** First record of a Codex rollout: its thread id and, for sub-agent threads, how it was spawned. Immutable once written. */
-interface ThreadHeader { ino: number; id: string; spawn?: CodexThreadSpawn; cwd?: string; startMs?: number }
+interface ThreadHeader { fileIdentity: string; id: string; spawn?: CodexThreadSpawn; cwd?: string; startMs?: number }
 interface ParsedSubagent { steps: TranscriptStep[]; model?: string; startedAt?: string }
 interface Budget { files: number; limit: number; truncated: boolean }
 
@@ -76,6 +76,8 @@ function identity(path: string): FileIdentity {
 }
 
 const same = (a: FileIdentity, b: FileIdentity) => a.size === b.size && a.mtime === b.mtime && a.ino === b.ino;
+/** Preserve all 64 file-ID bits without invalidating a binding when a transcript grows. */
+const stableFileIdentity = (path: string, info: Pick<BigIntStats, 'dev' | 'ino'>) => JSON.stringify([path, String(info.dev), String(info.ino)]);
 
 /** Start time a Codex rollout name states (`rollout-2026-10-16T17-10-25-<id>.jsonl`, local time). */
 function rolloutTime(path: string): number | undefined {
@@ -397,8 +399,12 @@ export class NativeImportService {
       if (reference.sourceId !== 'codex' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(reference.nativeSessionId)) return undefined;
       const location = this.observationLocation(reference);
       if (location.kind !== 'codex') return undefined;
-      const file = contained(location.path, reference.path), info = statSync(file), header = this.codexHeader(location, file);
-      if (!info.isFile() || header?.id !== reference.nativeSessionId) return undefined;
+      const file = contained(location.path, reference.path), info = statSync(file, { bigint: true });
+      if (!info.isFile()) return undefined;
+      const fileIdentity = stableFileIdentity(file, info), header = this.codexHeader(location, file);
+      if (header?.id !== reference.nativeSessionId || header.fileIdentity !== fileIdentity) return undefined;
+      const currentFile = contained(location.path, reference.path), current = statSync(currentFile, { bigint: true });
+      if (!current.isFile() || stableFileIdentity(currentFile, current) !== fileIdentity) return undefined;
       return { codexHome: realpathSync(location.root), transcriptPath: file, sourceFingerprint: digest(JSON.stringify([file, String(info.dev), String(info.ino), header.id])) };
     } catch { return undefined; }
   }
@@ -1278,15 +1284,19 @@ export class NativeImportService {
 
   private codexHeader(location: Location, path: string): ThreadHeader | undefined {
     try {
-      const canonical = contained(location.path, path), info = statSync(canonical);
+      const canonical = contained(location.path, path), info = statSync(canonical, { bigint: true });
       if (!info.isFile()) return undefined;
-      const ino = Number(info.ino), cached = this.threadHeaders.get(path);
-      if (cached?.ino === ino) return cached;
+      const fileIdentity = stableFileIdentity(canonical, info), cached = this.threadHeaders.get(path);
+      if (cached?.fileIdentity === fileIdentity) return cached;
       const fd = openSync(canonical, 'r');
       let head: string;
       try {
-        const bytes = Buffer.alloc(Math.min(info.size, HEADER_BYTES));
+        const opened = fstatSync(fd, { bigint: true });
+        if (!opened.isFile() || stableFileIdentity(canonical, opened) !== fileIdentity) return undefined;
+        const bytes = Buffer.alloc(Number(opened.size < BigInt(HEADER_BYTES) ? opened.size : BigInt(HEADER_BYTES)));
         head = bytes.subarray(0, readSync(fd, bytes, 0, bytes.length, 0)).toString('utf8');
+        const currentFile = contained(location.path, path), current = statSync(currentFile, { bigint: true });
+        if (!current.isFile() || stableFileIdentity(currentFile, current) !== fileIdentity) return undefined;
       } finally { closeSync(fd); }
       const end = head.indexOf('\n');
       if (end < 0) return undefined;
@@ -1295,7 +1305,7 @@ export class NativeImportService {
       const id = text(payload.id);
       if (row?.type !== 'session_meta' || !id) return undefined;
       const spawn = codexThreadSpawn(payload), cwd = literalProjectPath(payload.cwd), startMs = Date.parse(String(payload.timestamp ?? row.timestamp ?? ''));
-      const header: ThreadHeader = { ino, id: safeLabel(id, 200), ...(spawn ? { spawn } : {}), ...(cwd ? { cwd: safeText(cwd, 2000) } : {}), ...(Number.isFinite(startMs) ? { startMs } : {}) };
+      const header: ThreadHeader = { fileIdentity, id: safeLabel(id, 200), ...(spawn ? { spawn } : {}), ...(cwd ? { cwd: safeText(cwd, 2000) } : {}), ...(Number.isFinite(startMs) ? { startMs } : {}) };
       this.threadHeaders.set(path, header);
       if (this.threadHeaders.size > MAX_FILES) this.threadHeaders.delete(this.threadHeaders.keys().next().value!);
       return header;

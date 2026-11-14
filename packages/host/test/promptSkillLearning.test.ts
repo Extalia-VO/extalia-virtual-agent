@@ -1,5 +1,7 @@
 import { skillStoragePaths } from '../src/skillStorage.js';
 import { createAgentHost } from '../src/service.js';
+import { SkillRegistry } from '../src/skillRegistry.js';
+import { VaultProfiles } from '../src/vaultProfiles.js';
 import { createHash } from 'node:crypto';
 import { chmod, lstat, mkdir, mkdtemp, readdir, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -61,6 +63,37 @@ async function idle(runtime: Awaited<ReturnType<typeof fixture>>['runtime']) {
 }
 
 describe('current-prompt skill learning authority through the Native host', () => {
+  it.each(['default', 'profile'].flatMap(origin => ['same', 'profile', 'revision'].map(change => ({ origin, change }))))('binds $origin proposals to the originating vault and refuses a changed $change scope', async ({ origin, change }) => {
+    let modelStarted = false;
+    const originalPolicy = VaultProfiles.prototype.policyFor;
+    const policy = vi.spyOn(VaultProfiles.prototype, 'policyFor').mockImplementation(async function (this: VaultProfiles, workspaceId) {
+      const current = await originalPolicy.call(this, workspaceId);
+      if (!modelStarted || change === 'same') return current;
+      return change === 'profile' ? { ...current, profileId: 'profile-other' } : { ...current, revision: 'changed-revision' };
+    });
+    const propose = vi.spyOn(SkillRegistry.prototype, 'propose').mockResolvedValue({ packageId: 'prompt-review', revisionId: `skr_${'a'.repeat(64)}`,
+      state: 'quarantined', created: true, inspection: 'unavailable', activationPerformed: false, cancellationObserved: false });
+    try {
+      const f = await fixture({ backend: 'typescript', reply: (_body, index) => {
+        modelStarted = true;
+        return index === 0 ? { tool: 'skill_propose', args: { ...proposal, sourceUrls: [] } } : { text: 'Finished.' };
+      } });
+      if (origin === 'profile') {
+        const before = await f.host.listVaultProfiles!();
+        await f.host.saveVaultProfile!({ name: 'Scoped fixture', vaultRoot: null, workspaceIds: [f.workspace.id], minutesEnabled: false,
+          automaticLearning: { enabled: false, skills: false, notes: false }, expectedRevision: before.revision });
+      }
+      const profileId = (await f.host.listVaultProfiles!()).profiles.find(item => item.workspaceIds.includes(f.workspace.id))!.id;
+      await f.host.sendPrompt(f.session.id, '/learn-skill Draft a review procedure.'); await idle(f.runtime);
+      if (change === 'same') {
+        expect(propose).toHaveBeenCalledExactlyOnceWith(expect.any(Object), expect.objectContaining({ profileId, workspaceId: f.workspace.id, sessionId: f.session.id }), expect.any(AbortSignal));
+      } else {
+        expect(propose).not.toHaveBeenCalled();
+        expect(String(f.bodies.at(-1)!.messages.at(-1)?.content)).toContain('profile changed or could not be confirmed');
+      }
+    } finally { policy.mockRestore(); propose.mockRestore(); }
+  });
+
   it.skipIf(!HAS_DAEMON)('does not treat quoted, fenced, nested or near-match commands as a direct learning request', async () => {
     const { host, runtime, bodies, session } = await fixture();
     for (const text of [

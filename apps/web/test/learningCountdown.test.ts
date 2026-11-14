@@ -18,6 +18,19 @@ const receipt = (change: 'new' | 'revised' | 'saved' = 'saved') => ({ id: 'recei
   state: 'quarantined', change, activationPerformed: false as const });
 
 describe('learning countdown notification', () => {
+  for (const language of ['en', 'id'] as const) it(`shows Knowledge confirmation independently of partial skill failure in ${language}`, () => {
+    const value = snapshot('partial');
+    value.jobs[0]!.workspaceId = 'global-observe';
+    value.jobs[0]!.result = { knowledge: { status: 'saved', path: 'Learning/global-observe/run.md', indexed: false }, problem: 'publication' };
+    const html = render(value, language), text = MESSAGES[language].learningCountdown;
+    expect(html).toContain(text.partial); expect(html).toContain(text.learningNoteSaved);
+    expect(html).toContain(text.globalObserve); expect(html).toContain(text.indexPending);
+    expect(html).not.toContain(text.knowledgeSaved); expect(html).not.toContain(text.failed);
+    expect(html).not.toContain(text.runNow);
+    value.jobs[0]!.state = 'completed'; value.jobs[0]!.result = { knowledge: { status: 'saved', path: 'Learning/global-observe/run.md', indexed: true } };
+    expect(render(value, language)).toContain(text.completed);
+  });
+
   it('formats the host deadline without a negative countdown or claiming a dispatch', () => {
     expect(learningCountdownTime(new Date(at + 59_001).toISOString(), at)).toBe('1:00');
     expect(learningCountdownTime(new Date(at + 59_000).toISOString(), at)).toBe('0:59');
@@ -131,6 +144,12 @@ describe('learning countdown notification', () => {
     expect(render(value)).not.toContain(text.knowledgeSaved);
     job.result.meeting = { outcome: 'completed', knowledge: 'saved', notePath: 'meetings/example.md' };
     expect(render(value)).toContain(text.knowledgeSaved);
+    expect(render(value)).not.toContain(text.indexPending);
+    job.state = 'partial'; job.result.meeting.indexed = false;
+    expect(render(value)).toContain(text.partial);
+    expect(render(value)).toContain(text.indexPending);
+    expect(render(value)).toContain(text.knowledgePartial);
+    expect(render(value)).not.toContain(text.meetingCompleted);
     job.state = 'failed';
     job.result.meeting.outcome = 'failed';
     expect(render(value)).toContain(text.knowledgePartial);

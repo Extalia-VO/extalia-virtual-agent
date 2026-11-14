@@ -64,6 +64,8 @@ export interface SkillProposalToolOptions {
   provenance: SkillProposalProvenance;
   /** Host-held source-read requirements; never supplied by the model. */
   authorize?(input: SkillProposalInput): string | undefined;
+  /** Host-owned scope revalidation, before staging; unavailable or stale scope fails closed. */
+  assertCurrent?(): Promise<void>;
   propose(input: SkillProposalInput, provenance: SkillProposalProvenance, signal: AbortSignal): Promise<SkillProposalResult>;
 }
 
@@ -93,6 +95,12 @@ export function createSkillProposalTool(options: SkillProposalToolOptions): Tool
       if (refusal) return { ok: false, output: refusal };
       if (context.signal.aborted) return { ok: false, output: 'Cancelled before saving a skill candidate.' };
       consumed = true;
+      if (options.assertCurrent) {
+        try { await options.assertCurrent(); } catch {
+          return { ok: false, output: 'The originating learning profile changed or could not be confirmed. No skill candidate was submitted. Start a new turn after checking the profile.' };
+        }
+      }
+      if (context.signal.aborted) return { ok: false, output: 'Cancelled before saving a skill candidate.' };
       try {
         const result = await options.propose(input, provenance, context.signal);
         return { ok: !result.cancellationObserved, output: JSON.stringify({ ...result, notice: 'Generated candidate only. An inspection record is not necessarily a successful scan. Review its current state in Skills; scanner evidence and separate user approval remain required before activation.' }) };
