@@ -1,7 +1,7 @@
 /** Actions target an existing outside conversation; observation alone grants none. */
 export type ObservedControlAction = 'start' | 'steer' | 'queue' | 'reply-tool' | 'inbox-send';
-export type ObservedControlRoute = 'codex-native' | 'codex-queue' | 'hermes-native' | 'cooperative-tool' | 'cooperative-inbox';
-export type ObservedControlEvidence = 'native-attachment' | 'official-queue' | 'paired-tool' | 'paired-inbox';
+export type ObservedControlRoute = 'codex-native' | 'codex-queue' | 'hermes-native' | 'cooperative-tool' | 'cooperative-inbox' | 'official-cli-resume' | 'antigravity-native';
+export type ObservedControlEvidence = 'native-attachment' | 'official-queue' | 'paired-tool' | 'paired-inbox' | 'official-cli';
 export type ObservedControlDelivery = 'rejected' | 'queued' | 'submitted' | 'resolved' | 'unknown';
 
 /** Transport catalog, not a claim that an installed provider supports control. */
@@ -9,13 +9,15 @@ export const OBSERVED_CONTROL_ROUTES: readonly {
   route: ObservedControlRoute;
   actions: readonly ObservedControlAction[];
   evidence: ObservedControlEvidence;
-  limit: 'existing-native-owner' | 'queue-receipt-only' | 'waiting-tool-only' | 'paired-consumer-only';
+  limit: 'existing-native-owner' | 'queue-receipt-only' | 'waiting-tool-only' | 'paired-consumer-only' | 'reviewed-cli-owner';
 }[] = [
   { route: 'codex-native', actions: ['start', 'steer'], evidence: 'native-attachment', limit: 'existing-native-owner' },
   { route: 'codex-queue', actions: ['queue'], evidence: 'official-queue', limit: 'queue-receipt-only' },
   { route: 'hermes-native', actions: ['start', 'steer'], evidence: 'native-attachment', limit: 'existing-native-owner' },
   { route: 'cooperative-tool', actions: ['reply-tool'], evidence: 'paired-tool', limit: 'waiting-tool-only' },
   { route: 'cooperative-inbox', actions: ['inbox-send'], evidence: 'paired-inbox', limit: 'paired-consumer-only' },
+  { route: 'antigravity-native', actions: ['start'], evidence: 'native-attachment', limit: 'existing-native-owner' },
+  { route: 'official-cli-resume', actions: ['start'], evidence: 'official-cli', limit: 'reviewed-cli-owner' },
 ];
 
 export interface ObservedControlCapability {

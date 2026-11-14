@@ -1,6 +1,6 @@
 import { presetById } from '@extalia/core';
 import type { AgentHostApi, ConnectionTestResult, HostState } from '@extalia/platform';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { errorMessage } from '../../host/remote';
 import type { Messages } from '../../i18n';
 import { ConnectionForm } from '../../setup/ConnectionForm';
@@ -8,8 +8,19 @@ import { draftFromConnection, draftFromPreset, isValid, toConnectionInput, valid
 import { Icon } from '../../ui/Icon';
 
 type TestState = ConnectionTestResult | 'testing';
+type Props = { t: Messages; agents: AgentHostApi; state: HostState; onState: (next: HostState) => void };
 
-export function ConnectionsSection({ t, agents, state, onState }: { t: Messages; agents: AgentHostApi; state: HostState; onState: (next: HostState) => void }) {
+export function ConnectionsSection(props: Props) {
+  const [scope, setScope] = useState({ agents: props.agents, profile: props.state.profile.id, directory: props.state.dataDirectory, revision: 0 });
+  const changed = scope.agents !== props.agents || scope.profile !== props.state.profile.id || scope.directory !== props.state.dataDirectory;
+  const revision = scope.revision + (changed ? 1 : 0);
+  if (changed) setScope({ agents: props.agents, profile: props.state.profile.id, directory: props.state.dataDirectory, revision });
+  return <ConnectionEditor key={revision} {...props} />;
+}
+
+function ConnectionEditor({ t, agents, state, onState }: Props) {
+  const owner = useRef({ active: true, busy: false, testing: new Set<string>() });
+  useEffect(() => { const operation = owner.current; operation.active = true; return () => { operation.active = false; }; }, []);
   const [draft, setDraft] = useState<ConnectionDraft | null>(null);
   const [attempted, setAttempted] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -17,32 +28,45 @@ export function ConnectionsSection({ t, agents, state, onState }: { t: Messages;
   const [confirming, setConfirming] = useState<string | null>(null);
   const [tests, setTests] = useState<Record<string, TestState>>({});
 
-  async function run(action: () => Promise<void>) {
+  async function run(action: (active: () => boolean) => Promise<void>) {
+    const operation = owner.current;
+    if (!operation.active || operation.busy) return;
+    operation.busy = true;
     setBusy(true);
     setError(null);
-    try { await action(); } catch (failure) { setError(errorMessage(failure)); } finally { setBusy(false); }
+    try { await action(() => operation.active); }
+    catch (failure) { if (operation.active) setError(errorMessage(failure)); }
+    finally { operation.busy = false; if (operation.active) setBusy(false); }
   }
 
-  const save = () => run(async () => {
+  const save = () => run(async active => {
     if (!draft) return;
     setAttempted(true);
     if (!isValid(validateConnection(draft))) return;
     const { input, secret } = toConnectionInput(draft);
-    onState(await agents.saveConnection(input, secret));
+    const next = await agents.saveConnection(input, secret);
+    if (!active()) return;
+    onState(next);
     setDraft(null);
   });
 
   const test = async (id: string) => {
+    const operation = owner.current;
+    if (!operation.active || operation.busy || operation.testing.has(id)) return;
     const view = state.connections.find(item => item.id === id);
     if (!view) return;
+    operation.testing.add(id);
     setTests(previous => ({ ...previous, [id]: 'testing' }));
     let result: ConnectionTestResult;
     try { result = await agents.testConnection(toConnectionInput(draftFromConnection(view)).input); }
     catch (failure) { result = { ok: false, error: errorMessage(failure) }; }
-    setTests(previous => ({ ...previous, [id]: result }));
+    operation.testing.delete(id);
+    if (operation.active) setTests(previous => ({ ...previous, [id]: result }));
   };
 
-  const edit = (next: ConnectionDraft) => { setAttempted(false); setError(null); setConfirming(null); setDraft(next); };
+  const edit = (next: ConnectionDraft) => { if (owner.current.busy || !owner.current.active) return; setAttempted(false); setError(null); setConfirming(null); setDraft(next); };
+  const changeDraft = (next: ConnectionDraft) => { if (!owner.current.busy && owner.current.active) setDraft(next); };
+  const confirm = (id: string | null) => { if (owner.current.busy || !owner.current.active) return; setError(null); setConfirming(id); };
   // The models a row's successful test listed; the editor offers them until the connection is tested again.
   const listedModels = (id?: string) => {
     const result = id ? tests[id] : undefined;
@@ -56,16 +80,18 @@ export function ConnectionsSection({ t, agents, state, onState }: { t: Messages;
           <h2 id="settings-connections">{t.settings.connections}</h2>
           <p className="muted small">{t.settings.connectionsLead}</p>
         </div>
-        {!draft && <button type="button" className="button" onClick={() => edit(draftFromPreset('openai'))}><Icon name="plus" />{t.settings.addConnection}</button>}
+        {!draft && <button type="button" className="button" disabled={busy} onClick={() => edit(draftFromPreset('openai'))}><Icon name="plus" />{t.settings.addConnection}</button>}
       </div>
 
       {draft ? (
-        <form className="editor" aria-label={draft.id ? t.settings.editing(draft.name) : t.settings.addConnection} onSubmit={event => { event.preventDefault(); void save(); }}>
-          <ConnectionForm t={t} agents={agents} draft={draft} onChange={setDraft} showAllErrors={attempted} knownModels={listedModels(draft.id)} />
+        <form className="editor" noValidate autoComplete="off" aria-busy={busy} aria-label={draft.id ? t.settings.editing(draft.name) : t.settings.addConnection} onSubmit={event => { event.preventDefault(); void save(); }}>
+          <fieldset disabled={busy} aria-label={draft.id ? t.settings.editing(draft.name) : t.settings.addConnection}>
+            <ConnectionForm t={t} agents={agents} draft={draft} onChange={changeDraft} showAllErrors={attempted} knownModels={listedModels(draft.id)} />
+          </fieldset>
           {error && <p className="form-error" role="alert"><Icon name="alert" />{error}</p>}
           <div className="actions">
             <button type="submit" className="primary" disabled={busy}>{busy ? t.common.saving : t.common.save}</button>
-            <button type="button" disabled={busy} onClick={() => setDraft(null)}>{t.common.cancel}</button>
+            <button type="button" disabled={busy} onClick={() => { if (!owner.current.busy && owner.current.active) setDraft(null); }}>{t.common.cancel}</button>
           </div>
         </form>
       ) : state.connections.length === 0 ? <p className="muted">{t.settings.noConnections}</p> : (
@@ -87,15 +113,15 @@ export function ConnectionsSection({ t, agents, state, onState }: { t: Messages;
                     <p>{t.settings.deleteConnection}</p>
                     <div className="row-actions">
                       <button type="button" className="button small danger" autoFocus disabled={busy}
-                        onClick={() => run(async () => { onState(await agents.deleteConnection(connection.id)); setConfirming(null); })}>{t.common.delete}</button>
-                      <button type="button" className="button small" onClick={() => setConfirming(null)}>{t.common.cancel}</button>
+                        onClick={() => run(async active => { const next = await agents.deleteConnection(connection.id); if (active()) { onState(next); setConfirming(null); } })}>{t.common.delete}</button>
+                      <button type="button" className="button small" disabled={busy} onClick={() => confirm(null)}>{t.common.cancel}</button>
                     </div>
                   </div>
                 ) : (
                   <div className="row-actions">
-                    <button type="button" className="button small" disabled={result === 'testing'} onClick={() => test(connection.id)}>{result === 'testing' ? t.connection.testing : t.settings.test}</button>
-                    <button type="button" className="button small" onClick={() => edit(draftFromConnection(connection))}><Icon name="edit" />{t.common.edit}</button>
-                    <button type="button" className="button small" aria-label={`${t.common.delete}: ${connection.name}`} onClick={() => { setError(null); setConfirming(connection.id); }}><Icon name="trash" /></button>
+                    <button type="button" className="button small" disabled={busy || result === 'testing'} onClick={() => test(connection.id)}>{result === 'testing' ? t.connection.testing : t.settings.test}</button>
+                    <button type="button" className="button small" disabled={busy} onClick={() => edit(draftFromConnection(connection))}><Icon name="edit" />{t.common.edit}</button>
+                    <button type="button" className="button small" aria-label={`${t.common.delete}: ${connection.name}`} disabled={busy} onClick={() => confirm(connection.id)}><Icon name="trash" /></button>
                   </div>
                 )}
                 {result && result !== 'testing' && (

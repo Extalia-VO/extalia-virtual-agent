@@ -1,5 +1,5 @@
 /** Connection-bound ports for Rust-owned learning jobs and artifact persistence. */
-import type { DaemonLearningParams, Usage } from '@extalia/protocol';
+import type { DaemonLearningParams, LearningActions, Usage } from '@extalia/protocol';
 import type { ModelMessage, ModelResult, ToolResultEntry, ToolSpec } from '@extalia/runtime';
 import type { SkillProposalInput, SkillProposalProvenance } from './skillLearning.js';
 import { DaemonUnavailableError, type DaemonClient } from './daemon/index.js';
@@ -19,7 +19,13 @@ export interface RustLearningJob {
   usage?: Usage;
 }
 
+export type { ObservedMemoryScope, ObservedMemoryEntry, ObservedMemoryCoverage, ObservedMemoryEpisode, ObservedMemoryPage } from '@extalia/protocol';
 export interface RustLearningInputs {
+  'observed.capture': LearningActions['observed.capture']['input'];
+  'observed.search': LearningActions['observed.search']['input'];
+  'observed.read': LearningActions['observed.read']['input'];
+  'observed.revoke': LearningActions['observed.revoke']['input'];
+  'observed.jobBegin': Omit<LearningActions['observed.jobBegin']['input'], 'tools'> & { tools: readonly ToolSpec[] };
   'evidence.begin': Record<string, never>;
   'evidence.append': { intakeId: string; toolCallId: string; name: string; isError: boolean; chunk: string; final: boolean };
   'evidence.release': { intakeId: string };
@@ -46,6 +52,11 @@ export interface RustLearningInputs {
 }
 type Released = { released: true };
 interface ResultValues {
+  'observed.capture': LearningActions['observed.capture']['result'];
+  'observed.search': LearningActions['observed.search']['result'];
+  'observed.read': LearningActions['observed.read']['result'];
+  'observed.revoke': LearningActions['observed.revoke']['result'];
+  'observed.jobBegin': { job: RustLearningJob };
   'evidence.begin': { intakeId: string };
   'evidence.append': { complete: boolean };
   'evidence.release': Released;
@@ -93,7 +104,7 @@ export class RustLearningBackend implements RustLearningPort {
     const values = result as unknown as Record<string, unknown>;
     const job = values.job as RustLearningJob | undefined;
     for (const id of [values.pinId, values.draftId, values.stageId, values.intakeId, job?.jobId]) if (typeof id === 'string') this.handles.set(id, client);
-    if (action === 'job.begin' && runId && job) { this.runs.set(runId, client); this.jobRuns.set(job.jobId, runId); }
+    if ((action === 'job.begin' || action === 'observed.jobBegin') && runId && job) { this.runs.set(runId, client); this.jobRuns.set(job.jobId, runId); }
     if (handle && ['job.begin', 'job.release', 'evidence.release', 'note.release', 'note.discard', 'note.commit', 'skill.cleanup'].includes(action)) this.handles.delete(handle);
     if (action === 'job.release' && handle) {
       const run = this.jobRuns.get(handle);

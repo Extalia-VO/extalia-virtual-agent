@@ -12,4 +12,7 @@
 .session-move-consent { display: flex; align-items: flex-start; gap: 10px; font-size: .9rem; }
 .session-move-consent input { flex: none; margin-top: 4px; }
 .session-move-dialog footer { margin-top: 20px; justify-content: flex-end; flex-wrap: wrap; }
+.session-settings-tabs { display: flex; gap: 6px; padding-bottom: 12px; border-bottom: 1px solid var(--line); margin-bottom: 16px; }
+.session-settings-tabs button { flex: 1; padding: 8px 10px; border: 1px solid transparent; border-radius: 8px; color: var(--muted); background: transparent; font: inherit; font-size: .8rem; }
+.session-settings-tabs button[aria-selected='true'] { border-color: var(--line); color: var(--text); background: var(--sunken); }
 @media (max-width: 480px) { .session-move-dialog { padding: 16px; } .session-move-review { padding: 12px; } }

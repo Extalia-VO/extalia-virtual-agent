@@ -1,16 +1,17 @@
 /** Opt-in curation after useful completed work; candidate skills never activate automatically. */
-export interface AutomaticLearningPolicy { enabled: boolean; skills: boolean; notes: boolean }
+export interface AutomaticLearningPolicy { enabled: boolean; skills: boolean; notes: boolean; observed?: boolean }
 
 export function normalizeAutomaticLearningPolicy(value: unknown): AutomaticLearningPolicy {
   if (value === undefined) return { enabled: false, skills: false, notes: false };
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Choose an automatic learning policy.');
   const input = value as Record<string, unknown>;
-  if (Object.keys(input).some(key => !['enabled', 'skills', 'notes'].includes(key))
-    || ['enabled', 'skills', 'notes'].some(key => typeof input[key] !== 'boolean')) throw new Error('Invalid automatic learning policy.');
-  return { enabled: input.enabled as boolean, skills: input.skills as boolean, notes: input.notes as boolean };
+  if (Object.keys(input).some(key => !['enabled', 'skills', 'notes', 'observed'].includes(key))
+    || ['enabled', 'skills', 'notes'].some(key => typeof input[key] !== 'boolean')
+    || Object.hasOwn(input, 'observed') && typeof input.observed !== 'boolean') throw new Error('Invalid automatic learning policy.');
+  return { enabled: input.enabled as boolean, skills: input.skills as boolean, notes: input.notes as boolean, ...(Object.hasOwn(input, 'observed') ? { observed: input.observed as boolean } : {}) };
 }
 
-/** Workspace grouping selects a notes vault, without changing sessions, credentials or the Knowledge index. */
+/** Workspace grouping selects its Knowledge/managed-notes vault without moving sessions or credentials. */
 export interface VaultProfile {
   id: string;
   name: string;

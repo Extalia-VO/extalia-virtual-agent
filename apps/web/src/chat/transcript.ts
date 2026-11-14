@@ -48,11 +48,15 @@ export interface SkillLoadItem extends SkillLoadReport {
   agentId?: string;
   agentLabel?: string;
 }
-/** A worker agent the primary delegated to; its own tool calls only update this card. */
+/** A worker invocation the primary delegated to; its recorded activity stays inside this card. */
 export interface WorkerItem {
   kind: 'worker';
   id: string;
   subagentId: string;
+  /** First recorded working-state summary, retained when progress changes. */
+  task?: string;
+  /** Actual worker-scoped activity for this invocation, separate from the lead. */
+  preview?: TranscriptItem[];
   /** Task tier (`complex`, `standard`, `quick`) or another role. */
   tier?: string;
   label?: string;
@@ -108,6 +112,7 @@ export function projectTranscript(events: readonly ExtaliaEvent[], historicalRoo
   const toolsByCall = new Map<string, ToolItem>();
   const approvals = new Map<string, ApprovalItem>();
   const workers = new Map<string, WorkerItem>();
+  const workerEvents = new Map<WorkerItem, ExtaliaEvent[]>();
   let streaming: AssistantItem | undefined;
   let turn: Turn | undefined;
   /** Runtime whose carried-over conversation is being shown. */
@@ -151,6 +156,7 @@ export function projectTranscript(events: readonly ExtaliaEvent[], historicalRoo
       carrying = undefined;
     }
     const worker = event.agentId ? workers.get(event.agentId) : undefined;
+    if (worker) workerEvents.get(worker)!.push(event);
     if (body.type === 'skills.loaded') {
       settleStream();
       items.push({ kind: 'skills', id: event.id, skills: body.skills.map(skill => ({ ...skill })),
@@ -163,6 +169,7 @@ export function projectTranscript(events: readonly ExtaliaEvent[], historicalRoo
     if (worker) {
       // Worker activity stays inside its card instead of joining the primary's tool cards.
       if (body.type === 'tool.started') { worker.toolCalls++; worker.activity = body.label; }
+      if (body.type === 'agent.error' && body.recoverable !== true) worker.status = 'failed';
       if (body.type === 'tool.completed' && body.attachments?.length) {
         const current = worker.attachments ?? [];
         const key = (file: AttachmentMetadata) => file.ref ?? `${file.kind}:${file.name}:${file.size}`;
@@ -242,7 +249,16 @@ export function projectTranscript(events: readonly ExtaliaEvent[], historicalRoo
       case 'subagent.spawned': {
         settleStream();
         const active = currentTurn();
+        // Model selection/fallback re-announces an active stable team member. Keep
+        // its card and history; a later settled invocation gets its own card.
+        const existing = workers.get(body.subagentId);
+        if (existing?.status === 'running') {
+          if (body.role) existing.tier = body.role;
+          if (body.label) existing.label = body.label;
+          break;
+        }
         const item: WorkerItem = { kind: 'worker', id: event.id, subagentId: body.subagentId, state: 'working', status: 'running', toolCalls: 0 };
+        workerEvents.set(item, []);
         if (body.role) item.tier = body.role;
         if (body.label) item.label = body.label;
         const delegate = [...active.tools].reverse().find(tool => tool.status === 'running' && tool.activity === 'delegate');
@@ -256,6 +272,7 @@ export function projectTranscript(events: readonly ExtaliaEvent[], historicalRoo
         const item = workers.get(body.subagentId);
         if (!item) break;
         item.state = body.state;
+        if (!item.task && body.state === 'working' && body.summary) item.task = body.summary;
         if (body.summary) item.summary = body.summary;
         if (item.status === 'running' || item.status === 'ok') {
           item.status = body.state === 'idle' || body.state === 'offline' ? 'ok' : body.state === 'blocked' ? 'failed' : 'running';
@@ -357,6 +374,17 @@ export function projectTranscript(events: readonly ExtaliaEvent[], historicalRoo
     // Carried turns never finish here; the next prompt continues in Extalia.
     endTurn();
     items.push({ kind: 'handoff', id: 'handoff:end', edge: 'end', runtime: carrying });
+  }
+  for (const [worker, recorded] of workerEvents) {
+    if (!recorded.length) continue;
+    // Only worker-scoped events captured after its spawn enter this projection;
+    // stable member ids reused in later delegations cannot replay an old task.
+    worker.preview = projectTranscript(recorded, historicalRoots);
+    if (worker.status !== 'running') for (const item of worker.preview) {
+      if (item.kind === 'assistant') item.streaming = false;
+      if (item.kind === 'tool' && item.status === 'running') item.status = 'stopped';
+      if (item.kind === 'approval' && item.status === 'pending') item.status = 'expired';
+    }
   }
   for (const item of items) {
     if (historicalRoots?.has(item.id)) item.fileScope = historicalRoots.get(item.id)!;

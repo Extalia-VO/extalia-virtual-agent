@@ -20,7 +20,7 @@ async function waitFor(window: BrowserWindow, expression: string, timeoutMs = 15
   return false;
 }
 
-type Page = 'start' | 'logs' | 'diagnostics' | 'office' | 'settings';
+type Page = 'start' | 'logs' | 'diagnostics' | 'office' | 'knowledge' | 'settings';
 const SHELL = `document.querySelector('.brand') && document.querySelector('.topbar-meta')`;
 const SETUP = `document.querySelector('[data-onboarding-step]')`;
 // Navigation before buttons carried data-page: the page is identified by its position.
@@ -204,6 +204,32 @@ export async function runSmokeTest(window: BrowserWindow, screenshotDir = proces
     }
   }
 
+  // Check the actual IPC binding contract in the throwaway host, without a model request.
+  const knowledgeOpened = rendered && await open(window, 'knowledge');
+  const knowledgeReady = knowledgeOpened && await waitFor(window, "Boolean(document.querySelector('.knowledge-connection-location code'))", 30_000);
+  const knowledge = knowledgeReady ? await window.webContents.executeJavaScript(`(async () => {
+    const api = window.extaliaDesktop.agents;
+    const catalog = await api.call('listVaultProfiles', []);
+    const workspaceId = document.querySelector('.knowledge-connection-workspace')?.getAttribute('data-workspace-id');
+    const workspace = catalog.workspaces.find(item => item.id === workspaceId);
+    const profile = catalog.profiles.find(item => item.id === workspace?.profileId);
+    const shown = document.querySelector('.knowledge-connection-location code')?.textContent;
+    let staleBindingRejected = false, boundRead = false;
+    if (workspace && profile) {
+      boundRead = Boolean(await api.call('workspaceKnowledge', [workspace.id, 'knowledgeStatus', [], { profileId: profile.id, root: profile.root }]));
+      try { await api.call('workspaceKnowledge', [workspace.id, 'knowledgeStatus', [], { profileId: 'wrong-profile', root: profile.root }]); }
+      catch (error) { staleBindingRejected = /vault changed/i.test(error.message); }
+    }
+    return { rootMatches: Boolean(profile && shown === profile.root), boundRead, staleBindingRejected,
+      connectionCount: document.querySelectorAll('.knowledge-connection').length,
+      folderConfigurationCollapsed: !document.querySelector('.knowledge-connection-config')?.open,
+      globalProfileManagerHidden: !document.querySelector('.knowledge-profile-manager') };
+  })()`) as Record<string, unknown> : {};
+  if (screenshotDir && knowledgeReady) {
+    const file = path.join(screenshotDir, 'knowledge-desktop.png');
+    await writeFile(file, (await window.webContents.capturePage()).toPNG()); screenshots.push(file);
+  }
+
   // Check Settings after the scene captures so navigation cannot remount the
   // Office and replace the verified scene with a fresh loading overlay.
   const settingsOpened = rendered && await open(window, 'settings');
@@ -214,7 +240,8 @@ export async function runSmokeTest(window: BrowserWindow, screenshotDir = proces
 
   const ok = rendered && report.desktopBridge === true && report.nodeExposed === false && String(report.host).startsWith('Desktop')
     && String(report.splashVideo).startsWith('canplay') && String(report.splashRange).startsWith('206 video/mp4')
-    && officeRendered && sceneReady && modelErrors.length === 0 && office.route === 'page' && office.separateFrame === false && settingsOpened && floorViews.length === 3 && floorViews.every(Boolean);
-  console.log(JSON.stringify({ ok, rendered, ...report, office, sceneReady, officeRendering, modelErrors, textureDiagnostics, rendererErrors, floorViews, settingsOpened, diagnostics, screenshots }, null, 2));
+    && officeRendered && sceneReady && modelErrors.length === 0 && office.route === 'page' && office.separateFrame === false && settingsOpened && floorViews.length === 3 && floorViews.every(Boolean)
+    && knowledgeReady && knowledge.rootMatches === true && knowledge.boundRead === true && knowledge.staleBindingRejected === true && knowledge.connectionCount === 1 && knowledge.folderConfigurationCollapsed === true && knowledge.globalProfileManagerHidden === true;
+  console.log(JSON.stringify({ ok, rendered, ...report, office, sceneReady, officeRendering, knowledgeReady, knowledge, modelErrors, textureDiagnostics, rendererErrors, floorViews, settingsOpened, diagnostics, screenshots }, null, 2));
   return ok ? 0 : 1;
 }

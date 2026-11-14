@@ -93,6 +93,18 @@ fn upstream_path(value: &str) -> bool {
 
 fn profile_location(directory: &Path) -> Result<(&Path, &str)> {
     let profile = directory.parent().ok_or_else(|| fail("invalid_request"))?;
+    if cfg!(unix)
+        && profile.file_name().and_then(|v| v.to_str()) == Some("skills")
+        && directory.file_name().and_then(|v| v.to_str()) == Some("market")
+    {
+        return Ok((
+            profile.parent().ok_or_else(|| fail("invalid_request"))?,
+            "default",
+        ));
+    }
+    if directory.file_name().and_then(|v| v.to_str()) != Some("skill-market") {
+        return Err(fail("invalid_request"));
+    }
     let id = profile
         .file_name()
         .and_then(|value| value.to_str())
@@ -102,6 +114,9 @@ fn profile_location(directory: &Path) -> Result<(&Path, &str)> {
         .parent()
         .filter(|path| path.file_name().and_then(|value| value.to_str()) == Some("profiles"))
         .ok_or_else(|| fail("invalid_request"))?;
+    if cfg!(unix) && id == "default" {
+        return Err(fail("invalid_request"));
+    }
     Ok((
         profiles.parent().ok_or_else(|| fail("invalid_request"))?,
         id,
@@ -131,7 +146,10 @@ impl Request {
             || !plain(&self.client_version, 64)
             || !(1..=45_000).contains(&self.timeout_ms)
             || !self.directory.is_absolute()
-            || self.directory.file_name().and_then(|v| v.to_str()) != Some("skill-market")
+            || !matches!(
+                self.directory.file_name().and_then(|v| v.to_str()),
+                Some("skill-market" | "market")
+            )
             || self.directory.components().any(|c| {
                 matches!(
                     c,
@@ -782,6 +800,7 @@ fn preview(
     request: &Request,
     root: &Directory,
     profile: &Directory,
+    global: bool,
     http: &mut impl Http,
     now: i64,
 ) -> Result<Value> {
@@ -825,7 +844,7 @@ fn preview(
         };
         // Give a confirmed stage an hour beyond its preview deadline for an in-flight registry import.
         if review.validate(id).is_ok() && review.expires_at.saturating_add(60 * 60_000) <= now {
-            remove_owned(root, profile, id)?;
+            remove_owned(root, profile, id, global)?;
         }
     }
     if root.names()?.iter().filter(|name| uuid(name)).count() >= MAX_REVIEWS {
@@ -1017,7 +1036,13 @@ fn verify_stage(dir: &Directory, review: &Review) -> Result<()> {
     }
     Ok(())
 }
-fn stage(request: &Request, root: &Directory, profile: &Directory, now: i64) -> Result<Value> {
+fn stage(
+    request: &Request,
+    root: &Directory,
+    profile: &Directory,
+    global: bool,
+    now: i64,
+) -> Result<Value> {
     let id = request
         .review_id
         .as_deref()
@@ -1034,7 +1059,7 @@ fn stage(request: &Request, root: &Directory, profile: &Directory, now: i64) -> 
         }
         payloads.push(bytes);
     }
-    let inbox = profile.child("skill-imports", true)?;
+    let inbox = profile.child(if global { "imports" } else { "skill-imports" }, true)?;
     let path = format!("market-{id}");
     let marker = format!("stage-{id}.json");
     let result =
@@ -1068,13 +1093,13 @@ fn stage(request: &Request, root: &Directory, profile: &Directory, now: i64) -> 
     verify_stage(&staged, &review)?;
     Ok(result())
 }
-fn remove_owned(root: &Directory, profile: &Directory, id: &str) -> Result<bool> {
+fn remove_owned(root: &Directory, profile: &Directory, id: &str, global: bool) -> Result<bool> {
     let mut discarded = false;
     let marker = format!("stage-{id}.json");
     if let Some(bytes) = root.read_optional(&marker, REPLY_LIMIT)? {
         let review: Review = serde_json::from_slice(&bytes).map_err(|_| fail("integrity"))?;
         review.validate(id)?;
-        let inbox = profile.child("skill-imports", true)?;
+        let inbox = profile.child(if global { "imports" } else { "skill-imports" }, true)?;
         let name = format!("market-{id}");
         if inbox.names()?.contains(&name) {
             inbox.remove_tree(&name, 0, &mut 1024)?;
@@ -1088,26 +1113,40 @@ fn remove_owned(root: &Directory, profile: &Directory, id: &str) -> Result<bool>
     }
     Ok(discarded)
 }
-fn discard(request: &Request, root: &Directory, profile: &Directory) -> Result<Value> {
+fn discard(
+    request: &Request,
+    root: &Directory,
+    profile: &Directory,
+    global: bool,
+) -> Result<Value> {
     let id = request
         .review_id
         .as_deref()
         .ok_or_else(|| fail("invalid_request"))?;
-    Ok(json!({"discarded":remove_owned(root, profile, id)?}))
+    Ok(json!({"discarded":remove_owned(root, profile, id, global)?}))
 }
 fn execute(request: &Request, http: &mut impl Http, now: i64) -> Result<Value> {
     request.validate()?;
     let (data_root, profile_id) = profile_location(&request.directory)?;
-    let profile = Directory::trusted_root(data_root)?
-        .child("profiles", true)?
-        .child(profile_id, true)?;
-    let root = profile.child("skill-market", true)?;
+    let profile_id = extalia_core::skills::ProfileId::parse(profile_id)
+        .ok_or_else(|| fail("invalid_request"))?;
+    let _layout = extalia_core::skills::storage::prepare(data_root, &profile_id)
+        .map_err(|_| fail("storage"))?;
+    let data = Directory::trusted_root(data_root)?;
+    let global = extalia_core::skills::storage::is_global(&profile_id);
+    let profile = if global {
+        data.child("skills", false)?
+    } else {
+        data.child("profiles", true)?
+            .child(profile_id.as_str(), true)?
+    };
+    let root = profile.child(if global { "market" } else { "skill-market" }, true)?;
     let _ownership = root.lock()?;
     match request.operation.as_str() {
         "search" => search(request, &root, http, now),
-        "preview" => preview(request, &root, &profile, http, now),
-        "stage" => stage(request, &root, &profile, now),
-        "discard" => discard(request, &root, &profile),
+        "preview" => preview(request, &root, &profile, global, http, now),
+        "stage" => stage(request, &root, &profile, global, now),
+        "discard" => discard(request, &root, &profile, global),
         _ => Err(fail("invalid_request")),
     }
 }

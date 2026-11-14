@@ -246,7 +246,8 @@ check_running
   it('launches its verified fake payload only after an explicit checked finish choice', async () => {
     const f = await fixture(); await dialog(f, 'zenity');
     expect(f.run([], { DISPLAY: ':synthetic', EXTALIA_TEST_SELECT: '1' }).status).toBe(0);
-    await expect.poll(async () => readFile(f.env.EXTALIA_TEST_LAUNCH, 'utf8'), { timeout: 2000 }).toBe('launched');
+    // The verified installer exits before its background payload starts; allow full-suite scheduling delay.
+    await expect.poll(async () => readFile(f.env.EXTALIA_TEST_LAUNCH, 'utf8'), { timeout: 5000 }).toBe('launched');
   });
   it('falls back to KDialog and leaves its launch choice unchecked', async () => {
     const f = await fixture(); await dialog(f, 'kdialog');

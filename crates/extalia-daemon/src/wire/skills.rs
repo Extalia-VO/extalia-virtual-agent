@@ -722,11 +722,28 @@ fn summary(check: &mut Check, value: &Value, path: &str) -> Option<()> {
             "createdAt",
             "updatedAt",
         ],
-        &["stateReason"],
+        &["stateReason", "marketplaceSource", "activationApprovalId"],
     )?;
     let reason = match fields.get("stateReason") {
         None => true,
         Some(value) => check.reason(Some(value), &at("stateReason")).is_some(),
+    };
+    let marketplace_source = match fields.get("marketplaceSource") {
+        None => true,
+        Some(value) => check
+            .boolean(Some(value), &at("marketplaceSource"))
+            .is_some(),
+    };
+    let activation_approval = match fields.get("activationApprovalId") {
+        None => true,
+        Some(value) => check
+            .count(
+                Some(value),
+                &at("activationApprovalId"),
+                1,
+                MAX_SAFE_INTEGER,
+            )
+            .is_some(),
     };
     all(&[
         check
@@ -749,6 +766,8 @@ fn summary(check: &mut Check, value: &Value, path: &str) -> Option<()> {
             .is_some(),
         check.state(fields.get("state"), &at("state")).is_some(),
         reason,
+        marketplace_source,
+        activation_approval,
         check
             .one_of(fields.get("riskClass"), &at("riskClass"), RISK_CLASSES)
             .is_some(),

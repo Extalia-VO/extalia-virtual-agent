@@ -1,3 +1,4 @@
+import { skillStoragePaths } from '../src/skillStorage.js';
 import { createAgentHost } from '../src/service.js';
 import type { DaemonLearningParams, ExtaliaEvent } from '@extalia/protocol';
 import { mkdir, readFile, readdir } from 'node:fs/promises';
@@ -353,7 +354,7 @@ describe('host shutdown persistence fencing', () => {
     const h = await setup(fetch, true, false, true);
     await h.runtime.host.sendPrompt(h.session.id, '/learn-skill Save a review draft.');
     await stageEntered.promise;
-    const inbox = path.join(h.options.dataDirectory!, 'profiles/default/skill-imports');
+    const inbox = skillStoragePaths(h.options.dataDirectory!).imports;
     const [staged] = await readdir(inbox);
     expect(staged).toBeDefined();
     expect(await readFile(path.join(inbox, staged!, 'SKILL.md'), 'utf8')).toContain('Read the diff and report evidence.');
@@ -416,7 +417,7 @@ describe('host shutdown persistence fencing', () => {
     await expect(h.runtime.host.importSkill!({ kind: 'folder', path: source })).rejects.toThrow(/shutting down/);
     cleanupRelease.resolve();
     await Promise.all([rejected, closing]);
-    expect(await readdir(path.join(h.options.dataDirectory!, 'profiles/default/skill-imports'))).toEqual([]);
+    expect(await readdir(skillStoragePaths(h.options.dataDirectory!).imports)).toEqual([]);
     expect(registryCalls.mock.calls.filter(([op]) => op === 'skill.import')).toHaveLength(1);
     const reopened = await createAgentHost(h.options);
     runtimes.push(reopened);

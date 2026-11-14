@@ -1,3 +1,4 @@
+import { skillStoragePaths } from '../src/skillStorage.js';
 import { chmod, lstat, mkdir, readdir, writeFile } from 'node:fs/promises';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -95,7 +96,7 @@ describe('read-only skill routing host API', () => {
         await expect(runtime.host.importSkill({ kind: 'folder', path: source })).rejects.toThrow('missing_capability');
         expect(snapshot(data)).toEqual(beforeImport);
         expect((await runtime.host.skillRegistry()).revisions).toEqual([]);
-        await expect(lstat(path.join(data, 'profiles', 'default', 'skill-imports'))).rejects.toMatchObject({ code: 'ENOENT' });
+        await expect(lstat(skillStoragePaths(data).imports)).rejects.toMatchObject({ code: 'ENOENT' });
       } else {
         candidateRevisionIds = [(await runtime.host.importSkill({ kind: 'folder', path: source })).revisionId!];
       }

@@ -226,7 +226,7 @@ describe('board visibility (Earlier)', () => {
     expect(byAgent(projectOfficePresence([managed], events, BASE + MIN + linger + 1000), 'w', 'm')).toMatchObject({ status: 'offline', earlier: true });
   });
 
-  it('keeps managed leads and team members on the board, uncounted, and moves other managed subagents that left to Earlier', () => {
+  it('keeps ready managed leads visible and retains offline team members in the collapsed group, uncounted', () => {
     const managed = observed('m', { control: 'managed', observation: undefined, running: false });
     const event = (n: number, body: EventBody, agentId = 'primary') => createEvent({ id: `mm${n}`, seq: n, at: new Date(BASE - 5 * 60 * MIN + n * 1000).toISOString(), sessionId: 'm', agentId, source: { runtime: 'test', channel: 'stream' }, body });
     const teams = new Map([['m', [{ id: 'member', name: 'Elena Mark' }, { id: 'idle-member', name: 'Kaelen Vael' }]]]);
@@ -239,8 +239,9 @@ describe('board visibility (Earlier)', () => {
     expect(byAgent(agents, 'member', 'm').earlier).toBeUndefined();
     expect(byAgent(agents, 'scratch', 'm')).toMatchObject({ status: 'offline', earlier: true });
     const board = splitBoard(withTeamMembers(agents, teams));
-    expect(board.present.map(row => row.agent.agentId).sort()).toEqual(['idle-member', 'member', 'primary']);
-    expect(board.earlierCount).toBe(1);
+    expect(board.present.map(row => row.agent.agentId)).toEqual(['primary']);
+    expect(board.earlierCount).toBe(3);
+    expect(board.earlier.flatMap(group => group.rows.map(row => row.agent.agentId)).sort()).toEqual(['idle-member', 'member', 'scratch']);
     expect(officeKpis(withTeamMembers(agents, teams))).toMatchObject({ idle: 1, working: 0, errors: 0 });
   });
 

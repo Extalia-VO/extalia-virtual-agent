@@ -201,7 +201,38 @@ export class ObservedImageStore {
     while (this.attempts.size > OBSERVED_IMAGE_BUDGET.attempts) this.attempts.delete(this.attempts.values().next().value!);
   }
 
-  async materialize(steps: readonly TranscriptStep[], options: { sourceId: string; projectRoot?: string; temporaryRoot: string; revision?: string }): Promise<TranscriptStep[]> {
+  private persistBinding(key: string, ref: string): string | undefined {
+    const current = this.load(), bindings = { ...current.bindings, [key]: ref };
+    for (const old of Object.keys(bindings).slice(0, Math.max(0, Object.keys(bindings).length - OBSERVED_IMAGE_BUDGET.bindings))) delete bindings[old];
+    try { this.persist({ ...current, files: [...current.files], bindings }); return ref; } catch { return undefined; }
+  }
+
+  /** Retain images referenced by leading `[Attached file: name (path)]` tags inside Extalia's session staging folder. */
+  async materializePromptAttachments(text: string, stagedAttachmentsRoot: string): Promise<StepAttachment[]> {
+    const parsed = parseAttachedFilePaths(text);
+    if (this.blocked || !parsed.length || !stagedAttachmentsRoot) return [];
+    const results: StepAttachment[] = [];
+    for (const entry of parsed.slice(0, 10)) {
+      const key = hash(JSON.stringify(['prompt-staged', this.sessionId, entry.filePath]));
+      let ref = this.load().bindings[key];
+      if (!ref && !this.attempts.has(key) && this.canKeep()) {
+        this.rememberAttempt(key);
+        const bytes = await readCandidate(entry.filePath, { extraRoots: [stagedAttachmentsRoot] }, MAX_INLINE_IMAGE_BYTES);
+        if (bytes && bytes !== 'deferred') {
+          ref = this.keep(bytes.toString('base64'));
+          if (ref) ref = this.persistBinding(key, ref);
+        }
+      }
+      if (!ref) continue;
+      const stored = this.load().files.find(item => item.ref === ref);
+      if (stored) {
+        results.push({ name: sanitizeAttachmentName(entry.name), kind: 'image', size: stored.size, mimeType: stored.mimeType, ref });
+      }
+    }
+    return results;
+  }
+
+  async materialize(steps: readonly TranscriptStep[], options: { sourceId: string; projectRoot?: string; temporaryRoot: string; stagedAttachmentsRoot?: string; revision?: string }): Promise<TranscriptStep[]> {
     if (!this.pending || options.revision !== this.sourceRevision || this.cursor >= steps.length) this.cursor = 0;
     this.sourceRevision = options.revision;
     const start = this.cursor;
@@ -213,6 +244,17 @@ export class ObservedImageStore {
     for (const [stepIndex, step] of steps.entries()) {
       const callKey = `${step.agentId ?? 'primary'}:${step.type === 'tool.call' || step.type === 'tool.result' ? step.callId ?? '' : ''}`;
       if (step.type === 'tool.call') { if (step.callId) calls.set(callKey, step); result.push(step); continue; }
+      if (step.type === 'prompt') {
+        if (!this.blocked && options.stagedAttachmentsRoot && !(step.attachments?.some(file => file.ref))) {
+          const stagedImages = await this.materializePromptAttachments(step.text, options.stagedAttachmentsRoot);
+          if (stagedImages.length) {
+            result.push({ ...step, attachments: [...(step.attachments ?? []), ...stagedImages].slice(0, 10) });
+            continue;
+          }
+        }
+        result.push(step);
+        continue;
+      }
       if (step.type !== 'tool.result') { result.push(step); continue; }
       const call = calls.get(callKey); calls.delete(callKey);
       const files: StepAttachment[] = [];
@@ -289,8 +331,25 @@ function readBoundedSync(handle: number, maximum: number): Buffer {
 
 function observedSize(value: unknown): value is number { return typeof value === 'number' && Number.isSafeInteger(value) && value > 0 && value <= MAX_INLINE_IMAGE_BYTES; }
 
-/** Read exactly a matched successful Codex view-image path within admitted project/temp roots. */
-async function readCandidate(selected: string, options: { projectRoot?: string; temporaryRoot: string; completedAt?: string }, maximumBytes: number): Promise<Buffer | 'deferred' | undefined> {
+function parseAttachedFilePaths(text: string): Array<{ name: string; filePath: string }> {
+  const results: Array<{ name: string; filePath: string }> = [];
+  for (const rawLine of text.split(/\r?\n/)) {
+    if (!rawLine.trim()) continue;
+    if (!rawLine.startsWith('[Attached file: ') || !rawLine.endsWith(']')) break;
+    const inside = rawLine.slice('[Attached file: '.length, -1);
+    const paren = inside.lastIndexOf(' (');
+    if (paren <= 0 || !inside.endsWith(')')) continue;
+    const name = inside.slice(0, paren);
+    const filePath = inside.slice(paren + 2, -1);
+    if (!name || !filePath) continue;
+    results.push({ name, filePath });
+    if (results.length >= 16) break;
+  }
+  return results;
+}
+
+/** Read exactly a matched image path within admitted project, temp or per-session staging roots. */
+async function readCandidate(selected: string, options: { projectRoot?: string; temporaryRoot?: string; extraRoots?: readonly string[]; completedAt?: string }, maximumBytes: number): Promise<Buffer | 'deferred' | undefined> {
   if (!selected || selected.length > 4096 || /[\0\r\n]/.test(selected) || (/^[a-z][a-z0-9+.-]*:/i.test(selected) && !/^[a-z]:[\\/]/i.test(selected) || /^\\\\/.test(selected)) || isCredentialFileName(selected)
     || selected.split(/[\\/]/).includes('..')) return undefined;
   let handle;
@@ -301,7 +360,7 @@ async function readCandidate(selected: string, options: { projectRoot?: string; 
     let admitted: string | undefined;
     let lineage: { file: string; dev: number; ino: number; directory: boolean }[] = [];
     let leaf: { dev: number; ino: number; size: number; mtimeMs: number } | undefined;
-    for (const configuredRoot of [options.projectRoot, options.temporaryRoot]) {
+    for (const configuredRoot of [options.projectRoot, options.temporaryRoot, ...(options.extraRoots ?? [])]) {
       if (!configuredRoot || !path.isAbsolute(configuredRoot)) continue;
       const root = await realpath(configuredRoot).catch(() => undefined);
       if (!root || root === path.parse(root).root) continue;

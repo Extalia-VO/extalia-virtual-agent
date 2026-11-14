@@ -64,6 +64,24 @@ beforeEach(() => {
 afterEach(() => { stop(); vi.useRealTimers(); });
 
 describe('shared learning notification owner', () => {
+  it('waits for an embedded Chat slot without floating over controls, retaining its single poller', async () => {
+    const h = harness(); h.props.embedded = true;
+    expect(h.render()).toBeUndefined(); await settle();
+    expect(h.render()).toBeUndefined();
+    expect(h.host.learningSchedule).toHaveBeenCalledOnce();
+    const slot = { id: 'chat-slot' } as unknown as HTMLElement;
+    h.props.target = slot; let view = h.render()!;
+    expect(view.embedded).toBe(true); expect(hooks.targets.at(-1)).toBe(slot);
+    const memory = view.noticeMemory; view.onDismiss('job');
+    h.props.target = null;
+    expect(h.render()).toBeUndefined();
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(h.render()).toBeUndefined(); expect(h.host.learningSchedule).toHaveBeenCalledTimes(2);
+    h.props.target = { id: 'next-chat-slot' } as unknown as HTMLElement; view = h.render()!;
+    expect(view.noticeMemory).toBe(memory); expect(view.dismissed).toEqual(['job']);
+    expect(h.host.learningSchedule).toHaveBeenCalledTimes(2);
+  });
+
   it('keeps one poller, receipt memory and dismissals when moving between Office and other pages', async () => {
     const h = harness(); h.render(); await settle();
     let view = h.render()!; const memory = view.noticeMemory;

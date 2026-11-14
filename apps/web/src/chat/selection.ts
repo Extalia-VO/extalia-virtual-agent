@@ -6,7 +6,8 @@ export interface ChatSelection { workspaceId?: string; sessionId?: string | null
 
 /** The workspace, its sessions (latest first) and the open session for a selection. */
 export function resolveChat(state: HostState, selection: ChatSelection): { workspace?: Workspace; sessions: SessionSummary[]; session?: SessionSummary } {
-  const workspace = state.workspaces.find(item => item.id === selection.workspaceId) ?? state.workspaces[0];
+  const workspaces = state.workspaces.filter(item => item.mode !== 'observe');
+  const workspace = workspaces.find(item => item.id === selection.workspaceId) ?? workspaces[0];
   const sessions = state.sessions.filter(item => item.workspaceId === workspace?.id).sort((a, b) => b.lastActiveAt.localeCompare(a.lastActiveAt));
   const session = selection.sessionId === null ? undefined : sessions.find(item => item.id === selection.sessionId) ?? sessions[0];
   return { ...(workspace ? { workspace } : {}), sessions, ...(session ? { session } : {}) };

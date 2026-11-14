@@ -6,6 +6,7 @@ import {
 import type { EventBody } from '@extalia/protocol';
 
 export interface NativeKnowledgeMeetingOptions {
+  operatingProfile?: TeamMeetingOptions['operatingProfile'];
   /** Fresh, enabled saved roster and approved routing supplied by the host. No anonymous workers. */
   team: DelegationTeam;
   workspace: { id: string; name: string; root: string };
@@ -74,6 +75,7 @@ export async function runNativeKnowledgeMeeting(options: NativeKnowledgeMeetingO
     const members = options.team.members.slice(0, 13).map(member => ({ ...structuredClone(member), access: 'read' as const }));
     if (!members.length) return { outcome: 'failed', knowledge: exported.knowledge, problem: 'No saved team members are available for this knowledge meeting.' };
     const meeting = createConductTeamMeetingTool({
+      ...(options.operatingProfile ? { operatingProfile: options.operatingProfile } : {}),
       workspace: { name: options.workspace.name, root: options.workspace.root },
       team: {
         members, rules: [...(options.team.rules ?? [])], leadModels: [...options.team.leadModels],

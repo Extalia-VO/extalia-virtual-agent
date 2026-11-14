@@ -134,3 +134,19 @@ it('waits for a fresh source snapshot after mutation even when an older catalog 
   expect(control.getSnapshot().choices?.defaultModel).toBe('new-source-model');
   expect(done).toBe(true);
 });
+
+it('preserves validated per-model effort maps and omits unsupported modelEfforts entries', () => {
+  const valid = validateObservedModelChoices({
+    ...catalog('gemini-4-argon'),
+    models: ['gemini-4-argon', 'gemini-pro-orchestrator'],
+    efforts: ['low', 'medium'],
+    modelEfforts: {
+      'gemini-4-argon': ['low', 'medium', 'high'],
+      'gemini-pro-orchestrator': [],
+    },
+  });
+  expect(valid.modelEfforts).toEqual({
+    'gemini-4-argon': ['low', 'medium', 'high'],
+    'gemini-pro-orchestrator': [],
+  });
+});

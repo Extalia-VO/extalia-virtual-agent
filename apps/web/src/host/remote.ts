@@ -7,11 +7,24 @@ export type RemoteCall = (method: AgentHostMethod, args: unknown[]) => Promise<u
  * Build an AgentHostApi from a method forwarder and an event source. Desktop
  * (IPC) and the Bridge (HTTP + SSE) differ only in these two functions.
  */
-export function createRemoteHost(call: RemoteCall, subscribe: (listener: (event: ExtaliaEvent) => void) => () => void): AgentHostApi {
+export function createRemoteHost(call: RemoteCall, subscribe: (listener: (event: ExtaliaEvent) => void) => () => void, preferSummary = false): AgentHostApi {
+  let compact = preferSummary;
+  const invoke: RemoteCall = async (method, args) => {
+    if (method !== 'getState' || !compact) return call(method, args);
+    try { return await call('getStateSummary', args); }
+    catch (error) {
+      // Compatibility only: authentication, offline and host errors must remain visible.
+      const message = errorMessage(error);
+      if (!['Unknown method.', 'This host does not support this action.'].includes(message)
+        && !/^No handler registered for '[^']*getStateSummary[^']*'$/.test(message)) throw error;
+      compact = false;
+      return call('getState', args);
+    }
+  };
   const methods = Object.fromEntries(AGENT_HOST_METHODS.map(method => [method, (...args: unknown[]) => {
     // Trailing undefined arguments would arrive as null after serialization.
     while (args.length && args[args.length - 1] === undefined) args.pop();
-    return call(method, args);
+    return invoke(method, args);
   }]));
   return { ...methods, subscribe } as unknown as AgentHostApi;
 }

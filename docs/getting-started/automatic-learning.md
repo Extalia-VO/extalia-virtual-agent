@@ -32,14 +32,29 @@ The source prompt finishes before a **60-second countdown** begins. A shared
 notification shows the project, session, profile and remaining time. In the 3D
 Office it appears immediately above the main prompt; on other pages it remains a
 global notice. **Run now** brings the deadline forward; **Snooze 10 min** postpones
-it. With no click it starts automatically after the deadline, once the host is idle.
-New work pauses pending countdowns. After the lead, workers and unfinished prompt
-queue have settled, the **full selected delay starts again**: ten minutes after
-idle if you chose Snooze, or sixty seconds otherwise. A busy notice has no active
-clock, and Run now cannot override a running task or its queued successor.
+it. With no click it starts automatically after the deadline, once conflicting
+work has settled. A unique isolated vault profile can learn while agents in other
+known workspaces continue, including observed apps and their scoped memory work.
+Unbound Observe activity belongs to the default/global profile for admission, so
+it does not pause another isolated vault. This classification grants no new
+Knowledge access or learning consent. Ambiguous or invalid workspace links still
+need resolution before their conflicting effects can be ruled out.
+Work in the same vault still pauses the countdown. Shared/default vaults,
+unresolved ownership, privacy/configuration changes and shared-resource work can
+require broader waiting. Only one maintenance job executes at a time.
+
+After conflicting work settles, the **full selected delay starts again**: ten
+minutes if you chose Snooze, or sixty seconds otherwise. While waiting, the
+notice shows the selected next countdown duration; this is not an estimate of
+when another agent will finish. Once armed, it shows the live remaining time.
+Run now advances an armed deadline and cannot override conflicting active work
+or its queued successor.
 Tasks without successful current-turn tool evidence skip learning without an extra
-model request. Plan mode, paused teams, explicit skill-learning prompts, unsaved
-history and cancelled or failed source tasks do not schedule this curator.
+model request. Plan mode, paused teams, unsaved history and cancelled or failed
+source tasks do not schedule this curator. Ordinary successful work may produce
+a useful finding or a skip; automatic learning does not create a skill for every
+message. It remains governed by the saved profile policy, including an explicit
+disable setting.
 
 The host admits at most sixteen waiting updates and runs one maintenance job at a
 time. Each queued task retains at most ten evidence excerpts of 2,000 UTF-16 units;
@@ -62,8 +77,9 @@ It can capture text-based project decisions even when the source did not use a
 file tool. Extalia keeps one pending meeting per workspace and updates its source
 to the latest completed task while preserving your chosen snooze.
 
-The notice identifies an upcoming meeting, waits while user work is active, and
-offers Run now or Snooze. Its countdown starts automatically after idle. Actual
+The notice identifies an upcoming meeting, waits while conflicting work is active,
+and offers Run now or Snooze. Its countdown starts automatically after that work
+settles; unrelated default/global Observe work does not hold an isolated vault. Actual
 meeting events drive the Office characters; the notification reports a saved
 knowledge note only after the exporter confirms it. A cancelled or failed
 discussion is shown separately from any note that was already saved. Entered or
@@ -85,7 +101,22 @@ generated instructions-only candidate enters the existing import and inspection
 workflow and is never approved or activated automatically. Candidates live in
 the shared user Skills library with profile/run provenance; profiles do not
 create isolated skill libraries. Workspace activation permissions still govern
-their later use.
+their later use. A candidate is a saved draft, not an active skill or a
+certification of its instructions or sources.
+
+When you explicitly ask in a Native Chat message to learn a reusable skill, Extalia
+can use the separate one-candidate proposal flow instead of scheduling the
+post-task curator. You can ask naturally, for example, “Learn this procedure as
+a skill” or “Pelajari tautan ini sebagai skill.” A supplied public link may be
+read through the bounded source reader; its page text is untrusted input, not
+instructions to follow. The reader limits requests and content, rejects
+credentials, private-network addresses, query parameters, unusual ports and
+unsafe redirects, and does not install or execute anything. A failed or denied
+source read cannot justify a candidate that claims to summarize unseen content.
+This explicit request still follows workspace write approval, the saved profile
+policy, and the skill registry's inspection workflow. The legacy `/learn-skill`
+command remains available. A link mentioned without a clear request to learn from
+it does not authorize a skill proposal.
 
 The Office flashes a notification when a new immutable skill revision is actually
 saved. It distinguishes new and revised candidates only when registry history
@@ -106,9 +137,11 @@ Failed, cancelled, read-only plan and history-off tasks do not trigger maintenan
 Tool-free tasks skip the curator, while a configured team can still review their
 completed discussion. A paused saved team also suppresses it. Explicit `/learn-skill` turns
 keep their separate user-directed workflow. The curator can skip repetitive or
-unhelpful findings. This implementation covers saved Native Chat; observed apps,
-Hermes-managed sessions and mission runs do not acquire new learning capabilities.
-The Knowledge index follows the selected workspace's actual vault profile.
+unhelpful findings. Explicit skill-learning turns use their proposal flow and do
+not also enqueue the automatic curator. This implementation covers saved Native
+Chat; observed apps, Hermes-managed sessions and mission runs do not acquire new
+learning capabilities. The Knowledge index follows the selected workspace's
+actual vault profile.
 
 The existing Rust sidecar owns the curator's local state machine, evidence and
 model-result processing, limits, deduplication, generated skill files and note

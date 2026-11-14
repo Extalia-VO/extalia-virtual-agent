@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createCameraDirectorState, stepCameraDirector, type CameraDirectorCommand, type CameraSubject } from './cameraDirector';
+import { cameraTourCountdown, type CameraTourCountdown } from './cameraCountdown';
 import { createCameraNewcomers } from './cameraNewcomers';
 
 /** Passive hover is not a camera takeover; a held pointer remains a manual gesture. */
@@ -29,17 +30,18 @@ export function subscribeCameraActivity(target: EventTarget, visibilityTarget: E
 }
 
 /** One Office-owned clock. User activity cancels a shot before the next animation frame. */
-export function useCameraDirector({ enabled, suspended, reducedMotion, workingIds, idleIds, attentionIds, positionReady, currentFloor, floorOf, subjectOf, scope, onFocus }: {
+export function useCameraDirector({ enabled, suspended, reducedMotion, workingIds, idleIds, attentionIds, positionReady, currentFloor, floorOf, subjectOf, scope, onFocus, onCountdown }: {
   enabled: boolean; suspended: boolean; workingIds: readonly string[]; attentionIds: readonly string[];
   idleIds: readonly string[]; positionReady(id: string): boolean;
   currentFloor?: number | undefined; floorOf?: ((id: string) => number | undefined) | undefined;
   subjectOf?: ((id: string) => CameraSubject | undefined) | undefined;
   reducedMotion: boolean;
   scope: string; onFocus(command: CameraDirectorCommand): void;
+  onCountdown?(countdown: CameraTourCountdown | null): void;
 }) {
   const [command, setCommand] = useState<CameraDirectorCommand | null>(null);
-  const latest = useRef({ enabled, suspended, reducedMotion, workingIds, idleIds, attentionIds, positionReady, currentFloor, floorOf, subjectOf, onFocus });
-  useLayoutEffect(() => { latest.current = { enabled, suspended, reducedMotion, workingIds, idleIds, attentionIds, positionReady, currentFloor, floorOf, subjectOf, onFocus }; });
+  const latest = useRef({ enabled, suspended, reducedMotion, workingIds, idleIds, attentionIds, positionReady, currentFloor, floorOf, subjectOf, onFocus, onCountdown });
+  useLayoutEffect(() => { latest.current = { enabled, suspended, reducedMotion, workingIds, idleIds, attentionIds, positionReady, currentFloor, floorOf, subjectOf, onFocus, onCountdown }; });
   useEffect(() => {
     let state = createCameraDirectorState();
     let lastInteractionAt = performance.now();
@@ -52,14 +54,21 @@ export function useCameraDirector({ enabled, suspended, reducedMotion, workingId
       setCommand(next);
       if (next?.phase === 'focus') latest.current.onFocus(next);
     };
-    const interact = () => { lastInteractionAt = performance.now(); publish(null); };
+    let previousCountdown: CameraTourCountdown | null = null;
+    const publishCountdown = (next: CameraTourCountdown | null) => {
+      if (next?.targetId === previousCountdown?.targetId && next?.seconds === previousCountdown?.seconds && next?.windowSeconds === previousCountdown?.windowSeconds) return;
+      previousCountdown = next;
+      latest.current.onCountdown?.(next);
+    };
+    latest.current.onCountdown?.(null);
+    const interact = () => { lastInteractionAt = performance.now(); publish(null); publishCountdown(null); };
     const tick = () => {
       const options = latest.current;
       const now = performance.now();
       const newcomerIds = newcomers.update(options.workingIds, options.positionReady, now, options.enabled, [...options.workingIds, ...options.idleIds]);
       const editing = document.activeElement instanceof HTMLElement && Boolean(document.activeElement.closest('input, textarea, select, [contenteditable="true"], [role="textbox"]'));
       const modal = Boolean(document.querySelector('[role="dialog"][aria-modal="true"], dialog[open]'));
-      const result = stepCameraDirector(state, {
+      const input = {
         now, lastInteractionAt, enabled: options.enabled,
         suspended: options.suspended || pointerDown || editing || modal || document.hidden,
         workingIds: options.workingIds.filter(options.positionReady), idleIds: options.idleIds.filter(options.positionReady), newcomerIds,
@@ -67,9 +76,11 @@ export function useCameraDirector({ enabled, suspended, reducedMotion, workingId
         subjectOf: options.subjectOf,
         attentionIds: options.attentionIds, random: Math.random(),
         reducedMotion: options.reducedMotion,
-      });
+      };
+      const result = stepCameraDirector(state, input);
       state = result.state;
       publish(result.command);
+      publishCountdown(result.command ? cameraTourCountdown(state, input) : null);
     };
     const stopActivity = subscribeCameraActivity(window, document, interact, down => { pointerDown = down; });
     const timer = window.setInterval(tick, 200);
@@ -77,6 +88,7 @@ export function useCameraDirector({ enabled, suspended, reducedMotion, workingId
     return () => {
       window.clearInterval(timer);
       stopActivity();
+      latest.current.onCountdown?.(null);
     };
   }, [scope]);
   return command;

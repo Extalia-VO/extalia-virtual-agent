@@ -233,6 +233,10 @@ export class PromptQueues {
   hasUnfinished(id: string): boolean { return this.queues.get(id)?.items.some(item => item.state !== 'sent') ?? false; }
   /** Pending, paused and uncertain delivery still belong to foreground work. */
   get hasUnfinishedWork(): boolean { return [...this.queues.values()].some(queue => queue.items.some(item => item.state !== 'sent')); }
+  /** Profile-aware maintenance keeps pending, paused and uncertain queues in their owning scope. */
+  hasUnfinishedWorkMatching(predicate: (sessionId: string) => boolean): boolean {
+    return [...this.queues.values()].some(queue => queue.items.some(item => item.state !== 'sent') && predicate(queue.sessionId));
+  }
   /** Serialize a reviewed session move against enqueue/dispatch; only completed receipts can follow it. */
   withIdleSession<T>(id: string, action: () => Promise<T>): Promise<T> {
     return this.serial(async () => {

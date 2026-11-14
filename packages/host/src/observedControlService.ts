@@ -26,7 +26,7 @@ export interface ObservedControlDriver {
   /** Inspect only. A status request must never attach, launch or configure an agent. */
   status(sessionId: string): ObservedControlDriverSnapshot | undefined | Promise<ObservedControlDriverSnapshot | undefined>;
   /** Must independently revalidate this exact snapshot immediately before its effect. No fallback or retry. */
-  dispatch(sessionId: string, input: { action: ObservedControlAction; text: string }, snapshot: ObservedControlDriverSnapshot):
+  dispatch(sessionId: string, input: { action: ObservedControlAction; text: string; operationId: string }, snapshot: ObservedControlDriverSnapshot):
     Promise<{ state: 'queued' | 'submitted' | 'resolved' | 'unknown'; messageId?: string }>;
 }
 /** A driver may use this only when it positively refused before invoking any transport effect. */
@@ -44,7 +44,7 @@ const validId = (value: unknown): value is string => typeof value === 'string' &
 const targetKey = (target: ObservedControlTarget) => JSON.stringify([target.sourceId, target.nativeSessionId, target.fingerprint, target.revision, target.watching]);
 const snapshotKey = (route: ObservedControlRoute, snapshot: ObservedControlDriverSnapshot) => JSON.stringify([route, snapshot.bindingId, snapshot.generation]);
 const knownActions = new Set(OBSERVED_CONTROL_ROUTES.flatMap(route => route.actions));
-const messageReceipt = (route: ObservedControlRoute) => route === 'codex-queue' || route === 'cooperative-inbox' ? 'queued' : 'submitted';
+const messageReceipt = (route: ObservedControlRoute) => route === 'codex-queue' || route === 'cooperative-inbox' || route === 'official-cli-resume' ? 'queued' : 'submitted';
 
 /** Ephemeral ownership fence over existing transports. No native control is inferred from hooks or transcripts. */
 export class ObservedControlService {
@@ -145,7 +145,7 @@ export class ObservedControlService {
     if (!this.current(id, binding) || !snapshot || snapshotKey(driver.route, snapshot) !== capability.signature ||
       !snapshot.actions.includes(capability.action) || binding.uncertain.has(capability.signature)) return receipt('rejected', 'The observed source, attachment or current turn changed.');
     try {
-      const result = await driver.dispatch(id, { action: capability.action, text: input.text }, snapshot);
+      const result = await driver.dispatch(id, { action: capability.action, text: input.text, operationId: input.operationId }, snapshot);
       // These actions admit messages. No transport may promote admission into proof of consumption.
       if (!this.current(id, binding) || !result || result.state !== 'unknown' && result.state !== messageReceipt(capability.route)) throw new Error('Unconfirmed delivery.');
       if (result.state === 'unknown') binding.uncertain.add(capability.signature);

@@ -1,0 +1,94 @@
+.session-browser { min-width: 0; padding: 5px; }
+.session-browser-compat { margin: 5px 8px 12px; font-size: .68rem; }
+.session-browser-section + .session-browser-section { margin-top: 8px; border-top: 1px solid var(--line); padding-top: 5px; }
+.session-browser-section-toggle, .session-browser-folder-toggle { display: flex; align-items: center; gap: 7px; width: 100%; min-width: 0; border: 0; border-radius: 8px; background: transparent; color: var(--text); text-align: left; font: inherit; }
+.session-browser-section-toggle { padding: 8px 6px; font-weight: 650; font-size: .76rem; }
+.session-browser-folder-toggle { padding: 7px 8px; color: var(--muted); font-size: .75rem; }
+.session-browser-section-toggle > span:first-of-type, .session-browser-folder-toggle > span { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.session-browser-section-toggle > .icon, .session-browser-folder-toggle > .icon { flex: none; width: 13px; height: 13px; }
+.session-browser-section-toggle > .icon, .session-browser-folder-toggle > .icon:first-child { transition: transform 140ms ease; }
+.session-browser-section-toggle[aria-expanded='true'] > .icon, .session-browser-folder-toggle[aria-expanded='true'] > .icon:first-child { transform: rotate(90deg); }
+.session-browser-section-toggle .badge { font-size: .65rem; }
+.session-browser-folder-toggle small { font-size: .65rem; font-variant-numeric: tabular-nums; }
+.session-browser-folder-toggle:hover, .session-browser-section-toggle:hover { background: var(--sunken); }
+.session-browser-rows { padding-left: 9px; }
+.session-browser-rows .session-list { padding: 0; gap: 2px; }
+.session-browser-rows .session-row { border-radius: 10px; }
+.session-browser-rows .session-select { padding: 8px 48px 8px 10px; gap: 4px; }
+.session-browser-rows .session-title { font-size: .77rem; }
+.session-browser-rows .session-meta { font-size: .65rem; }
+.session-browser-rows .row-tools { gap: 1px; }
+.session-browser-rows .icon-button.small { width: 23px; height: 23px; padding: 4px; }
+.session-browser-more { width: calc(100% - 14px); margin: 4px 7px; padding: 6px 8px; border: 0; border-radius: 7px; background: var(--sunken); color: var(--muted); font-size: .7rem; }
+.session-browser-empty { margin: 6px 10px; font-size: .7rem; }
+.history-list .session-browser-rows .session-select { padding-right: 10px; }
+@media (prefers-reduced-motion: reduce) { .session-browser button > .icon { transition: none; } }
+
+.session-browser-folder-path { display: block; overflow: hidden; text-overflow: ellipsis; font-weight: 400; opacity: .8; }
+
+/* Connected, compact harness → project → session branches. */
+.session-browser { --session-tree-line: color-mix(in srgb, var(--muted) 35%, transparent); --session-tree-indent: 10px; }
+.session-browser-harness-list { display: grid; gap: 7px; min-width: 0; }
+.session-browser-harness { min-width: 0; }
+.session-browser-harness-toggle { display: flex; align-items: center; gap: 7px; width: 100%; min-width: 0; padding: 9px 6px; border: 0; border-radius: 9px; background: transparent; color: var(--text); text-align: left; font: inherit; font-size: .81rem; font-weight: 650; }
+.session-browser-harness-toggle > span:not(.badge):not(.origin-mark):not(.session-browser-spinner):not(.session-browser-unread) { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.session-browser-harness-toggle > .icon { flex: none; width: 13px; height: 13px; transition: transform 140ms ease; }
+.session-browser-harness-toggle[aria-expanded='true'] > .icon { transform: rotate(90deg); }
+.session-browser-harness-toggle .origin-mark { flex: none; width: 16px; height: 16px; }
+.session-browser-harness-toggle .badge { font-size: .65rem; }
+.session-browser-harness-toggle:hover { background: var(--sunken); }
+.session-browser-harness-children { margin-left: 12px; padding-left: var(--session-tree-indent); border-left: 1px solid transparent; }
+.session-browser-harness-children > .session-browser-section,
+.session-browser-section-body > .session-browser-folder { position: relative; }
+.session-browser-harness-children > .session-browser-section::before,
+.session-browser-section-body > .session-browser-folder::before { content: ''; position: absolute; left: calc(-1 * var(--session-tree-indent) - 1px); top: 0; width: var(--session-tree-indent); height: 16px; border-left: 1px solid var(--session-tree-line); border-bottom: 1px solid var(--session-tree-line); border-bottom-left-radius: 8px; pointer-events: none; }
+.session-browser-section + .session-browser-section { margin-top: 3px; padding-top: 0; border-top: 0; }
+.session-browser-section-body { margin-left: 9px; padding-left: var(--session-tree-indent); border-left: 1px solid transparent; }
+.session-browser-section-toggle { padding: 7px 4px; }
+.session-browser-folder-toggle { padding: 7px 4px; }
+.session-browser-folder > .session-browser-rows { margin-left: 10px; padding-left: var(--session-tree-indent); border-left: 1px solid transparent; }
+.session-browser-rows .session-row, .session-browser-rows .candidate-list > li { position: relative; }
+.session-browser-rows .session-row::before, .session-browser-rows .candidate-list > li::before { content: ''; position: absolute; left: calc(-1 * var(--session-tree-indent) - 1px); top: 0; width: var(--session-tree-indent); height: 18px; border-left: 1px solid var(--session-tree-line); border-bottom: 1px solid var(--session-tree-line); border-bottom-left-radius: 8px; pointer-events: none; }
+/* Only nodes with a following sibling carry a vertical continuation. The
+   rounded ::before connector itself ends at the header for a last/only child,
+   independently of how tall its expanded descendants become. */
+.session-browser-harness-children > .session-browser-section:has(~ .session-browser-section)::after,
+.session-browser-section-body > .session-browser-folder:has(~ .session-browser-folder)::after,
+.session-browser-rows .session-row:has(~ .session-row)::after,
+.session-browser-rows .candidate-list > li:has(~ li)::after { content: ''; position: absolute; left: calc(-1 * var(--session-tree-indent) - 1px); top: 0; bottom: 0; border-left: 1px solid var(--session-tree-line); pointer-events: none; }
+.session-browser-harness-children > .session-browser-section:has(~ .session-browser-section)::after { bottom: -3px; }
+.session-browser-rows .session-row:has(~ .session-row)::after { bottom: -2px; }
+.session-browser-rows .candidate-list { padding-left: 0; list-style: none; max-height: none; overflow: visible; }
+.session-browser [aria-current='true'] { outline-offset: -2px; }
+/* Transient layers travel with the complete folder; the 3px passing lane fits
+   within the tree's existing inset, including the narrow sidebar. */
+.session-browser .is-tree-overtaking { position: relative; z-index: 1; will-change: transform; }
+.session-browser .is-tree-overtaking-up { z-index: 2; }
+@media (max-width: 480px) { .session-browser { --session-tree-indent: 8px; }.session-browser-harness-children { margin-left: 8px; }.session-browser-section-body { margin-left: 6px; }.session-browser-folder > .session-browser-rows { margin-left: 6px; } }
+@media (prefers-reduced-motion: reduce) { .session-browser-harness-toggle > .icon { transition: none; } }
+
+/* Only actual work spins; only unread model output earns a dot. */
+.session-browser-spinner { display: inline-block; flex: none; width: 12px; height: 12px; border: 1.5px solid color-mix(in srgb, var(--muted) 28%, transparent); border-top-color: var(--muted); border-radius: 50%; }
+.session-browser-unread { display: inline-block; flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+.session-browser-section-toggle > .session-browser-spinner, .session-browser-folder-toggle > .session-browser-spinner,
+.session-browser-section-toggle > .session-browser-unread, .session-browser-folder-toggle > .session-browser-unread { flex: none; overflow: visible; }
+.session-browser-rows .session-row.active, .session-browser-rows .session-row:hover { background: color-mix(in srgb, var(--muted) 9%, transparent); }
+.session-browser-rows .session-row.active .session-title { color: var(--text); font-weight: 500; }
+.session-browser-rows .compact-indicators .session-select { padding: 7px 35px 7px 8px; }
+.session-row-indicators { position: absolute; right: 9px; top: 10px; display: flex; align-items: center; justify-content: end; gap: 6px; }
+.session-browser-attention { display: inline-flex; color: var(--warn); }
+.session-browser-attention .icon { width: 12px; height: 12px; }
+.session-browser-rows .compact-indicators .row-tools { top: auto; bottom: 2px; right: 4px; opacity: 0; pointer-events: none; }
+.session-browser-rows .compact-indicators .session-meta { padding-right: 42px; }
+.session-browser-rows .compact-indicators:hover .row-tools, .session-browser-rows .compact-indicators:focus-within .row-tools { opacity: 1; pointer-events: auto; }
+@media (hover: none) {
+  .session-browser-rows .compact-indicators .row-tools { position: static; justify-content: end; padding: 0 5px 4px; opacity: 1; pointer-events: auto; }
+}
+
+/* The passing branch is opaque while raised, so its labels remain readable
+   as whole expanded folders cross rather than showing both branches' text. */
+.session-browser .is-tree-overtaking.is-tree-overtaking-up {
+  background: var(--surface-solid);
+  border-radius: 8px;
+  box-shadow: 0 5px 14px -10px rgb(0 0 0 / 35%);
+}

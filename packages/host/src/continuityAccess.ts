@@ -22,6 +22,7 @@ export interface ContinuityAccessOptions {
   binding(sessionId: string): Promise<ContinuityAccessBinding>;
   /** Reads immutable evidence through current chain privacy checks; never captures a new source. */
   read(sessionId: string, input: ContinuityReadInput): Promise<ContinuityReadPage>;
+  allowCrossWorkspace?: (sourceWorkspaceId: string, destinationWorkspaceId: string) => boolean;
 }
 export interface ContinuityAccessRequest {
   accessCode: string;
@@ -87,6 +88,9 @@ export class ContinuityAccess {
   private readonly reads = new Set<Promise<unknown>>();
   private readonly now: () => number;
   constructor(private readonly options: ContinuityAccessOptions) { this.now = options.now ?? Date.now; }
+  private allowsWorkspace(sourceWorkspaceId: string, destinationWorkspaceId: string): boolean {
+    return this.options.allowCrossWorkspace ? this.options.allowCrossWorkspace(sourceWorkspaceId, destinationWorkspaceId) : sourceWorkspaceId === destinationWorkspaceId;
+  }
   private serial<T>(task: () => Promise<T>, completing = false): Promise<T> {
     if (this.closed && !completing) return Promise.reject(new Error('Context access is closed.'));
     const next = this.lane.then(async () => { await this.load(); return task(); });
@@ -124,7 +128,7 @@ export class ContinuityAccess {
     return this.serial(async () => {
       if (context.target.kind === 'native' || !context.destination.sessionId) return packet;
       const binding = await this.current(context.destination.sessionId);
-      if (binding.workspaceId !== context.source.workspaceId) throw denied();
+      if (!this.allowsWorkspace(context.source.workspaceId, binding.workspaceId)) throw denied();
       for (const [id, value] of this.pending) if (value.expiresAt <= this.now()) this.pending.delete(id);
       if (this.pending.size >= MAX_GRANTS) throw new Error('Too many pending context access reviews. Wait for an earlier review to expire.');
       const accessCode = `sk-extalia-context-${randomBytes(32).toString('hex')}`;

@@ -137,8 +137,8 @@ function reachesAgent(byId: ReadonlyMap<string, OfficeAgent>, start: string, tar
 
 /**
  * A team is permanent even when its members are not working: members of a lead's team that are not
- * in the Office right now are listed under their lead as `offline` rows, so the board always shows
- * who works under whom. Members already present keep their live row.
+ * in the Office right now retain `offline` rows in the collapsed offline group.
+ * Members already present keep their live row and team identity.
  */
 export function withTeamMembers(agents: readonly OfficeAgent[], teams: PresenceTeams): OfficeAgent[] {
   const present = new Set(agents.map(agent => agent.id));
@@ -160,7 +160,12 @@ export function withTeamMembers(agents: readonly OfficeAgent[], teams: PresenceT
   return extra.length ? [...agents, ...extra] : [...agents];
 }
 
-/** v0.0.43: one session's agents under the board's "Earlier" group. */
+/** Characters outside the active/ready board, shown only in the offline disclosure. */
+export function isOfflineBoardAgent(agent: OfficeAgent): boolean {
+  return Boolean(agent.earlier || agent.status === 'offline' || agent.nativeStandby === 'off-shift');
+}
+
+/** One session's agents in the offline disclosure. */
 export interface EarlierGroup {
   sessionId: string;
   /** The session's lead when it is still in the office (its subagents that left are listed here under its name). */
@@ -171,8 +176,8 @@ export interface EarlierGroup {
 }
 
 /**
- * v0.0.43: splits the board into agents in the office and the "Earlier" group (agents with `earlier`: ended or quiet
- * observed sessions, subagents that left). Earlier agents keep their tree per session; a session whose lead is still
+ * Splits active/ready/standby rows from offline, off-shift and earlier characters.
+ * Offline agents keep their tree per session; a session whose lead is still
  * in the office names it on its group. v0.0.50: rows follow `order` (the settled board order, default `boardOrder`), and
  * groups follow the first place their agents hold in it, so the newest activity comes first.
  */
@@ -183,8 +188,8 @@ export function splitBoard(
   const flat = order ?? boardOrder(agents, activityAt);
   const rank = new Map(flat.map((id, index) => [id, index]));
   const place = (agent: OfficeAgent) => rank.get(agent.id) ?? Number.MAX_SAFE_INTEGER;
-  const present = agents.filter(agent => !agent.earlier);
-  const earlier = agents.filter(agent => agent.earlier);
+  const present = agents.filter(agent => !isOfflineBoardAgent(agent));
+  const earlier = agents.filter(isOfflineBoardAgent);
   const bySession = new Map<string, OfficeAgent[]>();
   for (const agent of earlier) bySession.set(agent.sessionId, [...(bySession.get(agent.sessionId) ?? []), agent]);
   const groups = [...bySession.entries()].map(([sessionId, members]) => {

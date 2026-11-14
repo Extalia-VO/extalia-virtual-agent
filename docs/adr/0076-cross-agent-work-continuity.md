@@ -67,9 +67,10 @@ or other runtime's native resume/control API.
   Two-phase reads release the grant lane while waiting for the archive owner,
   then recheck authority before returning, preventing lock inversion and late
   disclosure after revocation. Codes are redacted from subsequent evidence.
-- Generated capsules and continuity-read results are excluded from subsequent
-  source evidence, avoiding a summary-of-a-summary loop. The source watermark
-  advances only for retained meaningful evidence.
+- Exact delivered capsules and explicitly identified Native continuity-read
+  results are excluded from subsequent source evidence. External wrapper tool
+  outputs can remain in the archive when they lack reliable continuity-tool
+  identity. The source watermark advances only for retained meaningful evidence.
 - Independent existing canonical work records are not merged implicitly.
   Source application IDs remain distinct and visible in lineage metadata.
 
@@ -88,6 +89,13 @@ idempotent receipts and explicit user-inspected recovery. Actual-host tests use
 temporary profiles and real provider/transport adapters with scripted model
 responses. These tests do not certify live third-party application versions or
 hidden context preservation.
+
+A subsequent [live CLI acceptance run](../bench/live-handover-chain.md) on
+v0.4.288 completed Codex → Gemini → Claude → the original Codex session,
+using real inference, reviewed export and supported CLI resume. Original
+decisions and intervening progress were preserved across three transfers and
+host restarts. Actual scoped MCP reads recovered a shortened Claude entry.
+Desktop automatic dispatch and context-window compaction remain open.
 
 See the [user workflow](../getting-started/cross-agent-handover.md) and
 [remaining PRD breakdown](../product/prd-remaining-work.md).

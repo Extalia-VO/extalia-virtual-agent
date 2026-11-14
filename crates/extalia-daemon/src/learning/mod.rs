@@ -3,6 +3,9 @@
 mod files;
 mod intake;
 mod jobs;
+mod observed;
+#[cfg(all(test, unix))]
+mod observed_tests;
 #[cfg(all(test, unix))]
 mod tests;
 mod text;
@@ -75,6 +78,7 @@ pub struct Learning {
     stages: HashMap<String, Stage>,
     jobs: HashMap<String, Job>,
     intakes: HashMap<String, intake::Intake>,
+    observed: HashMap<String, extalia_core::observed_memory::ObservedMemoryStore>,
     #[cfg(test)]
     hold: Option<(std::sync::mpsc::Sender<()>, std::sync::mpsc::Receiver<()>)>,
 }
@@ -90,6 +94,7 @@ impl Learning {
             stages: HashMap::new(),
             jobs: HashMap::new(),
             intakes: HashMap::new(),
+            observed: HashMap::new(),
             #[cfg(test)]
             hold: None,
         }
@@ -107,6 +112,7 @@ impl Learning {
         let action = s(params, "action");
         let input = &params["input"];
         let mut result = match action {
+            action if action.starts_with("observed.") => self.observed_action(action, input)?,
             "evidence.begin" => {
                 if self.intakes.len() >= 4 {
                     return Err((ErrorCode::CapacityExceeded, Some("learning_capacity")));

@@ -118,6 +118,8 @@ it.each([
       s => s.observation?.sourceId === sourceId && s.observation.nativeSessionId === nativeSessionId,
     )!;
 
+    expect(observed.running).toBe(true);
+
     // observedControlStatus automatically prepares the session-bound inbox for watched Gemini CLI / Antigravity sessions
     const controlStatus = await f.host.observedControlStatus!(observed.id);
     expect(controlStatus.state).toBe('ready');
@@ -201,6 +203,7 @@ it.skipIf(process.platform === 'win32')('delivers observed Antigravity prompts d
       s => s.observation?.sourceId === 'antigravity' && s.observation.nativeSessionId === nativeSessionId,
     )!;
 
+    expect(observed.running).toBe(true);
     const initialQueue = await f.host.promptQueueStatus!(observed.id);
     await f.host.changePromptQueue!(observed.id, {
       action: 'add',
@@ -314,9 +317,20 @@ it('discovers only available models for watched Antigravity and Gemini CLI sessi
     const agyChoices = await f.host.modelChoices('', observedAgy.id);
     expect(agyChoices).toMatchObject({
       runtime: 'extalia-native',
-      defaultModel: 'gemini-4-argon-medium',
-      models: ['gemini-4-argon-medium', 'claude-sonnet-5-5-high'],
-      efforts: [],
+      defaultModel: 'gemini-4-argon',
+      models: ['gemini-4-argon', 'claude-sonnet-5-5'],
+      efforts: ['medium'],
+      modelEfforts: {
+        'gemini-4-argon': ['medium'],
+        'claude-sonnet-5-5': ['high'],
+      },
+      observedSelection: {
+        model: 'gemini-4-argon',
+        effort: 'medium',
+        canSetSettings: true,
+        connectionId: 'antigravity-native',
+        settingsRevision: 0,
+      },
     });
     expect(agyChoices.models).not.toContain('gemini-4-carbon-disabled');
     expect(agyChoices.models).not.toContain('exhausted-model');
@@ -563,5 +577,269 @@ it.skipIf(process.platform === 'win32')('stages attachment paths into queued Cod
     expect(await readFile(stagedPath, 'utf8')).toBe('codex-evidence');
   } finally {
     await f2.runtime.close();
+  }
+});
+
+it('updates Antigravity model and effort, preserves queue identity across async projectPath, and reads native queue', async () => {
+  const f = await fixture();
+  try {
+    const projectDir = path.join(f.root, 'project-agy');
+    await mkdir(projectDir, { recursive: true });
+    const daemonDir = path.join(f.home, '.gemini', 'antigravity', 'daemon');
+    await mkdir(daemonDir, { recursive: true });
+    await writeFile(
+      path.join(daemonDir, 'ls-queue.json'),
+      JSON.stringify({ pid: process.pid, httpPort: 63388, httpsPort: 63387, csrfToken: 'test-csrf-agy-queue' }),
+    );
+    const sendBodies: unknown[] = [];
+    f.fetch.mockImplementation(async (input: unknown, init?: RequestInit) => {
+      const url = String(input);
+      if (url === 'http://127.0.0.1:63388/exa.language_server_pb.LanguageServerService/GetCascadeModelConfigData'
+        || url === 'http://localhost:63388/exa.language_server_pb.LanguageServerService/GetCascadeModelConfigData') {
+        return Response.json({
+          defaultOverrideModelConfig: { modelOrAlias: { model: 'MODEL_PLACEHOLDER_M418' } },
+          clientModelConfigs: [
+            { label: 'Gemini 4 Argon (Medium)', modelId: 'gemini-4-argon-medium', modelOrAlias: { model: 'MODEL_PLACEHOLDER_M418' }, quotaInfo: { remainingFraction: 0.9 } },
+            { label: 'Gemini 4 Argon (High)', modelId: 'gemini-4-argon-high', modelOrAlias: { model: 'MODEL_PLACEHOLDER_M419' }, quotaInfo: { remainingFraction: 0.9 } },
+            { label: 'Claude Sonnet 5.5 (High)', modelId: 'claude-sonnet-5-5-high', modelOrAlias: { model: 'MODEL_PLACEHOLDER_M405' }, quotaInfo: { remainingFraction: 0.9 } },
+          ],
+        });
+      }
+      if (url.endsWith('/exa.language_server_pb.LanguageServerService/GetCascadeTrajectory')) {
+        return Response.json({
+          trajectory: {
+            steps: [
+              { type: 'CORTEX_STEP_TYPE_USER_INPUT', status: 'CORTEX_STEP_STATUS_WAITING', userInput: { items: [{ text: 'Native queued Antigravity task' }] } },
+            ],
+          },
+        });
+      }
+      if (url.endsWith('/exa.language_server_pb.LanguageServerService/SendUserCascadeMessage')) {
+        sendBodies.push(JSON.parse(String(init?.body)));
+        return Response.json({});
+      }
+      throw new Error(`Unexpected URL: ${url}`);
+    });
+
+    await f.runtime.hooks!.listen();
+    const agySessionId = '88888888-8888-4888-8888-888888888888';
+    await handleMcpJsonRpc({
+      jsonrpc: '2.0', id: 1, method: 'tools/call',
+      params: { name: 'report_intent', arguments: { session_id: agySessionId, intent: 'Initial task without cwd' } },
+    }, { extaliaHome: f.data, app: 'antigravity' });
+
+    await vi.waitFor(async () => {
+      expect((await f.host.getState()).sessions.some(s => s.observation?.nativeSessionId === agySessionId)).toBe(true);
+    });
+    const observedAgy = (await f.host.getState()).sessions.find(s => s.observation?.nativeSessionId === agySessionId)!;
+    await f.host.createObservedInbox!(observedAgy.id);
+
+    const q1 = await f.host.promptQueueStatus!(observedAgy.id);
+    const q2 = await f.host.changePromptQueue!(observedAgy.id, { action: 'add', text: 'Queued before cwd', revision: q1.revision });
+    expect(q2.items.map(i => i.text)).toEqual(['Queued before cwd']);
+
+    // Populate projectPath asynchronously after queue initialization; queue identity must stay stable.
+    await handleMcpJsonRpc({
+      jsonrpc: '2.0', id: 2, method: 'tools/call',
+      params: { name: 'report_intent', arguments: { session_id: agySessionId, cwd: projectDir, intent: 'Populated cwd' } },
+    }, { extaliaHome: f.data, app: 'antigravity' });
+    await vi.waitFor(async () => {
+      const s = (await f.host.getState()).sessions.find(item => item.id === observedAgy.id);
+      expect(s?.observation?.projectPath).toBe(projectDir);
+    });
+
+    const updatedChoices = await f.host.updateObservedAntigravitySettings!(observedAgy.id, { model: 'claude-sonnet-5-5', effort: 'high' });
+    expect(updatedChoices).toMatchObject({
+      defaultModel: 'claude-sonnet-5-5',
+      defaultEffort: 'high',
+      efforts: ['high'],
+      modelEfforts: {
+        'gemini-4-argon': ['medium', 'high'],
+        'claude-sonnet-5-5': ['high'],
+      },
+      observedSelection: {
+        model: 'claude-sonnet-5-5',
+        effort: 'high',
+        canSetSettings: true,
+        connectionId: 'antigravity-native',
+        settingsRevision: 1,
+      },
+    });
+
+    const q3 = await f.host.changePromptQueue!(observedAgy.id, { action: 'add', text: 'Send with sonnet', start: true, revision: q2.revision });
+    expect(q3.items.map(i => i.text)).toContain('Send with sonnet');
+    await vi.waitFor(() => {
+      expect(sendBodies.length).toBeGreaterThanOrEqual(1);
+    });
+    expect(sendBodies[0]).toMatchObject({
+      cascadeId: agySessionId,
+      deliveryStrategy: 'MESSAGE_DELIVERY_STRATEGY_WHEN_IDLE',
+      cascadeConfig: { plannerConfig: { planModel: 'MODEL_PLACEHOLDER_M405' } },
+    });
+
+    const nativeQueue = await f.host.observedNativeQueueStatus!(observedAgy.id);
+    expect(nativeQueue.state).toBe('ready');
+    expect(nativeQueue.items.map(item => item.text)).toContain('Native queued Antigravity task');
+
+    await f.host.setHookPrivacy({ labelsOnly: true });
+    const redactedQueue = await f.host.observedNativeQueueStatus!(observedAgy.id);
+    expect(redactedQueue.state).toBe('private');
+    expect(redactedQueue.items).toEqual([]);
+  } finally {
+    await f.runtime.close();
+  }
+});
+
+it('holds Antigravity queue items as editable pending while cascade is running and dispatches once idle', async () => {
+  const f = await fixture();
+  try {
+    const projectDir = path.join(f.root, 'project-agy-busy');
+    await mkdir(projectDir, { recursive: true });
+    const daemonDir = path.join(f.home, '.gemini', 'antigravity', 'daemon');
+    await mkdir(daemonDir, { recursive: true });
+    await writeFile(
+      path.join(daemonDir, 'ls-busy.json'),
+      JSON.stringify({ pid: process.pid, httpPort: 63389, httpsPort: 63387, csrfToken: 'test-csrf-agy-busy' }),
+    );
+    let cascadeStatus = 'CASCADE_RUN_STATUS_RUNNING';
+    const sendBodies: Array<{ items?: Array<{ text?: string }> }> = [];
+    f.fetch.mockImplementation(async (input: unknown, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/exa.language_server_pb.LanguageServerService/GetCascadeModelConfigData')) {
+        return Response.json({
+          defaultOverrideModelConfig: { modelOrAlias: { model: 'MODEL_PLACEHOLDER_M418' } },
+          clientModelConfigs: [
+            { label: 'Gemini 4 Argon (Medium)', modelId: 'gemini-4-argon-medium', modelOrAlias: { model: 'MODEL_PLACEHOLDER_M418' } },
+          ],
+        });
+      }
+      if (url.endsWith('/exa.language_server_pb.LanguageServerService/GetCascadeTrajectory')) {
+        return Response.json({ status: cascadeStatus, trajectory: { steps: [] } });
+      }
+      if (url.endsWith('/exa.language_server_pb.LanguageServerService/SendUserCascadeMessage')) {
+        sendBodies.push(JSON.parse(String(init?.body)));
+        return Response.json({});
+      }
+      throw new Error(`Unexpected URL: ${url}`);
+    });
+
+    await f.runtime.hooks!.listen();
+    const agySessionId = '99999999-9999-4999-8999-999999999999';
+    await handleMcpJsonRpc({
+      jsonrpc: '2.0', id: 1, method: 'tools/call',
+      params: { name: 'report_intent', arguments: { session_id: agySessionId, cwd: projectDir, intent: 'Running cascade step' } },
+    }, { extaliaHome: f.data, app: 'antigravity' });
+
+    await vi.waitFor(async () => {
+      expect((await f.host.getState()).sessions.some(s => s.observation?.nativeSessionId === agySessionId)).toBe(true);
+    });
+    const observedAgy = (await f.host.getState()).sessions.find(s => s.observation?.nativeSessionId === agySessionId)!;
+    await f.host.createObservedInbox!(observedAgy.id);
+    await f.host.updateObservedAntigravitySettings!(observedAgy.id, { model: 'gemini-4-argon', effort: 'medium' });
+
+    let q = await f.host.promptQueueStatus!(observedAgy.id);
+    q = await f.host.changePromptQueue!(observedAgy.id, { action: 'add', text: 'First prompt', start: true, revision: q.revision });
+    q = await f.host.changePromptQueue!(observedAgy.id, { action: 'add', text: 'Second prompt', start: true, revision: q.revision });
+    q = await f.host.changePromptQueue!(observedAgy.id, { action: 'add', text: 'Third prompt', start: true, revision: q.revision });
+    expect(q.paused).toBe(false);
+    expect(q.canSteer).toBe(true);
+    expect(q.items.every(item => item.state === 'pending')).toBe(true);
+    expect(sendBodies).toHaveLength(0);
+
+    const firstId = q.items[0]!.id;
+    const secondId = q.items[1]!.id;
+    const thirdId = q.items[2]!.id;
+
+    q = await f.host.changePromptQueue!(observedAgy.id, { action: 'edit', itemId: firstId, text: 'First prompt updated', revision: q.revision });
+    q = await f.host.changePromptQueue!(observedAgy.id, { action: 'reorder', itemIds: [secondId, firstId, thirdId], revision: q.revision });
+    q = await f.host.changePromptQueue!(observedAgy.id, { action: 'delete', itemId: thirdId, revision: q.revision });
+    expect(q.items.map(item => ({ id: item.id, text: item.text, state: item.state }))).toEqual([
+      { id: secondId, text: 'Second prompt', state: 'pending' },
+      { id: firstId, text: 'First prompt updated', state: 'pending' },
+    ]);
+    expect(sendBodies).toHaveLength(0);
+
+    cascadeStatus = 'CASCADE_RUN_STATUS_IDLE';
+    await vi.waitFor(async () => {
+      const next = await f.host.promptQueueStatus!(observedAgy.id);
+      expect(sendBodies.length).toBeGreaterThanOrEqual(1);
+      expect(sendBodies[0]?.items).toEqual([{ text: 'Second prompt' }]);
+      expect(next.items.find(item => item.id === secondId)?.state).toBe('sent');
+    }, { timeout: 5000 });
+  } finally {
+    await f.runtime.close();
+  }
+});
+
+it('retains thumbnail previews for attached images dispatched in observed Antigravity sessions', async () => {
+  const f = await fixture();
+  try {
+    const projectDir = path.join(f.root, 'project-agy-thumb');
+    await mkdir(projectDir, { recursive: true });
+    const daemonDir = path.join(f.home, '.gemini', 'antigravity', 'daemon');
+    await mkdir(daemonDir, { recursive: true });
+    await writeFile(
+      path.join(daemonDir, 'ls-thumb.json'),
+      JSON.stringify({ pid: process.pid, httpPort: 63390, httpsPort: 63387, csrfToken: 'test-csrf-agy-thumb' }),
+    );
+    f.fetch.mockImplementation(async (input: unknown) => {
+      const url = String(input);
+      if (url.endsWith('/exa.language_server_pb.LanguageServerService/GetCascadeModelConfigData')) {
+        return Response.json({
+          defaultOverrideModelConfig: { modelOrAlias: { model: 'MODEL_PLACEHOLDER_M418' } },
+          clientModelConfigs: [
+            { label: 'Gemini 4 Argon (Medium)', modelId: 'gemini-4-argon-medium', modelOrAlias: { model: 'MODEL_PLACEHOLDER_M418' } },
+          ],
+        });
+      }
+      if (url.endsWith('/exa.language_server_pb.LanguageServerService/GetCascadeTrajectory')) {
+        return Response.json({ status: 'CASCADE_RUN_STATUS_IDLE', trajectory: { steps: [] } });
+      }
+      if (url.endsWith('/exa.language_server_pb.LanguageServerService/SendUserCascadeMessage')) {
+        return Response.json({});
+      }
+      throw new Error(`Unexpected URL: ${url}`);
+    });
+
+    await f.runtime.hooks!.listen();
+    const agySessionId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    await handleMcpJsonRpc({
+      jsonrpc: '2.0', id: 1, method: 'tools/call',
+      params: { name: 'report_intent', arguments: { session_id: agySessionId, cwd: projectDir, intent: 'Ready for screenshot' } },
+    }, { extaliaHome: f.data, app: 'antigravity' });
+
+    await vi.waitFor(async () => {
+      expect((await f.host.getState()).sessions.some(s => s.observation?.nativeSessionId === agySessionId)).toBe(true);
+    });
+    const observedAgy = (await f.host.getState()).sessions.find(s => s.observation?.nativeSessionId === agySessionId)!;
+    await f.host.createObservedInbox!(observedAgy.id);
+    await f.host.updateObservedAntigravitySettings!(observedAgy.id, { model: 'gemini-4-argon', effort: 'medium' });
+
+    const png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
+    const uploaded = await f.host.uploadAttachment(observedAgy.id, { name: 'shot.png', mimeType: 'image/png', data: png });
+    const q = await f.host.promptQueueStatus!(observedAgy.id);
+    await f.host.changePromptQueue!(observedAgy.id, {
+      action: 'add',
+      text: '[Attached file: shot.png]\n\nCheck screenshot',
+      start: true,
+      revision: q.revision,
+    });
+
+    let promptRef: string | undefined;
+    await vi.waitFor(async () => {
+      const events = await f.host.sessionEvents(observedAgy.id);
+      const submitted = events.find(e => e.body.type === 'prompt.submitted' && e.body.text.includes('Check screenshot'));
+      expect(submitted).toBeDefined();
+      const body = submitted!.body as { attachments?: Array<{ name: string; kind: string; ref?: string }> };
+      expect(body.attachments?.[0]).toMatchObject({ name: 'shot.png', kind: 'image' });
+      expect(body.attachments?.[0]?.ref).toMatch(/^[0-9a-f]{64}$/);
+      promptRef = body.attachments?.[0]?.ref;
+    }, { timeout: 5000 });
+
+    const preview = await f.host.attachmentPreview(observedAgy.id, promptRef!);
+    expect(preview).toEqual({ mimeType: 'image/png', data: png });
+    expect(uploaded.name).toBe('shot.png');
+  } finally {
+    await f.runtime.close();
   }
 });

@@ -63,6 +63,8 @@ export interface OfficeCanvasProps {
   onRetryScene?(): void;
   /** Increment to explicitly frame the selected character. */
   focusRequest?: number;
+  /** Receipt for an entered explicit character focus; false means camera input or another request canceled it. */
+  onFocusFinished?: (request: number, completed: boolean) => void;
   /** Keep the camera on the selected character while it walks. Off by default; Locate and Follow explicitly request camera movement. */
   follow?: boolean;
   /** The user dragged the view, which ends following. */
@@ -104,7 +106,7 @@ function SceneReadiness({ onScene, onReady }: Pick<OfficeCanvasProps, 'onScene' 
 }
 const initialCamera = { position: [-32, 22, -82] as [number, number, number], zoom: 9, near: 0.1, far: 600 };
 /** Shared Web/Desktop renderer: furnished geometry and characters consume the same host state. */
-export default function OfficeCanvas({ automaticShot, view, viewRequest, language, dark, reducedMotion, agents, selectedId, onSelect, appearances, activities = [], onScene, onReady, onContextState, onRetryScene, focusRequest, follow, onFollowEnd, onFollowFloor, focusPoint, allocations: givenAllocations, positions, lightOverride, followSun, popoverId = null, onMiss }: OfficeCanvasProps) {
+export default function OfficeCanvas({ automaticShot, view, viewRequest, language, dark, reducedMotion, agents, selectedId, onSelect, appearances, activities = [], onScene, onReady, onContextState, onRetryScene, focusRequest, onFocusFinished, follow, onFollowEnd, onFollowFloor, focusPoint, allocations: givenAllocations, positions, lightOverride, followSun, popoverId = null, onMiss }: OfficeCanvasProps) {
   const ownAllocations = useOfficeAllocations(agents);
   const allocations = givenAllocations ?? ownAllocations;
   const director = useMovementDirector();
@@ -131,12 +133,12 @@ export default function OfficeCanvas({ automaticShot, view, viewRequest, languag
     <ModelInstanceBatches />
     <SceneEnvironment dark={dark} reducedMotion={reducedMotion} lightOverride={lightOverride} followSun={followSun}>
       <SceneReadiness onScene={onScene} onReady={onReady} />
-      {/* Sky, fog and sun/moon follow the solar environment; adaptive resolution targets 40 fps. */}
+      {/* Sky, fog and sun/moon follow the solar environment; adaptive resolution targets a 30 fps floor. */}
       <SceneLighting />
       <AdaptiveRenderBudget />
       {QA_HOOKS && <SceneBenchProbe />}
       <OverviewDetail campus={view === 'campus'} />
-      <CameraView automaticShot={automaticShot} automaticSeat={allocations.find(seat => seat.agentId === automaticShot?.targetId)?.position} view={view} viewRequest={viewRequest} focus={focus} focusId={selectedId} live={live} focusRequest={focusRequest} reducedMotion={reducedMotion} following={follow} focusPoint={focusPoint} onFollowEnd={onFollowEnd} onFollowFloor={onFollowFloor} />
+      <CameraView automaticShot={automaticShot} automaticSeat={allocations.find(seat => seat.agentId === automaticShot?.targetId)?.position} view={view} viewRequest={viewRequest} focus={focus} focusId={selectedId} live={live} focusRequest={focusRequest} onFocusFinished={onFocusFinished} reducedMotion={reducedMotion} following={follow} focusPoint={focusPoint} onFollowEnd={onFollowEnd} onFollowFloor={onFollowFloor} />
       <group visible={view === 'campus'} name="campus-site">
         <CampusNeighborhood /><CampusRoofSignage />
         <StaticCampusBatch><CampusExterior frontContext={false} /></StaticCampusBatch>

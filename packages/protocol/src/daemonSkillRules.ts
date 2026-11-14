@@ -44,9 +44,9 @@ const origin = def('SkillOrigin', enumeration(SKILL_ORIGINS));
 const riskClass = def('SkillRiskClass', enumeration(SKILL_RISK_CLASSES));
 const permission = def('SkillPermissionEntry', object({ capability: enumeration(SKILL_CAPABILITIES), scope: text(256) }));
 const summary = def('SkillRevisionSummary', object({
-  packageId: packageId.ref, revisionId: revisionId.ref, origin: origin.ref, version: text(128), treeSha256: digest, skillMdSha256: digest,
+  packageId: packageId.ref, revisionId: revisionId.ref, origin: origin.ref, marketplaceSource: optional(boolean), version: text(128), treeSha256: digest, skillMdSha256: digest,
   state: state.ref, stateReason: optional(skillReason.ref), riskClass: riskClass.ref, manifestInferred: boolean, permissionDigest: digest,
-  permissions: array(permission.ref, false, 0, DAEMON_SKILL_LIMITS.permissions), active: boolean, createdAt: timestamp, updatedAt: timestamp,
+  permissions: array(permission.ref, false, 0, DAEMON_SKILL_LIMITS.permissions), active: boolean, activationApprovalId: optional(positive), createdAt: timestamp, updatedAt: timestamp,
 }));
 const file = def('SkillFileEntry', object({ path: skillPath.ref, size: count, sha256: digest, executable: boolean }));
 const inspection = def('SkillInspectionRecord', object({

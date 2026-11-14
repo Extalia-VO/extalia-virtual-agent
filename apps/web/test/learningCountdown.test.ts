@@ -2,7 +2,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import type { LearningScheduleSnapshot } from '@extalia/platform';
 import { describe, expect, it } from 'vitest';
-import { createLearningNoticeMemory, LearningCountdownView, learningCountdownTime } from '../src/knowledge/LearningCountdown';
+import { createLearningNoticeMemory, LearningCountdownView, learningCountdownDuration, learningCountdownTime } from '../src/knowledge/LearningCountdown';
 import { MESSAGES, type Language } from '../src/i18n';
 
 const at = Date.parse('2026-11-11T06:00:00.000Z');
@@ -23,6 +23,8 @@ describe('learning countdown notification', () => {
     expect(learningCountdownTime(new Date(at + 59_000).toISOString(), at)).toBe('0:59');
     expect(learningCountdownTime(new Date(at - 1).toISOString(), at)).toBe('0:00');
     expect(learningCountdownTime('invalid', at)).toBe('0:00');
+    expect(learningCountdownDuration(60)).toBe('1:00');
+    expect(learningCountdownDuration(600)).toBe('10:00');
     const html = render(snapshot(), 'en', { now: at + 60_001 });
     expect(html).toContain(MESSAGES.en.learningCountdown.starting);
     expect(html).not.toContain(MESSAGES.en.learningCountdown.running);
@@ -91,10 +93,25 @@ describe('learning countdown notification', () => {
     value.jobs = [job];
     const waiting = render(value, language, { now: at + 999_000 });
     expect(waiting).toContain(text.meetingWaiting);
+    // Older hosts expose only the generic snapshot default; it cannot reveal a prior snooze.
+    expect(waiting).toContain(text.waitingCountdownUnknown);
+    expect(waiting).not.toContain(text.waitingCountdown('1:00'));
     expect(waiting).not.toContain('<time');
     expect(waiting).not.toContain(text.starting);
     expect(waiting.match(/disabled=""/g)).toHaveLength(1);
     expect(waiting).toMatch(new RegExp(`<button[^>]*disabled=""[^>]*>${text.runNow}<\\/button>`));
+    job.delaySeconds = 60;
+    expect(render(value, language, { now: at + 999_000 })).toContain(text.waitingCountdown('1:00'));
+    job.delaySeconds = 600;
+    expect(render(value, language, { now: at + 999_000 })).toContain(text.waitingCountdown('10:00'));
+  });
+
+  it('shows the live host deadline once a quiet period is armed', () => {
+    const value = snapshot();
+    value.jobs[0]!.dueAt = new Date(at + 60_000).toISOString();
+    expect(render(value, 'en', { now: at })).toContain('>1:00</time>');
+    expect(render(value, 'en', { now: at + 59_000 })).toContain('>0:01</time>');
+    expect(render(value, 'en', { now: at + 59_000 })).not.toContain(MESSAGES.en.learningCountdown.waitingCountdown('1:00'));
   });
 
   it('only confirms saved knowledge from the exporter receipt, including durable partial success', () => {

@@ -29,7 +29,17 @@ const receipt = object({ packageId: id, revisionId: id, state: string(100,1), st
 const note = object({ workspaceId: id, sessionId: id, profileId: id, revision: string(512,1), runId: id, promptSha256: hash, title: string(200,1), lesson: string(8000,1), evidence: array(evidence,false,1,12), skill: optional(receipt) });
 const meeting = object({ meetingId: id, topic: string(2000,1), roomId: optional(id), startedAt: string(64,1), completedAt: string(64,1), outcome: enumeration(['completed','failed','cancelled']), participants: array(object({agentId:id,name:string(200,1),role:string(200,1)}),false,2,14), contributions: array(object({agentId:id,round:number(1,true,2),text:string(16000)}),false,0,26) });
 const job = object({ jobId: id, status: enumeration(['running','ready','skipped','failed','cancelled','completed']), effect: optional(effect), pendingEffectId: optional(id), submission: optional(submission), evidence: array(evidence,false,0,10), provenance, contentSha256: optional(hash), skillSha256: optional(hash), reason: optional(string(500)), usage: optional(usage) });
+const observedScope = object({profileId:id,workspaceId:id,sessionId:id,sourceId:id,nativeSessionId:id,boundary:hash});
+const observedEntry = object({id,kind:enumeration(['user','assistant','tool','file','status']),text:string(8000),at:optional(string(80))});
+const observedStoredEntry = object({id,kind:enumeration(['user','assistant','tool','file','status']),text:string(2000),at:optional(string(80))});
+const observedCoverage = object({mode:enumeration(['partial','unknown']),omittedEntries:count,truncated:boolean,limits:array(string(500),false,0,8)});
+const observedEpisode = object({id:hash,episodeId:id,scope:observedScope,revision:hash,sourceRevision:string(512,1),capturedAt:string(80,1),entries:number(1,true,32),trust:literal('untrusted-observed'),coverage:observedCoverage});
 const actions: Record<string, [Rule,Rule]> = {
+  'observed.capture': [object({scope:observedScope,episodeId:id,sourceRevision:string(512,1),entries:array(observedEntry,false,1,32),coverage:observedCoverage}),object({episode:observedEpisode,created:boolean})],
+  'observed.search': [object({scope:observedScope,query:string(500),limit:optional(number(1,true,12))}),object({hits:array(object({episode:observedEpisode,excerpt:string(600)}),false,0,12),omitted:count})],
+  'observed.read': [object({scope:observedScope,episodeId:hash,revision:hash,offset:optional(count),limit:optional(number(1,true,32))}),object({episode:observedEpisode,entries:array(observedStoredEntry,false,0,32),offset:count,total:number(1,true,32),nextOffset:optional(count)})],
+  'observed.revoke': [object({scope:observedScope}),object({removed:count})],
+  'observed.jobBegin': [object({scope:observedScope,episodeId:hash,revision:hash,runId:id,promptSha256:hash,policy:object({enabled:boolean,skills:boolean,notes:boolean}),tools:array(tool,false,0,16),timeoutMs:optional(number(1,true,45000))}),object({job})],
   'evidence.begin': [object({}),object({intakeId:id})],
   'evidence.append': [object({intakeId:id,toolCallId:string(65536),name:string(65536),isError:boolean,chunk:string(65536),final:boolean}),object({complete:boolean})],
   'evidence.release': [object({intakeId:id}),object({released:literal(true)})],

@@ -49,6 +49,8 @@ export interface LearningScheduleJob {
   dueAt: string;
   /** A full selected quiet interval starts once actual foreground work settles. */
   waitingForIdle?: boolean;
+  /** Selected quiet interval, including snooze, shown while no effective deadline exists. */
+  delaySeconds?: number;
   reason?: 'busy' | 'changed' | 'failed' | 'shutdown';
   createdAt: string;
   /** Positive receipts survive a later executor, export or cleanup failure. */

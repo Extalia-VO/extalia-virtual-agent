@@ -1,9 +1,16 @@
 import { useId, type ReactNode } from 'react';
+import type { ImportCandidate } from '@extalia/platform';
+import { LocalProjectTree } from '../sessions/LocalProjectTree';
 import type { Messages } from '../i18n';
 import { Icon } from '../ui/Icon';
 import { filterCandidates } from './library';
 import { nativeSelectableIds, type DiscoveryPurpose, type NativeDiscovery } from './nativeDiscovery';
 import './nativeDiscovery.css';
+
+const candidatePath = (row: ImportCandidate) => row.projectPath;
+const candidateIdentity = (row: ImportCandidate) => row.projectGroup;
+const candidateSource = (row: ImportCandidate) => row.sourceId;
+const candidateTime = (row: ImportCandidate) => row.updatedAt;
 
 /** Shared source metadata UI; the owning page decides whether to watch or preview history. */
 export function NativeSessionPicker({ t, language, discovery, purpose, busy = false, children }: {
@@ -69,8 +76,7 @@ export function NativeSessionPicker({ t, language, discovery, purpose, busy = fa
         </label>
         <span className="muted small" role="status">{t.imports.selected(selected.size)}</span>
       </div>
-      {!visible.length ? <p className="muted">{t.imports.noCandidates}</p> : <ul className="candidate-list">
-        {visible.map(candidate => {
+      {!visible.length ? <p className="muted">{t.imports.noCandidates}</p> : <LocalProjectTree key={query} t={t} rows={visible} source={candidateSource} projectIdentity={candidateIdentity} path={candidatePath} updatedAt={candidateTime} renderRow={candidate => {
           const selectable = candidate.supported && (purpose !== 'observe' || !candidate.ignored);
           return <li key={candidate.id} className={[selectable ? '' : 'disabled', candidate.ignored ? 'ignored' : ''].filter(Boolean).join(' ') || undefined}>
             <label className="check-row">
@@ -84,8 +90,7 @@ export function NativeSessionPicker({ t, language, discovery, purpose, busy = fa
             <span className="badge">{candidate.sourceName}{candidate.profile && candidate.profile !== 'default' ? ` · ${candidate.profile}` : ''}</span>
             <time className="muted small" dateTime={candidate.updatedAt}>{format.format(new Date(candidate.updatedAt))}</time>
           </li>;
-        })}
-      </ul>}
+        }} />}
       <label className="check-row">
         <input type="checkbox" checked={consent} disabled={disabled || !selected.size} onChange={event => update({ consent: event.target.checked })} />
         <span>{purpose === 'observe' ? t.observer.sourceConsent : t.imports.sourceConsent}</span>

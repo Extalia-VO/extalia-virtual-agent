@@ -29,7 +29,7 @@ export const RENDER_BUDGET_LEVELS: readonly RenderBudgetLevel[] = [
   { resolutionHeight: 480, maxDpr: 2, maxPixels: 3840 * 2160, liveBeams: 0, shadowMapSize: 512, shadowRefreshSeconds: 1, trafficCars: 6 },
 ];
 
-export const TARGET_FPS = 40;
+export const TARGET_FPS = 30;
 /** Begin sharp, then let measured load reduce the drawing buffer if necessary. */
 export const INITIAL_RENDER_BUDGET_LEVEL = 2;
 
@@ -62,7 +62,18 @@ export function budgetPixelRatio(budget: RenderBudgetLevel, devicePixelRatio: nu
   return Math.min(nativeRatio, budget.maxDpr, budget.resolutionHeight / Math.min(cssWidth, cssHeight), pixelCap);
 }
 
-export interface BudgetSample { fps: number }
+export interface BudgetSample {
+  /** Hitch-filtered rate from the same foreground window. */
+  fps: number;
+  /** Actual delivered throughput; repeated hitches must not look like spare capacity. */
+  rawFps?: number | null | undefined;
+}
+
+/** Keep adaptation aligned with delivered FPS without rejecting older filtered-only callers. */
+export function effectiveBudgetFps({ fps, rawFps }: BudgetSample): number {
+  if (!Number.isFinite(fps) || fps <= 0) return fps;
+  return typeof rawFps === 'number' && Number.isFinite(rawFps) && rawFps > 0 ? Math.min(fps, rawFps) : fps;
+}
 export interface BudgetController {
   level: number;
   slow: number;
@@ -82,25 +93,33 @@ export function createBudgetController(): BudgetController {
 
 /** Windows (about one second each) of sustained headroom before trying the level above again. */
 export const RECOVERY_WINDOWS = 6;
-/** Also probe higher quality on a stable, frame-capped display without requiring 57/60 Hz. */
-export const PROBE_WINDOWS = 30;
-export const MAX_RETRY_WINDOWS = 120;
+export const RECOVERY_FPS = 40;
+/** Probe stable 30–39 fps displays too, without requiring 40/60 Hz headroom. */
+export const PROBE_WINDOWS = 12;
+/** Do not trade away resolution for a single transient slow measurement. */
+export const SLOW_WINDOWS = 3;
+export const MAX_RETRY_WINDOWS = 60;
+// Floating frame intervals at exactly 30 Hz can measure infinitesimally below it.
+const TARGET_FPS_EPSILON = 1e-6;
 
 /**
- * Feed one measurement window (about one second). A window slower than the target (mean frame time
- * over 25 ms) steps down a level at once; two windows in a row under the target + 5 fps headroom also
- * step down. Six windows with headroom (≥ 48 fps), or thirty stable windows (≥ 40 fps), try
- * one sharper level. Failed levels cool down for 15/30/60/120 foreground windows, never
- * permanently locking out recovery after a heavy scene, resize or temporary load.
+ * Feed one foreground measurement window (about one second). Three consecutive
+ * windows below 30 fps lower quality by one level. Six windows with headroom
+ * (≥ 40 fps), or twelve stable windows above 30 fps, try one sharper level.
+ * Raw throughput bounds the filtered rate, so recurrent hitches cannot earn an
+ * upgrade while actual delivery stays below target. Exactly 30 fps holds the
+ * current level. Failed levels cool down for
+ * 15/30/60 foreground windows, never permanently locking out recovery.
  */
-export function updateBudget(controller: BudgetController, { fps }: BudgetSample): number {
+export function updateBudget(controller: BudgetController, sample: BudgetSample): number {
+  const fps = effectiveBudgetFps(sample);
   const max = RENDER_BUDGET_LEVELS.length - 1;
   if (!Number.isFinite(fps) || fps <= 0) return controller.level;
   controller.windows += 1;
-  controller.slow = fps < TARGET_FPS + 5 ? controller.slow + 1 : 0;
-  controller.fast = fps >= 48 ? controller.fast + 1 : 0;
-  controller.stable = fps >= TARGET_FPS ? controller.stable + 1 : 0;
-  if ((fps < TARGET_FPS || controller.slow >= 2) && controller.level < max) {
+  controller.slow = fps < TARGET_FPS - TARGET_FPS_EPSILON ? controller.slow + 1 : 0;
+  controller.fast = fps >= RECOVERY_FPS ? controller.fast + 1 : 0;
+  controller.stable = fps > TARGET_FPS + TARGET_FPS_EPSILON ? controller.stable + 1 : 0;
+  if (controller.slow >= SLOW_WINDOWS && controller.level < max) {
     const failures = Math.min(4, (controller.failures[controller.level] ?? 0) + 1);
     controller.failures[controller.level] = failures;
     controller.retryAfter[controller.level] = controller.windows + Math.min(MAX_RETRY_WINDOWS, 15 * 2 ** (failures - 1));

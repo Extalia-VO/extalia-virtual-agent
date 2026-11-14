@@ -11,6 +11,9 @@ import { useWorkspaceMemoryDraftWarning } from './chat/useWorkspaceMemoryDraftWa
 import { useComposerDraftWarning } from './chat/useComposerDraftWarning';
 import { ObservedInputProvider } from './observe/ObservedInputProvider';
 import { ObservedInputAlert } from './observe/ObservedInputCards';
+import { OfficeAutoAttention } from './office/OfficeAutoAttention';
+import type { OfficeInputFocus, OfficeAttentionOutcome } from './office/officeInputFocus';
+import type { OfficeAttentionRequest } from './office/officeAttentionQueue';
 import { ApprovalProvider } from './approvals/ApprovalProvider';
 import { ApprovalInboxButton } from './approvals/ApprovalInbox';
 import { resolveChat, type ChatSelection } from './chat/selection';
@@ -123,16 +126,27 @@ export function App({ platform }: { platform: Platform }) {
   const [missionFocus, setMissionFocus] = useState<{ id?: string; token: number } | null>(null);
   const [selection, setSelectionState] = useState<ChatSelection>({});
   const [officeLearningTarget, setOfficeLearningTarget] = useState<HTMLDivElement | null>(null);
+  const [chatLearningTarget, setChatLearningTarget] = useState<HTMLDivElement | null>(null);
+  const [settingsLearningTarget, setSettingsLearningTarget] = useState<HTMLDivElement | null>(null);
   const inputFocusSequence = useRef(0);
-  const [inputFocus, setInputFocus] = useState<{ sessionId: string; requestId?: string; token: number }>();
-  const locateInput = useCallback((sessionId: string, requestId?: string) => {
-    setSelectionState({ sessionId });
+  const [inputFocus, setInputFocus] = useState<OfficeInputFocus>();
+  const locateOfficeRequest = useCallback((target: Omit<OfficeInputFocus, 'token' | 'scope'>) => {
+    setSelectionState({ sessionId: target.sessionId });
     setMissionFocus(null); setChosenPage('office');
-    setInputFocus({ sessionId, ...(requestId ? { requestId } : {}), token: ++inputFocusSequence.current });
-  }, []);
+    setInputFocus({ ...target, ...(sourceContext ? { scope: sourceContext } : {}), token: ++inputFocusSequence.current });
+  }, [sourceContext]);
+  const locateInput = useCallback((sessionId: string, requestId?: string) => {
+    locateOfficeRequest({ sessionId, ...(requestId ? { requestId } : {}), kind: 'input' });
+  }, [locateOfficeRequest]);
+  const locateAttention = useCallback((request: OfficeAttentionRequest, onSettled: (outcome: OfficeAttentionOutcome) => void) => {
+    locateOfficeRequest({ ...request, attentionKey: request.key, automatic: true, onSettled });
+  }, [locateOfficeRequest]);
+  const currentInputFocus = inputFocus?.scope === sourceContext ? inputFocus : undefined;
+  if (inputFocus && inputFocus.scope !== sourceContext) setInputFocus(undefined);
   const inputFocused = useCallback((token: number) => setInputFocus(current => current?.token === token ? undefined : current), []);
 
   const setPage = (next: PageId) => {
+    if (next !== 'office') setInputFocus(undefined);
     if (next !== 'missions') setMissionFocus(null);
     setChosenPage(next);
   };
@@ -159,10 +173,10 @@ export function App({ platform }: { platform: Platform }) {
   const rememberedWorkspace = hostState ? resolveLandingWorkspace(hostState.workspaces, stored.workspaceId) : undefined;
   const chatSelection: ChatSelection = selection.workspaceId || !rememberedWorkspace ? selection : { ...selection, workspaceId: rememberedWorkspace };
 
-  const groups = navigationGroups({ agents: Boolean(agents), workflow, canChat: Boolean(hostState?.workspaces.length) });
+  const groups = navigationGroups({ agents: Boolean(agents), workflow, canChat: Boolean(hostState?.workspaces.some(workspace => workspace.mode !== 'observe')) });
   const activePage = groups.some(group => group.pages.includes(page)) ? page : defaultPage;
   // Nav badge: skills waiting for review or approval; reloaded after Skills actions and when entering or leaving the page.
-  const skillsWaiting = useSkillsWaiting(agents, hostState?.workspaces, skillsRefresh, activePage === 'skills');
+  const skillsWaiting = useSkillsWaiting(workflow === 'managed' ? agents : undefined, hostState?.workspaces, skillsRefresh, activePage === 'skills');
   const openSkills = (workspaceId?: string) => { setSkillsFocus(workspaceId); setPage('skills'); };
   const clearSkillsFocus = useCallback(() => setSkillsFocus(undefined), []);
   const bumpSkills = useCallback(() => setSkillsRefresh(count => count + 1), []);
@@ -240,7 +254,7 @@ export function App({ platform }: { platform: Platform }) {
             <span className="topbar-title">{t.nav[activePage]}</span>
             {showsOfficeControls(activePage) && <OfficeTopbarControls t={t} />}
             <ApprovalInboxButton t={t} />
-            {agents && hostState && <NativeStatusButton t={t} agents={agents} state={hostState} onState={host.apply}
+            {workflow === 'managed' && agents && hostState && <NativeStatusButton t={t} agents={agents} state={hostState} onState={host.apply}
               onOpenSession={(sessionId, workspaceId) => { setSelection({ sessionId, workspaceId }); setPage('chat'); }}
               onOpenMissions={(sessionId, workspaceId, missionId) => {
                 setSelection({ sessionId, workspaceId });
@@ -253,12 +267,12 @@ export function App({ platform }: { platform: Platform }) {
           <ObservedInputAlert t={t} />
           <main className={`content ${activePage === 'chat' ? 'content-chat' : activePage === 'office' ? 'content-office' : activePage === 'knowledge' ? 'content-knowledge' : ''}`} key={activePage}>
             <PageLoadBoundary t={t}>
-            {activePage === 'office' && <OfficePage key={sourceContext} t={t} language={preferences.language} agents={agents} hostDisconnected={Boolean(host.error)} state={hostState} onState={host.apply} workspaceId={chatWorkspaceId} inputFocus={inputFocus} onInputFocused={inputFocused}
+            {activePage === 'office' && <OfficePage key={sourceContext} t={t} language={preferences.language} agents={agents} hostDisconnected={Boolean(host.error)} state={hostState} onState={host.apply} workspaceId={chatWorkspaceId} inputFocus={currentInputFocus} onInputFocused={inputFocused}
               onWorkspace={(workspaceId, sessionId) => setSelection({ workspaceId, sessionId })} onLearningTarget={setOfficeLearningTarget}
               onOpenSession={session => { setSelection({ workspaceId: session.workspaceId, sessionId: session.id }); setPage(session.control === 'observed' ? 'observe' : 'chat'); }}
-              onOpenMissions={hostState?.workspaces.length ? session => { if (session) setSelection({ workspaceId: session.workspaceId, sessionId: session.id }); setPage('missions'); } : undefined}
-              onStartChat={() => setPage(!agents ? 'start' : 'chat')}
-              onOpenAgentSettings={() => openSettings('agent-apps')} onOpenSettings={() => openSettings(hostState?.connections.length ? 'workspaces' : 'connections')} />}
+              onOpenMissions={workflow === 'managed' && hostState?.workspaces.length ? session => { if (session) setSelection({ workspaceId: session.workspaceId, sessionId: session.id }); setPage('missions'); } : undefined}
+              onStartChat={() => setPage(!agents ? 'start' : workflow === 'observe' ? 'observe' : 'chat')}
+              onOpenAgentSettings={() => openSettings('agent-apps')} onOpenSettings={() => openSettings(workflow === 'observe' ? 'workspaces' : hostState?.connections.length ? 'workspaces' : 'connections')} />}
             {activePage === 'missions' && agents && hostState && (
               <MissionsPage key={missionFocus?.token ?? 0} t={t} language={preferences.language} agents={agents} state={hostState} onState={host.apply} workspaceId={chatWorkspaceId} sessionId={selection.sessionId ?? undefined} missionId={missionFocus?.id}
                 onSelectWorkspace={workspaceId => { setMissionFocus(null); setSelection({ workspaceId }); }}
@@ -267,6 +281,7 @@ export function App({ platform }: { platform: Platform }) {
             )}
             {activePage === 'chat' && agents && hostState && (
               <ChatPage t={t} language={preferences.language} agents={agents} picker={hostState.host.kind === 'desktop' ? platform.capabilities.filesystem : undefined} state={hostState} onState={host.apply}
+                onLearningTarget={setChatLearningTarget}
                 selection={chatSelection} onSelect={setSelection} onOpenSettings={() => openSettings(hostState?.connections.length ? 'workspaces' : 'connections')} onReviewSkills={() => openSkills()} onOpenKnowledge={() => setPage('knowledge')} />
             )}
             {activePage === 'history' && agents && hostState && (
@@ -287,6 +302,7 @@ export function App({ platform }: { platform: Platform }) {
             {activePage === 'diagnostics' && <DiagnosticsPage t={t} platform={platform} hostState={hostState} updateStatus={updateStatus} onOpenWorkspaces={() => openSettings('workspaces')} />}
             {activePage === 'settings' && (
               <SettingsPage t={t} platform={platform} preferences={preferences} onChange={update} hostState={hostState} onHostState={host.apply} updateStatus={updateStatus}
+                onLearningTarget={setSettingsLearningTarget}
                 section={settingsSection} onSectionChange={setSettingsSection} onOpenObserve={() => setPage('observe')} onOpenImport={() => setPage('import')}
                 editGateFor={gateFocus} onEditGateHandled={() => setGateFocus(undefined)} onOpenSkills={openSkills} />
             )}
@@ -300,14 +316,17 @@ export function App({ platform }: { platform: Platform }) {
         <div className="toast-region" role="status" aria-live="polite">
           {toast && <p key={toast.id} className="toast"><Icon name="check" />{toast.text}</p>}
         </div>
-        {agents && hostState && <LearningCountdown key={sourceContext} agents={agents} t={t} target={activePage === 'office' ? officeLearningTarget : null} />}
+        {agents && hostState && <LearningCountdown key={sourceContext} agents={agents} t={t} target={activePage === 'office' ? officeLearningTarget : activePage === 'chat' ? chatLearningTarget : activePage === 'settings' ? settingsLearningTarget : null} embedded={activePage === 'chat' || activePage === 'settings' || undefined} />}
       </div>
     );
   }
 
   return <MessagesContext value={t}>
     <ApprovalProvider t={t} hostKind={platform.info.kind} agents={agents} state={hostState} notifier={platform.capabilities.notifications}>
-      <ObservedInputProvider t={t} hostKind={platform.info.kind} agents={agents} state={hostState} notifier={platform.capabilities.notifications} onLocate={locateInput}>{body}</ObservedInputProvider>
+      <ObservedInputProvider t={t} hostKind={platform.info.kind} agents={agents} state={hostState} notifier={platform.capabilities.notifications} onLocate={locateInput}>
+        <OfficeAutoAttention active={!splash && !host.error && hostState?.setupComplete === true && activePage === 'office'} scope={sourceContext ?? 'unloaded'} busy={Boolean(currentInputFocus)} onLocate={locateAttention} />
+        {body}
+      </ObservedInputProvider>
       <UpdateAvailableDialog t={t} updater={updater} status={updateStatus} enabled={!splash && platform.info.kind === 'desktop'} />
       {hostState && <HostConnectionDialog t={t} error={host.error} desktop={platform.info.kind === 'desktop'} onRetry={host.retry} />}
     </ApprovalProvider>

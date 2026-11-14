@@ -17,6 +17,13 @@ fn submitted() -> Value {
 fn temp() -> PathBuf {
     let p = std::env::temp_dir().join(format!("extalia-learning-{}", uid()));
     std::fs::create_dir(&p).unwrap();
+    drop(
+        extalia_core::skills::storage::initialize(
+            &p,
+            &extalia_core::skills::ProfileId::parse("default").unwrap(),
+        )
+        .unwrap(),
+    );
     p
 }
 #[test]
@@ -346,7 +353,11 @@ fn generated_stage_is_in_fixed_inbox_and_cleanup_does_not_activate() {
         json!({"proposal":{"name":"sample-skill","description":"Safe description","instructions":" Read first. "},"provenance":{"sessionId":"session","workspaceId":"workspace","promptSha256":"a".repeat(64)}}),
     );
     let folder = root
-        .join("profiles/default/skill-imports")
+        .join(if cfg!(unix) {
+            "skills/imports"
+        } else {
+            "profiles/default/skill-imports"
+        })
         .join(s(&stage, "path"));
     assert_eq!(
         std::fs::read_to_string(folder.join("SKILL.md")).unwrap(),
@@ -416,7 +427,11 @@ fn manual_folder_stage_has_bounded_secure_copy_and_owned_cleanup() {
     .unwrap();
     let stage = run(&mut owner, "skill.stageFolder", json!({"root":source}));
     let folder = root
-        .join("profiles/default/skill-imports")
+        .join(if cfg!(unix) {
+            "skills/imports"
+        } else {
+            "profiles/default/skill-imports"
+        })
         .join(s(&stage, "path"));
     assert_ne!(
         std::fs::metadata(folder.join("scripts/read.sh"))
@@ -439,9 +454,13 @@ fn manual_folder_stage_has_bounded_secure_copy_and_owned_cleanup() {
             .is_err()
     );
     assert_eq!(
-        std::fs::read_dir(root.join("profiles/default/skill-imports"))
-            .unwrap()
-            .count(),
+        std::fs::read_dir(root.join(if cfg!(unix) {
+            "skills/imports"
+        } else {
+            "profiles/default/skill-imports"
+        }))
+        .unwrap()
+        .count(),
         0
     );
     std::fs::remove_file(source.join("link")).unwrap();

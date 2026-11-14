@@ -254,6 +254,25 @@ describe('daemon sidecar lifecycle', () => {
     await expect(sidecar.connect()).rejects.toEqual(unavailable('shutting_down'));
   });
 
+  it('passes a validated default Knowledge alias as argv and never drops it for an older binary', async () => {
+    const daemon = new FakeDaemon(() => undefined), spawned: string[][] = [];
+    const sidecar = new DaemonSidecar({ binary: () => '/opt/extalia-daemon', dataDirectory: '/data', profile: 'default', clientVersion: 'test',
+      knowledgeProfileAlias: 'profile-main', spawn: (_binary, args) => { spawned.push(args); return daemon; } });
+    const attempt = sidecar.connect(); await flush();
+    expect(spawned).toEqual([['--data-dir', '/data', '--profile', 'default', '--knowledge-profile-alias', 'profile-main']]);
+    daemon.exit(2);
+    await expect(attempt).rejects.toEqual(unavailable('invalid_arguments'));
+    await expect(sidecar.connect()).rejects.toEqual(unavailable('invalid_arguments'));
+    expect(spawned).toHaveLength(1);
+    await sidecar.stop();
+    for (const [profile, alias] of [['default', '../outside'], ['default', 'default'], ['other', 'profile-main'], ['default', 'a'.repeat(65)]]) {
+      const spawn = vi.fn();
+      const invalid = new DaemonSidecar({ binary: () => '/opt/extalia-daemon', dataDirectory: '/data', profile: profile!, clientVersion: 'test', knowledgeProfileAlias: alias!, spawn });
+      await expect(invalid.connect()).rejects.toEqual(unavailable('invalid_arguments'));
+      expect(spawn).not.toHaveBeenCalled(); await invalid.stop();
+    }
+  });
+
   it('restarts after a crash only once the backoff has passed, and gives up after repeated failures', async () => {
     const { sidecar, spawned, advance } = harness(index => index === 0 ? request => hello(request) : () => undefined);
     await sidecar.connect();

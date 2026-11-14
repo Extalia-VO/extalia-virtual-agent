@@ -1745,7 +1745,10 @@ input[type='file']::file-selector-button {
   backdrop-filter: blur(32px) saturate(200%);
   max-height: min(280px, var(--radix-select-content-available-height, 280px));
   overflow-y: auto;
-  animation: enter 140ms ease both;
+  /* Floating UI owns transform for positioning. Fade without replacing or
+     transitioning that transform, including after the entrance completes. */
+  animation: select-menu-enter 140ms ease both;
+  transition-property: background-color, border-color, color, box-shadow, border-radius, backdrop-filter, -webkit-backdrop-filter;
 }
 
 .glass-select-viewport {
@@ -1911,6 +1914,8 @@ input[type='file']::file-selector-button {
 @keyframes pulse { 50% { opacity: .35; transform: scale(.8); } }
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes blink { to { visibility: hidden; } }
+
+@keyframes select-menu-enter { from { opacity: 0; } to { opacity: 1; } }
 
 @keyframes enter {
   from { opacity: 0; transform: translateY(5px); }

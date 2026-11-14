@@ -29,6 +29,18 @@ async function make(overrides: Partial<Parameters<typeof PromptQueues.create>[0]
 afterEach(async () => { await Promise.all(cleanups.splice(0).map(cleanup => cleanup())); });
 
 describe('PromptQueues', () => {
+  it('matches unfinished queue ownership without submitting another profile pending or uncertain work', async () => {
+    const fixture = await make({ pollIntervalMs: 0, dispatch: async () => 'unknown' });
+    await fixture.change({ action: 'add', text: 'Other project paused draft.' }, 'other-session');
+    expect(fixture.queues.hasUnfinishedWorkMatching(id => id === 'own-session')).toBe(false);
+    expect(fixture.queues.hasUnfinishedWorkMatching(id => id === 'other-session')).toBe(true);
+    fixture.target.ready = true;
+    await fixture.change({ action: 'pause', paused: false }, 'other-session');
+    await waitFor(async () => (await fixture.queues.status('other-session')).items[0]?.state === 'unknown');
+    expect(fixture.queues.hasUnfinishedWorkMatching(id => id === 'other-session')).toBe(true);
+    expect(fixture.queues.hasUnfinishedWorkMatching(id => id === 'own-session')).toBe(false);
+    expect(fixture.calls).toEqual([]);
+  });
   it('atomically starts an explicit composer addition and refuses it without adding behind uncertainty', async () => {
     const fixture = await make({ dispatch: async () => 'unknown' });
     fixture.target.ready = true;
@@ -330,13 +342,18 @@ describe('PromptQueues', () => {
   });
 
   it('retains at most twenty sent receipts while preserving pending delivery order', async () => {
-    let calls = 0;
-    const fixture = await make({ dispatch: async () => { calls++; return 'sent'; } });
+    let calls = 0, complete!: () => void;
+    const completed = new Promise<void>(resolve => { complete = resolve; });
+    const fixture = await make({ dispatch: async () => { calls++; return 'sent'; },
+      onIdle: () => { if (calls === 23) complete(); } });
     for (let i = 0; i < 23; i++) await fixture.change({ action: 'add', text: `receipt-${i}` });
     fixture.target.ready = true;
     await fixture.change({ action: 'pause', paused: false });
-    await waitFor(async () => calls === 23 && (await fixture.queues.status('session-1')).items.every(item => item.state === 'sent'));
+    // Idle follows the final durable receipt; filesystem latency must not consume a polling budget.
+    await completed;
     const status = await fixture.queues.status('session-1');
+    expect(calls).toBe(23);
+    expect(status.items.every(item => item.state === 'sent')).toBe(true);
     expect(status.items).toHaveLength(20);
     expect(status.items.map(item => item.text)).toEqual(Array.from({ length: 20 }, (_, i) => `receipt-${i + 3}`));
     await fixture.change({ action: 'acknowledge', itemId: status.items[0]!.id });

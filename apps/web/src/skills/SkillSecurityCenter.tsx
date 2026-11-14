@@ -9,6 +9,8 @@ import { Icon } from '../ui/Icon';
 import { SkillPreflightPanel } from './SkillPreflightPanel';
 import { SkillRoutingPanel } from './SkillRoutingPanel';
 import { skillHostKey, skillPreflightContext } from './skillPreflightContext';
+import { registrySkillOrigin } from './skillLibraryModel';
+import { SkillOriginBadge } from './SkillOriginBadge';
 import {
   applySkillCenterAction, approvalFor, groupSkillPackages, revisionActions, shortDigest, skillCenterSupported, stateTone,
   type SkillCenterAction, type SkillPackageGroup, type SkillRevisionAction,
@@ -204,7 +206,6 @@ function SkillPackageItem({ t, group, busy, report, confirm, details, workspaceN
     <li key={group.packageId} className="skill-package">
       <div className="skill-package-head">
         <strong>{group.packageId}</strong>
-        <span className="badge">{s.origins[group.origin] ?? group.origin}</span>
         <span className="muted small">{group.active ? s.activeVersion(s.version(group.active.version)) : s.noActive} · {s.revisions(group.revisions.length)}</span>
       </div>
       <ul className="skill-revisions">
@@ -240,6 +241,7 @@ export function SkillRevisionRow({ t, revision, busy, report, confirm, detail, w
   return (
     <li key={revision.revisionId} className="skill-revision">
       <div className="skill-revision-main">
+        <SkillOriginBadge origin={registrySkillOrigin(revision)} t={t} />
         <span className="skill-revision-head">
           <strong className="skill-revision-version">{version}</strong>
           <span className={`badge ${stateTone(revision.state)}`}>{s.states[revision.state] ?? revision.state}</span>

@@ -23,6 +23,9 @@
 .chat-context-rail { display: grid; gap: 12px; width: min(100%, 860px); min-width: 0; margin-inline: auto; }
 .chat-session-facts { display: none; }
 .chat-session-main .chat-footer { z-index: 1; }
+.chat-learning-slot { width: 100%; min-width: 0; }
+.chat-learning-slot:empty { display: none; }
+.chat-learning-slot > .learning-countdown.is-embedded { max-height: min(200px, 25dvh); margin: 0; }
 .chat-session-main .chat-empty { min-height: 240px; }
 
 /* The rail reuses the same mounted memory/team controls at every width. */

@@ -24,7 +24,7 @@ export function ChatSessionInfo({ t, state, workspace, session, status, files }:
       {model && <div><dt>{m.model}</dt><dd>{model}</dd></div>}
       {effort && <div><dt>{m.effort}</dt><dd>{effort}</dd></div>}
       <div><dt>{t.chat.workspace}</dt><dd>{workspace.name}</dd></div>
-      <div className="chat-session-folder"><dt>{m.folder}</dt><dd>{session?.observation?.projectPath ?? workspace.projectLocation}</dd></div>
+      <div className="chat-session-folder"><dt>{m.folder}</dt><dd>{session?.observation?.projectPath ?? session?.projectLocation ?? workspace.projectLocation}</dd></div>
     </dl>
     <div className="chat-session-recent-files">
       <h3>{m.recentFiles}{files.length > 0 && <span className="badge">{files.length}</span>}</h3>

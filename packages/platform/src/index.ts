@@ -32,3 +32,11 @@ export * from './sessionMove.js';
 export * from './handover.js';
 export * from './skillMarket.js';
 export * from './observedWorkspaceLink.js';
+export * from './observedCliResume.js';
+export * from './observedMemory.js';
+
+export * from './handoverHarness.js';
+
+export * from './operatingProfiles.js';
+
+export * from './sessionBrowser.js';

@@ -20,6 +20,7 @@ export interface NativeMeetingMinutes {
 }
 
 export interface TeamMeetingOptions {
+  operatingProfile?: DelegationOptions['operatingProfile'];
   team: DelegationTeam;
   workspace: DelegationOptions['workspace'];
   /** Must acknowledge persistence before resolving. A failed start admits no provider work. */
@@ -108,6 +109,7 @@ export function createConductTeamMeetingTool(options: TeamMeetingOptions): ToolD
       const answers = new Map<string, string>();
       const delegation = createDelegationTool({
         workspace: options.workspace, workerTools: [], maxDelegations: selected.length * 2,
+        operatingProfile: options.operatingProfile,
         requireMember: true, maxWorkerSteps: 6,
         providerFor: () => { throw new Error('Meetings require a configured member.'); },
         team: {

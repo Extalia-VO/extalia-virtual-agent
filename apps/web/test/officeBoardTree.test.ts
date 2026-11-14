@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { OfficeAgent } from '../src/office/presence';
-import { BOARD_REORDER_MS, boardBranchActive, boardOrder, boardRows, boardTreeActive, boardTreeTone, nextBoardOrder, sameBoardIds, splitBoard, TREE_ELBOW_PATHS } from '../src/office/overlay/boardTree';
+import { BOARD_REORDER_MS, boardBranchActive, boardOrder, boardRows, boardTreeActive, boardTreeTone, nextBoardOrder, sameBoardIds, splitBoard, withTeamMembers, TREE_ELBOW_PATHS } from '../src/office/overlay/boardTree';
 import { flipPlan, type FlipRecord } from '../src/office/overlay/boardMotion';
 
 function agent(id: string, parentId?: string): OfficeAgent {
@@ -304,5 +304,48 @@ describe('board flip plan (v0.0.50)', () => {
   it('exposes the connector paths: the last child keeps a round corner', () => {
     expect(TREE_ELBOW_PATHS.last).toMatch(/A6\.5 6\.5 0 0 0 7 26\.5/);
     expect(TREE_ELBOW_PATHS.branch).toMatch(/A7\.5 7\.5 0 0 0 8 26\.5/);
+  });
+});
+
+
+describe('offline character disclosure', () => {
+  it('keeps only active, ready and on-shift standby characters on the primary board', () => {
+    const lead = { ...agent('lead'), agentId: 'primary', status: 'working' as const, running: true };
+    const ready = agent('ready', 'lead');
+    const standby = { ...agent('standby', 'lead'), nativeStandby: 'on-shift' as const };
+    const offShift = { ...agent('off-shift', 'lead'), nativeStandby: 'off-shift' as const, status: 'offline' as const };
+    const offline = { ...agent('offline', 'lead'), status: 'offline' as const };
+    const board = splitBoard([lead, ready, standby, offShift, offline]);
+    expect(board.present.map(row => row.agent.id)).toEqual(['lead', 'ready', 'standby']);
+    expect(board.present[0]!.descendants).toBe(2);
+    expect(board.present.at(-1)!.last).toBe(true);
+    expect(board.earlierCount).toBe(2);
+    expect(board.earlier[0]!.presentLead!.id).toBe('lead');
+    expect(board.earlier[0]!.rows.map(row => row.agent.id)).toEqual(['off-shift', 'offline']);
+  });
+
+  it('moves a character back into the visible tree when its shift begins or work starts', () => {
+    const lead = { ...agent('lead'), agentId: 'primary' };
+    const member = { ...agent('member', 'lead'), status: 'offline' as const, nativeStandby: 'off-shift' as const };
+    expect(splitBoard([lead, member]).earlierCount).toBe(1);
+    for (const active of [
+      { ...member, status: 'idle' as const, nativeStandby: 'on-shift' as const },
+      { ...agent('member', 'lead'), status: 'working' as const, running: true },
+    ]) {
+      const board = splitBoard([lead, active]);
+      expect(board.present.map(row => row.agent.id)).toEqual(['lead', 'member']);
+      expect(board.earlierCount).toBe(0);
+    }
+  });
+
+  it('keeps a large permanent team inspectable without lengthening the active tree', () => {
+    const lead = { ...agent('lead'), agentId: 'primary' };
+    const members = Array.from({ length: 31 }, (_, index) => ({ id: `member-${index}`, name: `Member ${index}`, role: 'Reviewer', models: [] }));
+    const all = withTeamMembers([lead], new Map([['s', members]]));
+    const board = splitBoard(all);
+    expect(board.present.map(row => row.agent.id)).toEqual(['lead']);
+    expect(board.earlierCount).toBe(31);
+    expect(board.earlier.flatMap(group => group.rows)).toHaveLength(31);
+    expect(all).toHaveLength(32);
   });
 });

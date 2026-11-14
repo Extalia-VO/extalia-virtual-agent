@@ -8,7 +8,8 @@ import type { SkillRoutingInput, SkillRoutingReport } from './daemonSkillRouting
  * Rules beyond the field types:
  * - A daemon serves exactly one profile; the wire carries no profile id (ADR 0024).
  * - `skill.import` reads a package directory below the profile's import inbox
- *   (`<data>/profiles/<profile>/skill-imports/`); `path` is relative to it. The origin is
+ *   (`<data>/skills/imports/` for the default library; legacy nondefault CLI namespaces
+ *   retain their profile inbox); `path` is relative to it. The origin is
  *   one of the four import origins: `builtin` cannot be requested. Built-in skills are
  *   registered only inside the daemon and are listed with origin `builtin`.
  * - `skill.review` and `skill.approve` are decisions of the local user: `principal` must be
@@ -113,6 +114,8 @@ export interface SkillRevisionSummary {
   packageId: string;
   revisionId: string;
   origin: SkillOrigin;
+  /** Valid pinned marketplace source recorded for this exact revision; not approval. Older peers omit it. */
+  marketplaceSource?: boolean;
   version: string;
   treeSha256: string;
   skillMdSha256: string;
@@ -125,6 +128,8 @@ export interface SkillRevisionSummary {
   permissions: SkillPermissionEntry[];
   /** The package's activation pointer names this revision (always true for `builtin`). */
   active: boolean;
+  /** Approval bound to the actual active pointer; older peers omit it. Built-ins have no user approval. */
+  activationApprovalId?: number;
   createdAt: string;
   updatedAt: string;
 }

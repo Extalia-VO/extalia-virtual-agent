@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { AnyTool, ModelProvider, ModelRequest, ModelResult, ToolResultEntry, TurnResult } from '@extalia/runtime';
 import type { EventBody } from '@extalia/protocol';
-import { automaticLearningTools, LEARNING_EVIDENCE_CHUNK_UNITS, runAutomaticLearning, type AutomaticLearningOptions } from '../src/automaticLearning.js';
+import { automaticLearningTools, LEARNING_EVIDENCE_CHUNK_UNITS, runAutomaticLearning, runObservedAutomaticLearning, type AutomaticLearningOptions } from '../src/automaticLearning.js';
 import { RustLearningBackend, type RustLearningAction, type RustLearningInputs, type RustLearningJob, type RustLearningPort, type RustLearningResults } from '../src/rustLearning.js';
 import { DaemonSidecar } from '../src/daemon/index.js';
 import { DAEMON_BINARY, HAS_DAEMON } from './daemonBackend.js';
@@ -33,7 +33,7 @@ function fakeBackend(afterModel: RustLearningJob | RustLearningJob[] = ready()) 
       case 'evidence.begin': value = { intakeId: 'intake-one' }; break;
       case 'evidence.append': value = { complete: false }; break;
       case 'evidence.release': value = { released: true }; break;
-      case 'job.begin': value = { job }; break;
+      case 'job.begin': case 'observed.jobBegin': value = { job }; break;
       case 'job.advance': job = next.shift() ?? ready(); value = { job }; break;
       case 'job.cancel': job = { ...job, status: 'cancelled', effect: undefined }; value = { job }; break;
       case 'job.settle': job = { ...job, pendingEffectId: undefined }; value = { job }; break;
@@ -61,6 +61,24 @@ function tool(name: string, access: AnyTool['access'] = 'read', kind: AnyTool['k
 }
 
 describe('Rust-owned automatic learning host effects', () => {
+  it('loads observed evidence by its stored scope and revision without manufacturing Native tool results', async () => {
+    const backend = fakeBackend();
+    const { result: _sourceResult, currentTurnEvidence: _toolResults, ...setup } = options({ backend: backend.port });
+    const observed = { scope: { profileId: provenance.profileId, workspaceId: provenance.workspaceId, sessionId: provenance.sessionId,
+      sourceId: 'codex', nativeSessionId: 'native-one', boundary: 'd'.repeat(64) }, episodeId: 'e'.repeat(64), revision: 'f'.repeat(64) };
+    expect(await runObservedAutomaticLearning({ ...setup, observed })).toMatchObject({ outcome: 'completed', note: { status: 'saved' } });
+    expect(backend.calls.find(call => call.action === 'observed.jobBegin')?.input).toMatchObject(observed);
+    expect(backend.calls.some(call => call.action.startsWith('evidence.') || call.action === 'job.begin')).toBe(false);
+    expect(setup.onWorkerSettled).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps profile-only observed consent fields out of the finite Rust curator policy', async () => {
+    const backend = fakeBackend(), policy = { enabled: true, skills: true, notes: true, observed: true };
+    await runAutomaticLearning(options({ backend: backend.port, policy }));
+    expect(backend.calls.find(call => call.action === 'job.begin')?.input).toMatchObject({ policy: { enabled: true, skills: true, notes: true } });
+    expect((backend.calls.find(call => call.action === 'job.begin')?.input as { policy: unknown }).policy).toEqual({ enabled: true, skills: true, notes: true });
+  });
+
   it('executes only the Rust model request and persists only its normalized finding and hashes', async () => {
     const backend = fakeBackend(), events: EventBody[] = [];
     const setup = options({ backend: backend.port, emit: body => { events.push(body); } });

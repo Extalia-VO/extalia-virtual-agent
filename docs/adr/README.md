@@ -122,3 +122,19 @@ implementation.
 - [0077: Independently refreshed skill marketplace](0077-live-skill-marketplace.md)
 
 - [0078: Observed workspace association](0078-observed-workspace-association.md)
+
+- [0079: Reviewed CLI handover](0079-reviewed-cli-handover.md)
+
+- [0080: Detected harness selection and native Antigravity handover](0080-detected-harness-and-native-handover.md)
+
+- [0081: Scoped observed work memory and curation](0081-observed-work-memory-and-curation.md)
+
+- [0082: Global skill storage independent of operating profiles](0082-global-skill-storage.md)
+
+- [0083: Team defaults and individual operating profiles](0083-team-and-individual-operating-profiles.md)
+
+- [0084: Source-project session browsing](0084-project-session-browser.md)
+
+- [0085: Registered project folders for saved Native sessions](0085-native-session-project-roots.md)
+
+- [0086: Native user skill learning and bounded source reads](0086-native-user-skill-learning-sources.md)

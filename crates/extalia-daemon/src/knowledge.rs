@@ -102,6 +102,8 @@ pub struct Knowledge {
     scopes: Vec<(String, Option<String>, Box<Knowledge>)>,
     data_dir: PathBuf,
     profile: ProfileId,
+    /// Trusted startup-only alias for the canonical default index. Never inherited by scopes.
+    profile_alias: Option<ProfileId>,
     limits: VaultLimits,
     store: Option<KnowledgeStore>,
     last_sync: Option<Value>,
@@ -164,6 +166,7 @@ impl Knowledge {
             scopes: Vec::new(),
             data_dir: data_dir.to_owned(),
             profile: ProfileId::parse(profile).expect("valid profile id"),
+            profile_alias: None,
             limits,
             store: None,
             last_sync: None,
@@ -175,6 +178,14 @@ impl Knowledge {
                 .filter(|home| home.is_absolute()),
             sync_hook: None,
         }
+    }
+
+    /// Preserve a host's semantic default profile without changing the physical default store.
+    /// Startup validates the alias; RPC requests cannot supply or change it.
+    pub fn with_default_profile_alias(mut self, alias: &str) -> Self {
+        assert_eq!(self.profile.as_str(), "default");
+        self.profile_alias = Some(ProfileId::parse(alias).expect("valid default profile alias"));
+        self
     }
 
     /// Test hook: `hook` runs on the thread serving knowledge requests at the start of every
@@ -310,7 +321,25 @@ impl Knowledge {
     /// The open index, opening it on first use.
     fn store(&mut self) -> Result<&mut KnowledgeStore, KnowledgeError> {
         if self.store.is_none() {
-            self.store = Some(KnowledgeStore::open(&self.data_dir, &self.profile)?);
+            let mut store = KnowledgeStore::open(&self.data_dir, &self.profile)?;
+            if !store.profile_alias_matches(self.profile_alias.as_ref())? {
+                // Never expose an old ACL cache. Do not recreate a vanished vault or
+                // fall back to another folder when the startup alias changed.
+                let empty_initial = self.custom_root.is_none()
+                    && !self.vault_present()
+                    && store.generation()? == 0
+                    && store.stats()?.notes == 0
+                    && store.stats()?.skipped_documents == 0;
+                if !empty_initial {
+                    let vault = self.vault(false)?;
+                    store.sync_with_profile_alias(
+                        &vault,
+                        SyncMode::Rebuild,
+                        self.profile_alias.as_ref(),
+                    )?;
+                }
+            }
+            self.store = Some(store);
         }
         Ok(self.store.as_mut().expect("opened above"))
     }
@@ -516,7 +545,8 @@ impl Knowledge {
             KnowledgeSyncMode::Rebuild => SyncMode::Rebuild,
             KnowledgeSyncMode::Incremental => SyncMode::Incremental,
         };
-        let report = store.sync(&vault, core_mode)?;
+        let report =
+            store.sync_with_profile_alias(&vault, core_mode, self.profile_alias.as_ref())?;
         let at = format_utc(now_millis());
         let mut omitted = 0usize;
         let renamed: Vec<Value> = report

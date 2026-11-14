@@ -1,6 +1,7 @@
 //! Extalia sidecar daemon (ADR 0020): the daemon wire contract v1 over stdio.
 
 pub mod knowledge;
+pub mod learning_source;
 pub mod missions;
 #[cfg(feature = "provider-experiments")]
 pub mod provider_complete;

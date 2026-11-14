@@ -382,6 +382,40 @@ function collapsedFileEnvelope(raw: string): UserMessagePresentation | undefined
   return { text, attachments: deduplicate(attachments) };
 }
 
+function attachedFileLine(line: string): PresentedAttachment | undefined {
+  if (!line.startsWith('[Attached file: ') || !line.endsWith(']')) return;
+  const inside = line.slice('[Attached file: '.length, -1);
+  if (inside.length > MAX_NAME + MAX_PATH + 3) return;
+  const paren = inside.lastIndexOf(' (');
+  if (paren > 0 && inside.endsWith(')')) {
+    const name = inside.slice(0, paren);
+    const filePath = inside.slice(paren + 2, -1);
+    return metadata(name, MAX_NAME) && localPath(filePath)
+      ? { name, path: filePath, image: /\.(?:png|jpe?g|webp|gif)$/i.test(name) || /\.(?:png|jpe?g|webp|gif)$/i.test(filePath) }
+      : undefined;
+  }
+  if (!metadata(inside, MAX_NAME)) return;
+  return { name: inside, image: /\.(?:png|jpe?g|webp|gif)$/i.test(inside) };
+}
+
+function attachedFilesPrefix(raw: string, lines: readonly SourceLine[]): UserMessagePresentation | undefined {
+  let index = skipBlank(lines, 0);
+  const attachments: PresentedAttachment[] = [];
+  while (index < lines.length) {
+    const attachment = attachedFileLine(lines[index]!.text);
+    if (!attachment) break;
+    if (attachments.length >= MAX_ATTACHMENTS) return;
+    attachments.push(attachment);
+    index = skipBlank(lines, index + 1);
+  }
+  if (!attachments.length) return;
+  const rest = index < lines.length ? raw.slice(lines[index]!.start) : '';
+  const suffix = imageSuffix(rest) ?? imageMarkers(rest);
+  return suffix
+    ? { text: suffix.text, attachments: deduplicate([...attachments, ...suffix.attachments]) }
+    : { text: rest, attachments: deduplicate(attachments) };
+}
+
 function fileEnvelope(raw: string, lines: readonly SourceLine[]): UserMessagePresentation | undefined {
   let index = skipBlank(lines, 0);
   if (lines[index]?.text !== FILES) {
@@ -475,6 +509,8 @@ export function presentUserMessage(raw: string): UserMessagePresentation {
   // A malformed envelope must never be partially consumed as an image suffix.
   const start = raw.slice(lines[skipBlank(lines, 0)]?.start ?? raw.length);
   if (start.startsWith(FILES) || start.startsWith(REPLY_OPEN) || start.startsWith('<task-notification>') || start.startsWith(CONTEXT)) return fallback;
+  const attached = attachedFilesPrefix(raw, lines);
+  if (attached) return attached;
   const image = imageSuffix(raw) ?? imageMarkers(raw);
   return image ? { ...image, attachments: deduplicate(image.attachments) } : fallback;
 }

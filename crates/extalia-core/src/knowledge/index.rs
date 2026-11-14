@@ -7,7 +7,7 @@
 //!    tick could keep both). Other notes are read and hashed; an equal SHA-256 only
 //!    refreshes the stored stat.
 //! 2. Changed or new notes are parsed: front matter (invalid → skipped), the profile ACL
-//!    (a front matter `profile` other than the vault's → skipped `profile_mismatch`, never
+//!    (a front matter `profile` other than the vault's or its trusted default alias → skipped `profile_mismatch`, never
 //!    indexed), the node id (front matter `id`, else `path:<path>`), title, aliases, tags
 //!    and links.
 //! 3. Duplicate front matter ids: the claimant with the smallest path (byte order) is
@@ -93,18 +93,19 @@ pub(crate) struct ParsedNote {
 }
 
 /// Parse a note's text. `Err` is the reason it is skipped.
-pub(crate) fn parse_note(
+fn parse_note_with_alias(
     path: &str,
     text: &str,
     profile: &ProfileId,
     limits: &VaultLimits,
+    alias: Option<&ProfileId>,
 ) -> Result<ParsedNote, SkipReason> {
     let split = frontmatter::split(text).map_err(|_| SkipReason::InvalidFrontMatter)?;
     let front_matter = split.front_matter;
     if front_matter
         .profile
         .as_ref()
-        .is_some_and(|declared| declared != profile)
+        .is_some_and(|declared| declared != profile && Some(declared) != alias)
     {
         return Err(SkipReason::ProfileMismatch);
     }
@@ -182,12 +183,13 @@ fn read_fresh(
     file: &NoteFile,
     profile: &ProfileId,
     limits: &VaultLimits,
+    alias: Option<&ProfileId>,
 ) -> Result<Fresh, KnowledgeError> {
     let (sha256, outcome) = match file.read(limits.max_file_bytes)? {
         Content::TooLarge => (None, Err(SkipReason::TooLarge)),
         Content::NotUtf8 { sha256 } => (Some(sha256), Err(SkipReason::NotUtf8)),
         Content::Text { text, sha256 } => {
-            let outcome = parse_note(path, &text, profile, limits);
+            let outcome = parse_note_with_alias(path, &text, profile, limits, alias);
             (Some(sha256), outcome)
         }
     };
@@ -202,9 +204,25 @@ fn read_fresh(
 impl KnowledgeStore {
     /// Bring the index in line with the vault. The vault must belong to this profile.
     pub fn sync(&mut self, vault: &Vault, mode: SyncMode) -> Result<IndexReport, KnowledgeError> {
+        self.sync_with_profile_alias(vault, mode, None)
+    }
+
+    /// Only canonical default may accept its explicitly configured host semantic alias.
+    /// A changed ACL rebuilds unchanged files and prior skips in the same transaction.
+    pub fn sync_with_profile_alias(
+        &mut self,
+        vault: &Vault,
+        mode: SyncMode,
+        alias: Option<&ProfileId>,
+    ) -> Result<IndexReport, KnowledgeError> {
         if vault.profile() != &self.profile {
             return Err(KnowledgeError::WrongProfile);
         }
+        let mode = if self.profile_alias_matches(alias)? {
+            mode
+        } else {
+            SyncMode::Rebuild
+        };
         let walk = vault.walk()?;
         let total: u64 = walk
             .notes
@@ -227,6 +245,10 @@ impl KnowledgeStore {
             .conn
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
         let p = profile.as_str();
+        tx.execute(
+            "UPDATE knowledge_index_state SET accepted_profile_alias = ?2 WHERE profile_id = ?1",
+            params![p, alias.map(ProfileId::as_str)],
+        )?;
         if mode == SyncMode::Rebuild {
             clear(&tx, p)?;
         }
@@ -248,7 +270,7 @@ impl KnowledgeStore {
                 unchanged += 1;
                 continue;
             }
-            let read = read_fresh(path, file, &profile, &limits)?;
+            let read = read_fresh(path, file, &profile, &limits, alias)?;
             match doc {
                 Some(doc) if doc.sha256 == read.sha256 => {
                     if doc.size != read.size || doc.mtime_ns != read.mtime_ns {
@@ -313,7 +335,7 @@ impl KnowledgeStore {
             }
             for path in reload {
                 let file = &walk.notes[&path];
-                let read = read_fresh(&path, file, &profile, &limits)?;
+                let read = read_fresh(&path, file, &profile, &limits, alias)?;
                 fresh.insert(path, read);
             }
         };

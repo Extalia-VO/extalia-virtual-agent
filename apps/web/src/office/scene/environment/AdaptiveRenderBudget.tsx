@@ -1,7 +1,7 @@
 import { QA_HOOKS } from '../qaHooks';
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
-import { budgetPixelRatio, createBudgetController, createRenderFrameSampler, getRenderBudget, getRenderBudgetLevel, RENDER_BUDGET_LEVELS, resetRenderFrameSampler, sampleRenderFrame, setRenderBudgetLevel, subscribeRenderBudget, updateBudget } from './renderBudget';
+import { budgetPixelRatio, createBudgetController, createRenderFrameSampler, effectiveBudgetFps, getRenderBudget, getRenderBudgetLevel, RENDER_BUDGET_LEVELS, resetRenderFrameSampler, sampleRenderFrame, setRenderBudgetLevel, subscribeRenderBudget, updateBudget } from './renderBudget';
 import { publishOfficeFps } from './renderStats';
 
 type BudgetWindow = Window & {
@@ -49,7 +49,7 @@ export function useBudgetPixelRatio(canvas: HTMLCanvasElement | null): number {
 }
 
 /**
- * Targets 40 fps: starts near 1080p, measures one-second windows after warm-up and moves
+ * Targets a 30 fps floor: starts near 1080p, measures one-second windows after warm-up and moves
  * between budget levels (pixel ratio, live beams, shadow detail) with hysteresis.
  */
 export function AdaptiveRenderBudget() {
@@ -71,8 +71,12 @@ export function AdaptiveRenderBudget() {
       // QA: pin a level (or null to resume adaptation) when measuring a specific budget.
       (window as BudgetWindow).__EXTALIA_SET_RENDER_BUDGET__ = level => {
         sample.current.pinned = level !== null;
-        sample.current.controller.level = level ?? sample.current.controller.level;
-        setRenderBudgetLevel(level ?? sample.current.controller.level);
+        if (level !== null) setRenderBudgetLevel(level);
+        sample.current.controller.level = getRenderBudgetLevel();
+        sample.current.controller.slow = 0;
+        sample.current.controller.fast = 0;
+        sample.current.controller.stable = 0;
+        resetRenderFrameSampler(sample.current.sampler);
       };
     }
     return () => {
@@ -87,6 +91,11 @@ export function AdaptiveRenderBudget() {
     publishOfficeFps(null);
     const resetAfterVisibilityChange = () => {
       resetRenderFrameSampler(sample.current.sampler);
+      // Foreground streaks must describe the current scene, not a pre-hide or
+      // pre-context-loss burst. Keep the chosen level and bounded retry clock.
+      sample.current.controller.slow = 0;
+      sample.current.controller.fast = 0;
+      sample.current.controller.stable = 0;
       publishOfficeFps(null);
     };
     document.addEventListener('visibilitychange', resetAfterVisibilityChange);
@@ -108,14 +117,15 @@ export function AdaptiveRenderBudget() {
     publishOfficeFps(data.sampler.rawFps);
     if (!data.pinned) {
       const before = getRenderBudgetLevel();
-      const next = updateBudget(data.controller, { fps: data.fps });
+      const next = updateBudget(data.controller, { fps: data.fps, rawFps: data.sampler.rawFps });
       if (next !== before) { setRenderBudgetLevel(next); data.sampler.warmup = 1.5; }
     }
     if (QA_HOOKS) {
       const budget = getRenderBudget();
       (window as BudgetWindow).__EXTALIA_RENDER_BUDGET__ = {
         level: getRenderBudgetLevel(), levels: RENDER_BUDGET_LEVELS.length, fps: Math.round((data.sampler.rawFps ?? fps) * 10) / 10,
-        budgetFps: Math.round(data.fps * 10) / 10,
+        budgetFps: Math.round(effectiveBudgetFps({ fps: data.fps, rawFps: data.sampler.rawFps }) * 10) / 10,
+        filteredFps: Math.round(data.fps * 10) / 10,
         pixelRatio: gl.getPixelRatio(), liveBeams: budget.liveBeams, shadowMapSize: budget.shadowMapSize,
         resolutionHeight: budget.resolutionHeight, canvasWidth: gl.domElement.width, canvasHeight: gl.domElement.height,
         drawCalls: gl.info.render.calls, triangles: gl.info.render.triangles, pinned: data.pinned,

@@ -24,6 +24,24 @@ Two rules protect this structure (PRD §47):
 - **Personal setups are configuration, not code.** Names, rosters, rooms and
   integrations are user data. Core never special-cases them.
 
+Reusable [agent operating profiles](../adr/0083-team-and-individual-operating-profiles.md)
+provide workspace defaults for purpose, personality, models and team members.
+The host resolves these defaults into a session snapshot; Native runtime code
+uses bounded guidance, while UI code only edits and presents the settings.
+Operating profiles are separate from display preferences, Knowledge vault
+profiles and storage namespaces. They grant no file, memory or skill access.
+
+[Native session project roots](../adr/0085-native-session-project-roots.md) let a saved
+conversation choose its relative-path base among registered workspace folders.
+Same-workspace drag/drop retains existing grants and history; transfers between
+workspaces use the reviewed settings flow. Workspace memory and vault scope stay
+unchanged by a folder selection.
+
+[Native skill learning](../adr/0086-native-user-skill-learning-sources.md) uses
+profile-owned automatic curation and explicit current-message learning requests,
+without a prompt checkbox. Bounded Rust source reads supply untrusted evidence;
+generated user candidates remain separate from built-ins and activation consent.
+
 ## Repository layout
 
 ```text
@@ -70,8 +88,11 @@ admission lane so queue wait does not consume wire execution deadlines.
 
 [Idle team knowledge](../adr/0075-idle-team-knowledge-and-office-context.md)
 extends that same timer owner with real team discussions and acknowledged artifact
-results. New foreground work fences maintenance and drains its entered effects;
-the full chosen quiet interval restarts after actual foreground settlement.
+results. Conflicting foreground work fences maintenance and drains its entered
+effects; the full chosen quiet interval restarts after actual settlement.
+Unique isolated vault profiles can curate alongside known unrelated Native and
+Observe work, including scoped observed-memory lifetimes. Shared/default profiles,
+unknown ownership, privacy/settings changes and shared resources keep their guards.
 Office portals the shared countdown above its prompt while keeping source-context
 selection independent from the global character board and automatic camera.
 

@@ -6,6 +6,7 @@ pub mod control;
 pub mod knowledge;
 pub mod learning;
 pub mod mission;
+pub mod observed_memory;
 pub mod planning;
 pub mod preparation;
 pub mod security;

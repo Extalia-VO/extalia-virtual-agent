@@ -41,6 +41,20 @@ async function fixture() {
 const observed = (sessionId: string): HandoverTarget => ({ kind: 'observed', sessionId, capabilityId: 'capability-1' });
 
 describe('session continuity', () => {
+  it('reserves reviewed workspace references alongside the original request in a long bounded archive', async () => {
+    const f = await fixture(), contextId = `workspace-context-${'a'.repeat(64)}`;
+    const original = source('codex-session', 'codex', [{ id: contextId, kind: 'status', text: 'Reviewed reference '.repeat(300) },
+      { id: 'original-goal', kind: 'user', text: 'Keep the original parser decision.' },
+      ...Array.from({ length: 600 }, (_, index) => ({ id: `later-${index}`, kind: 'assistant' as const, text: `Later claim ${index}. ${'x'.repeat(2000)}` }))]);
+    original.workspaceContext = { workspaceId: original.workspaceId, profileId: 'profile-test', boundary: 'b'.repeat(64) };
+    f.sources.set('codex-session', original);
+    const view = await f.service.sessionContinuity('codex-session');
+    const page = await f.service.readContinuity('codex-session', { snapshotId: view.snapshots[0]!.id, offset: 0, limit: 2 });
+    expect(page.entries.map(entry => entry.id)).toEqual([contextId, 'original-goal']);
+    expect(view.snapshots[0]!.coverage.mode).toBe('partial');
+    const preview = await f.service.previewHandover('codex-session', { target: { kind: 'manual', label: 'Reviewed receiver' } });
+    expect(preview.packet).toContain('Archives also retain bounded workspace memory');
+  });
   it('checks whether continuity is bound without capturing history or creating storage', async () => {
     const f = await fixture();
     expect(await f.service.has('codex-session')).toBe(false);

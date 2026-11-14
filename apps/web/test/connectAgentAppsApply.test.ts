@@ -23,6 +23,10 @@ vi.mock('react', async original => ({
       hooks.effects.set(index, { dependencies, cleanup: cleanup || undefined });
     });
   },
+  useId: () => {
+    const index = hooks.index++;
+    return hooks.state[index] ??= `hook-${index}`;
+  },
   useRef: (initial: unknown) => {
     const index = hooks.index++;
     return hooks.state[index] ??= { current: initial };
@@ -44,9 +48,19 @@ function unmount() {
   hooks.mounted = false;
 }
 function mount(props: Parameters<typeof ConnectAgentAppsCard>[0]) {
+  let formKey: string | null | undefined;
   return () => {
     hooks.index = 0;
-    const tree = ConnectAgentAppsCard(props);
+    const form = ConnectAgentAppsCard(props);
+    // The public card keys its form by host capability. Model the real React
+    // child mount, including disposing the previous host's effects and drafts.
+    if (formKey !== undefined && formKey !== form.key) {
+      for (const [index, effect] of hooks.effects) if (index >= hooks.index) { effect.cleanup?.(); hooks.effects.delete(index); }
+      hooks.state.length = hooks.index;
+    }
+    formKey = form.key;
+    const Form = form.type as (props: Parameters<typeof ConnectAgentAppsCard>[0]) => ReactNode;
+    const tree = Form(form.props);
     commitEffects();
     return tree;
   };
@@ -150,6 +164,29 @@ describe('agent app automatic status refresh', () => {
     expect(nextPlan).toHaveBeenCalledTimes(1);
     expect(text(render())).toContain('new host preview');
   });
+  it('validates and saves the editable dashboard URL only after explicit form submission', async () => {
+    browserEvents();
+    const base = createMockPlatform({ seed: 'ready', host: 'bridge' }).capabilities.agents!;
+    const initialConnections = await base.agentAppConnections();
+    const initialIngest = await base.hookIngest();
+    const save = vi.fn(base.setHookPrivacy);
+    const render = mount({ t: MESSAGES.en, agents: { ...base, setHookPrivacy: save }, initialConnections, initialIngest });
+    const change = (value: string) => (dashboard(render()).props.onChange as (event: { target: { value: string } }) => void)({ target: { value } });
+    const submit = () => (elements(render()).find(element => element.type === 'form')!.props.onSubmit as (event: { preventDefault: () => void }) => void)({ preventDefault: vi.fn() });
+    change('invalid dashboard URL');
+    submit();
+    await settle();
+    expect(save).not.toHaveBeenCalled();
+    expect(dashboard(render()).props['aria-invalid']).toBe(true);
+    expect(text(render())).toContain(MESSAGES.en.agentApps.dashboardUrlInvalid);
+    change('http://127.0.0.1:9333');
+    expect(save).not.toHaveBeenCalled();
+    submit();
+    await vi.waitFor(() => expect(save).toHaveBeenCalledExactlyOnceWith({ hermesDashboardUrl: 'http://127.0.0.1:9333' }));
+    await vi.waitFor(() => expect(text(render())).toContain(MESSAGES.en.agentApps.dashboardUrlSaved));
+    expect(dashboard(render()).props.value).toBe('http://127.0.0.1:9333');
+  });
+
   it('polls only cheap live ingest for all five apps, preserves the shown preview, trust choice and dashboard draft', async () => {
     browserEvents();
     const base = createMockPlatform({ seed: 'ready', host: 'bridge' }).capabilities.agents!;

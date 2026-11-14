@@ -155,7 +155,7 @@ export function CharacterConversation({ t, language, agents, state, session, age
   const activity = useMemo(() => projectActivity(events), [events]);
   const timeline = useMemo(() => characterTimeline(events, agent), [events, agent]);
   const team = useMemo(() => isWorker ? [] : teamRoster(events, session.id), [events, session.id, isWorker]);
-  const workspaceRoot = session.observation?.projectPath ?? state.workspaces.find(item => item.id === session.workspaceId)?.projectLocation;
+  const workspaceRoot = session.observation?.projectPath ?? session.projectLocation ?? state.workspaces.find(item => item.id === session.workspaceId)?.projectLocation;
   // A lead answers for its whole team's edits; a worker shows its own.
   const files = useMemo(() => projectChangedFiles(isWorker ? characterEvents(events, agent) : events, workspaceRoot, fileRoots), [events, agent, isWorker, workspaceRoot, fileRoots]);
 
@@ -263,7 +263,7 @@ export function CharacterConversation({ t, language, agents, state, session, age
         onScroll={event => { const element = event.currentTarget; stick.current = element.scrollHeight - element.scrollTop - element.clientHeight < 80; }}>
         {!loading && items.length === 0
           ? <div className="chat-empty"><Icon name="chat" className="empty-icon" /><h3>{t.chat.emptyTitle}</h3><p className="muted">{workspace ? t.chat.emptyLead(workspace.name) : t.chat.noWorkspace}</p></div>
-          : <MessageFileProvider key={session.id} t={t} agents={agents} workspaces={state.workspaces} workspaceId={session.workspaceId} projectPath={session.observation?.projectPath ?? workspace?.projectLocation}>
+          : <MessageFileProvider key={session.id} t={t} agents={agents} workspaces={state.workspaces} workspaceId={session.workspaceId} projectPath={session.observation?.projectPath ?? session.projectLocation ?? workspace?.projectLocation}>
               <TranscriptView t={t} items={items} language={language} onDecide={decide} previewAttachment={previewAttachment} approvalsEnabled={!readOnly} />
             </MessageFileProvider>}
       </div>
@@ -310,6 +310,9 @@ export function CharacterConversation({ t, language, agents, state, session, age
             ...(!controlHub ? [{ id: 'pairing', label: c.toolTabs.pairing, render: () => <ObservedReplyControls t={t} agents={agents} session={session} /> }] : []),
           ]} />
         </>}
+        {session.control === 'observed' && session.observation?.sourceId === 'antigravity' && <>
+          <ObservedCodexNativeQueue key={`source-queue:${session.id}`} t={t} agents={agents} session={session} disabled={!toolsOpen} />
+        </>}
         {session.control === 'observed' && !simpleObservedInput && session.observation?.sourceId !== 'codex' && <ConversationToolsTabs label={c.tools} items={[
           ...(session.observation?.sourceId === 'hermes' ? [{ id: 'session', label: c.toolTabs.session, render: () => <ObservedHermesControls t={t} agents={agents} session={session} settingsOnly={controlHub} /> }] : []),
           ...(!controlHub ? [{ id: 'pairing', label: c.toolTabs.pairing, render: () => <ObservedReplyControls t={t} agents={agents} session={session} /> }] : []),
@@ -317,7 +320,7 @@ export function CharacterConversation({ t, language, agents, state, session, age
         {workspace && !readOnly && <WorkspaceRuntimeNotice t={t} state={state} workspace={workspace} session={session} />}
         </div>
       </aside>}
-      {handoverOpen && !isWorker && !readOnlyReason && <SessionHandoverDialog agents={agents} state={state} session={session} t={t.sessionHandover}
+      {handoverOpen && !isWorker && !readOnlyReason && <SessionHandoverDialog agents={agents} state={state} session={session} t={t.sessionHandover} cliResumeMessages={t.observedCliResume} antigravityMessages={t.observedAntigravity}
         onClose={() => setHandoverOpen(false)} onApplied={receipt => {
           if (receipt.state === 'native-ready') void guard(async () => {
             const next = await agents.getState(); setHandoverOpen(false); onState(next);

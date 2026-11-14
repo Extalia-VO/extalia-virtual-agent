@@ -22,18 +22,18 @@ not be supersampled to claim 4K. DOM text and controls keep their native
 resolution. Higher quality is a ceiling, not a promise that every device can
 reach it.
 
-One-second windows below 40 fps reduce quality immediately; two windows below
-45 fps also reduce it. Six windows at or above 48 fps permit one upgrade;
-thirty stable windows at or above 40 fps also permit a probe on capped displays.
+Three consecutive one-second windows below 30 fps reduce quality by one level.
+Exactly 30 fps holds. Six windows at or above 40 fps permit one upgrade;
+twelve consecutive windows above 30 fps also permit a probe on capped displays.
 The sampler warms up for three seconds and settles briefly after a change.
-Failed tiers are retried after 15/30/60/120 foreground windows, with the delay
-capped at 120 instead of permanently excluding a tier. Hidden
-time does not count; a remounted Office resumes its settled session tier.
+Failed tiers retry after 15/30/60 foreground windows, capped at 60. Hidden time
+does not count; a remounted Office resumes its settled session tier.
 
 A small top-left FPS badge updates once per measurement window without rerendering
 the scene. It reports unfiltered rendered throughput, including hitches; the
-quality controller separately ignores a single hitch in an otherwise smooth
-window. Hidden/resumed and unmounted canvases clear the readout until fresh
+quality controller uses the lower of raw and filtered throughput. Three slow
+windows are required, so an isolated hitch cannot lower quality, while recurring
+stalls cannot be hidden by trimming their longest frame. Hidden/resumed and unmounted canvases clear the readout until fresh
 frames are measured. Desktop uses this same renderer and policy; normal Desktop
 launches have no separate quality cap or software-WebGL switch.
 
@@ -88,6 +88,20 @@ visible surface without drawing the full neighborhood or duplicating fixture
 and seat registration. It does not add context for every side/rear outdoor
 outing, and static avatar placement screenshots do not establish seating or
 floor-support physics.
+
+The 2026-11-12 lifetime audit recovered 228 raw camera samples spanning 119.828
+minutes from a frozen v0.4.282 bundle. Canvas, renderer and scene identity were
+stable at every observation, including a controlled context restoration. A
+302.708-second collection gap leaves that interval unobserved; 31 unique
+post-restoration WebGL warnings were retained separately from page errors.
+This older bundle is not proof for subsequent movement or resource changes.
+
+A separate frozen v0.4.284 bundle containing the clone cleanup produced 78 raw
+resource samples spanning 45.007 minutes. All 339 observed retired bone textures
+received disposal, with no observed missing disposal or page/console errors.
+Its 251.51-second collection gap leaves transient entrants and retirements
+unknown. These are bounded mocked-roster observations under shared machine
+load, not a whole-memory, leak-free or application-FPS claim.
 
 GPU cache counts can warm up again after restoration; they are not byte-level
 memory measurements. The pinned Three.js version can report stale-context

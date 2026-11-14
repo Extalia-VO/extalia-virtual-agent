@@ -10,11 +10,10 @@ export const LEGACY_MODE_STORAGE_KEY = 'extalia.mode.v1';
 export interface LandingMemory { workspaceId?: string }
 
 /**
- * Whether Chat exists in this host. The observe workflow without any workspace
- * has no chat.
+ * Observe is a focused workflow even when project folders have been mapped.
  */
 export function chatAvailable(input: { agents: boolean; workflow: Workflow; hasWorkspaces: boolean }): boolean {
-  return input.agents && !(input.workflow === 'observe' && !input.hasWorkspaces);
+  return input.agents && input.workflow === 'managed';
 }
 
 export interface NavigationInput {
@@ -37,11 +36,15 @@ export function navigationGroups({ agents, workflow, canChat }: NavigationInput)
     { section: 'activity', pages: ['logs'] },
     { section: 'app', pages: ['settings', 'diagnostics'] },
   ];
+  if (workflow === 'observe') return [
+    { section: 'work', pages: ['office', 'observe'] },
+    { section: 'activity', pages: ['history', 'import', 'logs'] },
+    { section: 'app', pages: ['settings', 'diagnostics'] },
+  ];
   const work: PageId[] = ['office'];
-  if (workflow === 'observe') work.push('observe');
   if (chatAvailable({ agents, workflow, hasWorkspaces: canChat })) work.push('chat');
   if (canChat) work.push('missions');
-  if (workflow === 'managed') work.push('observe');
+  work.push('observe');
   // Files and Git read a workspace's project folder, so they need one.
   if (canChat) work.push('files', 'git');
   return [

@@ -9,8 +9,13 @@ import { previewRows, type PreviewRow } from './library';
 import { LibraryTranscript } from './LibraryTranscript';
 import { NativeSessionPicker } from './NativeSessionPicker';
 import { useNativeDiscovery } from './nativeDiscovery';
+import { LocalProjectTree } from '../sessions/LocalProjectTree';
 
 type Busy = 'preview' | 'commit' | 'portable' | null;
+const previewPath = (row: PreviewRow & { id: string }) => row.session.workspace?.projectLocation;
+const previewIdentity = (row: PreviewRow & { id: string }) => row.projectGroup;
+const previewSource = (row: PreviewRow & { id: string }) => row.session.provenance.sourceId;
+const previewTime = (row: PreviewRow & { id: string }) => row.session.lastMessageAt;
 
 function PreviewEntry({ t, row }: { t: Messages; row: PreviewRow }) {
   const [open, setOpen] = useState(false);
@@ -52,7 +57,7 @@ export function ImportPage({ t, language, agents, onState, onImported, onOpenObs
   const [prepared, setPrepared] = useState<{ scope: typeof scope; scanId: string; preview: ImportPreviewResult }>();
   const preview = prepared?.scope === scope && prepared.scanId === scan?.scanId ? prepared.preview : null;
   const { busy, error, portableError } = operation.scope === scope ? operation : { busy: null, error: null, portableError: null };
-  const rows = useMemo(() => preview ? previewRows(preview) : [], [preview]);
+  const rows = useMemo(() => preview ? previewRows(preview).map(row => ({ ...row, id: row.candidateId })) : [], [preview]);
 
   async function run(kind: Busy, action: (lease: { isCurrent: () => boolean }) => Promise<void>) {
     const lease = scope.acquire();
@@ -128,7 +133,7 @@ export function ImportPage({ t, language, agents, onState, onImported, onOpenObs
             <span className="muted" role="status">{t.imports.plan(preview.plan.addCount, preview.plan.updateCount, preview.plan.skipCount)}</span>
           </div>
           {preview.plan.rejectionReason && <p className="form-error"><Icon name="alert" />{preview.plan.rejectionReason}</p>}
-          <ul className="entity-list">{rows.map(row => <PreviewEntry key={row.candidateId} t={t} row={row} />)}</ul>
+          <LocalProjectTree t={t} rows={rows} source={previewSource} projectIdentity={previewIdentity} path={previewPath} updatedAt={previewTime} renderRow={row => <PreviewEntry key={row.candidateId} t={t} row={row} />} />
           {error && <p className="form-error" role="alert"><Icon name="alert" />{error}</p>}
           <div className="actions">
             <button type="button" disabled={busy !== null} onClick={() => { setPrepared(undefined); setOperation({ scope, busy: null, error: null, portableError: null }); }}>{t.imports.back}</button>

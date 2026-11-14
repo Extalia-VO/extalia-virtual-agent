@@ -81,3 +81,27 @@ text. No source engine, external configuration or persistent permission grant is
 created by this amendment.
 
 Reference: [Codex PR #42178](https://github.com/openai/codex/pull/42178).
+
+## Amendment: prioritize explicit async answers (2026-11-12)
+
+A verified original-server attachment now takes precedence over the ordinary
+queue for a user-selected async answer. With an active turn, send the exact
+correlated reply envelope through `turn/steer` using its expected turn ID; when
+the verified original thread is idle, its existing `turn/start` route can accept
+the reply. This does not create another engine or resolve a blocking callback.
+Native blocking questions continue to use their received request callback.
+
+The advertised delivery route is bound into the pending revision together with
+its source/connection/turn identity. Changes require a fresh review. Queue is a
+fallback only when a direct route is unavailable before submission. Once a
+native send is admitted, uncertainty never triggers queue fallback or replay.
+Digest-only write-ahead receipts retain submitted/queued/unknown outcomes across
+restart without persisting question or answer text.
+
+A native send receipt confirms submission, not model reading or callback
+resolution. A queue receipt remains explicitly unconfirmed as read. The UI shows
+the selected route before submission and clean question/answer pairs in the
+transcript. The wire envelope retains source question IDs: converting it to an
+uncorrelated ordinary message would lose the ability to match the exact question.
+This change does not discover private Desktop IPC or add a supported endpoint
+where the source client provides none.

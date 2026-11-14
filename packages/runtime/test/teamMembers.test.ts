@@ -173,7 +173,7 @@ describe('write members in delegate_task', () => {
     });
     await tool.run({ task: 'x', member: 'Kaelen Vael' }, context);
     await tool.run({ task: 'y', member: 'Iris Vael' }, context);
-    expect(systems[0]).toContain('Your persona and principles: Paranoid.');
+    expect(systems[0]).toContain('"personality":"Paranoid."');
     expect(systems[0]).toContain('Edit only inside your scope: src.');
     expect(systems[0]).toContain('Never edit: src/db');
     expect(systems[0]).toContain('- Run the tests before reporting.');

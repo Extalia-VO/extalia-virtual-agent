@@ -9,6 +9,7 @@ import { ModelGuidePanel } from '../planning/ModelGuidePanel';
 import { PlanningBasisNote } from '../planning/PlanningBasisNote';
 import { Select } from '../ui/Select';
 import { Segmented } from '../ui/Segmented';
+import { SessionPersonaEditor } from '../operatingProfiles/SessionPersonaEditor';
 import { AgentPortrait } from './overlay/AgentPortrait';
 import { extendGoalDocument, goalDocumentFromText, goalReference, useGoalDocumentUrl } from '../goals/goalDocument';
 import { lookIdentity } from './scene/avatars/appearance';
@@ -85,7 +86,7 @@ function PathChips({ t, id, label, help, paths, disabled, onChange }: {
  * the one new session a prompt starts (handed back through `onSaved`).
  * Modal like `AgentSessionDialog`: portal, inert outside, focus trap, Escape.
  */
-export function TeamSetupDialog({ t, agents, workspaceId, workspaceName, scope: requestedScope, sessionId, leadName, initialGoal, pending, spec, discord = false, officeNames, savedLooks, onSaved, onState, onClose }: {
+export function TeamSetupDialog({ t, agents, workspaceId, workspaceName, scope: requestedScope, sessionId, leadName, initialGoal, pending, spec, discord = false, officeNames, savedLooks, profileDraft = false, catalogConnectionId, onSaved, onState, onClose }: {
   t: Messages;
   agents: AgentHostApi;
   workspaceId: string;
@@ -108,6 +109,9 @@ export function TeamSetupDialog({ t, agents, workspaceId, workspaceName, scope: 
   officeNames?: ReadonlySet<string> | undefined;
   /** v0.0.30: saved looks by character id, so portraits match the office. */
   savedLooks?: CharacterAppearances | undefined;
+  /** A profile edits only an in-memory team draft; the chosen project supplies catalogs. */
+  profileDraft?: boolean;
+  catalogConnectionId?: string | undefined;
   onSaved(team: AgentTeam | null): void;
   /** v0.0.47: the host state after the workspace default changed. */
   onState?: ((state: HostState) => void) | undefined;
@@ -152,9 +156,9 @@ export function TeamSetupDialog({ t, agents, workspaceId, workspaceName, scope: 
   const catalogs = inScope(catalogResult, agents, workspaceId, sessionId) ? catalogResult?.value ?? {} : {};
   const catalogCache = useRef<{ agents: AgentHostApi; workspaceId: string; sessionId: string | undefined; requests: Map<string, Promise<ModelChoices>> } | undefined>(undefined);
   const [limitsRefresh, setLimitsRefresh] = useState(0);
-  const [choicesResult, setChoicesResult] = useState<ScopedResult<ModelChoices> & { revision: number }>();
-  const choices = inScope(choicesResult, agents, workspaceId, sessionId) && choicesResult?.revision === limitsRefresh ? choicesResult?.value : undefined;
-  const choicesFailed = inScope(choicesResult, agents, workspaceId, sessionId) && choicesResult?.revision === limitsRefresh && choicesResult?.failed;
+  const [choicesResult, setChoicesResult] = useState<ScopedResult<ModelChoices> & { revision: number; catalogConnectionId: string | undefined }>();
+  const choices = inScope(choicesResult, agents, workspaceId, sessionId) && choicesResult?.catalogConnectionId === catalogConnectionId && choicesResult?.revision === limitsRefresh ? choicesResult?.value : undefined;
+  const choicesFailed = inScope(choicesResult, agents, workspaceId, sessionId) && choicesResult?.catalogConnectionId === catalogConnectionId && choicesResult?.revision === limitsRefresh && choicesResult?.failed;
   const [members, setMembers] = useState<DraftMember[]>(() => draftsFrom(initial));
   const [plan, setPlan] = useState<Pick<TeamPlan, 'source' | 'note' | 'planningBasis'>>();
   const [guidePending, setGuidePending] = useState(false);
@@ -191,13 +195,15 @@ export function TeamSetupDialog({ t, agents, workspaceId, workspaceName, scope: 
   // Models the workspace offers (Native: the endpoint's list; Hermes: the profile's). v0.0.32: none is
   // ticked for a new team, so "Plan with AI" chooses the models; the user may tick them instead.
   useEffect(() => {
-    const load = agents.modelChoices;
+    const load = catalogConnectionId
+      ? typeof agents.teamModelChoices === 'function' ? () => agents.teamModelChoices!(workspaceId, catalogConnectionId) : undefined
+      : typeof agents.modelChoices === 'function' ? () => agents.modelChoices(workspaceId, sessionId) : undefined;
     if (typeof load !== 'function') return;
     let live = true;
-    load.call(agents, workspaceId, sessionId).then(value => { if (live) setChoicesResult({ agents, workspaceId, sessionId, value, revision: limitsRefresh }); },
-      () => { if (live) setChoicesResult({ agents, workspaceId, sessionId, failed: true, revision: limitsRefresh }); });
+    load().then(value => { if (live) setChoicesResult({ agents, workspaceId, sessionId, value, revision: limitsRefresh, catalogConnectionId }); },
+      () => { if (live) setChoicesResult({ agents, workspaceId, sessionId, failed: true, revision: limitsRefresh, catalogConnectionId }); });
     return () => { live = false; };
-  }, [agents, workspaceId, sessionId, limitsRefresh]);
+  }, [agents, workspaceId, sessionId, limitsRefresh, catalogConnectionId]);
 
   useEffect(() => {
     let live = true;
@@ -289,7 +295,7 @@ export function TeamSetupDialog({ t, agents, workspaceId, workspaceName, scope: 
   const limitNotice = delegationLimits ? m.hermesProfileLimits(delegationLimits.profile, delegationLimits.oneshotMaxChildren, delegationLimits.maxConcurrentChildren, maxMembers) : m.hermesTeamLimit;
   const sharedModelNotice = customRouting ? m.hermesCustomRouting : delegationLimits?.workerModel ? m.hermesWorkerModel(delegationLimits.workerModel) : m.hermesSharedModel;
   const oversizedHermesTeam = hermes && members.length > maxMembers;
-  const leadConnectionId = sessionId ? hostState?.sessions.find(session => session.id === sessionId)?.connectionId : hostState?.workspaces.find(workspace => workspace.id === workspaceId)?.providerProfileId;
+  const leadConnectionId = catalogConnectionId ?? (sessionId ? hostState?.sessions.find(session => session.id === sessionId)?.connectionId : hostState?.workspaces.find(workspace => workspace.id === workspaceId)?.providerProfileId);
   const savedConnections = hostState?.connections ?? [];
   const connectionLabel = (connectionId: string) => savedConnections.find(connection => connection.id === connectionId)?.name ?? m.missingConnection(connectionId);
   const editorAllowed = editingConnection ? connections.find(connection => connection.connectionId === editingConnection)?.allowedModels ?? [] : allowed;
@@ -333,7 +339,7 @@ export function TeamSetupDialog({ t, agents, workspaceId, workspaceName, scope: 
   }
 
   async function runPlan() {
-    if (working || guidePending || !runtime || profileBlocked || oversizedHermesTeam) return;
+    if (profileDraft || working || guidePending || !runtime || profileBlocked || oversizedHermesTeam) return;
     setBusy('plan'); setError(undefined);
     try {
       // v0.0.32: the goal and the models are optional; without models the plan chooses them and they are ticked here.
@@ -435,13 +441,14 @@ export function TeamSetupDialog({ t, agents, workspaceId, workspaceName, scope: 
         <span className="team-dialog-mark" aria-hidden="true"><Icon name="users" /></span>
         <div className="team-dialog-heading">
           <h2 id={`${id}-title`}>{m.title}</h2>
-          <p id={`${id}-subtitle`}>{scope === 'session' ? m.subtitleSession(leadName ?? '') : scope === 'workspace' ? m.subtitleWorkspace(workspaceName ?? '') : m.subtitleNew}</p>
+          <p id={`${id}-subtitle`}>{profileDraft ? t.operatingProfiles.profileTeamSubtitle : scope === 'session' ? m.subtitleSession(leadName ?? '') : scope === 'workspace' ? m.subtitleWorkspace(workspaceName ?? '') : m.subtitleNew}</p>
         </div>
         <button type="button" className="icon-button team-dialog-close" aria-label={m.close} title={`${m.close} (Esc)`} onClick={() => close.current()}><Icon name="close" /></button>
       </header>
       <div className="team-dialog-body">
         <p className="note team-dialog-notice team-scope-note" data-scope={scope}><Icon name={scope === 'workspace' ? 'folder' : scope === 'session' ? 'chat' : 'plus'} />
-          <span>{scope === 'workspace' ? m.scopeWorkspace : scope === 'session' ? m.scopeSession : m.scopeDraft}</span></p>
+          <span>{profileDraft ? t.operatingProfiles.profileDraftHint : scope === 'workspace' ? m.scopeWorkspace : scope === 'session' ? m.scopeSession : m.scopeDraft}</span></p>
+        {native && scope === 'session' && sessionId && <SessionPersonaEditor key={sessionId} t={t} agents={agents} sessionId={sessionId} running={Boolean(contextSession?.running)} />}
         {native && <p className="note team-dialog-notice"><Icon name="users" /><span>{m.resourceLimits}</span></p>}
         {hermes && <p className="note team-dialog-notice team-hermes-note" role="note"><Icon name="alert" /><span>{m.hermesModels}</span></p>}
         {hermes && <p className={oversizedHermesTeam ? "field-error team-hermes-limit" : "team-help team-hermes-limit"} role={oversizedHermesTeam ? "alert" : "note"}>{choicesFailed ? m.hermesLimitsFailed : limitsUnavailable ? m.hermesLimitsLoading : limitNotice}</p>}
@@ -471,12 +478,12 @@ export function TeamSetupDialog({ t, agents, workspaceId, workspaceName, scope: 
                 if (value.length > MAX_TEAM_GOAL) { const full = extendGoalDocument(goalDocument, value); const document = goalDocumentFromText(full); setGoalDocument(document ?? { name: 'goal.txt', text: full }); setGoal(goalReference('goal.txt')); setGoalDocumentError(!document); }
                 else { setGoal(value); if (!goalDocument) setGoalDocumentError(false); }
               }} />
-            <p id={`${id}-goal-help`} className={`team-help ${goalDocumentError ? 'field-error' : ''}`}>{goalDocumentError ? t.composer.longTextFailed : goalDocument ? t.composer.longTextPrompt(goalDocument.name) : m.goalHelp}</p>
+            <p id={`${id}-goal-help`} className={`team-help ${goalDocumentError ? 'field-error' : ''}`}>{goalDocumentError ? t.composer.longTextFailed : goalDocument ? t.composer.longTextPrompt(goalDocument.name) : profileDraft ? t.operatingProfiles.profileGoalHelp : m.goalHelp}</p>
             {goalDocument && <div className="attachment-chip" role="group" aria-label={t.composer.longTextAttached}>
               <Icon name="file" /><a href={goalUrl} download={goalDocument.name}>{goalDocument.name}</a><button type="button" aria-label={`${t.composer.removeFile} ${goalDocument.name}`} title={t.composer.removeFile} disabled={working}
                 onClick={() => { setGoalDocument(undefined); setGoalDocumentError(false); setGoal(''); }}><Icon name="close" /></button><span className="muted small">{t.composer.longTextAttached}</span>
             </div>}
-            <div className="team-count" role="group" aria-labelledby={`${id}-count-label`}>
+            {!profileDraft && <div className="team-count" role="group" aria-labelledby={`${id}-count-label`}>
               <span id={`${id}-count-label`} className="team-label">{m.count}</span>
               <button type="button" className="icon-button small" aria-label={m.fewer} title={m.fewer} disabled={working || profileBlocked || planCount <= TEAM_MIN_MEMBERS}
     onClick={() => setCount(clampCount(planCount - 1, hermes, delegationLimits))}><span aria-hidden="true">−</span></button>
@@ -484,12 +491,12 @@ export function TeamSetupDialog({ t, agents, workspaceId, workspaceName, scope: 
     onChange={event => setCount(clampCount(Number(event.target.value), hermes, delegationLimits))} />
               <button type="button" className="icon-button small" aria-label={m.more} title={m.more} disabled={working || profileBlocked || planCount >= maxMembers}
     onClick={() => setCount(clampCount(planCount + 1, hermes, delegationLimits))}><Icon name="plus" /></button>
-            </div>
+            </div>}
           </div>
 
           {native && <fieldset className="team-field team-models" aria-describedby={`${id}-models-help`}>
             <legend className="team-label">{m.models}</legend>
-            <p id={`${id}-models-help`} className="team-help">{editingConnection ? m.connectionModelsHelp : m.modelsHelp}</p>
+            <p id={`${id}-models-help`} className="team-help">{profileDraft ? t.operatingProfiles.profileModelsHelp : editingConnection ? m.connectionModelsHelp : m.modelsHelp}</p>
             {native && <div className="team-connection-editor">
               <Select id={`${id}-connection-models`} label={m.connectionModels} value={editingConnection || '__lead__'} disabled={working}
                 options={[{ value: '__lead__', label: m.leadConnection }, ...connections.map(connection => ({ value: connection.connectionId, label: connectionLabel(connection.connectionId) }))]}
@@ -537,7 +544,7 @@ export function TeamSetupDialog({ t, agents, workspaceId, workspaceName, scope: 
           <ol>{rules.map((rule, index) => <li key={index}>{rule}</li>)}</ol>
         </section>}
 
-        <ModelGuidePanel agents={agents} t={t} disabled={working} onPendingChange={setGuidePending} />
+        {!profileDraft && <ModelGuidePanel agents={agents} t={t} disabled={working} onPendingChange={setGuidePending} />}
 
         <section className="team-members" aria-labelledby={`${id}-members`}>
           <div className="team-members-head">
@@ -546,16 +553,16 @@ export function TeamSetupDialog({ t, agents, workspaceId, workspaceName, scope: 
             <div className="team-members-actions">
               <button type="button" className="button small" disabled={working || !runtime || profileBlocked || members.length >= maxMembers}
     onClick={() => { if (!runtime || profileBlocked || members.length >= maxMembers) return; setMembersAndCount([...members, manualMember(members, hermes ? [] : allowed, m.defaultRole, undefined, outside)]); }}><Icon name="plus" />{m.addMember}</button>
-              <button ref={planButton} type="button" className="button small primary team-plan" disabled={working || guidePending || !runtime || profileBlocked || oversizedHermesTeam}
+              {!profileDraft && <button ref={planButton} type="button" className="button small primary team-plan" disabled={working || guidePending || !runtime || profileBlocked || oversizedHermesTeam}
     title={hermes ? m.hermesModels : [goal.trim() ? '' : m.planNoGoal, allowed.length ? '' : m.planNoModels].filter(Boolean).join(' ') || m.planHelp} onClick={() => void runPlan()}>
     <Icon name={busy === 'plan' ? 'refresh' : 'spark'} className={busy === 'plan' ? 'spin' : ''} />{planLabel}
-              </button>
+              </button>}
             </div>
           </div>
           <PlanningBasisNote basis={plan?.planningBasis} t={t} />
           {plan?.note && <p className="team-help team-note">{plan.note}</p>}
-          {members.length > 0 && <p className="team-help">{m.planHelp}</p>}
-          {!members.length && !loading && <p className="team-empty">{m.membersEmpty}</p>}
+          {members.length > 0 && <p className="team-help">{profileDraft ? t.operatingProfiles.profileMembersHelp : m.planHelp}</p>}
+          {!members.length && !loading && <p className="team-empty">{profileDraft ? t.operatingProfiles.profileMembersEmpty : m.membersEmpty}</p>}
           <ul className="team-member-list">
             {members.map((member, index) => {
               const memberAllowed = memberAllowedModels(member, allowed, connections);
@@ -656,7 +663,7 @@ export function TeamSetupDialog({ t, agents, workspaceId, workspaceName, scope: 
           {busy === 'default' ? <Icon name="refresh" className="spin" /> : <Icon name="folder" />}{m.saveAsDefault}</button>}
         <button type="button" className="button" disabled={busy === 'save' || busy === 'remove'} onClick={() => close.current()}>{m.cancel}</button>
         <button type="button" className="button primary" disabled={working || !runtime || (enabled && (oversizedHermesTeam || profileBlocked))} onClick={() => void save()}>
-          {busy === 'save' ? <><Icon name="refresh" className="spin" />{m.saving}</> : <><Icon name="check" />{m.save}</>}
+          {busy === 'save' ? <><Icon name="refresh" className="spin" />{m.saving}</> : <><Icon name="check" />{profileDraft ? t.operatingProfiles.useTeamDraft : m.save}</>}
         </button>
       </footer>
     </div>

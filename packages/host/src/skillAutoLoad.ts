@@ -35,7 +35,21 @@ const FOOTER = '\n</extalia-loaded-skills>';
 const fold = (text: string) => text.normalize('NFKC').toLowerCase();
 const compare = (left: string, right: string) => left < right ? -1 : left > right ? 1 : 0;
 const bounded = (text: string, size = 4096) => text.length <= size ? text : `${text.slice(0, size / 2)}\n${text.slice(-size / 2)}`;
-const taskText = (text: string) => fold(redact(bounded(text))).replace(/```[\s\S]*?```/g, ' ').replace(/https?:\/\/\S+/g, ' ');
+function taskText(text: string): string {
+  // Attachment payloads and quoted examples are source material, not requests.
+  const request = text.split('\n\nAttached files (supplied by the user as data:')[0]!;
+  let fence: string | undefined;
+  const prose = request.split('\n').filter(line => {
+    const marker = line.trim().match(/^(`{3,}|~{3,})/u)?.[0];
+    if (fence) { if (marker && marker[0] === fence[0] && marker.length >= fence.length) fence = undefined; return false; }
+    if (marker) { fence = marker; return false; }
+    return !/^\s*>/.test(line);
+  }).join('\n').replace(/(?<![\p{L}\p{N}])([`"'“‘])([^`"'”’\n]+)[`"'”’]/gu, (_quoted: string, _delimiter: string, content: string, at: number, whole: string) => {
+    const before = whole.slice(Math.max(0, at - 60), at);
+    return /\b(?:use|apply|load|read|gunakan|pakai|muat|baca)\s+(?:the\s+)?(?:skill\s+)?$/i.test(before) && !/\s/.test(content) ? content : ' ';
+  });
+  return fold(redact(bounded(prose))).replace(/https?:\/\/\S+/g, ' ');
+}
 const negative = /(?:\b(?:no|not|without|never|avoid|jangan|tanpa|bukan)\b|don['’]t|do not)\s+(?:(?:use|apply|load|add|write|run|gunakan|pakai|baca|tambah|jalankan)\s+)?(?:the\s+)?(?:skill\s+)?(?:mode\s+)?[^,;.!?\n]{0,32}$/;
 
 const INTENTS: readonly [SkillLoadIntent, RegExp, string][] = [
@@ -50,12 +64,60 @@ const INTENTS: readonly [SkillLoadIntent, RegExp, string][] = [
   ['delivery', /\b(?:commit|commits|push|deploy|deployment|release|publish|rilis|terbitkan)\b/g, 'commit-changes'],
 ];
 const STOP = new Set('the and for with this that please need help use skill apply load code files file project review testing tests test plan planning design create make write build implementation implement user using what how does which can you dan untuk yang ini itu tolong saya bisa buat pakai gunakan kode berkas proyek ingin agar lebih pada dari dengan lanjut lanjutkan'.split(' '));
+// Metadata keywords are evidence only in a concrete request to do work. A category,
+// a topic mention, or one long shared word must not cause a shared skill body read.
+const ACTION = /\b(?:fix|repair|debug|investigate|check|inspect|review|audit|test|add|write|update|create|make|build|implement|improve|refactor|design|plan|explain|document|prepare|convert|export|import|deploy|publish|commit|release|summarize|validate|compare|analyze|analyse|reconcile|perbaiki|telusuri|cek|periksa|tinjau|uji|tambah|tulis|ubah|buat|bangun|tingkatkan|rancang|rencanakan|jelaskan|siapkan|konversi|ekspor|impor|terbitkan|ringkas|validasi|bandingkan|analisis|rekonsiliasi)\b/;
+const GENERIC = new Set('procedure procedures process workflow step steps guide guidance instructions instruction relevant skill skills task tasks work working software development quality documentation planning security delivery implementation standard common general reusable automatic best practice practices support supports supported request requests metadata category use uses using perform performs including helps help new current existing needs need want required requirement requirements context information system systems application applications data format output input local global library native worker agent dalam adalah sebuah semua pekerjaan tugas langkah panduan prosedur proses fitur sistem aplikasi data informasi umum kebutuhan'.split(' '));
+const OPERATIONS: readonly [string, RegExp][] = [
+  ['inspect', /^(?:inspect(?:ion|ing)?|check(?:ing)?|validat(?:e|ion|ing)|audit(?:ing)?|periksa|cek|validasi)$/],
+  ['write', /^(?:writ(?:e|ing)|creat(?:e|ion|ing)|compos(?:e|ition|ing)|buat|tulis)$/],
+  ['convert', /^(?:convert(?:ing)?|conversion|konversi)$/],
+  ['export', /^(?:export(?:ing)?|ekspor)$/], ['import', /^(?:import(?:ing)?|impor)$/],
+  ['reconcile', /^(?:reconcil(?:e|iation|ing)|rekonsiliasi)$/],
+];
+const INTENT_ACTIONS: Partial<Record<SkillLoadIntent, RegExp>> = {
+  debugging: /\b(?:fix|repair|debug|investigate|check|inspect|perbaiki|telusuri|cek|periksa)\b/,
+  testing: /\b(?:test|add|write|run|validate|uji|tambah|tulis|jalankan|buat|validasi)\b/,
+  security: /\b(?:review|audit|check|inspect|test|secure|fix|implement|periksa|tinjau|cek|uji|amankan|perbaiki)\b/,
+  design: /\b(?:design|build|create|make|improve|implement|redesign|refactor|rancang|buat|ubah|tingkatkan|perbaiki)\b/,
+  planning: /\b(?:plan|planning|propose|rancang|rencanakan|susun)\b/,
+};
+function hasAction(text: string, expression = ACTION): boolean {
+  for (const match of text.matchAll(new RegExp(expression.source, 'g'))) {
+    if (!/^(?:design|plan|planning|review|test|document|release)$/.test(match[0])) return true;
+    const before = text.slice(0, match.index).trim();
+    if ((!before || /(?:^|\b)(?:please|to|and|then|now|you|tolong|dan)\s*$/.test(before)) && text.slice(match.index! + match[0].length).trim()) return true;
+  }
+  return false;
+}
+// A topic being described is not necessarily the procedure being performed
+// (for example, writing a poem about a deployment is not deploying software).
+const procedureTask = (text: string) => text.split(/\b(?:about|regarding|tentang|mengenai)\b/)[0]!;
+function terms(text: string): Set<string> {
+  return new Set((text.match(/[\p{L}\p{N}]+/gu) ?? []).map(tokenRoot).filter(word => word.length >= 3 && !STOP.has(word) && !GENERIC.has(word)));
+}
+function procedureMatch(text: string, skill: SkillIdentity): { score: number; evidence: string } | undefined {
+  text = procedureTask(text);
+  if (!hasAction(text)) return undefined;
+  const wanted = terms(text), offered = terms(fold(`${skill.name} ${skill.description}`));
+  const operation = (word: string) => OPERATIONS.find(([, pattern]) => pattern.test(word))?.[0];
+  const anchors = [...wanted].filter(word => !ACTION.test(word) && !operation(word) && offered.has(word));
+  const sharedOperation = [...wanted].some(word => {
+    const action = operation(word);
+    return action && [...offered].some(other => operation(other) === action);
+  });
+  return anchors.length >= 2 || (anchors.length === 1 && sharedOperation)
+    ? { score: anchors.length, evidence: anchors.sort().join(':') } : undefined;
+}
 
 function intents(text: string): { intent: SkillLoadIntent; name: string; at: number }[] {
   const found: { intent: SkillLoadIntent; name: string; at: number }[] = [];
+  if (!hasAction(text)) return found;
   for (const [intent, expression, name] of INTENTS) {
     for (const match of text.matchAll(new RegExp(expression))) {
       if (negative.test(text.slice(Math.max(0, match.index! - 55), match.index))) continue;
+      const clause = text.slice(0, match.index).split(/[.;!?\n]/).at(-1)! + text.slice(match.index).split(/[.;!?\n]/)[0]!;
+      if (!hasAction(clause) || (INTENT_ACTIONS[intent] && !hasAction(clause, INTENT_ACTIONS[intent]))) continue;
       found.push({ intent, name: intent === 'documentation' && /\b(?:explain|jelaskan|codebase)\b/.test(text) ? 'explain-codebase' : name, at: match.index! });
       break;
     }
@@ -112,8 +174,9 @@ function explicitName(text: string, name: string): boolean {
     const clause = text.slice(0, at).split(/[.;!\n]/).at(-1)?.trim() ?? '';
     if (/^(?:please\s+)?(?:what|why|how|when|where|should|do we|do i|can i|explain|describe|tell me|apa(?:kah)?|bagaimana|kapan|mengapa|jelaskan|terangkan)\b/.test(clause)) continue;
     if (/[a-z0-9-]$/.test(before) || /^[a-z0-9-]/.test(after) || negative.test(before)) continue;
-    if (/\b(?:use|apply|load|read|activate|gunakan|pakai|muat|baca|aktifkan)\s+(?:the\s+)?(?:skill\s+)?(?:mode\s+)?[`"' ]*$/.test(before)
-      || (name !== 'caveman' && text.trim().replace(/[`"']/g, '') === alias)) return true;
+    if (/\b(?:use|apply|load|read|activate|gunakan|pakai|muat|baca|aktifkan)\s+(?:the\s+)?(?:skill\s+)?(?:mode\s+)?[`"' $]*$/.test(before)
+      || (name !== 'caveman' && text.trim().replace(/[`"'$]/g, '') === alias)
+      || (before.endsWith('$') && ACTION.test(clause))) return true;
   }
   return false;
 }
@@ -128,13 +191,18 @@ function family(name: string): string {
 }
 
 function candidates(metadata: readonly SkillIdentity[], options: AutoSkillOptions): { items: Candidate[]; excluded: ReadonlySet<string> } {
-  const current = taskText(options.prompt);
-  const currentIntents = intents(current);
-  const continuation = current.length < 160 && /\b(?:continue|proceed|next|lanjut(?:kan)?|teruskan)\b/.test(current) && !currentIntents.length;
-  const previous = continuation ? (options.recentUserMessages ?? []).slice(-2).map(text => taskText(bounded(text, 2048))).join('\n') : '';
+  const assigned = (text: string) => options.worker ? text.split('\n\nContext from the primary agent:')[0]! : text;
+  const current = taskText(assigned(options.prompt));
+  const currentIntents = intents(procedureTask(current));
+  // History can resolve a bare resume or a negative constraint, never new work
+  // that merely includes "continue" and happens to lack a known intent category.
+  const continuation = current.length < 160
+    && /^(?:(?:please|tolong)\s+)?(?:continue|proceed|next|lanjut(?:kan)?|teruskan)(?:[\s,]+(?:without|tanpa)\s+[^,;.!?\n]+)?[.!?\s]*$/.test(current)
+    && !hasAction(current) && !/\b(?:but|now|instead|then|rather|tetapi|sekarang|namun|lalu|kemudian)\b/.test(current);
+  const previous = continuation ? taskText(bounded(assigned(options.recentUserMessages?.at(-1) ?? ''), 2048)) : '';
   const denied = negatedIntents(current);
   const excluded = exclusions(metadata, current, denied);
-  const inferred = currentIntents.length ? currentIntents : intents(previous).filter(item => !denied.has(item.intent));
+  const inferred = currentIntents.length ? currentIntents : intents(procedureTask(previous)).filter(item => !denied.has(item.intent));
   const result: Candidate[] = [];
   for (const item of metadata) {
     if (['memory-recall', 'orchestrator'].includes(item.name) || excluded.has(item.name)) continue;
@@ -142,13 +210,19 @@ function candidates(metadata: readonly SkillIdentity[], options: AutoSkillOption
   }
   inferred.forEach((item, index) => result.push({ name: item.name, reason: previous ? 'recent-context' : 'current-context', intent: item.intent,
     rank: 8_000 - index, group: item.intent }));
-  const words = [...new Set((previous || current).match(/[\p{L}\p{N}]+/gu) ?? [])].filter(word => word.length >= 3 && !STOP.has(word)).slice(0, 24);
+  const matches: { item: SkillIdentity; score: number; evidence: string }[] = [];
   for (const item of metadata) {
     if (item.source === 'builtin' || excluded.has(item.name)) continue;
-    const haystack = new Set(fold(`${item.name} ${item.description}`).match(/[\p{L}\p{N}]+/gu));
-    const matches = words.filter(word => haystack.has(word));
-    if (matches.length >= 2 || matches.some(word => word.length >= 6)) result.push({ name: item.name,
-      reason: previous ? 'recent-context' : 'current-context', rank: 9_000 + matches.length, group: item.name });
+    const match = procedureMatch(previous || current, item);
+    if (match) matches.push({ item, ...match });
+  }
+  const evidenceCounts = new Map<string, number>();
+  for (const { evidence } of matches) evidenceCounts.set(evidence, (evidenceCounts.get(evidence) ?? 0) + 1);
+  for (const { item, score, evidence } of matches) {
+    // Equal evidence for multiple procedures is ambiguous. Do not pick an
+    // alphabetical winner; an explicit current request can still choose one.
+    if (evidenceCounts.get(evidence)! > 1) continue;
+    result.push({ name: item.name, reason: previous ? 'recent-context' : 'current-context', rank: 9_000 + score, group: item.name });
   }
   const seen = new Set<string>();
   // A complete core can still help when its more specific companion cannot fit.
@@ -160,6 +234,12 @@ function candidates(metadata: readonly SkillIdentity[], options: AutoSkillOption
     seen.add(item.name); return true;
   });
   return { items, excluded };
+}
+
+/** Names eligible for manual reads in this invocation; discovery alone is never eligibility. */
+export function relevantSkillNames(catalog: AgentSkillCatalog, options: AutoSkillOptions): string[] {
+  return ['memory-recall', ...(options.orchestrator && !options.worker ? ['orchestrator'] : []),
+    ...candidates(catalogSkillMetadata(catalog), options).items.slice(0, MAX_OPTIONAL_READS).map(item => item.name)];
 }
 
 function dependencies(name: string): string[] {

@@ -25,9 +25,9 @@ describe('landing page resolution', () => {
 });
 
 describe('chat availability', () => {
-  it('has no chat in the observe workflow without workspaces, or without an agent host', () => {
+  it('has no managed chat in Observe, even with mapped workspaces', () => {
     expect(chatAvailable({ agents: true, workflow: 'observe', hasWorkspaces: false })).toBe(false);
-    expect(chatAvailable({ agents: true, workflow: 'observe', hasWorkspaces: true })).toBe(true);
+    expect(chatAvailable({ agents: true, workflow: 'observe', hasWorkspaces: true })).toBe(false);
     expect(chatAvailable({ agents: true, workflow: 'managed', hasWorkspaces: false })).toBe(true);
     expect(chatAvailable({ agents: false, workflow: 'managed', hasWorkspaces: true })).toBe(false);
   });
@@ -43,9 +43,9 @@ describe('navigation by purpose', () => {
     ]);
   });
 
-  it('prioritizes observation when observing, while retaining workspace tools that exist', () => {
+  it('keeps Observe focused regardless of mapped workspaces', () => {
     expect(navigationGroups({ agents: true, workflow: 'observe', canChat: true })[0]).toEqual({
-      section: 'work', pages: ['office', 'observe', 'chat', 'missions', 'files', 'git'],
+      section: 'work', pages: ['office', 'observe'],
     });
     expect(navigationGroups({ agents: true, workflow: 'observe', canChat: false })[0]).toEqual({
       section: 'work', pages: ['office', 'observe'],
@@ -71,10 +71,10 @@ describe('navigation by purpose', () => {
       expect(new Set(pages).size).toBe(pages.length);
       expect(pages).toContain(resolveLandingPage({ agents }));
       if (agents) {
-        expect(pages).toContain('knowledge'); expect(pages).toContain('skills');
+        for (const id of ['knowledge', 'skills', 'chat']) expect(pages.includes(id as typeof pages[number])).toBe(workflow === 'managed');
         expect(pages).not.toContain('start');
       } else expect(pages.sort()).toEqual(['diagnostics', 'logs', 'office', 'settings', 'start']);
-      for (const page of ['missions', 'files', 'git'] as const) expect(pages.includes(page)).toBe(agents && canChat);
+      for (const page of ['missions', 'files', 'git'] as const) expect(pages.includes(page)).toBe(agents && workflow === 'managed' && canChat);
     }
   });
 });

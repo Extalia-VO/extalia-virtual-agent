@@ -102,3 +102,11 @@ describe('session history file scopes', () => {
     expect(html).not.toContain('<button');
   });
 });
+
+it('retains historical links to a selected secondary folder and disables them if that folder is removed', () => {
+  const old = { workspaceId: 'workspace', projectLocation: '/projects/secondary' };
+  const current = { workspaceId: 'workspace', projectPath: '/projects/main', workspaces: [{ id: 'workspace', projectLocation: '/projects/main', additionalProjectLocations: ['/projects/secondary'] }] };
+  const file = { name: 'marker', path: 'marker.txt' };
+  expect(resolveSessionMessageFile(file, current, old)).toEqual({ workspaceId: 'workspace', path: '/projects/secondary/marker.txt' });
+  expect(resolveSessionMessageFile(file, { ...current, workspaces: [{ id: 'workspace', projectLocation: '/projects/main', additionalProjectLocations: [] }] }, old)).toBeUndefined();
+});

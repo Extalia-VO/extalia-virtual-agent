@@ -1,9 +1,11 @@
-import { MAX_WORKSPACE_FOLDERS, RUNTIME_IDS, WORKSPACE_CROSS_ACCESS, type PermissionMode } from '@extalia/core';
+import { INTEGRATION_GATE_LIMITS, MAX_WORKSPACE_FOLDERS, RUNTIME_IDS, WORKSPACE_CROSS_ACCESS, type PermissionMode } from '@extalia/core';
 import type { AgentHostApi, ConnectionView, FileSystemCapability, HermesModelCatalog, RuntimeInfo } from '@extalia/platform';
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { errorMessage } from '../host/remote';
 import type { Messages } from '../i18n';
 import { Icon } from '../ui/Icon';
+import { DeleteConfirmation } from '../ui/DeleteConfirmation';
+import { CopyButton } from '../ui/CopyButton';
 import { ComboBox, type ComboOption } from '../ui/ComboBox';
 import { Select } from '../ui/Select';
 import { Segmented } from '../ui/Segmented';
@@ -20,7 +22,7 @@ import { createWorkspaceFolderRequests } from './workspaceFolderRequest';
  * Workspace editor used by the wizard and Settings. Desktop picks folders with
  * the native dialog; the Bridge browses host folders through its authenticated API.
  */
-export function WorkspaceForm({ t, agents, picker, draft, onChange, connections, runtimes = [], runtimesReady = true, onRecheckRuntimes, showAllErrors = false, showGate = false, focusGate = false }: {
+export function WorkspaceForm({ t, agents, picker, draft, onChange, connections, runtimes = [], runtimesReady = true, onRecheckRuntimes, showAllErrors = false, showGate = false, focusGate = false, onValidationBusyChange }: {
   t: Messages;
   agents: AgentHostApi;
   /** Native folder picker; only used when it reveals full paths (Desktop). */
@@ -40,25 +42,41 @@ export function WorkspaceForm({ t, agents, picker, draft, onChange, connections,
   showGate?: boolean;
   /** Scroll to and focus the gate command (opened from a mission's Changes panel). */
   focusGate?: boolean;
+  /** Keep the enclosing Save action pending until all selected folder paths are checked. */
+  onValidationBusyChange?: (busy: boolean) => void;
 }) {
   const id = useId();
   const [touched, setTouched] = useState<ReadonlySet<WorkspaceField>>(new Set());
   const [checkingFolder, setCheckingFolder] = useState<{ path: string; workspaceId?: string } | null>(null);
   const [folderFailure, setFolderFailure] = useState<{ path: string; workspaceId?: string; message: string } | null>(null);
-  const folderContext = `${draft.id ?? ''}:${draft.runtimeId}`;
+  const observe = draft.mode === 'observe';
+  const folderContext = `${draft.id ?? ''}:${draft.runtimeId}:${draft.mode ?? 'managed'}`;
+  const removalContext = JSON.stringify([folderContext, draft.folderInput, draft.folder?.path]);
+  const removalOwner = useRef({ active: true, agents, context: removalContext });
+  useLayoutEffect(() => { removalOwner.current.agents = agents; removalOwner.current.context = removalContext; }, [agents, removalContext]);
+  const [folderToRemove, setFolderToRemove] = useState<{ path: string; context: string; agents: AgentHostApi } | null>(null);
+  const pendingRemoval = useRef<typeof folderToRemove>(null);
+  const removal = folderToRemove?.agents === agents && folderToRemove.context === removalContext
+    && draft.additionalProjectLocations.includes(folderToRemove.path) && draft.folder?.path !== folderToRemove.path && draft.folderInput !== folderToRemove.path ? folderToRemove : null;
+  useLayoutEffect(() => {
+    const owner = removalOwner.current;
+    owner.active = true;
+    return () => { owner.active = false; pendingRemoval.current = null; };
+  }, []);
+  if (folderToRemove && !removal) setFolderToRemove(null);
+  useLayoutEffect(() => { if (!removal) pendingRemoval.current = null; }, [removal]);
   const [browserState, setBrowserState] = useState<{ context: string; kind: 'primary' | 'additional' } | null>(null);
   const browsing = browserState?.context === folderContext ? browserState.kind : null;
   const setBrowsing = (kind: 'primary' | 'additional' | null) => setBrowserState(kind ? { context: folderContext, kind } : null);
-  const emptyAdditional = { context: folderContext, input: '', checking: false, error: null as string | null };
+  const emptyAdditional = { context: folderContext, checking: false, error: null as string | null };
   const [additionalState, setAdditionalState] = useState(emptyAdditional);
   if (additionalState.context !== folderContext) {
     setAdditionalState(emptyAdditional);
     setBrowserState(null);
   }
   const additional = additionalState.context === folderContext ? additionalState : emptyAdditional;
-  const { input: additionalFolderInput, checking: checkingAdditional, error: additionalFolderError } = additional;
+  const { checking: checkingAdditional, error: additionalFolderError } = additional;
   const updateAdditional = (patch: Partial<typeof emptyAdditional>) => setAdditionalState(previous => ({ ...(previous.context === folderContext ? previous : emptyAdditional), ...patch }));
-  const setAdditionalFolderInput = (input: string) => updateAdditional({ input });
   const setCheckingAdditional = (checking: boolean) => updateAdditional({ checking });
   const setAdditionalFolderError = (error: string | null) => updateAdditional({ error });
   const additionalRequest = useRef(0);
@@ -71,8 +89,12 @@ export function WorkspaceForm({ t, agents, picker, draft, onChange, connections,
     const invalidateAdditional = () => { additionalRequest.current++; };
     invalidateAdditional();
     return invalidateAdditional;
-  }, [draft.id, draft.runtimeId]);
+  }, [draft.id, draft.runtimeId, draft.mode]);
   const checking = Boolean(checkingFolder && checkingFolder.workspaceId === draft.id && checkingFolder.path === draft.folderInput && !draft.folder);
+  useEffect(() => {
+    onValidationBusyChange?.(checking || checkingAdditional);
+    return () => onValidationBusyChange?.(false);
+  }, [checking, checkingAdditional, onValidationBusyChange]);
   const folderError = folderFailure && folderFailure.workspaceId === draft.id && folderFailure.path === draft.folderInput ? folderFailure.message : null;
   const setChecking = (value: boolean) => {
     const current = folderRequests.draft();
@@ -89,6 +111,17 @@ export function WorkspaceForm({ t, agents, picker, draft, onChange, connections,
     const next = { ...folderRequests.draft(), ...patch };
     folderRequests.sync(next);
     onChange(next);
+  };
+  const confirmFolderRemoval = () => {
+    const selected = pendingRemoval.current;
+    if (!selected || !removalOwner.current.active) return;
+    pendingRemoval.current = null;
+    setFolderToRemove(null);
+    const current = folderRequests.draft();
+    const currentContext = JSON.stringify([`${current.id ?? ''}:${current.runtimeId}:${current.mode ?? 'managed'}`, current.folderInput, current.folder?.path]);
+    if (selected.agents !== removalOwner.current.agents || selected.context !== removalOwner.current.context || selected.context !== currentContext
+      || current.folder?.path === selected.path || current.folderInput === selected.path || !current.additionalProjectLocations.includes(selected.path)) return;
+    update({ additionalProjectLocations: current.additionalProjectLocations.filter(path => path !== selected.path) });
   };
   const invalidateFolder = () => {
     folderRequests.invalidate();
@@ -149,7 +182,6 @@ export function WorkspaceForm({ t, agents, picker, draft, onChange, connections,
         return;
       }
       update({ additionalProjectLocations: locations });
-      setAdditionalFolderInput('');
     } catch (error) {
       if (request === additionalRequest.current) setAdditionalFolderError(errorMessage(error));
     } finally {
@@ -178,7 +210,7 @@ export function WorkspaceForm({ t, agents, picker, draft, onChange, connections,
   const hermes = availableHermes(runtimes);
   // The profile's default model and, for a local router such as 9Router, the models it offers.
   const [scan, setScan] = useState(0);
-  const scanProfile = draft.runtimeId === 'hermes' && hermes ? draft.hermesProfile || 'default' : undefined;
+  const scanProfile = !observe && draft.runtimeId === 'hermes' && hermes ? draft.hermesProfile || 'default' : undefined;
   const scanKey = scanProfile && `${scanProfile}#${scan}`;
   const [result, setResult] = useState<{ key: string; catalog?: HermesModelCatalog }>();
   useEffect(() => {
@@ -201,9 +233,9 @@ export function WorkspaceForm({ t, agents, picker, draft, onChange, connections,
         : catalog?.defaultModel ? t.workspace.hermesModelScan.defaultOnly(catalog.defaultModel)
           : catalog && scanProfile ? t.workspace.hermesModelScan.noDefault(scanProfile)
             : t.workspace.hermesModelHint;
-  const isHermes = draft.runtimeId === 'hermes';
+  const isHermes = !observe && draft.runtimeId === 'hermes';
   // A suggestion from the saved workspace's files; offered as a button, never applied by itself.
-  const gateSuggestion = useGateSuggestion(agents, showGate ? draft.id : undefined);
+  const gateSuggestion = useGateSuggestion(agents, showGate && !observe ? draft.id : undefined);
   const gateInput = useRef<HTMLInputElement>(null);
   useEffect(() => {
     if (!showGate || !focusGate) return;
@@ -228,32 +260,26 @@ export function WorkspaceForm({ t, agents, picker, draft, onChange, connections,
   );
 
   return (
-    <div className="form-stack">
+    <div className="form-stack" aria-busy={checking || checkingAdditional || undefined}>
+      {connections && <Segmented legend={t.workspace.mode} value={observe ? 'observe' : 'managed'}
+        options={[{ value: 'observe', label: t.workspace.observe }, { value: 'managed', label: t.workspace.managed }]}
+        onChange={mode => update({ mode })} />}
+      {observe && <p className="note small">{t.workspace.observeLead}</p>}
       <div className="field" role="group" aria-labelledby={`${id}-folder-label`}>
         <span id={`${id}-folder-label`}>{t.workspace.folder}</span>
           <div className="folder-pick">
-            <button type="button" id={`${id}-folder`} className="button" disabled={checking} onClick={choose} aria-describedby={`${id}-folder-path`}>
+            <button type="button" id={`${id}-folder`} className="button" disabled={checking} onClick={choose} aria-describedby={`${id}-folder-path ${id}-folder-status`}>
               <Icon name="folder" />{draft.folder ? t.workspace.change : t.workspace.choose}
             </button>
             <code className="folder-path" id={`${id}-folder-path`}>{draft.folder?.path ?? t.workspace.noFolder}</code>
+            {draft.folder && <CopyButton text={draft.folder.path} label={t.workspace.folder} />}
           </div>
-        {!picker && <details className="folder-manual"><summary>{t.workspace.manualPath}</summary>
-          <label className="visually-hidden" htmlFor={`${id}-folder-input`}>{t.workspace.folder}</label>
-          <div className="input-row">
-            <input id={`${id}-folder-input`} type="text" value={draft.folderInput} spellCheck={false} autoComplete="off" placeholder={t.workspace.pathPlaceholder}
-              aria-invalid={Boolean(folderMessage)} aria-describedby={`${id}-folder-status`}
-              onChange={event => { invalidateFolder(); update({ folderInput: event.target.value, folder: undefined }); }}
-              onBlur={() => { const current = folderRequests.draft(); if (!current.folder) void check(current.folderInput); }}
-              onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); void check(folderRequests.draft().folderInput); } }} />
-            <button type="button" className="button" disabled={checking || !draft.folderInput.trim() || Boolean(draft.folder)} onClick={() => check(folderRequests.draft().folderInput)}>
-              {checking ? t.workspace.checking : t.workspace.check}
-            </button>
-          </div>
-        </details>}
-        <small id={`${id}-folder-status`} role="status" className={folderMessage ? 'field-error' : draft.folder && !picker ? 'status ok' : 'muted'}>
-          {folderMessage ?? null}
+        <small id={`${id}-folder-status`} role="status" className={checking ? 'muted' : folderMessage ? 'field-error' : draft.folder && !picker ? 'status ok' : 'muted'}>
+          {checking ? t.workspace.checking : folderMessage ?? null}
         </small>
       </div>
+      {removal && <DeleteConfirmation t={t} title={t.deletion.folderTitle} target={removal.path} description={t.deletion.folderDescription}
+        onConfirm={confirmFolderRemoval} onCancel={() => { pendingRemoval.current = null; setFolderToRemove(null); }} />}
       {browsing && <DirectoryBrowser t={t} agents={agents} {...(draft.folder ? { startPath: draft.folder.path } : {})}
         onClose={() => { invalidateFolder(); additionalRequest.current++; setBrowsing(null); }}
         onSelect={selected => { const additional = browsing === 'additional'; setBrowsing(null); if (additional) void checkAdditional(selected); else void check(selected); }} />}
@@ -262,53 +288,53 @@ export function WorkspaceForm({ t, agents, picker, draft, onChange, connections,
         <h3 className="form-heading" id={`${id}-additional-heading`}>{t.workspace.additionalFolders.heading}</h3>
         <p className="muted small">{t.workspace.additionalFolders.lead}</p>
         {draft.additionalProjectLocations.map(path => <div className="input-row" key={path}>
-          <code className="folder-path">{path}</code>
-          <button type="button" className="button small" aria-label={t.workspace.additionalFolders.remove(path)} onClick={() => update({ additionalProjectLocations: draft.additionalProjectLocations.filter(item => item !== path) })}><Icon name="trash" />{t.common.delete}</button>
+          <code className="folder-path">{path}</code><CopyButton text={path} label={t.workspace.additionalFolders.path} />
+          <button type="button" className="button small" aria-label={t.workspace.additionalFolders.remove(path)} onClick={() => { const selected = { path, context: removalContext, agents }; pendingRemoval.current = selected; setFolderToRemove(selected); }}><Icon name="trash" />{t.common.delete}</button>
         </div>)}
-        <button type="button" className="button" disabled={checkingAdditional || draft.additionalProjectLocations.length >= MAX_WORKSPACE_FOLDERS - 1} onClick={() => void chooseAdditional()}><Icon name="folder" />{t.workspace.additionalFolders.add}</button>
-        {!picker && <div className="field">
-          <label htmlFor={`${id}-additional-path`}>{t.workspace.additionalFolders.path}</label>
-          <div className="input-row">
-            <input id={`${id}-additional-path`} type="text" value={additionalFolderInput} spellCheck={false} autoComplete="off" aria-describedby={`${id}-additional-status`}
-              onChange={event => { additionalRequest.current++; setCheckingAdditional(false); setAdditionalFolderError(null); setAdditionalFolderInput(event.target.value); }}
-              onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); if (!checkingAdditional && additionalFolderInput.trim() && draft.additionalProjectLocations.length < MAX_WORKSPACE_FOLDERS - 1) void checkAdditional(additionalFolderInput); } }} />
-            <button type="button" className="button" disabled={checkingAdditional || !additionalFolderInput.trim() || draft.additionalProjectLocations.length >= MAX_WORKSPACE_FOLDERS - 1}
-              onClick={() => void checkAdditional(additionalFolderInput)}>{checkingAdditional ? t.workspace.checking : t.workspace.additionalFolders.check}</button>
-          </div>
-        </div>}
-        <small id={`${id}-additional-status`} role="status" className="field-error">{additionalFolderError ?? errorFor('additionalFolders')}</small>
+        <button type="button" className="button" disabled={checkingAdditional || draft.additionalProjectLocations.length >= MAX_WORKSPACE_FOLDERS - 1} aria-describedby={`${id}-additional-status`} onClick={() => void chooseAdditional()}><Icon name="folder" />{t.workspace.additionalFolders.add}</button>
+        <small id={`${id}-additional-status`} role="status" className={checkingAdditional ? 'muted' : 'field-error'}>{checkingAdditional ? t.workspace.checking : additionalFolderError ?? errorFor('additionalFolders')}</small>
       </div>}
 
       <div className="form-grid">
         <div className="field">
           <label htmlFor={`${id}-name`}>{t.workspace.name}</label>
-          <input id={`${id}-name`} type="text" value={draft.name} maxLength={120} autoComplete="off" aria-invalid={Boolean(errorFor('name'))}
+          <input id={`${id}-name`} type="text" value={draft.name} maxLength={120} autoComplete="off" aria-invalid={Boolean(errorFor('name'))} aria-describedby={errorFor('name') ? `${id}-name-error` : undefined}
             onChange={event => update({ name: event.target.value })} onBlur={() => touch('name')} />
-          {errorFor('name') && <small className="field-error">{errorFor('name')}</small>}
+          {errorFor('name') && <small id={`${id}-name-error`} className="field-error">{errorFor('name')}</small>}
         </div>
-        {connections && !isHermes && (
+        {connections && !isHermes && !observe && (
           <div className="field">
             <Select
               id={`${id}-connection`}
               label={t.workspace.connection}
               value={draft.connectionId}
+              aria-invalid={Boolean(errorFor('connection'))}
+              aria-describedby={errorFor('connection') ? `${id}-connection-error` : undefined}
               options={connections.map(connection => ({
                 value: connection.id,
                 label: `${connection.name} · ${connection.model}`
               }))}
               onChange={val => update({ connectionId: val })}
             />
-            {errorFor('connection') && <small className="field-error">{errorFor('connection')}</small>}
+            {errorFor('connection') && <small id={`${id}-connection-error`} className="field-error">{errorFor('connection')}</small>}
           </div>
         )}
       </div>
 
-      {connections && (
+      {connections && observe && <details className="workspace-observe-curator">
+        <summary>{t.workspace.curator}</summary>
+        <p className="muted small">{t.workspace.curatorLead}</p>
+        <Select label={t.workspace.connection} value={draft.connectionId}
+          options={[{ value: '', label: t.workspace.noCurator }, ...connections.map(connection => ({ value: connection.id, label: `${connection.name} · ${connection.model}` }))]}
+          onChange={connectionId => update({ connectionId })} />
+      </details>}
+
+      {connections && !observe && (
         <RuntimePicker t={t} legend={t.workspace.runtime} value={draft.runtimeId} offered={RUNTIME_IDS} hermesInstalled={Boolean(hermes)}
           runtimesReady={runtimesReady} rechecking={rechecking} onRecheck={onRecheckRuntimes ? recheckRuntimes : undefined}
           onChange={runtimeId => update({ runtimeId, ...(runtimeId === 'hermes' ? { permissions: hermesPermissions(bypassesHermesApprovals(draft.permissions)) } : {}) })} />
       )}
-      {draft.id && <p className="note small">{t.workspace.runtimeChangeHint}</p>}
+      {draft.id && !observe && <p className="note small">{t.workspace.runtimeChangeHint}</p>}
       {isHermes && (
         <div className="form-stack tight">
           <div className="form-grid">
@@ -317,10 +343,12 @@ export function WorkspaceForm({ t, agents, picker, draft, onChange, connections,
                 id={`${id}-profile`}
                 label={t.workspace.hermesProfile}
                 value={draft.hermesProfile}
+                aria-invalid={Boolean(errorFor('profile'))}
+                aria-describedby={errorFor('profile') ? `${id}-profile-error` : undefined}
                 options={profiles.map(profile => ({ value: profile, label: profile }))}
                 onChange={val => { touch('profile'); update({ hermesProfile: val }); }}
               />
-              {errorFor('profile') && <small className="field-error">{errorFor('profile')}</small>}
+              {errorFor('profile') && <small id={`${id}-profile-error`} className="field-error">{errorFor('profile')}</small>}
             </div>
             <div className="field">
               <ComboBox id={`${id}-model`} label={t.workspace.hermesModel} value={draft.hermesModel} options={modelOptions}
@@ -338,7 +366,7 @@ export function WorkspaceForm({ t, agents, picker, draft, onChange, connections,
         </div>
       )}
 
-      <div className="form-stack tight">
+      {!observe && <div className="form-stack tight">
         <h3 className="form-heading">{t.workspace.permissions}</h3>
         {isHermes ? (
           <>
@@ -369,9 +397,9 @@ export function WorkspaceForm({ t, agents, picker, draft, onChange, connections,
             </div>
           </>
         )}
-      </div>
+      </div>}
 
-      {showGate && (
+      {showGate && !observe && (
         <div className="form-stack tight workspace-gate" role="group" aria-labelledby={`${id}-gate-heading`}>
           <h3 className="form-heading" id={`${id}-gate-heading`}>{t.workspace.gate.heading}</h3>
           <p className="muted small" id={`${id}-gate-lead`}>{t.workspace.gate.lead}</p>
@@ -379,16 +407,16 @@ export function WorkspaceForm({ t, agents, picker, draft, onChange, connections,
             <div className="field">
               <label htmlFor={`${id}-gate`}>{t.workspace.gate.command}</label>
               <input id={`${id}-gate`} ref={gateInput} type="text" value={draft.gateCommand ?? ''} maxLength={4000} spellCheck={false} autoCapitalize="off" autoComplete="off"
-                placeholder={t.workspace.gate.commandPlaceholder} aria-invalid={Boolean(errorFor('gate'))} aria-describedby={`${id}-gate-lead ${id}-gate-detail`}
+                placeholder={t.workspace.gate.commandPlaceholder} aria-invalid={Boolean(errorFor('gate'))} aria-describedby={`${id}-gate-lead ${id}-gate-detail${errorFor('gate') ? ` ${id}-gate-error` : ''}`}
                 onChange={event => update({ gateCommand: event.target.value })} onBlur={() => touch('gate')} />
-              {errorFor('gate') && <small className="field-error">{errorFor('gate')}</small>}
+              {errorFor('gate') && <small id={`${id}-gate-error`} className="field-error">{errorFor('gate')}</small>}
             </div>
             <div className="field">
               <label htmlFor={`${id}-gate-timeout`}>{t.workspace.gate.timeout}</label>
-              <input id={`${id}-gate-timeout`} type="text" inputMode="numeric" value={draft.gateTimeout ?? ''} maxLength={4} autoComplete="off"
-                placeholder={t.workspace.gate.timeoutPlaceholder} aria-invalid={Boolean(errorFor('gateTimeout'))}
+              <input id={`${id}-gate-timeout`} type="number" inputMode="numeric" min={INTEGRATION_GATE_LIMITS.minTimeoutSeconds} max={INTEGRATION_GATE_LIMITS.maxTimeoutSeconds} step={1} value={draft.gateTimeout ?? ''} autoComplete="off"
+                placeholder={t.workspace.gate.timeoutPlaceholder} aria-invalid={Boolean(errorFor('gateTimeout'))} aria-describedby={errorFor('gateTimeout') ? `${id}-gate-timeout-error` : undefined}
                 onChange={event => update({ gateTimeout: event.target.value })} onBlur={() => touch('gateTimeout')} />
-              {errorFor('gateTimeout') && <small className="field-error">{errorFor('gateTimeout')}</small>}
+              {errorFor('gateTimeout') && <small id={`${id}-gate-timeout-error`} className="field-error">{errorFor('gateTimeout')}</small>}
             </div>
           </div>
           {gateSuggestion && gateSuggestion !== (draft.gateCommand ?? '').trim() && (

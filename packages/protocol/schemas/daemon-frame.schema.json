@@ -4307,6 +4307,540 @@
           ],
           "properties": {
             "action": {
+              "const": "observed.capture"
+            },
+            "input": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "scope",
+                "episodeId",
+                "sourceRevision",
+                "entries",
+                "coverage"
+              ],
+              "properties": {
+                "scope": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "profileId",
+                    "workspaceId",
+                    "sessionId",
+                    "sourceId",
+                    "nativeSessionId",
+                    "boundary"
+                  ],
+                  "properties": {
+                    "profileId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    "workspaceId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    "sessionId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    "sourceId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    "nativeSessionId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    "boundary": {
+                      "type": "string",
+                      "minLength": 64,
+                      "maxLength": 64
+                    }
+                  }
+                },
+                "episodeId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                },
+                "sourceRevision": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "entries": {
+                  "type": "array",
+                  "minItems": 1,
+                  "maxItems": 32,
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "id",
+                      "kind",
+                      "text"
+                    ],
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 200
+                      },
+                      "kind": {
+                        "type": "string",
+                        "enum": [
+                          "user",
+                          "assistant",
+                          "tool",
+                          "file",
+                          "status"
+                        ]
+                      },
+                      "text": {
+                        "type": "string",
+                        "minLength": 0,
+                        "maxLength": 8000
+                      },
+                      "at": {
+                        "type": "string",
+                        "minLength": 0,
+                        "maxLength": 80
+                      }
+                    }
+                  }
+                },
+                "coverage": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "mode",
+                    "omittedEntries",
+                    "truncated",
+                    "limits"
+                  ],
+                  "properties": {
+                    "mode": {
+                      "type": "string",
+                      "enum": [
+                        "partial",
+                        "unknown"
+                      ]
+                    },
+                    "omittedEntries": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "truncated": {
+                      "type": "boolean"
+                    },
+                    "limits": {
+                      "type": "array",
+                      "maxItems": 8,
+                      "items": {
+                        "type": "string",
+                        "minLength": 0,
+                        "maxLength": 500
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "action",
+            "input"
+          ],
+          "properties": {
+            "action": {
+              "const": "observed.search"
+            },
+            "input": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "scope",
+                "query"
+              ],
+              "properties": {
+                "scope": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "profileId",
+                    "workspaceId",
+                    "sessionId",
+                    "sourceId",
+                    "nativeSessionId",
+                    "boundary"
+                  ],
+                  "properties": {
+                    "profileId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    "workspaceId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    "sessionId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    "sourceId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    "nativeSessionId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    "boundary": {
+                      "type": "string",
+                      "minLength": 64,
+                      "maxLength": 64
+                    }
+                  }
+                },
+                "query": {
+                  "type": "string",
+                  "minLength": 0,
+                  "maxLength": 500
+                },
+                "limit": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 12
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "action",
+            "input"
+          ],
+          "properties": {
+            "action": {
+              "const": "observed.read"
+            },
+            "input": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "scope",
+                "episodeId",
+                "revision"
+              ],
+              "properties": {
+                "scope": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "profileId",
+                    "workspaceId",
+                    "sessionId",
+                    "sourceId",
+                    "nativeSessionId",
+                    "boundary"
+                  ],
+                  "properties": {
+                    "profileId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    "workspaceId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    "sessionId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    "sourceId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    "nativeSessionId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    "boundary": {
+                      "type": "string",
+                      "minLength": 64,
+                      "maxLength": 64
+                    }
+                  }
+                },
+                "episodeId": {
+                  "type": "string",
+                  "minLength": 64,
+                  "maxLength": 64
+                },
+                "revision": {
+                  "type": "string",
+                  "minLength": 64,
+                  "maxLength": 64
+                },
+                "offset": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "limit": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 32
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "action",
+            "input"
+          ],
+          "properties": {
+            "action": {
+              "const": "observed.revoke"
+            },
+            "input": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "scope"
+              ],
+              "properties": {
+                "scope": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "profileId",
+                    "workspaceId",
+                    "sessionId",
+                    "sourceId",
+                    "nativeSessionId",
+                    "boundary"
+                  ],
+                  "properties": {
+                    "profileId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    "workspaceId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    "sessionId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    "sourceId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    "nativeSessionId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    "boundary": {
+                      "type": "string",
+                      "minLength": 64,
+                      "maxLength": 64
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "action",
+            "input"
+          ],
+          "properties": {
+            "action": {
+              "const": "observed.jobBegin"
+            },
+            "input": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "scope",
+                "episodeId",
+                "revision",
+                "runId",
+                "promptSha256",
+                "policy",
+                "tools"
+              ],
+              "properties": {
+                "scope": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "profileId",
+                    "workspaceId",
+                    "sessionId",
+                    "sourceId",
+                    "nativeSessionId",
+                    "boundary"
+                  ],
+                  "properties": {
+                    "profileId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    "workspaceId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    "sessionId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    "sourceId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    "nativeSessionId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    "boundary": {
+                      "type": "string",
+                      "minLength": 64,
+                      "maxLength": 64
+                    }
+                  }
+                },
+                "episodeId": {
+                  "type": "string",
+                  "minLength": 64,
+                  "maxLength": 64
+                },
+                "revision": {
+                  "type": "string",
+                  "minLength": 64,
+                  "maxLength": 64
+                },
+                "runId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                },
+                "promptSha256": {
+                  "type": "string",
+                  "minLength": 64,
+                  "maxLength": 64
+                },
+                "policy": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "enabled",
+                    "skills",
+                    "notes"
+                  ],
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean"
+                    },
+                    "skills": {
+                      "type": "boolean"
+                    },
+                    "notes": {
+                      "type": "boolean"
+                    }
+                  }
+                },
+                "tools": {
+                  "type": "array",
+                  "maxItems": 16,
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "name",
+                      "description",
+                      "parameters"
+                    ],
+                    "properties": {
+                      "name": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 200
+                      },
+                      "description": {
+                        "type": "string",
+                        "minLength": 0,
+                        "maxLength": 4000
+                      },
+                      "parameters": {
+                        "description": "JSON data bounded to depth 16, 128 object properties, 256 array items, and 131072 serialized UTF-16 units.",
+                        "type": "object"
+                      }
+                    }
+                  }
+                },
+                "timeoutMs": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 45000
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "action",
+            "input"
+          ],
+          "properties": {
+            "action": {
               "const": "evidence.begin"
             },
             "input": {
@@ -5706,6 +6240,998 @@
     },
     "DaemonLearningProcessResult": {
       "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "action",
+            "episode",
+            "created"
+          ],
+          "properties": {
+            "action": {
+              "const": "observed.capture"
+            },
+            "episode": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "id",
+                "episodeId",
+                "scope",
+                "revision",
+                "sourceRevision",
+                "capturedAt",
+                "entries",
+                "trust",
+                "coverage"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 64,
+                  "maxLength": 64
+                },
+                "episodeId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                },
+                "scope": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "profileId",
+                    "workspaceId",
+                    "sessionId",
+                    "sourceId",
+                    "nativeSessionId",
+                    "boundary"
+                  ],
+                  "properties": {
+                    "profileId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    "workspaceId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    "sessionId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    "sourceId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    "nativeSessionId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    "boundary": {
+                      "type": "string",
+                      "minLength": 64,
+                      "maxLength": 64
+                    }
+                  }
+                },
+                "revision": {
+                  "type": "string",
+                  "minLength": 64,
+                  "maxLength": 64
+                },
+                "sourceRevision": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "capturedAt": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 80
+                },
+                "entries": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 32
+                },
+                "trust": {
+                  "const": "untrusted-observed"
+                },
+                "coverage": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "mode",
+                    "omittedEntries",
+                    "truncated",
+                    "limits"
+                  ],
+                  "properties": {
+                    "mode": {
+                      "type": "string",
+                      "enum": [
+                        "partial",
+                        "unknown"
+                      ]
+                    },
+                    "omittedEntries": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "truncated": {
+                      "type": "boolean"
+                    },
+                    "limits": {
+                      "type": "array",
+                      "maxItems": 8,
+                      "items": {
+                        "type": "string",
+                        "minLength": 0,
+                        "maxLength": 500
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "created": {
+              "type": "boolean"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "action",
+            "hits",
+            "omitted"
+          ],
+          "properties": {
+            "action": {
+              "const": "observed.search"
+            },
+            "hits": {
+              "type": "array",
+              "maxItems": 12,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "episode",
+                  "excerpt"
+                ],
+                "properties": {
+                  "episode": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "id",
+                      "episodeId",
+                      "scope",
+                      "revision",
+                      "sourceRevision",
+                      "capturedAt",
+                      "entries",
+                      "trust",
+                      "coverage"
+                    ],
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "minLength": 64,
+                        "maxLength": 64
+                      },
+                      "episodeId": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 200
+                      },
+                      "scope": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": [
+                          "profileId",
+                          "workspaceId",
+                          "sessionId",
+                          "sourceId",
+                          "nativeSessionId",
+                          "boundary"
+                        ],
+                        "properties": {
+                          "profileId": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 200
+                          },
+                          "workspaceId": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 200
+                          },
+                          "sessionId": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 200
+                          },
+                          "sourceId": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 200
+                          },
+                          "nativeSessionId": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 200
+                          },
+                          "boundary": {
+                            "type": "string",
+                            "minLength": 64,
+                            "maxLength": 64
+                          }
+                        }
+                      },
+                      "revision": {
+                        "type": "string",
+                        "minLength": 64,
+                        "maxLength": 64
+                      },
+                      "sourceRevision": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 512
+                      },
+                      "capturedAt": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 80
+                      },
+                      "entries": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 32
+                      },
+                      "trust": {
+                        "const": "untrusted-observed"
+                      },
+                      "coverage": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": [
+                          "mode",
+                          "omittedEntries",
+                          "truncated",
+                          "limits"
+                        ],
+                        "properties": {
+                          "mode": {
+                            "type": "string",
+                            "enum": [
+                              "partial",
+                              "unknown"
+                            ]
+                          },
+                          "omittedEntries": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          "truncated": {
+                            "type": "boolean"
+                          },
+                          "limits": {
+                            "type": "array",
+                            "maxItems": 8,
+                            "items": {
+                              "type": "string",
+                              "minLength": 0,
+                              "maxLength": 500
+                            }
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "excerpt": {
+                    "type": "string",
+                    "minLength": 0,
+                    "maxLength": 600
+                  }
+                }
+              }
+            },
+            "omitted": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "action",
+            "episode",
+            "entries",
+            "offset",
+            "total"
+          ],
+          "properties": {
+            "action": {
+              "const": "observed.read"
+            },
+            "episode": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "id",
+                "episodeId",
+                "scope",
+                "revision",
+                "sourceRevision",
+                "capturedAt",
+                "entries",
+                "trust",
+                "coverage"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 64,
+                  "maxLength": 64
+                },
+                "episodeId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                },
+                "scope": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "profileId",
+                    "workspaceId",
+                    "sessionId",
+                    "sourceId",
+                    "nativeSessionId",
+                    "boundary"
+                  ],
+                  "properties": {
+                    "profileId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    "workspaceId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    "sessionId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    "sourceId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    "nativeSessionId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    "boundary": {
+                      "type": "string",
+                      "minLength": 64,
+                      "maxLength": 64
+                    }
+                  }
+                },
+                "revision": {
+                  "type": "string",
+                  "minLength": 64,
+                  "maxLength": 64
+                },
+                "sourceRevision": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "capturedAt": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 80
+                },
+                "entries": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 32
+                },
+                "trust": {
+                  "const": "untrusted-observed"
+                },
+                "coverage": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "mode",
+                    "omittedEntries",
+                    "truncated",
+                    "limits"
+                  ],
+                  "properties": {
+                    "mode": {
+                      "type": "string",
+                      "enum": [
+                        "partial",
+                        "unknown"
+                      ]
+                    },
+                    "omittedEntries": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "truncated": {
+                      "type": "boolean"
+                    },
+                    "limits": {
+                      "type": "array",
+                      "maxItems": 8,
+                      "items": {
+                        "type": "string",
+                        "minLength": 0,
+                        "maxLength": 500
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "entries": {
+              "type": "array",
+              "maxItems": 32,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "id",
+                  "kind",
+                  "text"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "user",
+                      "assistant",
+                      "tool",
+                      "file",
+                      "status"
+                    ]
+                  },
+                  "text": {
+                    "type": "string",
+                    "minLength": 0,
+                    "maxLength": 2000
+                  },
+                  "at": {
+                    "type": "string",
+                    "minLength": 0,
+                    "maxLength": 80
+                  }
+                }
+              }
+            },
+            "offset": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "total": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 32
+            },
+            "nextOffset": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "action",
+            "removed"
+          ],
+          "properties": {
+            "action": {
+              "const": "observed.revoke"
+            },
+            "removed": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "action",
+            "job"
+          ],
+          "properties": {
+            "action": {
+              "const": "observed.jobBegin"
+            },
+            "job": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "jobId",
+                "status",
+                "evidence",
+                "provenance"
+              ],
+              "properties": {
+                "jobId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "running",
+                    "ready",
+                    "skipped",
+                    "failed",
+                    "cancelled",
+                    "completed"
+                  ]
+                },
+                "effect": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "kind",
+                        "effectId",
+                        "system",
+                        "messages",
+                        "tools"
+                      ],
+                      "properties": {
+                        "kind": {
+                          "const": "model"
+                        },
+                        "effectId": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 200
+                        },
+                        "system": {
+                          "type": "string",
+                          "minLength": 0,
+                          "maxLength": 4000
+                        },
+                        "messages": {
+                          "type": "array",
+                          "minItems": 1,
+                          "maxItems": 32,
+                          "items": {
+                            "oneOf": [
+                              {
+                                "type": "object",
+                                "additionalProperties": false,
+                                "required": [
+                                  "role",
+                                  "text"
+                                ],
+                                "properties": {
+                                  "role": {
+                                    "const": "user"
+                                  },
+                                  "text": {
+                                    "type": "string",
+                                    "minLength": 0,
+                                    "maxLength": 24000
+                                  }
+                                }
+                              },
+                              {
+                                "type": "object",
+                                "additionalProperties": false,
+                                "required": [
+                                  "role",
+                                  "text",
+                                  "toolCalls"
+                                ],
+                                "properties": {
+                                  "role": {
+                                    "const": "assistant"
+                                  },
+                                  "text": {
+                                    "type": "string",
+                                    "minLength": 0,
+                                    "maxLength": 16000
+                                  },
+                                  "toolCalls": {
+                                    "type": "array",
+                                    "maxItems": 16,
+                                    "items": {
+                                      "type": "object",
+                                      "additionalProperties": false,
+                                      "required": [
+                                        "id",
+                                        "name",
+                                        "input"
+                                      ],
+                                      "properties": {
+                                        "id": {
+                                          "type": "string",
+                                          "minLength": 1,
+                                          "maxLength": 200
+                                        },
+                                        "name": {
+                                          "type": "string",
+                                          "minLength": 1,
+                                          "maxLength": 200
+                                        },
+                                        "input": {
+                                          "description": "JSON data bounded to depth 16, 128 object properties, 256 array items, and 131072 serialized UTF-16 units.",
+                                          "type": "object"
+                                        },
+                                        "inputError": {
+                                          "type": "string",
+                                          "minLength": 0,
+                                          "maxLength": 2000
+                                        }
+                                      }
+                                    }
+                                  },
+                                  "native": {
+                                    "type": "object",
+                                    "additionalProperties": false,
+                                    "required": [
+                                      "api",
+                                      "content"
+                                    ],
+                                    "properties": {
+                                      "api": {
+                                        "type": "string",
+                                        "enum": [
+                                          "openai-chat",
+                                          "openai-responses",
+                                          "anthropic-messages"
+                                        ]
+                                      },
+                                      "content": {
+                                        "description": "JSON data bounded to depth 16, 128 object properties, 256 array items, and 131072 serialized UTF-16 units."
+                                      }
+                                    }
+                                  }
+                                }
+                              },
+                              {
+                                "type": "object",
+                                "additionalProperties": false,
+                                "required": [
+                                  "role",
+                                  "results"
+                                ],
+                                "properties": {
+                                  "role": {
+                                    "const": "tool"
+                                  },
+                                  "results": {
+                                    "type": "array",
+                                    "maxItems": 16,
+                                    "items": {
+                                      "type": "object",
+                                      "additionalProperties": false,
+                                      "required": [
+                                        "toolCallId",
+                                        "name",
+                                        "content",
+                                        "isError"
+                                      ],
+                                      "properties": {
+                                        "toolCallId": {
+                                          "type": "string",
+                                          "minLength": 1,
+                                          "maxLength": 200
+                                        },
+                                        "name": {
+                                          "type": "string",
+                                          "minLength": 1,
+                                          "maxLength": 200
+                                        },
+                                        "content": {
+                                          "type": "string",
+                                          "minLength": 0,
+                                          "maxLength": 2000
+                                        },
+                                        "isError": {
+                                          "type": "boolean"
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            ]
+                          }
+                        },
+                        "tools": {
+                          "type": "array",
+                          "minItems": 1,
+                          "maxItems": 17,
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": [
+                              "name",
+                              "description",
+                              "parameters"
+                            ],
+                            "properties": {
+                              "name": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 200
+                              },
+                              "description": {
+                                "type": "string",
+                                "minLength": 0,
+                                "maxLength": 4000
+                              },
+                              "parameters": {
+                                "description": "JSON data bounded to depth 16, 128 object properties, 256 array items, and 131072 serialized UTF-16 units.",
+                                "type": "object"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "kind",
+                        "effectId",
+                        "callId",
+                        "name",
+                        "input"
+                      ],
+                      "properties": {
+                        "kind": {
+                          "const": "read"
+                        },
+                        "effectId": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 200
+                        },
+                        "callId": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 200
+                        },
+                        "name": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 200
+                        },
+                        "input": {
+                          "description": "JSON data bounded to depth 16, 128 object properties, 256 array items, and 131072 serialized UTF-16 units.",
+                          "type": "object"
+                        }
+                      }
+                    }
+                  ]
+                },
+                "pendingEffectId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                },
+                "submission": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "title",
+                    "lesson",
+                    "evidenceIds"
+                  ],
+                  "properties": {
+                    "title": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    "lesson": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 8000
+                    },
+                    "evidenceIds": {
+                      "type": "array",
+                      "minItems": 1,
+                      "maxItems": 10,
+                      "uniqueItems": true,
+                      "items": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 200
+                      }
+                    },
+                    "skill": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "name",
+                        "description",
+                        "instructions"
+                      ],
+                      "properties": {
+                        "name": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 64
+                        },
+                        "description": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 500
+                        },
+                        "instructions": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 65536
+                        },
+                        "sourceUrls": {
+                          "type": "array",
+                          "maxItems": 8,
+                          "items": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 2048
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "evidence": {
+                  "type": "array",
+                  "maxItems": 10,
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "id",
+                      "name",
+                      "content"
+                    ],
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 200
+                      },
+                      "name": {
+                        "type": "string",
+                        "minLength": 0,
+                        "maxLength": 200
+                      },
+                      "content": {
+                        "type": "string",
+                        "minLength": 0,
+                        "maxLength": 2000
+                      }
+                    }
+                  }
+                },
+                "provenance": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "sessionId",
+                    "workspaceId",
+                    "promptSha256"
+                  ],
+                  "properties": {
+                    "sessionId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    "workspaceId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    "promptSha256": {
+                      "type": "string",
+                      "minLength": 64,
+                      "maxLength": 64
+                    },
+                    "profileId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    "runId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    }
+                  }
+                },
+                "contentSha256": {
+                  "type": "string",
+                  "minLength": 64,
+                  "maxLength": 64
+                },
+                "skillSha256": {
+                  "type": "string",
+                  "minLength": 64,
+                  "maxLength": 64
+                },
+                "reason": {
+                  "type": "string",
+                  "minLength": 0,
+                  "maxLength": 500
+                },
+                "usage": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "inputTokens": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "outputTokens": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "cachedInputTokens": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
         {
           "type": "object",
           "additionalProperties": false,
@@ -16223,6 +17749,9 @@
         "origin": {
           "$ref": "#/$defs/SkillOrigin"
         },
+        "marketplaceSource": {
+          "type": "boolean"
+        },
         "version": {
           "type": "string",
           "maxLength": 128,
@@ -16263,6 +17792,11 @@
         },
         "active": {
           "type": "boolean"
+        },
+        "activationApprovalId": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
         },
         "createdAt": {
           "$ref": "#/$defs/UtcTimestamp"

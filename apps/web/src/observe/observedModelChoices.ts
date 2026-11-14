@@ -1,4 +1,4 @@
-import { EFFORTS, RUNTIME_IDS } from '@extalia/core';
+import { EFFORTS, RUNTIME_IDS, type Effort } from '@extalia/core';
 import { isModelId, type AgentHostApi, type ModelChoices } from '@extalia/platform';
 
 export const OBSERVED_MODEL_CHOICES_POLL_MS = 10_000;
@@ -17,6 +17,18 @@ export function validateObservedModelChoices(value: ModelChoices): ModelChoices 
     || !Array.isArray(value.efforts) || value.efforts.length > EFFORTS.length || !value.efforts.every(effort => EFFORTS.includes(effort))
     || value.defaultModel !== undefined && !isModelId(value.defaultModel)
     || value.defaultEffort !== undefined && !EFFORTS.includes(value.defaultEffort)) throw new Error('Invalid source model choices');
+  const modelEffortsEntries: Array<[string, Effort[]]> = [];
+  if (value.modelEfforts !== undefined) {
+    if (!value.modelEfforts || typeof value.modelEfforts !== 'object' || Array.isArray(value.modelEfforts)) {
+      throw new Error('Invalid source model choices');
+    }
+    for (const [model, levels] of Object.entries(value.modelEfforts).slice(0, OBSERVED_MODEL_CHOICES_LIMIT)) {
+      if (!isModelId(model) || !Array.isArray(levels) || levels.length > EFFORTS.length || !levels.every(effort => EFFORTS.includes(effort))) {
+        throw new Error('Invalid source model choices');
+      }
+      modelEffortsEntries.push([model, [...new Set(levels)]]);
+    }
+  }
   const selection = value.observedSelection;
   if (selection && (typeof selection.canSetSettings !== 'boolean'
     || selection.model !== undefined && !isModelId(selection.model)
@@ -26,6 +38,7 @@ export function validateObservedModelChoices(value: ModelChoices): ModelChoices 
     || selection.uncertain !== undefined && typeof selection.uncertain !== 'boolean'
     || selection.canSetSettings && (!selection.connectionId || selection.settingsRevision === undefined || selection.uncertain))) throw new Error('Invalid observed settings');
   return { runtime: value.runtime, models: [...new Set(value.models)], efforts: [...new Set(value.efforts)],
+    ...(modelEffortsEntries.length ? { modelEfforts: Object.fromEntries(modelEffortsEntries) } : {}),
     ...(selection ? { observedSelection: { canSetSettings: selection.canSetSettings,
       ...(selection.model ? { model: selection.model } : {}), ...(selection.effort ? { effort: selection.effort } : {}),
       ...(selection.connectionId ? { connectionId: selection.connectionId } : {}),

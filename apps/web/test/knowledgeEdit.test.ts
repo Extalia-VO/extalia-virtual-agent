@@ -213,6 +213,26 @@ function editorProps(patch: Partial<NoteEditorProps> = {}): NoteEditorProps {
 }
 
 describe('Note editor views', () => {
+  it('freezes the submitted text and ignores Escape while a save is pending', () => {
+    const props = editorProps({ saving: true }), view = NoteEditorView(props);
+    expect(elements(view).find(element => element.type === 'textarea')?.props.readOnly).toBe(true);
+    expect(byText(view, e.cancel)?.props.disabled).toBe(true);
+    (view.props as { onKeyDown(event: unknown): void }).onKeyDown({ key: 'Escape', ctrlKey: false, metaKey: false, altKey: false, preventDefault: vi.fn(), stopPropagation: vi.fn() });
+    expect(props.onCancel).not.toHaveBeenCalled(); expect(props.onDiscard).not.toHaveBeenCalled();
+  });
+
+  it('retains a copyable draft and blocks Save and its keyboard shortcut when the vault binding changed', () => {
+    const props = editorProps({ blockedReason: t.knowledgeContext.changed });
+    const view = NoteEditorView(props), markup = renderToStaticMarkup(view);
+    expect(elements(view).find(element => element.type === 'textarea')?.props.readOnly).toBe(true);
+    expect(markup).toContain('More [[Caching]]');
+    expect(markup).toContain(t.knowledgeContext.changed);
+    expect(byText(view, e.save)?.props.disabled).toBe(true);
+    expect(byText(view, e.cancel)?.props.disabled).toBe(false);
+    (view.props as { onKeyDown(event: unknown): void }).onKeyDown({ key: 's', ctrlKey: true, metaKey: false, altKey: false, preventDefault: vi.fn(), stopPropagation: vi.fn() });
+    expect(props.onSave).not.toHaveBeenCalled();
+  });
+
   it('shows the managed chip, the unsaved badge, preview and save/cancel; Ctrl+S saves and Esc asks first', () => {
     const props = editorProps();
     const markup = renderToStaticMarkup(createElement(NoteEditorView, props));

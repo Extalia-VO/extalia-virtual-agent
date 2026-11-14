@@ -67,7 +67,16 @@ impl TempDir {
                 NEXT.fetch_add(1, Ordering::Relaxed)
             ));
             match fs::create_dir(&dir) {
-                Ok(()) => return Self(dir, isolation),
+                Ok(()) => {
+                    drop(
+                        extalia_core::skills::storage::initialize(
+                            &dir.join("data"),
+                            &ProfileId::parse("default").unwrap(),
+                        )
+                        .unwrap(),
+                    );
+                    return Self(dir, isolation);
+                }
                 Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
                 Err(error) => panic!("cannot create a temporary directory: {error}"),
             }
@@ -80,12 +89,9 @@ impl TempDir {
 
     /// Write a package into `profile`'s import inbox.
     fn inbox_package(&self, profile: &str, name: &str, files: &[(&str, &str)]) -> PathBuf {
-        let root = self
-            .data()
-            .join("profiles")
-            .join(profile)
-            .join("skill-imports")
-            .join(name);
+        let root =
+            extalia_core::skills::storage::inbox(&self.data(), &ProfileId::parse(profile).unwrap())
+                .join(name);
         write_files(&root, files);
         root
     }
@@ -435,7 +441,11 @@ fn import_reads_only_inside_the_inbox_and_refuses_the_builtin_origin() {
     {
         let outside = dir.0.join("outside");
         write_files(&outside, &[("SKILL.md", SKILL_MD)]);
-        let inbox = dir.data().join("profiles/default/skill-imports");
+        let inbox = dir.data().join(if cfg!(unix) {
+            "skills/imports"
+        } else {
+            "profiles/default/skill-imports"
+        });
         std::os::unix::fs::symlink(&outside, inbox.join("linked")).unwrap();
         fs::create_dir_all(inbox.join("nested")).unwrap();
         std::os::unix::fs::symlink(&dir.0, inbox.join("nested/up")).unwrap();
@@ -577,6 +587,16 @@ fn full_flow_approve_activate_read_rollback_revoke() {
         json!({ "revisionId": first, "approvalId": first_approval }),
     )
     .unwrap();
+    let active_details = op(
+        &mut session,
+        "skill.inspect",
+        json!({ "revisionId": first }),
+    )
+    .unwrap();
+    assert_eq!(
+        active_details["revision"]["activationApprovalId"],
+        first_approval
+    );
     assert_eq!(
         (
             activation["packageId"].clone(),
@@ -1256,7 +1276,11 @@ fn builtin_registrations_survive_a_restart_and_tampering_is_detected() {
 
     // Altered while no daemon ran: detected on start, recorded, never served.
     let object = data
-        .join("profiles/default/skills/objects")
+        .join(if cfg!(unix) {
+            "skills/objects"
+        } else {
+            "profiles/default/skills/objects"
+        })
         .join(&builtin[4..]);
     make_writable(&object);
     fs::write(object.join("SKILL.md"), "evil").unwrap();
@@ -1557,5 +1581,24 @@ fn market_source_provenance_is_durable_and_conflicts_are_rejected_over_wire() {
     assert_eq!(details["sources"][0]["sourceRef"], first);
     assert_eq!(details["sources"][1]["sourceRef"], second);
     assert_eq!(details["revision"]["active"], false);
+    assert_eq!(details["revision"]["marketplaceSource"], true);
+    let list = op(&mut session, "skill.list", json!({})).unwrap();
+    let summary = list["revisions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|row| row["revisionId"] == imported["revisionId"])
+        .unwrap();
+    assert_eq!(summary["marketplaceSource"], true);
+    assert!(summary.get("sourceRef").is_none());
+    assert!(summary.get("sources").is_none());
+    let response =
+        json!({"schemaVersion":1,"kind":"response","requestId":ID,"op":"skill.list","result":list});
+    assert!(wire::parse_frame(&response).is_ok());
+    for invalid in [Value::Null, json!(0), json!("true"), json!([]), json!({})] {
+        let mut bad = response.clone();
+        bad["result"]["revisions"][0]["marketplaceSource"] = invalid;
+        assert!(wire::parse_frame(&bad).is_err());
+    }
     close(session).close().unwrap();
 }

@@ -54,7 +54,8 @@ describe('Knowledge support detection', () => {
       navigationGroups({ agents: true, workflow, canChat, knowledge }).flatMap(group => group.section === 'library' ? group.pages : []);
     expect(pages(true)).toEqual(['knowledge', 'skills']);
     expect(pages(false)).toContain('knowledge');
-    expect(pages(true, false, 'observe')).toEqual(['knowledge', 'skills']);
+    expect(pages(true, false, 'observe')).toEqual([]);
+    expect(pages(true, true, 'observe')).toEqual([]);
     expect(navigationGroups({ agents: false, workflow: 'managed', canChat: false, knowledge: true }).flatMap(group => group.pages)).not.toContain('knowledge');
   });
 });

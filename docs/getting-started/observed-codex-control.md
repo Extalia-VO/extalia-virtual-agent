@@ -187,14 +187,23 @@ attention list without changing an asynchronously working agent to Waiting.
 
 Codex asynchronous questions (`request_user_input_async`) are metadata on async
 agent messages. Extalia reads them through the existing watched transcript path.
-When the source call identity is verified and the original profile's queue is
-available, selecting an option or entering a custom answer sends a correlated
-user message to that exact conversation through the public Codex queue. The
-first explicit answer enables only that exact queue association, just like a
-normal prompt. No source application configuration or permission policy changes.
-A queued receipt confirms handoff, not that Codex consumed the answer. An exact
-reply later observed in Codex removes the question, including replies entered in
-Codex itself. Identity-less legacy question mirrors remain visible read-only without raising pending-input alerts.
+When the source call identity is verified, Extalia prefers an already-connected,
+verified attachment to that original thread. Active work receives the answer
+through **Steer**; an idle original thread receives it directly through its
+existing native connection. Blocking native questions keep their own callback.
+The card shows which delivery route is available before you send.
+
+If only the public Codex queue is available, the answer enters that exact
+conversation's queue. Its status explicitly says reading is not confirmed and
+may wait until the active turn finishes. You can use **Steer** in Codex for an
+already-queued answer. Do not resend it from Extalia. A failed or uncertain native
+submission is never automatically repeated through the queue.
+
+No source application configuration or permission policy changes. Protocol
+question IDs remain internal transport metadata so answers can be correlated;
+Extalia displays and copies clean question/answer text. An exact reply later
+observed in Codex removes the question, including replies entered in Codex itself.
+Identity-less legacy question mirrors remain visible read-only without raising pending-input alerts.
 
 Blocking native input requests retain the original-server callback described
 below. Answers are never selected or submitted automatically. Source changes,

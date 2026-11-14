@@ -3,7 +3,7 @@ import type { AnyTool, ModelProvider, ToolOutcome, ToolResultEntry, TurnResult }
 import type { EventBody, Usage } from '@extalia/protocol';
 import type { SkillProposalInput, SkillProposalProvenance, SkillProposalResult } from './skillLearning.js';
 import type { LearningNoteRecord } from './learningNotes.js';
-import type { RustLearningInputs, RustLearningJob, RustLearningPort } from './rustLearning.js';
+import type { ObservedMemoryScope, RustLearningInputs, RustLearningJob, RustLearningPort } from './rustLearning.js';
 
 export interface AutomaticLearningPolicy { enabled: boolean; skills: boolean; notes: boolean }
 /** Kept as an injection contract; production admissions are always sent to Rust. */
@@ -38,6 +38,10 @@ export interface AutomaticLearningOptions {
   onWorkerSettled?(agentId: string): void;
   timeoutMs?: number;
 }
+export type ObservedAutomaticLearningOptions = Omit<AutomaticLearningOptions, 'result' | 'currentTurnEvidence'> & {
+  /** A Rust-stored, attributed episode; observed reports never masquerade as successful Native tools. */
+  observed: { scope: ObservedMemoryScope; episodeId: string; revision: string };
+};
 
 /** General workspace file/search/web/memory tools never enter the curator. Rust enforces its own allowlist and read count. */
 export function automaticLearningTools(tools: readonly AnyTool[]): AnyTool[] {
@@ -61,9 +65,17 @@ function evidenceChunkEnd(content: string, offset: number): number {
 }
 
 /** Rust owns analysis state and all deterministic processing. The host only admits/drains effects and projects activity. */
-export async function runAutomaticLearning(options: AutomaticLearningOptions): Promise<AutomaticLearningResult> {
+export function runAutomaticLearning(options: AutomaticLearningOptions): Promise<AutomaticLearningResult> {
+  return runLearning(options);
+}
+export function runObservedAutomaticLearning(options: ObservedAutomaticLearningOptions): Promise<AutomaticLearningResult> {
+  return runLearning(options);
+}
+async function runLearning(options: AutomaticLearningOptions | ObservedAutomaticLearningOptions): Promise<AutomaticLearningResult> {
   let result: AutomaticLearningResult = { outcome: 'skipped', skill: { status: 'skipped' }, note: { status: 'skipped' } };
-  if (!options.policy.enabled || (!options.policy.skills && !options.policy.notes) || !hasAutomaticLearningEvidence(options.result, options.currentTurnEvidence)) return result;
+  const observed = 'observed' in options;
+  if (!options.policy.enabled || (!options.policy.skills && !options.policy.notes)
+    || !observed && !hasAutomaticLearningEvidence(options.result, options.currentTurnEvidence)) return result;
   if (options.signal.aborted) return { ...result, outcome: 'cancelled', reason: 'The source invocation was cancelled.' };
   const backend = options.backend;
   if (!backend) return { ...result, outcome: 'failed', reason: 'The Rust learning backend is unavailable.' };
@@ -96,35 +108,44 @@ export async function runAutomaticLearning(options: AutomaticLearningOptions): P
   try {
     await assertActive();
     const tools = automaticLearningTools(options.tools);
-    const policy = { ...options.policy, skills: options.policy.skills && Boolean(options.proposeSkill), notes: options.policy.notes && Boolean(options.writeNote) };
+    const policy = { enabled: options.policy.enabled, skills: options.policy.skills && Boolean(options.proposeSkill), notes: options.policy.notes && Boolean(options.writeNote) };
     // Abort propagation starts with admission, including time waiting for begin's acknowledgement.
     // Rust independently owns and checks the authoritative job deadline.
     timer = setTimeout(requestCancellation, Math.min(45_000, options.timeoutMs ?? 35_000));
-    intakeId = (await backend.process('evidence.begin', {})).intakeId;
-    evidence: for (const entry of options.currentTurnEvidence) {
-      let offset = 0;
-      do {
-        if (controller.signal.aborted) throw new Error('Learning evidence intake cancelled.');
-        const end = evidenceChunkEnd(entry.content, offset);
-        const reply = await backend.process('evidence.append', { intakeId, toolCallId: entry.toolCallId, name: entry.name,
-          isError: entry.isError, chunk: entry.content.slice(offset, end), final: end === entry.content.length });
-        if (reply.complete) break evidence;
-        offset = end;
-      } while (offset < entry.content.length);
+    if (observed) {
+      await assertActive();
+      job = (await backend.process('observed.jobBegin', {
+        ...options.observed, runId: options.runId, promptSha256: options.promptSha256, policy,
+        tools: tools.map(({ name, description, parameters }) => ({ name, description, parameters: { ...parameters } })),
+        ...(options.timeoutMs !== undefined ? { timeoutMs: options.timeoutMs } : {}),
+      })).job;
+    } else {
+      intakeId = (await backend.process('evidence.begin', {})).intakeId;
+      evidence: for (const entry of options.currentTurnEvidence) {
+        let offset = 0;
+        do {
+          if (controller.signal.aborted) throw new Error('Learning evidence intake cancelled.');
+          const end = evidenceChunkEnd(entry.content, offset);
+          const reply = await backend.process('evidence.append', { intakeId, toolCallId: entry.toolCallId, name: entry.name,
+            isError: entry.isError, chunk: entry.content.slice(offset, end), final: end === entry.content.length });
+          if (reply.complete) break evidence;
+          offset = end;
+        } while (offset < entry.content.length);
+      }
+      await assertActive();
+      job = (await backend.process('job.begin', {
+        profileId: options.profileId, revision: options.revision, workspaceId: options.workspaceId, sessionId: options.sessionId,
+        runId: options.runId, promptSha256: options.promptSha256, policy, intakeId,
+        tools: tools.map(({ name, description, parameters }) => ({ name, description, parameters })),
+        ...(options.timeoutMs !== undefined ? { timeoutMs: options.timeoutMs } : {}),
+      })).job;
+      intakeId = undefined; // The admitted job consumed this connection-bound intake.
     }
-    await assertActive();
-    job = (await backend.process('job.begin', {
-      profileId: options.profileId, revision: options.revision, workspaceId: options.workspaceId, sessionId: options.sessionId,
-      runId: options.runId, promptSha256: options.promptSha256, policy, intakeId,
-      tools: tools.map(({ name, description, parameters }) => ({ name, description, parameters })),
-      ...(options.timeoutMs !== undefined ? { timeoutMs: options.timeoutMs } : {}),
-    })).job;
-    intakeId = undefined; // The admitted job consumed this connection-bound intake.
     if (controller.signal.aborted) requestCancellation();
     result.agentId = `learning-${randomUUID()}`;
     options.onWorkerStarted?.(result.agentId);
     started = true;
-    await emit({ type: 'subagent.spawned', subagentId: result.agentId, role: 'Skills curator', label: 'Post-task learning' });
+    await emit({ type: 'subagent.spawned', subagentId: result.agentId, role: 'Skills curator', label: observed ? 'Observed work review' : 'Post-task learning' });
     await emit({ type: 'subagent.state', subagentId: result.agentId, state: 'working', summary: 'Reviewing completed task evidence' });
     await emit({ type: 'agent.state', state: 'working', activity: 'knowledge', summary: 'Reviewing completed task evidence' });
     while (job.status === 'running' && job.effect) {

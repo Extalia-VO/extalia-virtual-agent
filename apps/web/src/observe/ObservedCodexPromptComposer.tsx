@@ -9,6 +9,7 @@ import { Select } from '../ui/Select';
 import { attachmentKind, formatBytes, planAttachments, uploadAttachments, type AttachmentHostApi, type PendingAttachment } from '../chat/attachments';
 import { choiceFromValue, choiceValue, effortSelectOptions, modelSelectOptions } from '../chat/composerOptions';
 import { PromptQueueContent } from '../chat/PromptQueueControls';
+import type { PromptQueueView } from '../chat/promptQueueModel';
 import { usePromptQueue } from '../chat/usePromptQueue';
 import { useComposerDraft } from '../chat/useComposerDraft';
 import { PromptDeliveryStatus } from '../chat/PromptDeliveryStatus';
@@ -25,7 +26,8 @@ export interface ObservedCodexPromptComposerProps { t: Messages; agents: AgentHo
 export function ObservedCodexPromptComposer(props: ObservedCodexPromptComposerProps) {
   if (props.session.control !== 'observed' || !supportsObservedPromptQueue(props.session.observation?.sourceId)) return null;
   const key = `${props.session.id}:${props.session.observation.sourceId}:${props.session.observation.nativeSessionId}`;
-  return <>{props.showNativeQueue !== false && props.session.observation.sourceId === 'codex' && <ObservedCodexNativeQueue key={`native:${key}`} {...props} />}
+  const supportsNativeQueue = props.session.observation.sourceId === 'codex' || props.session.observation.sourceId === 'antigravity';
+  return <>{props.showNativeQueue !== false && supportsNativeQueue && <ObservedCodexNativeQueue key={`native:${key}`} {...props} />}
     {props.agents.promptQueueStatus && props.agents.changePromptQueue
       ? <QueuedPromptSession key={key} {...props} /> : <PromptSession key={key} {...props} />}
     <PromptSuggestions t={props.t} agents={props.agents} session={props.session} disabled={props.disabled} />
@@ -68,9 +70,13 @@ function QueuedPromptSession({ t, agents, session, disabled }: ObservedCodexProm
     previousSource.current = { control: choiceControl, signal: sourceSignal };
     if (previous.control === choiceControl && previous.signal !== sourceSignal) choiceControl.invalidateSource();
   }, [choiceControl, sourceSignal]);
+  const isAntigravity = sourceId === 'antigravity';
   const sourceModel = activeChoices?.observedSelection?.model ?? session.model;
   const sourceEffort = activeChoices?.observedSelection ? activeChoices.observedSelection.effort : session.effort;
-  const canSetSourceSettings = activeChoices?.observedSelection?.canSetSettings === true && typeof agents.updateObservedCodexSettings === 'function';
+  const canSetSourceSettings = activeChoices?.observedSelection?.canSetSettings === true
+    && (isAntigravity
+      ? typeof agents.updateObservedAntigravitySettings === 'function'
+      : typeof agents.updateObservedCodexSettings === 'function');
   const pending = queue.view.status?.items.some(item => item.state === 'pending');
   const busySession = session.running || !!session.pendingApprovalId || pending;
   const locked = !!disabled || queue.view.disabled;
@@ -133,22 +139,40 @@ function QueuedPromptSession({ t, agents, session, disabled }: ObservedCodexProm
     }) : [];
   }, [activeChoices, sourceModel, t.composer]);
   const effortOptions = useMemo(() => {
-    const efforts = activeChoices?.efforts ?? (sourceEffort ? [sourceEffort] : []);
+    const selectedModel = sourceModel ?? activeChoices?.defaultModel;
+    const perModelEfforts = selectedModel ? activeChoices?.modelEfforts?.[selectedModel] : undefined;
+    const efforts = perModelEfforts ?? activeChoices?.efforts ?? (sourceEffort ? [sourceEffort] : []);
+    if (perModelEfforts && !perModelEfforts.length) return [];
     if (!sourceEffort && !activeChoices?.defaultEffort && !canSetSourceSettings) return [];
+    if (!efforts.length && !sourceEffort) return [];
     return effortSelectOptions({ efforts: sourceEffort && !efforts.includes(sourceEffort) ? [...efforts, sourceEffort] : efforts,
       defaultEffort: activeChoices?.defaultEffort }, {
       effort: (value: Effort) => t.composer.effortLabel[value], defaultLabel: label => t.composer.defaultEffort(label),
     });
-  }, [activeChoices, sourceEffort, canSetSourceSettings, t.composer]);
+  }, [activeChoices, sourceModel, sourceEffort, canSetSourceSettings, t.composer]);
 
   async function changeSourceSettings(change: { model?: string; effort?: Effort }) {
     const selection = activeChoices?.observedSelection;
-    if (!canSetSourceSettings || !selection?.connectionId || selection.settingsRevision === undefined || settingsBusy || locked || sending) return;
+    if (!canSetSourceSettings || settingsBusy || locked || sending) return;
+    if (!isAntigravity && (!selection?.connectionId || selection.settingsRevision === undefined)) return;
     setSettingsBusy(true); setSettingsNotice(undefined);
     try {
-      const result = await agents.updateObservedCodexSettings!(session.id, { connectionId: selection.connectionId,
-        settingsRevision: selection.settingsRevision, ...change });
-      setSettingsNotice(result.settingsDelivery === 'unknown' ? 'unknown' : 'updated');
+      if (isAntigravity) {
+        const nextModel = change.model ?? sourceModel;
+        const supportedForNext = nextModel ? activeChoices?.modelEfforts?.[nextModel] : undefined;
+        const nextEffort = change.effort ?? (change.model && supportedForNext
+          ? (sourceEffort && supportedForNext.includes(sourceEffort) ? sourceEffort : supportedForNext[0])
+          : sourceEffort);
+        await agents.updateObservedAntigravitySettings!(session.id, {
+          ...(nextModel ? { model: nextModel } : {}),
+          ...(nextEffort && (!supportedForNext || supportedForNext.includes(nextEffort)) ? { effort: nextEffort } : {}),
+        });
+        setSettingsNotice('updated');
+      } else {
+        const result = await agents.updateObservedCodexSettings!(session.id, { connectionId: selection!.connectionId!,
+          settingsRevision: selection!.settingsRevision!, ...change });
+        setSettingsNotice(result.settingsDelivery === 'unknown' ? 'unknown' : 'updated');
+      }
     } catch { setSettingsNotice('failed'); }
     finally {
       await choiceControl.invalidateSource();
@@ -230,7 +254,6 @@ function QueuedPromptSession({ t, agents, session, disabled }: ObservedCodexProm
   }
 
   const originLabel = observedSource(session.observation?.sourceId).label || 'Codex';
-  const withSource = (message: string) => originLabel !== 'Codex' ? message.replaceAll('Codex', originLabel) : message;
   const isCodex = session.observation?.sourceId === 'codex';
   const inputLabel = isCodex ? t.observedCodexPrompt.label : t.observedControl.message;
   const inputPlaceholder = busySession ? t.promptQueue.placeholder : (isCodex ? t.observedCodexPrompt.placeholder : t.observedControl.placeholder);
@@ -307,16 +330,28 @@ function QueuedPromptSession({ t, agents, session, disabled }: ObservedCodexProm
           </button>
         </div>
       </div>
-      {(locked || queue.view.phase !== 'ready' || !queue.view.status?.supported || draft.length > CODEX_PROMPT_LIMIT) && <p role="status" className="observed-codex-prompt-hint">
-        {locked ? t.observedCodexPrompt.paused : draft.length > CODEX_PROMPT_LIMIT ? withSource(t.observedCodexPrompt.tooLong)
-          : queue.view.phase === 'loading' ? t.promptQueue.loading : queue.view.phase === 'error' ? t.promptQueue.failed : t.promptQueue.unsupported}
-      </p>}
-      {(queue.view.phase === 'error' || queue.view.notice) && queue.view.delivery !== 'unknown' && <p role="status">{queue.view.notice === 'stale' ? t.promptQueue.stale : t.promptQueue.failed}
-        <button type="button" disabled={queue.view.busy} onClick={() => { void queue.control.refresh(); }}>{t.promptQueue.refresh}</button>
-      </p>}
+      <ObservedQueuedPromptFeedback t={t} view={queue.view} locked={locked} draftLength={draft.length} sourceLabel={originLabel}
+        onRefresh={() => { void queue.control.refresh(); }} />
     </form>
   </>;
 }
+/** The actionable retry row owns queue failures; independent input hints remain visible. */
+export function ObservedQueuedPromptFeedback({ t, view, locked, draftLength, sourceLabel = 'Codex', onRefresh }: {
+  t: Messages; view: Pick<PromptQueueView, 'phase' | 'status' | 'notice' | 'delivery' | 'busy'>;
+  locked: boolean; draftLength: number; sourceLabel?: string; onRefresh(): void;
+}) {
+  const retry = (view.phase === 'error' || view.notice) && view.delivery !== 'unknown';
+  const hint = locked ? t.observedCodexPrompt.paused : draftLength > CODEX_PROMPT_LIMIT ? t.observedCodexPrompt.tooLong.replaceAll('Codex', sourceLabel)
+    : view.phase === 'loading' ? t.promptQueue.loading : view.phase === 'error' ? retry ? undefined : t.promptQueue.failed
+      : view.phase !== 'ready' || !view.status?.supported ? t.promptQueue.unsupported : undefined;
+  return <>
+    {hint && <p role="status" className="observed-codex-prompt-hint">{hint}</p>}
+    {retry && <p role="status">{view.notice === 'stale' ? t.promptQueue.stale : t.promptQueue.failed}
+      <button type="button" disabled={view.busy} onClick={onRefresh}>{t.promptQueue.refresh}</button>
+    </p>}
+  </>;
+}
+
 function PromptSession({ t, agents, session, disabled }: ObservedCodexPromptComposerProps) {
   const draft = useComposerDraft(agents, session);
   const nativeSessionId = session.observation?.nativeSessionId;

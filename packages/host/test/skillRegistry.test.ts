@@ -1,3 +1,4 @@
+import { skillStoragePaths } from '../src/skillStorage.js';
 import { createAgentHost } from '../src/service.js';
 import { chmod, lstat, mkdir, readdir, symlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -78,7 +79,7 @@ async function hostFixture(env: Record<string, string>) {
   const session = await host.createSession(workspace.id);
   const catalog = () => String(recorded.bodies.at(-1)!.messages[0]!.content).match(/<skill-catalog>\n([\s\S]*?)\n<\/skill-catalog>/)![1]!;
   const turn = async () => { await host.sendPrompt(session.id, 'Review the current code'); await untilIdle(runtime); };
-  const close = async () => { await runtime.close(); await unlockStore(path.join(data, 'profiles')); };
+  const close = async () => { await runtime.close(); await unlockStore(data); };
   return { dir, data, project, runtime, host, workspace, catalog, turn, log, recorded, close };
 }
 
@@ -149,7 +150,7 @@ describe.skipIf(!HAS_DAEMON || process.platform === 'win32')('skill registry aga
       expect(imported).toMatchObject({ packageId: 'release-notes', state: 'quarantined', stateReason: 'scanner-unavailable', created: true });
       expect(imported.revisionId).toMatch(/^skr_[0-9a-f]{64}$/);
       // The inbox copy is gone; only the daemon's private object remains.
-      expect(await readdir(path.join(data, 'profiles', 'default', 'skill-imports'))).toEqual([]);
+      expect(await readdir(skillStoragePaths(data).imports)).toEqual([]);
       const listed = imported.report.revisions;
       expect(listed).toHaveLength(1);
       const revision = listed[0]!;
@@ -250,14 +251,14 @@ describe.skipIf(!HAS_DAEMON || process.platform === 'win32')('Rust package stagi
     const source = await writePackage(base, 'tools', { 'scripts/run.sh': '#!/bin/sh\necho hi\n' });
     if (posix) await chmod(path.join(source, 'scripts/run.sh'), 0o700);
     const stage = await backend.process('skill.stageFolder', { root: source });
-    const target = path.join(data, 'profiles', 'default', 'skill-imports', stage.path);
+    const target = path.join(skillStoragePaths(data).imports, stage.path);
     expect((await readdir(target)).sort()).toEqual(['SKILL.md', 'scripts']);
     if (posix) expect((await lstat(path.join(target, 'scripts/run.sh'))).mode & 0o111).not.toBe(0);
     await backend.process('skill.cleanup', { stageId: stage.stageId });
     const big = await writePackage(base, 'big', { 'data.md': 'x'.repeat(1024 * 1024 + 1) });
     await expect(backend.process('skill.stageFolder', { root: big })).rejects.toThrow();
     await expect(backend.process('skill.stageFolder', { root: path.join(base, 'missing') })).rejects.toThrow();
-    expect(await readdir(path.join(data, 'profiles', 'default', 'skill-imports'))).toEqual([]);
+    expect(await readdir(skillStoragePaths(data).imports)).toEqual([]);
   });
 });
 

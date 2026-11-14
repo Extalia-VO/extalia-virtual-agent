@@ -24,3 +24,18 @@
 .handover-confirm input { flex: none; margin-top: 3px; }
 .session-handover-dialog footer { justify-content: flex-end; flex-wrap: wrap; gap: 10px; }
 @media (max-width: 600px) { .session-handover-dialog { padding: 16px; width: calc(100vw - 20px); max-height: calc(100dvh - 20px); } .session-handover-header { top: -16px; } .handover-section { padding: 12px; } .handover-target-fields, .handover-note-fields { grid-template-columns: minmax(0, 1fr); } }
+
+.handover-simple-destination { display: grid; gap: 14px; margin: 20px 0; min-width: 0; }
+.handover-harness-picker { min-width: 0; margin: 0; padding: 0; border: 0; }
+.handover-harness-picker legend { margin-bottom: 10px; font-weight: 600; }
+.handover-harness-picker .handover-harness-grid { grid-template-columns: repeat(auto-fit, minmax(125px, 1fr)); }
+.handover-harness-card { min-width: 0; min-height: 88px; gap: 12px; }
+.handover-harness-card .provider-card-head { display: flex; align-items: center; justify-content: space-between; min-height: 24px; }
+.handover-harness-card .preset-name { overflow-wrap: anywhere; }
+.handover-conversation-choice { display: grid; gap: 8px; min-width: 0; }
+.handover-conversation-choice p { margin: 0; }
+.handover-advanced-toggle { justify-self: start; display: inline-flex; align-items: center; gap: 6px; }
+@media (max-width: 600px) { .handover-harness-picker .handover-harness-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+.session-handover-dialog.handover-simple-dialog { width: min(780px, calc(100vw - 32px)); }
+@media (max-width: 600px) { .session-handover-dialog.handover-simple-dialog { width: calc(100vw - 20px); } }

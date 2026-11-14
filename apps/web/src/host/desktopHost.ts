@@ -9,6 +9,7 @@ export function desktopAgentHost(agents: DesktopHostApi['agents']): AgentHostApi
       catch (error) { throw new Error(errorMessage(error), { cause: error }); }
     },
     listener => agents.onEvent(listener),
+    true,
   );
 }
 

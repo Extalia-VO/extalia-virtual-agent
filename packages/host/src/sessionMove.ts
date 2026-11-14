@@ -48,3 +48,17 @@ export class SessionMoveReviews {
   }
   consume(reviewId: string): void { this.reviews.delete(reviewId); }
 }
+
+/** Reorder only existing own grants; never use run-owned roots for a session choice. */
+export function sessionProjectWorkspace(workspace: Workspace, record: Pick<SessionRecord, 'runtime' | 'projectLocation'>): Workspace {
+  if (record.runtime || record.projectLocation === undefined) return workspace;
+  const roots = [workspace.projectLocation, ...(workspace.additionalProjectLocations ?? [])].filter((root): root is string => typeof root === 'string' && !!root);
+  if (typeof record.projectLocation !== 'string' || !roots.includes(record.projectLocation)) {
+    throw new Error('This session’s selected project folder is no longer registered. Choose an available folder in its workspace.');
+  }
+  return { ...workspace, projectLocation: record.projectLocation, additionalProjectLocations: roots.filter(root => root !== record.projectLocation) };
+}
+
+export function sessionProjectWorkspaces(workspaces: readonly Workspace[], record: SessionRecord): Workspace[] {
+  return structuredClone(workspaces.map(workspace => workspace.id === record.workspaceId ? sessionProjectWorkspace(workspace, record) : workspace));
+}

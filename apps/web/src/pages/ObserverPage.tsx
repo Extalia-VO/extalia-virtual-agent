@@ -1,9 +1,16 @@
 import { sourceLabel, type PortableSession } from '@extalia/core';
 import { ObservedInputCards } from '../observe/ObservedInputCards';
 import { useObservedInputs } from '../observe/ObservedInputProvider';
-import type { AgentHostApi, HostState } from '@extalia/platform';
-import { useEffect, useId, useMemo, useState, useSyncExternalStore, type KeyboardEvent } from 'react';
+import { useObservedRead } from '../observe/useObservedRead';
+import type { AgentHostApi, HostState, SessionSummary } from '@extalia/platform';
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent } from 'react';
 import { SessionList } from '../chat/SessionList';
+import { SessionBrowser } from '../sessions/SessionBrowser';
+import { observeProject, type ObserveSessionFilter } from '../observe/observeSessionGroups';
+import { ObservedWorkspaceLinkButton } from '../observe/ObservedWorkspaceLinkDialog';
+import { ObservedCodexNativeQueue } from '../observe/ObservedCodexNativeQueue';
+import { OriginMark } from '../ui/OriginMark';
+import { observedSource } from '../office/agentOrigin';
 import { errorMessage } from '../host/remote';
 import type { Messages } from '../i18n';
 import { ContinueInExtalia } from '../library/ContinueInExtalia';
@@ -27,8 +34,10 @@ import { ObservedCodexPromptComposer } from '../observe/ObservedCodexPromptCompo
 import { supportsObservedPromptQueue } from '../observe/observedCodexPromptModel';
 import { ObservedCodexPermissionControls } from '../observe/ObservedCodexPermissionControls';
 import { ManualReplyControls, ObservedReplyControls } from '../observe/ObservedReplyControls';
+import { ObservedMemoryPanel } from '../observe/ObservedMemoryPanel';
+import { ObservedAntigravityRecovery } from '../observe/ObservedAntigravityRecovery';
 import { ObservedHermesControls } from '../observe/ObservedHermesControls';
-import { ObservedSessionControl, ManualObservedInboxControls } from '../observe/ObservedSessionControl';
+import { ObservedSessionControl, ObservedSessionTools, ManualObservedInboxControls } from '../observe/ObservedSessionControl';
 import { observedSessionControlFor, type ObservedSessionControlView } from '../observe/observedSessionControlModel';
 import { OBSERVE_SECTIONS, observeTabForKey, type ObserveSection } from '../observe/observerTabs';
 
@@ -87,6 +96,14 @@ export function ObserverPage({ t, language, agents, state, initialSessionId, onS
   const inputContext = useObservedInputs();
   const [section, setSection] = useState<ObserveSection>('sessions');
   const [discoveryOpen, setDiscoveryOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const [filter, setFilter] = useState<ObserveSessionFilter>('all');
+  const [mobileList, setMobileList] = useState(false);
+  const [toolsOpen, setToolsOpen] = useState(false);
+  const [toolsSeen, setToolsSeen] = useState<Set<string>>(() => new Set());
+  const transcriptRegion = useRef<HTMLDivElement>(null);
+  const followScroll = useRef({ sessionId: '', pinned: true });
+  const [jumpSession, setJumpSession] = useState<string>();
   const tabsId = useId();
   const moveTab = (event: KeyboardEvent<HTMLButtonElement>, current: ObserveSection) => {
     const next = observeTabForKey(current, event.key);
@@ -97,14 +114,16 @@ export function ObserverPage({ t, language, agents, state, initialSessionId, onS
   };
   const [chosen, setChosen] = useState<string | undefined>(initialSessionId);
   const selected = sessions.find(item => item.id === chosen) ?? sessions[0];
-  const selectedId = selected?.id;
-  const [loaded, setLoaded] = useState<{ scope: typeof scope; id: string; session?: PortableSession; error?: string }>();
+  const selectedId = selected ? String(selected.id) : undefined;
+  const selectedOutputRevision = selected?.observation?.outputRevision;
+  const selectedProjectPath = selected?.observation?.projectPath ? String(selected.observation.projectPath) : undefined;
+  const [loaded, setLoaded] = useState<{ scope: typeof scope; id: string; session?: PortableSession; outputRevision?: string; error?: string }>();
   const [operation, setOperation] = useState<{ scope: typeof scope; busy: boolean; error?: string }>({ scope, busy: false });
   const busy = operation.scope === scope && operation.busy;
   const error = operation.scope === scope ? operation.error : undefined;
-  const { events } = useSessionEvents(agents, selectedId);
+  const { events, error: eventError } = useSessionEvents(agents, selectedId);
   const transcript = useMemo(() => projectTranscript(events), [events]);
-  const changedFiles = useMemo(() => projectChangedFiles(events, selected?.observation?.projectPath), [events, selected?.observation?.projectPath]);
+  const changedFiles = useMemo(() => projectChangedFiles(events, selectedProjectPath), [events, selectedProjectPath]);
   const previewAttachment = useMemo(() => selectedId ? attachmentPreviewLoader(agents, selectedId) : undefined, [agents, selectedId]);
 
   useEffect(() => {
@@ -113,13 +132,13 @@ export function ObserverPage({ t, language, agents, state, initialSessionId, onS
     let active = true, version = 0;
     const load = () => {
       const started = ++version;
-      agents.observationSession(id).then(session => { if (active && started === version) setLoaded({ scope, id, session }); },
+      agents.observationSession(id).then(session => { if (active && started === version) setLoaded({ scope, id, session, outputRevision: selectedOutputRevision }); },
         failure => { if (active && started === version) setLoaded({ scope, id, error: errorMessage(failure) }); });
     };
     const stop = agents.subscribe(event => { if (event.sessionId === id && event.body.type === 'session.updated') load(); });
     load();
     return () => { active = false; stop(); };
-  }, [agents, scope, selected?.id]);
+  }, [agents, scope, selected?.id, selectedOutputRevision]);
 
   const run = async (action: () => Promise<HostState>) => {
     const lease = scope.acquire();
@@ -134,85 +153,137 @@ export function ObserverPage({ t, language, agents, state, initialSessionId, onS
   const controlView = useSyncExternalStore(controlModel?.subscribe ?? noSubscription, controlModel?.getSnapshot ?? getEmptyControlView, getEmptyControlView);
   const controlHub = !!agents.observedControlStatus && !!agents.dispatchObservedControl && controlView.phase !== 'unsupported';
   const content = loaded?.scope === scope && loaded?.id === selected?.id ? loaded : undefined;
-  return <div className="page">
-    <header className="page-header"><h1>{t.observer.title}</h1><p className="lead">{t.pageRoles.observe}</p><p className="note"><Icon name="shield" />{t.observer.note}</p>
-      <p className="muted small">{t.pageRoles.importHint}</p>
-      <div className="actions">
-        <button type="button" className="primary" aria-expanded={discoveryOpen} aria-controls={`${tabsId}-discovery`} onClick={() => { setDiscoveryOpen(!discoveryOpen); setSection('sessions'); }}><Icon name="plus" />{discoveryOpen ? t.observer.closeDiscovery : t.observer.add}</button>
-        {onOpenAgentSettings && <button type="button" onClick={onOpenAgentSettings}>{t.pageRoles.manageAgentApps}</button>}
-        {onOpenImport && <button type="button" onClick={onOpenImport}>{t.pageRoles.openImport}</button>}
+  const attentionIds = useMemo(() => new Set(Object.entries(inputContext?.view.entries ?? {}).filter(([, entry]) => entry.requests.some(request => request.identityVerified && (request.state === 'pending' || request.state === 'unknown'))).map(([id]) => id)), [inputContext?.view.entries]);
+  const browserAttentionIds = useMemo(() => [...attentionIds], [attentionIds]);
+  const browserRefresh = JSON.stringify(sessions.map(item => [item.id, item.title, item.lastActiveAt, item.running, item.pendingApprovalId, item.observation?.watching, item.observation?.outputRevision, item.observation?.unreadOutput]));
+  const project = selected ? observeProject(selected, state.workspaces) : undefined;
+  const memoryWorkspace = selected ? state.workspaces.find(workspace => workspace.id === selected.workspaceId) : undefined;
+  const memoryScopeKey = JSON.stringify([state.profile?.id, memoryWorkspace?.profileId, memoryWorkspace?.projectLocation, memoryWorkspace?.additionalProjectLocations, memoryWorkspace?.permissions, memoryWorkspace?.crossWorkspaceAccess]);
+  const contentKey = transcript.length ? transcript.at(-1)!.id : content?.session?.messages.at(-1)?.index.toString() ?? '';
+  useLayoutEffect(() => {
+    const panel = transcriptRegion.current?.querySelector<HTMLElement>(':scope > .conversation-panel');
+    if (!panel || !selectedId) return;
+    if (followScroll.current.sessionId !== selectedId) followScroll.current = { sessionId: selectedId, pinned: true };
+    if (contentKey && panel.clientHeight && followScroll.current.pinned) panel.scrollTop = panel.scrollHeight;
+  }, [selectedId, contentKey, toolsOpen, section]);
+  useEffect(() => {
+    const panel = transcriptRegion.current?.querySelector<HTMLElement>(':scope > .conversation-panel');
+    if (!panel || !selectedId) return;
+    const onScroll = () => {
+      if (panel.hidden || !panel.clientHeight) return;
+      const pinned = panel.scrollHeight - panel.scrollTop - panel.clientHeight < 100;
+      followScroll.current.pinned = pinned;
+      setJumpSession(pinned ? undefined : selectedId);
+    };
+    panel.addEventListener('scroll', onScroll, { passive: true });
+    return () => { panel.removeEventListener('scroll', onScroll); };
+  }, [selectedId]);
+
+  const latestAssistant = content?.session?.messages.slice().reverse().find(message => message.role === 'assistant')?.content;
+  const renderedAssistant = transcript.length ? transcript.slice().reverse().find(item => item.kind === 'assistant')?.text : latestAssistant;
+  useObservedRead({ agents, sessionId: selectedId, revision: selectedOutputRevision, loadedRevision: content?.outputRevision,
+    unread: observation?.unreadOutput, latestAssistant, renderedAssistant, active: section === 'sessions', viewKey: JSON.stringify([mobileList, toolsOpen]), region: transcriptRegion, follow: followScroll });
+
+  const openTools = () => { if (selectedId) setToolsSeen(current => new Set(current).add(selectedId)); setToolsOpen(true); };
+  const choose = (id: string) => { setChosen(id); setMobileList(false); setToolsOpen(false); };
+  const nativeControls = selected && <div className="observe-native-tools">
+    {selected.observation?.sourceId === 'codex' && <>
+      <details className="observed-codex-entry"><summary>{t.observedCodexPrompt.settings}</summary><ObservedCodexQueueControls key={selected.id} t={t} agents={agents} session={selected} settingsOnly /></details>
+      <details className="observed-codex-entry"><summary>{t.observedCodexPermission.title}</summary><ObservedCodexPermissionControls key={selected.id} t={t} agents={agents} session={selected} /></details>
+      <details className="observed-codex-entry"><summary>{t.observedCodex.title}</summary><ObservedCodexControls key={selected.id} t={t} agents={agents} session={selected} showQuestions={!(inputContext?.view.entries[selected.id]?.phase === 'ready' || inputContext?.view.entries[selected.id]?.phase === 'private' || inputContext?.view.entries[selected.id]?.requests.some(request => request.origin === 'codex-native'))} /></details>
+      <ObservedCodexNativeQueue key={`native-queue:${selected.id}`} t={t} agents={agents} session={selected} />
+    </>}
+    {selected.observation?.sourceId === 'antigravity' && <>
+      <ObservedCodexNativeQueue key={`native-queue:${selected.id}`} t={t} agents={agents} session={selected} />
+      <ObservedAntigravityRecovery t={t.observedAntigravity} agents={agents} session={selected} disabled={busy} onChanged={() => { void controlModel?.refresh(); }} />
+    </>}
+    {selected.observation?.sourceId === 'hermes' && <ObservedHermesControls key={selected.id} t={t} agents={agents} session={selected} settingsOnly={controlHub} />}
+    {!controlHub && <ObservedReplyControls key={selected.id} t={t} agents={agents} session={selected} />}
+  </div>;
+  const sessionFacts = selected && <div className="observe-session-facts"><h3>{t.observer.sessionDetails}</h3><dl>
+            <div><dt>{t.observer.harness}</dt><dd>{sourceLabel(observation?.sourceId || '')}</dd></div>
+            <div><dt>{t.observer.workspace}</dt><dd>{project?.workspaceName || t.observer.unlinkedWorkspace}</dd></div>
+            <div><dt>{t.observer.folder}</dt><dd>{project?.projectPath ? <code>{project.projectPath}</code> : t.observer.unknownProject}</dd></div>
+            {selected.model && <div><dt>{t.observer.model}</dt><dd><code>{selected.model}</code></dd></div>}
+            <div><dt>{t.observer.status}</dt><dd>{observation && t.observer[observation.status]}</dd></div>
+            {observation?.lastCheckedAt && <div><dt>{t.observer.lastUpdated}</dt><dd><time dateTime={observation.lastCheckedAt}>{new Intl.DateTimeFormat(language, { timeStyle: 'medium' }).format(new Date(observation.lastCheckedAt))}</time></dd></div>}
+          </dl></div>;
+  const conversation = selected && <MessageFileProvider key={selected.id} t={t} agents={agents} workspaces={state.workspaces} workspaceId={selected.workspaceId} projectPath={observation?.projectPath}>
+    <ConversationTabs t={t} language={language} files={changedFiles}>
+      {transcript.length ? <TranscriptView t={t} items={transcript} language={language} onDecide={async () => false} previewAttachment={previewAttachment} />
+        : content?.session ? <LibraryTranscript t={t} messages={content.session.messages} />
+          : content?.error ? <p className="form-error" role="alert">{content.error}</p> : <p className="muted observe-loading" role="status">{t.common.loading}</p>}
+    </ConversationTabs>
+  </MessageFileProvider>;
+  return <div className="page observe-page">
+    <header className="observe-page-header">
+      <div className="observe-page-heading"><h1>{t.observer.title}</h1><span className="badge">{sessions.length}</span></div>
+      <div className="observe-navigation-bar">
+        <div className="observe-tabs" role="tablist" aria-label={t.observer.sections.label}>
+          {OBSERVE_SECTIONS.map(item => <button key={item} type="button" role="tab" id={`${tabsId}-${item}-tab`} aria-controls={`${tabsId}-${item}-panel`} aria-selected={section === item} tabIndex={section === item ? 0 : -1} onClick={() => setSection(item)} onKeyDown={event => moveTab(event, item)}>{t.observer.sections[item]}</button>)}
+        </div>
+        {section === 'sessions' && <button type="button" className="button small observe-mobile-list-toggle" aria-label={t.observer.browseSessions} title={t.observer.browseSessions} aria-expanded={mobileList} aria-controls={`${tabsId}-session-list`} onClick={() => setMobileList(!mobileList)}><Icon name="panel" /><span className="observe-toolbar-label">{t.observer.browseSessions}</span></button>}
+      </div>
+      <div className="observe-page-actions">
+        <button type="button" className="button small primary observe-discovery-toggle" aria-label={discoveryOpen ? t.observer.closeDiscovery : t.observer.add} title={discoveryOpen ? t.observer.closeDiscovery : t.observer.add} aria-expanded={discoveryOpen} aria-controls={`${tabsId}-discovery`} onClick={() => { setDiscoveryOpen(!discoveryOpen); setSection('sessions'); }}><Icon name="plus" /><span className="observe-toolbar-label">{discoveryOpen ? t.observer.closeDiscovery : t.observer.add}</span></button>
+        {onOpenAgentSettings && <button type="button" className="icon-button small" aria-label={t.pageRoles.manageAgentApps} title={t.pageRoles.manageAgentApps} onClick={onOpenAgentSettings}><Icon name="settings" /></button>}
+        {onOpenImport && <button type="button" className="icon-button small" aria-label={t.pageRoles.openImport} title={t.pageRoles.openImport} onClick={onOpenImport}><Icon name="files" /></button>}
       </div>
     </header>
     {discoveryOpen && <section className="observe-discovery" id={`${tabsId}-discovery`} aria-labelledby={`${tabsId}-discovery-title`}>
-      <h2 id={`${tabsId}-discovery-title`}>{t.observer.discoveryTitle}</h2>
+      <div className="section-head"><h2 id={`${tabsId}-discovery-title`}>{t.observer.discoveryTitle}</h2></div>
       <p className="muted small">{t.observer.addHint}</p>
-      <AddObservedSessions t={t} language={language} agents={agents} onWatched={(next, selectedId) => {
-        onState(next); if (selectedId) setChosen(selectedId); setDiscoveryOpen(false); setSection('sessions');
-      }} />
+      <AddObservedSessions t={t} language={language} agents={agents} onWatched={(next, selectedId) => { onState(next); if (selectedId) choose(selectedId); setDiscoveryOpen(false); setSection('sessions'); }} />
     </section>}
     {error && <p role="alert" className="form-error">{error}</p>}
-    <div className="observe-tabs" role="tablist" aria-label={t.observer.sections.label}>
-      {OBSERVE_SECTIONS.map(item => <button key={item} type="button" role="tab" id={`${tabsId}-${item}-tab`}
-        aria-controls={`${tabsId}-${item}-panel`} aria-selected={section === item} tabIndex={section === item ? 0 : -1}
-        onClick={() => setSection(item)} onKeyDown={event => moveTab(event, item)}>
-        {t.observer.sections[item]}{item === 'sessions' && sessions.length > 0 && <span className="badge">{sessions.length}</span>}
-      </button>)}
-    </div>
+
     <div className="observe-panel" role="tabpanel" id={`${tabsId}-sessions-panel`} aria-labelledby={`${tabsId}-sessions-tab`} hidden={section !== 'sessions'} tabIndex={0}>
-      <div className="history-layout">
-        <section className="card history-list">
-          {!sessions.length ? <p className="muted">{t.observer.empty}</p> : <SessionList t={t} sessions={sessions} activeId={selected?.id} language={language}
-            onSelect={setChosen} onRename={async (id, title) => { await run(() => agents.renameSession(id, title)); }} onDelete={async id => { await run(() => agents.deleteSession(id)); }} />}
-        </section>
-        <section className="card history-viewer">
-          {!selected ? <p className="muted">{t.observer.select}</p> : <>
-            <div className="section-head"><h2>{selected.title}</h2><span className="badge">{sourceLabel(observation?.sourceId ?? '')} · {t.observer.label}{observation?.auto ? ` · ${t.observer.autoBadge}` : ''}</span></div>
-            {observation?.projectPath && <code className="entity-path">{observation.projectPath}</code>}
-            <p role="status" className="muted small">{observation && t.observer[observation.status]}{observation?.lastCheckedAt ? ` · ${new Intl.DateTimeFormat(language, { timeStyle: 'medium' }).format(new Date(observation.lastCheckedAt))}` : ''}</p>
-            {observation?.error && <p role="alert" className="form-error">{observation.error}</p>}
-            <div className="actions"><button type="button" disabled={busy} onClick={() => { void run(() => agents.setObservation(selected.id, !observation?.watching)).catch(() => undefined); }}>
-              <Icon name={observation?.watching ? 'stop' : 'refresh'} />{observation?.watching ? t.observer.pause : t.observer.resume}
-            </button></div>
-            <ObservedInputCards t={t} sessionId={selected.id} />
-            {supportsObservedPromptQueue(selected.observation?.sourceId) && <ObservedCodexPromptComposer key={`codex-prompt:${selected.id}`} t={t} agents={agents} session={selected} disabled={busy} />}
-            {controlHub && !supportsObservedPromptQueue(selected.observation?.sourceId) && <ObservedSessionControl key={`control:${selected.id}`} t={t} agents={agents} session={selected} disabled={busy} />}
-            {!supportsObservedPromptQueue(selected.observation?.sourceId) && <PromptSuggestions t={t} agents={agents} session={selected} disabled={busy} copyOnly />}
-            {selected.observation?.sourceId === 'codex' && <details className="observed-codex-entry">
-              <summary>{t.observedCodexPrompt.settings}</summary>
-              <ObservedCodexQueueControls key={selected.id} t={t} agents={agents} session={selected} settingsOnly />
-            </details>}
-            {selected.observation?.sourceId === 'codex' && <details className="observed-codex-entry">
-              <summary>{t.observedCodexPermission.title}</summary>
-              <ObservedCodexPermissionControls key={selected.id} t={t} agents={agents} session={selected} />
-            </details>}
-            {selected.observation?.sourceId === 'codex' && <details className="observed-codex-entry">
-              <summary>{t.observedCodex.title}</summary>
-              <ObservedCodexControls key={selected.id} t={t} agents={agents} session={selected} showQuestions={!(inputContext?.view.entries[selected.id]?.phase === 'ready' || inputContext?.view.entries[selected.id]?.phase === 'private' || inputContext?.view.entries[selected.id]?.requests.some(request => request.origin === 'codex-native'))} />
-            </details>}
-            {selected.observation?.sourceId === 'hermes' && <details className="observed-codex-entry">
-              <summary>{t.observedHermes.title}</summary>
-              <ObservedHermesControls key={selected.id} t={t} agents={agents} session={selected} settingsOnly={controlHub} />
-            </details>}
-            {!controlHub && <details className="observed-codex-entry">
-              <summary>{t.observedReply.title}</summary>
-              <ObservedReplyControls key={selected.id} t={t} agents={agents} session={selected} />
-            </details>}
-            {content?.session?.messages.length ? (
-              <ContinueInExtalia t={t} agents={agents} state={state} source={{ kind: 'observed', id: selected.id }}
-                {...(observation?.projectPath ? { projectPath: observation.projectPath } : {})} onContinued={onContinued} onOpenSettings={onOpenSettings} />
-            ) : null}
-            {transcript.length || content?.session
-              ? <MessageFileProvider key={selected.id} t={t} agents={agents} workspaces={state.workspaces} workspaceId={selected.workspaceId} projectPath={observation?.projectPath}>
-                  {transcript.length
-                    ? <ConversationTabs t={t} language={language} files={changedFiles}><TranscriptView t={t} items={transcript} language={language} onDecide={async () => false} previewAttachment={previewAttachment} /></ConversationTabs>
-                    : <LibraryTranscript t={t} messages={content?.session?.messages ?? []} />}
-                </MessageFileProvider>
-              : content?.error ? <p className="form-error" role="alert">{content.error}</p> : <p>{t.common.loading}</p>}
+      <div className={`observe-workspace${toolsOpen ? ' tools-open' : ''}${mobileList ? ' list-open' : ''}`}>
+        <aside className="observe-session-nav" id={`${tabsId}-session-list`} aria-label={t.observer.browseSessions}>
+          <div className="observe-session-search"><label className="observe-search-field"><Icon name="search" /><input type="search" value={query} aria-label={t.observer.searchSessions} placeholder={t.observer.searchSessions} onChange={event => setQuery(event.target.value)} /></label>
+            <select value={filter} aria-label={t.observer.filterSessions} onChange={event => setFilter(event.target.value as ObserveSessionFilter)}>{(['all', 'running', 'attention', 'paused'] as const).map(value => <option key={value} value={value}>{t.observer.filters[value]}</option>)}</select>
+          </div>
+          <div className="observe-session-groups">
+            <SessionBrowser t={t} agents={agents} state={state} collection="observed" query={query} status={filter} attentionIds={browserAttentionIds} refreshKey={browserRefresh} emptyLabel={sessions.length ? t.observer.noMatches : t.observer.empty}
+              renderRows={rows => rows.length ? <SessionList t={t} sessions={rows.filter((row): row is SessionSummary => 'lastActiveAt' in row)} activeId={selectedId} compactIndicators language={language} onSelect={choose} onRename={async (id, title) => { await run(() => agents.renameSession(id, title)); }} onDelete={async id => { await run(() => agents.deleteSession(id)); }} /> : null} />
+          </div>
+        </aside>
+        <section className="observe-conversation" aria-label={t.characterConsole.messages}>
+          {!selected ? <div className="observe-empty"><Icon name="chat" /><h2>{t.observer.select}</h2><p className="muted">{t.observer.lead}</p></div> : <>
+            <header className="observe-session-header">
+              <div className="observe-session-heading"><h2 title={selected.title}>{selected.title || t.chat.untitled}</h2>
+                <div className="observe-session-meta"><span className="observe-harness-label"><OriginMark mark={observedSource(observation?.sourceId).mark} />{sourceLabel(observation?.sourceId || '')}</span><span className={`observe-session-status${selected.pendingApprovalId || attentionIds.has(selected.id) ? ' attention' : selected.running ? ' running' : ''}`} role="status">{selected.pendingApprovalId || attentionIds.has(selected.id) ? t.chat.waiting : selected.running ? t.chat.running : observation && t.observer[observation.status]}</span>
+                  <div className="observe-session-location"><Icon name="folder" /><span title={project?.projectPath}>{project?.folderName || project?.workspaceName || t.observer.unknownProject}</span>{!project?.workspaceId && project?.projectPath && <span className="badge">{t.observer.folderOnly}</span>}<ObservedWorkspaceLinkButton t={t} agents={agents} state={state} session={selected} onState={onState} /></div>
+                </div>
+              </div>
+              <div className="observe-session-actions">
+                <button type="button" className="icon-button small" disabled={busy} aria-label={observation?.watching ? t.observer.pause : t.observer.resume} title={observation?.watching ? t.observer.pause : t.observer.resume} onClick={() => { void run(() => agents.setObservation(selected.id, !observation?.watching)).catch(() => undefined); }}><Icon name={observation?.watching ? 'stop' : 'refresh'} /></button>
+                {content?.session?.messages.length ? <ContinueInExtalia compact t={t} agents={agents} state={state} source={{ kind: 'observed', id: selected.id }} {...(observation?.projectPath ? { projectPath: observation.projectPath } : {})} onContinued={onContinued} onOpenSettings={onOpenSettings} /> : null}
+                <button type="button" className="icon-button small observe-tools-toggle" aria-label={t.characterConsole.tools} title={t.characterConsole.tools} aria-expanded={toolsOpen} aria-controls={`${tabsId}-tools`} onClick={openTools}><Icon name="settings" /></button>
+              </div>
+            </header>
+            <div className="observe-transcript-region" ref={transcriptRegion}>{eventError && <p className="observe-activity-error note small" role="alert">{t.observer.activityUnavailable}</p>}{conversation}{jumpSession === selected.id && <button type="button" className="button small observe-jump-latest" onClick={() => { const panel = transcriptRegion.current?.querySelector<HTMLElement>(':scope > .conversation-panel'); if (panel) panel.scrollTop = panel.scrollHeight; followScroll.current.pinned = true; setJumpSession(undefined); }}>{t.observer.latestMessages}<Icon name="chevron" /></button>}</div>
+            <footer className="observe-composer-region">
+              {observation?.error && <p role="alert" className="form-error">{observation.error}</p>}
+              <ObservedInputCards t={t} sessionId={selected.id} />
+              {supportsObservedPromptQueue(selected.observation?.sourceId) ? <ObservedCodexPromptComposer key={`codex-prompt:${selected.id}`} t={t} agents={agents} session={selected} disabled={busy} showNativeQueue={false} />
+                : controlHub ? <ObservedSessionControl key={`control:${selected.id}`} t={t} agents={agents} session={selected} disabled={busy} compact onOpenTools={openTools} /> : <p className="muted small">{t.observer.readOnly}</p>}
+              {!supportsObservedPromptQueue(selected.observation?.sourceId) && <PromptSuggestions t={t} agents={agents} session={selected} disabled={busy} copyOnly />}
+            </footer>
           </>}
         </section>
+        {selected && <aside className="observe-tools-panel" id={`${tabsId}-tools`} aria-label={t.characterConsole.tools} hidden={!toolsOpen}>
+          <header className="observe-tools-heading"><h2>{t.characterConsole.tools}</h2><button type="button" className="icon-button small" aria-label={t.observer.closeTools} onClick={() => setToolsOpen(false)}><Icon name="close" /></button></header>
+          {sessionFacts}
+          {memoryWorkspace && !memoryWorkspace.providerProfileId && <p className="muted small">{t.observer.captureOnly}</p>}
+          {toolsSeen.has(selected.id) && <ObservedMemoryPanel agents={agents} session={selected} scopeKey={memoryScopeKey} t={t.observedMemory} disabled={busy} />}
+          {toolsSeen.has(selected.id) && (controlHub ? <ObservedSessionTools key={`tools:${selected.id}`} t={t} agents={agents} session={selected} disabled={busy} nativeControls={nativeControls} /> : nativeControls)}
+          <p className="muted small observe-tools-note"><Icon name="shield" />{t.observer.note}</p>
+        </aside>}
+        {selected && !toolsOpen && <aside className="observe-facts-rail" aria-label={t.observer.sessionDetails}>{sessionFacts}</aside>}
       </div>
     </div>
-    <div className="observe-panel" role="tabpanel" id={`${tabsId}-pairing-panel`} aria-labelledby={`${tabsId}-pairing-tab`} hidden={section !== 'pairing'} tabIndex={0}>
+    <div className="observe-panel observe-pairing-panel" role="tabpanel" id={`${tabsId}-pairing-panel`} aria-labelledby={`${tabsId}-pairing-tab`} hidden={section !== 'pairing'} tabIndex={0}>
       {controlHub && <ManualObservedInboxControls t={t} agents={agents} />}
       <ManualReplyControls t={t} agents={agents} />
     </div>

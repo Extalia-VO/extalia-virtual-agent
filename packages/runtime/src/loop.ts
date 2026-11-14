@@ -51,7 +51,7 @@ export interface TurnOptions {
   /** Optional estimated input ceiling: a positive safe integer, never inferred from a model name. */
   maxInputTokens?: number;
   /** Host-owned context refresh after steering, before every budget check/provider request. */
-  prepareRequest?(request: Readonly<Pick<ModelRequest, 'system' | 'messages' | 'tools'>> & { signal: AbortSignal }): Promise<string>;
+  prepareRequest?(request: Readonly<Pick<ModelRequest, 'system' | 'messages' | 'tools'>> & { signal: AbortSignal; requestScope?: object }): Promise<string>;
   newId?: () => string;
   /** Internal native-mission lifecycle gate; tracks complete tool pipelines, including preflight waits. */
   localOperations?: LocalToolPipelines;
@@ -102,6 +102,7 @@ const defaultId = () => {
 };
 
 export async function runTurn(options: TurnOptions): Promise<TurnResult> {
+  const requestScope = Object.freeze({});
   const { provider, emit, signal } = options;
   const newId = options.newId ?? defaultId;
   const mode = options.permissionMode ?? 'workspace';
@@ -139,7 +140,7 @@ export async function runTurn(options: TurnOptions): Promise<TurnResult> {
     const specs = specsNow();
     let system = options.system;
     try {
-      if (options.prepareRequest) system = await options.prepareRequest({ system, messages: history, tools: specs, signal });
+      if (options.prepareRequest) system = await options.prepareRequest({ system, messages: history, tools: specs, signal, requestScope });
     } catch (error) {
       if (isAbort(error, signal)) return finish('cancelled', 'Stopped by the user.');
       if (error instanceof RequestBudgetError) {
@@ -207,8 +208,8 @@ export async function runTurn(options: TurnOptions): Promise<TurnResult> {
       // Reserve every branch before any starts: an early failure must not hide an unstarted sibling.
       const pipelines = calls.map(() => options.localOperations?.reserveToolPipeline());
       results.push(...await Promise.all(calls.map((call, branch) => pipelines[branch]
-        ? pipelines[branch]!.run(() => runTool(call, options, newId))
-        : runTool(call, options, newId))));
+        ? pipelines[branch]!.run(() => runTool(call, options, newId, requestScope))
+        : runTool(call, options, newId, requestScope))));
       index = end;
     }
     // Every tool call needs a result, even when the turn was stopped part-way.
@@ -221,7 +222,7 @@ export async function runTurn(options: TurnOptions): Promise<TurnResult> {
   return finish('step-limit', `Stopped after ${maxSteps} steps without finishing. Send a follow-up to continue.`);
 }
 
-async function runTool(call: ToolCall, options: TurnOptions, newId: () => string): Promise<ToolResultEntry> {
+async function runTool(call: ToolCall, options: TurnOptions, newId: () => string, requestScope: object): Promise<ToolResultEntry> {
   const { emit, signal } = options;
   options.localOperations?.assertOpen();
   const failure = (content: string): ToolResultEntry => ({ toolCallId: call.id, name: call.name, content, isError: true });
@@ -287,7 +288,7 @@ async function runTool(call: ToolCall, options: TurnOptions, newId: () => string
   let outcome;
   try {
     options.localOperations?.assertOpen();
-    outcome = await tool.run(call.input, { signal, toolCallId: call.id, emit: body => emit(body) });
+    outcome = await tool.run(call.input, { signal, requestScope, toolCallId: call.id, emit: body => emit(body) });
   } catch (error) {
     outcome = { ok: false, output: error instanceof Error ? error.message : String(error) };
   }

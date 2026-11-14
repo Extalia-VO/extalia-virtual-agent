@@ -2,6 +2,18 @@
 
 Status: accepted, 2026-11-11. Extends ADRs 0073 and 0074.
 
+Refinement (2026-11-13, [#106](https://github.com/Extalia-VO/extalia-virtual-agent/issues/106)):
+maintenance for a unique isolated vault profile waits only for conflicting known
+workspace/vault activity. Scope Observe activity, queued prompts and observed-memory
+lifetimes through host-resolved ownership; unknown ownership remains conservative.
+Unbound Observe activity is explicitly default-profile work for admission, not
+unknown isolated work. This does not create a workspace or authorize new vault IO;
+ambiguous/invalid links and unproven Native effects retain their guards.
+Shared/default vaults, privacy/configuration changes and genuinely shared resources
+retain broader guards. Foreground yielding remains synchronous and entered effects
+must physically settle before conflicting work proceeds. The UI shows the selected
+quiet interval while waiting and a live deadline only after admission is armed.
+
 ## Problem
 
 A snoozed learning deadline could expire while foreground workers were still

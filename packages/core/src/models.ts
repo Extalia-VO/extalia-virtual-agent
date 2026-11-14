@@ -1,3 +1,4 @@
+import { readOperatingProfileDefaults, type OperatingProfileOverrides } from './operatingProfiles.js';
 import { assertNoCredentialFields } from './privacy.js';
 import { decodeAgentTeam, type AgentTeam } from './teams.js';
 import { decode, entityId, object, oneOf, optionalText, text, timestamp, type DecodeResult } from './validation.js';
@@ -91,6 +92,8 @@ export function decodeIntegrationGate(raw: unknown): WorkspaceIntegrationGate {
 /** A Workspace is a project context. Its sessions are separate from its project location. */
 export interface Workspace {
   id: string;
+  /** Observe-only workspaces need no managed runtime or model connection. Absent means managed. */
+  mode?: 'managed' | 'observe';
   /** Workspace/vault grouping in this host; not proof of separate runtime or credential isolation. */
   profileId: string;
   name: string;
@@ -109,6 +112,9 @@ export interface Workspace {
   /** Additional saved connections explicitly permitted for native missions in this workspace. */
   missionConnectionIds?: string[];
   defaultAgentId?: string;
+  /** Reusable Native operating defaults, separate from vault/profile storage ownership. */
+  operatingProfileId?: string;
+  operatingProfileOverrides?: OperatingProfileOverrides;
   permissions?: WorkspacePermissions;
   /** Native only. Either isolated side denies cross-access; writes require both sides read-write and normal approvals. Absent = read-only. */
   crossWorkspaceAccess?: WorkspaceCrossAccess;
@@ -163,6 +169,12 @@ export function decodeWorkspace(raw: unknown): DecodeResult<Workspace> {
       createdAt,
       updatedAt,
     };
+    if (value.operatingProfileId !== undefined) workspace.operatingProfileId = entityId(value.operatingProfileId, 'operatingProfileId');
+    if (value.operatingProfileOverrides !== undefined) {
+      if (!workspace.operatingProfileId) throw new Error('Operating overrides need a selected profile.');
+      workspace.operatingProfileOverrides = readOperatingProfileDefaults(value.operatingProfileOverrides, true);
+    }
+    if (value.mode !== undefined) workspace.mode = oneOf(value.mode, ['managed', 'observe'] as const, 'mode');
     for (const key of ['projectLocation', 'runtimeProfileId', 'runtimeModel', 'providerProfileId', 'defaultAgentId'] as const) {
       const field = optionalText(value[key], key, { singleLine: true, max: key === 'projectLocation' ? 4096 : 200 });
       if (field) workspace[key] = field;
@@ -182,6 +194,7 @@ export function decodeWorkspace(raw: unknown): DecodeResult<Workspace> {
       workspace.missionConnectionIds = ids;
     }
     if (value.runtimeId !== undefined && oneOf(value.runtimeId, RUNTIME_IDS, 'runtimeId') === 'hermes') {
+      if (workspace.mode === 'observe') throw new Error('runtimeId: observe-only workspaces do not select a managed runtime.');
       workspace.runtimeId = 'hermes';
       workspace.runtimeProfileId ??= 'default';
       if (!RUNTIME_PROFILE_PATTERN.test(workspace.runtimeProfileId)) throw new Error('runtimeProfileId: use a Hermes profile name (lowercase letters, numbers, - and _).');

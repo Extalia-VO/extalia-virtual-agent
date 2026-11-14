@@ -107,3 +107,16 @@ describe('message file paths', () => {
     expect(resolve('/project/README.md', invalid)).toBeUndefined();
   });
 });
+
+it('uses a registered secondary session folder without aliasing reads to the primary root', () => {
+  const scope = { workspaces: [{ id: 'workspace', projectLocation: '/projects/main', additionalProjectLocations: ['/projects/secondary'] }], workspaceId: 'workspace', projectPath: '/projects/secondary' };
+  expect(resolveMessageFile({ name: 'marker', path: 'marker.txt' }, scope)).toEqual({ workspaceId: 'workspace', path: '/projects/secondary/marker.txt' });
+  expect(resolveMessageFile({ name: 'marker', path: '/projects/main/marker.txt' }, scope)).toEqual({ workspaceId: 'workspace', path: 'marker.txt' });
+  expect(resolveMessageFile({ name: 'marker', path: '/projects/other/marker.txt' }, scope)).toBeUndefined();
+  expect(resolveMessageFile({ name: 'marker', path: '../main/marker.txt' }, scope)).toBeUndefined();
+});
+
+it('keeps Windows secondary-root requests absolute for the host file API', () => {
+  const scope = { workspaces: [{ id: 'workspace', projectLocation: 'C:/Projects/Main', additionalProjectLocations: ['D:/Projects/Secondary'] }], workspaceId: 'workspace', projectPath: 'D:/Projects/Secondary' };
+  expect(resolveMessageFile({ name: 'marker', path: 'marker.txt' }, scope)).toEqual({ workspaceId: 'workspace', path: 'd:/Projects/Secondary/marker.txt' });
+});

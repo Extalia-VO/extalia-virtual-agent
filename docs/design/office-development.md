@@ -293,25 +293,31 @@ device) overrides the interior only. Auto switches the lights on after dusk
 (`interiorLightFactor` 0.3); Off leaves only exit signs, screens and the site
 lighting outside. Lit windows follow the interior lights.
 
-An adaptive render budget (`office/scene/environment/renderBudget.ts`) targets
-40 fps. Each application load begins at a 480-pixel physical short edge, then
-can recover through 720, 1080, 1440 and 2160 pixels. These are video-style
-resolution ceilings, not fixed 16:9 canvases: the Office keeps its actual aspect
-ratio. DPR never exceeds the display's native ratio or 2, and total pixels stay
-within 3840 × 2160 even on ultrawide displays. Resizing the Office recalculates
-the budget from its CSS dimensions; DOM text and controls remain native-sharp.
+An adaptive render budget (`office/scene/environment/renderBudget.ts`) uses
+30 fps as its quality floor. Each application load begins with a 1080-pixel
+physical short-edge ceiling; the five levels cover 480, 720, 1080, 1440 and 2160
+pixels. These are resolution ceilings, not fixed 16:9 canvases: the Office keeps
+its actual aspect ratio. DPR never exceeds the display's native ratio or 2, and
+total pixels stay within 3840 × 2160 even on ultrawide displays. Resizing or
+changing display density recalculates the physical drawing buffer; DOM text and
+controls stay native-sharp.
 
-After a three-second sampling warm-up, one-second windows below 40 fps lower
-quality immediately; two consecutive windows below 45 fps also lower it.
-Twelve windows at 57 fps or better allow one recovery step, with an extra
-settling interval after each change. A tier that failed twice is not retried
-in that controller lifetime. Hidden-tab time is excluded. Remounting the scene
-within the application keeps the settled tier. The first two tiers (480/720)
-share cheap lighting, shadows and traffic; higher tiers restore detail. Baked
-light pools are never reduced. This responds to foreground render throughput,
-not network speed, and cannot guarantee 40 fps when geometry or CPU work is the
-bottleneck. GLB downloads, decoded geometry and avatar portrait canvases are not
-reduced by this change. See [the resource guide](../bench/office-adaptive.md).
+After a three-second warm-up, three consecutive one-second foreground windows
+below 30 fps lower quality by one level. Six windows at 40 fps or more, or twelve
+consecutive windows above 30 fps, try one sharper level. Exactly 30 fps holds.
+Each level change has a short settling interval. Failed probes back off for
+15/30/60 foreground windows and remain retryable. A single hitch cannot lower a
+level; sustained raw throughput below 30 cannot be hidden by filtering its
+longest frame. The effective budget FPS never exceeds either raw or filtered
+throughput. Visibility and context changes reset consecutive streaks without
+spending hidden time or forgetting the chosen tier and retry clock.
+
+Remounting the scene in the same application keeps the settled tier and resumes
+adaptation. The lowest tiers share cheaper lighting, shadows and traffic; higher
+tiers restore detail. Baked light pools are never reduced. This responds to
+render throughput, not network speed, and cannot guarantee 30 fps when geometry
+or CPU work is the bottleneck. GLB downloads, decoded geometry and avatar
+portrait canvases are not reduced. See [the resource guide](../bench/office-adaptive.md).
 
 Development builds expose `__EXTALIA_SOLAR_PREVIEW__(minutes | null)`,
 `__EXTALIA_ENV_STATE__()`, `__EXTALIA_RENDER_BUDGET__` and
