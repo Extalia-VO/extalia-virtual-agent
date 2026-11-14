@@ -7,6 +7,8 @@ publishing candidates. A size goal is not a safety criterion: fabric uses a cons
 error bound; small accent primitives can use a larger relative error. Materials, images,
 nodes, skeletons, joint indices and retained vertex attributes are not re-exported.
 Morphs, animation, unknown vertex attributes and non-triangle geometry are refused.
+Use repeated --mesh-name flags to preserve anatomical meshes untouched. Color attributes
+are accepted only on unselected meshes and preserved byte-for-byte.
 
 python3 tooling/simplify-garment-meshes.py --output-dir <review-dir> --report <report.json>
 """
@@ -52,7 +54,7 @@ def triangle_count(document):
                for mesh in document['meshes'] for primitive in mesh['primitives'])
 
 
-def validate_input(document):
+def validate_input(document, mesh_names=None):
     if document.get('animations') or document.get('extensions'):
         raise ValueError('Animated or document-extension inputs require explicit support')
     for mesh in document['meshes']:
@@ -61,7 +63,8 @@ def validate_input(document):
         for primitive in mesh['primitives']:
             if primitive.get('targets') or primitive.get('extensions') or primitive.get('mode', 4) != 4:
                 raise ValueError('Morphs, primitive extensions and non-triangle modes are not simplified')
-            if 'indices' not in primitive or set(primitive['attributes']) - ATTRIBUTES:
+            allowed = ATTRIBUTES | ({'COLOR_0', 'COLOR_1'} if mesh_names is not None and mesh.get('name') not in mesh_names else set())
+            if 'indices' not in primitive or set(primitive['attributes']) - allowed:
                 raise ValueError('Only indexed triangles with supported vertex attributes are simplified')
             attributes = primitive['attributes']
             count = document['accessors'][attributes['POSITION']]['count']
@@ -71,9 +74,16 @@ def validate_input(document):
                 raise ValueError('Skin joints and weights must occur together')
 
 
-def simplify(raw, ratio=0.1, error=0.001):
+def simplify(raw, ratio=0.1, error=0.001, mesh_names=None, exclude_materials=None):
+    if not 0 < ratio <= 1 or not 0 <= error <= 0.05:
+        raise ValueError('ratio must be in (0, 1] and error in [0, 0.05]')
     old, binary = BUFFERS.read_glb(raw)
-    validate_input(old)
+    if mesh_names is not None and set(mesh_names) - {mesh.get('name') for mesh in old['meshes']}:
+        raise ValueError('Unknown mesh name in selection')
+    exclude_materials = set(exclude_materials or [])
+    if exclude_materials - {material.get("name") for material in old.get("materials", [])}:
+        raise ValueError("Unknown material name in exclusion")
+    validate_input(old, mesh_names)
     document = copy.deepcopy(old)
     output_binary = bytearray(binary)
     statistics, retained = [], []
@@ -99,7 +109,11 @@ def simplify(raw, ratio=0.1, error=0.001):
     with tempfile.TemporaryDirectory(prefix='garment-simplify-') as temporary:
         temporary = Path(temporary)
         for mesh_index, mesh in enumerate(document['meshes']):
+            if mesh_names is not None and mesh.get('name') not in mesh_names:
+                continue
             for primitive_index, primitive in enumerate(mesh['primitives']):
+                if 'material' in primitive and old['materials'][primitive['material']].get('name') in exclude_materials:
+                    continue
                 attributes = primitive['attributes']
                 indices = stored_array(old, binary, primitive['indices']).astype(np.uint32).ravel()
                 if len(indices) % 3:
@@ -186,6 +200,20 @@ def simplify(raw, ratio=0.1, error=0.001):
     for index, expected in retained:
         if BUFFERS.accessor_bytes(candidate, candidate_binary, candidate['accessors'][remap[index]]) != expected:
             raise AssertionError('Retained vertex component bytes changed')
+    if mesh_names is not None or exclude_materials:
+        for old_mesh, new_mesh in zip(old['meshes'], candidate['meshes']):
+            for old_primitive, new_primitive in zip(old_mesh['primitives'], new_mesh['primitives']):
+                protected_mesh = mesh_names is not None and old_mesh.get('name') not in mesh_names
+                protected_material = 'material' in old_primitive and old['materials'][old_primitive['material']].get('name') in exclude_materials
+                if not protected_mesh and not protected_material:
+                    continue
+                old_refs = dict(old_primitive['attributes'], indices=old_primitive['indices'])
+                new_refs = dict(new_primitive['attributes'], indices=new_primitive['indices'])
+                for semantic, old_index in old_refs.items():
+                    before = BUFFERS.accessor_bytes(old, binary, old['accessors'][old_index])
+                    after = BUFFERS.accessor_bytes(candidate, candidate_binary, candidate['accessors'][new_refs[semantic]])
+                    if before != after:
+                        raise AssertionError(f'Protected mesh {old_mesh.get("name")} {semantic} changed')
     for key in ('asset', 'nodes', 'materials', 'textures', 'samplers', 'scenes', 'scene'):
         if old.get(key) != candidate.get(key):
             raise AssertionError(f'Authored {key} changed')
@@ -212,6 +240,10 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('--output-dir', type=Path, required=True)
     parser.add_argument('--report', type=Path, required=True)
+    parser.add_argument('--ratio', type=float, default=0.1, help='target triangle ratio; bounded by the error limit')
+    parser.add_argument('--error', type=float, default=0.001, help='relative geometric error limit, 0 to 0.05')
+    parser.add_argument('--mesh-name', action='append', help='simplify only these exact mesh names; repeatable')
+    parser.add_argument('--exclude-material', action='append', help='preserve primitives with these exact material names; repeatable')
     parser.add_argument('--only', action='append', default=[], help='asset-relative GLB path, repeatable')
     args = parser.parse_args()
     paths = [ASSETS / name for name in args.only] if args.only else [
@@ -222,10 +254,11 @@ def main():
         output = args.output_dir.resolve() / relative
         if output == path.resolve():
             raise ValueError('Review output must not overwrite the source asset')
-        packed, row = simplify(path.read_bytes())
+        packed, row = simplify(path.read_bytes(), ratio=args.ratio, error=args.error, mesh_names=args.mesh_name, exclude_materials=args.exclude_material)
         output.parent.mkdir(parents=True, exist_ok=True)
         output.write_bytes(packed)
         row['path'] = relative.as_posix()
+        row['parameters'] = {'ratio': args.ratio, 'error': args.error, 'meshNames': args.mesh_name, 'excludeMaterials': args.exclude_material}
         rows.append(row)
         print(f'{relative}: {row["sourceBytes"]:,} -> {row["outputBytes"]:,} bytes; '
               f'{row["beforeTriangles"]:,} -> {row["afterTriangles"]:,} triangles')

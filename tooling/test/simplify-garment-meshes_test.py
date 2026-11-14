@@ -82,6 +82,57 @@ class SimplifyGarmentMeshes(unittest.TestCase):
             with self.assertRaises(ValueError):
                 M.validate_input(bad)
 
+    def test_selected_accessories_preserve_unselected_geometry_bytes(self):
+        document, binary = fixture()
+        protected = copy.deepcopy(document['meshes'][0])
+        protected['name'] = 'ProtectedBody'
+        # Color arrays on protected facial hair are preserved, not simplified.
+        protected['primitives'][0]['attributes']['COLOR_0'] = 1
+        document['meshes'].append(protected)
+        document['nodes'].append({'mesh': 1, 'skin': 0})
+        raw = M.BUFFERS.write_glb(document, binary)
+        output, report = M.simplify(raw, mesh_names={'Fixture'})
+        new, data = M.BUFFERS.read_glb(output)
+        old_primitive = protected['primitives'][0]
+        new_primitive = new['meshes'][1]['primitives'][0]
+        for key, index in old_primitive['attributes'].items():
+            self.assertEqual(M.BUFFERS.accessor_bytes(document, binary, document['accessors'][index]),
+                             M.BUFFERS.accessor_bytes(new, data, new['accessors'][new_primitive['attributes'][key]]))
+        self.assertEqual(M.BUFFERS.accessor_bytes(document, binary, document['accessors'][old_primitive['indices']]),
+                         M.BUFFERS.accessor_bytes(new, data, new['accessors'][new_primitive['indices']]))
+        self.assertTrue(all(row['mesh'] == 0 for row in report['primitives']))
+        with self.assertRaises(ValueError):
+            M.simplify(raw, mesh_names={'Missing'})
+        with self.assertRaises(ValueError):
+            M.simplify(raw, ratio=0, mesh_names={'Fixture'})
+
+    def test_excluded_material_primitives_are_byte_exact(self):
+        document, binary = fixture()
+        document['materials'].append({'name': 'PreserveMe'})
+        protected = copy.deepcopy(document['meshes'][0]['primitives'][0])
+        protected['material'] = 1
+        offset = len(binary)
+        view_count = len(document['bufferViews'])
+        accessor_count = len(document['accessors'])
+        document['bufferViews'] += [dict(v, byteOffset=v.get('byteOffset', 0) + offset) for v in document['bufferViews']]
+        document['accessors'] += [dict(a, bufferView=a['bufferView'] + view_count) for a in document['accessors']]
+        binary = binary + binary
+        document['buffers'][0]['byteLength'] = len(binary)
+        protected['indices'] += accessor_count
+        protected['attributes'] = {key: value + accessor_count for key, value in protected['attributes'].items()}
+        document['meshes'][0]['primitives'].append(protected)
+        raw = M.BUFFERS.write_glb(document, binary)
+        result, report = M.simplify(raw, exclude_materials=['PreserveMe'])
+        new, data = M.BUFFERS.read_glb(result)
+        self.assertLess(report['afterTriangles'], report['beforeTriangles'])
+        a, b = protected, new['meshes'][0]['primitives'][1]
+        for semantic, index in dict(a['attributes'], indices=a['indices']).items():
+            new_index = b['indices'] if semantic == 'indices' else b['attributes'][semantic]
+            self.assertEqual(M.BUFFERS.accessor_bytes(document, binary, document['accessors'][index]),
+                             M.BUFFERS.accessor_bytes(new, data, new['accessors'][new_index]))
+        with self.assertRaises(ValueError):
+            M.simplify(raw, exclude_materials=['Typo'])
+
     def test_normalized_signed_accessors_decode_without_losing_sign(self):
         values = np.array([[-32768, 0, 32767]], dtype='<i2')
         document = {'buffers': [{'byteLength': 6}], 'bufferViews': [{'buffer': 0, 'byteLength': 6}],

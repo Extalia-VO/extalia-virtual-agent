@@ -1,0 +1,96 @@
+{
+  "changed": true,
+  "sourceBytes": 3885812,
+  "outputBytes": 3596256,
+  "beforeTriangles": 56734,
+  "afterTriangles": 49982,
+  "sourceSHA256": "5158794edbfa971776f74f0e7ad49109f70736cdafbad38439b1911eb7646642",
+  "outputSHA256": "f3247b9280db3e04e0d50910391666ad7393793a069f90ae6575ae6ddb5c56d5",
+  "retainedVertexBytesExact": true,
+  "imagePayloadsExact": true,
+  "primitives": [
+    {
+      "mesh": 0,
+      "primitive": 0,
+      "material": "OfficeAccent_Badge",
+      "beforeTriangles": 336,
+      "afterTriangles": 188,
+      "relativeError": 0.0029837784823030233,
+      "smallAccent": false
+    },
+    {
+      "mesh": 1,
+      "primitive": 0,
+      "material": "OfficeTrim_Glasses",
+      "beforeTriangles": 3852,
+      "afterTriangles": 1474,
+      "relativeError": 0.0029811596032232046,
+      "smallAccent": false
+    },
+    {
+      "mesh": 1,
+      "primitive": 1,
+      "material": "Glass_Lens",
+      "beforeTriangles": 640,
+      "afterTriangles": 212,
+      "relativeError": 0.0029267221689224243,
+      "smallAccent": false
+    },
+    {
+      "mesh": 2,
+      "primitive": 0,
+      "material": "OfficeOuter_Headphones",
+      "beforeTriangles": 2524,
+      "afterTriangles": 1032,
+      "relativeError": 0.002918886486440897,
+      "smallAccent": false
+    },
+    {
+      "mesh": 2,
+      "primitive": 1,
+      "material": "OfficeAccent_Headphones",
+      "beforeTriangles": 2312,
+      "afterTriangles": 1302,
+      "relativeError": 0.00296730175614357,
+      "smallAccent": false
+    },
+    {
+      "mesh": 3,
+      "primitive": 0,
+      "material": "OfficeTrim_Watch",
+      "beforeTriangles": 1192,
+      "afterTriangles": 952,
+      "relativeError": 0.002996686613187194,
+      "smallAccent": false
+    },
+    {
+      "mesh": 3,
+      "primitive": 1,
+      "material": "OfficeAccent_Watch",
+      "beforeTriangles": 1308,
+      "afterTriangles": 252,
+      "relativeError": 0.045059312134981155,
+      "smallAccent": true
+    }
+  ],
+  "protectedMeshesExact": [
+    "Body",
+    "Eyebrows",
+    "EyesDetail",
+    "FacialBeard",
+    "FacialMustache",
+    "FacialStubble",
+    "ScanOutfit"
+  ],
+  "deterministicRerun": true,
+  "parameters": {
+    "ratio": 0.1,
+    "error": 0.003,
+    "meshNames": [
+      "AccBadge",
+      "AccGlasses",
+      "AccHeadphones",
+      "AccWatch"
+    ]
+  }
+}

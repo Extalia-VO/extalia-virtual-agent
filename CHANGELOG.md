@@ -16,6 +16,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.296] - 2026-11-14
+
+### Performance
+
+- Further reduce seven garments, three static libraries and selected avatar accessories while retaining rig metadata, reviewed fixture detail and bounded texture-coordinate precision. Synthetic pose and loader checks are recorded; native full-body fit and FPS remain unverified.
+
 ## [0.4.295] - 2026-11-14
 
 ### Performance

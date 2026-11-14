@@ -35,13 +35,13 @@
     },
     {
       "path": "avatars/bodies/male/office-classic.glb",
-      "sha256": "5158794edbfa971776f74f0e7ad49109f70736cdafbad38439b1911eb7646642",
-      "bytes": 3885812,
+      "sha256": "f3247b9280db3e04e0d50910391666ad7393793a069f90ae6575ae6ddb5c56d5",
+      "bytes": 3596256,
       "license": "LicenseRef-RenderHub-Extended-Use",
       "provenance": {
         "kind": "licensed-avatar-export",
         "exporter": "tooling/prepare-licensed-avatars.py",
-        "note": "Existing Blender-retargeted RenderHub avatar. Source and separate asset terms are recorded in THIRD_PARTY_NOTICES.md."
+        "note": "Blender-retargeted RenderHub avatar; accessory-only mesh simplification by tooling/simplify-garment-meshes.py. Body, face, eyes, facial hair, hands and ScanOutfit geometry retained byte-exact; native textures and rig retained. Source and separate asset terms remain in THIRD_PARTY_NOTICES.md. See tooling/reports/body-accessory-reduction-20261114.json; full runtime fit/FPS not measured."
       }
     },
     {
@@ -288,13 +288,13 @@
     },
     {
       "path": "avatars/outfits/female/reception-uniform.glb",
-      "sha256": "0e69fcd01b057550ce46a592871717757b821f8e2bd8d6207a3e1ac1a3858c7d",
-      "bytes": 5989688,
+      "sha256": "8d4e97f71b97041c8bf77b82213fba5bdcfc9052a2ffa6a5c3928fb61783391d",
+      "bytes": 5389892,
       "license": "CC-BY-4.0",
       "provenance": {
         "kind": "third-party-derived",
         "exporter": "tooling/blender/fit-original-sets.py",
-        "note": "Original Black business suit set garment geometry, UVs and native material maps retained; fitted and re-rigged. Source garment: CC-BY-4.0. Any added avatar skin/context: RenderHub Extended Use License; see notices."
+        "note": "Post-fit garment geometry simplified by tooling/simplify-garment-meshes.py; retained vertices preserve UVs and skin weights, native material maps and rig retained. Source garment: CC-BY-4.0. Reference avatar rig and any added skin/context: RenderHub Extended Use License; see notices. Historical source/fitted hashes and fit receipts are unchanged, not new approvals of simplified geometry. Synthetic four-pose front/rear QA passed; full-body runtime fit and FPS remain untested. See docs/bench/garment-reduction-11.md. OriginalTop_Reception4 and OriginalTop_Reception9 primitives remain byte-exact."
       }
     },
     {
@@ -310,13 +310,13 @@
     },
     {
       "path": "avatars/outfits/male/outfit-black-business-suit.glb",
-      "sha256": "29352417e77d0dc4ad4c243fbc1c68c7d976137e4ae7ddc56367af75c9203c39",
-      "bytes": 9462408,
+      "sha256": "f688c4ca59d5df2edbcfb56cc59deac2115283a2bbfff7c2eec5a6325bf38dc1",
+      "bytes": 7943360,
       "license": "CC-BY-4.0",
       "provenance": {
         "kind": "third-party-derived",
         "exporter": "tooling/blender/fit-source-garments.py",
-        "note": "Original garment geometry, UVs and native material maps retained; reviewed body fit and binding. Source garment: CC-BY-4.0. Reference avatar rig and any added skin/context: RenderHub Extended Use License."
+        "note": "Post-fit garment geometry simplified by tooling/simplify-garment-meshes.py; retained vertices preserve UVs and skin weights, native material maps and rig retained. Source garment: CC-BY-4.0. Reference avatar rig and any added skin/context: RenderHub Extended Use License; see notices. Historical source/fitted hashes and fit receipts are unchanged, not new approvals of simplified geometry. Synthetic four-pose front/rear QA passed; full-body runtime fit and FPS remain untested. See docs/bench/garment-reduction-11.md."
       }
     },
     {
@@ -354,13 +354,13 @@
     },
     {
       "path": "avatars/outfits/male/outfit-sweatshirt-jacket-workwear.glb",
-      "sha256": "1fcce32acf28d37b5f16daae695250a4071df55bfb5e4a1b1927d102d5ae83b4",
-      "bytes": 6896760,
+      "sha256": "cab296f55907c96316a42621c72291a70cdf0812cefc7d324b2a3ee79c7d5f67",
+      "bytes": 4303052,
       "license": "CC-BY-4.0",
       "provenance": {
         "kind": "third-party-derived",
         "exporter": "tooling/blender/fit-source-garments.py",
-        "note": "Original garment geometry, UVs and native material maps retained; reviewed body fit and binding. Source garment: CC-BY-4.0. Reference avatar rig and any added skin/context: RenderHub Extended Use License."
+        "note": "Post-fit garment geometry simplified by tooling/simplify-garment-meshes.py; retained vertices preserve UVs and skin weights, native material maps and rig retained. Source garment: CC-BY-4.0. Reference avatar rig and any added skin/context: RenderHub Extended Use License; see notices. Historical source/fitted hashes and fit receipts are unchanged, not new approvals of simplified geometry. Synthetic four-pose front/rear QA passed; full-body runtime fit and FPS remain untested. See docs/bench/garment-reduction-11.md."
       }
     },
     {
@@ -508,24 +508,24 @@
     },
     {
       "path": "avatars/wardrobe/female/top/source-flame-hoodie.glb",
-      "sha256": "3a6b6cb12bc262476f499ce541158118a25b7153ce7c3d883c4ab08cb83f8c8b",
-      "bytes": 7956312,
+      "sha256": "f3cecdded1d98491b3895c1ce4a5930a3c57bc4ac2fea73fe796e7f9e5db6a3c",
+      "bytes": 6157416,
       "license": "CC-BY-4.0",
       "provenance": {
         "kind": "third-party-derived",
         "exporter": "tooling/blender/fit-source-garments.py",
-        "note": "Primary fabric geometry/UVs retained; explicit reviewed modeled-stitch detail LOD; native material maps retained. Source garment: CC-BY-4.0. Reference avatar rig and any added skin/context: RenderHub Extended Use License."
+        "note": "Post-fit garment geometry simplified by tooling/simplify-garment-meshes.py; retained vertices preserve UVs and skin weights, native material maps and rig retained. Source garment: CC-BY-4.0. Reference avatar rig and any added skin/context: RenderHub Extended Use License; see notices. Historical source/fitted hashes and fit receipts are unchanged, not new approvals of simplified geometry. Synthetic four-pose front/rear QA passed; full-body runtime fit and FPS remain untested. See docs/bench/garment-reduction-11.md."
       }
     },
     {
       "path": "avatars/wardrobe/female/top/source-gothic-blouse.glb",
-      "sha256": "506ca3716ea35a751159510d905d172ab3af7b13dc4515abbeda7b2fa6c13c6a",
-      "bytes": 3152328,
+      "sha256": "286e08168bea93faa30ea91a01f2fc3cd179e2240ca87c8bde246e462516122f",
+      "bytes": 1507792,
       "license": "CC-BY-4.0",
       "provenance": {
         "kind": "third-party-derived",
         "exporter": "tooling/blender/fit-source-garments.py",
-        "note": "Original garment geometry, UVs and native material maps retained; reviewed body fit and binding. Source garment: CC-BY-4.0. Reference avatar rig and any added skin/context: RenderHub Extended Use License."
+        "note": "Post-fit garment geometry simplified by tooling/simplify-garment-meshes.py; retained vertices preserve UVs and skin weights, native material maps and rig retained. Source garment: CC-BY-4.0. Reference avatar rig and any added skin/context: RenderHub Extended Use License; see notices. Historical source/fitted hashes and fit receipts are unchanged, not new approvals of simplified geometry. Synthetic four-pose front/rear QA passed; full-body runtime fit and FPS remain untested. See docs/bench/garment-reduction-11.md."
       }
     },
     {
@@ -541,13 +541,13 @@
     },
     {
       "path": "avatars/wardrobe/female/top/source-pink-hoodie.glb",
-      "sha256": "7f620a7df6178d789279c69976923a59b27dfdc76317a74cd171ca41948279de",
-      "bytes": 4029348,
+      "sha256": "99f370183e2ade72708c41f57e6035bb47eae648f761d6a5e06821ff090b1875",
+      "bytes": 1517776,
       "license": "CC-BY-4.0",
       "provenance": {
         "kind": "third-party-derived",
         "exporter": "tooling/blender/fit-source-garments.py",
-        "note": "Original garment geometry, UVs and native material maps retained; reviewed body fit and binding. Source garment: CC-BY-4.0. Reference avatar rig and any added skin/context: RenderHub Extended Use License."
+        "note": "Post-fit garment geometry simplified by tooling/simplify-garment-meshes.py; retained vertices preserve UVs and skin weights, native material maps and rig retained. Source garment: CC-BY-4.0. Reference avatar rig and any added skin/context: RenderHub Extended Use License; see notices. Historical source/fitted hashes and fit receipts are unchanged, not new approvals of simplified geometry. Synthetic four-pose front/rear QA passed; full-body runtime fit and FPS remain untested. See docs/bench/garment-reduction-11.md."
       }
     },
     {
@@ -585,13 +585,13 @@
     },
     {
       "path": "avatars/wardrobe/male/top/green-white-hoodie.glb",
-      "sha256": "35a6855e232ba83d255eb823f021f063153adabaa20e1314660794596ae42d37",
-      "bytes": 3968396,
+      "sha256": "f0a4553c610f0a239b231e13dafa5fed9bd18b017f6e0845c01b440ef2c85d5a",
+      "bytes": 1819172,
       "license": "CC-BY-4.0",
       "provenance": {
         "kind": "third-party-derived",
         "exporter": "tooling/blender/fit-source-garments.py",
-        "note": "Original garment geometry, UVs and native material maps retained; reviewed body fit and binding. Source garment: CC-BY-4.0. Reference avatar rig and any added skin/context: RenderHub Extended Use License."
+        "note": "Post-fit garment geometry simplified by tooling/simplify-garment-meshes.py; retained vertices preserve UVs and skin weights, native material maps and rig retained. Source garment: CC-BY-4.0. Reference avatar rig and any added skin/context: RenderHub Extended Use License; see notices. Historical source/fitted hashes and fit receipts are unchanged, not new approvals of simplified geometry. Synthetic four-pose front/rear QA passed; full-body runtime fit and FPS remain untested. See docs/bench/garment-reduction-11.md."
       }
     },
     {
@@ -661,12 +661,13 @@
     },
     {
       "path": "furniture/interior-library.glb",
-      "sha256": "4425dfbd70c151727368a6e21bb2b8b6bbe95f8be259b2d30c3a61580ae7d302",
-      "bytes": 4704920,
+      "sha256": "ba4229286286dedb329314413b4c62236bd2f082b660118543a241f17c418f12",
+      "bytes": 1885152,
       "license": "MIT",
       "provenance": {
         "kind": "project-generated",
-        "generator": "tooling/blender/create-interior-library.py"
+        "generator": "tooling/blender/create-interior-library.py",
+        "note": "Post-export optimization by tooling/optimize-static-libraries.py; nodes, material definitions and extras preserved. POSITION/NORMAL remain float32; UV/color attributes packed without decoder extensions. Selected static geometry simplified; silhouettes and detailed fixtures protected. See docs/bench/static-reduction-11.md for per-file geometry counts, quantization error and visual QA; runtime FPS not measured."
       }
     },
     {
@@ -939,22 +940,24 @@
     },
     {
       "path": "landscape/district-buildings.glb",
-      "sha256": "ea202d04ae1517fc649ceb5647508bcf06057c2b6ea9b2e9344af085c1d9c621",
-      "bytes": 3238616,
+      "sha256": "c0404bf9588b72cdd8b7adf23ec5368c52431c828a6f6a3ea6d53ab12565cb72",
+      "bytes": 2300424,
       "license": "MIT",
       "provenance": {
         "kind": "project-generated",
-        "generator": "tooling/blender/create-district-buildings.py"
+        "generator": "tooling/blender/create-district-buildings.py",
+        "note": "Post-export optimization by tooling/optimize-static-libraries.py; nodes, material definitions and extras preserved. POSITION/NORMAL remain float32; UV/color attributes packed without decoder extensions. Vertex deduplication only; triangle count unchanged. See docs/bench/static-reduction-11.md for per-file geometry counts, quantization error and visual QA; runtime FPS not measured."
       }
     },
     {
       "path": "landscape/exterior-landscape.glb",
-      "sha256": "b970fdea297911a5c4de2ea8cca3149ecc618dec9e0d3a168ac4ab6966b0d448",
-      "bytes": 3945096,
+      "sha256": "012781a5f3d9ebf6dcc5952cb14f0d5c77551183b2aa6366dfffbcc4332a79ab",
+      "bytes": 2899736,
       "license": "MIT",
       "provenance": {
         "kind": "project-generated",
-        "generator": "tooling/blender/create-exterior-assets.py"
+        "generator": "tooling/blender/create-exterior-assets.py",
+        "note": "Post-export optimization by tooling/optimize-static-libraries.py; nodes, material definitions and extras preserved. POSITION/NORMAL remain float32; UV/color attributes packed without decoder extensions. Selected static geometry simplified; silhouettes and detailed fixtures protected. See docs/bench/static-reduction-11.md for per-file geometry counts, quantization error and visual QA; runtime FPS not measured."
       }
     },
     {
