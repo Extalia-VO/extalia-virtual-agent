@@ -33,3 +33,10 @@ export interface SessionWorkspaceFileScope {
   workspaceId: string;
   projectLocation: string;
 }
+
+/** Choose one already registered working folder without changing workspace grants. */
+export interface SessionProjectRootRequest {
+  /** Expected current workspace; cross-workspace moves require a separate review. */
+  workspaceId: string;
+  projectLocation: string;
+}

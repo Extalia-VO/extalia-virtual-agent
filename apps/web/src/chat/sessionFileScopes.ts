@@ -1,9 +1,14 @@
 import type { ExtaliaEvent } from '@extalia/protocol';
-import { resolveMessageFile, type MessageFileReference, type MessageFileScope } from './messageFilePaths';
+import { resolveMessageFile, type MessageFileReference, type MessageFileScope, type WorkspaceSummary } from './messageFilePaths';
 
 export interface SessionFileScope { workspaceId: string; projectLocation: string }
 export interface SessionFileScopeBoundary extends SessionFileScope { throughEventId: string }
 export type SessionFileRoots = ReadonlyMap<string, SessionFileScope | null>;
+
+export function hasSessionFileScope(workspaces: readonly WorkspaceSummary[], scope: SessionFileScope): boolean {
+  return workspaces.some(workspace => workspace.id === scope.workspaceId
+    && [workspace.projectLocation, ...(workspace.additionalProjectLocations ?? [])].includes(scope.projectLocation));
+}
 
 /** Missing or unordered cutoffs cannot safely assign relative paths to a workspace. */
 export function sessionFileRoots(events: readonly ExtaliaEvent[], scopes: unknown = []): SessionFileRoots {
@@ -28,7 +33,7 @@ export function sessionFileRoots(events: readonly ExtaliaEvent[], scopes: unknow
 
 export function resolveSessionMessageFile(file: MessageFileReference, current: MessageFileScope, historical?: SessionFileScope | null) {
   if (historical === undefined) return resolveMessageFile(file, current);
-  if (!historical || !current.workspaces.some(workspace => workspace.id === historical.workspaceId && workspace.projectLocation === historical.projectLocation)) return undefined;
+  if (!historical || !hasSessionFileScope(current.workspaces, historical)) return undefined;
   return resolveMessageFile(file, { workspaces: current.workspaces, workspaceId: historical.workspaceId, projectPath: historical.projectLocation });
 }
 

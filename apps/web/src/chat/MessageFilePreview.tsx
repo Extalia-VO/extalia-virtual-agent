@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom';
 import type { Messages } from '../i18n';
 import { Icon } from '../ui/Icon';
 import type { MessageFileReference, MessageFileScope } from './messageFilePaths';
-import { resolveSessionMessageFile, type SessionFileScope } from './sessionFileScopes';
+import { hasSessionFileScope, resolveSessionMessageFile, type SessionFileScope } from './sessionFileScopes';
 
 export type { MessageFileReference, MessageFileScope, WorkspaceSummary } from './messageFilePaths';
 export interface MessageFileProviderProps extends MessageFileScope { t: Messages; agents?: AgentHostApi; children: ReactNode }
@@ -22,7 +22,7 @@ export function useMessageFiles(): OpenMessageFile | undefined { return useConte
 export function HistoricalMessageFileScope({ scope, children }: { scope?: SessionFileScope | null; children: ReactNode }) {
   const historical = useContext(HistoricalMessageFiles);
   if (scope === undefined) return children;
-  const available = scope && historical?.workspaces.some(workspace => workspace.id === scope.workspaceId && workspace.projectLocation === scope.projectLocation);
+  const available = scope && historical && hasSessionFileScope(historical.workspaces, scope);
   const open: OpenMessageFile | undefined = available ? file => historical!.open(file, scope!) : undefined;
   return <MessageFiles.Provider value={open}>{children}</MessageFiles.Provider>;
 }
@@ -52,7 +52,7 @@ function hostPreview(file: FileContent): Preview {
 
 /** Scope changes remount the preview owner, cancelling all pending results and object URLs. */
 export function MessageFileProvider(props: MessageFileProviderProps) {
-  const scopeKey = JSON.stringify([props.workspaceId, props.projectPath, props.workspaces.map(workspace => [workspace.id, workspace.projectLocation])]);
+  const scopeKey = JSON.stringify([props.workspaceId, props.projectPath, props.workspaces.map(workspace => [workspace.id, workspace.projectLocation, workspace.additionalProjectLocations])]);
   return <ScopedMessageFiles key={scopeKey} {...props} />;
 }
 

@@ -168,12 +168,13 @@ export function bridgeAgentHost(credential: string | BridgeConnection, deps: Bri
       catch (error) {
         // Only this read-only snapshot may be retried after an explicit 401.
         // A prompt/approval/upload may already have taken effect: never replay it.
-        if (method !== 'getState' || !(error instanceof BridgeResponseError) || error.status !== 401) throw error;
+        if (!['getState', 'getStateSummary'].includes(method) || !(error instanceof BridgeResponseError) || error.status !== 401) throw error;
         if (!await connection.recover(sentToken)) throw error;
         return send(connection.token);
       }
     },
     listener => events.add(listener),
+    true,
   );
 }
 

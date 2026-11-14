@@ -294,4 +294,39 @@ describe('user message presentation', () => {
       `Before\n${raw}`, `<unknown>${raw}</unknown>`,
     ]) unchanged(literal);
   });
+
+  it('extracts leading [Attached file: ...] headers from observed prompts while leaving prose and code literal', () => {
+    const pathed = '[Attached file: Screenshot 2026-11-13 at 17.35.49.png (/tmp/attachments/s_example/files/att_1/Screenshot 2026-11-13 at 17.35.49.png)]';
+    const doc = '[Attached file: notes.md]';
+    expect(presentUserMessage(`${pathed}\n\nPlease inspect this screenshot.`)).toEqual({
+      text: 'Please inspect this screenshot.',
+      attachments: [{
+        name: 'Screenshot 2026-11-13 at 17.35.49.png',
+        path: '/tmp/attachments/s_example/files/att_1/Screenshot 2026-11-13 at 17.35.49.png',
+        image: true,
+      }],
+    });
+    expect(presentUserMessage(`${pathed}\n\n${doc}\n\nCheck both.`)).toEqual({
+      text: 'Check both.',
+      attachments: [
+        { name: 'Screenshot 2026-11-13 at 17.35.49.png', path: '/tmp/attachments/s_example/files/att_1/Screenshot 2026-11-13 at 17.35.49.png', image: true },
+        { name: 'notes.md', image: false },
+      ],
+    });
+    expect(presentUserMessage(pathed)).toEqual({
+      text: '',
+      attachments: [{
+        name: 'Screenshot 2026-11-13 at 17.35.49.png',
+        path: '/tmp/attachments/s_example/files/att_1/Screenshot 2026-11-13 at 17.35.49.png',
+        image: true,
+      }],
+    });
+    for (const literal of [
+      `    ${pathed}`,
+      `> ${pathed}`,
+      `\`\`\`\n${pathed}\n\`\`\``,
+      `Example: ${pathed}`,
+      '[Attached file: shot.png (not-a-local-path)]',
+    ]) unchanged(literal);
+  });
 });

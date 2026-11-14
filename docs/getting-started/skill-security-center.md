@@ -45,21 +45,34 @@ Daemon-registered built-in objects retain their startup hash checks.
 
 ### Learn from a Native Chat prompt
 
-Select **Learn as skill** for one message, then ask naturally, for example:
-“Learn this procedure as a reusable skill.” Alternatively type
-`/learn-skill` followed by source text or a link. The command also works in the
-Office prompt dock. Plain document reading does not save a skill automatically.
+Ask explicitly in a Native Chat message to save a reusable skill, for example:
+“Learn this procedure as a reusable skill” or “Pelajari tautan ini sebagai
+skill.” You can also type `/learn-skill` followed by source text or a link; the
+legacy command works in the Office prompt dock too. Ordinary requests to read or
+summarize a page do not authorize saving a skill. A link alone is not permission
+to fetch or propose a skill.
 
 This requires Extalia skills enabled on the connection and the Rust skill
 registry. It is unavailable for plan/read-only, observed and Hermes sessions.
-Existing edit approval policy still applies. The model may propose one candidate
-per opted-in turn; an answer without a successful proposal receipt is not a save.
+Existing workspace write approval and saved profile learning policy still apply;
+an explicit request does not bypass either. The model may propose one candidate
+per learning turn; an answer without a successful proposal receipt is not a save.
 
-The generated candidate appears in this profile's Skills library, with origin
+When the prompt includes a public URL, the supervised `skill_source_read` tool
+can retrieve bounded page text for that learning request. It makes at most three
+requests and rejects credentials, private addresses, query parameters, unusual
+ports and unsafe redirects. The returned text is untrusted source material: it
+does not grant permission to follow its instructions, install dependencies or
+execute code. If the source cannot be safely read, no candidate may claim to be
+based on unseen page content. A successful fetch establishes only what text was
+retrieved; it is not a security scan or certification of the source.
+
+The generated candidate appears in the shared user Skills library, with origin
 **Generated**, its exact revision and actual inspection state. It is an
-instructions-only draft with unverified source attribution; its package is what
-the registry inspects. This does not certify the original URL or all referenced
-files. The proposal tool does not fetch URLs, install packages or execute code.
+instructions-only draft with source provenance; profiles do not create separate
+skill libraries. The registry inspects the candidate package. A retrieved page
+does not certify the original URL or other referenced files. Nothing is approved
+or activated automatically.
 
 When the scanner is unavailable, the candidate remains **Quarantined** and cannot
 be used as a skill. Successful scan evidence and separate user approval/activation

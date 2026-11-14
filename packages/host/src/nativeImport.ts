@@ -1,14 +1,15 @@
 import { literalProjectPath, safeLabel, safeText, type ImportMode, type PortableSession } from '@extalia/core';
 import {
-  codexThreadSpawn, mergeSubagentSteps, parseAntigravity, parseClaude, parseCodex, parseGemini, parseHermes,
+  codexThreadSpawn, codexTurnWorkingDirectory, mergeSubagentSteps, parseAntigravity, parseClaude, parseCodex, parseGemini, parseHermes,
   type CodexThreadSpawn, type NativeParseResult, type NativeSourceId, type ParseContext, type SubagentTranscript, type TranscriptContext, type TranscriptStep,
 } from '@extalia/importers';
 import type { ImportCandidate, ImportDiagnostic, ImportLocation, ImportScan } from '@extalia/platform';
 import { createHash, randomUUID } from 'node:crypto';
-import { closeSync, existsSync, fstatSync, openSync, readdirSync, readSync, realpathSync, statSync, type Dirent } from 'node:fs';
+import { closeSync, existsSync, fstatSync, lstatSync, openSync, readdirSync, readSync, realpathSync, statSync, type Dirent } from 'node:fs';
 import { basename, dirname, isAbsolute, join, relative, sep } from 'node:path';
 import type * as Sqlite from 'node:sqlite';
 import { resolveAgentLocations } from './agentLocations.js';
+import { parse as parseToml } from 'smol-toml';
 
 /**
  * Read-only discovery of native agent histories in their known locations.
@@ -108,6 +109,18 @@ function readBoundedBuffer(root: string, path: string, max: number): Buffer {
   }
 }
 
+/** One optional reviewed configuration file; a missing file is distinct from an unsafe one. */
+function resumeSettings(root: string, name: string): { content: string; revision: string } | undefined {
+  const file = join(root, name);
+  try { lstatSync(file); } catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined; throw error; }
+  const canonical = contained(root, file), before = statSync(canonical, { bigint: true });
+  if (!before.isFile() || before.size > BigInt(256 * 1024)) throw new Error('Unsupported native settings file.');
+  const content = readBounded(root, file, 256 * 1024), after = statSync(contained(root, file), { bigint: true });
+  const stamp = (info: typeof before) => [info.dev, info.ino, info.size, info.mtimeNs, info.ctimeNs].map(String);
+  if (JSON.stringify(stamp(before)) !== JSON.stringify(stamp(after))) throw new Error('Native settings changed during review.');
+  return { content, revision: digest(JSON.stringify([canonical, stamp(after), digest(content)])) };
+}
+
 /** Read top-level primitive fields of a JSON object without parsing nested message bodies. */
 function jsonHeader(input: string, wrapperDepth = 0, wrappers: readonly string[] = ['$set']): Row {
   const row: Row = {};
@@ -178,6 +191,14 @@ export interface NativePreview {
 /** Host-only reference pinned by a selected preview. Never accepted as a UI argument. */
 export interface NativeObservationRef { locationId: string; sourceId: string; nativeSessionId: string; path: string }
 
+/** Private source authority for an explicitly reviewed official CLI resume. */
+export interface NativeCliResumeSource {
+  family: 'codex' | 'claude' | 'gemini'; sourceId: string; nativeSessionId: string;
+  cwd: string; profilePath: string; fingerprint: string; revision: string;
+  credentialEnvironmentKeys?: string[];
+  resumeModel?: string; resumeModelSource?: 'profile' | 'project' | 'environment';
+}
+
 /**
  * A transcript read for live observation: the conversation and its structured
  * activity, including the activity of its sub-agents (Claude Code subagent
@@ -202,6 +223,7 @@ export class NativeImportService {
   private readonly discoveryCaches = new Map<string, DiscoveryCache>();
   private readonly threadListings = new Map<string, DiscoveryCache>();
   private readonly threadHeaders = new Map<string, ThreadHeader>();
+  private readonly codexDirectories = new Map<string, { stamp: string; value?: { cwd: string; at: string; recent: boolean } }>();
   private readonly threadFileMemo = new Map<string, { at: number; files: string[] }>();
   private readonly subagentReads = new Map<string, { stamp: string; value: ParsedSubagent }>();
   private readonly lineCounts = new Map<string, { ino: number; position: number; lines: number }>();
@@ -232,6 +254,91 @@ export class NativeImportService {
       const file = contained(location.path, reference.path), info = statSync(file), header = this.codexHeader(location, file);
       if (!info.isFile() || header?.id !== reference.nativeSessionId) return undefined;
       return { codexHome: realpathSync(location.root), transcriptPath: file, sourceFingerprint: digest(JSON.stringify([file, String(info.dev), String(info.ino), header.id])) };
+    } catch { return undefined; }
+  }
+
+  /** Resolve only a registered source's own existing transcript, profile and project. */
+  cliResumeSource(reference: NativeObservationRef): NativeCliResumeSource | undefined {
+    try {
+      const families = { codex: 'codex', 'claude-code': 'claude', 'gemini-cli': 'gemini' } as const;
+      if (!Object.hasOwn(families, reference.sourceId) || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(reference.nativeSessionId)) return undefined;
+      const family = families[reference.sourceId as keyof typeof families], location = this.observationLocation(reference);
+      if (location.kind !== family || family === 'codex' && relative(location.root, location.path) !== 'sessions') return undefined;
+      const file = contained(location.path, reference.path), before = statSync(file, { bigint: true });
+      if (!before.isFile()) return undefined;
+      const ref = this.fileRef(location, file, true);
+      if (ref.candidate.nativeSessionId !== reference.nativeSessionId || !ref.candidate.projectPath || !isAbsolute(ref.candidate.projectPath)) return undefined;
+      // A large omitted middle cannot authorize resuming in its origin folder; require current tail evidence.
+      if (family === 'codex' && ref.identity.size > LIVE_FULL_BYTES && !this.codexWorkingDirectory(location, file)?.recent) return undefined;
+      const cwd = realpathSync(ref.candidate.projectPath), profilePath = realpathSync(location.root);
+      if (!statSync(cwd).isDirectory() || !statSync(profilePath).isDirectory()) return undefined;
+      // Read only the selected provider's environment variable name; credentials remain in the parent environment.
+      let provider: string | undefined, credentialEnvironmentKeys: string[] | undefined, configurationRevision: string | undefined;
+      let resumeModel: string | undefined, resumeModelSource: NativeCliResumeSource['resumeModelSource'];
+      if (family === 'codex') {
+        const configPath = join(location.root, 'config.toml');
+        let present = true;
+        try { lstatSync(configPath); } catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') present = false; else throw error; }
+        if (present) {
+          const configFile = contained(location.root, configPath), configInfo = statSync(configFile, { bigint: true });
+          if (!configInfo.isFile() || configInfo.size > BigInt(256 * 1024)) return undefined;
+          const configText = readBounded(location.root, configPath, 256 * 1024), config = parseToml(configText) as Record<string, unknown>;
+          const configAfter = statSync(contained(location.root, configPath), { bigint: true });
+          const configStamp = (info: typeof configInfo) => [info.dev, info.ino, info.size, info.mtimeNs, info.ctimeNs].map(String);
+          if (JSON.stringify(configStamp(configInfo)) !== JSON.stringify(configStamp(configAfter))) return undefined;
+          if (config.model_provider !== undefined && (typeof config.model_provider !== 'string' || !config.model_provider.trim() || config.model_provider.length > 200)) return undefined;
+          provider = config.model_provider as string | undefined;
+          if (provider && config.model_providers !== undefined) {
+            const providers = config.model_providers;
+            if (!providers || typeof providers !== 'object' || Array.isArray(providers)) return undefined;
+            const selected = Object.hasOwn(providers, provider) ? (providers as Record<string, unknown>)[provider] : undefined;
+            if (selected !== undefined) {
+              if (!selected || typeof selected !== 'object' || Array.isArray(selected)) return undefined;
+              const key = (selected as Record<string, unknown>).env_key;
+              if (key !== undefined) {
+                if (typeof key !== 'string' || !/^[A-Za-z_][A-Za-z0-9_]{0,127}$/.test(key)) return undefined;
+                credentialEnvironmentKeys = [key];
+              }
+            }
+          }
+          configurationRevision = digest(JSON.stringify([configFile, configStamp(configAfter), digest(configText)]));
+        }
+      } else {
+        const settings = resumeSettings(location.root, 'settings.json');
+        configurationRevision = settings?.revision;
+        if (family === 'claude') {
+          // Review only these explicit model sources; managed policy and native aliases remain native authority.
+          // Claude documents local > project > user; ANTHROPIC_MODEL overrides the model setting.
+          const modelValue = (value: unknown): string => {
+            if (typeof value !== 'string' || !value || value.length > 200 || /^[\s-]|\s$|[\p{Cc}]/u.test(value)) throw new Error('Unsupported configured model.');
+            return value;
+          };
+          const revisions: Array<[string, string | undefined]> = [];
+          const select = (scope: 'profile' | 'project', name: string, value: ReturnType<typeof resumeSettings>) => {
+            revisions.push([name, value?.revision]);
+            if (!value) return;
+            const row: unknown = JSON.parse(value.content);
+            if (!row || typeof row !== 'object' || Array.isArray(row)) throw new Error('Unsupported native settings object.');
+            const configured = row as Record<string, unknown>;
+            if (configured.model !== undefined) { resumeModel = modelValue(configured.model); resumeModelSource = scope; }
+          };
+          select('profile', 'profile', settings);
+          select('project', 'project', resumeSettings(cwd, join('.claude', 'settings.json')));
+          select('project', 'project-local', resumeSettings(cwd, join('.claude', 'settings.local.json')));
+          const environmentModel = this.options.env.ANTHROPIC_MODEL;
+          if (environmentModel !== undefined) { resumeModel = modelValue(environmentModel); resumeModelSource = 'environment'; }
+          const selectors = ['ANTHROPIC_MODEL', 'ANTHROPIC_DEFAULT_MODEL', 'ANTHROPIC_DEFAULT_SONNET_MODEL', 'ANTHROPIC_DEFAULT_OPUS_MODEL', 'ANTHROPIC_DEFAULT_HAIKU_MODEL', 'ANTHROPIC_DEFAULT_FABLE_MODEL']
+            .map(key => [key, this.options.env[key]]);
+          configurationRevision = digest(JSON.stringify([revisions, resumeModel, resumeModelSource, selectors]));
+        }
+      }
+      const headerHash = digest(readBounded(location.path, file, HEADER_BYTES)), after = statSync(contained(location.path, reference.path), { bigint: true });
+      const stamp = (info: typeof before) => [info.dev, info.ino, info.size, info.mtimeNs, info.ctimeNs].map(String);
+      if (JSON.stringify(stamp(before)) !== JSON.stringify(stamp(after))) return undefined;
+      const fingerprint = digest(JSON.stringify([file, String(before.dev), String(before.ino), reference.nativeSessionId, profilePath, cwd, provider, credentialEnvironmentKeys]));
+      return { family, sourceId: reference.sourceId, nativeSessionId: reference.nativeSessionId, cwd, profilePath, fingerprint,
+        revision: digest(JSON.stringify([stamp(after), headerHash, ref.candidate.projectPath, configurationRevision])),
+        ...(credentialEnvironmentKeys ? { credentialEnvironmentKeys } : {}), ...(resumeModel ? { resumeModel, resumeModelSource } : {}) };
     } catch { return undefined; }
   }
 
@@ -394,7 +501,7 @@ export class NativeImportService {
     }
   }
 
-  private fileRef(location: Location, path: string): Ref {
+  private fileRef(location: Location, path: string, currentDirectory = false): Ref {
     contained(location.root, location.path);
     const canonical = contained(location.path, path), fileIdentity = identity(canonical);
     const large = fileIdentity.size > MAX_FILE_BYTES;
@@ -433,7 +540,9 @@ export class NativeImportService {
     const antigravityId = location.kind === 'antigravity' ? basename(join(path, '..', '..', '..')) : undefined;
     // A Codex sub-agent thread names its root in `session_id`; its own id is the thread id.
     const nativeSessionId = (location.kind === 'codex' ? text(meta.id) : antigravityId) ?? text(meta.sessionId) ?? text(meta.session_id) ?? text(meta.id) ?? basename(path).replace(/\.(jsonl?|pb)$/, '');
-    const rawProject = literalProjectPath(meta.cwd) ?? literalProjectPath(meta.projectPath) ?? (location.kind === 'gemini' ? this.geminiProject(location, path) : undefined);
+    // Cold discovery stays header-only. Selected reads fill a revision-pinned metadata cache for later scans.
+    const rawProject = (location.kind === 'codex' ? this.codexWorkingDirectory(location, path, currentDirectory)?.cwd : undefined)
+      ?? literalProjectPath(meta.cwd) ?? literalProjectPath(meta.projectPath) ?? (location.kind === 'gemini' ? this.geminiProject(location, path) : undefined);
     const mutableTime = location.kind === 'gemini' ? Date.parse(isoDate(meta.lastUpdated, fileIdentity.mtime)) : fileIdentity.mtime;
     const candidate: ImportCandidate = {
       id: randomUUID(), sourceId: location.sourceId, locationId: location.id, sourceName: location.label, nativeSessionId,
@@ -690,7 +799,7 @@ export class NativeImportService {
         const root = this.codexRoot(location, path);
         if (!root) continue;
         reference = { ...reference, nativeSessionId: root.id, path: root.path };
-        projectPath = this.codexHeader(location, root.path)?.cwd ?? projectPath;
+        projectPath = this.fileRef(location, root.path).candidate.projectPath ?? projectPath;
       }
       const key = reference.nativeSessionId, previous = result.get(key);
       if (!previous || previous.updatedAt < seen.mtime) result.set(key, { reference, updatedAt: Math.max(seen.mtime, previous?.updatedAt ?? 0), ...(projectPath ? { projectPath } : {}) });
@@ -782,7 +891,7 @@ export class NativeImportService {
             ...(project ? { projectPath: safeText(project, 2000) } : {}), ...(location.profile ? { profile: location.profile } : {}) } };
       } finally { db.close(); }
     } else {
-      ref = this.fileRef(location, reference.path);
+      ref = this.fileRef(location, reference.path, true);
       if (ref.candidate.nativeSessionId !== reference.nativeSessionId) throw new Error('The source file now belongs to another session.');
     }
     const scanId = randomUUID();
@@ -980,6 +1089,43 @@ export class NativeImportService {
   }
 
   /** The first record of a Codex rollout, read once per file (it never changes after it is written). */
+  /** Latest visible dated folder metadata in bounded windows, cached until the physical transcript changes. */
+  private codexWorkingDirectory(location: Location, path: string, readCurrent = true): { cwd: string; at: string; recent: boolean } | undefined {
+    const canonical = contained(location.path, path), before = statSync(canonical, { bigint: true });
+    if (!before.isFile() || before.size > BigInt(Number.MAX_SAFE_INTEGER)) throw new Error('Unsupported native transcript.');
+    const stamp = (info: typeof before) => [info.dev, info.ino, info.size, info.mtimeNs, info.ctimeNs].map(String).join(':');
+    const key = stamp(before), cached = this.codexDirectories.get(canonical);
+    if (cached?.stamp === key) return cached.value;
+    if (!readCurrent) return undefined;
+    const fd = openSync(canonical, 'r');
+    const windows: Array<{ content: string; recent: boolean }> = [];
+    try {
+      if (stamp(fstatSync(fd, { bigint: true })) !== key) throw new Error('The source changed during metadata review.');
+      const size = Number(before.size);
+      const read = (position: number, bytes: number) => { const buffer = Buffer.alloc(bytes); return buffer.subarray(0, readSync(fd, buffer, 0, bytes, position)); };
+      if (size <= LIVE_FULL_BYTES) windows.push({ content: read(0, size).toString('utf8'), recent: true });
+      else {
+        // Match live parsing coverage without counting or reading the omitted middle of a growing rollout.
+        const head = read(0, LIVE_HEAD_BYTES), tail = read(size - LIVE_TAIL_BYTES, LIVE_TAIL_BYTES);
+        windows.push({ content: head.subarray(0, head.lastIndexOf(0x0a) + 1).toString('utf8'), recent: false },
+          { content: tail.subarray(tail.indexOf(0x0a) < 0 ? tail.length : tail.indexOf(0x0a) + 1).toString('utf8'), recent: true });
+      }
+      if (stamp(fstatSync(fd, { bigint: true })) !== key || stamp(statSync(contained(location.path, path), { bigint: true })) !== key) throw new Error('The source changed during metadata review.');
+    } finally { closeSync(fd); }
+    let value: { cwd: string; at: string; recent: boolean } | undefined;
+    for (const window of windows) for (const line of window.content.split('\n')) {
+      if (!line.includes('turn_context')) continue;
+      try {
+        if (jsonHeader(line, 0, []).type !== 'turn_context') continue;
+        const candidate = codexTurnWorkingDirectory(JSON.parse(line) as unknown);
+        if (candidate && (!value || candidate.at >= value.at)) value = { ...candidate, recent: window.recent };
+      } catch { /* A partial or malformed record never grants current-folder authority. */ }
+    }
+    this.codexDirectories.delete(canonical); this.codexDirectories.set(canonical, { stamp: key, ...(value ? { value } : {}) });
+    while (this.codexDirectories.size > MAX_CANDIDATES) this.codexDirectories.delete(this.codexDirectories.keys().next().value!);
+    return value;
+  }
+
   private codexHeader(location: Location, path: string): ThreadHeader | undefined {
     try {
       const canonical = contained(location.path, path), info = statSync(canonical);

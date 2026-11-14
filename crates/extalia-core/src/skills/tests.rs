@@ -73,7 +73,12 @@ impl TempDir {
                 NEXT.fetch_add(1, Ordering::Relaxed)
             ));
             match fs::create_dir(&dir) {
-                Ok(()) => return Self(dir),
+                Ok(()) => {
+                    drop(
+                        super::storage::initialize(&dir.join("data"), &profile("default")).unwrap(),
+                    );
+                    return Self(dir);
+                }
                 Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
                 Err(error) => panic!("cannot create a temporary directory: {error}"),
             }
@@ -310,7 +315,11 @@ fn refuses_symlinks_hard_links_and_special_files() {
     assert_eq!(refusal(result), Refusal::SpecialFile);
 
     // Nothing was left in staging or objects.
-    let skills = dir.data().join("profiles/default/skills");
+    let skills = dir.data().join(if cfg!(unix) {
+        "skills"
+    } else {
+        "profiles/default/skills"
+    });
     assert_eq!(fs::read_dir(skills.join("staging")).unwrap().count(), 0);
     assert_eq!(fs::read_dir(skills.join("objects")).unwrap().count(), 0);
 }
@@ -532,7 +541,14 @@ fn objects_are_read_only_private_and_content_addressed() {
     assert_eq!(mode(&object.join("run")), 0o500);
     assert_eq!(mode(&object.join("SKILL.md")), 0o400);
     assert_eq!(mode(&object.join("run/go.sh")), 0o500);
-    assert_eq!(mode(&dir.data().join("profiles/default/skills")), 0o700);
+    assert_eq!(
+        mode(&dir.data().join(if cfg!(unix) {
+            "skills"
+        } else {
+            "profiles/default/skills"
+        })),
+        0o700
+    );
     // The same bytes name the same revision; the source is never read again.
     let again = registry.import(&source, Origin::User, "test", NOW).unwrap();
     assert!(!again.created);
@@ -2038,7 +2054,11 @@ fn builtins_are_hashed_exempt_and_only_registered_internally() {
     assert_eq!(skill.package_id, "demo");
     assert!(
         dir.data()
-            .join("profiles/default/skills/objects")
+            .join(if cfg!(unix) {
+                "skills/objects"
+            } else {
+                "profiles/default/skills/objects"
+            })
             .join(&tree.sha256)
             .is_dir()
     );
@@ -2120,7 +2140,11 @@ fn tampered_builtins_are_dropped() {
     let skill = catalog.register(&mut store, &source, NOW).unwrap().clone();
     let object = dir
         .data()
-        .join("profiles/default/skills/objects")
+        .join(if cfg!(unix) {
+            "skills/objects"
+        } else {
+            "profiles/default/skills/objects"
+        })
         .join(&skill.tree.sha256);
     tamper(&object.join("SKILL.md"), b"evil");
     assert!(matches!(
@@ -2144,6 +2168,85 @@ fn tampered_builtins_are_dropped() {
     let report = restarted.restore(&mut store, LATER).unwrap();
     assert!(report.restored.is_empty() && report.integrity.is_empty());
     assert!(restarted.is_empty());
+}
+
+#[test]
+fn active_approval_stays_in_bounded_details_and_new_candidates_do_not_replace_it() {
+    let dir = TempDir::new();
+    let mut store = open(&dir);
+    let inspector = FakeInspector::clean();
+    let ctx = PolicyContext::current(&inspector);
+    let mut registry = SkillRegistry::new(&mut store, &dir.data(), profile("default"));
+    let source = dir.package("first", &[("SKILL.md", SKILL_MD)]);
+    let (id, approval) = approve(&mut registry, &source, &inspector);
+    registry.activate(&id, approval, &ctx, NOW).unwrap();
+    assert_eq!(
+        registry.summary(&id).unwrap().activation_approval_id,
+        Some(approval)
+    );
+    // Controlled legacy approval-history fixture: unrelated grants must neither
+    // replace active authority nor hide it behind the bounded latest-rows page.
+    for _ in 0..25 {
+        registry
+            .conn()
+            .execute(
+                "INSERT INTO skill_approvals(profile_id,revision_id,inspection_id,tree_sha256,
+                workspace_id,permission_digest,kind,approver,status,created_at,expires_at)
+             SELECT profile_id,revision_id,inspection_id,tree_sha256,'w_mh3p2k1x8a04c2b7',permission_digest,
+                kind,approver,status,created_at,expires_at FROM skill_approvals
+             WHERE profile_id='default' AND approval_id=?1",
+                [approval],
+            )
+            .unwrap();
+    }
+    let details = registry.details(&id).unwrap();
+    assert_eq!(details.approvals.len(), super::views::MAX_DETAIL_APPROVALS);
+    assert!(
+        details
+            .approvals
+            .iter()
+            .any(|row| row.approval_id == approval && row.workspace_id.is_none())
+    );
+    assert!(
+        details
+            .approvals
+            .windows(2)
+            .all(|pair| pair[0].approval_id < pair[1].approval_id)
+    );
+    assert_eq!(details.summary.activation_approval_id, Some(approval));
+    // Expiry limits first activation; this actual consumed approval stays usable.
+    assert_eq!(
+        registry
+            .read_revision_file(&id, "SKILL.md", &ctx, LATER + 1)
+            .unwrap()
+            .bytes,
+        SKILL_MD.as_bytes()
+    );
+    let changed = dir.package(
+        "candidate",
+        &[(
+            "SKILL.md",
+            &format!("{SKILL_MD}\nUpdated reusable procedure."),
+        )],
+    );
+    let candidate = registry
+        .import(&changed, Origin::Generated, "prompt:source", LATER + 1)
+        .unwrap();
+    assert_ne!(candidate.revision_id, id);
+    let candidate_summary = registry.summary(&candidate.revision_id).unwrap();
+    assert!(!candidate_summary.active);
+    assert_eq!(candidate_summary.activation_approval_id, None);
+    assert_eq!(
+        registry.summary(&id).unwrap().activation_approval_id,
+        Some(approval)
+    );
+    assert_eq!(
+        registry
+            .read_revision_file(&id, "SKILL.md", &ctx, LATER + 2)
+            .unwrap()
+            .bytes,
+        SKILL_MD.as_bytes()
+    );
 }
 
 #[test]
@@ -2202,6 +2305,7 @@ fn views_list_inspect_and_read_only_the_active_revision() {
     assert_eq!(all[0].origin, "imported");
     assert!(all.iter().any(|summary| summary.active
         && summary.revision.revision_id == first
+        && summary.activation_approval_id == Some(first_approval)
         && summary.revision.permissions.network.contains("example.com")));
     // Cursor paging returns the rest exactly once.
     let page = registry.list(None, None, 2).unwrap();
@@ -2227,6 +2331,7 @@ fn views_list_inspect_and_read_only_the_active_revision() {
     ));
 
     let details = registry.details(&first).unwrap();
+    assert_eq!(details.summary.activation_approval_id, Some(first_approval));
     assert_eq!(
         details
             .files
@@ -2659,7 +2764,11 @@ fn tampered_builtin_objects_are_detected_on_restart() {
     };
     let object = dir
         .data()
-        .join("profiles/default/skills/objects")
+        .join(if cfg!(unix) {
+            "skills/objects"
+        } else {
+            "profiles/default/skills/objects"
+        })
         .join(&skill.tree.sha256);
     // Altered while the daemon was not running.
     tamper(&object.join("guide.md"), b"evil");
@@ -2693,5 +2802,70 @@ fn tampered_builtin_objects_are_detected_on_restart() {
     assert_eq!(
         catalog.restore(&mut store, LATER).unwrap(),
         Default::default()
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn global_relocation_preserves_active_grant_attestation_history_and_builtins() {
+    let dir = TempDir::new();
+    let mut store = open(&dir);
+    let data = dir.data();
+    let inspector = FakeInspector::clean();
+    let ctx = PolicyContext::current(&inspector);
+    let source = dir.package("approved", &[("SKILL.md", SKILL_MD)]);
+    let mut registry = SkillRegistry::new(&mut store, &data, profile("default"));
+    let (id, approval) = approve(&mut registry, &source, &inspector);
+    registry.activate(&id, approval, &ctx, NOW).unwrap();
+    let before = registry.details(&id).unwrap();
+    let active = registry.active("demo").unwrap();
+    drop(registry);
+    let builtin_source = dir.package(
+        "builtin",
+        &[(
+            "SKILL.md",
+            "---\nname: planning\ndescription: Shipped planning\n---\nPlan the task.\n",
+        )],
+    );
+    let mut builtins = BuiltinCatalog::new(&data, &profile("default"));
+    let builtin = builtins
+        .register(&mut store, &builtin_source, NOW)
+        .unwrap()
+        .clone();
+    drop(builtins);
+    // Recreate the pre-upgrade physical layout without rewriting any authority rows.
+    let legacy = data.join("profiles/default/skills");
+    fs::create_dir_all(&legacy).unwrap();
+    fs::rename(data.join("skills/objects"), legacy.join("objects")).unwrap();
+    fs::remove_file(data.join("skills/layout-v1")).unwrap();
+    // Same core owner lock stays held through initialization.
+    drop(storage::initialize(&data, &profile("default")).unwrap());
+    let mut registry = SkillRegistry::new(&mut store, &data, profile("default"));
+    assert_eq!(registry.details(&id).unwrap(), before);
+    assert_eq!(registry.active("demo").unwrap(), active);
+    // Consumed activation approval remains valid beyond its first-activation TTL.
+    assert_eq!(
+        registry
+            .read_active_file("demo", "SKILL.md", &ctx, LATER + 1)
+            .unwrap(),
+        SKILL_MD.as_bytes()
+    );
+    drop(registry);
+    let mut restored = BuiltinCatalog::new(&data, &profile("default"));
+    let report = restored.restore(&mut store, LATER).unwrap();
+    assert!(report.integrity.is_empty() && report.invalid.is_empty());
+    assert_eq!(restored.get("planning").unwrap(), &builtin);
+    assert_eq!(
+        restored
+            .read_file(&mut store, &builtin.revision_id, "SKILL.md", LATER)
+            .unwrap()
+            .1,
+        fs::read(builtin_source.join("SKILL.md")).unwrap()
+    );
+    assert!(
+        legacy
+            .join("objects")
+            .join(&before.summary.revision.tree_sha256)
+            .is_dir()
     );
 }

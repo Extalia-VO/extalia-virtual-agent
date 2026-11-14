@@ -35,6 +35,13 @@ describe('model combo box filtering', () => {
 });
 
 describe('library combobox server rendering', () => {
+  it('disables input and toggle while preserving an empty inherited value', () => {
+    const html = renderToStaticMarkup(createElement(ComboBox, { id: 'disabled-model', label: 'Model', value: '', options,
+      disabled: true, onChange() {}, customLabel: text => `Use ${text}`, emptyLabel: 'No models' }));
+    expect(html.match(/disabled=""/g)).toHaveLength(2);
+    expect(html).toContain('value=""'); expect(html).toContain('aria-expanded="false"');
+    expect(html).not.toContain('role="listbox"');
+  });
   it.each(['ag/claude-opus-5-5', 'custom/unlisted-model'])('renders saved value %s without a browser or opening a portal', value => {
     const html = renderToStaticMarkup(createElement(ComboBox, {
       id: 'model-picker', label: 'Model', value, options,

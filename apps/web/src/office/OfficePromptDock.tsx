@@ -106,10 +106,11 @@ export function OfficePromptDock({ t, agents, state, workspaceId, compact = fals
   /** The shared learning owner portals its view here; the dock measures the resulting height. */
   onLearningTarget?: (target: HTMLDivElement | null) => void;
 }) {
+  const workspaces = state.workspaces.filter(item => item.mode !== 'observe');
   const c = t.officeUx.composer;
   const id = useId();
   const root = useRef<HTMLElement>(null);
-  const [chosen, setChosen] = useState(workspaceId ?? state.workspaces[0]?.id ?? '');
+  const [chosen, setChosen] = useState(workspaceId ?? workspaces[0]?.id ?? '');
   const [text, setText] = useState('');
   const [chips, setChips] = useState<DockAttachment[]>([]);
   const chipsRef = useRef(chips);
@@ -150,14 +151,14 @@ export function OfficePromptDock({ t, agents, state, workspaceId, compact = fals
   });
   // Follow the active workspace without filtering the Office roster.
   const [filter, setFilter] = useState(workspaceId);
-  if (filter !== workspaceId) { setFilter(workspaceId); setChosen(workspaceId ?? state.workspaces[0]?.id ?? ''); }
+  if (filter !== workspaceId) { setFilter(workspaceId); setChosen(workspaceId ?? workspaces[0]?.id ?? ''); }
 
   const target = targetSessionId ? state.sessions.find(item => item.id === targetSessionId && item.control === 'managed') : undefined;
   const { required: workspaceReviewRequired, recover: recoverWorkspaceReview, clear: clearWorkspaceReview } = useWorkspaceReviewRecovery({ agents, onState, session: target });
   const reviewRequired = useRef(workspaceReviewRequired);
   useLayoutEffect(() => { reviewRequired.current = workspaceReviewRequired; }, [workspaceReviewRequired]);
   // A targeted session decides the workspace; otherwise the dock's own choice (or active Office workspace).
-  const workspace = state.workspaces.find(item => item.id === (target?.workspaceId ?? chosen)) ?? state.workspaces[0];
+  const workspace = workspaces.find(item => item.id === (target?.workspaceId ?? chosen)) ?? workspaces[0];
   const targets = workspaceTargets(state.sessions, workspace?.id);
   if (target && !targets.some(item => item.id === target.id)) targets.unshift(target);
   // v0.0.30: sessions are named by their lead's full name (the title stays as the task line).
@@ -308,7 +309,7 @@ export function OfficePromptDock({ t, agents, state, workspaceId, compact = fals
           <strong className="office-prompt-title"><Icon name="spark" /><span>{target ? c.targetAgent(titleOf(target)) : t.officeUx.dockTitle}</span></strong>
           <div className="office-prompt-workspace" title={`${t.officeUx.dockWorkspace}: ${workspace.name}`}>
             <Select aria-label={t.officeUx.dockWorkspace} value={workspace.id} disabled={busy}
-              options={state.workspaces.map(item => ({ value: item.id, label: item.name, icon: 'folder' as const }))}
+              options={workspaces.map(item => ({ value: item.id, label: item.name, icon: 'folder' as const }))}
               onChange={next => { setChosen(next); if (target && target.workspaceId !== next) onTarget(undefined); }} />
           </div>
         </div>

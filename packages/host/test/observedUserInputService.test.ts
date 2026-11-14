@@ -4,7 +4,7 @@ import path from 'node:path';
 import { tmpdir } from 'node:os';
 import { describe, expect, it, vi } from 'vitest';
 import type { CodexUserInputEvidence } from '@extalia/importers';
-import type { ObservedCodexQueueStatus, ObservedCodexStatus } from '@extalia/platform';
+import type { ObservedCodexMessageInput, ObservedCodexQueueStatus, ObservedCodexStatus } from '@extalia/platform';
 import { ObservedUserInputService } from '../src/observedUserInputService.js';
 import type { ObservedCodexQueueTarget } from '../src/observedCodexQueueService.js';
 async function fixture() {
@@ -13,7 +13,7 @@ async function fixture() {
   let evidence: CodexUserInputEvidence = { requests: [{ callId: 'call-one', canAnswer: true, questions: [{ title: 'Which scope?', options: ['One', 'Two'] }, { title: 'Any detail?', options: [] }] }], replies: [] };
   let labelsOnly = false;
   let nativeStatus: ObservedCodexStatus = { sessionId: 'session-one', state: 'disconnected', canAnswer: false, canSend: false, requests: [] };
-  const native = { status: vi.fn(async () => nativeStatus), answer: vi.fn(async () => nativeStatus) };
+  const native = { status: vi.fn(async () => nativeStatus), answer: vi.fn(async () => nativeStatus), send: vi.fn(async (_id: string, _input: ObservedCodexMessageInput): Promise<ObservedCodexStatus> => ({ ...nativeStatus, delivery: 'submitted' as const })) };
   const queue = { status: vi.fn(async (): Promise<ObservedCodexQueueStatus> => ({ sessionId: 'session-one', enabled: true, canQueue: true })), setEnabled: vi.fn(async () => ({ sessionId: 'session-one', enabled: true, canQueue: true })), send: vi.fn(async (_id: string, _input: { text: string }) => ({ sessionId: 'session-one', enabled: true, canQueue: true, delivery: 'queued' as const })) };
   const options = { dataDirectory, target: () => source, evidence: () => evidence, labelsOnly: () => labelsOnly, native, queue };
   const service = await ObservedUserInputService.create(options);
@@ -133,7 +133,7 @@ describe('observed input aggregation and delivery', () => {
       release();
       await expect(answer).rejects.toThrow('changed before submission');
       expect(f.queue.send).not.toHaveBeenCalled();
-      expect((await f.service.status('session-one')).requests[0]?.state).toBe('unknown');
+      expect((await f.service.status('session-one')).requests[0]?.state).toBe('pending');
     } finally { release(); spy.mockRestore(); await f.cleanup(); }
   });
   it('keeps receipt corruption fail-closed without preventing host startup', async () => {
@@ -216,4 +216,128 @@ it('separates verified pending identity from availability of the async reply rou
     f.setEvidence({ requests: [{ callId: 'unbound:1', canAnswer: false, questions: [{ title: 'Legacy question', options: [] }] }], replies: [] });
     expect((await f.service.status('session-one')).requests[0]).toMatchObject({ identityVerified: false, canAnswer: false });
   } finally { await f.cleanup(); }
+});
+
+function messageConnection(active = true): ObservedCodexStatus {
+  return { sessionId: 'session-one', state: 'connected', threadId: '11111111-1111-4111-8111-111111111111', connectionId: 'connection-one',
+    ...(active ? { activeTurnId: 'turn-one' } : {}), canAnswer: false, canSend: true, requests: [] };
+}
+describe('priority async question delivery', () => {
+  it.each([true, false])('uses the exact existing native connection with active=%s before any queue access', async active => {
+    const f = await fixture();
+    try {
+      f.setNative(messageConnection(active));
+      f.queue.status.mockRejectedValue(new Error('Queue unavailable'));
+      const status = await f.service.status('session-one');
+      expect(status.requests[0]).toMatchObject({ canAnswer: true, deliveryRoute: active ? 'native-steer' : 'native-start' });
+      const input = await f.input();
+      const result = await f.service.answer('session-one', input);
+      expect(result.requests[0]).toMatchObject({ state: 'submitted', canAnswer: false, deliveryRoute: active ? 'native-steer' : 'native-start' });
+      expect(f.native.send).toHaveBeenCalledExactlyOnceWith('session-one', { connectionId: 'connection-one', ...(active ? { activeTurnId: 'turn-one' } : {}), text: expect.stringContaining('"questionItemId":"[\\"request_user_input_async\\",\\"call-one\\",0]"') });
+      expect(f.queue.status).not.toHaveBeenCalled(); expect(f.queue.send).not.toHaveBeenCalled(); expect(f.queue.setEnabled).not.toHaveBeenCalled();
+      const saved = await readFile(path.join(f.options.dataDirectory, 'state', 'observed-user-input.json'), 'utf8');
+      expect(saved).not.toMatch(/Which scope|User detail|call-one|connection-one|turn-one/);
+      const restored = await ObservedUserInputService.create(f.options);
+      expect((await restored.status('session-one')).requests[0]).toMatchObject({ state: 'submitted', canAnswer: false });
+      await expect(restored.answer('session-one', input)).rejects.toThrow('already answered'); await restored.close();
+    } finally { await f.cleanup(); }
+  });
+  it('reserves an in-flight native answer and rejects duplicate submissions', async () => {
+    const f = await fixture(); let release!: (value: ObservedCodexStatus) => void, started!: () => void;
+    const gate = new Promise<ObservedCodexStatus>(resolve => { release = resolve; }), began = new Promise<void>(resolve => { started = resolve; });
+    try {
+      f.setNative(messageConnection()); f.native.send.mockImplementationOnce(() => { started(); return gate; });
+      const input = await f.input(), first = f.service.answer('session-one', input); await began;
+      expect((await f.service.status('session-one')).requests[0]).toMatchObject({ state: 'unknown', canAnswer: false, deliveryRoute: 'native-steer' });
+      await expect(f.service.answer('session-one', input)).rejects.toThrow('already being submitted');
+      release({ ...messageConnection(), delivery: 'submitted' });
+      expect((await first).requests[0]).toMatchObject({ state: 'submitted', canAnswer: false });
+      expect(f.native.send).toHaveBeenCalledOnce(); expect(f.queue.send).not.toHaveBeenCalled();
+    } finally { release?.({ ...messageConnection(), delivery: 'submitted' }); await f.cleanup(); }
+  });
+  it('uses a queue receipt only when no matching native sender exists', async () => {
+    const f = await fixture();
+    try {
+      f.setNative({ ...messageConnection(), threadId: '22222222-2222-4222-8222-222222222222' });
+      expect((await f.service.status('session-one')).requests[0]).toMatchObject({ deliveryRoute: 'queue' });
+      expect((await f.service.answer('session-one', await f.input())).requests[0]).toMatchObject({ state: 'queued', deliveryRoute: 'queue' });
+      expect(f.native.send).not.toHaveBeenCalled(); expect(f.queue.send).toHaveBeenCalledOnce();
+    } finally { await f.cleanup(); }
+  });
+  it.each(['connect', 'disconnect', 'turn', 'connection'] as const)('requires a refreshed question handle after %s changes the chosen route', async change => {
+    const f = await fixture();
+    try {
+      if (change !== 'connect') f.setNative(messageConnection());
+      const input = await f.input();
+      f.setNative(change === 'disconnect' ? { ...messageConnection(), state: 'disconnected', canSend: false }
+        : change === 'turn' ? { ...messageConnection(), activeTurnId: 'turn-two' }
+          : change === 'connection' ? { ...messageConnection(), connectionId: 'connection-two' } : messageConnection());
+      expect((await f.service.status('session-one')).requests[0]?.revision).not.toBe(input.revision);
+      await expect(f.service.answer('session-one', input)).rejects.toThrow('changed');
+      expect(f.native.send).not.toHaveBeenCalled(); expect(f.queue.send).not.toHaveBeenCalled();
+    } finally { await f.cleanup(); }
+  });
+  it.each(['reject', 'unknown', 'disconnect', 'replace', 'privacy'] as const)('never falls back or retries after a native %s outcome', async outcome => {
+    const f = await fixture();
+    try {
+      f.setNative(messageConnection());
+      f.native.send.mockImplementationOnce(async () => {
+        if (outcome === 'reject') throw new Error('Steer may have reached the server');
+        if (outcome === 'replace') f.replace();
+        if (outcome === 'privacy') f.setPrivacy();
+        return { ...messageConnection(), ...(outcome === 'disconnect' ? { state: 'disconnected' as const } : {}), delivery: 'unknown' as const };
+      });
+      const input = await f.input();
+      await f.service.answer('session-one', input);
+      expect(f.native.send).toHaveBeenCalledOnce(); expect(f.queue.send).not.toHaveBeenCalled();
+      const data = JSON.parse(await readFile(path.join(f.options.dataDirectory, 'state', 'observed-user-input.json'), 'utf8'));
+      expect(data.receipts).toEqual([{ id: input.requestId, state: 'unknown', route: 'native-steer' }]);
+      await expect(f.service.answer('session-one', input)).rejects.toThrow();
+      expect(f.native.send).toHaveBeenCalledOnce();
+    } finally { await f.cleanup(); }
+  });
+  it('fences a new active turn arriving during write-ahead persistence without sending to either route', async () => {
+    const f = await fixture(), actual = jsonStore.writeJsonAtomic;
+    let release!: () => void, started!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; }), began = new Promise<void>(resolve => { started = resolve; });
+    const spy = vi.spyOn(jsonStore, 'writeJsonAtomic').mockImplementationOnce(async (...args) => { started(); await gate; return actual(...args); });
+    try {
+      f.setNative(messageConnection()); const input = await f.input(), answer = f.service.answer('session-one', input);
+      await began; f.setNative({ ...messageConnection(), activeTurnId: 'turn-two' }); release();
+      await expect(answer).rejects.toThrow('changed before submission');
+      expect(f.native.send).not.toHaveBeenCalled(); expect(f.queue.send).not.toHaveBeenCalled();
+      expect((await f.service.status('session-one')).requests[0]).toMatchObject({ state: 'pending', canAnswer: true });
+      expect((await f.service.answer('session-one', await f.input())).requests[0]).toMatchObject({ state: 'submitted' });
+      expect(f.native.send).toHaveBeenCalledExactlyOnceWith('session-one', expect.objectContaining({ activeTurnId: 'turn-two' }));
+      expect(f.queue.send).not.toHaveBeenCalled();
+    } finally { release(); spy.mockRestore(); await f.cleanup(); }
+  });
+  it('fails closed when a known pre-dispatch intent cannot be rolled back durably', async () => {
+    const f = await fixture(), actual = jsonStore.writeJsonAtomic;
+    let release!: () => void, started!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; }), began = new Promise<void>(resolve => { started = resolve; });
+    const spy = vi.spyOn(jsonStore, 'writeJsonAtomic').mockImplementationOnce(async (...args) => { started(); await gate; return actual(...args); })
+      .mockRejectedValueOnce(new Error('Rollback storage unavailable'));
+    try {
+      f.setNative(messageConnection()); const input = await f.input(), answer = f.service.answer('session-one', input);
+      await began; f.setNative({ ...messageConnection(), activeTurnId: 'turn-two' }); release();
+      await expect(answer).rejects.toThrow('changed before submission');
+      expect((await f.service.status('session-one')).requests[0]).toMatchObject({ state: 'unknown', canAnswer: false });
+      const restored = await ObservedUserInputService.create(f.options);
+      expect((await restored.status('session-one')).requests[0]).toMatchObject({ state: 'unknown', canAnswer: false });
+      await restored.close(); expect(f.native.send).not.toHaveBeenCalled(); expect(f.queue.send).not.toHaveBeenCalled();
+    } finally { release(); spy.mockRestore(); await f.cleanup(); }
+  });
+  it('retains original version-one queue and uncertain receipts after upgrade', async () => {
+    const f = await fixture();
+    try {
+      const request = (await f.service.status('session-one')).requests[0]!;
+      await mkdir(path.join(f.options.dataDirectory, 'state'), { recursive: true });
+      await writeFile(path.join(f.options.dataDirectory, 'state', 'observed-user-input.json'), JSON.stringify({ version: 1, receipts: [{ id: request.id, state: 'queued' }] }));
+      const restored = await ObservedUserInputService.create(f.options);
+      f.setNative(messageConnection());
+      expect((await restored.status('session-one')).requests[0]).toMatchObject({ state: 'queued', canAnswer: false, deliveryRoute: 'queue' });
+      await restored.close(); expect(f.native.send).not.toHaveBeenCalled(); expect(f.queue.send).not.toHaveBeenCalled();
+    } finally { await f.cleanup(); }
+  });
 });

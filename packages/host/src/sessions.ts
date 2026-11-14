@@ -2,14 +2,17 @@ import { randomBytes } from 'node:crypto';
 import { readFile, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
-import type { AgentTeam, MemberGender } from '@extalia/core';
+import type { AgentTeam, MemberGender, SessionOperatingProfile } from '@extalia/core';
 import type { SessionContextUsage, SessionOptions, SessionWorkspaceFileScope } from '@extalia/platform';
 import { parseEventLines, type ExtaliaEvent } from '@extalia/protocol';
 import { appendLine, CorruptFileError, isNotFound, readJson, writeJsonAtomic } from './jsonStore.js';
 
 export interface SessionRecord {
+  operatingProfile?: SessionOperatingProfile;
   id: string;
   workspaceId: string;
+  /** Active registered working folder override; history roots are recorded separately. */
+  projectLocation?: string;
   connectionId: string;
   title: string;
   createdAt: string;

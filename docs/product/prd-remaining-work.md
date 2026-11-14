@@ -54,8 +54,22 @@ Returning to a prior runtime must merge its new work into the same continuity re
 
 The v0.4.282 full gate passed with 9,088 TypeScript tests, Rust checks and production builds. Actual-host tests cover repeated transfer, original evidence, cross-provider serialization, idempotence, privacy and scoped MCP reads. The v0.4.284 gate also covers a long controlled chain with 28 large source entries, bounded packets, retained omissions and paged original archives. Synthetic browser tests cover both languages, themes and narrow layouts. These do not replace real third-party app acceptance.
 
-1. Run a real controlled chain **Codex → Gemini → Claude → Codex** on one temporary project. At each hop, the recipient must see the prior decisions, completed work, active constraints and next step without requiring the user to paste the original task again.
-2. Verify continuity after enough turns to trigger context-window pressure or compaction; compare an explicit decision/checklist set and ensure no item disappears or changes without a traceable update.
+A [live CLI chain](../bench/live-handover-chain.md) on v0.4.288 now passes
+**Codex → Gemini → Claude → the original Codex session**. It uses actual
+inference, Extalia's reviewed export and supported CLI resume. All original
+decisions, later progress markers and complete test cases survived. Scoped MCP
+reads recovered a shortened entry, and the canonical record survived restarts.
+
+A later [actual Extalia UI roundtrip](../bench/native-antigravity-handover.md)
+verified **Codex → Antigravity → the original Codex session** without manually
+pasting the work into either receiver. It retained decisions, implementation,
+fourteen tests and the canonical record after a host restart. The Observe
+navigator now groups by harness and actual workspace/folder, with separate
+Tools and retained drafts. The v0.4.291 frozen full gate passed with 9,432
+TypeScript tests and 580 Rust tests, lint/types and production builds.
+
+1. Verify the installed Desktop package and original Desktop-process attachment. The later actual React UI run used an isolated real host; it is distinct from an installed Desktop acceptance run.
+2. Complete physical context-pressure and safe-compaction acceptance. A controlled Gemini compression retained selected decisions and cases, but exact full-schema preservation was not established; see the native benchmark limits.
 3. Verify source attribution: imported transcript facts, external agent claims, tool-confirmed file changes and test output remain distinguishable.
 4. Verify receiver-specific limitations honestly. If an app exposes no supported same-thread send/resume capability, Extalia must say so and continue through an explicitly linked session or exported handover; it must not claim a same-ID session or inject context through a private/unsupported path.
 5. Exercise failures: rejected/unknown handoff, stale receiver, duplicate submission, workspace switch, concurrent edits and return to a prior runtime. An unknown send must not be replayed automatically.
@@ -91,7 +105,7 @@ The app-flow status tracker is the live list; the main open or partial product s
 
 | Work | Current foundation | Still needed |
 | --- | --- | --- |
-| Observed Knowledge context | Source identity, explicit project/workspace binding, inbox and handoff reporting ([ADR 0078](../adr/0078-observed-workspace-association.md)) | Capability-scoped Knowledge and skill retrieval for supported external agents, observed completion learning and source-specific acceptance. Keep read/write grants separate. |
+| Observed Knowledge context | Source identity, explicit project/workspace binding, inbox and handoff reporting ([ADR 0078](../adr/0078-observed-workspace-association.md)) | General capability-scoped live Knowledge/skill retrieval for external agents and runtime/platform certification. Opt-in observed episodes, Native recall, reviewed context copies and Rust curation are implemented (ADR 0081); keep archive reads and live read/write grants separate. |
 | General schedules | Deferred-learning timers and prompt queues | User-created one-off/recurring schedules, session create/continue behavior, assigned lead/team, edit/pause/disable and missed-run policy. Learning timers are not general scheduling. |
 | Office experience | Renderer quality recovery, movement and social rendezvous work | Continue current tracker items and verify furnished rooms/floors and real Web/Desktop workload separately; do not infer whole-app low-end performance from resolution scaling alone. |
 | Low-resource assets | Adaptive render resolution and staged character arrivals | Optimize inventoried large GLB assets only with visual/geometry review; test representative low-spec hardware and memory/FPS under realistic office load. |
@@ -121,3 +135,8 @@ both after restart. A browser harness mounted the actual Office prompt and
 learning notice components, invoked the real scheduler and displayed its receipt
 above the prompt in English/light and Indonesian/dark at 390 pixels. Dismissal
 survived polling. The browser harness omitted the 3D canvas and installed Desktop.
+
+Memory acceptance detail: [Shared work memory status](shared-work-memory-status.md). Reviewed installed-CLI delivery is described in [ADR 0079](../adr/0079-reviewed-cli-handover.md); its live acceptance is tracked separately from Desktop attachment and full-context saturation.
+
+
+The v0.4.293 observed-memory increment ([ADR 0081](../adr/0081-observed-work-memory-and-curation.md)) passed its full source gate with 9,532 TypeScript and 600 Rust tests, lint/types and production builds. Actual temporary-host/Rust tests verify new attributed capture, no historical model calls, restart recall, Knowledge publication, inactive skill-candidate receipts, reviewed context copies and contributor revocation. Eight simulated-host browser scenarios cover memory inspection and per-profile opt-in in EN/ID, both themes and laptop/phone layouts. This closes the bounded observed-memory/curation slice, not the general external live-memory broker or universal compaction gates.

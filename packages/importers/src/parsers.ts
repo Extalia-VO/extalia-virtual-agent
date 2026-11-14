@@ -244,6 +244,15 @@ export function codexThreadSpawn(sessionMeta: unknown): CodexThreadSpawn | undef
   return { parentThreadId: safeLabel(parentThreadId, 200), ...(depth ? { depth } : {}), ...(nickname ? { nickname } : {}), ...(role ? { role } : {}), ...(path ? { path } : {}) };
 }
 
+/** One dated native folder record; callers select the latest visible metadata, never conversation or tool text. */
+export function codexTurnWorkingDirectory(value: unknown): { cwd: string; at: string } | undefined {
+  const row = obj(value);
+  if (row.type !== 'turn_context') return undefined;
+  const at = stepTime(row.timestamp), cwd = literalProjectPath(obj(row.payload).cwd);
+  if (!at || !cwd || !/^(?:\/|[A-Za-z]:[\\/]|\\\\[^\\]+\\[^\\]+)/.test(cwd)) return undefined;
+  return { cwd, at };
+}
+
 /** Codex rollout JSONL: response items plus event mirrors that are paired so prompts are not duplicated. */
 export function parseCodex(text: string, context: ParseContext): NativeParseResult {
   const diagnostics: string[] = [], rows = records(text, diagnostics);
@@ -288,12 +297,15 @@ export function parseCodex(text: string, context: ParseContext): NativeParseResu
   const drafts: Draft[] = [], steps = new StepList();
   const viewImages = new Map<string, { tool: string; path: string }>();
   let model: string | undefined, modelAt: string | undefined, effort: Effort | undefined, effortAt: string | undefined;
+  let workingDirectory: ReturnType<typeof codexTurnWorkingDirectory>;
   // v0.0.48: context in use is the latest request's input (`last_token_usage`); the thread total is not context.
   let usedTokens: number | undefined, windowTokens: number | undefined, compactedRows = 0, compactedEvents = 0;
   for (const [index, row] of rows.entries()) {
     const payload = obj(row.payload), pos = `L${index}`, at = stepTime(row.timestamp);
     const base = { pos, ...(at ? { at } : {}) };
     if (row.type === 'turn_context') {
+      const directory = codexTurnWorkingDirectory(row);
+      if (directory && (!workingDirectory || directory.at >= workingDirectory.at)) workingDirectory = directory;
       // A new context replaces effort even when the source omits it. Once dated
       // evidence exists, untimed contexts cannot erase its freshness watermark.
       // Bodies and reasoning are never consulted.
@@ -335,7 +347,7 @@ export function parseCodex(text: string, context: ParseContext): NativeParseResu
             imagePath = selected; viewImages.set(callId, { tool, path: selected });
           } else viewImages.delete(callId);
         } else if (callId) viewImages.delete(callId);
-        const candidateFiles = extractWrittenFiles(tool, input, undefined, str(meta.cwd) || context.projectPath);
+        const candidateFiles = extractWrittenFiles(tool, input, undefined, workingDirectory?.cwd || str(meta.cwd) || context.projectPath);
         steps.push({ ...base, type: 'tool.call', tool, ...(callId ? { callId } : {}), ...toolHints(tool, input), ...(candidateFiles.length ? { files: candidateFiles } : {}), ...(imagePath ? { imagePath } : {}) });
         // Built-in calls without a separate output record report their status inline.
         if (payload.type === 'web_search_call' && ['completed', 'failed'].includes(str(payload.status))) steps.push({ ...base, pos: `${pos}.result`, type: 'tool.result', tool, ...(callId ? { callId } : {}), ok: payload.status === 'completed' });
@@ -377,7 +389,7 @@ export function parseCodex(text: string, context: ParseContext): NativeParseResu
     }
   }
   const contextUsage = usedTokens !== undefined ? { usedTokens, ...(windowTokens ? { windowTokens } : {}), compactions: Math.max(compactedRows, compactedEvents) } : undefined;
-  return { ...finish(context, meta.id, drafts, diagnostics, { path: meta.cwd, start: meta.timestamp, parser: 'codex-rollout', ...(model ? { model } : {}), ...(modelAt ? { modelAt } : {}), ...(effort ? { effort } : {}), ...(effortAt ? { effortAt } : {}), ...(contextUsage ? { context: contextUsage } : {}) }, steps), userInput: codexUserInputEvidence(rows) };
+  return { ...finish(workingDirectory ? { ...context, projectPath: workingDirectory.cwd } : context, meta.id, drafts, diagnostics, { path: meta.cwd, start: meta.timestamp, parser: 'codex-rollout', ...(model ? { model } : {}), ...(modelAt ? { modelAt } : {}), ...(effort ? { effort } : {}), ...(effortAt ? { effortAt } : {}), ...(contextUsage ? { context: contextUsage } : {}) }, steps), userInput: codexUserInputEvidence(rows) };
 }
 
 /** Claude Code UI echoes of local commands (`/model`, `/clear`, …) written as user rows. */

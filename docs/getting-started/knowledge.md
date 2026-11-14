@@ -8,7 +8,16 @@ The page can create and edit managed notes when the host advertises editing supp
 anything a note declares, such as `verified` in its front matter, is shown as
 declared, never as checked.
 
-Open **Knowledge** under **Library** in the sidebar. **Knowledge vault** on that page lets you select an existing Obsidian or Markdown folder (Desktop folder picker; full path on the web). The same controls remain in Settings. Changing folders clears the open note, searches, graphs and editor state. Finish an open draft before changing folders. A saved folder is separate from a successful index sync; check the status and choose **Sync now** when needed.
+Open **Knowledge** under **Library** in the sidebar. In **Vault connection**, select
+the workspace, then **Change folder → Choose folder**. Desktop opens its native
+folder picker; Web opens a folder browser on the computer running Extalia. Select
+the folder there rather than typing its path. The confirmed location appears under
+**Notes folder**, with a button to copy the full path. The same folder controls
+remain in Settings, including shared vault profile drafts, which are applied with
+**Save vault profile**. Changing folders clears the open note, searches, graphs
+and editor state. Finish an open draft before changing folders. A saved folder is
+separate from a successful index sync; check the status and choose **Sync now**
+when needed.
 
 ## Where the vault lives
 

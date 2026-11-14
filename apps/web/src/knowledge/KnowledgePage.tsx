@@ -1,6 +1,6 @@
 import {
   KNOWLEDGE_UI_LIMITS, isKnowledgeIndexEvent, type FileSystemCapability, type AgentHostApi, type KnowledgeGraph, type KnowledgeLink, type KnowledgeLinkPage, type KnowledgeNode, type KnowledgeNodeRef,
-  type KnowledgeNoteResult, type KnowledgeOverview, type KnowledgeSearchResult, type KnowledgeStatus, type HostState, type VaultProfilesCatalog,
+  type KnowledgeNoteResult, type KnowledgeOverview, type KnowledgeSearchResult, type KnowledgeStatus, type HostState, type VaultProfile, type VaultProfilesCatalog,
 } from '@extalia/platform';
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode, type KeyboardEvent } from 'react';
 import { Markdown, type WikilinkNode } from '../chat/Markdown';
@@ -12,7 +12,8 @@ import { isUnsupportedMessage, layoutGraph, linkKey, linksByTarget, nodeLabel, o
 import { KnowledgeVaultSection } from '../pages/settings/KnowledgeVaultSection';
 import { VaultGraphView } from './vault/VaultGraphView';
 import { useKnowledgeEditing, type KnowledgeEditSlots } from './KnowledgeEdit';
-import { workspaceKnowledgeHost } from './workspaceKnowledgeHost';
+import { isWorkspaceKnowledgeBindingError, workspaceKnowledgeHost } from './workspaceKnowledgeHost';
+import { KnowledgeVaultContext } from './KnowledgeVaultContext';
 
 /**
  * Knowledge (W5): search the profile's vault index, read a note with clickable wikilinks, see its
@@ -35,8 +36,10 @@ function formatWhen(iso: string, language: string): string {
 }
 
 /** Status bar: vault label, counts, last sync, Sync now, and the files the last sync skipped. */
-export function KnowledgeStatusBar({ t, language, status, syncing, syncError, onSync }: {
+export function KnowledgeStatusBar({ t, language, status, syncing, syncError, onSync, hideVault = false, disabled = false }: {
   t: Messages; language: string; status: KnowledgeStatus; syncing: boolean; syncError?: string | undefined; onSync: () => void;
+  hideVault?: boolean | undefined;
+  disabled?: boolean | undefined;
 }) {
   const k = t.knowledge;
   const counts = status.counts;
@@ -44,11 +47,11 @@ export function KnowledgeStatusBar({ t, language, status, syncing, syncError, on
   return (
     <section className="card knowledge-status" aria-label={k.vault}>
       <div className="knowledge-status-row">
-        <span className="knowledge-vault"><Icon name="files" /><span className="muted">{k.vault}</span> <code>{status.vaultRoot}</code></span>
+        {!hideVault && <span className="knowledge-vault"><Icon name="files" /><span className="muted">{k.vault}</span> <code>{status.vaultRoot}</code></span>}
         {counts && <span className="muted small">{k.notes(counts.notes)}</span>}
         {counts && counts.unresolvedLinks > 0 && <span className="muted small">{k.unresolved(counts.unresolvedLinks)}</span>}
         <span className="muted small" role="status">{syncing ? k.syncing : status.lastSync ? k.lastSync(formatWhen(status.lastSync.at, language), k.syncModes[status.lastSync.mode]) : k.neverSynced}</span>
-        <button type="button" className="button small knowledge-sync" disabled={syncing} onClick={onSync}>
+        <button type="button" className="button small knowledge-sync" disabled={syncing || disabled} onClick={onSync}>
           <Icon name="refresh" />{syncing ? k.syncing : k.syncNow}
         </button>
       </div>
@@ -248,6 +251,8 @@ export interface KnowledgeViewProps {
   t: Messages;
   language: string;
   setup?: ReactNode;
+  context?: ReactNode;
+  blocked?: boolean | undefined;
   onRefresh?: () => void;
   status: Loaded<KnowledgeStatus>;
   query: string;
@@ -278,12 +283,12 @@ export interface KnowledgeViewProps {
 export type KnowledgeScope = 'local' | 'vault';
 
 /** Local / Whole vault: shown only when the host serves the vault overview. */
-function ScopeSwitch({ t, scope, onScope }: { t: Messages; scope: KnowledgeScope; onScope: (scope: KnowledgeScope) => void }) {
+function ScopeSwitch({ t, scope, onScope, disabled }: { t: Messages; scope: KnowledgeScope; onScope: (scope: KnowledgeScope) => void; disabled?: boolean | undefined }) {
   const k = t.knowledge.vaultGraph;
   return (
     <div className="segmented knowledge-scope" role="group" aria-label={k.scope}>
       {(['local', 'vault'] as const).map(item => (
-        <button key={item} type="button" className="chip-button" aria-pressed={scope === item} onClick={() => onScope(item)}>{item === 'local' ? k.local : k.whole}</button>
+        <button key={item} type="button" className="chip-button" disabled={disabled} aria-pressed={scope === item} onClick={() => onScope(item)}>{item === 'local' ? k.local : k.whole}</button>
       ))}
     </div>
   );
@@ -347,14 +352,15 @@ export function KnowledgeView(props: KnowledgeViewProps) {
   const header = <><header className="page-header">
     <div className="knowledge-title-row"><h1>{k.title}</h1>{props.onRefresh && <button type="button" className="button small" onClick={props.onRefresh}>{k.refresh}</button>}</div>
     {graphMode ? <details className="knowledge-about"><summary>{k.about}</summary><p className="lead">{k.lead}</p></details> : <p className="lead">{k.lead}</p>}
-  </header>{props.setup && <details className="knowledge-vault-setup" open={status.value?.counts?.notes === 0 ? true : undefined}><summary>{t.knowledgeVault.title}</summary>{props.setup}</details>}</>;
+  </header>{props.context}{props.setup && <details className="knowledge-vault-setup"><summary>{t.knowledgeVault.title}</summary>{props.setup}</details>}</>;
   if (status.error && !status.value) return <div className="page knowledge">{header}<section className="card"><p className="form-error" role="alert"><Icon name="alert" />{status.error}</p><p className="muted">{k.hostHelp}</p></section></div>;
   if (!status.value) return <div className="page knowledge">{header}<section className="card"><p className="muted" role="status">{t.common.loading}</p></section></div>;
   const current = status.value;
-  const vaultTools = <><KnowledgeStatusBar t={t} language={language} status={current} syncing={syncing} syncError={syncError} onSync={onSync} />{props.editing?.toolbar}</>;
-  const bar = graphMode && current.state !== 'unavailable' && Boolean(current.counts?.notes)
+  const vaultTools = <><KnowledgeStatusBar t={t} language={language} status={current} syncing={syncing} syncError={syncError} onSync={onSync} hideVault={Boolean(props.context)} disabled={props.blocked} />{props.editing?.toolbar}</>;
+  const indexBar = graphMode && current.state !== 'unavailable' && Boolean(current.counts?.notes)
     ? <details className="knowledge-index-tools"><summary>{k.vault} · {k.notes(current.counts!.notes)} · {k.syncAndNotes}</summary>{vaultTools}</details>
     : vaultTools;
+  const bar = <>{status.error && <p className="form-error" role="alert"><Icon name="alert" />{status.error}</p>}{indexBar}</>;
   const editor = props.editing?.editor;
   if (current.state === 'unavailable') {
     return (
@@ -363,6 +369,7 @@ export function KnowledgeView(props: KnowledgeViewProps) {
           <p className="note"><Icon name="alert" />{k.unavailable}</p><p className="muted">{k.hostHelp}</p>
           {current.reason && <p className="muted small">{k.unavailableReason(current.reason)}</p>}
         </section>
+        {editor}
       </div>
     );
   }
@@ -371,7 +378,7 @@ export function KnowledgeView(props: KnowledgeViewProps) {
       <div className="page knowledge">{header}{bar}
         <section className="card empty-state" data-state="empty">
           <h2>{k.emptyTitle}</h2>
-          <p>{k.emptyBody} <code>{current.vaultRoot}</code></p>
+          <p>{props.context ? t.knowledgeContext.emptyBody : <>{k.emptyBody} <code>{current.vaultRoot}</code></>}</p>
           <p className="muted">{current.vaultPresent ? k.emptyHint : k.vaultMissing}</p>
         </section>
         {editor}
@@ -379,7 +386,7 @@ export function KnowledgeView(props: KnowledgeViewProps) {
     );
   }
   const scope = props.onScope ? props.scope ?? 'local' : 'local';
-  const scopeSwitch = props.onScope ? <ScopeSwitch t={t} scope={scope} onScope={props.onScope} /> : null;
+  const scopeSwitch = props.onScope ? <ScopeSwitch t={t} scope={scope} onScope={props.onScope} disabled={props.blocked} /> : null;
   if (scope === 'vault') {
     return (
       <div className="page knowledge knowledge-vault-page">
@@ -400,7 +407,7 @@ export function KnowledgeView(props: KnowledgeViewProps) {
       <div className={`history knowledge-layout ${selectedId || editor ? 'has-selection' : ''}`}>
         <section className="card history-list knowledge-search" aria-label={k.results}>
           <form className="history-tools" role="search" onSubmit={event => event.preventDefault()}>
-            <input type="search" className="search" value={query} placeholder={k.search} aria-label={k.search} maxLength={200} onChange={event => onQuery(event.target.value)} />
+            <input type="search" className="search" value={query} disabled={props.blocked} placeholder={k.search} aria-label={k.search} maxLength={200} onChange={event => onQuery(event.target.value)} />
           </form>
           {!results ? <p className="muted small">{k.searchHint}</p>
             : results.error ? <p className="form-error" role="alert"><Icon name="alert" />{results.error}</p>
@@ -410,7 +417,7 @@ export function KnowledgeView(props: KnowledgeViewProps) {
                     <ul className="session-list knowledge-results">
                       {hits.map(hit => (
                         <li key={hit.nodeId} className={`session-row ${selectedId === hit.nodeId ? 'active' : ''}`}>
-                          <button type="button" className="session-select knowledge-hit" aria-current={selectedId === hit.nodeId ? 'true' : undefined} onClick={() => onOpen(hit.nodeId)}>
+                          <button type="button" className="session-select knowledge-hit" disabled={props.blocked} aria-current={selectedId === hit.nodeId ? 'true' : undefined} onClick={() => onOpen(hit.nodeId)}>
                             <span className="session-title">{hit.title}</span>
                             <span className="session-meta knowledge-hit-path">{hit.path}</span>
                             {hit.snippet && <span className="knowledge-snippet">{hit.snippet}</span>}
@@ -432,44 +439,77 @@ export function KnowledgeView(props: KnowledgeViewProps) {
 /** The Knowledge page with its state. Mounted only when the host serves the knowledge methods. */
 type PageProps = { t: Messages; language: string; agents: AgentHostApi; picker?: FileSystemCapability | undefined;
   workspaces?: HostState['workspaces']; workspaceId?: string; onWorkspace?: (id: string) => void };
+interface VaultContextState {
+  catalog?: VaultProfilesCatalog | undefined;
+  profile?: VaultProfile | undefined;
+  catalogError?: string | undefined;
+  catalogLoading: boolean;
+  scopeKey: string;
+  onCatalogRefresh(): void;
+}
 export function KnowledgePage(props: PageProps) {
   const workspaceId = props.workspaces?.some(workspace => workspace.id === props.workspaceId) ? props.workspaceId : props.workspaces?.[0]?.id;
-  const scopedAgents = useMemo(() => workspaceKnowledgeHost(props.agents, workspaceId), [props.agents, workspaceId]);
-  const [catalog, setCatalog] = useState<VaultProfilesCatalog>();
+  const [catalogState, setCatalogState] = useState<{ agents: AgentHostApi; value?: VaultProfilesCatalog; error?: string; loading: boolean }>({ agents: props.agents, loading: true });
+  const [catalogRefresh, setCatalogRefresh] = useState(0);
+  const catalogCurrent = catalogState.agents === props.agents;
+  const catalog = catalogCurrent ? catalogState.value : undefined;
+  const catalogError = catalogCurrent ? catalogState.error : undefined;
+  const catalogLoading = Boolean(props.agents.listVaultProfiles) && (!catalogCurrent || catalogState.loading);
   useEffect(() => {
     let active = true, loading = false;
+    if (!props.agents.listVaultProfiles) return;
     const load = () => {
-      if (!active || loading || !props.agents.listVaultProfiles) return;
+      if (!active || loading) return;
       loading = true;
-      void props.agents.listVaultProfiles().then(value => { if (active) setCatalog(current => current?.revision === value.revision ? current : value); }, () => undefined)
-        .finally(() => { loading = false; });
+      void props.agents.listVaultProfiles!().then(value => {
+        if (active) setCatalogState({ agents: props.agents, value, loading: false });
+      }, failure => {
+        if (active) setCatalogState(current => ({ agents: props.agents, ...(current.agents === props.agents && current.value ? { value: current.value } : {}), error: errorMessage(failure), loading: false }));
+      }).finally(() => { loading = false; });
     };
     load();
     const timer = setInterval(load, 5_000);
     return () => { active = false; clearInterval(timer); };
-  }, [props.agents]);
-  const profileId = catalog?.workspaces.find(workspace => workspace.id === workspaceId)?.profileId;
+  }, [props.agents, catalogRefresh]);
+  const profileId = workspaceId ? catalog?.workspaces.find(workspace => workspace.id === workspaceId)?.profileId : catalog?.defaultProfileId;
   const profile = catalog?.profiles.find(item => item.id === profileId);
+  const assignedProfileId = profile?.id, assignedRoot = profile?.root;
+  const scopedAgents = workspaceKnowledgeHost(props.agents, workspaceId, assignedProfileId && assignedRoot ? { profileId: assignedProfileId, root: assignedRoot } : undefined);
   const [binding, setBinding] = useState({ agents: props.agents, key: 0 });
   if (binding.agents !== props.agents) setBinding({ agents: props.agents, key: binding.key + 1 });
-  return <>
-    {!!props.workspaces?.length && <section className="card knowledge-workspace">
-      <label className="field"><span>{props.t.knowledge.workspaceVault}</span><select value={workspaceId} onChange={event => props.onWorkspace?.(event.target.value)}>
-        {props.workspaces.map(workspace => <option key={workspace.id} value={workspace.id}>{workspace.name}</option>)}
-      </select></label>
-      {profile && <p className="muted small">{props.t.vaultProfiles.name}: {profile.name}</p>}
-    </section>}
-    <KnowledgeSession key={`${workspaceId ?? 'default'}:${profileId ?? ''}:${profile?.root ?? ''}:${binding.key}`} {...props} agents={scopedAgents}
-      onVaultChanged={() => setBinding(current => ({ ...current, key: current.key + 1 }))} />
-  </>;
+  const refreshCatalog = () => {
+    setCatalogState({ agents: props.agents, loading: true });
+    setCatalogRefresh(value => value + 1);
+  };
+  const resetSession = () => { refreshCatalog(); setBinding(current => ({ ...current, key: current.key + 1 })); };
+  const scoped = !workspaceId || Boolean(props.agents.workspaceKnowledge);
+  const ready = scoped && (props.agents.listVaultProfiles ? Boolean(profile) : !workspaceId);
+  const sessionKey = `${workspaceId ?? 'default'}:${binding.key}`;
+  const [opened, setOpened] = useState<string>();
+  if (ready && opened !== sessionKey) setOpened(sessionKey);
+  const context = { catalog, profile, catalogError, catalogLoading, scopeKey: JSON.stringify([workspaceId ?? null, profile?.id ?? null, profile?.root ?? null]), onCatalogRefresh: refreshCatalog };
+  if (!ready && opened !== sessionKey) return <div className="page knowledge">
+    <header className="page-header"><h1>{props.t.knowledge.title}</h1><p className="lead">{props.t.knowledge.lead}</p></header>
+    <KnowledgeVaultContext t={props.t} workspaces={props.workspaces} workspaceId={workspaceId} onWorkspace={props.onWorkspace}
+      catalog={catalog} profile={profile} loading={catalogLoading} error={catalogError} scoped={scoped} locked={false} onRefresh={refreshCatalog} configuration={null} />
+  </div>;
+  return <KnowledgeSession key={sessionKey} {...props} {...context} workspaceId={workspaceId} agents={scopedAgents}
+    onVaultChanged={resetSession} />;
 }
-function KnowledgeSession({ t, language, agents, picker, onVaultChanged }: PageProps & { onVaultChanged: () => void }) {
+function KnowledgeSession({ t, language, agents, picker, onVaultChanged, catalog, profile, catalogError, catalogLoading, scopeKey, onCatalogRefresh, workspaces, workspaceId, onWorkspace }: PageProps & VaultContextState & { onVaultChanged: () => void }) {
+  // Keep the original API/root for drafts. A catalog change must not silently retarget them.
+  const [session] = useState(() => ({ agents, scopeKey, profile, catalog }));
+  const scopeChanged = !catalogLoading && !catalogError && session.scopeKey !== scopeKey;
+  const blockedReason = scopeChanged ? t.knowledgeContext.changed : catalogError ? t.knowledgeContext.unavailable : catalogLoading ? t.knowledgeContext.loading : undefined;
+  const active = !blockedReason;
   const live = useRef(true);
   useEffect(() => { live.current = true; return () => { live.current = false; }; }, []);
   const [refresh, setRefresh] = useState(0);
-  const api = agents as AgentHostApi & KnowledgeApi;
+  const api = session.agents as AgentHostApi & KnowledgeApi;
   const [status, setStatus] = useState<Loaded<KnowledgeStatus>>({ loading: true });
+  const mutationBlockedReason = blockedReason ?? (status.value?.state === 'unavailable' ? t.knowledge.unavailable : !workspaceId ? t.knowledgeContext.workspaceRequired : undefined);
   const [syncing, setSyncing] = useState(false);
+  const [vaultBusy, setVaultBusy] = useState(false);
   const [syncError, setSyncError] = useState<string>();
   const [query, setQuery] = useState('');
   const [debounced, setDebounced] = useState('');
@@ -479,21 +519,22 @@ function KnowledgeSession({ t, language, agents, picker, onVaultChanged }: PageP
   const [scope, setScope] = useState<KnowledgeScope>('vault');
 
   useEffect(() => {
-    let active = true, loading = false;
+    if (!active) return;
+    let subscribed = true, loading = false;
     const load = async () => {
-      if (!active || loading) return;
+      if (!subscribed || loading) return;
       loading = true;
-      try { const value = await api.knowledgeStatus(); if (active) setStatus({ value, loading: false }); }
-      catch (failure) { if (active) setStatus({ error: errorMessage(failure), loading: false }); }
+      try { const value = await api.knowledgeStatus(); if (subscribed) setStatus({ value, loading: false }); }
+      catch (failure) { if (subscribed) setStatus(current => ({ ...current, error: errorMessage(failure), loading: false })); }
       finally { loading = false; }
     };
     void load();
     // The vault watcher indexed an outside edit (or the vault folder changed): a new generation refreshes what is shown.
-    const stop = api.subscribe(event => { if (active && isKnowledgeIndexEvent(event)) void load(); });
+    const stop = api.subscribe(event => { if (subscribed && isKnowledgeIndexEvent(event)) void load(); });
     // Scoped indexes refresh visible profiles without keeping a watcher/process alive for every workspace.
     const timer = api.workspaceKnowledge ? setInterval(() => { if (!document.hidden) void load(); }, 5_000) : undefined;
-    return () => { active = false; stop(); clearInterval(timer); };
-  }, [api, refresh]);
+    return () => { subscribed = false; stop(); clearInterval(timer); };
+  }, [api, refresh, active]);
   useEffect(() => {
     const timer = setTimeout(() => setDebounced(query.trim()), SEARCH_DELAY_MS);
     return () => clearTimeout(timer);
@@ -509,11 +550,12 @@ function KnowledgeSession({ t, language, agents, picker, onVaultChanged }: PageP
   // Lazy: the graph loads only while it is open.
   const graph = useLoad(selectedId && graphOpen ? `${generation}\n${selectedId}\n${depth}` : null, 0, () => api.knowledgeGraph(selectedId!, depth));
   // The whole-vault graph loads only while it is open; a host that turns out not to serve it hides the switch.
-  const vaultCapable = overviewMethodPresent(agents);
-  const overview = useLoad(vaultCapable && scope === 'vault' ? generation : null, 0, () => (agents.knowledgeOverview as () => Promise<KnowledgeOverview>)());
+  const vaultCapable = overviewMethodPresent(session.agents);
+  const overview = useLoad(vaultCapable && scope === 'vault' ? generation : null, 0, () => (session.agents.knowledgeOverview as () => Promise<KnowledgeOverview>)());
   const vaultSupported = vaultCapable && !(overview.error && isUnsupportedMessage(overview.error));
 
   const sync = async () => {
+    if (!active) return;
     setSyncing(true); setSyncError(undefined);
     try { const value = (await api.syncKnowledge('incremental')).status; if (live.current) setStatus({ value, loading: false }); }
     catch (failure) { if (live.current) setSyncError(errorMessage(failure)); }
@@ -529,10 +571,18 @@ function KnowledgeSession({ t, language, agents, picker, onVaultChanged }: PageP
     document.querySelector('.knowledge-note')?.scrollIntoView({ block: 'start' });
   }, [shownId]);
   // Editing (W5 slice 2b): asks before an unsaved draft is left, so the page opens and closes notes through it.
-  const editing = useKnowledgeEditing({ t, language, agents, status, onStatus: value => setStatus({ value, loading: false }), note, open, close: () => setSelectedId(null) });
+  const editing = useKnowledgeEditing({ t, language, agents: session.agents, blockedReason: mutationBlockedReason ? t.knowledgeContext.draftBlocked : undefined, readBlocked: Boolean(blockedReason),
+    workspaceIds: (scopeChanged ? session.profile : profile)?.workspaceIds, resetScope: onVaultChanged, status, onStatus: value => setStatus({ value, loading: false }), note, open, close: () => setSelectedId(null) });
+  const shownStatus = scopeChanged && isWorkspaceKnowledgeBindingError(status.error)
+    ? { loading: status.loading, ...(status.value ? { value: status.value } : {}) } : status;
 
   return (
-    <KnowledgeView t={t} language={language} setup={<KnowledgeVaultSection t={t} agents={agents} picker={picker} onChanged={onVaultChanged} locked={Boolean(editing.editor) || syncing} />} onRefresh={() => setRefresh(value => value + 1)} status={status} query={query} onQuery={setQuery}
+    <KnowledgeView t={t} language={language} blocked={Boolean(blockedReason)} context={<><KnowledgeVaultContext t={t} workspaces={workspaces} workspaceId={workspaceId} onWorkspace={onWorkspace}
+      catalog={scopeChanged ? session.catalog : catalog} profile={scopeChanged ? session.profile : profile} error={catalogError} loading={catalogLoading} scoped stale={scopeChanged} configurable={Boolean(workspaceId)} locked={editing.scopeLocked || syncing || vaultBusy || Boolean(blockedReason)}
+      onRefresh={onCatalogRefresh} configuration={workspaceId ? <KnowledgeVaultSection t={t} agents={session.agents} picker={picker} compact policy={scopeChanged ? session.profile : profile} showProfiles={false} onChanged={onVaultChanged} onBusyChange={setVaultBusy} locked={editing.scopeLocked || syncing || Boolean(blockedReason)} /> : null} />
+      {!workspaceId && <p className="note">{t.knowledgeContext.workspaceRequired}</p>}
+      {scopeChanged && <section className="card knowledge-scope-changed" role="alert"><p>{t.knowledgeContext.changed}</p>
+        <button type="button" className="button small" onClick={editing.onResetScope}>{editing.editor ? t.knowledgeContext.discardReload : t.knowledgeContext.reload}</button></section>}</>} onRefresh={active ? () => setRefresh(value => value + 1) : onCatalogRefresh} status={shownStatus} query={query} onQuery={setQuery}
       results={debounced ? searched : null} selectedId={selectedId} onOpen={editing.onOpen} onClose={editing.onClose} editing={editing}
       note={note} links={links} backlinks={backlinks} graphOpen={graphOpen} onGraphOpen={setGraphOpen} depth={depth} onDepth={setDepth} graph={graph}
       syncing={syncing} syncError={syncError} onSync={() => void sync()}

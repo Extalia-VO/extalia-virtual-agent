@@ -36,7 +36,7 @@ export function useSkillBookPreview(scope: string, context?: object) {
   return { preview, id, onHover, onFocus, onPointerMove, onKeyDown, onBlur: () => controller.leave('focus'), clear: controller.clear };
 }
 
-export function SkillBookPreview({ preview, book, category, id }: { preview: BookPreviewSnapshot; book: SkillBook; category: string; id: string }) {
+export function SkillBookPreview({ preview, book, category, originLabel, id }: { preview: BookPreviewSnapshot; book: SkillBook; category: string; originLabel?: string; id: string }) {
   const element = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     const tooltip = element.current;
@@ -45,8 +45,8 @@ export function SkillBookPreview({ preview, book, category, id }: { preview: Boo
     const position = bookPreviewPosition(preview, { width, height }, { width: window.innerWidth, height: window.innerHeight });
     tooltip.style.transform = `translate3d(${position.x}px, ${position.y}px, 0)`;
     tooltip.style.visibility = 'visible';
-  }, [preview, book.title, category]);
+  }, [preview, book.title, category, originLabel]);
   return createPortal(<div ref={element} id={id} role="tooltip" aria-hidden={preview.exiting || undefined} data-exiting={preview.exiting} className="skill-book-preview" style={{ visibility: 'hidden' }}>
-    <span className="skill-preview-sigil" aria-hidden="true">✦</span><div><strong>{book.title}</strong><span>{category}</span></div>
+    <span className="skill-preview-sigil" aria-hidden="true">✦</span><div><strong>{book.title}</strong><span>{category}</span>{originLabel && <span className="skill-origin-badge" data-origin={book.origin ?? book.source}>{originLabel}</span>}</div>
   </div>, document.body);
 }

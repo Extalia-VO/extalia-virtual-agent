@@ -1,5 +1,5 @@
 /** Only registered project roots can be used for a host file preview. */
-export interface WorkspaceSummary { id: string; projectLocation?: string }
+export interface WorkspaceSummary { id: string; projectLocation?: string; additionalProjectLocations?: string[] }
 export interface MessageFileReference { name: string; path?: string; link?: boolean }
 export interface MessageFileScope {
   workspaces: readonly WorkspaceSummary[];
@@ -57,22 +57,26 @@ export function resolveMessageFile(reference: MessageFileReference, scope: Messa
   if (!reference.path) return undefined;
   let path = parsePath(reference.path, reference.link);
   if (!path) return undefined;
-  const roots = scope.workspaces.flatMap(workspace => {
-    const root = parsePath(workspace.projectLocation ?? '');
-    return root?.absolute ? [{ workspace, root }] : [];
-  });
-  const explicit = scope.workspaceId ? roots.find(entry => entry.workspace.id === scope.workspaceId) : undefined;
-  if (scope.workspaceId && !explicit) return undefined;
+  const roots = scope.workspaces.flatMap(workspace => [workspace.projectLocation, ...(workspace.additionalProjectLocations ?? [])].flatMap((value, index) => {
+    const root = parsePath(value ?? '');
+    return root?.absolute ? [{ workspace, root, primary: index === 0 }] : [];
+  }));
+  const candidates = scope.workspaceId ? roots.filter(entry => entry.workspace.id === scope.workspaceId) : roots;
+  const explicit = scope.workspaceId ? candidates.find(entry => entry.primary) : undefined;
+  if (scope.workspaceId && !candidates.length) return undefined;
   const project = scope.projectPath ? parsePath(scope.projectPath) : undefined;
   if (!path.absolute) {
-    const base = explicit ?? (project ? roots.filter(entry => within(project, entry.root)).sort((a, b) => b.root.parts.length - a.root.parts.length)[0] : undefined);
+    const base = (project ? candidates.filter(entry => within(project, entry.root)).sort((a, b) => b.root.parts.length - a.root.parts.length)[0] : undefined) ?? explicit;
     if (!base) return undefined;
     const cwd = project && within(project, base.root) ? project : base.root;
     path = { ...cwd, parts: [...cwd.parts, ...path.parts] };
   }
-  const match = explicit ? (within(path, explicit.root) ? explicit : undefined)
-    : roots.filter(entry => within(path, entry.root)).sort((a, b) => b.root.parts.length - a.root.parts.length)[0];
+  const match = explicit && within(path, explicit.root) ? explicit
+    : candidates.filter(entry => within(path, entry.root)).sort((a, b) => b.root.parts.length - a.root.parts.length)[0];
   if (!match || path.parts.length === match.root.parts.length) return undefined;
   if (path.windows && path.parts.some(part => /[. ]$/.test(part) || /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(part))) return undefined;
-  return { workspaceId: match.workspace.id, path: path.parts.slice(match.root.parts.length).join('/') };
+  // The file API's relative paths use the workspace's configured primary root,
+  // independently of the active session root. Other registered roots stay absolute.
+  return { workspaceId: match.workspace.id, path: match.primary ? path.parts.slice(match.root.parts.length).join('/')
+    : `${path.volume === '/' ? '/' : `${path.volume}/`}${path.parts.join('/')}` };
 }

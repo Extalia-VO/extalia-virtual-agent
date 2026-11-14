@@ -52,6 +52,7 @@ pub mod review;
 pub mod routing;
 #[cfg(test)]
 mod routing_tests;
+pub mod storage;
 #[cfg(test)]
 mod tests;
 pub mod tree;

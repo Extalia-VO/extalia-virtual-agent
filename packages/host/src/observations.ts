@@ -28,6 +28,11 @@ const DASHBOARD_LOCATION_ID = 'loc-hermes-dashboard';
 /** Folders whose sessions are not observed automatically unless the user removes them: claude-mem's helper sessions. */
 export const DEFAULT_IGNORE_FOLDERS: readonly string[] = ['~/.claude-mem'];
 const MAX_IGNORE_FOLDERS = 50;
+/** Matches the Office's recent-source window; polling/replaying history never extends it. */
+export const OBSERVED_ACTIVITY_LIVE_MS = 2 * 60_000;
+const MAX_ACTIVITY_ACTORS = 256;
+interface LiveActorActivity { at: number; running: boolean; waiting?: boolean; asyncInput?: boolean; terminal?: boolean }
+
 
 /** Validated ignored folders: absolute or `~`-relative, without trailing separators, deduplicated. Throws for invalid input. */
 export function normalizeIgnoreFolders(value: unknown): string[] {
@@ -58,6 +63,19 @@ function validWorkspaceLink(value: unknown): value is ObservationWorkspaceLink {
     && typeof link.sourceFingerprint === 'string' && /^[a-f0-9]{64}$/.test(link.sourceFingerprint)
     && absolute(link.projectCanonicalPath) && absolute(link.root);
 }
+interface ObservedOutputWatermark {
+  revision: string; readRevision: string; hasOutput: boolean;
+  transcriptSignature?: string; hookTurn?: string; hookSignature?: string; pendingHookHashes?: string[]; pendingTranscriptHashes?: string[];
+}
+const outputHash = (value: unknown): value is string => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
+function validOutputWatermark(value: unknown): value is ObservedOutputWatermark {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const raw = value as Record<string, unknown>;
+  return Object.keys(raw).every(key => ['revision', 'readRevision', 'hasOutput', 'transcriptSignature', 'hookTurn', 'hookSignature', 'pendingHookHashes', 'pendingTranscriptHashes'].includes(key))
+    && outputHash(raw.revision) && outputHash(raw.readRevision) && typeof raw.hasOutput === 'boolean'
+    && ['transcriptSignature', 'hookTurn', 'hookSignature'].every(key => raw[key] === undefined || outputHash(raw[key]))
+    && ['pendingHookHashes', 'pendingTranscriptHashes'].every(key => raw[key] === undefined || Array.isArray(raw[key]) && raw[key].length <= 64 && raw[key].every(outputHash));
+}
 interface ObservationRecord {
   id: string; title: string; reference: NativeObservationRef; watching: boolean;
   createdAt: string; lastActiveAt: string; projectPath?: string;
@@ -81,6 +99,8 @@ interface ObservationRecord {
   context?: SessionContextUsage;
   /** The title the source gave last; while the title still equals it (not renamed), it follows the source. */
   sourceTitle?: string;
+  /** Profile-local hashes only; no assistant content or tool output is added to this index. */
+  output?: ObservedOutputWatermark;
 }
 /** Hooks active for a session in this host run: they are its live channel, transcript events only fill history before `since`. */
 interface HookLive {
@@ -92,6 +112,8 @@ interface HookLive {
   meetingIds?: Set<string>;
 }
 interface Live {
+  /** Ephemeral only: populated from new accepted reports, never restored from saved history. */
+  activity?: Map<string, LiveActorActivity>;
   userInput?: { fingerprint: string; evidence: CodexUserInputEvidence };
   snapshot?: PortableSession; steps?: TranscriptStep[]; eventIds?: Set<string>; lastEventAt?: string;
   revision: string; eventRevision?: string; sourceRevision?: string; status: 'watching' | 'paused' | 'unavailable'; lastCheckedAt?: string; error?: string;
@@ -111,6 +133,10 @@ interface DiscoverySettings {
   ignoreFolders?: string[];
 }
 export interface ObservationHooks {
+  /** Called only after the observation index is durable; consumers must recheck privacy and scope. */
+  onPersisted?: (sessionId: string) => void;
+  /** Host adapter evidence, never a renderer-selected project path. Undefined leaves transcript evidence unchanged. */
+  projectContext?: (reference: NativeObservationRef) => Promise<{ projectPath: string; revision: string; model?: string } | undefined>;
   /** Ephemeral suggestions from an existing watched lead; never observation evidence. */
   onFollowups?: (sessionId: string, prompts: string[]) => void;
   /** Keeps a retired observation in history (the library). Throwing keeps the observation. */
@@ -154,6 +180,68 @@ const terminalReport = (event: ExtaliaEvent) => event.body.type === 'session.end
   || ((event.body.type === 'agent.state' || event.body.type === 'subagent.state') && event.body.state === 'offline');
 const resumesWork = (event: ExtaliaEvent) => event.body.type === 'prompt.submitted' || event.body.type === 'tool.started'
   || ((event.body.type === 'agent.state' || event.body.type === 'subagent.state') && ['thinking', 'working', 'delegating'].includes(event.body.state));
+
+/** Small metadata projection of newly accepted source events; summaries never reparse transcripts. */
+function advanceLiveActivity(live: Live, events: readonly ExtaliaEvent[], now: number): void {
+  const actors = live.activity ??= new Map();
+  // Retain bounded actor identities and terminal fences after their live badge
+  // expires, so a known long-running worker can report again and unknown
+  // orphans cannot bypass a stopped lead merely by waiting out the live window.
+  for (const event of events) {
+    if (event.source.channel === 'import') continue;
+    const reported = Date.parse(event.at);
+    if (!Number.isFinite(reported) || reported > now + 30_000 || now - reported > OBSERVED_ACTIVITY_LIVE_MS) continue;
+    const at = Math.min(now, reported), body = event.body, actor = activityActor(event);
+    const prior = actors.get(actor);
+    if (prior && at < prior.at) continue;
+    const terminal = terminalReport(event);
+    if (body.type === 'session.started') {
+      if (actor === 'primary') actors.clear();
+      continue;
+    }
+    if (body.type === 'session.ended') {
+      actors.clear(); actors.set('primary', { at, running: false, terminal: true });
+      continue;
+    }
+    if (terminal && actor === 'primary') {
+      actors.set('primary', { at, running: false, terminal: true });
+      continue;
+    }
+    // Known workers can finish after their lead. A stopped lead or an unknown
+    // orphan cannot be revived by a late result or a new worker report.
+    if (actor !== 'primary' && actors.get('primary')?.terminal && (!prior || prior.terminal)) continue;
+    let next: LiveActorActivity | undefined;
+    if (terminal) next = { at, running: false, terminal: true };
+    else if (body.type === 'agent.state' || body.type === 'subagent.state') {
+      const waiting = body.state === 'waiting' || body.phase === 'input' || body.phase === 'approval';
+      next = { at, running: !waiting && ['thinking', 'working', 'delegating'].includes(body.state), ...(waiting ? { waiting: true } : {}), ...(prior?.terminal && body.state === 'idle' ? { terminal: true } : {}) };
+    } else if (body.type === 'prompt.submitted') next = { at, running: true };
+    else if (body.type === 'tool.started') {
+      // Codex's async question returns an acknowledgement before the user answers.
+      const asyncInput = /(?:^|\.)request_user_input_async$/.test(body.tool);
+      const waiting = asyncInput || prior?.at === at && prior.waiting;
+      next = { at, running: !waiting, ...(waiting ? { waiting: true } : {}), ...(asyncInput ? { asyncInput: true } : {}) };
+    }
+    else if (body.type === 'approval.requested') next = { at, running: false, waiting: true };
+    else if (body.type === 'tool.completed' || body.type === 'model.completed' || body.type === 'approval.resolved') {
+      // Completion is continuation evidence only inside an already known live turn.
+      if (prior && !prior.terminal && !prior.asyncInput && (prior.running || prior.waiting)) next = { at, running: true };
+    } else if (body.type === 'subagent.spawned' && !prior) next = { at, running: true };
+    if (!next) continue;
+    if (!actors.has(actor) && actors.size >= MAX_ACTIVITY_ACTORS) {
+      const oldest = [...actors].filter(([id]) => id !== 'primary').sort((a, b) => a[1].at - b[1].at)[0]?.[0];
+      if (oldest) actors.delete(oldest);
+      else continue;
+    }
+    actors.set(actor, next);
+  }
+}
+function reportedRunning(live: Live, watching: boolean): boolean {
+  if (!watching || live.status !== 'watching') return false;
+  const now = Date.now();
+  for (const activity of live.activity?.values() ?? []) if (activity.running && now >= activity.at && now - activity.at <= OBSERVED_ACTIVITY_LIVE_MS) return true;
+  return false;
+}
 
 /** Hooks win ties and older reports; a missed hook must not disable the transcript forever. */
 function transcriptFallback(fresh: readonly ExtaliaEvent[], history: readonly ExtaliaEvent[], hook: HookLive): ExtaliaEvent[] {
@@ -342,6 +430,7 @@ export class Observations {
       if (!(EFFORTS as readonly unknown[]).includes(record.effort) || !record.effortAt) delete record.effort;
       if (record.anchor !== undefined && (typeof record.anchor !== 'string' || !record.anchor || record.anchor.length > 200)) delete record.anchor;
       if (record.context !== undefined && !isContextUsage(record.context)) delete record.context;
+      if (record.output !== undefined && !validOutputWatermark(record.output)) delete record.output;
       if (record.sourceTitle !== undefined && typeof record.sourceTitle !== 'string') delete record.sourceTitle;
       if (typeof record.title !== 'string' || typeof record.watching !== 'boolean' || !record.reference || (record.auto !== undefined && typeof record.auto !== 'boolean') ||
         !['locationId', 'sourceId', 'nativeSessionId', 'path'].every(key => typeof record.reference[key as keyof NativeObservationRef] === 'string') ||
@@ -379,7 +468,12 @@ export class Observations {
   }
   /** Saves run one after another, each writing the records as they are when it starts. */
   private save() {
-    const next = this.saving.then(() => writeJsonAtomic(this.index(), this.records, { mode: 0o600 }));
+    const next = this.saving.then(async () => {
+      await writeJsonAtomic(this.index(), this.records, { mode: 0o600 });
+      for (const record of this.records) {
+        try { this.hooks.onPersisted?.(record.id); } catch { /* Optional consumers never own observation persistence. */ }
+      }
+    });
     this.saving = next.catch(() => undefined);
     return next;
   }
@@ -442,6 +536,11 @@ export class Observations {
     if (!record || record.reference.sourceId !== 'codex') return undefined;
     const source = this.source.codexQueueSource(record.reference);
     return source ? { ...source, threadId: record.reference.nativeSessionId, watching: record.watching, ...(record.projectPath ? { cwd: record.projectPath } : {}) } : undefined;
+  }
+  /** A CLI may resume only an explicitly watched, still-valid native source. */
+  cliResumeSource(id: string) {
+    const record = this.records.find(item => item.id === id);
+    return record?.watching ? this.source.cliResumeSource(record.reference) : undefined;
   }
   /** Existing observation reads own the content; status polling never reopens a rollout. */
   codexUserInput(id: string): CodexUserInputEvidence | undefined {
@@ -551,15 +650,90 @@ export class Observations {
     });
   }
 
+  private outputState(record: ObservationRecord): ObservedOutputWatermark {
+    if (record.output) return record.output;
+    const revision = digest([record.id, 'observed-output-baseline']);
+    return record.output = { revision, readRevision: revision, hasOutput: false };
+  }
+  private transcriptOutput(record: ObservationRecord, previous: PortableSession | undefined, snapshot: PortableSession): boolean {
+    if (this.labelsOnly()) return false;
+    const hadState = record.output !== undefined;
+    const state = this.outputState(record);
+    const hashes = (session: PortableSession | undefined) => (session?.messages ?? []).filter(message => message.role === 'assistant' && message.content.trim()).map(message => digest(message.content));
+    const assistant = snapshot.messages.filter(message => message.role === 'assistant' && message.content.trim());
+    const current = hashes(snapshot), signature = digest(current);
+    if (state.transcriptSignature === signature) return false;
+    const baseline = state.transcriptSignature === undefined;
+    const counts = new Map<string, number>();
+    for (const hash of hashes(previous)) counts.set(hash, (counts.get(hash) ?? 0) + 1);
+    const added = current.filter(hash => {
+      const count = counts.get(hash) ?? 0;
+      if (count) { counts.set(hash, count - 1); return false; }
+      return true;
+    });
+    const pending = [...(state.pendingHookHashes ?? [])];
+    let newOutput = false;
+    for (const [index, hash] of (baseline ? current : added).entries()) {
+      const sourceAt = baseline ? Date.parse(assistant[index]!.createdAt) : Number.NaN;
+      const afterHookWatch = baseline && hadState && record.hook && sourceAt >= Date.parse(record.createdAt) && sourceAt <= Date.now() + 30_000;
+      const matchingHook = pending.indexOf(hash);
+      if (matchingHook >= 0) pending.splice(matchingHook, 1);
+      else if (!baseline || afterHookWatch) { newOutput = true; state.pendingTranscriptHashes = [...(state.pendingTranscriptHashes ?? []), hash].slice(-64); }
+    }
+    // Recover conservatively if a snapshot write reached disk before its index watermark.
+    if (!baseline && !previous && current.length) newOutput = true;
+    if (newOutput) state.revision = digest([state.revision, 'transcript-output', signature]);
+    else if (baseline && current.length && !state.hasOutput) {
+      state.revision = digest([record.id, 'observed-output-baseline', signature]); state.readRevision = state.revision;
+    }
+    state.hasOutput ||= current.length > 0;
+    state.transcriptSignature = signature; state.pendingHookHashes = pending;
+    return true;
+  }
+  private hookOutput(record: ObservationRecord, events: readonly ExtaliaEvent[], baseline: boolean): boolean {
+    if (this.labelsOnly() || !record.watching) return false;
+    const state = this.outputState(record);
+    let changed = false;
+    for (const event of events) {
+      if (event.body.type === 'prompt.submitted') { state.hookTurn = digest([state.hookTurn ?? '', event.id]); changed = true; }
+      if (event.body.type !== 'model.completed' || !event.body.text.trim()) continue;
+      const hash = digest(event.body.text), signature = digest([event.agentId ?? 'primary', state.hookTurn ?? '', hash]);
+      if (state.hookSignature === signature) continue;
+      state.hookSignature = signature;
+      const transcript = state.pendingTranscriptHashes ?? [];
+      const alreadyReported = transcript.indexOf(hash);
+      if (alreadyReported >= 0) { transcript.splice(alreadyReported, 1); state.pendingTranscriptHashes = transcript; changed = true; continue; }
+      state.revision = digest([state.revision, 'hook-output', signature]); state.hasOutput = true;
+      if (baseline) state.readRevision = state.revision;
+      state.pendingHookHashes = [...(state.pendingHookHashes ?? []), hash].slice(-64); changed = true;
+    }
+    return changed;
+  }
+  /** An exact rendered revision may be acknowledged; a stale view never clears a newer reply. */
+  markRead(id: string, expectedOutputRevision: string): Promise<void> {
+    return this.serialize(async () => {
+      checkSessionId(id);
+      if (!outputHash(expectedOutputRevision)) throw new Error('Invalid observed output revision.');
+      const record = this.records.find(item => item.id === id);
+      if (!record) throw new Error('That observed session no longer exists.');
+      const state = record.output;
+      if (this.labelsOnly() || !state?.hasOutput || state.revision !== expectedOutputRevision || state.readRevision === expectedOutputRevision) return;
+      const previous = state.readRevision; state.readRevision = expectedOutputRevision;
+      try { await this.save(); } catch (error) { state.readRevision = previous; throw error; }
+      this.notify(record);
+    });
+  }
+
   summaries(): SessionSummary[] {
     return this.records.map(record => {
       const live = this.live.get(record.id)!;
       const channel = live.hook ? 'hook' as const : record.reference.locationId === DASHBOARD_LOCATION_ID ? 'dashboard' as const : 'transcript' as const;
       const model = record.model;
-      return { id: record.id, workspaceId: '', connectionId: '', title: record.title, createdAt: record.createdAt, lastActiveAt: record.lastActiveAt, control: 'observed', running: false,
+      return { id: record.id, workspaceId: '', connectionId: '', title: record.title, createdAt: record.createdAt, lastActiveAt: record.lastActiveAt, control: 'observed', running: reportedRunning(live, record.watching),
         ...normalizeAgentIdentity(record.agentName, record.agentGender), ...(model ? { model } : {}), ...(record.modelAt ? { modelAt: record.modelAt } : {}),
         ...((EFFORTS as readonly unknown[]).includes(record.effort) ? { effort: record.effort } : {}), ...(record.effortAt ? { effortAt: record.effortAt } : {}),
         observation: { sourceId: record.reference.sourceId, nativeSessionId: safeLabel(record.reference.nativeSessionId, 200), watching: record.watching, status: live.status, channel,
+          ...(!this.labelsOnly() && record.output?.hasOutput ? { outputRevision: record.output.revision, unreadOutput: record.output.readRevision !== record.output.revision } : {}),
           ...(record.workspaceLink ? { workspaceLink: { workspaceId: record.workspaceLink.workspaceId,
             sourceMatches: record.workspaceLink.sourceFingerprint === this.controlTarget(record.id)?.fingerprint,
             projectCanonicalPath: record.workspaceLink.projectCanonicalPath, root: record.workspaceLink.root } } : {}),
@@ -597,6 +771,12 @@ export class Observations {
   private keepAttachment(id: string, data: string): string | undefined {
     if (this.labelsOnly()) return undefined;
     return this.imageStore(id).keep(data);
+  }
+  private stagedAttachmentsRoot(id: string): string {
+    return path.join(this.directory, 'attachments', checkSessionId(id), 'files');
+  }
+  keepPromptAttachment(id: string, data: string): string | undefined {
+    return this.keepAttachment(id, data);
   }
   async attachment(id: string, ref: string): Promise<AttachmentPreview | undefined> {
     if (this.closed || this.labelsOnly() || !/^[0-9a-f]{64}$/.test(ref) || ref.length !== 64 || !this.records.some(item => item.id === id)) return undefined;
@@ -658,7 +838,7 @@ export class Observations {
   private notify(record: ObservationRecord) {
     const live = this.live.get(record.id)!;
     this.emit(createEvent({ sessionId: record.id, source: { runtime: record.reference.sourceId, channel: 'transcript', adapter: 'native-transcript' },
-      body: { type: 'session.updated', revision: digest([live.revision, live.eventRevision, live.lastEventAt, live.eventIds?.size, live.status, record.watching, record.title, this.labelsOnly(), record.workspaceLink]), messageCount: live.snapshot?.messages.length ?? 0 } }));
+      body: { type: 'session.updated', revision: digest([live.revision, live.eventRevision, live.lastEventAt, live.eventIds?.size, live.status, record.watching, record.title, this.labelsOnly(), record.workspaceLink, record.output?.revision, record.output?.readRevision]), messageCount: live.snapshot?.messages.length ?? 0 } }));
   }
   private publish(events: readonly ExtaliaEvent[]) {
     for (const event of events) { try { this.emit(event); } catch { /* a disconnected listener must not stop polling */ } }
@@ -669,7 +849,16 @@ export class Observations {
    * The first read after a host start only sets the baseline, so history is not replayed live.
    */
   private async update(record: ObservationRecord, read: ObservedRead, sourceRevision?: string, introduce = false) {
-    const snapshot = read.session;
+    let snapshot = read.session;
+    const project = await this.hooks.projectContext?.(record.reference);
+    if (project) {
+      if (!path.isAbsolute(project.projectPath) || project.projectPath.includes('\0') || !project.revision) throw new Error('Invalid native project evidence.');
+      const resolved = realpathSync(project.projectPath);
+      if (!(await stat(resolved)).isDirectory()) throw new Error('The native project folder is unavailable.');
+      const decoded = decodePortableSession({ ...snapshot, workspace: { slug: `native-${digest(resolved).slice(0, 24)}`, name: safeLabel(path.basename(resolved), 120) || 'Project', projectLocation: resolved } });
+      if (!decoded.ok) throw new Error('Invalid native project snapshot.');
+      snapshot = decoded.value;
+    }
     if (snapshot.messages.length > 5000 || Buffer.byteLength(JSON.stringify(snapshot)) > MAX_SNAPSHOT_BYTES) throw new Error('Live observation is limited to 5000 messages / 5 MB. Import this history instead.');
     const current = this.live.get(record.id)!;
     const revision = this.revision(snapshot), lastCheckedAt = new Date().toISOString();
@@ -692,12 +881,21 @@ export class Observations {
       return step;
     }) : await this.imageStore(record.id).materialize(read.steps, {
       sourceId: record.reference.sourceId, projectRoot: snapshot.workspace?.projectLocation,
-      temporaryRoot: this.hooks.temporaryImageRoot ?? tmpdir(), revision: sourceRevision,
+      temporaryRoot: this.hooks.temporaryImageRoot ?? tmpdir(),
+      stagedAttachmentsRoot: this.stagedAttachmentsRoot(record.id),
+      revision: sourceRevision,
     });
     // The lead's model is the newest report of the transcript (its latest lead model event) and of the hooks (see `reportModel`).
     const events = this.derive(record, { steps });
     const eventRevision = digest(events.map(event => event.id));
-    if (reportModel(record, read.model, read.modelAt ?? transcriptModelAt(events, snapshot))) identityChanged = true;
+    const nativeSelection = project?.model ? safeLabel(project.model, 120) : undefined;
+    if (nativeSelection) {
+      // A live adapter selection is current evidence, rather than a transcript clock watermark.
+      if (record.model !== nativeSelection) {
+        const selectedAt = new Date().toISOString();
+        record.model = nativeSelection; record.modelAt = selectedAt; delete record.effort; record.effortAt = selectedAt; identityChanged = true;
+      }
+    } else if (reportModel(record, read.model, read.modelAt ?? transcriptModelAt(events, snapshot))) identityChanged = true;
     if (read.effortAt && reportEffort(record, read.effort, read.effortAt, read.model)) identityChanged = true;
     // v0.0.48: the context follows the transcript's latest usage report; an unchanged reading keeps the stored record.
     if (read.context) {
@@ -730,9 +928,12 @@ export class Observations {
       }
     }
     const userInput = target ? { fingerprint: target.sourceFingerprint, evidence: { requests: [...requests.values()], replies: [...replies.values()] } } : undefined;
-    const changed = identityChanged || revision !== current.revision || eventRevision !== current.eventRevision || current.status !== 'watching' || fresh.length > 0 || lastEventAt !== current.lastEventAt || digest(userInput ?? null) !== digest(current.userInput ?? null);
-    this.live.set(record.id, { ...(userInput ? { userInput } : {}), snapshot, steps, eventRevision, eventIds: new Set(events.map(event => event.id)), ...(lastEventAt ? { lastEventAt } : {}),
+    const outputChanged = this.transcriptOutput(record, current.snapshot, snapshot);
+    const changed = outputChanged || identityChanged || revision !== current.revision || eventRevision !== current.eventRevision || current.status !== 'watching' || fresh.length > 0 || lastEventAt !== current.lastEventAt || digest(userInput ?? null) !== digest(current.userInput ?? null);
+    const activity = current.activity;
+    this.live.set(record.id, { ...(activity ? { activity } : {}), ...(userInput ? { userInput } : {}), snapshot, steps, eventRevision, eventIds: new Set(events.map(event => event.id)), ...(lastEventAt ? { lastEventAt } : {}),
       revision, ...(sourceRevision ? { sourceRevision } : {}), status: 'watching', lastCheckedAt, ...(latest ? { hook: latest } : {}) });
+    if (record.watching && current.eventIds) advanceLiveActivity(this.live.get(record.id)!, publishable, Date.now());
     const identities = latest ? this.identities(record, latest, events) : [];
     if (changed) { await this.save(); this.publish(publishable); this.notify(record); }
     if (identities.length && record.watching) this.publish(identities);
@@ -1054,6 +1255,7 @@ export class Observations {
       if (record.watching !== watching) this.invalidateControl(record);
       record.watching = watching;
       const live = this.live.get(id)!;
+      if (!watching) delete live.activity;
       this.live.set(id, { ...live, status: watching ? 'watching' : 'paused', error: undefined });
       await this.save(); this.notify(record);
     }).then(async () => { if (watching) await this.refresh(); });
@@ -1134,6 +1336,7 @@ export class Observations {
       let record = this.records.find(item => sameSession(item.reference, reference));
       // A session the hooks have not reported before may continue a known conversation (Claude Code; see `continuation`).
       if (!record && !subagentId) record = await this.linkHook(reference);
+      const firstDiscovery = !record;
       // Meeting reports alone cannot establish a new session or agent identity.
       if (!record && hook.steps.every(step => isMeeting(step.body))) return;
       // Sessions in ignored folders are not observed automatically (a session picked by hand still is).
@@ -1181,6 +1384,18 @@ export class Observations {
         at,
         id: index => `hook-${record.id}-${++this.hookCounter}-${index}`,
       });
+      if (!this.labelsOnly()) {
+        const stagedRoot = this.stagedAttachmentsRoot(record.id);
+        for (const event of events) {
+          if (event.body.type !== 'prompt.submitted' || event.body.attachments?.some(file => file.ref)) continue;
+          const staged = await this.imageStore(record.id).materializePromptAttachments(event.body.text, stagedRoot);
+          if (staged.length) {
+            event.body.attachments = staged.map(file => ({
+              name: file.name, kind: file.kind, size: file.size, ...(file.ref ? { ref: file.ref } : {}),
+            }));
+          }
+        }
+      }
       if (!live.hook) {
         live.hook = { app: hook.app, since: at, lastAt: at, events: [] };
         if (!hook.starts && !events.some(e => e.body.type === 'session.started')) {
@@ -1257,6 +1472,7 @@ export class Observations {
         }));
         index++;
       }
+      const outputChanged = this.hookOutput(record, events, firstDiscovery);
       live.hook.events.push(...events);
       if (live.hook.events.length > 500) {
         live.hook.events = retainedHookEvents(live.hook.events, live.hook.meeting?.id);
@@ -1268,10 +1484,12 @@ export class Observations {
         // history was unavailable first. Tests/unknown hooks and user pauses do
         // not establish recovery; no transcript content is invented here.
         if (filteredSteps.length > 0) { live.status = 'watching'; live.error = undefined; }
+        advanceLiveActivity(live, events, Date.now());
         this.publish(events);
         this.notify(record);
       }
       await this.trim();
+      if (outputChanged) await this.save();
       if (!this.hookSaveTimer) {
         this.hookSaveTimer = setTimeout(() => {
           this.hookSaveTimer = undefined;

@@ -58,6 +58,10 @@ describe('Native workspace access controls', () => {
       expect(html).toContain(t.workspace.additionalFolders.heading);
       expect(html).toContain(t.workspace.additionalFolders.lead);
       expect(html).toContain('/projects/shared');
+      expect(html).not.toContain('folder-manual');
+      expect(html).not.toContain('-folder-input');
+      expect(html).not.toContain('-additional-path');
+      expect(html.match(/class="copy-button /g)).toHaveLength(2);
       const hermes = renderToStaticMarkup(createElement(WorkspaceForm, { t, agents, draft: { ...draft, runtimeId: 'hermes' }, onChange() {} }));
       expect(hermes).not.toContain(t.workspace.crossAccess.heading);
       expect(hermes).not.toContain(t.workspace.additionalFolders.heading);

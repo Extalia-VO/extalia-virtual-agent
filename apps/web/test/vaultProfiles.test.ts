@@ -37,6 +37,30 @@ describe('Settings: workspace vault profiles', () => {
     expect(original.workspaceIds).toEqual(['w-one', 'w-two']);
   });
 
+  it('shows observed learning off by default and gates the checkbox behind overall learning in both languages', () => {
+    for (const language of ['en', 'id'] as const) for (const enabled of [false, true]) for (const observed of [undefined, true]) {
+      const t = MESSAGES[language], draft = vaultProfileDraft(catalog.profiles[1]!);
+      draft.automaticLearning = { enabled, skills: true, notes: true, ...(observed !== undefined ? { observed } : {}) };
+      const html = renderToStaticMarkup(createElement(VaultProfilesView, { t, catalog, draft, busy: false, onDraft: vi.fn(), onSelect: vi.fn(), onNew: vi.fn(), onSave: vi.fn(), onRefresh: vi.fn() }));
+      const checkbox = html.match(/<input type="checkbox"[^>]*aria-describedby="[^"]*"[^>]*>/)?.[0];
+      expect(checkbox).toBeDefined(); expect(checkbox?.includes('disabled=""')).toBe(!enabled); expect(checkbox?.includes('checked=""')).toBe(observed === true);
+      expect(html).toContain(t.vaultProfiles.learningObserved); expect(html).toContain(t.vaultProfiles.learningObservedHint);
+      expect(vaultProfileDraft({ ...catalog.profiles[1]!, automaticLearning: draft.automaticLearning }).automaticLearning).toEqual(draft.automaticLearning);
+    }
+  });
+
+  it('preserves explicit observed consent in mock profile saves and applies the overall learning gate', async () => {
+    const agents = createMockPlatform({ seed: 'ready', host: 'bridge' }).capabilities.agents!;
+    for (const session of (await agents.getState()).sessions) if (session.running) await agents.cancel(session.id);
+    let current = await agents.listVaultProfiles!();
+    current = await agents.saveVaultProfile!({ name: 'Observed lessons', vaultRoot: null, workspaceIds: [], minutesEnabled: false, expectedRevision: current.revision, automaticLearning: { enabled: true, skills: true, notes: false, observed: true } });
+    const profile = current.profiles.find(item => item.name === 'Observed lessons')!; expect(profile.automaticLearning.observed).toBe(true);
+    current = await agents.saveVaultProfile!({ id: profile.id, name: profile.name, vaultRoot: null, workspaceIds: [], minutesEnabled: false, expectedRevision: current.revision });
+    expect(current.profiles.find(item => item.id === profile.id)?.automaticLearning.observed).toBe(true);
+    current = await agents.saveVaultProfile!({ id: profile.id, name: profile.name, vaultRoot: null, workspaceIds: [], minutesEnabled: false, expectedRevision: current.revision, automaticLearning: { enabled: false, skills: true, notes: false, observed: true } });
+    expect(current.profiles.find(item => item.id === profile.id)?.automaticLearning.observed).toBe(false);
+  });
+
   it('the mock host groups real workspace profileIds and enforces revision and workspace validation', async () => {
     const agents = createMockPlatform({ seed: 'ready', host: 'bridge' }).capabilities.agents!;
     for (const session of (await agents.getState()).sessions) if (session.running) await agents.cancel(session.id);

@@ -6,7 +6,7 @@ import { runTurn, type ApprovalOutcome, type ApprovalRequest, type TurnOptions, 
 import { guardMemberTools } from './memberAccess.js';
 import type { ModelMessage, ModelProvider } from './model.js';
 import type { AnyTool, ToolAccess, ToolDefinition } from './tools.js';
-import { EXTERNAL_SKILL_GUIDANCE } from './prompt.js';
+import { EXTERNAL_SKILL_GUIDANCE, operatingProfileGuidance, type SharedOperatingProfile } from './prompt.js';
 
 /**
  * Orchestration for the Extalia Native agent: the primary agent hands bounded,
@@ -41,6 +41,8 @@ export interface DelegationTeam {
 }
 
 export interface DelegationOptions {
+  /** Shared standing background only; the lead's individual override is never inherited. */
+  operatingProfile?: SharedOperatingProfile;
   /** Prepare only the selected worker's context; never inherit the lead's loaded bodies. */
   prepareWorkerRequest?(member: TeamMember | undefined, agentId: string): NonNullable<TurnOptions['prepareRequest']>;
   /** Provider for a tier; created lazily so unused tiers cost nothing. */
@@ -80,12 +82,13 @@ const oneLine = (value: string) => value.replace(/\s+/g, ' ').trim();
 
 type PromptMember = Pick<TeamMember, 'name' | 'role' | 'task'> & Partial<Pick<TeamMember, 'soul' | 'access' | 'scope' | 'forbidden'>>;
 
-export function workerSystemPrompt(workspace: { name: string; root: string }, member?: PromptMember, rules: readonly string[] = [], options: { commands?: boolean } = {}): string {
+export function workerSystemPrompt(workspace: { name: string; root: string }, member?: PromptMember, rules: readonly string[] = [], options: { commands?: boolean; operatingProfile?: SharedOperatingProfile } = {}): string {
   const writer = member?.access === 'write';
+  const profile = operatingProfileGuidance(options.operatingProfile, member ? { soul: member.soul } : undefined, true);
   return [
     `You are a worker agent helping the primary Extalia agent in the project "${workspace.name}" (${workspace.root}).`,
     ...(member ? [`You are ${oneLine(member.name)}, the team's ${oneLine(member.role)}.${member.task ? ` Your standing responsibility: ${oneLine(member.task)}` : ''}`] : []),
-    ...(member?.soul ? [`Your persona and principles: ${oneLine(member.soul)}`] : []),
+    ...(profile ? [profile] : []),
     ...(writer
       ? [
         `You can list, read and search files, edit and create files${options.commands ? ', and run commands' : ''}. The user may need to approve edits and commands; if one is declined, continue without it and say so.`,
@@ -114,8 +117,13 @@ export function findTeamMember(members: readonly TeamMember[], reference: string
   return members.find(member => member.id === key) ?? members.find(member => member.name.toLowerCase() === key.toLowerCase());
 }
 
-/** Worker events shown in the session under the worker's id (the rest become subagent states). */
-const FORWARDED = new Set<EventBody['type']>(['tool.started', 'tool.completed', 'file.written', 'command.started', 'command.output', 'command.completed', 'approval.requested', 'approval.resolved']);
+/** Public worker transcript events, always scoped to the worker rather than the lead turn. */
+// Turn lifecycle events remain lead-owned; unsuccessful workers report a scoped agent.error below.
+const FORWARDED = new Set<EventBody['type']>([
+  'model.delta', 'model.completed', 'agent.error',
+  'tool.started', 'tool.output', 'tool.completed', 'file.written',
+  'command.started', 'command.output', 'command.completed', 'approval.requested', 'approval.resolved',
+]);
 
 export function createDelegationTool(options: DelegationOptions): ToolDefinition<DelegateInput> {
   let used = 0;
@@ -263,15 +271,18 @@ export function createDelegationTool(options: DelegationOptions): ToolDefinition
         options.emit({ type: 'subagent.spawned', subagentId, role: member.role, label: member.name, model: models[0] });
       } else provider = options.providerFor(tier);
     } catch (error) {
+      const output = `The ${member ? member.name : tier} worker could not start: ${error instanceof Error ? error.message : String(error)}`;
+      options.emit({ type: 'agent.error', message: output }, subagentId);
       options.emit({ type: 'subagent.state', subagentId, state: 'blocked', summary: 'Could not start' });
-      return { ok: false, output: `The ${member ? member.name : tier} worker could not start: ${error instanceof Error ? error.message : String(error)}` };
+      return { ok: false, output };
     }
     const writeTools = writer && member ? guardMemberTools(options.team?.writeToolsForMember?.(member) ?? options.team?.writeTools ?? [], member) : [];
     const commands = writeTools.some(tool => tool.access === 'execute');
-    // Worker activity is summarized as subagent state; its own deltas would clutter the primary transcript.
+    let workerErrorEmitted = false;
+    // State updates drive the roster; public transcript events retain the worker's identity.
     const result = await runTurn({
       provider,
-      system: workerSystemPrompt(options.workspace, member, member ? options.team?.rules ?? [] : [], { commands }),
+      system: workerSystemPrompt(options.workspace, member, member ? options.team?.rules ?? [] : [], { commands, operatingProfile: options.operatingProfile }),
       history: [],
       prompt,
       tools: [...(member ? options.team?.workerToolsForMember?.(member) ?? options.workerTools : options.workerTools), ...writeTools],
@@ -286,6 +297,7 @@ export function createDelegationTool(options: DelegationOptions): ToolDefinition
         if (body.type === 'agent.state') {
           options.emit({ type: 'subagent.state', subagentId, state: body.state, ...(body.summary ? { summary: body.summary } : {}) });
         } else if (FORWARDED.has(body.type)) {
+          if (body.type === 'agent.error') workerErrorEmitted = true;
           options.emit(body, subagentId);
         }
       },
@@ -294,6 +306,7 @@ export function createDelegationTool(options: DelegationOptions): ToolDefinition
     const answer = last?.text ?? '';
     try { options.onWorkerResult?.(subagentId, result.outcome, answer); } catch { /* Observers never change worker execution. */ }
     if (result.outcome !== 'completed') {
+      if (!workerErrorEmitted) options.emit({ type: 'agent.error', message: result.error ?? `The worker stopped (${result.outcome}).` }, subagentId);
       return { ok: false, output: `The worker stopped (${result.outcome}): ${result.error ?? 'no result'}${answer ? `\nPartial findings:\n${answer.slice(0, WORKER_RESULT_LIMIT)}` : ''}` };
     }
     return { ok: true, output: answer ? answer.slice(0, WORKER_RESULT_LIMIT) : 'The worker finished without findings.' };

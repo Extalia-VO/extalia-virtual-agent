@@ -81,6 +81,42 @@ describe('workspace form and Settings', () => {
     const wizard = form(ready, false);
     expect(wizard).not.toContain(t.workspace.gate.heading);
   });
+  it('keeps blank timeout defaults and connects invalid gate values to their labeled errors', () => {
+    for (const language of ['en', 'id'] as const) {
+      const copy = MESSAGES[language];
+      const draw = (draft: Parameters<typeof WorkspaceForm>[0]['draft']) => renderToStaticMarkup(createElement(WorkspaceForm, {
+        t: copy, agents, draft, onChange() {}, showGate: true, showAllErrors: true,
+      }));
+      const blank = draw({ ...ready, gateCommand: 'pnpm test', gateTimeout: '' });
+      const timeout = blank.match(/<input[^>]*id="([^"]*-gate-timeout)"[^>]*>/)![0];
+      expect(timeout).toContain('type="number"'); expect(timeout).toContain('min="1"'); expect(timeout).toContain('max="1800"');
+      expect(timeout).toContain('step="1"'); expect(timeout).toContain('value=""'); expect(timeout).not.toContain('required');
+      const invalid = draw({ ...ready, gateCommand: '', gateTimeout: '1801' });
+      const command = invalid.match(/<input[^>]*id="([^"]*-gate)"[^>]*>/)![0];
+      const commandId = command.match(/id="([^"]+)"/)![1]!;
+      const invalidTimeout = invalid.match(/<input[^>]*id="([^"]*-gate-timeout)"[^>]*>/)![0];
+      expect(command).toContain(`${commandId}-error`);
+      expect(invalid).toContain(`id="${commandId}-error" class="field-error">${copy.workspace.errors.gateRequired}`);
+      expect(invalidTimeout).toContain(`aria-describedby="${commandId}-timeout-error"`);
+      expect(invalid).toContain(`id="${commandId}-timeout-error" class="field-error">${copy.workspace.errors.gateTimeoutInvalid}`);
+    }
+  });
+
+  it('links workspace name, connection and folder validation to their controls', () => {
+    for (const language of ['en', 'id'] as const) {
+      const copy = MESSAGES[language];
+      const html = renderToStaticMarkup(createElement(WorkspaceForm, { t: copy, agents, draft: { ...ready, name: '', connectionId: '' }, connections: [], onChange() {}, showAllErrors: true }));
+      const name = html.match(/<input[^>]*id="([^"]*-name)"[^>]*>/)![0];
+      const nameId = name.match(/id="([^"]+)"/)![1]!;
+      expect(name).toContain(`aria-describedby="${nameId}-error"`);
+      expect(html).toContain(`id="${nameId}-error" class="field-error">${copy.workspace.errors.nameRequired}`);
+      expect(html).toContain(`${nameId.replace(/-name$/, '')}-connection-error`);
+      expect(html).toContain(`${nameId.replace(/-name$/, '')}-folder-path ${nameId.replace(/-name$/, '')}-folder-status`);
+      for (const reference of [...html.matchAll(/aria-describedby="([^"]+)"/g)].flatMap(match => match[1]!.split(' '))) {
+        expect(html, reference).toContain(`id="${reference}"`);
+      }
+    }
+  });
 
   it('opens the workspace editor at the gate when asked from a Changes panel, and lists the configured gate', async () => {
     const state = await agents.getState();

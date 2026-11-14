@@ -16,7 +16,7 @@ function fixture(options: { maxOperations?: number; maxSessions?: number } = {})
     snapshots.set(definition.route, { bindingId: `original-${definition.route}`, generation: 1, actions: [...definition.actions], relatedControls: [] });
     return { route: definition.route,
       status: vi.fn(async () => snapshots.get(definition.route)),
-      dispatch: vi.fn(async (): Promise<{ state: 'queued' | 'submitted' }> => ({ state: definition.route === 'codex-queue' || definition.route === 'cooperative-inbox' ? 'queued' : 'submitted' })),
+      dispatch: vi.fn(async (): Promise<{ state: 'queued' | 'submitted' }> => ({ state: definition.route === 'codex-queue' || definition.route === 'cooperative-inbox' || definition.route === 'official-cli-resume' ? 'queued' : 'submitted' })),
     };
   });
   const service = new ObservedControlService({ target: () => target, drivers, ...options });
@@ -30,8 +30,8 @@ function fixture(options: { maxOperations?: number; maxSessions?: number } = {})
 describe('unified observed control ownership and receipts', () => {
   it.each(OBSERVED_CONTROL_ROUTES.flatMap(route => route.actions.map(action => ({ route: route.route, action }))))('dispatches only the selected $route / $action transport', async ({ route, action }) => {
     const f = fixture(), input = await f.input(route, action);
-    expect(await f.service.dispatch('observed-one', input)).toMatchObject({ route, action, state: action === 'queue' || action === 'inbox-send' ? 'queued' : 'submitted', retryable: false });
-    expect(f.driver(route).dispatch).toHaveBeenCalledWith('observed-one', { action, text: input.text }, expect.objectContaining({ bindingId: `original-${route}`, generation: 1 }));
+    expect(await f.service.dispatch('observed-one', input)).toMatchObject({ route, action, state: action === 'queue' || action === 'inbox-send' || route === 'official-cli-resume' ? 'queued' : 'submitted', retryable: false });
+    expect(f.driver(route).dispatch).toHaveBeenCalledWith('observed-one', { action, text: input.text, operationId: input.operationId }, expect.objectContaining({ bindingId: `original-${route}`, generation: 1 }));
     for (const driver of f.drivers.filter(driver => driver.route !== route)) expect(driver.dispatch).not.toHaveBeenCalled();
   });
   it('publishes route limits and capabilities without exposing driver identities, paths or secrets', async () => {

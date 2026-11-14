@@ -1,3 +1,13 @@
+import { SessionBrowser } from './sessionBrowser.js';
+import { sessionBrowserProject } from '@extalia/platform';
+import { decodeSessionOperatingProfile, resolveOperatingProfile, type AgentPersona, type SessionOperatingProfile, type OperatingProfileOverrides } from '@extalia/core';
+import { normalizeOperatingProfileInput, normalizeWorkspaceOperatingProfile, normalizeSessionOperatingProfileInput } from '@extalia/platform';
+import { createOperatingProfileStore } from './operatingProfiles.js';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { AntigravityHandoverService } from './antigravityHandoverService.js';
+import { discoverAntigravityHandoverEndpoint } from './antigravityEndpoint.js';
+import { buildAntigravityModelCatalog, parseAntigravityModelVariant, resolveAntigravityVariant, type AntigravityModelCatalog, type AntigravityModelConfigPayload } from './antigravityModels.js';
+import { readAntigravityNativeQueue } from './observedAntigravityNativeQueue.js';
 import { normalizeObservedWorkspaceLinkInput, type ObservedWorkspaceLinkStatus } from '@extalia/platform';
 import { ObservedUserInputService } from './observedUserInputService.js';
 import { lstat } from 'node:fs/promises';
@@ -9,9 +19,13 @@ import { ObservedCodexNativeQueueService } from './observedCodexNativeQueueServi
 import type { readCodexNativeQueue } from './codexNativeQueue.js';
 import { ObservedCodexPermissionService } from './observedCodexPermissionService.js';
 import { PromptQueues } from './promptQueue.js';
-import { SessionMoveReviews } from './sessionMove.js';
+import { SessionMoveReviews, sessionProjectWorkspace, sessionProjectWorkspaces } from './sessionMove.js';
+import { discoverHandoverHarnesses } from './handoverHarnesses.js';
 import { SessionContinuity, type ContinuitySourceSnapshot } from './sessionContinuity.js';
 import { handoverEvidence } from './handoverEvidence.js';
+import { collectHandoverWorkspaceContext } from './handoverWorkspaceContext.js';
+import { ObservedMemory, createObservedMemoryTools } from './observedMemory.js';
+import type { ObservedMemoryEpisode } from './rustLearning.js';
 import { createContinuityTools } from './continuityTools.js';
 import { replaceHandoverHistory } from './handoverHistory.js';
 import { ContinuityAccess } from './continuityAccess.js';
@@ -20,6 +34,7 @@ import { LearningSchedule } from './learningSchedule.js';
 import { runNativeKnowledgeMeeting } from './nativeKnowledgeMeeting.js';
 import { automaticLearningNotice } from './skillLearningNotices.js';
 import { WorkspaceKnowledge, serializeKnowledgeRequests } from './workspaceKnowledge.js';
+import { createNativeKnowledgeTools } from './nativeKnowledgeTools.js';
 import { assignWorkspaceVaultProfile } from './workspaceVaultProfile.js';
 import { NativeTurnSteering } from './nativeTurnSteering.js';
 import { createNativeSkillPreparation } from './nativeSkillPreparation.js';
@@ -30,8 +45,9 @@ import { RustSkillMarket } from './daemon/skillMarket.js';
 import { SkillMarketplace } from './skillMarketplace.js';
 import { ObservedReplyChannels } from './observedReplyChannel.js';
 import { ObservedInboxChannels } from './observedInboxChannel.js';
-import { ObservedControlService } from './observedControlService.js';
+import { ObservedControlService, ObservedControlRefusal } from './observedControlService.js';
 import { createObservedControlDrivers } from './observedControlDrivers.js';
+import { ObservedCliResumeService } from './observedCliResumeService.js';
 import { ObservedHermesService } from './observedHermesService.js';
 import type { HermesObservedRpcFactory } from './hermesObservedControl.js';
 import type { CodexObservedRpcFactory } from './codexObservedControl.js';
@@ -52,6 +68,7 @@ import {
   HERMES_PERMISSION_MODES, PERMISSION_MODES, ATTACHMENT_ID_PATTERN, normalizeAttachmentUpload, normalizePromptAttachmentIds, normalizePromptLearnSkill, type PermissionMode, type PromptAttachment, type PromptAttachmentInput,
   normalizeBuiltinSkills, normalizeSkillConsent, normalizeSkillNames, type SkillConsentInput, type WorkspaceSkills,
   normalizeIntegrationGate, normalizeLearningScheduleAction, normalizeWorkspaceKnowledgeRequest, type KnowledgeVaultSettings, type LearningMeetingResult,
+  type KnowledgeNoteResult, type KnowledgeSearchResult, type WorkspaceKnowledgeBinding,
   KNOWLEDGE_EVENT_SESSION_ID, normalizeKnowledgeVaultRoot, type NativeActiveRun, type NativeStatus, type NativeStatusRecheck, type NativeStatusWorker,
   type ContinuityView, type HandoverTarget,
 } from '@extalia/platform';
@@ -78,11 +95,14 @@ import { HostPersistenceGate } from './hostPersistenceGate.js';
 import { createProfileStore } from './profile.js';
 import { pinMeetingNotes } from './meetingNotes.js';
 import { pinLearningNotes } from './learningNotes.js';
-import { hasAutomaticLearningEvidence, runAutomaticLearning } from './automaticLearning.js';
+import { hasAutomaticLearningEvidence, runAutomaticLearning, runObservedAutomaticLearning } from './automaticLearning.js';
 import { RustLearningBackend } from './rustLearning.js';
 import { createConnectService, resolveNodePath, type ConnectService } from './connect/index.js';
 import { isExecutable } from './connect/util.js';
 import { DaemonSidecar, DaemonUnavailableError, createDaemonMission, resolveDaemonBinary, type DaemonBinaryOptions, type DaemonClient, type DaemonFailureCode, type DaemonMission, type SpawnDaemon } from './daemon/index.js';
+import { excludesSkillLearning, hasLearningSourceLink, learningSourceUrls, requestsSkillLearning } from './promptLearning.js';
+import { readLearningSource } from './daemon/learningSource.js';
+import { createSkillLearningSourceTool } from './skillLearningSource.js';
 import { createHookIngest, type HookIngest } from './hooks/ingest.js';
 import { MissionRecovery } from './missionRecovery.js';
 import { nativeStatusSnapshot } from './nativeStatus.js';
@@ -98,9 +118,10 @@ import { mapObservedWorkspaces, observedWorkspaceResolution, projectCanonicalPat
 import { dataLayout, ensureLayout, ensurePrivateDirectory, PRIVATE_FILE_MODE } from './paths.js';
 import { createSecretStore, resolveCredential, type SecretStore } from './secrets.js';
 import { MemorySessionStore, SESSION_ID_PATTERN, SessionStore, newSessionId, type SessionRecord, type SessionStorage } from './sessions.js';
-import { SkillConsentStore, buildAgentSkillCatalog, createSkillTools, loadSkills, skillOrigin, type AgentSkillCatalog } from './skills.js';
+import { SkillConsentStore, buildAgentSkillCatalog, createSkillTools, loadSkills, readCatalogSkill, skillOrigin, type AgentSkillCatalog } from './skills.js';
 import { createSkillProposalTool } from './skillLearning.js';
 import { SkillRegistry } from './skillRegistry.js';
+import { skillStoragePaths } from './skillStorage.js';
 import { KnowledgeService, knowledgeHostMethods, type KnowledgeServiceOptions } from './knowledge.js';
 import { KnowledgeVault } from './knowledgeVault.js';
 import { VaultProfiles, type StoredVaultProfiles } from './vaultProfiles.js';
@@ -134,6 +155,10 @@ export interface AgentHostOptions {
   observedCodexRpc?: CodexObservedRpcFactory;
   observedCodexNativeQueueRead?: typeof readCodexNativeQueue;
   observedHermesRpc?: HermesObservedRpcFactory;
+  /** Bundled, read-only continuation archive helper. */
+  cliResumeArchiveReader?: string;
+  /** Explicit native model selection for controlled integration tests; normal hosts use the native catalog default. */
+  antigravityHandoverModel?: string;
   kind: 'desktop' | 'bridge';
   version: string;
   /** Defaults to the platform data directory (EXTALIA_HOME overrides). */
@@ -415,6 +440,8 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
   const configFile = path.join(layout.config, 'extalia.json');
   const modelGuide = new ModelGuideStore(layout.config);
   let config = decodeConfig(await readJson<Partial<HostConfig> | undefined>(configFile, undefined));
+  const operatingProfileStore = createOperatingProfileStore(layout.config);
+  let operatingProfiles = await operatingProfileStore.list();
   let assignedProfiles = config.vaultProfiles;
   let assignedWorkspaces = config.workspaces;
   let assigned = false;
@@ -443,6 +470,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
   const recoveryDaemon = new DaemonSidecar({
     binary: () => resolveDaemonBinary({ ...options.daemon?.binary, env })?.path,
     dataDirectory: layout.root, profile: 'default', clientVersion: options.version.slice(0, 64), env, handshakeDeadlineMs: 90_000,
+    ...(config.profile.id !== 'default' ? { knowledgeProfileAlias: config.profile.id } : {}),
     vaultRoot: () => knowledgeVault.startArgument(),
     ...(options.daemon?.spawn ? { spawn: options.daemon.spawn } : {}),
     log: options.daemon?.log ?? (line => console.warn(line)),
@@ -455,7 +483,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
   });
   const marketBackend = new RustSkillMarket({
     binary: () => resolveDaemonBinary({ ...options.daemon?.binary, env })?.path,
-    directory: path.join(layout.root, 'profiles', 'default', 'skill-market'), workingDirectory: layout.root, clientVersion: options.version, env,
+    directory: skillStoragePaths(layout.root).market, workingDirectory: layout.root, clientVersion: options.version, env,
   });
   // Only new saved missions follow the native-core preference.
   // Recovery still follows recorded authority; Knowledge shares this exact process and lock.
@@ -515,6 +543,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     hasUnresolved: () => planningOwnership.hasUnresolved() || preparationOwnership.hasUnresolved(),
   };
   let closing = false;
+  let cliContinuationBusy = () => false;
   const storeOf = (id: string): SessionStorage => (unsavedSessions.has(id) ? unsavedSessions : savedSessions);
   /** Saved sessions live on disk; sessions of connections with history off only in memory. */
   const sessions: Omit<SessionStorage, 'create'> = {
@@ -528,9 +557,41 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     writeMessages: (id, messages) => persistence.run(() => storeOf(id).writeMessages(id, messages)),
   };
   const nativeImport = await NativeImportService.create({ homeDirectory: options.importHome ?? homeDirectory, env });
+  const unregisteredProjectPaths = new Map<string, string>();
+  const observedUnregisteredWorkspaceId = (projectPath?: string, sessionId?: string): string => {
+    const canonical = projectPath ? (projectCanonicalPath(projectPath) ?? projectPath) : undefined;
+    if (canonical && projectPath) {
+      const id = `observed:${continuityDigest(canonical).slice(0, 32)}`;
+      unregisteredProjectPaths.set(id, canonical);
+      return id;
+    }
+    return `observed-session:${sessionId ?? 'unknown'}`;
+  };
+  const antigravityHandover = new AntigravityHandoverService({
+    file: path.join(layout.state, 'antigravity-handover.json'),
+    endpoint: () => discoverAntigravityHandoverEndpoint({ homeDirectory: options.importHome ?? homeDirectory, env }),
+    workspace: async id => {
+      const workspace = config.workspaces.find(item => item.id === id);
+      if (workspace?.projectLocation) {
+        return { id, cwd: workspace.projectLocation,
+          fingerprint: createHash('sha256').update(workspaceSessionBoundaryKey(id, config.workspaces)).digest('hex') };
+      }
+      const unregisteredCwd = unregisteredProjectPaths.get(id);
+      return unregisteredCwd
+        ? { id, cwd: unregisteredCwd, fingerprint: createHash('sha256').update(id).digest('hex') }
+        : undefined;
+    },
+    ...(options.antigravityHandoverModel ? { model: async () => options.antigravityHandoverModel } : {}),
+    ...(options.fetch ? { fetch: options.fetch as typeof fetch } : {}),
+    changed: () => { if (!closing) { void observations.refresh().catch(() => undefined); notifyIdleListeners(); } },
+  });
   const libraryFile = path.join(layout.state, 'library.json');
   let library = await loadLibrary(libraryFile);
-  const saveLibrary = () => persistence.run(() => writeJsonAtomic(libraryFile, library, { mode: 0o600 }));
+  let libraryRevision = randomUUID();
+  const saveLibrary = () => persistence.run(async () => {
+    await writeJsonAtomic(libraryFile, library, { mode: 0o600 });
+    libraryRevision = randomUUID();
+  });
   const appearancesFile = path.join(layout.state, 'character-appearances.json');
   let appearances = await loadCharacterAppearances(appearancesFile);
   const saveAppearances = () => persistence.run(() => writeJsonAtomic(appearancesFile, appearances, { mode: 0o600 }));
@@ -540,7 +601,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
   let continuityWork = 0;
   let observedWorkspaceChange = false;
   function notifyIdleListeners(): void {
-    if (closing || observedWorkspaceChange || continuityWork || persistence.isBusy || runs.size || workspaceContextReaders
+    if (closing || cliContinuationBusy() || observedMemory?.isBusy() || observedWorkspaceChange || continuityWork || persistence.isBusy || runs.size || workspaceContextReaders
       || nativeStatusRefresh || nativeMemory.isBusy() || learningSchedule.isBusy || promptQueues?.isBusy) return;
     // A listener may unsubscribe and subscribe again while handling this event.
     // Iterating a live Set would revisit its replacement indefinitely.
@@ -550,6 +611,8 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
   /** Host-resolved associations only; unknown restored queues retain a conservative hold. */
   const queueWorkspaces = new Map<string, string>();
   const nativeWorkers = new Map<string, NativeStatusWorker>();
+  let observedMemory: ObservedMemory | undefined = undefined;
+  let observedPrivacyChanges = 0;
   const learningSchedule = new LearningSchedule({ onChange: () => {
     if (!closing && !learningSchedule.isBusy && !runs.size && !persistence.isBusy && !workspaceContextReaders
       && !nativeStatusRefresh && !nativeMemory.isBusy() && !promptQueues?.isBusy)
@@ -671,6 +734,15 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
   // A concurrent profile switch cannot invalidate the roster snapshot being admitted.
   let workspaceChanges: Promise<void> = Promise.resolve();
   let workspaceChangeRevision = 0;
+  let operatingChangeRevision = 0;
+  let operatingMutations = 0;
+  function withOperatingChange<T>(change: () => Promise<T>): Promise<T> {
+    operatingChangeRevision++;
+    operatingMutations++;
+    const next = workspaceChanges.then(async () => { assertHostOpen(); return change(); }).finally(() => { operatingMutations--; });
+    workspaceChanges = next.then(() => undefined, () => undefined);
+    return next;
+  }
   const sessionMoveReviews = new SessionMoveReviews();
   function withWorkspaceChange<T>(change: () => Promise<T>, invalidatePendingLearning = true): Promise<T> {
     if (observedWorkspaceChange) return Promise.reject(userError('Wait for the project association to finish before changing workspace settings.'));
@@ -691,7 +763,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     ensureManagedRoot: async profileId => (await rustLearning.process('vault.ensure', { profileId })).root,
     read: () => ({ profiles: config.vaultProfiles, workspaces: config.workspaces, defaultProfile: config.profile,
       defaultRoot: config.knowledge?.vaultRoot ?? knowledgeVault.defaultRoot() }),
-    busy: () => closing || continuityWork > 0 || learningSchedule.isBusy || persistence.isBusy || runs.size > 0 || workspaceContextReaders > 0 || nativeMemory.isBusy()
+    busy: () => closing || cliContinuationBusy() || continuityWork > 0 || learningSchedule.isBusy || persistence.isBusy || runs.size > 0 || workspaceContextReaders > 0 || nativeMemory.isBusy()
       || nativeOwnership.hasUnresolved() || missions.hasUnresolved() || missionRecovery.isInspecting() || nativeStatusRefresh !== undefined || registryWork > 0,
     commit: async (profiles, workspaces) => {
       knowledgeVault.assertStable();
@@ -704,6 +776,17 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
   });
   const workspaceKnowledge = new WorkspaceKnowledge({ daemon: knowledgePort,
     workspaces: profileId => config.workspaces.filter(workspace => workspace.profileId === profileId).map(workspace => workspace.id),
+  });
+  const knowledgeToolsFor = (workspaceId: string) => createNativeKnowledgeTools({ workspaceId,
+    resolve: () => vaultProfiles.knowledgeTarget(workspaceId),
+    search: async (query, binding) => {
+      await host.workspaceKnowledge!(workspaceId, 'knowledgeStatus', [], binding);
+      return await host.workspaceKnowledge!(workspaceId, 'searchKnowledge', [query], binding) as KnowledgeSearchResult;
+    },
+    read: async (notePath, binding) => {
+      await host.workspaceKnowledge!(workspaceId, 'knowledgeStatus', [], binding);
+      return await host.workspaceKnowledge!(workspaceId, 'knowledgeNode', [{ path: notePath }], binding) as KnowledgeNoteResult | null;
+    },
   });
   // eslint-disable-next-line prefer-const -- Bound after host initialization; startup callbacks may run before it is available.
   let refreshWorkspaceKnowledge: ((workspaceId: string) => Promise<void>) | undefined;
@@ -725,11 +808,24 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
   const sequence = new Map<string, number>();
   const credentialStatus = new Map<string, ConnectionView['credentialStatus']>();
   const followupSuggestions = new PromptSuggestionsService();
+  // Startup observation events have no resolved workspace yet and retain the global fence.
+  const observedLearningOwner: { resolve?: (sessionId: string) => { workspaceId?: string; profileId: string } | undefined } = {};
+  const observedMemoryHint = (sessionId: string): string | { profileId: string } | undefined => {
+    const owner = observedLearningOwner.resolve?.(sessionId);
+    return owner?.workspaceId ?? (owner ? { profileId: owner.profileId } : undefined);
+  };
   const observations = await Observations.create(layout.state, nativeImport, event => {
     if (closing || persistence.isSealed) return;
+    if (event.body.type === 'prompt.submitted' || event.body.type === 'tool.started'
+      || event.body.type === 'agent.state' && ['working', 'thinking', 'delegating'].includes(event.body.state)) void learningSchedule.yieldForForeground(observedLearningOwner.resolve?.(event.sessionId)?.profileId).catch(() => undefined);
+    learningSchedule.wake();
     followupSuggestions.observeEvent(event);
     for (const listener of listeners) { try { listener(event); } catch { /* disconnected UI */ } }
   }, options.observationIntervalMs, {
+    onPersisted: id => {
+      if (closing) return;
+      void observedMemory?.afterPersisted(id, observedMemoryHint(id)).catch(() => undefined).finally(() => learningSchedule.wake()); learningSchedule.wake();
+    },
     // Sessions that fall out of the automatic-discovery LRU are kept in History as linked conversations.
     retire: async session => {
       const applied = applyImport(JSON.stringify([session]), library);
@@ -743,8 +839,25 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     homeDirectory: options.importHome ?? homeDirectory,
     // Observed leads get names no managed lead or team member uses.
     takenNames: () => managedNames(),
+    projectContext: async reference => {
+      if (reference.sourceId !== 'antigravity' || closing) return undefined;
+      const native = await antigravityHandover.inspect(reference.nativeSessionId).catch(() => undefined);
+      return native?.workspaceUris.length === 1 ? { projectPath: fileURLToPath(native.workspaceUris[0]!), revision: native.revision, ...(native.modelId ?? native.model ? { model: native.modelId ?? native.model } : {}) } : undefined;
+    },
     onFollowups: (id, prompts) => { if (!closing) followupSuggestions.report(id, prompts); },
   }).catch(error => { missions.close(); throw error; });
+  observedLearningOwner.resolve = sessionId => {
+    const source = observations.summaries().find(item => item.id === sessionId);
+    if (!source) return undefined;
+    const resolved = observedWorkspaceResolution(source, config.workspaces);
+    if (resolved.workspaceId) {
+      const workspace = config.workspaces.find(item => item.id === resolved.workspaceId);
+      return workspace ? { workspaceId: workspace.id, profileId: workspace.profileId } : undefined;
+    }
+    // Unbound outside apps belong to global/default scheduling, not an isolated vault.
+    // This attributes activity only; it grants no workspace, file or Knowledge access.
+    return resolved.mode === 'unbound' ? { profileId: config.profile.id } : undefined;
+  };
   const observedCodex = new ObservedCodexService({ target: id => observations.codexControlTarget(id), env, homeDirectory: options.importHome ?? homeDirectory,
     onActivity: id => { if (!closing) followupSuggestions.invalidate(id); },
     ...(options.observedCodexRpc ? { rpcFactory: options.observedCodexRpc } : {}) });
@@ -782,9 +895,61 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     return target ? { app: target.sourceId, nativeSessionId: target.nativeSessionId, watching: target.watching,
       sourceBinding: JSON.stringify([target.fingerprint, target.revision]) } : undefined;
   } });
+  const observedCliResume = new ObservedCliResumeService({
+    file: path.join(layout.state, 'observed-cli-resume.json'), env, homeDirectory: options.importHome ?? homeDirectory,
+    target: async id => {
+      if (closing || blockedReplyIds.has(id) || observations.labelsOnly()) return undefined;
+      const source = observations.cliResumeSource(id), control = observations.controlTarget(id);
+      const observed = mapObservedWorkspaces(observations.summaries(), config.workspaces).find(item => item.id === id);
+      if (!source || !control?.watching || !observed?.workspaceId || observed.observation?.status !== 'watching') return undefined;
+      const workspace = findWorkspace(observed.workspaceId);
+      if (!observed.observation?.projectPath || projectCanonicalPath(source.cwd) !== projectCanonicalPath(observed.observation.projectPath)) return undefined;
+      return { ...source, watching: true, idle: !observed.running && !observed.pendingApprovalId,
+        fingerprint: continuityDigest([source.fingerprint, control.fingerprint, workspaceSessionBoundaryKey(workspace.id, config.workspaces)]),
+        revision: continuityDigest([source.revision, control.revision]), ...(observed.model ? { model: observed.model } : {}) };
+    },
+    archiveCommand: async target => {
+      const reader = options.cliResumeArchiveReader;
+      if (!reader || !path.isAbsolute(reader) || !(await lstat(reader).catch(() => undefined))?.isFile()) return undefined;
+      const command = options.hookNodePath ?? await resolveNodePath({ execPath: process.execPath, electron: Boolean(process.versions.electron), env, platform: process.platform, homeDirectory: options.importHome ?? homeDirectory });
+      return command ? { command, args: [reader, '--data', layout.root, '--app', target.family, '--session', target.nativeSessionId] } : undefined;
+    },
+    changed: () => { if (!closing) notifyIdleListeners(); },
+  });
+  cliContinuationBusy = () => observedCliResume.isBusy() || antigravityHandover.isBusy();
+  const antigravityDriver = {
+    async status(id: string) {
+      const target = observedControlTarget(id);
+      if (!target?.watching || target.sourceId !== 'antigravity') return undefined;
+      const observed = mapObservedWorkspaces(observations.summaries(), config.workspaces).find(item => item.id === id);
+      if (!observed) return undefined;
+      const workspace = observed.workspaceId ? config.workspaces.find(item => item.id === observed.workspaceId) : undefined;
+      const projectLocation = workspace?.projectLocation ?? observed.observation?.projectPath;
+      const scopeId = workspace ? workspace.id : observedUnregisteredWorkspaceId(projectLocation, id);
+      const native = await antigravityHandover.inspect(target.nativeSessionId, scopeId).catch(() => undefined);
+      if (!native) return undefined;
+      if (projectLocation) {
+        if (native.workspaceUris.length !== 1 || native.workspaceUris[0] !== pathToFileURL(projectCanonicalPath(projectLocation) ?? projectLocation).href) return undefined;
+      } else if (native.workspaceUris.length > 0 && !native.workspaceUris[0]) {
+        return undefined;
+      }
+      return { bindingId: target.nativeSessionId, generation: native.revision, actions: native.deliveryState === 'ready' ? ['start' as const] : [],
+        ...(native.deliveryState === 'uncertain' ? { problem: native.problem ?? 'Inspect the original native conversation connection before continuing.' } : {}),
+        relatedControls: [{ kind: 'questions' as const, available: false }, { kind: 'approvals' as const, available: false }] };
+    },
+    async dispatch(id: string, input: { action: string; text: string; operationId: string }, snapshot: { bindingId: string; generation?: string | number }) {
+      const current = await this.status(id);
+      const observed = mapObservedWorkspaces(observations.summaries(), config.workspaces).find(item => item.id === id);
+      if (input.action !== 'start' || !current || !observed || current.bindingId !== snapshot.bindingId || current.generation !== snapshot.generation) throw new ObservedControlRefusal('The reviewed native Antigravity conversation changed.');
+      const scopeId = observed.workspaceId || observedUnregisteredWorkspaceId(observed.observation?.projectPath, id);
+      const receipt = await antigravityHandover.sendOnce(current.bindingId, { text: input.text, operationId: input.operationId, workspaceId: scopeId }, current.generation);
+      if (receipt.state === 'rejected') throw new ObservedControlRefusal('The native Antigravity conversation is not ready for this request.');
+      return { state: receipt.state };
+    },
+  };
   const observedControls = new ObservedControlService({ target: observedControlTarget,
     drivers: createObservedControlDrivers({ sourceId: id => observedControlTarget(id)?.sourceId,
-      codex: observedCodex, codexQueue: observedCodexQueue, hermes: observedHermes, replies: observedReplies, inboxes: observedInboxes }),
+      antigravity: antigravityDriver, cliResume: observedCliResume, codex: observedCodex, codexQueue: observedCodexQueue, hermes: observedHermes, replies: observedReplies, inboxes: observedInboxes }),
   });
   const isCooperativeObservedSource = (sourceId?: string): sourceId is 'gemini-cli' | 'antigravity' | 'claude-code' =>
     sourceId === 'gemini-cli' || sourceId === 'antigravity' || sourceId === 'claude-code';
@@ -794,6 +959,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       await observedInboxes.create(id);
     }
   };
+  const observedAntigravitySelections = new Map<string, { model: string; effort?: Effort; modelId: string; planModel?: string; revision: number }>();
   const discoverAntigravityDaemons = async (): Promise<Array<{ lsAddress: string; csrfToken: string; alive: boolean; mtimeMs: number }>> => {
     const importHome = options.importHome ?? homeDirectory;
     const roots = resolveAgentLocations({ env, homeDirectory: importHome });
@@ -823,7 +989,39 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       }
     }
     discovered.sort((a, b) => Number(b.alive) - Number(a.alive) || b.mtimeMs - a.mtimeMs);
+    if (env.ANTIGRAVITY_LS_ADDRESS?.trim() && env.ANTIGRAVITY_CSRF_TOKEN?.trim()) {
+      discovered.unshift({
+        lsAddress: env.ANTIGRAVITY_LS_ADDRESS.trim(),
+        csrfToken: env.ANTIGRAVITY_CSRF_TOKEN.trim(),
+        alive: true,
+        mtimeMs: Number.MAX_SAFE_INTEGER,
+      });
+    }
     return discovered;
+  };
+  const fetchAntigravityCatalog = async (sessionId: string, sessionModel?: string): Promise<AntigravityModelCatalog | undefined> => {
+    const daemons = await discoverAntigravityDaemons();
+    const fetchFn = (options.fetch as typeof fetch | undefined) ?? fetch;
+    const selected = observedAntigravitySelections.get(sessionId);
+    for (const daemon of daemons) {
+      try {
+        const response = await fetchFn(`http://${daemon.lsAddress}/exa.language_server_pb.LanguageServerService/GetCascadeModelConfigData`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Connect-Protocol-Version': '1',
+            'x-codeium-csrf-token': daemon.csrfToken,
+          },
+          body: '{}',
+          signal: AbortSignal.timeout(1500),
+        });
+        if (!response.ok) continue;
+        const payload = (await response.json()) as AntigravityModelConfigPayload;
+        const catalog = buildAntigravityModelCatalog(payload, sessionModel, selected);
+        if (catalog.models.length > 0) return catalog;
+      } catch { /* try next daemon */ }
+    }
+    return undefined;
   };
   const readObservedModelCatalog = async (sessionId: string, sourceId: string, activeModel?: string): Promise<ModelChoices> => {
     const observedSummary = observations.summaries().find(item => item.id === sessionId);
@@ -836,83 +1034,42 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     if (problem) throw userError(problem);
     const geminiRoot = roots.geminiHome;
     if (sourceId === 'antigravity') {
-      const daemons = await discoverAntigravityDaemons();
-      if (env.ANTIGRAVITY_LS_ADDRESS?.trim() && env.ANTIGRAVITY_CSRF_TOKEN?.trim()) {
-        daemons.unshift({
-          lsAddress: env.ANTIGRAVITY_LS_ADDRESS.trim(),
-          csrfToken: env.ANTIGRAVITY_CSRF_TOKEN.trim(),
-          alive: true,
-          mtimeMs: Number.MAX_SAFE_INTEGER,
-        });
+      const selected = observedAntigravitySelections.get(sessionId);
+      const catalog = await fetchAntigravityCatalog(sessionId, sessionModel);
+      if (catalog && catalog.models.length > 0) {
+        const chosenModel = selected?.model && catalog.models.includes(selected.model)
+          ? selected.model
+          : catalog.defaultModel ?? catalog.models[0];
+        const chosenEfforts = chosenModel ? catalog.modelEfforts[chosenModel] ?? [] : [];
+        const chosenEffort = selected?.effort && chosenEfforts.includes(selected.effort)
+          ? selected.effort
+          : catalog.defaultEffort && chosenEfforts.includes(catalog.defaultEffort)
+            ? catalog.defaultEffort
+            : chosenEfforts[0];
+        return {
+          runtime: 'extalia-native',
+          ...(chosenModel ? { defaultModel: chosenModel } : {}),
+          models: cleanModels(catalog.models),
+          efforts: [...chosenEfforts],
+          ...(chosenEffort ? { defaultEffort: chosenEffort } : {}),
+          ...(Object.keys(catalog.modelEfforts).length ? { modelEfforts: catalog.modelEfforts } : {}),
+          observedSelection: {
+            ...(chosenModel ? { model: chosenModel } : {}),
+            ...(chosenEffort ? { effort: chosenEffort } : {}),
+            canSetSettings: true,
+            connectionId: 'antigravity-native',
+            settingsRevision: selected?.revision ?? 0,
+          },
+          permissionModes: [],
+        };
       }
-      const fetchFn = (options.fetch as typeof fetch | undefined) ?? fetch;
-      for (const daemon of daemons) {
-        try {
-          const response = await fetchFn(`http://${daemon.lsAddress}/exa.language_server_pb.LanguageServerService/GetCascadeModelConfigData`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Connect-Protocol-Version': '1',
-              'x-codeium-csrf-token': daemon.csrfToken,
-            },
-            body: '{}',
-            signal: AbortSignal.timeout(1500),
-          });
-          if (!response.ok) continue;
-          const payload = (await response.json()) as {
-            clientModelConfigs?: Array<{
-              modelId?: unknown;
-              disabled?: unknown;
-              modelOrAlias?: { model?: unknown; alias?: unknown };
-              quotaInfo?: { remainingFraction?: unknown } | null;
-            }>;
-            defaultOverrideModelConfig?: { modelOrAlias?: { model?: unknown; alias?: unknown } };
-          };
-          const byEnum = new Map<string, string>();
-          const available: string[] = [];
-          for (const item of payload.clientModelConfigs ?? []) {
-            if (!item || typeof item !== 'object' || item.disabled === true) continue;
-            const hasQuota = item.quotaInfo === undefined
-              ? true
-              : Boolean(item.quotaInfo && typeof item.quotaInfo === 'object' && (
-                typeof item.quotaInfo.remainingFraction === 'number'
-                  ? item.quotaInfo.remainingFraction > 0
-                  : Object.keys(item.quotaInfo).length > 0
-              ));
-            if (!hasQuota) continue;
-            const id = typeof item.modelId === 'string' && isModelId(item.modelId.trim()) ? item.modelId.trim() : undefined;
-            if (!id) continue;
-            if (!available.includes(id)) available.push(id);
-            const enumKey = typeof item.modelOrAlias?.model === 'string'
-              ? item.modelOrAlias.model
-              : typeof item.modelOrAlias?.alias === 'string' ? item.modelOrAlias.alias : undefined;
-            if (enumKey) byEnum.set(enumKey, id);
-          }
-          if (available.length > 0) {
-            const defaultEnum = typeof payload.defaultOverrideModelConfig?.modelOrAlias?.model === 'string'
-              ? payload.defaultOverrideModelConfig.modelOrAlias.model
-              : typeof payload.defaultOverrideModelConfig?.modelOrAlias?.alias === 'string'
-                ? payload.defaultOverrideModelConfig.modelOrAlias.alias : undefined;
-            const reportedModel = sessionModel && (available.includes(sessionModel) ? sessionModel : byEnum.get(sessionModel));
-            const defaultModel = reportedModel
-              ?? (defaultEnum ? byEnum.get(defaultEnum) : undefined)
-              ?? available[0];
-            return {
-              runtime: 'extalia-native',
-              ...(defaultModel ? { defaultModel } : {}),
-              models: cleanModels(available),
-              ...(reportedModel ? { observedSelection: { model: reportedModel, canSetSettings: false } } : {}),
-              efforts: [],
-              permissionModes: [],
-            };
-          }
-        } catch { /* try next daemon */ }
-      }
+      const parsedFallback = sessionModel ? parseAntigravityModelVariant(sessionModel) : undefined;
       return {
         runtime: 'extalia-native',
-        ...(sessionModel ? { defaultModel: sessionModel } : {}),
-        models: cleanModels(sessionModel ? [sessionModel] : []),
-        efforts: [],
+        ...(parsedFallback ? { defaultModel: parsedFallback.baseModel } : {}),
+        models: cleanModels(parsedFallback ? [parsedFallback.baseModel] : []),
+        efforts: parsedFallback?.effort ? [parsedFallback.effort] : [],
+        ...(parsedFallback?.effort ? { defaultEffort: parsedFallback.effort } : {}),
         permissionModes: [],
       };
     }
@@ -1092,13 +1249,19 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     const effort = (EFFORTS as readonly unknown[]).includes(reportedEffort) ? reportedEffort as Effort : undefined;
     const catalog = await readObservedModelCatalog(sessionId, sourceId, model);
     const selectedModel = catalog.observedSelection?.model ?? model;
-    const canSetSettings = native?.canSetSettings === true && !!native.connectionId && Number.isSafeInteger(native.settingsRevision);
+    const catalogSupportsSettings = sourceId === 'antigravity' && catalog.observedSelection?.canSetSettings === true;
+    const canSetSettings = catalogSupportsSettings || (native?.canSetSettings === true && !!native.connectionId && Number.isSafeInteger(native.settingsRevision));
+    const selectedEffort = catalogSupportsSettings ? catalog.observedSelection?.effort : effort;
+    const efforts = catalogSupportsSettings
+      ? catalog.efforts
+      : canSetSettings ? catalog.efforts : selectedEffort ? [selectedEffort] : [];
     return { ...catalog,
       ...(selectedModel ? { defaultModel: selectedModel, models: cleanModels([...catalog.models, selectedModel]) } : {}),
-      ...(effort ? { defaultEffort: effort } : summary?.effortAt || nativeModel ? { defaultEffort: undefined } : {}),
-      efforts: canSetSettings ? catalog.efforts : effort ? [effort] : [],
-      observedSelection: { ...(selectedModel ? { model: selectedModel } : {}), ...(effort ? { effort } : {}), canSetSettings,
-        ...(canSetSettings ? { connectionId: native!.connectionId!, settingsRevision: native!.settingsRevision! } : {}),
+      ...(selectedEffort ? { defaultEffort: selectedEffort } : summary?.effortAt || nativeModel || catalogSupportsSettings ? { defaultEffort: undefined } : {}),
+      efforts,
+      observedSelection: { ...(selectedModel ? { model: selectedModel } : {}), ...(selectedEffort ? { effort: selectedEffort } : {}), canSetSettings,
+        ...(catalogSupportsSettings && catalog.observedSelection?.connectionId ? { connectionId: catalog.observedSelection.connectionId, settingsRevision: catalog.observedSelection.settingsRevision } : {}),
+        ...(native?.canSetSettings === true && native.connectionId && Number.isSafeInteger(native.settingsRevision) ? { connectionId: native.connectionId, settingsRevision: native.settingsRevision } : {}),
         ...(native?.settingsDelivery === 'unknown' ? { uncertain: true } : {}) },
     };
   };
@@ -1154,10 +1317,67 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     }
     return false;
   };
+  const isAntigravityCascadeRunning = async (nativeSessionId: string): Promise<boolean> => {
+    if (!nativeSessionId) return false;
+    const daemons = await discoverAntigravityDaemons();
+    const fetchFn = (options.fetch as typeof fetch | undefined) ?? fetch;
+    for (const daemon of daemons) {
+      try {
+        const response = await fetchFn(`http://${daemon.lsAddress}/exa.language_server_pb.LanguageServerService/GetCascadeTrajectory`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Connect-Protocol-Version': '1',
+            'x-codeium-csrf-token': daemon.csrfToken,
+          },
+          body: JSON.stringify({ cascadeId: nativeSessionId }),
+          signal: AbortSignal.timeout(1500),
+        });
+        if (!response.ok) continue;
+        const payload = await response.json() as { status?: unknown };
+        if (typeof payload?.status === 'string' && payload.status.length > 0) {
+          return payload.status !== 'CASCADE_RUN_STATUS_IDLE';
+        }
+        return false;
+      } catch { /* try next daemon or assume unknown/idle */ }
+    }
+    return false;
+  };
+  const sendAntigravityDirectCascadeMessage = async (sessionId: string, nativeSessionId: string, text: string): Promise<boolean> => {
+    const selected = observedAntigravitySelections.get(sessionId);
+    if (!nativeSessionId || !text.trim() || !selected?.planModel) return false;
+    const daemons = await discoverAntigravityDaemons();
+    const fetchFn = (options.fetch as typeof fetch | undefined) ?? fetch;
+    for (const daemon of daemons) {
+      try {
+        const response = await fetchFn(`http://${daemon.lsAddress}/exa.language_server_pb.LanguageServerService/SendUserCascadeMessage`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Connect-Protocol-Version': '1',
+            'x-codeium-csrf-token': daemon.csrfToken,
+          },
+          body: JSON.stringify({
+            cascadeId: nativeSessionId,
+            items: [{ text }],
+            cascadeConfig: { plannerConfig: { planModel: selected.planModel } },
+            clientMessageId: randomUUID(),
+            deliveryStrategy: 'MESSAGE_DELIVERY_STRATEGY_WHEN_IDLE',
+            messageOrigin: 'AGENT_MESSAGE_ORIGIN_SDK_EXECUTABLE',
+            metadata: {},
+          }),
+          signal: AbortSignal.timeout(5000),
+        });
+        if (response.ok) return true;
+      } catch { /* try next daemon or fall back cleanly */ }
+    }
+    return false;
+  };
   interface PreparedObservedAttachments {
     text: string;
     consumedIds: string[];
     redundantIds: string[];
+    attachments: { name: string; kind: PromptAttachment['kind']; size: number; ref?: string }[];
   }
   const fitObservedDispatchText = (value: string, maxChars = 16_000, maxBytes = 16 * 1024): string => {
     let result = value;
@@ -1176,7 +1396,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
   };
   const prepareObservedAttachmentText = async (id: string, text: string): Promise<PreparedObservedAttachments> => {
     const pending = attachments.listPending(id);
-    if (!pending.length || !SESSION_ID_PATTERN.test(id)) return { text, consumedIds: [], redundantIds: [] };
+    if (!pending.length || !SESSION_ID_PATTERN.test(id)) return { text, consumedIds: [], redundantIds: [], attachments: [] };
     const byName = new Map<string, PromptAttachment[]>();
     for (const item of pending) {
       const list = byName.get(item.name);
@@ -1187,6 +1407,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     let expanded = false;
     const consumedIds: string[] = [];
     const redundantIds: string[] = [];
+    const retainedAttachments: { name: string; kind: PromptAttachment['kind']; size: number; ref?: string }[] = [];
     for (const [name, queue] of byName) {
       const bareTag = `[Attached file: ${name}]`;
       const pathedPrefix = `[Attached file: ${name} (`;
@@ -1198,6 +1419,17 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
         const useBare = bareIdx >= 0 && (pathedIdx < 0 || bareIdx < pathedIdx);
         const item = queue.shift()!;
         consumedIds.push(item.id);
+        let ref: string | undefined;
+        if (item.kind === 'image' && !observations.labelsOnly()) {
+          try {
+            const taken = await attachments.take(id, [item.id]);
+            const bytes = taken[0]?.bytes;
+            if (bytes) ref = observations.keepPromptAttachment(id, Buffer.from(bytes).toString('base64'));
+          } catch { /* best-effort image preview retention */ }
+        }
+        if (retainedAttachments.length < 10) {
+          retainedAttachments.push({ name: item.name, kind: item.kind, size: item.size, ...(ref ? { ref } : {}) });
+        }
         if (useBare) {
           let stagedFile: string | undefined;
           if (ATTACHMENT_ID_PATTERN.test(item.id)) {
@@ -1225,6 +1457,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       text: expanded ? fitObservedDispatchText(current) : current,
       consumedIds,
       redundantIds,
+      attachments: retainedAttachments,
     };
   };
   const finalizeObservedAttachments = async (id: string, prepared: PreparedObservedAttachments): Promise<void> => {
@@ -1252,7 +1485,8 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
         return 'sent';
       }
     }
-    if (target.sourceId === 'antigravity' && await sendAntigravityAgentApiMessage(target.nativeSessionId, fullText)) {
+    if (target.sourceId === 'antigravity' && (await sendAntigravityDirectCascadeMessage(id, target.nativeSessionId, fullText)
+      || await sendAntigravityAgentApiMessage(target.nativeSessionId, fullText))) {
       await finalizeObservedAttachments(id, prepared);
       await observations.receiveHook({
         app: 'antigravity',
@@ -1261,7 +1495,15 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
         starts: false,
         ends: false,
         steps: [
-          { agentId: 'primary', body: { type: 'prompt.submitted', via: 'native', text: safeText(fullText, 4000) } },
+          {
+            agentId: 'primary',
+            body: {
+              type: 'prompt.submitted',
+              via: 'native',
+              text: safeText(fullText, 4000),
+              ...(prepared.attachments.length ? { attachments: prepared.attachments } : {}),
+            },
+          },
           { agentId: 'primary', body: { type: 'agent.state', state: 'thinking' } },
         ],
       }).catch(() => undefined);
@@ -1359,18 +1601,23 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
         const controlTarget = observations.controlTarget(id);
         if (!controlTarget || !isCooperativeObservedSource(controlTarget.sourceId)) return undefined;
         const current = observations.summaries().find(item => item.id === id);
-        const reply = observedReplies.status(id);
-        const inbox = observedInboxes.status(id);
-        const waitingForInput = (reply.state === 'waitingForReply' && !!reply.channelId) || (inbox.state === 'connected' && !!inbox.polling);
         const activeWatching = controlTarget.watching && current?.observation?.status === 'watching';
-        const steering = activeWatching && current?.running
-          ? { identity: JSON.stringify([controlTarget.sourceId, controlTarget.nativeSessionId, controlTarget.fingerprint]),
+        const antigravityBusy = controlTarget.sourceId === 'antigravity' && activeWatching
+          ? await isAntigravityCascadeRunning(controlTarget.nativeSessionId)
+          : false;
+        const steering = activeWatching && (current?.running || antigravityBusy)
+          ? { identity: JSON.stringify([controlTarget.sourceId, controlTarget.nativeSessionId]),
             send: (text: string): Promise<'sent' | 'unknown'> => dispatchCooperativeObservedMessage(id, text) }
           : undefined;
+        const stableIdentity = createHash('sha256').update(JSON.stringify([controlTarget.sourceId, controlTarget.nativeSessionId])).digest('hex');
+        const fingerprintIdentity = createHash('sha256').update(JSON.stringify([controlTarget.sourceId, controlTarget.nativeSessionId, controlTarget.fingerprint])).digest('hex');
         return {
-          identity: createHash('sha256').update(JSON.stringify([controlTarget.sourceId, controlTarget.nativeSessionId, controlTarget.fingerprint])).digest('hex'),
+          identity: stableIdentity,
+          ...(fingerprintIdentity !== stableIdentity ? { compatibleIdentities: [fingerprintIdentity] } : {}),
           available: true,
-          ready: activeWatching && (!current?.running || waitingForInput),
+          // Hold Antigravity prompts as pending in Extalia while the native cascade is running
+          // so reorder/edit/delete stay actionable; cooperative mailboxes without a busy daemon still accept immediately.
+          ready: activeWatching && !antigravityBusy,
           maxTextLength: 16_000,
           persist: !observations.labelsOnly(),
           ...(steering ? { steering } : {}),
@@ -1390,7 +1637,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
         } } : undefined;
       try { nativeOwnership.assertClear(id); missions.assertSessionClear(id); assertNativeBoundaryAvailable(); } catch { ready = false; }
       const queueIdentity = (boundary: string) => createHash('sha256').update(JSON.stringify(['managed', record.id, record.workspaceId,
-        record.createdAt, record.connectionId, record.runtime?.id, record.runtime?.profile, boundary])).digest('hex');
+        record.createdAt, record.connectionId, record.runtime?.id, record.runtime?.profile, boundary, ...(record.projectLocation !== undefined ? [record.projectLocation] : [])])).digest('hex');
       const legacyBoundary = workspaceBoundaryKey(config.workspaces);
       return { identity: queueIdentity(record.runtime ? legacyBoundary : workspaceSessionBoundaryKey(record.workspaceId, config.workspaces)),
         ...(!record.runtime && workspaceBoundaryMatches(record.workspaceBoundary, record.workspaceId, config.workspaces)
@@ -1473,13 +1720,15 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
   function summary(record: SessionRecord): SessionSummary {
     queueWorkspaces.set(record.id, record.workspaceId);
     const run = runs.get(record.id);
-    const { options: _stored, team: _team, agentName: _name, agentGender: _gender, context: storedContext, ...rest } = record;
+    const { operatingProfile: _operating, options: _stored, team: _team, agentName: _name, agentGender: _gender, context: storedContext, ...rest } = record;
     const sessionOptions = storedOptions(record);
     const team = storedTeam(record);
     const workspaceReviewRequired = sessionNeedsWorkspaceReview(record);
+    const operating = record.operatingProfile === undefined ? undefined : decodeSessionOperatingProfile(record.operatingProfile);
     return {
       ...rest, control: 'managed', running: Boolean(run),
       ...(workspaceReviewRequired ? { workspaceReviewRequired: true } : {}),
+      ...(operating?.ok && operating.value.id ? { operatingProfile: { id: operating.value.id, name: operating.value.name, revision: operating.value.revision } } : {}),
       ...normalizeAgentIdentity(record.agentName, record.agentGender),
       ...(Object.keys(sessionOptions).length ? { options: sessionOptions } : {}),
       ...(team ? { team: { enabled: team.enabled, size: team.members.length, ...(team.updatedAt ? { updatedAt: team.updatedAt } : {}) } } : {}),
@@ -1539,12 +1788,42 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
   }
 
   /** Create a managed session; it is saved unless the workspace's connection keeps no history. */
-  async function openSession(workspace: Workspace, title: string, continuedFrom?: SessionRecord['continuedFrom'], sessionOptions: SessionOptions = {}, team?: AgentTeam, reservedHandoverId?: string): Promise<SessionRecord> {
+  async function openSession(workspace: Workspace, title: string, continuedFrom?: SessionRecord['continuedFrom'], sessionOptions: SessionOptions = {}, team?: AgentTeam | null, reservedHandoverId?: string, explicitConnectionId?: string): Promise<SessionRecord> {
+    const currentWorkspace = config.workspaces.find(item => item.id === workspace.id);
+    if (!currentWorkspace) throw userError('That workspace no longer exists.');
+    // Continuation/import callers may have awaited evidence before arriving here.
+    // Reviewed Native handovers retain their explicitly selected runtime and connection.
+    workspace = reservedHandoverId ? { ...currentWorkspace, runtimeId: 'extalia-native' } : currentWorkspace;
+    if (workspace.mode === 'observe') throw userError('Enable full Extalia for this workspace in Settings before starting a managed session.');
+    // Reviewed handover creation already owns the ordered workspace mutation lane.
+    if (!reservedHandoverId) {
+      assertNativeBoundaryAvailable();
+      if (operatingMutations) throw userError('Operating defaults are changing. Retry after the preset is saved.');
+    }
+    const creationRevision = workspaceChangeRevision;
+    const creationOperatingRevision = operatingChangeRevision;
+    workspace = effectiveOperatingWorkspace(workspace);
+    team = initialSessionTeam(workspace.team, team);
+    if (explicitConnectionId) workspace = { ...workspace, providerProfileId: explicitConnectionId };
+    const operating = operatingResolution(workspace);
+    const { operatingProfile: leadOverride, ...plainOptions } = sessionOptions;
+    if (leadOverride && workspaceRuntime(workspace) !== 'extalia-native') throw userError('Operating personalities require an Extalia Native session.');
+    // Handover options were reviewed against their explicit target connection. Omitted
+    // effort means that connection's own default, never an unrelated preset's effort.
+    sessionOptions = { ...(!reservedHandoverId && operating.defaults.model ? { model: operating.defaults.model } : {}), ...(!reservedHandoverId && operating.defaults.effort ? { effort: operating.defaults.effort } : {}), ...plainOptions };
+    let operatingSnapshot = operating.snapshot;
+    if (leadOverride?.lead !== undefined) {
+      const { lead: _lead, ...background } = operatingSnapshot;
+      operatingSnapshot = { ...background, ...(leadOverride.lead ? { lead: { ...operatingSnapshot.lead, ...leadOverride.lead } } : {}) };
+    }
+    await checkSessionOptions(workspace, sessionOptions);
+
     // Hermes Agent sessions keep their Hermes profile; Hermes brings its own models, so no connection is needed.
     const hermes = workspaceRuntime(workspace) === 'hermes';
     if (!hermes && !workspace.providerProfileId) throw userError('Choose a model connection for this workspace in Settings.');
     const connection = hermes ? undefined : findConnection(workspace.providerProfileId!);
     validateTeamConnections(team, workspace);
+    validateOperatingReferences({ ...(workspace.providerProfileId ? { connectionId: workspace.providerProfileId } : {}), ...(sessionOptions.model ? { model: sessionOptions.model } : {}), team: team ?? null });
     await validateHermesTeam(team, workspace, true);
     // A workspace model is a default for new sessions; keep an explicitly configured Hermes model when the workspace changes later.
     if (hermes && !sessionOptions.model && workspace.runtimeModel) sessionOptions = { ...sessionOptions, model: workspace.runtimeModel };
@@ -1558,6 +1837,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       // Names stay unique in the Office: members of a copied default team that another session already uses get new names.
       const ownTeam = team ? withDistinctMemberNames(team, taken, id) : undefined;
       const created: SessionRecord = {
+        ...(Object.keys(operatingSnapshot).length ? { operatingProfile: structuredClone(operatingSnapshot) } : {}),
         id, workspaceId: workspace.id, connectionId: connection?.id ?? '', title, createdAt: stamp, lastActiveAt: stamp,
         agentName: lead.name, agentGender: lead.gender,
         ...(reservedHandoverId ? { continuity: true } : {}),
@@ -1567,7 +1847,11 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
         ...(Object.keys(sessionOptions).length ? { options: sessionOptions } : {}),
         ...(ownTeam ? { team: { ...ownTeam, updatedAt: stamp } } : {}),
       };
-      await persistence.run(() => (!connection || keepsHistory(connection) ? savedSessions : unsavedSessions).create(created));
+      if (creationRevision !== workspaceChangeRevision || creationOperatingRevision !== operatingChangeRevision) throw userError('Workspace or operating defaults changed while creating this session. Retry with the current settings.');
+      await persistence.run(() => {
+        if (creationRevision !== workspaceChangeRevision || creationOperatingRevision !== operatingChangeRevision) throw userError('Workspace or operating defaults changed while creating this session. Retry with the current settings.');
+        return (!connection || keepsHistory(connection) ? savedSessions : unsavedSessions).create(created);
+      });
       return created;
     });
     const model = sessionOptions.model ?? (hermes ? workspace.runtimeModel : undefined);
@@ -1665,16 +1949,23 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     })();
   }
 
-  function librarySummaries(): LibrarySessionSummary[] {
-    return library.sessions.map(session => ({
+  function librarySummaries(sort = true): LibrarySessionSummary[] {
+    const summaries = library.sessions.map(session => ({
       id: session.id, title: displayTitle(session), sourceId: session.provenance.sourceId, importMode: session.importMode, state: session.local.state,
       messageCount: session.messages.length, startedAt: session.startedAt, lastMessageAt: session.lastMessageAt,
       ...(session.workspace?.name ? { workspaceName: session.workspace.name } : {}),
       ...(session.workspace?.projectLocation ? { projectLocation: session.workspace.projectLocation } : {}),
-    })).sort((a, b) => b.lastMessageAt.localeCompare(a.lastMessageAt));
+    }));
+    return sort ? summaries.sort((a, b) => b.lastMessageAt.localeCompare(a.lastMessageAt)) : summaries;
   }
 
-  async function state(): Promise<HostState> {
+  const sessionBrowser = new SessionBrowser({
+    profileId: () => config.profile.id,
+    metadata: collection => ({ collection, workspaces: config.workspaces,
+      ...(collection === 'observed' ? { observed: mapObservedWorkspaces(observations.summaries(), config.workspaces) } : { library: librarySummaries(false) }) }),
+  });
+
+  async function state(compact = false): Promise<HostState> {
     await ensureAgentNames().catch(() => undefined);
     return {
       workflow: config.workflow ?? 'managed',
@@ -1682,9 +1973,10 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       dataDirectory: layout.root,
       profile: config.profile,
       connections: config.connections.map(connection => ({ ...connection, credentialStatus: credentialStatus.get(connection.id) ?? 'missing' })),
-      workspaces: config.workspaces,
+      workspaces: config.workspaces.map(workspace => effectiveOperatingWorkspace(workspace)),
       sessions: [...(await sessions.list()).map(summary), ...mapObservedWorkspaces(observations.summaries(), config.workspaces)].sort((a, b) => b.lastActiveAt.localeCompare(a.lastActiveAt)),
-      library: librarySummaries(),
+      library: compact ? [] : librarySummaries(),
+      ...(compact ? { sessionBrowser: { libraryTotal: library.sessions.length, observedTotal: observations.summaries().length, libraryRevision } } : {}),
       storage: { dataDirectory, secretStore: secrets.kind },
       host: { kind: options.kind, version: options.version, instanceId },
       ...(daemon ? { nativeCore: { core: 'rust' as const, daemon: daemon.status().state, ...(daemon.status().lastError ? { lastError: daemon.status().lastError } : {}) } } : {}),
@@ -1740,10 +2032,48 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     }
   }
 
+  function operatingResolution(workspace: Workspace, profiles = operatingProfiles) {
+    const profile = workspace.operatingProfileId ? profiles.find(item => item.id === workspace.operatingProfileId) : undefined;
+    if (workspace.operatingProfileId && !profile) throw userError('This workspace operating profile is missing. Choose another preset.');
+    if (profile && (workspace.mode === 'observe' || workspaceRuntime(workspace) !== 'extalia-native')) throw userError('Operating profiles require a managed Extalia Native workspace.');
+    return resolveOperatingProfile(profile, workspace.operatingProfileOverrides);
+  }
+  function effectiveOperatingWorkspace(workspace: Workspace, profiles = operatingProfiles): Workspace {
+    if (!workspace.operatingProfileId) return workspace;
+    const { defaults } = operatingResolution(workspace, profiles);
+    const { team: _team, ...base } = workspace;
+    return { ...base, ...(defaults.connectionId ? { providerProfileId: defaults.connectionId } : {}),
+      ...(defaults.model ? { runtimeModel: defaults.model } : {}),
+      ...(defaults.team !== undefined ? defaults.team ? { team: defaults.team } : {} : workspace.team ? { team: workspace.team } : {}) };
+  }
+  function validateOperatingReferences(defaults: OperatingProfileOverrides): void {
+    if (defaults.connectionId) findConnection(defaults.connectionId);
+    for (const grant of defaults.team?.connections ?? []) findConnection(grant.connectionId);
+    for (const member of defaults.team?.members ?? []) {
+      if (member.connectionId) {
+        findConnection(member.connectionId);
+        const grant = defaults.team?.connections?.find(item => item.connectionId === member.connectionId);
+        if (!grant || member.models.some(model => !grant.allowedModels.includes(model))) throw userError('A profile member needs an approved saved connection and model.');
+      }
+    }
+    if (defaults.model && defaults.team?.allowedModels.length && !defaults.team.allowedModels.includes(defaults.model)) throw userError('The lead model must belong to the team approved model list.');
+  }
+  function applyLeadPersona(snapshot: SessionOperatingProfile | undefined, patch: { lead?: AgentPersona | null }): SessionOperatingProfile | undefined {
+    if (patch.lead === undefined) return snapshot;
+    const { lead: _previous, ...base } = snapshot ?? {};
+    const next = { ...base, ...(patch.lead ? { lead: structuredClone(patch.lead) } : {}) };
+    return Object.keys(next).length ? next : undefined;
+  }
+  function storedOperatingProfile(record: SessionRecord): SessionOperatingProfile | undefined {
+    if (record.operatingProfile === undefined) return undefined;
+    const result = decodeSessionOperatingProfile(record.operatingProfile);
+    if (!result.ok) throw userError('This session has invalid operating settings. Review its personality before starting.');
+    return result.value;
+  }
   function findWorkspace(id: string): Workspace {
     const workspace = config.workspaces.find(item => item.id === id);
     if (!workspace) throw userError('That workspace no longer exists.');
-    return workspace;
+    return effectiveOperatingWorkspace(workspace);
   }
 
   /** Read-only Files and Git views of a workspace's project folder; refusals become user errors. */
@@ -1833,7 +2163,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
 
   /** Existing sessions keep their runtime/profile or Native connection when workspace defaults change. */
   function sessionWorkspace(workspace: Workspace, record: SessionRecord): Workspace {
-    const { runtimeId: _runtimeId, runtimeProfileId: _runtimeProfileId, runtimeModel: _runtimeModel, providerProfileId: _providerProfileId, ...common } = workspace;
+    const { mode: _mode, runtimeId: _runtimeId, runtimeProfileId: _runtimeProfileId, runtimeModel: _runtimeModel, providerProfileId: _providerProfileId, ...common } = workspace;
     return record.runtime
       ? { ...common, runtimeId: record.runtime.id, runtimeProfileId: record.runtime.profile,
         ...(workspaceRuntime(workspace) === 'hermes' && (workspace.runtimeProfileId ?? 'default') === record.runtime.profile && workspace.runtimeModel
@@ -1850,6 +2180,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     if (workspaceContextReaders || learningSchedule.isBusy) throw userError('Wait for Native context, learning or team planning to finish before moving a session.');
     const record = await sessions.get(sessionId);
     if (!record || record.runtime) throw userError('Only Extalia Native sessions can change workspace here. External runtimes keep their original session directory.');
+    storedOperatingProfile(record);
     const source = findWorkspace(record.workspaceId), destination = findWorkspace(workspaceId);
     if (!destination.projectLocation || destination.id !== record.workspaceId && workspaceRuntime(destination) !== 'extalia-native') throw userError('Choose an Extalia Native workspace with a project folder.');
     nativeOwnership.assertWorkspaceClear(source.id);
@@ -1883,6 +2214,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
 
   /** Validate a session's model and effort override for the workspace's runtime. */
   async function checkSessionOptions(workspace: Workspace, raw: unknown): Promise<SessionOptions> {
+    if (workspace.mode === 'observe') throw userError('Enable full Extalia for this workspace in Settings before starting a managed session.');
     let checked: SessionOptions;
     try { checked = normalizeSessionOptions(raw); } catch (error) { throw userError(error instanceof Error ? error.message : 'Invalid session options.'); }
     if (checked.permissionMode && workspaceRuntime(workspace) === 'hermes' && !HERMES_PERMISSION_MODES.includes(checked.permissionMode)) {
@@ -1953,29 +2285,120 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       && profileId !== config.profile.id && config.workspaces.filter(item => item.profileId === profileId).length === 1);
   }
 
-  /** Unknown ownership and settings mutations remain global; known foreground work follows its profile. */
+  /** Admission uses actual host lifetimes, with independent work scoped to its proven vault profile. */
   function learningReady(workspaceId?: string, profileId?: string): boolean {
     if (workspaceId && profileId && independentLearning(workspaceId, profileId)) {
       const conflicts = (id?: string) => !id || !config.workspaces.some(item => item.id === id && item.profileId !== profileId);
+      const observedConflicts = (sessionId: string) => {
+        const owner = observedLearningOwner.resolve?.(sessionId);
+        return !owner || owner.profileId === profileId;
+      };
       const scopedReaders = [...workspaceReaders.values()].reduce((sum, count) => sum + count, 0);
-      return !closing && !observedWorkspaceChange && !continuityWork && !workspaceBoundaryMutations
+      return !closing && !observedPrivacyChanges && !observedWorkspaceChange && !continuityWork && !cliContinuationBusy() && !workspaceBoundaryMutations
         && workspaceContextReaders === scopedReaders && ![...workspaceReaders.keys()].some(conflicts)
         && ![...runs.values()].some(run => conflicts(run.native?.workspaceId ?? run.workspaceId))
         && ![...nativeWorkers.values()].some(worker => conflicts(worker.workspaceId))
         && !config.workspaces.some(item => item.profileId === profileId && nativeMemory.isBusy(item.id))
         && !connectionChanges.size && !registryWork && !persistence.isBusy && !nativeStatusRefresh
+        && !observedMemory?.hasWorkMatching(conflicts, id => id === profileId)
+        && !observations.summaries().some(source => (source.running || source.pendingApprovalId) && observedConflicts(source.id))
         && !followupSuggestions.pendingCount && !promptQueues?.hasUnfinishedWorkMatching(id =>
-          !observations.has(id) && conflicts(queueWorkspaces.get(id)))
+          observations.has(id) ? observedConflicts(id) : conflicts(queueWorkspaces.get(id)))
         && !nativeOwnership.hasUnresolved() && !missions.hasUnresolved() && !missionRecovery.isInspecting();
     }
-    return !closing && !observedWorkspaceChange && !continuityWork && !runs.size && !nativeWorkers.size && !workspaceBoundaryMutations && !workspaceContextReaders
+    return !closing && !observedPrivacyChanges && !observedWorkspaceChange && !continuityWork && !runs.size && !nativeWorkers.size && !workspaceBoundaryMutations && !workspaceContextReaders
       && !connectionChanges.size && !registryWork && !persistence.isBusy && !nativeMemory.isBusy() && !nativeStatusRefresh
+      && !observedMemory?.isBusy() && !observations.summaries().some(source => source.running || source.pendingApprovalId)
       && !followupSuggestions.pendingCount && !promptQueues?.isBusy && !promptQueues?.hasUnfinishedWork
       && !nativeOwnership.hasUnresolved() && !missions.hasUnresolved() && !missionRecovery.isInspecting();
   }
 
+  async function observedMemorySource(id: string) {
+    if (closing || observedPrivacyChanges || observations.labelsOnly() || blockedReplyIds.has(id)) return undefined;
+    const source = mapObservedWorkspaces(observations.summaries(), config.workspaces).find(item => item.id === id);
+    const target = observations.controlTarget(id);
+    if (!source?.workspaceId || !target) return undefined;
+    const workspace = findWorkspace(source.workspaceId), profile = await vaultProfiles.policyFor(workspace.id);
+    const scope = { profileId: profile.profileId, workspaceId: workspace.id, sessionId: id, sourceId: target.sourceId, nativeSessionId: target.nativeSessionId,
+      boundary: continuityDigest([workspaceSessionBoundaryKey(workspace.id, config.workspaces), profile.profileId, target.sourceId, target.nativeSessionId, target.fingerprint]) };
+    const enabled = profile.policy.enabled && profile.policy.observed === true && target.watching && source.observation?.status === 'watching';
+    const events = enabled ? observations.events(id) : [];
+    return { scope, revision: continuityDigest([scope, events.map(event => event.id), source.running, source.pendingApprovalId]),
+      events, running: source.running, pending: Boolean(source.pendingApprovalId), enabled };
+  }
+
+  async function scheduleObservedLearning(episode: ObservedMemoryEpisode): Promise<void> {
+    if (closing) return;
+    const workspace = findWorkspace(episode.scope.workspaceId), profile = await vaultProfiles.policyFor(workspace.id);
+    if (!profile.policy.enabled || profile.policy.observed !== true || (!profile.policy.skills && !profile.policy.notes) || !workspace.providerProfileId) return;
+    const connection = findConnection(workspace.providerProfileId), connectionSnapshot = JSON.stringify(connection);
+    const runId = `observed-${episode.id}`;
+    const current = async () => {
+      const source = await observedMemorySource(episode.scope.sessionId);
+      const policy = await vaultProfiles.policyFor(workspace.id);
+      return Boolean(source?.enabled && source.scope.boundary === episode.scope.boundary && source.scope.profileId === episode.scope.profileId
+        && policy.revision === profile.revision && policy.policy.observed === true
+        && JSON.stringify(config.connections.find(item => item.id === connection.id)) === connectionSnapshot);
+    };
+    learningSchedule.schedule({ id: runId, kind: 'learning', workspaceId: workspace.id, workspaceName: workspace.name,
+      profileId: profile.profileId, profileName: config.vaultProfiles?.profiles.find(item => item.id === profile.profileId)?.name ?? config.profile.name,
+      sessionId: episode.scope.sessionId, sessionName: sourceLabel(episode.scope.sourceId),
+      independent: independentLearning(workspace.id, profile.profileId), ready: () => learningReady(workspace.id, profile.profileId), validate: current,
+      execute: async signal => {
+        const assertCurrent = async () => {
+          if (signal.aborted || !await current()) throw new Error('Observed learning consent or scope changed.');
+          const source = await observedMemorySource(episode.scope.sessionId);
+          if (source?.running || source?.pending) throw new Error('The observed conversation resumed work.');
+        };
+        await assertCurrent();
+        const { provider } = await providerFor(connection);
+        const features = resolveFeatures(connection);
+        const policy = { enabled: true, skills: profile.policy.skills && features.extaliaSkills && skillRegistry.enabled, notes: profile.policy.notes };
+        let writer: Awaited<ReturnType<typeof pinLearningNotes>> | undefined;
+        const access = await createWorkspaceAccess({ workspaceId: workspace.id, workspaces: structuredClone(config.workspaces), protectedRoots: [layout.root] });
+        try {
+          if (policy.notes) try {
+            writer = await pinLearningNotes({ backend: rustLearning, context: { sessionId: episode.scope.sessionId, workspaceId: workspace.id },
+              resolve: async () => { await assertCurrent(); return vaultProfiles.resolve(workspace.id, { purpose: 'learning', ensure: true }); },
+              authorize: async target => {
+                await assertCurrent(); checkAllowed(target, 'Observed learning notes', 'write');
+                if (isWithin(layout.root, target)) return;
+                for (const candidate of config.workspaces) for (const folder of [candidate.projectLocation, ...(candidate.additionalProjectLocations ?? [])].filter((value): value is string => Boolean(value))) {
+                  const canonical = await realpath(folder);
+                  const fold = (value: string) => process.platform === 'darwin' || process.platform === 'win32' ? value.toLowerCase() : value;
+                  if (!isWithin(fold(canonical), fold(target))) continue;
+                  await access.resolve(target, 'write');
+                  if ((workspace.permissions ?? DEFAULT_PERMISSIONS).fileWrite !== 'allow') throw new Error('The project vault does not permit automatic note writes.');
+                }
+              },
+            });
+          } catch { policy.notes = false; }
+          if (!policy.skills && !policy.notes) throw new Error('No usable observed learning destination is enabled.');
+          const emit = (body: EventBody, agentId: string) => {
+            if (closing) return;
+            const event = createEvent({ sessionId: episode.scope.sessionId, agentId,
+              source: { runtime: 'extalia-native', channel: 'system', adapter: 'observed-learning' }, body });
+            for (const listener of listeners) { try { listener(event); } catch { /* Disconnected views never own curation. */ } }
+          };
+          const learned = await runObservedAutomaticLearning({ observed: { scope: episode.scope, episodeId: episode.id, revision: episode.revision },
+            profileId: profile.profileId, revision: profile.revision, sessionId: episode.scope.sessionId, workspaceId: workspace.id, runId,
+            promptSha256: episode.revision, policy, provider, tools: await knowledgeToolsFor(workspace.id), backend: rustLearning, signal, assertCurrent, emit,
+            proposeSkill: (input, provenance, cancellation) => withRegistry(() => skillRegistry.propose(input, provenance, cancellation)),
+            ...(writer ? { writeNote: (record: Parameters<NonNullable<typeof writer>>[0], cancellation: AbortSignal) => persistence.run(() => writer!(record, cancellation)) } : {}),
+            onWorkerStarted: id => { nativeWorkers.set(id, { id, sessionId: episode.scope.sessionId, workspaceId: workspace.id, kind: 'delegated', state: 'running', active: true, evidence: 'local-invocation', label: 'Observed work curator' }); },
+            onWorkerSettled: id => { nativeWorkers.delete(id); },
+          });
+          const notice = automaticLearningNotice(learned, { profileId: profile.profileId, workspaceId: workspace.id, sessionId: episode.scope.sessionId, runId, createdAt: now() });
+          if (notice) learningSchedule.recordResult(runId, { skill: notice });
+          if (learned.note.status === 'saved') await refreshWorkspaceKnowledge?.(workspace.id).catch(() => undefined);
+          if (learned.outcome === 'failed' || learned.outcome === 'cancelled' || learned.note.status === 'failed' || learned.skill.status === 'unknown') throw new Error('Observed curation did not confirm all enabled outputs.');
+        } finally { await writer?.close(); }
+      },
+    });
+  }
+
   function knowledgeSessionIdentity(record: SessionRecord): string {
-    return JSON.stringify([record.workspaceId, record.connectionId, record.team, storedOptions(record), record.workspaceBoundary]);
+    return JSON.stringify([record.workspaceId, record.connectionId, record.team, storedOptions(record), record.workspaceBoundary, record.projectLocation]);
   }
 
   /** Prepare fresh authority for a real meeting; no completed turn's credentials or writer are reused. */
@@ -1986,7 +2409,8 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       signal.throwIfAborted(); assertNativeBoundaryAvailable(); knowledgeVault.assertStable();
       const record = await sessions.get(job.sessionId);
       if (!record || record.workspaceId !== job.workspaceId || record.runtime || unsavedSessions.has(record.id)) throw new Error('This saved Native session is no longer available.');
-      const workspace = structuredClone(findWorkspace(job.workspaceId));
+      const registeredWorkspace = structuredClone(findWorkspace(job.workspaceId));
+      const workspace = sessionProjectWorkspace(registeredWorkspace, record);
       const root = workspace.projectLocation;
       if (!root || workspaceRuntime(sessionWorkspace(workspace, record)) !== 'extalia-native') throw new Error('This Native project folder is no longer available.');
       const team = storedTeam(record);
@@ -2018,7 +2442,8 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
           || JSON.stringify(policy.policy) !== JSON.stringify(profile.policy)) throw new Error('The meeting session or knowledge consent changed.');
       };
       await assertCurrent();
-      const access = await createWorkspaceAccess({ workspaceId: workspace.id, workspaces: structuredClone(config.workspaces), protectedRoots: [layout.root] });
+      const access = await createWorkspaceAccess({ workspaceId: workspace.id, workspaces: sessionProjectWorkspaces(config.workspaces, record), protectedRoots: [layout.root] });
+      await access.resolve('.', 'read');
       const permissions = workspace.permissions ?? DEFAULT_PERMISSIONS;
       const permissionMode = sessionOptions.permissionMode ?? 'workspace';
       // Refuse an unavailable/disabled destination before spending model requests.
@@ -2056,8 +2481,9 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       const providers = new Map(prepared.flatMap(result => result.status === 'fulfilled' ? [result.value] : []));
       const leadModels = [...new Set([leadConnection.model, ...team.allowedModels].filter(Boolean))];
       const tools: AnyTool[] = [...createFileTools(root, { authority: access }).filter(tool => tool.access === 'read'), workspaceFoldersTool(access)];
+      tools.push(...await knowledgeToolsFor(workspace.id));
       if ([...connections.values()].some(connection => resolveFeatures(connection).extaliaMemory)) {
-        const memory = new MemoryStore(workspaceMemoryDirectory(layout.workspaces, workspace));
+        const memory = new MemoryStore(workspaceMemoryDirectory(layout.workspaces, registeredWorkspace));
         tools.push(...createMemoryTools(memory).filter(tool => tool.name !== 'memory_write'));
       }
       let automaticSkillCatalog: AgentSkillCatalog | undefined;
@@ -2095,6 +2521,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       result = await runNativeKnowledgeMeeting({
         workspace: { id: workspace.id, name: workspace.name, root }, sessionId: record.id, runId: job.runId,
         sourceContext: job.sourceContext, signal, assertCurrent, prepareWorkerRequest,
+        ...(storedOperatingProfile(record) ? { operatingProfile: { purpose: storedOperatingProfile(record)?.purpose, personality: storedOperatingProfile(record)?.personality } } : {}),
         team: {
           members: team.members, rules: team.rules, leadModels,
           modelsForMember: member => member.connectionId ? team.connections?.find(grant => grant.connectionId === member.connectionId)?.allowedModels ?? [] : leadModels,
@@ -2160,7 +2587,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
   function effectiveMissionPolicy(workspace: Workspace): string {
     const runtime = workspaceRuntime(workspace);
     const connections = runtime === 'extalia-native' ? [...new Set([workspace.providerProfileId, ...(workspace.missionConnectionIds ?? [])].filter((id): id is string => Boolean(id)))].sort() : [];
-    return JSON.stringify({ runtime, connections });
+    return JSON.stringify({ mode: workspace.mode ?? 'managed', runtime, connections });
   }
   function assertMissionPolicyEditable(workspaceId: string, records: SessionRecord[]): void {
     nativeOwnership.assertWorkspaceClear(workspaceId);
@@ -2170,7 +2597,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     const records = await sessions.list();
     try { for (const workspace of config.workspaces) assertMissionPolicyEditable(workspace.id, records); }
     catch { throw userError('Stop running Native work or reconcile unresolved missions before changing workspace folders or cross-workspace access.'); }
-    if (learningSchedule.isBusy || workspaceContextReaders || nativeMemory.isBusy() || [...runs.values()].some(run => run.native)) throw userError('Stop Native work and wait for memory operations before changing workspace folders or cross-workspace access.');
+    if (observedCliResume.isBusy() || antigravityHandover.isBusy() || observedMemory?.isBusy() || learningSchedule.isBusy || workspaceContextReaders || nativeMemory.isBusy() || [...runs.values()].some(run => run.native)) throw userError('Stop Native work and wait for memory operations before changing workspace folders or cross-workspace access.');
   }
   const connectionChanges = new Set<string>();
   async function withConnectionChange<T>(id: string, change: () => Promise<T>): Promise<T> {
@@ -2308,16 +2735,18 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     if (observations.has(sessionId)) {
       if (observations.labelsOnly()) throw userError('Conversation content is private in labels-only mode. Handover archives are unavailable.');
       const source = mapObservedWorkspaces(observations.summaries(), config.workspaces).find(item => item.id === sessionId);
-      if (!source?.workspaceId) throw userError('Associate this observed project with a registered workspace before handing over its context.');
-      const workspace = findWorkspace(source.workspaceId);
+      if (!source?.observation) throw userError('That observed session no longer exists.');
+      const workspace = source.workspaceId ? config.workspaces.find(item => item.id === source.workspaceId) : undefined;
+      const scopeWorkspaceId = workspace?.id ?? observedUnregisteredWorkspaceId(source.observation.projectPath, sessionId);
       const evidence = handoverEvidence(observations.events(sessionId), true);
       const target = observations.controlTarget(sessionId);
-      return { sessionId, workspaceId: workspace.id, sourceId: source.observation!.sourceId,
-        nativeSessionId: source.observation!.nativeSessionId, title: source.title, persistent: true,
+      const snapshot: ContinuitySourceSnapshot = { sessionId, workspaceId: scopeWorkspaceId, sourceId: source.observation.sourceId,
+        nativeSessionId: source.observation.nativeSessionId, title: source.title, persistent: true,
         ...(source.model ? { model: source.model } : {}), ...(source.effort ? { effort: source.effort } : {}),
-        revision: continuityDigest([source.id, source.title, source.running, source.pendingApprovalId, source.model, source.effort,
-          source.context, source.observation?.projectPath, source.observation?.watching, source.observation?.status, target, workspace, evidence]), ...evidence,
+        revision: continuityDigest([source.id, source.title, source.pendingApprovalId, source.model, source.effort,
+          source.context, source.observation.projectPath, source.observation.watching, source.observation.status, target, workspace ?? scopeWorkspaceId, evidence]), ...evidence,
         ...(source.context ? { context: source.context } : {}) };
+      return workspace ? withHandoverWorkspaceContext(snapshot) : snapshot;
     }
     const record = await sessions.get(sessionId);
     if (!record) throw userError('That session no longer exists.');
@@ -2325,54 +2754,140 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     const selected = storedOptions(record), connection = record.runtime ? undefined : findConnection(record.connectionId);
     await writeChains.get(sessionId);
     const evidence = handoverEvidence(await sessions.readEvents(sessionId));
-    return { sessionId, workspaceId: record.workspaceId, sourceId: record.runtime?.id ?? 'extalia-native',
+    return withHandoverWorkspaceContext({ sessionId, workspaceId: record.workspaceId, sourceId: record.runtime?.id ?? 'extalia-native',
       ...(record.runtime?.sessionId ? { nativeSessionId: record.runtime.sessionId } : {}), title: record.title,
       persistent: !unsavedSessions.has(sessionId), revision: continuityDigest([record, workspace, evidence]), ...evidence,
       ...(connection ? { connectionId: connection.id, model: selected.model ?? connection.model,
         ...(selected.effort ?? connection.effort ? { effort: selected.effort ?? connection.effort } : {}) } : {}),
-      ...(isContextUsage(record.context) ? { context: record.context } : {}) };
+      ...(isContextUsage(record.context) ? { context: record.context } : {}) });
+  }
+  async function handoverWorkspaceBoundary(workspaceId: string, contributors?: NonNullable<ContinuitySourceSnapshot['workspaceContext']>['contributors'], connectionId?: string) {
+    const workspace = findWorkspace(workspaceId);
+    const policy = await vaultProfiles.policyFor(workspaceId);
+    const vault = await vaultProfiles.knowledgeTarget(workspaceId).catch(() => undefined);
+    const connection = config.connections.find(item => item.id === (connectionId ?? workspace.providerProfileId));
+    const features = connection ? resolveFeatures(connection) : { extaliaMemory: false, extaliaSkills: false };
+    for (const contributor of contributors ?? []) {
+      const source = await observedMemorySource(contributor.sessionId);
+      if (!source?.enabled || source.scope.workspaceId !== workspaceId || source.scope.sourceId !== contributor.sourceId
+        || source.scope.nativeSessionId !== contributor.nativeSessionId || source.scope.boundary !== contributor.boundary) throw userError('An observed workspace-context contributor is no longer authorized.');
+    }
+    return { workspaceId, profileId: policy.profileId,
+      boundary: continuityDigest([workspaceSessionBoundaryKey(workspaceId, config.workspaces), policy.profileId, policy.policy.enabled,
+        policy.policy.observed === true, vault?.root, features.extaliaMemory, features.extaliaSkills]), ...(contributors?.length ? { contributors } : {}) };
+  }
+  async function withHandoverWorkspaceContext(source: ContinuitySourceSnapshot): Promise<ContinuitySourceSnapshot> {
+    const workspace = findWorkspace(source.workspaceId), profile = await vaultProfiles.policyFor(workspace.id);
+    if (!profile.policy.enabled || profile.policy.observed !== true) return source;
+    const binding = await handoverWorkspaceBoundary(workspace.id, undefined, source.connectionId);
+    let contributors: NonNullable<ContinuitySourceSnapshot['workspaceContext']>['contributors'];
+    const query = [...source.entries].reverse().find(entry => entry.kind === 'user')?.text ?? source.title;
+    const connection = config.connections.find(item => item.id === (source.connectionId ?? workspace.providerProfileId));
+    const features = connection ? resolveFeatures(connection) : { extaliaMemory: false, extaliaSkills: false };
+    const entry = await collectHandoverWorkspaceContext({
+      assertCurrent: async () => {
+        if (closing || continuityDigest(await handoverWorkspaceBoundary(workspace.id, undefined, source.connectionId)) !== continuityDigest(binding)
+          || source.sourceId !== 'extalia-native' && observations.labelsOnly()) throw userError('Workspace context permission changed. Review the handover again.');
+      },
+      memory: async text => {
+        if (!features.extaliaMemory) return [];
+        const memory = new MemoryStore(workspaceMemoryDirectory(layout.workspaces, workspace));
+        const catalog = await memory.recallCatalog(text, { limit: 1, relevantOnly: true });
+        const selected = catalog.notes[0]; if (!selected) return [];
+        const page = await memory.readPage(selected.name, { limit: 700, expectedRevision: selected.revision });
+        return page ? [{ source: 'workspace-memory', reference: selected.name, revision: selected.revision, text: page.text }] : [];
+      },
+      knowledge: async text => {
+        const target = await vaultProfiles.knowledgeTarget(workspace.id);
+        const results = await workspaceKnowledge.call(target, 'searchKnowledge', [text]) as KnowledgeSearchResult;
+        const hit = results.hits[0]; if (!hit) return [];
+        const note = await workspaceKnowledge.call(target, 'knowledgeNode', [{ path: hit.path }]) as KnowledgeNoteResult | null;
+        if (!note || note.bodyStatus !== 'current' || note.body === undefined) return [];
+        return [{ source: 'profile-knowledge', reference: note.node.path, revision: note.node.sourceSha256, text: note.body.slice(0, 1000) }];
+      },
+      skills: async text => {
+        if (!features.extaliaSkills) return [];
+        const active = skillRegistry.enabled ? await withRegistry(() => skillRegistry.activeCatalog(workspace.id)) : { skills: [], incomplete: false };
+        const catalog = await buildAgentSkillCatalog(active.skills, { prompt: text, relevantOnly: true, incomplete: active.incomplete,
+          ...(skillRegistry.enabled ? { reload: skill => withRegistry(() => skillRegistry.reload(skill, workspace.id)), reloadMany: selected => withRegistry(() => skillRegistry.reloadMany(selected, workspace.id)) } : {}) });
+        const selected = catalog.skills[0]; if (!selected) return [];
+        const skill = await readCatalogSkill(catalog, selected.name);
+        return skill ? [{ source: `approved-skill:${skill.source}`, reference: skill.name, ...(skill.revisionId ?? skill.sha256 ? { revision: skill.revisionId ?? skill.sha256 } : {}), text: skill.body.slice(0, 700) }] : [];
+      },
+      observed: async text => {
+        if (!observedMemory) return [];
+        const results = await observedMemory.search(workspace.id, { query: text, limit: 2 });
+        contributors = results.hits.map(hit => ({ sessionId: hit.sessionId, sourceId: hit.episode.scope.sourceId,
+          nativeSessionId: hit.episode.scope.nativeSessionId, boundary: hit.episode.scope.boundary }));
+        return results.hits.map(hit => ({ source: `observed-claim:${hit.episode.scope.sourceId}`, reference: hit.episode.id, revision: hit.episode.revision, text: hit.excerpt }));
+      },
+    }, query);
+    const scopedBinding = await handoverWorkspaceBoundary(workspace.id, contributors, source.connectionId);
+    return { ...source, workspaceContext: scopedBinding, revision: continuityDigest([source.revision, scopedBinding, entry.id]), entries: [entry, ...source.entries],
+      coverage: { ...source.coverage, mode: 'partial', observedEntries: source.coverage.observedEntries + 1,
+        limits: [...source.coverage.limits, 'Workspace references are a bounded relevant selection, not a complete vault, skill library or memory export.'] } };
   }
   async function assertContinuitySourceIdle(sessionId: string): Promise<void> {
+    if (antigravityHandover.isBusy()) throw userError('Wait for the native Antigravity work to settle before handing over.');
+    if (observedCliResume.isBusy()) throw userError('Wait for the supervised CLI continuation to finish before handing over.');
     if (promptQueues?.hasUnfinished(sessionId)) throw userError('Finish or inspect pending and uncertain prompts before handing over this session.');
     if (observations.has(sessionId)) {
       const source = observations.summaries().find(item => item.id === sessionId);
-      if (source?.running || source?.pendingApprovalId) throw userError('Stop or finish the source agent in its own app before handing over its work.');
+      if (source?.pendingApprovalId) throw userError('Resolve the pending approval in the source app before handing over its work.');
       return;
     }
     if (runs.has(sessionId) || nativeMemory.isBusy()) throw userError('Finish or stop this session and its context operations before handing it over.');
     nativeOwnership.assertClear(sessionId); missions.assertSessionClear(sessionId);
   }
+  const canCrossHandoverWorkspaces = (sourceWorkspaceId: string, destinationWorkspaceId: string): boolean => {
+    if (sourceWorkspaceId === destinationWorkspaceId) return true;
+    const sourceWs = config.workspaces.find(item => item.id === sourceWorkspaceId);
+    const destinationWs = config.workspaces.find(item => item.id === destinationWorkspaceId);
+    if (sourceWs && workspaceCrossAccess(sourceWs) === 'isolated') return false;
+    if (destinationWs && workspaceCrossAccess(destinationWs) === 'isolated') return false;
+    return !sourceWs || !destinationWs;
+  };
   const continuityAccess: ContinuityAccess = new ContinuityAccess({
     file: path.join(layout.state, 'continuity-access.json'),
+    allowCrossWorkspace: canCrossHandoverWorkspaces,
     binding: async sessionId => {
       assertHostOpen();
       if (observations.labelsOnly()) throw userError('Observed context is private.');
       const observed = mapObservedWorkspaces(observations.summaries(), config.workspaces).find(item => item.id === sessionId);
       const target = observations.controlTarget(sessionId);
-      if (!observed?.workspaceId || !target?.watching || observed.observation?.status !== 'watching' || blockedReplyIds.has(sessionId)) throw userError('That observed context destination is unavailable.');
-      const workspace = findWorkspace(observed.workspaceId);
-      return { sessionId, sourceId: target.sourceId, nativeSessionId: target.nativeSessionId, workspaceId: workspace.id,
-        boundary: continuityDigest([workspaceSessionBoundaryKey(workspace.id, config.workspaces), target.sourceId, target.nativeSessionId, target.fingerprint]), watching: true,
+      if (!observed || !target?.watching || observed.observation?.status !== 'watching' || blockedReplyIds.has(sessionId)) throw userError('That observed context destination is unavailable.');
+      const workspace = observed.workspaceId ? findWorkspace(observed.workspaceId) : undefined;
+      const scopeWorkspaceId = workspace?.id ?? observedUnregisteredWorkspaceId(observed.observation?.projectPath, sessionId);
+      const boundaryKey = workspace ? workspaceSessionBoundaryKey(workspace.id, config.workspaces) : scopeWorkspaceId;
+      return { sessionId, sourceId: target.sourceId, nativeSessionId: target.nativeSessionId, workspaceId: scopeWorkspaceId,
+        boundary: continuityDigest([boundaryKey, target.sourceId, target.nativeSessionId, target.fingerprint]), watching: true,
         persistent: continuity.retention(sessionId) !== false };
     },
     read: (sessionId, input) => continuity.readContinuity(sessionId, input),
   });
   const continuity: SessionContinuity = new SessionContinuity({
     file: path.join(layout.state, 'session-continuity.json'), snapshot: continuitySource,
+    allowCrossWorkspace: canCrossHandoverWorkspaces,
     decoratePacket: (packet, context) => continuityAccess.prepare(packet, context),
     assertArchiveAccess: async snapshots => {
       if (observations.labelsOnly() && snapshots.some(snapshot => snapshot.sourceId !== 'extalia-native')) {
         throw userError('Observed conversation content is private in labels-only mode. Mixed handover archives are unavailable.');
       }
+      for (const snapshot of snapshots) if (snapshot.workspaceContext
+        && continuityDigest(await handoverWorkspaceBoundary(snapshot.workspaceContext.workspaceId, snapshot.workspaceContext.contributors, snapshot.connectionId)) !== continuityDigest(snapshot.workspaceContext)) {
+        throw userError('The archived workspace context belongs to a changed profile or access boundary.');
+      }
     },
     inspectTarget: async (source, target, chain) => {
       await assertContinuitySourceIdle(source.sessionId);
-      const workspace = findWorkspace(source.workspaceId);
+      const workspace = config.workspaces.find(item => item.id === source.workspaceId);
       const sourceRecord = await sessions.get(source.sessionId);
-      if (sourceRecord && !sourceRecord.runtime && !workspaceBoundaryMatches(sourceRecord.workspaceBoundary, workspace.id, config.workspaces)) {
+      if (workspace && sourceRecord && !sourceRecord.runtime && !workspaceBoundaryMatches(sourceRecord.workspaceBoundary, workspace.id, config.workspaces)) {
         throw userError('Review the session workspace access before handing over its context.');
       }
       if (target.kind === 'native') {
+        if (!workspace) throw userError('Associate this observed project with a registered workspace before handing work to Extalia Native.');
+        if (workspace.mode === 'observe') throw userError('Enable full Extalia for this workspace in Settings before handing work to Extalia Native.');
         const connection = findConnection(target.connectionId);
         const destination = await nativeHandoverDestination(source, target, chain);
         const current = destination.record;
@@ -2389,7 +2904,9 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       const destinationId = target.sessionId;
       if (destinationId) {
         const destination = await continuitySource(destinationId);
-        if (destination.workspaceId !== source.workspaceId) throw userError('Choose a destination in the same workspace. Context cannot cross workspace isolation here.');
+        if (!canCrossHandoverWorkspaces(source.workspaceId, destination.workspaceId)) {
+          throw userError('Choose a destination in the same workspace. Context cannot cross workspace isolation here.');
+        }
         if (target.kind === 'observed') {
           if (!observations.has(destinationId)) throw userError('Choose an existing observed conversation.');
           await ensureCooperativeObservedInbox(destinationId);
@@ -2397,13 +2914,13 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
           const route = controls.routes.find(item => item.capabilities.some(capability => capability.available && capability.capabilityId === target.capabilityId));
           if (!route) throw userError('That conversation has no current send capability. Refresh its controls or prepare a manual handover.');
           return { revision: continuityDigest([destination.revision, controls.bindingId, route, target.capabilityId]),
-            label: `${destination.sourceId} · ${destination.title}`, sessionId: destinationId, workspaceId: workspace.id, persistent: destination.persistent };
+            label: `${destination.sourceId} · ${destination.title}`, sessionId: destinationId, workspaceId: workspace?.id ?? source.workspaceId, persistent: destination.persistent };
         }
         return { revision: continuityDigest([destination.revision, target]), label: target.label, sessionId: destinationId,
-          workspaceId: workspace.id, persistent: destination.persistent };
+          workspaceId: workspace?.id ?? source.workspaceId, persistent: destination.persistent };
       }
       if (target.kind !== 'manual') throw userError('Choose an existing destination conversation.');
-      return { revision: continuityDigest([target, workspace]), label: target.label, workspaceId: workspace.id, persistent: source.persistent };
+      return { revision: continuityDigest([target, workspace ?? source.workspaceId]), label: target.label, workspaceId: workspace?.id ?? source.workspaceId, persistent: source.persistent };
     },
     applyEffect: async (source, target, packet, operationId, destination) => {
       assertHostOpen();
@@ -2434,7 +2951,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
         record = await sessions.update(original.id, { connectionId: connection.id, options: selected, context: undefined, continuity: true }, { expectedRecord: original });
       } else {
         record = await openSession({ ...workspace, runtimeId: 'extalia-native', providerProfileId: connection.id }, source.title,
-          { sourceId: source.sourceId, title: source.title }, selected, undefined, destination.sessionId);
+          { sourceId: source.sourceId, title: source.title }, selected, undefined, destination.sessionId, connection.id);
         await sessions.update(record.id, { reviewedContextBoundary: workspaceSessionBoundaryKey(workspace.id, config.workspaces), continuity: true });
       }
       const history = toModelHistory(await sessions.readMessages(record.id));
@@ -2451,9 +2968,81 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
   });
 
   const host: AgentHostApi = {
+    async listOperatingProfiles() { assertHostOpen(); return structuredClone(operatingProfiles); },
+    async saveOperatingProfile(raw) {
+      assertHostOpen();
+      return withOperatingChange(async () => {
+        const input = normalizeOperatingProfileInput(raw);
+        const saved = await persistence.run(() => operatingProfileStore.save(input, async candidate => {
+          validateOperatingReferences(candidate.defaults);
+          const next = [...operatingProfiles.filter(item => item.id !== candidate.id), candidate];
+          for (const workspace of config.workspaces.filter(item => item.operatingProfileId === candidate.id)) {
+            const effective = effectiveOperatingWorkspace(workspace, next);
+            validateTeamConnections(effective.team, effective);
+            validateOperatingReferences(operatingResolution(workspace, next).defaults);
+            if (effectiveMissionPolicy(effectiveOperatingWorkspace(workspace)) !== effectiveMissionPolicy(effective)) assertMissionPolicyEditable(workspace.id, await sessions.list());
+          }
+        }));
+        operatingProfiles = [...operatingProfiles.filter(item => item.id !== saved.id), saved];
+        return structuredClone(saved);
+      });
+    },
+    async deleteOperatingProfile(id, expectedRevision) {
+      assertHostOpen();
+      await withOperatingChange(async () => {
+        await persistence.run(() => operatingProfileStore.delete(id, expectedRevision, () => {
+          if (config.workspaces.some(workspace => workspace.operatingProfileId === id)) throw userError('Choose another operating profile for its workspaces before deleting it.');
+        }));
+        operatingProfiles = operatingProfiles.filter(item => item.id !== id);
+      });
+    },
+    async setWorkspaceOperatingProfile(workspaceId, raw) {
+      assertHostOpen();
+      return withOperatingChange(async () => {
+        const selection = normalizeWorkspaceOperatingProfile(raw);
+        const current = config.workspaces.find(item => item.id === workspaceId);
+        if (!current) throw userError('That workspace no longer exists.');
+        if (current.mode === 'observe' || workspaceRuntime(current) !== 'extalia-native') throw userError('Operating profiles require a managed Extalia Native workspace.');
+        const { operatingProfileId: _id, operatingProfileOverrides: _overrides, ...base } = current;
+        const next = { ...base, ...(selection.profileId ? { operatingProfileId: selection.profileId, operatingProfileOverrides: selection.overrides ?? {} } : {}), updatedAt: now() };
+        const effective = effectiveOperatingWorkspace(next);
+        validateOperatingReferences(operatingResolution(next).defaults);
+        if (effective.providerProfileId) findConnection(effective.providerProfileId);
+        validateTeamConnections(effective.team, effective);
+        if (effectiveMissionPolicy(effectiveOperatingWorkspace(current)) !== effectiveMissionPolicy(effective)) assertMissionPolicyEditable(current.id, await sessions.list());
+        const previous = config;
+        config = { ...config, workspaces: config.workspaces.map(item => item.id === workspaceId ? next : item) };
+        try { await save(); } catch (error) { config = previous; throw error; }
+        return state();
+      });
+    },
+    async getSessionOperatingProfile(sessionId) {
+      assertHostOpen();
+      if (observations.has(sessionId)) throw userError('Observed agents keep their operating settings in their own app.');
+      const record = await sessions.get(sessionId);
+      if (!record) throw userError('That session no longer exists.');
+      if (record.runtime) throw userError('Operating personalities require an Extalia Native session.');
+      return structuredClone(storedOperatingProfile(record));
+    },
+    async saveSessionOperatingProfile(sessionId, raw) {
+      assertHostOpen(); assertNativeBoundaryAvailable();
+      if (observations.has(sessionId)) throw userError('Observed agents keep their operating settings in their own app.');
+      if (runs.has(sessionId)) throw userError('Finish or stop this agent before changing its personality.');
+      nativeOwnership.assertClear(sessionId); missions.assertSessionClear(sessionId);
+      const patch = normalizeSessionOperatingProfileInput(raw), record = await sessions.get(sessionId);
+      if (!record) throw userError('That session no longer exists.');
+      if (record.runtime) throw userError('Operating personalities require an Extalia Native session.');
+      const next = applyLeadPersona(storedOperatingProfile(record), patch);
+      const updated = await persistence.run(() => sessions.update(sessionId, { operatingProfile: next }, { expectedRecord: record }));
+      return structuredClone(updated.operatingProfile);
+    },
+
     nativeStatus: async () => sampleNativeStatus(),
     refreshNativeStatus,
-    getState: state,
+    getState: () => state(),
+    getStateSummary: () => state(true),
+    sessionBrowserGroups: async input => { assertHostOpen(); return sessionBrowser.groupsWithProjects(input); },
+    sessionBrowserSessions: async input => { assertHostOpen(); return sessionBrowser.sessionsWithProjects(input); },
     getModelSelectionGuide: async () => { assertHostOpen(); return modelGuide.get(); },
     saveModelSelectionGuide: input => { assertHostOpen(); return persistence.run(() => modelGuide.save(input)); },
     getProfile: () => persistence.run(() => profiles.get()),
@@ -2485,7 +3074,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       assertHostOpen();
       const connection = findConnection(id);
       return withConnectionChange(id, async () => {
-        const user = config.workspaces.find(workspace => workspace.providerProfileId === id || workspace.missionConnectionIds?.includes(id));
+        const user = config.workspaces.map(workspace => effectiveOperatingWorkspace(workspace)).find(workspace => workspace.providerProfileId === id || workspace.missionConnectionIds?.includes(id));
         if (user) throw userError(`The workspace "${user.name}" uses this connection. Choose another connection for it first.`);
         if (connection.credential.kind === 'stored') {
           const ref = connection.credential.ref;
@@ -2539,14 +3128,18 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
         const folder = await checkFolder(input.projectLocation);
         if (!folder.ok || !folder.path) throw userError(folder.error ?? 'Choose a project folder.');
         if (input.runtimeId !== undefined && !RUNTIME_IDS.includes(input.runtimeId)) throw userError('Choose Extalia Native or Hermes Agent.');
+        const existing = input.id ? config.workspaces.find(item => item.id === input.id) : undefined;
+        const mode = input.mode ?? existing?.mode ?? 'managed';
+        if (mode !== 'managed' && mode !== 'observe') throw userError('Choose a managed or observe-only workspace.');
         const hermes = input.runtimeId === 'hermes';
-        if (!hermes && !input.connectionId) throw userError('Choose a model connection for this workspace.');
-        if (!hermes) findConnection(input.connectionId!);
+        if (mode === 'observe' && hermes) throw userError('Observe-only workspaces do not select a managed runtime.');
+        const connectionId = mode === 'observe' && input.connectionId === undefined ? existing?.providerProfileId : input.connectionId;
+        if (!hermes && mode === 'managed' && !connectionId) throw userError('Choose a model connection for this workspace.');
+        if (!hermes && connectionId) findConnection(connectionId);
         const model = input.runtimeModel?.trim();
         const runtime = hermes
           ? { runtimeId: 'hermes', runtimeProfileId: input.runtimeProfileId?.trim() || 'default', ...(model ? { runtimeModel: model } : {}) }
-          : { providerProfileId: input.connectionId };
-        const existing = input.id ? config.workspaces.find(item => item.id === input.id) : undefined;
+          : { ...(connectionId ? { providerProfileId: connectionId } : {}) };
         const rawFolders = input.additionalProjectLocations ?? existing?.additionalProjectLocations ?? [];
         if (!Array.isArray(rawFolders) || rawFolders.length >= MAX_WORKSPACE_FOLDERS || rawFolders.some(value => typeof value !== 'string' || !value.trim())) throw userError('Choose up to 16 project folders in total.');
         const additionalProjectLocations: string[] = [];
@@ -2565,10 +3158,17 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
           try { integrationGate = normalizeIntegrationGate(input.integrationGate); } catch (error) { throw userError(error instanceof Error ? error.message : 'Invalid test gate.'); }
         }
         const stamp = now();
+        const inherited = existing?.operatingProfileId ? effectiveOperatingWorkspace(existing) : undefined;
+        if (inherited && (mode === 'observe' || hermes)) throw userError('Remove the operating profile before changing this workspace to another runtime or observe mode.');
+        const operatingOverrides = existing?.operatingProfileId ? { ...existing.operatingProfileOverrides,
+          ...(input.connectionId !== undefined && input.connectionId !== inherited?.providerProfileId ? { connectionId: input.connectionId } : {}),
+          ...(input.runtimeModel && input.runtimeModel !== inherited?.runtimeModel ? { model: input.runtimeModel } : {}) } : undefined;
         const result = decodeWorkspace({
           id: existing?.id ?? newId('w'), profileId: existing?.profileId ?? config.profile.id, name: input.name, projectLocation: folder.path,
+          ...(input.mode !== undefined || existing?.mode !== undefined ? { mode } : {}),
           ...runtime, ...(allowed !== undefined ? { missionConnectionIds: allowed } : {}), permissions: input.permissions ?? DEFAULT_PERMISSIONS,
           additionalProjectLocations, crossWorkspaceAccess: input.crossWorkspaceAccess ?? existing?.crossWorkspaceAccess ?? 'read-only',
+          ...(existing?.operatingProfileId ? { operatingProfileId: existing.operatingProfileId, operatingProfileOverrides: operatingOverrides } : {}),
           // The default team is edited with `saveWorkspaceTeam`; editing the workspace keeps it.
           ...(existing?.team ? { team: existing.team } : {}),
           ...(integrationGate ? { integrationGate } : {}),
@@ -2577,7 +3177,11 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
         if (!result.ok) throw userError(result.errors.join(' '));
         validateTeamConnections(result.value.team, result.value);
         await validateHermesTeam(result.value.team, result.value);
-        if (existing && effectiveMissionPolicy(existing) !== effectiveMissionPolicy(result.value)) assertMissionPolicyEditable(existing.id, await sessions.list());
+        if (existing && effectiveMissionPolicy(effectiveOperatingWorkspace(existing)) !== effectiveMissionPolicy(effectiveOperatingWorkspace(result.value))) assertMissionPolicyEditable(existing.id, await sessions.list());
+        if (inherited && input.connectionId === inherited.providerProfileId) {
+          if (existing?.providerProfileId) result.value.providerProfileId = existing.providerProfileId;
+          else delete result.value.providerProfileId;
+        }
         const nextWorkspaces = existing ? config.workspaces.map(item => item.id === result.value.id ? result.value : item) : [...config.workspaces, result.value];
         if (workspaceBoundaryKey(config.workspaces) !== workspaceBoundaryKey(nextWorkspaces)) await assertWorkspaceBoundaryEditable();
         const assignment = result.value.crossWorkspaceAccess === 'isolated'
@@ -2595,7 +3199,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       assertHostOpen();
       return withWorkspaceChange(async () => {
         const workspace = findWorkspace(workspaceId);
-        if (workspaceRuntime(workspace) !== 'extalia-native') throw userError('Native missions need an Extalia Native workspace.');
+        if (workspace.mode === 'observe' || workspaceRuntime(workspace) !== 'extalia-native') throw userError('Native missions need an Extalia Native workspace.');
         const allowed = missionConnections(connectionIds);
         if (JSON.stringify([...allowed].sort()) !== JSON.stringify([...(workspace.missionConnectionIds ?? [])].sort())) assertMissionPolicyEditable(workspaceId, await sessions.list());
         config = { ...config, workspaces: config.workspaces.map(item => item.id === workspaceId ? { ...item, missionConnectionIds: allowed, updatedAt: now() } : item) };
@@ -2609,6 +3213,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       return withWorkspaceChange(async () => {
         if (typeof workspaceId !== 'string') throw userError('Choose a workspace.');
         const workspace = findWorkspace(workspaceId);
+        if (workspace.mode === 'observe' && raw !== null) throw userError('Enable full Extalia for this workspace before setting up a managed team.');
         let team: AgentTeam | null;
         try { team = normalizeAgentTeam(raw); } catch (error) { throw userError(error instanceof Error ? error.message : 'This team cannot be saved.'); }
         validateTeamConnections(team, workspace);
@@ -2620,7 +3225,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
           workspaces: config.workspaces.map(item => {
             if (item.id !== workspaceId) return item;
             const { team: _previous, ...rest } = item;
-            return { ...rest, ...(team ? { team: { ...team, updatedAt: stamp } } : {}), updatedAt: stamp };
+            return { ...rest, ...(item.operatingProfileId ? { operatingProfileOverrides: { ...item.operatingProfileOverrides, team: team ? { ...team, updatedAt: stamp } : null }, ...(item.team ? { team: item.team } : {}) } : team ? { team: { ...team, updatedAt: stamp } } : {}), updatedAt: stamp };
           }),
         };
         await save();
@@ -2651,7 +3256,8 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       assertHostOpen();
       if (mode !== 'managed' && mode !== 'observe') throw userError('Invalid workflow mode.');
       // A model connection is only needed for Extalia Native workspaces; Hermes Agent brings its own models.
-      const native = config.workspaces.some(item => workspaceRuntime(item) === 'extalia-native');
+      const native = config.workspaces.some(item => item.mode !== 'observe' && workspaceRuntime(item) === 'extalia-native');
+      if (mode === 'managed' && config.workspaces.length && config.workspaces.every(item => item.mode === 'observe') && !config.connections.length) throw userError('Add a model connection to enable full Extalia.');
       if (mode === 'managed' && native && !config.connections.length) throw userError('Add a model connection first.');
       if (mode === 'managed' && !config.workspaces.length && !config.connections.length) {
         const runtimes = await discoverRuntimes(env, options.importHome ?? homeDirectory);
@@ -2673,6 +3279,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     },
     async observeImports(scanId, candidateIds) { assertHostOpen(); await observations.observe(scanId, candidateIds); return state(); },
     async observationSession(id) { return observations.snapshot(id); },
+    async markObservedRead(id, expectedOutputRevision) { assertHostOpen(); await observations.markRead(id, expectedOutputRevision); },
     async setObservation(id, watching) {
       assertHostOpen();
       if (!watching) {
@@ -2685,15 +3292,18 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
         const stoppingInput = observedUserInput.drop(id);
         const stopping = observedCodex.drop(id);
         const stoppingHermes = observedHermes.drop(id);
+        const stoppingCli = observedCliResume.drop(id);
         const stoppingQueue = observedCodexQueue.drop(id);
         const stoppingSourceQueue = observedCodexNativeQueue.drop(id);
         const stoppingPrompts = promptQueues?.suspend(id);
         const stoppingContext = continuityAccess.revoke(id);
+        const stoppingLearning = learningSchedule.yieldForForeground();
         observedCodexPermissions.drop(id);
-        const results = await Promise.allSettled([stoppingInput, stopping, stoppingHermes, stoppingQueue, stoppingSourceQueue, stoppingPrompts, stoppingContext, observations.setWatching(id, false)]);
+        const results = await Promise.allSettled([stoppingInput, stopping, stoppingHermes, stoppingCli, stoppingQueue, stoppingSourceQueue, stoppingPrompts, stoppingContext, stoppingLearning, observations.setWatching(id, false)]);
         const failed = results.find((result): result is PromiseRejectedResult => result.status === 'rejected');
         if (failed) throw failed.reason;
       } else { await observations.setWatching(id, true); blockedReplyIds.delete(id); observedInboxes.reset(id); observedUserInput.resume(id); observedCodex.resume(id); observedHermes.resume(id); observedCodexQueue.resume(id); observedCodexNativeQueue.resume(id); observedCodexPermissions.resume(id); }
+      await observedMemory?.afterPersisted(id, observedMemoryHint(id));
       return state();
     },
     async observedUserInputStatus(id) { assertHostOpen(); return observedUserInput.status(id); },
@@ -2742,6 +3352,25 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     },
     async observedCodexQueueStatus(id) { assertHostOpen(); return observedCodexQueue.status(id); },
     async observedCodexNativeQueueStatus(id) { assertHostOpen(); return observedCodexNativeQueue.status(id); },
+    async observedNativeQueueStatus(id) {
+      assertHostOpen();
+      const target = observations.controlTarget(id);
+      if (!target) return { sessionId: id, state: 'unavailable', items: [] };
+      if (target.sourceId === 'codex') return observedCodexNativeQueue.status(id);
+      if (target.sourceId === 'antigravity') {
+        const daemons = await discoverAntigravityDaemons();
+        return readAntigravityNativeQueue({
+          sessionId: id,
+          nativeSessionId: target.nativeSessionId,
+          watching: target.watching,
+          labelsOnly: observations.labelsOnly(),
+          daemons,
+          inbox: observedInboxes.status(id),
+          fetchFn: (options.fetch as typeof fetch | undefined) ?? fetch,
+        });
+      }
+      return { sessionId: id, state: 'unsupported', items: [] };
+    },
     async promptSuggestions(id) {
       assertHostOpen();
       if (runs.has(id) || promptQueues?.hasUnfinished(id)) {
@@ -2786,6 +3415,110 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     async setObservedCodexQueue(id, enabled) { assertHostOpen(); return observedCodexQueue.setEnabled(id, enabled); },
     async queueObservedCodexMessage(id, input) { assertHostOpen(); return observedCodexQueue.send(id, input); },
     async observedReplyStatus(id) { assertHostOpen(); return observedReplies.status(id); },
+    async handoverHarnesses(id) {
+      assertHostOpen();
+      const source = await continuitySource(id);
+      const registered = config.workspaces.find(item => item.id === source.workspaceId);
+      const isolated = registered ? workspaceCrossAccess(registered) === 'isolated' : false;
+      const mapped = mapObservedWorkspaces(observations.summaries(), config.workspaces);
+      const grouped = mapped.filter(session => {
+        if (session.id === id) return false;
+        if (isolated) return session.workspaceId === source.workspaceId;
+        if (session.workspaceId === source.workspaceId) return true;
+        if (!session.workspaceId) return true;
+        if (!registered) {
+          const destWorkspace = config.workspaces.find(item => item.id === session.workspaceId);
+          return !destWorkspace || workspaceCrossAccess(destWorkspace) !== 'isolated';
+        }
+        return false;
+      });
+      const creation = await antigravityHandover.describe(source.workspaceId);
+      const pendingCreation = await antigravityHandover.pendingCreation(source.workspaceId);
+      const scopeBoundary = registered
+        ? workspaceSessionBoundaryKey(source.workspaceId, config.workspaces)
+        : source.workspaceId;
+      const inventory = await discoverHandoverHarnesses({ sourceSessionId: id, boundary: continuityDigest([scopeBoundary, creation.revision]),
+        homeDirectory: options.importHome ?? homeDirectory, env, platform: process.platform, sessions: grouped,
+        nativeReady: Boolean(registered && registered.mode !== 'observe' && config.connections.some(connection => credentialStatus.get(connection.id) !== 'missing')), antigravityCreateReady: creation.state === 'ready',
+        control: sessionId => observedControls.status(sessionId) });
+      return { ...inventory, ...(pendingCreation ? { pendingCreation: { ...pendingCreation, harnessId: 'antigravity' } } : {}) };
+    },
+    async createHandoverDestination(id, input) {
+      return withContinuity(async () => {
+        const rejected = () => ({ operationId: input?.operationId ?? '', harnessId: input?.harnessId ?? '', state: 'rejected' as const, retryable: false as const });
+        if (input?.harnessId !== 'antigravity' || typeof input.revision !== 'string' || typeof input.operationId !== 'string'
+          || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$/.test(input.operationId)) return rejected();
+        const source = await continuitySource(id);
+        const sourceRegistered = config.workspaces.some(item => item.id === source.workspaceId);
+        const previous = await antigravityHandover.creationStatus(source.workspaceId, input.operationId);
+        let receipt;
+        if (previous) receipt = await antigravityHandover.inspectCreation(source.workspaceId, input.operationId) ?? previous;
+        else {
+          const inventory = await host.handoverHarnesses!(id);
+          const description = await antigravityHandover.describe(source.workspaceId);
+          if (inventory.revision !== input.revision || description.state !== 'ready' || !description.revision) return rejected();
+          receipt = await antigravityHandover.create(source.workspaceId, { revision: description.revision, operationId: input.operationId });
+        }
+        const base = { operationId: input.operationId, harnessId: input.harnessId, retryable: false as const };
+        if (receipt.state !== 'created' || !receipt.nativeSessionId) return { ...base, state: receipt.state, ...(receipt.problem ? { problem: receipt.problem } : {}) };
+        try {
+          let bootstrapChecked = false;
+          const deadline = Date.now() + 15_000;
+          while (!closing && Date.now() < deadline) {
+            const scan = nativeImport.scan(['antigravity']);
+            const candidate = scan.sessions.find(item => item.nativeSessionId === receipt.nativeSessionId && item.supported);
+            if (candidate) {
+              await observations.observe(scan.scanId, [candidate.id]);
+              const observed = mapObservedWorkspaces(observations.summaries(), config.workspaces).find(item => item.observation?.sourceId === 'antigravity' && item.observation.nativeSessionId === receipt.nativeSessionId);
+              if (!observed || (sourceRegistered ? observed.workspaceId !== source.workspaceId : Boolean(observed.workspaceId))) throw new Error('The native project association could not be verified.');
+              if (!await antigravityHandover.markRegistered(input.operationId, observed.id)) throw new Error('The native destination registration was not recorded.');
+              return { ...base, state: 'created' as const, sessionId: observed.id };
+            }
+            if (!bootstrapChecked) {
+              bootstrapChecked = true;
+              const bootstrap = await antigravityHandover.bootstrapOnce(input.operationId);
+              if (bootstrap.state === 'rejected') throw new Error('The new conversation could not be prepared.');
+            }
+            await new Promise(resolve => setTimeout(resolve, 250));
+          }
+        } catch { /* Never repeat native creation or bootstrap after ambiguous effects. */ }
+        return { ...base, state: 'unknown' as const, problem: 'The new native conversation needs inspection. No automatic retry was made.' };
+      });
+    },
+    async reconcileObservedAntigravity(id) {
+      return withContinuity(async () => {
+        const target = observedControlTarget(id);
+        if (observations.labelsOnly() || !target?.watching || target.sourceId !== 'antigravity') throw userError('Choose a watched Antigravity conversation before inspecting its connection.');
+        const source = await continuitySource(id);
+        const result = await antigravityHandover.reconcile(target.nativeSessionId, source.workspaceId);
+        const current = observedControlTarget(id);
+        if (result.state !== 'reconciled' || !current?.watching || current.sourceId !== target.sourceId || current.nativeSessionId !== target.nativeSessionId || current.fingerprint !== target.fingerprint) throw userError('Native delivery remains uncertain. Inspect the original conversation; no message was repeated.');
+        observedControls.drop(id);
+        return observedControls.status(id);
+      });
+    },
+    async observedCliResumeStatus(id) { assertHostOpen(); return observedCliResume.status(id); },
+    async observedMemorySearch(workspaceId, input) {
+      assertHostOpen(); assertNativeBoundaryAvailable(); findWorkspace(workspaceId);
+      if (!observedMemory) throw userError('Observed work memory is unavailable.');
+      const releaseWorkspace = reserveWorkspaceReader(workspaceId);
+      try {
+        const result = await observedMemory.search(workspaceId, input);
+        return { ...result, incomplete: result.incomplete || result.omitted > 0 || result.unavailableSources > 0 };
+      }
+      finally { releaseWorkspace(); learningSchedule.wake(); }
+    },
+    async observedMemoryRead(workspaceId, input) {
+      assertHostOpen(); assertNativeBoundaryAvailable(); findWorkspace(workspaceId);
+      if (!observedMemory) throw userError('Observed work memory is unavailable.');
+      const releaseWorkspace = reserveWorkspaceReader(workspaceId);
+      try { return await observedMemory.read(workspaceId, input); }
+      finally { releaseWorkspace(); learningSchedule.wake(); }
+    },
+    async previewObservedCliResume(id) { assertHostOpen(); return observedCliResume.preview(id); },
+    async pairObservedCliResume(id, input) { assertHostOpen(); observedControls.drop(id); return observedCliResume.pair(id, input); },
+    async disconnectObservedCliResume(id) { assertHostOpen(); observedControls.drop(id); return observedCliResume.disconnect(id); },
+    async reconcileObservedCliResume(id, input) { assertHostOpen(); observedControls.drop(id); return observedCliResume.reconcile(id, input); },
     async observedHermesStatus(id) { assertHostOpen(); return observedHermes.status(id); },
     async connectObservedHermes(id, profile) { assertHostOpen(); return observedHermes.connect(id, profile); },
     async disconnectObservedHermes(id, connectionId) { assertHostOpen(); return observedHermes.disconnect(id, connectionId); },
@@ -2813,6 +3546,44 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     async disconnectObservedCodex(id, connectionId) { assertHostOpen(); return observedCodex.disconnect(id, connectionId); },
     async sendObservedCodexMessage(id, input) { assertHostOpen(); followupSuggestions.invalidate(id); return observedCodex.send(id, input); },
     async updateObservedCodexSettings(id, input) { assertHostOpen(); followupSuggestions.invalidate(id); return observedCodex.updateSettings(id, input); },
+    async updateObservedAntigravitySettings(id, rawInput) {
+      assertHostOpen();
+      const target = observations.controlTarget(id);
+      if (!target?.watching || target.sourceId !== 'antigravity') throw userError('Watch an Antigravity conversation before changing its model or effort.');
+      if (!rawInput || typeof rawInput !== 'object' || Array.isArray(rawInput)) throw userError('Choose an Antigravity model or effort.');
+      const currentSummary = observations.summaries().find(item => item.id === id);
+      const catalog = await fetchAntigravityCatalog(id, currentSummary?.model);
+      if (!catalog || !catalog.models.length) throw userError('Antigravity model catalog is unavailable.');
+      const previous = observedAntigravitySelections.get(id);
+      const requestedModel = typeof rawInput.model === 'string' && rawInput.model.trim() ? rawInput.model.trim() : previous?.model ?? catalog.defaultModel;
+      if (!requestedModel || !catalog.models.includes(requestedModel)) throw userError('Choose one of the available Antigravity models.');
+      const supportedEfforts = catalog.modelEfforts[requestedModel] ?? [];
+      const rawEffort = rawInput.effort;
+      if (rawEffort !== undefined) {
+        if (!(EFFORTS as readonly unknown[]).includes(rawEffort)) throw userError('Choose a valid reasoning effort.');
+        if (!supportedEfforts.includes(rawEffort)) throw userError('That reasoning effort is not available for the selected Antigravity model.');
+      }
+      const nextEffort = rawEffort !== undefined
+        ? rawEffort
+        : supportedEfforts.length
+          ? (previous?.effort && supportedEfforts.includes(previous.effort)
+            ? previous.effort
+            : catalog.defaultEffort && supportedEfforts.includes(catalog.defaultEffort)
+              ? catalog.defaultEffort
+              : supportedEfforts[0])
+          : undefined;
+      const variant = resolveAntigravityVariant(catalog, requestedModel, nextEffort);
+      if (!variant) throw userError('Choose one of the available Antigravity models.');
+      observedAntigravitySelections.set(id, {
+        model: variant.baseModel,
+        ...(variant.effort ? { effort: variant.effort } : {}),
+        modelId: variant.modelId,
+        ...(variant.planModel ? { planModel: variant.planModel } : {}),
+        revision: (previous?.revision ?? 0) + 1,
+      });
+      followupSuggestions.invalidate(id);
+      return observedModelChoices(id, 'antigravity');
+    },
     async answerObservedCodexInput(id, input) { assertHostOpen(); return observedCodex.answer(id, input); },
     async answerObservedCodexApproval(id, input) { assertHostOpen(); return observedCodex.answerApproval(id, input); },
     async setAutoWatch(locationId, enabled) {
@@ -2824,9 +3595,9 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     async createSession(workspaceId, sessionOptions) {
       assertHostOpen();
       const workspace = findWorkspace(workspaceId);
-      const { team, ...checked } = await checkSessionOptions(workspace, sessionOptions);
-      // Without an explicit team (or `team: null`) the session copies the workspace's default team.
-      return summary(await openSession(workspace, NEW_SESSION_TITLE, undefined, checked, initialSessionTeam(workspace.team, team)));
+      const { team, ...checked } = normalizeSessionOptions(sessionOptions);
+      // Resolve defaults once inside openSession, keeping null distinct from inheritance.
+      return summary(await openSession(workspace, NEW_SESSION_TITLE, undefined, checked, team));
     },
 
     async setSessionOptions(sessionId, sessionOptions) {
@@ -2837,11 +3608,12 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       const record = await sessions.get(sessionId).catch(() => undefined);
       if (!record) throw userError('That session no longer exists.');
       // The team is saved with `saveSessionTeam`, never as part of the model override.
-      const { team: _team, ...checked } = await checkSessionOptions(sessionWorkspace(findWorkspace(record.workspaceId), record), sessionOptions);
+      const { team: _team, operatingProfile: operatingPatch, ...checked } = await checkSessionOptions(sessionWorkspace(findWorkspace(record.workspaceId), record), sessionOptions);
+      if (operatingPatch && record.runtime) throw userError('Operating personalities require an Extalia Native session.');
       followupSuggestions.invalidate(sessionId);
       // Applies from the next turn; a running turn keeps the model it started with.
       assertNativeBoundaryAvailable();
-      return summary(await sessions.update(sessionId, { options: Object.keys(checked).length ? checked : undefined }, { expectedWorkspaceId: record.workspaceId }));
+      return summary(await persistence.run(() => sessions.update(sessionId, { options: Object.keys(checked).length ? checked : undefined, ...(operatingPatch ? { operatingProfile: applyLeadPersona(storedOperatingProfile(record), operatingPatch) } : {}) }, { expectedRecord: record })));
     },
 
     async modelChoices(workspaceId, sessionId): Promise<ModelChoices> {
@@ -2872,9 +3644,12 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       }
       if (!workspace.providerProfileId) throw userError('Choose a model connection for this workspace in Settings.');
       const connection = findConnection(workspace.providerProfileId);
+      const operatingDefaults = sessionId === undefined ? operatingResolution(workspace).defaults : {};
+      const defaultModel = operatingDefaults.model ?? connection.model;
+      const defaultEffort = operatingDefaults.effort ?? connection.effort;
       return {
-        runtime: 'extalia-native', ...(connection.model ? { defaultModel: connection.model } : {}), models: await connectionModels(connection), efforts,
-        ...(connection.effort && efforts.length ? { defaultEffort: connection.effort } : {}), permissionModes: [...PERMISSION_MODES],
+        runtime: 'extalia-native', ...(defaultModel ? { defaultModel } : {}), models: await connectionModels(connection), efforts,
+        ...(defaultEffort && efforts.length ? { defaultEffort } : {}), permissionModes: [...PERMISSION_MODES],
       };
     },
 
@@ -2888,7 +3663,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
         if (record.workspaceId !== workspaceId) throw userError('That session belongs to another workspace.');
         workspace = sessionWorkspace(workspace, record);
       }
-      if (workspaceRuntime(workspace) !== 'extalia-native') throw userError('Cross-connection teams require Extalia Native.');
+      if (workspace.mode === 'observe' || workspaceRuntime(workspace) !== 'extalia-native') throw userError('Cross-connection teams require Extalia Native.');
       const connection = findConnection(connectionId);
       const efforts: Effort[] = connection.api === 'anthropic-messages' ? [...EFFORTS] : [];
       return { runtime: 'extalia-native', ...(isModelId(connection.model) ? { defaultModel: connection.model } : {}),
@@ -2922,10 +3697,10 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     async planTeam(workspaceId, raw, sessionId): Promise<TeamPlan> {
       assertHostOpen();
       assertNativeBoundaryAvailable();
-      const releaseReader = reserveWorkspaceReader(workspaceId);
+      if (typeof workspaceId !== 'string') throw userError('Choose a workspace.');
+      const releaseWorkspace = reserveWorkspaceReader(workspaceId);
       try {
       await yieldLearningForWorkspace(workspaceId);
-      if (typeof workspaceId !== 'string') throw userError('Choose a workspace.');
       let workspace = findWorkspace(workspaceId);
       let sessionModel: string | undefined;
       if (sessionId !== undefined) {
@@ -2936,6 +3711,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
         workspace = sessionWorkspace(workspace, record);
         sessionModel = storedOptions(record).model;
       }
+      if (workspace.mode === 'observe') throw userError('Enable full Extalia for this workspace before planning a managed team.');
       let request: TeamPlanRequest;
       try { request = normalizeTeamPlanRequest(raw); } catch (error) { throw userError(error instanceof Error ? error.message : 'Invalid team request.'); }
       const hermes = workspaceRuntime(workspace) === 'hermes';
@@ -3008,7 +3784,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
         return fromReply(result.text);
       } catch (error) { return failed(error); }
       } finally {
-        releaseReader();
+        releaseWorkspace();
         if (!closing) learningSchedule.wake();
         if (!closing && !workspaceContextReaders && !persistence.isBusy && !runs.size && !nativeStatusRefresh && !nativeMemory.isBusy() && !learningSchedule.isBusy && !promptQueues?.isBusy) notifyIdleListeners();
       }
@@ -3034,7 +3810,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       if (!carried.messages.length) throw userError('That conversation has no messages to continue from.');
       const sourceId = conversation.provenance.sourceId;
       const clean = safeLabel(title, 200) || sourceLabel(sourceId);
-      const record = await openSession(workspace, clean, { sourceId, title: clean }, {}, initialSessionTeam(workspace.team, undefined));
+      const record = await openSession(workspace, clean, { sourceId, title: clean }, {}, undefined);
       // The carried messages are shown as they were: from the other agent, delivered by import.
       const origin: EventSource = { runtime: sourceId, channel: 'import', adapter: 'continuation', adapterVersion: options.version };
       for (const message of carried.messages) {
@@ -3117,9 +3893,62 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
             workspaceFileScopes.push({ throughEventId: snapshot.lastEventId, workspaceId: snapshot.source.id, projectLocation: snapshot.previousFileRoot ?? '' });
           }
           await sessions.update(sessionId, { workspaceId: snapshot.destination.id, workspaceBoundary: boundary,
-            reviewedContextBoundary: boundary, workspaceFileRoot: snapshot.destination.projectLocation,
+            reviewedContextBoundary: boundary, projectLocation: snapshot.source.id === snapshot.destination.id ? snapshot.record.projectLocation : undefined,
+            workspaceFileRoot: snapshot.source.id === snapshot.destination.id ? snapshot.record.projectLocation ?? snapshot.destination.projectLocation : snapshot.destination.projectLocation,
             ...(workspaceFileScopes.length ? { workspaceFileScopes } : {}) }, { expectedRecord: snapshot.record });
           sessionMoveReviews.consume(input.reviewId);
+          grants.delete(sessionId);
+        };
+        if (promptQueues) await promptQueues.withIdleSession(sessionId, apply); else await apply();
+        return state();
+      });
+    },
+
+    async setSessionProjectRoot(sessionId, input) {
+      assertHostOpen();
+      const admittedRevision = workspaceChangeRevision + 1;
+      return withWorkspaceChange(async () => {
+        if (!input || typeof input.workspaceId !== 'string' || typeof input.projectLocation !== 'string') throw userError('Choose a registered project folder in this session’s workspace.');
+        const assertIdle = () => {
+          if (admittedRevision !== workspaceChangeRevision) throw userError('Workspace settings changed while choosing this folder. Refresh and choose it again.');
+          if (observations.has(sessionId) || unsavedSessions.has(sessionId)) throw userError('Choose a saved Extalia Native session.');
+          if (runs.has(sessionId)) throw userError('Wait for this session to finish or stop it before changing its folder.');
+          nativeOwnership.assertClear(sessionId);
+          missions.assertSessionClear(sessionId);
+          knowledgeVault.assertStable();
+          if (workspaceContextReaders || nativeMemory.isBusy() || learningSchedule.isBusy || continuityWork) throw userError('Wait for Native context, learning or handover to finish before changing a session folder.');
+        };
+        const apply = async () => {
+          assertIdle();
+          const record = await sessions.get(sessionId);
+          if (!record || record.runtime) throw userError('Choose a saved Extalia Native session.');
+          if (record.workspaceId !== input.workspaceId) throw userError('The session belongs to another workspace. Use the reviewed workspace move in Settings.');
+          const workspace = findWorkspace(record.workspaceId);
+          if (workspace.mode === 'observe') throw userError('Enable full Extalia for this workspace before changing its session folder.');
+          nativeOwnership.assertWorkspaceClear(workspace.id);
+          let selected: Workspace;
+          try { selected = sessionProjectWorkspace(workspace, { projectLocation: input.projectLocation }); }
+          catch (error) { throw userError((error as Error).message); }
+          const access = await createWorkspaceAccess({ workspaceId: workspace.id,
+            workspaces: structuredClone(config.workspaces.map(item => item.id === workspace.id ? selected : item)), protectedRoots: [layout.root] });
+          await access.resolve('.', 'read');
+          await writeChains.get(sessionId);
+          const events = await sessions.readEvents(sessionId), lastEventId = events.at(-1)?.id;
+          const started = events.find(event => event.body.type === 'session.started');
+          const previousFileRoot = typeof record.workspaceFileRoot === 'string' ? record.workspaceFileRoot
+            : record.workspaceFileRoot !== undefined ? '' : started?.body.type === 'session.started' ? started.body.cwd : undefined;
+          const workspaceFileScopes = Array.isArray(record.workspaceFileScopes) ? structuredClone(record.workspaceFileScopes) : [];
+          if (record.workspaceFileScopes !== undefined && !Array.isArray(record.workspaceFileScopes) && lastEventId) {
+            workspaceFileScopes.push({ throughEventId: lastEventId, workspaceId: workspace.id, projectLocation: '' });
+          }
+          if (lastEventId && workspaceFileScopes.at(-1)?.throughEventId !== lastEventId) {
+            workspaceFileScopes.push({ throughEventId: lastEventId, workspaceId: workspace.id, projectLocation: previousFileRoot ?? '' });
+          }
+          assertIdle();
+          nativeOwnership.assertWorkspaceClear(workspace.id);
+          await sessions.update(sessionId, { projectLocation: input.projectLocation, workspaceFileRoot: input.projectLocation,
+            ...(workspaceFileScopes.length ? { workspaceFileScopes } : {}) }, { expectedRecord: record });
+          followupSuggestions.invalidate(sessionId);
           grants.delete(sessionId);
         };
         if (promptQueues) await promptQueues.withIdleSession(sessionId, apply); else await apply();
@@ -3130,7 +3959,12 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     async deleteSession(sessionId) {
       assertHostOpen();
       followupSuggestions.invalidate(sessionId);
-      if (observations.has(sessionId)) { blockedReplyIds.add(sessionId); observedReplies.drop(sessionId); observedControls.drop(sessionId); observedInboxes.drop(sessionId); observedCodexPermissions.drop(sessionId); await Promise.all([continuityAccess.revoke(sessionId), observedUserInput.drop(sessionId), observedCodex.drop(sessionId), observedHermes.drop(sessionId), observedCodexQueue.drop(sessionId), observedCodexNativeQueue.drop(sessionId), promptQueues?.drop(sessionId), persistence.run(() => attachments.drop(sessionId))]); await observations.remove(sessionId); return state(); }
+      if (observations.has(sessionId)) {
+        observedAntigravitySelections.delete(sessionId);
+        blockedReplyIds.add(sessionId); observedReplies.drop(sessionId); observedControls.drop(sessionId); observedInboxes.drop(sessionId); observedCodexPermissions.drop(sessionId);
+        await Promise.all([learningSchedule.yieldForForeground(), observedCliResume.drop(sessionId), continuityAccess.revoke(sessionId), observedUserInput.drop(sessionId), observedCodex.drop(sessionId), observedHermes.drop(sessionId), observedCodexQueue.drop(sessionId), observedCodexNativeQueue.drop(sessionId), promptQueues?.drop(sessionId), persistence.run(() => attachments.drop(sessionId))]);
+        await observations.remove(sessionId); await observedMemory?.afterPersisted(sessionId, observedMemoryHint(sessionId)); return state();
+      }
       workspaceContextReaders++;
       try {
       await learningSchedule.yieldForForeground();
@@ -3198,8 +4032,10 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
         if (controller.signal.aborted || closing) throw userError('Mission planning was cancelled before preparation finished.');
         if (!record) throw userError('That session no longer exists.');
         if (record.runtime) throw userError('Hermes Agent sessions cannot run native missions. Start an Extalia Native session.');
-        const workspace = findWorkspace(record.workspaceId);
-        if (workspaceRuntime(workspace) !== 'extalia-native' || !workspace.projectLocation) throw userError('Native missions need an Extalia Native workspace with a project folder.');
+        const workspace = sessionProjectWorkspace(findWorkspace(record.workspaceId), record);
+        if (workspace.mode === 'observe' || workspaceRuntime(workspace) !== 'extalia-native' || !workspace.projectLocation) throw userError('Native missions need an Extalia Native workspace with a project folder.');
+        const projectWorkspaces = sessionProjectWorkspaces(config.workspaces, record);
+        await (await createWorkspaceAccess({ workspaceId: workspace.id, workspaces: projectWorkspaces, protectedRoots: [layout.root] })).resolve('.', 'read');
         run.native = { id: newId('native-run'), sessionId, workspaceId: record.workspaceId, kind: 'planning' };
         const allowed = [...new Set([workspace.providerProfileId, ...(workspace.missionConnectionIds ?? [])].filter((id): id is string => Boolean(id)))];
         if (request.connectionIds?.some(id => !allowed.includes(id))) throw userError('A selected connection is not allowed for this workspace’s missions. Allow it in the workspace settings first.');
@@ -3363,8 +4199,10 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
         run.workspaceId = record?.workspaceId;
         await yieldLearningForWorkspace(record?.workspaceId);
         if (!record || record.runtime) throw userError('Native missions need an existing Extalia Native session.');
-        const workspace = structuredClone(findWorkspace(record.workspaceId));
-        if (workspaceRuntime(workspace) !== 'extalia-native' || !workspace.projectLocation) throw userError('Native missions need an Extalia Native workspace with a project folder.');
+        const workspace = sessionProjectWorkspace(structuredClone(findWorkspace(record.workspaceId)), record);
+        if (workspace.mode === 'observe' || workspaceRuntime(workspace) !== 'extalia-native' || !workspace.projectLocation) throw userError('Native missions need an Extalia Native workspace with a project folder.');
+        const projectWorkspaces = sessionProjectWorkspaces(config.workspaces, record);
+        await (await createWorkspaceAccess({ workspaceId: workspace.id, workspaces: projectWorkspaces, protectedRoots: [layout.root] })).resolve('.', 'read');
         run.native = { id: newId('native-run'), sessionId, workspaceId: record.workspaceId, kind: 'preparing' };
         const allowed = new Set([workspace.providerProfileId, ...(workspace.missionConnectionIds ?? [])]);
         if (connectionIds.some(id => !allowed.has(id))) throw userError('A selected connection is not authorized for this workspace.');
@@ -3377,7 +4215,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
         const mask = (value: string) => resolvedSecrets.reduce((text, secret) => text.split(secret).join('[redacted]'), value);
         const sanitize = (value: HostMissionRun): HostMissionRun => ({ ...value, title: safeLabel(mask(value.title), 200), tasks: value.tasks.map(task => ({ ...task, title: safeLabel(mask(task.title), 200), ...(task.answer !== undefined ? { answer: safeText(mask(task.answer), 16_000) } : {}) })) });
         const prepared = await prepareMission({ request, session: record, transient, root: workspace.projectLocation, connections, localSettlementCoverage: 'extalia-native-local-v1',
-          fileAuthority: ownedRoots => createWorkspaceAccess({ workspaceId: workspace.id, workspaces: structuredClone(config.workspaces), protectedRoots: [layout.root], ...(ownedRoots ? { ownedRoots } : {}) }),
+          fileAuthority: ownedRoots => createWorkspaceAccess({ workspaceId: workspace.id, workspaces: structuredClone(projectWorkspaces), protectedRoots: [layout.root], ...(ownedRoots ? { ownedRoots } : {}) }),
           checkPreparation,
           beforeEffects: async identity => {
             checkPreparation();
@@ -3669,26 +4507,34 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       missions.assertSessionClear(sessionId);
       if (observations.has(sessionId)) throw userError('Observed sessions are read-only. Prompt in the agent’s own app.');
       const prompt = text.trim();
+      const skipSkillLearning = excludesSkillLearning(prompt);
       let attachmentIds: string[];
       let learnSkill: boolean;
       try {
         attachmentIds = normalizePromptAttachmentIds(promptOptions);
-        // Only a current-message client action or exact first command token authorizes a draft.
+        // Legacy clients and the command remain supported; the UI no longer needs a checkbox.
         // History, quoted text, attachments, project files and model assertions are not authority.
-        learnSkill = normalizePromptLearnSkill(promptOptions) || /^\/learn-skill(?:\s|$)/u.test(prompt);
+        learnSkill = (normalizePromptLearnSkill(promptOptions) || /^\/learn-skill(?:\s|$)/u.test(prompt)) && !skipSkillLearning;
       } catch (error) { throw userError(error instanceof Error ? error.message : 'Invalid prompt options.'); }
       if (!prompt && !attachmentIds.length) throw userError('Write a prompt first.');
       if (prompt.length > 100_000) throw userError('The prompt is too long.');
       if (runs.has(sessionId)) throw userError('This session is still working. Wait for it or stop it first.');
       const record = await sessions.get(sessionId);
       if (!record) throw userError('That session no longer exists.');
-      const workspace = findWorkspace(record.workspaceId);
+      const registeredWorkspace = findWorkspace(record.workspaceId);
+      const workspace = sessionProjectWorkspace(registeredWorkspace, record);
+      const operatingSnapshot = storedOperatingProfile(record);
       if (learnSkill) {
         if (record.runtime) throw userError('Learning a skill here requires an Extalia Native session.');
         if (storedOptions(record).permissionMode === 'plan') throw userError('Skill learning writes a library candidate and is unavailable in read-only plan mode.');
         if (!skillRegistry.enabled || !resolveFeatures(findConnection(record.connectionId)).extaliaSkills) throw userError('Skill learning requires Extalia skills and the Rust skill registry. Nothing was saved.');
         if (/^\/learn-skill\s*$/u.test(prompt) && !attachmentIds.length) throw userError('Add source text, a link or an attachment after /learn-skill.');
       }
+      // A direct current-message learning request also authorizes one user-owned draft.
+      // Unsupported/plan sessions can still answer naturally without a hidden write attempt.
+      learnSkill ||= !record.runtime && storedOptions(record).permissionMode !== 'plan'
+        && skillRegistry.enabled && resolveFeatures(findConnection(record.connectionId)).extaliaSkills
+        && requestsSkillLearning(prompt);
       // Refused (unknown, foreign or consumed ids) before anything starts; the files are removed only once the turn has started.
       if (record.runtime) {
         const files = await attachments.take(sessionId, attachmentIds);
@@ -3745,10 +4591,11 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
         const boundary = workspaceSessionBoundaryKey(workspace.id, config.workspaces);
         followupSuggestions.invalidate(sessionId);
         const learningProfile = await vaultProfiles.policyFor(workspace.id).catch(() => undefined);
-        const access = await createWorkspaceAccess({ workspaceId: workspace.id, workspaces: structuredClone(config.workspaces), protectedRoots: [layout.root] });
         const history = toModelHistory(await sessions.readMessages(sessionId));
         if (!workspaceBoundaryMatches(record.workspaceBoundary, workspace.id, config.workspaces) && history.length) throw userError('Workspace folders or access boundaries changed. Review this session’s workspace from session actions to keep its history under the current access, or start a new Native session.');
         if (workspaceCrossAccess(workspace) === 'isolated' && record.continuedFrom && record.reviewedContextBoundary !== boundary) throw userError('An isolated workspace needs a fresh session without imported conversation context, or an explicit review of this session’s workspace access.');
+        const access = await createWorkspaceAccess({ workspaceId: workspace.id, workspaces: sessionProjectWorkspaces(config.workspaces, record), protectedRoots: [layout.root] });
+        await access.resolve('.', 'read');
         if (record.workspaceBoundary !== boundary) await sessions.update(sessionId, { workspaceBoundary: boundary, workspaceFileRoot: workspace.projectLocation });
         const files = await attachments.take(sessionId, attachmentIds);
         if (closing || controller.signal.aborted) throw userError('The host is shutting down.');
@@ -3813,6 +4660,8 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
         const readOnly = [...fileTools.filter(tool => tool.access === 'read'), foldersTool];
         const commandTool = createCommandTool(root, { filesystemBoundary: 'required' });
         const tools: AnyTool[] = [...fileTools, foldersTool, commandTool];
+        const knowledgeTools = await knowledgeToolsFor(workspace.id);
+        tools.push(...knowledgeTools); readOnly.push(...knowledgeTools);
         if (record.continuity && await continuity.has(sessionId)) {
           const continuityTools = createContinuityTools({
             status: () => withContinuity(() => continuity.sessionContinuity(sessionId)),
@@ -3824,7 +4673,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
         let memoryCatalog: { omitted: number; incomplete: boolean } | undefined;
         const selectedFeatures = [...frozenProviders.values()].map(selected => resolveFeatures(selected.connection));
         if (selectedFeatures.some(selected => selected.extaliaMemory)) {
-          const memory = new MemoryStore(workspaceMemoryDirectory(layout.workspaces, workspace));
+          const memory = new MemoryStore(workspaceMemoryDirectory(layout.workspaces, registeredWorkspace));
           const catalog = await memory.recallCatalog(acceptedText, { limit: 4, relevantOnly: true });
           if (features.extaliaMemory) {
             memoryNotes = catalog.notes.map(note => ({ name: note.name, summary: note.summary }));
@@ -3833,6 +4682,11 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
           const memoryTools = createMemoryTools(memory).map(localWriteTool);
           if (features.extaliaMemory) tools.push(...memoryTools);
           readOnly.push(...memoryTools.filter(tool => tool.name !== 'memory_write'));
+          if (observedMemory) {
+            const observedTools = createObservedMemoryTools(observedMemory, workspace.id);
+            if (features.extaliaMemory) tools.push(...observedTools);
+            readOnly.push(...observedTools);
+          }
         }
         let skills: { name: string; description: string }[] | undefined;
         let skillCatalog: { omitted: number; incomplete: boolean } | undefined;
@@ -3873,9 +4727,30 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
         const permissions = workspace.permissions ?? DEFAULT_PERMISSIONS;
         // v0.0.49: the session's permission mode. Plan mode offers no edit or command tools (to the lead or to workers).
         const permissionMode: PermissionMode = sessionOptions.permissionMode ?? 'workspace';
+        const sourceUrls = learningSourceUrls(prompt);
+        const readSources = new Set<string>();
         if (learnSkill) tools.push(createSkillProposalTool({
           provenance: { sessionId, workspaceId: workspace.id, promptSha256: createHash('sha256').update(prompt).digest('hex') },
+          authorize: input => {
+            if (!hasLearningSourceLink(prompt)) return undefined;
+            const attributed = learningSourceUrls((input.sourceUrls ?? []).join('\n'));
+            return attributed.length && attributed.every(url => readSources.has(url)) ? undefined
+              : 'Read the requested source with skill_source_read before saving, and include only successfully read URLs in sourceUrls. If reading fails, explain it; do not invent a skill from unseen source content.';
+          },
           propose: (input, provenance, signal) => withRegistry(() => skillRegistry.propose(input, provenance, signal)),
+        }));
+        const sourceLearning = learnSkill || Boolean(!skipSkillLearning && learningProfile?.policy.enabled && learningProfile.policy.skills
+          && features.extaliaSkills && skillRegistry.enabled && !unsavedSessions.has(sessionId) && team?.enabled !== false);
+        if (sourceLearning && permissionMode !== 'plan' && sourceUrls.length) tools.push(createSkillLearningSourceTool({
+          allowedUrls: sourceUrls,
+          read: async (url, signal) => {
+            const binary = resolveDaemonBinary({ ...options.daemon?.binary, env });
+            if (!binary) throw new Error('The Rust source reader is unavailable. No source was read.');
+            const result = await readLearningSource(binary.path, url, signal);
+            readSources.add(url);
+            readSources.add(result.finalUrl);
+            return result;
+          },
         }));
         const sessionGrants = grants.get(sessionId) ?? new Set<ToolAccess>();
         grants.set(sessionId, sessionGrants);
@@ -3889,23 +4764,23 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
           const selected = frozenProviders.get(id);
           if (!selected) throw userError('That team connection was not approved for this turn.');
           const workerFeatures = resolveFeatures(selected.connection);
-          return readOnly.filter(tool => (!tool.name.startsWith('memory_') || workerFeatures.extaliaMemory)
+          return readOnly.filter(tool => ((!tool.name.startsWith('memory_') && !tool.name.startsWith('observed_memory_')) || workerFeatures.extaliaMemory)
             && (!tool.name.startsWith('skill_') || workerFeatures.extaliaSkills));
         };
         // Profile consent authorizes only this bounded host curator, not arbitrary delegation.
-        const learningEnabled = Boolean(learningProfile?.policy.enabled && !unsavedSessions.has(sessionId)
+        const learningEnabled = Boolean(learningProfile?.policy.enabled && (learningProfile.policy.notes || learningProfile.policy.skills && !skipSkillLearning) && !unsavedSessions.has(sessionId)
           && permissionMode !== 'plan' && team?.enabled !== false && !learnSkill);
         const turnEvidence: ToolResultEntry[] = [];
         const learningPromptSha256 = createHash('sha256').update(prompt).digest('hex');
         const learningConnectionSnapshot = JSON.stringify(saved);
-        const learningSessionSnapshot = JSON.stringify({ options: record.options });
+        const learningSessionSnapshot = JSON.stringify({ options: record.options, projectLocation: record.projectLocation });
         const learningRunId = run.native!.id;
         const learningCurrent = async (): Promise<boolean> => {
           if (closing || connectionChanges.size || workspaceSessionBoundaryKey(workspace.id, config.workspaces) !== boundary
             || JSON.stringify(config.connections.find(item => item.id === record.connectionId)) !== learningConnectionSnapshot) return false;
           const currentSession = await sessions.get(sessionId);
           if (!currentSession || currentSession.workspaceId !== workspace.id || currentSession.connectionId !== record.connectionId
-            || JSON.stringify({ options: currentSession.options }) !== learningSessionSnapshot) return false;
+            || JSON.stringify({ options: currentSession.options, projectLocation: currentSession.projectLocation }) !== learningSessionSnapshot) return false;
           if (currentSession.team?.enabled === false) return false;
           const current = await vaultProfiles.policyFor(workspace.id);
           return current.profileId === learningProfile?.profileId && current.revision === learningProfile.revision
@@ -3918,7 +4793,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
             if (signal.aborted || !await learningCurrent()) throw new Error('The learning profile or consent changed.');
           };
           let writeNote: Awaited<ReturnType<typeof pinLearningNotes>> | undefined;
-          const policy = { ...learningProfile.policy, skills: learningProfile.policy.skills && features.extaliaSkills && skillRegistry.enabled };
+          const policy = { ...learningProfile.policy, skills: !skipSkillLearning && learningProfile.policy.skills && features.extaliaSkills && skillRegistry.enabled };
           if (!policy.skills && !policy.notes) return;
           try {
           if (policy.notes) try { const writer = await pinLearningNotes({
@@ -3960,7 +4835,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
             backend: rustLearning,
             // Current-turn evidence supplies the curator's reads. No generic host file/search tools
             // cross this Rust-owned workflow or gain access to a profile's export-only vault.
-            provider: leadProvider, tools: [], signal, assertCurrent,
+            provider: leadProvider, tools: await knowledgeToolsFor(workspace.id), signal, assertCurrent,
             emit: (body, agentId) => publish(sessionId, body, agentId, undefined, { strict: true }),
             proposeSkill: (input, provenance, signal) => withRegistry(() => skillRegistry.propose(input, provenance, signal)),
             ...(writeNote ? { writeNote: (record: Parameters<NonNullable<typeof writeNote>>[0], signal: AbortSignal) => persistence.run(() => writeNote!(record, signal)) } : {}),
@@ -4047,6 +4922,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
         };
         const providers = new Map<TaskTier, ModelProvider>();
         const delegationOptions: DelegationOptions = {
+          ...(operatingSnapshot ? { operatingProfile: { purpose: operatingSnapshot.purpose, personality: operatingSnapshot.personality } } : {}),
           ...(automaticSkillCatalog ? { prepareWorkerRequest: (member: TeamMember | undefined, agentId: string) => prepareSkillsFor(member?.connectionId ?? record.connectionId, true, agentId) } : {}),
           providerFor: tier => {
             if (!providers.has(tier)) providers.set(tier, nativeProvider({ ...connection, model: tierModel(connection, tier) }, secret));
@@ -4130,6 +5006,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
         };
         const meeting = createConductTeamMeetingTool({
           team: delegationOptions.team!, workspace: delegationOptions.workspace,
+          ...(delegationOptions.operatingProfile ? { operatingProfile: delegationOptions.operatingProfile } : {}),
           emit: async (body, agentId) => {
             if (body.type === 'meeting.started') await prepareMeetingNote();
             await publish(sessionId, body, agentId, undefined, { strict: true });
@@ -4168,6 +5045,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
         }));
         const liveTaken = await takenNames(sessionId);
         const system = buildSystemPrompt({
+          ...(operatingSnapshot ? { operatingProfile: operatingSnapshot } : {}),
           workspace: { name: workspace.name, root },
           platform: { os: process.platform === 'darwin' ? 'macOS' : process.platform === 'win32' ? 'Windows' : 'Linux', shell: process.platform === 'win32' ? 'cmd.exe' : path.basename(env.SHELL || '/bin/sh') },
           projectInstructions: await projectInstructions(root, access),
@@ -4213,7 +5091,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
               attachments: turnAttachments(files),
               emit: body => {
                 if (body.type === 'tool.completed' && body.ok && body.toolCallId && body.output?.trim()
-                  && !/^(memory_|skill_|manage_team|conduct_team_meeting|workspace_folders|automatic_learning)/.test(body.tool))
+                  && (body.tool === 'skill_source_read' || !/^(memory_|skill_|manage_team|conduct_team_meeting|workspace_folders|automatic_learning)/.test(body.tool)))
                   turnEvidence.push({ toolCallId: body.toolCallId, name: body.tool, content: body.output, isError: false });
                 return publish(sessionId, body);
               },
@@ -4300,8 +5178,12 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
 
     async scanImports(locationIds) {
       const scan = nativeImport.scan(locationIds);
-      // The Observe list leaves out sessions of ignored folders (claude-mem helpers by default).
-      return { ...scan, sessions: scan.sessions.map(item => observations.ignoredPath(item.projectPath) ? { ...item, ignored: true } : item) };
+      const identities = await sessionBrowser.resolveProjects(scan.sessions.flatMap(item => item.projectPath ? [item.projectPath] : []), config.workspaces);
+      // Grouping metadata never changes the source folder or grants workspace access.
+      return { ...scan, sessions: scan.sessions.map(item => ({ ...item,
+        ...(item.projectPath ? { projectGroup: identities.get(sessionBrowserProject(item.projectPath)?.id ?? '') } : {}),
+        ...(observations.ignoredPath(item.projectPath) ? { ignored: true } : {}),
+      })) };
     },
 
     async previewImports(scanId, candidateIds, mode = 'imported') {
@@ -4309,7 +5191,8 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       const plan = preview.sessions.length
         ? previewImport(JSON.stringify(preview.sessions.map(entry => entry.session)), library)
         : { results: [], addCount: 0, updateCount: 0, skipCount: 0 };
-      return { sessions: preview.sessions, plan, diagnostics: preview.diagnostics };
+      const identities = await sessionBrowser.resolveProjects(preview.sessions.flatMap(entry => entry.session.workspace?.projectLocation ? [entry.session.workspace.projectLocation] : []), config.workspaces);
+      return { sessions: preview.sessions.map(entry => ({ ...entry, ...(entry.session.workspace?.projectLocation ? { projectGroup: identities.get(sessionBrowserProject(entry.session.workspace.projectLocation)?.id ?? '') } : {}) })), plan, diagnostics: preview.diagnostics };
     },
 
     async commitImports(scanId, candidateIds, mode = 'imported') {
@@ -4353,7 +5236,21 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     },
 
     listFiles: (workspaceId, dir) => inspectWorkspace(workspaceId, root => listFiles(root, dir)),
-    readFile: (workspaceId, file) => inspectWorkspace(workspaceId, root => readWorkspaceFile(root, file)),
+    readFile: (workspaceId, file) => inspectWorkspace(workspaceId, async primary => {
+      if (typeof file !== 'string' || !file.trim()) throw new InspectError('Choose a file to open.');
+      const workspace = findWorkspace(workspaceId), workspaces = structuredClone(config.workspaces);
+      const absolute = path.resolve(primary, file);
+      let selected: string | undefined;
+      // Preview only this workspace's own roots, even when tools can read another workspace.
+      for (const root of [workspace.projectLocation, ...(workspace.additionalProjectLocations ?? [])]) {
+        if (root && (isWithin(path.resolve(root), absolute) || isWithin(await realpath(root), absolute))) { selected = root; break; }
+      }
+      if (!selected) throw new WorkspacePathError('This file is outside the workspace’s registered project folders. Choose a file inside this workspace.');
+      const access = await createWorkspaceAccess({ workspaceId, workspaces, protectedRoots: [layout.root] });
+      await access.resolve(file, 'read');
+      // Retain the preview reader's own-root symlink, .git, size and binary-file checks.
+      return readWorkspaceFile(selected, file);
+    }),
     gitRepositories: workspaceId => inspectWorkspace(workspaceId, root => gitRepositories(root, { env })),
     gitStatus: (workspaceId, repositoryPath) => inspectWorkspace(workspaceId, root => gitStatus(root, { env }, repositoryPath)),
     gitDiff: (workspaceId, file, repositoryPath) => inspectWorkspace(workspaceId, root => gitDiff(root, file, { env }, repositoryPath)),
@@ -4395,10 +5292,10 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     inspectSkill: revisionId => withRegistry(() => skillRegistry.inspect(revisionId)),
     rescanSkill: revisionId => withRegistry(() => skillRegistry.rescan(revisionId)),
     importSkill: source => withRegistry(() => skillRegistry.import(source)),
-    skillMarketSearch: (query, refresh) => withRegistry(() => skillMarketplace.search(query, refresh)),
-    previewMarketSkill: input => withRegistry(() => skillMarketplace.preview(input)),
-    installMarketSkill: reviewId => withRegistry(() => skillMarketplace.install(reviewId)),
-    discardMarketSkillPreview: reviewId => withRegistry(() => skillMarketplace.discard(reviewId)),
+    skillMarketSearch: (query, refresh) => withRegistry(async () => { await recoveryDaemon.connect(); return skillMarketplace.search(query, refresh); }),
+    previewMarketSkill: input => withRegistry(async () => { await recoveryDaemon.connect(); return skillMarketplace.preview(input); }),
+    installMarketSkill: reviewId => withRegistry(async () => { await recoveryDaemon.connect(); return skillMarketplace.install(reviewId); }),
+    discardMarketSkillPreview: reviewId => withRegistry(async () => { await recoveryDaemon.connect(); return skillMarketplace.discard(reviewId); }),
     reviewSkill: input => withRegistry(() => skillRegistry.review(input)),
     approveSkill: input => withRegistry(() => skillRegistry.approve(input)),
     activateSkill: (revisionId, approvalId) => withRegistry(() => skillRegistry.activate(revisionId, approvalId)),
@@ -4427,16 +5324,25 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
 
     async setHookPrivacy(privacyOptions) {
       assertHostOpen();
+      const changingContent = privacyOptions?.labelsOnly !== undefined;
+      if (changingContent) observedPrivacyChanges++;
+      const stoppingLearning = changingContent ? learningSchedule.yieldForForeground() : Promise.resolve();
+      void stoppingLearning.catch(() => undefined);
       if (privacyOptions?.labelsOnly === true) observedCodex.setSuggestionsPrivacy(true);
       followupSuggestions.invalidatePrivacy();
       observedUserInput.invalidatePrivacy();
       observedCodexNativeQueue.invalidatePrivacy();
       try {
         await observations.setPrivacy(privacyOptions);
+        if (changingContent) {
+          await Promise.all(observations.summaries().map(source => observedMemory?.afterPersisted(source.id, observedMemoryHint(source.id))));
+          await stoppingLearning;
+        }
         if (privacyOptions?.labelsOnly === true) await continuityAccess.revoke();
       }
       catch (error) { throw userError(error instanceof Error ? error.message : 'Invalid privacy or dashboard setting.'); }
-      finally { observedCodexNativeQueue.invalidatePrivacy(); followupSuggestions.invalidatePrivacy(); observedCodex.setSuggestionsPrivacy(observations.labelsOnly()); }
+      finally { if (changingContent) observedPrivacyChanges--; observedCodexNativeQueue.invalidatePrivacy(); followupSuggestions.invalidatePrivacy(); observedCodex.setSuggestionsPrivacy(observations.labelsOnly()); }
+      if (changingContent) await Promise.all(observations.summaries().map(source => observedMemory?.afterPersisted(source.id, observedMemoryHint(source.id))));
       return host.hookIngest();
     },
 
@@ -4577,21 +5483,29 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       }),
     } satisfies Pick<Required<AgentHostApi>, 'knowledgeSettings' | 'setKnowledgeVaultRoot'>);
     // Note editing (W5 slice 2b): writes run in the knowledge sync queue; a memory import names a workspace of this host.
-    Object.assign(host, knowledgeEditHostMethods(new KnowledgeEditService(knowledge, { workspaces: () => config.workspaces.map(item => item.id) })));
+    Object.assign(host, knowledgeEditHostMethods(new KnowledgeEditService(knowledge, { workspaces: () => config.workspaces.filter(item => item.profileId === config.profile.id).map(item => item.id) })));
   }
 
   Object.assign(host, {
-    workspaceKnowledge: async (workspaceId, method, args) => {
+    workspaceKnowledge: async (workspaceId, method, args, expectedBinding) => {
       assertHostOpen();
-      const request = normalizeWorkspaceKnowledgeRequest(workspaceId, method, args);
-      const selected = findWorkspace(request.workspaceId);
+      const request = normalizeWorkspaceKnowledgeRequest(workspaceId, method, args, expectedBinding);
+      findWorkspace(request.workspaceId);
+      const assertBinding = (actual: WorkspaceKnowledgeBinding) => {
+        if (request.expectedBinding && (request.expectedBinding.profileId !== actual.profileId || request.expectedBinding.root !== actual.root))
+          throw userError('The workspace Knowledge vault changed. Refresh it before continuing; no operation was applied to the new vault.');
+      };
       if (request.method === 'setKnowledgeVaultRoot') {
         const root = normalizeKnowledgeVaultRoot(request.args[0]);
-        if (selected.profileId === config.profile.id) return host.setKnowledgeVaultRoot!(root);
         return withWorkspaceChange(async () => {
           const catalog = await vaultProfiles.list();
           const profile = catalog.profiles.find(item => item.id === findWorkspace(workspaceId).profileId);
           if (!profile) throw userError('This workspace vault profile no longer exists.');
+          assertBinding({ profileId: profile.id, root: profile.root });
+          if (profile.id === config.profile.id) {
+            await vaultProfiles.assertDefaultRoot(root ?? knowledgeVault.defaultRoot());
+            return knowledgeVault.set(root);
+          }
           await vaultProfiles.save({ id: profile.id, name: profile.name, vaultRoot: root,
             workspaceIds: profile.workspaceIds, minutesEnabled: profile.minutesEnabled,
             automaticLearning: profile.automaticLearning, expectedRevision: catalog.revision });
@@ -4600,9 +5514,10 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
         });
       }
       assertNativeBoundaryAvailable();
-      const releaseReader = reserveWorkspaceReader(workspaceId);
+      const releaseWorkspace = reserveWorkspaceReader(workspaceId);
       try {
         const target = await vaultProfiles.knowledgeTarget(workspaceId);
+        assertBinding(target);
         if (target.profileId === config.profile.id) {
           const action = host[request.method];
           if (typeof action !== 'function') throw userError('This host does not support this Knowledge action.');
@@ -4614,7 +5529,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
           obsidian: (await lstat(path.join(target.root, '.obsidian')).catch(() => undefined))?.isDirectory() ?? false, watch: 'off',
         } satisfies KnowledgeVaultSettings;
         return await workspaceKnowledge.call(target, request.method, request.args);
-      } finally { releaseReader(); }
+      } finally { releaseWorkspace(); if (!closing) learningSchedule.wake(); }
     },
   } satisfies Pick<Required<AgentHostApi>, 'workspaceKnowledge'>);
   refreshWorkspaceKnowledge = async workspaceId => {
@@ -4632,16 +5547,28 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     listVaultProfiles: () => { assertHostOpen(); return vaultProfiles.list(); },
     saveVaultProfile: (input: Parameters<VaultProfiles['save']>[0]) => withWorkspaceChange(async () => {
       assertHostOpen(); knowledgeVault.assertStable();
-      return vaultProfiles.save(input);
+      const result = await vaultProfiles.save(input);
+      await Promise.all(observations.summaries().map(source => observedMemory?.afterPersisted(source.id, observedMemoryHint(source.id))));
+      return result;
     }),
   } satisfies Pick<Required<AgentHostApi>, 'listVaultProfiles' | 'saveVaultProfile' | 'learningSchedule' | 'changeLearningSchedule'>);
+
+  observedMemory = new ObservedMemory({ backend: rustLearning, source: observedMemorySource,
+    list: async workspaceId => mapObservedWorkspaces(observations.summaries(), config.workspaces).filter(source => source.workspaceId === workspaceId).map(source => source.id),
+    onEpisode: scheduleObservedLearning,
+    onRevoked: scope => { void learningSchedule.yieldForForeground(scope.profileId).catch(() => undefined); },
+    onWorkChange: () => { if (!closing) learningSchedule.wake(); },
+    onIdle: () => { if (!closing) { learningSchedule.wake(); notifyIdleListeners(); } },
+  });
+  // Existing visible history establishes a watermark; enabling this feature never pays to replay a backlog.
+  await Promise.all(observations.summaries().map(source => observedMemory!.afterPersisted(source.id, observedMemoryHint(source.id))));
 
   let closePromise: Promise<void> | undefined;
   return {
     host,
     worktrees: worktreeApi,
     hooks: ingest,
-    isBusy: () => observedWorkspaceChange || continuityWork > 0 || learningSchedule.isBusy || persistence.isBusy || runs.size > 0 || workspaceContextReaders > 0 || nativeStatusRefresh !== undefined || nativeMemory.isBusy() || !!promptQueues?.isBusy,
+    isBusy: () => antigravityHandover.isBusy() || observedCliResume.isBusy() || Boolean(observedMemory?.isBusy()) || observedWorkspaceChange || continuityWork > 0 || learningSchedule.isBusy || persistence.isBusy || runs.size > 0 || workspaceContextReaders > 0 || nativeStatusRefresh !== undefined || nativeMemory.isBusy() || !!promptQueues?.isBusy,
     onIdle(listener) {
       if (closing) return () => undefined;
       idleListeners.add(listener);
@@ -4650,6 +5577,8 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     close() { return closePromise ??= (async () => {
       closing = true;
       const learningClosed = learningSchedule.close();
+      const observedMemoryClosed = observedMemory?.close();
+      void observedMemoryClosed?.catch(() => undefined);
       const continuityClosed = continuity.close();
       void continuityClosed.catch(() => undefined);
       observedControls.close();
@@ -4666,6 +5595,8 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       vaultWatcher?.stop();
       const userInputClosed = observedUserInput.close();
       await observedCodexPermissions.close();
+      await antigravityHandover.close();
+      await observedCliResume.close();
       await ingest.close();
       let codexCloseError: unknown;
       try { await observedCodexNativeQueue.close(); } catch (error) { codexCloseError = error; }
@@ -4676,6 +5607,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       try { await observedCodex.close(); } catch (error) { codexCloseError = error; }
       await userInputClosed;
       await observations.close();
+      await observedMemoryClosed;
       let graceTimer: ReturnType<typeof setTimeout> | undefined;
       try {
         await Promise.race([Promise.all([...runs.values()].map(run => run.done)), new Promise(resolve => { graceTimer = setTimeout(resolve, 5_000); })]);

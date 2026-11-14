@@ -1,7 +1,8 @@
 //! Skill registry dispatch (W3; ADRs 0023, 0025, 0026; gap-map decision 10) on the daemon's
 //! one profile and core store. The profile is fixed at start; the wire carries no profile id.
 //!
-//! - `skill.import` stages `<data>/profiles/<profile>/skill-imports/<path>` (the only allowed
+//! - `skill.import` stages `<data>/skills/imports/<path>` for the Unix default library
+//!   (nondefault CLI namespaces and non-Unix retain their legacy inbox; the only allowed
 //!   staging root; the resolved directory must stay inside it) and runs the installed
 //!   inspector. The binary uses pinned bundled SkillSpector where its artifact and
 //!   confinement requirements hold; missing or unverified scanners fail closed.
@@ -69,7 +70,7 @@ pub const CAPABILITIES: [Op; 14] = [
 pub const LIST_DEFAULT_LIMIT: u64 = 50;
 /// A `skill.list` page stops growing past this many JSON bytes (frames are at most 1 MiB).
 pub const LIST_BYTE_BUDGET: usize = 768 * 1024;
-/// Folder below the profile directory that `skill.import` reads packages from.
+/// Legacy inbox name for explicit nondefault/compatibility namespaces.
 pub const IMPORT_INBOX: &str = "skill-imports";
 const MAX_CONSENT_INPUTS: usize = 8;
 
@@ -123,10 +124,7 @@ impl Skills {
 
     /// The only directory `skill.import` reads from.
     pub fn import_inbox(&self) -> PathBuf {
-        self.data_dir
-            .join("profiles")
-            .join(self.profile.as_str())
-            .join(IMPORT_INBOX)
+        extalia_core::skills::storage::inbox(&self.data_dir, &self.profile)
     }
 
     /// Daemon-internal registration of a built-in skill shipped with the app (gap-map
@@ -822,6 +820,7 @@ fn summary_value(summary: &RevisionSummary) -> Value {
         "packageId": revision.package_id,
         "revisionId": revision.revision_id,
         "origin": summary.origin,
+        "marketplaceSource": summary.marketplace_source,
         "version": revision.version,
         "treeSha256": revision.tree_sha256,
         "skillMdSha256": revision.skill_md_sha256,
@@ -835,6 +834,9 @@ fn summary_value(summary: &RevisionSummary) -> Value {
         "updatedAt": summary.updated_at,
     });
     put_opt(&mut value, "stateReason", revision.state_reason.clone());
+    if let Some(approval_id) = summary.activation_approval_id {
+        value["activationApprovalId"] = approval_id.into();
+    }
     value
 }
 
@@ -843,6 +845,7 @@ fn builtin_value(skill: &BuiltinSkill) -> Value {
         "packageId": skill.package_id,
         "revisionId": skill.revision_id,
         "origin": BUILTIN_ORIGIN,
+        "marketplaceSource": false,
         "version": skill.version,
         "treeSha256": skill.tree.sha256,
         "skillMdSha256": skill.skill_md_sha256,

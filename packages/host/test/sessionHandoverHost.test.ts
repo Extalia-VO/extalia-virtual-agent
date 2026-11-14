@@ -94,6 +94,22 @@ describe('actual host cross-model and observed handover', () => {
     expect((await f.host.readContinuity!(session.id, { snapshotId: snapshot.id })).entries[0]!.text).toContain('ORIGINAL-OBJECTIVE');
     expect(continuity.snapshots.every(source => source.entries < 10)).toBe(true); // Generated capsules do not recursively become evidence.
   });
+  it.each([undefined, 'reviewed-model'])('keeps the reviewed Native target over bound profile defaults (model=%s)', async model => {
+    const f = await fixture();
+    await f.host.saveConnection({ id: f.connections[0]!.id, name: 'Anthropic preset', preset: 'custom', api: 'anthropic-messages', baseUrl: 'https://example.com', model: 'preset-model', credential: { kind: 'none' }, features: { memory: 'off', skills: 'off' } });
+    const profile = await f.host.saveOperatingProfile!({ name: 'Preset routing', personality: 'Shared preset style', defaults: { connectionId: f.connections[0]!.id, model: 'preset-model', effort: 'high', lead: { soul: 'Preset lead style' } } });
+    await f.host.setWorkspaceOperatingProfile!(f.workspace.id, { profileId: profile.id });
+    const observed = await f.observed(), target = f.connections[1]!;
+    const preview = await f.host.previewHandover!(observed.id, { target: { kind: 'native', connectionId: target.id, ...(model ? { model } : {}) }, notes });
+    const receipt = await f.host.applyHandover!(observed.id, { reviewId: preview.reviewId, operationId: model ? 'profile-explicit-model' : 'profile-default-model' });
+    expect(receipt.state).toBe('native-ready');
+    const id = receipt.targetSessionId!, record = await f.store.get(id);
+    expect(record?.connectionId).toBe(target.id); expect(record?.options?.model).toBe(model ?? target.model); expect(record?.options?.effort).toBeUndefined();
+    expect((await f.host.getSessionOperatingProfile!(id))?.id).toBe(profile.id);
+    await f.host.sendPrompt(id, 'Continue the reviewed task.'); await idle(f.runtime);
+    expect(f.requests.at(-1)?.model).toBe(model ?? target.model);
+    expect(JSON.stringify(f.requests.at(-1)?.messages)).toContain('Preset lead style');
+  });
   it('adopts observed context once, then aliases both applications to the same durable canonical work', async () => {
     const f = await fixture(), observed = await f.observed();
     const preview = await f.host.previewHandover!(observed.id, { target: { kind: 'native', connectionId: f.connections[1]!.id }, notes });
@@ -167,5 +183,85 @@ describe('actual host cross-model and observed handover', () => {
     expect(journal).not.toContain('ORIGINAL-OBJECTIVE'); expect(journal).not.toContain(session.id);
     await f.restart();
     expect((await f.host.getState()).sessions).toEqual([]);
+  });
+
+  it('hands over anytime between unregistered Codex and Antigravity sessions while keeping isolated workspaces fenced', async () => {
+    const f = await fixture();
+    const unregCodex = path.join(f.root, 'unreg-codex');
+    const unregAgy = path.join(f.root, 'unreg-agy');
+    const isoDir = path.join(f.root, 'isolated-proj');
+    await Promise.all([mkdir(unregCodex), mkdir(unregAgy), mkdir(isoDir)]);
+    const isoState = await f.host.saveWorkspace({
+      name: 'Isolated project', projectLocation: isoDir, connectionId: f.connections[0]!.id,
+      crossWorkspaceAccess: 'isolated', permissions: { fileWrite: 'ask', commands: 'ask' },
+    });
+    const isolatedWs = isoState.workspaces.find(w => w.name === 'Isolated project')!;
+
+    await f.runtime.hooks!.listen();
+    const codexNativeId = '22222222-2222-4222-8222-222222222222';
+    const agyNativeId = '33333333-3333-4333-8333-333333333333';
+    const isoNativeId = '44444444-4444-4444-8444-444444444444';
+    await handleMcpJsonRpc({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: {
+      name: 'report_intent', arguments: { session_id: codexNativeId, cwd: unregCodex, intent: 'Unregistered Codex running task' },
+    } }, { extaliaHome: f.data, app: 'codex' });
+    await handleMcpJsonRpc({ jsonrpc: '2.0', id: 2, method: 'tools/call', params: {
+      name: 'report_intent', arguments: { session_id: agyNativeId, cwd: unregAgy, intent: 'Unregistered Antigravity running task' },
+    } }, { extaliaHome: f.data, app: 'antigravity' });
+    await handleMcpJsonRpc({ jsonrpc: '2.0', id: 3, method: 'tools/call', params: {
+      name: 'report_intent', arguments: { session_id: isoNativeId, cwd: isoDir, intent: 'Isolated task' },
+    } }, { extaliaHome: f.data, app: 'codex' });
+
+    await vi.waitFor(async () => {
+      const s = (await f.host.getState()).sessions;
+      expect(s.some(item => item.observation?.nativeSessionId === codexNativeId)).toBe(true);
+      expect(s.some(item => item.observation?.nativeSessionId === agyNativeId)).toBe(true);
+      expect(s.some(item => item.observation?.nativeSessionId === isoNativeId)).toBe(true);
+    });
+    const sessions = (await f.host.getState()).sessions;
+    const codexSession = sessions.find(item => item.observation?.nativeSessionId === codexNativeId)!;
+    const agySession = sessions.find(item => item.observation?.nativeSessionId === agyNativeId)!;
+    const isoSession = sessions.find(item => item.observation?.nativeSessionId === isoNativeId)!;
+    expect(codexSession.workspaceId).toBe('');
+    expect(agySession.workspaceId).toBe('');
+    expect(isoSession.workspaceId).toBe(isolatedWs.id);
+
+    const agyInbox = await f.host.createObservedInbox!(agySession.id);
+    const agyStatus = await f.host.observedControlStatus!(agySession.id);
+    const agyCapability = agyStatus.routes.find(r => r.route === 'cooperative-inbox')!.capabilities.find(c => c.available)!.capabilityId!;
+
+    const codexContinuity = await f.host.sessionContinuity!(codexSession.id);
+    expect(codexContinuity.canonicalId).toBeTruthy();
+    expect(codexContinuity.snapshots.some(s => s.sessionId === codexSession.id)).toBe(true);
+
+    const harnesses = await f.host.handoverHarnesses!(codexSession.id);
+    expect(harnesses.harnesses.find(h => h.id === 'antigravity')?.sessionIds).toContain(agySession.id);
+    expect(harnesses.harnesses.flatMap(h => h.sessionIds)).not.toContain(isoSession.id);
+
+    const preview = await f.host.previewHandover!(codexSession.id, {
+      target: { kind: 'observed', sessionId: agySession.id, capabilityId: agyCapability }, notes,
+    });
+    const receipt = await f.host.applyHandover!(codexSession.id, { reviewId: preview.reviewId, operationId: 'unreg-codex-to-agy' });
+    expect(receipt.state).toBe('queued');
+    const delivered = await pollObservedInbox({ url: agyInbox.url!, token: agyInbox.token!, waitMs: 0 });
+    expect(delivered.status).toBe('message');
+
+    // Reverse direction (Antigravity -> Codex) also works anytime, while isolated target is rejected.
+    const codexInbox = await f.host.createObservedInbox!(codexSession.id);
+    const codexStatus = await f.host.observedControlStatus!(codexSession.id);
+    const codexCapability = codexStatus.routes.find(r => r.route === 'cooperative-inbox')!.capabilities.find(c => c.available)!.capabilityId!;
+    const agyHarnesses = await f.host.handoverHarnesses!(agySession.id);
+    expect(agyHarnesses.harnesses.find(h => h.id === 'codex')?.sessionIds).toContain(codexSession.id);
+    const reversePreview = await f.host.previewHandover!(agySession.id, {
+      target: { kind: 'observed', sessionId: codexSession.id, capabilityId: codexCapability }, notes,
+    });
+    const reverseReceipt = await f.host.applyHandover!(agySession.id, { reviewId: reversePreview.reviewId, operationId: 'unreg-agy-to-codex' });
+    expect(reverseReceipt.state).toBe('queued');
+    expect((await pollObservedInbox({ url: codexInbox.url!, token: codexInbox.token!, waitMs: 0 })).status).toBe('message');
+    await f.host.createObservedInbox!(isoSession.id);
+    const isoStatus = await f.host.observedControlStatus!(isoSession.id);
+    const isoCapability = isoStatus.routes.find(r => r.route === 'cooperative-inbox')!.capabilities.find(c => c.available)!.capabilityId!;
+    await expect(f.host.previewHandover!(agySession.id, {
+      target: { kind: 'observed', sessionId: isoSession.id, capabilityId: isoCapability }, notes,
+    })).rejects.toThrow(/workspace/i);
   });
 });

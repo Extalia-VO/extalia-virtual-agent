@@ -5,7 +5,7 @@
  * - Exists only with the native core flag on (`nativeCore: 'rust'`); otherwise the report is
  *   `mode: 'legacy'` and W0 consent is review input only, never agent skill authority.
  * - Imports pass a user-selected source only to the bounded Rust staging port. Rust copies the folder (or a
- *   workspace's `.extalia/skills/<name>`) into `<data>/profiles/<profile>/skill-imports/<unique>`,
+ *   workspace's `.extalia/skills/<name>`) into `<data>/skills/imports/<unique>` (Unix default; explicit nondefault/Windows keep their legacy namespace),
  *   refusing what the daemon would refuse, and sends only `<unique>` (ADR 0025 note, slice 2).
  * - Decisions (review, approve) carry the digests the user saw and the local user principal;
  *   the daemon checks both again. The host never decides a lifecycle step itself.
@@ -40,8 +40,8 @@ import { RustLearningBackend } from './rustLearning.js';
 export const SKILL_REGISTRY_OPS = [
   'skill.import', 'skill.list', 'skill.inspect', 'skill.approve', 'skill.activate', 'skill.deactivate', 'skill.rollback', 'skill.revoke', 'skill.read',
 ] as const satisfies readonly DaemonOp[];
-/** Folder below the profile directory the daemon imports from (`IMPORT_INBOX` in the daemon). */
-export const SKILL_IMPORT_INBOX = 'skill-imports';
+/** Default-library inbox basename; explicit nondefault namespaces use skillStoragePaths. */
+export const SKILL_IMPORT_INBOX = process.platform === 'win32' ? 'skill-imports' : 'imports';
 /** A real scanner runs outside the store lock; unrelated daemon calls keep their short deadline. */
 export const SKILL_SCAN_DEADLINE_MS = 90_000;
 /** Verification may stream the bundled scanner files; this does not widen mission/tool deadlines. */
@@ -502,7 +502,8 @@ export class SkillRegistry {
     return { skills, incomplete };
   }
 
-  /** Fresh registry approval is workspace authority; scanner evidence and W0 consent are separate. */
+  /** Fresh active-pointer authority: unscoped approvals are shared across workspaces.
+   * Explicitly scoped approvals remain scoped; scanner evidence and W0 consent are separate. */
   private async approvedForWorkspace(client: DaemonClient, revision: SkillRevisionSummary, workspaceId: string): Promise<boolean> {
     if (!SKILL_WORKSPACE_ID_PATTERN.test(workspaceId)) return false;
     try {
@@ -512,10 +513,14 @@ export class SkillRegistry {
       if (current.revisionId !== revision.revisionId || current.packageId !== revision.packageId || current.origin !== revision.origin
         || !current.active || current.state !== 'active' || current.treeSha256 !== revision.treeSha256
         || current.skillMdSha256 !== revision.skillMdSha256 || current.permissionDigest !== revision.permissionDigest) return false;
-      const now = Date.now();
-      return details.approvals.some(approval => approval.workspaceId === workspaceId && approval.status === 'granted'
-        && approval.revokedAt === undefined && approval.permissionDigest === current.permissionDigest
-        && Number.isFinite(Date.parse(approval.expiresAt)) && Date.parse(approval.expiresAt) > now);
+      // An older peer without the pointer's exact approval cannot establish
+      // applicability. An unrelated earlier global grant must not widen it.
+      if (!Number.isSafeInteger(current.activationApprovalId) || current.activationApprovalId! <= 0) return false;
+      // Core expiry bounds first activation. This consumed active grant remains
+      // authority until revocation; fresh skill.read still verifies scanner/bytes.
+      return details.approvals.some(approval => approval.approvalId === current.activationApprovalId
+        && (approval.workspaceId === undefined || approval.workspaceId === workspaceId)
+        && approval.status === 'granted' && approval.revokedAt === undefined && approval.permissionDigest === current.permissionDigest);
     } catch {
       return false;
     }

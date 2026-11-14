@@ -11,6 +11,9 @@
 //! names a user-chosen vault folder instead of `<dir>/vaults/<profile>`; it must be absolute
 //! here and is validated on use (`knowledge.rs`): an unusable root makes the vault
 //! unavailable, never stops the daemon and never falls back to the default.
+//! `--knowledge-profile-alias` accepts one trusted host semantic ID for the canonical
+//! default index only. It preserves the default disk layout and rebuilds cached ACL
+//! decisions when introduced, changed or removed; it is never a wire request option.
 //! Knowledge requests run on their own thread, in arrival order (`session.rs`), so a long
 //! vault sync never holds back mission, permission or skill requests; answers are
 //! correlated by request id and may leave out of request order.
@@ -38,16 +41,17 @@ use extalia_daemon::skills::Skills;
 
 #[cfg(not(feature = "provider-experiments"))]
 const USAGE: &str = "usage: extalia-daemon [--data-dir <absolute directory>] [--profile <profile id>] \
-     [--vault-root <absolute directory>] | extalia-daemon --provider-models | extalia-daemon --skill-market";
+     [--vault-root <absolute directory>] [--knowledge-profile-alias <id>] | extalia-daemon --provider-models | extalia-daemon --skill-market | extalia-daemon --learning-source";
 #[cfg(feature = "provider-experiments")]
 const USAGE: &str = "usage: extalia-daemon [--data-dir <absolute directory>] [--profile <profile id>] \
-     [--vault-root <absolute directory>] | extalia-daemon --provider-models | extalia-daemon --skill-market | extalia-daemon --provider-complete | extalia-daemon --provider-worker <UUID>";
+     [--vault-root <absolute directory>] [--knowledge-profile-alias <id>] | extalia-daemon --provider-models | extalia-daemon --skill-market | extalia-daemon --learning-source | extalia-daemon --provider-complete | extalia-daemon --provider-worker <UUID>";
 
 #[derive(Debug, Default)]
 struct Args {
     data_dir: Option<PathBuf>,
     profile: Option<String>,
     vault_root: Option<PathBuf>,
+    knowledge_profile_alias: Option<String>,
 }
 
 fn parse_args(mut args: impl Iterator<Item = OsString>) -> Result<Args, ()> {
@@ -59,7 +63,7 @@ fn parse_args(mut args: impl Iterator<Item = OsString>) -> Result<Args, ()> {
             _ => (text, None),
         };
         let value = match name {
-            "--data-dir" | "--profile" | "--vault-root" => {
+            "--data-dir" | "--profile" | "--vault-root" | "--knowledge-profile-alias" => {
                 value.or_else(|| args.next()).ok_or(())?
             }
             _ => return Err(()),
@@ -76,6 +80,15 @@ fn parse_args(mut args: impl Iterator<Item = OsString>) -> Result<Args, ()> {
                 return Err(());
             }
             parsed.data_dir = Some(path);
+        } else if name == "--knowledge-profile-alias" {
+            let alias = value.into_string().map_err(drop)?;
+            if parsed.knowledge_profile_alias.is_some()
+                || !is_profile_id(&alias)
+                || alias == DEFAULT_PROFILE
+            {
+                return Err(());
+            }
+            parsed.knowledge_profile_alias = Some(alias);
         } else {
             let profile = value.into_string().map_err(drop)?;
             if parsed.profile.is_some() || !is_profile_id(&profile) {
@@ -85,6 +98,12 @@ fn parse_args(mut args: impl Iterator<Item = OsString>) -> Result<Args, ()> {
         }
     }
     if parsed.vault_root.is_some() && parsed.data_dir.is_none() {
+        return Err(());
+    }
+    if parsed.knowledge_profile_alias.is_some()
+        && (parsed.data_dir.is_none()
+            || parsed.profile.as_deref().unwrap_or(DEFAULT_PROFILE) != DEFAULT_PROFILE)
+    {
         return Err(());
     }
     Ok(parsed)
@@ -112,6 +131,15 @@ fn open(dir: &std::path::Path, profile: String) -> Result<(Missions, Skills), Ex
             return Err(ExitCode::from(3));
         }
     }
+    let skill_profile =
+        extalia_core::skills::ProfileId::parse(&profile).ok_or(ExitCode::from(3))?;
+    // Before builtin verification: relocation never turns old valid objects into integrity failures.
+    drop(
+        extalia_core::skills::storage::initialize(dir, &skill_profile).map_err(|error| {
+            eprintln!("extalia-daemon: skill storage initialization failed ({error})");
+            ExitCode::from(3)
+        })?,
+    );
     let mut skills = Skills::new(dir, &profile);
     match skills.restore_builtins(&mut store) {
         Ok(report) => {
@@ -184,12 +212,19 @@ fn main() -> ExitCode {
         }
         return ExitCode::from(extalia_daemon::skill_market::run_stdio());
     }
+    if arguments.iter().any(|arg| arg == "--learning-source") {
+        if arguments.len() != 1 {
+            return ExitCode::from(2);
+        }
+        return ExitCode::from(extalia_daemon::learning_source::run_stdio());
+    }
     let Ok(args) = parse_args(arguments.into_iter()) else {
         eprintln!("{USAGE}");
         return ExitCode::from(2);
     };
     let profile = args.profile.unwrap_or_else(|| DEFAULT_PROFILE.to_owned());
     let vault_root = args.vault_root;
+    let knowledge_profile_alias = args.knowledge_profile_alias;
     let opened = args
         .data_dir
         .map(|dir| open(&dir, profile.clone()).map(|opened| (opened, dir)))
@@ -200,6 +235,10 @@ fn main() -> ExitCode {
             .with_skills(skills)
             .with_knowledge({
                 let knowledge = Knowledge::new(&dir, &profile);
+                let knowledge = match knowledge_profile_alias {
+                    Some(alias) => knowledge.with_default_profile_alias(&alias),
+                    None => knowledge,
+                };
                 match vault_root {
                     Some(root) => knowledge.with_vault_root(root),
                     None => knowledge,
@@ -230,5 +269,62 @@ fn main() -> ExitCode {
             eprintln!("extalia-daemon: stdio failed ({})", error.kind());
             ExitCode::from(1)
         }
+    }
+}
+
+#[cfg(test)]
+mod argument_tests {
+    use super::*;
+    #[test]
+    fn knowledge_alias_requires_a_valid_unique_id_and_default_storage() {
+        let parse = |args: &[&str]| parse_args(args.iter().map(OsString::from));
+        let root = std::env::temp_dir();
+        let root = root.to_str().unwrap();
+        assert!(
+            parse(&[
+                "--data-dir",
+                root,
+                "--knowledge-profile-alias",
+                "profile-main"
+            ])
+            .is_ok()
+        );
+        for args in [
+            vec!["--knowledge-profile-alias", "profile-main"],
+            vec![
+                "--data-dir",
+                root,
+                "--profile",
+                "other",
+                "--knowledge-profile-alias",
+                "profile-main",
+            ],
+            vec!["--data-dir", root, "--knowledge-profile-alias", "default"],
+            vec![
+                "--data-dir",
+                root,
+                "--knowledge-profile-alias",
+                "../outside",
+            ],
+            vec![
+                "--data-dir",
+                root,
+                "--knowledge-profile-alias",
+                "profile-main",
+                "--knowledge-profile-alias",
+                "profile-next",
+            ],
+        ] {
+            assert!(parse(&args).is_err());
+        }
+        assert!(
+            parse(&[
+                "--data-dir",
+                root,
+                "--knowledge-profile-alias",
+                &"a".repeat(65)
+            ])
+            .is_err()
+        );
     }
 }

@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { open } from 'node:fs/promises';
 import path from 'node:path';
 import type { CodexUserInputEvidence } from '@extalia/importers';
-import type { ObservedCodexStatus, ObservedUserInputAnswer, ObservedUserInputRequest, ObservedUserInputStatus } from '@extalia/platform';
+import type { ObservedCodexStatus, ObservedUserInputAnswer, ObservedUserInputDeliveryRoute, ObservedUserInputRequest, ObservedUserInputStatus } from '@extalia/platform';
 import type { ObservedCodexService } from './observedCodexService.js';
 import type { ObservedCodexQueueService, ObservedCodexQueueTarget } from './observedCodexQueueService.js';
 import { isNotFound, writeJsonAtomic } from './jsonStore.js';
@@ -12,10 +12,10 @@ interface Options {
   target(id: string): ObservedCodexQueueTarget | undefined;
   evidence(id: string): CodexUserInputEvidence | undefined;
   labelsOnly(): boolean;
-  native: Pick<ObservedCodexService, 'status' | 'answer'>;
+  native: Pick<ObservedCodexService, 'status' | 'answer' | 'send'>;
   queue: Pick<ObservedCodexQueueService, 'status' | 'setEnabled' | 'send'>;
 }
-interface Receipt { id: string; state: 'queued' | 'unknown' }
+interface Receipt { id: string; state: 'queued' | 'submitted' | 'unknown'; route?: ObservedUserInputDeliveryRoute }
 interface Entry { request: ObservedUserInputRequest; callId?: string; nativeId?: string; connectionId?: string }
 const hash = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const text = (value: unknown, max: number): value is string => typeof value === 'string' && !!value.trim() && value.length <= max && !value.includes('\0');
@@ -23,7 +23,7 @@ const binding = (value: ObservedCodexQueueTarget | undefined) => value && hash([
 
 /** Aggregates exact native callbacks and async same-thread messages without claiming source consumption. */
 export class ObservedUserInputService {
-  private readonly receipts = new Map<string, Receipt['state']>();
+  private readonly receipts = new Map<string, Omit<Receipt, 'id'>>();
   private readonly busy = new Map<string, Promise<unknown>>();
   private writes: Promise<void> = Promise.resolve();
   private failed = false;
@@ -45,17 +45,17 @@ export class ObservedUserInputService {
       const read = await handle.read(bytes, 0, bytes.length, 0);
       if (read.bytesRead > 1024 * 1024) throw new Error('Invalid observed input receipts.');
       const value = JSON.parse(bytes.subarray(0, read.bytesRead).toString('utf8')) as { version: unknown; receipts: Receipt[] };
-      if (value.version !== 1 || !Array.isArray(value.receipts) || value.receipts.length > 4096) throw new Error('Invalid observed input receipts.');
+      if (value.version !== 1 && value.version !== 2 || !Array.isArray(value.receipts) || value.receipts.length > 4096) throw new Error('Invalid observed input receipts.');
       for (const item of value.receipts) {
-        if (!item || !/^[a-f0-9]{64}$/.test(item.id) || !['queued', 'unknown'].includes(item.state) || service.receipts.has(item.id)) throw new Error('Invalid observed input receipt.');
-        service.receipts.set(item.id, item.state);
+        if (!item || !/^[a-f0-9]{64}$/.test(item.id) || !(value.version === 1 ? ['queued', 'unknown'] : ['queued', 'submitted', 'unknown']).includes(item.state) || (item.route !== undefined && (value.version !== 2 || !['native-steer', 'native-start', 'queue'].includes(item.route))) || service.receipts.has(item.id)) throw new Error('Invalid observed input receipt.');
+        service.receipts.set(item.id, { state: item.state, ...(item.route ? { route: item.route } : {}) });
       }
     } catch { service.failed = true; }
     finally { await handle.close().catch(() => { service.failed = true; }); }
     return service;
   }
   private persist(): Promise<void> {
-    const pending = this.writes.then(() => writeJsonAtomic(this.file, { version: 1, receipts: [...this.receipts].map(([id, state]) => ({ id, state })) }, { mode: 0o600 }));
+    const pending = this.writes.then(() => writeJsonAtomic(this.file, { version: 2, receipts: [...this.receipts].map(([id, receipt]) => ({ id, ...receipt })) }, { mode: 0o600 }));
     this.writes = pending.catch(() => { this.failed = true; });
     return pending;
   }
@@ -69,6 +69,13 @@ export class ObservedUserInputService {
     return native.sessionId === id && native.state === 'connected' && text(native.connectionId, 200) && text(native.threadId, 200)
       ? hash([id, native.threadId, native.connectionId]) : undefined;
   }
+  private asyncRoute(id: string, native: ObservedCodexStatus): { route: Exclude<ObservedUserInputDeliveryRoute, 'native-answer'>; binding?: string } {
+    const source = this.options.target(id);
+    if (source?.watching && this.nativeBinding(id, native) && native.threadId === source.threadId && native.canSend && native.delivery !== 'unknown') {
+      return { route: native.activeTurnId ? 'native-steer' : 'native-start', binding: hash([native.connectionId, native.threadId, native.activeTurnId]) };
+    }
+    return { route: 'queue' };
+  }
   private entries(id: string, key: string | undefined, native: ObservedCodexStatus, answering = false): Entry[] {
     const entries: Entry[] = [];
     const nativeKey = this.nativeBinding(id, native);
@@ -76,7 +83,7 @@ export class ObservedUserInputService {
       if (!item.questions.length || item.questions.length > 10) continue;
       const questions = item.questions.map(question => ({ id: question.id, title: question.question, options: question.options.map(option => option.label), optionDescriptions: question.options.map(option => option.description), allowOther: question.isOther || question.options.length === 0, isSecret: question.isSecret }));
       const requestId = hash([nativeKey, 'native', item.id, item.turnId, item.itemId]);
-      entries.push({ nativeId: item.id, connectionId: native.connectionId, request: { id: requestId, revision: hash([requestId, questions, this.generation(id)]), origin: 'codex-native', identityVerified: true, state: item.state, questions,
+      entries.push({ nativeId: item.id, connectionId: native.connectionId, request: { id: requestId, revision: hash([requestId, questions, this.generation(id)]), origin: 'codex-native', deliveryRoute: 'native-answer', identityVerified: true, state: item.state, questions,
         canAnswer: native.canAnswer && item.state === 'pending' && (answering || !this.busy.has(id)) } });
     }
     if (!key) return entries;
@@ -87,8 +94,9 @@ export class ObservedUserInputService {
       if (!unresolved.length) continue;
       const requestId = hash([key, 'async', item.callId, item.questions]);
       const questions = unresolved.map(({ question, index }) => ({ id: hash([requestId, index]), title: question.title, options: question.options, allowOther: true, isSecret: false }));
-      const state = this.receipts.get(requestId) ?? 'pending';
-      entries.push({ callId: item.callId, request: { id: requestId, revision: hash([requestId, questions, this.generation(id), item.canAnswer, item.conflicted]), origin: 'codex-async', identityVerified: item.canAnswer && !item.conflicted, state, questions,
+      const receipt = this.receipts.get(requestId);
+      const state = receipt?.state ?? 'pending', transport = this.asyncRoute(id, native);
+      entries.push({ callId: item.callId, request: { id: requestId, revision: hash([requestId, questions, this.generation(id), item.canAnswer, item.conflicted, transport]), origin: 'codex-async', deliveryRoute: receipt ? receipt.route ?? 'queue' : transport.route, identityVerified: item.canAnswer && !item.conflicted, state, questions,
         canAnswer: item.canAnswer && state === 'pending' && !this.failed && (answering || !this.busy.has(id)), ...(item.askedAt ? { askedAt: item.askedAt } : {}) } });
     }
     return entries;
@@ -101,7 +109,7 @@ export class ObservedUserInputService {
     if (!this.active(id, privacy)) return unavailable();
     let native = await this.options.native.status(id);
     if (!this.active(id, privacy)) return unavailable(this.options.labelsOnly() ? 'private' : 'unavailable');
-    const queue = key && this.current(id, key, privacy)
+    const queue = key && this.current(id, key, privacy) && this.asyncRoute(id, native).route === 'queue'
       ? await this.options.queue.status(id).catch(() => ({ sessionId: id, enabled: false, canEnable: false, canQueue: false, busy: false, delivery: undefined }))
       : undefined;
     if (queue) native = await this.options.native.status(id);
@@ -109,7 +117,7 @@ export class ObservedUserInputService {
     const asyncKey = key && this.current(id, key, privacy) ? key : undefined;
     if (!asyncKey && !this.nativeBinding(id, native)) return unavailable();
     const requests = this.entries(id, asyncKey, native).map(entry => ({ ...entry.request,
-      canAnswer: entry.request.canAnswer && (entry.request.origin === 'codex-native' || queue !== undefined && (queue.enabled ? queue.canQueue : queue.canEnable === true) && queue.delivery !== 'unknown' && !queue.busy),
+      canAnswer: entry.request.canAnswer && (entry.request.origin === 'codex-native' || this.asyncRoute(id, native).route !== 'queue' || queue !== undefined && (queue.enabled ? queue.canQueue : queue.canEnable === true) && queue.delivery !== 'unknown' && !queue.busy),
     }));
     const priority = { pending: 0, unknown: 1, queued: 2, submitted: 3 };
     requests.reverse(); // Source order is authoritative when older rollouts omit timestamps.
@@ -152,21 +160,48 @@ export class ObservedUserInputService {
     });
     const message = `<send_user_message_question_reply>${JSON.stringify(answers)}</send_user_message_question_reply>`;
     if (message.length > 16_000 || Buffer.byteLength(message, 'utf8') > 16 * 1024) throw new Error('The combined answer is too long.');
-    let queue = await this.options.queue.status(id);
-    if (!asyncCurrent() || queue.delivery === 'unknown' || queue.busy || (!queue.enabled && queue.canEnable !== true)) throw new Error('Codex queue delivery is unavailable or uncertain.');
-    if (!queue.enabled) queue = await this.options.queue.setEnabled(id, true);
-    if (!queue.canQueue || !asyncCurrent()) throw new Error('Codex queue delivery is unavailable.');
-    const refreshed = this.entries(id, key, await this.options.native.status(id), true).find(item => item.request.id === entry.request.id);
-    if (!refreshed || refreshed.request.revision !== input.revision || refreshed.request.state !== 'pending' || !refreshed.request.canAnswer || !asyncCurrent()) throw new Error('The source input changed.');
-    // Contains no prompt, question, answer, thread id or path. Crash/restart never silently enables a retry.
-    this.receipts.set(entry.request.id, 'unknown');
+    const transport = this.asyncRoute(id, native);
+    const revalidate = async () => {
+      const currentNative = await this.options.native.status(id);
+      const refreshed = this.entries(id, key, currentNative, true).find(item => item.request.id === entry.request.id);
+      if (!asyncCurrent() || !refreshed || refreshed.request.revision !== input.revision || !refreshed.request.identityVerified
+        || hash(this.asyncRoute(id, currentNative)) !== hash(transport)) throw new Error('The source input changed before submission.');
+      return currentNative;
+    };
+    if (transport.route === 'queue') {
+      let queue = await this.options.queue.status(id);
+      if (!asyncCurrent() || queue.delivery === 'unknown' || queue.busy || (!queue.enabled && queue.canEnable !== true)) throw new Error('Codex queue delivery is unavailable or uncertain.');
+      if (!queue.enabled) queue = await this.options.queue.setEnabled(id, true);
+      if (!queue.canQueue || !asyncCurrent()) throw new Error('Codex queue delivery is unavailable.');
+    }
+    await revalidate();
+    // Contains no question, answer, thread or path. Crash/restart never silently enables a retry.
+    this.receipts.set(entry.request.id, { state: 'unknown', route: transport.route });
     await this.persist();
-    const admitted = this.entries(id, key, native, true).find(item => item.request.id === entry.request.id);
-    if (!asyncCurrent() || admitted?.request.revision !== input.revision) throw new Error('The observed input changed before submission.');
+    let admitted: ObservedCodexStatus;
+    try { admitted = await revalidate(); }
+    catch (error) {
+      // No sender has been invoked. Confirm rollback before allowing an explicit retry.
+      this.receipts.delete(entry.request.id);
+      try { await this.persist(); }
+      catch { this.failed = true; this.receipts.set(entry.request.id, { state: 'unknown', route: transport.route }); }
+      throw error;
+    }
     try {
-      const receipt = await this.options.queue.send(id, { text: message });
-      if (asyncCurrent() && receipt.delivery === 'queued') { this.receipts.set(entry.request.id, 'queued'); await this.persist(); }
-    } catch { /* Delivery may have happened. The write-ahead unknown receipt remains authoritative. */ }
+      if (transport.route === 'queue') {
+        const receipt = await this.options.queue.send(id, { text: message });
+        if (asyncCurrent() && receipt.delivery === 'queued') {
+          this.receipts.set(entry.request.id, { state: 'queued', route: transport.route }); await this.persist();
+        }
+      } else {
+        const receipt = await this.options.native.send(id, { connectionId: admitted.connectionId!, text: message,
+          ...(admitted.activeTurnId ? { activeTurnId: admitted.activeTurnId } : {}) });
+        if (asyncCurrent() && this.nativeBinding(id, receipt) && receipt.connectionId === admitted.connectionId && receipt.threadId === admitted.threadId
+          && (receipt.delivery === 'submitted' || receipt.delivery === 'resolved')) {
+          this.receipts.set(entry.request.id, { state: 'submitted', route: transport.route }); await this.persist();
+        }
+      }
+    } catch { /* Delivery may have happened. Never fall back to the queue or silently resend. */ }
   }
   invalidatePrivacy(): void { ++this.privacy; }
   async drop(id: string): Promise<void> { this.blocked.add(id); this.generations.set(id, (this.generations.get(id) ?? 0) + 1); await this.busy.get(id)?.catch(() => undefined); }

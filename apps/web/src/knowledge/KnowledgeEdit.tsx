@@ -150,6 +150,7 @@ export interface NoteEditorProps {
   onText: (text: string) => void;
   saving: boolean;
   error?: string | undefined;
+  blockedReason?: string | undefined;
   confirmDiscard: boolean;
   onSave: () => void;
   /** Cancel or Esc: closes a clean draft, asks first for a dirty one. */
@@ -174,7 +175,8 @@ export function NoteEditorView(props: NoteEditorProps) {
     if (!action) return;
     event.preventDefault();
     event.stopPropagation();
-    if (action === 'save') { if (!saving) onSave(); return; }
+    if (saving) return;
+    if (action === 'save') { if (!props.blockedReason && !confirmDiscard) onSave(); return; }
     if (confirmDiscard) onKeepEditing(); else onCancel();
   };
   const name = draft.path.split('/').pop()!.replace(/\.md$/i, '');
@@ -189,7 +191,8 @@ export function NoteEditorView(props: NoteEditorProps) {
         {dirty && <span className="badge warn" data-dirty="true">{e.unsaved}</span>}
       </div>
       <p className="muted small">{isManagedText(draft.text) ? e.managedHint : e.notManagedHint}</p>
-      {conflict && <ConflictPanelView t={t} conflict={conflict} busy={props.conflictBusy ?? false} onOpenCopy={props.onOpenCopy} onCompare={props.onCompare} onReload={props.onReload} />}
+      {props.blockedReason && <p className="note" role="alert"><Icon name="alert" />{props.blockedReason}</p>}
+      {conflict && !props.blockedReason && <ConflictPanelView t={t} conflict={conflict} busy={props.conflictBusy ?? false} onOpenCopy={props.onOpenCopy} onCompare={props.onCompare} onReload={props.onReload} />}
       <div className="segmented knowledge-editor-mode" role="group" aria-label={e.editor}>
         <button type="button" className="chip-button" aria-pressed={!preview} onClick={() => onPreview(false)}>{e.write}</button>
         <button type="button" className="chip-button" aria-pressed={preview} onClick={() => onPreview(true)}>{e.preview}</button>
@@ -199,7 +202,7 @@ export function NoteEditorView(props: NoteEditorProps) {
         : (
           <>
             <label className="visually-hidden" htmlFor={textId}>{e.editor}</label>
-            <textarea id={textId} className="knowledge-editor-text" value={draft.text} spellCheck={false} autoFocus aria-describedby={keysId}
+            <textarea id={textId} className="knowledge-editor-text" value={draft.text} readOnly={saving || Boolean(props.blockedReason)} spellCheck={false} autoFocus aria-describedby={keysId}
               onChange={event => onText(event.target.value)} />
           </>
         )}
@@ -208,13 +211,13 @@ export function NoteEditorView(props: NoteEditorProps) {
         <div className="confirm" role="alertdialog" aria-label={e.discardTitle}>
           <p>{e.discardTitle}</p>
           <div className="row-actions">
-            <button type="button" className="button small danger" onClick={onDiscard}>{e.discard}</button>
-            <button type="button" className="button small" autoFocus onClick={onKeepEditing}>{e.keepEditing}</button>
+            <button type="button" className="button small danger" disabled={saving} onClick={onDiscard}>{e.discard}</button>
+            <button type="button" className="button small" autoFocus disabled={saving} onClick={onKeepEditing}>{e.keepEditing}</button>
           </div>
         </div>
       ) : (
         <div className="row-actions knowledge-editor-actions">
-          <button type="button" className="button primary small" disabled={saving} onClick={onSave}><Icon name="check" />{saving ? e.saving : e.save}</button>
+          <button type="button" className="button primary small" disabled={saving || Boolean(props.blockedReason)} onClick={onSave}><Icon name="check" />{saving ? e.saving : e.save}</button>
           <button type="button" className="button small" disabled={saving} onClick={onCancel}>{e.cancel}</button>
           <span id={keysId} className="muted small">{e.keys}</span>
         </div>
@@ -428,6 +431,10 @@ export interface KnowledgeEditingOptions {
   /** Open a note by node id (the page's selection). */
   open: (nodeId: string) => void;
   close: () => void;
+  blockedReason?: string | undefined;
+  resetScope?: (() => void) | undefined;
+  workspaceIds?: readonly string[] | undefined;
+  readBlocked?: boolean | undefined;
 }
 
 type Toast = { id: number; text: string };
@@ -436,7 +443,7 @@ type Toast = { id: number; text: string };
  * The page's editing state. Returns the slots and the page's `onOpen`/`onClose`, which ask before an
  * unsaved draft is left.
  */
-export function useKnowledgeEditing({ t, language, agents, status, onStatus, note, open, close }: KnowledgeEditingOptions): KnowledgeEditSlots & { support: EditSupport; onOpen: (nodeId: string) => void; onClose: () => void } {
+export function useKnowledgeEditing({ t, language, agents, status, onStatus, note, open, close, blockedReason, resetScope, workspaceIds, readBlocked }: KnowledgeEditingOptions): KnowledgeEditSlots & { support: EditSupport; onOpen: (nodeId: string) => void; onClose: () => void; onResetScope(): void; scopeLocked: boolean } {
   const e = t.knowledge.edit;
   const support = editSupport(agents, status.value);
   const api = agents as AgentHostApi & KnowledgeApi & KnowledgeEditApi & MemoryImportApi;
@@ -451,7 +458,7 @@ export function useKnowledgeEditing({ t, language, agents, status, onStatus, not
   const [saving, setSaving] = useState(false);
   const [editError, setEditError] = useState<string>();
   const [confirmDiscard, setConfirmDiscard] = useState(false);
-  const [pending, setPending] = useState<{ action: 'open'; nodeId: string } | { action: 'close' } | null>(null);
+  const [pending, setPending] = useState<{ action: 'open'; nodeId: string } | { action: 'close' } | { action: 'reset' } | null>(null);
   const [conflict, setConflict] = useState<ConflictState | null>(null);
   const [conflictBusy, setConflictBusy] = useState(false);
   const [opening, setOpening] = useState(false);
@@ -466,10 +473,13 @@ export function useKnowledgeEditing({ t, language, agents, status, onStatus, not
   const [workspaceId, setWorkspaceId] = useState('');
   const [importPreview, setImportPreview] = useState<KnowledgeMemoryImport | null>(null);
   const [importDone, setImportDone] = useState<KnowledgeMemoryImport | null>(null);
+  const [importSource, setImportSource] = useState<string>();
   const [importBusy, setImportBusy] = useState<'preview' | 'import' | null>(null);
   const [importError, setImportError] = useState<string>();
   const history = useLoad(support.notes && historyOpen && path ? `${generation}\n${path}` : null, version, () => api.knowledgeHistory(path!));
-  const workspaces = useLoad(importOpen ? 'workspaces' : null, 0, async () => (await agents.getState()).workspaces.map(item => ({ id: item.id, name: item.name })));
+  const workspaces = useLoad(importOpen ? `workspaces:${JSON.stringify(workspaceIds ?? null)}` : null, 0, async () => (await agents.getState()).workspaces
+    .filter(item => !workspaceIds || workspaceIds.includes(item.id)).map(item => ({ id: item.id, name: item.name })));
+  const importTarget = workspaces.value?.find(item => item.id === workspaceId)?.id ?? workspaces.value?.[0]?.id;
 
   useEffect(() => {
     if (!toast) return;
@@ -487,14 +497,15 @@ export function useKnowledgeEditing({ t, language, agents, status, onStatus, not
     setDraft(null); setConflict(null); setEditError(undefined); setConfirmDiscard(false); setPreview(false); setPending(null);
   };
   /** Leave the draft, asking first when it has unsaved changes. */
-  const leave = (next: { action: 'open'; nodeId: string } | { action: 'close' }) => {
+  const leave = (next: { action: 'open'; nodeId: string } | { action: 'close' } | { action: 'reset' }) => {
+    if (saving || rollbackBusy || importBusy || conflictBusy) return;
     if (draft && draftDirty(draft)) { setPending(next); setConfirmDiscard(true); return; }
     closeEditor();
-    if (next.action === 'open') open(next.nodeId); else close();
+    if (next.action === 'open') open(next.nodeId); else if (next.action === 'reset') resetScope?.(); else close();
   };
 
   const startEdit = async () => {
-    if (!path) return;
+    if (!path || blockedReason) return;
     setOpening(true); setEditError(undefined); setNewForm(null);
     try {
       const fresh = await api.readKnowledgeNote(path);
@@ -506,7 +517,7 @@ export function useKnowledgeEditing({ t, language, agents, status, onStatus, not
   };
 
   const save = async () => {
-    if (!draft || saving) return;
+    if (!draft || saving || blockedReason) return;
     setSaving(true); setEditError(undefined);
     try {
       const result = await saveDraft(api, draft);
@@ -527,6 +538,7 @@ export function useKnowledgeEditing({ t, language, agents, status, onStatus, not
   };
 
   const compare = async (show: boolean) => {
+    if (blockedReason) return;
     if (!conflict) return;
     if (!show) { setConflict({ ...conflict, compare: false }); return; }
     setConflict({ ...conflict, compare: true, current: { loading: true } });
@@ -537,7 +549,7 @@ export function useKnowledgeEditing({ t, language, agents, status, onStatus, not
   };
 
   const reload = async () => {
-    if (!draft) return;
+    if (!draft || blockedReason) return;
     setConflictBusy(true);
     try {
       const fresh = await api.readKnowledgeNote(draft.path);
@@ -550,7 +562,7 @@ export function useKnowledgeEditing({ t, language, agents, status, onStatus, not
 
   const openCopy = async () => {
     const copy = conflict?.result.conflictPath;
-    if (!copy) return;
+    if (!copy || blockedReason) return;
     setConflictBusy(true);
     try {
       const found = await api.knowledgeNode({ path: copy });
@@ -561,7 +573,7 @@ export function useKnowledgeEditing({ t, language, agents, status, onStatus, not
   };
 
   const rollback = async () => {
-    if (!confirming || !path) return;
+    if (!confirming || !path || blockedReason) return;
     setRollbackBusy(true); setRollbackError(undefined);
     try {
       const result = await rollbackTo(api, path, confirming, file.value?.sha256);
@@ -573,7 +585,7 @@ export function useKnowledgeEditing({ t, language, agents, status, onStatus, not
   };
 
   const createNote = () => {
-    if (!newForm) return;
+    if (!newForm || blockedReason) return;
     let notePath: string;
     try { notePath = notePathFrom(newForm.path); } catch (failure) { setNewForm({ ...newForm, error: errorMessage(failure) }); return; }
     const text = newNoteText(newForm.title, notePath);
@@ -583,11 +595,13 @@ export function useKnowledgeEditing({ t, language, agents, status, onStatus, not
   };
 
   const runImport = async (dryRun: boolean) => {
-    const target = workspaceId || workspaces.value?.[0]?.id;
-    if (!target) return;
+    const target = importTarget;
+    if (!target || blockedReason) return;
+    if (!dryRun && (!importPreview || importSource !== target)) return;
     setImportBusy(dryRun ? 'preview' : 'import'); setImportError(undefined);
     try {
       const result = await api.importMemoryNotes({ workspaceId: target, dryRun });
+      setImportSource(target);
       if (dryRun) { setImportPreview(result); setImportDone(null); } else {
         setImportDone(result); setImportPreview(null);
         say(e.imported(importWrites(result)));
@@ -600,26 +614,26 @@ export function useKnowledgeEditing({ t, language, agents, status, onStatus, not
   const anyTools = support.notes || support.memoryImport;
   const toolbar = (
     <>
-      {anyTools && (
+      {anyTools && !blockedReason && (
         <div className="knowledge-edit-bar" role="group" aria-label={e.edit}>
           {support.notes && <button type="button" className="button small" aria-expanded={Boolean(newForm)} disabled={Boolean(draft)} onClick={() => setNewForm(newForm ? null : { path: '', title: '' })}><Icon name="plus" />{e.newNote}</button>}
           {support.memoryImport && <button type="button" className="button small" aria-expanded={importOpen} onClick={() => { setImportOpen(!importOpen); setImportPreview(null); setImportDone(null); setImportError(undefined); }}><Icon name="download" />{e.importMemory}</button>}
         </div>
       )}
-      {newForm && !draft && (
+      {newForm && !draft && !blockedReason && (
         <NewNoteView t={t} path={newForm.path} title={newForm.title} error={newForm.error} onPath={value => setNewForm({ ...newForm, path: value, error: undefined })}
           onTitle={value => setNewForm({ ...newForm, title: value })} onCreate={createNote} onCancel={() => setNewForm(null)} />
       )}
-      {importOpen && support.memoryImport && (
-        <MemoryImportView t={t} workspaces={workspaces} workspaceId={workspaceId || workspaces.value?.[0]?.id || ''} onWorkspace={id => { setWorkspaceId(id); setImportPreview(null); setImportDone(null); }}
-          preview={importPreview} done={importDone} busy={importBusy} error={importError} onPreview={() => void runImport(true)} onImport={() => void runImport(false)}
+      {importOpen && support.memoryImport && !blockedReason && (
+        <MemoryImportView t={t} workspaces={workspaces} workspaceId={importTarget ?? ''} onWorkspace={id => { setWorkspaceId(id); setImportPreview(null); setImportDone(null); }}
+          preview={importSource === importTarget ? importPreview : null} done={importSource === importTarget ? importDone : null} busy={importBusy} error={importError} onPreview={() => void runImport(true)} onImport={() => void runImport(false)}
           onClose={() => setImportOpen(false)} />
       )}
       {toastRegion}
     </>
   );
 
-  const noteTools = support.notes && note.value && !fileUnsupported ? (
+  const noteTools = support.notes && note.value && !fileUnsupported && !blockedReason ? (
     <div className="knowledge-edit-tools">
       <div className="row-actions">
         {file.value?.managed && <ManagedChip t={t} />}
@@ -638,13 +652,13 @@ export function useKnowledgeEditing({ t, language, agents, status, onStatus, not
   ) : null;
 
   const editor = draft ? (
-    <NoteEditorView t={t} draft={draft} preview={preview} onPreview={setPreview} onText={text => setDraft({ ...draft, text })} saving={saving} error={editError}
+    <NoteEditorView t={t} draft={draft} preview={preview} onPreview={setPreview} onText={text => setDraft({ ...draft, text })} saving={saving} error={editError} blockedReason={blockedReason}
       confirmDiscard={confirmDiscard} onSave={() => void save()}
       onCancel={() => { if (draftDirty(draft)) { setPending(null); setConfirmDiscard(true); } else closeEditor(); }}
       onDiscard={() => {
         const next = pending;
         closeEditor();
-        if (next?.action === 'open') open(next.nodeId); else if (next?.action === 'close') close();
+        if (next?.action === 'open') open(next.nodeId); else if (next?.action === 'close') close(); else if (next?.action === 'reset') resetScope?.();
       }}
       onKeepEditing={() => { setConfirmDiscard(false); setPending(null); }}
       conflict={conflict ?? undefined} conflictBusy={conflictBusy} onOpenCopy={() => void openCopy()} onCompare={show => void compare(show)} onReload={() => void reload()} />
@@ -652,7 +666,9 @@ export function useKnowledgeEditing({ t, language, agents, status, onStatus, not
 
   return {
     support, toolbar, noteTools, ...(editor ? { editor } : {}),
-    onOpen: nodeId => (draft ? leave({ action: 'open', nodeId }) : open(nodeId)),
+    scopeLocked: Boolean(draft || newForm || importOpen || saving || opening || rollbackBusy || conflictBusy || importBusy),
+    onResetScope: () => leave({ action: 'reset' }),
+    onOpen: nodeId => { if (!readBlocked) { if (draft) leave({ action: 'open', nodeId }); else open(nodeId); } },
     onClose: () => (draft ? leave({ action: 'close' }) : close()),
   };
 }

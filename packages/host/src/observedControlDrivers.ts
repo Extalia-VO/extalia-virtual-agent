@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import type { ObservedCliResumeService } from './observedCliResumeService.js';
 import type { ObservedCodexService } from './observedCodexService.js';
 import type { ObservedCodexQueueService } from './observedCodexQueueService.js';
 import type { ObservedHermesService } from './observedHermesService.js';
@@ -7,6 +8,8 @@ import type { ObservedInboxChannels } from './observedInboxChannel.js';
 import { ObservedControlRefusal, type ObservedControlDriver, type ObservedControlDriverSnapshot } from './observedControlService.js';
 
 interface Options {
+  antigravity?: Pick<ObservedControlDriver, 'status' | 'dispatch'>;
+  cliResume?: Pick<ObservedCliResumeService, 'driverStatus' | 'dispatch'>;
   sourceId(id: string): string | undefined;
   codex: Pick<ObservedCodexService, 'status' | 'send'>;
   codexQueue: Pick<ObservedCodexQueueService, 'status' | 'send'>;
@@ -106,5 +109,5 @@ export function createObservedControlDrivers(options: Options): ObservedControlD
       return { state: receipt && ['queued', 'delivered', 'acknowledged'].includes(receipt.state) ? 'queued' : 'unknown', ...(receipt ? { messageId: receipt.messageId } : {}) };
     },
   };
-  return [codex, queue, hermes, replies, inboxes];
+  return [codex, queue, hermes, replies, inboxes, ...(options.antigravity ? [{ route: 'antigravity-native' as const, ...options.antigravity }] : []), ...(options.cliResume ? [{ route: 'official-cli-resume' as const, status: (id: string) => options.cliResume!.driverStatus(id), dispatch: (id, input, snapshot) => options.cliResume!.dispatch(id, input, snapshot) } satisfies ObservedControlDriver] : [])];
 }

@@ -1,5 +1,6 @@
 //! Import provenance belongs to an immutable revision, not the package's first import.
 use super::super::{Origin, SkillError, tree::check_relative_path};
+use super::SkillRegistry;
 use rusqlite::{Connection, OptionalExtension, params};
 
 pub(super) const MAX_SOURCES: i64 = 256;
@@ -33,6 +34,31 @@ fn market_identity(source: &str) -> Result<Option<(String, &str)>, SkillError> {
         return Err(invalid());
     }
     Ok(Some((repository.to_ascii_lowercase(), directory)))
+}
+
+impl SkillRegistry<'_> {
+    /// Bounded exact-revision provenance projection; malformed or legacy labels
+    /// never manufacture marketplace evidence. Package-level metadata is not used.
+    pub(in crate::skills) fn revision_has_market_source(
+        &mut self,
+        revision: &str,
+    ) -> Result<bool, SkillError> {
+        let profile = self.profile().as_str().to_owned();
+        let mut statement = self.conn().prepare(
+            "SELECT source_ref FROM skill_revision_sources
+             WHERE profile_id=?1 AND revision_id=?2 AND origin='imported'
+             ORDER BY source_seq LIMIT ?3",
+        )?;
+        let rows = statement.query_map(params![profile, revision, MAX_SOURCES], |row| {
+            row.get::<_, String>(0)
+        })?;
+        for source in rows {
+            if matches!(market_identity(&source?), Ok(Some(_))) {
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    }
 }
 
 /// Prevent an unrelated source from claiming an existing market package's name (and

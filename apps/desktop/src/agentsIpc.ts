@@ -73,6 +73,7 @@ export function startAgents({ devServer, dataDirectory, smokeTest = false, homeD
         } : undefined;
         return createAgentHost({
           kind: 'desktop', version: app.getVersion(),
+          cliResumeArchiveReader: path.join(__dirname, 'continuity-reader.mjs'),
           ...(dataDirectory ? { dataDirectory } : {}),
           ...(homeDirectory ? { homeDirectory, importHome: homeDirectory } : {}),
           ...(isolatedEnv ? { env: isolatedEnv } : {}),

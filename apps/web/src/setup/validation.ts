@@ -184,6 +184,8 @@ export function toConnectionTestInput(draft: ConnectionDraft): { input: Connecti
 
 export interface WorkspaceDraft {
   id?: string;
+  /** Observe workspaces group outside sessions without starting an Extalia runtime. */
+  mode?: 'managed' | 'observe';
   name: string;
   /** Path as typed (Bridge) or picked (Desktop). */
   folderInput: string;
@@ -215,6 +217,7 @@ export function draftFromWorkspace(workspace: Workspace): WorkspaceDraft {
   const path = workspace.projectLocation ?? '';
   return {
     id: workspace.id,
+    ...(workspace.mode ? { mode: workspace.mode } : {}),
     name: workspace.name,
     folderInput: path,
     additionalProjectLocations: [...(workspace.additionalProjectLocations ?? [])],
@@ -251,6 +254,7 @@ export function validateWorkspace(draft: WorkspaceDraft): Partial<Record<Workspa
   if (!draft.name.trim()) errors.name = 'nameRequired';
   if (!draft.folder) errors.folder = draft.folderInput.trim() ? 'folderUnchecked' : 'folderRequired';
   if (!validWorkspaceFolders(draft.folder?.path ?? draft.folderInput, draft.additionalProjectLocations)) errors.additionalFolders = 'additionalFoldersInvalid';
+  if (draft.mode === 'observe') return errors;
   if (draft.runtimeId === 'hermes') {
     if (!RUNTIME_PROFILE_PATTERN.test(draft.hermesProfile.trim() || 'default')) errors.profile = 'profileInvalid';
     if (draft.hermesModel.trim() && !RUNTIME_MODEL_PATTERN.test(draft.hermesModel.trim())) errors.model = 'modelInvalid';
@@ -270,7 +274,9 @@ export function toWorkspaceInput(draft: WorkspaceDraft): WorkspaceInput {
     projectLocation: draft.folder?.path ?? draft.folderInput.trim(),
     additionalProjectLocations: [...draft.additionalProjectLocations],
     crossWorkspaceAccess: draft.crossWorkspaceAccess,
+    ...(draft.mode ? { mode: draft.mode } : {}),
   };
+  if (draft.mode === 'observe') return { ...common, connectionId: draft.connectionId, permissions: { ...draft.permissions } };
   const gate = toIntegrationGate(draft);
   if (draft.runtimeId !== 'hermes') return { ...common, connectionId: draft.connectionId, permissions: { ...draft.permissions }, ...gate };
   const model = draft.hermesModel.trim();

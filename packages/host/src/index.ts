@@ -34,3 +34,4 @@ export {
   type LegacyMigrationOptions, type LegacyMigrationResult, type MigrationMarker,
 } from './migration.js';
 export { PROFILE_SCHEMA, applyProfilePatch, createProfileStore, decodeProfile, emptyProfile, type ProfileStore } from './profile.js';
+export { runObservedCliArchiveReader } from './observedCliArchiveReader.js';

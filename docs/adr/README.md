@@ -101,3 +101,11 @@ Later decisions amend earlier records without deleting their historical evidence
 | [0076](0076-cross-agent-work-continuity.md) | Reviewed cross-agent work continuity | See record for decision scope |
 | [0077](0077-live-skill-marketplace.md) | Independently refreshed skill marketplace | Accepted — 2026-11-12 |
 | [0078](0078-observed-workspace-association.md) | Observed workspace association | Accepted — 2026-11-12 |
+| [0079](0079-reviewed-cli-handover.md) | Reviewed CLI continuation for observed handovers | Accepted for explicit installed CLI connections; runtime-specific acceptance remains separate |
+| [0080](0080-detected-harness-and-native-handover.md) | Detected harness selection and native Antigravity handover | Accepted; isolated live UI verified at v0.4.290; Desktop packaging and context-limit acceptance remain separate |
+| [0081](0081-observed-work-memory-and-curation.md) | Scoped observed work memory and curation | Implemented; runtime-specific and full-product acceptance remain separate |
+| [0082](0082-global-skill-storage.md) | Global skill storage independent of operating profiles | Accepted (2026-11-12) |
+| [0083](0083-team-and-individual-operating-profiles.md) | Team defaults and individual operating profiles | Accepted; implemented and locally verified in v0.4.297 |
+| [0084](0084-project-session-browser.md) | Source-project session browsing | Implemented and locally verified through v0.4.301 |
+| [0085](0085-native-session-project-roots.md) | Registered project folders for saved Native sessions | Accepted |
+| [0086](0086-native-user-skill-learning-sources.md) | Native user skill learning and bounded source reads | Accepted |

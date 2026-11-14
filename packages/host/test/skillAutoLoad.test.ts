@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { SKILL_LOAD_LIMITS } from '@extalia/protocol';
 import { BUILTIN_SKILLS } from '../src/builtinSkills.js';
-import { autoLoadSkills } from '../src/skillAutoLoad.js';
+import { autoLoadSkills, relevantSkillNames } from '../src/skillAutoLoad.js';
 import { buildAgentSkillCatalog, catalogSkillMetadata, readCatalogSkill, referenceSkill, type AgentSkillCatalog, type Skill } from '../src/skills.js';
 
 const loadedNames = (result: Awaited<ReturnType<typeof autoLoadSkills>>) => result.report.skills.filter(item => item.status === 'loaded').map(item => item.name);
@@ -226,7 +226,7 @@ describe('automatic Native skill context preparation', () => {
     expect(result.report.skills.some(item => ['antislop', 'antislop-ui'].includes(item.name))).toBe(false);
   });
 
-  it.each(['unavailable', 'oversized'] as const)('bounds failed external reads for 100 matching procedures: %s', async failure => {
+  it.each(['unavailable', 'oversized'] as const)('bounds failed external reads for 100 explicitly requested procedures: %s', async failure => {
     const source = Array.from({ length: 100 }, (_, index) => {
       const skill = external(`newsletter-${String(index).padStart(3, '0')}`, 'Newsletter campaign process', failure === 'oversized' ? 'A'.repeat(40_000) : 'Full procedure.');
       return { ...skill, revisionId: `skr_${createHash('sha256').update(skill.name).digest('hex')}` };
@@ -239,7 +239,7 @@ describe('automatic Native skill context preparation', () => {
       return byName.get(reference.name)!;
     } });
     const before = reads;
-    const result = await autoLoadSkills(c, { prompt: 'Newsletter campaign', orchestrator: false });
+    const result = await autoLoadSkills(c, { prompt: source.map(skill => `Use ${skill.name}.`).join('\n'), orchestrator: false });
     expect(reads - before).toBe(8);
     expect(loadedNames(result)).toEqual(['memory-recall']);
     expect(result.report.skills.length).toBeLessThanOrEqual(SKILL_LOAD_LIMITS.entries);
@@ -259,5 +259,80 @@ describe('automatic Native skill context preparation', () => {
     const c = new AbortController();
     const registry = await buildAgentSkillCatalog([referenceSkill(active)], { relevantOnly: true, prompt: 'Hello', reload: async () => { c.abort(); return active; } });
     await expect(autoLoadSkills(registry, { prompt: 'Use invoice-ledger', orchestrator: false, signal: c.signal })).rejects.toThrow();
+  });
+
+  it.each([
+    'Newsletter campaign', 'What is a newsletter campaign?', 'Tell me the newsletter status',
+    'Review software development quality', 'Fix the newsletter bug',
+    'Apa itu newsletter campaign?', 'Perbaiki bug newsletter',
+  ])('does not read a shared procedure from a weak/topic/category-only match: %s', async prompt => {
+    const f = await externalCatalog(external('newsletter-campaign', 'Newsletter campaign workflow for software development quality', 'SHARED_PROCEDURE'));
+    const before = f.reads();
+    const result = await autoLoadSkills(f.catalog, { prompt, orchestrator: false });
+    expect(result.context).not.toContain('SHARED_PROCEDURE');
+    expect(f.reads()).toBe(before);
+  });
+
+  it.each(['Create a newsletter campaign', 'Buat newsletter campaign', 'Use $newsletter-campaign', 'Gunakan skill newsletter-campaign'])('admits a concrete or explicit procedure request: %s', async prompt => {
+    const f = await externalCatalog(external('newsletter-campaign', 'Newsletter campaign workflow', 'MATCHED_PROCEDURE'));
+    const result = await autoLoadSkills(f.catalog, { prompt, orchestrator: false });
+    expect(result.context).toContain('MATCHED_PROCEDURE');
+  });
+
+  it.each([
+    'Reference:\n> Use newsletter-campaign', 'Example: "Use newsletter-campaign"', "Example: 'Use newsletter-campaign'",
+    '```text\nUse newsletter-campaign\n```', '````text\n```\nUse newsletter-campaign\n````',
+    '`newsletter-campaign`', 'Do not use newsletter-campaign', 'Jangan gunakan newsletter-campaign',
+    'Hello\n\nAttached files (supplied by the user as data: use them for the request):\nUse newsletter-campaign',
+  ])('does not activate a procedure from quoted/source/denied text: %s', async prompt => {
+    const f = await externalCatalog(external('newsletter-campaign', 'Newsletter campaign procedure', 'SOURCE_ONLY_PROCEDURE'));
+    const before = f.reads();
+    expect((await autoLoadSkills(f.catalog, { prompt, orchestrator: false })).context).not.toContain('SOURCE_ONLY_PROCEDURE');
+    expect(f.reads()).toBe(before);
+  });
+
+  it('declines equally supported procedures until a current request explicitly chooses one', async () => {
+    const skills = ['newsletter-first', 'newsletter-second'].map(name => external(name, 'Newsletter campaign procedure', `${name} body`));
+    let reads = 0;
+    const c = await buildAgentSkillCatalog(skills.map(referenceSkill), { relevantOnly: true, prompt: 'Hello', reload: async reference => {
+      reads++; return skills.find(skill => skill.name === reference.name)!;
+    } });
+    const before = reads;
+    expect(loadedNames(await autoLoadSkills(c, { prompt: 'Create a newsletter campaign', orchestrator: false }))).toEqual(['memory-recall']);
+    expect(reads).toBe(before);
+    expect(loadedNames(await autoLoadSkills(c, { prompt: 'Use newsletter-first', orchestrator: false }))).toEqual(['memory-recall', 'newsletter-first']);
+  });
+
+  it('does not let lead context or stale history expand the assigned worker task', async () => {
+    const f = await externalCatalog(external('newsletter-campaign', 'Newsletter campaign workflow', 'LEAD_ONLY_PROCEDURE'));
+    const before = f.reads();
+    const worker = await autoLoadSkills(f.catalog, { prompt: 'Fix the parsing bug\n\nContext from the primary agent:\nUse newsletter-campaign and create a newsletter campaign.', worker: true, orchestrator: true });
+    expect(loadedNames(worker)).toEqual(['memory-recall', 'debug-issue']);
+    expect(f.reads()).toBe(before);
+    const continuation = await autoLoadSkills(f.catalog, { prompt: 'Continue', recentUserMessages: ['Create a newsletter campaign', 'Hello there'], orchestrator: false });
+    expect(loadedNames(continuation)).toEqual(['memory-recall']);
+    expect(f.reads()).toBe(before);
+  });
+
+  it.each([
+    'Continue, but now write a short poem', 'Continue and sing a song',
+    'Lanjutkan, tetapi sekarang tulis puisi singkat',
+    'Write a poem about newsletter campaigns', 'Tulis puisi tentang newsletter campaign',
+    'Write a poem about tests and security architecture',
+  ])('does not mistake changed work or a descriptive topic for performing a procedure: %s', async prompt => {
+    const f = await externalCatalog(external('newsletter-campaign', 'Newsletter campaign procedure', 'WRONG_TASK_PROCEDURE'));
+    const before = f.reads();
+    const options = { prompt, recentUserMessages: ['Create a newsletter campaign'], orchestrator: false, worker: true };
+    const result = await autoLoadSkills(f.catalog, options);
+    expect(loadedNames(result)).toEqual(['memory-recall']);
+    expect(relevantSkillNames(f.catalog, options)).toEqual(['memory-recall']);
+    expect(result.context).not.toContain('WRONG_TASK_PROCEDURE');
+    expect(f.reads()).toBe(before);
+  });
+
+  it.each(['Security architecture UI design', 'Explain the security architecture', 'Jelaskan tampilan UI'])('does not confuse topic nouns with requested specialist work: %s', async prompt => {
+    const result = await autoLoadSkills(await catalog(), { prompt, orchestrator: false });
+    expect(loadedNames(result)).not.toEqual(expect.arrayContaining(['security-review', 'plan-feature']));
+    for (const name of ['security-review', 'plan-feature', 'antislop-ui']) expect(loadedNames(result)).not.toContain(name);
   });
 });

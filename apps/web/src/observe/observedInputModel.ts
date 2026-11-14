@@ -30,6 +30,7 @@ export function validObservedInput(value: ObservedUserInputStatus, sessionId: st
   return value.requests.every(request => {
     if (!request || !text(request.id) || ids.has(request.id) || !text(request.revision) || !['codex-async', 'codex-native'].includes(request.origin)
       || !['pending', 'queued', 'submitted', 'unknown'].includes(request.state) || typeof request.canAnswer !== 'boolean'
+      || request.deliveryRoute !== undefined && !['native-answer', 'native-steer', 'native-start', 'queue'].includes(request.deliveryRoute)
       || request.identityVerified !== undefined && typeof request.identityVerified !== 'boolean'
       || request.identityVerified === false && request.canAnswer
       || !Array.isArray(request.questions) || !request.questions.length || request.questions.length > 32) return false;
@@ -88,6 +89,17 @@ export function createObservedInputControl(agents: AgentHostApi | undefined) {
     const drafts = Object.fromEntries(Object.entries(view.drafts).filter(([key]) => {
       const owner = JSON.parse(key) as string[]; return owner[0] !== id || allowed.has(key);
     }));
+    // A turn finishing can change the delivery handle while the user types.
+    // Keep only an unsubmitted draft for the exact same source and questions;
+    // submission still requires the freshly advertised revision.
+    if (status.state === 'ready') for (const request of entry.requests) {
+      const previous = old.requests.find(item => item.id === request.id);
+      if (!previous || previous.origin !== 'codex-async' || request.origin !== previous.origin
+        || !previous.deliveryRoute || !request.deliveryRoute || previous.identityVerified === false || request.identityVerified === false
+        || previous.state !== 'pending' || request.state !== 'pending' || JSON.stringify(previous.questions) !== JSON.stringify(request.questions)) continue;
+      const before = observedInputKey(id, old.source, previous), after = observedInputKey(id, entry.source, request);
+      if (before !== after && view.drafts[before] && !view.uncertain.has(before) && view.busy !== before) drafts[after] = view.drafts[before];
+    }
     update({ ...view, entries: { ...view.entries, [id]: entry }, drafts });
   }
   function schedule() {

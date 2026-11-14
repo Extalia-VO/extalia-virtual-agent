@@ -69,8 +69,11 @@ export function validateCodexNativeQueue(value: ObservedCodexNativeQueueStatus, 
 }
 
 /** Read-only, source-bound snapshot owner. It never calls an outbox or a send API. */
-export function createCodexNativeQueueControl(api: AgentHostApi, sessionId: string, nativeSessionId: string) {
-  const read = api.observedCodexNativeQueueStatus;
+export function createCodexNativeQueueControl(api: AgentHostApi, sessionId: string, nativeSessionId: string, sourceId?: string) {
+  const resolveReader = () => sourceId === 'antigravity'
+    ? api.observedNativeQueueStatus
+    : (api.observedCodexNativeQueueStatus ?? api.observedNativeQueueStatus);
+  const read = resolveReader();
   let view: CodexNativeQueueView = { phase: read ? 'loading' : 'unsupported', refreshing: false };
   let active = false, disabled = false, visible = true, epoch = 0, reading = false;
   let timer: ReturnType<typeof setInterval> | undefined;
@@ -84,7 +87,7 @@ export function createCodexNativeQueueControl(api: AgentHostApi, sessionId: stri
   }
   async function refresh() {
     if (!active || disabled || !visible || !read || reading) return;
-    if (api.observedCodexNativeQueueStatus !== read) {
+    if (resolveReader() !== read) {
       invalidate(); update({ phase: 'unavailable', refreshing: false }); return;
     }
     const generation = ++epoch; reading = true;
@@ -92,7 +95,7 @@ export function createCodexNativeQueueControl(api: AgentHostApi, sessionId: stri
     try {
       const status = await read.call(api, sessionId);
       if (!active || disabled || !visible || epoch !== generation) return;
-      if (api.observedCodexNativeQueueStatus !== read) {
+      if (resolveReader() !== read) {
         invalidate(); update({ phase: 'unavailable', refreshing: false }); return;
       }
       const safe = validateCodexNativeQueue(status, sessionId, nativeSessionId);

@@ -49,6 +49,135 @@ beforeEach(() => { hooks.slots.length = 0; hooks.index = 0; hooks.layout.length 
 afterEach(() => { hooks.slots.forEach(slot => slot.cleanup?.()); vi.unstubAllGlobals(); });
 
 describe('Office camera requests', () => {
+  it('receipts explicit focus only after the final interpolated pose, once, using the latest callback', () => {
+    const original = vi.fn(), latest = vi.fn();
+    const point: [number, number, number] = [3, 0, 7];
+    const h = harness({ focusId: 'agent', focus: point, reducedMotion: false, onFocusFinished: original });
+    h.render({ focusRequest: 1 });
+    expect(original).not.toHaveBeenCalled();
+    h.frame(.2); h.render({ onFocusFinished: latest }); h.frame(.2);
+    expect(latest).not.toHaveBeenCalled();
+    h.frame(.5);
+    expect(h.pose().target).toEqual(characterFocusPose(point, undefined, [210, 0]).target.map(value => expect.closeTo(value, 8)));
+    expect(latest.mock.calls).toEqual([[1, true]]);
+    expect(original).not.toHaveBeenCalled();
+    h.frame(); h.render(); h.frame();
+    expect(latest.mock.calls).toEqual([[1, true]]);
+  });
+
+  it('receipts reduced-motion focus once on its first applied frame', () => {
+    const onFocusFinished = vi.fn();
+    const h = harness({ focusId: 'agent', focus: [3, 0, 7], onFocusFinished });
+    h.render({ focusRequest: 7 });
+    expect(onFocusFinished).not.toHaveBeenCalled();
+    h.frame(0);
+    expect(h.pose().zoom).toBe(CHARACTER_FOCUS_ZOOM);
+    expect(onFocusFinished.mock.calls).toEqual([[7, true]]);
+    h.frame(); h.frame();
+    expect(onFocusFinished.mock.calls).toEqual([[7, true]]);
+  });
+
+  it('never receipts passive selection, Follow, room focus or automatic director movement', () => {
+    const onFocusFinished = vi.fn();
+    const live = { position: () => [3, 0, 7], floor: () => 1 } as unknown as CharacterPositionSource;
+    const h = harness({ onFocusFinished, live });
+    h.render({ focusId: 'agent', focus: [3, 0, 7] }); h.frame();
+    h.render({ following: true }); h.frame();
+    h.render({ following: false, focusPoint: { point: [8, 0, 2] } }); h.frame();
+    h.render({ automaticShot: { phase: 'focus', mode: 'tour', targetId: 'agent', fromId: null } }); h.frame();
+    h.listeners.get('start')?.(); h.frame();
+    expect(onFocusFinished).not.toHaveBeenCalled();
+  });
+
+  it('keeps an entered explicit focus alive through passive selection and seat updates', () => {
+    const onFocusFinished = vi.fn();
+    const h = harness({ focusId: 'agent', focus: [3, 0, 7], reducedMotion: false, onFocusFinished });
+    h.render({ focusRequest: 1 }); h.frame(.2);
+    h.render({ focusId: 'other', focus: [-4, 0, 9] }); h.frame(1);
+    expect(onFocusFinished.mock.calls).toEqual([[1, true]]);
+    expect(h.pose().target).toEqual(characterFocusPose([3, 0, 7], undefined, [210, 0]).target.map(value => expect.closeTo(value, 8)));
+  });
+
+  it('keeps explicit cross-floor focus when a suspended director clears its older shot later', () => {
+    const onFocusFinished = vi.fn();
+    const point: [number, number, number] = [3, 6.4, 7];
+    const live = { position: (id: string) => id === 'agent' ? point : [-4, 0, 2], floor: (id: string) => id === 'agent' ? 2 : 1 } as unknown as CharacterPositionSource;
+    const h = harness({ live, reducedMotion: false, onFocusFinished, automaticShot: { phase: 'focus', mode: 'tour', targetId: 'previous', fromId: null } });
+    h.frame(.1);
+    h.render({ view: 2, focusId: 'agent', focusRequest: 1 }); h.frame(.2);
+    h.render({ automaticShot: null });
+    expect(onFocusFinished).not.toHaveBeenCalled();
+    h.frame(.7); h.frame(1);
+    expect(onFocusFinished.mock.calls).toEqual([[1, true]]);
+    const focused = h.pose(); point[0] += 2; h.frame(1);
+    expect(h.pose()).toEqual(focused);
+  });
+
+  it('cancels the replaced request before completing its successor and suppresses stale success', () => {
+    const onFocusFinished = vi.fn();
+    const h = harness({ focusId: 'agent', focus: [3, 0, 7], reducedMotion: false, onFocusFinished });
+    h.render({ focusRequest: 1 }); h.frame(.2);
+    h.render({ focusRequest: 2, focus: [-4, 0, 9] });
+    expect(onFocusFinished.mock.calls).toEqual([[1, false]]);
+    h.frame(.2);
+    expect(onFocusFinished.mock.calls).toEqual([[1, false]]);
+    h.frame(1); h.frame(1);
+    expect(onFocusFinished.mock.calls).toEqual([[1, false], [2, true]]);
+  });
+
+  it.each(['view', 'floor', 'room', 'automatic', 'manual'] as const)('cancels entered focus when superseded by %s', replacement => {
+    const onFocusFinished = vi.fn();
+    const h = harness({ focusId: 'agent', focus: [3, 0, 7], reducedMotion: false, onFocusFinished });
+    h.render({ focusRequest: 1 }); h.frame(.2);
+    if (replacement === 'view') h.render({ viewRequest: 1 });
+    if (replacement === 'floor') h.render({ view: 2 });
+    if (replacement === 'room') h.render({ focusPoint: { point: [8, 0, 2] } });
+    if (replacement === 'automatic') h.render({ automaticShot: { phase: 'focus', mode: 'tour', targetId: 'agent', fromId: null }, automaticSeat: [3, 0, 7] });
+    if (replacement === 'manual') h.listeners.get('start')?.();
+    expect(onFocusFinished.mock.calls).toEqual([[1, false]]);
+    h.frame(2); h.frame(2);
+    expect(onFocusFinished.mock.calls).toEqual([[1, false]]);
+  });
+
+  it('cancels an entered focus on wheel zoom while retaining Follow', () => {
+    const windowListeners = new Map<string, () => void>();
+    vi.stubGlobal('window', { addEventListener: (event: string, listener: () => void) => windowListeners.set(event, listener), removeEventListener: (event: string) => windowListeners.delete(event) });
+    const position: [number, number, number] = [3, 0, 7];
+    const live = { position: () => position, floor: () => 1 } as unknown as CharacterPositionSource;
+    const onFocusFinished = vi.fn(), onFollowEnd = vi.fn();
+    const h = harness({ focusId: 'agent', live, following: true, reducedMotion: false, onFocusFinished, onFollowEnd });
+    h.render({ focusRequest: 1 }); h.frame(.2);
+    windowListeners.get('wheel')?.(); h.listeners.get('start')?.();
+    expect(onFocusFinished.mock.calls).toEqual([[1, false]]);
+    const before = h.pose(); position[0] += 2; h.frame(1);
+    expect(h.pose().target[0]).toBeCloseTo(before.target[0]! + 2, 8);
+    expect(onFollowEnd).not.toHaveBeenCalled();
+    expect(onFocusFinished.mock.calls).toEqual([[1, false]]);
+  });
+
+  it('retains the request identity if entrance admission restarts an unfinished focus', () => {
+    const onFocusFinished = vi.fn();
+    const livePosition = { current: undefined as [number, number, number] | undefined };
+    const live = { position: () => livePosition.current, floor: () => 1 } as unknown as CharacterPositionSource;
+    const h = harness({ focusId: 'agent', focus: [3, 0, 7], live, reducedMotion: false, onFocusFinished });
+    h.render({ focusRequest: 1 }); h.frame(.2);
+    livePosition.current = [8, 0, 3]; h.frame(.2);
+    expect(onFocusFinished).not.toHaveBeenCalled();
+    h.frame(1); h.frame(1);
+    expect(onFocusFinished.mock.calls).toEqual([[1, true]]);
+    expect(h.pose().target).toEqual(characterFocusPose(livePosition.current, undefined, [210, 0]).target.map(value => expect.closeTo(value, 8)));
+  });
+
+  it('waits to admit a request without a position and cancels its predecessor immediately', () => {
+    const onFocusFinished = vi.fn();
+    const h = harness({ focusId: 'agent', focus: [3, 0, 7], reducedMotion: false, onFocusFinished });
+    h.render({ focusRequest: 1 }); h.frame(.2);
+    h.render({ focusRequest: 2, focusId: 'waiting', focus: undefined }); h.frame(2);
+    expect(onFocusFinished.mock.calls).toEqual([[1, false]]);
+    h.render({ focus: [8, 0, 3] }); h.frame(1);
+    expect(onFocusFinished.mock.calls).toEqual([[1, false], [2, true]]);
+  });
+
   it('uses the floor-aware director to pan at constant zoom, ease gently and keep following without restarting', () => {
     const positions: Record<string, [number, number, number]> = { a: [-8, 0, -4], b: [8, 0, 4] };
     const live = { position: (id: string) => positions[id], floor: () => 1 } as unknown as CharacterPositionSource;

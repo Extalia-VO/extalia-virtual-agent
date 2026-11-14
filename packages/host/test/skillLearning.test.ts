@@ -1,3 +1,4 @@
+import { skillStoragePaths } from '../src/skillStorage.js';
 import { chmod, lstat, readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
@@ -44,7 +45,7 @@ function fakeRegistry(data: string, options: { ops?: readonly string[]; import?:
       }
       calls.push({ op, params, ...(deadlineMs === undefined ? {} : { deadlineMs }) });
       if (op === 'skill.import') {
-        const folder = path.join(data, 'profiles', 'default', 'skill-imports', String(params.path));
+        const folder = path.join(skillStoragePaths(data).imports, String(params.path));
         for (const file of await readdir(folder)) staged[file] = await readFile(path.join(folder, file), 'utf8');
         options.import?.();
         return { packageId: input.name, revisionId, treeSha256: summary.treeSha256, version: '1.0.0', state: 'quarantined', stateReason: 'scanner-unavailable', created: true };
@@ -95,7 +96,7 @@ describe.skipIf(process.platform === 'win32')('generated skill candidates from a
     expect(staged['PROVENANCE.md']).toContain('"sourceVerified": false');
     expect(staged['PROVENANCE.md']).toContain('"promptSha256": "' + provenance.promptSha256 + '"');
     expect(staged['PROVENANCE.md']).toContain(input.sourceUrls[0]);
-    expect(await readdir(path.join(data, 'profiles', 'default', 'skill-imports'))).toEqual([]);
+    expect(await readdir(skillStoragePaths(data).imports)).toEqual([]);
   });
 
   it('refuses unsupported/offline registry and cancelled requests before writing', async () => {
@@ -125,7 +126,7 @@ describe.skipIf(process.platform === 'win32')('generated skill candidates from a
     const { registry, calls, staged } = fakeRegistry(data, { import: () => { throw new Error('synthetic lost import acknowledgement'); } });
     await expect(registry.propose(input, provenance)).rejects.toThrow('synthetic lost import acknowledgement');
     expect(Object.keys(staged)).toHaveLength(2); expect(calls.map(call => call.op)).toEqual(['skill.import']);
-    expect(await readdir(path.join(data, 'profiles', 'default', 'skill-imports'))).toEqual([]);
+    expect(await readdir(skillStoragePaths(data).imports)).toEqual([]);
   });
 
   it.skipIf(!HAS_DAEMON)('retains the acknowledged import state when inspection transport fails, without claiming scanner success', async () => {
@@ -133,7 +134,7 @@ describe.skipIf(process.platform === 'win32')('generated skill candidates from a
     const proposed = await registry.propose(input, provenance);
     expect(proposed).toMatchObject({ state: 'quarantined', inspection: 'unavailable', activationPerformed: false, created: true });
     expect(proposed.inspectionOutcome).toBeUndefined();
-    expect(await readdir(path.join(data, 'profiles', 'default', 'skill-imports'))).toEqual([]);
+    expect(await readdir(skillStoragePaths(data).imports)).toEqual([]);
   });
 
   it('is a non-parallel write tool, rejects forged fields before effect and admits only one concurrent attempt', async () => {

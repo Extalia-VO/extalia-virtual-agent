@@ -1,4 +1,9 @@
-import fs from 'node:fs';import assert from 'node:assert/strict';import{GLTFLoader}from'three/examples/jsm/loaders/GLTFLoader.js';import{mergeGeometries}from'three/examples/jsm/utils/BufferGeometryUtils.js';
+import fs from 'node:fs';
+import assert from 'node:assert/strict';
+import { createRequire } from 'node:module';
+const webRequire = createRequire(new URL('../apps/web/package.json', import.meta.url));
+const { GLTFLoader } = await import(webRequire.resolve('three/examples/jsm/loaders/GLTFLoader.js'));
+const { mergeGeometries } = await import(webRequire.resolve('three/examples/jsm/utils/BufferGeometryUtils.js'));
 const candidateRoot=process.argv[2];if(!candidateRoot)throw new Error('Pass candidate asset directory');
 const files=['furniture/interior-library.glb','landscape/exterior-landscape.glb','landscape/district-buildings.glb'];
 const load=async p=>{const b=fs.readFileSync(p);return await new GLTFLoader().parseAsync(b.buffer.slice(b.byteOffset,b.byteOffset+b.byteLength),'');};

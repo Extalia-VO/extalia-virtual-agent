@@ -30,7 +30,7 @@ function fixture() {
     inbox: (value: Partial<ObservedInboxStatus>) => { inbox = { ...inbox, ...value }; },
   };
 }
-const message = { text: 'Continue the original conversation' };
+const message = { operationId: 'test-operation', text: 'Continue the original conversation' };
 
 describe('existing observed control transport adapters', () => {
   it('checks source ownership before querying native provider-specific status', async () => {
@@ -133,7 +133,7 @@ describe('existing observed control transport adapters', () => {
   });
   it.each(['cooperative-tool', 'cooperative-inbox'])('rejects oversized %s text before effect', async route => {
     const f = fixture(), driver = f.driver(route), snapshot = await f.snapshot(route), action = route === 'cooperative-tool' ? 'reply-tool' : 'inbox-send';
-    for (const text of ['x'.repeat(16_001), 'é'.repeat(9_000)]) await expect(driver.dispatch('observed-one', { text, action }, snapshot)).rejects.toBeInstanceOf(ObservedControlRefusal);
+    for (const text of ['x'.repeat(16_001), 'é'.repeat(9_000)]) await expect(driver.dispatch('observed-one', { text, action, operationId: 'oversized-message' }, snapshot)).rejects.toBeInstanceOf(ObservedControlRefusal);
     expect(f.dependencies.replies.answer).not.toHaveBeenCalled();
     expect(f.dependencies.inboxes.send).not.toHaveBeenCalled();
   });

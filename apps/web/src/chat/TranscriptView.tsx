@@ -1,7 +1,7 @@
 import { sourceLabel } from '@extalia/core';
 import type { ApprovalDecisionInput } from '@extalia/platform';
 import type { ActivityKind } from '@extalia/protocol';
-import { useRef, useState } from 'react';
+import { useId, useRef, useState } from 'react';
 import type { Messages } from '../i18n';
 import { CopyButton } from '../ui/CopyButton';
 import { Icon, type IconName } from '../ui/Icon';
@@ -12,16 +12,41 @@ import { MessageAttachments } from './MessageAttachments';
 import { SkillLoadCard } from './SkillLoadCard';
 import { HistoricalMessageFileScope } from './MessageFilePreview';
 import type { ApprovalItem, ToolItem, TranscriptItem, UsageItem, WorkerItem } from './transcript';
+import './workerPreview.css';
 
 const KIND_ICON: Record<ActivityKind, IconName> = {
   edit: 'edit', command: 'terminal', test: 'beaker', search: 'search', read: 'file', web: 'globe', delegate: 'users', knowledge: 'book', think: 'spark', tool: 'tool',
 };
 
+function itemOpenKey(item: Pick<ToolItem, 'id' | 'callId'>): string {
+  return item.callId || item.id;
+}
+
+export function resolveToolGroupOpen(
+  items: readonly Pick<ToolItem, 'id' | 'callId'>[],
+  openStates: ReadonlyMap<string, boolean>,
+  fallback: boolean,
+): boolean {
+  for (const item of items) {
+    const saved = openStates.get(itemOpenKey(item));
+    if (saved !== undefined) return saved;
+  }
+  return fallback;
+}
+
+type SetToolOpenKeys = (keys: readonly string[], open: boolean) => void;
+
 /** One tool call as a row of a run: icon, label, status; its output and changed files open below it. */
-function ToolRow({ t, item, previewAttachment }: { t: Messages; item: ToolItem; previewAttachment?: AttachmentPreviewLoader }) {
-  const [expanded, setExpanded] = useState<boolean | null>(null);
-  const live = item.status === 'running' && Boolean(item.command);
-  const open = expanded ?? live;
+function ToolRow({ t, item, previewAttachment, openStates, onSetOpenKeys }: {
+  t: Messages;
+  item: ToolItem;
+  previewAttachment?: AttachmentPreviewLoader;
+  openStates?: ReadonlyMap<string, boolean>;
+  onSetOpenKeys?: SetToolOpenKeys;
+}) {
+  const rowKey = `row:${itemOpenKey(item)}`;
+  const [expanded, setExpanded] = useState<boolean>(() => openStates?.get(rowKey) ?? false);
+  const open = openStates?.get(rowKey) ?? expanded;
   const commandText = item.command?.output.map(chunk => chunk.text).join('') ?? '';
   const hasOutput = Boolean(item.command || item.output?.trim());
   const outputId = `output-${item.id}`;
@@ -39,7 +64,11 @@ function ToolRow({ t, item, previewAttachment }: { t: Messages; item: ToolItem; 
       <div className="tool-head">
         {hasOutput
           ? <button type="button" className="tool-row-toggle" aria-expanded={open} aria-controls={outputId}
-              title={open ? t.tool.hideOutput : t.tool.showOutput} onClick={() => setExpanded(!open)}>{label}</button>
+              title={open ? t.tool.hideOutput : t.tool.showOutput} onClick={() => {
+                const next = !open;
+                onSetOpenKeys?.([rowKey], next);
+                setExpanded(next);
+              }}>{label}</button>
           : <span className="tool-row-toggle static">{label}</span>}
         {item.command?.exitCode !== undefined && (
           <span className="tool-meta">
@@ -87,21 +116,33 @@ export function toolRunSummary(t: Messages, items: readonly ToolItem[]): string 
 
 /**
  * Consecutive tool calls as one compact block: a summary line that folds the list, and one card with a
- * row per call. A run stays open while a call in it is running; a single call shows as its row alone.
+ * row per call. Multi-tool runs stay collapsed by default until the user expands them, and preserve their
+ * expand/collapse state across updates; a single call shows as its row alone.
  */
-function ToolRun({ t, items, previewAttachment }: { t: Messages; items: ToolItem[]; previewAttachment?: AttachmentPreviewLoader }) {
-  const [expanded, setExpanded] = useState<boolean | null>(null);
+function ToolRun({ t, items, previewAttachment, openStates, onSetOpenKeys }: {
+  t: Messages;
+  items: ToolItem[];
+  previewAttachment?: AttachmentPreviewLoader;
+  openStates?: ReadonlyMap<string, boolean>;
+  onSetOpenKeys?: SetToolOpenKeys;
+}) {
   const running = items.some(item => item.status === 'running');
   const failed = items.filter(item => item.status === 'failed').length;
   const images = items.reduce((sum, item) => sum + (item.attachments?.filter(file => file.kind === 'image').length ?? 0), 0);
-  // An arriving kept image is immediately visible; an explicit user fold remains authoritative.
   const hasPreview = Boolean(previewAttachment && items.some(item => item.attachments?.some(file => file.kind === 'image' && file.ref)));
-  const open = items.length === 1 || (expanded ?? (running || hasPreview));
+  const [expanded, setExpanded] = useState<boolean>(() =>
+    openStates ? resolveToolGroupOpen(items, openStates, hasPreview) : hasPreview);
+  const resolvedExpanded = openStates ? resolveToolGroupOpen(items, openStates, expanded) : expanded;
+  const open = items.length === 1 || resolvedExpanded;
   const listId = `run-${items[0]!.id}`;
   return (
     <div className={`tool-run ${failed ? 'has-failed' : ''}`}>
       {items.length > 1 && (
-        <button type="button" className="tool-run-head" aria-expanded={open} aria-controls={listId} onClick={() => setExpanded(!open)}>
+        <button type="button" className="tool-run-head" aria-expanded={open} aria-controls={listId} onClick={() => {
+          const next = !open;
+          onSetOpenKeys?.(items.map(itemOpenKey), next);
+          setExpanded(next);
+        }}>
           <span>{toolRunSummary(t, items)}</span>
           {images > 0 && <span className="tool-media-badge"><Icon name="files" />{t.tool.images(images)}</span>}
           {running && <span className="pulse" aria-hidden="true" />}
@@ -109,35 +150,59 @@ function ToolRun({ t, items, previewAttachment }: { t: Messages; items: ToolItem
           <Icon name="chevron" className="tool-run-chevron" />
         </button>
       )}
-      {open && <ul className="tool-run-list" id={listId}>{items.map(item => <ToolRow key={item.id} t={t} item={item} previewAttachment={previewAttachment} />)}</ul>}
+      {open && <ul className="tool-run-list" id={listId}>{items.map(item => <ToolRow key={item.id} t={t} item={item} previewAttachment={previewAttachment} openStates={openStates} onSetOpenKeys={onSetOpenKeys} />)}</ul>}
     </div>
   );
 }
 
 /** Consecutive workers (subagents) as one card with a row each. */
-function WorkerRun({ t, items, previewAttachment }: { t: Messages; items: WorkerItem[]; previewAttachment?: AttachmentPreviewLoader }) {
-  return <ul className="tool-run-list worker-run">{items.map(item => <li key={item.id} className="tool-row"><WorkerCard t={t} item={item} previewAttachment={previewAttachment} /></li>)}</ul>;
+function WorkerRun({ t, items, language, previewAttachment, openStates, onSetOpenKeys }: {
+  t: Messages; items: Extract<TranscriptItem, { kind: 'worker' }>[]; language: string; previewAttachment?: AttachmentPreviewLoader;
+  openStates: ReadonlyMap<string, boolean>; onSetOpenKeys: SetToolOpenKeys;
+}) {
+  return <ul className="tool-run-list worker-run">{items.map(item => <li key={item.id} className="tool-row"><HistoricalMessageFileScope scope={item.fileScope}><WorkerCard t={t} item={item} language={language} previewAttachment={previewAttachment} openStates={openStates} onSetOpenKeys={onSetOpenKeys} /></HistoricalMessageFileScope></li>)}</ul>;
 }
 
-function WorkerCard({ t, item, previewAttachment }: { t: Messages; item: WorkerItem; previewAttachment?: AttachmentPreviewLoader }) {
+const ignorePreviewDecision = async () => undefined;
+
+function WorkerCard({ t, item, language, previewAttachment, openStates, onSetOpenKeys }: {
+  t: Messages; item: WorkerItem; language: string; previewAttachment?: AttachmentPreviewLoader;
+  openStates: ReadonlyMap<string, boolean>; onSetOpenKeys: SetToolOpenKeys;
+}) {
+  const previewId = useId();
+  const openKey = `worker:${item.id}`;
+  const open = openStates.get(openKey) ?? false;
   const tier = item.tier && item.tier in t.connection.tiers ? t.connection.tiers[item.tier as keyof Messages['connection']['tiers']] : item.tier;
   const detail = item.status === 'running' ? item.activity ?? item.summary : item.summary ?? item.activity;
+  const label = item.label ?? t.tool.worker;
   return (
-    <div className={`worker status-${item.status}`}>
-      <div className="tool-head">
+    <div className={`worker status-${item.status}${open ? ' worker-expanded' : ''}`}>
+      <button type="button" className="worker-preview-toggle" aria-expanded={open} aria-controls={previewId}
+        title={open ? t.tool.hideWorkerPreview : t.tool.showWorkerPreview} onClick={() => onSetOpenKeys([openKey], !open)}>
         <span className="tool-icon" aria-hidden="true"><Icon name="users" /></span>
-        <span className="tool-label">
+        <span className="tool-label worker-label">
           {tier && <span className="tier-badge">{tier}</span>}
-          {item.label ?? t.tool.worker}
+          <span className="worker-name">{label}</span>
         </span>
         {item.toolCalls > 0 && <span className="tool-meta">{t.tool.workerCalls(item.toolCalls)}</span>}
         <span className={`tool-status ${item.status}`}>
           {item.status === 'running' ? <span className="pulse" aria-hidden="true" /> : <Icon name={item.status === 'ok' ? 'check' : item.status === 'failed' ? 'alert' : 'stop'} />}
           {t.tool.status[item.status]}
         </span>
-      </div>
-      {detail && <p className="worker-detail">{detail}</p>}
+        <Icon name="chevron" className="worker-preview-chevron" />
+        <span className="visually-hidden">{open ? t.tool.hideWorkerPreview : t.tool.showWorkerPreview}</span>
+      </button>
+      {item.task && <p className="worker-task" title={item.task}><span>{t.tool.workerAssignment} </span>{item.task}</p>}
+      {detail && detail !== item.task && <p className="worker-detail">{detail}</p>}
       <MessageAttachments t={t} files={item.attachments ?? []} load={previewAttachment} label={t.tool.resultAttachments} className="tool-attachments" />
+      {open && <section className="worker-preview" id={previewId} aria-label={t.tool.workerPreview(label)}>
+        <p className="worker-preview-caption">{t.tool.workerReadOnly}</p>
+        <div className="worker-preview-scroll" role="region" aria-label={t.tool.workerPreview(label)} tabIndex={0}>
+          {item.preview?.length
+            ? <TranscriptView t={t} items={item.preview} language={language} onDecide={ignorePreviewDecision} approvalsEnabled={false} previewAttachment={previewAttachment} />
+            : <p className="worker-preview-empty">{t.tool.workerPreviewEmpty}</p>}
+        </div>
+      </section>}
     </div>
   );
 }
@@ -253,14 +318,22 @@ export function TranscriptView({ t, items, language, onDecide, previewAttachment
   /** Loads images the host kept a copy of (observed transcripts); without it every file is listed. */
   previewAttachment?: AttachmentPreviewLoader | undefined;
 }) {
+  const [openStates, setOpenStates] = useState<ReadonlyMap<string, boolean>>(() => new Map());
+  const setToolOpenKeys: SetToolOpenKeys = (keys, open) => {
+    setOpenStates(prev => {
+      const next = new Map(prev);
+      for (const key of keys) next.set(key, open);
+      return next;
+    });
+  };
   return (
     <ol className="transcript">
       {groupToolRuns(items).map(item => {
         if (Array.isArray(item)) {
           const run = item as Run;
           return run[0]!.kind === 'tool'
-            ? <li key={run[0]!.id} className="msg"><ToolRun t={t} items={run as ToolItem[]} previewAttachment={previewAttachment} /></li>
-            : <li key={run[0]!.id} className="msg worker-row"><WorkerRun t={t} items={run as WorkerItem[]} previewAttachment={previewAttachment} /></li>;
+            ? <li key={run[0]!.id} className="msg"><ToolRun t={t} items={run as ToolItem[]} previewAttachment={previewAttachment} openStates={openStates} onSetOpenKeys={setToolOpenKeys} /></li>
+            : <li key={run[0]!.id} className="msg worker-row"><WorkerRun t={t} items={run as Extract<TranscriptItem, { kind: 'worker' }>[]} language={language} previewAttachment={previewAttachment} openStates={openStates} onSetOpenKeys={setToolOpenKeys} /></li>;
         }
         switch (item.kind) {
           case 'user':

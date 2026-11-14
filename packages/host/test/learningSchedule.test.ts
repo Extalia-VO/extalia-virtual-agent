@@ -16,6 +16,21 @@ describe('learning admission schedule', () => {
   beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date('2026-01-01T00:00:00Z')); });
   afterEach(() => { vi.useRealTimers(); });
 
+  it('reports the selected quiet interval while waiting and preserves a snoozed interval across conflicts', async () => {
+    let ready = false;
+    const queue = new LearningSchedule();
+    const task = entry('delay-metadata', { ready: () => ready });
+    queue.schedule(task);
+    expect(queue.snapshot().jobs[0]).toMatchObject({ waitingForIdle: true, delaySeconds: 60 });
+    queue.act({ id: task.id, revision: queue.snapshot().revision, action: 'snooze' });
+    expect(queue.snapshot().jobs[0]).toMatchObject({ waitingForIdle: true, delaySeconds: 600 });
+    ready = true; queue.wake();
+    expect(queue.snapshot().jobs[0]).toMatchObject({ waitingForIdle: false, delaySeconds: 600 });
+    ready = false; await queue.yieldForForeground('profile-a');
+    expect(queue.snapshot().jobs[0]).toMatchObject({ waitingForIdle: true, delaySeconds: 600 });
+    await queue.close();
+  });
+
   it('leaves empty and terminal-only wakes out of the busy lifetime and revision', async () => {
     const queue = new LearningSchedule();
     const empty = queue.snapshot(); queue.wake();

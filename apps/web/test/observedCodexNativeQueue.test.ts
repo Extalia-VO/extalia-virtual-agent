@@ -178,3 +178,33 @@ it('validates passive attachment metadata and drops remote previews independentl
   const privateStatus = validateCodexNativeQueue(status({ state: 'private', items: safe.items }), id, threadId);
   expect(privateStatus.items).toEqual([]);
 });
+
+it('polls observedNativeQueueStatus and renders Antigravity native queue labels', async () => {
+  const agyId = 'session-agy', cascadeId = 'cascade-1';
+  const api: AgentHostApi = {
+    observedNativeQueueStatus: vi.fn(async () => ({
+      sessionId: agyId,
+      threadId: cascadeId,
+      state: 'ready' as const,
+      observedAt: '2026-11-13T00:00:00Z',
+      items: [{ id: 'queued-1', text: 'Next cascade prompt', nonTextItems: 0, truncated: false }],
+      truncated: false,
+    })),
+  } as unknown as AgentHostApi;
+  const control = createCodexNativeQueueControl(api, agyId, cascadeId, 'antigravity');
+  const stop = control.start();
+  await settle();
+  expect(api.observedNativeQueueStatus).toHaveBeenCalledWith(agyId);
+  const view = control.getSnapshot();
+  expect(view.phase).toBe('ready');
+  const html = renderToStaticMarkup(createElement(ObservedCodexNativeQueueContent, {
+    t: MESSAGES.en,
+    control,
+    view,
+    sourceLabel: 'Antigravity',
+  }));
+  expect(html).toContain('Next cascade prompt');
+  expect(html).toContain('Antigravity');
+  expect(html).not.toContain('Queued in Codex');
+  stop();
+});

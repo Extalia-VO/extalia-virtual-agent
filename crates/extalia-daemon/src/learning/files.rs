@@ -401,9 +401,20 @@ impl Learning {
         let proposal = text::proposal(&input["proposal"])?;
         let provenance = text::provenance(&input["provenance"])?;
         let data = self.data_handle()?;
-        let profiles = child(&data, "profiles", true)?;
-        let profile = child(&profiles, &self.profile, true)?;
-        let inbox = child(&profile, "skill-imports", true)?;
+        let profile_id = extalia_core::skills::ProfileId::parse(&self.profile)
+            .ok_or(refuse("invalid_profile"))?;
+        let _layout = extalia_core::skills::storage::prepare(&self.data, &profile_id)
+            .map_err(|_| refuse("skill_layout_unavailable"))?;
+        let inbox = if extalia_core::skills::storage::is_global(&profile_id) {
+            child(&child(&data, "skills", false)?, "imports", true)?
+        } else {
+            let profiles = child(&data, "profiles", true)?;
+            child(
+                &child(&profiles, &self.profile, true)?,
+                "skill-imports",
+                true,
+            )?
+        };
         let stage_id = uid();
         let name = format!("proposal-{}", &stage_id[..32]);
         let folder = new_child(&inbox, &name)?;
@@ -468,9 +479,20 @@ impl Learning {
             return Err(refuse("inside_store"));
         }
         let root_data = self.data_handle()?;
-        let profiles = child(&root_data, "profiles", true)?;
-        let profile = child(&profiles, &self.profile, true)?;
-        let inbox = child(&profile, "skill-imports", true)?;
+        let profile_id = extalia_core::skills::ProfileId::parse(&self.profile)
+            .ok_or(refuse("invalid_profile"))?;
+        let _layout = extalia_core::skills::storage::prepare(&self.data, &profile_id)
+            .map_err(|_| refuse("skill_layout_unavailable"))?;
+        let inbox = if extalia_core::skills::storage::is_global(&profile_id) {
+            child(&child(&root_data, "skills", false)?, "imports", true)?
+        } else {
+            let profiles = child(&root_data, "profiles", true)?;
+            child(
+                &child(&profiles, &self.profile, true)?,
+                "skill-imports",
+                true,
+            )?
+        };
         let stage_id = uid();
         let name = format!("import-{}", &stage_id[..32]);
         let folder = new_child(&inbox, &name)?;

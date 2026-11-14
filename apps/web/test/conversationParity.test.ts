@@ -32,12 +32,13 @@ describe('conversation message parity', () => {
       const answer = html(reply, library, language);
       expect(answer).toContain('Yes, continue.');
       expect(answer).not.toContain('questionItemId');
-      expect(answer).not.toContain('Continue?');
+      expect(answer).toContain('Continue?');
+      expect(answer).toContain('class="question-answer"');
       expect(answer).toContain(MESSAGES[language].chat.copyMessage);
     }
   });
 
-  it('shows all async answers as ordinary user text without transport markup or repeated questions', () => {
+  it('shows async question-answer pairs consistently without transport markup', () => {
     const items = [
       { questionItemId: JSON.stringify(['request_user_input_async', 'call-example', 0]), question: 'Is the setup ready?', answer: '**Ready** to proceed.' },
       { questionItemId: JSON.stringify(['request_user_input_async', 'call-example', 1]), question: 'Any extra notes?', answer: 'Keep <script>literal</script>.' },
@@ -48,7 +49,10 @@ describe('conversation message parity', () => {
       expect(rendered).toContain('<strong>Ready</strong> to proceed.');
       expect(rendered).toContain('literal');
       expect(rendered).toContain(MESSAGES[language].chat.copyMessage);
-      expect(rendered).not.toMatch(/questionItemId|request_user_input_async|send_user_message_question_reply|Is the setup ready|Any extra notes|<script>/);
+      expect(rendered).toContain('Is the setup ready?');
+      expect(rendered).toContain('Any extra notes?');
+      expect(rendered.match(/class="question-answer"/g)).toHaveLength(2);
+      expect(rendered).not.toMatch(/questionItemId|request_user_input_async|send_user_message_question_reply|<script>/);
     }
   });
 

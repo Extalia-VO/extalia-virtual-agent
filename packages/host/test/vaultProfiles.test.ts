@@ -155,6 +155,29 @@ describe.skipIf(process.platform === 'win32')('workspace vault profiles', () => 
     await expect(restarted.resolve('w-one', { purpose: 'learning' })).rejects.toThrow(/not enabled/);
   });
 
+  it('keeps legacy observed learning off, persists explicit consent and preserves it across old-client saves', async () => {
+    const h = await setup(); expect((await h.profiles.policyFor('w-one')).policy.observed === true).toBe(false);
+    const current = await h.save({ automaticLearning: { enabled: true, skills: true, notes: false, observed: true } });
+    const profile = current.profiles.find(item => item.kind === 'managed')!; expect(profile.automaticLearning.observed).toBe(true);
+    const restarted = new VaultProfiles(h.options); expect((await restarted.policyFor('w-one')).policy.observed).toBe(true);
+    await h.save({ id: profile.id, name: 'Renamed observed profile' }); expect((await restarted.policyFor('w-two')).policy.observed).toBe(true);
+    const disabled = await h.save({ id: profile.id, automaticLearning: { enabled: false, skills: true, notes: false, observed: true } });
+    expect(disabled.profiles.find(item => item.id === profile.id)?.automaticLearning.observed).toBe(false); expect((await restarted.policyFor('w-one')).policy.observed).toBe(false);
+    expect(h.read().profiles?.profiles.find(item => item.id === profile.id)?.automaticLearning?.observed).toBe(true);
+  });
+
+  it('includes observed consent in revisions without authorizing writes to a retargeted notes vault', async () => {
+    const h = await setup(), first = path.join(h.root, 'observed-notes-one'), second = path.join(h.root, 'observed-notes-two');
+    await mkdir(first); await mkdir(second); h.setDefault(first);
+    const current = await h.save({ id: 'default', name: 'Default', automaticLearning: { enabled: true, skills: true, notes: true, observed: true } });
+    expect((await h.profiles.policyFor('w-one')).policy).toMatchObject({ notes: true, observed: true });
+    h.setDefault(second); expect((await h.profiles.policyFor('w-one')).policy).toMatchObject({ notes: false, observed: true });
+    await expect(h.profiles.resolve('w-one', { purpose: 'learning' })).rejects.toThrow(/not enabled/);
+    await expect(h.save({ id: 'default', name: 'Default', expectedRevision: current.revision, automaticLearning: { enabled: true, skills: true, notes: true, observed: false } })).rejects.toThrow(/Refresh/);
+    const before = (await h.profiles.list()).revision; await h.save({ id: 'default', name: 'Default', automaticLearning: { enabled: true, skills: true, notes: false, observed: false } });
+    expect((await h.profiles.list()).revision).not.toBe(before);
+  });
+
   it('keeps custom roots opt-in when an automatic-learning policy is absent', async () => {
     const h = await setup();
     const custom = path.join(h.root, 'custom-vault'); await mkdir(custom);

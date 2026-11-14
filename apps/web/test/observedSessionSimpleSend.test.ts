@@ -5,10 +5,12 @@ import { createObservedSessionControl } from '../src/observe/observedSessionCont
 const id = 'observed-session';
 function route(name: ObservedControlRoute, action: ObservedControlAction, capabilityId = `${name}-${action}`): ObservedControlRouteStatus {
   const metadata = {
+    'antigravity-native': { evidence: 'native-attachment', limit: 'existing-native-owner' },
     'codex-native': { evidence: 'native-attachment', limit: 'existing-native-owner' },
     'hermes-native': { evidence: 'native-attachment', limit: 'existing-native-owner' },
     'codex-queue': { evidence: 'official-queue', limit: 'queue-receipt-only' },
     'cooperative-tool': { evidence: 'paired-tool', limit: 'waiting-tool-only' },
+    'official-cli-resume': { evidence: 'official-cli', limit: 'reviewed-cli-owner' },
     'cooperative-inbox': { evidence: 'paired-inbox', limit: 'paired-consumer-only' },
   } as const;
   return { route: name, state: 'ready', ...metadata[name], capabilities: [{ action, capabilityId, available: true }], relatedControls: [] };
@@ -41,11 +43,25 @@ it('offers a simple send without selecting or dispatching on mount, eligibility 
 it.each([
   [route('codex-native', 'start'), 'codex-native-start'],
   [route('hermes-native', 'start'), 'hermes-native-start'],
+  [route('antigravity-native', 'start'), 'antigravity-native-start'],
+  [route('official-cli-resume', 'start'), 'official-cli-resume-start'],
   [route('cooperative-tool', 'reply-tool'), 'cooperative-tool-reply-tool'],
 ] as const)('uses the sole supported %s action', async (candidate, capabilityId) => {
   const { api, model } = setup([candidate]); await settle(); model.setDraft('Continue');
   expect(model.canSendMessage()).toBe(true); await model.sendMessage();
   expect(api.dispatchObservedControl).toHaveBeenCalledExactlyOnceWith(id, expect.objectContaining({ capabilityId }));
+});
+
+it('defaults Antigravity prompts to the actual native owner instead of an unconsumed cooperative inbox', async () => {
+  const { api, model } = setup([route('cooperative-inbox', 'inbox-send'), route('official-cli-resume', 'start'), route('antigravity-native', 'start')]);
+  await settle(); expect(model.getSnapshot().phase).toBe('ready'); model.setDraft('Continue this work'); await model.sendMessage();
+  expect(api.dispatchObservedControl).toHaveBeenCalledExactlyOnceWith(id, expect.objectContaining({ capabilityId: 'antigravity-native-start' }));
+});
+
+it('uses an explicitly paired official CLI before a cooperative inbox when no native owner is available', async () => {
+  const { api, model } = setup([route('cooperative-inbox', 'inbox-send'), route('official-cli-resume', 'start')]);
+  await settle(); model.setDraft('Continue this work'); await model.sendMessage();
+  expect(api.dispatchObservedControl).toHaveBeenCalledExactlyOnceWith(id, expect.objectContaining({ capabilityId: 'official-cli-resume-start' }));
 });
 
 it('prefers the official queue to native starts and cooperative alternatives', async () => {

@@ -31,6 +31,9 @@ export interface ContinuitySnapshotSummary {
   model?: string;
   effort?: Effort;
   connectionId?: string;
+  /** Additional reviewed workspace references retain their original profile and access boundary. */
+  workspaceContext?: { workspaceId: string; profileId: string; boundary: string;
+    contributors?: { sessionId: string; sourceId: string; nativeSessionId: string; boundary: string }[] };
   title: string;
   capturedAt: string;
   revision: string;

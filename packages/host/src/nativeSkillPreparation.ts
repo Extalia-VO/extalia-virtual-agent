@@ -1,7 +1,7 @@
 import type { SkillLoadReport } from '@extalia/protocol';
 import { checkRequestBudget, RequestBudgetError, type TurnOptions } from '@extalia/runtime';
-import type { AgentSkillCatalog } from './skills.js';
-import { autoLoadSkills } from './skillAutoLoad.js';
+import { bindRequestSkills, type AgentSkillCatalog } from './skills.js';
+import { autoLoadSkills, relevantSkillNames } from './skillAutoLoad.js';
 
 interface Options {
   catalog: AgentSkillCatalog;
@@ -17,6 +17,7 @@ interface Options {
 export function createNativeSkillPreparation(options: Options): NonNullable<TurnOptions['prepareRequest']> {
   let previous: string | undefined;
   return async request => {
+    if (request.requestScope) bindRequestSkills(options.catalog, request.requestScope, []);
     request.signal.throwIfAborted();
     options.assertCurrent?.();
     if (!options.enabled) return request.system;
@@ -25,8 +26,9 @@ export function createNativeSkillPreparation(options: Options): NonNullable<Turn
     const recent = userMessages.slice(Math.max(0, userMessages.length - 3), -1);
     const append = (context: string) => context ? `${request.system}\n\n${context}` : request.system;
     let rejectedBudget: ReturnType<typeof checkRequestBudget> | undefined;
+    const selection = { prompt, recentUserMessages: recent, orchestrator: options.orchestrator(), worker: options.worker, signal: request.signal };
     const result = await autoLoadSkills(options.catalog, {
-      prompt, recentUserMessages: recent, orchestrator: options.orchestrator(), worker: options.worker, signal: request.signal,
+      ...selection,
       acceptContext: context => {
         const budget = checkRequestBudget({ system: append(context), messages: request.messages, tools: request.tools }, options.inputTokenLimit);
         if (budget.reason) rejectedBudget = budget;
@@ -47,6 +49,7 @@ export function createNativeSkillPreparation(options: Options): NonNullable<Turn
         throw new Error('Required Native skill instructions are unavailable.');
       throw new RequestBudgetError(rejectedBudget?.reason ?? 'token-limit', rejectedBudget?.pressure);
     }
+    if (request.requestScope) bindRequestSkills(options.catalog, request.requestScope, relevantSkillNames(options.catalog, selection));
     return append(result.context);
   };
 }

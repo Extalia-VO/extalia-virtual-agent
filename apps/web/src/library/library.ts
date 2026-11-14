@@ -1,5 +1,5 @@
 import { sourceKey, type ImportPreview, type LocalState, type PortableSession } from '@extalia/core';
-import type { ImportCandidate, ImportPreviewResult, LibrarySessionSummary } from '@extalia/platform';
+import type { SessionBrowserProjectIdentity, ImportCandidate, ImportPreviewResult, LibrarySessionSummary } from '@extalia/platform';
 
 /** Pure helpers for the Import and History pages. */
 
@@ -52,6 +52,7 @@ export function countByState(items: readonly LibrarySessionSummary[]): Record<Lo
 }
 
 export interface PreviewRow {
+  projectGroup?: SessionBrowserProjectIdentity;
   candidateId: string;
   session: PortableSession;
   result?: ImportPreview['results'][number];
@@ -60,8 +61,8 @@ export interface PreviewRow {
 /** Pair each previewed session with what importing would do to it. */
 export function previewRows(preview: ImportPreviewResult): PreviewRow[] {
   const results = new Map(preview.plan.results.map(result => [result.sourceKey, result]));
-  return preview.sessions.map(({ candidateId, session }) => {
+  return preview.sessions.map(({ candidateId, session, projectGroup }) => {
     const result = results.get(sourceKey(session.provenance));
-    return result ? { candidateId, session, result } : { candidateId, session };
+    return result ? { candidateId, session, projectGroup, result } : { candidateId, session, projectGroup };
   });
 }

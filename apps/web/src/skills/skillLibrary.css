@@ -115,3 +115,14 @@
   .skill-book-preview { color: CanvasText; background: Canvas; border: 1px solid CanvasText; box-shadow: none; }
   .skill-book-category, .skill-book-preview > div > span { color: CanvasText; }
 }
+.skill-origin-guide { max-width: 86ch; }
+.skill-book-origin-row { display: flex; align-items: center; flex-wrap: wrap; gap: .4rem; margin-top: .35rem; }
+.skill-origin-badge { display: inline-flex; align-items: center; max-width: 100%; width: fit-content; padding: .15rem .5rem; border: 1px solid currentColor; border-radius: 999px; font-size: .72rem; line-height: 1.4; font-weight: 650; color: var(--text); background: var(--surface); white-space: normal; overflow-wrap: anywhere; }
+.skill-origin-badge[data-origin="builtin"] { color: #245b75; background: #edf8ff; }
+.skill-origin-badge[data-origin="marketplace"] { color: #5c3e88; background: #f5efff; }
+.skill-origin-badge[data-origin="custom"] { color: #246448; background: #edf9f0; }
+.skill-origin-badge[data-origin="project"] { color: #745216; background: #fff8e8; }
+[data-theme="dark"] .skill-origin-badge[data-origin="builtin"] { color: #b6dff5; background: #1b3443; }
+[data-theme="dark"] .skill-origin-badge[data-origin="marketplace"] { color: #deccff; background: #36294a; }
+[data-theme="dark"] .skill-origin-badge[data-origin="custom"] { color: #b8e8cc; background: #1c3b2d; }
+[data-theme="dark"] .skill-origin-badge[data-origin="project"] { color: #f1d49a; background: #42351e; }

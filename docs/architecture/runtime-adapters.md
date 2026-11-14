@@ -59,6 +59,15 @@ them), or off. With OmniRoute and Extalia memory, Extalia sends
 the user-data directory; skills are `SKILL.md` files (built-in, user-wide, or in
 the project's `.extalia/skills/`).
 
+Native workers also have bounded `knowledge_search` and `knowledge_read` tools
+for the workspace's assigned Knowledge/Obsidian vault. This index is separate
+from the workspace MemoryStore and its connection toggle. The host pins the
+registered profile and folder for each turn; changed or unavailable bindings
+refuse access instead of selecting another vault. Read-only delegates receive
+only retrieval. Managed learning and meeting writers retain their own consent,
+provenance and root-identity checks; user-authored note-edit APIs are not agent
+write tools. See [Knowledge vault context](../design/knowledge-vault-context.md).
+
 ### Managed runtime adapter responsibilities
 
 Connect and disconnect, report capabilities, create or resume a session where

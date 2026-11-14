@@ -184,3 +184,68 @@ it('shows unbound history metadata read-only without asserting it needs a curren
   expect(html).toContain(MESSAGES.en.observedInput.replyUnavailable);
   expect(renderToStaticMarkup(createElement(ObservedInputContext, { value: context }, createElement(ObservedInputAlert, { t: MESSAGES.en })))).toBe('');
 });
+
+it.each(['en', 'id'] as const)('explains the selected reply route and never presents queue handoff as reading (%s)', language => {
+  const t = MESSAGES[language];
+  const renderCard = (patch: Partial<ObservedUserInputRequest>) => renderToStaticMarkup(createElement(ObservedInputCard, {
+    t, request: request(patch), disabled: false, busy: false, uncertain: false, onDraft: vi.fn(), onSubmit: vi.fn(),
+  }));
+  for (const deliveryRoute of ['native-answer', 'native-steer', 'native-start', 'queue'] as const) {
+    expect(renderCard({ deliveryRoute })).toContain(t.observedInput.deliveryRoutes[deliveryRoute]);
+    expect(validObservedInput(status({ requests: [request({ deliveryRoute })] }), 'session')).toBe(true);
+  }
+  expect(renderCard({ deliveryRoute: 'native-steer', state: 'submitted' })).toContain(t.observedInput.steered);
+  expect(renderCard({ deliveryRoute: 'native-start', state: 'submitted' })).toContain(t.observedInput.direct);
+  const queued = renderCard({ deliveryRoute: 'queue', state: 'queued', canAnswer: false });
+  expect(queued).toContain(t.observedInput.queued); expect(queued).not.toContain('type="submit"');
+  expect(queued).not.toContain(t.observedInput.steered);
+  expect(validObservedInput(status({ requests: [request({ deliveryRoute: 'invalid' as 'queue' })] }), 'session')).toBe(false);
+});
+
+it('retains an unsubmitted async draft across a delivery-handle change, requiring the new revision', async () => {
+  const {api,control,key}=setup();await settle();
+  const active=request({deliveryRoute:'native-steer'});api.observedUserInputStatus.mockResolvedValue(status({requests:[active]}));await control.refresh();
+  control.setDraft(key,{choices:{question:'other'},texts:{question:'Keep this typed answer'}});
+  const idle=request({revision:'idle-revision',deliveryRoute:'native-start'});api.observedUserInputStatus.mockResolvedValue(status({requests:[idle]}));await control.refresh();
+  const nextKey=observedInputKey('session',observedInputSource(session()),idle);
+  expect(control.getSnapshot().drafts[key]).toBeUndefined();expect(control.getSnapshot().drafts[nextKey]?.texts.question).toBe('Keep this typed answer');
+  await control.answer('session',active);expect(api.answerObservedUserInput).not.toHaveBeenCalled();
+  await control.answer('session',idle);expect(api.answerObservedUserInput).toHaveBeenCalledWith('session',{requestId:idle.id,revision:idle.revision,answers:{question:'Keep this typed answer'}});
+});
+
+it('does not carry an async draft into changed questions or unverified identities', async () => {
+  for(const changed of [request({revision:'changed',deliveryRoute:'queue',questions:[{...request().questions[0]!,title:'A different question'}]}),request({revision:'changed',deliveryRoute:'queue',identityVerified:false,canAnswer:false})]){
+    const {api,control,key}=setup();await settle();api.observedUserInputStatus.mockResolvedValue(status({requests:[request({deliveryRoute:'native-steer'})]}));await control.refresh();
+    control.setDraft(key,{choices:{question:'0'},texts:{}});api.observedUserInputStatus.mockResolvedValue(status({requests:[changed]}));await control.refresh();expect(control.getSnapshot().drafts).toEqual({});
+  }
+});
+
+it.each(['en', 'id'] as const)('shows immediate indeterminate sending feedback and locks duplicate submission (%s)', language => {
+  const t = MESSAGES[language];
+  const html = renderToStaticMarkup(createElement(ObservedInputCard, {
+    t, request: request(), draft: { choices: { question: '0' }, texts: {} }, disabled: false, busy: true,
+    uncertain: false, onDraft: vi.fn(), onSubmit: vi.fn(),
+  }));
+  expect(html).toContain(t.observedInput.sending);
+  expect(html).toContain(t.observedInput.sendingHint);
+  expect(html).toContain('role="progressbar"');
+  expect(html).toContain('aria-live="polite"');
+  expect(html).toMatch(/<fieldset[^>]*disabled=""/);
+  expect(html).toMatch(/<button[^>]*disabled=""[^>]*aria-busy="true"/);
+  expect(html).not.toContain('aria-valuenow');
+  expect(html).not.toContain(t.observedInput.submitted);
+});
+
+it('keeps the sending indicator if source polling retires a question before its answer call settles', async () => {
+  const { control, key } = setup(); await settle(); const view = control.getSnapshot(), entry = view.entries.session!;
+  const html = renderToStaticMarkup(createElement(ObservedInputContext, { value: { control,
+    view: { ...view, busy: key, entries: { session: { ...entry, requests: [] } } }, locate: vi.fn() } },
+  createElement(ObservedInputCards, { t: MESSAGES.en, sessionId: 'session' })));
+  expect(html).toContain(MESSAGES.en.observedInput.sendingHint);
+  expect(html).toContain('role="progressbar"');
+  expect(html).not.toContain('type="submit"');
+  const other = renderToStaticMarkup(createElement(ObservedInputContext, { value: { control,
+    view: { ...view, busy: key, entries: { session: { ...entry, source: 'different-source', requests: [] } } }, locate: vi.fn() } },
+  createElement(ObservedInputCards, { t: MESSAGES.en, sessionId: 'session' })));
+  expect(other).toBe('');
+});

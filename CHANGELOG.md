@@ -16,20 +16,262 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
-## [0.4.296] - 2026-11-14
+## [0.4.319] - 2026-11-14
 
-### Performance
+- Integrate the latest Native, workspace, Knowledge, Skills, Observe and Chat updates with optimized Office geometry and instance submissions. Preserve profile-scoped storage, reviewed workspace changes and existing Desktop folder dialogs across the combined code paths.
+- Use the supplied home directory for handover/CLI discovery, retain GUI executable fallbacks, and isolate discovery fixtures from tools installed on the test machine.
+
+## [0.4.318] - 2026-11-13
+
+- Keep the Office character board compact by showing active, ready and on-shift
+  standby members first. Offline and off-shift members remain inspectable in a
+  collapsed bottom group with localized show/hide controls and team grouping.
+
+## [0.4.317] - 2026-11-13
+
+- Make Native delegation cards in Chat expandable into read-only live worker
+  previews, including recorded model responses, tool/command output and errors.
+  Keep previews separate per task and preserve expansion during live updates
+  and model fallback, with compact layouts in English and Indonesian.
+
+## [0.4.316] - 2026-11-13
+
+- Render image thumbnails and strip leading `[Attached file: ...]` tags on
+  observed prompt bubbles by retaining SHA-256 previews across queued
+  observation dispatch, hooks and session-staged transcript materialization.
+
+## [0.4.315] - 2026-11-13
+
+- Hold observed Antigravity queued prompts as editable pending items in Extalia
+  while `GetCascadeTrajectory` reports an active cascade run, so edit, reorder,
+  delete, pause/resume and steer stay usable until the cascade returns idle.
+- Default running and finished multi-tool transcript groups and tool command
+  rows to collapsed unless previewed, and preserve each group's, tool row's and
+  queue drawer's expanded or collapsed state across live transcript and polling
+  updates.
+
+## [0.4.314] - 2026-11-13
+
+- Let Office render quality recover gradually above 30 FPS, including stable
+  31–39 FPS displays. Lower one level after three sustained sub-30 windows,
+  hold exactly 30 FPS and retain bounded retry of sharper levels.
+- Count recurring raw-frame stalls when choosing quality, so filtered FPS cannot
+  conceal sustained slow rendering. Reset measurement streaks after visibility
+  or WebGL-context changes, retaining the selected resolution and retry budget.
+
+## [0.4.313] - 2026-11-13
+
+- Scope isolated Native learning and Knowledge meetings to conflicting workspace
+  and vault activity, including Observe queues and observed-memory work. Preserve
+  shared/default vault, unknown ownership, privacy and actual-settlement guards.
+- Show the selected quiet interval while learning is waiting, including ten-minute
+  snoozes, and the live remaining countdown once armed. Describe resource conflicts
+  without requiring the entire Office to be idle.
+
+- Remove the Native prompt's Learn as skill checkbox. Existing profile-owned
+  automatic learning continues, while direct English/Indonesian learning requests
+  can save generated user skill candidates without a special command. Built-in
+  skills, write approvals, inspection and activation boundaries remain separate.
+- Read user-supplied learning links through a bounded, supervised Rust process:
+  public-address and pinned-DNS admission, validated redirects, text/body limits,
+  cancellation settlement and at most two source children per host. Linked
+  proposals require successful attributed reads; failures cannot produce a
+  candidate supposedly learned from unseen source content.
+
+## [0.4.312] - 2026-11-13
+
+- Show a small automatic-camera warning beside the Office FPS counter during
+  the final ten seconds before a working target, or five seconds before an idle
+  target. Use the director's actual movement/meeting/newcomer deadlines, and hide
+  on switches, manual activity, suspension and input attention.
+
+## [0.4.311] - 2026-11-13
+
+- Confirm session, imported-history and workspace deletion in a focused modal
+  showing the exact item and its impact. Cancel receives initial focus; pending
+  removal locks duplicate submissions and shows progress with retryable errors.
+  Removing an additional project folder also requires confirmation before its
+  workspace draft changes, while original project and source-app files are kept.
+
+## [0.4.310] - 2026-11-13
+
+- Group Native Chat sessions by workspace and registered project folder, with
+  stable tree expansion, activity indicators and within-workspace drag-and-drop.
+  Session settings offer the same folder choice for keyboard/touch users;
+  cross-workspace transfers require a destination review and explicit confirmation.
+- Persist a saved Native session's selected working root for tools, instructions,
+  delegation and missions while retaining its identity and conversation. Preserve
+  historical file-root references and previews, enforce current registered grants,
+  and reject active, uncertain or stale moves. Workspace memory/vault ownership
+  stays unchanged by a folder selection.
+
+## [0.4.309] - 2026-11-13
+
+- Split observed Antigravity models into base models with per-model effort
+  selectors in the Extalia composer (`updateObservedAntigravitySettings`) and
+  pass the resolved native `planModel` on `SendUserCascadeMessage`.
+- Expose Antigravity native cascade and cooperative inbox queues through
+  `observedNativeQueueStatus`, render `ObservedCodexNativeQueue` for
+  Antigravity sessions, and stabilize cooperative prompt queue identities
+  across asynchronous `projectPath` updates so editing the queue does not raise
+  stale target mismatch errors.
+- Allow bidirectional handover between Codex and Antigravity observed sessions
+  anytime—even across unregistered projects or while active—while preserving
+  isolated workspace boundaries and deduplicating handover loading/error alerts.
+
+## [0.4.308] - 2026-11-13
+
+- Show immediate, sticky sending feedback for Codex answers, including a spinner
+  and indeterminate progress bar. Lock inputs while delivery is pending, keep the
+  indicator if polling retires the question first, and replace it with the actual
+  receipt or uncertain outcome. Respect reduced motion without claiming reading
+  or inventing a completion percentage.
+
+## [0.4.307] - 2026-11-12
+
+- Keep live session trees from blinking open and closed when input markers or
+  recent activity change. Preserve per-source folder choices through refresh,
+  filtering and parent collapse; apply initial expansion defaults only once.
+  Refresh already-loaded pages atomically, retaining rows on failed or obsolete
+  reads, and keep known-empty sections hidden while refreshing. Folder and
+  session overtaking animations remain enabled.
+
+## [0.4.306] - 2026-11-12
+
+- Animate recent-activity reordering in Observe, History and Import trees:
+  whole project folders glide past sibling folders, while sessions pass only
+  their siblings inside the same folder. Keep selection, keyboard focus and
+  expansion state; smoothly retarget rapid updates and respect reduced motion.
+
+## [0.4.305] - 2026-11-12
+
+- In the foreground 3D Office, frame the character requesting supported input
+  before opening its question or confirmation. Wait for camera completion,
+  preserve existing dialogs, and deduplicate exact requests across polls and
+  navigation. Background pages retain their notification flow; answers and
+  permission decisions always require the user.
+- Keep explicit character focus from being canceled by delayed automatic-camera
+  cleanup. Retain usable confirmation controls when Office history or graphics
+  cannot identify or frame the character.
+
+## [0.4.304] - 2026-11-12
+
+- Prefer verified direct native answers or original-turn steering for Codex
+  feedback before ordinary queue delivery. Expose the selected route and distinguish
+  submitted/queued receipts from confirmed reading; uncertain delivery never
+  silently falls back or resends. Retain typed drafts across safe route changes.
+- Render feedback as clean question–answer pairs, with expandable question text
+  and metadata-free copying in both live and imported conversations.
+
+## [0.4.303] - 2026-11-12
+
+- Keep model and option menus anchored to their input in the main prompt,
+  Setup and Settings. Menu entrance effects no longer override or animate the
+  positioning transform, including when scrolling or opening near screen edges.
+
+## [0.4.302] - 2026-11-12
+
+- End session-tree connector lines at the final visible sibling, including
+  single-child groups and expanded parents, across Observe, History and Import.
+  Keep ancestor spines only where another sibling follows.
+
+## [0.4.301] - 2026-11-12
+
+- Simplify Observe session trees with a spinner for each working session and a
+  dot for new unread assistant output. Keep selection neutral and parent nodes
+  free of active-link highlights; retain keyboard-accessible hover/focus actions.
+- Persist exact-revision output read markers. Opening old history, status updates
+  and tools do not create unread output; background or older-scroll views do not
+  acknowledge output that has not reached the visible conversation.
+- Group a repository's main checkout, linked worktrees and subfolders into one
+  project while preserving each session's actual working path. Without Git, use
+  registered workspace roots, then the original folder path. Apply verified
+  grouping metadata to Observe, History and import discovery/preview.
+
+## [0.4.300] - 2026-11-12
+
+- Audit inputs across all seven Settings tabs and nested editors. Reuse shared
+  library selectors and host-backed folder pickers for project and ignored
+  folders, with copyable locations and unchanged workspace validation.
+- Lock pending settings edits, prevent duplicate submissions and discard stale
+  replies after changing host or profile. Serialize notification permission
+  requests and keep failed saves recoverable.
+- Improve field labels, linked validation messages, credential input behavior
+  and English/Indonesian preference descriptions. Validate optional dashboard
+  URLs before submission and offer retries when vault settings cannot load.
+- Keep Storage settings within narrow screens, including long data and vault
+  paths, while retaining copy actions.
+
+## [0.4.299] - 2026-11-12
+
+- Retain expandable agent-app groups above project/worktree folders in Observe,
+  History and Import. Add connected tree branches, bounded harness pages and
+  separate groups for sessions without a project inside each app.
+- Mark the currently viewed session/project separately from recently reported
+  Observe work, including aggregate activity on collapsed parent nodes.
+- Compact the Observe toolbar and session header, prevent control/title overlap,
+  and reclaim vertical space for the transcript on laptop screens.
+
+## [0.4.298] - 2026-11-12
+
+- Use the shared Radix workspace selector in Knowledge vault connections.
+  Choose vault folders through the native Desktop picker or the host-backed Web
+  folder browser, with no manual path entry. Show confirmed locations with copy
+  actions; shared vault profile choices remain drafts until explicitly saved.
+- Preserve vault locations when folder selection is cancelled, reject stale
+  picker results and retain existing host validation and workspace boundaries.
+
+## [0.4.297] - 2026-11-12
+
+- Group Observe and imported History sessions by their original project folder
+  by default, retaining session titles and separating sessions without a project.
+  Add compact expand/collapse controls, newest-first ordering and explicit
+  twelve-row pages for more projects and older sessions.
+- Keep normal UI state polling free of the full imported-library list. Fetch
+  browser metadata through bounded, profile/query-bound cursor pages; preserve
+  selected conversation content and explicit import preview/commit. Source
+  folders remain metadata, without new workspace or filesystem access grants.
+
+## [0.4.296] - 2026-11-12
+
+- Add reusable Native agent profiles with shared purpose/personality, lead
+  connection/model preferences and individually configured subagents. Select a
+  team profile per project, keep explicit overrides and reset to its defaults.
+- Snapshot profile settings for each new session so later preset edits leave
+  existing agents unchanged. Edit an idle lead's personality or individual
+  team members from the Chat/Office team settings, with per-worker skill
+  relevance and project Knowledge, memory and file boundaries retained.
+- Preserve reviewed handover routing and active Native admission while changing
+  future defaults. Use revision-aware saves and stable creation request IDs to
+  avoid duplicate profiles after a lost response; refresh catalogs explicitly
+  across retained Settings tabs without replacing project drafts.
+- Add English/Indonesian profile controls and bounded local persistence, with
+  clear Native-only runtime support and a read-only refresh recovery action.
+- Keep learning status in bounded normal-flow panels in Chat and Settings so
+  background updates do not cover the composer or profile fields. Apply the
+  existing light/dark input styles consistently to the new profile editors.
+
+### Additional merged changes
 
 - Further reduce seven garments, three static libraries and selected avatar accessories while retaining rig metadata, reviewed fixture detail and bounded texture-coordinate precision. Synthetic pose and loader checks are recorded; native full-body fit and FPS remain unverified.
 
-## [0.4.295] - 2026-11-14
+## [0.4.295] - 2026-11-12
 
-### Performance
+- Store the default shared skill library directly in `~/.extalia-vo/skills`
+  on macOS/Linux. Verify and copy legacy immutable objects without changing
+  revision, scanner, review or activation authority; retain recovery copies and
+  unrelated legacy skill folders, and resume safely after interrupted publication.
+- Keep manual imports, generated candidates and marketplace staging on the same
+  layout, initialized only by the core store owner. Preserve nondefault CLI
+  namespaces and Windows legacy paths until native migration is supported.
+- Document operating profiles as a separate proposed preset for purpose,
+  personality, lead models and agent teams. Shared procedures keep per-worker
+  relevance checks; Knowledge, memory and project access retain their boundaries.
+
+### Additional merged changes
 
 - Reduce geometry in four public garments with deterministic, skinning-aware simplification while retaining textures and documenting pose comparisons.
 - Compact visible model instances and maintain culling bounds; expose actual graphics-backend details in Office benchmark reports.
-
-### Documentation
 
 - Restore the README's centered Extalia logo, badges, title and introduction
   before the campus preview. Add a smooth front-right → front-left → front-right
@@ -51,7 +293,16 @@ All notable changes to this project are documented here. The format follows
 
 ## [0.4.294] - 2026-11-12
 
-### Fixed
+- Support Observe-only setup and workspace folders without a model connection.
+  Capture and recall remain local with profile consent; background curation uses
+  an optional explicit connection. Upgrade the same workspace to full Extalia
+  while retaining observed sessions, history and stored episodes.
+- Keep Observe navigation and Office controls focused on outside-agent activity.
+  Hide managed Chat, missions, Knowledge, Grimoire and Native composer shortcuts;
+  keep managed characters/dialogs out of the Observe Office while preserving their
+  history. Retain relevant profile/connection settings and an explicit full-setup path.
+
+### Additional merged changes
 
 - Offer folder-access review after Native sends are rejected while Chat or the
   character dialog still has an older session summary. Refresh status without
@@ -62,7 +313,19 @@ All notable changes to this project are documented here. The format follows
 
 ## [0.4.293] - 2026-11-12
 
-### Fixed
+- Add opt-in profile learning from observed sessions with Rust-owned attributed
+  episode capture, local search, revision-aware reads and restart-safe deduplication.
+  Keep default-off startup free of background inference and historical backfill.
+- Offer progressive observed-work recall to Native agents and explicit search/read
+  in Observe tools. Preserve workspace/profile boundaries and partial coverage.
+- Curate observed work into scoped Knowledge notes and inactive skill candidates
+  through the existing Rust learning owner, with configured-model consent,
+  source attribution and cancellation/drain when foreground work resumes.
+- Include bounded memory, Knowledge, approved-skill and observed references in
+  reviewed handover archives. Reserve references in long histories and recheck
+  contributor authority without broadening existing external archive grants.
+
+### Additional merged changes
 
 - Align Connect, observed history and managed Hermes with its official Windows
   installation folder, explicit homes and named profiles. Keep installations
@@ -75,7 +338,25 @@ All notable changes to this project are documented here. The format follows
 
 ## [0.4.292] - 2026-11-12
 
-### Fixed
+- Share globally approved active skill revisions with ordinary and isolated
+  workspaces. Bind applicability to the actual activation approval, retaining
+  explicit workspace scopes, scanner checks and revocation behavior.
+- Load optional skill procedures for each worker's current task and gate manual
+  skill-body reads by that invocation. Reject weak topic/category matches,
+  irrelevant quoted references and competing ambiguous procedures; keep basic
+  memory/team policy guidance separate from optional skill selection.
+- Keep Knowledge, memory recall and project files isolated while skill additions
+  and updates append to the shared library. Generated skill guidance generalizes
+  private project details into reusable procedures and retains mandatory review.
+
+- Distinguish Extalia built-in, marketplace, custom, project and generic imported
+  skills with readable source badges and origin filters in Grimoire. Preserve
+  exact revision identity and show review/activation state separately.
+- Derive marketplace source markers from valid recorded provenance for the exact
+  profile and revision. Older hosts keep generic imported labels; no storage
+  migration, per-book inspection requests or scanner/activation changes.
+
+### Additional merged changes
 
 - Use validated, parented OS-native Desktop folder dialogs with localized titles
   and current-folder hints across projects, Knowledge vaults and skill imports.
@@ -87,7 +368,25 @@ All notable changes to this project are documented here. The format follows
 
 ## [0.4.291] - 2026-11-12
 
-### Fixed
+- Simplify handover into detected harness cards and conversation choices, with
+  technical setup in Advanced. Add workspace-attested Antigravity destination
+  creation and native delivery, original-operation recovery and explicit
+  inspection without replaying uncertain prompts.
+- Rebuild Observe around harness/project groups, search and status filters,
+  fixed conversation headers and tabs, independent transcript scrolling and a
+  bottom composer. Keep tools separate and preserve drafts across live updates.
+- Use native Antigravity workspace/model evidence and the latest visible dated
+  Codex working-folder metadata. Reject stale or ambiguous continuation scopes
+  and remove duplicate queue-error text without discarding drafts.
+- Verify a real UI Codex-to-Antigravity-and-back workflow with retained decisions,
+  unchanged implementation, fourteen tests and host-restart continuity; record
+  adapter and compaction limits separately from transport admission.
+- Allow more time for the asynchronous Linux installer fixture under the full
+  test suite while retaining its consent and verified-content assertions. Keep
+  symlink fixture assertions platform-specific without skipping bounded native
+  configuration validation on Windows.
+
+### Additional merged changes
 
 - Let automatic Knowledge curation and team reviews for unique non-default
   isolated vault profiles run alongside known Native workers, planning, memory
@@ -97,7 +396,26 @@ All notable changes to this project are documented here. The format follows
 
 ## [0.4.290] - 2026-11-12
 
-### Fixed
+- Consolidate Knowledge/Obsidian setup into one workspace-to-vault connection
+  card with the actual folder, shared-workspace impact and progressive folder
+  controls. Keep global profile management in Settings and preserve responsive
+  English/Indonesian graph, search and note workflows.
+- Give Native leads, delegated readers and saved-team meetings bounded,
+  workspace-bound Knowledge search/read tools. Read only indexed visible notes,
+  retain source labels and reject changed or unavailable bindings. Managed
+  learning/minutes writers keep their existing consent and provenance checks.
+- Bind scoped Knowledge requests to their expected profile and folder so a stale
+  editor cannot write another vault with the same path and hash. Retain copyable
+  drafts across external changes, freeze pending saves and restrict legacy-memory
+  imports and previews to workspaces assigned to the destination profile.
+- Recognize a configured semantic default-profile alias without moving vaults
+  or rewriting notes. Trusted daemon startup supplies the one allowed alias;
+  derived index schema 2 rebuilds cached visibility on alias introduction, change
+  or removal while preserving other profiles' isolation.
+- Keep development vault data separate by profile/folder and extend the native
+  Desktop smoke test through actual Knowledge IPC reads and stale-binding refusal.
+
+### Additional merged changes
 
 - Show a direct folder-access review beside Native Chat and Office messages
   after project folders are replaced, added or removed. Keep drafts, attachments
@@ -108,7 +426,10 @@ All notable changes to this project are documented here. The format follows
 
 ## [0.4.289] - 2026-11-12
 
-### Fixed
+- Add reviewed, direct UI handover into existing Codex, Gemini CLI and Claude Code conversations through installed CLI connections, with scoped archive readers, same-session checks, durable uncertainty and retained process ownership.
+- Document the remaining Claude-Mem-inspired memory requirements separately from implemented continuity and Knowledge features.
+
+### Additional merged changes
 
 - Treat a removed profile as a fresh installation instead of restoring retired
   data or stale browser preferences. Keep setup, workspace registrations, chat
@@ -118,8 +439,6 @@ All notable changes to this project are documented here. The format follows
   same root. Save last-workspace, Office lights, notification and panel choices
   in the host profile; rehydrate them when a Web client reconnects to a new host.
 
-### Documentation
-
 - Organize guides, architecture, design, release notes and PRD evidence through six
   module hubs. Reconcile v0.4.288 implemented, partial and outstanding requirements;
   preserve historical test scope and keep v0.5 acceptance separate from publication.
@@ -128,11 +447,13 @@ All notable changes to this project are documented here. The format follows
 
 ## [0.4.288] - 2026-11-12
 
-- Refresh Desktop/Web/npm release guidance, exact download names, scanner platform limits and the verified 133-model asset footprint. Keep v0.5 acceptance and real-provider certification separate from source integration and packaging checks.
-
 ### Fixed
 
 - Verify Native session destination folders structurally across Windows and Unix path encodings. Synchronize cooperative inbox revocation tests with actual request admission so delayed connections cannot invalidate the intended stale-pairing checks. Keep marketplace file validation compatible with strict Windows Clippy checks while preserving linked-file rejection.
+
+### Additional merged changes
+
+- Refresh Desktop/Web/npm release guidance, exact download names, scanner platform limits and the verified 133-model asset footprint. Keep v0.5 acceptance and real-provider certification separate from source integration and packaging checks.
 
 ## [0.4.287] - 2026-11-12
 

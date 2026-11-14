@@ -1,12 +1,20 @@
+import { skillStoragePaths } from '../src/skillStorage.js';
 import { createAgentHost } from '../src/service.js';
 import { createHash } from 'node:crypto';
 import { chmod, lstat, mkdir, mkdtemp, readdir, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ExtaliaEvent } from '@extalia/protocol';
+import type * as LearningSource from '../src/daemon/learningSource.js';
 
 import { DAEMON_BINARY, HAS_DAEMON } from './daemonBackend.js';
+
+const sourceReader = vi.hoisted(() => vi.fn());
+vi.mock('../src/daemon/learningSource.js', async original => ({
+  ...await original<typeof LearningSource>(), readLearningSource: sourceReader,
+}));
+beforeEach(() => { sourceReader.mockReset(); });
 
 interface RequestBody {
   model: string;
@@ -38,7 +46,7 @@ async function fixture(options: {
       return new Response(`data: ${JSON.stringify({ choices: [{ delta, finish_reason: 'tool' in reply ? 'tool_calls' : 'stop' }] })}\n\ndata: [DONE]\n\n`, { headers: { 'content-type': 'text/event-stream' } });
     },
   });
-  cleanups.push(async () => { await runtime.close(); await unlockFixture(path.join(data, 'profiles')); await rm(root, { recursive: true, force: true }); });
+  cleanups.push(async () => { await runtime.close(); await unlockFixture(data); await rm(root, { recursive: true, force: true }); });
   const host = runtime.host; host.subscribe(event => events.push(event));
   const connection = (await host.saveConnection({ name: 'Fixture', preset: 'custom', api: 'openai-chat', baseUrl: 'https://example.com/v1', model: 'lead-model', credential: { kind: 'none' }, features: { memory: 'off', skills: options.skills ?? 'extalia' } })).connections[0]!;
   const workspace = (await host.saveWorkspace({ name: 'Fixture', projectLocation: project,
@@ -53,16 +61,98 @@ async function idle(runtime: Awaited<ReturnType<typeof fixture>>['runtime']) {
 }
 
 describe('current-prompt skill learning authority through the Native host', () => {
-  it.skipIf(!HAS_DAEMON)('does not offer proposal tools for natural, quoted, fenced, nested or near-match commands even with write access allowed', async () => {
+  it.skipIf(!HAS_DAEMON)('does not treat quoted, fenced, nested or near-match commands as a direct learning request', async () => {
     const { host, runtime, bodies, session } = await fixture();
     for (const text of [
-      'Pelajari ini sebagai skill: review changes.', 'Learn this as a skill from https://example.com/review.',
       '"/learn-skill review"', '```\n/learn-skill review\n```', '> /learn-skill review',
       'The document says: /learn-skill review', '/learn-skill-extra review',
     ]) {
       await host.sendPrompt(session.id, text); await idle(runtime);
       expect(hasProposalTool(bodies.at(-1)!)).toBe(false);
     }
+    expect((await host.skillRegistry()).revisions).toEqual([]);
+  });
+
+  it.skipIf(!HAS_DAEMON)('offers a user-candidate tool for direct ordinary-language learning without a checkbox', async () => {
+    const { host, runtime, bodies, session } = await fixture();
+    for (const text of ['Pelajari ini sebagai skill: review changes.', 'Learn this as a skill from https://example.com/review.', 'Tolong pelajari https://example.com/guide.']) {
+      await host.sendPrompt(session.id, text); await idle(runtime);
+      expect(hasProposalTool(bodies.at(-1)!)).toBe(true);
+      if (text.includes('https://')) expect(bodies.at(-1)!.tools?.some(tool => tool.function.name === 'skill_source_read')).toBe(true);
+    }
+    expect((await host.skillRegistry()).revisions).toEqual([]);
+  });
+
+  it.skipIf(!HAS_DAEMON || process.platform === 'win32')('reads a requested link before saving a generated user candidate, without modifying built-ins or scheduling a duplicate curator', async () => {
+    const url = 'https://example.com/review';
+    const excerpt = 'Inspect the patch, validate its input boundaries, and record verification evidence.';
+    sourceReader.mockResolvedValue({ sourceUrl: url, finalUrl: url, contentType: 'text/plain', bytes: Buffer.byteLength(excerpt),
+      sha256: createHash('sha256').update(excerpt).digest('hex'), excerpt, truncated: false });
+    const { host, runtime, bodies, session } = await fixture({ reply: (_body, index) => index === 0
+      ? { tool: 'skill_propose', args: proposal } // Rejected before any save: source not read yet.
+      : index === 1 ? { tool: 'skill_source_read', args: { url } }
+        : index === 2 ? { tool: 'skill_propose', args: proposal } : { text: 'User candidate saved for inspection.' } });
+    await host.sendPrompt(session.id, `Tolong pelajari ${url} sebagai skill.`); await idle(runtime);
+    expect(sourceReader).toHaveBeenCalledExactlyOnceWith(expect.any(String), url, expect.any(AbortSignal));
+    expect(String(bodies[1]!.messages.at(-1)?.content)).toContain('Read the requested source');
+    expect(String(bodies[2]!.messages.at(-1)?.content)).toContain(excerpt);
+    const report = await host.skillRegistry();
+    expect(report.revisions).toHaveLength(1);
+    expect(report.revisions[0]).toMatchObject({ packageId: proposal.name, origin: 'generated', active: false });
+    expect((await host.inspectSkill(report.revisions[0]!.revisionId)).approvals).toEqual([]);
+    expect((await host.learningSchedule!()).jobs).toEqual([]);
+  });
+
+  it.skipIf(!HAS_DAEMON)('does not save a skill claimed from a source that failed to read', async () => {
+    sourceReader.mockRejectedValue(new Error('Unavailable source'));
+    const { host, runtime, bodies, session } = await fixture({ reply: (_body, index) => index === 0
+      ? { tool: 'skill_source_read', args: { url: proposal.sourceUrls[0] } }
+      : index === 1 ? { tool: 'skill_propose', args: proposal } : { text: 'The link could not be read; no skill was saved.' } });
+    await host.sendPrompt(session.id, `Learn this as a skill: ${proposal.sourceUrls[0]}`); await idle(runtime);
+    expect(sourceReader).toHaveBeenCalledTimes(1);
+    expect(String(bodies[2]!.messages.at(-1)?.content)).toContain('Read the requested source');
+    expect((await host.skillRegistry()).revisions).toEqual([]);
+  });
+
+  it.skipIf(!HAS_DAEMON)('does not bypass source-read requirements when all supplied links are inadmissible', async () => {
+    const { host, runtime, bodies, session } = await fixture({ reply: (_body, index) => index === 0
+      ? { tool: 'skill_propose', args: proposal } : { text: 'Please provide a readable public link without query credentials.' } });
+    await host.sendPrompt(session.id, 'Pelajari https://example.com/guide?token=opaque sebagai skill.'); await idle(runtime);
+    expect(hasProposalTool(bodies[0]!)).toBe(true);
+    expect(sourceReader).not.toHaveBeenCalled();
+    expect(String(bodies[1]!.messages.at(-1)?.content)).toContain('Read the requested source');
+    expect((await host.skillRegistry()).revisions).toEqual([]);
+  });
+
+  it.skipIf(!HAS_DAEMON)('uses a successful source read as evidence for the existing automatic profile curator', async () => {
+    const url = proposal.sourceUrls[0];
+    sourceReader.mockResolvedValue({ sourceUrl: url, finalUrl: url, contentType: 'text/plain', bytes: 12,
+      sha256: 'a'.repeat(64), excerpt: 'Source text.', truncated: false });
+    const { host, runtime, bodies, session } = await fixture({ reply: (_body, index) => index === 0
+      ? { tool: 'skill_source_read', args: { url } } : { text: 'Reviewed the source procedure.' } });
+    await host.sendPrompt(session.id, `Reference material for this task: ${url}`); await idle(runtime);
+    expect(hasProposalTool(bodies[0]!)).toBe(false);
+    expect((await host.learningSchedule!()).jobs).toContainEqual(expect.objectContaining({ kind: 'learning', sessionId: session.id, state: 'scheduled' }));
+  });
+
+  it.skipIf(!HAS_DAEMON)('respects a disabled automatic profile while retaining direct current-user learning requests', async () => {
+    const { host, runtime, bodies, session, workspace } = await fixture();
+    const catalog = await host.listVaultProfiles!();
+    const profile = catalog.profiles.find(item => item.workspaceIds.includes(workspace.id))!;
+    await host.saveVaultProfile!({ id: profile.id, name: profile.name, vaultRoot: null, workspaceIds: profile.workspaceIds,
+      minutesEnabled: profile.minutesEnabled, expectedRevision: catalog.revision, automaticLearning: { enabled: false, skills: false, notes: false } });
+    await host.sendPrompt(session.id, 'Reference material: https://example.com/review'); await idle(runtime);
+    expect(bodies.at(-1)!.tools?.some(tool => tool.function.name === 'skill_source_read')).toBe(false);
+    expect((await host.learningSchedule!()).jobs).toEqual([]);
+    await host.sendPrompt(session.id, 'Pelajari ini sebagai skill: review changes.'); await idle(runtime);
+    expect(hasProposalTool(bodies.at(-1)!)).toBe(true);
+  });
+
+  it.skipIf(!HAS_DAEMON)('keeps a current-message refusal out of the skill library even with a legacy learning flag', async () => {
+    const { host, runtime, bodies, session } = await fixture();
+    await host.sendPrompt(session.id, 'Please study https://example.com/review but do not save a skill.', { learnSkill: true }); await idle(runtime);
+    expect(hasProposalTool(bodies[0]!)).toBe(false);
+    expect(bodies[0]!.tools?.some(tool => tool.function.name === 'skill_source_read')).toBe(false);
     expect((await host.skillRegistry()).revisions).toEqual([]);
   });
 
@@ -97,7 +187,7 @@ describe('current-prompt skill learning authority through the Native host', () =
       expect(String(toolReply?.content)).toContain('no approval or activation was requested');
       expect(events.some(event => event.body.type === 'tool.completed' && event.body.tool === 'skill_propose' && !event.body.ok)).toBe(true);
       expect(events.some(event => event.body.type === 'tool.completed' && event.body.tool === 'skill_propose' && event.body.ok)).toBe(false);
-      await expect(lstat(path.join(data, 'profiles', 'default', 'skill-imports'))).rejects.toMatchObject({ code: 'ENOENT' });
+      await expect(lstat(skillStoragePaths(data).imports)).rejects.toMatchObject({ code: 'ENOENT' });
       await host.sendPrompt(session.id, 'Now review another change.'); await idle(runtime);
       expect(hasProposalTool(bodies.at(-1)!)).toBe(false);
       expect((await host.skillRegistry()).revisions).toEqual([]);
@@ -114,7 +204,7 @@ describe('current-prompt skill learning authority through the Native host', () =
     const turnEvents = events.filter(event => event.sessionId === session.id);
     expect(turnEvents.some(event => event.body.type === 'tool.completed' && event.body.tool === 'skill_propose' && event.body.ok)).toBe(true);
     // Current source authority is captured by the host and not taken from model arguments.
-    const receipt = await readFile(path.join(data, 'profiles', 'default', 'skills', 'objects', revision.treeSha256, 'PROVENANCE.md'), 'utf8');
+    const receipt = await readFile(path.join(skillStoragePaths(data).objects, revision.treeSha256, 'PROVENANCE.md'), 'utf8');
     const storedProvenance = JSON.parse(/```json\n([\s\S]*?)\n```/u.exec(receipt)![1]!);
     expect(storedProvenance).toMatchObject({ sessionId: session.id, workspaceId: workspace.id, promptSha256: createHash('sha256').update(prompt).digest('hex'), sourceVerified: false, claimedSourceUrls: proposal.sourceUrls });
     expect(receipt).not.toContain(prompt);

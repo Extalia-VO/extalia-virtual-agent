@@ -174,6 +174,12 @@ export function withBuiltinSkills(_inventory: readonly Skill[] = []): Skill[] {
 export interface AgentSkillCatalog { readonly skills: readonly CatalogSkill[]; readonly categories?: readonly BuiltinSkillCategory[]; readonly omitted?: number; readonly incomplete?: boolean; readonly snapshot?: string }
 interface CatalogState { skills: readonly CatalogSkill[]; inventory: readonly CatalogSkill[]; reload?: SkillToolOptions['reload']; reloadMany?: SkillToolOptions['reloadMany']; incomplete: boolean; snapshot: string }
 const catalogs = new WeakMap<AgentSkillCatalog, CatalogState>();
+const requestSkills = new WeakMap<object, { catalog: AgentSkillCatalog; names: ReadonlySet<string> }>();
+
+/** Per-invocation policy, refreshed before inference; never keyed by the shared team signal. */
+export function bindRequestSkills(catalog: AgentSkillCatalog, scope: object, names: readonly string[]): void {
+  requestSkills.set(scope, { catalog, names: new Set(catalogs.has(catalog) ? names : []) });
+}
 const snapshot = (skill: Skill): Skill => Object.freeze({ name: skill.name, description: skill.description, source: skill.source, body: skill.body,
   ...(skill.sha256 ? { sha256: skill.sha256 } : {}), ...(skill.revisionId ? { revisionId: skill.revisionId } : {}) });
 const canonicalBuiltin = (skill: CatalogSkill): skill is Skill => skill.source === 'builtin' && SHIPPED_SKILLS.some(builtin => builtin.name === skill.name && builtin.description === skill.description && builtin.body === skill.body);
@@ -330,6 +336,7 @@ const UNTRUSTED_NOTICE =
 
 /** `skill_read`: the model reads a skill's instructions on demand. Returns no tools when there are no skills. */
 export function createSkillTools(input: readonly CatalogSkill[] | AgentSkillCatalog, _options: SkillToolOptions = {}): AnyTool[] {
+  const inputCatalog = Array.isArray(input) ? undefined : input as AgentSkillCatalog;
   const owned = Array.isArray(input) ? undefined : catalogs.get(input as AgentSkillCatalog);
   // Plain inventory objects (including copied/forged catalogs) have no external authority.
   const skills = owned?.inventory ?? (Array.isArray(input) && input.length ? withBuiltinSkills().map(snapshot) : []);
@@ -338,7 +345,7 @@ export function createSkillTools(input: readonly CatalogSkill[] | AgentSkillCata
   const byName = new Map(skills.map(skill => [skill.name, skill]));
   const read: ToolDefinition<ReadInput> = {
     name: 'skill_read',
-    description: 'Read one skill by its exact name from the skill catalog, skill_list or skill_search. External skills require fresh scanner and active-revision verification. No paths or URLs.',
+    description: 'Read one skill by its exact name from the catalog, skill_list or skill_search only when its procedure fits your current assigned task. Category or keyword overlap alone is insufficient. The host checks request relevance and fresh scanner/active-revision verification. No paths or URLs.',
     parameters: {
       type: 'object',
       properties: { name: { type: 'string', description: 'Exact skill name.', pattern: '^[a-z0-9][a-z0-9-]{0,63}$' } },
@@ -348,8 +355,12 @@ export function createSkillTools(input: readonly CatalogSkill[] | AgentSkillCata
     access: 'meta',
     kind: 'knowledge',
     describe: input => ({ label: `Reading skill ${safeLabel(input.name, 64)}`, target: safeLabel(input.name, 64) }),
-    run: async input => {
+    run: async (input, context) => {
       if (!input || typeof input !== 'object' || Array.isArray(input) || Object.keys(input).length !== 1 || typeof input.name !== 'string' || !byName.has(input.name)) return failure('Choose exactly one listed skill name; paths, URLs and additional fields are not accepted.');
+      const scope = context.requestScope;
+      const allowed = scope ? requestSkills.get(scope) : undefined;
+      if (scope && (!allowed || allowed.catalog !== inputCatalog || !allowed.names.has(input.name)))
+        return failure('This procedure does not match the current assigned task. Continue without it; discovery metadata or another worker’s task cannot authorize this read.');
       const listed = byName.get(input.name)!;
       if (canonicalBuiltin(listed)) return { ok: true, output: bound(`# Skill: ${listed.name}\n${listed.description}\n\n${listed.body}`) };
       let skill: Skill;
@@ -357,6 +368,8 @@ export function createSkillTools(input: readonly CatalogSkill[] | AgentSkillCata
         if (!referenceDigests.has(listed as SkillReference)) throw new Error('Unavailable skill.');
         skill = (await freshSkills([listed], { reload, reloadMany: owned?.reloadMany }))[0]!;
       } catch { return failure(`The skill "${listed.name}" is no longer available (it was deactivated, revoked or failed verification).`); }
+      if (scope && (context.signal.aborted || requestSkills.get(scope) !== allowed))
+        return failure('The assigned task changed while the skill was being read. Continue with the current task.');
       // The notice comes first and the end marker survives truncation, so the model always sees where the supplied text stops.
       const head = `# Skill: ${skill.name}${skillOrigin(skill)}\n${UNTRUSTED_NOTICE}\n<skill-content>\n`;
       const tail = '\n</skill-content>';
@@ -368,12 +381,12 @@ export function createSkillTools(input: readonly CatalogSkill[] | AgentSkillCata
   const discovery = (search: boolean): ToolDefinition<DiscoveryInput> => ({
     name: search ? 'skill_search' : 'skill_list',
     description: search
-      ? 'Find skill metadata by up to eight literal terms (OR matches, no regex). Returns at most ten items and 4000 characters; continue nextOffset with the same query and snapshot. External metadata is freshly verified.'
-      : 'List a bounded page of skill metadata from this turn snapshot. Returns at most ten items and 4000 characters; continue nextOffset with snapshot. Newly activated skills require a new turn. External metadata is freshly verified.',
+      ? 'Find skill metadata by up to eight literal terms (OR matches, no regex). First call: provide query only, omit snapshot and offset. Returns at most ten items and 4000 characters; continue nextOffset with the same query and returned snapshot. External metadata is freshly verified.'
+      : 'List a bounded page of skill metadata from this turn snapshot. First call: omit snapshot and offset. Returns at most ten items and 4000 characters; continue nextOffset with the returned snapshot. Newly activated skills require a new turn. External metadata is freshly verified.',
     parameters: { type: 'object', properties: {
       ...(search ? { query: { type: 'string' as const, description: '1–200 characters, up to eight literal terms.' } } : {}),
       offset: { type: 'integer', minimum: 0, maximum: 2059 }, limit: { type: 'integer', minimum: 1, maximum: 10 },
-      snapshot: { type: 'string', pattern: '^[a-f0-9]{64}$', description: 'Snapshot from the previous response; reuse while paging.' },
+      snapshot: { type: 'string', pattern: '^[a-f0-9]{64}$', description: 'Omit on the first call. Copy the exact previous response snapshot only while paging; never invent a value.' },
     }, ...(search ? { required: ['query'] } : {}), additionalProperties: false },
     access: 'meta', kind: 'knowledge', describe: () => ({ label: search ? 'Searching skill metadata' : 'Listing skill metadata' }),
     run: async input => {
@@ -381,7 +394,7 @@ export function createSkillTools(input: readonly CatalogSkill[] | AgentSkillCata
       const validInteger = (value: unknown, min: number, max: number) => value === undefined || (typeof value === 'number' && Number.isSafeInteger(value) && value >= min && value <= max);
       if (!input || typeof input !== 'object' || Array.isArray(input) || Object.keys(input).some(key => !['offset', 'limit', 'snapshot', ...(search ? ['query'] : [])].includes(key))
         || !validInteger(input.offset, 0, 2059) || !validInteger(input.limit, 1, 10)
-        || (input.snapshot !== undefined && input.snapshot !== currentSnapshot)) return failure('Skill discovery arguments or snapshot are invalid. Restart discovery at offset zero.');
+        || (input.snapshot !== undefined && input.snapshot !== currentSnapshot)) return failure('Skill discovery arguments or snapshot are invalid. Restart by omitting snapshot and offset entirely; do not send a placeholder hash.');
       let terms: string[] = [];
       if (search) {
         if (typeof input.query !== 'string' || !input.query.trim() || input.query.length > 200) return failure('Skill search needs 1–200 characters and at most eight literal terms.');

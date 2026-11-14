@@ -19,17 +19,26 @@ const lerp3 = (from: Point3, to: Point3, t: number): Point3 => [0, 1, 2].map(axi
  * then keeps a walking character in frame until the user drags the view;
  * `focusPoint` frames a point such as a room.
  */
-export function CameraView({ automaticShot, automaticSeat, view, viewRequest = 0, focus, focusId, live, focusRequest = 0, reducedMotion, following = false, focusPoint, onFollowEnd, onFollowFloor }: {
+export function CameraView({ automaticShot, automaticSeat, view, viewRequest = 0, focus, focusId, live, focusRequest = 0, onFocusFinished, reducedMotion, following = false, focusPoint, onFollowEnd, onFollowFloor }: {
   automaticShot?: CameraDirectorCommand | null; automaticSeat?: Point3;
   view: FurnishedOfficeView; focus?: Point3; focusId?: string | null; live?: CharacterPositionSource; focusRequest?: number; reducedMotion: boolean;
   viewRequest?: number;
+  onFocusFinished?: (request: number, completed: boolean) => void;
   following?: boolean; focusPoint?: FocusPoint | undefined; onFollowEnd?: (() => void) | undefined;
   onFollowFloor?: ((floor: CharacterFloor) => void) | undefined;
 }) {
   const camera = useThree(s => s.camera);
   const size = useThree(s => s.size);
   const controls = useThree(s => s.controls) as unknown as { target: Vector3; minZoom: number; update(): void } | null;
-  const move = useRef<{ elapsed: number; from: CameraPose; to: CameraPose; automaticFocus?: boolean } | null>(null);
+  const move = useRef<{ elapsed: number; from: CameraPose; to: CameraPose; automaticFocus?: boolean; focusRequest?: number } | null>(null);
+  const focusFinished = useRef(onFocusFinished);
+  useLayoutEffect(() => { focusFinished.current = onFocusFinished; });
+  const finishMove = useMemo(() => (completed: boolean) => {
+    const current = move.current;
+    // Clear ownership before notifying: a receipt may synchronously request another move.
+    move.current = null;
+    if (current?.focusRequest !== undefined) focusFinished.current?.(current.focusRequest, completed);
+  }, []);
   const automated = useRef<CameraDirectorCommand | null>(null);
   const follow = useRef<{ id: string; last: Point3; waiting: boolean } | null>(null);
   const followMode = useRef({ following, focusId });
@@ -62,9 +71,9 @@ export function CameraView({ automaticShot, automaticSeat, view, viewRequest = 0
     camera.zoom = floorPose.zoom;
     camera.updateProjectionMatrix();
     if (controls) { controls.target.set(...target); controls.update(); }
-    move.current = null;
+    finishMove(false);
     follow.current = null;
-  }, [camera, controls, view, viewRequest, level, target, floorPose, size.width, size.height, automaticShot]);
+  }, [camera, controls, view, viewRequest, level, target, floorPose, size.width, size.height, automaticShot, finishMove]);
   const focusKey = focus?.join(',');
   const lastFocusRequest = useRef(focusRequest);
   const lastFollowing = useRef<{ following: boolean; id?: string | null }>({ following: false });
@@ -72,15 +81,23 @@ export function CameraView({ automaticShot, automaticSeat, view, viewRequest = 0
     const requested = lastFocusRequest.current !== focusRequest;
     const startedFollowing = following && (!lastFollowing.current.following || lastFollowing.current.id !== focusId);
     lastFollowing.current = { following, id: focusId };
-    if (follow.current && follow.current.id !== focusId) { follow.current = null; move.current = null; }
+    if (follow.current && follow.current.id !== focusId) {
+      follow.current = null;
+      // Passive selection must not cancel an already entered explicit Locate.
+      if (move.current?.focusRequest === undefined) finishMove(false);
+    }
     // A highlight, quick card, dialog or updated desk allocation is not a camera request.
     if (!requested && !startedFollowing) return;
+    finishMove(false);
     const at = (focusId ? live?.position(focusId) : undefined) ?? focus;
     if (!at || !(camera instanceof OrthographicCamera)) return;
     lastFocusRequest.current = focusRequest;
+    // Locate/Follow takes ownership immediately, before the suspended director's
+    // next tick clears its old command. That late cleanup owns no manual move.
+    automated.current = null;
     const point: Point3 = [at[0], at[1], at[2]];
     const from: CameraPose = { position: camera.position.toArray() as Point3, target: controls ? controls.target.toArray() as Point3 : target, zoom: camera.zoom };
-    move.current = { elapsed: 0, from, to: characterFocusPose(point, undefined, panelClearance(size.width, size.height)) };
+    move.current = { elapsed: 0, from, to: characterFocusPose(point, undefined, panelClearance(size.width, size.height)), ...(requested ? { focusRequest } : {}) };
     // A character still queued at the entrance is framed as soon as it steps in.
     follow.current = focusId ? { id: focusId, last: point, waiting: !live?.position(focusId) } : null;
     // Read position and available canvas only when Locate/Follow requests a move.
@@ -91,6 +108,8 @@ export function CameraView({ automaticShot, automaticSeat, view, viewRequest = 0
     // A room (or any point) is framed once per request and is not a walker, so tracking ends.
     if (!focusPoint || framedPoint.current === focusPoint || !(camera instanceof OrthographicCamera)) return;
     framedPoint.current = focusPoint;
+    finishMove(false);
+    automated.current = null;
     const from: CameraPose = { position: camera.position.toArray() as Point3, target: controls ? controls.target.toArray() as Point3 : target, zoom: camera.zoom };
     const zoom = focusPoint.size ? roomFocusZoom(focusPoint.size, size.width) : undefined;
     move.current = { elapsed: 0, from, to: characterFocusPose(focusPoint.point, zoom, panelClearance(size.width, size.height)) };
@@ -102,7 +121,7 @@ export function CameraView({ automaticShot, automaticSeat, view, viewRequest = 0
     const previous = automated.current;
     automated.current = automaticShot ?? null;
     if (!automaticShot) {
-      if (previous) { move.current = null; follow.current = null; }
+      if (previous) { finishMove(false); follow.current = null; }
       return;
     }
     if (!(camera instanceof OrthographicCamera)) return;
@@ -122,6 +141,7 @@ export function CameraView({ automaticShot, automaticSeat, view, viewRequest = 0
       to = characterFocusPose([at[0], at[1], at[2]], undefined, panelClearance(size.width, size.height));
       if (targetFloor && view !== targetFloor) onFollowFloor?.(targetFloor);
     } else return;
+    finishMove(false);
     move.current = { elapsed: 0, from, to, automaticFocus: automaticShot.phase === 'focus' };
     follow.current = automaticShot.phase === 'focus' && at
       ? { id: automaticShot.targetId, last: [at[0], at[1], at[2]], waiting: !live?.position(automaticShot.targetId) } : null;
@@ -135,16 +155,19 @@ export function CameraView({ automaticShot, automaticSeat, view, viewRequest = 0
     let wheel = false;
     const onWheel = () => { wheel = true; setTimeout(() => { wheel = false; }, 0); };
     const stop = () => {
-      if (wheel) return;
+      if (wheel) {
+        if (move.current?.focusRequest !== undefined) finishMove(false);
+        return;
+      }
       follow.current = null;
-      move.current = null;
+      finishMove(false);
       followEnd.current?.();
     };
     // Capture runs before the controls' own wheel handler, which dispatches 'start' synchronously.
     window.addEventListener('wheel', onWheel, { capture: true, passive: true });
     events.addEventListener('start', stop);
     return () => { window.removeEventListener('wheel', onWheel, { capture: true }); events.removeEventListener?.('start', stop); };
-  }, [controls]);
+  }, [controls, finishMove]);
   useFrame((_, delta) => {
     if (controls && camera instanceof OrthographicCamera) {
       const groundMinimum = view === 'campus' ? buildingMinimumZoom(size.width, size.height, camera.position.toArray() as Point3, controls.target.toArray() as Point3) : minimumZoom;
@@ -172,7 +195,7 @@ export function CameraView({ automaticShot, automaticSeat, view, viewRequest = 0
       tracked.waiting = false;
       tracked.last[0] = point[0]; tracked.last[1] = point[1]; tracked.last[2] = point[2];
       const from: CameraPose = { position: camera.position.toArray() as Point3, target: controls ? controls.target.toArray() as Point3 : target, zoom: camera.zoom };
-      move.current = { elapsed: 0, from, to: characterFocusPose([point[0], point[1], point[2]], undefined, panelClearance(size.width, size.height)) };
+      move.current = { elapsed: 0, from, to: characterFocusPose([point[0], point[1], point[2]], undefined, panelClearance(size.width, size.height)), ...(move.current?.focusRequest !== undefined ? { focusRequest: move.current.focusRequest } : {}) };
     } else if (tracked && point) {
       const dx = point[0] - tracked.last[0], dy = point[1] - tracked.last[1], dz = point[2] - tracked.last[2];
       tracked.last[0] = point[0]; tracked.last[1] = point[1]; tracked.last[2] = point[2];
@@ -196,7 +219,7 @@ export function CameraView({ automaticShot, automaticSeat, view, viewRequest = 0
     camera.zoom = current.from.zoom + (current.to.zoom - current.from.zoom) * t;
     camera.updateProjectionMatrix();
     if (controls) { controls.target.set(...lerp3(current.from.target, current.to.target, t)); controls.update(); }
-    if (t >= 1) move.current = null;
+    if (t >= 1) finishMove(true);
   });
   // Zoom follows the cursor and goes in close enough to see a character's hands on the keyboard (1 m ≈ 260 px).
   return <OrbitControls makeDefault enableDamping={false} zoomToCursor minZoom={minimumZoom} maxZoom={MAX_ZOOM} minPolarAngle={0.25} maxPolarAngle={Math.PI * 0.48} />;

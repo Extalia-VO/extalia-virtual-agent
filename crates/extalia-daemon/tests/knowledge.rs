@@ -210,7 +210,10 @@ fn first_sync_creates_the_vault_and_status_reports_no_absolute_path() {
     assert_eq!(status["vaultRoot"], "vaults/default");
     assert_eq!(status["vaultPresent"], false);
     assert_eq!(status["generation"], 0);
-    assert_eq!(status["schemaVersion"], 1);
+    assert_eq!(
+        status["schemaVersion"],
+        extalia_core::knowledge::KnowledgeStore::LATEST
+    );
     assert!(status.get("lastSync").is_none());
     assert!(
         dir.data()
@@ -1101,6 +1104,112 @@ fn run_binary(args: &[&str], requests: &[Value]) -> Vec<Frame> {
         .into_iter()
         .map(Result::unwrap)
         .collect()
+}
+
+#[test]
+fn default_profile_alias_rebuilds_cached_acl_on_introduction_change_and_removal() {
+    for custom in [false, true] {
+        let dir = TempDir::spawning();
+        dir.notes(
+            "default",
+            &[
+                (
+                    "Canonical.md",
+                    "---\nprofile: default\n---\n# Sentinel canonical\n",
+                ),
+                (
+                    "First.md",
+                    "---\nprofile: profile-main\n---\n# Sentinel first\n",
+                ),
+                (
+                    "Second.md",
+                    "---\nprofile: profile-next\n---\n# Sentinel second\n",
+                ),
+                (
+                    "Foreign.md",
+                    "---\nprofile: foreign\n---\n# Sentinel foreign\n",
+                ),
+            ],
+        );
+        let root = if custom {
+            let root = dir.0.join("custom-vault");
+            fs::rename(dir.vault("default"), &root).unwrap();
+            root
+        } else {
+            dir.vault("default")
+        };
+        fs::create_dir(root.join(".obsidian")).unwrap();
+        fs::write(root.join(".obsidian/preferences.json"), "unchanged").unwrap();
+        let request = |op: &str, params: Value| json!({ "schemaVersion": 1, "kind": "request", "requestId": ID, "op": op, "params": params });
+        let data = dir.data();
+        for (index, (alias, expected)) in [
+            (None, vec!["Canonical.md"]),
+            (Some("profile-main"), vec!["Canonical.md", "First.md"]),
+            (Some("profile-main"), vec!["Canonical.md", "First.md"]),
+            (Some("profile-next"), vec!["Canonical.md", "Second.md"]),
+            (None, vec!["Canonical.md"]),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let mut args = vec!["--data-dir", data.to_str().unwrap()];
+            if custom {
+                args.extend(["--vault-root", root.to_str().unwrap()]);
+            }
+            if let Some(alias) = alias {
+                args.extend(["--knowledge-profile-alias", alias]);
+            }
+            let mut requests = vec![request(
+                "hello",
+                json!({"clientVersion":"test","capabilities":["hello"]}),
+            )];
+            if index == 0 {
+                requests.push(request("knowledge.sync", json!({"mode":"incremental"})));
+            }
+            requests.push(request("knowledge.search", json!({"query":"sentinel"})));
+            let frames = run_binary(&args, &requests);
+            let response = frames.last().unwrap().to_value();
+            let mut paths = response["result"]["hits"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|hit| hit["path"].as_str().unwrap())
+                .collect::<Vec<_>>();
+            paths.sort();
+            assert_eq!(paths, expected);
+        }
+        assert_eq!(
+            fs::read_to_string(root.join("First.md")).unwrap(),
+            "---\nprofile: profile-main\n---\n# Sentinel first\n"
+        );
+        assert_eq!(
+            fs::read_to_string(root.join(".obsidian/preferences.json")).unwrap(),
+            "unchanged"
+        );
+    }
+}
+
+#[test]
+fn default_profile_alias_does_not_authorize_nondefault_scopes() {
+    let dir = TempDir::new();
+    dir.notes("default", &[("Default.md", "# Default\n")]);
+    let id = "vp-00000000-0000-0000-0000-000000000001";
+    dir.notes(
+        id,
+        &[
+            (
+                "Foreign.md",
+                "---\nprofile: profile-main\n---\n# Sentinel foreign\n",
+            ),
+            ("Own.md", "# Sentinel own\n"),
+        ],
+    );
+    let mut session = start_with(
+        Knowledge::new(&dir.data(), "default").with_default_profile_alias("profile-main"),
+    );
+    let result = op(&mut session, "knowledge.scoped", json!({"profileId":id,"vaultRoot":null,"op":"knowledge.search","params":{"query":"sentinel"}})).unwrap();
+    assert_eq!(result["result"]["hits"].as_array().unwrap().len(), 1);
+    assert_eq!(result["result"]["hits"][0]["path"], "Own.md");
 }
 
 #[test]

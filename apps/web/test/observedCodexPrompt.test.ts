@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import type { AgentHostApi, ObservedCodexQueueStatus, SessionSummary } from '@extalia/platform';
 import { afterEach, expect, it, vi } from 'vitest';
 import { MESSAGES } from '../src/i18n';
-import { codexPromptEnterSends, ObservedCodexPromptComposer, ObservedCodexPromptContent } from '../src/observe/ObservedCodexPromptComposer';
+import { codexPromptEnterSends, ObservedCodexPromptComposer, ObservedCodexPromptContent, ObservedQueuedPromptFeedback } from '../src/observe/ObservedCodexPromptComposer';
 import { CODEX_PROMPT_LIMIT, createObservedCodexPromptControl } from '../src/observe/observedCodexPromptModel';
 
 const id = 'observed', threadId = '11111111-1111-4111-8111-111111111111';
@@ -184,4 +184,28 @@ it('renders a normal labeled text composer with localized queue wording and no a
     expect(html).not.toContain('composer-toolbar');
     expect(html).not.toContain('type="file"'); expect(html).not.toContain('combobox'); expect(html).not.toContain('details');
   }
+});
+
+
+it.each(['en', 'id'] as const)('renders one actionable queue failure with one retry in %s', language => {
+  const t = MESSAGES[language], html = renderToStaticMarkup(createElement(ObservedQueuedPromptFeedback, { t, view: { phase: 'error', notice: 'failed', busy: false }, locked: false, draftLength: 10, onRefresh: vi.fn() }));
+  expect(html.split(t.promptQueue.failed)).toHaveLength(2); expect(html.split(t.promptQueue.refresh)).toHaveLength(2);
+  expect(html.match(/role="status"/g)).toHaveLength(1);
+});
+
+it('retains independent paused, length, loading and unsupported hints', () => {
+  const t = MESSAGES.en, render = (phase: 'loading' | 'error' | 'unsupported', locked = false, draftLength = 0) => renderToStaticMarkup(createElement(ObservedQueuedPromptFeedback, { t, view: { phase, busy: false }, locked, draftLength, onRefresh: vi.fn() }));
+  expect(render('error', true)).toContain(t.observedCodexPrompt.paused);
+  expect(render('error', false, CODEX_PROMPT_LIMIT + 1)).toContain(t.observedCodexPrompt.tooLong);
+  expect(render('loading')).toContain(t.promptQueue.loading); expect(render('unsupported')).toContain(t.promptQueue.unsupported);
+});
+
+it('shows a stale queue notice once and keeps refresh disabled while busy', () => {
+  const t = MESSAGES.en, html = renderToStaticMarkup(createElement(ObservedQueuedPromptFeedback, { t, view: { phase: 'error', notice: 'stale', busy: true }, locked: false, draftLength: 0, onRefresh: vi.fn() }));
+  expect(html).toContain(t.promptQueue.stale); expect(html).not.toContain(t.promptQueue.failed); expect(html).toContain('disabled=""');
+});
+
+it('does not offer queue retry when delivery is uncertain', () => {
+  const t = MESSAGES.en, html = renderToStaticMarkup(createElement(ObservedQueuedPromptFeedback, { t, view: { phase: 'error', notice: 'failed', delivery: 'unknown', busy: false }, locked: false, draftLength: 0, onRefresh: vi.fn() }));
+  expect(html.split(t.promptQueue.failed)).toHaveLength(2); expect(html).not.toContain(t.promptQueue.refresh);
 });

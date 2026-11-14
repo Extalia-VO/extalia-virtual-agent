@@ -143,4 +143,28 @@ describe.skipIf(!HAS_DAEMON || process.platform === 'win32')('workspace-scoped K
     await scoped(reopened.host, workspace.id, 'syncKnowledge', ['incremental']);
     expect(await paths(reopened.host, workspace.id)).toEqual(['Remember.md']);
   });
+
+  it('rejects a stale binding even when both vaults contain the same path and SHA', async () => {
+    const f = await fixture(), workspace = await f.add('Alpha');
+    const one = path.join(f.root, 'one'), two = path.join(f.root, 'two');
+    for (const root of [one, two]) { await mkdir(root); await writeFile(path.join(root, 'Same.md'), '# Same\n'); }
+    await scoped(f.host, workspace.id, 'setKnowledgeVaultRoot', [one]);
+    const binding = { profileId: workspace.profileId, root: one };
+    const note = await f.host.workspaceKnowledge!(workspace.id, 'readKnowledgeNote', ['Same.md'], binding) as { sha256: string };
+    await scoped(f.host, workspace.id, 'setKnowledgeVaultRoot', [two]);
+    for (const [method, args] of [
+      ['writeKnowledgeNote', [{ path: 'Same.md', content: '# Stale draft\n', expectedSha256: note.sha256 }]],
+      ['readKnowledgeNote', ['Same.md']], ['setKnowledgeVaultRoot', [one]],
+    ] as const) await expect(f.host.workspaceKnowledge!(workspace.id, method, [...args], binding)).rejects.toThrow('vault changed');
+    expect(await readFile(path.join(two, 'Same.md'), 'utf8')).toBe('# Same\n');
+    expect(await readFile(path.join(one, 'Same.md'), 'utf8')).toBe('# Same\n');
+    expect((await f.host.listVaultProfiles!()).profiles.find(profile => profile.id === workspace.profileId)?.root).toBe(two);
+  });
+
+  it('refuses foreign-profile legacy memory imports through default and scoped callers', async () => {
+    const f = await fixture(), foreign = await f.add('Isolated'), shared = await f.add('Shared', false);
+    await expect(f.host.importMemoryNotes!({ workspaceId: foreign.id, dryRun: true })).rejects.toThrow('Unknown workspace');
+    await expect(scoped(f.host, shared.id, 'importMemoryNotes', [{ workspaceId: foreign.id, dryRun: false }])).rejects.toThrow('Unknown workspace');
+    await expect(scoped(f.host, foreign.id, 'importMemoryNotes', [{ workspaceId: shared.id, dryRun: true }])).rejects.toThrow('Unknown workspace');
+  });
 });

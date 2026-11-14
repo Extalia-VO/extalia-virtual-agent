@@ -1,3 +1,6 @@
+/** Transport selected before submission; a submitted receipt does not prove model consumption. */
+export type ObservedUserInputDeliveryRoute = 'native-answer' | 'native-steer' | 'native-start' | 'queue';
+
 /** Source-bound input questions shared by Chat, Observe and Office. */
 export interface ObservedUserInputQuestion {
   id: string;
@@ -13,6 +16,7 @@ export interface ObservedUserInputRequest {
   revision: string;
   origin: 'codex-async' | 'codex-native';
   state: 'pending' | 'queued' | 'submitted' | 'unknown';
+  deliveryRoute?: ObservedUserInputDeliveryRoute;
   questions: ObservedUserInputQuestion[];
   canAnswer: boolean;
   /** False for idless/history-only metadata; these cards never raise pending-input alerts. */

@@ -7,6 +7,7 @@ import { MessageAttachments } from './MessageAttachments';
 import { Markdown } from './Markdown';
 import { presentUserMessage, type PresentedNotice } from './messagePresentation';
 import type { UserItem } from './transcript';
+import './questionReply.css';
 
 const COLLAPSE_CHARS = 900;
 const COLLAPSE_LINES = 14;
@@ -84,9 +85,16 @@ function FoldedText({ t, text }: { t: Messages; text: string }) {
   </>;
 }
 
+/** The source question stays readable without letting a long question dominate its answer. */
+function ReplyQuestion({ question }: { question: string }) {
+  const [expanded, setExpanded] = useState(false);
+  return <button type="button" className="question-label" title={question} aria-expanded={expanded}
+    onClick={() => setExpanded(value => !value)}>{question}</button>;
+}
+
 export function UserMessage({ t, item, previewAttachment, language }: { t: Messages; item: UserItem; previewAttachment?: AttachmentPreviewLoader | undefined; language?: string | undefined }) {
   const message = presentUserMessage(item.text);
-  const text = message.questionReply?.map(reply => reply.answer).join('\n\n') ?? message.text;
+  const text = message.questionReply?.map(reply => `${reply.question}\n${reply.answer}`).join('\n\n') ?? message.text;
   // Prefer the host's attachment reference/size. A textual local path never becomes an image URL.
   const files: (AttachmentMetadata & { path?: string })[] = [...(item.attachments ?? [])];
   const matched = new Set<number>();
@@ -104,9 +112,14 @@ export function UserMessage({ t, item, previewAttachment, language }: { t: Messa
       {Number.isFinite(time) && <time dateTime={item.at}>{new Intl.DateTimeFormat(language, { timeStyle: 'short' }).format(time)}</time>}
       <CopyButton text={text} label={t.chat.copyMessage} />
     </div>}
-    <div className="bubble">
+    <div className={`bubble${message.questionReply ? ' question-reply-bubble' : ''}`}>
     <MessageAttachments t={t} files={files} load={previewAttachment} label={t.composer.sentAttachments} allowOpenFile />
-    {text && <FoldedText t={t} text={text} />}
+    {message.questionReply
+      ? <div className="question-replies">{message.questionReply.map((reply, index) => <section className="question-answer" key={index}>
+        <ReplyQuestion question={reply.question} />
+        <div className="question-reply-answer"><FoldedText t={t} text={reply.answer} /></div>
+      </section>)}</div>
+      : text && <FoldedText t={t} text={text} />}
   </div></li>;
 }
 

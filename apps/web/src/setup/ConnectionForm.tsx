@@ -82,7 +82,7 @@ export function ConnectionForm({ t, agents, draft, onChange, onTestReady, showAl
       </div>
     );
   };
-  const describedBy = (name: ConnectionField) => errorFor(name) ? `${id}-${name}-error` : `${id}-${name}-hint`;
+  const describedBy = (name: ConnectionField) => errorFor(name) ? `${id}-${name}-error` : name === 'name' ? undefined : `${id}-${name}-hint`;
 
   return (
     <div className="form-stack">
@@ -110,7 +110,7 @@ export function ConnectionForm({ t, agents, draft, onChange, onTestReady, showAl
           <input id={`${id}-name`} type="text" value={draft.name} maxLength={120} autoComplete="off" aria-invalid={Boolean(errorFor('name'))} aria-describedby={describedBy('name')}
             onChange={event => update({ name: event.target.value })} onBlur={touch('name')} />)}
         {field('baseUrl', t.connection.baseUrl,
-          <input id={`${id}-baseUrl`} type="url" inputMode="url" value={draft.baseUrl} spellCheck={false} autoComplete="off" placeholder="https://api.example.com/v1"
+          <input id={`${id}-baseUrl`} type="url" inputMode="url" value={draft.baseUrl} spellCheck={false} autoComplete="off" autoCapitalize="off" autoCorrect="off" placeholder="https://api.example.com/v1"
             aria-invalid={Boolean(errorFor('baseUrl'))} aria-describedby={describedBy('baseUrl')}
             onChange={event => update({ baseUrl: event.target.value })} onBlur={touch('baseUrl')} />,
           t.connection.baseUrlHint[preset.api])}
@@ -125,12 +125,12 @@ export function ConnectionForm({ t, agents, draft, onChange, onTestReady, showAl
             onChange={credentialMode => update({ credentialMode })} />
           {draft.credentialMode === 'key'
             ? field('apiKey', preset.apiKey === 'required' ? t.connection.apiKey : t.connection.apiKeyOptional,
-              <input id={`${id}-apiKey`} type="password" value={draft.apiKey} spellCheck={false} autoComplete="new-password"
+              <input id={`${id}-apiKey`} type="password" value={draft.apiKey} spellCheck={false} autoComplete="new-password" autoCapitalize="off" autoCorrect="off"
                 placeholder={draft.hasStoredKey ? '••••••••' : ''} aria-invalid={Boolean(errorFor('apiKey'))} aria-describedby={describedBy('apiKey')}
                 onChange={event => update({ apiKey: event.target.value })} onBlur={touch('apiKey')} />,
               draft.hasStoredKey ? t.connection.apiKeyStored : t.connection.apiKeyHint)
             : field('envVariable', t.connection.envVariable,
-              <input id={`${id}-envVariable`} type="text" value={draft.envVariable} spellCheck={false} autoComplete="off" placeholder="OPENAI_API_KEY"
+              <input id={`${id}-envVariable`} type="text" value={draft.envVariable} spellCheck={false} autoComplete="off" autoCapitalize="off" autoCorrect="off" maxLength={128} placeholder="OPENAI_API_KEY"
                 aria-invalid={Boolean(errorFor('envVariable'))} aria-describedby={describedBy('envVariable')}
                 onChange={event => update({ envVariable: event.target.value.toUpperCase() })} onBlur={touch('envVariable')} />,
               t.connection.envHint)}
@@ -165,7 +165,8 @@ export function ConnectionForm({ t, agents, draft, onChange, onTestReady, showAl
             onChange={model => update({ model })} onBlur={touch('model')} /> : (
             <>
               <label htmlFor={`${id}-model`}>{t.connection.model}</label>
-              <input id={`${id}-model`} type="text" value={draft.model} disabled aria-describedby={`${id}-model-hint`} />
+              <input id={`${id}-model`} type="text" value={draft.model} disabled aria-invalid={Boolean(errorFor('model'))}
+                aria-describedby={errorFor('model') ? `${id}-model-error ${id}-model-hint` : `${id}-model-hint`} />
             </>
           )}
           {errorFor('model') && <small className="field-error" id={`${id}-model-error`}>{errorFor('model')}</small>}
@@ -236,6 +237,8 @@ export function ConnectionForm({ t, agents, draft, onChange, onTestReady, showAl
                   label={t.connection.maxDelegations}
                   value={orchestration.maxDelegations}
                   options={delegationLimitOptions(orchestration.maxDelegations, t.connection.delegationsOff)}
+                  aria-invalid={Boolean(errorFor('maxDelegations'))}
+                  aria-describedby={errorFor('maxDelegations') ? `${id}-maxDelegations-error` : undefined}
                   onChange={maxDelegations => updateOrchestration({ maxDelegations })}
                 />
                 {errorFor('maxDelegations') && <small className="field-error" id={`${id}-maxDelegations-error`}>{errorFor('maxDelegations')}</small>}

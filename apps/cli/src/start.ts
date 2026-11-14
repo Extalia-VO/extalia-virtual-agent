@@ -25,6 +25,7 @@ export interface StartDeps {
   createAgentHost(options: AgentHostOptions): Promise<RuntimeWithHooks>;
   /** Where the host looks for the Rust core daemon (started lazily, only when the native core flag selects it). */
   daemonBinary?: NonNullable<AgentHostOptions['daemon']>['binary'];
+  cliResumeArchiveReader?: string;
   updater: Updater;
   openBrowser(url: string): void;
   signals: SignalSource;
@@ -94,7 +95,9 @@ export async function startBridge(options: StartOptions, deps: StartDeps): Promi
     return 1;
   }
 
-  deps.createAgentHost({ kind: 'bridge', version: deps.version, dataDirectory: deps.dataDirectory, env: deps.env, ...(deps.daemonBinary ? { daemon: { binary: deps.daemonBinary } } : {}) }).then(
+  deps.createAgentHost({ kind: 'bridge', version: deps.version, dataDirectory: deps.dataDirectory, env: deps.env,
+    ...(deps.cliResumeArchiveReader ? { cliResumeArchiveReader: deps.cliResumeArchiveReader } : {}),
+    ...(deps.daemonBinary ? { daemon: { binary: deps.daemonBinary } } : {}) }).then(
     ready => {
       runtime = ready;
       resolveRuntime(ready);

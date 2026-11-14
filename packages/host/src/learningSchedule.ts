@@ -90,7 +90,7 @@ export class LearningSchedule {
   get isBusy(): boolean { return this.active !== undefined; }
 
   snapshot(): LearningScheduleSnapshot {
-    return { revision: `${this.epoch}:${this.serial}`, jobs: [...this.entries.values()].map(({ view }) => structuredClone(view)), delaySeconds: 60, snoozeSeconds: 600 };
+    return { revision: `${this.epoch}:${this.serial}`, jobs: [...this.entries.values()].map(({ view, delayMs }) => ({ ...structuredClone(view), delaySeconds: Math.ceil(delayMs / 1_000) })), delaySeconds: 60, snoozeSeconds: 600 };
   }
 
   schedule(input: ScheduledLearningInput): boolean {

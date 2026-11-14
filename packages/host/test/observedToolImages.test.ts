@@ -195,4 +195,33 @@ describe('private observed tool images', () => {
     expect(second.filter(step => step.type === 'tool.result' && step.attachments?.[0]?.ref)).toHaveLength(4);
     expect(f.store.hasPending).toBe(false);
   });
+
+  it('materializes staged prompt images only inside stagedAttachmentsRoot', async () => {
+    const f = await fixture();
+    const stagedRoot = path.join(f.data, 'attachments', sessionId, 'files');
+    const stagedDir = path.join(stagedRoot, 'att_1234567890ab');
+    await mkdir(stagedDir, { recursive: true });
+    const stagedFile = path.join(stagedDir, 'Screenshot 2026-11-13 at 17.35.49.png');
+    const outsideFile = path.join(f.outside, 'secret.png');
+    await Promise.all([writeFile(stagedFile, PNG), writeFile(outsideFile, PNG)]);
+
+    const [stagedPrompt, outsidePrompt] = await f.store.materialize([
+      {
+        type: 'prompt',
+        pos: 'prompt-1',
+        text: `[Attached file: Screenshot 2026-11-13 at 17.35.49.png (${stagedFile})]\n\nCheck thumbnail`,
+      },
+      {
+        type: 'prompt',
+        pos: 'prompt-2',
+        text: `[Attached file: secret.png (${outsideFile})]\n\nShould stay unmaterialized`,
+      },
+    ], { ...f.options, stagedAttachmentsRoot: stagedRoot });
+
+    expect(stagedPrompt?.type === 'prompt' ? stagedPrompt.attachments : undefined).toEqual([
+      { name: 'Screenshot 2026-11-13 at 17.35.49.png', kind: 'image', size: PNG.length, mimeType: 'image/png', ref: digest(PNG) },
+    ]);
+    expect(outsidePrompt?.type === 'prompt' ? outsidePrompt.attachments : undefined).toBeUndefined();
+    expect(await f.store.preview(digest(PNG))).toEqual({ mimeType: 'image/png', data: PNG.toString('base64') });
+  });
 });

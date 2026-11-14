@@ -18,3 +18,5 @@ export * from './teamSpec.js';
 export { decode, type DecodeResult } from './validation.js';
 export * from './modelGuide.js';
 export * from './teamRuntimePolicy.js';
+
+export * from './operatingProfiles.js';

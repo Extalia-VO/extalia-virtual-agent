@@ -1121,6 +1121,49 @@ fn racy_edits_are_detected() {
 // ---------------------------------------------------------------- store
 
 #[test]
+fn version_one_index_migrates_default_alias_metadata_and_rechecks_unchanged_notes() {
+    let dir = TempDir::new();
+    let default = profile("default");
+    let index = store::index_path(&dir.0, &default);
+    fs::create_dir_all(index.parent().unwrap()).unwrap();
+    let old = rusqlite::Connection::open(&index).unwrap();
+    old.execute_batch(include_str!("schema/0001_index.sql"))
+        .unwrap();
+    old.pragma_update(None, "user_version", 1).unwrap();
+    old.execute(
+        "INSERT INTO knowledge_index_state (profile_id, generation) VALUES ('default', 0)",
+        [],
+    )
+    .unwrap();
+    drop(old);
+    let vault = Vault::open_default(&dir.0, &default, VaultLimits::default()).unwrap();
+    let note = dir.0.join("vaults/default/Note.md");
+    let body = "---\nprofile: profile-main\n---\n# Sentinel\n";
+    fs::write(&note, body).unwrap();
+    let mut store = KnowledgeStore::open(&dir.0, &default).unwrap();
+    assert_eq!(store.schema_version().unwrap(), KnowledgeStore::LATEST);
+    assert!(store.profile_alias_matches(None).unwrap());
+    assert_eq!(store.sync(&vault, SyncMode::Incremental).unwrap().notes, 0);
+    let alias = profile("profile-main");
+    assert_eq!(
+        store
+            .sync_with_profile_alias(&vault, SyncMode::Incremental, Some(&alias))
+            .unwrap()
+            .notes,
+        1
+    );
+    assert_eq!(store.sync(&vault, SyncMode::Incremental).unwrap().notes, 0);
+    assert_eq!(fs::read_to_string(note).unwrap(), body);
+    let mut foreign = Fixture::new("work");
+    assert!(matches!(
+        foreign
+            .store
+            .sync_with_profile_alias(&foreign.vault, SyncMode::Incremental, Some(&alias)),
+        Err(KnowledgeError::WrongProfile)
+    ));
+}
+
+#[test]
 fn store_file_rules() {
     let dir = TempDir::new();
     let work = profile("work");

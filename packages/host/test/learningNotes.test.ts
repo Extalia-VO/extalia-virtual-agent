@@ -18,6 +18,28 @@ const context = { workspaceId: record.workspaceId, sessionId: record.sessionId }
 const destination = (root: string) => ({ root, profileId: record.profileId, revision: record.revision });
 
 describe.skipIf(!HAS_DAEMON || process.platform === 'win32')('immutable profile-bound learning notes', () => {
+  it('writes each workspace finding only to its pinned vault and leaves Obsidian settings unchanged', async () => {
+    const base = await temp(), first = path.join(base, 'first'), second = path.join(base, 'second');
+    for (const [root, profileId, workspaceId, sentinel] of [
+      [first, 'profile-first', 'workspace-first', 'First-vault sentinel'],
+      [second, 'profile-second', 'workspace-second', 'Second-vault sentinel'],
+    ] as const) {
+      await mkdir(path.join(root, '.obsidian'), { recursive: true });
+      await writeFile(path.join(root, '.obsidian', 'preferences.json'), '{"unchanged":true}\n');
+      const save = await pinLearningNotes({ context: { workspaceId, sessionId: record.sessionId },
+        resolve: async () => ({ root, profileId, revision: record.revision }) });
+      try {
+        const relative = await save({ ...record, profileId, workspaceId, lesson: sentinel });
+        const body = await readFile(path.join(root, relative), 'utf8');
+        expect(body).toContain(sentinel); expect(body).toContain(`profile: "${profileId}"`);
+        expect(await readdir(path.join(root, 'Learning'))).toEqual([workspaceId]);
+        expect(await readFile(path.join(root, '.obsidian', 'preferences.json'), 'utf8')).toBe('{"unchanged":true}\n');
+      } finally { await save.close(); }
+    }
+    expect(await readFile(path.join(first, 'Learning', 'workspace-first', 'run-one.md'), 'utf8')).not.toContain('Second-vault sentinel');
+    expect(await readFile(path.join(second, 'Learning', 'workspace-second', 'run-one.md'), 'utf8')).not.toContain('First-vault sentinel');
+  });
+
   it('writes generated findings, current source evidence and actual user-library skill receipts', async () => {
     const root = await temp(); const authorize = vi.fn();
     const save = await pinLearningNotes({ context, resolve: async () => destination(root), authorize });

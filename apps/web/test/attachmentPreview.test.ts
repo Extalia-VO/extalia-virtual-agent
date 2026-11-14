@@ -69,19 +69,25 @@ describe('tool calls in message details', () => {
     expect(toolRunSummary(MESSAGES.id, run.slice(0, 3))).toBe('Menjalankan 3 perintah');
   });
 
-  it('renders a finished run folded under its summary and a running run open', async () => {
-    const { TranscriptView } = await import('../src/chat/TranscriptView');
+  it('renders both finished and running multi-tool runs folded by default unless previewed', async () => {
+    const { TranscriptView, resolveToolGroupOpen } = await import('../src/chat/TranscriptView');
     const render = (items: unknown[]) => renderToStaticMarkup(createElement(TranscriptView, { t: MESSAGES.en, items: items as never, language: 'en', onDecide: async () => undefined }));
     const done = render([tool('a', 'command'), tool('b', 'command', 'failed')]);
     expect(done).toContain('Ran 2 commands');
     expect(done).toContain('1 failed');
     expect(done).not.toContain('tool-run-list');
     const running = render([tool('a', 'command'), tool('b', 'command', 'running')]);
-    expect(running).toContain('tool-run-list');
-    expect((running.match(/class="tool-row /g) ?? []).length).toBe(2);
+    expect(running).not.toContain('tool-run-list');
+    expect(running).toContain('aria-expanded="false"');
     // A single call shows as its row, without a summary line.
     const single = render([tool('a', 'read')]);
     expect(single).not.toContain('tool-run-head');
     expect(single).toContain('Step a');
+
+    // Stored expand/collapse state wins over status updates or new items joining the run.
+    const collapsed = new Map<string, boolean>([['a', false]]);
+    expect(resolveToolGroupOpen([tool('a', 'command'), tool('b', 'command', 'running')], collapsed, false)).toBe(false);
+    const expanded = new Map<string, boolean>([['a', true]]);
+    expect(resolveToolGroupOpen([tool('pre', 'read'), tool('a', 'command', 'ok'), tool('b', 'command', 'failed')], expanded, false)).toBe(true);
   });
 });

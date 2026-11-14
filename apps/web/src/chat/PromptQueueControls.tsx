@@ -37,10 +37,12 @@ export function PromptQueueContent({ t, control, view, disabled = false }: {
   const canReorder = !locked && !view.edit && pending.length > 1;
   const stopDrag = () => { drag.current = undefined; setDropTarget(undefined); };
   useUnsavedDraft(id, !!view.edit && view.edit.text !== view.edit.original.text);
+  const [manualOpen, setManualOpen] = useState<boolean>();
   const activeCount = visibleItems.filter(item => item.state !== 'sent').length;
+  const open = manualOpen ?? (pending.length > 0 || uncertain || view.phase === 'error');
   if (!activeCount && !view.edit && view.phase !== 'error') return null;
-  return <details className="prompt-queue prompt-queue-list" open={pending.length > 0 || uncertain || view.phase === 'error' || undefined}>
-    <summary title={c.sourceHint}>{c.title} <span className="badge">{activeCount}</span></summary>
+  return <details className="prompt-queue prompt-queue-list" open={open || undefined}>
+    <summary title={c.sourceHint} onClick={event => { event.preventDefault(); setManualOpen(!open); }}>{c.title} <span className="badge">{activeCount}</span></summary>
     <div className="prompt-queue-body">
       <div className="prompt-queue-toolbar">
         <p className="prompt-queue-hint" role="status">{view.phase === 'unsupported' || status && !status.supported ? c.unsupported : view.phase === 'loading' ? c.loading

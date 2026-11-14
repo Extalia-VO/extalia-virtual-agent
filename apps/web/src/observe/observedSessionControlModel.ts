@@ -11,13 +11,15 @@ export interface ObservedSessionControlView {
   notice?: 'stale' | 'failed';
 }
 export const OBSERVED_MESSAGE_LIMIT = 16_000;
-const routes = ['codex-native', 'codex-queue', 'hermes-native', 'cooperative-tool', 'cooperative-inbox'];
+const routes = OBSERVED_CONTROL_ROUTES.map(item => item.route);
+const evidences = OBSERVED_CONTROL_ROUTES.map(item => item.evidence);
+const limits = OBSERVED_CONTROL_ROUTES.map(item => item.limit);
 const actions = ['start', 'steer', 'queue', 'reply-tool', 'inbox-send'];
 export function validObservedControlStatus(value: ObservedControlStatus, id: string): boolean {
   return !!value && value.sessionId === id && ['ready', 'unavailable'].includes(value.state) && Array.isArray(value.routes)
     && value.routes.every(route => routes.includes(route.route) && ['ready', 'unavailable', 'busy', 'uncertain'].includes(route.state)
-      && ['native-attachment', 'official-queue', 'paired-tool', 'paired-inbox'].includes(route.evidence)
-      && ['existing-native-owner', 'queue-receipt-only', 'waiting-tool-only', 'paired-consumer-only'].includes(route.limit)
+      && evidences.includes(route.evidence)
+      && limits.includes(route.limit)
       && Array.isArray(route.capabilities) && route.capabilities.every(cap => actions.includes(cap.action) && typeof cap.available === 'boolean'
         && (!cap.available || typeof cap.capabilityId === 'string' && !!cap.capabilityId))
       && Array.isArray(route.relatedControls));
@@ -86,7 +88,8 @@ export function createObservedSessionControl(api: AgentHostApi, sessionId: strin
     const native = compatible.filter(({ route, capability }) => (route.evidence === 'native-attachment' || route.evidence === 'official-queue')
       && capability.action !== 'steer');
     const queues = native.filter(({ capability }) => capability.action === 'queue');
-    const candidates = queues.length ? queues : native.length ? native
+    const cli = compatible.filter(({ route, capability }) => route.evidence === 'official-cli' && capability.action === 'start');
+    const candidates = queues.length ? queues : native.length ? native : cli.length ? cli
       : compatible.filter(({ capability }) => capability.action === 'reply-tool' || capability.action === 'inbox-send');
     const selected = candidates.length === 1 ? candidates[0]!.capability.capabilityId : undefined;
     return selected && !uncertain.has(selected) ? selected : undefined;

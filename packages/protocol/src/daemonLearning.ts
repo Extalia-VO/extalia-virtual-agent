@@ -13,7 +13,17 @@ export interface LearningSubmission { title: string; lesson: string; evidenceIds
 export interface LearningJobState { jobId: string; status: 'running' | 'ready' | 'skipped' | 'failed' | 'cancelled' | 'completed'; effect?: LearningEffect; pendingEffectId?: string; submission?: LearningSubmission; evidence: LearningEvidence[]; provenance: LearningProvenance; contentSha256?: string; skillSha256?: string; reason?: string; usage?: LearningUsage }
 export interface LearningNoteRecord { workspaceId: string; sessionId: string; profileId: string; revision: string; runId: string; promptSha256: string; title: string; lesson: string; evidence: LearningEvidence[]; skill?: { packageId: string; revisionId: string; state: string; stateReason?: string; created: boolean; inspection: 'recorded' | 'unavailable'; inspectionOutcome?: string; activationPerformed: false; cancellationObserved: boolean } }
 export interface LearningMeetingRecord { meetingId: string; topic: string; roomId?: string; startedAt: string; completedAt: string; outcome: 'completed' | 'failed' | 'cancelled'; participants: { agentId: string; name: string; role: string }[]; contributions: { agentId: string; round: number; text: string }[] }
+export interface ObservedMemoryScope { profileId: string; workspaceId: string; sessionId: string; sourceId: string; nativeSessionId: string; boundary: string }
+export interface ObservedMemoryEntry { id: string; kind: 'user' | 'assistant' | 'tool' | 'file' | 'status'; text: string; at?: string }
+export interface ObservedMemoryCoverage { mode: 'partial' | 'unknown'; omittedEntries: number; truncated: boolean; limits: string[] }
+export interface ObservedMemoryEpisode { id: string; episodeId: string; scope: ObservedMemoryScope; revision: string; sourceRevision: string; capturedAt: string; entries: number; trust: 'untrusted-observed'; coverage: ObservedMemoryCoverage }
+export interface ObservedMemoryPage { episode: ObservedMemoryEpisode; entries: ObservedMemoryEntry[]; offset: number; total: number; nextOffset?: number }
 export interface LearningActions {
+  'observed.capture': { input: { scope: ObservedMemoryScope; episodeId: string; sourceRevision: string; entries: ObservedMemoryEntry[]; coverage: ObservedMemoryCoverage }; result: { episode: ObservedMemoryEpisode; created: boolean } };
+  'observed.search': { input: { scope: ObservedMemoryScope; query: string; limit?: number }; result: { hits: { episode: ObservedMemoryEpisode; excerpt: string }[]; omitted: number } };
+  'observed.read': { input: { scope: ObservedMemoryScope; episodeId: string; revision: string; offset?: number; limit?: number }; result: ObservedMemoryPage };
+  'observed.revoke': { input: { scope: ObservedMemoryScope }; result: { removed: number } };
+  'observed.jobBegin': { input: { scope: ObservedMemoryScope; episodeId: string; revision: string; runId: string; promptSha256: string; policy: { enabled: boolean; skills: boolean; notes: boolean }; tools: LearningToolSpec[]; timeoutMs?: number }; result: { job: LearningJobState } };
   'evidence.begin': { input: Record<string, never>; result: { intakeId: string } };
   'evidence.append': { input: { intakeId: string; toolCallId: string; name: string; isError: boolean; chunk: string; final: boolean }; result: { complete: boolean } };
   'evidence.release': { input: { intakeId: string }; result: { released: true } };

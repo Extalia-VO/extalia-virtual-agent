@@ -1,6 +1,6 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createAgentHost, type AgentHostRuntime } from '../src/service.js';
 import { useTempDirs } from './helpers.js';
 
@@ -58,7 +58,8 @@ describe('observed workspace association safety through the imported transcript'
     const f = await fixture('');
     const link = await f.host.observedWorkspaceLink!(f.observed.id);
     expect(link).toMatchObject({ mode: 'automatic', workspaceId: f.workspaceId });
-    expect(f.runtime.isBusy()).toBe(false);
+    // Initial observed-memory baseline work owns its own asynchronous lifetime.
+    await vi.waitFor(() => expect(f.runtime.isBusy()).toBe(false));
     const callbacks: boolean[] = [];
     let unsubscribe: () => void = () => undefined;
     const listen = () => {
@@ -72,7 +73,9 @@ describe('observed workspace association safety through the imported transcript'
       const applied = f.host.setObservedWorkspaceLink!(f.observed.id, { revision: link.revision, workspaceId: f.workspaceId });
       expect(f.runtime.isBusy()).toBe(true);
       await applied;
-      expect(callbacks).toEqual([false]);
+      // Association and the observed-memory baseline can settle independently.
+      await vi.waitFor(() => expect(callbacks.length).toBeGreaterThan(0));
+      expect(callbacks).not.toContain(true);
       expect(f.runtime.isBusy()).toBe(false);
       const after = await f.host.observedWorkspaceLink!(f.observed.id);
       expect(after).toMatchObject({ sessionId: f.observed.id, mode: 'explicit', workspaceId: f.workspaceId });

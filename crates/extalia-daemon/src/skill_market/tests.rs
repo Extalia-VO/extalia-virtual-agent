@@ -17,10 +17,21 @@ impl Temp {
             SERIAL.fetch_add(1, Ordering::SeqCst)
         ));
         fs::create_dir(&path).unwrap();
+        drop(
+            extalia_core::skills::storage::initialize(
+                &path,
+                &extalia_core::skills::ProfileId::parse("default").unwrap(),
+            )
+            .unwrap(),
+        );
         Self(path)
     }
     fn profile(&self) -> PathBuf {
-        self.0.join("profiles/default")
+        self.0.join(if cfg!(unix) {
+            "skills"
+        } else {
+            "profiles/default"
+        })
     }
     fn request(&self, operation: &str) -> Request {
         Request {
@@ -28,7 +39,9 @@ impl Temp {
             request_id: ID.into(),
             client_version: "0.0.0-test".into(),
             operation: operation.into(),
-            directory: self.profile().join("skill-market"),
+            directory: self
+                .profile()
+                .join(if cfg!(unix) { "market" } else { "skill-market" }),
             timeout_ms: 1000,
             query: (operation == "search").then(|| "sample".into()),
             refresh: None,
@@ -162,7 +175,11 @@ fn immutable_preview_stage_hash_and_discard_roundtrip() {
     assert_eq!(staged.as_object().unwrap().len(), 3);
     let path = temp
         .profile()
-        .join("skill-imports")
+        .join(if cfg!(unix) {
+            "imports"
+        } else {
+            "skill-imports"
+        })
         .join(format!("market-{ID}"));
     assert_eq!(fs::read(path.join("SKILL.md")).unwrap(), SKILL);
     let observed = extalia_core::skills::tree::scan(&path, &Default::default());
@@ -236,7 +253,11 @@ fn preview_projects_bounded_declarations_from_the_same_bytes_that_are_staged() {
     assert_eq!(staged["treeSha256"], preview["treeSha256"]);
     let path = temp
         .profile()
-        .join("skill-imports")
+        .join(if cfg!(unix) {
+            "imports"
+        } else {
+            "skill-imports"
+        })
         .join(format!("market-{ID}"));
     assert_eq!(fs::read(path.join(MANIFEST_FILE)).unwrap(), manifest);
 }
@@ -259,8 +280,23 @@ fn preview_refuses_manifest_that_disagrees_with_the_skill_before_saving_review()
         ),
         "invalid_manifest",
     );
-    assert!(!temp.profile().join("skill-market").join(ID).exists());
-    assert!(!temp.profile().join("skill-imports").exists());
+    assert!(
+        !temp
+            .profile()
+            .join(if cfg!(unix) { "market" } else { "skill-market" })
+            .join(ID)
+            .exists()
+    );
+    assert!(
+        !temp
+            .profile()
+            .join(if cfg!(unix) {
+                "imports"
+            } else {
+                "skill-imports"
+            })
+            .exists()
+    );
 }
 
 #[test]
@@ -372,7 +408,7 @@ fn payload_and_manifest_drift_refuse_stage_without_copying() {
     execute(&temp.request("preview"), &mut Mock::package(), NOW).unwrap();
     let payload = temp
         .profile()
-        .join("skill-market")
+        .join(if cfg!(unix) { "market" } else { "skill-market" })
         .join(ID)
         .join("payload-000.bin");
     fs::write(payload, "changed").unwrap();
@@ -380,7 +416,16 @@ fn payload_and_manifest_drift_refuse_stage_without_copying() {
         execute(&temp.request("stage"), &mut Mock::default(), NOW),
         "integrity",
     );
-    assert!(!temp.profile().join("skill-imports").exists());
+    assert!(
+        !temp
+            .profile()
+            .join(if cfg!(unix) {
+                "imports"
+            } else {
+                "skill-imports"
+            })
+            .exists()
+    );
     error(
         execute(
             &temp.request("stage"),
@@ -434,7 +479,11 @@ fn review_collisions_ambiguous_names_and_unowned_stage_are_refused() {
         execute(&temp.request("preview"), &mut Mock::package(), NOW),
         "review_conflict",
     );
-    let inbox = temp.profile().join("skill-imports");
+    let inbox = temp.profile().join(if cfg!(unix) {
+        "imports"
+    } else {
+        "skill-imports"
+    });
     fs::create_dir(&inbox).unwrap();
     let stage = inbox.join(format!("market-{ID}"));
     fs::create_dir(&stage).unwrap();
@@ -486,24 +535,47 @@ fn local_symlinks_hardlinks_and_inbox_redirection_are_refused() {
     use std::os::unix::fs::symlink;
     let temp = Temp::new();
     let outside = Temp::new();
+    let outside_count = fs::read_dir(&outside.0).unwrap().count();
     fs::create_dir_all(temp.profile()).unwrap();
-    symlink(&outside.0, temp.profile().join("skill-market")).unwrap();
+    symlink(
+        &outside.0,
+        temp.profile()
+            .join(if cfg!(unix) { "market" } else { "skill-market" }),
+    )
+    .unwrap();
     error(
         execute(&temp.request("preview"), &mut Mock::package(), NOW),
         "storage",
     );
-    fs::remove_file(temp.profile().join("skill-market")).unwrap();
+    fs::remove_file(
+        temp.profile()
+            .join(if cfg!(unix) { "market" } else { "skill-market" }),
+    )
+    .unwrap();
     execute(&temp.request("preview"), &mut Mock::package(), NOW).unwrap();
-    symlink(&outside.0, temp.profile().join("skill-imports")).unwrap();
+    symlink(
+        &outside.0,
+        temp.profile().join(if cfg!(unix) {
+            "imports"
+        } else {
+            "skill-imports"
+        }),
+    )
+    .unwrap();
     error(
         execute(&temp.request("stage"), &mut Mock::default(), NOW),
         "storage",
     );
-    assert!(fs::read_dir(&outside.0).unwrap().next().is_none());
-    fs::remove_file(temp.profile().join("skill-imports")).unwrap();
+    assert_eq!(fs::read_dir(&outside.0).unwrap().count(), outside_count);
+    fs::remove_file(temp.profile().join(if cfg!(unix) {
+        "imports"
+    } else {
+        "skill-imports"
+    }))
+    .unwrap();
     let payload = temp
         .profile()
-        .join("skill-market")
+        .join(if cfg!(unix) { "market" } else { "skill-market" })
         .join(ID)
         .join("payload-000.bin");
     fs::hard_link(&payload, outside.0.join("hardlink")).unwrap();
@@ -516,15 +588,26 @@ fn local_symlinks_hardlinks_and_inbox_redirection_are_refused() {
 fn fresh_profile_is_created_privately_and_operations_hold_exclusive_ownership() {
     let temp = Temp::new();
     let mut request = temp.request("search");
-    request.directory = temp.0.join("profiles/default/skill-market");
+    request.directory = temp.0.join(if cfg!(unix) {
+        "skills/market"
+    } else {
+        "profiles/default/skill-market"
+    });
     let mut http = Mock::default();
     http.json(
         "https://skills.sh/api/search?q=sample&limit=50",
         json!({"skills":[]}),
     );
     execute(&request, &mut http, NOW).unwrap();
-    let profile = Directory::trusted_root(&temp.0.join("profiles/default")).unwrap();
-    let market = profile.child("skill-market", false).unwrap();
+    let profile = Directory::trusted_root(&temp.0.join(if cfg!(unix) {
+        "skills"
+    } else {
+        "profiles/default"
+    }))
+    .unwrap();
+    let market = profile
+        .child(if cfg!(unix) { "market" } else { "skill-market" }, false)
+        .unwrap();
     let held = market.lock().unwrap();
     error(execute(&request, &mut http, NOW), "review_conflict");
     drop(held);
@@ -555,7 +638,11 @@ fn cache_evicts_oldest_query_and_keeps_only_sixty_four_owned_entries() {
         );
         execute(&request, &mut http, NOW + n).unwrap();
     }
-    let cache = temp.profile().join("skill-market/cache");
+    let cache = temp.profile().join(if cfg!(unix) {
+        "market/cache"
+    } else {
+        "skill-market/cache"
+    });
     assert_eq!(fs::read_dir(&cache).unwrap().count(), 64);
     assert!(!cache.join(format!("{}.json", digest(b"query0"))).exists());
     assert!(cache.join(format!("{}.json", digest(b"query65"))).exists());
@@ -567,26 +654,36 @@ fn expires_owned_reviews_stages_and_interrupted_preview_folders() {
     execute(&temp.request("stage"), &mut Mock::default(), NOW + 1).unwrap();
     let abandoned = temp
         .profile()
-        .join("skill-market")
+        .join(if cfg!(unix) { "market" } else { "skill-market" })
         .join("01234567-89ab-4cde-8fab-0123456789ad");
     fs::create_dir(&abandoned).unwrap();
     fs::write(abandoned.join("payload-000.bin"), b"partial").unwrap();
     let mut next = temp.request("preview");
     next.request_id = NEXT.into();
     execute(&next, &mut Mock::package(), now_millis() + REVIEW_TTL + 1).unwrap();
-    assert!(!temp.profile().join("skill-market").join(ID).exists());
+    assert!(
+        !temp
+            .profile()
+            .join(if cfg!(unix) { "market" } else { "skill-market" })
+            .join(ID)
+            .exists()
+    );
     assert!(!abandoned.exists());
     assert!(
         !temp
             .profile()
-            .join("skill-imports")
+            .join(if cfg!(unix) {
+                "imports"
+            } else {
+                "skill-imports"
+            })
             .join(format!("market-{ID}"))
             .exists()
     );
     assert!(
         !temp
             .profile()
-            .join("skill-market")
+            .join(if cfg!(unix) { "market" } else { "skill-market" })
             .join(format!("stage-{ID}.json"))
             .exists()
     );
@@ -598,7 +695,11 @@ fn staged_hash_drift_and_overflowing_review_metadata_fail_closed() {
     execute(&temp.request("stage"), &mut Mock::default(), NOW).unwrap();
     fs::write(
         temp.profile()
-            .join("skill-imports")
+            .join(if cfg!(unix) {
+                "imports"
+            } else {
+                "skill-imports"
+            })
             .join(format!("market-{ID}"))
             .join("SKILL.md"),
         b"drift",
@@ -610,7 +711,7 @@ fn staged_hash_drift_and_overflowing_review_metadata_fail_closed() {
     );
     let file = temp
         .profile()
-        .join("skill-market")
+        .join(if cfg!(unix) { "market" } else { "skill-market" })
         .join(ID)
         .join("review.json");
     let mut value: Value = serde_json::from_slice(&fs::read(&file).unwrap()).unwrap();
@@ -628,40 +729,30 @@ fn internal_profile_links_cannot_redirect_but_configured_data_root_alias_is_supp
     use std::os::unix::fs::symlink;
     let temp = Temp::new();
     let outside = Temp::new();
-    fs::create_dir(outside.0.join("default")).unwrap();
-    symlink(&outside.0, temp.0.join("profiles")).unwrap();
-    error(
-        execute(&temp.request("preview"), &mut Mock::package(), NOW),
-        "storage",
-    );
-    assert!(
-        fs::read_dir(outside.0.join("default"))
-            .unwrap()
-            .next()
-            .is_none()
-    );
-    fs::remove_file(temp.0.join("profiles")).unwrap();
-    fs::create_dir(temp.0.join("profiles")).unwrap();
+    let saved = temp.0.join("saved-skills");
+    fs::rename(temp.profile(), &saved).unwrap();
     symlink(&outside.0, temp.profile()).unwrap();
     error(
         execute(&temp.request("preview"), &mut Mock::package(), NOW),
         "storage",
     );
-    assert!(!outside.0.join("skill-market").exists());
+    assert!(!outside.0.join("market").exists());
     fs::remove_file(temp.profile()).unwrap();
+    fs::rename(saved, temp.profile()).unwrap();
     let alias = outside.0.join("data-alias");
     symlink(&temp.0, &alias).unwrap();
     let mut request = temp.request("preview");
-    request.directory = alias.join("profiles/default/skill-market");
+    request.directory = alias.join("skills/market");
     execute(&request, &mut Mock::package(), NOW).unwrap();
     assert!(
         temp.profile()
-            .join("skill-market")
+            .join("market")
             .join(ID)
             .join("review.json")
-            .exists()
+            .is_file()
     );
 }
+
 #[test]
 fn upstream_prefix_does_not_reduce_package_relative_depth_budget() {
     let temp = Temp::new();
@@ -704,5 +795,54 @@ fn source_reference_exceeding_registry_bound_never_creates_review() {
         execute(&request, &mut http, NOW).unwrap_err().code,
         "integrity"
     );
-    assert!(!temp.profile().join("skill-market").join(ID).exists());
+    assert!(
+        !temp
+            .profile()
+            .join(if cfg!(unix) { "market" } else { "skill-market" })
+            .join(ID)
+            .exists()
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn marketplace_http_does_not_block_existing_object_reads_or_initiate_migration() {
+    use extalia_core::skills::{
+        ProfileId,
+        tree::{ObjectStore, StagingLimits},
+    };
+    struct DuringHttp<'a> {
+        inner: Mock,
+        store: &'a ObjectStore,
+        hash: String,
+    }
+    impl Http for DuringHttp<'_> {
+        fn get(&mut self, url: &str, limit: usize) -> Result<Vec<u8>> {
+            self.store
+                .verify(&self.hash, &StagingLimits::default())
+                .unwrap();
+            self.inner.get(url, limit)
+        }
+    }
+    let temp = Temp::new();
+    let source = temp.0.join("source");
+    fs::create_dir(&source).unwrap();
+    fs::write(source.join("SKILL.md"), SKILL).unwrap();
+    let store = ObjectStore::new(&temp.0, &ProfileId::parse("default").unwrap());
+    let hash = store
+        .stage(&source, &StagingLimits::default())
+        .unwrap()
+        .sha256;
+    let mut http = DuringHttp {
+        inner: Mock::package(),
+        store: &store,
+        hash,
+    };
+    execute(&temp.request("preview"), &mut http, NOW).unwrap();
+    fs::remove_file(temp.0.join("skills/layout-v1")).unwrap();
+    error(
+        execute(&temp.request("search"), &mut Mock::default(), NOW),
+        "storage",
+    );
+    assert!(!temp.0.join("skills/layout-v1").exists());
 }

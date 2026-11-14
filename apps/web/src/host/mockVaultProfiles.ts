@@ -12,7 +12,8 @@ export function createMockVaultProfiles(state: HostState, knowledge: Pick<Requir
     const effectiveLearning = (profile: typeof base, selected: string) => {
       const policy = normalizeAutomaticLearningPolicy(profile?.automaticLearning);
       return { enabled: policy.enabled, skills: policy.enabled && policy.skills,
-        notes: policy.enabled && policy.notes && profile?.learningRoot === selected };
+        notes: policy.enabled && policy.notes && profile?.learningRoot === selected,
+        ...(policy.observed !== undefined ? { observed: policy.enabled && policy.observed } : {}) };
     };
     const profiles: VaultProfile[] = [{ id: state.profile.id, name: base?.name ?? state.profile.name, kind: 'indexed', root,
       minutesEnabled: base?.minutesEnabled === false ? false : base?.approvedRoot === root || setting.kind === 'default', automaticLearning: effectiveLearning(base, root), workspaceIds: [] },

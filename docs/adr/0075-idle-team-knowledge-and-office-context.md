@@ -2,12 +2,7 @@
 
 Status: accepted, 2026-11-11. Extends ADRs 0073 and 0074.
 
-Current refinement (v0.4.291): only conflicting foreground work pauses or
-preempts maintenance for a unique non-default isolated vault profile. Known
-foreground work in other profiles may coexist. Shared/default jobs keep the
-global rule below; configuration changes, unknown execution ownership and the
-single-curator resource limit remain. Vault isolation does not create a private
-Skills registry. See [automatic learning](../getting-started/automatic-learning.md).
+Current refinement (v0.4.291; [#106](https://github.com/Extalia-VO/extalia-virtual-agent/issues/106), updated 2026-11-13): maintenance for a unique non-default isolated vault profile waits only for conflicting known workspace/vault activity. Known foreground work in other profiles may coexist, including Observe activity, queued prompts and observed-memory lifetimes resolved through host ownership. Unbound Observe activity is attributed to the default/global profile for admission only; this neither creates workspace access nor authorizes new Knowledge IO. Ambiguous/invalid workspace links and unproven Native effects remain guarded. Shared/default jobs, privacy/configuration changes and genuinely shared resources retain broader guards. Foreground yielding remains synchronous and entered effects must physically settle before conflicting work proceeds. The UI shows the selected quiet interval while waiting and a live deadline only after admission is armed. One curator runs at a time; vault isolation does not create a private Skills registry. See [automatic learning](../getting-started/automatic-learning.md).
 
 ## Problem
 

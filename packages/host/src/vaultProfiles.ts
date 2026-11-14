@@ -83,7 +83,8 @@ export class VaultProfiles {
         ? profile.minutesEnabled === true && profile.minutesRoot === root || this.indexedOwned(snapshot, data, root)
         : profile.minutesEnabled ?? !profile.vaultRoot,
       automaticLearning: { enabled: learning.enabled, skills: learning.enabled && learning.skills,
-        notes: learning.enabled && learning.notes && learningNotesApproved },
+        notes: learning.enabled && learning.notes && learningNotesApproved,
+        ...(learning.observed !== undefined ? { observed: learning.enabled && learning.observed } : {}) },
       workspaceIds: snapshot.workspaces.filter(workspace => workspace.profileId === profile.id).map(workspace => workspace.id),
     }; }));
   }
@@ -227,7 +228,8 @@ export class VaultProfiles {
       && this.indexedOwned(snapshot, await canonical(path.resolve(this.options.dataDirectory)), canonicalRoot);
     const ownedManaged = workspace.profileId !== snapshot.defaultProfile.id && stored?.vaultRoot === null;
     const approvedNotes = learning.enabled && learning.notes && (ownedDefault || ownedManaged || stored?.learningRoot === canonicalRoot);
-    const policy = { enabled: learning.enabled, skills: learning.enabled && learning.skills, notes: approvedNotes };
+    const policy = { enabled: learning.enabled, skills: learning.enabled && learning.skills, notes: approvedNotes,
+      ...(learning.observed !== undefined ? { observed: learning.enabled && learning.observed } : {}) };
     const revision = this.revision(snapshot);
     if (this.changing || this.revision(this.options.read()) !== revision) throw error('Vault profiles changed while reading the learning policy.');
     return { profileId: workspace.profileId, revision, policy };

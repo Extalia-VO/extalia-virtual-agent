@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createAgentHost, type AgentHostRuntime } from '../src/service.js';
 import { DAEMON_BINARY } from './daemonBackend.js';
 import { useTempDirs } from './helpers.js';
+import { learningObservedFixture } from './learningObservedFixture.js';
 
 const temp = useTempDirs(), runtimes: AgentHostRuntime[] = [];
 afterEach(async () => { while (runtimes.length) await runtimes.pop()!.close(); });
@@ -92,6 +93,56 @@ async function fixture(options: { lead?(prompt: string): Promise<void>; sourceRe
 }
 
 describe('native knowledge meetings through the deferred host scheduler', () => {
+  it.each(['same', 'foreign'] as const)('isolated Knowledge meetings wait only for %s-profile Native work on a shared connection', async scope => {
+    const entered = deferred(), release = deferred();
+    const f = await fixture({ isolated: true, lead: async prompt => { if (prompt === 'Hold Native profile work.') { entered.resolve(); await release.promise; } } });
+    const target = scope === 'same' ? f.session.id : f.otherSession.id;
+    try {
+      await f.host.sendPrompt(f.session.id, 'Record the project decision before profile concurrency.'); await idle(f.runtime); await f.waitForJob('scheduled');
+      await f.host.sendPrompt(target, 'Hold Native profile work.'); await entered.promise;
+      await f.action('run-now');
+      if (scope === 'foreign') {
+        await f.waitForJob('completed');
+        expect(f.exports).toHaveLength(1);
+        expect(f.requests.filter(request => request.meeting)).toHaveLength(2);
+        expect((await f.host.getState()).sessions.find(item => item.id === target)?.running).toBe(true);
+      } else {
+        expect(await f.waitForJob('scheduled', true)).toMatchObject({ reason: 'busy' });
+        expect(f.requests.some(request => request.meeting)).toBe(false);
+      }
+    } finally { release.resolve(); await idle(f.runtime); }
+  });
+
+  it.each(['same', 'foreign', 'unbound', 'ambiguous', 'invalid'] as const)('isolated Knowledge meetings check %s observed ownership and preserve other queued prompts', async scope => {
+    const f = await fixture({ isolated: true });
+    const unregistered = path.join(path.dirname(f.workspace.projectLocation!), 'unregistered-project'); await mkdir(unregistered);
+    if (scope === 'ambiguous') await f.host.saveWorkspace({ name: 'Overlapping project', projectLocation: f.otherWorkspace.projectLocation!, connectionId: f.otherWorkspace.providerProfileId, permissions: { fileWrite: 'ask', commands: 'ask' } });
+    const project = scope === 'same' ? f.workspace.projectLocation! : scope === 'unbound' ? unregistered : f.otherWorkspace.projectLocation!;
+    const observed = await learningObservedFixture(f.runtime, project);
+    if (scope === 'invalid') {
+      const link = await f.host.observedWorkspaceLink!(observed.sessionId);
+      await f.host.setObservedWorkspaceLink!(observed.sessionId, { revision: link.revision, workspaceId: f.otherWorkspace.id });
+      await observed.changeProject(unregistered);
+    }
+    const expectedLink = scope === 'ambiguous' || scope === 'invalid' || scope === 'unbound' ? scope : 'automatic';
+    await vi.waitFor(async () => expect((await f.host.observedWorkspaceLink!(observed.sessionId)).mode).toBe(expectedLink), { timeout: 5_000, interval: 5 });
+    const queue = await f.host.promptQueueStatus!(observed.sessionId);
+    await f.host.changePromptQueue!(observed.sessionId, { revision: queue.revision, action: 'add', text: 'Keep the observed project draft paused.' });
+    await f.host.sendPrompt(f.session.id, 'Record the project decision while another app works.'); await idle(f.runtime);
+    await f.waitForJob('scheduled'); await f.action('run-now');
+    if (scope === 'foreign' || scope === 'unbound') {
+      await f.waitForJob('completed');
+      expect(f.exports).toHaveLength(1);
+      expect(f.requests.filter(request => request.meeting)).toHaveLength(2);
+      expect(JSON.stringify(f.requests.filter(request => request.meeting))).not.toContain('foreign project research');
+    } else {
+      expect(await f.waitForJob('scheduled', true)).toMatchObject({ reason: 'busy' });
+      expect(f.requests.some(request => request.meeting)).toBe(false);
+      expect(f.exports).toEqual([]);
+    }
+    expect((await f.host.getState()).sessions.find(item => item.id === observed.sessionId)?.running).toBe(true);
+    expect(await f.host.promptQueueStatus!(observed.sessionId)).toMatchObject({ paused: true, items: [expect.objectContaining({ state: 'pending' })] });
+  });
   it('queues only redacted current-turn prompt and assistant decisions, excluding prior conversation', async () => {
     const promptCredential = 'synthetic-prompt-credential-'.repeat(60);
     const answerCredential = 'synthetic-answer-credential-'.repeat(60);

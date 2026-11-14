@@ -1,3 +1,4 @@
+import { skillStoragePaths } from '../src/skillStorage.js';
 import { createAgentHost } from '../src/service.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { chmod, lstat, mkdir, readdir, writeFile } from 'node:fs/promises';
@@ -173,7 +174,7 @@ describe('unscanned skill inventory never enters lead or delegated provider requ
         if (process.platform === 'win32') {
           await expect(host.importSkill(request)).rejects.toThrow('missing_capability');
           expect((await host.skillRegistry()).revisions).toEqual([]);
-          await expect(lstat(path.join(data, 'profiles', 'default', 'skill-imports'))).rejects.toMatchObject({ code: 'ENOENT' });
+          await expect(lstat(skillStoragePaths(data).imports)).rejects.toMatchObject({ code: 'ENOENT' });
         } else expect(await host.importSkill(request)).toMatchObject({ state: 'quarantined', stateReason: 'scanner-unavailable' });
       }
       const session = await host.createSession(workspace.id, { team: { enabled: true, allowedModels: ['lead-model', 'worker-model'], members: [{ id: 'm-worker', name: 'Worker', role: 'Reviewer', models: ['worker-model'] }] } });
@@ -186,6 +187,6 @@ describe('unscanned skill inventory never enters lead or delegated provider requ
         expect(read!.function.description).toContain('skill_list');
         expect(body.tools?.map(tool => tool.function.name)).toEqual(expect.arrayContaining(['skill_list', 'skill_search']));
       }
-    } finally { await runtime.close(); await unlockFixture(path.join(data, 'profiles')); }
+    } finally { await runtime.close(); await unlockFixture(data); }
   });
 });

@@ -28,6 +28,12 @@ export function learningCountdownTime(dueAt: string, now: number): string {
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
 }
 
+/** Show the selected quiet interval while waiting; it is not an ETA for conflicting work to end. */
+export function learningCountdownDuration(seconds: number): string {
+  const value = Number.isFinite(seconds) ? Math.max(0, Math.ceil(seconds)) : 0;
+  return `${Math.floor(value / 60)}:${String(value % 60).padStart(2, '0')}`;
+}
+
 /** Shared presentation for the live notification and isolated browser QA. */
 export function LearningCountdownView({ t, snapshot, now, busyId, error, dismissed = [], dismissedSkills = [], embedded = false, noticeMemory, onAction, onDismiss, onDismissSkill }: {
   t: Messages; snapshot: LearningScheduleSnapshot; now: number; busyId?: string | undefined; error?: string | undefined;
@@ -50,6 +56,8 @@ export function LearningCountdownView({ t, snapshot, now, busyId, error, dismiss
         const running = job.state === 'running';
         const meeting = job.kind === 'knowledge-meeting';
         const waiting = waitingForIdle(job);
+        const selectedDelay = typeof job.delaySeconds === 'number' && Number.isFinite(job.delaySeconds) && job.delaySeconds > 0
+          ? job.delaySeconds : undefined;
         const due = Date.parse(job.dueAt) <= now;
         const status = running ? meeting ? text.meetingRunning : text.running : pending
           ? waiting ? meeting ? text.meetingWaiting : text.busy : due ? text.starting : meeting ? text.meetingScheduled : text.scheduled
@@ -65,6 +73,8 @@ export function LearningCountdownView({ t, snapshot, now, busyId, error, dismiss
           </div>
           <LearningScope t={t} job={job} />
           <p className="learning-countdown-status small" role="status">{status}</p>
+          {pending && waiting && <p className="learning-countdown-quiet muted small">{selectedDelay === undefined
+            ? text.waitingCountdownUnknown : text.waitingCountdown(learningCountdownDuration(selectedDelay))}</p>}
           {pending && <p className="learning-countdown-quiet muted small">{text.quietPeriod}</p>}
           {job.result?.meeting && <MeetingResult t={t} job={job} />}
           {!pending && !running && job.reason === 'changed' && <p className="muted small">{text.changed}</p>}
@@ -120,7 +130,7 @@ function SkillSavedNotice({ t, job, notice, memory, onDismiss }: {
 }
 
 /** One host-owned countdown across Office, Chat, Knowledge and Settings. */
-export function LearningCountdown({ agents, t, target }: { agents: AgentHostApi; t: Messages; target?: HTMLElement | null }) {
+export function LearningCountdown({ agents, t, target, embedded }: { agents: AgentHostApi; t: Messages; target?: HTMLElement | null; embedded?: boolean | undefined }) {
   const [snapshot, setSnapshot] = useState<LearningScheduleSnapshot>();
   const [now, setNow] = useState(() => Date.now());
   const [busyId, setBusyId] = useState<string>();
@@ -187,9 +197,10 @@ export function LearningCountdown({ agents, t, target }: { agents: AgentHostApi;
   };
   if (!snapshot) return null;
   const view = <LearningCountdownView t={t} snapshot={snapshot} now={now} busyId={busyId} error={error} dismissed={dismissed}
-    dismissedSkills={dismissedSkills} noticeMemory={noticeMemory} embedded={Boolean(target)}
+    dismissedSkills={dismissedSkills} noticeMemory={noticeMemory} embedded={embedded ?? Boolean(target)}
     onAction={(job, action) => { void act(job, action); }} onDismiss={id => setDismissed(previous => [...previous.slice(-31), id])}
     onDismissSkill={id => setDismissedSkills(previous => [...previous.slice(-63), id])} />;
   // Keep polling, command guards and dismissals in this one App owner while its view changes placement.
-  return target ? createPortal(view, target) : view;
+  // Required inline placement waits for its slot rather than floating over interactive controls.
+  return target ? createPortal(view, target) : embedded ? null : view;
 }

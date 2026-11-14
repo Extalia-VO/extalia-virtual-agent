@@ -27,6 +27,7 @@ fn market_revision_sources_survive_restart_and_preserve_repeat_commit_evidence()
                 .created
         );
         let details = registry.details(&receipt.revision_id).unwrap();
+        assert!(details.summary.marketplace_source);
         assert_eq!(details.sources_total, 2);
         assert_eq!(
             details
@@ -43,6 +44,7 @@ fn market_revision_sources_survive_restart_and_preserve_repeat_commit_evidence()
     let mut store = open(&dir);
     let mut registry = SkillRegistry::new(&mut store, &dir.data(), profile("default"));
     assert_eq!(registry.details(&revision).unwrap().sources_total, 2);
+    assert!(registry.summary(&revision).unwrap().marketplace_source);
     let other = dir.package(
         "two",
         &[("SKILL.md", &format!("{SKILL_MD}\nA revised instruction."))],
@@ -56,6 +58,161 @@ fn market_revision_sources_survive_restart_and_preserve_repeat_commit_evidence()
         third
     );
     assert_eq!(registry.details(&revision).unwrap().sources_total, 2);
+    assert!(
+        registry
+            .summary(&next.revision_id)
+            .unwrap()
+            .marketplace_source
+    );
+}
+
+/// Append only controlled legacy fixtures, without changing the production import
+/// namespace policy. Projection must validate the exact source record itself.
+fn append_source(registry: &mut SkillRegistry<'_>, revision: &str, origin: &str, reference: &str) {
+    let profile = registry.profile().as_str().to_owned();
+    registry.conn().execute(
+        "INSERT INTO skill_revision_sources(profile_id,revision_id,origin,source_ref,recorded_at)
+         VALUES(?1,?2,?3,?4,?5)",
+        rusqlite::params![profile, revision, origin, reference, crate::time::format_utc(NOW)],
+    ).unwrap();
+}
+
+#[test]
+fn marketplace_summary_uses_only_valid_exact_revision_sources() {
+    let dir = TempDir::new();
+    let mut store = open(&dir);
+    let first = dir.package("first", &[("SKILL.md", SKILL_MD)]);
+    let second = dir.package(
+        "second",
+        &[("SKILL.md", &format!("{SKILL_MD}\nAnother revision."))],
+    );
+    let mut registry = SkillRegistry::new(&mut store, &dir.data(), profile("default"));
+    let a = registry
+        .import(&first, Origin::Imported, "folder:demo", NOW)
+        .unwrap();
+    let b = registry
+        .import(&second, Origin::Imported, "folder:demo", LATER)
+        .unwrap();
+    assert!(!registry.summary(&a.revision_id).unwrap().marketplace_source);
+    append_source(
+        &mut registry,
+        &a.revision_id,
+        "imported",
+        &source("example/skills", 1, "demo"),
+    );
+    assert!(registry.summary(&a.revision_id).unwrap().marketplace_source);
+    assert!(!registry.summary(&b.revision_id).unwrap().marketplace_source);
+    let listed = registry.list(None, None, 10).unwrap();
+    assert_eq!(
+        listed.iter().filter(|row| row.marketplace_source).count(),
+        1
+    );
+    assert!(
+        registry
+            .details(&a.revision_id)
+            .unwrap()
+            .summary
+            .marketplace_source
+    );
+}
+
+#[test]
+fn marketplace_summary_rejects_unpinned_malformed_and_nonimported_labels() {
+    let dir = TempDir::new();
+    let mut store = open(&dir);
+    let path = dir.package("one", &[("SKILL.md", SKILL_MD)]);
+    let mut registry = SkillRegistry::new(&mut store, &dir.data(), profile("default"));
+    let revision = registry
+        .import(&path, Origin::Imported, "folder:demo", NOW)
+        .unwrap()
+        .revision_id;
+    for reference in [
+        "github:example/skills@main#demo".to_string(),
+        format!("github:example/skills@{}#demo", "A".repeat(40)),
+        source("example/skills", 1, "../demo"),
+        source("example/skills", 1, "demo#extra"),
+        format!("https://github.com/example/skills@{}#demo", "a".repeat(40)),
+    ] {
+        append_source(&mut registry, &revision, "imported", &reference);
+    }
+    append_source(
+        &mut registry,
+        &revision,
+        "user",
+        &source("example/skills", 2, "demo"),
+    );
+    append_source(
+        &mut registry,
+        &revision,
+        "generated",
+        &source("example/skills", 3, "demo"),
+    );
+    assert!(!registry.summary(&revision).unwrap().marketplace_source);
+}
+
+#[test]
+fn marketplace_summary_does_not_use_foreign_profile_sources_or_origin_alone() {
+    let dir = TempDir::new();
+    let mut store = open(&dir);
+    let path = dir.package("one", &[("SKILL.md", SKILL_MD)]);
+    let revision = {
+        let mut registry = SkillRegistry::new(&mut store, &dir.data(), profile("default"));
+        registry
+            .import(&path, Origin::Imported, "folder:demo", NOW)
+            .unwrap()
+            .revision_id
+    };
+    {
+        let mut other = SkillRegistry::new(&mut store, &dir.data(), profile("other"));
+        let receipt = other
+            .import(
+                &path,
+                Origin::Imported,
+                &source("example/skills", 1, "demo"),
+                NOW,
+            )
+            .unwrap();
+        assert_eq!(receipt.revision_id, revision);
+        assert!(other.summary(&revision).unwrap().marketplace_source);
+    }
+    let mut registry = SkillRegistry::new(&mut store, &dir.data(), profile("default"));
+    assert!(!registry.summary(&revision).unwrap().marketplace_source);
+    assert!(matches!(
+        registry.import(
+            &path,
+            Origin::Imported,
+            &source("example/skills", 1, "demo"),
+            LATER
+        ),
+        Err(SkillError::Denied("market_package_source_conflict"))
+    ));
+    assert!(!registry.summary(&revision).unwrap().marketplace_source);
+}
+
+#[test]
+fn local_project_and_generated_origins_do_not_claim_marketplace_provenance() {
+    let dir = TempDir::new();
+    let mut store = open(&dir);
+    let path = dir.package("one", &[("SKILL.md", SKILL_MD)]);
+    for (scope, origin, reference) in [
+        ("local", Origin::User, "folder:demo"),
+        (
+            "workspace",
+            Origin::Workspace,
+            "workspace:w_fixture/.extalia/skills/demo",
+        ),
+        ("generated", Origin::Generated, "prompt:session:source-hash"),
+        ("imported", Origin::Imported, "legacy-unrecorded"),
+    ] {
+        let mut registry = SkillRegistry::new(&mut store, &dir.data(), profile(scope));
+        let receipt = registry.import(&path, origin, reference, NOW).unwrap();
+        assert!(
+            !registry
+                .summary(&receipt.revision_id)
+                .unwrap()
+                .marketplace_source
+        );
+    }
 }
 #[test]
 fn market_namespace_conflicts_refuse_even_identical_trees_and_do_not_record_sources() {

@@ -13,6 +13,8 @@ configuration editors or start each other's operations automatically.
 
 - **General:** appearance, language, workflow and approval notification preferences.
 - **Models & connections:** provider/router connections and their available models.
+- **Agent profiles:** shared team defaults and individual roles, personality,
+  models and delegation preferences.
 - **Projects:** workspace folders and project settings, including integration gates.
 - **Agent apps:** connect source applications, configure automatic observation and
   ignored folders. Configuration changes retain their existing preview, consent
@@ -26,6 +28,16 @@ opened and retain their drafts while moving between Settings sections. Changing
 the connected host, profile or data directory clears those private editor drafts.
 Office's Connect button and the Manage agent connections shortcuts open
 **Settings → Agent apps**.
+
+Choose project, vault and ignored folders with **Choose folder**. Desktop uses
+the system folder picker; Web browses folders on the connected host. Confirmed
+locations remain visible and can be copied. Project saves wait for folder
+validation to finish. Cancelling a picker keeps the existing folder.
+
+Model selectors accept custom model IDs. Command fields and relative permission
+paths remain editable text. Pending saves lock the affected editor; a failed
+save retains its draft for correction or retry. Vault loading errors offer
+**Retry** without leaving Settings.
 
 ## Observe a conversation
 

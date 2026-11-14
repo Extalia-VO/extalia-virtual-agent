@@ -21,6 +21,11 @@ describe('project and session selection', () => {
     expect(switched.sessions.map(item => item.id)).toEqual(['beta-one']);
     expect(switched.session?.id).toBe('beta-one');
   });
+  it('does not choose an Observe-only workspace for a new managed chat', () => {
+    const mixed = { ...state, workspaces: state.workspaces.map(item => item.id === 'alpha' ? { ...item, mode: 'observe' as const } : item) };
+    expect(resolveChat(mixed, { workspaceId: 'alpha' }).workspace?.id).toBe('beta');
+    expect(resolveChat({ ...mixed, workspaces: mixed.workspaces.filter(item => item.mode === 'observe') }, {}).workspace).toBeUndefined();
+  });
   it('starts a new session explicitly and handles a removed project without mixing session lists', () => {
     expect(resolveChat(state, { workspaceId: 'alpha', sessionId: null }).session).toBeUndefined();
     expect(resolveChat(state, { workspaceId: 'removed', sessionId: 'beta-one' }).session?.id).toBe('alpha-new');
