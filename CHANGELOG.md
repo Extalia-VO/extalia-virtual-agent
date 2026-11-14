@@ -16,6 +16,13 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.295] - 2026-11-14
+
+### Performance
+
+- Reduce geometry in four public garments with deterministic, skinning-aware simplification while retaining textures and documenting pose comparisons.
+- Compact visible model instances and maintain culling bounds; expose actual graphics-backend details in Office benchmark reports.
+
 ### Documentation
 
 - Restore the README's centered Extalia logo, badges, title and introduction

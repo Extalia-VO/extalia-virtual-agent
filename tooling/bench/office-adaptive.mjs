@@ -5,7 +5,7 @@
  *
  * node tooling/bench/office-adaptive.mjs --url http://127.0.0.1:5399 --label before
  *   [--output output/low-spec/before.json] [--cpu 4] [--dpr 2] [--seconds 8]
- *   [--chrome <executable>] [--initial-ceiling 480]
+ *   [--chrome <executable>] [--initial-ceiling 480] [--gpu-policy native|ignore-blocklist]
  *
  * Build with `vite build --mode development` to retain the mock and QA hooks.
  * PLAYWRIGHT_MODULE and CHROME_PATH work as in office-fps.mjs. This driver never
@@ -16,15 +16,16 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { officeBrowserArgs, officeRendererInfo } from './office-browser.mjs';
 
 const root = fileURLToPath(new URL('../..', import.meta.url));
 const args = process.argv.slice(2);
 const options = new Map();
-const allowed = new Set(['url', 'label', 'output', 'cpu', 'dpr', 'seconds', 'chrome', 'initial-ceiling']);
+const allowed = new Set(['url', 'label', 'output', 'cpu', 'dpr', 'seconds', 'chrome', 'initial-ceiling', 'gpu-policy']);
 for (let index = 0; index < args.length; index++) {
   const key = args[index].replace(/^--/, '');
   if (!args[index].startsWith('--') || !allowed.has(key) || !args[index + 1] || args[index + 1].startsWith('--')) {
-    throw new Error('Expected --url, --label, --output, --cpu, --dpr, --seconds or --chrome/--initial-ceiling followed by a value.');
+    throw new Error('Expected --url, --label, --output, --cpu, --dpr, --seconds or --chrome/--initial-ceiling/--gpu-policy followed by a value.');
   }
   options.set(key, args[++index]);
 }
@@ -38,6 +39,8 @@ const dpr = numberOption('dpr', 2, 0.1);
 const seconds = numberOption('seconds', 8, 1);
 const initialCeiling = options.has('initial-ceiling') ? numberOption('initial-ceiling', 480, Number.MIN_VALUE) : null;
 const label = options.get('label') ?? 'run';
+const gpuPolicy = options.get('gpu-policy') ?? 'native';
+const browserArgs = officeBrowserArgs(process.platform, gpuPolicy);
 const url = new URL(options.get('url') ?? 'http://127.0.0.1:5399');
 if (url.protocol !== 'http:' || !['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname) || url.username || url.password) {
   throw new Error('--url must be an HTTP loopback QA server without credentials.');
@@ -58,9 +61,7 @@ const phase = name => process.stderr.write(`office-adaptive: ${name} (+${Math.ro
 const browser = await playwright.chromium.launch({
   executablePath: chrome,
   headless: true,
-  args: ['--use-gl=angle', ...(process.platform === 'darwin' ? ['--use-angle=metal'] : []),
-    '--headless=new', '--ignore-gpu-blocklist', '--enable-webgl-draft-extensions',
-    '--disable-renderer-backgrounding', '--disable-background-timer-throttling', '--disable-backgrounding-occluded-windows'],
+  args: browserArgs,
 });
 try {
   const context = await browser.newContext({ viewport: { width: 1366, height: 900 }, deviceScaleFactor: dpr, serviceWorkers: 'block' });
@@ -132,6 +133,7 @@ try {
   }
   await page.locator('.office-loading').waitFor({ state: 'detached', timeout: 120_000 });
   const ready = await snapshot();
+  const rendererAtReady = await page.evaluate(officeRendererInfo);
   phase('ready');
   const autoCamera = page.locator('.topbar-camera button');
   if (await autoCamera.getAttribute('aria-pressed') === 'true') await autoCamera.click();
@@ -176,10 +178,15 @@ try {
   highQualityCap.within2160ShortEdge = backing ? Math.min(backing.width, backing.height) <= 2160 : null;
   await page.evaluate(() => window.__EXTALIA_SET_RENDER_BUDGET__(null));
   const result = {
-    schemaVersion: 1, label, browserVersion: browser.version(), route: url.pathname + url.search,
+    schemaVersion: 1, label, browserVersion: browser.version(),
+    environment: { platform: process.platform, headless: true, gpuPolicy, browserArgs, rendererAtReady }, route: url.pathname + url.search,
     scenario: { viewport: { width: 1366, height: 900 }, nativeDpr: dpr, cpuSlowdown: cpu, secondsPerWindow: seconds, windows: 3,
       camera: { target: [-4, 0, -12], offset: [-33.3, 25.5, -77.4], zoom: 11 }, solarMinutes: 720, trafficClock: 240 },
     limitations: [
+      'Headless browser results do not certify Electron or physical-device performance.',
+      'browserArgs lists harness overrides; Playwright adds its own default launch flags.',
+      'A false softwareRendererHint does not prove hardware acceleration; the renderer string may be masked or unfamiliar.',
+      'renderMs measures renderer.render submission, not preceding simulation, pose or React work.',
       'CPU throttling simulates browser main-thread slowdown, not a low-end GPU, memory bandwidth/capacity, thermal limits or whole-device load.',
       'Initial is the first QA-hook observation after navigation, not cold-start time or guaranteed first frame; loading/shader work can precede it.',
       'QA builds include renderer instrumentation; GPU timer availability depends on Chrome and its graphics backend.',

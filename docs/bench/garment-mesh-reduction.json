@@ -1,0 +1,1020 @@
+{
+  "schemaVersion": 1,
+  "meshoptimizer": "1.1.1",
+  "review": "isolated-garment-pose-comparison; live-avatar-combinations-pending",
+  "files": [
+    {
+      "changed": true,
+      "sourceBytes": 20397732,
+      "outputBytes": 9462408,
+      "beforeTriangles": 666717,
+      "afterTriangles": 190833,
+      "sourceSHA256": "57614dbb4fc1f966b40b1bd01af916e3a280110a7e5ab3343df3eff326e372cc",
+      "outputSHA256": "29352417e77d0dc4ad4c243fbc1c68c7d976137e4ae7ddc56367af75c9203c39",
+      "retainedVertexBytesExact": true,
+      "imagePayloadsExact": true,
+      "primitives": [
+        {
+          "mesh": 0,
+          "primitive": 0,
+          "material": "OriginalTop_P0S3",
+          "beforeTriangles": 12154,
+          "afterTriangles": 6480,
+          "relativeError": 0.0009820752311497927,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 1,
+          "material": "OriginalTop_P1S3",
+          "beforeTriangles": 20790,
+          "afterTriangles": 3196,
+          "relativeError": 0.0009983257623389363,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 2,
+          "material": "OriginalTop_P2S3",
+          "beforeTriangles": 12584,
+          "afterTriangles": 3582,
+          "relativeError": 0.0009940753225237131,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 3,
+          "material": "OriginalTop_P3S3",
+          "beforeTriangles": 8363,
+          "afterTriangles": 1717,
+          "relativeError": 0.0009819107363000512,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 4,
+          "material": "OriginalTop_P4S3",
+          "beforeTriangles": 18569,
+          "afterTriangles": 6429,
+          "relativeError": 0.000985831837169826,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 5,
+          "material": "OriginalTop_P5S3",
+          "beforeTriangles": 14814,
+          "afterTriangles": 8524,
+          "relativeError": 0.0009926867205649614,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 6,
+          "material": "OriginalTop_P6S3",
+          "beforeTriangles": 4156,
+          "afterTriangles": 2884,
+          "relativeError": 0.0009979244787245989,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 7,
+          "material": "OriginalTop_P7S3",
+          "beforeTriangles": 20666,
+          "afterTriangles": 3156,
+          "relativeError": 0.0009961946634575725,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 8,
+          "material": "OriginalTop_P8S3",
+          "beforeTriangles": 3900,
+          "afterTriangles": 2372,
+          "relativeError": 0.0009979058522731066,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 9,
+          "material": "OriginalTop_P9S3",
+          "beforeTriangles": 10576,
+          "afterTriangles": 6490,
+          "relativeError": 0.0009983200579881668,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 10,
+          "material": "OriginalAccent_P10S8",
+          "beforeTriangles": 4238,
+          "afterTriangles": 196,
+          "relativeError": 0.04970770701766014,
+          "smallAccent": true
+        },
+        {
+          "mesh": 0,
+          "primitive": 12,
+          "material": "OriginalAccent_P12S4",
+          "beforeTriangles": 27120,
+          "afterTriangles": 6428,
+          "relativeError": 0.031158028170466423,
+          "smallAccent": true
+        },
+        {
+          "mesh": 0,
+          "primitive": 13,
+          "material": "OriginalAccent_P13S4",
+          "beforeTriangles": 27120,
+          "afterTriangles": 6410,
+          "relativeError": 0.029639683663845062,
+          "smallAccent": true
+        },
+        {
+          "mesh": 0,
+          "primitive": 14,
+          "material": "OriginalAccent_P14S4",
+          "beforeTriangles": 27120,
+          "afterTriangles": 6422,
+          "relativeError": 0.03150838613510132,
+          "smallAccent": true
+        },
+        {
+          "mesh": 0,
+          "primitive": 15,
+          "material": "OriginalAccent_P15S4",
+          "beforeTriangles": 27120,
+          "afterTriangles": 6450,
+          "relativeError": 0.03255750611424446,
+          "smallAccent": true
+        },
+        {
+          "mesh": 0,
+          "primitive": 16,
+          "material": "OriginalAccent_P16S4",
+          "beforeTriangles": 27120,
+          "afterTriangles": 6390,
+          "relativeError": 0.030657822266221046,
+          "smallAccent": true
+        },
+        {
+          "mesh": 0,
+          "primitive": 17,
+          "material": "OriginalAccent_P17S5",
+          "beforeTriangles": 27120,
+          "afterTriangles": 6412,
+          "relativeError": 0.03825734928250313,
+          "smallAccent": true
+        },
+        {
+          "mesh": 0,
+          "primitive": 18,
+          "material": "OriginalAccent_P18S5",
+          "beforeTriangles": 27120,
+          "afterTriangles": 6398,
+          "relativeError": 0.035687562078237534,
+          "smallAccent": true
+        },
+        {
+          "mesh": 0,
+          "primitive": 19,
+          "material": "OriginalAccent_P19S6",
+          "beforeTriangles": 27120,
+          "afterTriangles": 6474,
+          "relativeError": 0.03848816454410553,
+          "smallAccent": true
+        },
+        {
+          "mesh": 0,
+          "primitive": 20,
+          "material": "OriginalAccent_P20S6",
+          "beforeTriangles": 27120,
+          "afterTriangles": 6464,
+          "relativeError": 0.03752099722623825,
+          "smallAccent": true
+        },
+        {
+          "mesh": 0,
+          "primitive": 21,
+          "material": "OriginalAccent_P21S0",
+          "beforeTriangles": 2240,
+          "afterTriangles": 730,
+          "relativeError": 0.000996180810034275,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 22,
+          "material": "OriginalAccent_P22S6",
+          "beforeTriangles": 27120,
+          "afterTriangles": 6436,
+          "relativeError": 0.04047086089849472,
+          "smallAccent": true
+        },
+        {
+          "mesh": 0,
+          "primitive": 23,
+          "material": "OriginalAccent_P23S6",
+          "beforeTriangles": 27120,
+          "afterTriangles": 6426,
+          "relativeError": 0.03735055774450302,
+          "smallAccent": true
+        },
+        {
+          "mesh": 0,
+          "primitive": 24,
+          "material": "OriginalAccent_P24S6",
+          "beforeTriangles": 27120,
+          "afterTriangles": 6424,
+          "relativeError": 0.03947678580880165,
+          "smallAccent": true
+        },
+        {
+          "mesh": 0,
+          "primitive": 25,
+          "material": "OriginalAccent_P25S6",
+          "beforeTriangles": 27120,
+          "afterTriangles": 6424,
+          "relativeError": 0.03917912393808365,
+          "smallAccent": true
+        },
+        {
+          "mesh": 0,
+          "primitive": 26,
+          "material": "OriginalAccent_P26S6",
+          "beforeTriangles": 27120,
+          "afterTriangles": 6460,
+          "relativeError": 0.03698286786675453,
+          "smallAccent": true
+        },
+        {
+          "mesh": 0,
+          "primitive": 27,
+          "material": "OriginalAccent_P27S6",
+          "beforeTriangles": 27120,
+          "afterTriangles": 6442,
+          "relativeError": 0.03597963601350784,
+          "smallAccent": true
+        },
+        {
+          "mesh": 0,
+          "primitive": 28,
+          "material": "OriginalAccent_P28S7",
+          "beforeTriangles": 12714,
+          "afterTriangles": 2464,
+          "relativeError": 0.000998388510197401,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 29,
+          "material": "OriginalAccent_P29S7",
+          "beforeTriangles": 12714,
+          "afterTriangles": 2424,
+          "relativeError": 0.000997845083475113,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 30,
+          "material": "OriginalAccent_P30S7",
+          "beforeTriangles": 4238,
+          "afterTriangles": 200,
+          "relativeError": 0.04980872943997383,
+          "smallAccent": true
+        },
+        {
+          "mesh": 0,
+          "primitive": 31,
+          "material": "OriginalAccent_P31S1",
+          "beforeTriangles": 560,
+          "afterTriangles": 508,
+          "relativeError": 0.0009969361126422882,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 32,
+          "material": "OriginalAccent_P32S2",
+          "beforeTriangles": 15120,
+          "afterTriangles": 3750,
+          "relativeError": 0.0009880396537482738,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 33,
+          "material": "OriginalTop_P33S3",
+          "beforeTriangles": 8440,
+          "afterTriangles": 2150,
+          "relativeError": 0.0009999111061915755,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 34,
+          "material": "OriginalTop_P34S3",
+          "beforeTriangles": 9916,
+          "afterTriangles": 3446,
+          "relativeError": 0.0009993190178647637,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 35,
+          "material": "OriginalTop_P35S3",
+          "beforeTriangles": 16930,
+          "afterTriangles": 6846,
+          "relativeError": 0.000994981499388814,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 36,
+          "material": "OriginalTop_P36S3",
+          "beforeTriangles": 14594,
+          "afterTriangles": 7486,
+          "relativeError": 0.000995300360955298,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 37,
+          "material": "OriginalBottom_P8S3",
+          "beforeTriangles": 13416,
+          "afterTriangles": 7272,
+          "relativeError": 0.0009973194682970643,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 38,
+          "material": "OriginalBottom_P9S3",
+          "beforeTriangles": 5612,
+          "afterTriangles": 3116,
+          "relativeError": 0.0009949924424290657,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 39,
+          "material": "OriginalBottom_P11S3",
+          "beforeTriangles": 5612,
+          "afterTriangles": 3166,
+          "relativeError": 0.000988114858046174,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 40,
+          "material": "OriginalBottom_P33S3",
+          "beforeTriangles": 3748,
+          "afterTriangles": 2820,
+          "relativeError": 0.0009990331018343568,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 42,
+          "material": "Skin_Skin",
+          "beforeTriangles": 781,
+          "afterTriangles": 497,
+          "relativeError": 0.000981574528850615,
+          "smallAccent": false
+        }
+      ],
+      "path": "avatars/outfits/male/outfit-black-business-suit.glb"
+    },
+    {
+      "changed": true,
+      "sourceBytes": 10857156,
+      "outputBytes": 6896760,
+      "beforeTriangles": 312068,
+      "afterTriangles": 185778,
+      "sourceSHA256": "e72a84b7aaf2c512222351950b804b33bfb9f9c45239ceab8b87da2821fff0d1",
+      "outputSHA256": "1fcce32acf28d37b5f16daae695250a4071df55bfb5e4a1b1927d102d5ae83b4",
+      "retainedVertexBytesExact": true,
+      "imagePayloadsExact": true,
+      "primitives": [
+        {
+          "mesh": 0,
+          "primitive": 0,
+          "material": "OriginalAccent_P0S10",
+          "beforeTriangles": 832,
+          "afterTriangles": 120,
+          "relativeError": 0.049524884670972824,
+          "smallAccent": true
+        },
+        {
+          "mesh": 0,
+          "primitive": 1,
+          "material": "OriginalTop_P1S11",
+          "beforeTriangles": 1752,
+          "afterTriangles": 1646,
+          "relativeError": 0.0009279740625061095,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 2,
+          "material": "OriginalAccent_P2S12",
+          "beforeTriangles": 832,
+          "afterTriangles": 128,
+          "relativeError": 0.04703422635793686,
+          "smallAccent": true
+        },
+        {
+          "mesh": 0,
+          "primitive": 3,
+          "material": "OriginalTop_P3S13",
+          "beforeTriangles": 1752,
+          "afterTriangles": 1686,
+          "relativeError": 0.0009548942907713354,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 4,
+          "material": "OriginalAccent_P4S14",
+          "beforeTriangles": 832,
+          "afterTriangles": 124,
+          "relativeError": 0.0496809259057045,
+          "smallAccent": true
+        },
+        {
+          "mesh": 0,
+          "primitive": 5,
+          "material": "OriginalAccent_P6S16",
+          "beforeTriangles": 516,
+          "afterTriangles": 128,
+          "relativeError": 0.04712102189660072,
+          "smallAccent": true
+        },
+        {
+          "mesh": 0,
+          "primitive": 7,
+          "material": "OriginalAccent_P8S18",
+          "beforeTriangles": 832,
+          "afterTriangles": 134,
+          "relativeError": 0.04828507453203201,
+          "smallAccent": true
+        },
+        {
+          "mesh": 0,
+          "primitive": 8,
+          "material": "OriginalAccent_P9S20",
+          "beforeTriangles": 590,
+          "afterTriangles": 192,
+          "relativeError": 0.04700687900185585,
+          "smallAccent": true
+        },
+        {
+          "mesh": 0,
+          "primitive": 9,
+          "material": "OriginalAccent_P10S0",
+          "beforeTriangles": 864,
+          "afterTriangles": 174,
+          "relativeError": 0.049252238124608994,
+          "smallAccent": true
+        },
+        {
+          "mesh": 0,
+          "primitive": 10,
+          "material": "OriginalTop_P11S4",
+          "beforeTriangles": 16440,
+          "afterTriangles": 5826,
+          "relativeError": 0.0009883926250040531,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 11,
+          "material": "OriginalTop_P12S4",
+          "beforeTriangles": 16438,
+          "afterTriangles": 6784,
+          "relativeError": 0.0009991481201723218,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 12,
+          "material": "OriginalTop_P13S4",
+          "beforeTriangles": 13668,
+          "afterTriangles": 8924,
+          "relativeError": 0.0009901823941618204,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 13,
+          "material": "OriginalTop_P14S4",
+          "beforeTriangles": 16576,
+          "afterTriangles": 12714,
+          "relativeError": 0.0009764134301804006,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 14,
+          "material": "OriginalTop_P15S4",
+          "beforeTriangles": 10628,
+          "afterTriangles": 8064,
+          "relativeError": 0.0009995942236855626,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 15,
+          "material": "OriginalTop_P18S4",
+          "beforeTriangles": 11120,
+          "afterTriangles": 7196,
+          "relativeError": 0.00099955964833498,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 16,
+          "material": "OriginalTop_P19S4",
+          "beforeTriangles": 18612,
+          "afterTriangles": 13070,
+          "relativeError": 0.0009789705509319901,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 17,
+          "material": "OriginalTop_P20S4",
+          "beforeTriangles": 18506,
+          "afterTriangles": 11834,
+          "relativeError": 0.0009958026930689812,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 18,
+          "material": "OriginalTop_P22S4",
+          "beforeTriangles": 8128,
+          "afterTriangles": 5418,
+          "relativeError": 0.0009982178453356028,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 19,
+          "material": "OriginalTop_P23S4",
+          "beforeTriangles": 17084,
+          "afterTriangles": 10618,
+          "relativeError": 0.0009753623162396252,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 20,
+          "material": "OriginalTop_P24S4",
+          "beforeTriangles": 15468,
+          "afterTriangles": 9276,
+          "relativeError": 0.0009758505038917065,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 21,
+          "material": "OriginalTop_P25S4",
+          "beforeTriangles": 13488,
+          "afterTriangles": 11406,
+          "relativeError": 0.0009728978620842099,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 22,
+          "material": "OriginalTop_P26S4",
+          "beforeTriangles": 15760,
+          "afterTriangles": 9162,
+          "relativeError": 0.0009761697147041559,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 23,
+          "material": "OriginalTop_P27S4",
+          "beforeTriangles": 3916,
+          "afterTriangles": 1418,
+          "relativeError": 0.0009976461296901107,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 24,
+          "material": "OriginalTop_P28S4",
+          "beforeTriangles": 560,
+          "afterTriangles": 542,
+          "relativeError": 0.0008955560042522848,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 25,
+          "material": "OriginalAccent_P29S5",
+          "beforeTriangles": 8476,
+          "afterTriangles": 1890,
+          "relativeError": 0.0009946718346327543,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 26,
+          "material": "OriginalAccent_P30S19",
+          "beforeTriangles": 2432,
+          "afterTriangles": 564,
+          "relativeError": 0.04931783303618431,
+          "smallAccent": true
+        },
+        {
+          "mesh": 0,
+          "primitive": 28,
+          "material": "OriginalAccent_P32S3",
+          "beforeTriangles": 6034,
+          "afterTriangles": 432,
+          "relativeError": 0.04977777227759361,
+          "smallAccent": true
+        },
+        {
+          "mesh": 0,
+          "primitive": 29,
+          "material": "OriginalAccent_P33S6",
+          "beforeTriangles": 3412,
+          "afterTriangles": 1008,
+          "relativeError": 0.0009622537181712687,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 30,
+          "material": "OriginalAccent_P34S7",
+          "beforeTriangles": 3696,
+          "afterTriangles": 2346,
+          "relativeError": 0.000996038899756968,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 31,
+          "material": "OriginalAccent_P35S8",
+          "beforeTriangles": 1212,
+          "afterTriangles": 718,
+          "relativeError": 0.0009993956191465259,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 32,
+          "material": "OriginalTop_P36S9",
+          "beforeTriangles": 1752,
+          "afterTriangles": 1636,
+          "relativeError": 0.00096202886197716,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 33,
+          "material": "OriginalBottom_P5S15",
+          "beforeTriangles": 2600,
+          "afterTriangles": 2320,
+          "relativeError": 0.0009937064023688436,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 34,
+          "material": "OriginalBottom_P14S4",
+          "beforeTriangles": 1486,
+          "afterTriangles": 1044,
+          "relativeError": 0.0009972956031560898,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 35,
+          "material": "OriginalBottom_P15S4",
+          "beforeTriangles": 5204,
+          "afterTriangles": 3716,
+          "relativeError": 0.0009988477686420083,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 36,
+          "material": "OriginalBottom_P16S4",
+          "beforeTriangles": 11430,
+          "afterTriangles": 6910,
+          "relativeError": 0.000999023555777967,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 37,
+          "material": "OriginalBottom_P17S4",
+          "beforeTriangles": 18644,
+          "afterTriangles": 10732,
+          "relativeError": 0.0009990234393626451,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 38,
+          "material": "OriginalBottom_P18S4",
+          "beforeTriangles": 2796,
+          "afterTriangles": 1912,
+          "relativeError": 0.0009970199316740036,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 39,
+          "material": "OriginalBottom_P21S1",
+          "beforeTriangles": 2600,
+          "afterTriangles": 2336,
+          "relativeError": 0.0009826729074120522,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 40,
+          "material": "OriginalBottom_P22S4",
+          "beforeTriangles": 9706,
+          "afterTriangles": 5788,
+          "relativeError": 0.0009984507923945785,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 41,
+          "material": "OriginalBottom_P25S4",
+          "beforeTriangles": 1952,
+          "afterTriangles": 1366,
+          "relativeError": 0.0009984259959310293,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 42,
+          "material": "OriginalBottom_P26S4",
+          "beforeTriangles": 2356,
+          "afterTriangles": 1260,
+          "relativeError": 0.0009984658099710941,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 43,
+          "material": "OriginalBottom_P27S4",
+          "beforeTriangles": 13020,
+          "afterTriangles": 7114,
+          "relativeError": 0.0009956230642274022,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 44,
+          "material": "OriginalBottom_P28S4",
+          "beforeTriangles": 404,
+          "afterTriangles": 392,
+          "relativeError": 0.0008922864217311144,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 46,
+          "material": "Skin_Skin",
+          "beforeTriangles": 3410,
+          "afterTriangles": 1458,
+          "relativeError": 0.0009911906672641635,
+          "smallAccent": false
+        }
+      ],
+      "path": "avatars/outfits/male/outfit-sweatshirt-jacket-workwear.glb"
+    },
+    {
+      "changed": true,
+      "sourceBytes": 7741352,
+      "outputBytes": 2321216,
+      "beforeTriangles": 198678,
+      "afterTriangles": 47584,
+      "sourceSHA256": "8e66dbe6de695b68a7f9de2e7204cbcc91caa7ebe746914b59f2ce64dc956ef9",
+      "outputSHA256": "78d7394eb65b699f2f02032fe4de43b32f773168be2d1d7458861b34930202e8",
+      "retainedVertexBytesExact": true,
+      "imagePayloadsExact": true,
+      "primitives": [
+        {
+          "mesh": 0,
+          "primitive": 0,
+          "material": "OriginalTop_P0S0",
+          "beforeTriangles": 120870,
+          "afterTriangles": 29192,
+          "relativeError": 0.0009916622657328844,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 1,
+          "material": "OriginalTop_P1S0",
+          "beforeTriangles": 72170,
+          "afterTriangles": 14744,
+          "relativeError": 0.0009996567387133837,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 3,
+          "material": "Skin_Skin",
+          "beforeTriangles": 3438,
+          "afterTriangles": 1448,
+          "relativeError": 0.0009756466606631875,
+          "smallAccent": false
+        }
+      ],
+      "path": "avatars/outfits/male/outfit-victorian-bartender.glb"
+    },
+    {
+      "changed": true,
+      "sourceBytes": 10013416,
+      "outputBytes": 7956312,
+      "beforeTriangles": 227132,
+      "afterTriangles": 162928,
+      "sourceSHA256": "2db9da3cc16b067eae3ab1d5ed17a7967647a67f1411152eb085783b7dbc42cd",
+      "outputSHA256": "3a6b6cb12bc262476f499ce541158118a25b7153ce7c3d883c4ab08cb83f8c8b",
+      "retainedVertexBytesExact": true,
+      "imagePayloadsExact": true,
+      "primitives": [
+        {
+          "mesh": 0,
+          "primitive": 0,
+          "material": "OriginalTop_P0S0",
+          "beforeTriangles": 9968,
+          "afterTriangles": 3432,
+          "relativeError": 0.0009980937466025352,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 1,
+          "material": "OriginalTop_P1S1",
+          "beforeTriangles": 101818,
+          "afterTriangles": 60354,
+          "relativeError": 0.000986222643405199,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 2,
+          "material": "OriginalTop_P2S2",
+          "beforeTriangles": 7128,
+          "afterTriangles": 5546,
+          "relativeError": 0.000999651849269867,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 3,
+          "material": "OriginalTop_P3S3",
+          "beforeTriangles": 9700,
+          "afterTriangles": 9308,
+          "relativeError": 0.0009762539993971586,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 4,
+          "material": "OriginalTop_P4S3",
+          "beforeTriangles": 9700,
+          "afterTriangles": 8350,
+          "relativeError": 0.0009764177375473082,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 5,
+          "material": "OriginalTop_P5S3",
+          "beforeTriangles": 9700,
+          "afterTriangles": 8436,
+          "relativeError": 0.0009965072385966778,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 6,
+          "material": "OriginalTop_P6S3",
+          "beforeTriangles": 9700,
+          "afterTriangles": 6680,
+          "relativeError": 0.0009743720875121653,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 7,
+          "material": "OriginalTop_P7S3",
+          "beforeTriangles": 9700,
+          "afterTriangles": 7954,
+          "relativeError": 0.0009780582040548325,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 8,
+          "material": "OriginalTop_P8S3",
+          "beforeTriangles": 9700,
+          "afterTriangles": 8962,
+          "relativeError": 0.000991464126855135,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 9,
+          "material": "OriginalTop_P9S3",
+          "beforeTriangles": 9700,
+          "afterTriangles": 9432,
+          "relativeError": 0.0009570862166583538,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 10,
+          "material": "OriginalTop_P10S3",
+          "beforeTriangles": 9700,
+          "afterTriangles": 7934,
+          "relativeError": 0.0009964025812223554,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 11,
+          "material": "OriginalTop_P11S3",
+          "beforeTriangles": 9699,
+          "afterTriangles": 9089,
+          "relativeError": 0.0009755694190971553,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 12,
+          "material": "OriginalTop_P12S3",
+          "beforeTriangles": 9700,
+          "afterTriangles": 7306,
+          "relativeError": 0.0009762833942659199,
+          "smallAccent": false
+        },
+        {
+          "mesh": 0,
+          "primitive": 13,
+          "material": "OriginalTop_P13S3",
+          "beforeTriangles": 9700,
+          "afterTriangles": 8626,
+          "relativeError": 0.0009705148404464126,
+          "smallAccent": false
+        }
+      ],
+      "path": "avatars/wardrobe/female/top/source-flame-hoodie.glb"
+    }
+  ],
+  "baselineCommit": "8fc739e5f3b574e8b6555844910e88040d8c7ff2",
+  "limitations": [
+    "Mesh counts are full-asset counts, not per-frame counts or measured FPS.",
+    "Isolated synthetic pose review does not certify runtime body removal, corrective morphs, IK, furniture or all avatar combinations.",
+    "No source image payload or retained vertex UV/skin component bytes changed.",
+    "Source fittedSHA256 receipts still identify the original reviewed fit; this report records the subsequent simplification source and output hashes."
+  ],
+  "validation": {
+    "publicModelVerification": {
+      "passed": true,
+      "registeredModels": 133
+    },
+    "publicModelTests": {
+      "passed": true,
+      "tests": 59
+    },
+    "garmentToolTests": {
+      "passed": true,
+      "vitestTests": 5,
+      "newPythonRegressions": 3
+    },
+    "webProductionBuild": "passed",
+    "isolatedBlenderReview": {
+      "version": "4.3.2",
+      "views": [
+        "front",
+        "rear"
+      ],
+      "poses": [
+        "rest",
+        "walk",
+        "sit",
+        "reach"
+      ],
+      "result": "No obvious new defects in comparisons; baseline defects remain."
+    },
+    "nativeApplicationFit": "not run",
+    "fpsBenchmark": "not run: browser environment unavailable"
+  }
+}

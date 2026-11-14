@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { BoxGeometry, Group, type InstancedMesh, Matrix4, Mesh, MeshStandardMaterial, Scene } from 'three';
+import { BoxGeometry, Frustum, Group, type InstancedMesh, Matrix4, Mesh, OrthographicCamera, MeshStandardMaterial, Scene } from 'three';
 import { installModelInstanceBatches, ModelBatchController } from '../src/office/scene/ModelInstanceBatches';
 
 function fixture(count = 4) {
@@ -28,7 +28,7 @@ describe('loaded model shared-geometry instancing', () => {
     expect(h.batches()).toHaveLength(1);
     const batch = h.batches()[0]!;
     expect(batch.geometry).toBe(h.geometry); expect(batch.material).toBe(h.material);
-    expect(batch.castShadow).toBe(true); expect(batch.frustumCulled).toBe(false);
+    expect(batch.castShadow).toBe(true); expect(batch.frustumCulled).toBe(true);
     h.sources.forEach((source, i) => {
       expect(source.visible).toBe(false); expect(source.userData.officeBatchSource).toBe(true);
       expectMatrix(matrixAt(batch, i), source.matrixWorld);
@@ -43,12 +43,13 @@ describe('loaded model shared-geometry instancing', () => {
   it('tracks hidden floors and explicit source visibility without showing the hidden originals', () => {
     const h = fixture(); h.parents[2]!.visible = false; h.update();
     const batch = h.batches()[0]!;
-    expect(matrixAt(batch, 2).determinant()).toBe(0);
+    expect(batch.count).toBe(3);
+    expectMatrix(matrixAt(batch, 2), h.sources[3]!.matrixWorld);
     h.parents[2]!.visible = true; h.sources[1]!.visible = false; h.update(16);
-    expectMatrix(matrixAt(batch, 2), h.sources[2]!.matrixWorld);
-    expect(matrixAt(batch, 1).determinant()).toBe(0);
+    expect(batch.count).toBe(3);
+    expectMatrix(matrixAt(batch, 1), h.sources[2]!.matrixWorld);
     h.sources[1]!.visible = true; expect(h.sources[1]!.visible).toBe(true); h.update(32);
-    expect(matrixAt(batch, 1).determinant()).toBe(0);
+    expect(batch.count).toBe(3);
     h.update(600); expect(h.sources[1]!.visible).toBe(false);
     h.sources[1]!.visible = false; h.controller.dispose();
     expect(h.sources[1]!.visible).toBe(false);
@@ -56,12 +57,12 @@ describe('loaded model shared-geometry instancing', () => {
     expect(Object.getOwnPropertyDescriptor(h.sources[0]!, 'visible')?.get).toBeUndefined();
   });
 
-  it('zeros disconnected sources immediately and restores sources/resources when a bucket falls below its threshold', () => {
+  it('omits disconnected sources immediately and restores sources/resources when a bucket falls below its threshold', () => {
     const h = fixture(2); h.update();
     const batch = h.batches()[0]!, dispose = vi.spyOn(batch, 'dispose');
     const geometryDispose = vi.spyOn(h.geometry, 'dispose'), materialDispose = vi.spyOn(h.material, 'dispose');
     h.scene.remove(h.parents[1]!); h.update(16);
-    expect(matrixAt(batch, 1).determinant()).toBe(0);
+    expect(batch.count).toBe(1);
     h.update(600);
     expect(h.batches()).toHaveLength(0); expect(dispose).toHaveBeenCalledOnce();
     h.sources.forEach(mesh => { expect(mesh.visible).toBe(true); expect(mesh.userData.officeBatchSource).toBeUndefined(); });
@@ -75,7 +76,8 @@ describe('loaded model shared-geometry instancing', () => {
     // clone reads the deliberately hidden source; a newly loaded clone normally
     // starts visible, so restore that intended state for this replacement.
     replacement.visible = true; delete replacement.userData.officeBatchSource;
-    h.update(20); expect(matrixAt(previous, 0).determinant()).toBe(0);
+    h.update(20); expect(previous.count).toBe(2);
+    expectMatrix(matrixAt(previous, 0), h.sources[1]!.matrixWorld);
     h.update(600); expect(h.batches()).toHaveLength(1); expect(h.batches()[0]).not.toBe(previous);
     expect(h.sources[0]!.visible).toBe(true); expect(replacement.visible).toBe(false);
     expect(h.scene.children).not.toContain(previous);
@@ -99,17 +101,19 @@ describe('loaded model shared-geometry instancing', () => {
     h.controller.dispose();
   });
 
-  it('returns a material-swapped source to normal rendering immediately while zeroing its stale instance', () => {
+  it('returns a material-swapped source to normal rendering immediately while omitting its stale instance', () => {
     const h = fixture(); h.update(); const batch = h.batches()[0]!;
     h.sources[0]!.material = new MeshStandardMaterial({ color: '#338877' });
     h.update(16);
     expect(h.sources[0]!.visible).toBe(true);
     expect(h.sources[0]!.userData.officeBatchSource).toBeUndefined();
-    expect(matrixAt(batch, 0).determinant()).toBe(0);
+    expect(batch.count).toBe(3);
+    expectMatrix(matrixAt(batch, 0), h.sources[1]!.matrixWorld);
     // If the shared material returns before the scan, retain normal rendering
     // until the grouping pass can safely take ownership again.
     h.sources[0]!.material = h.material; h.update(32);
-    expect(h.sources[0]!.visible).toBe(true); expect(matrixAt(batch, 0).determinant()).toBe(0);
+    expect(h.sources[0]!.visible).toBe(true); expect(batch.count).toBe(3);
+    expectMatrix(matrixAt(batch, 0), h.sources[1]!.matrixWorld);
     h.update(600); expect(h.sources[0]!.visible).toBe(false);
     expect(h.batches()).toHaveLength(1);
     h.controller.dispose(); expect(h.sources[0]!.visible).toBe(true);
@@ -152,7 +156,8 @@ describe('loaded model shared-geometry instancing', () => {
     h.parents[0]!.scale.x = -1; h.update(64);
     expect(h.sources[0]!.visible).toBe(true);
     expect(h.sources[0]!.userData.officeBatchSource).toBeUndefined();
-    expect(matrixAt(batch, 0).determinant()).toBe(0);
+    expect(batch.count).toBe(3);
+    expectMatrix(matrixAt(batch, 0), h.sources[1]!.matrixWorld);
     h.controller.dispose();
   });
 
@@ -191,11 +196,88 @@ describe('loaded model shared-geometry instancing', () => {
       const previous = h.batches()[0]!;
       h.sources[0]!.geometry = new BoxGeometry(2, 1, 1); h.update(16);
       expect(h.sources[0]!.visible).toBe(true);
-      expect(matrixAt(previous, 0).determinant()).toBe(0);
+      expect(previous.count).toBe(1);
+      expectMatrix(matrixAt(previous, 0), h.sources[1]!.matrixWorld);
       h.update(600); expect(h.batches()).toHaveLength(0);
       h.controller.dispose();
       h.sources[0]!.geometry.dispose();
     }
+  });
+
+  it('preserves explicit culling opt-outs and releases policy changes before the next grouping scan', () => {
+    const h = fixture(4);
+    h.sources[2]!.frustumCulled = false; h.sources[3]!.frustumCulled = false; h.update();
+    expect(h.batches()).toHaveLength(2);
+    const cullable = h.batches().find(batch => batch.frustumCulled)!;
+    const uncullable = h.batches().find(batch => !batch.frustumCulled)!;
+    expect(cullable.count).toBe(2); expect(uncullable.count).toBe(2);
+    h.sources[0]!.frustumCulled = false; h.update(16);
+    expect(h.sources[0]!.visible).toBe(true); expect(h.sources[0]!.frustumCulled).toBe(false);
+    expect(cullable.count).toBe(1); expect(uncullable.count).toBe(2);
+    h.update(600);
+    expect(h.batches()).toHaveLength(1);
+    expect(h.batches()[0]!.frustumCulled).toBe(false); expect(h.batches()[0]!.count).toBe(3);
+    expect(h.sources[1]!.visible).toBe(true);
+    h.sources[2]!.frustumCulled = true; h.update(616);
+    expect(h.sources[2]!.visible).toBe(true); expect(h.sources[2]!.frustumCulled).toBe(true);
+    expect(h.batches()[0]!.count).toBe(2);
+    h.controller.dispose();
+    expect(h.sources[0]!.frustumCulled).toBe(false); expect(h.sources[2]!.frustumCulled).toBe(true);
+  });
+
+  it('culls batches with current bounds after movement, hide/reveal and floor switches', () => {
+    const h = fixture(4); h.update(); const batch = h.batches()[0]!;
+    const camera = new OrthographicCamera(-5, 5, 5, -5, .1, 100);
+    camera.position.set(0, 0, 20); camera.lookAt(0, 0, 0); camera.updateMatrixWorld();
+    const frustum = new Frustum().setFromProjectionMatrix(new Matrix4().multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
+    expect(frustum.intersectsObject(batch)).toBe(true);
+    h.parents.forEach(parent => { parent.position.x += 200; }); h.update(16);
+    expect(frustum.intersectsObject(batch)).toBe(false);
+    h.parents.forEach(parent => { parent.visible = false; }); h.update(32);
+    expect(batch.count).toBe(0); expect(batch.boundingSphere!.isEmpty()).toBe(true);
+    h.parents[2]!.position.set(0, 0, 0); h.parents[2]!.visible = true; h.update(48);
+    expect(batch.count).toBe(1); expect(frustum.intersectsObject(batch)).toBe(true);
+    expectMatrix(matrixAt(batch, 0), h.sources[2]!.matrixWorld);
+    const bounds = vi.spyOn(batch, 'computeBoundingSphere');
+    h.update(64); expect(bounds).not.toHaveBeenCalled();
+    h.controller.dispose();
+  });
+
+  it('keeps off-camera casters available to the shadow camera and refreshes scaled bounds', () => {
+    const h = fixture(2);
+    h.parents.forEach(parent => { parent.position.set(200, 0, 0); }); h.update();
+    const batch = h.batches()[0]!;
+    const frustumAt = (x: number) => {
+      const camera = new OrthographicCamera(-5, 5, 5, -5, .1, 100);
+      camera.position.set(x, 0, 20); camera.lookAt(x, 0, 0); camera.updateMatrixWorld();
+      return new Frustum().setFromProjectionMatrix(new Matrix4().multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
+    };
+    expect(frustumAt(0).intersectsObject(batch)).toBe(false);
+    expect(batch.visible).toBe(true); expect(batch.castShadow).toBe(true);
+    expect(frustumAt(200).intersectsObject(batch)).toBe(true);
+    const radius = batch.boundingSphere!.radius;
+    h.parents[0]!.scale.set(20, 3, 2); h.update(16);
+    expect(batch.boundingSphere!.radius).toBeGreaterThan(radius);
+    // Geometry identity swaps immediately leave the old batch. After the scan,
+    // remaining singleton rendering owns its own native geometry bounds again.
+    h.sources[0]!.geometry = new BoxGeometry(3, 3, 3); h.update(32);
+    expect(batch.count).toBe(1); expect(h.sources[0]!.visible).toBe(true);
+    expect(frustumAt(200).intersectsObject(batch)).toBe(true);
+    h.update(600); expect(h.batches()).toHaveLength(0);
+    h.controller.dispose(); h.sources[0]!.geometry.dispose();
+  });
+
+  it('submits only the visible prefix when most repeated furniture is on hidden floors', () => {
+    const h = fixture(1000);
+    h.parents.forEach((parent, i) => { parent.position.set(i % 10, i % 3, i % 7); parent.visible = i % 10 === 0; }); h.update();
+    const batch = h.batches()[0]!;
+    expect(batch.count).toBe(100);
+    expect(batch.instanceMatrix.count).toBe(1000); // capacity is retained for later floor reveals
+    for (let i = 0; i < 100; i++) expectMatrix(matrixAt(batch, i), h.sources[i * 10]!.matrixWorld);
+    h.parents.forEach(parent => { parent.visible = true; }); h.update(16);
+    expect(batch.count).toBe(1000);
+    h.sources.forEach((source, i) => expectMatrix(matrixAt(batch, i), source.matrixWorld));
+    h.controller.dispose();
   });
 
   it('chains the existing scene callback and restores only its own installed hook', () => {

@@ -17,7 +17,7 @@ function worldRadius(mesh: Mesh): number {
   return (geometry.boundingSphere?.radius ?? Infinity) * mesh.matrixWorld.getMaxScaleOnAxis();
 }
 
-/** Largest instance scale of a loaded-model batch (hidden instances are zero matrices). */
+/** Largest visible instance scale of a loaded-model batch (only its active prefix is submitted). */
 function batchRadius(batch: InstancedMesh): number {
   const geometry = batch.geometry;
   if (!geometry.boundingSphere) geometry.computeBoundingSphere();

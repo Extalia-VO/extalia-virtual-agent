@@ -4,6 +4,7 @@
  * Office 3D frame-rate benchmark (campus overview and close-ups at day, rush hour and night).
  *
  *   node tooling/bench/office-fps.mjs [--build] [--tier 0|auto] [--seconds 6] [--windows 3] [--lod on|off]
+ *     [--gpu-policy native|ignore-blocklist]
  *     [--only <regexp>] [--breakdown] [--shots <dir>] [--label name] [--url http://127.0.0.1:5399]
  *
  * Builds `apps/web` with `vite build --mode development` into a temporary directory (`--build`, or when no
@@ -33,6 +34,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { setTimeout as sleep } from 'node:timers/promises';
+import { officeBrowserArgs, officeRendererInfo } from './office-browser.mjs';
 
 const root = fileURLToPath(new URL('../..', import.meta.url));
 const web = path.join(root, 'apps/web');
@@ -50,6 +52,8 @@ const windows = Number(option('windows', '3'));
 const idleWait = Number(option('idle-wait', '30'));
 const lod = option('lod', 'on') !== 'off';
 const reuse = option('url', '');
+const gpuPolicy = option('gpu-policy', 'native');
+const browserArgs = officeBrowserArgs(process.platform, gpuPolicy);
 
 if (flag('build') || !existsSync(path.join(outDir, 'index.html'))) {
   const built = spawnSync('npx', ['vite', 'build', '--mode', 'development', '--outDir', outDir, '--emptyOutDir', '--logLevel', 'warn'], { cwd: web, stdio: 'inherit' });
@@ -93,7 +97,7 @@ async function waitForIdleGpu() {
   return { idleAfter: Math.round((Date.now() - started) / 1000), busy: calm >= 3 ? null : last };
 }
 
-const browser = await playwright.chromium.launch({ executablePath: chromePath, args: ['--use-gl=angle', '--use-angle=metal', '--headless=new', '--ignore-gpu-blocklist', '--enable-webgl-draft-extensions', '--disable-renderer-backgrounding', '--disable-background-timer-throttling', '--disable-backgrounding-occluded-windows'] });
+const browser = await playwright.chromium.launch({ executablePath: chromePath, headless: true, args: browserArgs });
 const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
 const errors = new Set();
 page.on('pageerror', error => errors.add(String(error).slice(0, 200)));
@@ -119,7 +123,17 @@ const GROUPS = {
 };
 const evaluate = (fn, arg) => page.evaluate(fn, arg);
 const measure = ms => evaluate(ms => window.__EXTALIA_BENCH__.measure(ms), ms);
-const results = { label, tier, lod, seconds, windows, cases: {}, breakdown: {} };
+const results = { label, tier, lod, seconds, windows,
+  environment: { platform: process.platform, browserVersion: browser.version(), headless: true, gpuPolicy, browserArgs,
+    viewport: { width: 1600, height: 1000 }, rendererAtStart: await page.evaluate(officeRendererInfo) },
+  limitations: [
+    'Headless browser results do not certify Electron or physical-device performance.',
+      'browserArgs lists harness overrides; Playwright adds its own default launch flags.',
+    'A false softwareRendererHint does not prove hardware acceleration; the renderer string may be masked or unfamiliar.',
+    'renderMs measures renderer.render submission, not preceding simulation, pose or React work.',
+    'Breakdown hides visual groups but does not necessarily stop their simulation; costs are not additive.',
+    'Draw calls and triangles include periodic shadow passes, not unique asset counts.',
+  ], cases: {}, breakdown: {} };
 
 async function setCase(view, time) {
   const [target, offset, zoom] = VIEWS[view];

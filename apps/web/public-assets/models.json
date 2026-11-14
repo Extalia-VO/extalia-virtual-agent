@@ -310,8 +310,8 @@
     },
     {
       "path": "avatars/outfits/male/outfit-black-business-suit.glb",
-      "sha256": "57614dbb4fc1f966b40b1bd01af916e3a280110a7e5ab3343df3eff326e372cc",
-      "bytes": 20397732,
+      "sha256": "29352417e77d0dc4ad4c243fbc1c68c7d976137e4ae7ddc56367af75c9203c39",
+      "bytes": 9462408,
       "license": "CC-BY-4.0",
       "provenance": {
         "kind": "third-party-derived",
@@ -354,8 +354,8 @@
     },
     {
       "path": "avatars/outfits/male/outfit-sweatshirt-jacket-workwear.glb",
-      "sha256": "e72a84b7aaf2c512222351950b804b33bfb9f9c45239ceab8b87da2821fff0d1",
-      "bytes": 10857156,
+      "sha256": "1fcce32acf28d37b5f16daae695250a4071df55bfb5e4a1b1927d102d5ae83b4",
+      "bytes": 6896760,
       "license": "CC-BY-4.0",
       "provenance": {
         "kind": "third-party-derived",
@@ -365,8 +365,8 @@
     },
     {
       "path": "avatars/outfits/male/outfit-victorian-bartender.glb",
-      "sha256": "8e66dbe6de695b68a7f9de2e7204cbcc91caa7ebe746914b59f2ce64dc956ef9",
-      "bytes": 7741352,
+      "sha256": "78d7394eb65b699f2f02032fe4de43b32f773168be2d1d7458861b34930202e8",
+      "bytes": 2321216,
       "license": "CC-BY-4.0",
       "provenance": {
         "kind": "third-party-derived",
@@ -508,8 +508,8 @@
     },
     {
       "path": "avatars/wardrobe/female/top/source-flame-hoodie.glb",
-      "sha256": "2db9da3cc16b067eae3ab1d5ed17a7967647a67f1411152eb085783b7dbc42cd",
-      "bytes": 10013416,
+      "sha256": "3a6b6cb12bc262476f499ce541158118a25b7153ce7c3d883c4ab08cb83f8c8b",
+      "bytes": 7956312,
       "license": "CC-BY-4.0",
       "provenance": {
         "kind": "third-party-derived",
