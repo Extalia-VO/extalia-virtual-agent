@@ -6,7 +6,7 @@ import type { ExtaliaEvent } from '@extalia/protocol';
 import type { NativeMeetingMinutes } from '@extalia/runtime';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createAgentHost, type AgentHostRuntime } from '../src/service.js';
-import { DAEMON_BINARY } from './daemonBackend.js';
+import { DAEMON_BINARY, HAS_DAEMON } from './daemonBackend.js';
 import { useTempDirs } from './helpers.js';
 import { learningObservedFixture } from './learningObservedFixture.js';
 
@@ -179,7 +179,8 @@ describe('native knowledge meetings through the deferred host scheduler', () => 
     expect(f.requests.some(request => request.meeting)).toBe(false);
     await f.action('run-now');
     const job = await f.waitForJob('completed'); await idle(f.runtime);
-    expect(job).toMatchObject({ workspaceId: f.workspace.id, sessionId: f.session.id, profileId: f.profile.id, result: { meeting: { outcome: 'completed', knowledge: 'saved', indexed: true } } });
+    // Minutes use the fixture writer; indexing still requires its explicitly selected daemon.
+    expect(job).toMatchObject({ workspaceId: f.workspace.id, sessionId: f.session.id, profileId: f.profile.id, result: { meeting: { outcome: 'completed', knowledge: 'saved', indexed: HAS_DAEMON } } });
     expect(f.requests.filter(request => !request.meeting)).toHaveLength(2);
     const workers = f.requests.filter(request => request.meeting); expect(workers).toHaveLength(1);
     expect(workers[0]!.prompt).toContain('Read the parser and record the validation decision.');
