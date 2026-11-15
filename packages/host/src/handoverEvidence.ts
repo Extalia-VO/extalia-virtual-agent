@@ -2,6 +2,16 @@ import { safeText } from '@extalia/core';
 import type { ContinuityCoverage, ContinuityEntry } from '@extalia/platform';
 import type { ExtaliaEvent } from '@extalia/protocol';
 
+const NATIVE_CONTINUITY_TOOLS = new Set(['continuity_status', 'continuity_read']);
+const EXTERNAL_CONTINUITY_TOOLS = new Set(['extalia_continuity_status', 'extalia_continuity_read']);
+function isContinuityRead(tool: string): boolean {
+  if (NATIVE_CONTINUITY_TOOLS.has(tool) || EXTERNAL_CONTINUITY_TOOLS.has(tool)) return true;
+  // Preserve the full identity: mcpToolName is a truncated display label. The
+  // supported provider wrapper splits at its first server/tool separator.
+  const wrapped = /^mcp__[^\s]+?__([^\s]+)$/.exec(tool);
+  return !!wrapped && EXTERNAL_CONTINUITY_TOOLS.has(wrapped[1]!);
+}
+
 /** Never replay source tools or recursively quote earlier generated handover capsules. */
 export function handoverEvidence(events: readonly ExtaliaEvent[], observed = false): {
   entries: ContinuityEntry[]; coverage: ContinuityCoverage;
@@ -14,7 +24,7 @@ export function handoverEvidence(events: readonly ExtaliaEvent[], observed = fal
     if (seen.has(event.id) || event.source.adapter === 'handover-context') continue;
     seen.add(event.id);
     const body = event.body;
-    if (body.type === 'tool.completed' && ['continuity_status', 'continuity_read'].includes(body.tool)) continue;
+    if (body.type === 'tool.completed' && isContinuityRead(body.tool)) continue;
     let kind: ContinuityEntry['kind'], text: string;
     switch (body.type) {
       case 'prompt.submitted':

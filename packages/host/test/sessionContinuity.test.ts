@@ -1,7 +1,7 @@
-import { access, mkdtemp, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { access, mkdtemp, mkdir, open, readFile, rename, rm, writeFile, type FileHandle } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ContinuityEntry, HandoverTarget } from '@extalia/platform';
 import { redact } from '@extalia/core';
 import { SessionContinuity, type ContinuityEffectResult, type ContinuitySourceSnapshot, type ContinuityTargetSnapshot } from '../src/sessionContinuity.js';
@@ -39,6 +39,85 @@ async function fixture() {
     setEffect: (value: typeof effect) => { effect = value; } };
 }
 const observed = (sessionId: string): HandoverTarget => ({ kind: 'observed', sessionId, capabilityId: 'capability-1' });
+
+describe.skipIf(process.platform === 'win32')('handover reservation publication barriers', () => {
+  it('does not invoke the destination when the reservation directory cannot be flushed', async () => {
+    const f = await fixture();
+    const preview = await f.service.previewHandover('codex-session', { target: observed('gemini-session') });
+    const input = { reviewId: preview.reviewId, operationId: 'reserve-flush-failed' };
+    const handle = await open(f.root, 'r'), directory = await handle.stat();
+    const prototype = Object.getPrototypeOf(handle) as { sync(): Promise<void> }, sync = prototype.sync;
+    const barrier = vi.spyOn(prototype, 'sync').mockImplementation(async function (this: FileHandle) {
+      const info = await this.stat();
+      if (info.isDirectory() && info.dev === directory.dev && info.ino === directory.ino) throw new Error('Reservation directory flush failed');
+      await sync.call(this);
+    });
+    try {
+      await expect(f.service.applyHandover('codex-session', input)).rejects.toThrow('Reservation directory flush failed');
+      expect(f.effects).toHaveLength(0);
+    } finally { barrier.mockRestore(); await handle.close(); }
+    await f.service.close();
+    const restarted = new SessionContinuity(f.options);
+    expect(await restarted.applyHandover('codex-session', input)).toMatchObject({ state: 'unknown', retryable: false });
+    expect(f.effects).toHaveLength(0);
+    await restarted.close();
+  });
+
+  it('keeps a settled effect uncertain and never replays it if its receipt directory flush fails', async () => {
+    const f = await fixture();
+    const preview = await f.service.previewHandover('codex-session', { target: observed('gemini-session') });
+    const input = { reviewId: preview.reviewId, operationId: 'settlement-flush-failed' };
+    const handle = await open(f.root, 'r'), directory = await handle.stat();
+    const prototype = Object.getPrototypeOf(handle) as { sync(): Promise<void> }, sync = prototype.sync;
+    let publications = 0;
+    const barrier = vi.spyOn(prototype, 'sync').mockImplementation(async function (this: FileHandle) {
+      const info = await this.stat();
+      if (info.isDirectory() && info.dev === directory.dev && info.ino === directory.ino && ++publications === 2) throw new Error('Settlement directory flush failed');
+      await sync.call(this);
+    });
+    try {
+      const receipt = await f.service.applyHandover('codex-session', input);
+      expect(publications).toBe(2);
+      expect(receipt).toMatchObject({ state: 'unknown', retryable: false, problem: expect.stringContaining('receipt could not be saved') });
+      expect(await f.service.applyHandover('codex-session', input)).toMatchObject({ state: 'unknown', retryable: false });
+      expect(f.effects).toHaveLength(1);
+    } finally { barrier.mockRestore(); await handle.close(); }
+    await f.service.close();
+    const restarted = new SessionContinuity(f.options);
+    // The rename is visible even though its persistence was not acknowledged.
+    expect(await restarted.applyHandover('codex-session', input)).toMatchObject({ state: 'submitted', retryable: false });
+    expect(f.effects).toHaveLength(1);
+    await restarted.close();
+  });
+
+  it('acknowledges the reservation before dispatch and preserves its replay fence across restart', async () => {
+    const f = await fixture();
+    const preview = await f.service.previewHandover('codex-session', { target: observed('gemini-session') });
+    const input = { reviewId: preview.reviewId, operationId: 'acknowledged-reservation' };
+    const handle = await open(f.root, 'r'), directory = await handle.stat();
+    const prototype = Object.getPrototypeOf(handle) as { sync(): Promise<void> }, sync = prototype.sync;
+    let acknowledged = false, dispatchedAfterAcknowledgement = false;
+    const barrier = vi.spyOn(prototype, 'sync').mockImplementation(async function (this: FileHandle) {
+      const info = await this.stat(); await sync.call(this);
+      if (info.isDirectory() && info.dev === directory.dev && info.ino === directory.ino) {
+        const journal = JSON.parse(await readFile(f.file, 'utf8'));
+        expect(journal.chains[0].handovers[0]).toMatchObject({ operationId: input.operationId, state: 'unknown' });
+        acknowledged = true;
+      }
+    });
+    f.setEffect(async () => { dispatchedAfterAcknowledgement = acknowledged; throw new Error('Destination acknowledgement was lost'); });
+    try {
+      expect(await f.service.applyHandover('codex-session', input)).toMatchObject({ state: 'unknown', retryable: false });
+      expect(dispatchedAfterAcknowledgement).toBe(true);
+      expect(f.effects).toHaveLength(1);
+    } finally { barrier.mockRestore(); await handle.close(); }
+    await f.service.close();
+    const restarted = new SessionContinuity(f.options);
+    expect(await restarted.applyHandover('codex-session', input)).toMatchObject({ state: 'unknown', retryable: false });
+    expect(f.effects).toHaveLength(1);
+    await restarted.close();
+  });
+});
 
 describe('session continuity', () => {
   it('reserves reviewed workspace references alongside the original request in a long bounded archive', async () => {

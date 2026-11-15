@@ -194,23 +194,28 @@ describe('actual host repeatable Observe checkpoints', () => {
   });
 
   it('refuses a Native destination changed after its durable reservation but before the context write lock', async () => {
-    const f = await fixture();
-    const initial = await f.host.previewHandover!(f.observed.id, { capture: 'checkpoint', target: { kind: 'native', connectionId: f.connection.id } });
-    const created = await f.host.applyHandover!(f.observed.id, { reviewId: initial.reviewId, operationId: 'create-reservation-race-target' });
-    expect(created.state).toBe('native-ready');
-    const nativeId = created.targetSessionId!, history = await f.store.readMessages(nativeId);
-    const preview = await f.host.previewHandover!(f.observed.id, { capture: 'checkpoint', target: { kind: 'native', connectionId: f.connection.id } });
-    const operationId = 'destination-changed-during-reservation', writeAtomic = jsonStore.writeJsonAtomic;
+    const operationId = 'destination-changed-during-reservation', createWriter = jsonStore.createDurableJsonWriter;
+    let f: Awaited<ReturnType<typeof fixture>> | undefined, nativeId: string | undefined;
     let changed = false;
-    const writing = vi.spyOn(jsonStore, 'writeJsonAtomic').mockImplementation(async (file, value, options) => {
-      await writeAtomic(file, value, options);
-      // This is the real journal reservation, before applyEffect acquires the destination lock.
-      if (!changed && file === path.join(f.data, 'state', 'session-continuity.json') && JSON.stringify(value).includes(operationId)) {
-        changed = true;
-        await f.host.setSessionOptions(nativeId, { model: 'changed-after-review' });
-      }
+    const writing = vi.spyOn(jsonStore, 'createDurableJsonWriter').mockImplementation((file, options) => {
+      const write = createWriter(file, options);
+      return async value => {
+        await write(value);
+        // Enter after actual file/directory acknowledgement and before the effect lock.
+        if (!changed && f && nativeId && file === path.join(f.data, 'state', 'session-continuity.json') && JSON.stringify(value).includes(operationId)) {
+          changed = true;
+          await f.host.setSessionOptions(nativeId, { model: 'changed-after-review' });
+        }
+      };
     });
     try {
+      f = await fixture();
+      const initial = await f.host.previewHandover!(f.observed.id, { capture: 'checkpoint', target: { kind: 'native', connectionId: f.connection.id } });
+      const created = await f.host.applyHandover!(f.observed.id, { reviewId: initial.reviewId, operationId: 'create-reservation-race-target' });
+      expect(created.state).toBe('native-ready');
+      nativeId = created.targetSessionId!;
+      const history = await f.store.readMessages(nativeId);
+      const preview = await f.host.previewHandover!(f.observed.id, { capture: 'checkpoint', target: { kind: 'native', connectionId: f.connection.id } });
       const receipt = await f.host.applyHandover!(f.observed.id, { reviewId: preview.reviewId, operationId });
       expect(changed).toBe(true);
       expect(receipt.state).toBe('rejected');

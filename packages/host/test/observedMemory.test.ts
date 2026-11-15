@@ -63,6 +63,29 @@ function fixture(enabled = true, withStorageSource = false) {
 }
 
 describe('observed operational evidence capture', () => {
+  it('does not turn external archive retrieval into new operational or learning evidence', async () => {
+    const f = fixture();
+    await f.manager.afterPersisted(f.scope.sessionId);
+    f.append([
+      { type: 'prompt.submitted', text: 'Verify the current project', via: 'native' },
+      { type: 'tool.completed', toolCallId: 'status', tool: 'extalia_continuity_status', kind: 'read', label: 'Archive status', ok: true, output: 'ARCHIVE-STATUS-REPEATED' },
+      { type: 'tool.completed', toolCallId: 'read', tool: 'mcp__extalia__extalia_continuity_read', kind: 'read', label: 'Archive read', ok: true, output: 'ARCHIVE-CONTENT-REPEATED' },
+      { type: 'tool.completed', toolCallId: 'file', tool: 'read_file', kind: 'read', label: 'Project file', ok: true, output: 'FRESH-PROJECT-EVIDENCE' },
+      { type: 'model.completed', text: 'Current work reported after archive retrieval.' },
+    ]);
+    await f.manager.afterPersisted(f.scope.sessionId);
+    expect(f.onWorkEvidence).toHaveBeenCalledOnce();
+    const operational = f.onWorkEvidence.mock.calls[0]![1];
+    expect(JSON.stringify(operational.entries)).not.toContain('ARCHIVE-');
+    expect(JSON.stringify(operational.entries)).toContain('FRESH-PROJECT-EVIDENCE');
+    const capture = f.calls.find(call => call.action === 'observed.capture')!.input as RustLearningInputs['observed.capture'];
+    expect(JSON.stringify(capture.entries)).not.toContain('ARCHIVE-');
+    expect(JSON.stringify(capture.entries)).toContain('FRESH-PROJECT-EVIDENCE');
+    await f.manager.afterPersisted(f.scope.sessionId);
+    expect(f.calls.filter(call => call.action === 'observed.capture')).toHaveLength(1);
+    await f.manager.close();
+  });
+
   it.each([
     [{ type: 'turn.failed', error: 'Search timed out.' }, 'failed'],
     [{ type: 'turn.failed', error: 'Stopped after 50 steps without finishing.' }, 'failed'],

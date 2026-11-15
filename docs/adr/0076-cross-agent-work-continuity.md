@@ -46,7 +46,15 @@ or other runtime's native resume/control API.
 ## Bounds and access
 
 - The journal uses private atomic files and a serialized owner with a close
-  drain. A reserved effect without a final receipt remains unknown.
+  drain. Before acknowledging a persisted reservation, the POSIX writer also
+  flushes the containing directory and directory ancestry created by this
+  writer, under an already durably published profile root. Earlier profile-root
+  creation by the layout owner is outside this acknowledgement. A
+  failed flush withholds dispatch; a failed settlement leaves the acknowledged
+  reservation unknown and prevents automatic replay. Windows retains atomic
+  replacement and process-restart recovery, without a directory-flush or
+  power-loss guarantee. This publication barrier is separate from the pending
+  scope-bound work-memory barrier in issue #112.
 - Sources and targets must belong to the same reviewed workspace. Current
   foreground work, pending prompts, mission ownership and context operations
   remain admission gates. No transferred text changes filesystem permissions.
@@ -67,10 +75,12 @@ or other runtime's native resume/control API.
   Two-phase reads release the grant lane while waiting for the archive owner,
   then recheck authority before returning, preventing lock inversion and late
   disclosure after revocation. Codes are redacted from subsequent evidence.
-- Exact delivered capsules and explicitly identified Native continuity-read
-  results are excluded from subsequent source evidence. External wrapper tool
-  outputs can remain in the archive when they lack reliable continuity-tool
-  identity. The source watermark advances only for retained meaningful evidence.
+- Exact delivered capsules and explicitly identified continuity-read/status
+  results are excluded from subsequent source evidence. This includes exact
+  Native tool names, external `extalia_continuity_*` names and their supported
+  `mcp__<server>__<tool>` wrappers. Similarly named unrelated tools remain
+  evidence. Anonymous streamed output cannot be assigned a tool identity by
+  inference. The source watermark advances only for retained meaningful evidence.
 - Independent existing canonical work records are not merged implicitly.
   Source application IDs remain distinct and visible in lineage metadata.
 
@@ -96,6 +106,14 @@ using real inference, reviewed export and supported CLI resume. Original
 decisions and intervening progress were preserved across three transfers and
 host restarts. Actual scoped MCP reads recovered a shortened Claude entry.
 Desktop automatic dispatch and context-window compaction remain open.
+
+The [issue #112 acceptance contract](../bench/cross-agent-continuity-acceptance.md)
+adds executable task verification and fail-closed evidence checks. A separate
+real-host regression captures a decision before a synthetic transcript exceeds
+the observation window, then recovers the original archive through scoped MCP
+after four stages and two host restarts. Synthetic compaction markers verify
+host behavior only. Installed provider compaction and the full release gate
+remain open; a fixture result can never become live acceptance.
 
 See the [user workflow](../getting-started/cross-agent-handover.md) and
 [remaining PRD breakdown](../product/prd-remaining-work.md).

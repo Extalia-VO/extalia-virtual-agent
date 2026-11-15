@@ -1042,9 +1042,9 @@
     {
       "path": "packages/host/src/handoverEvidence.ts",
       "category": "legacy-backend",
-      "sha256": "b8e92372b1ade52021b1775707be66b889ab0f670ed10b75f57da1470511cbdf",
-      "loc": 56,
-      "bytes": 3354,
+      "sha256": "cfffb5eac548bd94c6c5380273ed71bfc488bdef19daf4d061bc8d6ba7faf8df",
+      "loc": 66,
+      "bytes": 3929,
       "effectKinds": [],
       "unresolvedRuntimeImports": 0
     },
@@ -1222,9 +1222,9 @@
     {
       "path": "packages/host/src/jsonStore.ts",
       "category": "legacy-backend",
-      "sha256": "1f7b746ef5187fa0d2e101b55db700be62c5aa3f1a4ba86aadf2fb0e8bee390a",
-      "loc": 72,
-      "bytes": 3396,
+      "sha256": "906c6cab9360168a52ca7dfcc7031d6872ecb11f14d59266f380f60e27e24520",
+      "loc": 121,
+      "bytes": 6382,
       "effectKinds": [
         "node-builtin"
       ],
@@ -1903,9 +1903,9 @@
     {
       "path": "packages/host/src/sessionContinuity.ts",
       "category": "legacy-backend",
-      "sha256": "3adbdc22bc066d1e312938da8807160564772b7aed7d22f1ce5c3d8aca37457e",
-      "loc": 688,
-      "bytes": 56836,
+      "sha256": "7cebe4a27e4bc0b5eddfb2392280fd6625e2e5cbd4a36b42bb33dd1757a360c0",
+      "loc": 693,
+      "bytes": 57055,
       "effectKinds": [
         "node-builtin"
       ],

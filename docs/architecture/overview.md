@@ -148,6 +148,12 @@ MCP readers expose only the notes/snapshots pinned by an explicit handover,
 with expiring hash-only grants, live privacy checks and no future-work access.
 Native agents receive bounded read tools only after handover. Old generated
 capsules are replaced in model history without deleting conversation events.
+The continuity journal acknowledges POSIX directory publication before dispatch,
+and exact external archive-read tool identities are excluded from fresh evidence.
+The [four-stage acceptance contract](../bench/cross-agent-continuity-acceptance.md)
+keeps synthetic host regressions, local artifact verification and genuine native
+provider evidence separate. Windows power-loss durability, the scope-bound memory
+barrier and installed Gemini compaction observation remain explicit limits.
 
 [Repeatable Observe handover](../adr/0090-repeatable-observe-handover.md) pins a
 reviewed checkpoint while its source continues, validates access separately from

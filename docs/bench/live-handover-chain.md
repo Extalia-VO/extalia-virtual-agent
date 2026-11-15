@@ -1,5 +1,10 @@
 # Live CLI handover acceptance
 
+**Historical evidence for v0.4.288.** This report does not certify the current
+source revision, long-session pressure or actual native compaction. Its raw local
+artifacts are not included in this repository. Current issue #112 acceptance is
+defined in the [four-stage evidence contract](cross-agent-continuity-acceptance.md).
+
 On 2026-11-12, Extalia source v0.4.288 completed a controlled
 Codex → Gemini → Claude → Codex chain with live inference through an existing
 configured router.

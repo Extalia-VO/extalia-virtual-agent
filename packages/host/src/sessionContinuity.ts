@@ -6,7 +6,7 @@ import type {
   ContinuitySnapshotSummary, ContinuityView, HandoverApplyInput, HandoverDeliveryState,
   HandoverPreview, HandoverPreviewInput, HandoverReceipt, HandoverReconcileInput, HandoverTarget,
 } from '@extalia/platform';
-import { isNotFound, readJson, writeJsonAtomic } from './jsonStore.js';
+import { createDurableJsonWriter, isNotFound, readJson } from './jsonStore.js';
 
 /** Host-selected evidence. The renderer never supplies a source snapshot or an executable tool history. */
 export interface ContinuitySourceSnapshot {
@@ -281,8 +281,12 @@ export class SessionContinuity {
   private lane: Promise<unknown> = Promise.resolve();
   private readonly reviews = new Map<string, Review>();
   private readonly now: () => number;
+  private readonly writeState: (value: unknown) => Promise<void>;
   private closed = false;
-  constructor(private readonly options: SessionContinuityOptions) { this.now = options.now ?? Date.now; }
+  constructor(private readonly options: SessionContinuityOptions) {
+    this.now = options.now ?? Date.now;
+    this.writeState = createDurableJsonWriter(options.file);
+  }
   private allowsWorkspace(sourceWorkspaceId: string, destinationWorkspaceId: string): boolean {
     return this.options.allowCrossWorkspace ? this.options.allowCrossWorkspace(sourceWorkspaceId, destinationWorkspaceId) : sourceWorkspaceId === destinationWorkspaceId;
   }
@@ -332,7 +336,7 @@ export class SessionContinuity {
     for (const chain of state.chains) if (Buffer.byteLength(JSON.stringify(chain)) > MAX_CHAIN_BYTES) throw new Error('This continuity archive is full. Existing evidence was preserved.');
     const persisted = { version: 1 as const, chains: state.chains.filter(chain => chain.persistent) };
     if (Buffer.byteLength(JSON.stringify(persisted)) > MAX_FILE_BYTES) throw new Error('Continuity storage is full. Existing evidence was preserved.');
-    await writeJsonAtomic(this.options.file, persisted);
+    await this.writeState(persisted);
     this.state = state;
   }
   private chain(state: State, sessionId: string): Chain | undefined { return state.chains.find(chain => chain.sessionIds.includes(sessionId)); }
@@ -591,7 +595,8 @@ export class SessionContinuity {
       if (destination.sessionId && !working.sessionIds.includes(destination.sessionId)) working.sessionIds.push(destination.sessionId);
       await this.checkArchive(working);
       await this.assertSource(sessionId, working, review.sourceAuthority);
-      await this.save(reserved); // No effect may precede this durable reservation.
+      // POSIX includes directory publication; Windows provides process-restart recovery.
+      await this.save(reserved); // No effect may precede the reservation acknowledgement.
       this.reviews.delete(input.reviewId);
       await this.checkArchive(working); // Privacy can change while the reservation write settles.
       await this.assertSource(sessionId, working, review.sourceAuthority);

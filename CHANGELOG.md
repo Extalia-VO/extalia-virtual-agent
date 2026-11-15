@@ -16,6 +16,24 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.332] - 2026-11-15
+
+- Acknowledge POSIX continuity-journal directory publication before dispatch,
+  including newly created directory ancestry. Preserve unknown/no-replay
+  reservations after uncertain settlement; keep Windows process-restart and
+  power-loss guarantees distinct.
+- Exclude exact external continuity read/status results from fresh handover and
+  observed-memory evidence, including supported MCP wrappers. Preserve ordinary
+  tool outputs and similarly named unrelated tools.
+- Exercise a four-stage host handover over long synthetic native histories,
+  bounded observation, scoped original-source recovery, compaction markers and
+  two restarts. Verify receipt, source identity and grant boundaries without
+  representing fixtures as live provider acceptance.
+- Add isolated executable preflight, a substantive offline acceptance workload,
+  independent artifact checks and fail-closed native-evidence evaluation for
+  issue #112. Genuine installed-provider acceptance, Gemini compaction evidence,
+  the HandoverCapsule contract and the scoped memory barrier remain open.
+
 ## [0.4.331] - 2026-11-15
 
 - Persist bounded Native and opted-in Observe learning before the idle countdown.
