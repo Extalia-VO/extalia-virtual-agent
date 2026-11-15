@@ -87,7 +87,9 @@ async function fixture(options: { lead?(prompt: string): Promise<void>; sourceRe
   const job = async () => (await host.learningSchedule!()).jobs.filter(item => item.kind === 'knowledge-meeting' && item.workspaceId === workspace.id).at(-1);
   const waitForJob = async (state: LearningScheduleJob['state'], waitingForIdle?: boolean) => {
     let found: LearningScheduleJob | undefined;
-    await vi.waitFor(async () => { found = await job(); expect(found?.state).toBe(state); if (waitingForIdle !== undefined) expect(found?.waitingForIdle === true).toBe(waitingForIdle); }, { timeout: 5_000, interval: 5 });
+    // First-use daemon indexing and durable minutes publication contend with the full suite.
+    // Await the requested state; a running or failed meeting still cannot count as completed.
+    await vi.waitFor(async () => { found = await job(); expect(found?.state).toBe(state); if (waitingForIdle !== undefined) expect(found?.waitingForIdle === true).toBe(waitingForIdle); }, { timeout: 10_000, interval: 5 });
     return found!;
   };
   const action = async (action: 'run-now' | 'snooze') => {

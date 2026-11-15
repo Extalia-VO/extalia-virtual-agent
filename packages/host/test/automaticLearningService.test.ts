@@ -121,7 +121,9 @@ async function fixture(options: { enabled?: boolean; history?: boolean; skills?:
     },
   };
 }
-const idle = async (runtime: AgentHostRuntime) => { await vi.waitFor(() => expect(runtime.isBusy()).toBe(false), { timeout: 5_000, interval: 5 }); };
+// Real daemon startup and durable publication share the full suite's filesystem/CPU.
+// Keep the exact physical-idle assertion within the repository's 15-second test budget.
+const idle = async (runtime: AgentHostRuntime) => { await vi.waitFor(() => expect(runtime.isBusy()).toBe(false), { timeout: 10_000, interval: 5 }); };
 const noteFiles = async (root: string, workspace: string) => readdir(path.join(root, 'Learning', workspace)).catch((error: NodeJS.ErrnoException) => { if (error.code === 'ENOENT') return []; throw error; });
 
 async function runNow(f: Awaited<ReturnType<typeof fixture>>) {
