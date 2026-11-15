@@ -4,7 +4,7 @@ import http from 'node:http';
 import path from 'node:path';
 import { PassThrough } from 'node:stream';
 import type { ExtaliaEvent } from '@extalia/protocol';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   ensureHookToken,
   hookFiles,
@@ -1003,6 +1003,14 @@ describe('end-to-end host + observations hook flow', () => {
     state = await runtime.host.getState();
     expect(state.sessions.find(s => s.observation?.nativeSessionId === 'some-other-id')).toBeUndefined();
 
+    // Observation events become visible before their local memory baseline
+    // settles. Reserve its idle notification before submitting the hook.
+    let hookDrained = false;
+    const stopWatchingIdle = runtime.onIdle(() => {
+      if (events.some(event => event.body.type === 'prompt.submitted' && event.body.text === 'Build new feature')) hookDrained = true;
+    });
+    cleanups.push(async () => stopWatchingIdle());
+
     // 2. Real outside hook creates an observed session with hook = true
     const realStatus = await send('claude', {
       session_id: 'claude-outside-session-1',
@@ -1029,6 +1037,14 @@ describe('end-to-end host + observations hook flow', () => {
     // Verify events were emitted over host.subscribe
     expect(events.some(e => e.body.type === 'session.started')).toBe(true);
     expect(events.some(e => e.body.type === 'prompt.submitted' && (e.body as { text: string }).text === 'Build new feature')).toBe(true);
+
+    // Finish the accepted hook's persistence/memory ownership before mutating
+    // workspace boundaries; do not retry a production mutation after rejection.
+    await vi.waitFor(() => {
+      expect(hookDrained).toBe(true);
+      expect(runtime.isBusy()).toBe(false);
+    });
+    stopWatchingIdle();
 
     // 3. Extalia-managed Hermes session skipping
     const hermesProjectDir = path.join(root, 'hermes-project');

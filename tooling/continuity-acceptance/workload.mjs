@@ -138,8 +138,10 @@ const ORACLE = String.raw`await (async function artifactOracleMain() {
     });
   }
 
+  // Isolated Python ignores encoding environment variables; explicitly select
+  // UTF-8 for piped text input on Windows as well as POSIX (also for the CLI below).
   async function probe(inputs, captureInputs = false) {
-    const result = await execute(['-I', '-S', '-B', '-c', probeSource, target], JSON.stringify({ inputs, captureInputs }));
+    const result = await execute(['-I', '-X', 'utf8', '-S', '-B', '-c', probeSource, target], JSON.stringify({ inputs, captureInputs }));
     if (result.problem || result.exitCode !== 0 || result.signal !== null || result.stderr !== '') return undefined;
     let value;
     try { value = JSON.parse(result.stdout); } catch { return undefined; }
@@ -211,7 +213,7 @@ const ORACLE = String.raw`await (async function artifactOracleMain() {
     }
     return returns(inputs, expected);
   });
-  const cli = stdin => execute(['-I', '-S', '-B', target], stdin);
+  const cli = stdin => execute(['-I', '-X', 'utf8', '-S', '-B', target], stdin);
   await check('cli_exact_output', async () => {
     const result = await cli(JSON.stringify([row(' Straße ', 5, ' 東 ')]));
     return !result.problem && result.exitCode === 0 && result.signal === null && result.stderr === ''

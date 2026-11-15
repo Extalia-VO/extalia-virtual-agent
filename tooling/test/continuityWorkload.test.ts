@@ -64,11 +64,11 @@ describe('cross-agent executable acceptance workload', () => {
   it('runs actual independent artifact checks and records the exact copied source and oracle', async () => {
     const options = await fixture();
     const report = await verifyWorkload(options);
-    expect(report.passed).toBe(true);
+    const result = JSON.parse(await readFile(path.join(options.outputDirectory, report.result.path), 'utf8'));
+    expect(report.passed, JSON.stringify(result, null, 2)).toBe(true);
     expect(report.checks).toHaveLength(17);
     expect(report.checks.every((check: { passed: boolean }) => check.passed)).toBe(true);
     const command = JSON.parse(await readFile(path.join(options.outputDirectory, report.command.path), 'utf8'));
-    const result = JSON.parse(await readFile(path.join(options.outputDirectory, report.result.path), 'utf8'));
     expect(command.kind).toBe('independent-artifact-check');
     expect(command.executable).toBe(process.execPath);
     expect(command.argv).toEqual([path.join(options.outputDirectory, 'oracle.mjs'), 'python3']);
@@ -83,8 +83,9 @@ describe('cross-agent executable acceptance workload', () => {
   it('keeps probe transport UTF-8/LF when Python text stdout translates newlines', async () => {
     const windowsTextStream = implementation.replace('import json, sys',
       "import json, sys\nsys.stdout.reconfigure(encoding='utf-8', newline='\\r\\n')");
-    const report = await verifyWorkload(await fixture(windowsTextStream));
-    expect(report.passed).toBe(true);
+    const options = await fixture(windowsTextStream), report = await verifyWorkload(options);
+    const result = JSON.parse(await readFile(path.join(options.outputDirectory, report.result.path), 'utf8'));
+    expect(report.passed, JSON.stringify(result, null, 2)).toBe(true);
     expect(report.checks).toContainEqual({ id: 'quiet_import', passed: true });
     expect(report.checks).toContainEqual({ id: 'cli_exact_output', passed: true });
   });

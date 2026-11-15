@@ -18,6 +18,9 @@ All notable changes to this project are documented here. The format follows
 
 ## [0.4.333] - 2026-11-15
 
+- Select UTF-8 explicitly for isolated Python verification on Windows, and wait
+  for accepted hook memory ownership to settle before integration fixtures
+  change workspace boundaries.
 - Integrate the profile-learning and continuity branches while preserving their
   commit ancestry and the existing Office optimizations on main.
 - Keep independent Knowledge meetings available when durable curator capture
