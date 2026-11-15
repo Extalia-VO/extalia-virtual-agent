@@ -46,11 +46,12 @@ export function LearningCountdownView({ t, snapshot, now, busyId, error, dismiss
   // Artifact receipts are independent of execution state, including a later failure or cancellation.
   const receipts = [...new Map(jobs.flatMap(job => job.result?.skill && !dismissedSkills.includes(job.result.skill.id)
     ? [[job.result.skill.id, { job, notice: job.result.skill }] as const] : [])).values()];
-  if (!visible.length && !receipts.length && !snapshot.recoveryUnavailable) return null;
+  if (!visible.length && !receipts.length && !snapshot.recoveryUnavailable && !snapshot.recoveryIncomplete) return null;
   return <aside className={`learning-countdown${embedded ? ' is-embedded' : ''}`} aria-label={text.title}>
     <div className="learning-countdown-heading"><Icon name="bulb" /><strong>{text.title}</strong></div>
     <p className="learning-countdown-help muted small">{text.help}</p>
     {snapshot.recoveryUnavailable && <p className="muted small" role="status">{text.recoveryUnavailable}</p>}
+    {snapshot.recoveryIncomplete && <p className="muted small" role="status">{text.recoveryIncomplete}</p>}
     <ul className="learning-countdown-jobs">
       {visible.map(job => {
         const pending = job.state === 'scheduled';
@@ -91,8 +92,8 @@ export function LearningCountdownView({ t, snapshot, now, busyId, error, dismiss
             <button type="button" className="button small" disabled={Boolean(busyId)} onClick={() => onAction(job, 'snooze')}>{text.snooze(Math.round(snapshot.snoozeSeconds / 60))}</button>
             <button type="button" className="button small primary" disabled={Boolean(busyId) || waiting} onClick={() => onAction(job, 'run-now')}>{text.runNow}</button>
           </div>}
-          {job.recovery && ['resumable', 'publication'].includes(job.recovery.state) && <div className="learning-countdown-actions">
-            <button type="button" className="button small primary" disabled={Boolean(busyId)} onClick={() => onAction(job, 'resume')}>{text.resume}</button>
+          {job.recovery && ['queued', 'resumable', 'publication'].includes(job.recovery.state) && <div className="learning-countdown-actions">
+            <button type="button" className="button small primary" disabled={Boolean(busyId)} onClick={() => onAction(job, 'resume')}>{job.recovery.state === 'queued' ? text.queueSaved : text.resume}</button>
           </div>}
         </li>;
       })}
@@ -199,7 +200,7 @@ export function LearningCountdown({ agents, t, target, embedded }: { agents: Age
 
   const act = async (job: Job, action: Action) => {
     if (!snapshot || changing.current || !agents.changeLearningSchedule) return;
-    if (action === 'resume' ? !job.recovery || !['resumable', 'publication'].includes(job.recovery.state)
+    if (action === 'resume' ? !job.recovery || !['queued', 'resumable', 'publication'].includes(job.recovery.state)
       : job.state !== 'scheduled' || action === 'run-now' && waitingForIdle(job)) return;
     changing.current = true;
     const request = ++serial.current;

@@ -16,6 +16,26 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.331] - 2026-11-15
+
+- Persist bounded Native and opted-in Observe learning before the idle countdown.
+  Deduplicate exact source captures and atomically admit the same Rust job after
+  fresh source, profile, model, destination and policy checks.
+- Restore never-started learning after restart with its full selected quiet
+  interval. Persist snooze before acknowledging it, fence stale timers and queue
+  revisions, and drain admitted capture/retirement work during shutdown.
+- Keep entered uncertain effects unreplayed and source revocations effective.
+  Present saved queued work separately from interrupted analysis in English and
+  Indonesian; a full live queue retains additional work in the durable catalog.
+- Preserve independent Knowledge/skill publication during fresh queued execution,
+  check notes-only destinations before paid analysis, compare Observe identity
+  independently of object-key order and align full-package skill review guidance
+  with required reference coverage.
+- Add real daemon and host restart, isolated/default/global Observe, snooze,
+  consent, lost-acknowledgement and timer-race verification. CI fixture repairs
+  remain deferred; live-provider quality/cost and installed-product acceptance
+  remain separate from focused local verification.
+
 ## [0.4.330] - 2026-11-15
 
 - Add connection-level Native context optimization: built-in local projection,

@@ -612,9 +612,9 @@
     {
       "path": "packages/host/src/automaticLearning.ts",
       "category": "legacy-backend",
-      "sha256": "b633db662b53ecb2d389500230504607e207629ab2eaad76ea516c46acee49a1",
-      "loc": 377,
-      "bytes": 24983,
+      "sha256": "a6af8b15afa7b6bc148de7abfe64a6d1bc8b3d0efc7a28ed84e3426c28cefa2c",
+      "loc": 390,
+      "bytes": 25929,
       "effectKinds": [
         "node-builtin",
         "runtime-call"
@@ -1289,11 +1289,20 @@
       "unresolvedRuntimeImports": 0
     },
     {
+      "path": "packages/host/src/learningQueue.ts",
+      "category": "legacy-backend",
+      "sha256": "2b7e1aa188e12339420e7ade7404b27a4cb2e8e7fc2ab1a4e642caf807674672",
+      "loc": 79,
+      "bytes": 4162,
+      "effectKinds": [],
+      "unresolvedRuntimeImports": 0
+    },
+    {
       "path": "packages/host/src/learningRecovery.ts",
       "category": "legacy-backend",
-      "sha256": "ab24b0e5093b0830effc57e19e8c7fad3965e31aa5b32f9b0e44e221374d9c41",
-      "loc": 94,
-      "bytes": 5428,
+      "sha256": "7b5d8c21f2aa8efd87eddb4bbc4dce0e96fe8bb1ed40c5c47b43c094694de4fb",
+      "loc": 136,
+      "bytes": 8055,
       "effectKinds": [
         "node-builtin"
       ],
@@ -1302,9 +1311,9 @@
     {
       "path": "packages/host/src/learningSchedule.ts",
       "category": "legacy-backend",
-      "sha256": "9758e2c77f117975d3b1daf2cef398ded3f665ab5cdd09289aa95f52d349026d",
-      "loc": 357,
-      "bytes": 18675,
+      "sha256": "177429955be6a055d3c4e435079ac8985638a40494314ee5cd46a3663d164740",
+      "loc": 421,
+      "bytes": 22050,
       "effectKinds": [
         "node-builtin"
       ],
@@ -1666,9 +1675,9 @@
     {
       "path": "packages/host/src/observedMemory.ts",
       "category": "legacy-backend",
-      "sha256": "e5a699c514930ae13fcfe91f241ce0b91f6ccd8059f1a1444c4bffb642ba30f2",
-      "loc": 379,
-      "bytes": 30906,
+      "sha256": "dc8cfb07c01af45c6115d0bce065e292d30f7a93da436a7c0da193e8d75c4c14",
+      "loc": 389,
+      "bytes": 31638,
       "effectKinds": [
         "node-builtin"
       ],
@@ -1830,9 +1839,9 @@
     {
       "path": "packages/host/src/rustLearning.ts",
       "category": "legacy-backend",
-      "sha256": "146d8aed0a38da6fec93be1141705ded232c5f8bf4a1ffdcc4d3aead949e161a",
-      "loc": 144,
-      "bytes": 9121,
+      "sha256": "1d83de6637a16813339180aad5f9c49e55504ca2cfc8e202faa0f1060d2afee2",
+      "loc": 154,
+      "bytes": 10015,
       "effectKinds": [],
       "unresolvedRuntimeImports": 0
     },
@@ -1862,9 +1871,9 @@
     {
       "path": "packages/host/src/service.ts",
       "category": "legacy-backend",
-      "sha256": "f8b8997e1d4473d850fbb01be2fcfefab6382ce4d07ddf73d1204c1c38573571",
-      "loc": 6460,
-      "bytes": 450869,
+      "sha256": "965d0490426bb836338589510848fe27f16f459b54619a54a6d00357a665c644",
+      "loc": 6385,
+      "bytes": 444043,
       "effectKinds": [
         "node-builtin",
         "runtime-call"
@@ -2352,9 +2361,9 @@
     {
       "path": "packages/platform/src/learningSchedule.ts",
       "category": "shared-backend-review",
-      "sha256": "44ede26283567ad4c14c4bc783d70df3f67e53fb05bcfe3b41cabe1431f71925",
-      "loc": 96,
-      "bytes": 3964,
+      "sha256": "827be806e36698b9c36fe4595d25165f1ea9ab5440735f0aba0f3626bc3ff184",
+      "loc": 98,
+      "bytes": 4109,
       "effectKinds": [],
       "unresolvedRuntimeImports": 0
     },
@@ -2613,18 +2622,18 @@
     {
       "path": "packages/protocol/src/daemonLearning.ts",
       "category": "shared-backend-review",
-      "sha256": "bade10a861aee2dc0863c612399e47450bcf2609e440d7efdc400b9f2341a202",
-      "loc": 86,
-      "bytes": 11447,
+      "sha256": "3e18c28b65bb09c3f44292f811bd3e3e584b0b054528dc5e1df1015d0ef7b075",
+      "loc": 103,
+      "bytes": 13396,
       "effectKinds": [],
       "unresolvedRuntimeImports": 0
     },
     {
       "path": "packages/protocol/src/daemonLearningRules.ts",
       "category": "shared-backend-review",
-      "sha256": "320adc52223be6a1ee03632cdce5939e8ff941b657da194d960b548a9baae0fa",
-      "loc": 91,
-      "bytes": 13415,
+      "sha256": "c3c492738c0a016f616ae5d961591eb58a3b2f02c240dbb0c24cdf4dc4853a66",
+      "loc": 99,
+      "bytes": 14666,
       "effectKinds": [],
       "unresolvedRuntimeImports": 0
     },

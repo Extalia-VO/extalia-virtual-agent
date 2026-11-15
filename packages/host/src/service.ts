@@ -37,6 +37,7 @@ import { replaceHandoverHistory } from './handoverHistory.js';
 import { ContinuityAccess } from './continuityAccess.js';
 import { CONTINUITY_RESPONSE_LIMIT, validContinuityInput } from './continuityClient.js';
 import { LearningSchedule } from './learningSchedule.js';
+import { LearningQueueAdmissions, learningQueueBinding, sameLearningObservedScope } from './learningQueue.js';
 import { GeneralScheduleManager, buildScheduledSessionOptions } from './schedules.js';
 import { runNativeKnowledgeMeeting } from './nativeKnowledgeMeeting.js';
 import { automaticLearningNotice } from './skillLearningNotices.js';
@@ -102,7 +103,7 @@ import { HostPersistenceGate } from './hostPersistenceGate.js';
 import { createProfileStore } from './profile.js';
 import { pinMeetingNotes } from './meetingNotes.js';
 import { pinLearningNotes } from './learningNotes.js';
-import { hasAutomaticLearningEvidence, runAutomaticLearning, runObservedAutomaticLearning, runRecoveredAutomaticLearning, type AutomaticLearningResult } from './automaticLearning.js';
+import { hasAutomaticLearningEvidence, runQueuedAutomaticLearning, runRecoveredAutomaticLearning, type AutomaticLearningOptions, type AutomaticLearningResult } from './automaticLearning.js';
 import { LearningRecovery, learningRouteFingerprint, type LearningRecoveryCandidate } from './learningRecovery.js';
 import type { LearningRecoveryRecord } from './rustLearning.js';
 import { RustLearningBackend } from './rustLearning.js';
@@ -487,6 +488,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
   });
   const knowledgePort = serializeKnowledgeRequests(recoveryDaemon);
   const rustLearning = new RustLearningBackend(() => recoveryDaemon.connect());
+  const learningAdmissions = new LearningQueueAdmissions(rustLearning);
   const modelDiscovery = new RustModelDiscovery({
     binary: () => resolveDaemonBinary({ ...options.daemon?.binary, env })?.path,
     directory: layout.root, clientVersion: options.version, env,
@@ -2506,7 +2508,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     if (checkpoint.observedSource) {
       if (profile.policy.observed !== true) return undefined;
       const source = await observedMemorySource(checkpoint.sessionId);
-      if (!source?.enabled || continuityDigest(source.scope) !== continuityDigest(checkpoint.observedSource.scope)) return undefined;
+      if (!source?.enabled || !sameLearningObservedScope(source.scope, checkpoint.observedSource.scope)) return undefined;
       const connectionId = workspace?.providerProfileId ?? (global
         ? globalObservedConnection(config.workspaces, config.profile.id, config.connections.filter(keepsHistory).map(item => item.id)) : undefined);
       connection = config.connections.find(item => item.id === connectionId);
@@ -2525,28 +2527,39 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     return { workspace: workspace ? structuredClone(workspace) : undefined, profile, connection: structuredClone(connection), record };
   }
 
-  async function listLearningRecoveries(): Promise<LearningRecoveryCandidate[]> {
+  async function listLearningRecoveries(): Promise<{ candidates: LearningRecoveryCandidate[]; incomplete?: boolean } | []> {
     if (closing) return [];
     const candidates: LearningRecoveryCandidate[] = [];
+    let incomplete = false;
+    let inspected = 0;
     for (const workspace of [undefined, ...config.workspaces]) {
-      const profile = await vaultProfiles.policyFor(workspace?.id);
-      if (!profile.policy.enabled || !profile.policy.skills && !profile.policy.notes) continue;
-      const listed = await rustLearning.process('job.list', { profileId: profile.profileId,
-        workspaceId: workspace?.id ?? GLOBAL_OBSERVE_WORKSPACE_ID, limit: 32 });
-      for (const record of listed.jobs) {
-        if (record.active || record.state === 'terminal') continue;
-        const current = await authorizeLearningRecovery(record);
-        if (!current) continue;
-        candidates.push({ record, profileName: config.vaultProfiles?.profiles.find(item => item.id === record.profileId)?.name ?? config.profile.name,
-          ...(workspace ? { workspaceName: workspace.name } : {}),
-          sessionName: current.record?.title ?? sourceLabel(record.observedSource?.scope.sourceId ?? 'extalia-native') });
-        if (candidates.length >= 64) return candidates;
-      }
+      try {
+        const profile = await vaultProfiles.policyFor(workspace?.id);
+        if (!profile.policy.enabled || !profile.policy.skills && !profile.policy.notes) continue;
+        const listed = await rustLearning.process('job.list', { profileId: profile.profileId,
+          workspaceId: workspace?.id ?? GLOBAL_OBSERVE_WORKSPACE_ID, limit: 32 });
+        inspected++;
+        incomplete ||= listed.omitted > 0;
+        for (const record of listed.jobs) {
+          if (record.active || record.state === 'terminal') continue;
+          try {
+            const current = await authorizeLearningRecovery(record);
+            if (!current) continue;
+            candidates.push({ record, profileName: config.vaultProfiles?.profiles.find(item => item.id === record.profileId)?.name ?? config.profile.name,
+              ...(workspace ? { workspaceName: workspace.name } : {}),
+              sessionName: current.record?.title ?? sourceLabel(record.observedSource?.scope.sourceId ?? 'extalia-native') });
+            if (candidates.length >= 64) return { candidates, incomplete: true };
+          } catch { incomplete = true; }
+        }
+      } catch { incomplete = true; }
     }
-    return candidates;
+    if (incomplete && inspected === 0) throw new Error('Saved learning records could not be inspected.');
+    return { candidates, ...(incomplete ? { incomplete: true } : {}) };
   }
 
-  async function prepareLearningRecovery(checkpoint: LearningRecoveryRecord, scheduleId: string) {
+  async function prepareLearningRecovery(retained: LearningRecoveryRecord, scheduleId: string, sourceQuery?: string) {
+    let checkpoint = structuredClone(retained);
+    const queued = checkpoint.state === 'queued';
     const initial = await authorizeLearningRecovery(checkpoint);
     if (!initial) throw userError('The saved learning source, profile or model settings changed. Start a fresh learning task.');
     return { id: scheduleId, workspaceId: checkpoint.workspaceId, profileId: checkpoint.profileId, sessionId: checkpoint.sessionId,
@@ -2554,6 +2567,13 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       ...(initial.workspace ? { workspaceName: initial.workspace.name } : {}),
       sessionName: initial.record?.title ?? sourceLabel(checkpoint.observedSource?.scope.sourceId ?? 'extalia-native'),
       independent: Boolean(initial.workspace && independentLearning(initial.workspace.id, checkpoint.profileId)),
+      ...(queued ? { delaySeconds: checkpoint.queue!.delaySeconds,
+        persistDelay: async (delaySeconds: 60 | 600) => {
+          if (!await authorizeLearningRecovery(checkpoint)) throw userError('The queued learning source changed.');
+          checkpoint = (await rustLearning.process('queue.delay', { ...learningQueueBinding(checkpoint), delaySeconds })).record;
+        },
+        cancelPending: async () => { checkpoint = (await rustLearning.process('queue.cancel', learningQueueBinding(checkpoint))).record; },
+      } : {}),
       ready: () => learningReady(checkpoint.workspaceId, checkpoint.profileId),
       validate: async () => Boolean(await authorizeLearningRecovery(checkpoint)),
       execute: async (signal: AbortSignal) => {
@@ -2587,11 +2607,23 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
                 if (!isWithin(fold(path.resolve(folder)), fold(target)) && !isWithin(fold(canonical), fold(target))) continue;
                 if (!access || !workspace) throw userError('Global Observe grants no project filesystem access.');
                 await access.resolve(target, 'write');
-                if ((!record || storedOptions(record).permissionMode !== 'accept-edits') && (workspace.permissions ?? DEFAULT_PERMISSIONS).fileWrite !== 'allow') {
+                if ((!record || storedOptions(record).permissionMode !== 'accept-edits' && !grants.get(record.id)?.has('write')) && (workspace.permissions ?? DEFAULT_PERMISSIONS).fileWrite !== 'allow') {
                   throw userError('The vault requires fresh write permission.');
                 }
               }
             } });
+          // A notes-only queued source must have a usable destination before paid admission.
+          // Other outputs remain independently eligible when a note destination is unavailable.
+          let notePreparationFailure: unknown;
+          if (queued && checkpoint.policy.notes) {
+            try { writer = await prepareWriter(); } catch (error) {
+              notePreparationFailure = error;
+              if (!checkpoint.policy.skills) {
+                learningSchedule.recordResult(scheduleId, { knowledge: { status: 'failed' }, problem: 'publication' });
+                throw error;
+              }
+            }
+          }
           const { provider } = await providerFor(connection);
           const provenance = { profileId: checkpoint.profileId, workspaceId, sessionId: checkpoint.sessionId,
             runId: checkpoint.runId, promptSha256: checkpoint.promptSha256 };
@@ -2602,127 +2634,95 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
               source: { runtime: 'extalia-native', channel: 'system', adapter: 'observed-learning' }, body });
             for (const listener of listeners) { try { listener(event); } catch { /* Views do not own execution. */ } }
           };
-          const learned = await runRecoveredAutomaticLearning({ ...provenance, revision: checkpoint.destinationRevision,
-            routeFingerprint: checkpoint.routeFingerprint, recovery: checkpoint, policy: checkpoint.policy,
-            provider, backend: rustLearning, signal, assertCurrent, emit,
+          let memoryContext: string | undefined;
+          if (queued && features.extaliaMemory) {
+            let query = sourceQuery, excludedEpisode = checkpoint.runId;
+            if (!query && checkpoint.observedSource) {
+              const page = await rustLearning.process('observed.read', { ...checkpoint.observedSource, offset: 0, limit: 1 });
+              query = page.entries[0]?.text; excludedEpisode = page.episode.episodeId;
+            }
+            if (query) memoryContext = await learningMemoryContext(workspaceId, query, excludedEpisode, signal);
+          }
+          const options: Omit<AutomaticLearningOptions, 'result' | 'currentTurnEvidence'> = { ...provenance, revision: checkpoint.destinationRevision,
+            routeFingerprint: checkpoint.routeFingerprint, policy: checkpoint.policy,
+            ...(memoryContext ? { memoryContext } : {}), provider, backend: rustLearning, signal, assertCurrent, emit,
             tools: await curatorToolsFor(workspace?.id, checkpoint.policy.skills, { provenance, assertCurrent }, features.extaliaMemory),
             proposeSkill: (input, proof, cancellation) => withRegistry(() => skillRegistry.propose(input, proof, cancellation)),
             ...(checkpoint.policy.notes ? {
-              prepareNote: async () => { await assertCurrent(); writer ??= await prepareWriter(); },
+              prepareNote: async () => { await assertCurrent(); if (notePreparationFailure) throw notePreparationFailure; writer ??= await prepareWriter(); },
               writeNote: (note: Parameters<NonNullable<typeof writer>>[0], cancellation: AbortSignal) => {
-                if (!writer) throw new Error('The recovered note destination was not prepared.');
+                if (!writer) throw new Error('The learning note destination was not prepared.');
                 return persistence.run(() => writer!(note, cancellation));
               },
             } : {}),
-            onWorkerStarted: id => { nativeWorkers.set(id, { id, sessionId: checkpoint.sessionId, workspaceId, kind: 'delegated', state: 'running', active: true, evidence: 'local-invocation', label: 'Learning recovery' }); },
+            onWorkerStarted: id => { nativeWorkers.set(id, { id, sessionId: checkpoint.sessionId, workspaceId, kind: 'delegated', state: 'running', active: true, evidence: 'local-invocation', label: queued ? checkpoint.observedSource ? 'Observed work curator' : 'Learning curator' : 'Learning recovery' }); },
             onWorkerSettled: id => { nativeWorkers.delete(id); },
-          });
+          };
+          const toolCallId = `${scheduleId}-learning`;
+          if (queued && !checkpoint.observedSource) await publish(checkpoint.sessionId, { type: 'tool.started', toolCallId, tool: 'automatic_learning', kind: 'delegate', label: 'Curating completed-task learning' }, 'primary', undefined, { strict: true });
+          const learned = queued ? await runQueuedAutomaticLearning({ ...options, queued: learningQueueBinding(checkpoint) })
+            : await runRecoveredAutomaticLearning({ ...options, recovery: checkpoint });
           await recordLearningOutcome(scheduleId, workspaceId, learned);
           const notice = automaticLearningNotice(learned, { ...provenance, createdAt: now() });
-          if (notice) learningSchedule.recordResult(scheduleId, { skill: notice });
-          if (learned.outcome === 'partial' || learned.outcome === 'failed' || learned.outcome === 'cancelled') throw userError('Recovery did not confirm every enabled learning output. Saved outputs remain available.');
+          if (notice) {
+            learningSchedule.recordResult(scheduleId, { skill: notice });
+            if (!signal.aborted) {
+              const history = await withRegistry(() => skillRegistry.report()).catch(() => undefined);
+              if (history) {
+                const detailed = automaticLearningNotice(learned, { ...provenance, createdAt: notice.createdAt }, { ...history, profileId: checkpoint.profileId });
+                if (detailed) learningSchedule.recordResult(scheduleId, { skill: detailed });
+              }
+            }
+          }
+          if (queued && !checkpoint.observedSource) await publish(checkpoint.sessionId, { type: 'tool.completed', toolCallId, tool: 'automatic_learning', kind: 'delegate', label: 'Completed-task learning',
+            ok: (learned.outcome === 'completed' || learned.outcome === 'skipped') && learned.skill.status !== 'unknown' && learned.note.status !== 'failed', output: JSON.stringify(learned) }, 'primary', undefined, { strict: true });
+          if (learned.outcome === 'partial' || learned.outcome === 'failed' || learned.outcome === 'cancelled') throw userError('Learning did not confirm every enabled output. Saved outputs remain available.');
         } finally { await writer?.close(); }
       } };
   }
 
   async function scheduleObservedLearning(episode: ObservedMemoryEpisode): Promise<void> {
-    if (closing) return;
+    // Only ObservedMemory's already accepted storage handoff calls this function.
+    // Closing prevents timer/provider admission, but still drains the queued intent.
     const global = episode.scope.workspaceId === GLOBAL_OBSERVE_WORKSPACE_ID;
     const workspace = global ? undefined : findWorkspace(episode.scope.workspaceId), workspaceId = episode.scope.workspaceId;
     const profile = await vaultProfiles.policyFor(workspace?.id);
     if (profile.profileId !== episode.scope.profileId || !profile.policy.enabled || profile.policy.observed !== true || (!profile.policy.skills && !profile.policy.notes)) return;
-    // A providerless registered Observe project captures evidence without
-    // scheduling model work. Global routing is a separate explicit destination.
     if (workspace && !workspace.providerProfileId) return;
-    const selectConnection = () => workspace ? config.workspaces.find(item => item.id === workspace.id)?.providerProfileId
-      : globalObservedConnection(config.workspaces, config.profile.id, config.connections.filter(keepsHistory).map(item => item.id));
-    const connectionId = selectConnection();
-    const connection = connectionId ? findConnection(connectionId) : undefined, connectionSnapshot = JSON.stringify(connection);
-    const runId = `observed-${episode.id}`;
-    const current = async () => {
-      const source = await observedMemorySource(episode.scope.sessionId);
-      const policy = await vaultProfiles.policyFor(workspace?.id);
-      return Boolean(source?.enabled && source.scope.boundary === episode.scope.boundary && source.scope.profileId === episode.scope.profileId
-        && source.scope.workspaceId === workspaceId && selectConnection() === connectionId
-        && policy.revision === profile.revision && policy.policy.observed === true
-        && JSON.stringify(config.connections.find(item => item.id === connectionId)) === connectionSnapshot);
-    };
-    learningSchedule.schedule({ id: runId, kind: 'learning', workspaceId, ...(workspace ? { workspaceName: workspace.name } : {}),
-      profileId: profile.profileId, profileName: config.vaultProfiles?.profiles.find(item => item.id === profile.profileId)?.name ?? config.profile.name,
-      sessionId: episode.scope.sessionId, sessionName: sourceLabel(episode.scope.sourceId),
-      independent: Boolean(workspace && independentLearning(workspace.id, profile.profileId)), ready: () => learningReady(workspaceId, profile.profileId), validate: current,
-      execute: async signal => {
-        const memoryAuthority = connection && resolveFeatures(connection).extaliaMemory ? await resolveWorkMemory(workspaceId) : undefined;
-        const assertCurrent = async () => {
-          if (signal.aborted || !await current()) throw new Error('Observed learning consent or scope changed.');
-          const source = await observedMemorySource(episode.scope.sessionId);
-          if (source?.running || source?.pending) throw new Error('The observed conversation resumed work.');
-          if (memoryAuthority) await assertWorkMemoryAuthority(workspaceId, memoryAuthority);
-        };
-        await assertCurrent();
-        if (!connection || !keepsHistory(connection)) {
+    const connectionId = workspace?.providerProfileId ?? globalObservedConnection(config.workspaces, config.profile.id, config.connections.filter(keepsHistory).map(item => item.id));
+    const connection = connectionId ? findConnection(connectionId) : undefined, runId = `observed-${episode.id}`;
+    if (!connection || !keepsHistory(connection)) {
+      if (closing) return;
+      // No route can be bound durably until a single eligible model is selected.
+      learningSchedule.schedule({ id: runId, kind: 'learning', workspaceId,
+        ...(workspace ? { workspaceName: workspace.name } : {}), profileId: profile.profileId,
+        profileName: config.vaultProfiles?.profiles.find(item => item.id === profile.profileId)?.name ?? config.profile.name,
+        sessionId: episode.scope.sessionId, sessionName: sourceLabel(episode.scope.sourceId),
+        independent: Boolean(workspace && independentLearning(workspace.id, profile.profileId)),
+        ready: () => learningReady(workspaceId, profile.profileId), validate: async () => !closing,
+        execute: async () => {
           learningSchedule.recordResult(runId, { problem: 'connection' });
-          throw new Error('Choose one saved default-profile learning connection with history enabled.');
-        }
-        const { provider } = await providerFor(connection);
-        const features = resolveFeatures(connection);
-        const policy = { enabled: true, skills: profile.policy.skills && features.extaliaSkills && skillRegistry.enabled, notes: profile.policy.notes };
-        let writer: Awaited<ReturnType<typeof pinLearningNotes>> | undefined;
-        let notePreparationFailed = false;
-        const access = workspace ? await createWorkspaceAccess({ workspaceId, workspaces: structuredClone(config.workspaces), protectedRoots: [layout.root] }) : undefined;
-        try {
-          if (policy.notes) try {
-            writer = await pinLearningNotes({ backend: rustLearning, context: { sessionId: episode.scope.sessionId, workspaceId },
-              resolve: async () => { await assertCurrent(); return vaultProfiles.resolve(workspace?.id, { purpose: 'learning', ensure: true }); },
-              authorize: async target => {
-                await assertCurrent(); checkAllowed(target, 'Observed learning notes', 'write');
-                if (isWithin(layout.root, target)) return;
-                for (const candidate of config.workspaces) for (const folder of [candidate.projectLocation, ...(candidate.additionalProjectLocations ?? [])].filter((value): value is string => Boolean(value))) {
-                  const canonical = await realpath(folder);
-                  const fold = (value: string) => process.platform === 'darwin' || process.platform === 'win32' ? value.toLowerCase() : value;
-                  if (!isWithin(fold(canonical), fold(target))) continue;
-                  if (!access || !workspace) throw new Error('Global observation grants no project filesystem access.');
-                  await access.resolve(target, 'write');
-                  if ((workspace.permissions ?? DEFAULT_PERMISSIONS).fileWrite !== 'allow') throw new Error('The project vault does not permit automatic note writes.');
-                }
-              },
-            });
-          } catch { policy.notes = false; notePreparationFailed = true; }
-          if (!policy.skills && !policy.notes) {
-            learningSchedule.recordResult(runId, { knowledge: { status: 'failed' }, problem: 'publication' });
-            throw new Error('No usable observed learning destination is enabled.');
-          }
-          const emit = (body: EventBody, agentId: string) => {
-            if (closing) return;
-            const event = createEvent({ sessionId: episode.scope.sessionId, agentId,
-              source: { runtime: 'extalia-native', channel: 'system', adapter: 'observed-learning' }, body });
-            for (const listener of listeners) { try { listener(event); } catch { /* Disconnected views never own curation. */ } }
-          };
-          const learned = await runObservedAutomaticLearning({ observed: { scope: episode.scope, episodeId: episode.id, revision: episode.revision },
-            routeFingerprint: learningRouteFingerprint(connection, { kind: 'observed', boundary: episode.scope.boundary }),
-            profileId: profile.profileId, revision: profile.revision, sessionId: episode.scope.sessionId, workspaceId, runId,
-            memoryContext: features.extaliaMemory ? await learningMemoryContext(workspaceId, (await rustLearning.process('observed.read', {
-              scope: episode.scope, episodeId: episode.id, revision: episode.revision, offset: 0, limit: 1,
-            })).entries[0]?.text ?? '', episode.episodeId, signal) : undefined,
-            promptSha256: episode.revision, policy, provider, tools: await curatorToolsFor(workspace?.id, policy.skills, {
-              provenance: { profileId: profile.profileId, workspaceId, sessionId: episode.scope.sessionId, runId, promptSha256: episode.revision }, assertCurrent,
-            }, features.extaliaMemory), backend: rustLearning, signal, assertCurrent, emit,
-            proposeSkill: (input, provenance, cancellation) => withRegistry(() => skillRegistry.propose(input, provenance, cancellation)),
-            ...(writer ? { writeNote: (record: Parameters<NonNullable<typeof writer>>[0], cancellation: AbortSignal) => persistence.run(() => writer!(record, cancellation)) } : {}),
-            onWorkerStarted: id => { nativeWorkers.set(id, { id, sessionId: episode.scope.sessionId, workspaceId, kind: 'delegated', state: 'running', active: true, evidence: 'local-invocation', label: 'Observed work curator' }); },
-            onWorkerSettled: id => { nativeWorkers.delete(id); },
-          });
-          if (notePreparationFailed) {
-            learned.note = { status: 'failed' };
-            learned.outcome = learned.skill.status === 'recorded' ? 'partial' : 'failed';
-          }
-          await recordLearningOutcome(runId, workspaceId, learned);
-          const notice = automaticLearningNotice(learned, { profileId: profile.profileId, workspaceId, sessionId: episode.scope.sessionId, runId, createdAt: now() });
-          if (notice) learningSchedule.recordResult(runId, { skill: notice });
-          if (learned.outcome === 'failed' || learned.outcome === 'partial' || learned.outcome === 'cancelled' || learned.note.status === 'failed' || learned.skill.status === 'unknown') throw new Error('Observed curation did not confirm all enabled outputs.');
-        } finally { await writer?.close(); }
-      },
-    });
+          throw userError('Choose one saved default-profile learning connection with history enabled.');
+        },
+      });
+      return;
+    }
+    const features = resolveFeatures(connection);
+    const policy = { enabled: true, skills: profile.policy.skills && features.extaliaSkills && skillRegistry.enabled, notes: profile.policy.notes };
+    if (!policy.skills && !policy.notes) return;
+    const routeFingerprint = learningRouteFingerprint(connection, { kind: 'observed', boundary: episode.scope.boundary });
+    const assertCurrent = async () => {
+      const current = await observedMemorySource(episode.scope.sessionId, true), target = await vaultProfiles.policyFor(workspace?.id);
+      const currentConnectionId = workspace ? config.workspaces.find(item => item.id === workspace.id)?.providerProfileId
+        : globalObservedConnection(config.workspaces, config.profile.id, config.connections.filter(keepsHistory).map(item => item.id));
+      const selected = config.connections.find(item => item.id === currentConnectionId);
+      if (!current?.enabled || !sameLearningObservedScope(current.scope, episode.scope)
+        || target.revision !== profile.revision || !selected || !keepsHistory(selected)
+        || learningRouteFingerprint(selected, { kind: 'observed', boundary: current.scope.boundary }) !== routeFingerprint) throw userError('Observed learning consent or scope changed.');
+    };
+    const checkpoint = await learningAdmissions.observed({ scope: episode.scope, episodeId: episode.id, revision: episode.revision,
+      destinationRevision: profile.revision, runId, promptSha256: episode.revision, policy, routeFingerprint }, assertCurrent);
+    if (checkpoint.state === 'queued' && !closing) learningSchedule.schedule(await prepareLearningRecovery(checkpoint, runId));
   }
 
   function knowledgeSessionIdentity(record: SessionRecord): string {
@@ -5347,8 +5347,8 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
         const learningConnectionSnapshot = JSON.stringify(saved);
         const learningSessionSnapshot = JSON.stringify({ options: record.options, projectLocation: record.projectLocation });
         const learningRunId = run.native!.id;
-        const learningCurrent = async (): Promise<boolean> => {
-          if (closing || connectionChanges.size || workspaceSessionBoundaryKey(workspace.id, config.workspaces) !== boundary
+        const learningCurrent = async (storageAuthority = false): Promise<boolean> => {
+          if (!storageAuthority && closing || connectionChanges.size || workspaceSessionBoundaryKey(workspace.id, config.workspaces) !== boundary
             || JSON.stringify(config.connections.find(item => item.id === record.connectionId)) !== learningConnectionSnapshot) return false;
           const currentSession = await sessions.get(sessionId);
           if (!currentSession || currentSession.workspaceId !== workspace.id || currentSession.connectionId !== record.connectionId
@@ -5357,95 +5357,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
           return current.profileId === learningProfile?.profileId && current.revision === learningProfile.revision
             && JSON.stringify(current.policy) === JSON.stringify(learningProfile.policy);
         };
-        const automaticLearning = async (evidence: readonly ToolResultEntry[], sourceContext: { user: string; assistant: string }, signal: AbortSignal): Promise<void> => {
-          const result: TurnResult = { outcome: 'completed', history: [], usage: {} };
-          if (!learningEnabled || !learningProfile || !hasAutomaticLearningEvidence(result, evidence, sourceContext)) return;
-          const curatorMemoryAuthority = features.extaliaMemory ? await resolveWorkMemory(workspace.id) : undefined;
-          const assertCurrent = async () => {
-            if (signal.aborted || !await learningCurrent()) throw new Error('The learning profile or consent changed.');
-            if (curatorMemoryAuthority) await assertWorkMemoryAuthority(workspace.id, curatorMemoryAuthority);
-          };
-          let writeNote: Awaited<ReturnType<typeof pinLearningNotes>> | undefined;
-          let notePreparationFailed = false;
-          const policy = { ...learningProfile.policy, skills: !skipSkillLearning && learningProfile.policy.skills && features.extaliaSkills && skillRegistry.enabled };
-          if (!policy.skills && !policy.notes) return;
-          try {
-          if (policy.notes) try { const writer = await pinLearningNotes({
-            backend: rustLearning,
-            context: { sessionId, workspaceId: workspace.id },
-            resolve: async () => {
-              await assertCurrent();
-              return vaultProfiles.resolve(workspace.id, { purpose: 'learning', ensure: true });
-            },
-            authorize: async target => {
-              await assertCurrent();
-              checkAllowed(target, 'Learning notes', 'write');
-              if (isWithin(layout.root, target)) return;
-              for (const candidate of config.workspaces) {
-                for (const selected of [candidate.projectLocation, ...(candidate.additionalProjectLocations ?? [])].filter((value): value is string => Boolean(value))) {
-                  const canonical = await realpath(selected);
-                  const fold = (value: string) => process.platform === 'darwin' || process.platform === 'win32' ? value.toLowerCase() : value;
-                  if (!isWithin(fold(path.resolve(selected)), fold(target)) && !isWithin(fold(canonical), fold(target))) continue;
-                  await access.resolve(target, 'write');
-                  if (permissionMode === 'plan' || !(permissionMode === 'accept-edits' || sessionGrants.has('write') || permissions.fileWrite === 'allow'))
-                    throw new Error('The vault overlaps a workspace without permitted note writes.');
-                }
-              }
-            },
-          }); writeNote = writer; } catch {
-            // One unavailable output must not prevent another explicitly enabled destination.
-            policy.notes = false;
-            notePreparationFailed = true;
-          }
-          if (!policy.skills && !policy.notes) {
-            learningSchedule.recordResult(learningRunId, { knowledge: { status: 'failed' }, problem: 'publication' });
-            await publish(sessionId, { type: 'tool.completed', tool: 'automatic_learning', kind: 'knowledge', label: 'Completed-task learning unavailable', ok: false, output: 'No usable Rust learning destination is available. No curator model request was made.' }, 'primary', undefined, { strict: true });
-            throw new Error('No usable learning destination.');
-          }
-          const toolCallId = `${learningRunId}-learning`;
-          await publish(sessionId, { type: 'tool.started', toolCallId, tool: 'automatic_learning', kind: 'delegate', label: 'Curating completed-task learning' }, 'primary', undefined, { strict: true });
-          const learned = await runAutomaticLearning({
-            routeFingerprint: nativeLearningRoute(connection, { ...record, workspaceBoundary: boundary, team: expectedPersistedTeam }),
-            result, currentTurnEvidence: evidence, sourceContext, ...learningProfile, policy,
-            memoryContext: features.extaliaMemory ? await learningMemoryContext(workspace.id, sourceContext.user, learningRunId, signal) : undefined,
-            sessionId, workspaceId: workspace.id, runId: learningRunId,
-            promptSha256: learningPromptSha256,
-            backend: rustLearning,
-            // Current-turn evidence supplies the curator's reads. No generic host file/search tools
-            // cross this Rust-owned workflow or gain access to a profile's export-only vault.
-            provider: leadProvider, tools: await curatorToolsFor(workspace.id, policy.skills, {
-              provenance: { profileId: learningProfile.profileId, workspaceId: workspace.id, sessionId, runId: learningRunId, promptSha256: learningPromptSha256 }, assertCurrent,
-            }, features.extaliaMemory), signal, assertCurrent,
-            emit: (body, agentId) => publish(sessionId, body, agentId, undefined, { strict: true }),
-            proposeSkill: (input, provenance, signal) => withRegistry(() => skillRegistry.propose(input, provenance, signal)),
-            ...(writeNote ? { writeNote: (record: Parameters<NonNullable<typeof writeNote>>[0], signal: AbortSignal) => persistence.run(() => writeNote!(record, signal)) } : {}),
-            onWorkerStarted: id => { nativeWorkers.set(id, { id, sessionId, workspaceId: workspace.id, kind: 'delegated', state: 'running', active: true, evidence: 'local-invocation', label: 'Learning curator' }); },
-            onWorkerSettled: id => { nativeWorkers.delete(id); },
-          });
-          if (notePreparationFailed) {
-            learned.note = { status: 'failed' };
-            learned.outcome = learned.skill.status === 'recorded' ? 'partial' : 'failed';
-          }
-          await recordLearningOutcome(learningRunId, workspace.id, learned);
-          const notice = automaticLearningNotice(learned, { profileId: learningProfile.profileId, workspaceId: workspace.id,
-            sessionId, runId: learningRunId, createdAt: now() });
-          if (notice) {
-            // The durable receipt is authoritative even when later note/event publication fails.
-            learningSchedule.recordResult(learningRunId, { skill: notice });
-            if (!signal.aborted) {
-              const history = await withRegistry(() => skillRegistry.report()).catch(() => undefined);
-              if (history) {
-                const detailed = automaticLearningNotice(learned, { profileId: learningProfile.profileId, workspaceId: workspace.id,
-                  sessionId, runId: learningRunId, createdAt: notice.createdAt }, { ...history, profileId: learningProfile.profileId });
-                if (detailed) learningSchedule.recordResult(learningRunId, { skill: detailed });
-              }
-            }
-          }
-          await publish(sessionId, { type: 'tool.completed', toolCallId, tool: 'automatic_learning', kind: 'delegate', label: 'Completed-task learning', ok: (learned.outcome === 'completed' || learned.outcome === 'skipped') && learned.skill.status !== 'unknown' && learned.note.status !== 'failed', output: JSON.stringify(learned) }, 'primary', undefined, { strict: true });
-          if (learned.outcome === 'failed' || learned.outcome === 'partial' || learned.outcome === 'cancelled' || learned.skill.status === 'unknown' || learned.note.status === 'failed') throw new Error('Learning did not confirm all enabled outputs.');
-          } finally { await writeNote?.close(); }
-        };
-        const scheduleLearning = (result: TurnResult) => {
+        const scheduleLearning = async (result: TurnResult) => {
           if (!learningEnabled || !learningProfile || result.outcome !== 'completed') return;
           // Queue only a small evidence copy, never conversation history, images or the full tool-result array.
           const evidence = turnEvidence.filter(item => !item.isError && item.content.trim()).slice(-10)
@@ -5456,11 +5368,18 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
             ? `Initial request: ${safeText(currentUserMessages[0]!, 900)}\nLatest user correction: ${safeText(currentUserMessages.at(-1)!, 1_000)}` : prompt, 2_000), assistant: safeText(sourceAnswer, 2_000) };
           const profileName = config.vaultProfiles?.profiles.find(item => item.id === learningProfile.profileId)?.name ?? config.profile.name;
           const sessionName = record.title === NEW_SESSION_TITLE ? prompt.replace(/\s+/g, ' ').slice(0, 60) : record.title;
-          const admitted = !hasAutomaticLearningEvidence(result, turnEvidence, sourceContext) || learningSchedule.schedule({ id: learningRunId, kind: 'learning', workspaceId: workspace.id, workspaceName: workspace.name,
-            profileId: learningProfile.profileId, profileName, sessionId, sessionName, execute: signal => automaticLearning(evidence, sourceContext, signal),
-            independent: independentLearning(workspace.id, learningProfile.profileId),
-            validate: learningCurrent, ready: () => learningReady(workspace.id, learningProfile.profileId),
-          });
+          let admitted = true;
+          if (hasAutomaticLearningEvidence(result, turnEvidence, sourceContext)) {
+            const policy = { enabled: true, notes: learningProfile.policy.notes,
+              skills: !skipSkillLearning && learningProfile.policy.skills && features.extaliaSkills && skillRegistry.enabled };
+            if (policy.notes || policy.skills) {
+              const checkpoint = await learningAdmissions.native({ profileId: learningProfile.profileId, revision: learningProfile.revision,
+                sessionId, workspaceId: workspace.id, runId: learningRunId, promptSha256: learningPromptSha256, policy,
+                routeFingerprint: nativeLearningRoute(connection, { ...record, workspaceBoundary: boundary, team: expectedPersistedTeam }),
+                evidence, sourceContext }, async () => { if (!await learningCurrent(true)) throw userError('The learning source or consent changed.'); });
+              if (checkpoint.state === 'queued' && !closing) admitted = learningSchedule.schedule(await prepareLearningRecovery(checkpoint, learningRunId, sourceContext.user));
+            }
+          }
           const vaultSettings = config.vaultProfiles?.profiles.find(item => item.id === learningProfile.profileId);
           if (liveTeam?.enabled && liveTeam.members.length && learningProfile.policy.notes && vaultSettings?.minutesEnabled !== false) {
             // The input history is an immutable prefix of this turn's result.
@@ -5489,7 +5408,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
               output: 'This project review was not queued. Existing updates remain scheduled.' }).catch(() => undefined);
           }
           if (!admitted) void publish(sessionId, { type: 'tool.completed', tool: 'automatic_learning', kind: 'knowledge', label: 'Learning queue full', ok: false,
-            output: 'This completed task was not queued for learning. Existing updates remain scheduled.' }).catch(() => undefined);
+            output: 'This completed task was saved for learning, but the waiting queue is full. It remains available to resume or restore after restart.' }).catch(() => undefined);
         };
         const prepareSkillsFor = (connectionId: string, worker = false, agentId = 'primary') => {
           const selected = frozenProviders.get(connectionId)!;
@@ -5784,9 +5703,12 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
             await writeChains.get(sessionId);
             const anchor = followupSuggestions.status(sessionId).anchor;
             const connectionSnapshot = JSON.stringify(saved), workspaceSnapshot = JSON.stringify(workspace);
-            finishRun(sessionId);
-            if (completed && !controller.signal.aborted) scheduleLearning(completed);
-            settleRun();
+            try {
+              if (completed && !controller.signal.aborted && !closing) await scheduleLearning(completed);
+            } catch {
+              if (!closing) await publish(sessionId, { type: 'tool.completed', tool: 'automatic_learning', kind: 'knowledge', label: 'Learning capture not confirmed', ok: false,
+                output: 'The completed task remains saved. Its deferred learning capture was not confirmed; inspect retained learning records before retrying.' }).catch(() => undefined);
+            } finally { finishRun(sessionId); settleRun(); }
             if (completed && anchor && !controller.signal.aborted) {
               const answer = completed.history.at(-1);
               if (answer?.role === 'assistant' && answer.text.trim()) followupSuggestions.prepareNative({
@@ -6348,7 +6270,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
     resolve: resolveWorkMemory, authorizeCapture: authorizeWorkMemoryCapture, persist: operation => persistence.run(operation),
     onWorkChange: () => { if (!closing) { learningSchedule.wake(); notifyIdleListeners(); } },
   });
-  observedMemory = new ObservedMemory({ backend: rustLearning, source: observedMemorySource,
+  observedMemory = new ObservedMemory({ backend: rustLearning, source: observedMemorySource, storageSource: id => observedMemorySource(id, true),
     list: async workspaceId => mapObservedWorkspaces(observations.summaries(), config.workspaces)
       .filter(source => observedLearningWorkspace(source, config.workspaces, config.profile.id)?.workspaceId === workspaceId).map(source => source.id),
     onEpisode: scheduleObservedLearning,
@@ -6362,13 +6284,14 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
   // Existing visible history establishes a watermark; enabling this feature never pays to replay a backlog.
   await Promise.all(observations.summaries().map(source => observedMemory!.afterPersisted(source.id, observedMemoryHint(source.id))));
   await workMemory.replayPending(undefined, 64).catch(() => undefined);
+  await learningRecovery.restoreQueued();
 
   let closePromise: Promise<void> | undefined;
   return {
     host,
     worktrees: worktreeApi,
     hooks: ingest,
-    isBusy: () => antigravityHandover.isBusy() || hermesHandover.isBusy() || observedCliResume.isBusy() || Boolean(observedMemory?.isBusy()) || Boolean(workMemory?.isBusy()) || Boolean(generalSchedules?.isBusy) || observedWorkspaceChange || continuityWork > 0 || learningSchedule.isBusy || persistence.isBusy || runs.size > 0 || workspaceContextReaders > 0 || nativeStatusRefresh !== undefined || nativeMemory.isBusy() || !!promptQueues?.isBusy,
+    isBusy: () => learningAdmissions.isBusy || antigravityHandover.isBusy() || hermesHandover.isBusy() || observedCliResume.isBusy() || Boolean(observedMemory?.isBusy()) || Boolean(workMemory?.isBusy()) || Boolean(generalSchedules?.isBusy) || observedWorkspaceChange || continuityWork > 0 || learningSchedule.isBusy || persistence.isBusy || runs.size > 0 || workspaceContextReaders > 0 || nativeStatusRefresh !== undefined || nativeMemory.isBusy() || !!promptQueues?.isBusy,
     onIdle(listener) {
       if (closing) return () => undefined;
       idleListeners.add(listener);
@@ -6410,8 +6333,9 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       try { await observedHermes.close(); } catch (error) { codexCloseError ??= error; }
       try { await observedCodex.close(); } catch (error) { codexCloseError = error; }
       await userInputClosed;
-      await observations.close();
       await observedMemoryClosed;
+      const learningAdmissionsClosed = learningAdmissions.close();
+      await observations.close();
       let graceTimer: ReturnType<typeof setTimeout> | undefined;
       try {
         await Promise.race([Promise.all([...runs.values()].map(run => run.done)), new Promise(resolve => { graceTimer = setTimeout(resolve, 5_000); })]);
@@ -6423,6 +6347,7 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
       // Curator cancellation retains actual provider/registry/file ownership until effects drain.
       await schedulesClosed;
       await learningClosed;
+      await learningAdmissionsClosed;
       await workMemory?.close();
       await continuityClosed;
       await continuityAccess.close();

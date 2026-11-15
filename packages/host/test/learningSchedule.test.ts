@@ -4,8 +4,9 @@ import { normalizeLearningScheduleAction, type LearningSkillNotice } from '@exta
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>(done => { resolve = done; });
-  return { promise, resolve };
+  let reject!: (reason: unknown) => void;
+  const promise = new Promise<T>((done, fail) => { resolve = done; reject = fail; });
+  return { promise, resolve, reject };
 }
 function entry(id: string, overrides: Partial<ScheduledLearningInput> = {}): ScheduledLearningInput {
   return { id, workspaceId: 'workspace-a', profileId: 'profile-a', profileName: 'Research', sessionId: 'session-a',
@@ -22,13 +23,144 @@ describe('learning admission schedule', () => {
     const task = entry('delay-metadata', { ready: () => ready });
     queue.schedule(task);
     expect(queue.snapshot().jobs[0]).toMatchObject({ waitingForIdle: true, delaySeconds: 60 });
-    queue.act({ id: task.id, revision: queue.snapshot().revision, action: 'snooze' });
+    await queue.act({ id: task.id, revision: queue.snapshot().revision, action: 'snooze' });
     expect(queue.snapshot().jobs[0]).toMatchObject({ waitingForIdle: true, delaySeconds: 600 });
     ready = true; queue.wake();
     expect(queue.snapshot().jobs[0]).toMatchObject({ waitingForIdle: false, delaySeconds: 600 });
     ready = false; await queue.yieldForForeground('profile-a');
     expect(queue.snapshot().jobs[0]).toMatchObject({ waitingForIdle: true, delaySeconds: 600 });
     await queue.close();
+  });
+
+  it('restores the selected interval as a fresh quiet period and never persists Run now', async () => {
+    const persistDelay = vi.fn(async () => undefined);
+    const original = new LearningSchedule();
+    const task = entry('durable-delay', { delaySeconds: 600, persistDelay, ready: () => false });
+    original.schedule(task);
+    await original.act({ id: task.id, revision: original.snapshot().revision, action: 'run-now' });
+    expect(persistDelay).not.toHaveBeenCalled();
+    await original.close();
+    const restarted = new LearningSchedule();
+    const restored = entry(task.id, { delaySeconds: 600 });
+    restarted.schedule(restored);
+    expect(restarted.snapshot().jobs[0]).toMatchObject({ delaySeconds: 600, dueAt: '2026-01-01T00:10:00.000Z' });
+    await vi.advanceTimersByTimeAsync(599_999);
+    expect(restored.execute).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(restored.execute).toHaveBeenCalledTimes(1);
+    await restarted.close();
+  });
+
+  it('fences due and retained timers until snooze is acknowledged while unrelated work can proceed', async () => {
+    const persisted = deferred<void>();
+    const callbacks: (() => void)[] = [];
+    const queue = new LearningSchedule({ setTimer: (callback, milliseconds) => { callbacks.push(callback); return setTimeout(callback, milliseconds); } });
+    const task = entry('persisting-delay', { persistDelay: vi.fn(() => persisted.promise) });
+    const other = entry('other-durable', { profileId: 'profile-b', workspaceId: 'workspace-b', independent: true });
+    queue.schedule(task); queue.schedule(other);
+    await vi.advanceTimersByTimeAsync(59_999);
+    const stale = callbacks.at(-1)!;
+    let acknowledged = false;
+    const snoozing = queue.act({ id: task.id, revision: queue.snapshot().revision, action: 'snooze' }).then(value => { acknowledged = true; return value; });
+    stale(); queue.wake();
+    await expect(queue.act({ id: task.id, revision: queue.snapshot().revision, action: 'run-now' })).rejects.toThrow('still being saved');
+    await vi.advanceTimersByTimeAsync(600_001);
+    expect(acknowledged).toBe(false);
+    expect(task.validate).not.toHaveBeenCalled(); expect(task.execute).not.toHaveBeenCalled();
+    expect(other.execute).toHaveBeenCalledTimes(1);
+    expect(queue.snapshot().jobs.find(job => job.id === task.id)).toMatchObject({ state: 'scheduled', delaySeconds: 60, waitingForIdle: true });
+    persisted.resolve();
+    const confirmed = await snoozing;
+    expect(task.persistDelay).toHaveBeenCalledExactlyOnceWith(600);
+    expect(confirmed.jobs.find(job => job.id === task.id)).toMatchObject({ delaySeconds: 600, dueAt: '2026-01-01T00:21:00.000Z' });
+    await vi.advanceTimersByTimeAsync(599_999); expect(task.execute).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1); expect(task.execute).toHaveBeenCalledTimes(1);
+    await queue.close();
+  });
+
+  it('never executes a stale binding after a lost snooze acknowledgement or failed retirement', async () => {
+    const persisted = deferred<void>();
+    const queue = new LearningSchedule();
+    const task = entry('ambiguous-delay', {
+      persistDelay: () => persisted.promise,
+      cancelPending: vi.fn(async () => { throw new Error('Queue revision changed.'); }),
+    });
+    queue.schedule(task);
+    const snoozing = queue.act({ id: task.id, revision: queue.snapshot().revision, action: 'snooze' });
+    const rejected = expect(snoozing).rejects.toThrow('Acknowledgement lost');
+    persisted.reject(new Error('Acknowledgement lost'));
+    await rejected;
+    queue.wake(); await vi.advanceTimersByTimeAsync(700_000);
+    expect(task.execute).not.toHaveBeenCalled(); expect(task.validate).not.toHaveBeenCalled();
+    expect(task.cancelPending).toHaveBeenCalledTimes(1);
+    expect(queue.snapshot().jobs[0]).toMatchObject({ state: 'failed', reason: 'failed' });
+    expect(queue.schedule(task)).toBe(false);
+    await queue.close();
+  });
+
+  it('serializes invalidation after an in-flight delay update and drains retirement on close', async () => {
+    const persisted = deferred<void>(), retired = deferred<void>();
+    const effects: string[] = [];
+    const queue = new LearningSchedule();
+    const task = entry('invalidate-delay', {
+      persistDelay: async () => { effects.push('persist-start'); await persisted.promise; effects.push('persist-confirmed'); },
+      cancelPending: vi.fn(async () => { effects.push('retire'); await retired.promise; }),
+    });
+    queue.schedule(task);
+    const snoozing = queue.act({ id: task.id, revision: queue.snapshot().revision, action: 'snooze' });
+    const rejected = expect(snoozing).rejects.toThrow('changed while');
+    await Promise.resolve();
+    queue.invalidatePending(); queue.invalidatePending();
+    let closed = false;
+    const closing = queue.close().then(() => { closed = true; });
+    await Promise.resolve();
+    expect(closed).toBe(false); expect(task.cancelPending).not.toHaveBeenCalled();
+    persisted.resolve(); await rejected;
+    await vi.advanceTimersByTimeAsync(0);
+    expect(effects).toEqual(['persist-start', 'persist-confirmed', 'retire']);
+    expect(task.cancelPending).toHaveBeenCalledTimes(1); expect(closed).toBe(false);
+    retired.resolve(); await closing;
+    expect(task.execute).not.toHaveBeenCalled();
+    expect(queue.snapshot().jobs[0]).toMatchObject({ state: 'cancelled', reason: 'changed' });
+  });
+
+  it('preserves pending intent on shutdown and waits for a selected delay to settle', async () => {
+    const persisted = deferred<void>();
+    const queue = new LearningSchedule();
+    const task = entry('shutdown-delay', { persistDelay: () => persisted.promise, cancelPending: vi.fn(async () => undefined) });
+    queue.schedule(task);
+    const snoozing = queue.act({ id: task.id, revision: queue.snapshot().revision, action: 'snooze' });
+    const rejected = expect(snoozing).rejects.toThrow('changed while');
+    let closed = false;
+    const closing = queue.close().then(() => { closed = true; });
+    await Promise.resolve();
+    expect(closed).toBe(false);
+    persisted.resolve(); await rejected; await closing;
+    expect(task.cancelPending).not.toHaveBeenCalled(); expect(task.execute).not.toHaveBeenCalled();
+    expect(queue.snapshot().jobs[0]).toMatchObject({ state: 'cancelled', reason: 'shutdown' });
+  });
+
+  it.each(['changed', 'validation', 'readiness', 'entered'] as const)('retires only unentered failed or changed work (%s)', async failure => {
+    const queue = new LearningSchedule();
+    const task = entry(`retirement-${failure}`, {
+      cancelPending: vi.fn(async () => undefined),
+      validate: async () => { if (failure === 'validation') throw new Error('Unavailable'); return failure !== 'changed'; },
+      ready: () => { if (failure === 'readiness') throw new Error('Unavailable'); return true; },
+      execute: vi.fn(async () => { throw new Error('Entered effect failed'); }),
+    });
+    queue.schedule(task); await vi.advanceTimersByTimeAsync(60_000); await queue.close();
+    expect(task.cancelPending).toHaveBeenCalledTimes(failure === 'entered' ? 0 : 1);
+    expect(task.execute).toHaveBeenCalledTimes(failure === 'entered' ? 1 : 0);
+  });
+
+  it.each([true, false])('keeps intent when shutdown interrupts validation returning %s', async valid => {
+    const validation = deferred<boolean>();
+    const queue = new LearningSchedule();
+    const task = entry('shutdown-validation', { validate: () => validation.promise, cancelPending: vi.fn(async () => undefined) });
+    queue.schedule(task); await vi.advanceTimersByTimeAsync(60_000);
+    const closing = queue.close(); validation.resolve(valid); await closing;
+    expect(task.cancelPending).not.toHaveBeenCalled(); expect(task.execute).not.toHaveBeenCalled();
+    expect(queue.snapshot().jobs[0]).toMatchObject({ state: 'cancelled', reason: 'shutdown' });
   });
 
   it('leaves empty and terminal-only wakes out of the busy lifetime and revision', async () => {
@@ -64,14 +196,14 @@ describe('learning admission schedule', () => {
     const task = entry('run-a', { execute: vi.fn(() => finish.promise) });
     queue.schedule(task);
     const revision = queue.snapshot().revision;
-    queue.act({ id: task.id, revision, action: 'snooze' });
+    await queue.act({ id: task.id, revision, action: 'snooze' });
     expect(queue.snapshot().jobs[0]!.dueAt).toBe('2026-01-01T00:10:00.000Z');
-    expect(() => queue.act({ id: task.id, revision, action: 'run-now' })).toThrow(/changed/);
-    queue.act({ id: task.id, revision: queue.snapshot().revision, action: 'run-now' });
+    await expect(queue.act({ id: task.id, revision, action: 'run-now' })).rejects.toThrow(/changed/);
+    await queue.act({ id: task.id, revision: queue.snapshot().revision, action: 'run-now' });
     expect(task.execute).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(0);
     expect(queue.isBusy).toBe(true);
-    expect(() => queue.act({ id: task.id, revision: queue.snapshot().revision, action: 'snooze' })).toThrow(/no longer waiting/);
+    await expect(queue.act({ id: task.id, revision: queue.snapshot().revision, action: 'snooze' })).rejects.toThrow(/no longer waiting/);
     finish.resolve();
     await vi.advanceTimersByTimeAsync(0);
     expect(task.execute).toHaveBeenCalledTimes(1);
@@ -135,14 +267,14 @@ describe('learning admission schedule', () => {
     const second = entry('run-b');
     second.ready = () => workers === 0;
     queue.schedule(second);
-    queue.act({ id: second.id, revision: queue.snapshot().revision, action: 'snooze' });
+    await queue.act({ id: second.id, revision: queue.snapshot().revision, action: 'snooze' });
     const staleRevision = queue.snapshot().revision;
     await vi.advanceTimersByTimeAsync(550_000);
     workers = 2; await queue.yieldForForeground();
     await vi.advanceTimersByTimeAsync(150_000);
     expect(second.execute).not.toHaveBeenCalled();
     expect(queue.snapshot().jobs[0]).toMatchObject({ state: 'scheduled', reason: 'busy', waitingForIdle: true });
-    expect(() => queue.act({ id: second.id, revision: staleRevision, action: 'run-now' })).toThrow('changed');
+    await expect(queue.act({ id: second.id, revision: staleRevision, action: 'run-now' })).rejects.toThrow('changed');
     workers--; queue.wake(); await vi.advanceTimersByTimeAsync(100_000);
     expect(second.execute).not.toHaveBeenCalled();
     workers--; queue.wake();
@@ -156,14 +288,14 @@ describe('learning admission schedule', () => {
     let ready = false;
     const queue = new LearningSchedule();
     const first = entry('run-now', { ready: () => ready }); queue.schedule(first);
-    queue.act({ id: first.id, revision: queue.snapshot().revision, action: 'run-now' });
+    await queue.act({ id: first.id, revision: queue.snapshot().revision, action: 'run-now' });
     await vi.advanceTimersByTimeAsync(30_000);
     expect(first.execute).not.toHaveBeenCalled(); expect(queue.snapshot().jobs[0]!.waitingForIdle).toBe(true);
     ready = true; queue.wake(); await vi.advanceTimersByTimeAsync(0);
     expect(first.execute).toHaveBeenCalledTimes(1);
     ready = false;
     const next = entry('next-task', { ready: () => ready }); queue.schedule(next);
-    queue.act({ id: next.id, revision: queue.snapshot().revision, action: 'run-now' });
+    await queue.act({ id: next.id, revision: queue.snapshot().revision, action: 'run-now' });
     await queue.yieldForForeground();
     ready = true; queue.wake(); await vi.advanceTimersByTimeAsync(59_999);
     expect(next.execute).not.toHaveBeenCalled();
@@ -176,7 +308,7 @@ describe('learning admission schedule', () => {
     const queue = new LearningSchedule({ setTimer: (callback, milliseconds) => { callbacks.push(callback); return setTimeout(callback, milliseconds); } });
     const task = entry('stale-timer'); queue.schedule(task);
     const stale = callbacks[0]!;
-    queue.act({ id: task.id, revision: queue.snapshot().revision, action: 'snooze' });
+    await queue.act({ id: task.id, revision: queue.snapshot().revision, action: 'snooze' });
     const current = queue.snapshot();
     stale();
     expect(queue.snapshot()).toEqual(current); expect(task.execute).not.toHaveBeenCalled();
@@ -187,7 +319,7 @@ describe('learning admission schedule', () => {
     let ready = true;
     const queue = new LearningSchedule();
     const old = entry('meeting-old', { kind: 'knowledge-meeting', ready: () => ready });
-    queue.schedule(old); queue.act({ id: old.id, revision: queue.snapshot().revision, action: 'snooze' });
+    queue.schedule(old); await queue.act({ id: old.id, revision: queue.snapshot().revision, action: 'snooze' });
     for (let index = 0; index < 15; index++) queue.schedule(entry(`learning-${index}`, { ready: () => ready }));
     ready = false; await queue.yieldForForeground();
     const latest = entry('meeting-latest', { kind: 'knowledge-meeting', workspaceName: 'Latest project', sessionId: 'session-latest', sessionName: 'Latest work', ready: () => ready });
@@ -288,7 +420,7 @@ describe('learning admission schedule', () => {
     const active = entry('same-profile', { execute: async value => { signal = value; await finish.promise; } });
     const other = entry('other-profile', { independent: true, profileId: 'profile-b', workspaceId: 'workspace-b' });
     queue.schedule(active); queue.schedule(other);
-    queue.act({ id: other.id, revision: queue.snapshot().revision, action: 'snooze' });
+    await queue.act({ id: other.id, revision: queue.snapshot().revision, action: 'snooze' });
     const otherDeadline = queue.snapshot().jobs.find(job => job.id === other.id)!.dueAt;
     await vi.advanceTimersByTimeAsync(60_000);
     let yielded = false;
@@ -350,7 +482,7 @@ describe('learning admission schedule', () => {
     const curator = entry('curator', { execute: () => finish.promise, ready: () => ready });
     const meeting = entry('meeting', { kind: 'knowledge-meeting', ready: () => ready });
     queue.schedule(curator); queue.schedule(meeting);
-    queue.act({ id: meeting.id, revision: queue.snapshot().revision, action: 'snooze' });
+    await queue.act({ id: meeting.id, revision: queue.snapshot().revision, action: 'snooze' });
     const deadline = queue.snapshot().jobs.find(job => job.id === meeting.id)!.dueAt;
     await vi.advanceTimersByTimeAsync(60_000);
     ready = false; queue.wake();

@@ -8,7 +8,7 @@ const hash = (value: unknown) => createHash('sha256').update(JSON.stringify(valu
 const nativeKey = (scope: ObservedMemoryScope) => hash([scope.profileId, scope.workspaceId, scope.sourceId, scope.nativeSessionId, scope.boundary]);
 const deferred = () => { let resolve!: () => void; const promise = new Promise<void>(done => { resolve = done; }); return { promise, resolve }; };
 
-function fixture(enabled = true) {
+function fixture(enabled = true, withStorageSource = false) {
   let sequence = 0, revision = 0, created = true, unknownCapture = false;
   let captureGate: Promise<void> | undefined, searchGate: Promise<void> | undefined, readGate: Promise<void> | undefined;
   const scope: ObservedMemoryScope = { profileId: 'profile-one', workspaceId: 'workspace-one', sessionId: 'observed-one', sourceId: 'codex', nativeSessionId: 'native-one', boundary: hash('original-boundary') };
@@ -49,12 +49,15 @@ function fixture(enabled = true) {
     throw new Error('Unexpected backend action');
   });
   const onEpisode = vi.fn(), onRevoked = vi.fn(), onWorkEvidence = vi.fn();
-  const manager = new ObservedMemory({ backend: { process: process as RustLearningPort['process'] }, source: async id => sources.get(id),
+  const source = vi.fn(async (id: string) => sources.get(id));
+  const storageSource = vi.fn(async (id: string) => sources.get(id));
+  const manager = new ObservedMemory({ backend: { process: process as RustLearningPort['process'] }, source,
+    ...(withStorageSource ? { storageSource } : {}),
     list: async workspaceId => [...sources.values()].filter(source => source.scope.workspaceId === workspaceId).map(source => source.scope.sessionId), onEpisode, onRevoked, onWorkEvidence });
   const update = (patch: Partial<ObservedMemorySource>, id = scope.sessionId) => { const current = sources.get(id)!; sources.set(id, { ...current, ...patch, revision: hash(++revision) }); };
   const append = (bodies: EventBody[], patch: Partial<ObservedMemorySource> = {}, id = scope.sessionId) => update({ ...patch, events: [...sources.get(id)!.events, ...bodies.map(body => event(body, id))] }, id);
   const complete = async (id = scope.sessionId) => { append([{ type: 'prompt.submitted', text: 'Fresh task: retain this decision', via: 'native' }, { type: 'model.completed', text: 'Observed result, not independent proof.' }], { running: false }, id); await manager.afterPersisted(id); };
-  return { scope, sources, manager, event, update, append, complete, calls, stored, onEpisode, onRevoked, onWorkEvidence,
+  return { scope, sources, source, storageSource, manager, event, update, append, complete, calls, stored, onEpisode, onRevoked, onWorkEvidence,
     duplicateReceipt: () => { created = false; }, unknownCapture: () => { unknownCapture = true; },
     captureGate: (value: Promise<void>) => { captureGate = value; }, searchGate: (value: Promise<void>) => { searchGate = value; }, readGate: (value: Promise<void>) => { readGate = value; } };
 }
@@ -269,6 +272,82 @@ describe('observed memory admission and Native recall', () => {
     expect(f.manager.isBusy()).toBe(false); expect(f.onEpisode).not.toHaveBeenCalled();
     expect(f.stored.size).toBe(1); expect(f.onRevoked).not.toHaveBeenCalled();
     expect(f.calls.map(call => call.action)).toEqual(['observed.capture']);
+  });
+
+  it('drains the stored episode handoff after shutdown through fresh storage consent without accepting later events', async () => {
+    const f = fixture(true, true), capture = deferred(), handoff = deferred();
+    f.captureGate(capture.promise); await f.manager.afterPersisted(f.scope.sessionId);
+    f.onEpisode.mockImplementation(async () => { await handoff.promise; });
+    f.append([{ type: 'prompt.submitted', text: 'Accepted task', via: 'native' }, { type: 'model.completed', text: 'Accepted response' }]);
+    const admission = f.manager.afterPersisted(f.scope.sessionId);
+    await vi.waitFor(() => expect(f.stored.size).toBe(1));
+    expect(f.storageSource).not.toHaveBeenCalled();
+    let closed = false;
+    const closing = f.manager.close().then(() => { closed = true; });
+    f.source.mockResolvedValue(undefined); // Provider admission is no longer available.
+    f.append([{ type: 'prompt.submitted', text: 'Later task', via: 'native' }, { type: 'model.completed', text: 'Later response' }]);
+    await f.manager.afterPersisted(f.scope.sessionId);
+    capture.resolve();
+    await vi.waitFor(() => expect(f.onEpisode).toHaveBeenCalledOnce());
+    expect(f.storageSource).toHaveBeenCalledExactlyOnceWith(f.scope.sessionId);
+    expect(f.onEpisode.mock.calls[0]![0]).toEqual([...f.stored.values()][0]!.episode);
+    expect(f.manager.isBusy()).toBe(true); expect(closed).toBe(false);
+    handoff.resolve(); await Promise.all([admission, closing]);
+    expect(f.manager.isBusy()).toBe(false); expect(f.onRevoked).not.toHaveBeenCalled();
+    expect(f.calls.map(call => call.action)).toEqual(['observed.capture']);
+    expect(JSON.stringify([...f.stored.values()])).not.toContain('Later task');
+    await f.manager.afterPersisted(f.scope.sessionId);
+    expect(f.onEpisode).toHaveBeenCalledOnce();
+  });
+
+  it.each(['disabled', 'profile', 'boundary', 'native-session'] as const)('revokes committed capture when shutdown storage consent confirms %s changed', async change => {
+    const f = fixture(true, true), capture = deferred();
+    f.captureGate(capture.promise); await f.manager.afterPersisted(f.scope.sessionId);
+    f.append([{ type: 'prompt.submitted', text: 'Accepted task', via: 'native' }, { type: 'model.completed', text: 'Accepted response' }]);
+    const admission = f.manager.afterPersisted(f.scope.sessionId);
+    await vi.waitFor(() => expect(f.stored.size).toBe(1));
+    const closing = f.manager.close();
+    f.source.mockResolvedValue(undefined);
+    if (change === 'disabled') f.update({ enabled: false });
+    else f.update({ scope: { ...f.scope, ...(change === 'profile' ? { profileId: 'profile-two' }
+      : change === 'boundary' ? { boundary: hash('changed-boundary') } : { nativeSessionId: 'native-two' }) } });
+    capture.resolve(); await Promise.all([admission, closing]);
+    expect(f.storageSource).toHaveBeenCalledExactlyOnceWith(f.scope.sessionId);
+    expect(f.onEpisode).not.toHaveBeenCalled(); expect(f.stored.size).toBe(0);
+    expect(f.calls.map(call => call.action)).toEqual(['observed.capture', 'observed.revoke']);
+    expect(f.onRevoked).toHaveBeenCalledExactlyOnceWith(f.scope);
+  });
+
+  it.each(['unavailable', 'failed'] as const)('retains a committed episode without handoff when shutdown storage authority is %s', async state => {
+    const f = fixture(true, true), capture = deferred();
+    f.captureGate(capture.promise); await f.manager.afterPersisted(f.scope.sessionId);
+    f.append([{ type: 'prompt.submitted', text: 'Accepted task', via: 'native' }, { type: 'model.completed', text: 'Accepted response' }]);
+    const admission = f.manager.afterPersisted(f.scope.sessionId);
+    await vi.waitFor(() => expect(f.stored.size).toBe(1));
+    const closing = f.manager.close();
+    if (state === 'unavailable') f.storageSource.mockResolvedValue(undefined);
+    else f.storageSource.mockRejectedValue(new Error('Storage authority unavailable'));
+    capture.resolve(); await Promise.all([admission, closing]);
+    expect(f.storageSource).toHaveBeenCalledOnce();
+    expect(f.onEpisode).not.toHaveBeenCalled(); expect(f.onRevoked).not.toHaveBeenCalled();
+    expect(f.stored.size).toBe(1); expect(f.calls.map(call => call.action)).toEqual(['observed.capture']);
+  });
+
+  it('switches to fresh storage authority when shutdown races the ordinary post-capture source lookup', async () => {
+    const f = fixture(true, true), capture = deferred(), sourceRead = deferred();
+    f.captureGate(capture.promise); await f.manager.afterPersisted(f.scope.sessionId);
+    f.append([{ type: 'prompt.submitted', text: 'Accepted task', via: 'native' }, { type: 'model.completed', text: 'Accepted response' }]);
+    const admission = f.manager.afterPersisted(f.scope.sessionId);
+    await vi.waitFor(() => expect(f.stored.size).toBe(1));
+    let lookupEntered = false;
+    f.source.mockImplementationOnce(async () => { lookupEntered = true; await sourceRead.promise; return undefined; });
+    capture.resolve(); await vi.waitFor(() => expect(lookupEntered).toBe(true));
+    expect(f.storageSource).not.toHaveBeenCalled();
+    const closing = f.manager.close(); sourceRead.resolve();
+    await Promise.all([admission, closing]);
+    expect(f.storageSource).toHaveBeenCalledExactlyOnceWith(f.scope.sessionId);
+    expect(f.onEpisode).toHaveBeenCalledOnce(); expect(f.onRevoked).not.toHaveBeenCalled();
+    expect(f.stored.size).toBe(1); expect(f.calls.map(call => call.action)).toEqual(['observed.capture']);
   });
 
   it('does not revoke a known scope when a queued source lookup resolves unavailable after shutdown', async () => {

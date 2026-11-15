@@ -215,3 +215,70 @@ fn process_kill_after_enter_never_reissues_the_admitted_effect() {
         "learning_recovery_effect_uncertain"
     );
 }
+
+#[test]
+fn process_kill_before_idle_preserves_snoozed_intent_and_admits_the_same_job_once() {
+    let data = Temp::new();
+    let mut first = Daemon::start(&data.0);
+    let mut capture = begin();
+    let tools = capture.as_object_mut().unwrap().remove("tools").unwrap();
+    let record = first.learning("queue.capture", capture.clone())["record"].clone();
+    assert_eq!(record["state"], "queued");
+    assert_eq!(record["modelRequests"], 0);
+    assert_eq!(record["active"], false);
+    drop(first);
+
+    let mut second = Daemon::start(&data.0);
+    let replay = second.learning("queue.capture", capture);
+    assert_eq!(replay["created"], false);
+    assert_eq!(replay["record"], record);
+    let mut control = json!({});
+    for key in [
+        "profileId",
+        "workspaceId",
+        "sessionId",
+        "runId",
+        "promptSha256",
+        "destinationRevision",
+        "routeFingerprint",
+        "policy",
+        "jobId",
+    ] {
+        control[key] = record[key].clone();
+    }
+    control["queueRevision"] = record["queue"]["revision"].clone();
+    let mut snooze = control.clone();
+    snooze["delaySeconds"] = 600.into();
+    let snoozed = second.learning("queue.delay", snooze)["record"].clone();
+    assert_eq!(snoozed["queue"]["delaySeconds"], 600);
+    drop(second);
+
+    let mut third = Daemon::start(&data.0);
+    let records = third.learning("job.list", json!({"profileId":"default"}));
+    assert_eq!(records["jobs"][0], snoozed);
+    control["tools"] = tools;
+    let stale = third.request(
+        "learning.process",
+        json!({"action":"queue.admit","input":control}),
+    );
+    assert_eq!(stale["kind"], "error");
+    assert_eq!(stale["error"]["reason"], "learning_queue_changed");
+    control["queueRevision"] = snoozed["queue"]["revision"].clone();
+    let admitted = third.learning("queue.admit", control.clone())["job"].clone();
+    assert_eq!(admitted["jobId"], record["jobId"]);
+    assert_eq!(admitted["effect"]["kind"], "model");
+    drop(third);
+
+    let mut fourth = Daemon::start(&data.0);
+    let records = fourth.learning("job.list", json!({"profileId":"default"}));
+    assert_eq!(records["jobs"][0]["state"], "resumable");
+    assert_eq!(records["jobs"][0]["modelRequests"], 1);
+    let retry = fourth.request(
+        "learning.process",
+        json!({"action":"queue.admit","input":control}),
+    );
+    assert_eq!(retry["kind"], "error");
+    assert_eq!(retry["error"]["reason"], "learning_queue_already_admitted");
+    let recovered = fourth.learning("job.recover", recovery(&admitted))["job"].clone();
+    assert_eq!(recovered["effect"], admitted["effect"]);
+}

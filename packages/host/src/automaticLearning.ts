@@ -54,6 +54,10 @@ export type ObservedAutomaticLearningOptions = Omit<AutomaticLearningOptions, 'r
   /** A Rust-stored, attributed episode; observed reports never masquerade as successful Native tools. */
   observed: { scope: ObservedMemoryScope; episodeId: string; revision: string };
 };
+export type QueuedAutomaticLearningOptions = Omit<AutomaticLearningOptions, 'result' | 'currentTurnEvidence'> & {
+  /** No live Rust job exists until this exact retained source is admitted. */
+  queued: LearningRecoveryBinding & { jobId: string; queueRevision: string };
+};
 export type RecoveredAutomaticLearningOptions = Omit<AutomaticLearningOptions, 'result' | 'currentTurnEvidence'> & {
   /** Fresh host authorization of every retained binding precedes this call. */
   recovery: LearningRecoveryBinding & { jobId: string };
@@ -89,16 +93,20 @@ export function runAutomaticLearning(options: AutomaticLearningOptions): Promise
 export function runObservedAutomaticLearning(options: ObservedAutomaticLearningOptions): Promise<AutomaticLearningResult> {
   return runLearning(options);
 }
+export function runQueuedAutomaticLearning(options: QueuedAutomaticLearningOptions): Promise<AutomaticLearningResult> {
+  return runLearning(options);
+}
 export function runRecoveredAutomaticLearning(options: RecoveredAutomaticLearningOptions): Promise<AutomaticLearningResult> {
   return runLearning(options);
 }
-async function runLearning(options: AutomaticLearningOptions | ObservedAutomaticLearningOptions | RecoveredAutomaticLearningOptions): Promise<AutomaticLearningResult> {
+async function runLearning(options: AutomaticLearningOptions | ObservedAutomaticLearningOptions | RecoveredAutomaticLearningOptions | QueuedAutomaticLearningOptions): Promise<AutomaticLearningResult> {
   let result: AutomaticLearningResult = { outcome: 'skipped', skill: { status: 'skipped' }, note: { status: 'skipped' } };
   const observed = 'observed' in options;
   const recovered = 'recovery' in options;
-  const durable = Boolean(options.routeFingerprint || recovered);
+  const queued = 'queued' in options;
+  const durable = Boolean(options.routeFingerprint || recovered || queued);
   if (!options.policy.enabled || (!options.policy.skills && !options.policy.notes)
-    || !observed && !recovered && !hasAutomaticLearningEvidence(options.result, options.currentTurnEvidence, options.sourceContext)) return result;
+    || !observed && !recovered && !queued && !hasAutomaticLearningEvidence(options.result, options.currentTurnEvidence, options.sourceContext)) return result;
   if (options.signal.aborted) return { ...result, outcome: 'cancelled', reason: 'The source invocation was cancelled.' };
   const backend = options.backend;
   if (!backend) return { ...result, outcome: 'failed', reason: 'The Rust learning backend is unavailable.' };
@@ -138,19 +146,24 @@ async function runLearning(options: AutomaticLearningOptions | ObservedAutomatic
     // Abort propagation starts with admission, including time waiting for begin's acknowledgement.
     // Rust independently owns and checks the authoritative job deadline.
     timer = setTimeout(requestCancellation, Math.min(120_000, options.timeoutMs ?? 90_000));
-    if (recovered) {
+    if (recovered || queued) {
       await assertActive();
-      const { jobId, profileId, workspaceId, sessionId, runId, promptSha256, destinationRevision, routeFingerprint, policy, observedSource } = options.recovery;
+      const binding = queued ? options.queued : options.recovery;
+      const { jobId, profileId, workspaceId, sessionId, runId, promptSha256, destinationRevision, routeFingerprint, policy, observedSource } = binding;
       const supplied = [options.profileId, options.workspaceId, options.sessionId, options.runId, options.promptSha256, options.revision, options.routeFingerprint];
       if (JSON.stringify(supplied) !== JSON.stringify([profileId, workspaceId, sessionId, runId, promptSha256, destinationRevision, routeFingerprint])
         || options.policy.enabled !== policy.enabled || options.policy.notes !== policy.notes || options.policy.skills !== policy.skills
         || policy.notes && !options.writeNote || policy.skills && !options.proposeSkill) {
         throw new Error('The recovery bindings or required publication adapters changed.');
       }
-      job = (await backend.process('job.recover', { jobId, profileId, workspaceId, sessionId, runId, promptSha256, destinationRevision, routeFingerprint, policy,
+      const input = { jobId, profileId, workspaceId, sessionId, runId, promptSha256, destinationRevision, routeFingerprint, policy,
         ...(observedSource ? { observedSource } : {}),
         tools: tools.map(({ name, description, parameters }) => ({ name, description, parameters: { ...parameters } })),
-      })).job;
+      };
+      job = queued ? (await backend.process('queue.admit', { ...input, queueRevision: options.queued.queueRevision,
+        ...(options.memoryContext ? { memoryContext: options.memoryContext } : {}),
+        ...(options.timeoutMs !== undefined ? { timeoutMs: options.timeoutMs } : {}),
+      })).job : (await backend.process('job.recover', input)).job;
     } else if (observed) {
       await assertActive();
       job = (await backend.process('observed.jobBegin', {
@@ -189,7 +202,7 @@ async function runLearning(options: AutomaticLearningOptions | ObservedAutomatic
     result.agentId = `learning-${randomUUID()}`;
     options.onWorkerStarted?.(result.agentId);
     started = true;
-    await emit({ type: 'subagent.spawned', subagentId: result.agentId, role: 'Skills curator', label: recovered ? 'Resuming saved learning' : observed ? 'Observed work review' : 'Post-task learning' });
+    await emit({ type: 'subagent.spawned', subagentId: result.agentId, role: 'Skills curator', label: recovered ? 'Resuming saved learning' : observed || queued && options.queued.observedSource ? 'Observed work review' : 'Post-task learning' });
     await emit({ type: 'subagent.state', subagentId: result.agentId, state: 'working', summary: 'Reviewing completed task evidence' });
     await emit({ type: 'agent.state', state: 'working', activity: 'knowledge', summary: 'Reviewing completed task evidence' });
     while (job.status === 'running' && job.effect) {

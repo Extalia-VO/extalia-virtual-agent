@@ -62,9 +62,9 @@ export interface LearningScheduleJob {
   createdAt: string;
   /** Positive receipts survive a later executor, export or cleanup failure. */
   result?: LearningScheduleResult;
-  /** Retained checkpoint metadata. Only resumable/publication states admit an explicit resume. */
+  /** Retained checkpoint metadata. Queued, resumable and publication states permit explicit admission. */
   recovery?: {
-    state: 'resumable' | 'publication' | 'uncertain' | 'expired';
+    state: 'queued' | 'resumable' | 'publication' | 'uncertain' | 'expired';
     modelRequests: number;
     reads: number;
     skillReviewRequired: boolean;
@@ -78,6 +78,8 @@ export interface LearningScheduleSnapshot {
   snoozeSeconds: 600;
   /** Scheduling still works; retained checkpoints could not be inspected. */
   recoveryUnavailable?: boolean;
+  /** Visible work is usable; other records are unreadable or outside the bounded listing. */
+  recoveryIncomplete?: boolean;
 }
 
 export interface LearningScheduleAction {

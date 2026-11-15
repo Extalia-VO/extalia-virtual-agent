@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { AnyTool, ModelProvider, ModelRequest, ModelResult, ToolResultEntry, TurnResult } from '@extalia/runtime';
 import type { EventBody } from '@extalia/protocol';
-import { automaticLearningTools, LEARNING_EVIDENCE_CHUNK_UNITS, runAutomaticLearning, runObservedAutomaticLearning, runRecoveredAutomaticLearning, type AutomaticLearningOptions } from '../src/automaticLearning.js';
+import { automaticLearningTools, LEARNING_EVIDENCE_CHUNK_UNITS, runAutomaticLearning, runObservedAutomaticLearning, runRecoveredAutomaticLearning, runQueuedAutomaticLearning, type AutomaticLearningOptions } from '../src/automaticLearning.js';
 import { RustLearningBackend, type RustLearningAction, type RustLearningInputs, type RustLearningJob, type RustLearningPort, type RustLearningResults } from '../src/rustLearning.js';
 import { DaemonSidecar } from '../src/daemon/index.js';
 import { DAEMON_BINARY, HAS_DAEMON } from './daemonBackend.js';
@@ -33,7 +33,7 @@ function fakeBackend(afterModel: RustLearningJob | RustLearningJob[] = ready(), 
       case 'evidence.begin': value = { intakeId: 'intake-one' }; break;
       case 'evidence.append': value = { complete: false }; break;
       case 'evidence.release': value = { released: true }; break;
-      case 'job.begin': case 'observed.jobBegin': value = { job }; break;
+      case 'job.begin': case 'observed.jobBegin': case 'queue.admit': value = { job }; break;
       case 'job.enter': value = { job }; break;
       case 'job.recover': job = next.shift() ?? ready(); value = { job }; break;
       case 'job.advance': job = next.shift() ?? ready(); value = { job }; break;
@@ -64,6 +64,43 @@ function options(overrides: Partial<AutomaticLearningOptions> = {}): AutomaticLe
 function tool(name: string, access: AnyTool['access'] = 'read', kind: AnyTool['kind'] = 'read'): AnyTool {
   return { name, access, kind, description: name, parameters: { type: 'object', properties: {} }, describe: () => ({ label: name }), run: vi.fn(async () => ({ ok: true, output: 'Read result.' })) };
 }
+
+describe('queued learning admission', () => {
+  const routeFingerprint = 'e'.repeat(64);
+  const queued = { ...provenance, jobId: 'job-one', queueRevision: 'f'.repeat(64), destinationRevision: 'revision-one', routeFingerprint,
+    policy: { enabled: true, notes: true, skills: true } };
+
+  it('admits the retained identity before entering a model without recapturing source evidence', async () => {
+    const backend = fakeBackend(), setup = options({ backend: backend.port, routeFingerprint });
+    const result = await runQueuedAutomaticLearning({ ...setup, queued });
+    expect(result).toMatchObject({ outcome: 'completed', note: { status: 'saved' }, skill: { status: 'recorded' } });
+    expect(backend.calls.slice(0, 3).map(call => call.action)).toEqual(['queue.admit', 'job.enter', 'job.advance']);
+    expect(backend.calls[0]?.input).toEqual({ ...queued, tools: [] });
+    expect(backend.calls.map(call => call.action)).not.toContain('evidence.begin');
+    expect(backend.calls.map(call => call.action)).not.toContain('job.begin');
+    expect(setup.provider.complete).toHaveBeenCalledOnce();
+  });
+
+  it('makes no provider call or automatic retry when queue admission acknowledgement is lost', async () => {
+    const backend = fakeBackend();
+    const port: RustLearningPort = { async process(action, input) {
+      const reply = await backend.port.process(action, input);
+      if (action === 'queue.admit') throw new Error('Synthetic admission acknowledgement loss.');
+      return reply;
+    } };
+    const setup = options({ backend: port, routeFingerprint });
+    expect(await runQueuedAutomaticLearning({ ...setup, queued })).toMatchObject({ outcome: 'failed' });
+    expect(setup.provider.complete).not.toHaveBeenCalled();
+    expect(backend.calls.map(call => call.action)).toEqual(['queue.admit']);
+  });
+
+  it('refuses a changed route before admitting the retained source', async () => {
+    const backend = fakeBackend(), setup = options({ backend: backend.port, routeFingerprint: '0'.repeat(64) });
+    expect(await runQueuedAutomaticLearning({ ...setup, queued })).toMatchObject({ outcome: 'failed' });
+    expect(backend.calls).toEqual([]);
+    expect(setup.provider.complete).not.toHaveBeenCalled();
+  });
+});
 
 describe('durable learning recovery effects', () => {
   const routeFingerprint = 'e'.repeat(64);

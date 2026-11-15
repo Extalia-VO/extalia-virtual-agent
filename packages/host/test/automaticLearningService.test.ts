@@ -10,7 +10,7 @@ import { useTempDirs } from './helpers.js';
 import { DAEMON_BINARY, HAS_DAEMON } from './daemonBackend.js';
 import { learningObservedFixture } from './learningObservedFixture.js';
 import { DaemonSidecar } from '../src/daemon/index.js';
-import { RustLearningBackend } from '../src/rustLearning.js';
+import { RustLearningBackend, type RustLearningAction, type RustLearningInputs, type RustLearningResults } from '../src/rustLearning.js';
 
 const temp = useTempDirs();
 const runtimes: AgentHostRuntime[] = [];
@@ -53,7 +53,7 @@ async function fixture(options: { enabled?: boolean; history?: boolean; skills?:
       profile: { id: options.profileAlias, name: 'Fixture profile' }, connections: [], workspaces: [] }));
   }
   const requests: Body[] = [], events: ExtaliaEvent[] = [], curatorSignals: (AbortSignal | null | undefined)[] = [], readPrompts = new Map<string, number>();
-  const runtime = await createAgentHost({
+  const runtimeOptions = {
     kind: 'bridge', version: 'test', dataDirectory: data, homeDirectory: home, importHome: home,
     env: { EXTALIA_SECRET_STORE: 'memory', EXTALIA_NATIVE_CORE: 'typescript', EXTALIA_DAEMON_PATH: DAEMON_BINARY, EXTALIA_HERMES_BIN: path.join(root, 'missing'), PATH: '' },
     fetch: async (url, init) => {
@@ -88,7 +88,8 @@ async function fixture(options: { enabled?: boolean; history?: boolean; skills?:
       }
       return response({ text: 'Source task completed.' }, call);
     },
-  });
+  } satisfies Parameters<typeof createAgentHost>[0];
+  let runtime = await createAgentHost(runtimeOptions);
   runtimes.push(runtime);
   const host = runtime.host; host.subscribe(event => events.push(event));
   const connection = (await host.saveConnection({ name: 'Fixture', preset: 'custom', api: 'openai-chat', baseUrl: 'https://example.com/v1', model: 'fixture-model', credential: { kind: 'none' }, features: { memory: 'off', skills: options.skills ? 'extalia' : 'off', history: options.history ?? true }, orchestration: { enabled: false, maxDelegations: 0, tiers: {} } })).connections[0]!;
@@ -111,7 +112,14 @@ async function fixture(options: { enabled?: boolean; history?: boolean; skills?:
     automaticLearning: { enabled: options.enabled ?? true, skills: options.skills ?? false, notes: true }, expectedRevision: before.revision });
   const profile = catalog.profiles.find(item => item.workspaceIds.includes(workspace.id))!;
   const session = await host.createSession(workspace.id);
-  return { root, data, runtime, host, requests, curatorSignals, events, session, workspace, profile, otherWorkspace, otherSession };
+  return { root, data, requests, curatorSignals, events, session, workspace, profile, connection, otherWorkspace, otherSession,
+    get runtime() { return runtime; }, get host() { return runtime.host; },
+    async restart() {
+      await runtime.close();
+      runtime = await createAgentHost(runtimeOptions); runtimes.push(runtime);
+      runtime.host.subscribe(event => events.push(event));
+    },
+  };
 }
 const idle = async (runtime: AgentHostRuntime) => { await vi.waitFor(() => expect(runtime.isBusy()).toBe(false), { timeout: 5_000, interval: 5 }); };
 const noteFiles = async (root: string, workspace: string) => readdir(path.join(root, 'Learning', workspace)).catch((error: NodeJS.ErrnoException) => { if (error.code === 'ENOENT') return []; throw error; });
@@ -129,6 +137,69 @@ const settledLearning = async (f: Awaited<ReturnType<typeof fixture>>) => {
 };
 
 describe.skipIf(process.platform === 'win32')('saved profile automatic learning through the Native host', () => {
+  it.skipIf(!HAS_DAEMON).each([{ isolated: false, snooze: false }, { isolated: true, snooze: true }])('restores an unentered source and its full chosen quiet interval after restart (%j)', async settings => {
+    const f = await fixture({ isolated: settings.isolated });
+    await f.host.sendPrompt(f.session.id, 'Read the parser and retain this completed task before idle.'); await idle(f.runtime);
+    let snapshot = await f.host.learningSchedule!();
+    const initial = snapshot.jobs.find(job => job.state === 'scheduled')!;
+    expect(initial).toMatchObject({ workspaceId: f.workspace.id, profileId: f.profile.id });
+    if (settings.snooze) await f.host.changeLearningSchedule!(initial.id, snapshot.revision, 'snooze');
+    expect(f.requests.filter(curator)).toHaveLength(0);
+    expect(await noteFiles(f.profile.root, f.workspace.id)).toEqual([]);
+    await f.restart();
+    snapshot = await f.host.learningSchedule!();
+    const restored = snapshot.jobs.find(job => job.id === initial.id)!;
+    expect(restored).toMatchObject({ state: 'scheduled', workspaceId: f.workspace.id, profileId: f.profile.id,
+      sessionId: f.session.id, delaySeconds: settings.snooze ? 600 : 60 });
+    expect(Date.parse(restored.dueAt) - Date.now()).toBeGreaterThan(settings.snooze ? 595_000 : 55_000);
+    expect(snapshot.jobs.filter(job => job.recovery)).toEqual([]);
+    expect(f.requests.filter(curator)).toHaveLength(0);
+    await runNow(f); await settledLearning(f);
+    expect(f.requests.filter(curator)).toHaveLength(1);
+    expect(await noteFiles(f.profile.root, f.workspace.id)).toHaveLength(1);
+    await f.restart();
+    expect((await f.host.learningSchedule!()).jobs).toEqual([]);
+    expect(f.requests.filter(curator)).toHaveLength(1);
+  });
+
+  it.skipIf(!HAS_DAEMON)('drains a source capture accepted before shutdown even while evidence intake is pending', async () => {
+    const f = await fixture(), entered = deferred(), release = deferred();
+    const original = RustLearningBackend.prototype.process;
+    let intercepted = false;
+    const spy = vi.spyOn(RustLearningBackend.prototype, 'process').mockImplementation(async function<A extends RustLearningAction>(this: RustLearningBackend, action: A, input: RustLearningInputs[A]): Promise<RustLearningResults[A]> {
+      if (!intercepted && action === 'evidence.append') { intercepted = true; entered.resolve(); await release.promise; }
+      return original.call(this, action, input) as Promise<RustLearningResults[A]>;
+    });
+    try {
+      await f.host.sendPrompt(f.session.id, 'Read the parser and retain the completed source during shutdown.');
+      await entered.promise;
+      let closed = false;
+      const closing = f.runtime.close().then(() => { closed = true; });
+      await Promise.resolve(); expect(closed).toBe(false);
+      release.resolve(); await closing;
+      expect(spy.mock.calls.some(call => call[0] === 'queue.capture')).toBe(true);
+      expect(f.requests.filter(curator)).toHaveLength(0);
+    } finally { release.resolve(); spy.mockRestore(); }
+    await f.restart();
+    expect((await f.host.learningSchedule!()).jobs).toEqual([expect.objectContaining({ state: 'scheduled', sessionId: f.session.id, profileId: f.profile.id })]);
+    await runNow(f); await settledLearning(f);
+    expect(f.requests.filter(curator)).toHaveLength(1);
+  });
+
+  it.skipIf(!HAS_DAEMON)('never restores queued work after its profile consent is revoked', async () => {
+    const f = await fixture();
+    await f.host.sendPrompt(f.session.id, 'Read the parser before the learning setting changes.'); await idle(f.runtime);
+    expect((await f.host.learningSchedule!()).jobs.some(job => job.state === 'scheduled')).toBe(true);
+    const profiles = await f.host.listVaultProfiles!();
+    await f.host.saveVaultProfile!({ id: f.profile.id, name: f.profile.name, vaultRoot: null, workspaceIds: [f.workspace.id], minutesEnabled: false,
+      automaticLearning: { enabled: false, skills: false, notes: true }, expectedRevision: profiles.revision });
+    await f.restart();
+    expect((await f.host.learningSchedule!()).jobs).toEqual([]);
+    expect(f.requests.filter(curator)).toHaveLength(0);
+    expect(await noteFiles(f.profile.root, f.workspace.id)).toEqual([]);
+  });
+
+
   it.skipIf(!HAS_DAEMON).each(['resumable', 'publication'] as const)('resumes a real %s checkpoint through the restarted host and current profile', async retained => {
     const f = await fixture();
     await f.host.sendPrompt(f.session.id, 'Read the parser and preserve verified validation guidance.');
@@ -344,7 +415,7 @@ describe.skipIf(process.platform === 'win32')('saved profile automatic learning 
     expect(f.events.some(event => event.body.type === 'tool.completed' && event.body.tool === 'automatic_learning' && event.body.ok)).toBe(true);
   });
 
-  it.skipIf(!HAS_DAEMON)('snoozes without starting Rust work and rejects an action with a stale revision', async () => {
+  it.skipIf(!HAS_DAEMON)('snoozes without starting curator execution and rejects an action with a stale revision', async () => {
     const f = await fixture();
     await f.host.sendPrompt(f.session.id, 'Read the parser before snoozing.'); await idle(f.runtime);
     const initial = await f.host.learningSchedule!();

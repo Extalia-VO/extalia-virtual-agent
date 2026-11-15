@@ -2356,7 +2356,9 @@ const en = {
     changed: 'The workspace, profile or destination changed. Previous work was not sent to a different vault.',
     interrupted: 'Extalia closed before this update finished. It will not be replayed automatically.',
     resume: 'Resume saved learning',
+    queueSaved: 'Run saved learning when idle',
     recoveryStates: {
+      queued: 'This learning task was saved before analysis started. It can run when the source, profile and model are checked again and conflicting work is idle.',
       resumable: 'A saved checkpoint can continue after the source, profile and model are checked again. Continuing may use more model tokens.',
       publication: 'Findings are saved. Resume to verify current sources and complete any unconfirmed outputs.',
       uncertain: 'A step may already have run, but its result was not confirmed. Extalia will not repeat it. Check session activity and saved outputs.',
@@ -2365,6 +2367,7 @@ const en = {
     recoveryProgress: (models: number, reads: number) => `Retained progress: ${models} model requests · ${reads} source reads.`,
     recoverySkillReview: 'This skill refinement needs a fresh review of its source. A separately verified Knowledge note can still finish.',
     recoveryUnavailable: 'Saved learning checkpoints could not be inspected. Scheduled work is shown; recovery status is temporarily unavailable.',
+    recoveryIncomplete: 'Some saved learning records could not be shown because of the listing limit or an unreadable record. The work shown here remains available.',
     timeRemaining: 'Time until learning begins', runNow: 'Run now', snooze: (minutes: number) => `Snooze ${minutes} min`, dismiss: 'Dismiss update notice',
   },
   vaultProfiles: {
@@ -5030,7 +5033,9 @@ const id: Messages = {
     changed: 'Workspace, profil, atau tujuan berubah. Pekerjaan sebelumnya tidak dikirim ke vault lain.',
     interrupted: 'Extalia ditutup sebelum pembaruan selesai. Pembaruan tidak diulang otomatis.',
     resume: 'Lanjutkan pembelajaran tersimpan',
+    queueSaved: 'Jalankan pembelajaran tersimpan saat idle',
     recoveryStates: {
+      queued: 'Tugas pembelajaran tersimpan sebelum analisis dimulai. Tugas dapat berjalan setelah sumber, profil, dan model diperiksa ulang serta pekerjaan yang berbagi sumber daya sudah idle.',
       resumable: 'Checkpoint tersimpan dapat dilanjutkan setelah sumber, profil, dan model diperiksa ulang. Melanjutkan dapat memakai token model tambahan.',
       publication: 'Hasil analisis tersimpan. Lanjutkan untuk memverifikasi sumber terkini dan menyelesaikan hasil yang belum terkonfirmasi.',
       uncertain: 'Sebuah langkah mungkin sudah berjalan, tetapi hasilnya belum terkonfirmasi. Extalia tidak akan mengulanginya. Periksa aktivitas sesi dan hasil yang tersimpan.',
@@ -5039,6 +5044,7 @@ const id: Messages = {
     recoveryProgress: (models: number, reads: number) => `Progres tersimpan: ${models} permintaan model · ${reads} pembacaan sumber.`,
     recoverySkillReview: 'Penyempurnaan skill ini memerlukan tinjauan sumber yang baru. Catatan Knowledge yang diverifikasi terpisah tetap dapat diselesaikan.',
     recoveryUnavailable: 'Checkpoint pembelajaran tersimpan belum dapat diperiksa. Jadwal kerja tetap ditampilkan; status pemulihan sementara tidak tersedia.',
+    recoveryIncomplete: 'Sebagian catatan pembelajaran tersimpan belum dapat ditampilkan karena batas daftar atau catatan yang tidak terbaca. Pekerjaan yang ditampilkan tetap tersedia.',
     timeRemaining: 'Waktu menuju pembelajaran dimulai', runNow: 'Jalankan sekarang', snooze: (minutes: number) => `Tunda ${minutes} menit`, dismiss: 'Tutup pemberitahuan pembaruan',
   },
   vaultProfiles: {

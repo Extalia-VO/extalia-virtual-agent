@@ -10,6 +10,42 @@ const input = {
 };
 
 describe('bounded learning curator contract', () => {
+  it('separates durable queue capture from effect admission and requires exact mutation generations', () => {
+    const { tools: _tools, ...source } = input; void _tools;
+    const capture = { ...source, routeFingerprint: 'b'.repeat(64) };
+    expect(valid(learningParams, { action: 'queue.capture', input: capture })).toBe(true);
+    expect(valid(learningParams, { action: 'queue.capture', input: { ...capture, tools: [] } })).toBe(false);
+    expect(valid(learningParams, { action: 'queue.capture', input: { ...capture, memoryContext: 'old recall' } })).toBe(false);
+    expect(valid(learningParams, { action: 'queue.capture', input: { ...capture, routeFingerprint: undefined } })).toBe(false);
+    const binding = { profileId: input.profileId, workspaceId: input.workspaceId, sessionId: input.sessionId,
+      runId: input.runId, promptSha256: input.promptSha256, destinationRevision: input.revision,
+      routeFingerprint: capture.routeFingerprint, policy: input.policy, jobId: 'c'.repeat(64), queueRevision: 'd'.repeat(64) };
+    expect(valid(learningParams, { action: 'queue.admit', input: { ...binding, tools: [] } })).toBe(true);
+    expect(valid(learningParams, { action: 'queue.admit', input: { ...binding, tools: [], replayUncertain: true } })).toBe(false);
+    expect(valid(learningParams, { action: 'queue.admit', input: { ...binding, tools: [], queueRevision: undefined } })).toBe(false);
+    expect(valid(learningParams, { action: 'queue.delay', input: { ...binding, delaySeconds: 600 } })).toBe(true);
+    expect(valid(learningParams, { action: 'queue.delay', input: { ...binding, delaySeconds: 0 } })).toBe(false);
+    expect(valid(learningParams, { action: 'queue.delay', input: { ...binding, delaySeconds: 599 } })).toBe(false);
+    expect(valid(learningParams, { action: 'queue.cancel', input: binding })).toBe(true);
+    const { queueRevision, ...recordBinding } = binding;
+    const record = { ...recordBinding, state: 'queued', active: false, updatedAt: 10, expiresAt: 20,
+      modelRequests: 0, reads: 0, skillReviewRequired: false, queue: { revision: queueRevision, delaySeconds: 600 } };
+    expect(valid(learningResult, { action: 'queue.capture', record, created: true })).toBe(true);
+    expect(valid(learningResult, { action: 'queue.delay', record })).toBe(true);
+    expect(valid(learningResult, { action: 'queue.capture', record: { ...record, sourceContext: { user: 'private', assistant: '' } }, created: true })).toBe(false);
+    expect(valid(learningResult, { action: 'queue.capture', record: { ...record, queue: { ...record.queue, runImmediately: true } }, created: true })).toBe(false);
+  });
+
+  it('requires an exact observed episode and destination for pre-admission capture', () => {
+    const capture = { scope: { profileId: 'default', workspaceId: 'global-observe', sessionId: 'observed', sourceId: 'codex', nativeSessionId: 'native', boundary: 'a'.repeat(64) },
+      episodeId: 'b'.repeat(64), revision: 'c'.repeat(64), destinationRevision: 'vault-r2', runId: 'run', promptSha256: 'd'.repeat(64),
+      policy: input.policy, routeFingerprint: 'e'.repeat(64) };
+    expect(valid(learningParams, { action: 'observed.queueCapture', input: capture })).toBe(true);
+    expect(valid(learningParams, { action: 'observed.queueCapture', input: { ...capture, destinationRevision: undefined } })).toBe(false);
+    expect(valid(learningParams, { action: 'observed.queueCapture', input: { ...capture, tools: [] } })).toBe(false);
+    expect(valid(learningParams, { action: 'observed.queueCapture', input: { ...capture, scope: { ...capture.scope, granted: true } } })).toBe(false);
+  });
+
   it('binds checkpoint recovery to source, route and destination without accepting replay permission', () => {
     const binding = { jobId: 'c'.repeat(64), profileId: input.profileId, workspaceId: input.workspaceId, sessionId: input.sessionId,
       runId: input.runId, promptSha256: input.promptSha256, destinationRevision: input.revision,

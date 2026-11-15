@@ -1,11 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Connection } from '@extalia/core';
-import { LearningRecovery, learningRouteFingerprint, type LearningRecoveryCandidate } from '../src/learningRecovery.js';
-import { LearningSchedule } from '../src/learningSchedule.js';
+import { LearningRecovery, learningRouteFingerprint, type LearningRecoveryCandidate, type LearningRecoveryCatalog } from '../src/learningRecovery.js';
+import { LearningSchedule, type ScheduledLearningInput } from '../src/learningSchedule.js';
 import type { LearningRecoveryRecord } from '../src/rustLearning.js';
 
 const queues: LearningSchedule[] = [];
-afterEach(async () => { for (const queue of queues.splice(0)) await queue.close(); });
+afterEach(async () => { for (const queue of queues.splice(0)) await queue.close(); vi.useRealTimers(); });
 function checkpoint(overrides: Partial<LearningRecoveryRecord> = {}): LearningRecoveryRecord {
   return { jobId: 'saved-job', profileId: 'profile', workspaceId: 'workspace', sessionId: 'session', runId: 'run',
     promptSha256: 'a'.repeat(64), routeFingerprint: 'b'.repeat(64), destinationRevision: 'revision',
@@ -16,8 +16,8 @@ function checkpoint(overrides: Partial<LearningRecoveryRecord> = {}): LearningRe
 function fixture(records: LearningRecoveryRecord[] = [checkpoint()]) {
   const queue = new LearningSchedule(); queues.push(queue);
   const execute = vi.fn(async () => undefined);
-  const list = vi.fn(async (): Promise<LearningRecoveryCandidate[]> => records.map(record => ({ record, profileName: 'Synthetic profile' })));
-  const prepare = vi.fn(async (record: LearningRecoveryRecord, id: string) => ({ id, profileId: record.profileId,
+  const list = vi.fn(async (): Promise<LearningRecoveryCandidate[] | LearningRecoveryCatalog> => records.map(record => ({ record, profileName: 'Synthetic profile' })));
+  const prepare = vi.fn(async (record: LearningRecoveryRecord, id: string): Promise<ScheduledLearningInput> => ({ id, profileId: record.profileId,
     workspaceId: record.workspaceId, sessionId: record.sessionId, profileName: 'Synthetic profile',
     ready: () => false, validate: async () => true, execute }));
   const recovery = new LearningRecovery({ queue, list, prepare });
@@ -25,6 +25,98 @@ function fixture(records: LearningRecoveryRecord[] = [checkpoint()]) {
 }
 
 describe('authorized learning recovery admission', () => {
+  it('restores healthy queued sources and reports an incomplete catalog without hiding them', async () => {
+    const saved = checkpoint({ state: 'queued', modelRequests: 0, reads: 0, queue: { revision: 'd'.repeat(64), delaySeconds: 60 } });
+    const f = fixture();
+    f.list.mockResolvedValue({ candidates: [{ record: saved, profileName: 'Synthetic profile' }], incomplete: true });
+    await f.recovery.restoreQueued();
+    const snapshot = await f.recovery.snapshot();
+    expect(snapshot.recoveryIncomplete).toBe(true);
+    expect(snapshot.recoveryUnavailable).toBeUndefined();
+    expect(snapshot.jobs).toHaveLength(1);
+    expect(snapshot.jobs[0]?.state).toBe('scheduled');
+    const snoozed = await f.recovery.act({ id: snapshot.jobs[0]!.id, revision: snapshot.revision, action: 'snooze' });
+    expect(snoozed.jobs[0]?.delaySeconds).toBe(600);
+    expect(snoozed.recoveryIncomplete).toBe(true);
+  });
+
+  it('does not prevent startup when durable listing is unavailable', async () => {
+    const f = fixture(); f.list.mockRejectedValue(new Error('Synthetic backend unavailable.'));
+    await expect(f.recovery.restoreQueued()).resolves.toBeUndefined();
+    expect(f.prepare).not.toHaveBeenCalled();
+    expect((await f.recovery.snapshot()).recoveryUnavailable).toBe(true);
+  });
+
+  it('restores only never-started jobs and preserves the full selected quiet interval', async () => {
+    vi.useFakeTimers();
+    const saved = checkpoint({ state: 'queued', modelRequests: 0, reads: 0, queue: { revision: 'd'.repeat(64), delaySeconds: 600 } });
+    const f = fixture([saved, checkpoint({ jobId: 'started', runId: 'started-run' }), checkpoint({ jobId: 'uncertain', runId: 'uncertain-run', state: 'uncertain' })]);
+    f.prepare.mockImplementation(async (record, id) => ({ id, profileId: record.profileId, workspaceId: record.workspaceId,
+      sessionId: record.sessionId, profileName: 'Synthetic profile', ready: () => true, validate: async () => true, execute: f.execute }));
+    await f.recovery.restoreQueued();
+    const snapshot = await f.recovery.snapshot();
+    expect(f.prepare).toHaveBeenCalledTimes(1);
+    expect(snapshot.jobs.filter(job => job.state === 'scheduled')).toEqual([expect.objectContaining({ id: 'run', delaySeconds: 600 })]);
+    expect(snapshot.jobs.filter(job => job.recovery).map(job => job.recovery!.state)).toEqual(['resumable', 'uncertain']);
+    await vi.advanceTimersByTimeAsync(599_999);
+    expect(f.execute).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(f.execute).toHaveBeenCalledTimes(1);
+  });
+
+  it('restores once, fences concurrent actions, and does not hydrate on snapshot reads', async () => {
+    const f = fixture([checkpoint({ state: 'queued', modelRequests: 0, reads: 0, queue: { revision: 'd'.repeat(64), delaySeconds: 60 } })]);
+    const before = await f.recovery.snapshot();
+    expect(f.prepare).not.toHaveBeenCalled();
+    let release!: () => void;
+    const wait = new Promise<void>(resolve => { release = resolve; });
+    const prepare = f.prepare.getMockImplementation()!;
+    f.prepare.mockImplementation(async (...args) => { await wait; return prepare(...args); });
+    const first = f.recovery.restoreQueued();
+    expect(f.recovery.restoreQueued()).toBe(first);
+    await expect(f.recovery.act({ id: before.jobs[0]!.id, revision: before.revision, action: 'resume' })).rejects.toThrow(/Another learning action/);
+    release(); await first; await f.recovery.restoreQueued();
+    expect(f.prepare).toHaveBeenCalledTimes(1);
+    expect(f.queue.snapshot().jobs).toHaveLength(1);
+  });
+
+  it('leaves queued records discoverable if the local queue is full or authority changes during restore', async () => {
+    const f = fixture([checkpoint({ state: 'queued', queue: { revision: 'd'.repeat(64), delaySeconds: 60 } })]);
+    for (let i = 0; i < 16; i++) f.queue.schedule({ id: `existing-${i}`, workspaceId: 'workspace', profileId: 'profile', sessionId: 'session',
+      profileName: 'Fixture', ready: () => false, validate: async () => true, execute: f.execute });
+    await f.recovery.restoreQueued();
+    expect(f.queue.snapshot().jobs).toHaveLength(16);
+    expect((await f.recovery.snapshot()).jobs.at(-1)?.recovery?.state).toBe('queued');
+    expect(f.execute).not.toHaveBeenCalled();
+    const changed = fixture([checkpoint({ state: 'queued', queue: { revision: 'e'.repeat(64), delaySeconds: 60 } })]);
+    changed.prepare.mockRejectedValue(new Error('Synthetic authority changed.'));
+    await changed.recovery.restoreQueued();
+    expect(changed.queue.snapshot().jobs).toHaveLength(0);
+    expect((await changed.recovery.snapshot()).jobs[0]?.recovery?.state).toBe('queued');
+  });
+
+  it('allows explicit queued admission with fresh metadata but never accepts missing queue proof', async () => {
+    const saved = checkpoint({ state: 'queued', modelRequests: 0, reads: 0, queue: { revision: 'd'.repeat(64), delaySeconds: 600 } });
+    const f = fixture([saved]); const before = await f.recovery.snapshot();
+    expect(before.jobs[0]?.delaySeconds).toBe(600);
+    const admitted = await f.recovery.act({ id: before.jobs[0]!.id, revision: before.revision, action: 'resume' });
+    expect(admitted.jobs).toHaveLength(1);
+    expect(admitted.jobs[0]?.state).toBe('scheduled');
+    expect(f.prepare.mock.calls[0]?.[0]).toEqual(saved);
+    expect(f.execute).not.toHaveBeenCalled();
+    const incomplete = fixture([checkpoint({ state: 'queued' })]); const invalid = await incomplete.recovery.snapshot();
+    await expect(incomplete.recovery.act({ id: invalid.jobs[0]!.id, revision: invalid.revision, action: 'resume' })).rejects.toThrow(/cannot be safely resumed/);
+    expect(incomplete.prepare).not.toHaveBeenCalled();
+  });
+
+  it('invalidates a queued action when only its durable snooze generation changes', async () => {
+    const saved = checkpoint({ state: 'queued', queue: { revision: 'd'.repeat(64), delaySeconds: 60 } });
+    const f = fixture([saved]); const old = await f.recovery.snapshot();
+    f.list.mockResolvedValue([{ record: { ...saved, queue: { revision: 'e'.repeat(64), delaySeconds: 600 } }, profileName: 'Synthetic profile' }]);
+    await expect(f.recovery.act({ id: old.jobs[0]!.id, revision: old.revision, action: 'resume' })).rejects.toThrow(/changed/);
+    expect(f.prepare).not.toHaveBeenCalled();
+  });
+
   it('shows scoped recovery metadata without exposing retained source or routing data', async () => {
     const f = fixture([checkpoint(), checkpoint({ jobId: 'live', active: true }), checkpoint({ jobId: 'done', state: 'terminal' })]);
     const snapshot = await f.recovery.snapshot();

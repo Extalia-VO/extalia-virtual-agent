@@ -15,7 +15,10 @@ export interface ObservedWorkEvidence {
 interface Options {
   backend: RustLearningPort;
   source(id: string): Promise<ObservedMemorySource | undefined>;
+  /** Storage consent for an already accepted capture while ordinary execution closes. */
+  storageSource?(id: string): Promise<ObservedMemorySource | undefined>;
   list(workspaceId: string): Promise<readonly string[]>;
+  /** Storage handoff only: must not admit provider work after host shutdown starts. */
   onEpisode?(episode: ObservedMemoryEpisode): void | Promise<void>;
   /** Independent durable operational capture, including failed/cancelled work. Never schedules paid curation. */
   onWorkEvidence?(source: ObservedMemorySource, evidence: ObservedWorkEvidence): void | Promise<void>;
@@ -103,8 +106,8 @@ export class ObservedMemory {
   private readonly reads = new Map<Promise<unknown>, WorkScope>();
   private closed = false;
   constructor(private readonly options: Options) {}
-  private async source(id: string): Promise<ObservedMemorySource | undefined> {
-    const value = await this.options.source(id);
+  private async source(id: string, storageAuthority = false): Promise<ObservedMemorySource | undefined> {
+    const value = await (storageAuthority && this.options.storageSource ? this.options.storageSource(id) : this.options.source(id));
     if (!value || !validScope(value.scope) || value.scope.sessionId !== id || typeof value.revision !== 'string' || !value.revision || value.revision.length > 512 || !Array.isArray(value.events)) return undefined;
     return { ...value, scope: { ...value.scope }, events: value.events.filter(event => event.sessionId === id).slice(-MAX_EVENTS) };
   }
@@ -281,14 +284,21 @@ export class ObservedMemory {
     // presented to the completed-task curator as a successful observed episode.
     if (frame.failed || !legacy) { state.state = operationalFailure ? 'uncertain' : 'skipped'; return true; }
     const result = await this.options.backend.process('observed.capture', capture);
-    // Shutdown withdraws publication, not storage consent. Keep an already committed record.
-    if (this.closed) return false;
-    const current = await this.source(id);
-    if (this.closed) return false;
+    // An already accepted local capture drains its durable handoff during shutdown.
+    // Ordinary execution is closed; exact storage consent still has to match.
+    if (this.closed && !this.options.storageSource) return false;
+    const storageOnly = this.closed;
+    let current = await this.source(id, storageOnly);
+    if (this.closed && !storageOnly) {
+      if (!this.options.storageSource) return false;
+      current = await this.source(id, true);
+    }
+    // Missing shutdown authority is not an explicit withdrawal of stored consent.
+    if (this.closed && !current) return false;
     if (!current?.enabled || scopeKey(current.scope) !== key) { await this.revoke(state.scope); this.forget(key); return false; }
     if (!validEpisode(result.episode, state.scope) || typeof result.created !== 'boolean') throw new Error(unavailable);
     state.lastEpisode = result.episode; state.state = operationalFailure ? 'uncertain' : 'stored'; if (!operationalFailure) delete state.problem;
-    if (!this.closed && result.created) await this.options.onEpisode?.(result.episode);
+    if (result.created) await this.options.onEpisode?.(result.episode);
     return true;
   }
   private track<T>(workspaceId: string, operation: () => Promise<T>): Promise<T> {

@@ -8,6 +8,22 @@ import { MESSAGES, type Language } from '../src/i18n';
 const at = Date.parse('2026-11-11T06:00:00.000Z');
 
 describe('retained learning checkpoints', () => {
+  it.each(['en', 'id'] as const)('distinguishes saved unstarted work from interrupted analysis (%s)', language => {
+    const t = MESSAGES[language].learningCountdown;
+    const value = snapshot('cancelled');
+    value.jobs[0]!.reason = 'shutdown';
+    value.jobs[0]!.delaySeconds = 600;
+    value.jobs[0]!.recovery = { state: 'queued', modelRequests: 0, reads: 0, skillReviewRequired: false };
+    const html = render(value, language);
+    expect(html).toContain(t.recoveryStates.queued);
+    expect(html).toContain(t.queueSaved);
+    expect(html).toContain(t.recoveryProgress(0, 0));
+    expect(html).not.toContain(t.resume);
+    expect(html).not.toContain(t.interrupted);
+    expect(html).not.toContain(t.recoverySkillReview);
+    expect(html).not.toContain('<time');
+  });
+
   it.each(['en', 'id'] as const)('offers resume only for safe retained work (%s)', language => {
     const t = MESSAGES[language].learningCountdown;
     for (const state of ['resumable', 'publication', 'uncertain', 'expired'] as const) {
@@ -25,6 +41,13 @@ describe('retained learning checkpoints', () => {
   it('shows an unavailable recovery catalog even with no scheduled jobs', () => {
     const value = snapshot(); value.jobs = []; value.recoveryUnavailable = true;
     expect(render(value)).toContain(MESSAGES.en.learningCountdown.recoveryUnavailable);
+  });
+  it.each(['en', 'id'] as const)('explains an incomplete catalog without hiding other work (%s)', language => {
+    const value = snapshot(); value.recoveryIncomplete = true;
+    expect(render(value, language)).toContain(MESSAGES[language].learningCountdown.recoveryIncomplete);
+    expect(render(value, language)).toContain(MESSAGES[language].learningCountdown.runNow);
+    value.jobs = [];
+    expect(render(value, language)).toContain(MESSAGES[language].learningCountdown.recoveryIncomplete);
   });
 });
 function snapshot(state: LearningScheduleSnapshot['jobs'][number]['state'] = 'scheduled'): LearningScheduleSnapshot {

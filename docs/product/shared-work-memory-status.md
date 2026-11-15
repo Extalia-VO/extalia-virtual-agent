@@ -1,5 +1,13 @@
 # Shared Work Memory and Claude-Mem-Inspired PRD Status
 
+**v0.4.331 extension:** [ADR 0092](../adr/0092-durable-learning-admission.md)
+persists bounded Native/Observe learning before its idle countdown. Startup
+restores only currently authorized, never-started work; snooze is durable and
+paid effects keep the existing uncertainty rules. This improves the reliability
+of consuming captured work for learning without adding universal external-agent
+memory injection or measured cost/quality claims. See the
+[verification record](../bench/learning-admission-v0331.md).
+
 **v0.4.330 extension:** [ADR 0091](../adr/0091-context-optimization-and-learning-recovery.md)
 adds continuation-aware lexical queries, per-note admission and source receipts,
 fresh amendment/conflict previews, selected-tool-only sanitized archives,

@@ -13,6 +13,8 @@ mod observed;
 #[cfg(all(test, unix))]
 mod observed_tests;
 #[cfg(all(test, unix))]
+mod queue_tests;
+#[cfg(all(test, unix))]
 mod receipt_tests;
 mod receipts;
 #[cfg(all(test, unix))]
@@ -219,6 +221,8 @@ impl Learning {
             }
             "job.list" => self.list_jobs(input)?,
             "job.recover" => self.recover_job(input)?,
+            "queue.capture" => self.capture_queue(input)?,
+            "queue.delay" | "queue.cancel" | "queue.admit" => self.queue_action(action, input)?,
             _ => self.job_action(action, input)?,
         };
         result["action"] = Value::String(action.into());

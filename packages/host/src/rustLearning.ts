@@ -1,12 +1,12 @@
 /** Connection-bound ports for Rust-owned learning jobs and artifact persistence. */
-import type { DaemonLearningParams, LearningActions, LearningKnowledgeRead, LearningRelatedNote, Usage, WorkMemoryActions } from '@extalia/protocol';
+import type { DaemonLearningParams, LearningActions, LearningQueueCaptureInput, LearningKnowledgeRead, LearningRelatedNote, Usage, WorkMemoryActions } from '@extalia/protocol';
 import type { ModelMessage, ModelResult, ToolResultEntry, ToolSpec } from '@extalia/runtime';
 import type { SkillProposalInput, SkillProposalProvenance } from './skillLearning.js';
 import { DaemonUnavailableError, type DaemonClient } from './daemon/index.js';
 
 export interface RustLearningJob {
   jobId: string;
-  status: 'running' | 'ready' | 'skipped' | 'failed' | 'cancelled' | 'completed';
+  status: 'queued' | 'running' | 'ready' | 'skipped' | 'failed' | 'cancelled' | 'completed';
   effect?: { effectId: string; kind: 'model'; system: string; messages: ModelMessage[]; tools: ToolSpec[] }
     | { effectId: string; kind: 'read'; callId: string; name: string; input: Record<string, unknown> };
   pendingEffectId?: string;
@@ -49,6 +49,11 @@ export interface RustLearningInputs extends WorkMemoryInputs {
     sourceContext?: { user: string; assistant: string };
     memoryContext?: string;
   } & ({ intakeId: string; evidence?: never } | { evidence: readonly ToolResultEntry[]; intakeId?: never });
+  'queue.capture': LearningQueueCaptureInput & ({ intakeId: string; evidence?: never } | { evidence: readonly ToolResultEntry[]; intakeId?: never });
+  'observed.queueCapture': LearningActions['observed.queueCapture']['input'];
+  'queue.delay': LearningActions['queue.delay']['input'];
+  'queue.cancel': LearningActions['queue.cancel']['input'];
+  'queue.admit': Omit<LearningActions['queue.admit']['input'], 'tools'> & { tools: readonly ToolSpec[] };
   'job.enter': LearningActions['job.enter']['input'];
   'job.list': LearningActions['job.list']['input'];
   'job.recover': Omit<LearningActions['job.recover']['input'], 'tools'> & { tools: readonly ToolSpec[] };
@@ -83,6 +88,11 @@ interface ResultValues extends WorkMemoryResults {
   'evidence.append': { complete: boolean };
   'evidence.release': Released;
   'job.begin': { job: RustLearningJob };
+  'queue.capture': LearningActions['queue.capture']['result'];
+  'observed.queueCapture': LearningActions['observed.queueCapture']['result'];
+  'queue.delay': LearningActions['queue.delay']['result'];
+  'queue.cancel': LearningActions['queue.cancel']['result'];
+  'queue.admit': { job: RustLearningJob };
   'job.enter': { job: RustLearningJob };
   'job.list': LearningActions['job.list']['result'];
   'job.recover': { job: RustLearningJob };
@@ -124,7 +134,7 @@ export class RustLearningBackend implements RustLearningPort {
     const handle = ['jobId', 'pinId', 'draftId', 'stageId', 'intakeId'].map(key => fields[key]).find(value => typeof value === 'string') as string | undefined;
     const provenance = fields.provenance as SkillProposalProvenance | undefined;
     const runId = typeof fields.runId === 'string' ? fields.runId : provenance?.runId;
-    const client = action === 'job.recover' ? await this.connect() : handle ? this.handles.get(handle) : runId ? this.runs.get(runId) ?? await this.connect() : await this.connect();
+    const client = ['job.recover', 'queue.admit', 'queue.delay', 'queue.cancel'].includes(action) ? await this.connect() : handle ? this.handles.get(handle) : runId ? this.runs.get(runId) ?? await this.connect() : await this.connect();
     if (!client || !client.usable || !(client.capabilities as readonly string[]).includes('learning.process'))
       throw new DaemonUnavailableError('missing_capability');
     const result = await client.request('learning.process', { action, input } as DaemonLearningParams, 30_000) as unknown as RustLearningResults[A];
@@ -132,8 +142,8 @@ export class RustLearningBackend implements RustLearningPort {
     const values = result as unknown as Record<string, unknown>;
     const job = values.job as RustLearningJob | undefined;
     for (const id of [values.pinId, values.draftId, values.stageId, values.intakeId, job?.jobId]) if (typeof id === 'string') this.handles.set(id, client);
-    if ((action === 'job.begin' || action === 'observed.jobBegin' || action === 'job.recover') && runId && job) { this.runs.set(runId, client); this.jobRuns.set(job.jobId, runId); }
-    if (handle && ['job.begin', 'job.release', 'evidence.release', 'note.release', 'note.discard', 'note.commit', 'skill.cleanup'].includes(action)) this.handles.delete(handle);
+    if ((action === 'job.begin' || action === 'observed.jobBegin' || action === 'job.recover' || action === 'queue.admit') && runId && job) { this.runs.set(runId, client); this.jobRuns.set(job.jobId, runId); }
+    if (handle && ['job.begin', 'queue.capture', 'job.release', 'evidence.release', 'note.release', 'note.discard', 'note.commit', 'skill.cleanup'].includes(action)) this.handles.delete(handle);
     if (action === 'job.release' && handle) {
       const run = this.jobRuns.get(handle);
       if (run) this.runs.delete(run);

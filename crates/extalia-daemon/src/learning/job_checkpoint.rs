@@ -6,6 +6,7 @@ pub(super) fn status<'de, D: serde::Deserializer<'de>>(
     d: D,
 ) -> std::result::Result<String, D::Error> {
     match String::deserialize(d)?.as_str() {
+        "queued" => Ok("queued".into()),
         "running" => Ok("running".into()),
         "ready" => Ok("ready".into()),
         "skipped" => Ok("skipped".into()),
@@ -65,6 +66,8 @@ impl Job {
                     "An effect was admitted without a durable result. Recovery cannot repeat it or infer that it settled.",
                 ),
             )
+        } else if self.status == "queued" {
+            ("queued", None)
         } else if self.status == "ready" {
             (
                 "publication",
@@ -78,6 +81,9 @@ impl Job {
             ("terminal", self.reason.as_deref())
         };
         out["state"] = state.into();
+        if self.status == "queued" {
+            out["queue"] = self.queue_metadata();
+        }
         if let Some(reason) = reason {
             out["reason"] = text::clean(reason, 500).into();
         }
@@ -100,7 +106,7 @@ impl Job {
         let mut copy = self.clone();
         // Once inference has ended, its provider-native history and optional read
         // cache are unnecessary. Keep the normalized evidence and submitted work.
-        if self.status != "running" {
+        if !matches!(self.status.as_str(), "queued" | "running") {
             copy.messages.clear();
             copy.calls.clear();
             copy.results.clear();
@@ -142,6 +148,7 @@ impl Job {
             || job.read_results.len() > MAX_READS
             || job.candidate_reads.len() > MAX_READS
             || job.entered && job.pending.is_none()
+            || !job.valid_queue()
             || job.status == "running" && (job.pending.is_none() || job.messages.is_empty())
             || matches!(job.status.as_str(), "ready" | "completed")
                 && (job.pending.is_some() || job.submission.is_none())
@@ -164,24 +171,7 @@ impl Job {
     }
 
     pub(in crate::learning) fn recover(&mut self, input: &Value) -> Result<()> {
-        let binding = self.binding();
-        for key in [
-            "profileId",
-            "workspaceId",
-            "sessionId",
-            "runId",
-            "promptSha256",
-            "destinationRevision",
-            "policy",
-            "observedSource",
-        ] {
-            if binding.get(key) != input.get(key) {
-                return Err(refuse("learning_recovery_scope_changed"));
-            }
-        }
-        if binding["routeFingerprint"] != input["routeFingerprint"] {
-            return Err(refuse("learning_recovery_route_changed"));
-        }
+        self.check_binding(input)?;
         if input["tools"] != json!(self.tools) {
             return Err(refuse("learning_recovery_tools_changed"));
         }
@@ -212,6 +202,28 @@ impl Job {
                     self.read_results.remove(&read_key(call));
                 }
             }
+        }
+        Ok(())
+    }
+
+    pub(in crate::learning) fn check_binding(&self, input: &Value) -> Result<()> {
+        let binding = self.binding();
+        for key in [
+            "profileId",
+            "workspaceId",
+            "sessionId",
+            "runId",
+            "promptSha256",
+            "destinationRevision",
+            "policy",
+            "observedSource",
+        ] {
+            if binding.get(key) != input.get(key) {
+                return Err(refuse("learning_recovery_scope_changed"));
+            }
+        }
+        if binding["routeFingerprint"] != input["routeFingerprint"] {
+            return Err(refuse("learning_recovery_route_changed"));
         }
         Ok(())
     }

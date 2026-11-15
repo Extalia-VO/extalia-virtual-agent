@@ -1,11 +1,24 @@
 # Reliable self-learning for Knowledge and Skills
 
-Status: implemented through v0.4.330; CI and live-provider acceptance are tracked
+Status: implemented through v0.4.331; CI and live-provider acceptance are tracked
 separately. Reviewed against upstream Hermes on 2026-11-14. The acceptance record
 below distinguishes source inspection, deterministic tests and live-provider
 work, including the earlier local socket-fixture restriction.
 
 ## Goal
+
+### v0.4.331 durable admission
+
+[ADR 0092](../adr/0092-durable-learning-admission.md) moves source persistence
+before the idle countdown. Queued Native and opted-in Observe work survives
+restart, keeps its exact profile/model/policy binding and selected quiet interval,
+and creates no paid model effect while waiting. The same Rust job becomes the
+analysis job through one revision-checked transition. Snooze acknowledgement,
+configuration retirement and shutdown draining are ordered explicitly.
+Startup restores authorized never-started work once; started analysis still
+uses explicit recovery and uncertain effects never replay automatically.
+Full skill-package refinement guidance now agrees with the registry's complete
+reference-read requirement; a dedicated recovered-refinement review remains open.
 
 ### v0.4.330 strengthening
 
@@ -310,9 +323,13 @@ draft PR does not constitute release acceptance or deployment.
 
 ## Remaining work
 
-- A durable source-job queue, retained extraction checkpoints and reviewed restart
-  recovery. Current countdowns and analysis jobs are in-memory; restart never
-  replays an uncertain effect merely because an admission exists.
+- Durable scheduling for separate multi-participant knowledge meetings and other
+  background activities. Bounded Native/Observe automatic curation now persists
+  before idle, and ADR 0091 retains analysis/results; these do not persist every
+  background activity or justify replaying an uncertain effect.
+- A bounded fresh-review phase for recovered skill refinements, with all current
+  instructions/references exposed to the reviewing model. Do not substitute
+  mechanically regenerated read receipts for an actual review.
 - Evaluation of retrieval relevance and skill usefulness on held-out tasks,
   including regressions, contradictions and stale procedures.
 - A global episodic inspector with explicit scope, freshness and privacy controls;

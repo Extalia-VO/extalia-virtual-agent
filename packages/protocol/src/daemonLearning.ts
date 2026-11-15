@@ -29,11 +29,20 @@ export interface LearningRecoveryBinding {
 }
 /** Local checkpoint metadata is provenance, never renewed permission to execute. */
 export interface LearningRecoveryRecord extends LearningRecoveryBinding {
-  jobId: string; state: 'resumable' | 'publication' | 'uncertain' | 'terminal' | 'expired';
+  jobId: string; state: 'queued' | 'resumable' | 'publication' | 'uncertain' | 'terminal' | 'expired';
   active: boolean; updatedAt: number; expiresAt: number; modelRequests: number; reads: number;
   skillReviewRequired: boolean; reason?: string; noteSha256?: string; skillSha256?: string;
+  /** A full quiet interval is restored after restart; no overdue wall-clock execution. */
+  queue?: { revision: string; delaySeconds: 60 | 600 };
 }
-export interface LearningJobState { jobId: string; status: 'running' | 'ready' | 'skipped' | 'failed' | 'cancelled' | 'completed'; effect?: LearningEffect; pendingEffectId?: string; submission?: LearningSubmission; knowledgeReads?: LearningKnowledgeRead[]; evidence: LearningEvidence[]; provenance: LearningProvenance; contentSha256?: string; noteSha256?: string; skillSha256?: string; reason?: string; usage?: LearningUsage; failure?: LearningFailure; recovery?: { resumed: true; skillReviewRequired: boolean } }
+/** Exact source and queue generation, freshly authorized by the host for each mutation. */
+export interface LearningQueueBinding extends LearningRecoveryBinding { jobId: string; queueRevision: string }
+export interface LearningQueueCaptureInput {
+  profileId: string; revision: string; workspaceId: string; sessionId: string; runId: string; promptSha256: string;
+  policy: { enabled: boolean; skills: boolean; notes: boolean }; routeFingerprint: string;
+  sourceContext?: LearningSourceContext;
+}
+export interface LearningJobState { jobId: string; status: 'queued' | 'running' | 'ready' | 'skipped' | 'failed' | 'cancelled' | 'completed'; effect?: LearningEffect; pendingEffectId?: string; submission?: LearningSubmission; knowledgeReads?: LearningKnowledgeRead[]; evidence: LearningEvidence[]; provenance: LearningProvenance; contentSha256?: string; noteSha256?: string; skillSha256?: string; reason?: string; usage?: LearningUsage; failure?: LearningFailure; recovery?: { resumed: true; skillReviewRequired: boolean } }
 export interface LearningNoteRecord { workspaceId: string; sessionId: string; profileId: string; revision: string; runId: string; promptSha256: string; title: string; lesson: string; evidence: LearningEvidence[]; relatedNotes?: LearningRelatedNote[]; knowledgeReads?: LearningKnowledgeRead[]; skill?: { packageId: string; revisionId: string; state: string; stateReason?: string; created: boolean; inspection: 'recorded' | 'unavailable'; inspectionOutcome?: string; activationPerformed: false; cancellationObserved: boolean } }
 export interface LearningMeetingRecord { meetingId: string; topic: string; roomId?: string; startedAt: string; completedAt: string; outcome: 'completed' | 'failed' | 'cancelled'; participants: { agentId: string; name: string; role: string }[]; contributions: { agentId: string; round: number; text: string }[] }
 export interface ObservedMemoryScope { profileId: string; workspaceId: string; sessionId: string; sourceId: string; nativeSessionId: string; boundary: string }
@@ -47,6 +56,8 @@ export interface LearningActions extends WorkMemoryActions {
   'observed.read': { input: { scope: ObservedMemoryScope; episodeId: string; revision: string; offset?: number; limit?: number }; result: ObservedMemoryPage };
   'observed.revoke': { input: { scope: ObservedMemoryScope }; result: { removed: number } };
   'observed.jobBegin': { input: { scope: ObservedMemoryScope; episodeId: string; revision: string; destinationRevision?: string; runId: string; promptSha256: string; policy: { enabled: boolean; skills: boolean; notes: boolean }; tools: LearningToolSpec[]; timeoutMs?: number; routeFingerprint?: string; memoryContext?: string }; result: { job: LearningJobState } };
+  /** Save the exact opted-in observed episode before idle admission, without model work or a live job handle. */
+  'observed.queueCapture': { input: { scope: ObservedMemoryScope; episodeId: string; revision: string; destinationRevision: string; runId: string; promptSha256: string; policy: { enabled: boolean; skills: boolean; notes: boolean }; routeFingerprint: string }; result: { record: LearningRecoveryRecord; created: boolean } };
   'evidence.begin': { input: Record<string, never>; result: { intakeId: string } };
   'evidence.append': { input: { intakeId: string; toolCallId: string; name: string; isError: boolean; chunk: string; final: boolean }; result: { complete: boolean } };
   'evidence.release': { input: { intakeId: string }; result: { released: true } };
@@ -65,6 +76,12 @@ export interface LearningActions extends WorkMemoryActions {
   'receipt.get': { input: { profileId: string; contentSha256: string }; result: { status: 'missing' | 'attempted' | 'recorded'; receipt?: { kind: 'note' | 'skill'; data: string } } };
   'receipt.record': { input: { profileId: string; contentSha256: string; runId: string; receipt: { kind: 'note' | 'skill'; data: string } }; result: { recorded: true; replayed: boolean } };
   'job.begin': { input: { profileId: string; revision: string; workspaceId: string; sessionId: string; runId: string; promptSha256: string; policy: { enabled: boolean; skills: boolean; notes: boolean }; tools: LearningToolSpec[]; timeoutMs?: number; routeFingerprint?: string; sourceContext?: LearningSourceContext; memoryContext?: string } & ({ evidence: { toolCallId: string; name: string; content: string; isError: boolean }[]; intakeId?: never } | { intakeId: string; evidence?: never }); result: { job: LearningJobState } };
+  /** Rust selects and sanitizes evidence before durable, idempotent pre-admission capture. */
+  'queue.capture': { input: LearningQueueCaptureInput & ({ evidence: { toolCallId: string; name: string; content: string; isError: boolean }[]; intakeId?: never } | { intakeId: string; evidence?: never }); result: { record: LearningRecoveryRecord; created: boolean } };
+  'queue.delay': { input: LearningQueueBinding & { delaySeconds: 60 | 600 }; result: { record: LearningRecoveryRecord } };
+  'queue.cancel': { input: LearningQueueBinding; result: { record: LearningRecoveryRecord } };
+  /** The queued identity becomes the live job in one durable transition; no separate child job. */
+  'queue.admit': { input: LearningQueueBinding & { tools: LearningToolSpec[]; memoryContext?: string; timeoutMs?: number }; result: { job: LearningJobState } };
   /** Durable admission must be acknowledged before the host starts a provider or read effect. */
   'job.enter': { input: { jobId: string; effectId: string }; result: { job: LearningJobState } };
   'job.list': { input: { profileId: string; workspaceId?: string; sessionId?: string; limit?: number }; result: { jobs: LearningRecoveryRecord[]; omitted: number } };

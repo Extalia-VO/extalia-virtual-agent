@@ -6,6 +6,7 @@ import { createAgentHost, type AgentHostRuntime } from '../src/service.js';
 import { skillStoragePaths } from '../src/skillStorage.js';
 import { DAEMON_BINARY, HAS_DAEMON } from './daemonBackend.js';
 import { useTempDirs } from './helpers.js';
+import { RustLearningBackend, type RustLearningAction, type RustLearningInputs, type RustLearningResults } from '../src/rustLearning.js';
 
 const temp = useTempDirs(), runtimes = new Set<AgentHostRuntime>(), stores = new Set<string>();
 async function unlock(folder: string): Promise<void> {
@@ -31,7 +32,7 @@ function response(input: unknown) {
   return new Response(`data: ${JSON.stringify({ choices: [{ delta, finish_reason: 'tool_calls' }] })}\n\ndata: [DONE]\n\n`, { headers: { 'content-type': 'text/event-stream' } });
 }
 
-async function fixture({ observed = true, connections = 1, history = true, ambiguousWorkspace = false } = {}) {
+async function fixture({ observed = true, connections = 1, history = true, ambiguousWorkspace = false, isolatedWorkspace = false } = {}) {
   const root = await temp('extalia-global-observe-'), home = path.join(root, 'home'), data = path.join(root, 'data'), project = path.join(root, 'unregistered-project');
   await mkdir(project);
   await writeFile(path.join(project, 'private-project-note.txt'), 'Unregistered project filesystem contents must not enter global learning.');
@@ -68,13 +69,21 @@ async function fixture({ observed = true, connections = 1, history = true, ambig
       name, projectLocation: project, connectionId: connection.id, permissions: { fileWrite: 'ask', commands: 'ask' },
     });
   }
+  let workspaceId: string | undefined;
+  if (isolatedWorkspace) {
+    const connection = (await runtime.host.getState()).connections[0]!;
+    const saved = await runtime.host.saveWorkspace({ name: 'Isolated observed project', projectLocation: project,
+      connectionId: connection.id, crossWorkspaceAccess: 'isolated', permissions: { fileWrite: 'ask', commands: 'ask' } });
+    workspaceId = saved.workspaces[0]!.id;
+  }
   const scan = await runtime.host.scanImports(['codex']);
   const watched = (await runtime.host.observeImports(scan.scanId, [scan.sessions[0]!.id])).sessions.find(item => item.observation?.nativeSessionId === nativeId)!;
   const before = await runtime.host.listVaultProfiles!();
-  const saved = await runtime.host.saveVaultProfile!({ id: before.defaultProfileId, name: 'Default', vaultRoot: null,
-    workspaceIds: before.workspaces.filter(item => item.profileId === before.defaultProfileId).map(item => item.id), minutesEnabled: false,
+  const profileId = workspaceId ? before.workspaces.find(item => item.id === workspaceId)!.profileId : before.defaultProfileId;
+  const saved = await runtime.host.saveVaultProfile!({ id: profileId, name: isolatedWorkspace ? 'Isolated observed profile' : 'Default', vaultRoot: null,
+    workspaceIds: before.workspaces.filter(item => item.profileId === profileId).map(item => item.id), minutesEnabled: false,
     automaticLearning: { enabled: true, notes: true, skills: true, observed }, expectedRevision: before.revision });
-  const profile = saved.profiles.find(item => item.id === saved.defaultProfileId)!;
+  const profile = saved.profiles.find(item => item.id === profileId)!;
   const waitForJob = async (state?: LearningScheduleJob['state']) => {
     let job: LearningScheduleJob | undefined;
     await vi.waitFor(async () => {
@@ -84,7 +93,7 @@ async function fixture({ observed = true, connections = 1, history = true, ambig
     }, { timeout: 10_000, interval: 10 });
     return job!;
   };
-  return { root, data, project, requests, watched, profile, waitForJob,
+  return { root, data, project, requests, watched, profile, workspaceId, waitForJob,
     get runtime() { return runtime; }, get host() { return runtime.host; },
     append: () => appendFile(file, message('user', 'Preserve the normalization decision from this task.', '2026-01-01T00:00:03.000Z')
       + message('assistant', 'The source reports normalizing input before duplicate detection and retaining the first row. Validation remains unverified.', '2026-01-01T00:00:04.000Z')),
@@ -102,6 +111,58 @@ async function fixture({ observed = true, connections = 1, history = true, ambig
 }
 
 describe.skipIf(!HAS_DAEMON || process.platform === 'win32')('global Observe learning through a real temporary host and Rust owner', () => {
+
+  it('drains an already committed observed episode into the learning queue while closing', async () => {
+    const f = await fixture();
+    let reached!: () => void, release!: () => void;
+    const captured = new Promise<void>(resolve => { reached = resolve; });
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    const original = RustLearningBackend.prototype.process;
+    let intercepted = false;
+    const spy = vi.spyOn(RustLearningBackend.prototype, 'process').mockImplementation(async function<A extends RustLearningAction>(this: RustLearningBackend, action: A, input: RustLearningInputs[A]): Promise<RustLearningResults[A]> {
+      const result = await original.call(this, action, input) as RustLearningResults[A];
+      if (!intercepted && action === 'observed.capture') { intercepted = true; reached(); await gate; }
+      return result;
+    });
+    try {
+      await f.append(); await captured;
+      let closed = false;
+      const closing = f.runtime.close().then(() => { closed = true; });
+      await Promise.resolve(); expect(closed).toBe(false);
+      release(); await closing;
+      expect(spy.mock.calls.filter(call => call[0] === 'observed.queueCapture')).toHaveLength(1);
+      expect(f.requests).toEqual([]);
+    } finally { release(); spy.mockRestore(); }
+    await f.restart();
+    expect(await f.waitForJob('scheduled')).toMatchObject({ workspaceId: GLOBAL_OBSERVE_WORKSPACE_ID, profileId: f.profile.id });
+    await f.runNow(); await f.waitForJob('completed');
+    expect(f.requests).toHaveLength(1);
+  });
+  it.each([false, true])('restores a queued Observe episode without replaying backlog (isolated=%s)', async isolatedWorkspace => {
+    const f = await fixture({ isolatedWorkspace }), workspaceId = f.workspaceId ?? GLOBAL_OBSERVE_WORKSPACE_ID;
+    await f.append();
+    const original = await f.waitForJob('scheduled');
+    let snapshot = await f.host.learningSchedule!();
+    await f.host.changeLearningSchedule!(original.id, snapshot.revision, 'snooze');
+    expect(f.requests).toEqual([]);
+    await f.restart();
+    const restored = await f.waitForJob('scheduled');
+    expect(restored).toMatchObject({ id: original.id, workspaceId, profileId: f.profile.id, delaySeconds: 600 });
+    expect(Date.parse(restored.dueAt) - Date.now()).toBeGreaterThan(595_000);
+    expect(f.requests).toEqual([]);
+    snapshot = await f.host.learningSchedule!();
+    expect(snapshot.jobs.filter(job => job.sessionId === f.watched.id)).toHaveLength(1);
+    await f.runNow(); await f.waitForJob('completed');
+    expect(f.requests).toHaveLength(1);
+    const folder = path.join(f.profile.root, 'Learning', workspaceId);
+    expect(await readdir(folder)).toHaveLength(1);
+    await f.restart();
+    expect((await f.host.learningSchedule!()).jobs).toEqual([]);
+    expect(f.requests).toHaveLength(1);
+    expect(await readdir(folder)).toHaveLength(1);
+  });
+
+
   it('curates an explicitly unbound source into the default vault and inactive user skill without a workspace grant', async () => {
     const f = await fixture();
     expect((await f.host.observedWorkspaceLink!(f.watched.id)).mode).toBe('unbound');

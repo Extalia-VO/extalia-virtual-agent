@@ -6,6 +6,9 @@ use files::platform;
 use serde::{Deserialize, Serialize};
 use std::fs::File;
 
+#[path = "queue_journal.rs"]
+mod queue;
+
 const MAX_JOBS: usize = 64;
 const MAX_CHECKPOINT_BYTES: usize = 1024 * 1024;
 const RETENTION_MS: u64 = 7 * 24 * 60 * 60 * 1000;
@@ -17,6 +20,20 @@ pub(super) struct Cursor {
     created: u64,
     updated: u64,
     expires: u64,
+}
+
+impl Cursor {
+    pub(in crate::learning) fn revision(&self, job_id: &str) -> String {
+        hash(
+            json!([
+                "learning-queue-revision-v1",
+                job_id,
+                self.generation,
+                self.owner
+            ])
+            .to_string(),
+        )
+    }
 }
 
 #[derive(Serialize, Deserialize)]
@@ -412,6 +429,7 @@ impl Learning {
             ));
         }
         let priority = |record: &Value| match s(record, "state") {
+            "queued" => 0,
             "resumable" | "publication" if record["active"] == false => 0,
             "uncertain" => 1,
             "resumable" | "publication" => 2,

@@ -385,6 +385,27 @@ for example when one runs out of quota.
 
 ## 11. Status tracker
 
+### Durable learning admission — v0.4.331 (2026-11-15)
+
+- Implemented bounded Native and opted-in Observe capture before the idle
+  countdown. The same Rust job survives restart and enters analysis only after
+  fresh source, destination, policy and model authorization; waiting creates no
+  model request or vault pin.
+- Snooze now persists before acknowledgement and restarts a full quiet interval
+  after reopening. Stale timers and revisions cannot dispatch work. Accepted
+  local capture drains through orderly shutdown, including an already committed
+  Observe episode's queue handoff; explicit revocation still blocks it.
+- Fixed Observe identity comparison across JSON key order. Healthy recoveries
+  remain visible when another profile is unavailable or the listing is partial.
+  Knowledge and skills retain independent publication receipts.
+- Aligned refinement guidance with full-package reference reads. A dedicated
+  fresh-review phase for recovered refinements, separate team-meeting durability,
+  cross-store abrupt-crash handoff and live quality/cost acceptance remain open.
+- Verified 390 focused tests plus one platform skip, 98 Rust learning tests and
+  three actual daemon kill/restart tests. See [ADR 0092](../adr/0092-durable-learning-admission.md)
+  and [verification](../bench/learning-admission-v0331.md). Existing CI fixture
+  repairs remain deferred at the owner's direction.
+
 ### Feature strengthening — v0.4.330 (2026-11-15)
 
 - Implemented per-connection local/off/Caveman Engine Native input preparation;

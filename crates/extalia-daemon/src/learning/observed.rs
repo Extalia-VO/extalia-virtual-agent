@@ -49,13 +49,26 @@ impl Learning {
                     .filter(|job| job.uses_observed_scope(&input["scope"]))
                     .map(|job| job.id.clone())
                     .collect();
+                let mut first_error = None;
                 for job_id in jobs {
-                    self.job_action("job.cancel", &json!({"jobId":job_id}))?;
+                    if let Err(error) = self.job_action("job.cancel", &json!({"jobId":job_id})) {
+                        first_error.get_or_insert(error);
+                    }
+                }
+                // Source deletion happens first. Even if a local journal error
+                // follows, its episode cannot become accessible or admitted again.
+                // A durable tombstone also prevents recapturing identical source
+                // text from reviving a previously withdrawn deferred intent.
+                if let Err(error) = self.cancel_queued_observed_scope(&input["scope"]) {
+                    first_error.get_or_insert(error);
+                }
+                if let Some(error) = first_error {
+                    return Err(error);
                 }
                 Ok(result)
             }
-            "observed.jobBegin" => {
-                if self.jobs.len() >= MAX_HANDLES {
+            "observed.jobBegin" | "observed.queueCapture" => {
+                if action == "observed.jobBegin" && self.jobs.len() >= MAX_HANDLES {
                     return Err((ErrorCode::CapacityExceeded, Some("learning_capacity")));
                 }
                 let mut read = input.clone();
@@ -67,6 +80,9 @@ impl Learning {
                     prepared[key] = input["scope"][key].clone();
                 }
                 prepared["observedSource"] = episode;
+                if action == "observed.queueCapture" {
+                    return self.capture_prepared_queue(&prepared);
+                }
                 let mut job = Job::begin(&prepared)?;
                 self.checkpoint_job(&mut job, false)?;
                 let view = job.view();
