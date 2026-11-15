@@ -161,11 +161,20 @@ describe('current-prompt skill learning authority through the Native host', () =
     const url = proposal.sourceUrls[0];
     sourceReader.mockResolvedValue({ sourceUrl: url, finalUrl: url, contentType: 'text/plain', bytes: 12,
       sha256: 'a'.repeat(64), excerpt: 'Source text.', truncated: false });
-    const { host, runtime, bodies, session } = await fixture({ reply: (_body, index) => index === 0
+    const { host, runtime, bodies, session, events } = await fixture({ reply: (_body, index) => index === 0
       ? { tool: 'skill_source_read', args: { url } } : { text: 'Reviewed the source procedure.' } });
     await host.sendPrompt(session.id, `Reference material for this task: ${url}`); await idle(runtime);
     expect(hasProposalTool(bodies[0]!)).toBe(false);
-    expect((await host.learningSchedule!()).jobs).toContainEqual(expect.objectContaining({ kind: 'learning', sessionId: session.id, state: 'scheduled' }));
+    const jobs = (await host.learningSchedule!()).jobs;
+    if (process.platform === 'win32') {
+      // Durable learning storage refuses Windows until its directory-handle
+      // publication port exists. Source reads must not imply a saved job.
+      expect(jobs).toEqual([]);
+      expect(events.some(event => event.body.type === 'tool.completed'
+        && event.body.tool === 'automatic_learning' && !event.body.ok)).toBe(true);
+    } else {
+      expect(jobs).toContainEqual(expect.objectContaining({ kind: 'learning', sessionId: session.id, state: 'scheduled' }));
+    }
   });
 
   it.skipIf(!HAS_DAEMON)('respects a disabled automatic profile while retaining direct current-user learning requests', async () => {

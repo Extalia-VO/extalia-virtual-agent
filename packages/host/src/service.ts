@@ -97,7 +97,7 @@ import { buildContinuation } from './continuation.js';
 import { HermesEndpointError, continuationPrompt, discoverRuntimes, findHermes, hermesComplete, hermesModelCatalog, hermesProfile, hermesRoot, hermesSupportsReasoning, runHermesTurn } from './hermes.js';
 import { hermesDelegationLimits } from './hermesDelegation.js';
 import { InspectError, gitDiff, gitRepositories, gitStatus, listFiles, readWorkspaceFile } from './inspect.js';
-import { readJson, writeJsonAtomic } from './jsonStore.js';
+import { isNotFound, readJson, writeJsonAtomic } from './jsonStore.js';
 import { acquireHostLock } from './lock.js';
 import { HostPersistenceGate } from './hostPersistenceGate.js';
 import { createProfileStore } from './profile.js';
@@ -2529,6 +2529,12 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
 
   async function listLearningRecoveries(): Promise<{ candidates: LearningRecoveryCandidate[]; incomplete?: boolean } | []> {
     if (closing) return [];
+    // An empty installation has no retained jobs to discover. Keep the shared
+    // sidecar lazy until there is a local journal or an actual backend operation.
+    // Other errors still reach Rust so damaged/unreadable state is not reported
+    // as an empty recovery catalog.
+    try { await lstat(path.join(layout.root, 'learning-jobs')); }
+    catch (error) { if (isNotFound(error)) return []; }
     const candidates: LearningRecoveryCandidate[] = [];
     let incomplete = false;
     let inspected = 0;
@@ -5373,13 +5379,22 @@ export async function createAgentHost(options: AgentHostOptions): Promise<AgentH
             const policy = { enabled: true, notes: learningProfile.policy.notes,
               skills: !skipSkillLearning && learningProfile.policy.skills && features.extaliaSkills && skillRegistry.enabled };
             if (policy.notes || policy.skills) {
-              const checkpoint = await learningAdmissions.native({ profileId: learningProfile.profileId, revision: learningProfile.revision,
-                sessionId, workspaceId: workspace.id, runId: learningRunId, promptSha256: learningPromptSha256, policy,
-                routeFingerprint: nativeLearningRoute(connection, { ...record, workspaceBoundary: boundary, team: expectedPersistedTeam }),
-                evidence, sourceContext }, async () => { if (!await learningCurrent(true)) throw userError('The learning source or consent changed.'); });
-              if (checkpoint.state === 'queued' && !closing) admitted = learningSchedule.schedule(await prepareLearningRecovery(checkpoint, learningRunId, sourceContext.user));
+              try {
+                const checkpoint = await learningAdmissions.native({ profileId: learningProfile.profileId, revision: learningProfile.revision,
+                  sessionId, workspaceId: workspace.id, runId: learningRunId, promptSha256: learningPromptSha256, policy,
+                  routeFingerprint: nativeLearningRoute(connection, { ...record, workspaceBoundary: boundary, team: expectedPersistedTeam }),
+                  evidence, sourceContext }, async () => { if (!await learningCurrent(true)) throw userError('The learning source or consent changed.'); });
+                if (checkpoint.state === 'queued' && !closing) admitted = learningSchedule.schedule(await prepareLearningRecovery(checkpoint, learningRunId, sourceContext.user));
+              } catch (error) {
+                // Durable curator capacity/storage is independent of the live
+                // Knowledge meeting queue. Revoked source authority is not.
+                if (!await learningCurrent()) throw error;
+                await publish(sessionId, { type: 'tool.completed', tool: 'automatic_learning', kind: 'knowledge', label: 'Learning capture not confirmed', ok: false,
+                  output: 'The completed task remains saved. Its deferred learning capture was not confirmed; inspect retained learning records before retrying.' }).catch(() => undefined);
+              }
             }
           }
+          if (!await learningCurrent()) return;
           const vaultSettings = config.vaultProfiles?.profiles.find(item => item.id === learningProfile.profileId);
           if (liveTeam?.enabled && liveTeam.members.length && learningProfile.policy.notes && vaultSettings?.minutesEnabled !== false) {
             // The input history is an immutable prefix of this turn's result.

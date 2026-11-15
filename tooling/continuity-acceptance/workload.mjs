@@ -94,7 +94,9 @@ const ORACLE = String.raw`await (async function artifactOracleMain() {
     "        observation = {'value': None, 'error': 'value-error' if isinstance(error, ValueError) else 'other:' + type(error).__name__}",
     "    observation['inputAfter'] = encode(records) if request.get('captureInputs') else None",
     '    observations.append(observation)',
-    "print(json.dumps({'observations': observations}, ensure_ascii=False, separators=(',', ':')))",
+    // The controller transport uses explicit UTF-8/LF bytes on every platform;
+    // candidate CLI output below still has its original strict byte contract.
+    "sys.stdout.buffer.write((json.dumps({'observations': observations}, ensure_ascii=False, separators=(',', ':')) + '\\n').encode('utf-8'))",
   ].join('\n');
 
   function execute(argv, input) {

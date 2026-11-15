@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readdir, realpath, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -58,14 +58,18 @@ describe('optional local Caveman Engine adapter', () => {
     expect(result.content).toContain('limit 73'); expect(result.content).toContain('Pending: test empty input.');
     expect(f.calls.map(call => call.args)).toEqual([['compress'], ['retrieve', `ccr_${'b'.repeat(32)}`]]);
     expect(f.calls.every(call => call.closed)).toBe(true);
+    // The adapter uses the canonical parent, which can expand a Windows short temp path.
+    const privateDirectory = await realpath(f.options.directory);
     for (const call of f.calls) {
-      expect(call.options.cwd).toContain(f.options.directory);
+      expect(path.dirname(call.options.cwd)).toBe(privateDirectory);
+      expect(path.basename(call.options.cwd)).toMatch(/^caveman-/);
       expect(call.options.env.CAVEMAN_CCR_DB).toBe(path.join(call.options.cwd, 'recovery.db'));
       expect(call.options.env.CAVEMAN_HOME).toBe(call.options.cwd);
       expect(call.options.env.HOME).toBe(call.options.cwd);
       expect(call.options.env.LANG).toBe('C.UTF-8');
       for (const key of ['OPENAI_API_KEY', 'HTTP_PROXY', 'NODE_OPTIONS', 'PATH']) expect(call.options.env[key]).toBeUndefined();
     }
+    expect(new Set(f.calls.map(call => call.options.cwd)).size).toBe(1);
     expect(await readdir(f.options.directory)).toEqual([]);
   });
 

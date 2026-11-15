@@ -16,6 +16,18 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.333] - 2026-11-15
+
+- Integrate the profile-learning and continuity branches while preserving their
+  commit ancestry and the existing Office optimizations on main.
+- Keep independent Knowledge meetings available when durable curator capture
+  cannot be admitted, with fresh source and consent checks before scheduling.
+- Preserve lazy daemon startup when no learning journal exists; retained jobs
+  still use the authorized Rust recovery path.
+- Correct canonical temporary-folder handling and Windows probe transport in
+  cross-agent continuity, optimizer, import and Hermes verification. Keep strict
+  candidate-output and boundary checks intact.
+
 ## [0.4.332] - 2026-11-15
 
 - Acknowledge POSIX continuity-journal directory publication before dispatch,

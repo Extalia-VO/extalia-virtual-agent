@@ -9,8 +9,12 @@ import { createAgentHost, type AgentHostRuntime } from '../src/service.js';
 import { DAEMON_BINARY, HAS_DAEMON } from './daemonBackend.js';
 import { useTempDirs } from './helpers.js';
 import { learningObservedFixture } from './learningObservedFixture.js';
+import { LearningQueueAdmissions } from '../src/learningQueue.js';
+import { VaultProfiles } from '../src/vaultProfiles.js';
 
 const temp = useTempDirs(), runtimes: AgentHostRuntime[] = [];
+// Durable learning publication currently requires the Rust POSIX directory-handle backend.
+const HAS_DURABLE_LEARNING = HAS_DAEMON && process.platform !== 'win32';
 afterEach(async () => { while (runtimes.length) await runtimes.pop()!.close(); });
 function deferred() {
   let resolve!: () => void;
@@ -95,6 +99,44 @@ async function fixture(options: { lead?(prompt: string): Promise<void>; sourceRe
 }
 
 describe('native knowledge meetings through the deferred host scheduler', () => {
+  it('keeps the independent Knowledge meeting when durable curator admission is full', async () => {
+    const f = await fixture();
+    const capture = vi.spyOn(LearningQueueAdmissions.prototype, 'native').mockRejectedValueOnce(new Error('learning_journal_capacity'));
+    try {
+      await f.host.sendPrompt(f.session.id, 'Record the parser validation decision.');
+      await idle(f.runtime);
+      expect(capture).toHaveBeenCalledTimes(1);
+      await f.waitForJob('scheduled', false);
+      expect(f.events.some(event => event.body.type === 'tool.completed' && event.body.tool === 'automatic_learning' && event.body.ok === false)).toBe(true);
+      await f.action('run-now');
+      await f.waitForJob('completed'); await idle(f.runtime);
+      expect(f.exports).toHaveLength(1);
+      expect(f.requests.filter(request => request.meeting)).toHaveLength(1);
+    } finally { capture.mockRestore(); }
+  });
+
+  it('does not queue an independent meeting when capture failure also revokes learning consent', async () => {
+    const f = await fixture();
+    const policyFor = VaultProfiles.prototype.policyFor;
+    let revoked = false;
+    const policy = vi.spyOn(VaultProfiles.prototype, 'policyFor').mockImplementation(async function (this: VaultProfiles, workspaceId?: string) {
+      const current = await policyFor.call(this, workspaceId);
+      return revoked ? { ...current, revision: `${current.revision}-revoked`, policy: { enabled: false, skills: false, notes: false } } : current;
+    });
+    const capture = vi.spyOn(LearningQueueAdmissions.prototype, 'native').mockImplementationOnce(async () => {
+      revoked = true;
+      throw new Error('The learning source or consent changed.');
+    });
+    try {
+      await f.host.sendPrompt(f.session.id, 'Record the parser validation decision.'); await idle(f.runtime);
+      expect(capture).toHaveBeenCalledTimes(1);
+      expect(await f.job()).toBeUndefined();
+      expect(f.exports).toEqual([]);
+      expect(f.requests.filter(request => request.meeting)).toEqual([]);
+      expect(f.events.some(event => event.body.type === 'tool.completed' && event.body.tool === 'automatic_learning' && event.body.ok === false)).toBe(true);
+    } finally { capture.mockRestore(); policy.mockRestore(); }
+  });
+
   it.each(['same', 'foreign'] as const)('isolated Knowledge meetings wait only for %s-profile Native work on a shared connection', async scope => {
     const entered = deferred(), release = deferred();
     const f = await fixture({ isolated: true, lead: async prompt => { if (prompt === 'Hold Native profile work.') { entered.resolve(); await release.promise; } } });
@@ -214,7 +256,7 @@ describe('native knowledge meetings through the deferred host scheduler', () => 
     await f.host.sendPrompt(f.session.id, 'Read the parser and record the validation decision.'); await idle(f.runtime);
     const queued = await f.waitForJob('scheduled', false);
     expect(Date.parse(queued.dueAt) - Date.now()).toBeGreaterThan(55_000);
-    expect((await f.host.learningSchedule!()).jobs.map(job => job.kind)).toEqual(['learning', 'knowledge-meeting']);
+    expect((await f.host.learningSchedule!()).jobs.map(job => job.kind)).toEqual(HAS_DURABLE_LEARNING ? ['learning', 'knowledge-meeting'] : ['knowledge-meeting']);
     expect(f.requests.some(request => request.meeting)).toBe(false);
     await f.action('run-now');
     const job = await f.waitForJob('completed'); await idle(f.runtime);
@@ -256,7 +298,7 @@ describe('native knowledge meetings through the deferred host scheduler', () => 
   it('records a completed text-only discussion separately from a failed note export', async () => {
     const f = await fixture({ exportFailure: true });
     await f.host.sendPrompt(f.session.id, 'Record our decision to validate before saving.'); await idle(f.runtime);
-    expect((await f.host.learningSchedule!()).jobs.map(job => job.kind)).toEqual(['learning', 'knowledge-meeting']);
+    expect((await f.host.learningSchedule!()).jobs.map(job => job.kind)).toEqual(HAS_DURABLE_LEARNING ? ['learning', 'knowledge-meeting'] : ['knowledge-meeting']);
     await f.action('run-now');
     const job = await f.waitForJob('failed'); await idle(f.runtime);
     expect(job.result?.meeting).toMatchObject({ outcome: 'completed', knowledge: 'failed' });
@@ -368,7 +410,8 @@ describe('native knowledge meetings through the deferred host scheduler', () => 
         expect(await f.waitForJob('scheduled', true)).toMatchObject({ reason: 'busy' });
         expect(f.requests.some(request => request.meeting)).toBe(false);
         expect(f.exports).toEqual([]);
-        await clearDraft(); await f.action('run-now');
+        // The earlier run-now intent becomes eligible when its blocking draft is removed.
+        await clearDraft();
       }
       await f.waitForJob('completed'); await idle(f.runtime);
       expect(f.exports).toHaveLength(1);

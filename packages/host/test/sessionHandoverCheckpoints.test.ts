@@ -1,4 +1,4 @@
-import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { appendFile, mkdir, readFile, realpath, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { HandoverTarget } from '@extalia/platform';
@@ -22,7 +22,7 @@ function response() {
 
 /** Real host/persistence/Observe boundaries; model and external conversation evidence are synthetic. */
 async function fixture(options: { observeMode?: boolean; register?: boolean; isolated?: boolean } = {}) {
-  const root = await temp('extalia-handover-checkpoints-');
+  const root = await realpath(await temp('extalia-handover-checkpoints-'));
   const home = path.join(root, 'home'), project = path.join(root, 'project'), data = path.join(root, 'data');
   const rollout = path.join(home, '.codex', 'sessions', 'rollout.jsonl');
   await Promise.all([mkdir(project), mkdir(path.dirname(rollout), { recursive: true })]);

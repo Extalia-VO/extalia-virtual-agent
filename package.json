@@ -2,7 +2,7 @@
   "name": "extalia",
   "description": "Open-source 3D virtual office for AI agents: orchestrate and observe coding agents through conventional views and a living 3D office.",
   "private": true,
-  "version": "0.4.332",
+  "version": "0.4.333",
   "license": "MIT",
   "type": "module",
   "packageManager": "pnpm@12.7.0",

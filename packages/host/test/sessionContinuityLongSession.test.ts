@@ -1,4 +1,4 @@
-import { appendFile, mkdir, readFile, stat, writeFile } from 'node:fs/promises';
+import { appendFile, mkdir, readFile, realpath, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { afterEach, expect, it, vi } from 'vitest';
 import type { ContinuityEntry, ContinuityReadPage, ContinuitySnapshotSummary } from '@extalia/platform';
@@ -27,7 +27,7 @@ interface McpResult { isError?: boolean; content: { text: string }[] }
 const unpack = <T>(reply: McpResult): T => { expect(reply.isError).not.toBe(true); return JSON.parse(reply.content[0]!.text) as T; };
 
 it('recovers a captured middle decision after window loss and synthetic compaction through Codex → Gemini → Claude → Codex', async () => {
-  const root = await temp('extalia-continuity-long-session-');
+  const root = await realpath(await temp('extalia-continuity-long-session-'));
   const home = path.join(root, 'home'), project = path.join(root, 'project'), data = path.join(root, 'data');
   const files = {
     codex: path.join(home, '.codex', 'sessions', 'rollout.jsonl'),

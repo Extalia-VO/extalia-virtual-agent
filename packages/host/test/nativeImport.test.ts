@@ -11,12 +11,12 @@ const T1 = '2026-10-08T00:00:01.000Z';
 const jsonl = (...values: unknown[]) => values.map(value => JSON.stringify(value)).join('\n');
 
 /** Synthesized native histories in a temporary home; nothing real is read. */
-async function fakeHome(root: string) {
+async function fakeHome(root: string, codexProject = '/projects/site') {
   const home = path.join(root, 'home');
   const codex = path.join(home, '.codex', 'sessions', '2026', '10', '08');
   await mkdir(codex, { recursive: true });
   await writeFile(path.join(codex, 'rollout-a.jsonl'), jsonl(
-    { type: 'session_meta', payload: { id: 'codex-1', cwd: '/projects/site', timestamp: T } },
+    { type: 'session_meta', payload: { id: 'codex-1', cwd: codexProject, timestamp: T } },
     { timestamp: T, type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'Add a footer' }] } },
     { timestamp: T1, type: 'response_item', payload: { type: 'message', role: 'assistant', content: [{ type: 'output_text', text: 'Footer added.' }] } },
   ));
@@ -108,11 +108,11 @@ describe('native history import through the host', () => {
 
   it('continues an observed Codex session in Extalia without touching the transcript', async () => {
     const root = await temp();
-    const home = await fakeHome(root);
     const project = path.join(root, 'site');
     await mkdir(project);
+    // Serialize the path as JSON, including Windows backslashes, when creating the fixture.
+    const home = await fakeHome(root, project);
     const rollout = path.join(home, '.codex', 'sessions', '2026', '10', '08', 'rollout-a.jsonl');
-    await writeFile(rollout, (await readFile(rollout, 'utf8')).replace('/projects/site', project));
     const before = await readFile(rollout, 'utf8');
     const runtime = await createAgentHost({ kind: 'bridge', version: 'test', dataDirectory: path.join(root, 'data'), importHome: home, env: { EXTALIA_SECRET_STORE: 'memory' }, observationIntervalMs: 60_000 });
     try {

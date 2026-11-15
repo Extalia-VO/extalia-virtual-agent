@@ -1,4 +1,5 @@
-import { mkdir, realpath, rename, symlink } from 'node:fs/promises';
+import { realpathSync } from 'node:fs';
+import { mkdir, rename, symlink } from 'node:fs/promises';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { describe, expect, it } from 'vitest';
@@ -29,8 +30,9 @@ async function fixture() {
 describe('retained Hermes control source authority', () => {
   it('pins an identical native id to its exact database, named profile and canonical project', async () => {
     const f = await fixture(), primary = f.source.hermesControlSource(f.reference('default')), named = f.source.hermesControlSource(f.reference('team'));
-    expect(primary).toMatchObject({ nativeSessionId: 'same-native-id', profile: 'default', profileHome: await realpath(f.hermes), cwd: await realpath(f.project) });
-    expect(named).toMatchObject({ nativeSessionId: 'same-native-id', profile: 'team', profileHome: await realpath(path.dirname(f.named)), cwd: await realpath(f.project) });
+    // Match the synchronous authority resolver: async realpath can expand Windows short names differently.
+    expect(primary).toMatchObject({ nativeSessionId: 'same-native-id', profile: 'default', profileHome: realpathSync(f.hermes), cwd: realpathSync(f.project) });
+    expect(named).toMatchObject({ nativeSessionId: 'same-native-id', profile: 'team', profileHome: realpathSync(path.dirname(f.named)), cwd: realpathSync(f.project) });
     expect(primary!.fingerprint).not.toBe(named!.fingerprint);
     expect(f.source.hermesControlSource({ ...f.reference('default'), path: f.named })).toBeUndefined();
     expect(f.source.hermesControlSource({ locationId: 'loc-hermes-dashboard', sourceId: 'hermes', path: '', nativeSessionId: 'same-native-id' })).toBeUndefined();
@@ -56,7 +58,7 @@ describe('retained Hermes control source authority', () => {
     const scan = source.scan();
     expect(scan.sessions).toHaveLength(1);
     const ref = source.observation(scan.scanId, scan.sessions[0]!.id).reference;
-    expect(source.hermesControlSource(ref)).toMatchObject({ profile: 'team', profileHome: await realpath(selected) });
+    expect(source.hermesControlSource(ref)).toMatchObject({ profile: 'team', profileHome: realpathSync(selected) });
     expect(source.hermesControlSource({ ...ref, path: f.primary })).toBeUndefined();
   });
 
@@ -68,7 +70,7 @@ describe('retained Hermes control source authority', () => {
     const observed = f.source.observation(scan.scanId, candidate.id);
     expect(observed.session.messages).toEqual([]); expect(observed.steps).toEqual([]);
     expect(observed.session.provenance).toMatchObject({ sourceId: 'hermes', sourceSessionId: 'profile:team:same-native-id' });
-    expect(f.source.hermesControlSource(observed.reference)).toMatchObject({ nativeSessionId: 'same-native-id', profile: 'team', cwd: await realpath(f.project) });
+    expect(f.source.hermesControlSource(observed.reference)).toMatchObject({ nativeSessionId: 'same-native-id', profile: 'team', cwd: realpathSync(f.project) });
     expect(f.source.readObservation(observed.reference).session.messages).toEqual([]);
   });
 

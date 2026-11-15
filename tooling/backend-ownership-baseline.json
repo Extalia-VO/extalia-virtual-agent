@@ -1871,9 +1871,9 @@
     {
       "path": "packages/host/src/service.ts",
       "category": "legacy-backend",
-      "sha256": "965d0490426bb836338589510848fe27f16f459b54619a54a6d00357a665c644",
-      "loc": 6385,
-      "bytes": 444043,
+      "sha256": "610b0bf5e00d6617264b2e82c1434e9ba85a57b68c4a27c7c3359be239ebfedf",
+      "loc": 6400,
+      "bytes": 445153,
       "effectKinds": [
         "node-builtin",
         "runtime-call"

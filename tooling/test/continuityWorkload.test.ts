@@ -22,7 +22,7 @@ def normalize_inventory(records):
 if __name__ == '__main__':
     try:
         result = normalize_inventory(json.loads(sys.stdin.read()))
-        print(json.dumps(result, ensure_ascii=False, separators=(',', ':')))
+        sys.stdout.buffer.write((json.dumps(result, ensure_ascii=False, separators=(',', ':')) + '\n').encode('utf-8'))
     except (ValueError, json.JSONDecodeError):
         print('invalid inventory', file=sys.stderr)
         sys.exit(2)
@@ -78,6 +78,24 @@ describe('cross-agent executable acceptance workload', () => {
     expect(result.artifactSha256).toBe(command.artifact.sha256);
     expect(result.verifierSha256).toBe(command.verifier.sha256);
     expect(await readFile(path.join(options.projectDirectory, 'normalizer.py'), 'utf8')).toBe(implementation);
+  });
+
+  it('keeps probe transport UTF-8/LF when Python text stdout translates newlines', async () => {
+    const windowsTextStream = implementation.replace('import json, sys',
+      "import json, sys\nsys.stdout.reconfigure(encoding='utf-8', newline='\\r\\n')");
+    const report = await verifyWorkload(await fixture(windowsTextStream));
+    expect(report.passed).toBe(true);
+    expect(report.checks).toContainEqual({ id: 'quiet_import', passed: true });
+    expect(report.checks).toContainEqual({ id: 'cli_exact_output', passed: true });
+  });
+
+  it('continues to reject CRLF bytes from the candidate CLI', async () => {
+    const crlfCli = implementation.replace(" + '\\n').encode('utf-8')", " + '\\r\\n').encode('utf-8')");
+    expect(crlfCli).not.toBe(implementation);
+    const report = await verifyWorkload(await fixture(crlfCli));
+    expect(report.passed).toBe(false);
+    expect(report.checks).toContainEqual({ id: 'quiet_import', passed: true });
+    expect(report.checks).toContainEqual({ id: 'cli_exact_output', passed: false });
   });
 
   it.each([
