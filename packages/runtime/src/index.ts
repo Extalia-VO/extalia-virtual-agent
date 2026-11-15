@@ -1,4 +1,5 @@
 export * from './attachments.js';
+export * from './contextCompaction.js';
 export * from './delegation.js';
 export * from './fallback.js';
 export * from './loop.js';

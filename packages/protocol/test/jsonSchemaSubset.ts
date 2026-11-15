@@ -9,7 +9,7 @@ const ANNOTATIONS = new Set(['$schema', '$id', 'title', 'description', '$comment
 export const SUPPORTED_KEYWORDS = new Set([
   ...ANNOTATIONS, '$ref', 'type', 'const', 'enum', 'pattern', 'minLength', 'maxLength', 'minimum', 'maximum',
   'items', 'minItems', 'maxItems', 'uniqueItems', 'properties', 'required', 'additionalProperties', 'maxProperties', 'propertyNames',
-  'dependentRequired', 'allOf', 'oneOf', 'not', 'if', 'then',
+  'dependentRequired', 'allOf', 'anyOf', 'oneOf', 'not', 'if', 'then',
 ]);
 
 const patterns = new Map<string, RegExp>();
@@ -37,14 +37,16 @@ function hasType(value: unknown, type: string): boolean {
 }
 
 /** True when `value` is valid against `schema`; `$ref` resolves only to `#/$defs/<name>` of `root`. */
-export function validateJsonSchema(schema: JsonSchema, value: unknown, root: JsonSchema = schema): boolean {
+export function validateJsonSchema(schema: JsonSchema | boolean, value: unknown, root: JsonSchema | boolean = schema): boolean {
+  if (typeof schema === 'boolean') return schema;
+  if (!isObject(schema)) throw new Error('Expected an object or boolean JSON Schema');
   for (const keyword of Object.keys(schema)) if (!SUPPORTED_KEYWORDS.has(keyword)) throw new Error(`Unsupported keyword ${keyword}`);
   const s = schema as Record<string, unknown>;
-  const sub = (child: unknown, item: unknown) => validateJsonSchema(child as JsonSchema, item, root);
+  const sub = (child: unknown, item: unknown) => validateJsonSchema(child as JsonSchema | boolean, item, root);
   if (typeof s.$ref === 'string') {
     const name = /^#\/\$defs\/([A-Za-z0-9]+)$/.exec(s.$ref)?.[1];
-    const target = name ? (root.$defs as Record<string, JsonSchema> | undefined)?.[name] : undefined;
-    if (!target) throw new Error(`Unresolvable $ref ${s.$ref}`);
+    const target = name && typeof root !== 'boolean' ? (root.$defs as Record<string, JsonSchema | boolean> | undefined)?.[name] : undefined;
+    if (target === undefined) throw new Error(`Unresolvable $ref ${s.$ref}`);
     if (!sub(target, value)) return false;
   }
   if (typeof s.type === 'string' && !hasType(value, s.type)) return false;
@@ -81,6 +83,12 @@ export function validateJsonSchema(schema: JsonSchema, value: unknown, root: Jso
     }
   }
   if (Array.isArray(s.allOf) && !s.allOf.every(item => sub(item, value))) return false;
+  // Inclusive union: one or several successful branches are valid. Visit every
+  // branch so unsupported keywords cannot hide behind an earlier matching arm.
+  if ('anyOf' in s) {
+    if (!Array.isArray(s.anyOf) || s.anyOf.length === 0) throw new Error('anyOf requires a nonempty array of schemas');
+    if (!s.anyOf.map(item => sub(item, value)).some(Boolean)) return false;
+  }
   if (Array.isArray(s.oneOf) && s.oneOf.filter(item => sub(item, value)).length !== 1) return false;
   if (s.not !== undefined && sub(s.not, value)) return false;
   if (s.if !== undefined && sub(s.if, value) && s.then !== undefined && !sub(s.then, value)) return false;

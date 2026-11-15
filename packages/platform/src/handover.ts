@@ -2,7 +2,7 @@ import type { Effort } from '@extalia/core';
 
 /** A destination is a model connection or an existing outside conversation, never an invented runtime thread. */
 export type HandoverTarget =
-  | { kind: 'native'; connectionId: string; model?: string; effort?: Effort }
+  | { kind: 'native'; connectionId: string; model?: string; effort?: Effort; enableManagedWorkspace?: true }
   | { kind: 'observed'; sessionId: string; capabilityId: string }
   | { kind: 'manual'; label: string; sessionId?: string };
 
@@ -32,7 +32,7 @@ export interface ContinuitySnapshotSummary {
   effort?: Effort;
   connectionId?: string;
   /** Additional reviewed workspace references retain their original profile and access boundary. */
-  workspaceContext?: { workspaceId: string; profileId: string; boundary: string;
+  workspaceContext?: { workspaceId: string; profileId: string; boundary: string; connectionId?: string | null;
     contributors?: { sessionId: string; sourceId: string; nativeSessionId: string; boundary: string }[] };
   title: string;
   capturedAt: string;
@@ -72,7 +72,14 @@ export interface ContinuityView {
   snapshots: ContinuitySnapshotSummary[];
   handovers: HandoverReceipt[];
 }
-export interface HandoverPreviewInput { target: HandoverTarget; notes?: ContinuityNotes }
+export interface HandoverPreviewInput {
+  target: HandoverTarget;
+  notes?: ContinuityNotes;
+  /** Pin the visible source now. Later source progress does not invalidate this reviewed copy. */
+  capture?: 'checkpoint';
+  /** Explicit consent to combine an established destination lineage at the displayed revision. */
+  mergeTargetChain?: { canonicalId: string; revision: number };
+}
 export interface HandoverPreview {
   canonicalId: string;
   sourceSessionId: string;
@@ -89,11 +96,21 @@ export interface HandoverPreview {
   packetOmittedEntries: number;
   persistent: boolean;
   handoverCount: number;
+  /** Older bridges omit this field and require the latest source to remain unchanged. */
+  capture?: 'checkpoint' | 'latest';
+  checkpoint?: { capturedAt: string; observedThrough?: string; activity: 'active' | 'idle' | 'approval' | 'unknown' };
+  targetChain?: { canonicalId: string; revision: number; snapshots: number; handovers: number; requiresConsent: boolean };
 }
 export interface HandoverApplyInput { reviewId: string; operationId: string }
 export interface HandoverReconcileInput { operationId: string; packetDigest: string; outcome: 'accepted' | 'not-delivered' }
 export interface ContinuityEntry { id: string; kind: 'user' | 'assistant' | 'tool' | 'file' | 'status'; text: string; at?: string }
-export interface ContinuityReadInput { snapshotId: string; offset?: number; limit?: number }
+export interface ContinuityReadInput {
+  snapshotId: string;
+  offset?: number;
+  limit?: number;
+  /** Internal grant identity. A reviewed lineage merge preserves older canonical IDs and pinned archives. */
+  canonicalId?: string;
+}
 export interface ContinuityReadPage {
   canonicalId: string;
   snapshot: ContinuitySnapshotSummary;

@@ -42,10 +42,15 @@ it('runs edited pending prompts in the selected managed session and waits for ea
     queue = await f.host.changePromptQueue!(f.session.id, { revision: queue.revision, action: 'edit', itemId: queue.items[1]!.id, text: 'second edited' });
     queue = await f.host.changePromptQueue!(f.session.id, { revision: queue.revision, action: 'reorder', itemIds: [queue.items[1]!.id, queue.items[0]!.id] });
     await f.host.changePromptQueue!(f.session.id, { revision: queue.revision, action: 'pause', paused: false });
-    await wait(async () => (await f.host.promptQueueStatus!(f.session.id)).items.filter(item => item.state === 'sent').length === 2);
+    // A sent receipt acknowledges host admission; inference and completion follow asynchronously.
+    await wait(async () => (await f.host.promptQueueStatus!(f.session.id)).items.filter(item => item.state === 'sent').length === 2
+      && f.prompts.length === 2
+      && (await f.host.sessionEvents(f.session.id)).filter(event => event.body.type === 'turn.completed').length === 2);
     expect(f.prompts).toEqual(['second edited', 'first']);
     const events = await f.host.sessionEvents(f.session.id);
     expect(events.filter(event => event.body.type === 'prompt.submitted').map(event => event.body.type === 'prompt.submitted' ? event.body.text : '')).toEqual(['second edited', 'first']);
+    expect(events.filter(event => event.body.type === 'prompt.submitted' || event.body.type === 'turn.completed')
+      .map(event => event.body.type === 'prompt.submitted' ? event.body.text : event.body.type)).toEqual(['second edited', 'turn.completed', 'first', 'turn.completed']);
     expect((await f.host.getState()).sessions).toHaveLength(1);
   } finally { await f.runtime.close(); }
 });

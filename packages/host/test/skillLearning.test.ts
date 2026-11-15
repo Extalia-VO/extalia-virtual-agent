@@ -3,7 +3,7 @@ import { chmod, lstat, readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import type { SkillRevisionSummary } from '@extalia/protocol';
-import { DaemonSidecar, DaemonUnavailableError, type DaemonClient } from '../src/daemon/index.js';
+import { DaemonSidecar, DaemonRequestError, DaemonUnavailableError, type DaemonClient } from '../src/daemon/index.js';
 import { SKILL_REGISTRY_OPS, SKILL_REGISTRY_DEADLINE_MS, SKILL_SCAN_DEADLINE_MS, SkillRegistry } from '../src/skillRegistry.js';
 import { createSkillProposalTool, normalizeSkillProposal, normalizeSkillProposalProvenance, type SkillProposalInput, type SkillProposalProvenance, type SkillProposalResult } from '../src/skillLearning.js';
 import { DAEMON_BINARY, HAS_DAEMON } from './daemonBackend.js';
@@ -148,6 +148,52 @@ describe.skipIf(process.platform === 'win32')('generated skill candidates from a
     release(result); const finished = await pending;
     expect(finished.ok).toBe(true); expect(JSON.parse(finished.output)).toMatchObject({ inspectionOutcome: 'scanner-unavailable', activationPerformed: false });
     expect(propose).toHaveBeenCalledExactlyOnceWith(input, provenance, expect.any(AbortSignal));
+  });
+
+  it('pins provenance and revalidates host scope before persistence, with cancellation after the scope read', async () => {
+    const controller = new AbortController();
+    const original = { ...provenance, profileId: 'profile-one' };
+    const propose = vi.fn(async () => result);
+    const assertCurrent = vi.fn(async () => { controller.abort(); });
+    const tool = createSkillProposalTool({ provenance: original, assertCurrent, propose });
+    original.profileId = 'profile-two';
+    const response = await runTool([tool], 'skill_propose', input, controller.signal);
+    expect(response.ok).toBe(false); expect(response.output).toContain('Cancelled before');
+    expect(assertCurrent).toHaveBeenCalledTimes(1); expect(propose).not.toHaveBeenCalled();
+  });
+
+  it('fails closed on unavailable scope without exposing diagnostics or retrying the write', async () => {
+    const propose = vi.fn(async () => result);
+    const assertCurrent = vi.fn(async () => { throw new Error('private profile path'); });
+    const tool = createSkillProposalTool({ provenance: { ...provenance, profileId: 'profile-one' }, assertCurrent, propose });
+    const response = await runTool([tool], 'skill_propose', input);
+    expect(response.ok).toBe(false); expect(response.output).toContain('profile changed or could not be confirmed');
+    expect(response.output).not.toContain('private profile path');
+    expect((await runTool([tool], 'skill_propose', input)).ok).toBe(false);
+    expect(assertCurrent).toHaveBeenCalledTimes(1); expect(propose).not.toHaveBeenCalled();
+  });
+
+  it('reports known immutable-refinement refusals without copying arbitrary owner diagnostics', async () => {
+    const stale = createSkillProposalTool({ provenance, propose: async () => {
+      throw new Error('private native details', { cause: new DaemonRequestError('denied', 'refinement_base_changed') });
+    } });
+    const rejected = await runTool([stale], 'skill_propose', input);
+    expect(rejected.ok).toBe(false); expect(rejected.output).toContain('Review the current candidate');
+    expect(rejected.output).not.toContain('private native details');
+    const unknown = createSkillProposalTool({ provenance, propose: async () => { throw new Error('private source path and content'); } });
+    const uncertain = await runTool([unknown], 'skill_propose', input);
+    expect(uncertain.output).toContain('may have been recorded'); expect(uncertain.output).not.toContain('private source');
+  });
+
+  it('submits the captured profile provenance after successful scope confirmation', async () => {
+    const original = { ...provenance, profileId: 'profile-one' };
+    const propose = vi.fn(async () => result);
+    const assertCurrent = vi.fn(async () => undefined);
+    const tool = createSkillProposalTool({ provenance: original, assertCurrent, propose });
+    original.profileId = 'profile-two';
+    expect((await runTool([tool], 'skill_propose', input)).ok).toBe(true);
+    expect(propose).toHaveBeenCalledWith(input, { ...provenance, profileId: 'profile-one' }, expect.any(AbortSignal));
+    expect(assertCurrent).toHaveBeenCalledTimes(1);
   });
 
   it('does not retry an uncertain imported candidate automatically or expose transport exception text', async () => {

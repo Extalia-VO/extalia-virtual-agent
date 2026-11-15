@@ -29,7 +29,7 @@ it.each(['en', 'id'] as const)('keeps navigation in one page toolbar and puts so
 
 describe('compact observed handover action', () => {
   const agents = { sessionContinuity: vi.fn(), previewHandover: vi.fn(), applyHandover: vi.fn() } as unknown as AgentHostApi;
-  const props = { t: MESSAGES.en, agents, state, source: { kind: 'observed' as const, id: observed.id }, onContinued: vi.fn(), onOpenSettings: vi.fn() };
+  const props = { t: MESSAGES.en, agents, state, source: { kind: 'observed' as const, id: observed.id }, onContinued: vi.fn(), onOpenSettings: vi.fn(), onState: vi.fn() };
   it('offers an accessible icon action without taking the header width of a full text button', () => {
     const html = renderToStaticMarkup(createElement(ContinueInExtalia, { ...props, compact: true }));
     expect(html).toContain('class="continue-panel compact"');

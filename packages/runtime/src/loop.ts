@@ -7,6 +7,7 @@ import { validateArguments, type AnyTool, type ToolAccess } from './tools.js';
 import type { LocalToolPipelines } from './localOperations.js';
 import { RequestBudgetError, checkRequestBudget, type RequestPressure } from './requestBudget.js';
 import { UsageAccumulator } from './usage.js';
+import { ContextCompactor, type ContextCompactionOptions, type ContextCompactionReport } from './contextCompaction.js';
 
 /**
  * One agent turn: send the conversation to the model, run the tools it asks
@@ -48,8 +49,12 @@ export interface TurnOptions {
   checkPermission?(request: PermissionRequest): Promise<PermissionVerdict>;
   signal: AbortSignal;
   maxSteps?: number;
+  /** Reserve the last bounded request for a response without tools; never execute calls from it. */
+  reserveFinalResponse?: boolean;
   /** Optional estimated input ceiling: a positive safe integer, never inferred from a model name. */
   maxInputTokens?: number;
+  /** Optional durable evidence archive and bounded request-only tool-output compaction. */
+  compaction?: ContextCompactionOptions;
   /** Host-owned context refresh after steering, before every budget check/provider request. */
   prepareRequest?(request: Readonly<Pick<ModelRequest, 'system' | 'messages' | 'tools'>> & { signal: AbortSignal; requestScope?: object }): Promise<string>;
   newId?: () => string;
@@ -82,6 +87,7 @@ export interface TurnResult {
   /** A rejected prospective request is separate from context/usage of requests actually sent. */
   requestPressure?: RequestPressure;
   reason?: 'context';
+  compaction?: ContextCompactionReport;
 }
 
 const RESULT_LIMIT = 30_000;
@@ -110,6 +116,7 @@ export async function runTurn(options: TurnOptions): Promise<TurnResult> {
   const composed = composeTurn(options.prompt, options.attachments ?? [], { images: provider.images !== false });
   const history: ModelMessage[] = [...options.history, { role: 'user', text: composed.text, ...(composed.images.length ? { images: composed.images } : {}) }];
   const accumulated = new UsageAccumulator(), usage = accumulated.total;
+  const compactor = options.compaction ? new ContextCompactor(options.compaction) : undefined;
   let context: TurnContext | undefined;
   let requestPressure: RequestPressure | undefined;
   const maxSteps = options.maxSteps ?? 50;
@@ -125,7 +132,7 @@ export async function runTurn(options: TurnOptions): Promise<TurnResult> {
   };
   const finish = async (outcome: TurnOutcome, error?: string, reason?: 'context'): Promise<TurnResult> => {
     await takeSteering('stop');
-    const result: TurnResult = { outcome, history: storedHistory(), usage, ...(error ? { error } : {}), ...(context ? { context } : {}), ...(requestPressure ? { requestPressure } : {}), ...(reason ? { reason } : {}) };
+    const result: TurnResult = { outcome, history: storedHistory(), usage, ...(error ? { error } : {}), ...(context ? { context } : {}), ...(requestPressure ? { requestPressure } : {}), ...(reason ? { reason } : {}), ...(compactor?.report ? { compaction: compactor.report } : {}) };
     if (outcome === 'completed') await options.beforeComplete?.(result);
     if (outcome === 'completed') emit({ type: 'turn.completed', ...(Object.keys(usage).length ? { usage } : {}) });
     else emit({ type: 'turn.failed', error: error ?? outcome, ...(reason ? { reason } : {}) });
@@ -137,19 +144,35 @@ export async function runTurn(options: TurnOptions): Promise<TurnResult> {
     if (signal.aborted) return finish('cancelled', 'Stopped by the user.');
     await takeSteering('step');
     if (signal.aborted) return finish('cancelled', 'Stopped by the user.');
-    const specs = specsNow();
+    const finalResponse = options.reserveFinalResponse === true && step === maxSteps - 1;
+    const specs = finalResponse ? [] : specsNow();
     let system = options.system;
-    try {
-      if (options.prepareRequest) system = await options.prepareRequest({ system, messages: history, tools: specs, signal, requestScope });
-    } catch (error) {
-      if (isAbort(error, signal)) return finish('cancelled', 'Stopped by the user.');
-      if (error instanceof RequestBudgetError) {
-        requestPressure = error.pressure;
-        return finish('failed', error.code, 'context');
+    let messages = compactor?.project(history) ?? history;
+    // Context preparation may itself enforce a budget. Retry only local preparation,
+    // before provider admission, and at most twice after an acknowledged projection.
+    for (let preparation = 0; preparation < 3; preparation++) {
+      system = options.system;
+      messages = compactor?.project(history) ?? history;
+      try {
+        if (options.prepareRequest) system = await options.prepareRequest({ system, messages, tools: specs, signal, requestScope });
+        if (finalResponse) system += '\nThis is the final bounded response. No tools are available. Summarize only the evidence already gathered, state unresolved questions and failed reads explicitly, and do not claim unverified work is complete.';
+        if (compactor && preparation < 2 && await compactor.compact({ system, messages: history, tools: specs }, options.maxInputTokens, signal)) continue;
+      } catch (error) {
+        if (isAbort(error, signal)) return finish('cancelled', 'Stopped by the user.');
+        if (error instanceof RequestBudgetError) {
+          if (compactor && preparation < 2 && !error.priorRequestMayHaveRun && ['token-limit', 'character-limit'].includes(error.reason)) {
+            try {
+              if (await compactor.compact({ system, messages: history, tools: specs }, options.maxInputTokens, signal, true)) continue;
+            } catch (failure) { if (isAbort(failure, signal)) return finish('cancelled', 'Stopped by the user.'); }
+          }
+          requestPressure = error.pressure;
+          return finish('failed', error.code, 'context');
+        }
+        return finish('failed', 'The Native request context could not be prepared.');
       }
-      return finish('failed', 'The Native request context could not be prepared.');
+      break;
     }
-    const budget = checkRequestBudget({ system, messages: history, tools: specs }, options.maxInputTokens);
+    const budget = checkRequestBudget({ system, messages, tools: specs }, options.maxInputTokens);
     if (signal.aborted) return finish('cancelled', 'Stopped by the user.');
     requestPressure = budget.pressure;
     if (budget.reason || !budget.pressure) return finish('failed', 'native_context_limit', 'context');
@@ -158,7 +181,7 @@ export async function runTurn(options: TurnOptions): Promise<TurnResult> {
 
     let result;
     try {
-      result = await provider.complete({ system, messages: history, tools: specs, signal, onText: text => { if (!signal.aborted) emit({ type: 'model.delta', text }); } });
+      result = await provider.complete({ system, messages, tools: specs, signal, onText: text => { if (!signal.aborted) emit({ type: 'model.delta', text }); } });
     } catch (error) {
       if (isAbort(error, signal)) return finish('cancelled', 'Stopped by the user.');
       if (error instanceof RequestBudgetError) {
@@ -195,6 +218,10 @@ export async function runTurn(options: TurnOptions): Promise<TurnResult> {
       // Tool input cut off at the output limit may parse as a valid but truncated object.
       history.push({ ...assistant, toolCalls: [] });
       return finish('failed', 'A tool call was cut off because the answer reached the output limit.');
+    }
+    if (finalResponse) {
+      history.push({ ...assistant, toolCalls: [] });
+      return finish('step-limit', 'The bounded synthesis requested more tools instead of returning findings. No additional tools were run.');
     }
     history.push(assistant);
 

@@ -50,4 +50,24 @@ describe('handover harness installation versus capability discovery', () => {
     expect(a.revision).not.toBe(b.revision);
     expect(JSON.stringify(a)).not.toContain(f.homeDirectory);
   });
+  it('does not substitute another executable for an explicitly unavailable override', async () => {
+    const f = await fixture();
+    await writeFile(path.join(f.env.PATH, executableName('hermes')), '#!/bin/sh\nexit 99\n', { mode: 0o700 });
+    const inventory = await discoverHandoverHarnesses({ ...f, env: { ...f.env, EXTALIA_HERMES_BIN: path.join(f.homeDirectory, 'missing-hermes') } });
+    expect(inventory.harnesses.map(item => item.id)).toEqual(['extalia']);
+  });
+  it('advertises an explicit Hermes setup step and selected profile without claiming gateway readiness', async () => {
+    const f = await fixture();
+    await writeFile(path.join(f.env.PATH, executableName('hermes')), '#!/bin/sh\nexit 99\n', { mode: 0o700 });
+    const inventory = await discoverHandoverHarnesses({ ...f, hermesCreateSetup: true, hermesCreationProfile: 'project-team' });
+    expect(inventory.harnesses.find(item => item.id === 'hermes')).toMatchObject({ evidence: ['executable'], existing: 'setup-required', create: 'setup-required', creationProfile: 'project-team' });
+    expect(f.control).not.toHaveBeenCalled();
+  });
+  it.each(['other-session', 'stale-route', 'approval-only'] as const)('does not advertise %s control as a ready handover destination', async kind => {
+    const f = await fixture(); f.sessions = [session('observed-hermes', 'hermes')];
+    f.control.mockImplementation(async sessionId => ({ sessionId: kind === 'other-session' ? 'foreign-session' : sessionId, state: 'ready',
+      routes: [{ route: 'hermes-native', state: kind === 'stale-route' ? 'unavailable' : 'ready', evidence: 'native-attachment', limit: 'existing-native-owner', relatedControls: [{ kind: 'approvals', available: true }],
+        capabilities: kind === 'approval-only' ? [] : [{ action: 'start', available: true, capabilityId: 'current' }] }] }));
+    expect((await discoverHandoverHarnesses(f)).harnesses.find(item => item.id === 'hermes')).toMatchObject({ existing: 'setup-required', create: 'unsupported' });
+  });
 });

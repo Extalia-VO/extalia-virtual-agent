@@ -80,6 +80,24 @@ describe('scoped continuity access', () => {
     await expect(f.service.request('destination', { accessCode: codeOf(next), operation: 'status' })).rejects.toThrow('unavailable');
     await expect(f.service.activate(next, 'destination')).rejects.toThrow('unavailable');
   });
+  it('revokes only the exact refused packet while preserving earlier grants for the same destination', async () => {
+    const f = await fixture(), earlier = await f.service.prepare('Earlier reviewed capsule', f.context), refused = await f.service.prepare('Later refused capsule', f.context);
+    await f.service.activate(earlier, 'destination'); await f.service.activate(refused, 'destination');
+    await expect(f.service.revokePacket(`${refused} altered`, 'destination')).rejects.toThrow('unavailable');
+    await expect(f.service.revokePacket(refused, 'another-session')).rejects.toThrow('unavailable');
+    expect((await f.service.request('destination', { accessCode: codeOf(refused), operation: 'status' }) as ContinuityAccessStatus).canonicalId).toBe('canonical-one');
+    await f.service.revokePacket(refused, 'destination'); await f.service.revokePacket(refused, 'destination');
+    await expect(f.service.request('destination', { accessCode: codeOf(refused), operation: 'status' })).rejects.toThrow('unavailable');
+    await expect(f.service.activate(refused, 'destination')).rejects.toThrow('unavailable');
+    const pending = await f.service.prepare('Cancelled review', f.context);
+    await f.service.revokePacket(pending, 'destination');
+    await expect(f.service.activate(pending, 'destination')).rejects.toThrow('unavailable');
+    await f.service.revokePacket('Unbound manual capsule with no access code', 'destination');
+    await f.service.close(); const restarted = new ContinuityAccess(f.options);
+    expect((await restarted.request('destination', { accessCode: codeOf(earlier), operation: 'status' }) as ContinuityAccessStatus).canonicalId).toBe('canonical-one');
+    expect(JSON.parse(await readFile(f.file, 'utf8')).grants).toHaveLength(1);
+    await restarted.close();
+  });
   it('keeps history-off grants in memory and never promotes them through a later saved destination', async () => {
     const f = await fixture(); f.context.persistent = false;
     const packet = await f.service.prepare('Capsule', f.context), accessCode = codeOf(packet);
@@ -193,6 +211,48 @@ describe('scoped continuity access', () => {
     expect(JSON.stringify(stored)).not.toContain(accessCode); expect(JSON.stringify(stored)).toContain('[redacted]');
     expect(await readFile(join(f.root, 'chain.json'), 'utf8')).not.toContain(accessCode);
     expect(await readFile(f.file, 'utf8')).not.toContain(accessCode);
+    await accessService.close(); await continuity.close();
+  });
+  it('keeps old grants readable after an explicitly reviewed lineage merge and restart without granting newly joined or future evidence', async () => {
+    const f = await fixture(), chainFile = join(f.root, 'merged-chain.json');
+    const sources = new Map<string, ContinuitySourceSnapshot>([
+      ['source', { ...f.context.source, entries: [{ id: 'original-goal', kind: 'user', text: 'Original reviewed objective.' }] }],
+      ['destination', { ...f.context.source, sessionId: 'destination', sourceId: 'gemini', nativeSessionId: 'gemini-thread', entries: [{ id: 'destination-work', kind: 'assistant', text: 'Destination report.' }] }],
+      ['incoming', { ...f.context.source, sessionId: 'incoming', nativeSessionId: 'incoming-thread', entries: [{ id: 'incoming-goal', kind: 'user', text: 'Separately joined objective.' }] }],
+    ]);
+    let continuity: SessionContinuity, accessService: ContinuityAccess;
+    const accessOptions = { ...f.options, read: (id: string, input: Parameters<SessionContinuity['readContinuity']>[1]) => continuity.readContinuity(id, input) };
+    const continuityOptions = { file: chainFile, snapshot: async (id: string) => structuredClone(sources.get(id)!),
+      inspectTarget: async () => f.context.destination,
+      decoratePacket: (packet: string, context: ContinuityPacketContext) => accessService.prepare(packet, context),
+      applyEffect: async (_source: ContinuitySourceSnapshot, _target: ContinuityPacketContext['target'], packet: string) => {
+        await accessService.activate(packet, 'destination'); return { state: 'submitted' as const };
+      },
+    };
+    accessService = new ContinuityAccess(accessOptions); continuity = new SessionContinuity(continuityOptions);
+    const original = await continuity.previewHandover('source', { target: f.context.target, capture: 'checkpoint' });
+    await continuity.applyHandover('source', { reviewId: original.reviewId, operationId: 'original-grant' });
+    const originalCode = codeOf(original.packet), originalSnapshot = original.coverage[0]!.id;
+    const before = await accessService.request('destination', { accessCode: originalCode, operation: 'read', snapshotId: originalSnapshot });
+    const proposed = await continuity.previewHandover('incoming', { target: f.context.target, capture: 'checkpoint' });
+    const joined = await continuity.previewHandover('incoming', { target: f.context.target, capture: 'checkpoint',
+      mergeTargetChain: { canonicalId: proposed.targetChain!.canonicalId, revision: proposed.targetChain!.revision } });
+    await continuity.applyHandover('incoming', { reviewId: joined.reviewId, operationId: 'merge-grant' });
+    const joinedOnly = joined.coverage.find(snapshot => snapshot.sessionId === 'incoming')!.id;
+    expect(await accessService.request('destination', { accessCode: originalCode, operation: 'read', snapshotId: originalSnapshot })).toEqual(before);
+    await expect(accessService.request('destination', { accessCode: originalCode, operation: 'read', snapshotId: joinedOnly })).rejects.toThrow('unavailable');
+    await accessService.close(); await continuity.close();
+    continuity = new SessionContinuity(continuityOptions); accessService = new ContinuityAccess(accessOptions);
+    expect(await accessService.request('destination', { accessCode: originalCode, operation: 'read', snapshotId: originalSnapshot })).toEqual(before);
+    const status = await accessService.request('destination', { accessCode: originalCode, operation: 'status' }) as ContinuityAccessStatus;
+    expect(status.canonicalId).toBe(original.canonicalId); expect(status.total).toBe(original.coverage.length);
+    sources.get('incoming')!.entries = [...sources.get('incoming')!.entries, { id: 'future', kind: 'assistant', text: 'Future work remains outside the old grants.' }];
+    sources.get('incoming')!.revision = 'future-v2';
+    const future = await continuity.sessionContinuity('incoming');
+    await expect(accessService.request('destination', { accessCode: originalCode, operation: 'read', snapshotId: future.snapshots.at(-1)!.id })).rejects.toThrow('unavailable');
+    for (const id of continuity.canonicalIdsFor('incoming')) await accessService.demote(id);
+    expect(JSON.parse(await readFile(f.file, 'utf8')).grants).toEqual([]);
+    expect(await accessService.request('destination', { accessCode: originalCode, operation: 'read', snapshotId: originalSnapshot })).toEqual(before);
     await accessService.close(); await continuity.close();
   });
 });

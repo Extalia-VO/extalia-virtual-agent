@@ -11,6 +11,8 @@ import { resumeArguments, resumeEnvironment, type ResumeArchiveCommand } from '.
 
 export interface ObservedCliResumeTarget {
   family: ObservedCliFamily; sourceId: string; nativeSessionId: string; fingerprint: string; revision: string;
+  /** Host-owned profile/configuration/watch authority, independent of transcript progress. */
+  authorityRevision?: string;
   watching: boolean; idle: boolean; cwd: string; profilePath: string; model?: string;
   resumeModel?: string; resumeModelSource?: 'profile' | 'project' | 'environment';
 }
@@ -32,13 +34,17 @@ const UNKNOWN = 'Delivery is uncertain. Inspect the original conversation before
 const validId = (value: unknown): value is string => typeof value === 'string' && /^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$/.test(value);
 const nativeKey = (target: ObservedCliResumeTarget) => JSON.stringify([target.family, target.nativeSessionId, target.profilePath]);
 const sourceKey = (target: ObservedCliResumeTarget) => JSON.stringify([target.family, target.sourceId, target.nativeSessionId, target.fingerprint, target.cwd, target.profilePath]);
-const targetKey = (target: ObservedCliResumeTarget) => JSON.stringify([sourceKey(target), target.revision, target.model, target.resumeModel, target.resumeModelSource]);
+// Older persisted pairings remain strict until explicitly reviewed once with the new authority.
+const pairingKey = (target: ObservedCliResumeTarget) => JSON.stringify([sourceKey(target), target.authorityRevision ?? target.revision,
+  target.authorityRevision !== undefined, target.family === 'claude' ? target.resumeModel : target.model, target.resumeModelSource]);
+const targetKey = (target: ObservedCliResumeTarget) => JSON.stringify([pairingKey(target), target.revision, target.model]);
 const validTarget = (value: unknown): value is ObservedCliResumeTarget => {
   if (!value || typeof value !== 'object') return false;
   const t = value as ObservedCliResumeTarget;
   return ['codex', 'gemini', 'claude'].includes(t.family) && validId(t.nativeSessionId) && validId(t.sourceId)
     && typeof t.fingerprint === 'string' && t.fingerprint.length > 0 && t.fingerprint.length <= 4096
     && typeof t.revision === 'string' && t.revision.length <= 512 && typeof t.watching === 'boolean' && typeof t.idle === 'boolean'
+    && (t.authorityRevision === undefined || typeof t.authorityRevision === 'string' && t.authorityRevision.length > 0 && t.authorityRevision.length <= 512)
     && [t.cwd, t.profilePath].every(p => typeof p === 'string' && path.isAbsolute(p) && p.length <= 4096 && !p.includes('\0'))
     && (t.model === undefined || typeof t.model === 'string' && t.model.length <= 200 && !/[\0\r\n]/.test(t.model))
     && (t.resumeModel === undefined || typeof t.resumeModel === 'string' && t.resumeModel.trim().length > 0 && t.resumeModel.length <= 200 && !/[\0\r\n]/.test(t.resumeModel))
@@ -126,7 +132,7 @@ export class ObservedCliResumeService {
     if (this.uncertaintyFor(target)) return { ...base, state: 'uncertain', problem: UNKNOWN };
     if (this.ownerFor(target)) return { ...base, state: 'unavailable', problem: 'This original conversation already has an owned process.' };
     if (!binding?.connected) return { ...base, family: target.family, state: 'disconnected' };
-    if (targetKey(target) !== targetKey(binding.target) || !target.idle) return { ...base, state: 'unavailable', problem: 'The original source or its idle state changed. Review the connection again.' };
+    if (pairingKey(target) !== pairingKey(binding.target) || !target.idle) return { ...base, state: 'unavailable', problem: 'The original source or its idle state changed. Review the connection again.' };
     return { ...base, state: 'ready' };
   }
   async preview(id: string): Promise<ObservedCliResumePreview> {
@@ -184,9 +190,13 @@ export class ObservedCliResumeService {
     return this.status(id);
   }
   async driverStatus(id: string): Promise<ObservedControlDriverSnapshot | undefined> {
-    const status = await this.status(id), binding = this.bindings.get(id);
-    return status.state === 'ready' && binding ? { bindingId: binding.pairingId, generation: binding.target.revision, actions: ['start'],
-      relatedControls: [{ kind: 'approvals', available: false }, { kind: 'questions', available: false }] } : undefined;
+    await this.loading;
+    const target = await this.target(id), binding = this.bindings.get(id);
+    if (!target?.idle || !binding?.connected || this.persistenceFailed || pairingKey(target) !== pairingKey(binding.target)
+      || this.ownerFor(target) || this.uncertaintyFor(target)) return undefined;
+    // Every reviewed transfer still binds the current transcript, not the original pairing snapshot.
+    return { bindingId: binding.pairingId, generation: target.revision, actions: ['start'],
+      relatedControls: [{ kind: 'approvals', available: false }, { kind: 'questions', available: false }] };
   }
   async dispatch(id: string, input: { action: ObservedControlAction; text: string; operationId: string }, snapshot: ObservedControlDriverSnapshot): Promise<Receipt> {
     return this.mutate(async () => {
@@ -198,7 +208,7 @@ export class ObservedCliResumeService {
         return { state: previous.state === 'completed' ? 'resolved' : previous.state === 'inflight' && this.owned.has(id) ? 'queued' : 'unknown' };
       }
       const target = await this.target(id);
-      if (this.closed || this.persistenceFailed || !binding?.connected || !target?.idle || targetKey(target) !== targetKey(binding.target)
+      if (this.closed || this.persistenceFailed || !binding?.connected || !target?.idle || pairingKey(target) !== pairingKey(binding.target)
         || !snapshot || snapshot.bindingId !== binding.pairingId || snapshot.generation !== target.revision || !snapshot.actions.includes('start') || this.ownerFor(target) || this.uncertaintyFor(target)) throw new ObservedControlRefusal('The reviewed idle connection is no longer current.');
       if (binding.journals.length >= 128) throw new ObservedControlRefusal('The operation journal is full.');
       if (JSON.stringify(await executablePin(binding.pin.file)) !== JSON.stringify(binding.pin)) throw new ObservedControlRefusal('The reviewed executable changed.');

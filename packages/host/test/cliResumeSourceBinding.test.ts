@@ -37,6 +37,7 @@ describe('official CLI resume source authority', () => {
     expect(target).toMatchObject({ family, sourceId: f.sourceId, nativeSessionId: id, cwd: realpathSync(f.cwd), profilePath: realpathSync(f.profilePath) });
     expect(target?.fingerprint).toMatch(/^[a-f0-9]{64}$/);
     expect(target?.revision).toMatch(/^[a-f0-9]{64}$/);
+    expect(target?.authorityRevision).toMatch(/^[a-f0-9]{64}$/);
     expect(f.source.cliResumeSource({ ...f.reference, nativeSessionId: otherId })).toBeUndefined();
     expect(f.source.cliResumeSource({ ...f.reference, sourceId: 'hermes' })).toBeUndefined();
     expect(f.source.cliResumeSource({ ...f.reference, nativeSessionId: 'latest' })).toBeUndefined();
@@ -48,10 +49,12 @@ describe('official CLI resume source authority', () => {
     const advanced = f.source.cliResumeSource(f.reference)!;
     expect(advanced.fingerprint).toBe(initial.fingerprint);
     expect(advanced.revision).not.toBe(initial.revision);
+    expect(advanced.authorityRevision).toBe(initial.authorityRevision);
     const replacement = `${f.file}.replacement`;
     await writeFile(replacement, f.content);
     await rename(replacement, f.file);
     expect(f.source.cliResumeSource(f.reference)?.fingerprint).not.toBe(initial.fingerprint);
+    expect(f.source.cliResumeSource(f.reference)?.authorityRevision).not.toBe(initial.authorityRevision);
   });
 
   it('binds only the selected Codex provider environment key, and invalidates a changed provider selection', async () => {
@@ -65,6 +68,7 @@ describe('official CLI resume source authority', () => {
     expect(second.credentialEnvironmentKeys).toEqual(['OTHER_PROVIDER_KEY']);
     expect(second.fingerprint).not.toBe(first.fingerprint);
     expect(second.revision).not.toBe(first.revision);
+    expect(second.authorityRevision).not.toBe(first.authorityRevision);
   });
 
   it.each([
@@ -96,6 +100,7 @@ describe('official CLI resume source authority', () => {
     await writeFile(settings, JSON.stringify({ model: 'changed-route', permissions: { mode: 'ask' } }));
     const changed = f.source.cliResumeSource(f.reference)!;
     expect(changed.revision).not.toBe(configured.revision);
+    expect(changed.authorityRevision).not.toBe(configured.authorityRevision);
     expect(JSON.stringify(changed)).not.toMatch(/original-route|permissions/);
     if (family === 'claude') expect(changed).toMatchObject({ resumeModel: 'changed-route', resumeModelSource: 'profile' });
     else expect(changed.resumeModel).toBeUndefined();
@@ -146,6 +151,7 @@ describe('official CLI resume source authority', () => {
     const changed = f.source.cliResumeSource(f.reference)!;
     expect(changed.resumeModel).toBe('sonnet');
     expect(changed.revision).not.toBe(first.revision);
+    expect(changed.authorityRevision).not.toBe(first.authorityRevision);
     expect(JSON.stringify(changed)).not.toContain('router/changed-mapping');
   });
 

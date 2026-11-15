@@ -542,6 +542,13 @@ export class Observations {
     const record = this.records.find(item => item.id === id);
     return record?.watching ? this.source.cliResumeSource(record.reference) : undefined;
   }
+  /** Gateway control uses the retained Hermes database/profile, never a dashboard label. */
+  hermesControlTarget(id: string) {
+    const record = this.records.find(item => item.id === id);
+    if (!record?.watching || record.reference.sourceId !== 'hermes') return undefined;
+    const source = this.source.hermesControlSource(record.reference);
+    return source ? { ...source, app: 'hermes', watching: true, revision: String(this.controlEpochs.get(id) ?? 0) } : undefined;
+  }
   /** Existing observation reads own the content; status polling never reopens a rollout. */
   codexUserInput(id: string): CodexUserInputEvidence | undefined {
     if (this.labelsOnly()) return undefined;

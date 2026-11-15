@@ -16,6 +16,102 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.329] - 2026-11-15
+
+- Add frozen handover checkpoints from active Observe/Native work, with current
+  source permissions, capture time, partial coverage and independent destination
+  readiness. Source progress no longer invalidates a checkpoint review.
+- Preserve canonical work across repeated agent switches, review established
+  lineage joins, retain old pinned archive grants, store immutable evidence deltas
+  and resolve uncertain receipts without recapturing a full archive.
+- Keep reviewed CLI pairings valid after ordinary transcript appends; retain exact
+  per-dispatch checks and source/profile/configuration fences. Bind Hermes resume
+  to verified native profile/project identity and allow authorized stored sessions.
+- Create Hermes destinations through an explicitly checked gateway capability and
+  stable native request ID, register empty native sessions without a bootstrap
+  prompt, and recover creation acknowledgement without repeating inference.
+- Enable a registered Observe workspace for Native through explicit handover
+  review, reuse its existing canonical Native endpoint, and fix project association
+  after passive inspection. Keep unrelated active work outside the destination's
+  mutation lock and preserve workspace isolation.
+- Expose initial connection setup, checkpoint coverage, notes, merge consent,
+  manual preparation and destination navigation in the shared bilingual dialog.
+  Add repeated-cycle, restart, source revocation, CLI, gateway and actual-host
+  regressions plus a reproducible bounded storage comparison.
+
+## [0.4.328] - 2026-11-15
+
+- Add profile/workspace-bound operational work memory in Rust SQLite/FTS5 with
+  revision-pinned evidence, exact local outbox replay, explicit completed/failed/
+  cancelled outcomes and bounded Native/Observe coverage. Preserve current-turn
+  user corrections and worker attribution without recursively capturing retrievals.
+- Retrieve relevant operational evidence and freshly read Knowledge excerpts
+  before Native lead/worker requests. Keep mandatory skill budget priority, current
+  source permissions and per-connection history/memory opt-outs; report omissions.
+- Feed historical context separately into bounded Knowledge/Skills curation,
+  retain current-evidence and read-before-link/refine requirements, and forward
+  latest steering into automatic Knowledge meetings. Enable exact memory readers
+  for permitted meeting participants without adding memory writers.
+- Compact eligible older Native tool bodies only after recoverable scoped archive
+  publication, retaining complete stored history, tool pairing and instructions.
+  Give workers private archives; disable unsupported Windows archive durability.
+- Route explicit unbound Observe memory reads to the default/global scope, reject
+  invalid/ambiguous links and stale in-flight results, and retain admitted capture
+  through orderly shutdown without interpreting shutdown as consent revocation.
+- Add real temporary-host/Rust restart, shutdown, scope, worker, Observe and
+  Knowledge/Skills reuse regressions, a local 2,000-record retrieval probe, and
+  documentation of recovery, platform, semantic-recall and cost-measurement limits.
+
+## [0.4.327] - 2026-11-14
+
+- Ground generated Obsidian wikilinks and related/update/conflict relationships in
+  successful same-profile reads, validate displayed anchors, preserve evidence
+  attribution, and recheck referenced source hashes before publishing a note.
+- Surface bounded current amendment/conflict sources when an older Knowledge
+  note is read. Migrate the derived graph index to schema 3 without losing
+  existing relationships, and reparse unchanged notes for the new edge types.
+- Let curators discover and review generated inactive/quarantined candidates as
+  untrusted data within the originating profile/workspace. Require complete
+  reviewed skill pages, pinned base revisions/hashes and transactional stale-base
+  checks for refinement; preserve active revisions and avoid no-change duplicates.
+- Support bounded Markdown reference files in generated skill packages, retaining
+  mandatory package inspection and separate activation approval.
+- Preserve correction hints and read receipts in bounded model-visible JSON,
+  limit invalid-submission repair to one attempt, and add adversarial and multi-session
+  tests using real temporary-profile Rust persistence and Knowledge indexes.
+
+## [0.4.326] - 2026-11-14
+
+- Make post-task learning finish on one valid structured submission, with complete
+  provider-compatible skill schemas, attributed current-turn decisions and the
+  latest successful tool evidence. Separate analysis and publication deadlines;
+  bound aggregate input and indexed reads, and retain useful provider diagnostics.
+- Save Knowledge and generated skill candidates independently with durable
+  per-artifact confirmations. Preserve partial success, avoid replaying uncertain
+  effects and show saved notes separately from search-index refresh and meetings.
+- Let explicitly unbound, opted-in Observe conversations learn into the default
+  vault using one unambiguous saved model route. Invalid or ambiguous project
+  bindings never fall back; global skill reads require global activation approval.
+- Bound automatic Knowledge meetings to three saved members, one round and a
+  shared input budget, using indexed Knowledge/skill tools. Manual discussions
+  retain their existing limits. Solo Native sessions can learn without an active team.
+- Document the pinned Hermes comparison, implemented scope and remaining durable
+  queue, evaluation, platform and activation limits.
+- Incorporate the additional profile-pinned Native skill proposal changes:
+  revalidate profile consent and workspace scope immediately before staging,
+  preserve host-owned provenance and refuse stale proposals without retrying.
+- Reserve each meeting worker's last configured step for evidence-only synthesis,
+  including manual discussions. Refuse tool calls returned during that final
+  response without changing ordinary Native or delegation loop defaults.
+- Preserve evidence capture and recall for registered Observe workspaces without
+  a provider while deferring their curator until a model route is available.
+- Use explicit capture options when removing preview/camera event listeners, and
+  keep Git filter and unreadable-config test controls portable across runtime
+  diagnostic differences without weakening their safety assertions.
+- Preserve exact 64-bit Codex source identities and invalidate cached headers
+  after physical file replacement. Reject inconsistent resolution while keeping
+  append-only progress bound to the same Observe source.
+
 ## [0.4.325] - 2026-11-14
 
 - Align [apps/cli/README.md](apps/cli/README.md) with the GitHub README layout and embed absolute `raw.githubusercontent.com` visual previews (`campus-traffic.webp`, `extalia-deligating-teams.webp`, `observe-session.webp`, `skills-grimoire.webp`, `knowledge-graph.webp`) and logo so the `extalia-vo` npm page displays the live 3D virtual office and product demos.

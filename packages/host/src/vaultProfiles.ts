@@ -180,12 +180,14 @@ export class VaultProfiles {
   }
 
   /** Resolve the current workspace's Knowledge vault without requiring automatic-learning consent. */
-  async knowledgeTarget(workspaceId: string): Promise<{ profileId: string; root: string; revision: string; custom: boolean }> {
+  async knowledgeTarget(workspaceId?: string): Promise<{ profileId: string; root: string; revision: string; custom: boolean }> {
     if (this.changing) throw error('Vault profiles are changing. Try again when they have finished.');
     const snapshot = this.options.read();
     const workspace = snapshot.workspaces.find(item => item.id === workspaceId);
-    if (!workspace) throw error('That workspace no longer exists.');
-    const profileId = workspace.profileId;
+    if (workspaceId !== undefined && !workspace) throw error('That workspace no longer exists.');
+    // Only an explicitly unbound global observer uses the default. Invalid or
+    // deleted workspace identities never fall back across a profile boundary.
+    const profileId = workspace?.profileId ?? snapshot.defaultProfile.id;
     const stored = this.stored(snapshot).profiles.find(item => item.id === profileId);
     if (!stored && profileId !== snapshot.defaultProfile.id) throw error('That workspace has an unknown vault profile. Assign a registered profile in Settings.');
     if (stored && profileId !== snapshot.defaultProfile.id && !/^vp-[a-f0-9-]{36}$/.test(stored.id)) throw error('The vault profile registry contains an invalid id.');
@@ -209,40 +211,41 @@ export class VaultProfiles {
   }
 
   /** Read effective policy without requiring a notes vault (including skills-only profiles). */
-  async policyFor(workspaceId: string): Promise<{ profileId: string; revision: string; policy: AutomaticLearningPolicy }> {
+  async policyFor(workspaceId?: string): Promise<{ profileId: string; revision: string; policy: AutomaticLearningPolicy }> {
     if (this.changing) throw error('Vault profiles are changing. Try again when they have finished.');
     const snapshot = this.options.read();
     const workspace = snapshot.workspaces.find(item => item.id === workspaceId);
-    if (!workspace) throw error('That workspace no longer exists.');
-    const stored = this.stored(snapshot).profiles.find(item => item.id === workspace.profileId);
-    if (!stored && workspace.profileId !== snapshot.defaultProfile.id) throw error('That workspace has an unknown vault profile. Assign a registered profile in Settings.');
-    if (stored && workspace.profileId !== snapshot.defaultProfile.id && !/^vp-[a-f0-9-]{36}$/.test(stored.id)) throw error('The vault profile registry contains an invalid id.');
+    if (workspaceId !== undefined && !workspace) throw error('That workspace no longer exists.');
+    const profileId = workspace?.profileId ?? snapshot.defaultProfile.id;
+    const stored = this.stored(snapshot).profiles.find(item => item.id === profileId);
+    if (!stored && profileId !== snapshot.defaultProfile.id) throw error('That workspace has an unknown vault profile. Assign a registered profile in Settings.');
+    if (stored && profileId !== snapshot.defaultProfile.id && !/^vp-[a-f0-9-]{36}$/.test(stored.id)) throw error('The vault profile registry contains an invalid id.');
     const profileRoot = stored ? stored.vaultRoot ?? path.join(this.options.dataDirectory, 'vaults', stored.id) : snapshot.defaultRoot;
-    const canonicalRoot = await canonical(workspace.profileId === snapshot.defaultProfile.id ? snapshot.defaultRoot : profileRoot);
+    const canonicalRoot = await canonical(profileId === snapshot.defaultProfile.id ? snapshot.defaultRoot : profileRoot);
     const learning = stored
-      ? this.effectiveLearning(stored, workspace.profileId === snapshot.defaultProfile.id, canonicalRoot, snapshot, await canonical(path.resolve(this.options.dataDirectory)))
+      ? this.effectiveLearning(stored, profileId === snapshot.defaultProfile.id, canonicalRoot, snapshot, await canonical(path.resolve(this.options.dataDirectory)))
       : this.effectiveLearning({ id: snapshot.defaultProfile.id, name: snapshot.defaultProfile.name, vaultRoot: null }, true,
         canonicalRoot, snapshot, await canonical(path.resolve(this.options.dataDirectory)));
     // A skills-only profile does not need filesystem access or a usable notes destination.
-    const ownedDefault = workspace.profileId === snapshot.defaultProfile.id
+    const ownedDefault = profileId === snapshot.defaultProfile.id
       && this.indexedOwned(snapshot, await canonical(path.resolve(this.options.dataDirectory)), canonicalRoot);
-    const ownedManaged = workspace.profileId !== snapshot.defaultProfile.id && stored?.vaultRoot === null;
+    const ownedManaged = profileId !== snapshot.defaultProfile.id && stored?.vaultRoot === null;
     const approvedNotes = learning.enabled && learning.notes && (ownedDefault || ownedManaged || stored?.learningRoot === canonicalRoot);
     const policy = { enabled: learning.enabled, skills: learning.enabled && learning.skills, notes: approvedNotes,
       ...(learning.observed !== undefined ? { observed: learning.enabled && learning.observed } : {}) };
     const revision = this.revision(snapshot);
     if (this.changing || this.revision(this.options.read()) !== revision) throw error('Vault profiles changed while reading the learning policy.');
-    return { profileId: workspace.profileId, revision, policy };
+    return { profileId, revision, policy };
   }
 
   /** Pin a validated root for one known workspace. Managed folders are created only when explicitly requested. */
-  async resolve(workspaceId: string, { ensure = false, purpose = 'minutes' }: { ensure?: boolean; purpose?: 'minutes' | 'learning' } = {}): Promise<{ root: string; profileId: string; revision: string }> {
+  async resolve(workspaceId: string | undefined, { ensure = false, purpose = 'minutes' }: { ensure?: boolean; purpose?: 'minutes' | 'learning' } = {}): Promise<{ root: string; profileId: string; revision: string }> {
     if (purpose !== 'minutes' && purpose !== 'learning') throw error('Choose a supported vault purpose.');
     if (this.changing) throw error('Vault profiles are changing. Try again when they have finished.');
     const snapshot = this.options.read();
     const workspace = snapshot.workspaces.find(item => item.id === workspaceId);
-    if (!workspace) throw error('That workspace no longer exists.');
-    const profile = (await this.roots(snapshot)).find(item => item.id === workspace.profileId);
+    if (workspaceId !== undefined && !workspace) throw error('That workspace no longer exists.');
+    const profile = (await this.roots(snapshot)).find(item => item.id === (workspace?.profileId ?? snapshot.defaultProfile.id));
     if (!profile) throw error('That workspace has an unknown vault profile. Assign a registered profile in Settings.');
     if (purpose === 'learning' && !profile.automaticLearning.notes) throw error('Automatic learning notes are not enabled for this vault. Enable them in Settings before saving learning notes.');
     if (purpose === 'minutes' && !profile.minutesEnabled) throw error('Meeting minutes are not enabled for this vault. Enable them in Settings before exporting notes.');

@@ -5,6 +5,7 @@ import type { Messages } from '../i18n';
 import { Icon } from '../ui/Icon';
 import { Select } from '../ui/Select';
 import { SessionHandoverDialog } from '../chat/SessionHandoverDialog';
+import { ObservedHermesControls } from '../observe/ObservedHermesControls';
 
 const samePath = (a?: string, b?: string) => Boolean(a && b) && a!.replace(/[\\/]+$/, '') === b!.replace(/[\\/]+$/, '');
 
@@ -12,7 +13,7 @@ const samePath = (a?: string, b?: string) => Boolean(a && b) && a!.replace(/[\\/
  * Carry a conversation from another agent (or the library) into a new managed
  * session, for example when Codex or Claude Code ran out of quota.
  */
-export function ContinueInExtalia({ t, agents, state, source, projectPath, compact = false, onContinued, onOpenSettings }: {
+export function ContinueInExtalia({ t, agents, state, source, projectPath, compact = false, onContinued, onOpenSettings, onState }: {
   t: Messages;
   agents: AgentHostApi;
   state: HostState;
@@ -22,6 +23,7 @@ export function ContinueInExtalia({ t, agents, state, source, projectPath, compa
   compact?: boolean;
   onContinued: (sessionId: string, workspaceId: string) => void;
   onOpenSettings: () => void;
+  onState: (state: HostState) => void;
 }) {
   const id = useId();
   // Hermes Agent workspaces need no connection; the conversation reaches Hermes with the first prompt.
@@ -39,6 +41,9 @@ export function ContinueInExtalia({ t, agents, state, source, projectPath, compa
   if (observed && agents.sessionContinuity && agents.previewHandover && agents.applyHandover) return <div className={`continue-panel${compact ? ' compact' : ''}`}>
     <button type="button" className={compact ? 'icon-button small' : 'button'} aria-label={t.sessionHandover.title} title={t.sessionHandover.title} aria-haspopup="dialog" onClick={() => setOpen(true)}><Icon name="chat" />{!compact && t.sessionHandover.title}</button>
     {open && <SessionHandoverDialog agents={agents} state={state} session={observed} t={t.sessionHandover} cliResumeMessages={t.observedCliResume} antigravityMessages={t.observedAntigravity} initialKind={observed.workspaceId ? (state.workflow === 'observe' ? 'observed' : 'native') : 'observed'}
+      workspaceLinkMessages={t.observedWorkspaceLink} onState={onState} onOpenSettings={() => { setOpen(false); onOpenSettings(); }}
+      destinationSetup={(destination, changed) => destination.observation?.sourceId === 'hermes' ? <ObservedHermesControls t={t} agents={agents} session={destination} settingsOnly onChanged={changed} /> : undefined}
+      onOpenDestination={id => { setOpen(false); onContinued(id, observed.workspaceId); }}
       onClose={() => setOpen(false)} onApplied={receipt => {
         if (receipt.state === 'native-ready' && receipt.targetSessionId) {
           setOpen(false); onContinued(receipt.targetSessionId, observed.workspaceId);

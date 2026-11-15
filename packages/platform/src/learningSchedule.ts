@@ -1,3 +1,6 @@
+/** Internal attribution for unbound observed conversations; never a filesystem grant. */
+export const GLOBAL_OBSERVE_WORKSPACE_ID = 'global-observe';
+
 /** A real discussion and its independently acknowledged knowledge export. */
 export interface LearningMeetingResult {
   outcome: 'completed' | 'cancelled' | 'failed' | 'unknown';
@@ -5,6 +8,8 @@ export interface LearningMeetingResult {
   knowledge: 'saved' | 'unavailable' | 'failed';
   /** Present only after the exporter acknowledged the durable note. */
   notePath?: string;
+  /** Index refresh after the saved note; absence does not confirm indexing. */
+  indexed?: boolean;
   problem?: string;
 }
 
@@ -31,6 +36,8 @@ export interface LearningSkillNotice {
 export interface LearningScheduleResult {
   meeting?: LearningMeetingResult;
   skill?: LearningSkillNotice;
+  knowledge?: { status: 'saved' | 'failed' | 'skipped'; path?: string; indexed?: boolean };
+  problem?: 'connection' | 'provider' | 'timeout' | 'invalid-request' | 'authority' | 'publication';
 }
 
 /** Host admission timers; learning execution and artifact publication remain Rust-owned. */
@@ -44,7 +51,7 @@ export interface LearningScheduleJob {
   kind?: 'learning' | 'knowledge-meeting';
   workspaceName?: string;
   sessionName?: string;
-  state: 'scheduled' | 'running' | 'completed' | 'failed' | 'cancelled';
+  state: 'scheduled' | 'running' | 'completed' | 'partial' | 'failed' | 'cancelled';
   /** Effective only while waitingForIdle is false; the UI never dispatches on this deadline. */
   dueAt: string;
   /** A full selected quiet interval starts once actual foreground work settles. */

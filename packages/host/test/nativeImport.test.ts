@@ -112,6 +112,7 @@ describe('native history import through the host', () => {
     const project = path.join(root, 'site');
     await mkdir(project);
     const rollout = path.join(home, '.codex', 'sessions', '2026', '10', '08', 'rollout-a.jsonl');
+    await writeFile(rollout, (await readFile(rollout, 'utf8')).replace('/projects/site', project));
     const before = await readFile(rollout, 'utf8');
     const runtime = await createAgentHost({ kind: 'bridge', version: 'test', dataDirectory: path.join(root, 'data'), importHome: home, env: { EXTALIA_SECRET_STORE: 'memory' }, observationIntervalMs: 60_000 });
     try {
@@ -126,8 +127,11 @@ describe('native history import through the host', () => {
       const session = await host.continueSession({ kind: 'observed', id: observed.id }, state.workspaces[0]!.id);
       expect(session).toMatchObject({ control: 'managed', title: 'Add a footer', continuedFrom: { sourceId: 'codex' } });
       const events = await host.sessionEvents(session.id);
-      expect(events.filter(event => event.source.channel === 'import').map(event => [event.body.type, (event.body as { text?: string }).text]))
-        .toEqual([['prompt.submitted', 'Add a footer'], ['model.completed', 'Footer added.']]);
+      const imported = events.filter(event => event.source.channel === 'import');
+      expect(imported).toHaveLength(1);
+      expect(imported[0]?.body).toMatchObject({ type: 'prompt.submitted', text: expect.stringContaining('Add a footer') });
+      expect(imported[0]?.body).toMatchObject({ text: expect.stringContaining('Footer added.') });
+      expect((await host.sessionContinuity!(session.id)).canonicalId).toBe((await host.sessionContinuity!(observed.id)).canonicalId);
       expect((await host.getState()).sessions.some(item => item.id === observed.id && item.control === 'observed')).toBe(true);
       expect(await readFile(rollout, 'utf8')).toBe(before);
     } finally { await runtime.close(); }

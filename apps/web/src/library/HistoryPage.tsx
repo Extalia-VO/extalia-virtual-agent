@@ -102,7 +102,7 @@ function Viewer({ t, language, agents, state, summary, onState, onClose, onConti
       {error && mode !== 'delete' && mode !== 'trash' && <p className="form-error" role="alert"><Icon name="alert" />{error}</p>}
       {mode === 'view' && summary.state !== 'trashed' && (
         <ContinueInExtalia t={t} agents={agents} state={state} source={{ kind: 'library', id: summary.id }}
-          {...(summary.projectLocation ? { projectPath: summary.projectLocation } : {})} onContinued={onContinued} onOpenSettings={onOpenSettings} />
+          {...(summary.projectLocation ? { projectPath: summary.projectLocation } : {})} onContinued={onContinued} onOpenSettings={onOpenSettings} onState={onState} />
       )}
       {!current ? <p className="muted" role="status">{t.common.loading}</p>
         : current.error ? <p className="form-error"><Icon name="alert" />{t.history.loadFailed} {current.error}</p>

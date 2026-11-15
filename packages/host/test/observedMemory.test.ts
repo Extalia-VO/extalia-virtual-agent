@@ -48,16 +48,97 @@ function fixture(enabled = true) {
     }
     throw new Error('Unexpected backend action');
   });
-  const onEpisode = vi.fn(), onRevoked = vi.fn();
+  const onEpisode = vi.fn(), onRevoked = vi.fn(), onWorkEvidence = vi.fn();
   const manager = new ObservedMemory({ backend: { process: process as RustLearningPort['process'] }, source: async id => sources.get(id),
-    list: async workspaceId => [...sources.values()].filter(source => source.scope.workspaceId === workspaceId).map(source => source.scope.sessionId), onEpisode, onRevoked });
+    list: async workspaceId => [...sources.values()].filter(source => source.scope.workspaceId === workspaceId).map(source => source.scope.sessionId), onEpisode, onRevoked, onWorkEvidence });
   const update = (patch: Partial<ObservedMemorySource>, id = scope.sessionId) => { const current = sources.get(id)!; sources.set(id, { ...current, ...patch, revision: hash(++revision) }); };
   const append = (bodies: EventBody[], patch: Partial<ObservedMemorySource> = {}, id = scope.sessionId) => update({ ...patch, events: [...sources.get(id)!.events, ...bodies.map(body => event(body, id))] }, id);
   const complete = async (id = scope.sessionId) => { append([{ type: 'prompt.submitted', text: 'Fresh task: retain this decision', via: 'native' }, { type: 'model.completed', text: 'Observed result, not independent proof.' }], { running: false }, id); await manager.afterPersisted(id); };
-  return { scope, sources, manager, event, update, append, complete, calls, stored, onEpisode, onRevoked,
+  return { scope, sources, manager, event, update, append, complete, calls, stored, onEpisode, onRevoked, onWorkEvidence,
     duplicateReceipt: () => { created = false; }, unknownCapture: () => { unknownCapture = true; },
     captureGate: (value: Promise<void>) => { captureGate = value; }, searchGate: (value: Promise<void>) => { searchGate = value; }, readGate: (value: Promise<void>) => { readGate = value; } };
 }
+
+describe('observed operational evidence capture', () => {
+  it.each([
+    [{ type: 'turn.failed', error: 'Search timed out.' }, 'failed'],
+    [{ type: 'turn.failed', error: 'Stopped after 50 steps without finishing.' }, 'failed'],
+    [{ type: 'turn.failed', error: 'Stopped by the user.' }, 'cancelled'],
+    [{ type: 'session.ended', reason: 'cancelled' }, 'cancelled'],
+  ] as const)('retains terminal failure evidence separately from completed-task learning (%j)', async (terminal, outcome) => {
+    const f = fixture(); await f.manager.afterPersisted(f.scope.sessionId);
+    f.append([{ type: 'prompt.submitted', text: 'Investigate parser timeout', via: 'native' }, terminal], { running: true });
+    await f.manager.afterPersisted(f.scope.sessionId); expect(f.onWorkEvidence).not.toHaveBeenCalled();
+    f.update({ running: false }); await f.manager.afterPersisted(f.scope.sessionId);
+    expect(f.onWorkEvidence).toHaveBeenCalledOnce();
+    expect(f.onWorkEvidence.mock.calls[0]![0].scope).toEqual(f.scope);
+    const evidence = f.onWorkEvidence.mock.calls[0]![1];
+    expect(evidence).toMatchObject({ outcome, coverage: { mode: 'partial' } });
+    expect(evidence.entries.some((entry: { kind: string }) => entry.kind === 'user')).toBe(true);
+    expect(evidence.entries.some((entry: { kind: string }) => entry.kind === 'status')).toBe(true);
+    expect(f.calls).toEqual([]); expect(f.onEpisode).not.toHaveBeenCalled();
+    await f.manager.afterPersisted(f.scope.sessionId); expect(f.onWorkEvidence).toHaveBeenCalledOnce(); await f.manager.close();
+  });
+
+  it('requires a terminal result and does not backfill a startup/enable/replacement history', async () => {
+    const f = fixture(false);
+    f.append([{ type: 'prompt.submitted', text: 'Historic task', via: 'native' }, { type: 'turn.failed', error: 'Historic error' }]);
+    await f.manager.afterPersisted(f.scope.sessionId); f.update({ enabled: true }); await f.manager.afterPersisted(f.scope.sessionId);
+    expect(f.onWorkEvidence).not.toHaveBeenCalled();
+    f.append([{ type: 'prompt.submitted', text: 'Fresh task with no result', via: 'native' }]); await f.manager.afterPersisted(f.scope.sessionId);
+    expect(f.onWorkEvidence).not.toHaveBeenCalled();
+    f.append([{ type: 'turn.failed', error: 'Fresh failure' }]); await f.manager.afterPersisted(f.scope.sessionId);
+    expect(f.onWorkEvidence).toHaveBeenCalledOnce();
+    await f.manager.close();
+    const restarted = new ObservedMemory({ backend: { process: vi.fn() as RustLearningPort['process'] }, source: async id => f.sources.get(id),
+      list: async () => [f.scope.sessionId], onWorkEvidence: f.onWorkEvidence });
+    await restarted.afterPersisted(f.scope.sessionId); expect(f.onWorkEvidence).toHaveBeenCalledOnce(); await restarted.close();
+  });
+
+  it('acknowledges operational capture before curation and retains independent legacy learning if that callback fails', async () => {
+    const f = fixture(); await f.manager.afterPersisted(f.scope.sessionId);
+    f.onWorkEvidence.mockImplementationOnce(async () => {
+      expect(f.calls).toEqual([]); expect(f.onEpisode).not.toHaveBeenCalled(); throw new Error('Outbox unavailable');
+    });
+    await f.complete();
+    expect(f.calls.map(call => call.action)).toEqual(['observed.capture']); expect(f.onEpisode).toHaveBeenCalledOnce();
+    expect(f.manager.status().sources[0]).toMatchObject({ state: 'uncertain', problem: expect.stringContaining('Operational work memory') });
+    await f.manager.afterPersisted(f.scope.sessionId); expect(f.onWorkEvidence).toHaveBeenCalledOnce(); await f.manager.close();
+  });
+
+  it('captures each terminal turn in one poll once and never claims the latest unfinished turn completed', async () => {
+    const f = fixture(); await f.manager.afterPersisted(f.scope.sessionId);
+    f.append([
+      { type: 'prompt.submitted', text: 'First completed task', via: 'native' }, { type: 'model.completed', text: 'First report' }, { type: 'turn.completed' },
+      { type: 'prompt.submitted', text: 'Second completed task', via: 'native' }, { type: 'model.completed', text: 'Second report' },
+      { type: 'prompt.submitted', text: 'Third failed task', via: 'native' }, { type: 'turn.failed', error: 'Missing source' },
+      { type: 'prompt.submitted', text: 'Latest unfinished task', via: 'native' }, { type: 'model.completed', text: 'I will inspect the file now.' },
+      { type: 'tool.started', tool: 'read_file', kind: 'read', label: 'Reading fixture' }, { type: 'tool.completed', tool: 'read_file', kind: 'read', label: 'Read fixture', ok: true, output: 'File evidence' },
+    ], { running: true });
+    await f.manager.afterPersisted(f.scope.sessionId); expect(f.onWorkEvidence).not.toHaveBeenCalled();
+    f.update({ running: false }); await f.manager.afterPersisted(f.scope.sessionId);
+    expect(f.onWorkEvidence.mock.calls.map(call => call[1].outcome)).toEqual(['completed', 'completed', 'failed']);
+    expect(f.onWorkEvidence.mock.calls.map(call => call[1].entries[0].text)).toEqual(['First completed task', 'Second completed task', 'Third failed task']);
+    expect(f.calls).toEqual([]); expect(f.onEpisode).not.toHaveBeenCalled();
+    await f.manager.afterPersisted(f.scope.sessionId); expect(f.onWorkEvidence).toHaveBeenCalledTimes(3);
+    f.append([{ type: 'turn.failed', error: 'Context limit' }]); await f.manager.afterPersisted(f.scope.sessionId);
+    expect(f.onWorkEvidence).toHaveBeenCalledTimes(4); expect(f.onWorkEvidence.mock.calls[3]![1].outcome).toBe('failed');
+    await f.manager.close();
+  });
+
+  it('bounds a delayed polling backlog explicitly and clears an ended unfinished frame', async () => {
+    const f = fixture(); await f.manager.afterPersisted(f.scope.sessionId);
+    const events: EventBody[] = [];
+    for (let index = 0; index < 12; index++) events.push({ type: 'prompt.submitted', text: `Completed task ${index}`, via: 'native' }, { type: 'turn.completed', summary: `Report ${index}` });
+    events.push({ type: 'prompt.submitted', text: 'Unfinished tail', via: 'native' }, { type: 'session.ended', reason: 'closed' });
+    f.append(events); await f.manager.afterPersisted(f.scope.sessionId);
+    expect(f.onWorkEvidence).toHaveBeenCalledTimes(8);
+    expect(f.onWorkEvidence.mock.calls[0]![1].coverage).toMatchObject({ truncated: true });
+    expect(f.onWorkEvidence.mock.calls[0]![1].coverage.limits.join(' ')).toContain('4 earlier terminal episodes');
+    f.append([{ type: 'model.completed', text: 'A detached reply after close cannot finish the old task.' }]);
+    await f.manager.afterPersisted(f.scope.sessionId); expect(f.onWorkEvidence).toHaveBeenCalledTimes(8); await f.manager.close();
+  });
+});
 
 describe('observed memory admission and Native recall', () => {
   it('does nothing on default-off startup, and enabling establishes a baseline without historical capture', async () => {

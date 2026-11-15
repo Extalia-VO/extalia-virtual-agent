@@ -6,7 +6,7 @@ import type { ExtaliaEvent } from '@extalia/protocol';
 import type { NativeMeetingMinutes } from '@extalia/runtime';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createAgentHost, type AgentHostRuntime } from '../src/service.js';
-import { DAEMON_BINARY } from './daemonBackend.js';
+import { DAEMON_BINARY, HAS_DAEMON } from './daemonBackend.js';
 import { useTempDirs } from './helpers.js';
 import { learningObservedFixture } from './learningObservedFixture.js';
 
@@ -26,7 +26,7 @@ function response(text: string, read = false) {
 }
 const idle = async (runtime: AgentHostRuntime) => { await vi.waitFor(() => expect(runtime.isBusy()).toBe(false), { timeout: 5_000, interval: 5 }); };
 
-async function fixture(options: { lead?(prompt: string): Promise<void>; sourceReply?(prompt: string): string; meeting?(): Promise<void>; workerSkills?: 'off' | 'extalia'; isolated?: boolean; sharedConnection?: boolean; exportFailure?: boolean } = {}) {
+async function fixture(options: { lead?(prompt: string): Promise<void>; sourceReply?(prompt: string): string; meeting?(request: Request): Promise<string | void>; workerSkills?: 'off' | 'extalia'; isolated?: boolean; sharedConnection?: boolean; exportFailure?: boolean } = {}) {
   const root = await temp('extalia-knowledge-meeting-'), data = path.join(root, 'data'), home = path.join(root, 'home');
   const project = path.join(root, 'project'), otherProject = path.join(root, 'other-project');
   await Promise.all([home, project, otherProject].map(folder => mkdir(folder)));
@@ -42,11 +42,13 @@ async function fixture(options: { lead?(prompt: string): Promise<void>; sourceRe
       const body = JSON.parse(String(init?.body)) as Body;
       const meeting = body.messages[0]?.content?.startsWith('You are a worker agent helping') ?? false;
       const prompt = body.messages.filter(message => message.role === 'user').at(-1)?.content ?? '';
-      requests.push({ body, meeting, prompt, url, signal: init?.signal });
-      if (meeting) await options.meeting?.(); else await options.lead?.(prompt);
+      const request = { body, meeting, prompt, url, signal: init?.signal };
+      requests.push(request);
+      const meetingReply = meeting ? await options.meeting?.(request) : undefined;
+      if (!meeting) await options.lead?.(prompt);
       if (planningRequest(body)) return response(JSON.stringify({ members: [{ role: 'Reviewer', task: 'Review the project plan', model: 'fixture-model' }] }));
       if (!meeting && prompt.startsWith('Read') && !readPrompts.has(prompt)) { readPrompts.add(prompt); return response('', true); }
-      return response(meeting ? `Actual reviewer finding ${requests.filter(request => request.meeting).length}.` : options.sourceReply?.(prompt) ?? 'Source task completed.');
+      return response(meeting ? meetingReply ?? `Actual reviewer finding ${requests.filter(request => request.meeting).length}.` : options.sourceReply?.(prompt) ?? 'Source task completed.');
     },
     onMeetingMinutes: async (minutes, context) => {
       if (options.exportFailure) throw new Error('The test vault refused this export.');
@@ -104,7 +106,7 @@ describe('native knowledge meetings through the deferred host scheduler', () => 
       if (scope === 'foreign') {
         await f.waitForJob('completed');
         expect(f.exports).toHaveLength(1);
-        expect(f.requests.filter(request => request.meeting)).toHaveLength(2);
+        expect(f.requests.filter(request => request.meeting)).toHaveLength(1);
         expect((await f.host.getState()).sessions.find(item => item.id === target)?.running).toBe(true);
       } else {
         expect(await f.waitForJob('scheduled', true)).toMatchObject({ reason: 'busy' });
@@ -133,7 +135,7 @@ describe('native knowledge meetings through the deferred host scheduler', () => 
     if (scope === 'foreign' || scope === 'unbound') {
       await f.waitForJob('completed');
       expect(f.exports).toHaveLength(1);
-      expect(f.requests.filter(request => request.meeting)).toHaveLength(2);
+      expect(f.requests.filter(request => request.meeting)).toHaveLength(1);
       expect(JSON.stringify(f.requests.filter(request => request.meeting))).not.toContain('foreign project research');
     } else {
       expect(await f.waitForJob('scheduled', true)).toMatchObject({ reason: 'busy' });
@@ -156,7 +158,7 @@ describe('native knowledge meetings through the deferred host scheduler', () => 
     const meetingStart = f.events.length;
     await f.action('run-now'); await f.waitForJob('completed'); await idle(f.runtime);
     const workers = f.requests.filter(request => request.meeting);
-    expect(workers).toHaveLength(2);
+    expect(workers).toHaveLength(1);
     expect(f.exports).toHaveLength(1);
     for (const projection of [workers, f.events.slice(meetingStart), f.exports.map(saved => saved.minutes)]) {
       const text = JSON.stringify(projection);
@@ -170,7 +172,44 @@ describe('native knowledge meetings through the deferred host scheduler', () => 
     }
   });
 
-  it('runs two real rounds after a file-backed source and saves minutes in the original session and project', async () => {
+  it.each([false, true])('preserves a mid-turn user reversal in the Knowledge meeting when the final answer omits it (isolated: %s)', async isolated => {
+    const initial = 'Record the retention decision: keep raw audit logs indefinitely.';
+    const correction = 'Correction: retain raw audit logs for seven days, then delete them. Indefinite retention is no longer permitted.';
+    const answer = 'The requested review is complete.';
+    const entered = deferred(), release = deferred();
+    const f = await fixture({ isolated, sourceReply: () => answer, lead: async prompt => {
+      if (prompt === initial) { entered.resolve(); await release.promise; }
+    } });
+    try {
+      await f.host.sendPrompt(f.session.id, initial);
+      await entered.promise;
+      let queue = await f.host.promptQueueStatus!(f.session.id);
+      expect(queue.canSteer).toBe(true);
+      queue = await f.host.changePromptQueue!(f.session.id, { revision: queue.revision, action: 'add', text: correction });
+      queue = await f.host.changePromptQueue!(f.session.id, { revision: queue.revision, action: 'steer', itemId: queue.items[0]!.id });
+      expect(queue.items[0]?.state).toBe('sent');
+      expect(f.requests.filter(request => !request.meeting).map(request => request.prompt)).toEqual([initial]);
+    } finally { release.resolve(); }
+    await idle(f.runtime);
+    expect(f.requests.filter(request => !request.meeting).map(request => request.prompt)).toEqual([initial, correction]);
+    const sourceEvents = await f.host.sessionEvents(f.session.id);
+    expect(sourceEvents.filter(event => event.body.type === 'prompt.submitted')).toHaveLength(1);
+    expect(sourceEvents.filter(event => event.body.type === 'user.intervention').map(event => event.body)).toEqual([
+      { type: 'user.intervention', action: 'steer', text: correction },
+    ]);
+    expect(sourceEvents.filter(event => event.body.type === 'turn.completed')).toHaveLength(1);
+    await f.waitForJob('scheduled', false);
+    await f.action('run-now'); await f.waitForJob('completed'); await idle(f.runtime);
+    const workers = f.requests.filter(request => request.meeting);
+    expect(workers).toHaveLength(1);
+    expect(workers[0]!.prompt).toContain(`initial user claim: ${initial}`);
+    expect(workers[0]!.prompt).toContain(`latest user correction: ${correction}`);
+    expect(workers[0]!.prompt).toContain(`assistant claim: ${answer}`);
+    expect(f.exports).toHaveLength(1);
+    expect(f.exports[0]).toMatchObject({ sessionId: f.session.id, workspaceId: f.workspace.id });
+  });
+
+  it('runs one bounded review after a file-backed source and saves minutes in the original session and project', async () => {
     const f = await fixture();
     await f.host.sendPrompt(f.session.id, 'Read the parser and record the validation decision.'); await idle(f.runtime);
     const queued = await f.waitForJob('scheduled', false);
@@ -179,17 +218,17 @@ describe('native knowledge meetings through the deferred host scheduler', () => 
     expect(f.requests.some(request => request.meeting)).toBe(false);
     await f.action('run-now');
     const job = await f.waitForJob('completed'); await idle(f.runtime);
-    expect(job).toMatchObject({ workspaceId: f.workspace.id, sessionId: f.session.id, profileId: f.profile.id, result: { meeting: { outcome: 'completed', knowledge: 'saved' } } });
+    // Minutes use the fixture writer; indexing still requires its explicitly selected daemon.
+    expect(job).toMatchObject({ workspaceId: f.workspace.id, sessionId: f.session.id, profileId: f.profile.id, result: { meeting: { outcome: 'completed', knowledge: 'saved', indexed: HAS_DAEMON } } });
     expect(f.requests.filter(request => !request.meeting)).toHaveLength(2);
-    const workers = f.requests.filter(request => request.meeting); expect(workers).toHaveLength(2);
+    const workers = f.requests.filter(request => request.meeting); expect(workers).toHaveLength(1);
     expect(workers[0]!.prompt).toContain('Read the parser and record the validation decision.');
-    expect(workers[1]!.prompt).toContain('Actual reviewer finding 1.');
-    expect(workers.every(request => !request.body.tools?.some(tool => /write|command|delegat|manage/.test(tool.function.name)))).toBe(true);
+    expect(workers.every(request => !request.body.tools?.some(tool => !/^(?:knowledge_[a-z_]+|skill_(?:list|search|read))$/.test(tool.function.name)))).toBe(true);
     expect(f.exports).toHaveLength(1);
     const saved = f.exports[0]!;
-    expect(saved).toMatchObject({ sessionId: f.session.id, workspaceId: f.workspace.id, minutes: { outcome: 'completed', contributions: [expect.objectContaining({ round: 1 }), expect.objectContaining({ round: 2 })] } });
+    expect(saved).toMatchObject({ sessionId: f.session.id, workspaceId: f.workspace.id, minutes: { outcome: 'completed', contributions: [expect.objectContaining({ round: 1 })] } });
     expect(saved.path.startsWith(path.join(f.profile.root, 'Meetings', f.workspace.id))).toBe(true);
-    expect(await readFile(saved.path, 'utf8')).toContain('Actual reviewer finding 2.');
+    expect(await readFile(saved.path, 'utf8')).toContain('Actual reviewer finding 1.');
     expect(job.result?.meeting?.notePath).toBe(saved.path);
     const leadDone = f.events.findIndex(event => event.sessionId === f.session.id && event.agentId === 'primary' && event.body.type === 'turn.completed');
     expect(f.events.findIndex(event => event.body.type === 'meeting.started')).toBeGreaterThan(leadDone);
@@ -197,16 +236,55 @@ describe('native knowledge meetings through the deferred host scheduler', () => 
     expect(f.events.filter(event => event.body.type === 'meeting.completed').every(event => event.sessionId === f.session.id)).toBe(true);
   });
 
+  it('preserves saved meeting minutes and reports an unconfirmed index refresh', async () => {
+    const f = await fixture();
+    const workspaceKnowledge = f.host.workspaceKnowledge!;
+    const knowledge = vi.spyOn(f.host, 'workspaceKnowledge').mockImplementation(async (...args) => {
+      if (args[1] === 'syncKnowledge') throw new Error('The fixture index is unavailable.');
+      return workspaceKnowledge(...args);
+    });
+    await f.host.sendPrompt(f.session.id, 'Record the validated project decision.'); await idle(f.runtime);
+    await f.waitForJob('scheduled', false); await f.action('run-now');
+    const job = await f.waitForJob('completed'); await idle(f.runtime);
+    expect(f.exports).toHaveLength(1);
+    const saved = f.exports[0]!;
+    expect(await readFile(saved.path, 'utf8')).toContain('Actual reviewer finding 1.');
+    expect(job.result?.meeting).toMatchObject({ outcome: 'completed', knowledge: 'saved', notePath: saved.path, indexed: false });
+    expect(knowledge).toHaveBeenCalledWith(f.workspace.id, 'syncKnowledge', ['incremental']);
+  });
+
   it('records a completed text-only discussion separately from a failed note export', async () => {
     const f = await fixture({ exportFailure: true });
     await f.host.sendPrompt(f.session.id, 'Record our decision to validate before saving.'); await idle(f.runtime);
-    expect((await f.host.learningSchedule!()).jobs).toHaveLength(1);
+    expect((await f.host.learningSchedule!()).jobs.map(job => job.kind)).toEqual(['learning', 'knowledge-meeting']);
     await f.action('run-now');
     const job = await f.waitForJob('failed'); await idle(f.runtime);
     expect(job.result?.meeting).toMatchObject({ outcome: 'completed', knowledge: 'failed' });
     expect(job.result?.meeting?.notePath).toBeUndefined();
-    expect(f.requests.filter(request => request.meeting)).toHaveLength(2);
+    expect(f.requests.filter(request => request.meeting)).toHaveLength(1);
     expect(f.exports).toEqual([]);
+  });
+
+  it('preserves saved actual contributions as partial when another participant fails', async () => {
+    // Concurrent participant preparation does not guarantee provider-entry order.
+    const f = await fixture({ meeting: async request => {
+      const system = request.body.messages[0]?.content ?? '';
+      if (system.includes("You are Reviewer, the team's Knowledge reviewer.")) throw new Error('Synthetic first reviewer failure.');
+      expect(system).toContain("You are Second reviewer, the team's Analyst.");
+      return 'Actual reviewer finding 2.';
+    } });
+    await f.host.saveSessionTeam(f.session.id, { ...f.team, members: [...f.team.members,
+      { id: 'reviewer-two', name: 'Second reviewer', role: 'Analyst', models: ['fixture-model'], access: 'read' },
+    ] });
+    await f.host.sendPrompt(f.session.id, 'Record the verified normalization decision.'); await idle(f.runtime);
+    await f.waitForJob('scheduled'); await f.action('run-now');
+    const job = await f.waitForJob('partial'); await idle(f.runtime);
+    expect(job.result?.meeting).toMatchObject({ outcome: 'failed', knowledge: 'saved', notePath: expect.any(String) });
+    expect(f.exports).toHaveLength(1);
+    expect(f.exports[0]!.minutes.contributions).toHaveLength(1);
+    expect(f.exports[0]!.minutes.contributions[0]).toMatchObject({ agentId: 'reviewer-two', round: 1 });
+    expect(await readFile(f.exports[0]!.path, 'utf8')).toContain('Actual reviewer finding 2.');
+    expect(f.requests.filter(request => request.meeting)).toHaveLength(2);
   });
 
   it('restarts the full snooze only after new foreground work settles and keeps the newest source', async () => {
@@ -263,8 +341,8 @@ describe('native knowledge meetings through the deferred host scheduler', () => 
       expect((await f.host.getState()).sessions.find(item => item.id === f.otherSession.id)?.running).toBe(true);
       expect(f.exports).toHaveLength(1);
       expect(f.exports[0]!.path.startsWith(path.join(f.profile.root, 'Meetings', f.workspace.id))).toBe(true);
-      expect(await readFile(f.exports[0]!.path, 'utf8')).toContain('Actual reviewer finding 2.');
-      expect(f.requests.filter(request => request.meeting)).toHaveLength(2);
+      expect(await readFile(f.exports[0]!.path, 'utf8')).toContain('Actual reviewer finding 1.');
+      expect(f.requests.filter(request => request.meeting)).toHaveLength(1);
       expect(f.requests.filter(request => request.meeting).every(request => !request.signal?.aborted)).toBe(true);
       expect(JSON.stringify(f.requests.filter(request => request.meeting))).not.toContain(foreignPrompt);
       expect(f.events.filter(event => event.sessionId === f.otherSession.id && event.body.type === 'turn.completed')).toEqual([]);
@@ -320,7 +398,7 @@ describe('native knowledge meetings through the deferred host scheduler', () => 
       expect((await f.job())?.state).toBe('running');
       expect(f.exports).toEqual([]);
       release.resolve(); await f.waitForJob('completed'); await idle(f.runtime);
-      expect(f.requests.filter(request => request.meeting)).toHaveLength(2);
+      expect(f.requests.filter(request => request.meeting)).toHaveLength(1);
       expect(f.exports).toHaveLength(1);
       expect(JSON.stringify(f.requests.filter(request => request.meeting))).not.toContain('Other profile private note.');
     } finally { release.resolve(); await next; }
@@ -392,21 +470,21 @@ describe('native knowledge meetings through the deferred host scheduler', () => 
     expect(f.exports).toEqual([]);
   });
 
-  it.each(['off', 'extalia'] as const)('prepares both rounds from the worker connection with skills %s and current saved authority', async skills => {
+  it.each(['off', 'extalia'] as const)('uses the worker connection and indexed skill tools with skills %s without unrelated context injection', async skills => {
     const f = await fixture({ workerSkills: skills });
     await f.host.sendPrompt(f.session.id, 'Finish the security review.'); await idle(f.runtime); await f.waitForJob('scheduled', false);
     await f.action('run-now'); await f.waitForJob('completed'); await idle(f.runtime);
-    const workers = f.requests.filter(request => request.meeting); expect(workers).toHaveLength(2);
+    const workers = f.requests.filter(request => request.meeting); expect(workers).toHaveLength(1);
     expect(workers.every(request => request.url.startsWith('https://worker.example/'))).toBe(true);
     const receipts = f.events.filter(event => event.agentId === 'reviewer-one' && event.body.type === 'skills.loaded');
     for (const worker of workers) {
       expect(worker.body.messages[0]!.content).not.toContain('# Bounded prompt routine');
       expect(worker.body.tools?.some(tool => tool.function.name.startsWith('memory_'))).toBe(false);
-      expect(worker.body.tools?.some(tool => /write|command|delegat|manage/.test(tool.function.name))).toBe(false);
-      if (skills === 'extalia') expect(worker.body.messages[0]!.content).toContain('# Recall workspace memory');
-      else expect(worker.body.messages[0]!.content).not.toContain('<extalia-loaded-skills>');
+      expect(worker.body.tools?.some(tool => !/^(?:knowledge_[a-z_]+|skill_(?:list|search|read))$/.test(tool.function.name))).toBe(false);
+      expect(worker.body.messages[0]!.content).not.toContain('# Recall workspace memory');
+      expect(worker.body.messages[0]!.content).not.toContain('<extalia-loaded-skills>');
     }
-    expect(receipts).toHaveLength(skills === 'extalia' ? 2 : 0);
+    expect(receipts).toEqual([]);
     expect(f.exports).toHaveLength(1);
   });
 });

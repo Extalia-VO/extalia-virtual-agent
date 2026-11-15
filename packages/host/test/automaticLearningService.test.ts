@@ -39,6 +39,7 @@ const deferred = () => {
 };
 
 async function fixture(options: { enabled?: boolean; history?: boolean; skills?: boolean; isolated?: boolean; holdCurator?: Promise<void>; holdSource?: Promise<void>;
+  lesson?: string; curatorFailure?: 'invalid-request' | 'refusal'; sourceReadCount?: number;
   defaultScope?: 'managed' | 'custom'; profileAlias?: string } = {}) {
   const root = await temp('extalia-automatic-learning-'), data = path.join(root, 'data'), home = path.join(root, 'home'), project = path.join(root, 'project');
   if (options.skills) importedSkillStores.push(skillStoragePaths(data).root);
@@ -48,7 +49,7 @@ async function fixture(options: { enabled?: boolean; history?: boolean; skills?:
     await writeFile(path.join(data, 'config', 'extalia.json'), JSON.stringify({ schema: 'extalia.host-config.v1', setupComplete: false,
       profile: { id: options.profileAlias, name: 'Fixture profile' }, connections: [], workspaces: [] }));
   }
-  const requests: Body[] = [], events: ExtaliaEvent[] = [], curatorSignals: (AbortSignal | null | undefined)[] = [], readPrompts = new Set<string>();
+  const requests: Body[] = [], events: ExtaliaEvent[] = [], curatorSignals: (AbortSignal | null | undefined)[] = [], readPrompts = new Map<string, number>();
   const runtime = await createAgentHost({
     kind: 'bridge', version: 'test', dataDirectory: data, homeDirectory: home, importHome: home,
     env: { EXTALIA_SECRET_STORE: 'memory', EXTALIA_NATIVE_CORE: 'typescript', EXTALIA_DAEMON_PATH: DAEMON_BINARY, EXTALIA_HERMES_BIN: path.join(root, 'missing'), PATH: '' },
@@ -58,11 +59,13 @@ async function fixture(options: { enabled?: boolean; history?: boolean; skills?:
       const call = requests.length;
       if (curator(body)) {
         curatorSignals.push(init?.signal);
-        if (body.messages.at(-1)?.role === 'tool') return response({ text: 'Learning findings submitted.' }, call);
+        if (body.messages.at(-1)?.role === 'tool') throw new Error('A terminal submission must not request another model completion.');
         await options.holdCurator;
+        if (options.curatorFailure === 'invalid-request') return Response.json({ error: { message: 'Synthetic provider rejection with private fixture details.', type: 'invalid_request_error' } }, { status: 400 });
+        if (options.curatorFailure === 'refusal') return new Response(`data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: 'content_filter' }] })}\n\ndata: [DONE]\n\n`, { headers: { 'content-type': 'text/event-stream' } });
         const prompt = body.messages.find(item => item.role === 'user')!.content!;
         const evidence = JSON.parse(prompt.slice(prompt.indexOf('\n') + 1)) as { id: string }[];
-        return response({ tool: 'submit_learning', args: { title: 'Validate parser input', lesson: 'Validate input before saving parsed data and report validation failures.', evidenceIds: evidence.map(item => item.id),
+        return response({ tool: 'submit_learning', args: { title: 'Completed-task finding', lesson: options.lesson ?? 'Validate input before saving parsed data and report validation failures.', evidenceIds: evidence.map(item => item.id),
           ...(options.skills ? { skill: { name: 'validate-before-saving', description: 'Validate before saving', instructions: 'Validate input before saving and report failures.' } } : {}),
         } }, call);
       }
@@ -77,8 +80,8 @@ async function fixture(options: { enabled?: boolean; history?: boolean; skills?:
         return response({ text: 'Recalled the managed note.' }, call);
       }
       if (prompt.startsWith('Hold')) await options.holdSource;
-      if (prompt.startsWith('Read') && !readPrompts.has(prompt)) {
-        readPrompts.add(prompt); return response({ tool: 'read_file', args: { path: 'parser.txt' } }, call);
+      if (prompt.startsWith('Read') && (readPrompts.get(prompt) ?? 0) < (options.sourceReadCount ?? 1)) {
+        readPrompts.set(prompt, (readPrompts.get(prompt) ?? 0) + 1); return response({ tool: 'read_file', args: { path: 'parser.txt' } }, call);
       }
       return response({ text: 'Source task completed.' }, call);
     },
@@ -118,7 +121,7 @@ async function runNow(f: Awaited<ReturnType<typeof fixture>>) {
 }
 const settledLearning = async (f: Awaited<ReturnType<typeof fixture>>) => {
   // The full suite shares CPU with several real daemon and filesystem owners.
-  await vi.waitFor(async () => expect((await f.host.learningSchedule!()).jobs.some(job => job.state === 'completed' || job.state === 'failed')).toBe(true), { timeout: 10_000, interval: 5 });
+  await vi.waitFor(async () => expect((await f.host.learningSchedule!()).jobs.some(job => ['completed', 'partial', 'failed'].includes(job.state))).toBe(true), { timeout: 10_000, interval: 5 });
   await idle(f.runtime);
 };
 
@@ -257,10 +260,15 @@ describe.skipIf(process.platform === 'win32')('saved profile automatic learning 
     const curatorAt = f.events.findIndex(event => event.body.type === 'subagent.spawned');
     expect(curatorAt).toBeGreaterThan(completedAt);
     const worker = f.requests.filter(curator);
-    expect(worker).toHaveLength(2);
+    expect(worker).toHaveLength(1);
     expect(worker.every(body => body.model === 'fixture-model')).toBe(true);
     expect(worker[0]!.tools?.map(item => item.function.name)).toContain('submit_learning');
     expect(worker[0]!.tools?.some(item => /write|command|delegat|manage|skill_propose/.test(item.function.name))).toBe(false);
+    const source = worker[0]!.messages.find(item => item.role === 'user')!.content!;
+    const evidence = JSON.parse(source.slice(source.indexOf('\n') + 1)) as { name: string; content: string }[];
+    expect(evidence.map(item => item.name)).toEqual(['conversation_user', 'conversation_assistant', 'read_file']);
+    expect(evidence[0]!.content).toContain('UNVERIFIED CURRENT-TURN USER CLAIM');
+    expect(evidence[1]!.content).toContain('UNVERIFIED CURRENT-TURN ASSISTANT CLAIM');
     const spawns = f.events.filter(event => event.body.type === 'subagent.spawned'); expect(spawns).toHaveLength(1);
     const agentId = spawns[0]!.body.type === 'subagent.spawned' ? spawns[0]!.body.subagentId : '';
     expect(f.events.some(event => event.agentId === agentId && event.body.type === 'agent.state' && event.body.activity === 'knowledge')).toBe(true);
@@ -268,6 +276,8 @@ describe.skipIf(process.platform === 'win32')('saved profile automatic learning 
     const note = await readFile(path.join(f.profile.root, 'Learning', f.workspace.id, files[0]!), 'utf8');
     expect(note).toContain(`profile: "${f.profile.id}"`); expect(note).toContain(`session: "${f.session.id}"`);
     expect(note).toContain('Validate input before saving parsed data.'); expect(note).toContain('## Current-turn evidence');
+    expect(note).toContain('User and assistant statements are not tool results or independent verification');
+    expect((await f.host.learningSchedule!()).jobs[0]?.result?.knowledge).toMatchObject({ status: 'saved', path: `Learning/${f.workspace.id}/${files[0]!}` });
     expect(await noteFiles(path.join(f.data, 'vaults', 'default'), f.workspace.id)).toEqual([]);
     expect(f.events.filter(event => event.agentId === 'primary' && event.body.type === 'turn.completed')).toHaveLength(1);
     expect(f.events.some(event => event.body.type === 'tool.completed' && event.body.tool === 'automatic_learning' && event.body.ok)).toBe(true);
@@ -289,6 +299,82 @@ describe.skipIf(process.platform === 'win32')('saved profile automatic learning 
     expect(await noteFiles(f.profile.root, f.workspace.id)).toEqual([]);
   });
 
+  it.skipIf(!HAS_DAEMON)('learns a short text-only correction as an attributed claim while the team is paused', async () => {
+    const correction = 'Use pnpm.', lesson = 'The user requested pnpm for this workspace; this is a user preference, not a verified command outcome.';
+    const f = await fixture({ lesson });
+    await f.host.saveSessionTeam(f.session.id, { enabled: false, allowedModels: ['fixture-model'], members: [{ id: 'paused-member', name: 'Reviewer', role: 'Review', models: ['fixture-model'] }] });
+    await f.host.sendPrompt(f.session.id, correction); await idle(f.runtime);
+    expect(f.events.filter(event => event.body.type === 'tool.completed')).toEqual([]);
+    expect((await f.host.learningSchedule!()).jobs).toHaveLength(1);
+    await runNow(f); await settledLearning(f);
+    const job = (await f.host.learningSchedule!()).jobs[0]!;
+    expect(job.state).toBe('completed');
+    expect(job.result?.knowledge?.status).toBe('saved');
+    expect(f.requests.filter(curator)).toHaveLength(1);
+    const prompt = f.requests.find(curator)!.messages.find(message => message.role === 'user')!.content!;
+    const evidence = JSON.parse(prompt.slice(prompt.indexOf('\n') + 1)) as { name: string; content: string }[];
+    expect(evidence.map(item => item.name)).toEqual(['conversation_user', 'conversation_assistant']);
+    expect(evidence[0]!.content).toContain(correction);
+    const note = await readFile(path.join(f.profile.root, job.result!.knowledge!.path!), 'utf8');
+    expect(note).toContain(lesson);
+    expect(note).toContain('UNVERIFIED CURRENT-TURN USER CLAIM');
+    expect(note).toContain('User and assistant statements are not tool results or independent verification');
+    expect(note).not.toContain('Evidence is limited to successful tool results');
+    expect(f.events.filter(event => event.body.type === 'subagent.spawned')).toHaveLength(1);
+  });
+
+  it.skipIf(!HAS_DAEMON)('keeps the latest successful tool outcomes alongside both current-turn claims', async () => {
+    const f = await fixture({ sourceReadCount: 12 });
+    await f.host.sendPrompt(f.session.id, 'Read the parser repeatedly before the final validation report.'); await idle(f.runtime);
+    const sourceIds = f.events.flatMap(event => event.agentId === 'primary' && event.body.type === 'tool.completed'
+      && event.body.tool === 'read_file' && event.body.ok ? [event.body.toolCallId] : []);
+    expect(sourceIds).toHaveLength(12);
+    await runNow(f); await settledLearning(f);
+    const prompt = f.requests.find(curator)!.messages.find(message => message.role === 'user')!.content!;
+    const evidence = JSON.parse(prompt.slice(prompt.indexOf('\n') + 1)) as { id: string; name: string }[];
+    expect(evidence).toHaveLength(10);
+    expect(evidence.slice(0, 2).map(item => item.name)).toEqual(['conversation_user', 'conversation_assistant']);
+    expect(evidence.slice(2).map(item => item.id)).toEqual(sourceIds.slice(-8));
+    expect((await f.host.learningSchedule!()).jobs[0]?.state).toBe('completed');
+  });
+
+  it.skipIf(!HAS_DAEMON).each(['invalid-request', 'refusal'] as const)('retains the successful source turn when the actual curator provider returns %s', async curatorFailure => {
+    const f = await fixture({ curatorFailure });
+    await f.host.sendPrompt(f.session.id, 'Read the parser before checking curator failure isolation.'); await idle(f.runtime);
+    await runNow(f); await settledLearning(f);
+    const job = (await f.host.learningSchedule!()).jobs[0]!;
+    expect(job.state).toBe('failed');
+    expect(job.result?.knowledge?.status).not.toBe('saved');
+    if (curatorFailure === 'invalid-request') expect(job.result?.problem).toBe('invalid-request');
+    expect(f.requests.filter(curator)).toHaveLength(1);
+    expect(f.events.filter(event => event.agentId === 'primary' && event.body.type === 'turn.completed')).toHaveLength(1);
+    expect(f.events.some(event => event.agentId === 'primary' && event.body.type === 'turn.failed')).toBe(false);
+    expect(f.events.some(event => event.body.type === 'tool.completed' && event.body.tool === 'automatic_learning' && !event.body.ok)).toBe(true);
+    expect(JSON.stringify(job)).not.toContain('private fixture details');
+    expect(await noteFiles(f.profile.root, f.workspace.id)).toEqual([]);
+  });
+
+  it.skipIf(!HAS_DAEMON)('reuses separately confirmed note and skill artifacts without reporting a new skill twice', async () => {
+    const f = await fixture({ skills: true });
+    await f.host.sendPrompt(f.session.id, 'Read the parser and learn its reusable validation order.'); await idle(f.runtime);
+    await runNow(f); await settledLearning(f);
+    const first = (await f.host.learningSchedule!()).jobs[0]!;
+    expect(first.state).toBe('completed');
+    expect(first.result?.skill).toBeDefined();
+    const before = await f.host.skillRegistry();
+    await f.host.sendPrompt(f.session.id, 'Read the parser again and confirm the same reusable validation order.'); await idle(f.runtime);
+    const second = (await f.host.learningSchedule!()).jobs.find(job => job.id !== first.id)!;
+    await runNow(f);
+    await vi.waitFor(async () => expect((await f.host.learningSchedule!()).jobs.find(job => job.id === second.id)?.state).toBe('completed'), { timeout: 10_000, interval: 5 });
+    await idle(f.runtime);
+    const completed = (await f.host.learningSchedule!()).jobs.find(job => job.id === second.id)!;
+    expect(completed.result?.knowledge).toMatchObject({ status: 'saved', path: first.result!.knowledge!.path });
+    expect(completed.result?.skill).toBeUndefined();
+    expect(await noteFiles(f.profile.root, f.workspace.id)).toHaveLength(1);
+    expect((await f.host.skillRegistry()).revisions).toEqual(before.revisions);
+    expect(f.requests.filter(curator)).toHaveLength(2);
+  });
+
   it.skipIf(!HAS_DAEMON)('defers an unstarted job for new foreground work and keeps its source identity', async () => {
     const release = deferred(), f = await fixture({ holdSource: release.promise });
     try {
@@ -307,8 +393,12 @@ describe.skipIf(process.platform === 'win32')('saved profile automatic learning 
         expect(Date.parse(restarted.dueAt)).toBeGreaterThanOrEqual(releasedAt + 60_000);
       }, { timeout: 5_000, interval: 5 });
       await runNow(f); await settledLearning(f);
-      expect(f.requests.filter(curator)).toHaveLength(2);
-      expect((await f.host.learningSchedule!()).jobs).toHaveLength(1);
+      expect(f.requests.filter(curator)).toHaveLength(1);
+      const jobs = (await f.host.learningSchedule!()).jobs;
+      expect(jobs).toHaveLength(2);
+      expect(jobs.find(job => job.id === original.id)?.state).toBe('completed');
+      expect(jobs.find(job => job.id !== original.id)?.state).toBe('scheduled');
+      expect(f.requests.find(curator)?.messages.find(message => message.role === 'user')?.content).not.toContain('Hold while I review the parser.');
       expect(await noteFiles(f.profile.root, f.workspace.id)).toHaveLength(1);
       expect(f.events.filter(event => event.agentId === 'primary' && event.body.type === 'turn.completed')).toHaveLength(2);
     } finally { release.resolve(); }
@@ -457,7 +547,7 @@ describe.skipIf(process.platform === 'win32')('saved profile automatic learning 
     } finally { release.resolve(); await sending; }
   });
 
-  it.skipIf(!HAS_DAEMON)('keeps a genuine new skill receipt visible when the later Rust note export fails', async () => {
+  it.skipIf(!HAS_DAEMON)('records a new skill independently when the preceding Rust note export fails', async () => {
     const f = await fixture({ skills: true });
     await f.host.sendPrompt(f.session.id, 'Read the parser and learn its validation sequence.'); await idle(f.runtime);
     const job = (await f.host.learningSchedule!()).jobs[0]!;
@@ -467,7 +557,8 @@ describe.skipIf(process.platform === 'win32')('saved profile automatic learning 
     await writeFile(existingNote, 'Unrelated existing note that must not be overwritten.');
     await runNow(f); await settledLearning(f);
     const completed = (await f.host.learningSchedule!()).jobs.find(item => item.id === job.id)!;
-    expect(completed.state).toBe('failed');
+    expect(completed.state).toBe('partial');
+    expect(completed.result?.knowledge).toEqual({ status: 'failed' });
     const notice = completed.result?.skill;
     expect(notice).toMatchObject({ kind: 'skill-candidate', profileId: f.profile.id, workspaceId: f.workspace.id,
       sessionId: f.session.id, runId: job.id, change: 'new', partial: true, activationPerformed: false });
@@ -479,10 +570,31 @@ describe.skipIf(process.platform === 'win32')('saved profile automatic learning 
     expect(f.events.some(event => event.body.type === 'tool.completed' && event.body.tool === 'automatic_learning' && !event.body.ok)).toBe(true);
   });
 
-  it.each(['profile-off', 'plan', 'paused-team', 'history-off', 'trivial'] as const)('skips %s source work without invoking a curator or saving a note', async mode => {
+  it.skipIf(!HAS_DAEMON)('preserves an inactive skill when a workspace vault has no note-write grant', async () => {
+    const f = await fixture({ skills: true });
+    const projectVault = path.join(f.workspace.projectLocation!, 'knowledge');
+    await mkdir(projectVault);
+    const catalog = await f.host.listVaultProfiles!();
+    await f.host.saveVaultProfile!({ id: f.profile.id, name: f.profile.name, vaultRoot: projectVault,
+      workspaceIds: [f.workspace.id], minutesEnabled: false,
+      automaticLearning: { enabled: true, skills: true, notes: true }, expectedRevision: catalog.revision });
+    await f.host.sendPrompt(f.session.id, 'Read the parser and retain its reusable validation order.'); await idle(f.runtime);
+    await runNow(f); await settledLearning(f);
+    const job = (await f.host.learningSchedule!()).jobs[0]!;
+    expect(job.state).toBe('partial');
+    expect(job.result?.knowledge).toEqual({ status: 'failed' });
+    expect(job.result?.skill).toMatchObject({ activationPerformed: false, partial: true });
+    expect(job.result?.skill?.state).not.toBe('active');
+    expect((await f.host.skillRegistry()).revisions).toEqual(expect.arrayContaining([
+      expect.objectContaining({ revisionId: job.result!.skill!.revisionId, state: job.result!.skill!.state }),
+    ]));
+    expect(await noteFiles(projectVault, f.workspace.id)).toEqual([]);
+    expect(f.requests.filter(curator)).toHaveLength(1);
+  });
+
+  it.each(['profile-off', 'plan', 'history-off', 'trivial'] as const)('skips %s source work without invoking a curator or saving a note', async mode => {
     const f = await fixture({ enabled: mode !== 'profile-off', history: mode !== 'history-off' });
     if (mode === 'plan') await f.host.setSessionOptions(f.session.id, { permissionMode: 'plan' });
-    if (mode === 'paused-team') await f.host.saveSessionTeam(f.session.id, { enabled: false, allowedModels: ['fixture-model'], members: [{ id: 'paused-member', name: 'Reviewer', role: 'Review', models: ['fixture-model'] }] });
     await f.host.sendPrompt(f.session.id, mode === 'trivial' ? 'Hello.' : 'Read the parser and explain it.'); await idle(f.runtime);
     expect(f.requests.some(curator)).toBe(false);
     expect((await f.host.learningSchedule!()).jobs).toEqual([]);
@@ -495,9 +607,9 @@ describe.skipIf(process.platform === 'win32')('saved profile automatic learning 
     const f = await fixture();
     await f.host.sendPrompt(f.session.id, 'Read the parser and explain validation.'); await idle(f.runtime);
     await runNow(f); await settledLearning(f);
-    expect(f.requests.filter(curator)).toHaveLength(2); expect(await noteFiles(f.profile.root, f.workspace.id)).toHaveLength(1);
+    expect(f.requests.filter(curator)).toHaveLength(1); expect(await noteFiles(f.profile.root, f.workspace.id)).toHaveLength(1);
     await f.host.sendPrompt(f.session.id, 'Thanks.'); await idle(f.runtime);
-    expect(f.requests.filter(curator)).toHaveLength(2); expect(await noteFiles(f.profile.root, f.workspace.id)).toHaveLength(1);
+    expect(f.requests.filter(curator)).toHaveLength(1); expect(await noteFiles(f.profile.root, f.workspace.id)).toHaveLength(1);
     expect((await f.host.learningSchedule!()).jobs).toHaveLength(1);
     expect((await f.host.learningSchedule!()).jobs[0]?.state).toBe('completed');
     const lastLead = f.requests.filter(body => !curator(body)).at(-1)!;

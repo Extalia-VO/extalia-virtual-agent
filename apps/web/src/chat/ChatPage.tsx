@@ -1,6 +1,6 @@
 import { ObservedInputCards } from '../observe/ObservedInputCards';
 import { sourceLabel } from '@extalia/core';
-import type { AgentHostApi, ApprovalDecisionInput, FileSystemCapability, HostState } from '@extalia/platform';
+import type { AgentHostApi, ApprovalDecisionInput, FileSystemCapability, HostState, SessionSummary } from '@extalia/platform';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { errorMessage } from '../host/remote';
 import type { Messages } from '../i18n';
@@ -9,6 +9,7 @@ import { Composer, type ComposerSend } from './Composer';
 import { ObservedCodexPromptComposer } from '../observe/ObservedCodexPromptComposer';
 import { supportsObservedPromptQueue } from '../observe/observedCodexPromptModel';
 import { ObservedSessionControl } from '../observe/ObservedSessionControl';
+import { ObservedHermesControls } from '../observe/ObservedHermesControls';
 import { attachmentPreviewLoader, sendPromptWithAttachments, uploadAttachments } from './attachments';
 import { resolveChat, type ChatSelection } from './selection';
 import { NativeSessionTree } from './NativeSessionTree';
@@ -36,7 +37,7 @@ import { useChatTeam } from './chatTeam';
 import { ChatSessionInfo } from './ChatSessionInfo';
 import './chatLayout.css';
 
-export function ChatPage({ t, language, agents, picker, state, onState, selection, onSelect, onOpenSettings, onReviewSkills, onOpenKnowledge, onLearningTarget }: {
+export function ChatPage({ t, language, agents, picker, state, onState, selection, onSelect, onOpenSettings, onOpenSession, onReviewSkills, onOpenKnowledge, onLearningTarget }: {
   t: Messages;
   language: string;
   agents: AgentHostApi;
@@ -46,6 +47,7 @@ export function ChatPage({ t, language, agents, picker, state, onState, selectio
   selection: ChatSelection;
   onSelect: (next: ChatSelection) => void;
   onOpenSettings: () => void;
+  onOpenSession?: (session: SessionSummary) => void;
   /** Opens the Skills page; the notice has already asked it to focus the workspace. */
   onReviewSkills: (workspaceId: string) => void;
   onOpenKnowledge?: () => void;
@@ -260,6 +262,10 @@ export function ChatPage({ t, language, agents, picker, state, onState, selectio
           if (moving?.wasActive && owner.selectionKey === moving.selectionKey) { onSelect({ workspaceId, sessionId: movingSession.id }); setListOpen(false); focusComposer(); }
         }} />}
       {handoverOpen && session && <SessionHandoverDialog agents={agents} state={state} session={session} t={t.sessionHandover} cliResumeMessages={t.observedCliResume} antigravityMessages={t.observedAntigravity}
+        workspaceLinkMessages={t.observedWorkspaceLink} onState={next => { onState(next); const updated = next.sessions.find(item => item.id === session.id); if (updated) onSelect({ workspaceId: updated.workspaceId, sessionId: updated.id }); }}
+        onOpenSettings={() => { setHandoverOpen(false); onOpenSettings(); }}
+        destinationSetup={(destination, changed) => destination.observation?.sourceId === 'hermes' ? <ObservedHermesControls t={t} agents={agents} session={destination} settingsOnly onChanged={changed} /> : undefined}
+        onOpenDestination={id => { void guard(async () => { const next = await agents.getState(); onState(next); const destination = next.sessions.find(item => item.id === id); if (destination) { setHandoverOpen(false); if (onOpenSession) onOpenSession(destination); else onSelect({ workspaceId: destination.workspaceId, sessionId: id }); } }); }}
         onClose={() => setHandoverOpen(false)} onApplied={receipt => {
           if (receipt.state === 'native-ready') void guard(async () => {
             const next = await agents.getState();

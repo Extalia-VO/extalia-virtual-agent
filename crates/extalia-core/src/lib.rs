@@ -13,5 +13,6 @@ pub mod security;
 mod sha256;
 pub mod skills;
 pub mod time;
+pub mod work_memory;
 
 pub use adapters::sqlite::{CoreStore, StoreError};

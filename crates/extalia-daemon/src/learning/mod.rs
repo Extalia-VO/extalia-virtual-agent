@@ -1,14 +1,23 @@
 //! Local learning owner. No model credentials, secondary store, provider transport,
 //! runtime launch or skill activation lives here. Jobs emit narrowly typed effects.
 mod files;
+#[cfg(all(test, unix))]
+mod grounded_files_tests;
 mod intake;
 mod jobs;
+mod knowledge_grounding;
 mod observed;
 #[cfg(all(test, unix))]
 mod observed_tests;
 #[cfg(all(test, unix))]
+mod receipt_tests;
+mod receipts;
+#[cfg(all(test, unix))]
 mod tests;
 mod text;
+mod work_memory;
+#[cfg(all(test, unix))]
+mod work_memory_tests;
 use crate::wire::{ErrorCode, Op, ResponseResult};
 use files::{Draft, Pin, Stage};
 use jobs::Job;
@@ -79,6 +88,7 @@ pub struct Learning {
     jobs: HashMap<String, Job>,
     intakes: HashMap<String, intake::Intake>,
     observed: HashMap<String, extalia_core::observed_memory::ObservedMemoryStore>,
+    work_memory: HashMap<String, extalia_core::work_memory::WorkMemoryStore>,
     #[cfg(test)]
     hold: Option<(std::sync::mpsc::Sender<()>, std::sync::mpsc::Receiver<()>)>,
 }
@@ -95,6 +105,7 @@ impl Learning {
             jobs: HashMap::new(),
             intakes: HashMap::new(),
             observed: HashMap::new(),
+            work_memory: HashMap::new(),
             #[cfg(test)]
             hold: None,
         }
@@ -112,6 +123,7 @@ impl Learning {
         let action = s(params, "action");
         let input = &params["input"];
         let mut result = match action {
+            action if action.starts_with("memory.") => self.work_memory_action(action, input)?,
             action if action.starts_with("observed.") => self.observed_action(action, input)?,
             "evidence.begin" => {
                 if self.intakes.len() >= 4 {
@@ -168,6 +180,8 @@ impl Learning {
                 json!({"released":true})
             }
             "receipt.claim" => json!({"claimed":self.claim(input)?}),
+            "receipt.get" => self.get_receipt(input)?,
+            "receipt.record" => self.record_receipt(input)?,
             "job.begin" => {
                 self.data_handle()?;
                 if self.jobs.len() >= MAX_HANDLES {

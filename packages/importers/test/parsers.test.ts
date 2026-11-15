@@ -112,6 +112,17 @@ describe('Gemini CLI recordings', () => {
 });
 
 describe('Hermes databases', () => {
+  it('represents a real empty linked session only when the host explicitly permits metadata-only observation', () => {
+    const row = { id: 'new-empty', title: 'New project conversation', cwd: '/projects/demo', started_at: Date.parse(T) / 1000 };
+    const linked: ParseContext = { ...context('hermes'), profile: 'team', importMode: 'linked', allowEmptySession: true };
+    const result = parseHermes(row, [], linked), session = valid(result);
+    expect(session).toMatchObject({ importMode: 'linked', startedAt: T, lastMessageAt: T, messages: [], provenance: { sourceSessionId: 'profile:team:new-empty' } });
+    expect(result.steps).toEqual([]);
+    expect(parseHermes(row, [], context('hermes')).session).toBeUndefined();
+    expect(parseHermes(row, [], { ...linked, importMode: 'imported' }).session).toBeUndefined();
+    expect(parseHermes(row, [{ role: 'system', content: 'An unsupported private message' }], linked).session).toBeUndefined();
+    expect(parseHermes(row, [{ role: 'user', session_id: 'other', content: 'Foreign message' }], linked).session).toBeUndefined();
+  });
   it('uses active messages, the multimodal marker and drops private fields', () => {
     const seconds = Date.parse(T) / 1000;
     const session = valid(parseHermes({ id: 'hermes-one', started_at: seconds, title: 'Demo', cwd: '/projects/demo', system_prompt: 'private-system' }, [

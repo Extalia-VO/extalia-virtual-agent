@@ -21,8 +21,8 @@ const effect = { effectId: 'model-one', kind: 'model' as const, system: 'Rust-au
 function state(status: RustLearningJob['status'] = 'running'): RustLearningJob {
   return { jobId: 'job-one', status, evidence: [{ id: 'current-read', name: 'read_file', content: evidence[0]!.content }], provenance, ...(status === 'running' ? { effect, pendingEffectId: effect.effectId } : {}) };
 }
-function ready(): RustLearningJob { return { ...state('ready'), submission, contentSha256: 'b'.repeat(64), skillSha256: 'c'.repeat(64), usage: { inputTokens: 7, outputTokens: 2 } }; }
-function fakeBackend(afterModel: RustLearningJob | RustLearningJob[] = ready()) {
+function ready(): RustLearningJob { return { ...state('ready'), submission, contentSha256: 'b'.repeat(64), skillSha256: 'c'.repeat(64), noteSha256: 'd'.repeat(64), usage: { inputTokens: 7, outputTokens: 2 } }; }
+function fakeBackend(afterModel: RustLearningJob | RustLearningJob[] = ready(), afterRevalidate?: RustLearningJob) {
   let job = state();
   const next = Array.isArray(afterModel) ? [...afterModel] : [afterModel];
   const calls: { action: RustLearningAction; input: unknown }[] = [];
@@ -35,10 +35,13 @@ function fakeBackend(afterModel: RustLearningJob | RustLearningJob[] = ready()) 
       case 'evidence.release': value = { released: true }; break;
       case 'job.begin': case 'observed.jobBegin': value = { job }; break;
       case 'job.advance': job = next.shift() ?? ready(); value = { job }; break;
+      case 'job.revalidate': job = afterRevalidate ?? job; value = { job }; break;
       case 'job.cancel': job = { ...job, status: 'cancelled', effect: undefined }; value = { job }; break;
       case 'job.settle': job = { ...job, pendingEffectId: undefined }; value = { job }; break;
       case 'job.finish': job = { ...job, status: 'completed' }; value = { job }; break;
       case 'receipt.claim': value = { claimed: true }; break;
+      case 'receipt.get': value = { status: 'missing' }; break;
+      case 'receipt.record': value = { recorded: true, replayed: false }; break;
       case 'job.release': value = { released: true }; break;
       default: throw new Error(`Unexpected test operation: ${action}`);
     }
@@ -61,6 +64,69 @@ function tool(name: string, access: AnyTool['access'] = 'read', kind: AnyTool['k
 }
 
 describe('Rust-owned automatic learning host effects', () => {
+  it('revalidates every referenced source before receipt admission and forwards pinned hashes to the writer', async () => {
+    const knowledgeReads = [{ path: 'Knowledge/Policy.md', sha256: 'e'.repeat(64) }];
+    const relatedNotes = [{ path: knowledgeReads[0]!.path, relation: 'updates' as const, reason: 'The verified procedure changes the ordering.', evidenceIds: ['current-read'], sourceSha256: knowledgeReads[0]!.sha256 }];
+    const backend = fakeBackend({ ...ready(), knowledgeReads, submission: { ...submission, relatedNotes } });
+    const read = tool('knowledge_read', 'read', 'knowledge');
+    const setup = options({ backend: backend.port, tools: [read] });
+    expect((await runAutomaticLearning(setup)).outcome).toBe('completed');
+    expect(read.run).toHaveBeenCalledWith({ path: knowledgeReads[0]!.path, offset: 0, limit: 1 }, expect.anything());
+    expect(backend.calls.findIndex(call => call.action === 'job.revalidate')).toBeLessThan(backend.calls.findIndex(call => call.action === 'receipt.claim'));
+    expect(setup.writeNote).toHaveBeenCalledWith(expect.objectContaining({ knowledgeReads, relatedNotes }), expect.any(AbortSignal));
+  });
+
+  it('does not claim either artifact when Rust refuses missing or changed knowledge proof', async () => {
+    const backend = fakeBackend({ ...ready(), knowledgeReads: [{ path: 'Policy.md', sha256: 'e'.repeat(64) }] },
+      { ...state('failed'), reason: 'Linked knowledge changed before publication.', failure: { stage: 'authority', code: 'unavailable' } });
+    const setup = options({ backend: backend.port, tools: [] });
+    expect(await runAutomaticLearning(setup)).toMatchObject({ outcome: 'failed', reason: 'Linked knowledge changed before publication.' });
+    expect(backend.calls.find(call => call.action === 'job.revalidate')?.input).toMatchObject({ reads: [{ path: 'Policy.md', ok: false }] });
+    expect(backend.calls.some(call => call.action === 'receipt.claim')).toBe(false);
+    expect(setup.writeNote).not.toHaveBeenCalled(); expect(setup.proposeSkill).not.toHaveBeenCalled();
+  });
+
+  it('drains a revalidation read when cancellation arrives and never admits a write afterwards', async () => {
+    const backend = fakeBackend({ ...ready(), knowledgeReads: [{ path: 'Policy.md', sha256: 'e'.repeat(64) }] });
+    const controller = new AbortController();
+    const read = tool('knowledge_read', 'read', 'knowledge');
+    let settled = false;
+    read.run = async () => { controller.abort(); await Promise.resolve(); settled = true; return { ok: true, output: 'A late read.' }; };
+    const setup = options({ backend: backend.port, tools: [read], signal: controller.signal });
+    expect((await runAutomaticLearning(setup)).outcome).toBe('cancelled');
+    expect(settled).toBe(true);
+    expect(backend.calls.some(call => call.action === 'job.revalidate' || call.action === 'receipt.claim')).toBe(false);
+    expect(setup.writeNote).not.toHaveBeenCalled(); expect(setup.proposeSkill).not.toHaveBeenCalled();
+    expect(backend.calls.at(-1)?.action).toBe('job.release');
+  });
+
+  it('retains a safe rate-limit category when the backend has only a generic failure', async () => {
+    const backend = fakeBackend({ ...state('failed'), reason: 'The learning effect did not complete.' });
+    const model = provider();
+    model.complete = vi.fn(async () => { throw Object.assign(new Error('private endpoint details'), { status: 429 }); });
+    const setup = options({ provider: model, backend: backend.port });
+    const result = await runAutomaticLearning(setup);
+    expect(result).toMatchObject({ outcome: 'failed', failure: { stage: 'provider', code: 'rate-limited' } });
+    expect(JSON.stringify(result)).not.toContain('private endpoint details');
+    expect(setup.writeNote).not.toHaveBeenCalled(); expect(setup.proposeSkill).not.toHaveBeenCalled();
+    expect(backend.calls.at(-1)?.action).toBe('job.release');
+  });
+
+  it.each(['tool.started', 'tool.completed'] as const)('distinguishes %s activity failure from a registered read failure', async eventType => {
+    const readEffect = { kind: 'read' as const, effectId: 'read-one', callId: 'read-call', name: 'knowledge_search', input: {} };
+    const backend = fakeBackend({ ...state(), effect: readEffect, pendingEffectId: readEffect.effectId });
+    const read = tool('knowledge_search', 'read', 'knowledge');
+    const setup = options({ backend: backend.port, tools: [read], emit: body => {
+      if (body.type === eventType) throw new Error('private event diagnostics');
+    } });
+    const result = await runAutomaticLearning(setup);
+    expect(result).toMatchObject({ outcome: 'cancelled', failure: { stage: 'activity', code: 'unknown' } });
+    expect(read.run).toHaveBeenCalledTimes(eventType === 'tool.started' ? 0 : 1);
+    expect(JSON.stringify(result)).not.toContain('private event diagnostics');
+    expect(setup.writeNote).not.toHaveBeenCalled(); expect(setup.proposeSkill).not.toHaveBeenCalled();
+    expect(backend.calls.at(-1)?.action).toBe('job.release');
+  });
+
   it('loads observed evidence by its stored scope and revision without manufacturing Native tool results', async () => {
     const backend = fakeBackend();
     const { result: _sourceResult, currentTurnEvidence: _toolResults, ...setup } = options({ backend: backend.port });
@@ -88,11 +154,13 @@ describe('Rust-owned automatic learning host effects', () => {
     expect(backend.calls.find(call => call.action === 'evidence.append')).toEqual({ action: 'evidence.append', input: expect.objectContaining({ chunk: evidence[0]!.content, final: true }) });
     expect(JSON.stringify(backend.calls)).not.toContain('Older unrelated');
     expect(backend.calls.filter(call => call.action === 'receipt.claim').map(call => call.input)).toEqual([
-      { profileId: provenance.profileId, contentSha256: 'b'.repeat(64), runId: provenance.runId },
+      { profileId: provenance.profileId, contentSha256: 'd'.repeat(64), runId: provenance.runId },
       { profileId: provenance.profileId, contentSha256: 'c'.repeat(64), runId: provenance.runId },
     ]);
     expect(setup.proposeSkill).toHaveBeenCalledWith(skill, provenance, expect.any(AbortSignal));
-    expect(setup.writeNote).toHaveBeenCalledWith(expect.objectContaining({ title: submission.title, lesson: submission.lesson, evidence: ready().evidence, skill: receipt }), expect.any(AbortSignal));
+    expect(setup.writeNote).toHaveBeenCalledWith(expect.objectContaining({ title: submission.title, lesson: submission.lesson, evidence: ready().evidence }), expect.any(AbortSignal));
+    expect(vi.mocked(setup.writeNote!).mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(setup.proposeSkill!).mock.invocationCallOrder[0]!);
+    expect(backend.calls.filter(call => call.action === 'receipt.record')).toHaveLength(2);
     expect(events.some(body => body.type === 'turn.completed')).toBe(true);
     expect(backend.calls.at(-1)?.action).toBe('job.release');
     expect(setup.onWorkerSettled).toHaveBeenCalledTimes(1);
@@ -173,8 +241,8 @@ describe('Rust-owned automatic learning host effects', () => {
     expect(events.some(body => body.type === 'turn.completed' || body.type === 'turn.failed')).toBe(false);
     expect(setup.onWorkerSettled).not.toHaveBeenCalled();
     finish();
-    expect(await pending).toMatchObject({ outcome: 'cancelled', skill: { status: 'recorded', receipt: { cancellationObserved: true } }, note: { status: 'failed' } });
-    expect(setup.writeNote).not.toHaveBeenCalled(); expect(setup.onWorkerSettled).toHaveBeenCalledOnce();
+    expect(await pending).toMatchObject({ outcome: 'cancelled', skill: { status: 'recorded', receipt: { cancellationObserved: true } }, note: { status: 'saved' } });
+    expect(setup.writeNote).toHaveBeenCalledOnce(); expect(setup.onWorkerSettled).toHaveBeenCalledOnce();
   });
 
   it('rechecks host policy before persistence and leaves source success unchanged', async () => {
@@ -187,8 +255,42 @@ describe('Rust-owned automatic learning host effects', () => {
 
   it('reports independent note failures without discarding an acknowledged candidate', async () => {
     const setup = options({ writeNote: vi.fn(async () => { throw new Error('Vault changed.'); }) });
-    expect(await runAutomaticLearning(setup)).toMatchObject({ outcome: 'failed', skill: { status: 'recorded', receipt }, note: { status: 'failed' } });
+    expect(await runAutomaticLearning(setup)).toMatchObject({ outcome: 'partial', skill: { status: 'recorded', receipt }, note: { status: 'failed' } });
     expect(source.outcome).toBe('completed');
+  });
+
+  it('saves Knowledge before a failed skill inspection and reports partial success', async () => {
+    const setup = options({ proposeSkill: vi.fn(async () => { throw new Error('Inspection unavailable.'); }) });
+    expect(await runAutomaticLearning(setup)).toMatchObject({ outcome: 'partial', note: { status: 'saved' }, skill: { status: 'unknown' } });
+    expect(setup.writeNote).toHaveBeenCalledOnce();
+  });
+
+  it('admits text-only corrections but skips exact acknowledgments without model requests', async () => {
+    for (const user of ['Hello.', 'Terima kasih!', 'okay']) {
+      const setup = options({ currentTurnEvidence: [], sourceContext: { user, assistant: 'Acknowledged.' } });
+      expect(await runAutomaticLearning(setup)).toMatchObject({ outcome: 'skipped' });
+      expect(setup.provider.complete).not.toHaveBeenCalled();
+    }
+    const setup = options({ currentTurnEvidence: [], sourceContext: { user: 'Use tabs.', assistant: 'The project uses tabs.' } });
+    expect(await runAutomaticLearning(setup)).toMatchObject({ outcome: 'completed' });
+    expect(setup.provider.complete).toHaveBeenCalledOnce();
+  });
+
+  it('gives publication its own deadline after analysis used most of its time budget', async () => {
+    vi.useFakeTimers();
+    try {
+      const model = provider();
+      model.complete = vi.fn(async () => { await new Promise(resolve => setTimeout(resolve, 8)); return completed; });
+      const setup = options({ provider: model, timeoutMs: 10, publicationTimeoutMs: 50,
+        writeNote: vi.fn(async (_record, signal) => {
+          await new Promise(resolve => setTimeout(resolve, 20));
+          expect(signal.aborted).toBe(false);
+          return 'Learning/workspace_one/run-one.md';
+        }) });
+      const pending = runAutomaticLearning(setup);
+      await vi.advanceTimersByTimeAsync(30);
+      expect(await pending).toMatchObject({ outcome: 'completed', note: { status: 'saved' } });
+    } finally { vi.useRealTimers(); }
   });
 
   it('cancels and releases an admitted job when cancellation arrived before begin acknowledged', async () => {
@@ -253,30 +355,55 @@ describe('Rust-owned automatic learning host effects', () => {
 });
 
 describe.skipIf(!HAS_DAEMON || process.platform === 'win32')('automatic learning through the actual Rust sidecar', () => {
-  it('runs correlated model steps, validates current evidence and durably refuses repeated findings', async () => {
+  it('preserves a confirmed note while a failed skill admission remains uncertain on the next review', async () => {
+    const sidecar = new DaemonSidecar({ binary: () => DAEMON_BINARY, dataDirectory: await temp(), profile: 'default', clientVersion: 'test' });
+    sidecars.push(sidecar);
+    const backend = new RustLearningBackend(() => sidecar.connect());
+    const submit: ModelResult = { text: '', toolCalls: [{ id: 'submit', name: 'submit_learning', input: submission }], stop: 'tool_use' };
+    const first = options({ backend, provider: provider([submit]), proposeSkill: vi.fn(async () => { throw new Error('No acknowledged import.'); }) });
+    expect(await runAutomaticLearning(first)).toMatchObject({ outcome: 'partial', note: { status: 'saved' }, skill: { status: 'unknown' } });
+    const next = options({ backend, runId: 'next-review', provider: provider([submit]) });
+    expect(await runAutomaticLearning(next)).toMatchObject({ outcome: 'partial', note: { status: 'saved' }, skill: { status: 'unknown' } });
+    expect(next.writeNote).not.toHaveBeenCalled(); expect(next.proposeSkill).not.toHaveBeenCalled();
+  });
+
+  it('retains typed provider failure without exposing the response body or making artifact writes', async () => {
+    const sidecar = new DaemonSidecar({ binary: () => DAEMON_BINARY, dataDirectory: await temp(), profile: 'default', clientVersion: 'test' });
+    sidecars.push(sidecar);
+    const events: EventBody[] = [], model = provider();
+    model.complete = vi.fn(async () => { throw Object.assign(new Error('HTTP 400 invalid schema private-provider-body'), { status: 400 }); });
+    const setup = options({ backend: new RustLearningBackend(() => sidecar.connect()), provider: model, emit: body => { events.push(body); } });
+    const result = await runAutomaticLearning(setup);
+    expect(result).toMatchObject({ outcome: 'failed', failure: { stage: 'provider', code: 'invalid-request' } });
+    expect(JSON.stringify([result, events])).not.toContain('private-provider-body');
+    expect(setup.writeNote).not.toHaveBeenCalled(); expect(setup.proposeSkill).not.toHaveBeenCalled();
+  });
+
+  it('finishes on one valid submission and reuses confirmed outputs without publishing duplicates', async () => {
     const sidecar = new DaemonSidecar({ binary: () => DAEMON_BINARY, dataDirectory: await temp(), profile: 'default', clientVersion: 'test' });
     sidecars.push(sidecar);
     const backend = new RustLearningBackend(() => sidecar.connect());
     const submit: ModelResult = { text: '', toolCalls: [{ id: 'submit-one', name: 'submit_learning', input: submission }], stop: 'tool_use', usage: { inputTokens: 10, outputTokens: 3 } };
     const setup = options({ backend, provider: provider([submit, completed]) });
-    expect(await runAutomaticLearning(setup)).toMatchObject({ outcome: 'completed', usage: { inputTokens: 17, outputTokens: 5 }, skill: { status: 'recorded' }, note: { status: 'saved' } });
+    expect(await runAutomaticLearning(setup)).toMatchObject({ outcome: 'completed', usage: { inputTokens: 10, outputTokens: 3 }, skill: { status: 'recorded' }, note: { status: 'saved' } });
+    expect(setup.provider.complete).toHaveBeenCalledOnce();
     const modelRequest = vi.mocked(setup.provider.complete).mock.calls[0]![0];
     expect(modelRequest.system).toContain('bounded post-task Skills curator');
     expect(JSON.stringify(modelRequest.messages)).toContain('current-read');
     expect(JSON.stringify(modelRequest.messages)).not.toContain('Older unrelated');
     const repeated = options({ backend, runId: 'run-two', provider: provider([submit, completed]) });
-    expect(await runAutomaticLearning(repeated)).toMatchObject({ outcome: 'skipped' });
+    expect(await runAutomaticLearning(repeated)).toMatchObject({ outcome: 'completed', note: { status: 'saved' }, skill: { status: 'recorded', receipt: { created: false } } });
     expect(repeated.proposeSkill).not.toHaveBeenCalled(); expect(repeated.writeNote).not.toHaveBeenCalled();
   });
 
-  it.each(['refusal', 'truncated', 'refusal-after-submission', 'step-limit'] as const)('never publishes captured or truncated findings after %s', async mode => {
+  it.each(['refusal', 'truncated', 'mixed-submission', 'step-limit'] as const)('never publishes captured or truncated findings after %s', async mode => {
     const sidecar = new DaemonSidecar({ binary: () => DAEMON_BINARY, dataDirectory: await temp(), profile: 'default', clientVersion: 'test' });
     sidecars.push(sidecar);
     const submit: ModelResult = { text: '', toolCalls: [{ id: 'submit-one', name: 'submit_learning', input: submission }], stop: 'tool_use' };
     const responses: ModelResult[] = mode === 'refusal' ? [{ ...submit, stop: 'refusal' }]
       : mode === 'truncated' ? [{ ...submit, stop: 'max_tokens' }]
-      : mode === 'refusal-after-submission' ? [submit, { ...completed, stop: 'refusal' }]
-      : Array.from({ length: 6 }, (_, index) => ({ ...submit, toolCalls: [{ ...submit.toolCalls[0]!, id: `submit-${index}` }] }));
+      : mode === 'mixed-submission' ? [{ ...submit, toolCalls: [...submit.toolCalls, { id: 'extra', name: 'knowledge_read', input: { path: 'note.md' } }] }]
+      : Array.from({ length: 6 }, (_, index) => ({ ...submit, toolCalls: [{ id: `invalid-${index}`, name: 'submit_learning', input: { title: 'Missing evidence' } }] }));
     const setup = options({ backend: new RustLearningBackend(() => sidecar.connect()), provider: provider(responses) });
     expect(await runAutomaticLearning(setup)).toMatchObject({ outcome: 'failed' });
     expect(setup.proposeSkill).not.toHaveBeenCalled(); expect(setup.writeNote).not.toHaveBeenCalled();

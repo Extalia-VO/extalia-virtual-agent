@@ -113,14 +113,32 @@ fn observed_candidate_submission_keeps_original_claim_labels() {
     let mut owner = Learning::new(&root, "default");
     let episode = capture(&mut owner)["episode"].clone();
     let job = run(&mut owner, "observed.jobBegin", job_input(&episode))["job"].clone();
-    let next=run(&mut owner,"job.advance",json!({"jobId":job["jobId"],"effectId":job["effect"]["effectId"],"completion":{"kind":"model","result":{"text":"","stop":"tool_use","toolCalls":[{"id":"submit-observed","name":"submit_learning","input":{"title":"Observed lesson","lesson":"The observed session reports a standard-library implementation; its test result remains unverified.","evidenceIds":["assistant-one"],"skill":{"name":"observed-sample","description":"Generated unverified procedure","instructions":"Check the assumptions before applying this procedure."}}}]}}}))["job"].clone();
-    let ready=run(&mut owner,"job.advance",json!({"jobId":job["jobId"],"effectId":next["effect"]["effectId"],"completion":{"kind":"model","result":{"text":"Done","stop":"end","toolCalls":[]}}}))["job"].clone();
+    let ready=run(&mut owner,"job.advance",json!({"jobId":job["jobId"],"effectId":job["effect"]["effectId"],"completion":{"kind":"model","result":{"text":"","stop":"tool_use","toolCalls":[{"id":"submit-observed","name":"submit_learning","input":{"title":"Observed lesson","lesson":"The observed session reports a standard-library implementation; its test result remains unverified.","evidenceIds":["assistant-one"],"skill":{"name":"observed-sample","description":"Generated unverified procedure","instructions":"Check the assumptions before applying this procedure."}}}]}}}))["job"].clone();
     assert_eq!(ready["status"], "ready");
     assert_eq!(ready["evidence"].as_array().unwrap().len(), 1);
     assert_eq!(ready["evidence"][0]["id"], "assistant-one");
     assert!(s(&ready["evidence"][0], "content").contains("UNTRUSTED OBSERVED CLAIM"));
     assert!(ready.get("verified").is_none());
     assert!(ready.get("activationPerformed").is_none());
+    drop(owner);
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn observed_note_digest_uses_destination_revision_not_source_episode_revision() {
+    let root = temp();
+    let mut owner = Learning::new(&root, "default");
+    let episode = capture(&mut owner)["episode"].clone();
+    let mut digests = Vec::new();
+    for destination in ["vault-r1", "vault-r2"] {
+        let mut input = job_input(&episode);
+        input["destinationRevision"] = destination.into();
+        let job = run(&mut owner, "observed.jobBegin", input)["job"].clone();
+        let ready = run(&mut owner, "job.advance", json!({"jobId":job["jobId"],"effectId":job["effect"]["effectId"],"completion":{"kind":"model","result":{"text":"","stop":"tool_use","toolCalls":[{"id":"submit-observed","name":"submit_learning","input":{"title":"Observed preference","lesson":"The source user requested the standard library only.","evidenceIds":["user-one"]}}]}}}))["job"].clone();
+        assert_eq!(ready["status"], "ready");
+        digests.push(ready["noteSha256"].clone());
+    }
+    assert_ne!(digests[0], digests[1]);
     drop(owner);
     let _ = std::fs::remove_dir_all(root);
 }

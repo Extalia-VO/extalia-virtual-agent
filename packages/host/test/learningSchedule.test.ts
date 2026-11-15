@@ -393,7 +393,7 @@ describe('learning admission schedule', () => {
     expect(() => queue.recordResult(task.id, { skill: { ...skill, profileId: 'foreign' } })).toThrow('another source');
     expect(() => queue.recordResult(task.id, { skill: { ...skill, activationPerformed: true } as unknown as LearningSkillNotice })).toThrow('Invalid');
     finish.resolve(); await vi.advanceTimersByTimeAsync(0);
-    expect(queue.snapshot().jobs[0]).toMatchObject({ state: 'failed', result: { skill: { state: 'quarantined', partial: true }, meeting: { outcome: 'completed', knowledge: 'failed' } } });
+    expect(queue.snapshot().jobs[0]).toMatchObject({ state: 'partial', result: { skill: { state: 'quarantined', partial: true }, meeting: { outcome: 'completed', knowledge: 'failed' } } });
     expect(queue.snapshot().jobs[0]!.result!.meeting!.notePath).toBeUndefined();
     expect(() => queue.recordResult(task.id, { skill })).toThrow('no longer');
     await queue.close();

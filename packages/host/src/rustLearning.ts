@@ -1,5 +1,5 @@
 /** Connection-bound ports for Rust-owned learning jobs and artifact persistence. */
-import type { DaemonLearningParams, LearningActions, Usage } from '@extalia/protocol';
+import type { DaemonLearningParams, LearningActions, LearningKnowledgeRead, LearningRelatedNote, Usage, WorkMemoryActions } from '@extalia/protocol';
 import type { ModelMessage, ModelResult, ToolResultEntry, ToolSpec } from '@extalia/runtime';
 import type { SkillProposalInput, SkillProposalProvenance } from './skillLearning.js';
 import { DaemonUnavailableError, type DaemonClient } from './daemon/index.js';
@@ -10,17 +10,29 @@ export interface RustLearningJob {
   effect?: { effectId: string; kind: 'model'; system: string; messages: ModelMessage[]; tools: ToolSpec[] }
     | { effectId: string; kind: 'read'; callId: string; name: string; input: Record<string, unknown> };
   pendingEffectId?: string;
-  submission?: { title: string; lesson: string; evidenceIds: string[]; skill?: SkillProposalInput };
+  submission?: { title: string; lesson: string; evidenceIds: string[]; relatedNotes?: LearningRelatedNote[]; skill?: SkillProposalInput };
+  knowledgeReads?: LearningKnowledgeRead[];
   evidence: { id: string; name: string; content: string }[];
   provenance: SkillProposalProvenance;
   contentSha256?: string;
   skillSha256?: string;
+  noteSha256?: string;
   reason?: string;
+  failure?: LearningFailure;
   usage?: Usage;
 }
 
+export interface LearningFailure {
+  stage: 'provider' | 'read' | 'authority' | 'activity';
+  code: 'unavailable' | 'timeout' | 'rate-limited' | 'invalid-request' | 'cancelled' | 'unknown';
+}
+export interface LearningArtifactReceipt { kind: 'note' | 'skill'; data: string }
+
 export type { ObservedMemoryScope, ObservedMemoryEntry, ObservedMemoryCoverage, ObservedMemoryEpisode, ObservedMemoryPage } from '@extalia/protocol';
-export interface RustLearningInputs {
+export type { WorkMemoryScope, WorkMemorySource, WorkMemoryEntry, WorkMemoryCoverage, WorkMemoryRecord, WorkMemoryPage } from '@extalia/protocol';
+type WorkMemoryInputs = { [A in keyof WorkMemoryActions]: WorkMemoryActions[A]['input'] };
+type WorkMemoryResults = { [A in keyof WorkMemoryActions]: WorkMemoryActions[A]['result'] };
+export interface RustLearningInputs extends WorkMemoryInputs {
   'observed.capture': LearningActions['observed.capture']['input'];
   'observed.search': LearningActions['observed.search']['input'];
   'observed.read': LearningActions['observed.read']['input'];
@@ -32,13 +44,18 @@ export interface RustLearningInputs {
   'job.begin': {
     profileId: string; revision: string; workspaceId: string; sessionId: string; runId: string; promptSha256: string;
     policy: { enabled: boolean; skills: boolean; notes: boolean }; tools: readonly ToolSpec[]; timeoutMs?: number;
+    sourceContext?: { user: string; assistant: string };
+    memoryContext?: string;
   } & ({ intakeId: string; evidence?: never } | { evidence: readonly ToolResultEntry[]; intakeId?: never });
-  'job.advance': { jobId: string; effectId: string; completion: { kind: 'model'; result: ModelResult } | { kind: 'read'; ok: boolean; output: string } | { kind: 'failed' } };
+  'job.advance': { jobId: string; effectId: string; completion: { kind: 'model'; result: ModelResult } | { kind: 'read'; ok: boolean; output: string } | ({ kind: 'failed' } & Partial<LearningFailure>) };
+  'job.revalidate': LearningActions['job.revalidate']['input'];
   'job.cancel': { jobId: string };
   'job.settle': { jobId: string; effectId: string };
   'job.finish': { jobId: string };
   'job.release': { jobId: string };
   'receipt.claim': { profileId: string; contentSha256: string; runId: string };
+  'receipt.get': { profileId: string; contentSha256: string };
+  'receipt.record': { profileId: string; contentSha256: string; runId: string; receipt: LearningArtifactReceipt };
   'note.pin': { root: string; profileId: string; revision: string; workspaceId: string; sessionId: string; purpose: 'learning' | 'meeting' };
   'note.prepare': { pinId: string; record: unknown };
   'note.commit': { draftId: string };
@@ -51,7 +68,7 @@ export interface RustLearningInputs {
   'skill.cleanup': { stageId: string };
 }
 type Released = { released: true };
-interface ResultValues {
+interface ResultValues extends WorkMemoryResults {
   'observed.capture': LearningActions['observed.capture']['result'];
   'observed.search': LearningActions['observed.search']['result'];
   'observed.read': LearningActions['observed.read']['result'];
@@ -62,11 +79,14 @@ interface ResultValues {
   'evidence.release': Released;
   'job.begin': { job: RustLearningJob };
   'job.advance': { job: RustLearningJob };
+  'job.revalidate': { job: RustLearningJob };
   'job.cancel': { job: RustLearningJob };
   'job.settle': { job: RustLearningJob };
   'job.finish': { job: RustLearningJob };
   'job.release': Released;
   'receipt.claim': { claimed: boolean };
+  'receipt.get': { status: 'missing' | 'attempted' | 'recorded'; receipt?: LearningArtifactReceipt };
+  'receipt.record': { recorded: true; replayed: boolean };
   'note.pin': { pinId: string };
   'note.prepare': { draftId: string; path: string };
   'note.commit': { path: string };

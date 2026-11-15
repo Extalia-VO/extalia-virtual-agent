@@ -10,6 +10,13 @@
 .handover-section input[type="text"], .handover-section textarea { width: 100%; min-width: 0; box-sizing: border-box; color: var(--text); background: var(--surface); border: 1px solid var(--line); border-radius: 9px; padding: 9px 11px; font: inherit; }
 .handover-section textarea { resize: vertical; }
 .handover-target-fields { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; margin-top: 12px; }
+.handover-wide { grid-column: 1 / -1; }
+.handover-setup { min-width: 0; margin: 0; padding: 0; border: 0; }
+.handover-source-state > p:first-child { margin-top: 0; }
+.handover-source-state .handover-confirm { margin-top: 10px; }
+.handover-destination-actions { justify-content: flex-start; flex-wrap: wrap; }
+.handover-merge { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); }
+.handover-merge > button { margin-top: 12px; }
 .handover-note-fields { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; }
 .handover-note-fields label:first-child { grid-column: 1 / -1; }
 .handover-coverage { list-style: none; padding: 0; display: grid; gap: 16px; }
@@ -19,7 +26,8 @@
 .handover-chain li > * { display: block; }
 .handover-evidence { padding-left: 22px; max-height: 400px; overflow: auto; }
 .handover-evidence pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: .8rem; }
-.handover-packet > textarea { display: block; margin-bottom: 12px; font: .8rem/1.5 ui-monospace, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+.handover-packet textarea { display: block; margin: 12px 0; font: .8rem/1.5 ui-monospace, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+.handover-note-fields { margin-top: 14px; }
 .handover-section .handover-confirm { display: flex; align-items: flex-start; gap: 10px; margin-top: 16px; }
 .handover-confirm input { flex: none; margin-top: 3px; }
 .session-handover-dialog footer { justify-content: flex-end; flex-wrap: wrap; gap: 10px; }

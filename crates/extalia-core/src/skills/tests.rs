@@ -1,5 +1,6 @@
 //! Skill registry tests. Every test works in its own temporary directory only.
 
+mod candidates;
 mod preflight;
 mod routing;
 mod scanning;
@@ -1595,7 +1596,7 @@ fn hybrid_auto_activation_needs_every_gate() {
     let mut registry = SkillRegistry::new(&mut store, &dir.data(), profile("default"));
     let run = |registry: &mut SkillRegistry<'_>, source: &Path| {
         let id = registry
-            .import(source, Origin::Generated, "candidate", NOW)
+            .import(source, Origin::User, "manual-policy-fixture", NOW)
             .unwrap()
             .revision_id;
         registry
@@ -2230,7 +2231,7 @@ fn active_approval_stays_in_bounded_details_and_new_candidates_do_not_replace_it
         )],
     );
     let candidate = registry
-        .import(&changed, Origin::Generated, "prompt:source", LATER + 1)
+        .import(&changed, Origin::User, "manual-candidate", LATER + 1)
         .unwrap();
     assert_ne!(candidate.revision_id, id);
     let candidate_summary = registry.summary(&candidate.revision_id).unwrap();

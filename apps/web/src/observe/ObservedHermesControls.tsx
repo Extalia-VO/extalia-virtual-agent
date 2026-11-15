@@ -1,12 +1,15 @@
-import { useEffect, useId, useMemo, useState, useSyncExternalStore } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { AgentHostApi, HermesObservedQuestion, SessionSummary } from '@extalia/platform';
 import type { Messages } from '../i18n';
 import { createObservedHermesControl, type ObservedHermesControl, type ObservedHermesView } from './observedHermesModel';
 import './observedCodex.css';
 
-export function ObservedHermesControls({ t, agents, session, settingsOnly = false }: { t: Messages; agents: AgentHostApi; session: SessionSummary; settingsOnly?: boolean }) {
+export function ObservedHermesControls({ t, agents, session, settingsOnly = false, onChanged }: { t: Messages; agents: AgentHostApi; session: SessionSummary; settingsOnly?: boolean; onChanged?(): void }) {
   const model = useMemo(() => createObservedHermesControl(agents, session.id), [agents, session.id]);
   const view = useSyncExternalStore(model.subscribe, model.getSnapshot, model.getSnapshot);
+  const binding = JSON.stringify([session.id, view.status?.state, view.status?.connectionId, view.status?.canSend]);
+  const previous = useRef(binding);
+  useEffect(() => { if (previous.current !== binding) { previous.current = binding; onChanged?.(); } }, [binding, onChanged]);
   useEffect(() => model.start(), [model]);
   if (session.control !== 'observed' || session.observation?.sourceId !== 'hermes') return null;
   return <ObservedHermesContent t={t} view={view} control={model} settingsOnly={settingsOnly} session={session} />;

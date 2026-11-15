@@ -24,6 +24,8 @@ export interface ParseContext {
   customTitle?: string;
   exportedAt?: string;
   importMode?: ImportMode;
+  /** Host-bound live observation may represent a real empty Hermes session without inventing a message. */
+  allowEmptySession?: boolean;
   /**
    * Base64 contents of a local media file a transcript refers to by path (Antigravity `media[].uri`),
    * or `undefined` when it cannot or may not be read. Without it such images are listed by name only.
@@ -167,11 +169,11 @@ export function isInjectedContext(text: string): boolean {
   return INJECTED_CONTEXT.test(text);
 }
 
-function finish(context: ParseContext, id: unknown, drafts: Draft[], diagnostics: string[], metadata: { path?: unknown; title?: unknown; customTitle?: unknown; start?: unknown; parser: string; model?: string; modelAt?: string; effort?: Effort; effortAt?: string; context?: TranscriptContext }, steps?: StepList): NativeParseResult {
+function finish(context: ParseContext, id: unknown, drafts: Draft[], diagnostics: string[], metadata: { path?: unknown; title?: unknown; customTitle?: unknown; start?: unknown; parser: string; model?: string; modelAt?: string; effort?: Effort; effortAt?: string; context?: TranscriptContext; empty?: true }, steps?: StepList): NativeParseResult {
   const nativeId = (str(id) || context.nativeSessionId || '').trim();
   if (!nativeId) return { diagnostics: [...diagnostics, 'The session identity is missing.'] };
   const readable = drafts.filter(message => message.content.trim());
-  if (!readable.length) return { diagnostics: [...diagnostics, 'No supported conversation messages were found.'] };
+  if (!readable.length && !metadata.empty) return { diagnostics: [...diagnostics, 'No supported conversation messages were found.'] };
   if (readable.length > MAX_MESSAGES || readable.reduce((size, row) => size + row.content.length, 0) > MAX_PARSER_INPUT) return { diagnostics: [...diagnostics, 'The conversation exceeds the import size limit.'] };
 
   const validDates = readable.map(message => toEpochMs(message.at)).filter((value): value is number => value !== undefined);
@@ -210,8 +212,8 @@ function finish(context: ParseContext, id: unknown, drafts: Draft[], diagnostics
     },
     ...(projectLocation ? { workspace: { slug: `w-${stableHash(projectLocation)}`, name: safeLabel(baseName(projectLocation), 120) || 'Project', projectLocation } } : {}),
     messages,
-    startedAt: new Date(Math.min(start, Date.parse(messages[0]!.createdAt))).toISOString(),
-    lastMessageAt: messages.at(-1)!.createdAt,
+    startedAt: new Date(Math.min(start, messages[0] ? Date.parse(messages[0].createdAt) : start)).toISOString(),
+    lastMessageAt: messages.at(-1)?.createdAt ?? new Date(start).toISOString(),
   };
   const decoded = decodePortableSession(session);
   return decoded.ok ? { session: decoded.value, ...(steps ? { steps: steps.steps } : {}), ...(metadata.model ? { model: metadata.model } : {}), ...(metadata.modelAt ? { modelAt: metadata.modelAt } : {}), ...(metadata.effort ? { effort: metadata.effort } : {}), ...(metadata.effortAt ? { effortAt: metadata.effortAt } : {}), ...(metadata.context ? { context: metadata.context } : {}), diagnostics } : { diagnostics: [...diagnostics, `The conversation failed validation: ${decoded.errors.join(' ')}`] };
@@ -628,7 +630,8 @@ export function parseHermes(sessionRow: unknown, messages: unknown[], context: P
       steps.push({ ...base, pos: `${pos}:c${k}`, type: 'tool.call', tool: name, ...(str(call.id) ? { callId: str(call.id) } : {}), ...toolHints(name, input), ...(candidateFiles.length ? { files: candidateFiles } : {}) });
     }
   }
-  return finish(context, sessionId, drafts, diagnostics, { path: session.git_repo_root || session.cwd || session.project_path, title: session.title, start: session.started_at ?? session.created_at, parser: 'hermes-sqlite' }, steps);
+  return finish(context, sessionId, drafts, diagnostics, { path: session.git_repo_root || session.cwd || session.project_path, title: session.title, start: session.started_at ?? session.created_at, parser: 'hermes-sqlite',
+    ...(messages.length === 0 && context.sourceId === 'hermes' && context.importMode === 'linked' && context.allowEmptySession === true ? { empty: true } : {}) }, steps);
 }
 
 /** Extract the user's request text from Antigravity `<USER_REQUEST>…</USER_REQUEST>` wrappers. */

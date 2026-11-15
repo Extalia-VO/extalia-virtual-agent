@@ -5,6 +5,39 @@ notes in Native Chat and Teams. Notes stay in that workspace's existing memory
 directory under Extalia's data folder. Choosing **Off** removes both the catalog
 and tools from the model; the built-in skill library can remain enabled.
 
+## Automatic work memory
+
+Saved Native sessions can also preserve a bounded operational record after each
+completed, failed or cancelled turn. This requires **Extalia memory**, **history
+retention**, and enabled **automatic learning** on the workspace's vault profile.
+The record retains attributed user instructions, recent corrections, assistant
+reports, tool evidence and outcome. Failed work stays labelled failed. Hidden
+reasoning, attachment bytes and complete transcripts are not captured by this
+recording path.
+
+On later requests, Extalia searches the local operational index and the selected
+Knowledge vault. Relevant bounded excerpts enter the Native model context
+automatically; detailed evidence remains available through `work_memory_search`,
+`work_memory_read` and `knowledge_read`. Each worker follows its selected
+connection's memory/history settings. Mandatory skill instructions are prepared
+first; optional recall cannot displace them from the input budget.
+
+Records survive ordinary restart, with an exact local outbox for interrupted
+storage acknowledgements. A workspace's profile or boundary change does not move
+its old records into the new scope. Separate workspaces sharing one profile still
+have separate operational records. A crash before capture reaches the journal
+can leave a turn uncaptured. Storage and source coverage are bounded and reported;
+there is no automatic retention cleanup or semantic relevance guarantee.
+
+Observe has a separate opt-in. Linked observations belong to their registered
+workspace; explicitly unbound sources belong to the default/global scope.
+Revoked sources are excluded from subsequent recall. Extalia captures newly
+observed eligible frames, without analyzing all pre-existing history or injecting
+context into the external application's next prompt. See
+[Automatic learning](automatic-learning.md) for consent and routing.
+
+## Authored workspace notes
+
 The initial prompt contains at most four positively matching metadata entries,
 selected by bounded literal relevance to the composed request. Unrelated notes
 do not fill an unmatched preview. Descriptive filenames can be selected
@@ -56,9 +89,11 @@ or create a saved global mode. See [Built-in skills](builtin-skills.md).
 
 Installing Extalia does not install Claude-Mem, Caveman's upstream CLI or the
 Obsidian application. These are Extalia-owned implementations and instructions,
-inspired by selective recall and concise communication. No transcript is
-automatically captured or summarized by this feature, no external vault is
-written, and no token-saving percentage has been measured.
+inspired by selective recall and concise communication. Authored workspace notes
+remain separate from the operational records described above and from Knowledge
+learning writes. Local capture and retrieval require no model request; actual
+curation still uses the configured provider. No token-saving percentage has been
+measured for complete tasks.
 
 
 Open **Memory & context** below Native Chat to inspect the effective connection,
@@ -81,9 +116,17 @@ not support this setting.
 The optional **Estimated input token limit** applies to Native requests using
 that connection, including workers and planning. A request over the explicit
 estimate or the independent text safety ceiling is held before the next model
-call. History stays intact; this feature does not compact it. Review a brief for
-a fresh conversation or deliberately adjust the limit. Estimates do not guarantee
+call. When operational memory and a supported local archive are available, older
+large tool results can first be replaced in the request by exact excerpts and
+recoverable archive references. Persisted history, user instructions, assistant
+text, tool arguments and tool/result pairing stay intact. A worker has its own
+archive; it does not inherit the lead's reader. Archive publication is currently
+disabled on Windows. If the request cannot be reduced safely, it remains held.
+Review a brief for a fresh conversation or deliberately adjust the limit.
+Estimates do not guarantee
 fit in a provider's model window. Latest-context readings and per-turn usage are
 separate; a request held before sending does not acquire reported usage.
 
 See [Chat orchestration](chat-orchestration.md) for the per-prompt context routine.
+See [ADR 0089](../adr/0089-operational-work-memory-and-context-reuse.md) for exact
+capture, index, archive and recovery limits.

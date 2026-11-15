@@ -109,6 +109,7 @@ names!(
         SkillRollback = "skill.rollback",
         SkillRevoke = "skill.revoke",
         SkillRead = "skill.read",
+        SkillReviewRead = "skill.reviewRead",
         SkillScanner = "skill.scanner",
         SkillPreflight = "skill.preflight",
         SkillRoutingPreview = "skill.routingPreview",
@@ -801,6 +802,7 @@ fn request(check: &mut Check, object: &Map<String, Value>, op: Op) -> Option<Fra
         | Op::SkillRollback
         | Op::SkillRevoke
         | Op::SkillRead
+        | Op::SkillReviewRead
         | Op::SkillScanner
         | Op::SkillPreflight
         | Op::SkillRoutingPreview => skills::request(check, op, params),
@@ -917,6 +919,7 @@ fn response(check: &mut Check, object: &Map<String, Value>, op: Op) -> Option<Fr
         | Op::SkillRollback
         | Op::SkillRevoke
         | Op::SkillRead
+        | Op::SkillReviewRead
         | Op::SkillScanner
         | Op::SkillPreflight
         | Op::SkillRoutingPreview => skills::result(check, op, result),

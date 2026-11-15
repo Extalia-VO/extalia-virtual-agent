@@ -50,6 +50,20 @@ describe.skipIf(!HAS_DAEMON || process.platform === 'win32')('immutable profile-
     expect(authorize).toHaveBeenCalledTimes(2); expect(await readdir(root)).toEqual(['Learning']);
   });
 
+  it.each([
+    { name: 'conversation_user', expected: 'User and assistant statements are not tool results or independent verification' },
+    { name: 'observed_assistant', expected: 'Transcript claims are attributed to their original source' },
+  ])('preserves the trust boundary of $name evidence in the exported note', async ({ name, expected }) => {
+    const root = await temp();
+    const save = await pinLearningNotes({ context, resolve: async () => destination(root) });
+    const relative = await save({ ...record, evidence: [{ id: 'claim-one', name, content: 'A source speaker reported the validation result.' }] });
+    const body = await readFile(path.join(root, relative), 'utf8');
+    expect(body).toContain(expected);
+    expect(body).toContain('A source speaker reported the validation result.');
+    expect(body).not.toContain('Evidence is limited to successful tool results');
+    await save.close();
+  });
+
   it('allows exact retries and refuses all overwrites or existing symlink targets', async () => {
     const root = await temp(), outside = path.join(await temp(), 'outside.md');
     const save = await pinLearningNotes({ context, resolve: async () => destination(root) });

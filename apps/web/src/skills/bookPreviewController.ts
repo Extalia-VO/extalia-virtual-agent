@@ -65,17 +65,17 @@ export function bindBookPreviewEvents(controller: ReturnType<typeof createBookPr
       event.preventDefault(); event.stopPropagation(); controller.dismiss();
     }
   };
-  windowTarget.addEventListener('scroll', immediate, true);
+  windowTarget.addEventListener('scroll', immediate, { capture: true });
   windowTarget.addEventListener('resize', immediate);
   windowTarget.addEventListener('blur', dismiss);
-  windowTarget.addEventListener('keydown', escape, true);
+  windowTarget.addEventListener('keydown', escape, { capture: true });
   documentTarget.addEventListener('visibilitychange', hidden);
   return () => {
     controller.clear();
-    windowTarget.removeEventListener('scroll', immediate, true);
+    windowTarget.removeEventListener('scroll', immediate, { capture: true });
     windowTarget.removeEventListener('resize', immediate);
     windowTarget.removeEventListener('blur', dismiss);
-    windowTarget.removeEventListener('keydown', escape, true);
+    windowTarget.removeEventListener('keydown', escape, { capture: true });
     documentTarget.removeEventListener('visibilitychange', hidden);
   };
 }

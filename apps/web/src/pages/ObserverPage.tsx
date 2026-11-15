@@ -258,7 +258,7 @@ export function ObserverPage({ t, language, agents, state, initialSessionId, onS
               </div>
               <div className="observe-session-actions">
                 <button type="button" className="icon-button small" disabled={busy} aria-label={observation?.watching ? t.observer.pause : t.observer.resume} title={observation?.watching ? t.observer.pause : t.observer.resume} onClick={() => { void run(() => agents.setObservation(selected.id, !observation?.watching)).catch(() => undefined); }}><Icon name={observation?.watching ? 'stop' : 'refresh'} /></button>
-                {content?.session?.messages.length ? <ContinueInExtalia compact t={t} agents={agents} state={state} source={{ kind: 'observed', id: selected.id }} {...(observation?.projectPath ? { projectPath: observation.projectPath } : {})} onContinued={onContinued} onOpenSettings={onOpenSettings} /> : null}
+                {agents.previewHandover || content?.session?.messages.length ? <ContinueInExtalia compact t={t} agents={agents} state={state} source={{ kind: 'observed', id: selected.id }} {...(observation?.projectPath ? { projectPath: observation.projectPath } : {})} onContinued={onContinued} onOpenSettings={onOpenSettings} onState={onState} /> : null}
                 <button type="button" className="icon-button small observe-tools-toggle" aria-label={t.characterConsole.tools} title={t.characterConsole.tools} aria-expanded={toolsOpen} aria-controls={`${tabsId}-tools`} onClick={openTools}><Icon name="settings" /></button>
               </div>
             </header>

@@ -1,4 +1,5 @@
 import type { SkillProposalResult } from './skillLearning.js';
+import type { LearningKnowledgeRead, LearningRelatedNote } from '@extalia/protocol';
 import { pinProfileNotes, type ProfileNoteContext, type ProfileNoteDestination, type ProfileNoteOptions, type ProfileNoteWriter } from './profileNotes.js';
 
 export type LearningNoteDestination = ProfileNoteDestination;
@@ -11,6 +12,8 @@ export interface LearningNoteRecord extends LearningNoteContext {
   title: string;
   lesson: string;
   evidence: { id: string; name: string; content: string }[];
+  relatedNotes?: LearningRelatedNote[];
+  knowledgeReads?: LearningKnowledgeRead[];
   skill?: SkillProposalResult;
 }
 

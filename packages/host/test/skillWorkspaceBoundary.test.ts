@@ -60,6 +60,56 @@ describe('shared skill context with exact active approval applicability', () => 
     expect(Object.hasOwn(catalog.skills[0]!, 'body')).toBe(false);
   });
 
+  it('offers only globally approved skills to the explicit global model scope', async () => {
+    const f = fixture([[grant()], [grant({ approvalId: 2, workspaceId: undefined })], [grant({ approvalId: 3, workspaceId: foreign })]]);
+    const catalog = await f.registry.activeCatalog(null);
+    expect(catalog.incomplete).toBe(false);
+    expect(catalog.skills.map(skill => skill.name)).toEqual(['external-1']);
+    expect(JSON.stringify(catalog)).not.toContain('Metadata sentinel 0');
+    expect(JSON.stringify(catalog)).not.toContain('Metadata sentinel 2');
+    expect(f.calls.filter(call => call.op === 'skill.read')).toEqual([
+      { op: 'skill.read', params: { revisionId: f.revisions[1]!.revisionId, path: 'SKILL.md' } },
+    ]);
+    f.calls.length = 0;
+    expect((await f.registry.reload(catalog.skills[0]!, null)).body).toContain('Body sentinel 1');
+    expect((await f.registry.reloadMany(catalog.skills, null))[0]!.body).toContain('Body sentinel 1');
+    expect(f.calls.filter(call => call.op === 'skill.inspect')).toHaveLength(2);
+    expect(f.calls.filter(call => call.op === 'skill.inspect').every(call => Object.keys(call.params).join() === 'revisionId')).toBe(true);
+  });
+
+  it('rechecks global authority before reloading references from the management inventory', async () => {
+    const f = fixture([[grant({ workspaceId: foreign })]]);
+    const reference = (await f.registry.activeCatalog()).skills[0]!;
+    f.calls.length = 0;
+    await expect(f.registry.reload(reference, null)).rejects.toThrow('not approved for this workspace');
+    await expect(f.registry.reloadMany([reference], null)).rejects.toThrow('not approved for this workspace');
+    expect(f.calls.some(call => call.op === 'skill.read')).toBe(false);
+    expect((await f.registry.reloadMany([reference]))[0]!.body).toContain('Body sentinel 0');
+  });
+
+  it('never widens a newly workspace-scoped active pointer with an older global grant', async () => {
+    const f = fixture([[grant({ workspaceId: undefined })]]);
+    const reference = (await f.registry.activeCatalog(null)).skills[0]!;
+    f.approvals[0]!.push(grant({ approvalId: 2, workspaceId: workspace }));
+    f.inspectedRevision.activationApprovalId = 2;
+    f.calls.length = 0;
+    expect(await f.registry.activeCatalog(null)).toEqual({ skills: [], incomplete: false });
+    await expect(f.registry.reload(reference, null)).rejects.toThrow('not approved for this workspace');
+    await expect(f.registry.reloadMany([reference], null)).rejects.toThrow('not approved for this workspace');
+    expect(f.calls.some(call => call.op === 'skill.read')).toBe(false);
+    expect((await f.registry.reload(reference, workspace)).body).toContain('Body sentinel 0');
+  });
+
+  it('requires fresh active authority for global scope even when an unscoped grant exists', async () => {
+    const f = fixture([[grant({ workspaceId: undefined })]]);
+    const reference = (await f.registry.activeCatalog(null)).skills[0]!;
+    f.inspectedRevision.activationApprovalId = undefined;
+    f.calls.length = 0;
+    expect(await f.registry.activeCatalog(null)).toEqual({ skills: [], incomplete: false });
+    await expect(f.registry.reload(reference, null)).rejects.toThrow('not approved for this workspace');
+    expect(f.calls.some(call => call.op === 'skill.read')).toBe(false);
+  });
+
   it.each([
     ['foreign', { workspaceId: foreign }], ['revoked status', { status: 'revoked' }],
     ['revoked timestamp', { revokedAt: new Date().toISOString() }],

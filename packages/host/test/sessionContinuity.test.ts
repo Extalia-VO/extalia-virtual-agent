@@ -309,10 +309,17 @@ describe('session continuity', () => {
     expect((await f.service.sessionContinuity('gemini-session')).canonicalId).toBe(preview.canonicalId);
   });
 
-  it('refuses to merge two pre-existing canonical histories implicitly', async () => {
-    const f = await fixture(); await f.service.sessionContinuity('codex-session'); await f.service.sessionContinuity('gemini-session');
-    await expect(f.service.previewHandover('codex-session', { target: observed('gemini-session') })).rejects.toThrow('another continuity chain');
+  it('reviews a status-only destination archive without joining it until Apply', async () => {
+    const f = await fixture(), original = await f.service.sessionContinuity('codex-session'), target = await f.service.sessionContinuity('gemini-session');
+    const preview = await f.service.previewHandover('codex-session', { target: observed('gemini-session') });
+    expect(preview.targetChain).toEqual({ canonicalId: target.canonicalId, revision: target.revision, snapshots: 1, handovers: 0, requiresConsent: false });
+    expect(preview.coverage.map(snapshot => snapshot.id)).toContain(target.snapshots[0]!.id);
+    expect(JSON.parse(await readFile(f.file, 'utf8')).chains).toHaveLength(2);
     expect(f.effects).toHaveLength(0);
+    await f.service.applyHandover('codex-session', { reviewId: preview.reviewId, operationId: 'join-status-only' });
+    expect(f.service.canonicalIdFor('gemini-session')).toBe(original.canonicalId);
+    expect(f.service.canonicalIdsFor('gemini-session')).toEqual([original.canonicalId, target.canonicalId]);
+    expect(await f.service.readContinuity('gemini-session', { snapshotId: target.snapshots[0]!.id, canonicalId: target.canonicalId })).toMatchObject({ canonicalId: target.canonicalId, total: 2 });
   });
 
   it('bounds Unicode transport bytes, retains archive pages and states gaps explicitly', async () => {
@@ -388,6 +395,205 @@ describe('session continuity', () => {
     const receipt = await service.applyHandover('codex-session', { reviewId: preview.reviewId, operationId: 'new-native' });
     expect(receipt.state).toBe('native-ready'); expect(receipt.targetSessionId).toBe('new-native-session');
     expect((await service.sessionContinuity('new-native-session')).canonicalId).toBe(preview.canonicalId);
+  });
+});
+
+describe('pinned checkpoints and reviewed lineage joins', () => {
+  async function checkpointFixture() {
+    const f = await fixture(); let snapshots = 0, denied = false;
+    for (const source of f.sources.values()) source.authorityRevision = 'authority-v1';
+    const options = { ...f.options,
+      snapshot: async (id: string) => { snapshots++; return f.options.snapshot(id); },
+      inspectSourceAccess: async (id: string) => {
+        if (denied) throw new Error('Source watch consent was revoked.');
+        const source = f.sources.get(id)!;
+        return { sessionId: id, workspaceId: source.workspaceId, persistent: source.persistent, revision: source.authorityRevision! };
+      },
+    };
+    return { ...f, options, service: new SessionContinuity(options), snapshots: () => snapshots, deny: () => { denied = true; } };
+  }
+  it('applies the frozen active checkpoint after later progress and status captures without recapturing during Apply or archive reads', async () => {
+    const f = await checkpointFixture(); f.sources.get('codex-session')!.activity = 'active';
+    const preview = await f.service.previewHandover('codex-session', { target: observed('gemini-session'), capture: 'checkpoint' });
+    expect(preview.capture).toBe('checkpoint');
+    expect(preview.checkpoint).toEqual({ capturedAt: new Date(now).toISOString(), observedThrough: 'event-2', activity: 'active' });
+    expect(preview.packet).toContain('does not stop the source');
+    const originalArchive = await f.service.readContinuity('codex-session', { snapshotId: preview.coverage[0]!.id });
+    const live = f.sources.get('codex-session')!;
+    live.entries = [...live.entries, { id: 'after-checkpoint', kind: 'tool', text: 'Later unreviewed tool result: do not send this yet.' }];
+    live.revision = 'source-v2'; live.coverage.observedThrough = 'after-checkpoint';
+    const refreshed = await f.service.sessionContinuity('codex-session');
+    expect(refreshed.revision).toBeGreaterThan(1);
+    const captured = f.snapshots();
+    const receipt = await f.service.applyHandover('codex-session', { reviewId: preview.reviewId, operationId: 'pinned-active' });
+    expect(receipt.state).toBe('submitted'); expect(f.snapshots()).toBe(captured);
+    expect(f.effects[0]!.packet).toBe(preview.packet); expect(f.effects[0]!.packet).not.toContain('Later unreviewed');
+    expect(await f.service.readContinuity('codex-session', { snapshotId: preview.coverage[0]!.id })).toEqual(originalArchive);
+    expect(f.snapshots()).toBe(captured);
+    await f.service.close(); const restarted = new SessionContinuity(f.options);
+    expect(await restarted.applyHandover('codex-session', { reviewId: preview.reviewId, operationId: 'pinned-active' })).toEqual(receipt);
+    expect(f.effects).toHaveLength(1); expect(f.snapshots()).toBe(captured);
+  });
+  it.each(['source-authority', 'destination', 'lineage'] as const)('rejects a checkpoint when %s changes', async change => {
+    const f = await checkpointFixture();
+    const preview = await f.service.previewHandover('codex-session', { target: observed('gemini-session'), capture: 'checkpoint' });
+    if (change === 'source-authority') f.sources.get('codex-session')!.authorityRevision = 'authority-v2';
+    if (change === 'destination') f.setRevision('destination-v2');
+    if (change === 'lineage') {
+      const next = await f.service.previewHandover('codex-session', { target: { kind: 'manual', label: 'Separate reviewed transfer' }, capture: 'checkpoint',
+        notes: { ...preview.notes, decisions: 'New reviewed decision after the older checkpoint.' } });
+      await f.service.applyHandover('codex-session', { reviewId: next.reviewId, operationId: 'changed-lineage' });
+    }
+    await expect(f.service.applyHandover('codex-session', { reviewId: preview.reviewId, operationId: 'stale-checkpoint' })).rejects.toThrow('changed');
+    expect(f.effects).toHaveLength(change === 'lineage' ? 1 : 0);
+  });
+  it('checks current source consent for checkpoint reads and receipt replay even when the old transcript is still available', async () => {
+    const f = await checkpointFixture();
+    const preview = await f.service.previewHandover('codex-session', { target: observed('gemini-session'), capture: 'checkpoint' });
+    await f.service.applyHandover('codex-session', { reviewId: preview.reviewId, operationId: 'authorized-once' });
+    f.deny(); const captured = f.snapshots();
+    await expect(f.service.readContinuity('codex-session', { snapshotId: preview.coverage[0]!.id })).rejects.toThrow('consent');
+    await expect(f.service.applyHandover('codex-session', { reviewId: preview.reviewId, operationId: 'authorized-once' })).rejects.toThrow('consent');
+    expect(f.snapshots()).toBe(captured); expect(f.effects).toHaveLength(1);
+  });
+  it('releases only a pristine synthetic inspection scope for explicit host-validated association', async () => {
+    const f = await fixture(), source = f.sources.get('codex-session')!;
+    source.workspaceId = `observed:${'a'.repeat(32)}`;
+    const inspected = await f.service.sessionContinuity('codex-session');
+    expect(await f.service.workspaceIdFor('codex-session')).toBeUndefined();
+    source.workspaceId = 'isolated-registered-workspace';
+    const associated = await f.service.sessionContinuity('codex-session');
+    expect(associated.canonicalId).toBe(inspected.canonicalId); expect(associated.workspaceId).toBe(source.workspaceId);
+    expect(await f.service.workspaceIdFor('codex-session')).toBe(source.workspaceId);
+    const review = await f.service.previewHandover('codex-session', { target: { kind: 'manual', label: 'Registered transfer' }, capture: 'checkpoint' });
+    await f.service.applyHandover('codex-session', { reviewId: review.reviewId, operationId: 'established-scope' });
+    source.workspaceId = 'unrelated-workspace';
+    await expect(f.service.sessionContinuity('codex-session')).rejects.toThrow('another workspace');
+  });
+  it('does not release a synthetic scope containing reviewed workspace references', async () => {
+    const f = await fixture(), source = f.sources.get('codex-session')!;
+    source.workspaceId = `observed:${'b'.repeat(32)}`;
+    source.workspaceContext = { workspaceId: source.workspaceId, profileId: 'default', boundary: 'b'.repeat(64), connectionId: null };
+    await f.service.sessionContinuity('codex-session');
+    expect(await f.service.workspaceIdFor('codex-session')).toBe(source.workspaceId);
+    source.workspaceId = 'unrelated-isolated-workspace';
+    await expect(f.service.sessionContinuity('codex-session')).rejects.toThrow('another workspace');
+  });
+  it('requires explicit established-lineage consent, preserves original receipt IDs and notes, and survives restart', async () => {
+    const f = await fixture();
+    const previous = await f.service.previewHandover('gemini-session', { target: observed('claude-session'), notes: {
+      goal: 'An independently reviewed parser objective', decisions: 'Independent design decision', completed: '', pending: '', verification: '', risks: '',
+    } });
+    const originalReceipt = await f.service.applyHandover('gemini-session', { reviewId: previous.reviewId, operationId: 'independent-transfer' });
+    const preview = await f.service.previewHandover('codex-session', { target: observed('gemini-session'), capture: 'checkpoint' });
+    expect(preview.targetChain).toMatchObject({ canonicalId: previous.canonicalId, handovers: 1, requiresConsent: true });
+    await expect(f.service.applyHandover('codex-session', { reviewId: preview.reviewId, operationId: 'no-merge-consent' })).rejects.toThrow('explicitly approve');
+    const combined = await f.service.previewHandover('codex-session', { target: observed('gemini-session'), capture: 'checkpoint',
+      mergeTargetChain: { canonicalId: preview.targetChain!.canonicalId, revision: preview.targetChain!.revision } });
+    expect(combined.targetChain!.requiresConsent).toBe(false);
+    expect(combined.packet).toContain('Independent design decision');
+    expect(JSON.parse(await readFile(f.file, 'utf8')).chains).toHaveLength(2);
+    await f.service.applyHandover('codex-session', { reviewId: combined.reviewId, operationId: 'approved-merge' });
+    expect(f.service.canonicalIdsFor('claude-session')).toContain(previous.canonicalId);
+    await f.service.close(); const restarted = new SessionContinuity(f.options);
+    const result = await restarted.sessionContinuity('claude-session');
+    expect(result.canonicalId).toBe(combined.canonicalId); expect(result.handovers).toContainEqual(originalReceipt);
+    expect(await restarted.applyHandover('gemini-session', { reviewId: previous.reviewId, operationId: 'independent-transfer' })).toEqual(originalReceipt);
+    expect(await restarted.readContinuity('claude-session', { snapshotId: previous.coverage[0]!.id, canonicalId: previous.canonicalId })).toMatchObject({ canonicalId: previous.canonicalId, total: 2 });
+    await expect(restarted.readContinuity('claude-session', { snapshotId: previous.coverage[0]!.id, canonicalId: 'unrelated-canonical' })).rejects.toThrow('granted canonical');
+    expect(f.effects).toHaveLength(2);
+  });
+  it('rejects changed destination merge consent and any uncertain target history', async () => {
+    const f = await fixture();
+    const first = await f.service.previewHandover('gemini-session', { target: observed('claude-session') });
+    await f.service.applyHandover('gemini-session', { reviewId: first.reviewId, operationId: 'target-history' });
+    const preview = await f.service.previewHandover('codex-session', { target: observed('gemini-session') });
+    f.sources.get('gemini-session')!.revision = 'new-target-capture';
+    f.sources.get('gemini-session')!.entries = [...f.sources.get('gemini-session')!.entries, { id: 'new-target-evidence', kind: 'tool', text: 'A new result after the merge review.' }];
+    await f.service.sessionContinuity('gemini-session');
+    await expect(f.service.previewHandover('codex-session', { target: observed('gemini-session'), mergeTargetChain: preview.targetChain! })).rejects.toThrow('lineage changed');
+    f.setEffect(async () => ({ state: 'unknown' }));
+    const uncertain = await f.service.previewHandover('gemini-session', { target: { kind: 'manual', label: 'Uncertain transfer' } });
+    await f.service.applyHandover('gemini-session', { reviewId: uncertain.reviewId, operationId: 'target-uncertain' });
+    await expect(f.service.previewHandover('codex-session', { target: observed('gemini-session'), capture: 'checkpoint' })).rejects.toThrow('uncertain handover');
+  });
+  it('keeps both joined histories in memory when either lineage has history disabled', async () => {
+    const f = await fixture(); f.sources.get('gemini-session')!.persistent = false;
+    const target = await f.service.sessionContinuity('gemini-session');
+    const preview = await f.service.previewHandover('codex-session', { target: observed('gemini-session'), capture: 'checkpoint' });
+    expect(preview.persistent).toBe(false);
+    expect(JSON.parse(await readFile(f.file, 'utf8')).chains).toHaveLength(1);
+    await f.service.applyHandover('codex-session', { reviewId: preview.reviewId, operationId: 'private-merge' });
+    expect(f.service.canonicalIdsFor('codex-session')).toContain(target.canonicalId);
+    expect(f.service.retention('codex-session')).toBe(false);
+    expect(JSON.parse(await readFile(f.file, 'utf8')).chains).toEqual([]);
+    await f.service.close(); expect(await new SessionContinuity(f.options).has('codex-session')).toBe(false);
+  });
+  it('stores repeated growing checkpoints as deltas without losing prior evidence or exceeding the chain budget', async () => {
+    const f = await checkpointFixture(), live = f.sources.get('codex-session')!;
+    live.entries = [{ id: 'initial-goal', kind: 'user', text: 'Preserve every verified marker.' },
+      ...Array.from({ length: 14 }, (_, index) => ({ id: `initial-${index}`, kind: 'tool' as const, text: `Original marker ${index}: ${'x'.repeat(6900)}` }))];
+    const initial = await f.service.sessionContinuity('codex-session');
+    for (let index = 0; index < 40; index++) {
+      live.entries = [...live.entries, { id: `round-${index}`, kind: 'tool', text: `New marker ${index}: ${'y'.repeat(1800)}` }];
+      live.revision = `round-${index}`; live.coverage.observedThrough = `round-${index}`;
+      const preview = await f.service.previewHandover('codex-session', { target: { kind: 'manual', label: 'Checkpoint reviewer' }, capture: 'checkpoint' });
+      await f.service.applyHandover('codex-session', { reviewId: preview.reviewId, operationId: `checkpoint-${index}` });
+    }
+    const disk = await readFile(f.file, 'utf8'); expect(Buffer.byteLength(disk)).toBeLessThan(400_000);
+    const state = JSON.parse(disk), stored = state.chains[0].snapshots;
+    expect(stored).toHaveLength(41);
+    expect(stored.slice(1).every((snapshot: { evidence: unknown[] }) => snapshot.evidence.length === 1)).toBe(true);
+    expect(stored.flatMap((snapshot: { evidence: ContinuityEntry[] }) => snapshot.evidence).map((entry: ContinuityEntry) => entry.id)).toHaveLength(55);
+    expect(stored.at(-1).coverage.limits[0]).toContain('unchanged entries are retained');
+    const original = await f.service.readContinuity('codex-session', { snapshotId: initial.snapshots[0]!.id, limit: 50 });
+    expect(original.entries).toHaveLength(15); expect(original.entries[1]!.text).toContain('Original marker 0');
+    await f.service.close(); const restarted = new SessionContinuity(f.options);
+    expect((await restarted.readContinuity('codex-session', { snapshotId: stored.at(-1).id })).entries[0]!.id).toBe('round-39');
+  });
+  it('retains a changed long-entry tail even when its bounded visible prefix is identical', async () => {
+    const f = await fixture(), live = f.sources.get('codex-session')!;
+    live.entries = [{ id: 'long-entry', kind: 'tool', text: `${'x'.repeat(9000)}old-tail` }];
+    await f.service.sessionContinuity('codex-session');
+    live.entries = [{ id: 'long-entry', kind: 'tool', text: `${'x'.repeat(9000)}new-tail` }];
+    const changed = await f.service.sessionContinuity('codex-session');
+    expect(changed.snapshots).toHaveLength(2); expect(changed.snapshots[1]!.entries).toBe(1);
+    expect(changed.snapshots[1]!.coverage.limits).toContain('1 archived entries were shortened.');
+  });
+  it('does not consume archive slots for token-only status churn, while preserving changed model and compaction provenance', async () => {
+    const f = await checkpointFixture(), live = f.sources.get('codex-session')!;
+    live.model = 'model-one';
+    live.context = { usedTokens: 10, windowTokens: 1000, estimated: true, compactions: 0, updatedAt: new Date(now).toISOString() };
+    const original = await f.service.sessionContinuity('codex-session');
+    for (let index = 0; index < 270; index++) {
+      live.revision = `token-display-${index}`;
+      live.context = { ...live.context, usedTokens: index + 10, updatedAt: new Date(now + index * 1000).toISOString() };
+      const refreshed = await f.service.sessionContinuity('codex-session');
+      expect(refreshed.snapshots).toEqual(original.snapshots);
+    }
+    live.model = 'model-two';
+    expect((await f.service.sessionContinuity('codex-session')).snapshots).toHaveLength(2);
+    live.context.compactions = 1;
+    expect((await f.service.sessionContinuity('codex-session')).snapshots).toHaveLength(3);
+    expect(JSON.parse(await readFile(f.file, 'utf8')).chains[0].snapshots[0].context.usedTokens).toBe(10);
+  });
+  it('can inspect and resolve an uncertain receipt when capturing new live evidence would exceed the archive limit', async () => {
+    const f = await checkpointFixture(), live = f.sources.get('codex-session')!;
+    f.setEffect(async () => ({ state: 'unknown' }));
+    const preview = await f.service.previewHandover('codex-session', { target: observed('gemini-session'), capture: 'checkpoint' });
+    const uncertain = await f.service.applyHandover('codex-session', { reviewId: preview.reviewId, operationId: 'uncertain-at-capacity' });
+    for (let index = 0; index < 255; index++) {
+      live.entries = [...live.entries, { id: `retained-${index}`, kind: 'tool', text: `Retained result ${index}.` }];
+      live.revision = `capture-${index}`;
+      await f.service.sessionContinuity('codex-session');
+    }
+    live.entries = [...live.entries, { id: 'over-capacity', kind: 'tool', text: 'This additional capture cannot fit.' }];
+    await expect(f.service.sessionContinuity('codex-session')).rejects.toThrow('snapshot limit');
+    const captures = f.snapshots(), inspected = await f.service.inspectContinuity('codex-session');
+    expect(inspected.snapshots).toHaveLength(256); expect(inspected.handovers[0]!.state).toBe('unknown');
+    const resolved = await f.service.reconcileHandover('codex-session', { operationId: uncertain.operationId, packetDigest: uncertain.packetDigest, outcome: 'accepted' });
+    expect(resolved.state).toBe('inspected'); expect(f.snapshots()).toBe(captures); expect(f.effects).toHaveLength(1);
+    f.deny(); await expect(f.service.inspectContinuity('codex-session')).rejects.toThrow('consent');
   });
 });
 

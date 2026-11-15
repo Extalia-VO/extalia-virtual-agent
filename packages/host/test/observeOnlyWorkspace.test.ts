@@ -89,7 +89,10 @@ describe('providerless Observe workspace setup and upgrade', () => {
     expect((await f.host.observedMemorySearch!(workspace.id, { query: 'parser' })).hits[0]!.episode.id).toBe(hit.episode.id);
     const connection = (await f.host.saveConnection(connectionInput)).connections[0]!;
     await f.host.saveWorkspace({ id: workspace.id, mode: 'observe', name: workspace.name, projectLocation: f.project, connectionId: connection.id, permissions });
-    expect((await f.host.handoverHarnesses!(observed.id)).harnesses.find(item => item.id === 'extalia')).toMatchObject({ create: 'unavailable' });
+    expect((await f.host.handoverHarnesses!(observed.id)).harnesses.find(item => item.id === 'extalia')).toMatchObject({ create: 'ready' });
+    await expect(f.host.previewHandover!(observed.id, { target: { kind: 'native', connectionId: connection.id } })).rejects.toThrow(/review enabling full Extalia/i);
+    expect((await f.host.getState()).workspaces.find(item => item.id === workspace.id)).toMatchObject({ mode: 'observe' });
+    expect(f.fetch).not.toHaveBeenCalled();
     await f.host.saveWorkspace({ id: workspace.id, mode: 'managed', name: workspace.name, projectLocation: f.project, connectionId: connection.id, permissions });
     await f.host.completeSetup('managed');
     expect((await f.host.handoverHarnesses!(observed.id)).harnesses.find(item => item.id === 'extalia')).toMatchObject({ create: 'ready' });

@@ -63,3 +63,24 @@ describe('run-bound Native Knowledge reads', () => {
     expect(JSON.parse((await read.run({ path: 'OtherProfile.md' }, context())).output).status).toBe('missing');
   });
 });
+
+describe('Native Knowledge correction-aware recall', () => {
+  it('keeps the original body and revision while returning separately attributed update claims', async () => {
+    const p = port(), original = await p.read('Note.md', binding);
+    p.read = vi.fn(async () => ({ ...original!, body: 'The earlier observation.', relatedUpdates: [{
+      nodeId: 'path:Amendment.md', path: 'Amendment.md', title: 'Later observation', relation: 'contradicts' as const,
+      line: 4, sourceSha256: 'b'.repeat(64), excerpt: 'Contradicts: [[Note]] — pending evidence', trustStatus: 'untrusted' as const,
+    }], relatedUpdatesTruncated: true }));
+    const read = (await createNativeKnowledgeTools(p))[1]!;
+    const result = JSON.parse((await read.run({ path: 'Note.md' }, context())).output);
+    expect(result).toMatchObject({ body: 'The earlier observation.', sha256: 'a'.repeat(64), relatedUpdatesTruncated: true,
+      relatedUpdates: [{ path: 'Amendment.md', relation: 'contradicts', sourceSha256: 'b'.repeat(64), trustStatus: 'untrusted' }] });
+    expect(result.relatedUpdatesGuidance).toContain('do not establish truth');
+    expect(result.body).not.toContain('pending evidence');
+    p.read = async () => ({ ...original!, bodyStatus: 'changed', relatedUpdates: [{ nodeId: 'path:Private.md', path: 'Private.md', title: 'Stale',
+      relation: 'updates', line: 1, sourceSha256: 'c'.repeat(64), excerpt: 'stale detail', trustStatus: 'untrusted' }] });
+    const stale = await read.run({ path: 'Note.md' }, context());
+    expect(stale.ok).toBe(false);
+    expect(stale.output).not.toContain('stale detail');
+  });
+});
